@@ -1,0 +1,14 @@
+# Local agent/tooling state
+.claude/
+.sah/
+.shell/
+.code-context/
+
+# Swift / build
+.build/
+.swiftpm/
+*.xcodeproj
+DerivedData/
+
+# macOS
+.DS_Store
