@@ -15,9 +15,9 @@ MCP — no wire protocol, and the runtime call path is native Swift, not JSON-Sc
 marshaling (the build-time doc renderer reads each tool's own `GenerationSchema`). The
 tools are **black boxes from other packages**: we assume **no source access and no
 ability to modify them**, only their public `Tool` protocol surface. Anything that
-is already a `FoundationModels.Tool` drops in with `addTool(_:)` — hand-written
-`@Generable` tools, and (because the sibling's `MCPTool` *is* a `Tool`) MCP-backed
-tools too.
+is already a `FoundationModels.Tool` drops in with `addTool(_:)`. (MCP-backed tools
+would also just be `Tool`s, so they could drop in the same way — but wiring MCP up
+is out of v1 scope; see M8.)
 
 > Target: **OS 27+ only** (macOS 27 / iOS 27 and later). No back-deployment, **no
 > `@available` branching, no degrade path** — matching the sibling
@@ -235,7 +235,7 @@ let registry = try await MultiTool.Builder()
     .addTool(WeatherTool())                 // any FoundationModels.Tool — inline, black box, no source
     .addTool(thirdPartyToolFromSomePackage)
     .addTools(myToolArray)
-    .add(server: githubMCPServer)           // sibling MCPServer → all its MCPTools, free
+    .addGroup(named: "github", githubTools) // many Tools under one namespace
     .searchModel(.router(.default))         // librarian's model comes from FoundationModelsRouter
     .build()
 
@@ -246,19 +246,20 @@ let session = LanguageModelSession(model: routerModel, multitool: registry, inst
 
 `addTool` is generic over `T: Tool`, capturing the concrete type so `ToolInvoker`
 can open it later — *inline* means the object and its type are known where you
-register it, even though its source lives in another package. `add(server:)` is the
-composition payoff: a sibling `MCPServer` vends `MCPTool`s, each a
-`FoundationModels.Tool`, so it flows in with no special-casing.
+register it, even though its source lives in another package. `addGroup(named:_:)`
+takes an array of `Tool`s and namespaces them (below). Everything the MultiTool
+accepts is a `FoundationModels.Tool` — nothing else.
 
 **Multiple functions / grouping.** A FoundationModels `Tool` is exactly one
 function (one `call`); multiplicity comes from the *number of tools you add*, never
-from one tool having two `call`s. `add(server:)` / `addGroup(named:_:)` register
-many at once and render them under a **namespace** — `tools.github.createIssue({…})`,
-`tools.github.search({…})` — which organizes a many-function provider and resolves
-name collisions across sources. A standalone tool stays flat at `tools.<name>`. A
-single tool that multiplexes via an `op`-enum argument is still one function,
-`tools.x({ op, … })`; the renderer shows `op` as a union and, when the schema is a
-clean discriminated union, may expand it to `tools.x.<op>(…)`.
+from one tool having two `call`s. `addGroup(named:_:)` takes many `Tool`s at once
+and renders them under a **namespace** — `tools.github.createIssue({…})`,
+`tools.github.search({…})` — organizing a related set and resolving name
+collisions. A standalone tool stays flat at `tools.<name>`. A single tool that
+multiplexes via an `op`-enum argument is still one function, `tools.x({ op, … })`;
+the renderer shows `op` as a union and, when the schema is a clean discriminated
+union, may expand it to `tools.x.<op>(…)`. (An MCP server is one such *source* of
+many tools — but it's not itself a `Tool`; converting it is deferred, M8.)
 
 ## Usage: attaching to a session
 
@@ -515,8 +516,8 @@ JS/validation exception as a repairable error.
    a fresh interpreter with each tool installed as `tools.<name>`; runs the snippet;
    renders via `ResultRenderer`. *Is itself a `Tool`.*
 2. **`MultiTool.Builder`** — `addTool(_:)` / `addTools(_:)` / `addGroup(named:_:)` /
-   `add(server:)` / `searchModel(_:)`. The easy contribution path; black-box tools
-   only. Grouped/server tools render under a `tools.<group>.<name>` namespace.
+   `searchModel(_:)`. The easy contribution path; takes `any Tool` only. Grouped
+   tools render under a `tools.<group>.<name>` namespace.
 3. **`ToolAPIRenderer`** ⭐ — encodes a `GenerationSchema` (Apple's JSON-Schema
    analog) → typed signature + doc comment.
 4. **`ArgumentMarshaler`** ⭐ — JS value → `GeneratedContent` (content, not schema),
@@ -556,8 +557,9 @@ JS/validation exception as a repairable error.
   Router-selected model; constrained output; confirm the MLX backend reuses the
   instruction-prefix KV cache across `findAPIs` calls.
 - [ ] **M7 — In-JS `help()` / `docs()`.**
-- [ ] **M8 — Sibling integration.** `Builder.add(server:)` consuming a
-  `FoundationModelsMCP` `MCPServer` — "Code Mode over MCP," end-to-end.
+- [ ] **M8 — (deferred) MCP tools.** Out of v1 scope. MCP-backed `Tool`s are
+  ordinary `Tool`s, so `addTool`/`addGroup` already cover them; any bulk "import a
+  whole server" ergonomics are future work.
 - [ ] **M9 — Sample CLI.** A prompt that triggers `findAPIs` then a multi-tool
   `runCode`.
 - [ ] **M10 — Hardening.** Limits tuned; async-bridge policy; cancellation; logging;
@@ -571,7 +573,7 @@ JS/validation exception as a repairable error.
 - **Marshaler + `ToolInvoker`** (M3): round-trips; existential opening over a mock
   `Tool` that records the marshaled `GeneratedContent`; validation pass/fail.
 - **`ResultRenderer`** (M5): caps, truncation, exception → error.
-- **E2E** (M4/M6/M8/M9): gated/optional, needs the model (Router) on real hardware.
+- **E2E** (M4/M6/M9): gated/optional, needs the model (Router) on real hardware.
 
 ## Findings (research)
 
@@ -629,11 +631,11 @@ JS/validation exception as a repairable error.
 - **#4 Arg validation.** Lean on `Arguments(content)` throwing (free) + guide checks;
   precise, repairable errors. Narrow coercions only if the model trips often.
 - **#5 Namespacing, grouping & collisions.** A `Tool` is one function. Standalone
-  tools live at `tools.<name>`; a *group* (an `MCPServer`, or `addGroup(named:)`)
-  renders under `tools.<group>.<name>` — organizing many-function providers and
-  resolving duplicate names across sources. A single tool multiplexing via an
-  `op`-enum is one function (`tools.x({ op, … })`), optionally expanded to
-  `tools.x.<op>(…)` for a clean discriminated union. `help()` shows the layout.
+  tools live at `tools.<name>`; a *group* (`addGroup(named:)`) renders under
+  `tools.<group>.<name>` — organizing a related set and resolving duplicate names.
+  A single tool multiplexing via an `op`-enum is one function (`tools.x({ op, … })`),
+  optionally expanded to `tools.x.<op>(…)` for a clean discriminated union. `help()`
+  shows the layout.
 - **#6 Librarian capacity.** Librarian on a Router model; budget against *that
   model's* window (not the built-in 4K). If a surface exceeds it, lexical pre-filter
   the candidates before seeding and **log** the cut (mirrors the sibling's M8).
@@ -676,10 +678,10 @@ JS/validation exception as a repairable error.
 - **`smolagents` `CodeAgent`** + **CodeAct** (Wang et al., 2024,
   [arXiv](https://arxiv.org/abs/2402.01030)) — code as the action space beats JSON
   actions on multi-step tasks.
-- **`FoundationModelsMCP`** (sibling) — the per-tool MCP bridge. We reuse its
-  agentic-search, `Builder`/provider, and UI-catalog patterns; its `MCPTool`s are
-  `Tool`s the MultiTool can wrap. The schema-constrained complement to this
-  code-surface approach.
+- **`FoundationModelsMCP`** (sibling) — the per-tool MCP bridge. We borrow its
+  agentic-search and `Builder` patterns. Its `MCPTool`s are ordinary
+  `FoundationModels.Tool`s, so the MultiTool could wrap them later (deferred, M8).
+  The schema-constrained complement to this code-surface approach.
 - **`FoundationModelsRouter`** (sibling-of-sibling) — RAM-aware MLX model selection +
   xgrammar engine; supplies the models for both sessions here.
 
