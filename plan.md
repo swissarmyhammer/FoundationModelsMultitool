@@ -23,12 +23,25 @@ is out of v1 scope; see M8.)
 > `@available` branching, no degrade path** — matching the sibling
 > `FoundationModelsMCP` plan so the two share a toolchain and a floor.
 
-> Model: **via `FoundationModelsRouter`**, not Apple's built-in
-> `SystemLanguageModel`. *Both* the main session and the librarian run on
-> Router-selected (RAM-aware, MLX) open-weight models. So the built-in model's
-> 4,096-token window — and `contextSize`/`tokenCount`/`.exceededContextWindowSize`
-> — **do not apply**; context budgets are whatever the Router-selected models
-> provide.
+> Model: **via the `FoundationModelsRouter` package**
+> (`github.com/swissarmyhammer/FoundationModelsRouter`, a SwiftPM dependency), not
+> Apple's built-in `SystemLanguageModel`. *Both* the main agent and the librarian
+> run on Router-resolved (RAM-aware, MLX) open-weight models. So the built-in
+> model's 4,096-token window — and
+> `contextSize`/`tokenCount`/`.exceededContextWindowSize` — **do not apply**;
+> context budgets are whatever the resolved models provide.
+>
+> Consequence — the single most important integration fact, detailed under
+> **Router integration** below: the Router vends its *own* `RoutedSession`
+> (`respond(to:) async throws -> String` + guided generation), **not** Apple's
+> `LanguageModelSession`, and it has **no built-in tool-calling loop**. So
+> `runCode`/`findAPIs` are *not* dispatched by an Apple session's automatic tool
+> loop — the MultiTool runs its **own agent loop** over a `RoutedSession`, using
+> Router guided generation to make the model emit well-formed calls. Conforming
+> wrapped tools (and the MultiTool) to `FoundationModels.Tool` stays useful — it's
+> how black-box tools are introspected, and it lets the MultiTool *also* drop into
+> an Apple built-in `SystemLanguageModel` session as an escape hatch — but that
+> Apple tool loop is not the attach path when the model comes from the Router.
 
 ## Design principle: fuse many tools into one programmable surface
 
@@ -231,24 +244,38 @@ for any tool you place *directly* in the session.
 ## Adding tools is the easy path
 
 ```swift
-let registry = try await MultiTool.Builder()
+// 1. Collect the tools. The Builder is a pure catalog — no model wiring here.
+let registry = try MultiTool.Builder()
     .addTool(WeatherTool())                 // any FoundationModels.Tool — inline, black box, no source
     .addTool(thirdPartyToolFromSomePackage)
     .addTools(myToolArray)
     .addGroup(named: "github", githubTools) // many Tools under one namespace
-    .searchModel(.router(.default))         // librarian's model comes from FoundationModelsRouter
-    .build()
+    .build()                                // rendered APISurface; still model-agnostic
 
-// The MultiTool is itself a Tool. Add it (plus findAPIs) to a Router-backed session:
-let session = LanguageModelSession(model: routerModel, multitool: registry, instructions: …)
-// main session sees exactly two tools: runCode + findAPIs
+// 2. Resolve one Router profile for THIS machine (RAM-aware), then bind the agent to
+//    its slots. Router hands back a LanguageModelProfile with standard/flash/embedding
+//    RoutedLLM handles — not an Apple LanguageModelSession.
+let router  = Router()                                          // FoundationModelsRouter, an actor
+let profile = try await router.resolve(travelProfile, reporting: progress)   // ProfileDefinition → LanguageModelProfile
+
+let agent = MultiToolAgent(
+    registry,
+    model:     profile.standard,   // the runCode/findAPIs agent loop runs on the standard slot
+    librarian: profile.flash,      // the librarian runs on the same profile's cheaper/faster flash slot
+    instructions: "You are a travel assistant. Use runCode to get things done."
+)
+// The agent loop surfaces exactly two operations to the model: runCode + findAPIs.
 ```
 
 `addTool` is generic over `T: Tool`, capturing the concrete type so `ToolInvoker`
 can open it later — *inline* means the object and its type are known where you
 register it, even though its source lives in another package. `addGroup(named:_:)`
 takes an array of `Tool`s and namespaces them (below). Everything the MultiTool
-accepts is a `FoundationModels.Tool` — nothing else.
+accepts is a `FoundationModels.Tool` — nothing else. **Model wiring is separate
+from tool collection**: the `Builder` produces a model-agnostic catalog; a
+`MultiToolAgent` binds it to a resolved profile's slots and runs the loop (see
+**Router integration**). `MultiToolAgent` names are indicative — the type set is
+finalized in M4/M6.
 
 **Multiple functions / grouping.** A FoundationModels `Tool` is exactly one
 function (one `call`); multiplicity comes from the *number of tools you add*, never
@@ -261,29 +288,94 @@ the renderer shows `op` as a union and, when the schema is a clean discriminated
 union, may expand it to `tools.x.<op>(…)`. (An MCP server is one such *source* of
 many tools — but it's not itself a `Tool`; converting it is deferred, M8.)
 
+## Router integration (the real API surface)
+
+The `FoundationModelsRouter` package does **not** expose Apple's
+`LanguageModelSession`, does **not** use `SystemLanguageModel`, and has **no
+tool-calling loop**. Confirmed against the package source, its surface is:
+
+- **`Router`** — an `actor` (not a shared singleton). You construct one and call
+  `resolve(_ def: ProfileDefinition, reporting: ResolutionProgress) async throws ->
+  LanguageModelProfile`. One profile is resident at a time (RAM budget); release
+  before resolving another.
+- **`ProfileDefinition`** — an authored, value-type profile: `name`, `description`,
+  candidate `[ModelRef]` lists for the `standard`/`flash`/`embedding` slots (in
+  preference order), and a `context` token budget (default 8192). Resolution picks,
+  per slot, the first candidate that co-fits this machine's budget.
+- **`LanguageModelProfile`** — the resolved handle set: `.standard` and `.flash`
+  are `RoutedLLM`, `.embedding` is a `RoutedEmbedder`; `release()` evicts them. The
+  two generation slots share one resident profile — you do **not** get two
+  independently-selected models, you get one profile with a stronger `standard`
+  slot and a cheaper/faster `flash` slot.
+- **`RoutedLLM.makeSession(instructions:workingDirectory:) -> RoutedSession`** and
+  **`makeGuidedSession(_ grammar:instructions:workingDirectory:)`** vend sessions.
+- **`RoutedSession`** — an `actor` protocol with `respond(to:) async throws ->
+  String`, `streamResponse(to:) -> AsyncThrowingStream<String, Error>`, and
+  `fork(workingDirectory:)`. **No `tools:` parameter, no automatic tool loop.**
+- **Guided generation** on `RoutedLLM` (xgrammar): `respond(to:following: Grammar)`
+  → raw constrained text; `respond(to:matching jsonSchema:) -> JSONValue`; and,
+  where `FoundationModels` is available, **`respond<T: Generable>(to:generating:
+  T.Type) -> T`** — constrained *and decoded* into a `@Generable` type.
+- **Live inference is gated.** Until the Router's own milestone 7, the live MLX
+  decode path throws `GenerationError.notWiredForLiveInference`; the unit suite
+  runs against stub containers. So *our* real-model tests are likewise gated (see
+  **Integration tests**), and depend on the Router's live path landing.
+
+### The agent loop is ours to build
+
+Because there is no Apple tool loop over a Router model, the MultiTool supplies its
+own. `MultiToolAgent` drives a `RoutedSession` on `profile.standard`:
+
+```
+loop:
+  raw = session.respond(to: turnPrompt)          // Router RoutedSession, plain text
+  parse a tool call out of `raw`  ── runCode / findAPIs / final answer
+    · findAPIs(task)  → ask the librarian (guided), splice the returned blocks in
+    · runCode(code)   → JSCInterpreter runs it; tools.X() → native Swift tool.call
+    · final           → return to the caller
+  feed the tool result back as the next turn; repeat
+```
+
+Two ways to make the model emit a *well-formed* call rather than free prose, both
+Router-native:
+
+1. **Guided turns.** Constrain the agent turn to a small grammar (a `@Generable`
+   union of `{ findAPIs(task) | runCode(code) | final(text) }`, via
+   `respond(to:generating:)` / `.jsonSchema`) so each step is parseable by
+   construction. Preferred where the model is small enough to need the rails.
+2. **Prompted convention + tolerant parse.** A ReAct-style instruction plus a
+   lenient extractor, falling back to a repair turn when parsing fails. Cheaper per
+   turn; leans on the model following format.
+
+The choice is settled empirically in M4/M6 and pinned by the integration suite. The
+`runCode`/`findAPIs` *descriptions* (below) are the fixed instruction that teaches
+the search-then-code behavior either way.
+
 ## Usage: attaching to a session
 
-The MultiTool **is** a `Tool`. The `LanguageModelSession(multitool:)` convenience
-attaches it (and wires the librarian) so the main session sees exactly two tools —
-`runCode` + `findAPIs` — on a Router-backed model:
+The MultiTool conforms to `FoundationModels.Tool`, but on a Router model it is
+driven by `MultiToolAgent`, which surfaces exactly two operations — `runCode` +
+`findAPIs` — to the model:
 
 ```swift
-let routerModel = try await Router.shared.selectModel()      // FoundationModelsRouter
-let session = LanguageModelSession(
-    model: routerModel,
-    multitool: registry,                                     // from the Builder above
+let router  = Router()
+let profile = try await router.resolve(travelProfile, reporting: progress)   // FoundationModelsRouter
+let agent   = MultiToolAgent(
+    registry,
+    model:     profile.standard,
+    librarian: profile.flash,
     instructions: "You are a travel assistant. Use runCode to get things done."
 )
 
-let reply = try await session.respond(to: "Of the cities on my trip, which is warmest now?")
+let reply = try await agent.respond(to: "Of the cities on my trip, which is warmest now?")
 // "Austin (31°C)."
 ```
 
-What the session's tool loop does behind that one call:
+What the agent loop does behind that one call:
 
 ```
 findAPIs({ task: "list trip cities, get weather for each" })
-  └─ librarian → tools.tripCities(): string[]
+  └─ librarian (profile.flash, guided) → tools.tripCities(): string[]
                  tools.weather({ city: string; units?: "c"|"f" }): { tempC: number; summary: string }
 runCode({ code: `
   const cities = tools.tripCities();
@@ -299,9 +391,9 @@ model → "Austin (31°C)."
 and let the snippet introspect:
 
 ```swift
-let session = LanguageModelSession(
-    model: routerModel,
-    multitool: registry.directMode(),    // only runCode; help()/docs() inside the snippet
+let agent = MultiToolAgent(
+    registry.directMode(),                // only runCode; help()/docs() inside the snippet
+    model: profile.standard,
     instructions: "Tools are documented via help(). Use runCode."
 )
 // in a snippet:  help() → ["tripCities","weather",…];  docs("weather") → signature + doc + example
@@ -312,45 +404,49 @@ async tool: `tools.askUser({…})` inside a snippet suspends (the v1 blocking br
 until the user answers, then returns the structured value *into the program*, so the
 model uses it in the same snippet — no extra round-trip. No special handling.
 
-**Escape hatch — place a tool directly.** The one reason to compose a tool
-*alongside* the MultiTool instead of wrapping it is to keep the **token-level arg
-guarantee** (constrained decoding on its arguments):
+**Escape hatch — keep the schema-valid-args guarantee.** The one reason to *not*
+wrap a tool as in-snippet code is to keep a hard argument guarantee. On a Router
+model there is no Apple constrained-decoding tool loop, so the agent instead calls
+that one tool through Router **guided generation** — deriving a grammar from the
+tool's `parameters: GenerationSchema` and using `respond(to:generating:)` so the
+arguments are xgrammar-constrained and schema-valid — at the cost of one extra
+round-trip. (If you genuinely want Apple's *token-level* tool loop, place the
+MultiTool and that tool in an Apple built-in `SystemLanguageModel`
+`LanguageModelSession` instead — a different model than the Router, and the only
+place `LanguageModelSession(tools:)` applies here.)
 
-```swift
-let session = LanguageModelSession(
-    model: routerModel,
-    tools: [registry.runCodeTool, registry.findAPIsTool, ConfirmPaymentTool()],
-    instructions: …
-)
-// ConfirmPaymentTool: model calls it directly (args constrained); everything else via runCode.
-```
+## Discovery: a prefix-cached "librarian" agent (Router `flash` slot)
 
-## Discovery: a prefix-cached "librarian" agent (Router model)
+Discovery is agentic, mirroring the sibling's search. The main agent runs on the
+profile's `standard` slot; the librarian runs on the **same resolved profile's
+`flash` slot** — the cheaper/faster generation model of the one resident profile —
+as a *separate* `RoutedSession` so the full generated surface stays out of the main
+agent's working context.
 
-Discovery is agentic, mirroring the sibling's search. Both the main session and the
-librarian run on **FoundationModelsRouter**-selected models; the librarian is a
-*separate* session so the full generated surface stays out of the main session's
-working context and can be served by a different Router model (e.g. cheaper or
-larger-context) tuned for retrieval.
-
-- The **librarian** is a separate, long-lived `LanguageModelSession` whose
-  *instructions* are the full generated surface. If its prefix is reused across
-  calls it stays cheap (prefix/KV reuse — a Router/MLX backend property to confirm,
-  Findings #6), and the surface **never enters the main session**.
-- `findAPIs(task:)` returns the few relevant tool-functions (constrained output:
-  `{ function, signature, doc, example }`) for the main model to program against.
-- Configured via `Builder.searchModel(_:)` — a Router preset (`.router(.default)`)
-  or a custom `LanguageModelSession` builder given the candidate catalog (the
-  sibling's `SearchAgent` shape).
+- The **librarian** is a separate, long-lived `RoutedSession` (from
+  `profile.flash.makeSession(instructions:)`) whose *instructions* are the full
+  generated surface. Its **prefix reuse maps to a concrete Router primitive**:
+  `RoutedSession.fork(workingDirectory:)` seeds the child from a *copy* of the
+  parent's prefilled KV cache (`SessionKVCache.copy()`), so a librarian rooted on
+  the surface prefix can `fork()` per `findAPIs` call to inherit the prefix compute
+  and diverge — rather than re-prefilling the surface each time (Findings #6). The
+  surface **never enters the main agent's context**.
+- `findAPIs(task:)` returns the few relevant tool-functions as **constrained,
+  decoded output** via `profile.flash.respond(to: task, generating: FoundAPIs.self)`
+  — Router's `@Generable` guided-generation shape — so the pick is well-formed by
+  construction (`{ function, signature, doc, example }`).
+- Configured via `MultiToolAgent(librarian:)` — pass the `RoutedLLM` handle
+  (typically `profile.flash`) the librarian should run on; it defaults to the
+  profile's `flash` slot.
 
 Plus in-language `help()`/`docs()` globals backed by the same surface.
 
 ```
-main LanguageModelSession   (Router model; sees only: runCode, findAPIs)
+main agent loop   (RoutedSession on profile.standard; sees only: runCode, findAPIs)
    │  findAPIs("for each city in my trip, get weather and pick the warmest")
    ▼
-FindAPITool ─► librarian (Router model, full surface as its instruction prefix)
-   │           └─► top-N { function, signature, doc, example }
+FindAPITool ─► librarian (RoutedSession on profile.flash, full surface as its instruction prefix)
+   │           └─► guided respond(to:generating:) → top-N { function, signature, doc, example }
    ▼
 main model writes a snippet:
    runCode(`
@@ -514,10 +610,18 @@ JS/validation exception as a repairable error.
 
 1. **`MultiTool`** ⭐ — the `runCode` `Tool`. Holds the wrapped `[any Tool]`; builds
    a fresh interpreter with each tool installed as `tools.<name>`; runs the snippet;
-   renders via `ResultRenderer`. *Is itself a `Tool`.*
+   renders via `ResultRenderer`. Conforms to `FoundationModels.Tool` (so it can also
+   drop into an Apple built-in session), but on a Router model is driven by
+   `MultiToolAgent`.
 2. **`MultiTool.Builder`** — `addTool(_:)` / `addTools(_:)` / `addGroup(named:_:)` /
-   `searchModel(_:)`. The easy contribution path; takes `any Tool` only. Grouped
-   tools render under a `tools.<group>.<name>` namespace.
+   `build()`. The easy contribution path; takes `any Tool` only, produces a
+   model-agnostic catalog (no model wiring). Grouped tools render under a
+   `tools.<group>.<name>` namespace.
+2b. **`MultiToolAgent`** ⭐ — binds a built catalog to a resolved profile
+   (`model: RoutedLLM` for the loop, `librarian: RoutedLLM` for discovery) and runs
+   the search-then-code loop over a `RoutedSession`: prompt → parse a `runCode`/
+   `findAPIs`/final step (guided or tolerant-parse, Router integration) → dispatch →
+   feed back. This is the tool loop the Router does not provide.
 3. **`ToolAPIRenderer`** ⭐ — encodes a `GenerationSchema` (Apple's JSON-Schema
    analog) → typed signature + doc comment.
 4. **`ArgumentMarshaler`** ⭐ — JS value → `GeneratedContent` (content, not schema),
@@ -537,8 +641,12 @@ JS/validation exception as a repairable error.
 ## Milestones
 
 - [ ] **M0 — Scaffold.** SwiftPM library + executable sample (CLI). Depend on
-  `FoundationModels`, `JavaScriptCore`, and **FoundationModelsRouter**. OS 27 floor,
-  no `@available`. CI on macOS with the OS-27 SDK.
+  `FoundationModels`, `JavaScriptCore`, and the **`FoundationModelsRouter`**
+  package — `.package(url: "https://github.com/swissarmyhammer/FoundationModelsRouter", branch: "main")`
+  and `.product(name: "FoundationModelsRouter", package: "FoundationModelsRouter")`
+  (pin to a tag/commit once the Router tags a release; it is itself
+  `swift-tools-version: 6.1`, `.macOS("27.0")`). OS 27 floor, no `@available`. CI on
+  macOS with the OS-27 SDK.
 - [ ] **M1 — Interpreter core.** `Interpreter` + `JSCInterpreter`: fresh `JSContext`,
   std surface, `run(code)` under the time-limit watchdog, capture return + console,
   map exceptions. No model needed.
@@ -548,14 +656,22 @@ JS/validation exception as a repairable error.
 - [ ] **M3 — `ArgumentMarshaler` + `ToolInvoker`.** JS value ⇄ `GeneratedContent`;
   existential opening over a mock `Tool`; validate; render `Output` to a JS value.
   **Pin: the exact `Output` read-back (Findings #4).**
-- [ ] **M4 — `MultiTool` end-to-end.** Wrap **two real third-party-style `@Generable`
-  tools** (no source modification), install `tools.*`, drive a real
-  `LanguageModelSession` that composes their results in one snippet.
+- [ ] **M4 — `MultiTool` + `MultiToolAgent` end-to-end.** Wrap **two real
+  third-party-style `@Generable` tools** (no source modification), install
+  `tools.*`, and drive them through the `MultiToolAgent` loop over a Router
+  `RoutedSession` (`profile.standard`) that composes their results in one snippet.
+  Settle the turn format (guided grammar vs. tolerant parse — Router integration).
 - [ ] **M5 — `ResultRenderer` + repair loop.** Serialize/cap/trim; repairable
   errors; verify the model fixes a bad tool call from the error.
-- [ ] **M6 — Librarian + `findAPIs` on Router.** `FindAPITool` + librarian on a
-  Router-selected model; constrained output; confirm the MLX backend reuses the
-  instruction-prefix KV cache across `findAPIs` calls.
+- [ ] **M6 — Librarian + `findAPIs` on Router.** `FindAPITool` + librarian on the
+  profile's `flash` slot via guided `respond(to:generating: FoundAPIs.self)`;
+  confirm the MLX backend reuses the instruction-prefix KV cache across `findAPIs`
+  calls, using `RoutedSession.fork()` (KV `copy()`) if a plain reused session does
+  not.
+- [ ] **M6.5 — Integration tests on a small real tool-calling model.** Gated,
+  opt-in real-model suite that runs a few sample MultiTools end to end and asserts
+  the agent **searches then calls** correctly (see **Integration tests**). Depends
+  on the Router's live inference path (its milestone 7); until then it is skipped.
 - [ ] **M7 — In-JS `help()` / `docs()`.**
 - [ ] **M8 — (deferred) MCP tools.** Out of v1 scope. MCP-backed `Tool`s are
   ordinary `Tool`s, so `addTool`/`addGroup` already cover them; any bulk "import a
@@ -574,6 +690,83 @@ JS/validation exception as a repairable error.
   `Tool` that records the marshaled `GeneratedContent`; validation pass/fail.
 - **`ResultRenderer`** (M5): caps, truncation, exception → error.
 - **E2E** (M4/M6/M9): gated/optional, needs the model (Router) on real hardware.
+
+### Integration tests — sample MultiTools on a small real tool-calling model (M6.5)
+
+The unit suites above run without a model. But the *whole thesis* — that a small
+open-weight model will reliably **search (`findAPIs`) and then call (`runCode`)**
+against a fused surface — can only be proven against a real model doing real
+tool-calling. This suite does exactly that, and is the plan's answer to "does the
+search-then-code loop actually work?"
+
+- **Shape it on the Router's own gated suite.** Router ships a separate
+  `…IntegrationTests` target that downloads *deliberately tiny* real models and runs
+  them end to end behind an opt-in env var (so it never fires on a network/GPU-less
+  box, and never in normal CI). We mirror that: a `FoundationModelsMultitoolIntegrationTests`
+  target, opt-in via env var, resolving a `ProfileDefinition` of small
+  tool-calling-capable models (e.g. a few-hundred-MB-to-low-GB instruct model whose
+  `flash` slot can also drive the librarian). It depends on the Router's live
+  inference path (its milestone 7); until that lands the suite `throws`/skips on
+  `GenerationError.notWiredForLiveInference`.
+- **A few representative sample MultiTools**, each a small fixed tool set that
+  forces the behavior we care about:
+  1. **single-call** — one obvious tool (`weather`); asserts the model finds it and
+     calls it, not that it hallucinates an answer.
+  2. **compose/chain** — `tripCities` → `weather` per city → pick warmest; asserts
+     the model writes *one* `runCode` snippet that composes (intermediates never
+     re-enter context), not N single tool calls.
+  3. **discovery under distractors** — ~20 wrapped tools where only 2 are relevant;
+     asserts `findAPIs` returns the right minimal set and the snippet uses exactly
+     those (the fused-surface selection-accuracy claim).
+  4. **repair** — a tool the model tends to mis-call; asserts the repair loop
+     recovers from the returned error within a bounded number of turns.
+- **Assert on the loop, not just the final string.** Because `MultiToolAgent` owns
+  the loop, the test harness can observe each step — which is the point. Router also
+  records every turn to a JSONL transcript (`RecordingLevel.full`), so assertions
+  can check *that* `findAPIs` was called before `runCode`, *which* functions the
+  librarian returned, and *which* `tools.*` the snippet actually invoked — turning
+  "did it search then call?" into a checkable trace rather than a vibe.
+
+**Apple's Evaluations framework (`import Evaluations`).** This is exactly what the
+search-then-call assertions should be built on — a real framework (WWDC26 "Meet the
+Evaluations framework", session 298) that measures generative-feature quality and
+**integrates with Swift Testing**, so the eval suite lives beside the rest of the
+tests and fails when aggregate behavior drops below a threshold. The mapping:
+
+- **Subject = our feature.** An `Evaluation` conformer names the code under test —
+  for us `MultiToolAgent.respond(to:)` — so the eval runs the *whole* agent loop end
+  to end per sample, not a single model call. (Its output is what evaluators grade.)
+- **Dataset = `ModelSample`s.** `ArrayLoader(samples: [ModelSample(prompt: …,
+  expected: …)])` for the four sample MultiTools; `SampleGenerator`'s
+  `makeSamples(…, targetCount:)` can synthesize distractor/paraphrase variants from a
+  seed set to widen coverage.
+- **Graders = quantitative `Evaluator`s over the recorded loop.** Because the loop is
+  observable (and Router records every turn to a JSONL transcript), the important
+  assertions are deterministic pass/fail `Evaluator`s, no judge needed:
+  `Metric("SearchedThenCalled")` — `findAPIs` before `runCode`;
+  `Metric("CalledExpectedTools")` — the snippet invoked exactly the expected
+  `tools.*`; `Metric("RepairedWithinN")` — recovered from a bad call within a bounded
+  turn count. Each evaluator returns `metric.passing(rationale:)` /
+  `metric.failing(rationale:)` (or `metric.score(_)`), aggregated in
+  `aggregateMetrics(using:)` via `computeMean`/`computeStandardDeviation`.
+- **Optional `ModelJudgeEvaluator`** for softer answer-quality ("is the final answer
+  right and well-formed"), with a `.numeric([...])` scale / `ScoreDimension`s and a
+  judge model — pure test infrastructure (e.g. Apple's `PrivateCloudComputeLanguageModel`),
+  orthogonal to the Router-runs-the-feature rule.
+- **Pass gate = an optimization target in Swift Testing.** The eval is a `@Test`
+  with the `.evaluates(evaluation, info:)` trait, and the gate is an ordinary
+  expectation on the aggregate:
+  `#expect(EvaluationContext.current.result.aggregateValue(.mean(of: searchedThenCalled)) >= 0.9)`.
+  That turns "does it search then call?" into a scored pass-rate we can track across
+  candidate small models and regress on prompt/model changes — Xcode renders a
+  per-sample report (prompt, measurements, full model response) for triage.
+
+*(Minor pin: confirm the exact `Evaluation`-conformance member names and the
+`subject`/run signature against the shipping SDK — the framework and its Swift
+Testing `.evaluates` trait, `ModelSample`, `Evaluator`/`Metric`, `ModelJudgeEvaluator`,
+and `SampleGenerator` are verified from the WWDC26 material, but a member name may
+differ by SDK seed. The framework runs features end to end, so a multi-step agent is
+a supported subject.)*
 
 ## Findings (research)
 
@@ -614,10 +807,21 @@ JS/validation exception as a repairable error.
    across turns of one reused session. Apple's `prewarm()`/transcript-diffing is for
    the built-in model, which we don't use — so treat librarian prefix reuse as a
    **Router/MLX capability to confirm**, not a given.
-7. **FoundationModelsRouter is the model source for everything (per the user).** Both
-   the main session and the librarian use Router-selected (RAM-aware, MLX) models — a
-   hard dependency. Single backend, not the sibling's built-in/MLX split; Router also
-   owns xgrammar, available for constraining `findAPIs` output.
+7. **FoundationModelsRouter is the model source for everything (per the user), and
+   it vends its own session type — not Apple's.** Confirmed against the package
+   source: `Router` is an `actor`; `resolve(_:reporting:)` turns a
+   `ProfileDefinition` into a resident `LanguageModelProfile` with `standard`/`flash`
+   `RoutedLLM` slots (one profile resident at a time); `RoutedLLM.makeSession(…)`
+   vends a `RoutedSession` whose surface is `respond(to:) -> String` + guided
+   generation (`respond(to:following:)`, `respond(to:matching:)`, and typed
+   `respond(to:generating:)`). **There is no `LanguageModelSession`, no
+   `SystemLanguageModel`, and no built-in tool-calling loop** — so `runCode`/
+   `findAPIs` are dispatched by *our* `MultiToolAgent` loop, and `findAPIs`'s
+   constrained output is produced by Router guided generation (xgrammar). Router also
+   owns xgrammar and a `fork()`/`SessionKVCache.copy()` primitive we use for
+   librarian prefix reuse. **Live MLX inference is gated to the Router's milestone 7**
+   (`GenerationError.notWiredForLiveInference` until then), which bounds when our
+   real-model integration suite can run.
 
 ## Resolved open questions
 
@@ -657,9 +861,13 @@ JS/validation exception as a repairable error.
 - **`ToolOutput` → `GeneratedContent` accessor** (Finding #4) — its DocC page 404'd.
 - **`JSContextGroupSetExecutionTimeLimit`** header availability / review posture —
   confirm extern-declare under the OS-27 SDK; fallback ready.
-- **Router interop & prefix reuse** — which Router entry point backs the main and
-  librarian `LanguageModelSession`s (the sibling's M10 Path A/B), and whether the MLX
-  backend reuses the librarian's instruction-prefix KV cache (Finding #6).
+- **Router live inference + prefix reuse** — the entry points are known
+  (`Router.resolve` → `LanguageModelProfile` → `RoutedLLM.makeSession` /
+  `respond(to:generating:)`); what remains is (a) the Router's live MLX decode
+  landing (its milestone 7; today `GenerationError.notWiredForLiveInference`), and
+  (b) whether a reused librarian `RoutedSession` reuses its instruction-prefix KV
+  cache, or whether we must drive reuse explicitly via `fork()`/`SessionKVCache.copy()`
+  (Finding #6). Both are confirmable only against the built Router + real hardware.
 
 ## Prior art
 
@@ -682,8 +890,14 @@ JS/validation exception as a repairable error.
   agentic-search and `Builder` patterns. Its `MCPTool`s are ordinary
   `FoundationModels.Tool`s, so the MultiTool could wrap them later (deferred, M8).
   The schema-constrained complement to this code-surface approach.
-- **`FoundationModelsRouter`** (sibling-of-sibling) — RAM-aware MLX model selection +
-  xgrammar engine; supplies the models for both sessions here.
+- **`FoundationModelsRouter`** (`github.com/swissarmyhammer/FoundationModelsRouter`,
+  a SwiftPM dependency) — RAM-aware MLX model selection (author a `ProfileDefinition`,
+  `resolve` it to a `LanguageModelProfile` with `standard`/`flash`/`embedding`
+  slots) + an xgrammar guided-generation engine. Supplies the models for both the
+  main agent and the librarian here, and its `RoutedSession` (+ `fork()` KV copy)
+  and typed `respond(to:generating:)` are the primitives `MultiToolAgent`/`FindAPITool`
+  build on. Its own gated `IntegrationTests` target (tiny real models, opt-in env
+  var) is the template for ours.
 
 ## References
 
@@ -705,4 +919,11 @@ JS/validation exception as a repairable error.
 - CodeAct — https://arxiv.org/abs/2402.01030
 - Swift tree-walking interpreters (evaluated, set aside) —
   https://github.com/Cocoanetics/SwiftScript · https://github.com/ForestP/SwiftlyInterpreter
+- `FoundationModelsRouter` package — https://github.com/swissarmyhammer/FoundationModelsRouter
+  (local: `../FoundationModelsRouter`; key types `Router`, `ProfileDefinition`,
+  `LanguageModelProfile`, `RoutedLLM`, `RoutedSession`, `Grammar`)
+- Apple **Evaluations** framework — https://developer.apple.com/documentation/evaluations ·
+  "Meet the Evaluations framework" (WWDC26 #298) https://developer.apple.com/videos/play/wwdc2026/298/ ·
+  Swift Testing `.evaluates` trait — https://developer.apple.com/documentation/testing ·
+  used by the M6.5 integration suite to grade search-then-call
 - Sibling plans — ../FoundationModelsMCP/plan.md · ../FoundationModelsRouter

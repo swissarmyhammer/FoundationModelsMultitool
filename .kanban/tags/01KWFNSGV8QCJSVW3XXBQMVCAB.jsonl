@@ -1,0 +1,1 @@
+{"id":"01KWFNSGVB7VSBZERQM1VCP5CZ","timestamp":"2026-07-01T20:26:40.875278Z","op":"create","item_id":"01KWFNSGV8QCJSVW3XXBQMVCAB","forward_patch":"--- original\n+++ modified\n@@ -0,0 +1,2 @@\n+color: f9c513\n+tag_name: '3'\n","reverse_patch":"--- original\n+++ modified\n@@ -1,2 +0,0 @@\n-color: f9c513\n-tag_name: '3'\n","transaction_id":null}
