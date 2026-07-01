@@ -58,7 +58,7 @@ comments:
 
     No other top-level let/var declarations exist in the file needing comments — confirmed by reading the full file, not just grepping for `let`. Fresh `swift build` and `swift test` both green after the change (Build complete; Test run with 1 test in 1 suite passed, 0 failures — only the pre-existing unrelated mlx-swift third-party bundle warning). Marked the 18:07 checklist item [x]. Dispatched double-check adversarial review agent before handoff — returned PASS: confirmed all three top-level declarations now documented, diff scoped to exactly the 2-line addition, doc comment content accurate and stylistically consistent, and fresh build/test independently verified green. Leaving task in doing per /implement process — ready for /review to pull it forward.
   timestamp: 2026-07-01T23:12:11.660933+00:00
-position_column: doing
+position_column: done
 position_ordinal: '80'
 title: 'M0: Scaffold SwiftPM package with Router dependency'
 ---
