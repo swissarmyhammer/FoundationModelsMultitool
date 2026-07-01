@@ -87,6 +87,13 @@ public struct HostFunction: Sendable {
     /// - Parameters:
     ///   - name: the global identifier the snippet calls this function by.
     ///   - call: the native implementation.
+    ///
+    /// Explicit (rather than relying on the compiler-synthesized memberwise
+    /// initializer) because a `public` struct's synthesized initializer is
+    /// only `internal`-accessible — without this, no module outside
+    /// `FoundationModelsMultitool` could construct a `HostFunction`, even
+    /// though this type is a required parameter of the public
+    /// `Interpreter.run(code:installing:)` API.
     public init(name: String, call: @escaping @Sendable ([InterpreterValue]) throws -> InterpreterValue) {
         self.name = name
         self.call = call
@@ -102,6 +109,14 @@ public struct InterpreterResult: Sendable, Equatable {
     /// Every `console.log` line, in call order.
     public let consoleLines: [String]
 
+    /// - Parameters:
+    ///   - returnValue: the snippet's `return` value, JSON-shaped.
+    ///   - consoleLines: every `console.log` line, in call order.
+    ///
+    /// Explicit for the same reason as `HostFunction.init`: a `public`
+    /// struct's synthesized memberwise initializer is only
+    /// `internal`-accessible, and any external `Interpreter` conformer needs
+    /// to construct an `InterpreterResult` to return from `run`.
     public init(returnValue: InterpreterValue, consoleLines: [String]) {
         self.returnValue = returnValue
         self.consoleLines = consoleLines
@@ -130,6 +145,15 @@ public struct InterpreterError: Error, Sendable, Equatable, CustomStringConverti
     /// engine can report one.
     public let line: Int?
 
+    /// - Parameters:
+    ///   - kind: whether this is a thrown/syntax exception or a watchdog
+    ///     timeout.
+    ///   - message: a human-readable description of the failure.
+    ///   - line: the 1-based source line the failure is attributed to.
+    ///     Populated when the engine can attribute the failure to a specific
+    ///     line — e.g. a thrown exception or a syntax error — and `nil` when
+    ///     it can't, as with a `.timeout` (the watchdog terminates execution
+    ///     without a specific line to blame).
     public init(kind: Kind, message: String, line: Int? = nil) {
         self.kind = kind
         self.message = message
