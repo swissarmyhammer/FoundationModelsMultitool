@@ -5,6 +5,8 @@ import PackageDescription
 
 /// The name of this Swift package.
 let packageName = "FoundationModelsMultitool"
+
+/// The name of the FoundationModelsRouter dependency package.
 let routerDependencyName = "FoundationModelsRouter"
 
 /// SwiftPM manifest for FoundationModelsMultitool.
