@@ -6,6 +6,8 @@ import PackageDescription
 let packageName = "FoundationModelsMultitool"
 let routerDependencyName = "FoundationModelsRouter"
 
+/// SwiftPM manifest for FoundationModelsMultitool, integrating the FoundationModelsRouter
+/// package alongside the system FoundationModels and JavaScriptCore frameworks.
 let package = Package(
     name: packageName,
     // Commit to macOS 27 / FoundationModels v2; no pre-27 fallback.
