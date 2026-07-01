@@ -1,0 +1,69 @@
+{
+  "originHash" : "4cfe09752b44da8f8d22114f41a6b230f1fc09cdb3306ac3e2db9aed91297aec",
+  "pins" : [
+    {
+      "identity" : "foundationmodelsrouter",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/swissarmyhammer/FoundationModelsRouter",
+      "state" : {
+        "branch" : "main",
+        "revision" : "c61d3b770800097a22de545b53c0c35c1ef5f4ba"
+      }
+    },
+    {
+      "identity" : "mlx-swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/ml-explore/mlx-swift",
+      "state" : {
+        "revision" : "eb889e01b7267bc6d9c01fde91bc517b09506c2d",
+        "version" : "0.31.5"
+      }
+    },
+    {
+      "identity" : "mlx-swift-lm",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/swissarmyhammer/mlx-swift-lm",
+      "state" : {
+        "branch" : "mlx-foundationmodels",
+        "revision" : "e6ccd2721ab3b236b92e436bee2130086f48041c"
+      }
+    },
+    {
+      "identity" : "swift-argument-parser",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-argument-parser",
+      "state" : {
+        "revision" : "6a52f3251125d74daf04fcbd5e6f08a75d074382",
+        "version" : "1.8.2"
+      }
+    },
+    {
+      "identity" : "swift-numerics",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-numerics",
+      "state" : {
+        "revision" : "0c0290ff6b24942dadb83a929ffaaa1481df04a2",
+        "version" : "1.1.1"
+      }
+    },
+    {
+      "identity" : "swift-syntax",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/swiftlang/swift-syntax.git",
+      "state" : {
+        "revision" : "79e4b74a295b6eb74a8b585e3a39d29e70c1dbd1",
+        "version" : "603.0.2"
+      }
+    },
+    {
+      "identity" : "ulid.swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/yaslab/ULID.swift.git",
+      "state" : {
+        "revision" : "e21933de8ac3e8ba9e83aa71956cd27206eec6b9",
+        "version" : "1.3.1"
+      }
+    }
+  ],
+  "version" : 3
+}

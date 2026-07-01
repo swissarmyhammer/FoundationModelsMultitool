@@ -3,6 +3,7 @@
 .sah/
 .shell/
 .code-context/
+.ralph/
 
 # Swift / build
 .build/
