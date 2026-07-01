@@ -4,6 +4,7 @@
 .shell/
 .code-context/
 .ralph/
+.validators/
 
 # Swift / build
 .build/

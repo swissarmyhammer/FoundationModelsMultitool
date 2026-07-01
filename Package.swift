@@ -4,6 +4,7 @@
 import PackageDescription
 
 let packageName = "FoundationModelsMultitool"
+let routerDependencyName = "FoundationModelsRouter"
 
 let package = Package(
     name: packageName,
@@ -19,7 +20,7 @@ let package = Package(
     ],
     dependencies: [
         .package(
-            url: "https://github.com/swissarmyhammer/FoundationModelsRouter",
+            url: "https://github.com/swissarmyhammer/\(routerDependencyName)",
             branch: "main"
         )
     ],
@@ -27,7 +28,7 @@ let package = Package(
         .target(
             name: packageName,
             dependencies: [
-                .product(name: "FoundationModelsRouter", package: "FoundationModelsRouter")
+                .product(name: routerDependencyName, package: routerDependencyName)
             ],
             path: "Sources/\(packageName)"
         ),
@@ -35,7 +36,7 @@ let package = Package(
             name: "\(packageName)Tests",
             dependencies: [
                 .target(name: packageName),
-                .product(name: "FoundationModelsRouter", package: "FoundationModelsRouter"),
+                .product(name: routerDependencyName, package: routerDependencyName),
             ],
             path: "Tests/\(packageName)Tests"
         ),
