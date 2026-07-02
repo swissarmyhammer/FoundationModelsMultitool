@@ -30,6 +30,17 @@ comments:
 
     Task is green and ready for /review. Leaving in `doing` per the implement skill's process (review owns the doing -> review transition).
   timestamp: 2026-07-02T15:10:00.586775+00:00
+- actor: wballard
+  id: 01kwhq2c2xzkcffwzjw8k1ptjn
+  text: |-
+    Reopened from review to address the one open Review Findings item: the unreachable `case nil:` branch in `invokeBlocking` (Sources/FoundationModelsMultitool/MultiTool.swift).
+
+    Fix: replaced the branch's `throw InterpreterError(...)` (previously commented as "unreachable... defensive, reportable failure rather than a force-unwrap") with `preconditionFailure(...)` carrying a message that documents the exact invariant it protects — semaphore.wait() only returns after the Task has written .success/.failure into outcomeBox and signaled, so a nil box here means that signal/write ordering invariant is broken (programmer error in the bridge itself), not a recoverable runtime condition. This matches the codebase's established convention: no force-unwraps in non-test code, and fatalError/preconditionFailure reserved specifically for broken-invariant cases. No `!` force-unwrap introduced anywhere in the function.
+
+    Verification: `swift build` clean, `swift test` 104/104 passing (same count as before — the fix touches only the unreachable branch, no test exercises it directly by design).
+
+    Dispatched adversarial double-check agent before handoff.
+  timestamp: 2026-07-02T15:27:28.349677+00:00
 depends_on:
 - 01KWFNS1CDSSQ3NJXAPV1PX1XJ
 - 01KWFNT7BY92073MGCF6GRQ8NH
@@ -58,3 +69,9 @@ Per plan.md M4 (execution half — no model needed):
 
 ## Workflow
 - Use `/tdd` — write failing tests first, then implement to make them pass.
+
+## Review Findings (2026-07-02 10:20)
+
+- [x] `Sources/FoundationModelsMultitool/MultiTool.swift:342` — The `case nil:` branch in the switch statement of `invokeBlocking` is unreachable. The Task always executes to completion and sets `outcomeBox` to either `.success(_)` or `.failure(_)` before calling `semaphore.signal()`. The `semaphore.wait()` call only returns after the signal, making it impossible for the switch to encounter a nil value. Remove the unreachable `case nil:` branch if the guarantee truly holds and force-unwrapping is acceptable. If this is intentional defensive code against unexpected edge cases, mark it explicitly with a compiler directive (e.g., `#[allow(dead_code)]` equivalent) or expand the comment to document the safety argument and why the defensive guard must remain.
+
+  Resolved: replaced the branch's `throw InterpreterError(...)` with `preconditionFailure(...)`, documenting that a nil box after `semaphore.wait()` returns means the bridge's signal/write ordering invariant is broken — a programmer error, not a recoverable runtime condition — consistent with the codebase's no-force-unwrap / fatalError-for-invariants convention. No force-unwrap introduced. `swift build` clean, `swift test` 104/104 passing. Adversarial double-check agent independently verified: PASS.

@@ -444,10 +444,18 @@ public struct MultiTool: Tool {
         case .failure(let error):
             throw error
         case nil:
-            // Unreachable: the `Task` above always sets the box before
-            // signaling the semaphore this function just woke from. Kept as
-            // a defensive, reportable failure rather than a force-unwrap.
-            throw InterpreterError(kind: .exception, message: "Tool bridge produced no result.")
+            // Unreachable in practice, but not force-unwrapped: `semaphore.wait()`
+            // above only returns after the `Task` has written `.success`/`.failure`
+            // into `outcomeBox` and called `semaphore.signal()`, so a nil box here
+            // means that invariant is broken — a programmer error in the bridge
+            // itself, not a recoverable runtime condition a caller could hit by
+            // passing bad arguments or a failing tool. Treat it as such.
+            preconditionFailure(
+                "MultiTool.invokeBlocking: outcomeBox was nil after semaphore.wait() "
+                    + "returned. The Task must write a Result into outcomeBox before "
+                    + "signaling the semaphore, so this indicates the bridge's "
+                    + "signal/write ordering invariant has been violated."
+            )
         }
     }
 }
