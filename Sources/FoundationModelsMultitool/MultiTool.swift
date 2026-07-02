@@ -143,6 +143,7 @@ public struct RunCodeArguments {
 /// Resolved #1) — see that function's documentation for the full
 /// tradeoff.
 public struct MultiTool: Tool {
+    /// This tool's `Tool`-protocol name, always `"runCode"`.
     public let name = "runCode"
     public let description = """
         Run a JavaScript snippet against the available tools, exposed as functions under

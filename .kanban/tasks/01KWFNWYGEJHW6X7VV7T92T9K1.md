@@ -9,6 +9,15 @@ comments:
 
     Verification: swift build clean; swift test full suite 145/145 passing (up from 139/139 baseline, all 6 new HelpDocsTests green, nothing else broken). Adversarial double-check agent dispatched to review before handoff.
   timestamp: 2026-07-02T17:57:34.067606+00:00
+- actor: wballard
+  id: 01kwj0np38wh2qwbv6xw2x68ht
+  text: |-
+    Addressed review findings: pulled task from review back to doing. Confirmed `name` (MultiTool.swift, line 146 as of this edit — file had shifted from the review's line 151) belongs to `public struct MultiTool: Tool`. Added a one-sentence doc comment: `/// This tool's `Tool`-protocol name, always `"runCode"`.`
+
+    Also scanned the rest of the help()/docs() diff area (the M7 "help()/docs() globals" section, roughly lines 462-592: `makeHelpDocsHostFunctions`, `renderDocs`, `nearestMatches`, `levenshteinDistance`) for other public declarations missing doc comments — found none; all declarations there (private) already carry `///` doc comments. Left the pre-existing `description` property (line 148, no doc comment) untouched since it predates this task's diff and wasn't flagged by review — out of scope here to avoid unrelated changes.
+
+    Verified: `swift build` clean (exit 0), `swift test` 146/146 passing (Test run with 146 tests in 13 suites passed). Marked the review-findings checklist item [x] (task progress now 1.0/1.0). Left task in `doing` per /implement process — does not move to review itself.
+  timestamp: 2026-07-02T18:15:18.376509+00:00
 depends_on:
 - 01KWFNVC3SA55SBZMCCWW6994C
 position_column: doing
@@ -44,3 +53,7 @@ Tests: `Tests/FoundationModelsMultitoolTests/HelpDocsTests.swift` (new), 7 tests
 Adversarial double-check (via `double-check` agent) ran against the diff: found one legitimate gap — no regression test for `docs()` called with a missing/non-string argument, a documented crash-prevention branch. Fixed by adding `docsWithMissingOrNonStringArgumentReturnsUsageHint`. Re-verified: `swift build` clean, `swift test` 146/146 passing (up from 139/139 baseline). A minor/optional suggestion (strengthen the sandbox test to positively enumerate `Object.getOwnPropertyNames` rather than spot-check three known globals) was left as-is — explicitly called "not a blocker," and matches this repo's existing sandbox-test style.
 
 Left in `doing` for `/review` per the implement skill's process.
+
+## Review Findings (2026-07-02 13:04)
+
+- [x] `Sources/FoundationModelsMultitool/MultiTool.swift:151` — Public property `name` lacks a `///` doc comment; every public declaration requires documentation. Add a `///` doc comment before the property to document it.
