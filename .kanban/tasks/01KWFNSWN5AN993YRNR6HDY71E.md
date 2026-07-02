@@ -39,6 +39,25 @@ comments:
 
     Leaving in doing for /review per the implement skill (not moving to review myself).
   timestamp: 2026-07-02T03:43:02.561726+00:00
+- actor: wballard
+  id: 01kwgfbn2hc7baewb6rpk0vvbz
+  text: |-
+    Pulled back into doing to work the two Review Findings checklist items in Sources/FoundationModelsMultitool/Invocation/ArgumentMarshaler.swift.
+
+    1. Inlined `kindDescription(of:)` at its one call site in `marshalArguments`'s guard-else block, using a local Swift switch-expression (`let kindDescription: String = switch arguments { case .null: "null" ... }`) instead of a string-interpolated closure — cleaner given Swift 6.1's switch-as-expression support. Removed the now-unused standalone `private static func kindDescription(of:)` helper entirely.
+    2. Replaced `fields.keys.sorted().map { key in (key, content(from: fields[key]!)) }` with `fields.sorted { $0.key < $1.key }.map { key, value in (key, content(from: value)) }` — sorts the dictionary's entries directly, no re-indexing, no force unwrap.
+
+    Scan of the rest of the file for other force unwraps / single-use trivial helpers: none found. `content(from:)` and `sanitizingNonFiniteNumbers(in:)` are both genuinely recursive/multi-call-site and non-trivial, so left untouched per "don't restructure beyond that."
+
+    Verification: `swift build` clean (0 errors/warnings beyond the pre-existing unrelated mlx-swift_Cmlx bundle warning). `swift test` full suite: 64/64 passing. Dispatched a double-check agent to independently re-verify before leaving in doing for /review.
+  timestamp: 2026-07-02T03:53:29.425920+00:00
+- actor: wballard
+  id: 01kwgfe64tdgh9stre9m4ksxjw
+  text: |-
+    Adversarial double-check verdict: PASS. Independently re-ran `swift build` (clean) and `swift test` (64/64 passing) and confirmed the diff is exactly the two intended hunks in ArgumentMarshaler.swift with no unrelated changes, no remaining force unwraps in the file, and no test relies on the removed `kindDescription` helper's wording.
+
+    Marked both Review Findings checklist items [x]. Leaving task in `doing` per the implement process — ready for /review.
+  timestamp: 2026-07-02T03:54:52.442318+00:00
 depends_on:
 - 01KWFNRM5VSWGD37H2YJ7CMBN2
 position_column: doing
@@ -64,3 +83,8 @@ Per plan.md M3 (marshaling half):
 
 ## Workflow
 - Use `/tdd` — write failing tests first, then implement to make them pass.
+
+## Review Findings (2026-07-01 22:45)
+
+- [x] `Sources/FoundationModelsMultitool/Invocation/ArgumentMarshaler.swift:153` — `kindDescription` is a single-use helper wrapping a simple switch statement. The expression it abstracts (mapping each InterpreterValue case to a human-readable string) is not genuinely confusing and could be inlined into the error message construction without loss of clarity. Inline the switch expression directly into the error message construction: replace the call to `kindDescription(of: arguments)` with a switch expression that returns the corresponding human-readable name, eliminating the separate helper function.
+- [x] `Sources/FoundationModelsMultitool/Invocation/ArgumentMarshaler.swift:178` — Force unwrap `fields[key]!` used in non-test code. The rule mandates no force unwraps except in test code. Restructure to avoid the force unwrap by sorting the dictionary directly instead of its keys: `let properties: [(String, any ConvertibleToGeneratedContent)] = fields.sorted { $0.key < $1.key }.map { key, value in (key, content(from: value)) }`.

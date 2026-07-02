@@ -131,10 +131,19 @@ public enum ArgumentMarshaler {
     ///   if `arguments` is not `.object`.
     public static func marshalArguments(_ arguments: InterpreterValue) throws -> GeneratedContent {
         guard case .object(let fields) = arguments else {
+            let kindDescription: String =
+                switch arguments {
+                case .null: "null"
+                case .bool: "a boolean"
+                case .number: "a number"
+                case .string: "a string"
+                case .array: "an array"
+                case .object: "an object"
+                }
             throw ArgumentMarshalerError(
                 kind: .argumentsNotAnObject,
                 message: "Tool call arguments must be a JS object (`tools.name({ … })`); "
-                    + "got \(kindDescription(of: arguments)) instead."
+                    + "got \(kindDescription) instead."
             )
         }
         // `fields` is a Swift `Dictionary`, so keys are already unique —
@@ -147,8 +156,8 @@ public enum ArgumentMarshaler {
         // already lost by the time it reached here; alphabetical is at
         // least stable run to run, the same tradeoff `ToolAPIRenderer` makes
         // for a schema that lacks its own `x-order`.
-        let properties: [(String, any ConvertibleToGeneratedContent)] = fields.keys.sorted().map { key in
-            (key, content(from: fields[key]!))
+        let properties: [(String, any ConvertibleToGeneratedContent)] = fields.sorted { $0.key < $1.key }.map { key, value in
+            (key, content(from: value))
         }
         return GeneratedContent(
             properties: properties,
@@ -194,19 +203,6 @@ public enum ArgumentMarshaler {
                     orderedKeys: fields.keys.sorted()
                 )
             )
-        }
-    }
-
-    /// A short, human-readable name for `value`'s case, used only to name
-    /// the offending shape in `.argumentsNotAnObject`'s message.
-    private static func kindDescription(of value: InterpreterValue) -> String {
-        switch value {
-        case .null: return "null"
-        case .bool: return "a boolean"
-        case .number: return "a number"
-        case .string: return "a string"
-        case .array: return "an array"
-        case .object: return "an object"
         }
     }
 
