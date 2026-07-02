@@ -51,6 +51,15 @@ public struct MultiToolBuilderError: Error, Sendable, Equatable, CustomStringCon
 
     /// Creates a builder error.
     ///
+    /// Explicit (rather than relying on the compiler-synthesized memberwise
+    /// initializer) for the same reason as `ToolDescriptor.init` in
+    /// `ToolDescriptor.swift`: a `public` struct's synthesized initializer
+    /// is only `internal`-accessible, and `MultiToolBuilderError` is a
+    /// public `Error` type thrown across the `FoundationModelsMultitool`
+    /// library product's boundary — without this, no module outside
+    /// `FoundationModelsMultitool` could construct one, e.g. to build a
+    /// fixture in a caller's own tests.
+    ///
     /// - Parameters:
     ///   - kind: what kind of failure this was.
     ///   - name: the offending tool or group name.

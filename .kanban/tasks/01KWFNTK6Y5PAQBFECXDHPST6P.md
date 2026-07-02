@@ -32,28 +32,29 @@ comments:
 
     Leaving task in `doing` for /review per the implement skill's process.
   timestamp: 2026-07-02T04:44:41.175819+00:00
+- actor: wballard
+  id: 01kwgk0s189m70p69gqc3t4frk
+  text: |-
+    Worked the three "Review Findings" checklist items (pulled back from review into doing per /implement).
+
+    All three flagged initializers turned out to be the same false-premise pattern flagged in M1 (task v1px1xj): each type (`APISurface.Entry`, `APISurface`, `MultiToolBuilderError`) is `public`, and Swift only synthesizes memberwise inits for `public` structs at `internal` access. Deleting the explicit inits would have made all three unconstructable from outside the module, breaking the `.library` product's public API.
+
+    Verified empirically rather than assuming: temporarily commented out all three explicit inits, added a scratch test file (`TempAccessCheckTests.swift`) using a plain `import FoundationModelsMultitool` (not `@testable`) that constructs each type directly, and ran `swift build --build-tests`. Got exactly the expected failures:
+    - `'APISurface' initializer is inaccessible due to 'internal' protection level` (for both `Entry.init` and `APISurface.init`)
+    - `'MultiToolBuilderError' initializer is inaccessible due to 'internal' protection level`
+
+    Restored all three inits, added doc comments explaining why each is necessary (matching the wording already established for `ToolDescriptor.init` in ToolDescriptor.swift and `HostFunction.init`/`InterpreterResult.init` in Interpreter.swift from the M1 correction), and deleted the scratch verification file.
+
+    No behavior changes — doc-comment-only diff on APISurface.swift and MultiToolBuilder.swift.
+
+    Final verification: `swift build` clean (no new warnings), `swift test` → 85/85 passing, 0 failures. `git status --short` confirms only the two source files changed plus kanban task metadata — no stray scratch files left behind.
+
+    Leaving task in `doing` per /implement process (does not move to review itself).
+  timestamp: 2026-07-02T04:57:27.336526+00:00
 depends_on:
 - 01KWFNSGV7FZFCC1HQ5V2CCAQX
 position_column: doing
 position_ordinal: '80'
 title: 'M2.5: Builder + APISurface — model-agnostic tool catalog'
 ---
-## What
-Per plan.md "Adding tools is the easy path" + Component 2/7:
-- `Sources/FoundationModelsMultitool/Surface/MultiToolBuilder.swift` — `MultiTool.Builder` with `addTool(_:)` (generic over `T: Tool`, capturing the concrete type for later existential opening), `addTools(_:)`, `addGroup(named:_:)`, `build()`. Pure catalog — NO model wiring.
-- `Sources/FoundationModelsMultitool/Surface/APISurface.swift` — the rendered catalog (list of `ToolDescriptor` + group structure): backs the librarian prefix, `help()`/`docs()`, and a host-listable data view.
-- Namespacing per plan Resolved #5: standalone tools flat at `tools.<name>`; grouped under `tools.<group>.<name>`; duplicate flat names → `build()` throws (fail loud), duplicates across groups are fine.
-- Completeness contract: `build()` throws if any tool fails ToolAPIRenderer's full rendering.
-
-## Acceptance Criteria
-- [ ] Builder with fixture tools produces an `APISurface` whose concatenated declaration blocks match a golden file
-- [ ] Two flat tools with the same `name` → `build()` throws naming the collision
-- [ ] `addGroup(named: "github", …)` renders `tools.github.<name>` declarations
-- [ ] A tool that can't be fully rendered → `build()` throws (no lossy stub)
-
-## Tests
-- [ ] `Tests/FoundationModelsMultitoolTests/BuilderSurfaceTests.swift` — golden surface for a fixture set, collision error, group namespacing, completeness failure
-- [ ] `swift test --filter BuilderSurfaceTests` → passes
-
-## Workflow
-- Use `/tdd` — write failing tests first, then implement to make them pass.
+## What\nPer plan.md \"Adding tools is the easy path\" + Component 2/7:\n- `Sources/FoundationModelsMultitool/Surface/MultiToolBuilder.swift` — `MultiTool.Builder` with `addTool(_:)` (generic over `T: Tool`, capturing the concrete type for later existential opening), `addTools(_:)`, `addGroup(named:_:)`, `build()`. Pure catalog — NO model wiring.\n- `Sources/FoundationModelsMultitool/Surface/APISurface.swift` — the rendered catalog (list of `ToolDescriptor` + group structure): backs the librarian prefix, `help()`/`docs()`, and a host-listable data view.\n- Namespacing per plan Resolved #5: standalone tools flat at `tools.<name>`; grouped under `tools.<group>.<name>`; duplicate flat names → `build()` throws (fail loud), duplicates across groups are fine.\n- Completeness contract: `build()` throws if any tool fails ToolAPIRenderer's full rendering.\n\n## Acceptance Criteria\n- [ ] Builder with fixture tools produces an `APISurface` whose concatenated declaration blocks match a golden file\n- [ ] Two flat tools with the same `name` → `build()` throws naming the collision\n- [ ] `addGroup(named: \"github\", …)` renders `tools.github.<name>` declarations\n- [ ] A tool that can't be fully rendered → `build()` throws (no lossy stub)\n\n## Tests\n- [ ] `Tests/FoundationModelsMultitoolTests/BuilderSurfaceTests.swift` — golden surface for a fixture set, collision error, group namespacing, completeness failure\n- [ ] `swift test --filter BuilderSurfaceTests` → passes\n\n## Workflow\n- Use `/tdd` — write failing tests first, then implement to make them pass.\n\n## Review Findings (2026-07-01 23:48)\n\n- [x] `Sources/FoundationModelsMultitool/Surface/APISurface.swift:38` — `Entry.init(path:group:descriptor:)`: **KEPT, not deleted.** `Entry` is a `public` nested struct of the `FoundationModelsMultitool` library product. Empirically verified (temporarily commented out the explicit init, added a scratch test file with a plain `import FoundationModelsMultitool` — not `@testable` — constructing `Entry`/`APISurface`/`MultiToolBuilderError` directly, rebuilt): `swift build` failed with `'APISurface' initializer is inaccessible due to 'internal' protection level` (Swift synthesizes memberwise inits for public structs at only `internal` access). Same false-premise pattern as M1 (kanban task v1px1xj / `ToolDescriptor.init`, `HostFunction.init`). Restored the init and added a doc comment explaining why it's necessary, matching the established `ToolDescriptor.init` wording.\n- [x] `Sources/FoundationModelsMultitool/Surface/APISurface.swift:56` — `APISurface.init(entries:)`: **KEPT, not deleted.** Same reasoning as above — `APISurface` is `public` (the return type of `MultiTool.Builder.build()`); confirmed via the same empirical build failure. Doc comment added.\n- [x] `Sources/FoundationModelsMultitool/Surface/MultiToolBuilder.swift:35` — `MultiToolBuilderError.init(kind:name:message:)`: **KEPT, not deleted.** Same reasoning — `MultiToolBuilderError` is a `public` `Error` type thrown across the library boundary; confirmed via the same empirical build failure (`'MultiToolBuilderError' initializer is inaccessible due to 'internal' protection level`). Doc comment added.\n\nAll three findings were based on the same false premise the task warned about. No behavior changes — doc comments only. `swift build` clean, `swift test` 85/85 passing (re-verified after restoring/documenting all three inits and deleting the scratch verification file).
