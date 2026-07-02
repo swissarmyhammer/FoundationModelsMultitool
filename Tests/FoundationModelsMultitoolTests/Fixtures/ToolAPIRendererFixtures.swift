@@ -250,3 +250,34 @@ struct PlainTextTool: Tool {
 struct DefaultedArgument {
     var units: String = "c"
 }
+
+// MARK: - Escaping / injection-safety fixtures (schema-derived text is never
+// trusted to be safe TS/JS/comment syntax — see `ToolAPIRenderer`'s "String
+// safety" section)
+//
+// A real `@Generable` struct's field names are always legal Swift
+// identifiers, which are also always legal TS identifiers — so a property
+// *name* containing a quote can't be produced through the macro at all.
+// `ToolAPIRendererTests.propertyNameWithQuoteIsEscapedInExampleLiterals`
+// instead hand-authors a `GenerationSchema` (the same technique
+// `unidentifiableSchemaNodeCannotEvenBeConstructed` uses) to exercise that
+// case directly. The fixtures below cover the cases a real `@Generable`
+// *can* produce: an adversarial `description` or `.pattern` guide.
+
+/// A property whose `description` contains `*/` — exercises the `@param`
+/// clause's JSDoc comment-terminator escaping (a naively-spliced `*/`
+/// would terminate the enclosing `/** … */` block early).
+@Generable
+struct CommentTerminatorArgument {
+    @Guide(description: "ends the doc */ then injects code.")
+    var value: String
+}
+
+/// A `.pattern` guide whose regex contains an embedded `/` — exercises the
+/// doc-text `/pattern/` literal's delimiter-escaping (an unescaped `/`
+/// would otherwise prematurely close the documented regex literal).
+@Generable
+struct SlashPatternArgument {
+    @Guide(description: "a path-like code.", .pattern(try! Regex("a/b")))
+    var code: String
+}

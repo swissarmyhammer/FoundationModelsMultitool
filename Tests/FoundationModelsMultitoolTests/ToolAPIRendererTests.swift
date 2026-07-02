@@ -262,4 +262,130 @@ struct ToolAPIRendererTests {
         #expect(descriptor.name == "weather")
         #expect(descriptor.source.trimmingCharacters(in: .newlines) == golden)
     }
+
+    // MARK: - Escaping / injection-safety (schema-derived text is never
+    // trusted to be safe TS/JS/comment syntax before being spliced into the
+    // generated declaration and doc comment)
+
+    @Test("a tool description containing \"*/\" is escaped, not left to terminate the JSDoc block early")
+    func toolDescriptionWithCommentTerminatorIsEscaped() throws {
+        let descriptor = try ToolAPIRenderer.render(
+            name: "tool",
+            description: "Ends the doc */ then injects code.",
+            parameters: StringArgument.generationSchema
+        )
+        #expect(descriptor.doc.contains("Ends the doc * / then injects code."), "doc was: \(descriptor.doc)")
+        // Exactly one "*/" survives — the block's own closing terminator —
+        // proving the embedded one was neutralized rather than merely
+        // "also present somewhere".
+        #expect(
+            descriptor.doc.components(separatedBy: "*/").count == 2,
+            "expected exactly one \"*/\" (the block's own terminator); doc was: \(descriptor.doc)"
+        )
+    }
+
+    @Test("a property description containing \"*/\" in its @param clause is escaped, not left to terminate the JSDoc block early")
+    func propertyDescriptionWithCommentTerminatorIsEscaped() throws {
+        let descriptor = try ToolAPIRenderer.render(
+            name: "tool",
+            description: "A test tool.",
+            parameters: CommentTerminatorArgument.generationSchema
+        )
+        #expect(
+            descriptor.doc.contains("@param args.value — ends the doc * / then injects code."),
+            "doc was: \(descriptor.doc)"
+        )
+        #expect(
+            descriptor.doc.components(separatedBy: "*/").count == 2,
+            "expected exactly one \"*/\" (the block's own terminator); doc was: \(descriptor.doc)"
+        )
+    }
+
+    @Test("a tool name that isn't a legal TypeScript identifier throws, per the completeness contract")
+    func illegalToolNameThrows() throws {
+        #expect {
+            try ToolAPIRenderer.render(
+                name: "foo); malicious();//",
+                description: "Can't be rendered.",
+                parameters: StringArgument.generationSchema
+            )
+        } throws: { error in
+            error is ToolAPIRendererError
+        }
+    }
+
+    @Test("a tool name with a trailing newline throws, even though every individual character but the last is a legal identifier character")
+    func toolNameWithTrailingNewlineThrows() throws {
+        // Regression case: `NSRegularExpression`'s `$` anchor matches
+        // before a trailing line terminator (not only at the true end of
+        // the string), so an `^...$`-anchored `NSRegularExpression` check
+        // would incorrectly accept "toolName\n" as a legal identifier.
+        // `isLegalTSIdentifier` must reject it.
+        #expect {
+            try ToolAPIRenderer.render(
+                name: "toolName\n",
+                description: "Can't be rendered.",
+                parameters: StringArgument.generationSchema
+            )
+        } throws: { error in
+            error is ToolAPIRendererError
+        }
+    }
+
+    @Test("a pattern guide containing an embedded \"/\" is escaped in the documented regex literal")
+    func patternWithEmbeddedSlashIsEscaped() throws {
+        let descriptor = try ToolAPIRenderer.render(
+            name: "tool",
+            description: "A test tool.",
+            parameters: SlashPatternArgument.generationSchema
+        )
+        #expect(descriptor.doc.contains("(pattern: /a\\/b/)"), "doc was: \(descriptor.doc)")
+    }
+
+    @Test("a property name containing a quote is safely quoted/escaped everywhere it's spliced into example literals — top-level key, nested key, and string placeholder value")
+    func propertyNameWithQuoteIsEscapedInExampleLiterals() throws {
+        // A real `@Generable` struct's field name is always a legal Swift
+        // (and therefore legal TS) identifier, so a quote-containing
+        // property name can't come from the macro — hand-author the
+        // schema directly, the same technique
+        // `unidentifiableSchemaNodeCannotEvenBeConstructed` uses.
+        let handAuthored = """
+        {
+          "type": "object",
+          "title": "QuotedNames",
+          "additionalProperties": false,
+          "x-order": ["top\\"quote", "nested"],
+          "properties": {
+            "top\\"quote": { "type": "string" },
+            "nested": { "$ref": "#/$defs/QuotedNamesNested" }
+          },
+          "required": ["top\\"quote", "nested"],
+          "$defs": {
+            "QuotedNamesNested": {
+              "type": "object",
+              "title": "QuotedNamesNested",
+              "additionalProperties": false,
+              "x-order": ["inner\\"quote"],
+              "properties": {
+                "inner\\"quote": { "type": "string" }
+              },
+              "required": ["inner\\"quote"]
+            }
+          }
+        }
+        """
+        let schema = try JSONDecoder().decode(GenerationSchema.self, from: Data(handAuthored.utf8))
+        let descriptor = try ToolAPIRenderer.render(
+            name: "tool",
+            description: "A test tool.",
+            parameters: schema
+        )
+        // Top-level key (`objectKeyLiteral` in `render`'s `exampleFields`)
+        // and its string-placeholder value (`escapeForJSStringLiteral` in
+        // `exampleLiteral`'s `.string` case) are both escaped.
+        #expect(descriptor.example.contains(#""top\"quote": "top\"quote""#), "example was: \(descriptor.example)")
+        // Nested key (`objectKeyLiteral` in `exampleObjectLiteral`) is
+        // likewise escaped, not left bare or unescaped.
+        #expect(descriptor.example.contains(#""inner\"quote": "inner\"quote""#), "example was: \(descriptor.example)")
+    }
 }

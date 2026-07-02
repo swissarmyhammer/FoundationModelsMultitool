@@ -125,10 +125,12 @@ public enum ToolAPIRenderer {
     ///   - onWiden: called whenever a schema element widens to `any`.
     ///     Defaults to logging via `os.Logger`.
     /// - Returns: the rendered name/declaration/doc/example/source.
-    /// - Throws: `ToolAPIRendererError` if `parameters` (or a schema
-    ///   referenced from it) is missing a `"type"` it needs to be rendered,
-    ///   references an unresolvable `$ref`, or isn't an `object` at the top
-    ///   level.
+    /// - Throws: `ToolAPIRendererError` if `name` isn't a legal TypeScript
+    ///   identifier (schema-derived text is never trusted to be safe to
+    ///   splice straight into a `declare function` signature), or if
+    ///   `parameters` (or a schema referenced from it) is missing a `"type"`
+    ///   it needs to be rendered, references an unresolvable `$ref`, or
+    ///   isn't an `object` at the top level.
     public static func render(
         name: String,
         description: String,
@@ -136,6 +138,14 @@ public enum ToolAPIRenderer {
         returns: Returns = .text,
         onWiden: @escaping (String) -> Void = { logger.warning("\($0, privacy: .public)") }
     ) throws -> ToolDescriptor {
+        guard isLegalTSIdentifier(name) else {
+            throw ToolAPIRendererError(
+                "Tool name \"\(name)\" is not a legal TypeScript identifier "
+                    + "(must match ^[A-Za-z_$][A-Za-z0-9_$]*$); refusing to emit a "
+                    + "`declare function` declaration for it rather than risk breaking "
+                    + "out of the generated code."
+            )
+        }
         let parametersNode = try decode(parameters, subject: "\"\(name)\"'s parameters")
         guard parametersNode.type == typeObject else {
             throw ToolAPIRendererError(
@@ -159,7 +169,7 @@ public enum ToolAPIRenderer {
             if isRequired {
                 var exampleContext = argsContext
                 let literal = try exampleLiteral(for: propertyNode, name: key, context: &exampleContext)
-                exampleFields.append("\(key): \(literal)")
+                exampleFields.append("\(objectKeyLiteral(key)): \(literal)")
             }
         }
 
@@ -285,6 +295,88 @@ public enum ToolAPIRenderer {
         node.propertyOrder ?? (node.properties ?? [:]).keys.sorted()
     }
 
+    // MARK: - String safety (escaping schema-derived text)
+    //
+    // `GenerationSchema` carries author-supplied, otherwise-unvalidated text
+    // — tool/property names and descriptions, regex patterns — that this
+    // renderer splices directly into generated TypeScript source and JSDoc
+    // comments. None of it can be trusted to be "safe" TS/JS/comment syntax
+    // on its own; every splice site below routes through one of these
+    // shared helpers so an unusual (or malicious) schema value can widen,
+    // get escaped, or throw, but can never corrupt or break out of the
+    // generated declaration.
+
+    /// The identifier grammar this renderer accepts for a name it emits
+    /// bare — a tool name (as a `declare function <name>(...)` signature)
+    /// or a property name (as an unquoted object-literal key): an ASCII
+    /// letter, `_`, or `$`, followed by any number of ASCII letters,
+    /// digits, `_`, or `$`. Deliberately narrower than the full TypeScript
+    /// identifier grammar (which also permits non-ASCII Unicode
+    /// identifier characters) — a schema-derived name outside this
+    /// unambiguous subset is safer treated as "not a bare identifier"
+    /// (rejected outright for a tool name, or re-rendered as a quoted
+    /// string key for a property name via `objectKeyLiteral`) than risk
+    /// misclassifying an edge case as safe to emit unquoted.
+    ///
+    /// Built with `Regex(_:)` + matched via `wholeMatch(of:)` rather than
+    /// `NSRegularExpression` with `^`/`$` anchors: `NSRegularExpression`'s
+    /// `$` matches before a trailing line terminator (not only at the true
+    /// end of the string), so `^...$` alone would accept a name like
+    /// `"toolName\n"` as "legal" — `wholeMatch(of:)` requires the pattern to
+    /// consume the entire string, with no such carve-out.
+    ///
+    /// `nonisolated(unsafe)`: `Regex` doesn't conform to `Sendable` (a
+    /// compiler-level gap, not a real thread-safety issue — a compiled
+    /// `Regex` is an immutable value type, safe to read concurrently), so
+    /// Swift 6 strict concurrency would otherwise reject this `static let`.
+    nonisolated(unsafe) private static let identifierPattern = try! Regex("[A-Za-z_$][A-Za-z0-9_$]*")
+
+    /// Whether `name` can be emitted bare — as a `declare function` name or
+    /// an unquoted object-literal key — without risking a syntax break (or
+    /// code injection) from schema-derived text.
+    private static func isLegalTSIdentifier(_ name: String) -> Bool {
+        name.wholeMatch(of: identifierPattern) != nil
+    }
+
+    /// Escapes `text` for safe interpolation into a JS/TS double-quoted
+    /// string literal: backslashes first (so a backslash already present
+    /// in `text` isn't re-escaped by the quote-escaping step that
+    /// follows), then double quotes.
+    private static func escapeForJSStringLiteral(_ text: String) -> String {
+        text.replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+    }
+
+    /// Renders `key` as an object-literal key for the auto-generated
+    /// `@example` call: bare (`field`) when it's a legal TS identifier, or
+    /// a quoted, escaped string-literal key (`"field\"x\""`) otherwise.
+    /// Shared by every example-literal builder that writes a property name
+    /// as an object key (the top-level `exampleFields` in
+    /// `render(name:description:parameters:returns:onWiden:)` and
+    /// `exampleObjectLiteral`'s nested fields), so a schema-derived
+    /// property name can never break out of the generated object-literal
+    /// syntax.
+    private static func objectKeyLiteral(_ key: String) -> String {
+        isLegalTSIdentifier(key) ? key : "\"\(escapeForJSStringLiteral(key))\""
+    }
+
+    /// Escapes `text` for safe interpolation into a `/** … */` JSDoc
+    /// block: replaces every embedded `*/` with `* /` (space-separated),
+    /// so schema-derived text (a tool or property `description`) can
+    /// never terminate the comment block early and "escape" into the
+    /// generated declaration that follows it.
+    private static func escapeForJSDocComment(_ text: String) -> String {
+        text.replacingOccurrences(of: "*/", with: "* /")
+    }
+
+    /// Escapes `pattern` for safe rendering inside the doc-text `/pattern/`
+    /// regex-literal form `patternClause` renders: replaces every embedded
+    /// `/` with `\/`, so an embedded delimiter can't prematurely terminate
+    /// the literal (and corrupt the surrounding `@param` clause).
+    private static func escapeForRegexLiteralDoc(_ pattern: String) -> String {
+        pattern.replacingOccurrences(of: "/", with: "\\/")
+    }
+
     // MARK: - Type rendering (the type-mapping table)
 
     /// The TypeScript `any` type name, returned whenever a schema element
@@ -396,10 +488,13 @@ public enum ToolAPIRenderer {
     /// Splits `text` into JSDoc comment lines, each prefixed with
     /// `docLinePrefix`. Text is author-supplied (`tool.description`) and
     /// rendered verbatim — the renderer never fabricates or appends
-    /// punctuation to it.
+    /// punctuation to it — except for `escapeForJSDocComment`, which
+    /// neutralizes an embedded `*/` so it can't terminate the enclosing
+    /// `/** … */` block early.
     private static func commentLines(for text: String) -> [String] {
         guard !text.isEmpty else { return [] }
-        return text.split(separator: "\n", omittingEmptySubsequences: false).map { "\(docLinePrefix)\($0)" }
+        return escapeForJSDocComment(text).split(separator: "\n", omittingEmptySubsequences: false)
+            .map { "\(docLinePrefix)\($0)" }
     }
 
     /// Composes one property's `@param` clause — the text after
@@ -413,9 +508,12 @@ public enum ToolAPIRenderer {
     /// (`(integer)`, numeric range, pattern, or item count); then
     /// `"(optional)"` for a non-required property. `GenerationSchema` has no
     /// default-value concept (see `AppleEncoderParityTests`), so no `default
-    /// …` clause is ever rendered.
+    /// …` clause is ever rendered. The property's `description` is passed
+    /// through `escapeForJSDocComment`, same as the tool-level description
+    /// in `commentLines`, since this clause lands inside the same `/** …
+    /// */` block via an `@param` line.
     private static func paramClause(for node: SchemaNode, required: Bool) -> String {
-        var lead = node.description ?? ""
+        var lead = escapeForJSDocComment(node.description ?? "")
         if let enumValues = node.enumValues, !enumValues.isEmpty {
             let clause = "one of \(enumUnion(enumValues))."
             lead = lead.isEmpty ? clause : "\(lead); \(clause)"
@@ -482,10 +580,13 @@ public enum ToolAPIRenderer {
     }
 
     /// Renders a string guide's `pattern` as a parenthetical, e.g.
-    /// `"(pattern: /[A-Z]{3}/)"`. `nil` if no pattern is present.
+    /// `"(pattern: /[A-Z]{3}/)"`. `nil` if no pattern is present. The
+    /// pattern is passed through `escapeForRegexLiteralDoc` — an
+    /// unescaped `/` embedded in the pattern would otherwise prematurely
+    /// close the doc text's `/…/` regex-literal form.
     private static func patternClause(_ node: SchemaNode) -> String? {
         guard let pattern = node.pattern else { return nil }
-        return "(pattern: /\(pattern)/)"
+        return "(pattern: /\(escapeForRegexLiteralDoc(pattern))/)"
     }
 
     /// Renders an array guide's `minItems`/`maxItems`/`count` as a
@@ -533,7 +634,7 @@ public enum ToolAPIRenderer {
         }
         switch node.type {
         case typeString:
-            return "\"\(name)\""
+            return "\"\(escapeForJSStringLiteral(name))\""
         case typeInteger, typeNumber:
             return formatNumber(node.minimum ?? 0)
         case typeBoolean:
@@ -555,6 +656,8 @@ public enum ToolAPIRenderer {
 
     /// Builds `{ field: value, … }` for an object node's required
     /// properties, recursively synthesizing each field's example literal.
+    /// Keys go through `objectKeyLiteral`, same as the top-level
+    /// `exampleFields` in `render(name:description:parameters:returns:onWiden:)`.
     private static func exampleObjectLiteral(_ node: SchemaNode, context: inout RenderContext) throws -> String {
         let properties = node.properties ?? [:]
         guard !properties.isEmpty else { return "{}" }
@@ -562,7 +665,8 @@ public enum ToolAPIRenderer {
         var fields: [String] = []
         for key in propertyOrder(of: node) where required.contains(key) {
             guard let propertyNode = properties[key] else { continue }
-            fields.append("\(key): \(try exampleLiteral(for: propertyNode, name: key, context: &context))")
+            let literal = try exampleLiteral(for: propertyNode, name: key, context: &context)
+            fields.append("\(objectKeyLiteral(key)): \(literal)")
         }
         return "{ \(fields.joined(separator: ", ")) }"
     }
