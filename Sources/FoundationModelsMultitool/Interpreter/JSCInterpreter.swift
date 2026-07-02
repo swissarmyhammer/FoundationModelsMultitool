@@ -161,7 +161,7 @@ public final class JSCInterpreter: Interpreter {
         let consoleLines = ConsoleLines()
         installConsole(into: context, capturing: consoleLines)
         for hostFunction in installing {
-            install(hostFunction, into: context)
+            install(hostFunction: hostFunction, into: context)
         }
 
         let watchdogState = WatchdogState()
@@ -246,7 +246,7 @@ public final class JSCInterpreter: Interpreter {
     /// Installs `hostFunction` as a global callable in `context`, converting
     /// arguments/results through `InterpreterValue` and surfacing a Swift
     /// throw as a JS exception.
-    private static func install(_ hostFunction: HostFunction, into context: JSContext) {
+    private static func install(hostFunction: HostFunction, into context: JSContext) {
         let body: @convention(block) () -> JSValue? = {
             guard let currentContext = JSContext.current() else { return nil }
             let arguments = (JSContext.currentArguments() as? [JSValue]) ?? []
