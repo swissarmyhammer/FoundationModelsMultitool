@@ -354,7 +354,13 @@ public enum ToolAPIRenderer {
     /// Whether `name` can be emitted bare — as a `declare function` name or
     /// an unquoted object-literal key — without risking a syntax break (or
     /// code injection) from schema-derived text.
-    private static func isLegalTSIdentifier(_ name: String) -> Bool {
+    ///
+    /// Internal (not `private`), rather than duplicated, so
+    /// `MultiTool.Builder.build()` (M2.5, `MultiToolBuilder.swift`) can
+    /// reuse this exact check on a group name before splicing it into a
+    /// generated `tools.<group>.<name>` namespace — the same posture this
+    /// file takes toward a tool's own `name`.
+    static func isLegalTSIdentifier(_ name: String) -> Bool {
         name.wholeMatch(of: identifierPattern) != nil
     }
 
