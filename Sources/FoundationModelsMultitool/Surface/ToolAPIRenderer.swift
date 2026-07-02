@@ -25,6 +25,8 @@ public struct ToolAPIRendererError: Error, Sendable, Equatable, CustomStringConv
         self.message = message
     }
 
+    /// A human-readable description of the error, satisfying
+    /// `CustomStringConvertible`. Identical to `message`.
     public var description: String { message }
 }
 
@@ -409,21 +411,51 @@ public enum ToolAPIRenderer {
         return fragments.joined(separator: " ")
     }
 
+    /// Renders a `(minimum, maximum)` bound pair as a parenthetical clause,
+    /// or `nil` if neither bound is present. Shared by `numericRangeClause`
+    /// and `countClause`, which were near-verbatim copies of the same
+    /// guard/switch/format/return-nil structure over `minimum`/`maximum`
+    /// vs. `minItems`/`maxItems` — the type guard and the three format
+    /// strings (both bounds, minimum-only, maximum-only) are the only real
+    /// per-call-site differences, so they're supplied as closures.
+    ///
+    /// - Parameters:
+    ///   - minimum: the lower bound, if present.
+    ///   - maximum: the upper bound, if present.
+    ///   - both: formats the clause when both bounds are present.
+    ///   - minOnly: formats the clause when only `minimum` is present.
+    ///   - maxOnly: formats the clause when only `maximum` is present.
+    private static func boundsClause<Bound>(
+        minimum: Bound?,
+        maximum: Bound?,
+        both: (Bound, Bound) -> String,
+        minOnly: (Bound) -> String,
+        maxOnly: (Bound) -> String
+    ) -> String? {
+        switch (minimum, maximum) {
+        case let (minimum?, maximum?):
+            return both(minimum, maximum)
+        case let (minimum?, nil):
+            return minOnly(minimum)
+        case let (nil, maximum?):
+            return maxOnly(maximum)
+        default:
+            return nil
+        }
+    }
+
     /// Renders a numeric guide's `minimum`/`maximum`/`range` as a
     /// parenthetical, e.g. `"(range 1…10)"`, `"(minimum 1)"`, or
     /// `"(maximum 10)"`. `nil` if neither bound is present.
     private static func numericRangeClause(_ node: SchemaNode) -> String? {
         guard node.type == "integer" || node.type == "number" else { return nil }
-        switch (node.minimum, node.maximum) {
-        case let (minimum?, maximum?):
-            return "(range \(formatNumber(minimum))…\(formatNumber(maximum)))"
-        case let (minimum?, nil):
-            return "(minimum \(formatNumber(minimum)))"
-        case let (nil, maximum?):
-            return "(maximum \(formatNumber(maximum)))"
-        default:
-            return nil
-        }
+        return boundsClause(
+            minimum: node.minimum,
+            maximum: node.maximum,
+            both: { "(range \(formatNumber($0))…\(formatNumber($1)))" },
+            minOnly: { "(minimum \(formatNumber($0)))" },
+            maxOnly: { "(maximum \(formatNumber($0)))" }
+        )
     }
 
     /// Renders a string guide's `pattern` as a parenthetical, e.g.
@@ -438,16 +470,13 @@ public enum ToolAPIRenderer {
     /// items)"`. `nil` if neither bound is present.
     private static func countClause(_ node: SchemaNode) -> String? {
         guard node.type == "array" else { return nil }
-        switch (node.minItems, node.maxItems) {
-        case let (minItems?, maxItems?):
-            return "(\(minItems)…\(maxItems) items)"
-        case let (minItems?, nil):
-            return "(\(minItems)+ items)"
-        case let (nil, maxItems?):
-            return "(up to \(maxItems) items)"
-        default:
-            return nil
-        }
+        return boundsClause(
+            minimum: node.minItems,
+            maximum: node.maxItems,
+            both: { "(\($0)…\($1) items)" },
+            minOnly: { "(\($0)+ items)" },
+            maxOnly: { "(up to \($0) items)" }
+        )
     }
 
     // MARK: - Example synthesis

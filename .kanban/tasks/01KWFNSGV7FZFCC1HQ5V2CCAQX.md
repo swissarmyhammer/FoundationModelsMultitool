@@ -53,30 +53,25 @@ comments:
 
     Leaving in `doing` for `/review` per the implement workflow -- not moving to review myself.
   timestamp: 2026-07-02T01:24:23.225268+00:00
+- actor: wballard
+  id: 01kwg7k2txshvjtaz24jetw2c3
+  text: |-
+    Re-worked the two Review Findings via /implement (task pulled back from review into doing).
+
+    1. Added a `///` doc comment to `ToolAPIRendererError.description` (the `CustomStringConvertible` conformance property): "A human-readable description of the error, satisfying `CustomStringConvertible`. Identical to `message`."
+
+    2. Extracted a shared private generic helper `boundsClause<Bound>(minimum:maximum:both:minOnly:maxOnly:)` in ToolAPIRenderer.swift, parameterized by the (min,max) values and three formatting closures. Both `numericRangeClause` (minimum/maximum, "(range …)"/"(minimum …)"/"(maximum …)") and `countClause` (minItems/maxItems, "(…items)" variants) now call it, keeping only their own type guard (`node.type == "integer"/"number"` vs `"array"`) and format-string closures as the per-call-site differences. Eliminates the duplicated guard/switch/format/return-nil structure the reviewer flagged.
+
+    Also did a quick scan of every `public` declaration in ToolAPIRenderer.swift and ToolDescriptor.swift (grepped `^\s*public`, checked each has a preceding `///` block) — no other missing doc comments found; both files are now fully documented.
+
+    Verification: `swift build` clean (only the pre-existing benign mlx-swift dependency warning, no warnings from project code), `swift test` 30/30 passing across 4 suites, `swift test --filter ToolAPIRendererTests` 10/10 passing. Ran an adversarial double-check agent on the diff (via really-done) — verdict PASS: confirmed the `boundsClause` extraction is byte-identical in output to the pre-refactor format strings for all four cases (both/min-only/max-only/neither) on both call sites, confirmed the new doc comment is non-vacuous, confirmed no other public declarations are missing docs, and confirmed the diff (100 lines, one file) stays in scope with no unrelated refactors.
+
+    Leaving in `doing` for `/review` per the implement workflow — not moving to review myself.
+  timestamp: 2026-07-02T01:37:44.285353+00:00
 depends_on:
 - 01KWFNRM5VSWGD37H2YJ7CMBN2
 position_column: doing
 position_ordinal: '80'
 title: 'M2: ToolAPIRenderer — GenerationSchema → TS declaration + JSDoc'
 ---
-## What
-Per plan.md M2: derive each tool's TypeScript-style declaration + JSDoc doc comment purely from its public surface.
-- `Sources/FoundationModelsMultitool/Surface/ToolAPIRenderer.swift` — encode `tool.parameters: GenerationSchema` with `JSONEncoder` (encode is the read path; there is no field-enumeration API), transliterate the JSON Schema to a TS signature per the plan's type-mapping table (object/string/number/boolean/array/enum/nested/optional/`any`-widened-with-log), and render the doc comment per the doc-mapping table (`description` → summary, per-property guides → `@param`, enum/range/pattern/count/default → prose, `@returns`, auto `@example`).
-- `Sources/FoundationModelsMultitool/Surface/ToolDescriptor.swift` — name, TS declaration, doc text, example, source. One generator feeds runtime binding, librarian prefix, and help()/docs().
-- Object (named) parameters always — `tools.name({ field: … })`, never positional.
-- Completeness contract: throw a descriptive error rather than emit a lossy stub.
-- **Pin (Apple-encoder parity, plan Finding #3):** a test asserts Apple's own `GenerationSchema` encoder emits the expected JSON-Schema shape (`type/properties/required`, optional as `["T","null"]`, enum as `{"type":"string","enum":[…]}`) for fixture `@Generable` types.
-
-## Acceptance Criteria
-- [ ] The plan's worked `WeatherTool` example renders byte-identical to the golden file
-- [ ] Every row of the type-mapping and doc-mapping tables is covered by at least one corpus case
-- [ ] Unrenderable schema element → widened `any` + logged, or thrown per contract (per-table behavior)
-- [ ] Apple-encoder parity test passes (or documents the divergence and the renderer handles it)
-
-## Tests
-- [ ] `Tests/FoundationModelsMultitoolTests/ToolAPIRendererTests.swift` — table-driven over a `GenerationSchema` corpus built from fixture `@Generable` types
-- [ ] `Tests/FoundationModelsMultitoolTests/Goldens/*.ts.txt` — golden files pinning the rendered surface
-- [ ] `swift test --filter ToolAPIRendererTests` → passes
-
-## Workflow
-- Use `/tdd` — write failing tests first, then implement to make them pass.
+## What\nPer plan.md M2: derive each tool's TypeScript-style declaration + JSDoc doc comment purely from its public surface.\n- `Sources/FoundationModelsMultitool/Surface/ToolAPIRenderer.swift` — encode `tool.parameters: GenerationSchema` with `JSONEncoder` (encode is the read path; there is no field-enumeration API), transliterate the JSON Schema to a TS signature per the plan's type-mapping table (object/string/number/boolean/array/enum/nested/optional/`any`-widened-with-log), and render the doc comment per the doc-mapping table (`description` → summary, per-property guides → `@param`, enum/range/pattern/count/default → prose, `@returns`, auto `@example`).\n- `Sources/FoundationModelsMultitool/Surface/ToolDescriptor.swift` — name, TS declaration, doc text, example, source. One generator feeds runtime binding, librarian prefix, and help()/docs().\n- Object (named) parameters always — `tools.name({ field: … })`, never positional.\n- Completeness contract: throw a descriptive error rather than emit a lossy stub.\n- **Pin (Apple-encoder parity, plan Finding #3):** a test asserts Apple's own `GenerationSchema` encoder emits the expected JSON-Schema shape (`type/properties/required`, optional as `[\"T\",\"null\"]`, enum as `{\"type\":\"string\",\"enum\":[…]}`) for fixture `@Generable` types.\n\n## Acceptance Criteria\n- [ ] The plan's worked `WeatherTool` example renders byte-identical to the golden file\n- [ ] Every row of the type-mapping and doc-mapping tables is covered by at least one corpus case\n- [ ] Unrenderable schema element → widened `any` + logged, or thrown per contract (per-table behavior)\n- [ ] Apple-encoder parity test passes (or documents the divergence and the renderer handles it)\n\n## Tests\n- [ ] `Tests/FoundationModelsMultitoolTests/ToolAPIRendererTests.swift` — table-driven over a `GenerationSchema` corpus built from fixture `@Generable` types\n- [ ] `Tests/FoundationModelsMultitoolTests/Goldens/*.ts.txt` — golden files pinning the rendered surface\n- [ ] `swift test --filter ToolAPIRendererTests` → passes\n\n## Workflow\n- Use `/tdd` — write failing tests first, then implement to make them pass.\n\n## Review Findings (2026-07-01 20:26)\n\n- [x] `Sources/FoundationModelsMultitool/Surface/ToolAPIRenderer.swift:31` — Public property `description` lacks a `///` doc comment. Every public declaration must carry one (the exception for `override`s whose docs are inherited does not apply to protocol requirements). Add a `///` doc comment above the property, e.g. `/// A human-readable description of the error.`.\n- [x] `Sources/FoundationModelsMultitool/Surface/ToolAPIRenderer.swift:411` — numericRangeClause and countClause (later in this file) are near-verbatim copies with identical control flow. Both guard on a type condition, switch on a tuple of two optional values, handle three cases (both present / first only / second only), format the result, and return nil for the default. Differences are entirely parameterizable: type check, property names (minimum/maximum vs minItems/maxItems), variable names, and formatting strings. Extract a generic bounds-clause function parameterized by (1) type guard predicate, (2) min/max property accessors or values, (3) formatting template function. Or use a closure to specify the format/type-check per call site.\n
