@@ -53,11 +53,11 @@ private func JSContextGroupClearExecutionTimeLimit(_ group: JSContextGroupRef)
 private final class WatchdogState: Sendable {
     private let lock = OSAllocatedUnfairLock(initialState: false)
 
-    var timedOut: Bool {
+    fileprivate var timedOut: Bool {
         lock.withLock { $0 }
     }
 
-    func markTimedOut() {
+    fileprivate func markTimedOut() {
         lock.withLock { $0 = true }
     }
 }
@@ -105,8 +105,16 @@ public final class JSCInterpreter: Interpreter {
         self.queue = DispatchQueue(label: "FoundationModelsMultitool.JSCInterpreter")
     }
 
-    /// Runs `code` on the dedicated worker queue in a fresh sandbox. See
-    /// ``Interpreter/run(code:installing:)`` for the full contract.
+    /// Runs `code` on the dedicated worker queue in a fresh, isolated
+    /// sandbox with `installing` made available as globals.
+    ///
+    /// - Parameters:
+    ///   - code: the JavaScript source to run. A top-level `return` is
+    ///     supported — the snippet does not need to be an IIFE itself.
+    ///   - installing: host functions to expose as globals for this run only.
+    /// - Returns: the snippet's return value and captured console output.
+    /// - Throws: `InterpreterError` for a thrown/syntax exception or a
+    ///   watchdog timeout.
     public func run(code: String, installing: [HostFunction]) throws -> InterpreterResult {
         try queue.sync {
             try Self.evaluate(code: code, installing: installing, timeLimit: timeLimit)
@@ -120,13 +128,13 @@ public final class JSCInterpreter: Interpreter {
     /// bundled together so `evaluate` doesn't have to juggle their lifetimes
     /// (and matching teardown order) inline.
     private struct Sandbox {
-        let group: JSContextGroupRef
-        let globalContextRef: JSGlobalContextRef
-        let context: JSContext
-        let consoleLines: ConsoleLines
-        let watchdogState: WatchdogState
+        fileprivate let group: JSContextGroupRef
+        fileprivate let globalContextRef: JSGlobalContextRef
+        fileprivate let context: JSContext
+        fileprivate let consoleLines: ConsoleLines
+        fileprivate let watchdogState: WatchdogState
 
-        func tearDown() {
+        fileprivate func tearDown() {
             JSContextGroupClearExecutionTimeLimit(group)
             JSGlobalContextRelease(globalContextRef)
             JSContextGroupRelease(group)
@@ -217,7 +225,7 @@ public final class JSCInterpreter: Interpreter {
     /// captured by value across calls — can append to a shared collection.
     private final class ConsoleLines {
         private(set) var lines: [String] = []
-        func append(_ line: String) { lines.append(line) }
+        fileprivate func append(_ line: String) { lines.append(line) }
     }
 
     /// Injects a `console` global whose `log` appends a joined,

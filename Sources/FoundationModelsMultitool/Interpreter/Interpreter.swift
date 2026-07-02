@@ -25,6 +25,9 @@ public indirect enum InterpreterValue: Sendable, Equatable {
 extension InterpreterValue: Codable {
     /// Creates an `InterpreterValue` by decoding the given decoder's JSON
     /// value, trying null, bool, number, string, array, and object in turn.
+    ///
+    /// - Parameter decoder: the decoder to read the JSON value from.
+    /// - Throws: `DecodingError` if the decoded value is not valid JSON.
     public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         if container.decodeNil() {
@@ -49,6 +52,10 @@ extension InterpreterValue: Codable {
 
     /// Encodes this value to the given encoder as the corresponding JSON
     /// value, degrading non-finite `.number` values to `null`.
+    ///
+    /// - Parameter encoder: the encoder to write the JSON value to.
+    /// - Throws: `EncodingError` if the underlying container fails to encode
+    ///   the value.
     public func encode(to encoder: Encoder) throws {
         var container = encoder.singleValueContainer()
         switch self {
