@@ -51,14 +51,12 @@ public struct MultiToolBuilderError: Error, Sendable, Equatable, CustomStringCon
 
     /// Creates a builder error.
     ///
-    /// Explicit (rather than relying on the compiler-synthesized memberwise
-    /// initializer) for the same reason as `ToolDescriptor.init` in
+    /// Explicit for the same reason as `ToolDescriptor.init` in
     /// `ToolDescriptor.swift`: a `public` struct's synthesized initializer
     /// is only `internal`-accessible, and `MultiToolBuilderError` is a
     /// public `Error` type thrown across the `FoundationModelsMultitool`
-    /// library product's boundary — without this, no module outside
-    /// `FoundationModelsMultitool` could construct one, e.g. to build a
-    /// fixture in a caller's own tests.
+    /// library product's boundary, e.g. to build a fixture in a caller's
+    /// own tests.
     ///
     /// - Parameters:
     ///   - kind: what kind of failure this was.
@@ -143,10 +141,7 @@ extension MultiTool {
         /// - Returns: `self`, for fluent chaining.
         @discardableResult
         public func addTools(_ tools: [any Tool]) -> Self {
-            for tool in tools {
-                pending.append(.standalone(tool))
-            }
-            return self
+            enqueue(tools, as: PendingTool.standalone)
         }
 
         /// Queues every tool in `tools` under the named `group`, destined
@@ -165,8 +160,23 @@ extension MultiTool {
         /// - Returns: `self`, for fluent chaining.
         @discardableResult
         public func addGroup(named group: String, _ tools: [any Tool]) -> Self {
+            enqueue(tools) { PendingTool.grouped(group: group, tool: $0) }
+        }
+
+        /// Appends every tool in `tools` to `pending`, each wrapped by
+        /// `makePending` into the `PendingTool` variant to queue it as —
+        /// the shared iterate-wrap-append loop `addTools(_:)` and
+        /// `addGroup(named:_:)` both need, differing only in which variant
+        /// they construct.
+        ///
+        /// - Parameters:
+        ///   - tools: the tools to add.
+        ///   - makePending: builds the `PendingTool` to queue for one tool.
+        /// - Returns: `self`, for fluent chaining.
+        @discardableResult
+        private func enqueue(_ tools: [any Tool], as makePending: (any Tool) -> PendingTool) -> Self {
             for tool in tools {
-                pending.append(.grouped(group: group, tool: tool))
+                pending.append(makePending(tool))
             }
             return self
         }

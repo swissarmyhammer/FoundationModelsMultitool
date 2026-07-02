@@ -31,14 +31,11 @@ public struct APISurface: Sendable, Equatable {
 
         /// Creates a catalog entry.
         ///
-        /// Explicit (rather than relying on the compiler-synthesized
-        /// memberwise initializer) for the same reason as
-        /// `ToolDescriptor.init` in `ToolDescriptor.swift`: a `public`
-        /// struct's synthesized initializer is only `internal`-accessible,
-        /// and `Entry` is a public type of the `FoundationModelsMultitool`
-        /// library product — without this, no module outside
-        /// `FoundationModelsMultitool` could construct an `Entry`, even
-        /// though `APISurface`'s public `entries` array exposes them.
+        /// Explicit for the same reason as `ToolDescriptor.init` in
+        /// `ToolDescriptor.swift`: a `public` struct's synthesized
+        /// initializer is only `internal`-accessible, and `Entry` is a
+        /// public type of the `FoundationModelsMultitool` library product
+        /// that callers must be able to construct directly.
         ///
         /// - Parameters:
         ///   - path: the fully-qualified snippet call path.
@@ -76,12 +73,10 @@ public struct APISurface: Sendable, Equatable {
 
     /// Creates a rendered API surface.
     ///
-    /// Explicit (rather than relying on the compiler-synthesized memberwise
-    /// initializer) for the same reason as `Entry.init` above: a `public`
+    /// Explicit for the same reason as `Entry.init` above: a `public`
     /// struct's synthesized initializer is only `internal`-accessible, and
     /// `APISurface` is the public return type of `MultiTool.Builder.build()`
-    /// — a host could reasonably need to assemble one directly (e.g. in
-    /// tests, or composing entries produced some other way) without this.
+    /// that a host may need to assemble directly (e.g. in tests).
     ///
     /// - Parameter entries: every tool in the catalog, in catalog order.
     public init(entries: [Entry]) {
