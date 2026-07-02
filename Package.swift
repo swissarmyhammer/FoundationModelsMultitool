@@ -45,7 +45,14 @@ let package = Package(
                 .target(name: packageName),
                 .product(name: routerDependencyName, package: routerDependencyName),
             ],
-            path: "Tests/\(packageName)Tests"
+            path: "Tests/\(packageName)Tests",
+            resources: [
+                // Golden files pinning `ToolAPIRenderer`'s rendered surface
+                // (M2). Tests read these directly off disk via `#filePath`,
+                // not `Bundle.module`; declared as a resource purely so
+                // SwiftPM doesn't warn about an unhandled source-tree file.
+                .copy("Goldens")
+            ]
         ),
     ]
 )
