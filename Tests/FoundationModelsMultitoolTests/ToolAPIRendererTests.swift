@@ -342,6 +342,26 @@ struct ToolAPIRendererTests {
         #expect(descriptor.doc.contains("(pattern: /a\\/b/)"), "doc was: \(descriptor.doc)")
     }
 
+    @Test("a pattern guide ending in \"*\" is escaped so the appended closing \"/\" doesn't form a literal comment terminator")
+    func patternEndingInStarIsEscaped() throws {
+        // `patternClause` renders `(pattern: /\(pattern)/)` — a pattern
+        // ending in `*` (a perfectly ordinary regex, e.g. `.*`) forms a
+        // literal `*/` right at the join with the appended closing `/`,
+        // even though `escapeForRegexLiteralDoc` (which only escapes an
+        // embedded `/`, per `patternWithEmbeddedSlashIsEscaped` above)
+        // leaves a bare trailing `*` untouched.
+        let descriptor = try ToolAPIRenderer.render(
+            name: "tool",
+            description: "A test tool.",
+            parameters: StarEndingPatternArgument.generationSchema
+        )
+        #expect(descriptor.doc.contains("(pattern: /a* /)"), "doc was: \(descriptor.doc)")
+        #expect(
+            descriptor.doc.components(separatedBy: "*/").count == 2,
+            "expected exactly one \"*/\" (the block's own terminator); doc was: \(descriptor.doc)"
+        )
+    }
+
     @Test("a property name containing a quote is safely quoted/escaped everywhere it's spliced into example literals — top-level key, nested key, and string placeholder value")
     func propertyNameWithQuoteIsEscapedInExampleLiterals() throws {
         // A real `@Generable` struct's field name is always a legal Swift
@@ -387,5 +407,131 @@ struct ToolAPIRendererTests {
         // Nested key (`objectKeyLiteral` in `exampleObjectLiteral`) is
         // likewise escaped, not left bare or unescaped.
         #expect(descriptor.example.contains(#""inner\"quote": "inner\"quote""#), "example was: \(descriptor.example)")
+    }
+
+    @Test("a returns description containing \"*/\" is escaped, not left to terminate the JSDoc block early")
+    func returnsDescriptionWithCommentTerminatorIsEscaped() throws {
+        let descriptor = try ToolAPIRenderer.render(ReturnsCommentTerminatorTool())
+        #expect(
+            descriptor.doc.contains("@returns { summary: string } — current conditions * / then injects code."),
+            "doc was: \(descriptor.doc)"
+        )
+        // Exactly one "*/" survives — the block's own closing terminator.
+        #expect(
+            descriptor.doc.components(separatedBy: "*/").count == 2,
+            "expected exactly one \"*/\" (the block's own terminator); doc was: \(descriptor.doc)"
+        )
+    }
+
+    @Test("an enum choice containing \"*/\" or a quote is escaped everywhere it's spliced — the TS declaration, the @param \"one of\" clause, and the @example call")
+    func enumChoiceWithSpecialCharactersIsEscaped() throws {
+        let descriptor = try ToolAPIRenderer.render(
+            name: "tool",
+            description: "A test tool.",
+            parameters: EnumWithSpecialCharactersArgument.generationSchema
+        )
+        // The raw TS declaration is real code, never inside a comment: the
+        // quote is JS-string-escaped, and the embedded "*/" is left as-is
+        // since it's harmless there.
+        #expect(
+            descriptor.declaration.contains(#"option: "*/end" | "quo\"te""#),
+            "declaration was: \(descriptor.declaration)"
+        )
+        // The doc's "one of ..." clause and @example call both land inside
+        // the JSDoc block, so their copies must have "*/" neutralized too.
+        #expect(
+            descriptor.doc.contains(#"one of "* /end" | "quo\"te"."#),
+            "doc was: \(descriptor.doc)"
+        )
+        #expect(
+            descriptor.doc.contains(#"@example const r = tools.tool({ option: "* /end" });"#),
+            "doc was: \(descriptor.doc)"
+        )
+        #expect(
+            descriptor.doc.components(separatedBy: "*/").count == 2,
+            "expected exactly one \"*/\" (the block's own terminator); doc was: \(descriptor.doc)"
+        )
+    }
+
+    @Test("a return type containing an enum choice with \"*/\" is escaped in the @returns line only, leaving the actual declared return type untouched")
+    func returnsTypeWithEnumCommentTerminatorIsEscapedInDocOnly() throws {
+        let descriptor = try ToolAPIRenderer.render(ReturnsEnumWithCommentTerminatorTool())
+        // `declaration` is real code, never inside a comment — the embedded
+        // "*/" must survive there unescaped, or the declared return type
+        // would no longer match the schema.
+        #expect(
+            descriptor.declaration.contains(#"{ status: "*/ok" | "bad" }"#),
+            "declaration was: \(descriptor.declaration)"
+        )
+        // The doc's @returns line uses an escaped copy, so the embedded
+        // "*/" can't terminate the JSDoc block early.
+        #expect(
+            descriptor.doc.contains(#"@returns { status: "* /ok" | "bad" }"#),
+            "doc was: \(descriptor.doc)"
+        )
+        #expect(
+            descriptor.doc.components(separatedBy: "*/").count == 2,
+            "expected exactly one \"*/\" (the block's own terminator); doc was: \(descriptor.doc)"
+        )
+    }
+
+    @Test("a property name containing a quote is safely quoted/escaped in the TS declaration's object type, not just the example literal")
+    func propertyNameWithQuoteIsEscapedInDeclaration() throws {
+        // Same hand-authoring technique as
+        // `propertyNameWithQuoteIsEscapedInExampleLiterals` — a real
+        // `@Generable` struct's field name can't contain a quote.
+        let handAuthored = """
+        {
+          "type": "object",
+          "title": "QuotedNameDeclaration",
+          "additionalProperties": false,
+          "x-order": ["foo\\"bar"],
+          "properties": {
+            "foo\\"bar": { "type": "string" }
+          },
+          "required": ["foo\\"bar"]
+        }
+        """
+        let schema = try JSONDecoder().decode(GenerationSchema.self, from: Data(handAuthored.utf8))
+        let descriptor = try ToolAPIRenderer.render(
+            name: "tool",
+            description: "A test tool.",
+            parameters: schema
+        )
+        #expect(
+            descriptor.declaration.contains(#"args: { "foo\"bar": string }"#),
+            "declaration was: \(descriptor.declaration)"
+        )
+    }
+
+    @Test("a property name containing \"*/\" is escaped in both the @param line's args.<key> and the @example call, not left to terminate the JSDoc block early")
+    func propertyNameWithCommentTerminatorIsEscapedInDocLines() throws {
+        let handAuthored = """
+        {
+          "type": "object",
+          "title": "CommentTerminatorName",
+          "additionalProperties": false,
+          "x-order": ["foo*/bar"],
+          "properties": {
+            "foo*/bar": { "type": "string" }
+          },
+          "required": ["foo*/bar"]
+        }
+        """
+        let schema = try JSONDecoder().decode(GenerationSchema.self, from: Data(handAuthored.utf8))
+        let descriptor = try ToolAPIRenderer.render(
+            name: "tool",
+            description: "A test tool.",
+            parameters: schema
+        )
+        #expect(descriptor.doc.contains("@param args.foo* /bar"), "doc was: \(descriptor.doc)")
+        #expect(
+            descriptor.doc.contains(#"@example const r = tools.tool({ "foo* /bar": "foo* /bar" });"#),
+            "doc was: \(descriptor.doc)"
+        )
+        #expect(
+            descriptor.doc.components(separatedBy: "*/").count == 2,
+            "expected exactly one \"*/\" (the block's own terminator); doc was: \(descriptor.doc)"
+        )
     }
 }

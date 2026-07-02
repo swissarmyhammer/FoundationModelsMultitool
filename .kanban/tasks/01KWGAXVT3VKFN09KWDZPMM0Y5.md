@@ -1,4 +1,12 @@
 ---
+comments:
+- actor: wballard
+  id: 01kwgcnr8eyx5228q73e8yjqf0
+  text: |-
+    Superseded: all 3 acceptance-criteria items in this task's description (renderObjectType keys via objectKeyLiteral, the "@param args.<key>" line's key escaping, and tsLiteral's .string case escaping via escapeForJSStringLiteral) were independently found and fixed as part of task v2ccaqx's third review-round pass (2026-07-01 21:41 review findings), which required a full re-audit of ToolAPIRenderer.swift for the same bug class. See v2ccaqx's task comments for the full diff description and test coverage (5 new tests + 3 new fixtures covering these sites, plus 2 more sites found in that same audit: the @returns line's return-type copy and the @example line's example-call copy, plus a follow-up patternClause fix for a trailing-`*` pattern edge case).
+
+    Recommend closing this task as redundant, or verifying against the current ToolAPIRenderer.swift before doing so — leaving that decision to the board owner since closing tasks is out of scope for the implement pass that surfaced this.
+  timestamp: 2026-07-02T03:06:34.638489+00:00
 position_column: todo
 position_ordinal: '9180'
 title: 'ToolAPIRenderer: escape remaining unescaped schema-derived splice sites (renderObjectType keys, @param args.<key>, enum literals)'

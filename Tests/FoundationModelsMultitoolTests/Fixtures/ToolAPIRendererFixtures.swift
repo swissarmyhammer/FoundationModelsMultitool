@@ -281,3 +281,71 @@ struct SlashPatternArgument {
     @Guide(description: "a path-like code.", .pattern(try! Regex("a/b")))
     var code: String
 }
+
+/// A `.pattern` guide whose regex ends in `*` — the doc-text form appends
+/// a closing `/` right after the pattern text (`(pattern: /\(pattern)/)`),
+/// so a pattern ending in `*` forms a literal `*/` at the join point, even
+/// though `escapeForRegexLiteralDoc` (which only escapes embedded `/`,
+/// distinct from `SlashPatternArgument`'s case above) leaves it untouched.
+/// Exercises `patternClause`'s own `escapeForJSDocComment` pass.
+@Generable
+struct StarEndingPatternArgument {
+    @Guide(description: "matches zero or more.", .pattern(try! Regex("a*")))
+    var value: String
+}
+
+/// The `Output` of `ReturnsCommentTerminatorTool` — its type-level
+/// `@Generable(description:)` becomes the rendered `@returns` line's
+/// description, the same mechanism as `WeatherResult`'s "current
+/// conditions." (see the golden file), deliberately containing an
+/// embedded `*/` to exercise `returnsDescription`'s JSDoc-comment
+/// escaping (distinct from `commentLines`'s tool-description escaping and
+/// `paramClause`'s property-description escaping).
+@Generable(description: "current conditions */ then injects code.")
+struct ReturnsCommentTerminatorResult {
+    var summary: String
+}
+
+struct ReturnsCommentTerminatorTool: Tool {
+    let name = "returnsTerminator"
+    let description = "A test tool."
+
+    func call(arguments: StringArgument) async throws -> ReturnsCommentTerminatorResult {
+        ReturnsCommentTerminatorResult(summary: arguments.value)
+    }
+}
+
+/// An enum guide whose first choice contains an embedded `*/` and whose
+/// second contains a double quote — exercises `tsLiteral`'s (used by
+/// `enumUnion`) escaping in every place an enum choice lands: the raw TS
+/// declaration (JS-string-literal safety only — it's real code, never
+/// inside a comment), the `@param`'s "one of ..." doc clause, and the
+/// `@example` call's placeholder value (the enum's first choice) — the
+/// latter two additionally need the embedded `*/` neutralized, since they
+/// land inside the JSDoc block itself.
+@Generable
+struct EnumWithSpecialCharactersArgument {
+    @Guide(description: "the chosen option", .anyOf(["*/end", "quo\"te"]))
+    var option: String
+}
+
+/// The `Output` of `ReturnsEnumWithCommentTerminatorTool` — an
+/// enum-guided property whose first choice contains an embedded `*/`.
+/// Exercises the `@returns` line's own copy of the rendered return type
+/// being escaped for JSDoc safety, distinct from (and in addition to)
+/// `returnsDescription`'s escaping — and confirms the *actual* declared
+/// return type in `declaration` is left untouched (raw, correct TS).
+@Generable
+struct ReturnsEnumWithCommentTerminatorResult {
+    @Guide(description: "status", .anyOf(["*/ok", "bad"]))
+    var status: String
+}
+
+struct ReturnsEnumWithCommentTerminatorTool: Tool {
+    let name = "statusTool"
+    let description = "A test tool."
+
+    func call(arguments: StringArgument) async throws -> ReturnsEnumWithCommentTerminatorResult {
+        ReturnsEnumWithCommentTerminatorResult(status: arguments.value)
+    }
+}

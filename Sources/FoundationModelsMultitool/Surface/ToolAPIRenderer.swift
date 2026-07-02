@@ -165,7 +165,12 @@ public enum ToolAPIRenderer {
             guard let propertyNode = parametersNode.properties?[key] else { continue }
             let isRequired = required.contains(key)
             let clause = paramClause(for: propertyNode, required: isRequired)
-            paramLines.append(clause.isEmpty ? "@param args.\(key)" : "@param args.\(key) — \(clause)")
+            // `key` lands directly in the JSDoc `@param args.<key>` line, so
+            // (like every other fragment of `paramLines`) it's escaped for
+            // comment safety — an embedded `*/` could otherwise terminate
+            // the block early.
+            let docKey = escapeForJSDocComment(key)
+            paramLines.append(clause.isEmpty ? "@param args.\(docKey)" : "@param args.\(docKey) — \(clause)")
             if isRequired {
                 var exampleContext = argsContext
                 let literal = try exampleLiteral(for: propertyNode, name: key, context: &exampleContext)
@@ -185,11 +190,26 @@ public enum ToolAPIRenderer {
             returnsType = typeString
             returnsDescription = "plain text result."
         }
-        let returnsLine = returnsDescription.map { "@returns \(returnsType) — \($0)" } ?? "@returns \(returnsType)"
+        // `returnsType` also backs the real `declare function` return type
+        // in `declaration` below, so it's escaped here into a doc-only
+        // copy rather than in place — a schema-derived enum choice
+        // embedded in it (via `tsType`'s `typeString` branch) must not be
+        // altered in the type this renderer actually declares. Only this
+        // copy, used in `returnsLine`, needs `*/`-safety, since only this
+        // copy lands inside the JSDoc block.
+        let docReturnsType = escapeForJSDocComment(returnsType)
+        let returnsLine = returnsDescription.map {
+            "@returns \(docReturnsType) — \(escapeForJSDocComment($0))"
+        } ?? "@returns \(docReturnsType)"
 
         let exampleArgsLiteral = exampleFields.isEmpty ? "{}" : "{ \(exampleFields.joined(separator: ", ")) }"
         let exampleCall = "tools.\(name)(\(exampleArgsLiteral))"
-        let exampleLine = "@example const r = \(exampleCall);"
+        // Same reasoning as `docReturnsType`: `exampleCall` also backs
+        // `ToolDescriptor.example` below (left raw and runnable, for
+        // direct copy-paste execution), so only this doc-line copy is
+        // escaped for `*/`-safety — `exampleCall` can embed a schema-derived
+        // enum choice or property name via `exampleLiteral`/`objectKeyLiteral`.
+        let exampleLine = "@example const r = \(escapeForJSDocComment(exampleCall));"
 
         var docLines = ["/**"]
         docLines.append(contentsOf: commentLines(for: description))
@@ -463,7 +483,12 @@ public enum ToolAPIRenderer {
     }
 
     /// Renders an `object` node's properties as an inline TS object type,
-    /// `{ a: T; b?: U }`, in declared order.
+    /// `{ a: T; b?: U }`, in declared order. Keys go through
+    /// `objectKeyLiteral`, same as the example-literal builders — this is
+    /// the *real* declared type (embedded in `declare function`'s
+    /// signature, not just a doc/example), so a schema-derived property
+    /// name containing a quote or other special character must not be
+    /// allowed to break out of the object-type syntax here either.
     private static func renderObjectType(
         _ node: SchemaNode,
         context: inout RenderContext,
@@ -478,7 +503,7 @@ public enum ToolAPIRenderer {
             guard let propertyNode = properties[key] else { continue }
             let propertyType = try tsType(for: propertyNode, context: &context, path: "\(path).\(key)", onWiden: onWiden)
             let optionalMark = required.contains(key) ? "" : "?"
-            parts.append("\(key)\(optionalMark): \(propertyType)")
+            parts.append("\(objectKeyLiteral(key))\(optionalMark): \(propertyType)")
         }
         return "{ \(parts.joined(separator: "; ")) }"
     }
@@ -515,7 +540,13 @@ public enum ToolAPIRenderer {
     private static func paramClause(for node: SchemaNode, required: Bool) -> String {
         var lead = escapeForJSDocComment(node.description ?? "")
         if let enumValues = node.enumValues, !enumValues.isEmpty {
-            let clause = "one of \(enumUnion(enumValues))."
+            // `enumUnion` (via `tsLiteral`) only escapes each choice for
+            // safe *JS string literal* syntax (`escapeForJSStringLiteral`);
+            // this clause lands inside the JSDoc block itself, so it
+            // additionally needs `escapeForJSDocComment` — an enum choice
+            // containing `*/` would otherwise still terminate the comment
+            // block early, even once the quote/backslash escaping is applied.
+            let clause = escapeForJSDocComment("one of \(enumUnion(enumValues)).")
             lead = lead.isEmpty ? clause : "\(lead); \(clause)"
         }
 
@@ -583,10 +614,16 @@ public enum ToolAPIRenderer {
     /// `"(pattern: /[A-Z]{3}/)"`. `nil` if no pattern is present. The
     /// pattern is passed through `escapeForRegexLiteralDoc` — an
     /// unescaped `/` embedded in the pattern would otherwise prematurely
-    /// close the doc text's `/…/` regex-literal form.
+    /// close the doc text's `/…/` regex-literal form — and the whole
+    /// clause through `escapeForJSDocComment`: a pattern ending in `*`
+    /// (an ordinary regex, e.g. `.*`) forms a literal `*/` right at the
+    /// join with this clause's own appended closing `/`, which
+    /// `escapeForRegexLiteralDoc` alone (it only escapes `/`) doesn't
+    /// catch, and which would otherwise terminate the enclosing JSDoc
+    /// block early exactly like every other unescaped splice site here.
     private static func patternClause(_ node: SchemaNode) -> String? {
         guard let pattern = node.pattern else { return nil }
-        return "(pattern: /\(escapeForRegexLiteralDoc(pattern))/)"
+        return escapeForJSDocComment("(pattern: /\(escapeForRegexLiteralDoc(pattern))/)")
     }
 
     /// Renders an array guide's `minItems`/`maxItems`/`count` as a
@@ -690,11 +727,15 @@ public enum ToolAPIRenderer {
         values.map(tsLiteral).joined(separator: " | ")
     }
 
-    /// Renders one JSON scalar as a TS literal.
+    /// Renders one JSON scalar as a TS literal. `.string` is escaped via
+    /// `escapeForJSStringLiteral`, same as every other schema-derived
+    /// string this renderer wraps in double quotes — an enum/default
+    /// choice containing an embedded quote would otherwise break the TS
+    /// string-literal syntax it's spliced into.
     private static func tsLiteral(_ value: InterpreterValue) -> String {
         switch value {
         case .string(let string):
-            return "\"\(string)\""
+            return "\"\(escapeForJSStringLiteral(string))\""
         case .number(let number):
             return formatNumber(number)
         case .bool(let bool):

@@ -26,7 +26,13 @@ public struct ToolDescriptor: Sendable, Equatable {
 
     /// The auto-generated, runnable example call this tool would be invoked
     /// with, e.g. `tools.weather({ city: "city" });` — the same text that
-    /// also appears inside `doc`'s `@example` line.
+    /// also appears inside `doc`'s `@example` line, with one deliberate
+    /// exception: if a schema-derived value spliced into the call (an enum
+    /// choice or property name) contains an embedded JSDoc comment
+    /// terminator (`*/`), the `@example` line's copy neutralizes it (so the
+    /// surrounding `/** … */` block can't be broken out of), while `example`
+    /// itself is left exactly as generated — this field is meant to be
+    /// copied and run verbatim, not read as comment prose.
     public let example: String
 
     /// The full renderable text block — `doc` followed by `declaration` —
