@@ -30,8 +30,8 @@ comments:
 depends_on:
 - 01KWFNTK6Y5PAQBFECXDHPST6P
 - 01KWFNVX4RFZZKEKY4C08F8V0Y
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: 8a80
 title: 'M6: FindAPITool + Librarian on the flash slot'
 ---
 ## What

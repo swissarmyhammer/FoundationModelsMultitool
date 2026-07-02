@@ -194,7 +194,7 @@ public struct MultiTool: Tool {
         self.registry = registry
         self.interpreter = interpreter
         self.limits = limits
-        self.hostFunctions = Self.makeHostFunctions(for: registry)
+        self.hostFunctions = Self.makeHostFunctions(for: registry) + Self.makeHelpDocsHostFunctions(for: registry)
         self.preamble = Self.makePreamble(for: registry)
     }
 
@@ -457,5 +457,136 @@ public struct MultiTool: Tool {
                     + "signal/write ordering invariant has been violated."
             )
         }
+    }
+
+    // MARK: - help()/docs() globals (plan.md M7)
+    //
+    // Two more `HostFunction`s, installed as flat globals alongside
+    // `tools.*` — the *only* other globals a snippet can reach (plan.md:
+    // "These are the only extra globals; the deny-by-default sandbox is
+    // otherwise unchanged."). Both read from the very same
+    // `registry.surface`/`Entry` data the librarian prefix and `findAPIs`
+    // are built from (M2.5/M6) — plan.md's "one generator, one source of
+    // truth, never drifting" — so `help()`/`docs()` can never describe a
+    // tool differently than discovery does.
+    //
+    // Neither return value is ever spliced into generated JS *source* the
+    // way `makePreamble`'s `tools.<path> = __toolN;` assignments are — a
+    // plain Swift `String`/`[String]` crosses back into the sandbox as an
+    // ordinary `InterpreterValue`, which `JSCInterpreter` round-trips
+    // through `JSON.parse`/`JSON.stringify` (see `Interpreter.swift`) as JS
+    // *data*, not source text. So unlike `ToolAPIRenderer`'s splice sites
+    // (which build literal `declare function …` source and must guard
+    // schema-derived text against breaking out of a comment or string
+    // literal), nothing here needs escaping: a schema-derived tool name
+    // containing a quote or newline just becomes a JS string value like any
+    // other, safe by construction.
+
+    /// Builds the `help()` and `docs(name)` host functions — the only
+    /// globals `MultiTool` installs beyond `tools.*` itself.
+    ///
+    /// - Parameter registry: the catalog whose `surface` backs both
+    ///   functions.
+    /// - Returns: two host functions, named `"help"` and `"docs"`.
+    private static func makeHelpDocsHostFunctions(for registry: Registry) -> [HostFunction] {
+        [
+            HostFunction(name: "help") { _ in
+                .array(registry.surface.entries.map { .string($0.path) })
+            },
+            HostFunction(name: "docs") { arguments in
+                .string(renderDocs(for: arguments.first, in: registry.surface))
+            },
+        ]
+    }
+
+    /// Renders `docs(name)`'s result: the exact `APISurface.Entry.block`
+    /// for the entry whose `path` matches `name` — plan.md: "reuse
+    /// `APISurface.Entry.block`... rather than re-rendering anything" — or,
+    /// when `name` doesn't match any entry (including when it isn't a
+    /// string at all), a helpful error naming the closest known names
+    /// instead of crashing.
+    ///
+    /// - Parameters:
+    ///   - argument: the JS call's first argument, already converted to
+    ///     `InterpreterValue` by `JSCInterpreter` — expected to be
+    ///     `.string(name)` for a well-formed `docs("name")` call.
+    ///   - surface: the catalog to look `name` up against.
+    /// - Returns: the matching entry's full rendered block, or an error
+    ///   message listing near-match suggestions.
+    private static func renderDocs(for argument: InterpreterValue?, in surface: APISurface) -> String {
+        guard case .string(let name) = argument else {
+            return "docs(name) requires a string tool name, e.g. docs(\"weather\")."
+        }
+        if let entry = surface.entries.first(where: { $0.path == name }) {
+            return entry.block
+        }
+
+        let knownPaths = surface.entries.map(\.path)
+        let suggestions = nearestMatches(to: name, among: knownPaths)
+        guard !suggestions.isEmpty else {
+            return "Unknown tool \"\(name)\". No tools are registered."
+        }
+        return "Unknown tool \"\(name)\". Did you mean: \(suggestions.joined(separator: ", "))?"
+    }
+
+    /// The closest known tool paths to `name`, ranked by Levenshtein edit
+    /// distance — a deliberately simple fuzzy match (plan.md M7: "a simple
+    /// approach... is fine — don't over-engineer a fuzzy-matching
+    /// library"), good enough to point a model at the right function after
+    /// a typo'd `docs()` call.
+    ///
+    /// - Parameters:
+    ///   - name: the (unknown) name `docs()` was called with.
+    ///   - candidates: every known tool path to compare against.
+    ///   - limit: the maximum number of suggestions to return. Defaults to
+    ///     `3`.
+    /// - Returns: up to `limit` candidates, nearest first; `sorted`'s
+    ///   guaranteed stability keeps ties in `candidates`' original
+    ///   (catalog) order.
+    private static func nearestMatches(to name: String, among candidates: [String], limit: Int = 3) -> [String] {
+        candidates
+            .map { ($0, levenshteinDistance($0, name)) }
+            .sorted { $0.1 < $1.1 }
+            .prefix(limit)
+            .map(\.0)
+    }
+
+    /// The Levenshtein (edit) distance between `lhs` and `rhs`: the minimum
+    /// number of single-character insertions, deletions, or substitutions
+    /// to turn one into the other. Used only to rank `docs(name)`'s
+    /// near-match suggestions — not exposed beyond `nearestMatches(to:among:limit:)`.
+    ///
+    /// A standard two-row dynamic-programming implementation, operating
+    /// over `Character`s (extended grapheme clusters) rather than raw
+    /// UTF-8/UTF-16 units, matching this package's established posture
+    /// toward user/schema-derived text (`ResultRendererLimits`'s own
+    /// documentation gives the same reasoning for its truncation caps).
+    ///
+    /// - Parameters:
+    ///   - lhs: the first string.
+    ///   - rhs: the second string.
+    /// - Returns: the edit distance between `lhs` and `rhs`.
+    private static func levenshteinDistance(_ lhs: String, _ rhs: String) -> Int {
+        let a = Array(lhs)
+        let b = Array(rhs)
+        if a.isEmpty { return b.count }
+        if b.isEmpty { return a.count }
+
+        var previousRow = Array(0...b.count)
+        var currentRow = [Int](repeating: 0, count: b.count + 1)
+
+        for i in 1...a.count {
+            currentRow[0] = i
+            for j in 1...b.count {
+                let substitutionCost = a[i - 1] == b[j - 1] ? 0 : 1
+                currentRow[j] = Swift.min(
+                    previousRow[j] + 1, // deletion
+                    currentRow[j - 1] + 1, // insertion
+                    previousRow[j - 1] + substitutionCost // substitution
+                )
+            }
+            previousRow = currentRow
+        }
+        return previousRow[b.count]
     }
 }
