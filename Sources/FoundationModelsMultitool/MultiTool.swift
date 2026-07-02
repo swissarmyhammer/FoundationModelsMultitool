@@ -145,6 +145,7 @@ public struct RunCodeArguments {
 public struct MultiTool: Tool {
     /// This tool's `Tool`-protocol name, always `"runCode"`.
     public let name = "runCode"
+    /// This tool's `Tool`-protocol description, presented to the model as usage instructions for `runCode`.
     public let description = """
         Run a JavaScript snippet against the available tools, exposed as functions under
         `tools.*`. Compose calls with normal code — variables, loops, map/filter — and
@@ -539,29 +540,49 @@ public struct MultiTool: Tool {
     /// - Parameters:
     ///   - name: the (unknown) name `docs()` was called with.
     ///   - candidates: every known tool path to compare against.
-    ///   - limit: the maximum number of suggestions to return. Defaults to
-    ///     `3`.
-    /// - Returns: up to `limit` candidates, nearest first; `sorted`'s
+    ///   - limitingTo: the maximum number of suggestions to return. Defaults
+    ///     to `3`.
+    /// - Returns: up to `limitingTo` candidates, nearest first; `sorted`'s
     ///   guaranteed stability keeps ties in `candidates`' original
     ///   (catalog) order.
-    private static func nearestMatches(to name: String, among candidates: [String], limit: Int = 3) -> [String] {
+    private static func nearestMatches(to name: String, among candidates: [String], limitingTo: Int = 3) -> [String] {
         candidates
             .map { ($0, levenshteinDistance($0, name)) }
             .sorted { $0.1 < $1.1 }
-            .prefix(limit)
+            .prefix(limitingTo)
             .map(\.0)
     }
 
     /// The Levenshtein (edit) distance between `lhs` and `rhs`: the minimum
     /// number of single-character insertions, deletions, or substitutions
     /// to turn one into the other. Used only to rank `docs(name)`'s
-    /// near-match suggestions — not exposed beyond `nearestMatches(to:among:limit:)`.
+    /// near-match suggestions — not exposed beyond
+    /// `nearestMatches(to:among:limitingTo:)`.
     ///
     /// A standard two-row dynamic-programming implementation, operating
     /// over `Character`s (extended grapheme clusters) rather than raw
     /// UTF-8/UTF-16 units, matching this package's established posture
     /// toward user/schema-derived text (`ResultRendererLimits`'s own
     /// documentation gives the same reasoning for its truncation caps).
+    ///
+    /// The textbook algorithm fills an `(a.count + 1) x (b.count + 1)`
+    /// matrix, where cell `[i][j]` holds the edit distance between `a`'s
+    /// first `i` characters and `b`'s first `j` characters. Row `0` and
+    /// column `0` are the base cases (turning a prefix into the empty
+    /// string costs one deletion/insertion per character), and every other
+    /// cell is the cheapest of three moves in from its already-computed
+    /// neighbors: deleting `a[i-1]` (from the cell above), inserting `b[j-1]`
+    /// (from the cell to the left), or substituting (from the cell
+    /// diagonally above-left, plus `0`/`1` depending on whether `a[i-1] ==
+    /// b[j-1]`). Since row `i` only ever reads from row `i-1` and itself,
+    /// the full matrix is never needed — this implementation keeps just two
+    /// rows, `previousRow` (row `i-1`, seeded with the base case
+    /// `0...b.count`) and `currentRow` (row `i`, being filled left to
+    /// right), and slides `currentRow` into `previousRow` at the end of
+    /// each outer iteration before starting the next row. That trades the
+    /// textbook's `O(a.count * b.count)` space for `O(b.count)`, at no cost
+    /// to the `O(a.count * b.count)` time — the only ingredient
+    /// `nearestMatches` actually needs is the final `previousRow[b.count]`.
     ///
     /// - Parameters:
     ///   - lhs: the first string.
