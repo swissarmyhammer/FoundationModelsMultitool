@@ -51,6 +51,11 @@ public enum ToolAPIRenderer {
     @usableFromInline
     static let logger = Logger(subsystem: "FoundationModelsMultitool", category: "ToolAPIRenderer")
 
+    /// The JSDoc continuation-line prefix (`" * "`) shared by every line of
+    /// the doc comment this renderer emits — the summary/description lines,
+    /// `@param`, `@returns`, and `@example`.
+    private static let docLinePrefix = " * "
+
     /// How a tool's `Output` should be rendered as its `@returns` type.
     public enum Returns: Sendable {
         /// `Output` (or its `PartiallyGenerated`/element type) is itself
@@ -132,7 +137,7 @@ public enum ToolAPIRenderer {
         onWiden: @escaping (String) -> Void = { logger.warning("\($0, privacy: .public)") }
     ) throws -> ToolDescriptor {
         let parametersNode = try decode(parameters, subject: "\"\(name)\"'s parameters")
-        guard parametersNode.type == "object" else {
+        guard parametersNode.type == typeObject else {
             throw ToolAPIRendererError(
                 "Tool \"\(name)\"'s parameters schema is not an object (found \(parametersNode.type ?? "<none>")); "
                     + "named arguments require an object schema."
@@ -167,7 +172,7 @@ public enum ToolAPIRenderer {
             returnsType = try tsType(for: node, context: &returnsContext, path: "returns", onWiden: onWiden)
             returnsDescription = node.description
         case .text:
-            returnsType = "string"
+            returnsType = typeString
             returnsDescription = "plain text result."
         }
         let returnsLine = returnsDescription.map { "@returns \(returnsType) — \($0)" } ?? "@returns \(returnsType)"
@@ -178,9 +183,9 @@ public enum ToolAPIRenderer {
 
         var docLines = ["/**"]
         docLines.append(contentsOf: commentLines(for: description))
-        docLines.append(contentsOf: paramLines.map { " * \($0)" })
-        docLines.append(" * \(returnsLine)")
-        docLines.append(" * \(exampleLine)")
+        docLines.append(contentsOf: paramLines.map { "\(docLinePrefix)\($0)" })
+        docLines.append("\(docLinePrefix)\(returnsLine)")
+        docLines.append("\(docLinePrefix)\(exampleLine)")
         docLines.append(" */")
         let doc = docLines.joined(separator: "\n")
 
@@ -282,6 +287,23 @@ public enum ToolAPIRenderer {
 
     // MARK: - Type rendering (the type-mapping table)
 
+    /// The TypeScript `any` type name, returned whenever a schema element
+    /// widens rather than mapping to a precise TS type — `tsType` returns it
+    /// from three distinct widening branches.
+    private static let anyTypeName = "any"
+
+    /// The JSON Schema `"type"` keyword's scalar values this renderer
+    /// recognizes, compared or switched on against `SchemaNode.type`
+    /// throughout `tsType` and its sibling doc/example-synthesis helpers
+    /// below. Named rather than inlined because each is referenced at three
+    /// or more call sites.
+    private static let typeObject = "object"
+    private static let typeString = "string"
+    private static let typeInteger = "integer"
+    private static let typeNumber = "number"
+    private static let typeBoolean = "boolean"
+    private static let typeArray = "array"
+
     /// Renders `node`'s TypeScript type, resolving `$ref`s and recursing
     /// into `object`/`array` structure. Widens anything this function
     /// doesn't have a specific mapping for to `any`, reporting through
@@ -306,7 +328,7 @@ public enum ToolAPIRenderer {
         if let ref = node.ref {
             guard !context.inProgressRefs.contains(ref) else {
                 onWiden("Cyclic $ref \"\(ref)\" at \(path); widening to `any`.")
-                return "any"
+                return anyTypeName
             }
             guard let resolved = context.resolve(ref) else {
                 throw ToolAPIRendererError("Unresolvable $ref \"\(ref)\" at \(path).")
@@ -319,24 +341,24 @@ public enum ToolAPIRenderer {
         guard let type = node.type else {
             if node.anyOf != nil {
                 onWiden("Unrenderable schema element (anyOf) at \(path); widening to `any`.")
-                return "any"
+                return anyTypeName
             }
             throw ToolAPIRendererError("Schema node at \(path) has no \"type\" and cannot be rendered.")
         }
 
         switch type {
-        case "object":
+        case typeObject:
             return try renderObjectType(node, context: &context, path: path, onWiden: onWiden)
-        case "string":
+        case typeString:
             if let enumValues = node.enumValues, !enumValues.isEmpty {
                 return enumUnion(enumValues)
             }
-            return "string"
-        case "integer", "number":
-            return "number"
-        case "boolean":
-            return "boolean"
-        case "array":
+            return typeString
+        case typeInteger, typeNumber:
+            return typeNumber
+        case typeBoolean:
+            return typeBoolean
+        case typeArray:
             guard let items = node.items else {
                 throw ToolAPIRendererError("Array schema at \(path) is missing \"items\".")
             }
@@ -344,7 +366,7 @@ public enum ToolAPIRenderer {
             return "\(elementType)[]"
         default:
             onWiden("Unrecognized schema type \"\(type)\" at \(path); widening to `any`.")
-            return "any"
+            return anyTypeName
         }
     }
 
@@ -371,12 +393,13 @@ public enum ToolAPIRenderer {
 
     // MARK: - Doc-comment rendering (the doc-mapping table)
 
-    /// Splits `text` into JSDoc comment lines, each prefixed `" * "`. Text is
-    /// author-supplied (`tool.description`) and rendered verbatim — the
-    /// renderer never fabricates or appends punctuation to it.
+    /// Splits `text` into JSDoc comment lines, each prefixed with
+    /// `docLinePrefix`. Text is author-supplied (`tool.description`) and
+    /// rendered verbatim — the renderer never fabricates or appends
+    /// punctuation to it.
     private static func commentLines(for text: String) -> [String] {
         guard !text.isEmpty else { return [] }
-        return text.split(separator: "\n", omittingEmptySubsequences: false).map { " * \($0)" }
+        return text.split(separator: "\n", omittingEmptySubsequences: false).map { "\(docLinePrefix)\($0)" }
     }
 
     /// Composes one property's `@param` clause — the text after
@@ -399,7 +422,7 @@ public enum ToolAPIRenderer {
         }
 
         var clauses: [String] = []
-        if node.type == "integer" { clauses.append("(integer)") }
+        if node.type == typeInteger { clauses.append("(integer)") }
         if let rangeClause = numericRangeClause(node) { clauses.append(rangeClause) }
         if let patternClause = patternClause(node) { clauses.append(patternClause) }
         if let countClause = countClause(node) { clauses.append(countClause) }
@@ -448,7 +471,7 @@ public enum ToolAPIRenderer {
     /// parenthetical, e.g. `"(range 1…10)"`, `"(minimum 1)"`, or
     /// `"(maximum 10)"`. `nil` if neither bound is present.
     private static func numericRangeClause(_ node: SchemaNode) -> String? {
-        guard node.type == "integer" || node.type == "number" else { return nil }
+        guard node.type == typeInteger || node.type == typeNumber else { return nil }
         return boundsClause(
             minimum: node.minimum,
             maximum: node.maximum,
@@ -469,7 +492,7 @@ public enum ToolAPIRenderer {
     /// parenthetical, e.g. `"(1…3 items)"`, `"(1+ items)"`, or `"(up to 3
     /// items)"`. `nil` if neither bound is present.
     private static func countClause(_ node: SchemaNode) -> String? {
-        guard node.type == "array" else { return nil }
+        guard node.type == typeArray else { return nil }
         return boundsClause(
             minimum: node.minItems,
             maximum: node.maxItems,
@@ -509,18 +532,18 @@ public enum ToolAPIRenderer {
             return tsLiteral(first)
         }
         switch node.type {
-        case "string":
+        case typeString:
             return "\"\(name)\""
-        case "integer", "number":
+        case typeInteger, typeNumber:
             return formatNumber(node.minimum ?? 0)
-        case "boolean":
+        case typeBoolean:
             return "true"
-        case "array":
+        case typeArray:
             guard let items = node.items else { return "[]" }
             guard (node.minItems ?? 0) >= 1 else { return "[]" }
             let element = try exampleLiteral(for: items, name: "item", context: &context)
             return "[\(element)]"
-        case "object":
+        case typeObject:
             return try exampleObjectLiteral(node, context: &context)
         default:
             // Unrenderable (e.g. `anyOf`) — already reported via `onWiden`
