@@ -1,17 +1,5 @@
 import FoundationModels
 
-/// Namespace for the MultiTool feature area — plan.md's central idea, "a
-/// single `Tool` — the **MultiTool** — that wraps other, in-process
-/// `Tool`s and exposes them to the model as a callable code API"
-/// (Component 1).
-///
-/// The `runCode` `Tool` conformance itself lands in a later milestone
-/// (M4a: "MultiTool runCode execution"); this bare namespace exists purely
-/// so `MultiTool.Builder` — the model-agnostic tool catalog this file
-/// builds (M2.5) — has the home plan.md's "Adding tools is the easy path"
-/// usage expects: `MultiTool.Builder().addTool(...).build()`.
-public enum MultiTool {}
-
 /// A failure raised by `MultiTool.Builder.build()`.
 ///
 /// Never raised by `addTool`/`addTools`/`addGroup`, which only ever record
@@ -182,7 +170,24 @@ extension MultiTool {
         }
 
         /// Renders every queued tool and assembles the result into an
-        /// `APISurface`, in the exact order tools were added.
+        /// `APISurface` — the rendered catalog alone, with no live tool
+        /// instances attached. Equivalent to `try buildRegistry().surface`;
+        /// kept as its own entry point for a caller that only wants the
+        /// model-agnostic catalog (the librarian prefix, `help()`/`docs()`,
+        /// or a host UI listing), not an executable `MultiTool`.
+        ///
+        /// - Returns: the rendered, model-agnostic catalog.
+        /// - Throws: see `buildRegistry()` — this delegates to it entirely.
+        public func build() throws -> APISurface {
+            try buildRegistry().surface
+        }
+
+        /// Renders every queued tool and assembles the result into a
+        /// `MultiTool.Registry` — plan.md's "registry," pairing the same
+        /// rendered `APISurface` `build()` returns with the live `any Tool`
+        /// instances a `MultiTool` (M4a) dispatches `tools.*` calls to. This
+        /// is the primary entry point; `build()` above is the thin,
+        /// surface-only convenience wrapper over it.
         ///
         /// Validates, per plan.md Resolved #5's namespacing rule: every
         /// standalone tool's name is unique among standalone tools; every
@@ -193,7 +198,9 @@ extension MultiTool {
         /// their fully-qualified paths (`tools.<groupA>.<name>` vs.
         /// `tools.<groupB>.<name>`) never collide.
         ///
-        /// - Returns: the rendered, model-agnostic catalog.
+        /// - Returns: the rendered catalog paired with its live tool
+        ///   instances, in `.directMode() == false` (both `runCode` and
+        ///   `findAPIs` surfaced).
         /// - Throws: `ToolAPIRendererError`, propagated unchanged (never
         ///   wrapped — the same posture `ToolInvoker` takes toward a
         ///   tool's own thrown error), if any queued tool can't be fully
@@ -202,8 +209,9 @@ extension MultiTool {
         ///   emit a lossy stub." `MultiToolBuilderError` if a group name
         ///   isn't a legal TypeScript identifier, or if two tools would
         ///   collide at the same top-level snippet call path.
-        public func build() throws -> APISurface {
+        public func buildRegistry() throws -> MultiTool.Registry {
             var entries: [APISurface.Entry] = []
+            var toolsByPath: [String: any Tool] = [:]
             var standaloneNames: Set<String> = []
             var groupNames: Set<String> = []
             var namesByGroup: [String: Set<String>] = [:]
@@ -223,6 +231,7 @@ extension MultiTool {
                         )
                     }
                     entries.append(APISurface.Entry(path: descriptor.name, group: nil, descriptor: descriptor))
+                    toolsByPath[descriptor.name] = tool
 
                 case .grouped(let group, let tool):
                     guard ToolAPIRenderer.isLegalTSIdentifier(group) else {
@@ -248,9 +257,9 @@ extension MultiTool {
                     }
                     namesByGroup[group] = namesInGroup
                     groupNames.insert(group)
-                    entries.append(
-                        APISurface.Entry(path: "\(group).\(descriptor.name)", group: group, descriptor: descriptor)
-                    )
+                    let path = "\(group).\(descriptor.name)"
+                    entries.append(APISurface.Entry(path: path, group: group, descriptor: descriptor))
+                    toolsByPath[path] = tool
                 }
             }
 
@@ -264,7 +273,7 @@ extension MultiTool {
                 )
             }
 
-            return APISurface(entries: entries)
+            return MultiTool.Registry(surface: APISurface(entries: entries), tools: toolsByPath)
         }
     }
 }

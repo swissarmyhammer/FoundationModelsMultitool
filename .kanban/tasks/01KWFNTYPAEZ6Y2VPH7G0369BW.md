@@ -22,8 +22,8 @@ comments:
   timestamp: 2026-07-02T14:29:58.194616+00:00
 depends_on:
 - 01KWFNS1CDSSQ3NJXAPV1PX1XJ
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: '8780'
 title: 'M5: ResultRenderer — caps, truncation, repairable errors'
 ---
 ## What
