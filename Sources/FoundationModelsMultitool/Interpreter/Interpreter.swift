@@ -8,15 +8,23 @@ import Foundation
 /// specific JS engine's native value representation (`JSValue` and friends
 /// stay private to `JSCInterpreter`).
 public indirect enum InterpreterValue: Sendable, Equatable {
+    /// The JSON `null` value.
     case null
+    /// A JSON boolean.
     case bool(Bool)
+    /// A JSON number.
     case number(Double)
+    /// A JSON string.
     case string(String)
+    /// A JSON array of values.
     case array([InterpreterValue])
+    /// A JSON object mapping string keys to values.
     case object([String: InterpreterValue])
 }
 
 extension InterpreterValue: Codable {
+    /// Creates an `InterpreterValue` by decoding the given decoder's JSON
+    /// value, trying null, bool, number, string, array, and object in turn.
     public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         if container.decodeNil() {
@@ -39,6 +47,8 @@ extension InterpreterValue: Codable {
         }
     }
 
+    /// Encodes this value to the given encoder as the corresponding JSON
+    /// value, degrading non-finite `.number` values to `null`.
     public func encode(to encoder: Encoder) throws {
         var container = encoder.singleValueContainer()
         switch self {
@@ -84,9 +94,7 @@ public struct HostFunction: Sendable {
     /// snippet's call expression evaluates to.
     public let call: @Sendable ([InterpreterValue]) throws -> InterpreterValue
 
-    /// - Parameters:
-    ///   - name: the global identifier the snippet calls this function by.
-    ///   - call: the native implementation.
+    /// Creates a host function with the given name and implementation.
     ///
     /// Explicit (rather than relying on the compiler-synthesized memberwise
     /// initializer) because a `public` struct's synthesized initializer is
@@ -94,6 +102,10 @@ public struct HostFunction: Sendable {
     /// `FoundationModelsMultitool` could construct a `HostFunction`, even
     /// though this type is a required parameter of the public
     /// `Interpreter.run(code:installing:)` API.
+    ///
+    /// - Parameters:
+    ///   - name: the global identifier the snippet calls this function by.
+    ///   - call: the native implementation.
     public init(name: String, call: @escaping @Sendable ([InterpreterValue]) throws -> InterpreterValue) {
         self.name = name
         self.call = call
@@ -109,14 +121,17 @@ public struct InterpreterResult: Sendable, Equatable {
     /// Every `console.log` line, in call order.
     public let consoleLines: [String]
 
-    /// - Parameters:
-    ///   - returnValue: the snippet's `return` value, JSON-shaped.
-    ///   - consoleLines: every `console.log` line, in call order.
+    /// Creates an interpreter result with the given return value and console
+    /// lines.
     ///
     /// Explicit for the same reason as `HostFunction.init`: a `public`
     /// struct's synthesized memberwise initializer is only
     /// `internal`-accessible, and any external `Interpreter` conformer needs
     /// to construct an `InterpreterResult` to return from `run`.
+    ///
+    /// - Parameters:
+    ///   - returnValue: the snippet's `return` value, JSON-shaped.
+    ///   - consoleLines: every `console.log` line, in call order.
     public init(returnValue: InterpreterValue, consoleLines: [String]) {
         self.returnValue = returnValue
         self.consoleLines = consoleLines
@@ -145,6 +160,8 @@ public struct InterpreterError: Error, Sendable, Equatable, CustomStringConverti
     /// engine can report one.
     public let line: Int?
 
+    /// Creates an error describing a failure from `Interpreter.run`.
+    ///
     /// - Parameters:
     ///   - kind: whether this is a thrown/syntax exception or a watchdog
     ///     timeout.
@@ -160,6 +177,8 @@ public struct InterpreterError: Error, Sendable, Equatable, CustomStringConverti
         self.line = line
     }
 
+    /// A human-readable description of the error, including the source line
+    /// when one is available.
     public var description: String {
         guard let line else { return message }
         return "\(message) (line \(line))"

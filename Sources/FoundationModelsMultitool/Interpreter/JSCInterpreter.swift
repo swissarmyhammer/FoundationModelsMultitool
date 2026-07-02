@@ -94,6 +94,9 @@ public final class JSCInterpreter: Interpreter {
     /// Dedicated worker the actual JS evaluation runs on (see the type doc).
     private let queue: DispatchQueue
 
+    /// Creates a JavaScriptCore-backed interpreter that enforces the given
+    /// per-run time limit.
+    ///
     /// - Parameter timeLimit: seconds a single `run` may execute before the
     ///   watchdog terminates it. Defaults to a generous ceiling suitable for
     ///   real tool-composing snippets.
@@ -102,6 +105,8 @@ public final class JSCInterpreter: Interpreter {
         self.queue = DispatchQueue(label: "FoundationModelsMultitool.JSCInterpreter")
     }
 
+    /// Runs `code` on the dedicated worker queue in a fresh sandbox. See
+    /// ``Interpreter/run(code:installing:)`` for the full contract.
     public func run(code: String, installing: [HostFunction]) throws -> InterpreterResult {
         try queue.sync {
             try Self.evaluate(code: code, installing: installing, timeLimit: timeLimit)
@@ -164,6 +169,9 @@ public final class JSCInterpreter: Interpreter {
         )
     }
 
+    /// Builds a sandbox, evaluates `code` in it as an IIFE, and maps the
+    /// outcome (return value, console lines, exception, or watchdog timeout)
+    /// to an `InterpreterResult` or thrown `InterpreterError`.
     private static func evaluate(
         code: String,
         installing: [HostFunction],
@@ -212,6 +220,8 @@ public final class JSCInterpreter: Interpreter {
         func append(_ line: String) { lines.append(line) }
     }
 
+    /// Injects a `console` global whose `log` appends a joined,
+    /// space-separated line to `lines`.
     private static func installConsole(into context: JSContext, capturing lines: ConsoleLines) {
         let console = JSValue(newObjectIn: context)
         let log: @convention(block) () -> Void = {
@@ -225,6 +235,9 @@ public final class JSCInterpreter: Interpreter {
         context.setObject(console, forKeyedSubscript: "console" as NSString)
     }
 
+    /// Installs `hostFunction` as a global callable in `context`, converting
+    /// arguments/results through `InterpreterValue` and surfacing a Swift
+    /// throw as a JS exception.
     private static func install(_ hostFunction: HostFunction, into context: JSContext) {
         let body: @convention(block) () -> JSValue? = {
             guard let currentContext = JSContext.current() else { return nil }
@@ -294,6 +307,8 @@ public final class JSCInterpreter: Interpreter {
 
     // MARK: - Error mapping
 
+    /// Maps a captured JS exception to an `InterpreterError`, extracting a
+    /// `message` and, when present, a `line`.
     private static func makeError(from exception: JSValue) -> InterpreterError {
         let message: String
         if exception.isObject, let messageValue = exception.objectForKeyedSubscript("message"), !messageValue.isUndefined {
