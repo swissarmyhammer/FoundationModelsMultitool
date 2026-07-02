@@ -128,6 +128,16 @@ public struct TolerantParseTurnFormat: TurnFormat {
         static let final = "final"
     }
 
+    /// The action names as displayed to the model — in `formatInstructions(supportsFindAPIs:)`'s
+    /// example lines and in `parseTurn(_:)`'s error messages — properly cased, unlike
+    /// `ActionVerb`'s lowercased matching constants. One named constant per action so the
+    /// spelling can't drift between the format instructions and the error messages.
+    private enum ActionName {
+        static let findAPIs = "findAPIs"
+        static let runCode = "runCode"
+        static let final = "final"
+    }
+
     /// How many consecutive parse failures this format tolerates before
     /// `MultiToolAgent.respond(to:)` fails the loop — see
     /// `TurnFormat.maxRepairTurns`. Set at `init`, clamped to `0` or above.
@@ -159,21 +169,21 @@ public struct TolerantParseTurnFormat: TurnFormat {
         if supportsFindAPIs {
             lines.append(contentsOf: [
                 "To search for relevant tool functions:",
-                "\(FieldMarker.action) findAPIs",
+                "\(FieldMarker.action) \(ActionName.findAPIs)",
                 "\(FieldMarker.task) <what you are trying to accomplish, in plain language>",
                 "",
             ])
         }
         lines.append(contentsOf: [
             "To run a JavaScript snippet against tools.*:",
-            "\(FieldMarker.action) runCode",
+            "\(FieldMarker.action) \(ActionName.runCode)",
             FieldMarker.code,
             "\(FieldMarker.codeFence)js",
             "<your code here>",
             FieldMarker.codeFence,
             "",
             "To give your final answer:",
-            "\(FieldMarker.action) final",
+            "\(FieldMarker.action) \(ActionName.final)",
             "\(FieldMarker.answer) <the final answer text>",
         ])
         return lines.joined(separator: "\n")
@@ -197,8 +207,8 @@ public struct TolerantParseTurnFormat: TurnFormat {
         let lines = raw.components(separatedBy: "\n")
         guard let action = Self.firstField(marker: FieldMarker.action, in: lines) else {
             throw TurnParseError(
-                message: "No \"\(FieldMarker.action)\" line found. Expected \"\(FieldMarker.action) findAPIs\", "
-                    + "\"\(FieldMarker.action) runCode\", or \"\(FieldMarker.action) final\"."
+                message: "No \"\(FieldMarker.action)\" line found. Expected \"\(FieldMarker.action) \(ActionName.findAPIs)\", "
+                    + "\"\(FieldMarker.action) \(ActionName.runCode)\", or \"\(FieldMarker.action) \(ActionName.final)\"."
             )
         }
 
@@ -208,7 +218,7 @@ public struct TolerantParseTurnFormat: TurnFormat {
                 !task.value.isEmpty
             else {
                 throw TurnParseError(
-                    message: "\(FieldMarker.action) findAPIs requires a non-empty \"\(FieldMarker.task)\" line."
+                    message: "\(FieldMarker.action) \(ActionName.findAPIs) requires a non-empty \"\(FieldMarker.task)\" line."
                 )
             }
             return .findAPIs(task: task.value)
@@ -218,7 +228,7 @@ public struct TolerantParseTurnFormat: TurnFormat {
                 !code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             else {
                 throw TurnParseError(
-                    message: "\(FieldMarker.action) runCode requires a \"\(FieldMarker.code)\" section "
+                    message: "\(FieldMarker.action) \(ActionName.runCode) requires a \"\(FieldMarker.code)\" section "
                         + "containing the snippet."
                 )
             }
@@ -230,7 +240,7 @@ public struct TolerantParseTurnFormat: TurnFormat {
                 !answer.isEmpty
             else {
                 throw TurnParseError(
-                    message: "\(FieldMarker.action) final requires a non-empty \"\(FieldMarker.answer)\" field."
+                    message: "\(FieldMarker.action) \(ActionName.final) requires a non-empty \"\(FieldMarker.answer)\" field."
                 )
             }
             return .final(text: answer)
@@ -238,7 +248,7 @@ public struct TolerantParseTurnFormat: TurnFormat {
         default:
             throw TurnParseError(
                 message: "Unrecognized \(FieldMarker.action) \"\(action.value)\". "
-                    + "Expected findAPIs, runCode, or final."
+                    + "Expected \(ActionName.findAPIs), \(ActionName.runCode), or \(ActionName.final)."
             )
         }
     }

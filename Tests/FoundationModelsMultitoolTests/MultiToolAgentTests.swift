@@ -25,7 +25,7 @@ struct MultiToolAgentTests {
             "declare function cities(): { cities: string[] };"
         ])
         let agent = MultiToolAgent(
-            registry,
+            registry: registry,
             session: mainSession,
             librarianSession: librarianSession,
             instructions: "You are a travel assistant."
@@ -54,7 +54,7 @@ struct MultiToolAgentTests {
             "ACTION: final\nANSWER: Recovered.",
         ])
         let agent = MultiToolAgent(
-            registry,
+            registry: registry,
             session: mainSession,
             instructions: "You are a travel assistant."
         )
@@ -75,7 +75,7 @@ struct MultiToolAgentTests {
             "ACTION: final\nANSWER: too late",
         ])
         let agent = MultiToolAgent(
-            registry,
+            registry: registry,
             session: mainSession,
             instructions: "You are a travel assistant."
         )
@@ -97,7 +97,7 @@ struct MultiToolAgentTests {
             "ACTION: final\nANSWER: done",
         ])
         let agent = MultiToolAgent(
-            registry,
+            registry: registry,
             session: mainSession,
             instructions: "You are a travel assistant."
         )
@@ -113,7 +113,7 @@ struct MultiToolAgentTests {
         let registry = try MultiTool.Builder().addTool(CitiesTool()).buildRegistry()
         let mainSession = ScriptedAgentSession(["not a valid action"])
         let agent = MultiToolAgent(
-            registry,
+            registry: registry,
             session: mainSession,
             instructions: "You are a travel assistant.",
             turnFormat: .tolerantParse(maxRepairTurns: 0)
@@ -135,7 +135,7 @@ struct MultiToolAgentTests {
             "ACTION: final\nANSWER: 11 degrees.",
         ])
         let agent = MultiToolAgent(
-            registry,
+            registry: registry,
             session: mainSession,
             instructions: "You are a travel assistant."
         )
@@ -159,7 +159,7 @@ struct MultiToolAgentTests {
         let neverEndingResponse = "ACTION: runCode\nCODE:\n```js\nreturn 1;\n```"
         let mainSession = ScriptedAgentSession(Array(repeating: neverEndingResponse, count: 10))
         let agent = MultiToolAgent(
-            registry,
+            registry: registry,
             session: mainSession,
             instructions: "You are a travel assistant.",
             maxTurns: 3
@@ -183,7 +183,7 @@ struct MultiToolAgentTests {
             "ACTION: final\nANSWER: done without findAPIs",
         ])
         let agent = MultiToolAgent(
-            registry,
+            registry: registry,
             session: mainSession,
             instructions: "You are a travel assistant."
         )
@@ -203,7 +203,7 @@ struct MultiToolAgentTests {
             "ACTION: final\nANSWER: done without a librarian",
         ])
         let agent = MultiToolAgent(
-            registry,
+            registry: registry,
             session: mainSession,
             instructions: "You are a travel assistant."
         )
@@ -222,7 +222,7 @@ struct MultiToolAgentTests {
         let registry = try MultiTool.Builder().addTool(CitiesTool()).buildRegistry()
         let mainSession = ScriptedAgentSession(["anything at all is treated as final"])
         let agent = MultiToolAgent(
-            registry,
+            registry: registry,
             session: mainSession,
             instructions: "You are a travel assistant.",
             turnFormat: AlwaysFinalTurnFormat()

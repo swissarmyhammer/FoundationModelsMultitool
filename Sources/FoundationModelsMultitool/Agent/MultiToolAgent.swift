@@ -100,7 +100,7 @@ public struct MultiToolAgent: Sendable {
     ///
     /// ```swift
     /// let agent = MultiToolAgent(
-    ///     registry,
+    ///     registry: registry,
     ///     model:     profile.standard,
     ///     librarian: profile.flash,
     ///     instructions: "You are a travel assistant. Use runCode to get things done."
@@ -126,7 +126,7 @@ public struct MultiToolAgent: Sendable {
     ///   - maxTurns: the bounded turn count `respond(to:)` never exceeds.
     ///     Defaults to `8`.
     public init(
-        _ registry: MultiTool.Registry,
+        registry: MultiTool.Registry,
         model: RoutedLLM,
         librarian: RoutedLLM? = nil,
         instructions: String,
@@ -149,7 +149,7 @@ public struct MultiToolAgent: Sendable {
                 nil
             }
         self.init(
-            registry,
+            registry: registry,
             turnFormat: turnFormat,
             maxTurns: maxTurns,
             makeSession: { RoutedAgentSession(session: model.makeSession(instructions: sessionInstructions)) },
@@ -177,7 +177,7 @@ public struct MultiToolAgent: Sendable {
     ///   - maxTurns: the bounded turn count `respond(to:)` never exceeds.
     ///     Defaults to `8`.
     init(
-        _ registry: MultiTool.Registry,
+        registry: MultiTool.Registry,
         session: any AgentSession,
         librarianSession: (any AgentSession)? = nil,
         instructions: String,
@@ -191,7 +191,7 @@ public struct MultiToolAgent: Sendable {
                 nil
             }
         self.init(
-            registry,
+            registry: registry,
             turnFormat: turnFormat,
             maxTurns: maxTurns,
             makeSession: { session },
@@ -203,7 +203,7 @@ public struct MultiToolAgent: Sendable {
     /// delegate to, differing only in how `makeSession`/`makeLibrarianSession`
     /// are produced (a real `RoutedLLM` vs. a fixed test double).
     private init(
-        _ registry: MultiTool.Registry,
+        registry: MultiTool.Registry,
         turnFormat: any TurnFormat,
         maxTurns: Int,
         makeSession: @escaping @Sendable () -> any AgentSession,

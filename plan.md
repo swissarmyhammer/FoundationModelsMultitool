@@ -259,7 +259,7 @@ let router  = Router()                                          // FoundationMod
 let profile = try await router.resolve(travelProfile, reporting: progress)   // ProfileDefinition → LanguageModelProfile
 
 let agent = MultiToolAgent(
-    registry,
+    registry:  registry,
     model:     profile.standard,   // the runCode/findAPIs agent loop runs on the standard slot
     librarian: profile.flash,      // the librarian runs on the same profile's cheaper/faster flash slot
     instructions: "You are a travel assistant. Use runCode to get things done."
@@ -361,7 +361,7 @@ driven by `MultiToolAgent`, which surfaces exactly two operations — `runCode` 
 let router  = Router()
 let profile = try await router.resolve(travelProfile, reporting: progress)   // FoundationModelsRouter
 let agent   = MultiToolAgent(
-    registry,
+    registry:  registry,
     model:     profile.standard,
     librarian: profile.flash,
     instructions: "You are a travel assistant. Use runCode to get things done."
@@ -392,7 +392,7 @@ and let the snippet introspect:
 
 ```swift
 let agent = MultiToolAgent(
-    registry.directMode(),                // only runCode; help()/docs() inside the snippet
+    registry: registry.directMode(),      // only runCode; help()/docs() inside the snippet
     model: profile.standard,
     instructions: "Tools are documented via help(). Use runCode."
 )

@@ -43,6 +43,19 @@ comments:
 
     Ready for /review. Leaving in doing per implement workflow (not moving to review myself).
   timestamp: 2026-07-02T16:51:03.866056+00:00
+- actor: wballard
+  id: 01kwhwstz70h41tx4d9682ysvm
+  text: |-
+    All six review findings addressed and checked off.
+
+    1-3. `MultiToolAgent.swift`'s three initializers (public, test-facing internal, private designated) all had `_ registry: MultiTool.Registry` — relabeled to `registry: MultiTool.Registry` in all three. Updated the two internal `self.init(registry:...)` delegation call sites, the doc-comment usage sample, and all 10 call sites in `MultiToolAgentTests.swift` to pass `registry: registry`. Also updated plan.md's three `MultiToolAgent(...)` usage samples (lines ~261, ~363, ~394) to show the labeled form, since they had been the earlier informal self-review's justification for declining this exact finding — leaving them stale would have reproduced the same confusion for the next reader. No genuine contradiction found: the label change is source-compatible with every real call site once updated, and nothing else in the tree depends on the unlabeled form (confirmed via grep across Sources/ and Tests/ — no additional non-test, non-doc call sites existed).
+
+    4-6. `TurnFormat.swift` — added a new `private enum ActionName` (properly-cased `findAPIs`/`runCode`/`final`) alongside the existing `ActionVerb` enum (lowercased, used for case-insensitive `switch` matching). Replaced every raw literal occurrence of the three action names in `formatInstructions(supportsFindAPIs:)`'s example lines and in `parseTurn(_:)`'s three error-message call sites (the "no ACTION: line found" message, findAPIs/runCode/final's own per-action guard messages, and the "Unrecognized ACTION" fallback message) with `ActionName.findAPIs`/`ActionName.runCode`/`ActionName.final` references. Verified via grep that no hardcoded `findAPIs`/`runCode`/`final` prompt-text literals remain in the file's executable code (doc comments and the two enum bodies themselves are the only remaining occurrences, as expected).
+
+    Verification: `swift build` clean (no warnings in package code), `swift test` 131/131 passing — confirmed via fresh run, not cached.
+
+    Task left in `doing` per /implement process; ready for /review.
+  timestamp: 2026-07-02T17:07:40.135807+00:00
 depends_on:
 - 01KWFNVC3SA55SBZMCCWW6994C
 position_column: doing
@@ -58,16 +71,25 @@ Per plan.md "Router integration / The agent loop is ours to build" + M4: the too
 - Feed ResultRenderer's repairable errors back as the next turn (M5 repair loop mechanics).
 
 ## Acceptance Criteria
-- [ ] With a scripted fake session emitting findAPIs → runCode → final, the agent dispatches each correctly and returns the final text
-- [ ] A malformed turn triggers the configured number of repair turns (default 1) before failing the loop
-- [ ] A runCode error result is fed back and a corrected second snippet succeeds (scripted)
-- [ ] The loop terminates at max-turns with a typed error, never spins
-- [ ] directMode: findAPIs from the model is rejected with an instructive message
-- [ ] The turn-strategy seam compiles with a second strategy slot (M4c plugs in without touching loop semantics)
+- [x] With a scripted fake session emitting findAPIs → runCode → final, the agent dispatches each correctly and returns the final text
+- [x] A malformed turn triggers the configured number of repair turns (default 1) before failing the loop
+- [x] A runCode error result is fed back and a corrected second snippet succeeds (scripted)
+- [x] The loop terminates at max-turns with a typed error, never spins
+- [x] directMode: findAPIs from the model is rejected with an instructive message
+- [x] The turn-strategy seam compiles with a second strategy slot (M4c plugs in without touching loop semantics)
 
 ## Tests
-- [ ] `Tests/FoundationModelsMultitoolTests/MultiToolAgentTests.swift` — scripted-fake-session scenarios above under `.tolerantParse`
-- [ ] `swift test --filter MultiToolAgentTests` → passes
+- [x] `Tests/FoundationModelsMultitoolTests/MultiToolAgentTests.swift` — scripted-fake-session scenarios above under `.tolerantParse`
+- [x] `swift test --filter MultiToolAgentTests` → passes
 
 ## Workflow
 - Use `/tdd` — write failing tests first, then implement to make them pass.
+
+## Review Findings (2026-07-02 11:55)
+
+- [x] `Sources/FoundationModelsMultitool/Agent/MultiToolAgent.swift:78` — First parameter of initializer lacks a label (`_ registry:` instead of `registry:`). The fluent-usage rule states: 'Omit the first argument label only for value-preserving conversions.' This initializer constructs a MultiToolAgent from multiple parameters; it is not a type conversion. The label should be present, and the documentation already refers to it as 'registry', creating inconsistency. Change `_ registry:` to `registry:` so the first parameter is labeled at the call site: `MultiToolAgent(registry: myRegistry, ...)`.
+- [x] `Sources/FoundationModelsMultitool/Agent/MultiToolAgent.swift:114` — First parameter of initializer lacks a label (`_ registry:` instead of `registry:`). This is the test-facing internal init, but the same rule applies: it is not a value-preserving conversion, and the documentation refers to the parameter as 'registry'. Change `_ registry:` to `registry:` so the first parameter is labeled at the call site.
+- [x] `Sources/FoundationModelsMultitool/Agent/MultiToolAgent.swift:143` — First parameter of initializer lacks a label (`_ registry:` instead of `registry:`). This is the private designated initializer, but the fluent-usage rule still applies: omit labels only for value-preserving conversions, not general constructors. Change `_ registry:` to `registry:` for consistency with the rule and the documentation pattern established in the public initializer.
+- [x] `Sources/FoundationModelsMultitool/Agent/TurnFormat.swift:201` — Repeated literal 'findAPIs' (4 times) should be a named constant to prevent drift when action names change. Extract as ActionName.findAPIs in an enum alongside ActionVerb, then reference throughout.
+- [x] `Sources/FoundationModelsMultitool/Agent/TurnFormat.swift:208` — Repeated literal 'runCode' (4 times) should be a named constant to prevent drift when action names change. Extract as ActionName.runCode in an enum alongside ActionVerb, then reference throughout.
+- [x] `Sources/FoundationModelsMultitool/Agent/TurnFormat.swift:215` — Repeated literal 'final' (3 times) should be a named constant to prevent drift when action names change. Extract as ActionName.final in an enum alongside ActionVerb, then reference throughout.
