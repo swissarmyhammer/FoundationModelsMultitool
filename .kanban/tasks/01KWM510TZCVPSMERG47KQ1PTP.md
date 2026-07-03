@@ -50,6 +50,18 @@ comments:
 
     Full suite re-confirmed green: swift build exit 0; swift test --filter FoundationModelsMultitoolTests -> 247/247 passed. Review-findings checklist item marked [x]. Leaving task in doing for /review.
   timestamp: 2026-07-03T22:04:32.081799+00:00
+- actor: wballard
+  id: 01kwn0qre5xa05s2mm7rjtnkca
+  text: |-
+    Bookkeeping-only pass: verified the underlying work (already landed in prior comments) genuinely satisfies this task's own stated Acceptance Criteria and Tests items, then checked those boxes — they had been left unchecked even though the work was done, which was blocking review from advancing the task.
+
+    Verification performed fresh in this pass:
+    1. Read `RepairedWithinNEvaluator.metrics(subject:input:)` in `Sources/FoundationModelsMultitool/Agent/AgentEvaluators.swift` — passing-branch rationale reads `"used \(attempts) of \(bound) allowed runCode attempt(s)."`, which does not claim `.final` was reached. Confirms AC option (a) (reword, not add a hard `.final`-reached requirement).
+    2. Read `Tests/FoundationModelsMultitoolTests/EvaluatorGateTests.swift` — `repairedWithinNPassesWithoutReachingFinal()` uses a synthetic `[.findAPIs, .runCode]` steps array (no `.final`), `maxRunCodeStepsBeforeFinal: 1` (at the bound), asserts `.passing` and that `rationale` does not contain "final" (using the corrected `?? false` fallback from the Review Findings fix). This is exactly the fixture/case the Tests item calls for.
+    3. Ran `swift test --filter EvaluatorGateTests` fresh: exit 0, 10/10 tests passed, including `repairedWithinNPassesWithoutReachingFinal`.
+
+    All three checked out with no further code changes needed. Checked `## Acceptance Criteria` (both items) and `## Tests` (one item) to `[x]`; left `## Review Findings` as-is (already `[x]`). Leaving task in `doing` for `/review` per the implement skill's process.
+  timestamp: 2026-07-03T22:14:09.605490+00:00
 position_column: doing
 position_ordinal: '80'
 title: 'AgentEvaluators.swift: RepairedWithinNEvaluator passing rationale text overclaims .final was reached'
@@ -68,11 +80,11 @@ This rationale text asserts `.final` was reached even when it wasn't (e.g. a run
 Not fixed as part of the doc-comment task (M6.5b review round 3) because it's a behavior-adjacent code/string change, out of that task's scope.
 
 ## Acceptance Criteria
-- [ ] Decide and resolve: either (a) reword the passing rationale to not claim `.final` was reached (e.g. "used N of M allowed runCode attempt(s) before reaching .final or exhausting steps."), or (b) if the intended contract is that `.final` truly must be reached, add that check to the evaluator (`subject.steps.contains(where: \.isFinal)` or similar) so a run that never reaches `.final` cannot pass.
-- [ ] Add/extend an `EvaluatorGateTests` case covering a fixture transcript with `.runCode` steps but no `.final` step, at or under the bound — pin down which behavior is intended.
+- [x] Decide and resolve: either (a) reword the passing rationale to not claim `.final` was reached (e.g. "used N of M allowed runCode attempt(s) before reaching .final or exhausting steps."), or (b) if the intended contract is that `.final` truly must be reached, add that check to the evaluator (`subject.steps.contains(where: \.isFinal)` or similar) so a run that never reaches `.final` cannot pass.
+- [x] Add/extend an `EvaluatorGateTests` case covering a fixture transcript with `.runCode` steps but no `.final` step, at or under the bound — pin down which behavior is intended.
 
 ## Tests
-- [ ] `swift test --filter EvaluatorGateTests` passes with the new case
+- [x] `swift test --filter EvaluatorGateTests` passes with the new case
 
 ## Review Findings (2026-07-03 16:55)
 
