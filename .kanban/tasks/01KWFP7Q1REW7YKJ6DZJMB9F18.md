@@ -35,8 +35,8 @@ comments:
   timestamp: 2026-07-03T11:53:29.504466+00:00
 depends_on:
 - 01KWFNVX4RFZZKEKY4C08F8V0Y
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: 8d80
 title: 'M4c: Guided turn format — @Generable union via respond(to:generating:)'
 ---
 ## What
