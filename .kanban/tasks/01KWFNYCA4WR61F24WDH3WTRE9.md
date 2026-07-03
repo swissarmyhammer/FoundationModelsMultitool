@@ -33,6 +33,23 @@ comments:
 
     Task is done and green. Leaving in `doing` for `/review` per the implement skill's process — not moving to review myself.
   timestamp: 2026-07-03T15:03:46.940030+00:00
+- actor: wballard
+  id: 01kwm980847qvcggvr0ws4n15v
+  text: |-
+    Addressed the 3 review findings via /implement:
+
+    1 & 3. Extracted the duplicated "multitool-cli:" error-message prefix into a single named constant. Went with a top-level file-private `private let cliErrorPrefix = "multitool-cli:"` (declared right after the imports in CLIRunner.swift) rather than a `static` member of the `CLIRunner` enum as the finding's literal example suggested — two of the three usage sites (`CLIArgumentError.description` and `CLIRouterUnavailableError.description`) are separate top-level structs in the same file, not members/extensions of `CLIRunner`, so a `private static let` nested in `CLIRunner` would not have been visible to them (Swift's `private` scopes to the enclosing declaration). A top-level `private let` is file-scoped (SE-0169), so it's visible to all three sites while staying just as narrowly scoped as the finding intended. All three sites (CLIArgumentError.description, CLIRouterUnavailableError.description, CLIRunner.run's catch-all) now interpolate `\(cliErrorPrefix)`.
+
+    2. Added `- Returns: the resolved language model profile.` and `- Throws: any error the resolution process encounters.` to the `ProfileResolver` typealias doc comment, after its existing `- Parameters:` block — matching the exact wording the finding suggested and the file's own established Returns/Throws phrasing style (see `parse(_:)`, `run(...)`).
+
+    Full pass over CLIRunner.swift, main.swift, and DemoTools.swift for the same issue class (repeated 3+ literals, missing blank `///` separators, missing Parameters/Returns/Throws) found nothing else to fix: no other literal repeats 3+ times; every existing multi-paragraph doc comment already has a blank `///` separator between summary and elaboration; and DemoTools.swift's two `Tool.call(arguments:)` implementations are `async throws` but never actually throw in their bodies — confirmed via a targeted sub-agent survey of all ~24 `call` implementations in the repo that this codebase's established convention is to omit `- Throws:` entirely for such protocol-conformance-only throws (never stubbed as "never throws"), consistent with the one genuinely-throwing example in `Sources/FoundationModelsMultitool/MultiTool.swift` which documents `- Throws:` explicitly. Left those two doc comments unchanged.
+
+    Verification (all fresh this session): `swift build` clean (exit 0); `swift build --build-tests` clean, no new warnings; `swift test` green — 232/232 main-suite tests pass, gated integration suite (including CLISmokeTests) skips cleanly without MULTITOOL_INTEGRATION; `swift run multitool-cli --help` exits 0 with correct usage text; `swift test --filter CLIArgumentTests` — 10/10 pass, including both injected-failing-resolver error-message tests (confirms the errorPrefix refactor didn't change observable output). Grepped Tests/ for the old literal — no test asserted on it, so nothing there needed updating.
+
+    Adversarial double-check dispatched separately: verdict PASS — confirmed no missed literal sites, confirmed the file-scope `private let` scoping choice is correct/idiomatic Swift for cross-type reuse in one file, confirmed the Returns/Throws wording matches sibling doc-comment style, and confirmed no other doc-comment/literal-duplication gaps in the 3 files.
+
+    All three review-findings checklist items marked [x]. Leaving in `doing` for `/review` per the implement skill's process — not moving to review myself.
+  timestamp: 2026-07-03T15:23:36.068424+00:00
 depends_on:
 - 01KWFNVX4RFZZKEKY4C08F8V0Y
 - 01KWFNWJECBNSZCANVMNTR3Z8J
@@ -42,25 +59,4 @@ position_column: doing
 position_ordinal: '80'
 title: 'M9: Sample CLI executable'
 ---
-## What
-Per plan.md M9: a runnable demonstration of the whole pipeline.
-- Add executable target `multitool-cli` to `Package.swift`; `Sources/multitool-cli/main.swift` with the run flow factored into a testable `CLIRunner` entry function.
-- Flow: author a small `ProfileDefinition` → `Router().resolve(_:reporting:)` with console progress → build a registry of 2–3 demo tools (e.g. `tripCities`, `weather` fixtures) → `MultiToolAgent` → one prompt that triggers findAPIs then a composing runCode → print the answer plus a readable trace of the loop turns.
-- `--direct` flag exercises directMode; `--help` documents usage; degrade gracefully (clear message + nonzero exit) when the Router live path is unavailable.
-- The live demo is verified by an automated gated smoke test in the integration target (no human eyeballing): it invokes the `CLIRunner` entry function under the env var and asserts the emitted trace lines (findAPIs before runCode, final answer non-empty).
-
-## Acceptance Criteria
-- [x] `swift build` builds the executable in normal CI
-- [x] `swift run multitool-cli --help` exits 0 with usage text (no model required)
-- [x] Argument parsing (flags, error on unknown flag) is unit-tested without a model
-- [x] Router-unavailable path exits nonzero with the documented message — unit-tested via an injected failing resolver
-- [x] *(gated — verifiable when Router live inference lands)* `CLISmokeTests` asserts the demo produces a findAPIs→runCode trace and a non-empty answer; closing this task requires the ungated criteria only (structurally complete, compiles, and skips cleanly without `MULTITOOL_INTEGRATION` — not run live in this sandbox per scoping)
-
-## Tests
-- [x] `Tests/FoundationModelsMultitoolTests/CLIArgumentTests.swift` — parse `--direct`, `--help`, unknown-flag error, failing-resolver path
-- [x] `Tests/FoundationModelsMultitoolIntegrationTests/CLISmokeTests.swift` — gated: run `CLIRunner` end to end, assert trace lines
-- [x] CI step: `swift run multitool-cli --help` → exit 0
-- [x] `swift test --filter CLIArgumentTests` → passes
-
-## Workflow
-- Use `/tdd` — write failing tests first, then implement to make them pass.
+## What\nPer plan.md M9: a runnable demonstration of the whole pipeline.\n- Add executable target `multitool-cli` to `Package.swift`; `Sources/multitool-cli/main.swift` with the run flow factored into a testable `CLIRunner` entry function.\n- Flow: author a small `ProfileDefinition` → `Router().resolve(_:reporting:)` with console progress → build a registry of 2–3 demo tools (e.g. `tripCities`, `weather` fixtures) → `MultiToolAgent` → one prompt that triggers findAPIs then a composing runCode → print the answer plus a readable trace of the loop turns.\n- `--direct` flag exercises directMode; `--help` documents usage; degrade gracefully (clear message + nonzero exit) when the Router live path is unavailable.\n- The live demo is verified by an automated gated smoke test in the integration target (no human eyeballing): it invokes the `CLIRunner` entry function under the env var and asserts the emitted trace lines (findAPIs before runCode, final answer non-empty).\n\n## Acceptance Criteria\n- [x] `swift build` builds the executable in normal CI\n- [x] `swift run multitool-cli --help` exits 0 with usage text (no model required)\n- [x] Argument parsing (flags, error on unknown flag) is unit-tested without a model\n- [x] Router-unavailable path exits nonzero with the documented message — unit-tested via an injected failing resolver\n- [x] *(gated — verifiable when Router live inference lands)* `CLISmokeTests` asserts the demo produces a findAPIs→runCode trace and a non-empty answer; closing this task requires the ungated criteria only (structurally complete, compiles, and skips cleanly without `MULTITOOL_INTEGRATION` — not run live in this sandbox per scoping)\n\n## Tests\n- [x] `Tests/FoundationModelsMultitoolTests/CLIArgumentTests.swift` — parse `--direct`, `--help`, unknown-flag error, failing-resolver path\n- [x] `Tests/FoundationModelsMultitoolIntegrationTests/CLISmokeTests.swift` — gated: run `CLIRunner` end to end, assert trace lines\n- [x] CI step: `swift run multitool-cli --help` → exit 0\n- [x] `swift test --filter CLIArgumentTests` → passes\n\n## Workflow\n- Use `/tdd` — write failing tests first, then implement to make them pass.\n\n## Review Findings (2026-07-03 10:09)\n\n- [x] `Sources/multitool-cli/CLIRunner.swift:43` — The error message prefix 'multitool-cli:' appears 3 times (lines 43, 132, 238) as a hardcoded literal and should be extracted as a named constant to centralize maintenance and ensure consistency. Extract as: private static let errorPrefix = \"multitool-cli:\" and use in error messages as \"\\(errorPrefix) unknown argument...\" and \"\\(errorPrefix) \\(error)\".\n- [x] `Sources/multitool-cli/CLIRunner.swift:92` — The `ProfileResolver` typealias has an `async throws -> LanguageModelProfile` signature but its doc comment documents only parameters, omitting the documented return value and throws clause as required by the rule. Add `- Returns: the resolved language model profile.` and `- Throws: any error the resolution process encounters.` after the parameters documentation in the doc comment.\n- [x] `Sources/multitool-cli/CLIRunner.swift:238` — The error message prefix 'multitool-cli:' appears 3 times (lines 43, 132, 238) as a hardcoded literal; see line 43 for full recommendation. Extract as a constant (see line 43 finding for details).\n

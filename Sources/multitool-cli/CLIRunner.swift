@@ -7,6 +7,13 @@ import MLXHuggingFace
 import MLXLMCommon
 import Tokenizers
 
+/// Shared prefix for every user-facing error message this executable
+/// prints, so error output is consistently attributable to
+/// `multitool-cli` — reused by `CLIArgumentError.description`,
+/// `CLIRouterUnavailableError.description`, and `CLIRunner.run(...)`'s
+/// catch-all branch.
+private let cliErrorPrefix = "multitool-cli:"
+
 // MARK: - Argument parsing
 
 /// The command-line flags `CLIRunner.parse(_:)` recognizes.
@@ -28,7 +35,7 @@ struct CLIArgumentError: Error, Equatable, CustomStringConvertible {
     /// A human-readable description of the error, satisfying
     /// `CustomStringConvertible`.
     var description: String {
-        "multitool-cli: unknown argument \"\(flag)\". Run with --help for usage."
+        "\(cliErrorPrefix) unknown argument \"\(flag)\". Run with --help for usage."
     }
 }
 
@@ -48,7 +55,7 @@ struct CLIRouterUnavailableError: Error, CustomStringConvertible {
     /// surfaces the same way).
     var description: String {
         """
-        multitool-cli: could not resolve a model via the Router: \(underlying)
+        \(cliErrorPrefix) could not resolve a model via the Router: \(underlying)
         The Router's live inference path is not available in this environment.
         """
     }
@@ -124,6 +131,8 @@ enum CLIRunner {
     ///   - router: the router to resolve against.
     ///   - definition: the profile to resolve.
     ///   - progress: the UI/console-bindable progress to report through.
+    /// - Returns: the resolved language model profile.
+    /// - Throws: any error the resolution process encounters.
     typealias ProfileResolver = @Sendable (
         _ router: Router,
         _ definition: ProfileDefinition,
@@ -203,7 +212,7 @@ enum CLIRunner {
             output(error.description)
             return ExitCode.unavailable
         } catch {
-            output("multitool-cli: \(error)")
+            output("\(cliErrorPrefix) \(error)")
             return ExitCode.unavailable
         }
     }
