@@ -1,4 +1,14 @@
 ---
+comments:
+- actor: wballard
+  id: 01kwm5kkf19yysf60e5h2s6zby
+  text: |-
+    Partial overlap with parent task `tyejmc8` (M6.5b), not full redundancy.
+
+    The official /review gate for `tyejmc8` confirmed this exact rationale-string overclaim as an in-scope finding directly on that task's own diff (round 4, 2026-07-03 09:13), so it was fixed there rather than deferred again: `RepairedWithinNEvaluator.metrics(subject:input:)`'s passing rationale in `Sources/FoundationModelsMultitool/Agent/AgentEvaluators.swift` now reads `"used \(attempts) of \(bound) allowed runCode attempt(s)."` — dropping the "reached final" claim, per this task's AC1 option (a) (reword rather than add a hard `.final`-reached requirement to the evaluator).
+
+    That resolves AC1 here. **AC2 is still open**: an `EvaluatorGateTests` case covering a fixture transcript with `.runCode` steps but no `.final` step, at or under the bound, to pin down/lock in the chosen behavior (that such a run legitimately passes without claiming `.final` was reached) does not exist yet — I checked `Tests/FoundationModelsMultitoolTests/EvaluatorGateTests.swift` and found no such fixture/case. This task should stay open for that remaining test coverage; not closing it myself, leaving that call to the board owner.
+  timestamp: 2026-07-03T14:20:01.889537+00:00
 position_column: todo
 position_ordinal: '9280'
 title: 'AgentEvaluators.swift: RepairedWithinNEvaluator passing rationale text overclaims .final was reached'

@@ -231,7 +231,7 @@ public struct RepairedWithinNEvaluator: EvaluatorProtocol, Sendable {
         let bound = subject.expectation.maxRunCodeStepsBeforeFinal
         return [
             attempts <= bound
-                ? metric.passing(rationale: "reached final within \(attempts) of \(bound) allowed runCode attempt(s).")
+                ? metric.passing(rationale: "used \(attempts) of \(bound) allowed runCode attempt(s).")
                 : metric.failing(rationale: "took \(attempts) runCode attempt(s), exceeding the bound of \(bound).")
         ]
     }
