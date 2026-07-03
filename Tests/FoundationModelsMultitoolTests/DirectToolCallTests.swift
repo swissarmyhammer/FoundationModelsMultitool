@@ -63,6 +63,15 @@ final class ScriptedDirectCallSession: DirectCallSession, Sendable {
     /// Every JSON Schema string this session was constrained to, in call order.
     var receivedSchemas: [String] { stateBox.withLock { $0.receivedSchemas } }
 
+    /// Returns this session's next scripted response, in order, regardless
+    /// of `prompt`/`jsonSchema` — recording both for later assertions.
+    ///
+    /// - Parameters:
+    ///   - prompt: the prompt to record.
+    ///   - jsonSchema: the JSON Schema string to record.
+    /// - Returns: the next canned response from `responses`.
+    /// - Throws: `ScriptedDirectCallSessionError` if every scripted response
+    ///   has already been returned.
     func respond(to prompt: String, matching jsonSchema: String) async throws -> JSONValue {
         let index = stateBox.withLock { state -> Int in
             state.receivedPrompts.append(prompt)
@@ -135,6 +144,11 @@ struct DirectToolCallTests {
     /// (module-internal to `FoundationModelsRouter`) xgrammar-subset
     /// validation that `GuidedTurnFormatTests` uses for `AgentTurn`'s
     /// derived schema.
+    ///
+    /// - Parameters:
+    ///   - keywords: the set of keywords to find.
+    ///   - node: the JSON node to search.
+    ///   - found: the set accumulating found keywords.
     private static func collectKeys(_ keywords: Set<String>, in node: Any, into found: inout Set<String>) {
         if let array = node as? [Any] {
             for element in array { collectKeys(keywords, in: element, into: &found) }

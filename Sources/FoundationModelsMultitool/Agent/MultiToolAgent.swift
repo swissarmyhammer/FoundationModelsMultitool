@@ -68,6 +68,13 @@ public struct MultiToolAgent: Sendable {
     /// Where this agent logs its M10 diagnostics — repair turns.
     private static let logger = Logger(subsystem: "FoundationModelsMultitool", category: "MultiToolAgent")
 
+    /// The blank-line separator joining transcript entries — each turn's raw
+    /// response, repair instruction, and step result — into the running
+    /// transcript `respond(to:)` resends as the next turn's prompt, and
+    /// joining `sessionInstructions`'s sections. A single named constant so
+    /// every call site agrees on the separator's format.
+    private static let transcriptSeparator = "\n\n"
+
     /// The catalog + live tool instances this agent's `runCode` dispatches
     /// into, and whose `isDirectMode`/`supportsFindAPIs` govern which
     /// actions this agent's instructions offer the model.
@@ -343,7 +350,7 @@ public struct MultiToolAgent: Sendable {
         for turnNumber in 1...maxTurns {
             try Task.checkCancellation()
             let raw = try await session.respond(to: transcript)
-            transcript += "\n\n\(raw)"
+            transcript += "\(Self.transcriptSeparator)\(raw)"
 
             let step: AgentStep
             do {
@@ -356,7 +363,7 @@ public struct MultiToolAgent: Sendable {
                 guard repairsUsed <= turnFormat.maxRepairTurns else {
                     throw MultiToolAgentError.unparseableTurn(turn: turnNumber, reason: String(describing: error))
                 }
-                transcript += "\n\n\(turnFormat.repairInstruction(for: error))"
+                transcript += "\(Self.transcriptSeparator)\(turnFormat.repairInstruction(for: error))"
                 continue
             }
 
@@ -372,15 +379,15 @@ public struct MultiToolAgent: Sendable {
 
             case .runCode(let code):
                 let result = try await multiTool.call(arguments: RunCodeArguments(code: code))
-                transcript += "\n\nrunCode result:\n\(result)"
+                transcript += "\(Self.transcriptSeparator)runCode result:\n\(result)"
 
             case .findAPIs(let task):
                 let feedback = try await dispatchFindAPIs(task: task, librarianSession: &librarianSession)
-                transcript += "\n\n\(feedback)"
+                transcript += "\(Self.transcriptSeparator)\(feedback)"
 
             case .callTool(let name, let task):
                 let feedback = try await dispatchCallTool(name: name, task: task)
-                transcript += "\n\n\(feedback)"
+                transcript += "\(Self.transcriptSeparator)\(feedback)"
             }
         }
 
@@ -485,7 +492,7 @@ public struct MultiToolAgent: Sendable {
         } catch let cancellation as CancellationError {
             throw cancellation
         } catch {
-            return "callTool(\"\(name)\") failed: \(error)\n\nFix the request and call callTool again."
+            return "callTool(\"\(name)\") failed: \(error)\(Self.transcriptSeparator)Fix the request and call callTool again."
         }
     }
 
@@ -626,7 +633,7 @@ public struct MultiToolAgent: Sendable {
                 supportsDirectCall: !directTools.isEmpty
             )
         )
-        return sections.joined(separator: "\n\n")
+        return sections.joined(separator: Self.transcriptSeparator)
     }
 
     /// Assembles the librarian's instructions — plan.md § "The librarian's

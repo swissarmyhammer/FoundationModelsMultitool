@@ -46,3 +46,59 @@ Per plan.md "Escape hatch — keep the schema-valid-args guarantee" + Resolved #
 
 ## Workflow
 - Use `/tdd` — write failing tests first, then implement to make them pass.
+
+## Review Findings (2026-07-03 11:10)
+
+- [x] `Sources/FoundationModelsMultitool/Agent/AgentTurn.swift:53` — Enum case `findAPIs` violates casing rule: acronyms should be down-cased when they lead a lowerCamelCase name (enum cases are lowerCamelCase). Should be `findApis`. Rename `case findAPIs` to `case findApis`. This will require cascading updates to all references to this case throughout the codebase.
+
+  **INVESTIGATED, NOT APPLIED — false positive.** Per `builtin/validators/swift/rules/casing.md` (swissarmyhammer repo): "Down-case it when it leads a `lowerCamelCase` name; up-case it when interior or leading an `UpperCamelCase` name... DO: `utf8Bytes`, `parseURL`, `deviceID`, `userID`... DON'T: `parseUrl`, `deviceId`, `userId`." In `findAPIs`, the acronym "APIs" is the *second* word — interior to the lowerCamelCase name, exactly like "URL" in `parseURL` or "ID" in `deviceID` — not leading it ("find" leads). Per the rule's own DO list, an interior acronym in a lowerCamelCase name stays uppercase; renaming to `findApis` would produce the DON'T pattern (`parseUrl`). Confirmed `findAPIs` is the established, pre-existing spelling: `grep -r findAPIs Sources/` hits 14 files across the codebase (`MultiToolAgent.swift`, `TranscriptAnalyzer.swift`, `TurnFormat.swift`, `Librarian.swift`, `FoundAPIs.swift`, `FindAPITool.swift`, `AgentSession.swift`, `MultiTool.swift`, `MultiToolBuilder.swift`, `ToolDescriptor.swift`, `AgentEvaluators.swift`, `CLIRunner.swift`, `main.swift`, plus this file), predating this task (M4b). `grep -r findApis` (down-cased) across the entire repo returns zero hits in source — only in this review-finding text. No rename applied.
+- [x] `Sources/FoundationModelsMultitool/Agent/MultiToolAgent.swift:219` — The literal "\n\n" appears 5 times in the respond(to:) method as a transcript separator between entries. This repeated literal exceeds the rule of three and should be extracted to a named constant so changes to the separator format only need to be made in one place. Extract to a private constant at the top of the respond(to:) method: `private let transcriptSeparator = "\n\n"`, then use `transcript += "\(transcriptSeparator)\(...)"` in all five locations.
+
+  **FIXED.** Added `private static let transcriptSeparator = "\n\n"` near the top of `MultiToolAgent` (alongside `logger`) and replaced all 7 occurrences (5 in `respond(to:)`, 1 in `sessionInstructions`, 1 in `dispatchCallTool`'s error message) with `Self.transcriptSeparator`.
+- [x] `Sources/FoundationModelsMultitool/Agent/MultiToolAgent.swift:297` — The "\n\n" separator literal appears a 7th time in the dispatchCallTool error message (in addition to the 6 occurrences already reported in respond(to:) and sessionInstructions), for a total of 7 occurrences in the file. All should be extracted to a single named constant. Include this occurrence in the extraction: use transcriptSeparator constant in the error message `return "callTool(\"\(name)\") failed: \(error)\(transcriptSeparator)Fix the request and call callTool again."`.
+
+  **FIXED.** Covered by the same `transcriptSeparator` extraction above — all 7 occurrences now use `Self.transcriptSeparator`.
+- [x] `Sources/FoundationModelsMultitool/Agent/MultiToolAgent.swift:312` — sessionInstructions parameter `supportsFindAPIs` violates casing rule: acronyms should be down-cased when leading lowerCamelCase. Should be `supportsFindApis`. Rename parameter from `supportsFindAPIs` to `supportsFindApis`.
+
+  **INVESTIGATED, NOT APPLIED — false positive**, same reasoning as the `AgentTurn.swift:53` finding above: "APIs" is interior to `supportsFindAPIs` (the leading word is "supports"), so it correctly stays uppercase per the casing rule's own DO list. `supportsFindAPIs` is also the established pre-existing spelling (present before this task). No rename applied.
+- [x] `Sources/FoundationModelsMultitool/Agent/TranscriptAnalyzer.swift:39` — Function name `findAPIsPrecedesRunCode` violates casing rule: the acronym APIs should be down-cased when it leads a lowerCamelCase name. Should be `findApisPrecedesRunCode`. Rename `findAPIsPrecedesRunCode` to `findApisPrecedesRunCode`.
+
+  **INVESTIGATED, NOT APPLIED — false positive**, same reasoning: "APIs" is interior (the name leads with "find"), so it correctly stays uppercase. Pre-existing spelling, unchanged by this task. No rename applied.
+- [x] `Sources/FoundationModelsMultitool/Agent/TranscriptAnalyzer.swift:184` — Function name `foundAPIs` violates casing rule: the acronym APIs should be down-cased when it leads a lowerCamelCase name. Should be `foundApis`. Rename `foundAPIs` to `foundApis`.
+
+  **INVESTIGATED, NOT APPLIED — false positive**, same reasoning: "APIs" is interior to `foundAPIs` (leads with "found"), so it correctly stays uppercase. Pre-existing spelling. No rename applied.
+- [x] `Sources/FoundationModelsMultitool/Agent/TranscriptAnalyzer.swift:221` — Property name `isFindAPIs` violates casing rule: acronym APIs should be down-cased when leading lowerCamelCase. Should be `isFindApis`. Rename property from `isFindAPIs` to `isFindApis`.
+
+  **INVESTIGATED, NOT APPLIED — false positive**, same reasoning: "APIs" is interior to `isFindAPIs` (leads with "isFind"), so it correctly stays uppercase. Pre-existing spelling. No rename applied.
+- [x] `Sources/FoundationModelsMultitool/Agent/TurnFormat.swift:105` — Static let constant `findAPIs` in ActionVerb enum violates casing rule: acronyms should be down-cased in lowerCamelCase contexts. Should be `findApis`. Rename `static let findAPIs = "findapis"` to `static let findApis = "findapis"`. Update all references to `ActionVerb.findAPIs`.
+
+  **INVESTIGATED, NOT APPLIED — false positive**, same reasoning: "APIs" is interior to `findAPIs` (leads with "find"), so it correctly stays uppercase. Pre-existing spelling. No rename applied.
+- [x] `Sources/FoundationModelsMultitool/Agent/TurnFormat.swift:176` — TolerantParseTurnFormat.formatInstructions parameter `supportsFindAPIs` violates casing rule: acronyms should be down-cased when leading lowerCamelCase. Should be `supportsFindApis`. Rename parameter from `supportsFindAPIs` to `supportsFindApis` (must match protocol definition at line 57).
+
+  **INVESTIGATED, NOT APPLIED — false positive**, same reasoning: "APIs" is interior to `supportsFindAPIs` (leads with "supports"), so it correctly stays uppercase. Pre-existing spelling, matches the protocol definition it must agree with. No rename applied.
+- [x] `Sources/FoundationModelsMultitool/Surface/ToolAPIRenderer.swift:266` — Function with two parameters must use a `- Parameters:` block. The doc comment explains the behavior but omits the required structured parameter documentation. Add a `- Parameters:` block: `/// - Parameters:\n    ///   - schema: the schema to encode and decode.\n    ///   - subject: a label for error messages.`.
+
+  **FIXED.** Added `- Parameters:` block to `decode(_:subject:)` documenting `schema` and `subject`.
+- [x] `Sources/FoundationModelsMultitool/Surface/ToolAPIRenderer.swift:407` — Function with four parameters must use a `- Parameters:` block. The doc comment explains the behavior but omits the required structured parameter documentation. Add a `- Parameters:` block documenting all four parameters with their roles.
+
+  **FIXED.** Added `- Parameters:`/`- Returns:` block to `tsType(for:context:path:onWiden:)` documenting all four parameters.
+- [x] `Sources/FoundationModelsMultitool/Surface/ToolAPIRenderer.swift:479` — Function with four parameters must use a `- Parameters:` block. The doc comment explains the behavior but omits the required structured parameter documentation. Add a `- Parameters:` block documenting all four parameters.
+
+  **FIXED.** Added `- Parameters:`/`- Returns:` block to `renderObjectType(_:context:path:onWiden:)` documenting all four parameters.
+- [x] `Sources/FoundationModelsMultitool/Surface/ToolAPIRenderer.swift:564` — Function with three parameters must use a `- Parameters:` block. The doc comment explains the behavior but omits the required structured parameter documentation. Add a `- Parameters:` block documenting all three parameters: `node`, `name`, and `context`.
+
+  **FIXED.** Added `- Parameters:`/`- Returns:` block to `exampleLiteral(for:name:context:)` documenting `node`, `name`, and `context`.
+- [x] `Sources/FoundationModelsMultitool/Surface/ToolAPIRenderer.swift:589` — Function with two parameters must use a `- Parameters:` block. The doc comment explains the behavior but omits the required structured parameter documentation. Add a `- Parameters:` block: `/// - Parameters:\n    ///   - node: the object schema to render.\n    ///   - context: the rendering context for $ref resolution.`.
+
+  **FIXED.** Added `- Parameters:` block to `exampleObjectLiteral(_:context:)` documenting `node` and `context`.
+- [x] `Sources/FoundationModelsMultitool/Surface/ToolAPIRenderer.swift:615` — Function with two parameters must use a `- Parameters:` block. The doc comment explains the behavior but omits the required structured parameter documentation. Add a `- Parameters:` block: `/// - Parameters:\n    ///   - node: the property schema node.\n    ///   - required: whether the property is required.`.
+
+  **FIXED.** Added `- Parameters:` block to `paramClause(for:required:)` documenting `node` and `required`.
+- [x] `Tests/FoundationModelsMultitoolTests/DirectToolCallTests.swift:65` — Public protocol implementation `respond(to:matching:)` lacks documentation; test fixture authors need to understand the method's contract. Add doc comment explaining the method's behavior (e.g., returns scripted responses in order).
+
+  **FIXED.** Added a doc comment to `ScriptedDirectCallSession.respond(to:matching:)` explaining it returns scripted responses in order while recording prompt/schema, with `- Parameters:`/`- Returns:`/`- Throws:`.
+- [x] `Tests/FoundationModelsMultitoolTests/DirectToolCallTests.swift:127` — Function with three parameters must use a `- Parameters:` block. The doc comment explains the function but omits the required structured parameter documentation. Add a `- Parameters:` block: `/// - Parameters:\n    ///   - keywords: the set of keywords to find.\n    ///   - node: the JSON node to search.\n    ///   - found: the set accumulating found keywords.`.
+
+  **FIXED.** Added `- Parameters:` block to `collectKeys(_:in:into:)` documenting `keywords`, `node`, and `found`.
+
+Note: one engine finding (`Tests/FoundationModelsMultitoolTests/Fixtures/MultiToolAgentFixtures.swift:75` — doc-comment restyling to a `- Parameters:` block) was dropped per the review skill's blanket exception: it targets a pre-existing test fixture function, and this commit only touched its doc-comment text (to mention a new parameter) without restructuring — asking for a restyle here is refactoring existing test code, which is out of scope.

@@ -302,6 +302,10 @@ public enum ToolAPIRenderer {
 
     /// Encodes `schema` with `JSONEncoder` and decodes the result into a
     /// `SchemaNode` tree.
+    ///
+    /// - Parameters:
+    ///   - schema: the schema to encode and decode.
+    ///   - subject: a label for error messages.
     private static func decode(_ schema: GenerationSchema, subject: String) throws -> SchemaNode {
         let data: Data
         do {
@@ -464,6 +468,15 @@ public enum ToolAPIRenderer {
     /// .unidentifiableSchemaNodeCannotEvenBeConstructed`), so no real
     /// `GenerationSchema` value can reach this branch. It stays as a second,
     /// independent line of defense rather than dead weight to remove.
+    ///
+    /// - Parameters:
+    ///   - node: the schema node whose TypeScript type to render.
+    ///   - context: the rendering context for `$ref` resolution and cycle
+    ///     detection.
+    ///   - path: the node's location within the schema, for error and
+    ///     `onWiden` messages.
+    ///   - onWiden: called when this node's type widens to `any`.
+    /// - Returns: the rendered TypeScript type.
     private static func tsType(
         for node: SchemaNode,
         context: inout RenderContext,
@@ -522,6 +535,14 @@ public enum ToolAPIRenderer {
     /// signature, not just a doc/example), so a schema-derived property
     /// name containing a quote or other special character must not be
     /// allowed to break out of the object-type syntax here either.
+    ///
+    /// - Parameters:
+    ///   - node: the object schema node to render.
+    ///   - context: the rendering context for `$ref` resolution.
+    ///   - path: the node's location within the schema, for error and
+    ///     `onWiden` messages.
+    ///   - onWiden: called when a property's type widens to `any`.
+    /// - Returns: the rendered inline TS object type.
     private static func renderObjectType(
         _ node: SchemaNode,
         context: inout RenderContext,
@@ -570,6 +591,10 @@ public enum ToolAPIRenderer {
     /// through `escapeForJSDocComment`, same as the tool-level description
     /// in `commentLines`, since this clause lands inside the same `/** …
     /// */` block via an `@param` line.
+    ///
+    /// - Parameters:
+    ///   - node: the property schema node.
+    ///   - required: whether the property is required.
     private static func paramClause(for node: SchemaNode, required: Bool) -> String {
         var lead = escapeForJSDocComment(node.description ?? "")
         if let enumValues = node.enumValues, !enumValues.isEmpty {
@@ -688,6 +713,13 @@ public enum ToolAPIRenderer {
     /// real value), a range's `minimum` (else `0`) for numbers, `true` for
     /// booleans, and a single recursively-synthesized element for a
     /// non-empty-required array.
+    ///
+    /// - Parameters:
+    ///   - node: the schema node whose example literal to synthesize.
+    ///   - name: the property's name, used for a self-documenting `string`
+    ///     placeholder and in error messages.
+    ///   - context: the rendering context for `$ref` resolution.
+    /// - Returns: the synthesized JS literal source text.
     private static func exampleLiteral(
         for node: SchemaNode,
         name: String,
@@ -728,6 +760,10 @@ public enum ToolAPIRenderer {
     /// properties, recursively synthesizing each field's example literal.
     /// Keys go through `objectKeyLiteral`, same as the top-level
     /// `exampleFields` in `render(name:description:parameters:returns:onWiden:)`.
+    ///
+    /// - Parameters:
+    ///   - node: the object schema to render.
+    ///   - context: the rendering context for `$ref` resolution.
     private static func exampleObjectLiteral(_ node: SchemaNode, context: inout RenderContext) throws -> String {
         let properties = node.properties ?? [:]
         guard !properties.isEmpty else { return "{}" }
