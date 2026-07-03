@@ -48,7 +48,7 @@ comments:
   timestamp: 2026-07-03T21:30:48.703526+00:00
 depends_on:
 - 01KWFNWJECBNSZCANVMNTR3Z8J
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: '9280'
 title: Wire Librarian/FindAPITool into MultiToolAgent's findAPIs dispatch
 ---

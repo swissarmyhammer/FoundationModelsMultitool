@@ -9,8 +9,28 @@ comments:
 
     That resolves AC1 here. **AC2 is still open**: an `EvaluatorGateTests` case covering a fixture transcript with `.runCode` steps but no `.final` step, at or under the bound, to pin down/lock in the chosen behavior (that such a run legitimately passes without claiming `.final` was reached) does not exist yet — I checked `Tests/FoundationModelsMultitoolTests/EvaluatorGateTests.swift` and found no such fixture/case. This task should stay open for that remaining test coverage; not closing it myself, leaving that call to the board owner.
   timestamp: 2026-07-03T14:20:01.889537+00:00
-position_column: todo
-position_ordinal: '9280'
+- actor: wballard
+  id: 01kwmz620gegjxq8zaz6vwb7vc
+  text: |-
+    AC2 implemented via TDD. Added `repairedWithinNPassesWithoutReachingFinal()` to `EvaluatorGateTests.swift`: a synthetic `[.findAPIs, .runCode]` steps array (no `.final`), `maxRunCodeStepsBeforeFinal: 1`. Asserts the metric is `.passing` and that `rationale` does not contain "final".
+
+    RED-GREEN-RED verified manually: temporarily reverted `RepairedWithinNEvaluator`'s passing rationale in `AgentEvaluators.swift` back to the old overclaiming `"reached final within N of M allowed runCode attempt(s)."` string, reran `swift test --filter EvaluatorGateTests` — the new test failed with exactly the expected assertion (`!(metrics.first?.rationale?.contains("final") ?? true)` → false), all 9 other cases in the suite still passed. Restored the fix (`git diff --stat` on the source file came back empty, confirming a no-op restore), reran — green again.
+
+    Full suite: `swift build` exit 0; `swift test --filter FoundationModelsMultitoolTests` → 247/247 passed (was 246 before this task's new test).
+
+    Spawned `double-check` agent for adversarial sign-off per really-done; awaiting its verdict before considering this fully done.
+  timestamp: 2026-07-03T21:47:01.008376+00:00
+- actor: wballard
+  id: 01kwmzcngr4kdas8xwzftjdypg
+  text: |-
+    double-check adversarial review: PASS, no findings. Independently re-verified (fresh swift build --build-tests + swift test --filter EvaluatorGateTests, 10/10) that the synthetic [.findAPIs, .runCode] steps array (no .final) drives TranscriptAnalyzer.runCodeStepsBeforeFinal(in:) to its fall-through path returning count 1, which is <= maxRunCodeStepsBeforeFinal: 1, so RepairedWithinNEvaluator grades .passing; confirmed the rationale-regression assertion would genuinely trip against the old overclaiming wording; confirmed via git diff --name-only that only EvaluatorGateTests.swift (+22/-0) plus kanban bookkeeping changed — no production code touched.
+
+    Final fresh full-suite run: swift build exit 0; swift test --filter FoundationModelsMultitoolTests → 247/247 passed.
+
+    Both acceptance criteria closed (AC1 was already done pre-task per prior comment; AC2 done here). Leaving task in doing for /review.
+  timestamp: 2026-07-03T21:50:37.592521+00:00
+position_column: doing
+position_ordinal: '80'
 title: 'AgentEvaluators.swift: RepairedWithinNEvaluator passing rationale text overclaims .final was reached'
 ---
 ## What

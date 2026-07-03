@@ -159,6 +159,28 @@ struct EvaluatorGateTests {
         #expect(metrics.map(\.value) == [.failing])
     }
 
+    @Test("RepairedWithinNEvaluator passes a transcript that never reaches .final, as long as its runCode count is within the bound, without claiming .final was reached")
+    func repairedWithinNPassesWithoutReachingFinal() async throws {
+        // No `.final` step anywhere — `TranscriptAnalyzer
+        // .runCodeStepsBeforeFinal(in:)` falls through its loop and returns
+        // the total `.runCode` count, which sits at the bound here. This
+        // pins down the chosen contract (reword rather than require
+        // `.final`): such a run legitimately passes, and the rationale must
+        // not claim `.final` was reached.
+        let steps: [AgentStep] = [
+            .findAPIs(task: "look up the tool"),
+            .runCode(code: "tools.book()"),
+        ]
+        let subject = AgentSubject(
+            value: "Booked the trip.",
+            steps: steps,
+            expectation: AgentScenarioExpectation(expectFindAPIs: false, expectedToolPaths: ["book"], maxRunCodeStepsBeforeFinal: 1)
+        )
+        let metrics = try await RepairedWithinNEvaluator().metrics(subject: subject, input: ModelSample(prompt: "x"))
+        #expect(metrics.map(\.value) == [.passing])
+        #expect(!(metrics.first?.rationale?.contains("final") ?? true), "the passing rationale must not claim .final was reached")
+    }
+
     // MARK: - Threshold gate: fixture metric values flip the gate expression
 
     /// A tiny, fully offline `Evaluations.Evaluation` used only to prove the
