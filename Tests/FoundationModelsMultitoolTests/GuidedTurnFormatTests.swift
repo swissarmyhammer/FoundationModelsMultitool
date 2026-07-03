@@ -193,13 +193,12 @@ struct GuidedTurnFormatTests {
             #"{"kind":"runCode","code":"return tools.cities().cities.length;"}"#,
             #"{"kind":"final","text":"There are 3 cities."}"#,
         ])
-        let librarianSession = ScriptedAgentSession([
-            "declare function cities(): { cities: string[] };"
-        ])
+        let librarianRoot = RootSessionRespondCalledDirectlySession(forkResponses: [cannedCitiesFoundAPIsJSON])
+        let librarian = Librarian(surface: registry.surface, capacityCharacterLimit: .max) { _ in librarianRoot }
         let agent = MultiToolAgent(
             registry: registry,
             session: mainSession,
-            librarianSession: librarianSession,
+            librarian: librarian,
             instructions: "You are a travel assistant.",
             turnFormat: .guided()
         )
@@ -209,8 +208,8 @@ struct GuidedTurnFormatTests {
         #expect(reply == "There are 3 cities.")
         // Exactly 3 main-session calls — zero repair turns.
         #expect(mainSession.callCount == 3)
-        #expect(librarianSession.receivedPrompts == ["list the trip cities"])
-        #expect(mainSession.receivedPrompts[1].contains("declare function cities()"))
+        #expect(librarianRoot.forkCount == 1)
+        #expect(mainSession.receivedPrompts[1].contains("tools.cities(): { cities: string[] }"))
         #expect(mainSession.receivedPrompts[2].contains("3"))
         // No repair instruction was ever fed back.
         #expect(!mainSession.receivedPrompts.joined().contains("could not be used"))
@@ -274,11 +273,16 @@ struct GuidedTurnFormatTests {
             "ACTION: runCode\nCODE:\n```js\nreturn tools.cities().cities.length;\n```",
             "ACTION: final\nANSWER: There are 3 cities.",
         ])
-        let tolerantLibrarian = ScriptedAgentSession(["declare function cities(): { cities: string[] };"])
+        let tolerantLibrarianRoot = RootSessionRespondCalledDirectlySession(forkResponses: [
+            cannedCitiesFoundAPIsJSON
+        ])
+        let tolerantLibrarian = Librarian(surface: registry.surface, capacityCharacterLimit: .max) { _ in
+            tolerantLibrarianRoot
+        }
         let tolerantAgent = MultiToolAgent(
             registry: registry,
             session: tolerantSession,
-            librarianSession: tolerantLibrarian,
+            librarian: tolerantLibrarian,
             instructions: "You are a travel assistant.",
             turnFormat: .tolerantParse()
         )
@@ -288,11 +292,16 @@ struct GuidedTurnFormatTests {
             #"{"kind":"runCode","code":"return tools.cities().cities.length;"}"#,
             #"{"kind":"final","text":"There are 3 cities."}"#,
         ])
-        let guidedLibrarian = ScriptedAgentSession(["declare function cities(): { cities: string[] };"])
+        let guidedLibrarianRoot = RootSessionRespondCalledDirectlySession(forkResponses: [
+            cannedCitiesFoundAPIsJSON
+        ])
+        let guidedLibrarian = Librarian(surface: registry.surface, capacityCharacterLimit: .max) { _ in
+            guidedLibrarianRoot
+        }
         let guidedAgent = MultiToolAgent(
             registry: registry,
             session: guidedSession,
-            librarianSession: guidedLibrarian,
+            librarian: guidedLibrarian,
             instructions: "You are a travel assistant.",
             turnFormat: .guided()
         )
@@ -302,6 +311,8 @@ struct GuidedTurnFormatTests {
 
         #expect(tolerantReply == guidedReply)
         #expect(tolerantSession.callCount == guidedSession.callCount)
-        #expect(tolerantLibrarian.receivedPrompts == guidedLibrarian.receivedPrompts)
+        // Both agents' findAPIs dispatch went through exactly one fork() of
+        // their respective librarian's cached root session.
+        #expect(tolerantLibrarianRoot.forkCount == guidedLibrarianRoot.forkCount)
     }
 }

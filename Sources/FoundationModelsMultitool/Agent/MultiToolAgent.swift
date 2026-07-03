@@ -112,13 +112,17 @@ public struct MultiToolAgent: Sendable {
     /// `agent.respond(to:)` per user request).
     private let makeSession: @Sendable () -> any AgentSession
 
-    /// Creates the librarian session `findAPIs` dispatches to, or `nil` when
+    /// Dispatches every `findAPIs` step to a `Librarian` (M6), or `nil` when
     /// this agent has no librarian configured (plan.md: `librarian:
     /// RoutedLLM?`).
     ///
-    /// Like `makeSession`, deferred and re-created fresh per `respond(to:)`
-    /// call.
-    private let makeLibrarianSession: (@Sendable () -> any AgentSession)?
+    /// Unlike `makeSession`, not per-call: `Librarian` is an actor that
+    /// caches its own root session across calls (plan.md Finding #6's
+    /// prefix-reuse contract), so the same `FindAPITool` — wrapping the same
+    /// `Librarian` — is reused for every `findAPIs` step across every
+    /// `respond(to:)` call this agent makes, exactly like `Librarian`'s own
+    /// documented lifetime.
+    private let findAPITool: FindAPITool?
 
     /// Every *direct* tool this agent's `callTool` step can dispatch to —
     /// plan.md's escape hatch — keyed by `Tool.name`.
@@ -133,13 +137,12 @@ public struct MultiToolAgent: Sendable {
 
     /// The seam `DirectToolCall` drives to get schema-valid arguments for
     /// one `callTool` dispatch, or `nil` when no direct tools are configured
-    /// (`directTools.isEmpty`) — mirrors `makeLibrarianSession`'s
-    /// nil-when-unconfigured shape.
+    /// (`directTools.isEmpty`) — mirrors `findAPITool`'s nil-when-unconfigured
+    /// shape.
     ///
-    /// Not deferred/per-call like `makeSession`/`makeLibrarianSession`:
-    /// `RoutedDirectCallSession` (the production conformer) is a thin,
-    /// stateless wrapper over `model`, so there is no per-call session
-    /// state to keep fresh.
+    /// Not deferred/per-call like `makeSession`: `RoutedDirectCallSession`
+    /// (the production conformer) is a thin, stateless wrapper over `model`,
+    /// so there is no per-call session state to keep fresh.
     private let directCallSession: (any DirectCallSession)?
 
     /// Creates an agent bound to a resolved Router profile's generation slots.
@@ -186,6 +189,10 @@ public struct MultiToolAgent: Sendable {
     ///     (no direct tools: `callTool` isn't surfaced to the model at all).
     ///     Every direct call's guided generation runs on `model` — the same
     ///     `RoutedLLM` the main loop runs on — via `RoutedDirectCallSession`.
+    /// - Throws: whatever `Librarian.init(surface:librarian:...)` throws
+    ///   while deriving `FoundAPIs`'s guided-generation grammar — not
+    ///   expected in practice (see that initializer's documentation), and
+    ///   only reachable when `librarian` is non-`nil`.
     public init(
         registry: MultiTool.Registry,
         model: RoutedLLM,
@@ -195,7 +202,7 @@ public struct MultiToolAgent: Sendable {
         turnFormat: (any TurnFormat)? = nil,
         maxTurns: Int? = nil,
         directTools: [any Tool] = []
-    ) {
+    ) throws {
         let resolvedTurnFormat = turnFormat ?? .tolerantParse(maxRepairTurns: configuration.maxRepairTurns)
         let indexedDirectTools = Self.indexDirectTools(directTools)
         let sessionInstructions = Self.sessionInstructions(
@@ -204,13 +211,9 @@ public struct MultiToolAgent: Sendable {
             turnFormat: resolvedTurnFormat,
             directTools: indexedDirectTools
         )
-        let makeLibrarianSession: (@Sendable () -> any AgentSession)? =
+        let findAPITool: FindAPITool? =
             if let librarian {
-                {
-                    RoutedAgentSession(
-                        session: librarian.makeSession(instructions: Self.librarianInstructions(for: registry))
-                    )
-                }
+                FindAPITool(librarian: try Librarian(surface: registry.surface, librarian: librarian))
             } else {
                 nil
             }
@@ -232,14 +235,14 @@ public struct MultiToolAgent: Sendable {
             turnFormat: resolvedTurnFormat,
             maxTurns: maxTurns ?? configuration.maxAgentTurns,
             makeSession: makeSession,
-            makeLibrarianSession: makeLibrarianSession,
+            findAPITool: findAPITool,
             directTools: indexedDirectTools,
             directCallSession: directCallSession
         )
     }
 
     /// Creates an agent driving a pre-built `AgentSession` (and, optionally,
-    /// a pre-built librarian `AgentSession`) directly.
+    /// a pre-built `Librarian`) directly.
     ///
     /// The test-facing entry point plan.md M4b calls for: "the
     /// `AgentSession` seam... so unit tests use a scripted fake with zero
@@ -251,8 +254,12 @@ public struct MultiToolAgent: Sendable {
     ///   - registry: the catalog + live tool instances to run the loop
     ///     over.
     ///   - session: the main agent session to drive.
-    ///   - librarianSession: the librarian session `findAPIs` dispatches
-    ///     to, or `nil` to disable `findAPIs` dispatch.
+    ///   - librarian: the `Librarian` `findAPIs` dispatches to (wrapped in a
+    ///     `FindAPITool`), or `nil` to disable `findAPIs` dispatch. A test
+    ///     builds one over the internal `AgentSession` seam via `Librarian`'s
+    ///     own test-facing initializer, so `findAPIs` dispatch exercises the
+    ///     real prefix-caching/`fork()`-per-call contract, not a
+    ///     reimplementation of it.
     ///   - instructions: the agent's persona/purpose text.
     ///   - configuration: the M10 hardening knobs this agent's loop and
     ///     `runCode` execution core enforce. Defaults to
@@ -269,12 +276,12 @@ public struct MultiToolAgent: Sendable {
     ///     `callTool` dispatches through, or `nil` to disable `callTool`
     ///     dispatch even when `directTools` is non-empty (a `callTool` step
     ///     is then rejected with an instructive message, the same
-    ///     configuration-gap posture `makeLibrarianSession == nil` takes
-    ///     toward `findAPIs`). Defaults to `nil`.
+    ///     configuration-gap posture `findAPITool == nil` takes toward
+    ///     `findAPIs`). Defaults to `nil`.
     init(
         registry: MultiTool.Registry,
         session: any AgentSession,
-        librarianSession: (any AgentSession)? = nil,
+        librarian: Librarian? = nil,
         instructions: String,
         configuration: MultiToolConfiguration = .default,
         turnFormat: (any TurnFormat)? = nil,
@@ -282,34 +289,29 @@ public struct MultiToolAgent: Sendable {
         directTools: [any Tool] = [],
         directCallSession: (any DirectCallSession)? = nil
     ) {
-        let makeLibrarianSession: (@Sendable () -> any AgentSession)? =
-            if let librarianSession {
-                { librarianSession }
-            } else {
-                nil
-            }
+        let findAPITool = librarian.map { FindAPITool(librarian: $0) }
         self.init(
             registry: registry,
             configuration: configuration,
             turnFormat: turnFormat ?? .tolerantParse(maxRepairTurns: configuration.maxRepairTurns),
             maxTurns: maxTurns ?? configuration.maxAgentTurns,
             makeSession: { session },
-            makeLibrarianSession: makeLibrarianSession,
+            findAPITool: findAPITool,
             directTools: Self.indexDirectTools(directTools),
             directCallSession: directCallSession
         )
     }
 
     /// The designated initializer both public-facing initializers above
-    /// delegate to, differing only in how `makeSession`/`makeLibrarianSession`
-    /// are produced (a real `RoutedLLM` vs. a fixed test double).
+    /// delegate to, differing only in how `makeSession`/`findAPITool` are
+    /// produced (a real `RoutedLLM` vs. a fixed test double).
     private init(
         registry: MultiTool.Registry,
         configuration: MultiToolConfiguration,
         turnFormat: any TurnFormat,
         maxTurns: Int,
         makeSession: @escaping @Sendable () -> any AgentSession,
-        makeLibrarianSession: (@Sendable () -> any AgentSession)?,
+        findAPITool: FindAPITool?,
         directTools: [String: any Tool],
         directCallSession: (any DirectCallSession)?
     ) {
@@ -318,7 +320,7 @@ public struct MultiToolAgent: Sendable {
         self.turnFormat = turnFormat
         self.maxTurns = max(1, maxTurns)
         self.makeSession = makeSession
-        self.makeLibrarianSession = makeLibrarianSession
+        self.findAPITool = findAPITool
         self.directTools = directTools
         self.directCallSession = directCallSession
     }
@@ -342,9 +344,10 @@ public struct MultiToolAgent: Sendable {
     /// Runs the search-then-code loop to answer `prompt`, per this type's
     /// documentation.
     ///
-    /// Starts a fresh main session (and, lazily, a fresh librarian session
-    /// on first `findAPIs` dispatch) for this call alone; nothing persists
-    /// across separate `respond(to:)` calls. Each turn's raw response is
+    /// Starts a fresh main session for this call alone; nothing persists
+    /// across separate `respond(to:)` calls except `findAPITool`'s own
+    /// `Librarian`, whose cached root session (plan.md Finding #6) outlives
+    /// any single `respond(to:)` call by design. Each turn's raw response is
     /// appended to a running transcript that becomes the next turn's
     /// prompt, since a Router session's `respond(to:)` carries no memory of
     /// its own between calls.
@@ -355,11 +358,9 @@ public struct MultiToolAgent: Sendable {
     ///   repair-turn budget (`TurnFormat.maxRepairTurns`) is exhausted
     ///   before a well-formed turn arrives; `MultiToolAgentError
     ///   .maxTurnsExceeded` if `maxTurns` is reached with no `final` step;
-    ///   otherwise whatever the underlying session or librarian session
-    ///   throws.
+    ///   otherwise whatever the underlying session or `findAPITool` throws.
     public func respond(to prompt: String) async throws -> String {
         let session = makeSession()
-        var librarianSession: (any AgentSession)?
         var transcript = "User request:\n\(prompt)"
         var repairsUsed = 0
 
@@ -398,7 +399,7 @@ public struct MultiToolAgent: Sendable {
                 transcript += "\(Self.transcriptSeparator)runCode result:\n\(result)"
 
             case .findAPIs(let task):
-                let feedback = try await dispatchFindAPIs(task: task, librarianSession: &librarianSession)
+                let feedback = try await dispatchFindAPIs(task: task)
                 transcript += "\(Self.transcriptSeparator)\(feedback)"
 
             case .callTool(let name, let task):
@@ -414,43 +415,30 @@ public struct MultiToolAgent: Sendable {
 
     /// Dispatches one `findAPIs(task)` step: rejects it with an instructive
     /// message when discovery isn't available (direct mode, or no librarian
-    /// configured), otherwise forwards `task` to the (lazily created,
-    /// reused-for-this-call) librarian session and returns its response as
-    /// the text to feed back into the transcript.
+    /// configured), otherwise forwards `task` to `findAPITool` — which asks
+    /// the underlying `Librarian` (`fork()`-ing its cached, prefix-rooted
+    /// session per call, per plan.md Finding #6) and formats the selected
+    /// functions into the text fed back into the transcript.
     ///
-    /// The librarian's instructions (set once, at session creation — see
-    /// `librarianInstructions(for:)`) already carry the full rendered
-    /// surface as plan.md's "prefix-cached" librarian prompt, so only
-    /// `task` itself is sent as the per-call prompt.
-    ///
-    /// - Parameters:
-    ///   - task: the plain-language goal the model passed to `findAPIs`.
-    ///   - librarianSession: the call's librarian session, created on first
-    ///     use and reused for any further `findAPIs` steps in the same
-    ///     `respond(to:)` call.
+    /// - Parameter task: the plain-language goal the model passed to
+    ///   `findAPIs`.
     /// - Returns: the text to feed back to the model as this step's result.
-    /// - Throws: whatever the librarian session's `respond(to:)` throws.
-    private func dispatchFindAPIs(
-        task: String,
-        librarianSession: inout (any AgentSession)?
-    ) async throws -> String {
+    /// - Throws: whatever `findAPITool.dispatch(task:)` throws.
+    private func dispatchFindAPIs(task: String) async throws -> String {
         guard registry.supportsFindAPIs else {
             return Self.discoveryUnavailableMessage(
                 task: task,
                 reason: "this agent runs in direct mode (runCode only)"
             )
         }
-        guard let makeLibrarianSession else {
+        guard let findAPITool else {
             return Self.discoveryUnavailableMessage(
                 task: task,
                 reason: "no librarian is configured for this agent"
             )
         }
 
-        let session = librarianSession ?? makeLibrarianSession()
-        librarianSession = session
-        let raw = try await session.respond(to: task)
-        return "findAPIs(\"\(task)\") found:\n\(raw)"
+        return try await findAPITool.dispatch(task: task)
     }
 
     /// The instructive rejection fed back to the model when it emits a
@@ -652,24 +640,5 @@ public struct MultiToolAgent: Sendable {
             )
         )
         return sections.joined(separator: Self.transcriptSeparator)
-    }
-
-    /// Assembles the librarian's instructions — plan.md § "The librarian's
-    /// assembled prompt (concrete)": curated selection guidance followed by
-    /// every tool's rendered block, set once as the session's instructions
-    /// so only the per-call `task` needs to be sent as the prompt.
-    ///
-    /// - Parameter registry: the catalog whose rendered surface
-    ///   (`registry.surface.source`) becomes the librarian's prefix.
-    /// - Returns: the librarian's full session instructions.
-    private static func librarianInstructions(for registry: MultiTool.Registry) -> String {
-        """
-        You are an API librarian. Given a task, return ONLY the functions needed — fewest
-        that suffice, in call order when order matters. Do not invent functions; return an
-        empty list if nothing fits.
-
-        # Available functions
-        \(registry.surface.source)
-        """
     }
 }

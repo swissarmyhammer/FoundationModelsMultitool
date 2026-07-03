@@ -21,13 +21,12 @@ struct MultiToolAgentTests {
             "ACTION: runCode\nCODE:\n```js\nreturn tools.cities().cities.length;\n```",
             "ACTION: final\nANSWER: There are 3 cities.",
         ])
-        let librarianSession = ScriptedAgentSession([
-            "declare function cities(): { cities: string[] };"
-        ])
+        let librarianRoot = RootSessionRespondCalledDirectlySession(forkResponses: [cannedCitiesFoundAPIsJSON])
+        let librarian = Librarian(surface: registry.surface, capacityCharacterLimit: .max) { _ in librarianRoot }
         let agent = MultiToolAgent(
             registry: registry,
             session: mainSession,
-            librarianSession: librarianSession,
+            librarian: librarian,
             instructions: "You are a travel assistant."
         )
 
@@ -35,13 +34,56 @@ struct MultiToolAgentTests {
 
         #expect(reply == "There are 3 cities.")
         #expect(mainSession.callCount == 3)
-        // The librarian saw the plain-language task, not a re-rendered surface
-        // (the surface is already baked into its own session instructions).
-        #expect(librarianSession.receivedPrompts == ["list the trip cities"])
-        // findAPIs's result was spliced back in as the next turn's context.
-        #expect(mainSession.receivedPrompts[1].contains("declare function cities()"))
+        // findAPIs went through the librarian's real dispatch pipeline: a
+        // fork() of the prefix-rooted session, never the root's own respond(to:).
+        #expect(librarianRoot.forkCount == 1)
+        // findAPIs's result — formatted by FindAPITool, not raw text — was
+        // spliced back in as the next turn's context.
+        #expect(mainSession.receivedPrompts[1].contains("tools.cities(): { cities: string[] }"))
+        #expect(mainSession.receivedPrompts[1].contains("Example: tools.cities().cities;"))
         // The runCode result (3, the cities count) was fed back before the final turn.
         #expect(mainSession.receivedPrompts[2].contains("3"))
+    }
+
+    // MARK: - findAPIs actually drives a Librarian: prefix-caching/fork() is real, not superficial
+
+    @Test(
+        "two findAPIs calls in one respond(to:) share one cached Librarian root session, each dispatched through its own fork()"
+    )
+    func findAPIsCallsShareOneCachedLibrarianRootAcrossForks() async throws {
+        let registry = try MultiTool.Builder().addTool(CitiesTool()).buildRegistry()
+        let mainSession = ScriptedAgentSession([
+            "ACTION: findAPIs\nTASK: list the trip cities",
+            "ACTION: findAPIs\nTASK: list the trip cities again",
+            "ACTION: final\nANSWER: done",
+        ])
+        let librarianRoot = RootSessionRespondCalledDirectlySession(forkResponses: [
+            cannedCitiesFoundAPIsJSON,
+            cannedCitiesFoundAPIsJSON,
+        ])
+        let rootFactoryCallCount = CallCounter()
+        let librarian = Librarian(surface: registry.surface, capacityCharacterLimit: .max) { _ in
+            rootFactoryCallCount.increment()
+            return librarianRoot
+        }
+        let agent = MultiToolAgent(
+            registry: registry,
+            session: mainSession,
+            librarian: librarian,
+            instructions: "You are a travel assistant."
+        )
+
+        let reply = try await agent.respond(to: "How many cities are on my trip?")
+
+        #expect(reply == "done")
+        // The root session was created exactly once (cached across both
+        // findAPIs calls in this respond(to:)), and each call reached it
+        // through its own fork() — the KV-cache-reuse contract Librarian
+        // exists for, not a coincidental similarity to it.
+        #expect(rootFactoryCallCount.count == 1)
+        #expect(librarianRoot.forkCount == 2)
+        #expect(mainSession.receivedPrompts[1].contains("tools.cities(): { cities: string[] }"))
+        #expect(mainSession.receivedPrompts[2].contains("tools.cities(): { cities: string[] }"))
     }
 
     // MARK: - Malformed turns → bounded repair turns → failure

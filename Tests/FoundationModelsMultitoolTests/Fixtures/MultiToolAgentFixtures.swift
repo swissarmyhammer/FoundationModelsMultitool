@@ -76,6 +76,20 @@ final class ScriptedAgentSession: AgentSession, Sendable {
     }
 }
 
+// MARK: - Canned `FoundAPIs` JSON for `CitiesTool` (this file's own fixture
+// tool) — the guided-generation shape a real `Librarian`'s root session
+// decodes, mirroring `LibrarianFixtures.swift`'s `cannedTripCitiesFoundAPIsJSON`
+// for `MultiToolAgentTests`' own `CitiesTool`-based scenarios.
+
+/// One canned, schema-valid `FoundAPIs` JSON payload naming `cities` only —
+/// matches `CitiesTool`'s shape, so a `MultiToolAgentTests` scenario can wire
+/// a real `Librarian` (via `RootSessionRespondCalledDirectlySession`) into
+/// `MultiToolAgent`'s `findAPIs` dispatch instead of a raw scripted session.
+let cannedCitiesFoundAPIsJSON = """
+    {"functions":[{"name":"cities","signature":"tools.cities(): { cities: string[] }",\
+    "doc":"The cities on the trip.","example":"tools.cities().cities;"}]}
+    """
+
 // MARK: - A second `TurnFormat` conformer, proving the strategy seam
 
 /// A trivial second `TurnFormat` conformer that ignores the raw turn text

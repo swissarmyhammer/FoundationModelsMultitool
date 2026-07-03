@@ -269,7 +269,7 @@ enum CLIRunner {
                 registry = registry.directMode()
             }
 
-            let agent = MultiToolAgent(
+            let agent = try MultiToolAgent(
                 registry: registry,
                 model: profile.standard,
                 librarian: direct ? nil : profile.flash,

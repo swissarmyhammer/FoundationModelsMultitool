@@ -161,7 +161,7 @@ struct AgentEvaluation: Evaluation {
         let fixture = try await LiveRouterFixture.resolve()
         do {
             let registry = try MultiTool.Builder().addTools(scenario.tools).buildRegistry()
-            let agent = MultiToolAgent(
+            let agent = try MultiToolAgent(
                 registry: registry,
                 model: fixture.profile.standard,
                 librarian: fixture.profile.flash,
