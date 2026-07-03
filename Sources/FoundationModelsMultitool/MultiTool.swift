@@ -154,6 +154,11 @@ public struct MultiTool: Tool {
         Errors are returned to you to fix and retry.
         """
 
+    /// Where this tool logs its M10 diagnostics — one `runCode` call's
+    /// start/end, and each `tools.*` invocation's start/end/validation
+    /// failure.
+    private static let logger = Logger(subsystem: "FoundationModelsMultitool", category: "MultiTool")
+
     /// The catalog + live tool instances this `runCode` dispatches into.
     private let registry: Registry
 
@@ -184,18 +189,25 @@ public struct MultiTool: Tool {
     /// - Parameters:
     ///   - registry: the catalog + live tool instances to expose as
     ///     `tools.*`.
+    ///   - configuration: the M10 hardening knobs (execution time limit,
+    ///     return/console caps) this tool enforces. Defaults to
+    ///     `MultiToolConfiguration.default`. Ignored for whichever of
+    ///     `interpreter`/`limits` is explicitly supplied instead of left
+    ///     `nil` — an explicit override always wins over the configuration's
+    ///     corresponding derived value.
     ///   - interpreter: the sandbox to run every snippet in. Defaults to a
-    ///     fresh `JSCInterpreter`.
+    ///     fresh `JSCInterpreter` honoring `configuration.executionTimeLimit`.
     ///   - limits: the size caps `ResultRenderer` enforces on this tool's
-    ///     rendered output. Defaults to `ResultRendererLimits.default`.
+    ///     rendered output. Defaults to `configuration.resultLimits`.
     public init(
         registry: Registry,
-        interpreter: any Interpreter = JSCInterpreter(),
-        limits: ResultRendererLimits = .default
+        configuration: MultiToolConfiguration = .default,
+        interpreter: (any Interpreter)? = nil,
+        limits: ResultRendererLimits? = nil
     ) {
         self.registry = registry
-        self.interpreter = interpreter
-        self.limits = limits
+        self.interpreter = interpreter ?? JSCInterpreter(timeLimit: configuration.executionTimeLimit)
+        self.limits = limits ?? configuration.resultLimits
         self.hostFunctions = Self.makeHostFunctions(for: registry) + Self.makeHelpDocsHostFunctions(for: registry)
         self.preamble = Self.makePreamble(for: registry)
     }
@@ -206,17 +218,24 @@ public struct MultiTool: Tool {
     /// `InterpreterError` (a JS exception, syntax error, or watchdog
     /// timeout) is caught here and rendered as `ResultRenderer`'s
     /// repairable-error text instead, per plan.md: "Errors are returned to
-    /// you to fix and retry."
+    /// you to fix and retry." A cancelled enclosing `Task`, however, is never
+    /// rendered as text — plan.md M10: cancelling the task running this call
+    /// "terminates the in-flight snippet... and propagates
+    /// `CancellationError`" — so `CancellationError` always propagates
+    /// unchanged.
     ///
     /// - Parameter arguments: the snippet to run.
     /// - Returns: the rendered `runCode` result — the snippet's return
     ///   value (plus any captured console output) on success, or a
     ///   repairable error description on failure.
-    /// - Throws: only a failure this tool cannot itself render as text —
-    ///   e.g. `interpreter.run` failing for a reason other than
-    ///   `InterpreterError` (not reachable through `JSCInterpreter`, kept as
-    ///   a defensive passthrough for any other `Interpreter` conformer).
+    /// - Throws: `CancellationError` if the calling `Task` is cancelled
+    ///   before or during the run; otherwise only a failure this tool cannot
+    ///   itself render as text — e.g. `interpreter.run` failing for a reason
+    ///   other than `InterpreterError`/`CancellationError` (not reachable
+    ///   through `JSCInterpreter`, kept as a defensive passthrough for any
+    ///   other `Interpreter` conformer).
     public func call(arguments: RunCodeArguments) async throws -> String {
+        try Task.checkCancellation()
         let code = "\(preamble)\n\(arguments.code)"
         do {
             let result = try await Self.run(code: code, installing: hostFunctions, using: interpreter)
@@ -248,25 +267,47 @@ public struct MultiTool: Tool {
     /// `JSCInterpreter` established for the interpreter's own worker thread,
     /// applied here to the tool-call boundary above it.
     ///
+    /// M10: also threads this `async` context's own `Task` cancellation
+    /// into the interpreter's `isCancelled` hook
+    /// (`Interpreter.run(code:installing:isCancelled:)`), so cancelling the
+    /// `Task` running `call(arguments:)` reaches all the way into the
+    /// running snippet rather than only being observed after it finishes.
+    ///
     /// - Parameters:
     ///   - code: the JavaScript source to run.
     ///   - installing: the host functions to expose as globals.
     ///   - interpreter: the sandbox to run `code` in.
     /// - Returns: the run's result.
-    /// - Throws: whatever `interpreter.run(code:installing:)` itself throws.
+    /// - Throws: `CancellationError` if the calling `Task` is cancelled
+    ///   before or during the run; otherwise whatever
+    ///   `interpreter.run(code:installing:isCancelled:)` itself throws.
     private static func run(
         code: String,
         installing: [HostFunction],
         using interpreter: any Interpreter
     ) async throws -> InterpreterResult {
-        try await withCheckedThrowingContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
-                do {
-                    continuation.resume(returning: try interpreter.run(code: code, installing: installing))
-                } catch {
-                    continuation.resume(throwing: error)
+        // Lock-protected (not a plain `Bool`) for the same reason
+        // `JSCInterpreter`'s own `WatchdogState` is: `onCancel` below can run
+        // concurrently with the polling read `isCancelled` performs from the
+        // interpreter's worker thread.
+        let cancelledBox = OSAllocatedUnfairLock(initialState: false)
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    do {
+                        let result = try interpreter.run(
+                            code: code,
+                            installing: installing,
+                            isCancelled: { cancelledBox.withLock { $0 } }
+                        )
+                        continuation.resume(returning: result)
+                    } catch {
+                        continuation.resume(throwing: error)
+                    }
                 }
             }
+        } onCancel: {
+            cancelledBox.withLock { $0 = true }
         }
     }
 
@@ -347,9 +388,19 @@ public struct MultiTool: Tool {
     /// - Parameter registry: the catalog + live tool instances to build
     ///   glue for.
     /// - Returns: the JS preamble, one `tools.*` assignment per entry with a
-    ///   live tool, preceded by `var tools = {};`.
+    ///   live tool, preceded by `globalThis.tools = {};`.
     private static func makePreamble(for registry: Registry) -> String {
-        var lines = ["var tools = {};"]
+        // `globalThis.tools = {}` (not `var tools = {}`) so `tools` is a
+        // genuine `globalThis` property — like `console`/`help`/`docs`,
+        // installed directly via `context.setObject` — rather than a
+        // variable merely local to the wrapping IIFE `evaluate` runs every
+        // snippet inside (see `JSCInterpreter.evaluate`'s `wrapped` string).
+        // A plain `var tools` would still be lexically reachable from the
+        // snippet itself (same function scope), but wouldn't actually be
+        // one of the sandbox's *global* bindings the README's "Injected
+        // globals" list and `HardeningTests`'s runtime enumeration
+        // (`Object.getOwnPropertyNames(globalThis)`) document it as.
+        var lines = ["globalThis.tools = {};"]
         for (index, entry) in registry.surface.entries.enumerated() {
             guard registry.tools[entry.path] != nil else { continue }
             let hostName = hostFunctionName(at: index)
@@ -420,6 +471,63 @@ public struct MultiTool: Tool {
     ///   message by `JSCInterpreter.install(hostFunction:into:)`, which
     ///   `ResultRenderer` in turn renders as a repairable error.
     private static func invokeBlocking(
+        tool: any Tool,
+        arguments: [InterpreterValue]
+    ) throws -> InterpreterValue {
+        let start = ContinuousClock.now
+        logger.debug("tools.\(tool.name, privacy: .public) invocation started.")
+        do {
+            let value = try performInvocation(tool: tool, arguments: arguments)
+            logger.debug(
+                "tools.\(tool.name, privacy: .public) invocation finished in \(start.duration(to: .now), privacy: .public)."
+            )
+            return value
+        } catch {
+            logInvocationFailure(tool: tool, error: error)
+            throw error
+        }
+    }
+
+    /// Logs one `tools.*` invocation's failure — plan.md M10: "each
+    /// tools.* invocation, validation failures" — distinguishing a
+    /// pre-call **validation failure** (`ToolInvokerError`/
+    /// `ArgumentMarshalerError`, logged at `.warning`: the snippet's call
+    /// was malformed, not the tool itself) from any other failure (the
+    /// tool's own thrown error, logged at `.error`).
+    ///
+    /// - Parameters:
+    ///   - tool: the tool `invokeBlocking` was invoking.
+    ///   - error: the failure `performInvocation` threw.
+    private static func logInvocationFailure(tool: any Tool, error: Error) {
+        switch error {
+        case let validationError as ToolInvokerError:
+            logger.warning(
+                "tools.\(tool.name, privacy: .public) argument validation failed: \(validationError.message, privacy: .public)"
+            )
+        case let marshalingError as ArgumentMarshalerError:
+            logger.warning(
+                "tools.\(tool.name, privacy: .public) argument marshaling failed: \(marshalingError.message, privacy: .public)"
+            )
+        default:
+            logger.error(
+                "tools.\(tool.name, privacy: .public) invocation failed: \(String(describing: error), privacy: .public)"
+            )
+        }
+    }
+
+    /// The actual marshal → validate → call → render pipeline
+    /// `invokeBlocking` wraps with start/end logging — see that function's
+    /// documentation for the full async-bridge tradeoff.
+    ///
+    /// - Parameters:
+    ///   - tool: the wrapped tool this call dispatches to.
+    ///   - arguments: the JS call's arguments, already converted to
+    ///     `InterpreterValue`.
+    /// - Returns: the tool's rendered `Output`, JS-ready.
+    /// - Throws: `ArgumentMarshalerError`, `ToolInvokerError`, or whatever
+    ///   `tool.call(arguments:)` itself throws — see `invokeBlocking`'s
+    ///   documentation.
+    private static func performInvocation(
         tool: any Tool,
         arguments: [InterpreterValue]
     ) throws -> InterpreterValue {

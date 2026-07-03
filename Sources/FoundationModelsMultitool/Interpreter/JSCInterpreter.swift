@@ -24,9 +24,13 @@ import os
 // **not** needed.
 
 /// Mirrors `JSShouldTerminateCallback` from `JSContextRefPrivate.h`: invoked
-/// after a context group's execution time limit has been exceeded. Returning
-/// `true` terminates the running script; `false` grants it one more
-/// time-limit window.
+/// after a context group's execution time limit has been exceeded. Per the
+/// header's own documented contract, returning `true` terminates the running
+/// script and `false` grants it one more time-limit window — **however**,
+/// that "one more window" half of the contract does not hold on the OS-27
+/// SDK actually measured here; see `WatchdogState`'s documentation for what
+/// was observed and why this codebase re-arms the limit itself instead of
+/// relying on it.
 private typealias JSShouldTerminateCallback = @convention(c) (JSContextRef?, UnsafeMutableRawPointer?) -> Bool
 
 @_silgen_name("JSContextGroupSetExecutionTimeLimit")
@@ -42,35 +46,167 @@ private func JSContextGroupClearExecutionTimeLimit(_ group: JSContextGroupRef)
 
 /// Per-run watchdog state, threaded through the `@convention(c)` callback via
 /// an `Unmanaged` raw pointer — a C function pointer cannot capture Swift
-/// state directly, so this is how the callback reports back "I fired" to the
-/// Swift code waiting on `evaluateScript` to return.
+/// state directly, so this is how the callback reports back its decision to
+/// the Swift code waiting on `evaluateScript` to return.
+///
+/// **M10 design note, empirically pinned against observed behavior on the
+/// OS-27 SDK (Xcode 27, Swift 6.4).** Two distinct experiments, isolated from
+/// the Sandbox/HostFunction/Interpreter machinery (raw `JSContextGroupCreate`
+/// + a bare `@convention(c)` callback against `while (true) {}`):
+///
+/// 1. Re-arming a *running* group's limit via a second
+///    `JSContextGroupSetExecutionTimeLimit(group, 0, ...)` call from
+///    *another thread* does **not** force early termination — a run armed
+///    with a 10s limit and re-armed to `0` after 200ms from a background
+///    thread still ran for the full ~10s before terminating.
+/// 2. Returning `false` from `JSShouldTerminateCallback` — the documented
+///    contract for "not yet, give me one more window of the same
+///    duration" — does **not** actually reschedule anything on this SDK:
+///    armed with a 0.1s poll interval, the callback fires exactly **once**,
+///    and if it returns `false` the script then runs **unchecked forever**
+///    (measured directly: 8+ real seconds with zero further callback
+///    invocations, for a script that should have terminated within ~0.5s).
+///    This is what caused the original M10 diagnostic
+///    (`diagnosticCancellationForcesEarlyTermination`) to hang.
+///
+/// What **does** work, also measured directly: calling
+/// `JSContextGroupSetExecutionTimeLimit` again — with a fresh short
+/// deadline — *synchronously, from within the callback itself*, on the same
+/// thread, *before* that callback returns `false`. Doing this on every
+/// invocation that decides "not yet" reliably produces one callback
+/// invocation per `watchdogPollInterval` (5 invocations at ~100ms spacing,
+/// clean termination at ~0.5s in the isolated repro) for as long as the
+/// script keeps running. So the group is armed at `makeSandbox` time with a
+/// short, fixed poll interval (`JSCInterpreter.watchdogPollInterval`) — far
+/// below any realistic configured `timeLimit` — and this state's own
+/// `shouldTerminate()` (called from `jscTerminateCallback` every time that
+/// poll interval elapses) re-arms the *same* short interval itself whenever
+/// it decides not to terminate yet, rather than relying on JSC's own
+/// "return false" contract. `shouldTerminate()` is what actually decides, in
+/// Swift, whether the *real* configured `timeLimit` has elapsed or
+/// `isCancelled` has reported `true` — this state is effectively the *real*
+/// watchdog, with JSC's own limit reduced to a self-renewing polling tick.
 ///
 /// JSC's documentation does not commit to which thread invokes
 /// `JSShouldTerminateCallback` (in practice it is checked from the
 /// interpreter loop itself, but that is not a guarantee this code should
-/// lean on) — so the flag is lock-protected rather than a plain `Bool`,
-/// keeping correctness independent of that unstated thread-affinity detail.
-private final class WatchdogState: Sendable {
-    private let lock = OSAllocatedUnfairLock(initialState: false)
+/// lean on) — so the recorded cause is lock-protected rather than a plain
+/// `Bool`/enum, keeping correctness independent of that unstated
+/// thread-affinity detail.
+///
+/// `@unchecked`: `group` is an opaque C pointer (`OpaquePointer` itself
+/// isn't `Sendable`), used only to re-issue calls into the thread-safe JSC C
+/// API — it's never dereferenced or mutated by this type. Every other
+/// stored property is either immutable-and-`Sendable` or, for the one
+/// genuinely mutable piece of state (`cause`), guarded by `lock`.
+private final class WatchdogState: @unchecked Sendable {
+    /// Why this state decided to terminate — recorded once; first cause
+    /// wins, since `evaluate` only ever throws once per run.
+    fileprivate enum Cause: Sendable {
+        /// The run exceeded its configured wall-clock time limit.
+        case timedOut
+        /// M10: `isCancelled` reported `true` before the real time limit
+        /// elapsed.
+        case cancelled
+    }
 
-    fileprivate var timedOut: Bool {
+    private let lock: OSAllocatedUnfairLock<Cause?>
+
+    /// When this run's watchdog was armed — the reference point
+    /// `shouldTerminate()` measures elapsed time from.
+    private let runStart: ContinuousClock.Instant
+
+    /// The *real* configured time limit this state enforces — independent
+    /// of whatever short poll interval the group's own
+    /// `JSContextGroupSetExecutionTimeLimit` was actually armed with (see
+    /// this type's documentation).
+    private let timeLimit: TimeInterval
+
+    /// Polled once per `jscTerminateCallback` invocation — the M10
+    /// cancellation hook.
+    private let isCancelled: @Sendable () -> Bool
+
+    /// The group this state's watchdog is armed against — needed so
+    /// `shouldTerminate()` can re-arm the next short poll window itself (see
+    /// this type's documentation for why that self-re-arm, rather than
+    /// JSC's own "return false" contract, is what actually works).
+    private let group: JSContextGroupRef
+
+    /// The short poll interval re-armed on every "not yet" decision — see
+    /// `JSCInterpreter.watchdogPollInterval`.
+    private let pollInterval: TimeInterval
+
+    /// Arms a new watchdog state for one run.
+    ///
+    /// - Parameters:
+    ///   - group: the context group this state's watchdog polls against.
+    ///   - pollInterval: the short window re-armed on every callback
+    ///     invocation that isn't yet ready to terminate.
+    ///   - timeLimit: the real wall-clock ceiling this state enforces.
+    ///   - isCancelled: polled once per callback invocation to detect
+    ///     external (M10 `Task`) cancellation.
+    fileprivate init(
+        group: JSContextGroupRef,
+        pollInterval: TimeInterval,
+        timeLimit: TimeInterval,
+        isCancelled: @escaping @Sendable () -> Bool
+    ) {
+        self.lock = OSAllocatedUnfairLock(initialState: nil)
+        self.runStart = ContinuousClock.now
+        self.group = group
+        self.pollInterval = pollInterval
+        self.timeLimit = timeLimit
+        self.isCancelled = isCancelled
+    }
+
+    /// The recorded cause, or `nil` if this state hasn't decided to
+    /// terminate yet.
+    fileprivate var cause: Cause? {
         lock.withLock { $0 }
     }
 
-    fileprivate func markTimedOut() {
-        lock.withLock { $0 = true }
+    /// Called from `jscTerminateCallback` every time the group's short poll
+    /// interval elapses. Decides — and records — whether the run should
+    /// actually terminate now; when not, re-arms the same short window
+    /// itself (see this type's documentation for why that self-re-arm is
+    /// required — JSC's own "return `false`" contract does not reschedule
+    /// anything on this SDK).
+    ///
+    /// - Returns: `true` (terminate) the first time either `isCancelled`
+    ///   reports `true` or the real `timeLimit` has elapsed, recording which
+    ///   caused it; `false` (having just re-armed one more poll-interval
+    ///   window) otherwise.
+    fileprivate func shouldTerminate() -> Bool {
+        if isCancelled() {
+            lock.withLock { if $0 == nil { $0 = .cancelled } }
+            return true
+        }
+        if runStart.duration(to: .now) >= .seconds(timeLimit) {
+            lock.withLock { if $0 == nil { $0 = .timedOut } }
+            return true
+        }
+        rearm()
+        return false
+    }
+
+    /// Re-arms the group's execution time limit with a fresh short window,
+    /// synchronously, from within the terminate callback itself — the
+    /// mechanism empirically confirmed (see this type's documentation) to
+    /// actually reschedule another `jscTerminateCallback` invocation on this
+    /// SDK, unlike returning `false` alone.
+    private func rearm() {
+        let statePointer = Unmanaged.passUnretained(self).toOpaque()
+        JSContextGroupSetExecutionTimeLimit(group, pollInterval, jscTerminateCallback, statePointer)
     }
 }
 
-/// The watchdog callback itself: always terminates (returns `true`) once
-/// invoked, and records that the termination was a timeout rather than an
-/// ordinary JS exception, since JSC's own exception-handling path is not
-/// guaranteed to surface a normal catchable exception for a watchdog-forced
-/// termination.
+/// The watchdog callback itself: defers the actual terminate/continue
+/// decision to `WatchdogState.shouldTerminate()` — see that type's
+/// documentation for why the group is armed with a short, fixed poll
+/// interval rather than the run's real configured time limit.
 private func jscTerminateCallback(_: JSContextRef?, _ info: UnsafeMutableRawPointer?) -> Bool {
     guard let info else { return true }
-    Unmanaged<WatchdogState>.fromOpaque(info).takeUnretainedValue().markTimedOut()
-    return true
+    return Unmanaged<WatchdogState>.fromOpaque(info).takeUnretainedValue().shouldTerminate()
 }
 
 /// JavaScriptCore-backed `Interpreter`.
@@ -87,8 +223,19 @@ private func jscTerminateCallback(_: JSContextRef?, _ info: UnsafeMutableRawPoin
 /// async `Tool.call` runs on the cooperative pool, that blocking must not
 /// happen on the caller's (potentially main) thread.
 public final class JSCInterpreter: Interpreter {
-    /// Wall-clock ceiling for a single `run`, enforced by the
-    /// `JSContextGroupSetExecutionTimeLimit` watchdog.
+    /// Where this interpreter logs its M10 diagnostics — snippet start/end
+    /// and duration, and how a run ended (clean, exception, timeout, or
+    /// cancelled).
+    private static let logger = Logger(subsystem: "FoundationModelsMultitool", category: "JSCInterpreter")
+
+    /// How often `WatchdogState.shouldTerminate()` is invoked while a
+    /// snippet runs — see that type's documentation for why this, not the
+    /// run's real configured `timeLimit`, is the value actually armed via
+    /// `JSContextGroupSetExecutionTimeLimit`. 20ms bounds M10 cancellation
+    /// latency well below any realistic `timeLimit`, at negligible overhead.
+    private static let watchdogPollInterval: TimeInterval = 0.02
+
+    /// Wall-clock ceiling for a single `run`, enforced by `WatchdogState`.
     private let timeLimit: TimeInterval
 
     /// Dedicated worker the actual JS evaluation runs on (see the type doc).
@@ -117,7 +264,29 @@ public final class JSCInterpreter: Interpreter {
     ///   watchdog timeout.
     public func run(code: String, installing: [HostFunction]) throws -> InterpreterResult {
         try queue.sync {
-            try Self.evaluate(code: code, installing: installing, timeLimit: timeLimit)
+            try Self.evaluate(code: code, installing: installing, timeLimit: timeLimit, isCancelled: { false })
+        }
+    }
+
+    /// Runs `code` exactly as `run(code:installing:)` does, but also
+    /// force-terminates the run as soon as `isCancelled` reports `true` — see
+    /// `Interpreter.run(code:installing:isCancelled:)`.
+    ///
+    /// - Parameters:
+    ///   - code: the JavaScript source to run.
+    ///   - installing: host functions to expose as globals for this run only.
+    ///   - isCancelled: polled on a short interval while the snippet runs.
+    /// - Returns: the snippet's return value and captured console output.
+    /// - Throws: `CancellationError` if `isCancelled` reported `true` before
+    ///   the run otherwise completed; `InterpreterError` for a thrown/syntax
+    ///   exception or a watchdog timeout.
+    public func run(
+        code: String,
+        installing: [HostFunction],
+        isCancelled: @escaping @Sendable () -> Bool
+    ) throws -> InterpreterResult {
+        try queue.sync {
+            try Self.evaluate(code: code, installing: installing, timeLimit: timeLimit, isCancelled: isCancelled)
         }
     }
 
@@ -142,9 +311,14 @@ public final class JSCInterpreter: Interpreter {
     }
 
     /// Creates a fresh, isolated sandbox with `installing` bound in and the
-    /// time-limit watchdog armed. Cleans up any partially-created pieces on
-    /// the way out if a later step fails.
-    private static func makeSandbox(installing: [HostFunction], timeLimit: TimeInterval) throws -> Sandbox {
+    /// watchdog armed — at `Self.watchdogPollInterval`, not `timeLimit`
+    /// itself; see `WatchdogState`'s documentation for why. Cleans up any
+    /// partially-created pieces on the way out if a later step fails.
+    private static func makeSandbox(
+        installing: [HostFunction],
+        timeLimit: TimeInterval,
+        isCancelled: @escaping @Sendable () -> Bool
+    ) throws -> Sandbox {
         guard let group = JSContextGroupCreate() else {
             throw InterpreterError(kind: .exception, message: "Failed to create a JSContextGroup.")
         }
@@ -164,9 +338,14 @@ public final class JSCInterpreter: Interpreter {
             install(hostFunction: hostFunction, into: context)
         }
 
-        let watchdogState = WatchdogState()
+        let watchdogState = WatchdogState(
+            group: group,
+            pollInterval: watchdogPollInterval,
+            timeLimit: timeLimit,
+            isCancelled: isCancelled
+        )
         let statePointer = Unmanaged.passUnretained(watchdogState).toOpaque()
-        JSContextGroupSetExecutionTimeLimit(group, timeLimit, jscTerminateCallback, statePointer)
+        JSContextGroupSetExecutionTimeLimit(group, watchdogPollInterval, jscTerminateCallback, statePointer)
 
         return Sandbox(
             group: group,
@@ -178,14 +357,22 @@ public final class JSCInterpreter: Interpreter {
     }
 
     /// Builds a sandbox, evaluates `code` in it as an IIFE, and maps the
-    /// outcome (return value, console lines, exception, or watchdog timeout)
-    /// to an `InterpreterResult` or thrown `InterpreterError`.
+    /// outcome (return value, console lines, exception, watchdog timeout, or
+    /// M10 external cancellation) to an `InterpreterResult` or thrown error.
+    ///
+    /// Logs the run's start and its end (outcome + duration) via `logger` —
+    /// plan.md M10: "os.Logger... at the seams — snippet start/end +
+    /// duration."
     private static func evaluate(
         code: String,
         installing: [HostFunction],
-        timeLimit: TimeInterval
+        timeLimit: TimeInterval,
+        isCancelled: @escaping @Sendable () -> Bool
     ) throws -> InterpreterResult {
-        let sandbox = try makeSandbox(installing: installing, timeLimit: timeLimit)
+        let start = ContinuousClock.now
+        logger.debug("runCode snippet started (\(code.count, privacy: .public) characters).")
+
+        let sandbox = try makeSandbox(installing: installing, timeLimit: timeLimit, isCancelled: isCancelled)
         defer { sandbox.tearDown() }
 
         var capturedException: JSValue?
@@ -200,22 +387,37 @@ public final class JSCInterpreter: Interpreter {
         let wrapped = "(function(){\(code)\n})()"
         let returnedValue = sandbox.context.evaluateScript(wrapped)
 
-        // Check the watchdog flag before the captured exception: a
-        // watchdog-forced termination is not guaranteed to also populate a
-        // normal, catchable JS exception, so the flag is the authoritative
-        // signal.
-        if sandbox.watchdogState.timedOut {
-            throw InterpreterError(
-                kind: .timeout,
-                message: "Execution exceeded the \(timeLimit)s time limit."
-            )
-        }
-        if let capturedException {
-            throw makeError(from: capturedException)
-        }
+        do {
+            // Check the watchdog's recorded cause before the captured
+            // exception: a watchdog-forced termination (timeout or
+            // cancellation) is not guaranteed to also populate a normal,
+            // catchable JS exception, so the recorded cause is the
+            // authoritative signal.
+            switch sandbox.watchdogState.cause {
+            case .cancelled:
+                throw CancellationError()
+            case .timedOut:
+                throw InterpreterError(
+                    kind: .timeout,
+                    message: "Execution exceeded the \(timeLimit)s time limit."
+                )
+            case nil:
+                break
+            }
+            if let capturedException {
+                throw makeError(from: capturedException)
+            }
 
-        let returnValue = try jsonValue(of: returnedValue, in: sandbox.context)
-        return InterpreterResult(returnValue: returnValue, consoleLines: sandbox.consoleLines.lines)
+            let returnValue = try jsonValue(of: returnedValue, in: sandbox.context)
+            let result = InterpreterResult(returnValue: returnValue, consoleLines: sandbox.consoleLines.lines)
+            logger.debug("runCode snippet finished in \(start.duration(to: .now), privacy: .public).")
+            return result
+        } catch {
+            logger.debug(
+                "runCode snippet ended (\(String(describing: error), privacy: .public)) after \(start.duration(to: .now), privacy: .public)."
+            )
+            throw error
+        }
     }
 
     // MARK: - Standard surface

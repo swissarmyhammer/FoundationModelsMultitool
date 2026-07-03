@@ -168,6 +168,28 @@ struct JSCInterpreterTests {
         #expect(result.returnValue == .number(1))
     }
 
+    @Test("DIAGNOSTIC: isCancelled forces early termination of an infinite loop, isolated from other tests")
+    func diagnosticCancellationForcesEarlyTermination() throws {
+        let interpreter = JSCInterpreter(timeLimit: 10.0)
+        let cancelledBox = OSAllocatedUnfairLock(initialState: false)
+        let start = ContinuousClock.now
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.2) {
+            cancelledBox.withLock { $0 = true }
+        }
+        #expect {
+            try interpreter.run(
+                code: "while (true) {}",
+                installing: [],
+                isCancelled: { cancelledBox.withLock { $0 } }
+            )
+        } throws: { error in
+            error is CancellationError
+        }
+        let elapsed = start.duration(to: .now)
+        print("DIAGNOSTIC elapsed: \(elapsed)")
+        #expect(elapsed < .seconds(3))
+    }
+
     @Test("concurrent run() calls from multiple threads stay isolated")
     func concurrentRunsStayIsolated() async throws {
         let interpreter = JSCInterpreter()

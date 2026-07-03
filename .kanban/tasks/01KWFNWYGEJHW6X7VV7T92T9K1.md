@@ -42,8 +42,8 @@ comments:
   timestamp: 2026-07-02T18:32:23.194352+00:00
 depends_on:
 - 01KWFNVC3SA55SBZMCCWW6994C
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: 8b80
 title: 'M7: In-snippet help() / docs() globals'
 ---
 ## What

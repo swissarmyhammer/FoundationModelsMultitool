@@ -213,4 +213,51 @@ public protocol Interpreter: Sendable {
     /// - Throws: `InterpreterError` for a thrown/syntax exception or a
     ///   watchdog timeout.
     func run(code: String, installing: [HostFunction]) throws -> InterpreterResult
+
+    /// Runs `code` exactly as `run(code:installing:)` does, but also polls
+    /// `isCancelled` while the snippet executes and, the moment it reports
+    /// `true`, force-terminates the run through the same watchdog/termination
+    /// path an ordinary time-limit expiry uses — plan.md M10: "cancelling the
+    /// task running... `MultiTool` execution terminates the in-flight
+    /// snippet (watchdog force-terminate)."
+    ///
+    /// This is the hook `MultiTool`'s async bridge (M10) uses to reach
+    /// Swift-side `Task` cancellation into the interpreter's own
+    /// termination mechanism, rather than only ever bounding wall-clock
+    /// time.
+    ///
+    /// - Parameters:
+    ///   - code: the JavaScript source to run.
+    ///   - installing: host functions to expose as globals for this run only.
+    ///   - isCancelled: polled while the snippet executes; a conformer with
+    ///     no external-cancellation hook may ignore it entirely (see the
+    ///     default implementation below).
+    /// - Returns: the snippet's return value and captured console output.
+    /// - Throws: `CancellationError` if `isCancelled` reported `true` before
+    ///   the run otherwise completed; `InterpreterError` for a thrown/syntax
+    ///   exception or a watchdog timeout, exactly as `run(code:installing:)`.
+    func run(
+        code: String,
+        installing: [HostFunction],
+        isCancelled: @escaping @Sendable () -> Bool
+    ) throws -> InterpreterResult
+}
+
+extension Interpreter {
+    /// Default conformance for an engine with no external-cancellation hook:
+    /// behaves exactly like `run(code:installing:)`, ignoring `isCancelled`.
+    ///
+    /// - Parameters:
+    ///   - code: the JavaScript source to run.
+    ///   - installing: host functions to expose as globals for this run only.
+    ///   - isCancelled: ignored by this default conformance.
+    /// - Returns: the snippet's return value and captured console output.
+    /// - Throws: whatever `run(code:installing:)` itself throws.
+    public func run(
+        code: String,
+        installing: [HostFunction],
+        isCancelled: @escaping @Sendable () -> Bool
+    ) throws -> InterpreterResult {
+        try run(code: code, installing: installing)
+    }
 }

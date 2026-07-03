@@ -1,5 +1,6 @@
 import Foundation
 import FoundationModelsRouter
+import os
 
 /// A failure from `MultiToolAgent.respond(to:)`'s own loop — never a failure
 /// from a wrapped tool or the interpreter (those render as ordinary text via
@@ -63,6 +64,9 @@ public enum MultiToolAgentError: Error, Sendable, Equatable, CustomStringConvert
 /// GPU; the public initializer below is the only place a real `RoutedLLM`
 /// enters the picture, adapting it to that seam via `RoutedAgentSession`.
 public struct MultiToolAgent: Sendable {
+    /// Where this agent logs its M10 diagnostics — repair turns.
+    private static let logger = Logger(subsystem: "FoundationModelsMultitool", category: "MultiToolAgent")
+
     /// The catalog + live tool instances this agent's `runCode` dispatches
     /// into, and whose `isDirectMode`/`supportsFindAPIs` govern which
     /// actions this agent's instructions offer the model.
@@ -121,22 +125,30 @@ public struct MultiToolAgent: Sendable {
     ///     then rejected with an instructive message, the same as direct
     ///     mode, rather than a configuration-error trap.
     ///   - instructions: the agent's persona/purpose text.
-    ///   - turnFormat: the turn strategy. Defaults to
-    ///     `.tolerantParse()`.
+    ///   - configuration: the M10 hardening knobs this agent's loop and
+    ///     `runCode` execution core enforce (execution time limit,
+    ///     return/console caps, max agent turns, max repair turns).
+    ///     Defaults to `MultiToolConfiguration.default`. An explicitly
+    ///     supplied `turnFormat`/`maxTurns` always wins over the
+    ///     configuration's corresponding derived default.
+    ///   - turnFormat: the turn strategy. Defaults to `nil`, which resolves
+    ///     to `.tolerantParse(maxRepairTurns: configuration.maxRepairTurns)`.
     ///   - maxTurns: the bounded turn count `respond(to:)` never exceeds.
-    ///     Defaults to `8`.
+    ///     Defaults to `nil`, which resolves to `configuration.maxAgentTurns`.
     public init(
         registry: MultiTool.Registry,
         model: RoutedLLM,
         librarian: RoutedLLM? = nil,
         instructions: String,
-        turnFormat: any TurnFormat = .tolerantParse(),
-        maxTurns: Int = 8
+        configuration: MultiToolConfiguration = .default,
+        turnFormat: (any TurnFormat)? = nil,
+        maxTurns: Int? = nil
     ) {
+        let resolvedTurnFormat = turnFormat ?? .tolerantParse(maxRepairTurns: configuration.maxRepairTurns)
         let sessionInstructions = Self.sessionInstructions(
             userInstructions: instructions,
             registry: registry,
-            turnFormat: turnFormat
+            turnFormat: resolvedTurnFormat
         )
         let makeLibrarianSession: (@Sendable () -> any AgentSession)? =
             if let librarian {
@@ -150,8 +162,9 @@ public struct MultiToolAgent: Sendable {
             }
         self.init(
             registry: registry,
-            turnFormat: turnFormat,
-            maxTurns: maxTurns,
+            configuration: configuration,
+            turnFormat: resolvedTurnFormat,
+            maxTurns: maxTurns ?? configuration.maxAgentTurns,
             makeSession: { RoutedAgentSession(session: model.makeSession(instructions: sessionInstructions)) },
             makeLibrarianSession: makeLibrarianSession
         )
@@ -173,16 +186,23 @@ public struct MultiToolAgent: Sendable {
     ///   - librarianSession: the librarian session `findAPIs` dispatches
     ///     to, or `nil` to disable `findAPIs` dispatch.
     ///   - instructions: the agent's persona/purpose text.
-    ///   - turnFormat: the turn strategy. Defaults to `.tolerantParse()`.
+    ///   - configuration: the M10 hardening knobs this agent's loop and
+    ///     `runCode` execution core enforce. Defaults to
+    ///     `MultiToolConfiguration.default`. An explicitly supplied
+    ///     `turnFormat`/`maxTurns` always wins over the configuration's
+    ///     corresponding derived default.
+    ///   - turnFormat: the turn strategy. Defaults to `nil`, which resolves
+    ///     to `.tolerantParse(maxRepairTurns: configuration.maxRepairTurns)`.
     ///   - maxTurns: the bounded turn count `respond(to:)` never exceeds.
-    ///     Defaults to `8`.
+    ///     Defaults to `nil`, which resolves to `configuration.maxAgentTurns`.
     init(
         registry: MultiTool.Registry,
         session: any AgentSession,
         librarianSession: (any AgentSession)? = nil,
         instructions: String,
-        turnFormat: any TurnFormat = .tolerantParse(),
-        maxTurns: Int = 8
+        configuration: MultiToolConfiguration = .default,
+        turnFormat: (any TurnFormat)? = nil,
+        maxTurns: Int? = nil
     ) {
         let makeLibrarianSession: (@Sendable () -> any AgentSession)? =
             if let librarianSession {
@@ -192,8 +212,9 @@ public struct MultiToolAgent: Sendable {
             }
         self.init(
             registry: registry,
-            turnFormat: turnFormat,
-            maxTurns: maxTurns,
+            configuration: configuration,
+            turnFormat: turnFormat ?? .tolerantParse(maxRepairTurns: configuration.maxRepairTurns),
+            maxTurns: maxTurns ?? configuration.maxAgentTurns,
             makeSession: { session },
             makeLibrarianSession: makeLibrarianSession
         )
@@ -204,13 +225,14 @@ public struct MultiToolAgent: Sendable {
     /// are produced (a real `RoutedLLM` vs. a fixed test double).
     private init(
         registry: MultiTool.Registry,
+        configuration: MultiToolConfiguration,
         turnFormat: any TurnFormat,
         maxTurns: Int,
         makeSession: @escaping @Sendable () -> any AgentSession,
         makeLibrarianSession: (@Sendable () -> any AgentSession)?
     ) {
         self.registry = registry
-        self.multiTool = MultiTool(registry: registry)
+        self.multiTool = MultiTool(registry: registry, configuration: configuration)
         self.turnFormat = turnFormat
         self.maxTurns = max(1, maxTurns)
         self.makeSession = makeSession
@@ -242,6 +264,7 @@ public struct MultiToolAgent: Sendable {
         var repairsUsed = 0
 
         for turnNumber in 1...maxTurns {
+            try Task.checkCancellation()
             let raw = try await session.respond(to: transcript)
             transcript += "\n\n\(raw)"
 
@@ -250,6 +273,9 @@ public struct MultiToolAgent: Sendable {
                 step = try turnFormat.parseTurn(raw)
             } catch {
                 repairsUsed += 1
+                Self.logger.notice(
+                    "Turn \(turnNumber, privacy: .public) unparseable (repair \(repairsUsed, privacy: .public) of \(turnFormat.maxRepairTurns, privacy: .public)): \(String(describing: error), privacy: .public)"
+                )
                 guard repairsUsed <= turnFormat.maxRepairTurns else {
                     throw MultiToolAgentError.unparseableTurn(turn: turnNumber, reason: String(describing: error))
                 }
