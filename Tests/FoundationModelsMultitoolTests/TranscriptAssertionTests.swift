@@ -23,13 +23,49 @@ struct TranscriptAssertionTests {
     /// their own golden files.
     ///
     /// - Parameter name: the fixture file's name, e.g.
-    ///   `"SearchThenCallTranscript.jsonl"`.
+    ///   `"SearchThenCallTranscript.jsonl"`. Must consist solely of letters,
+    ///   digits, `-`, `_`, and `.`, and must not be all dots — this is
+    ///   interpolated into a filesystem path, so anything else (path
+    ///   separators, or an all-dots name like `".."` that `.` alone would
+    ///   otherwise let through) is rejected rather than resolved.
     /// - Returns: the fixture file's raw contents.
+    /// - Throws: ``InvalidFixtureNameError`` if `name` contains characters
+    ///   outside that whitelist, or is entirely `.` characters.
     private static func loadFixture(_ name: String) throws -> String {
+        let isWhitelisted = name.allSatisfy { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" || $0 == "." }
+        let isAllDots = name.allSatisfy { $0 == "." }
+        guard isWhitelisted, !isAllDots else {
+            throw InvalidFixtureNameError(name: name)
+        }
         let url = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .appendingPathComponent("Goldens/\(name)")
         return try String(contentsOf: url, encoding: .utf8)
+    }
+
+    // MARK: - loadFixture(_:)
+
+    @Test("loadFixture throws on a path-traversal name instead of escaping Goldens/")
+    func loadFixtureThrowsOnPathTraversal() {
+        #expect(throws: InvalidFixtureNameError.self) {
+            try Self.loadFixture("../Package.swift")
+        }
+    }
+
+    @Test("loadFixture throws on a name containing a path separator")
+    func loadFixtureThrowsOnPathSeparator() {
+        #expect(throws: InvalidFixtureNameError.self) {
+            try Self.loadFixture("subdir/SearchThenCallTranscript.jsonl")
+        }
+    }
+
+    @Test(
+        "loadFixture throws on a bare \"..\" name, which the letters/digits/-/_/. whitelist alone would let through"
+    )
+    func loadFixtureThrowsOnBareParentDotDot() {
+        #expect(throws: InvalidFixtureNameError.self) {
+            try Self.loadFixture("..")
+        }
     }
 
     // MARK: - decodeJSONL(_:)
@@ -274,4 +310,13 @@ struct TranscriptAssertionTests {
             try TranscriptAnalyzer.foundAPIs(in: events, slot: .flash)
         }
     }
+}
+
+/// A fixture `name` passed to `loadFixture(_:)` that failed the
+/// letters/digits/`-`/`_`/`.` whitelist check — guards against the name
+/// being used to construct a path outside `Goldens/` (e.g. via `..`
+/// traversal segments or path separators).
+private struct InvalidFixtureNameError: Error, CustomStringConvertible {
+    let name: String
+    var description: String { "invalid fixture name: \(name)" }
 }

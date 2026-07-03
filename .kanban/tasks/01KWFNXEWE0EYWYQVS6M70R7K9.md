@@ -42,6 +42,25 @@ comments:
 
     Task remains in `doing`, ready for `/review`.
   timestamp: 2026-07-03T12:43:40.117360+00:00
+- actor: wballard
+  id: 01kwm166yhq2jqb8sgy6zg5m4z
+  text: |-
+    Fixed the review-findings path-traversal item, pulled back from `review` per /implement.
+
+    **Fix**: `TranscriptAssertionTests.swift`'s private `loadFixture(_ name: String)` now whitelist-validates `name` before interpolating it into `.appendingPathComponent("Goldens/\(name)")` — `guard name.allSatisfy({ letters/digits/-/_/. })` — throwing a new private `InvalidFixtureNameError` (file-scope struct, `HardeningTestsError`-style: `Error, CustomStringConvertible`) on any other character (path separators, etc.).
+
+    **Adversarial double-check round 1 (via really-done) found a real gap**: the plain whitelist alone (exactly what the reviewer's suggested snippet specified) lets a bare `".."` through, since `.` is an allowed character — `Goldens/..` would resolve one directory above `Goldens/` (into the test target's own directory), contradicting the fix's intent even though `/` itself is still blocked. Fixed by adding a second guard clause rejecting any name that is entirely `.` characters (`isAllDots`), and updated the doc comment accordingly.
+
+    **Round 2 double-check (bounded, one re-check per really-done's contract) verified the closed gap and returned PASS** — confirmed `isAllDots` correctly rejects `"."`/`".."`/`"..."` while still allowing real fixture names through, confirmed no other escape route exists given the whitelist has no `/`, and confirmed empirically (by reverting the guard) that the new regression test actually fails without it.
+
+    Added 3 regression tests: `loadFixtureThrowsOnPathTraversal` (`"../Package.swift"`), `loadFixtureThrowsOnPathSeparator` (`"subdir/SearchThenCallTranscript.jsonl"`), `loadFixtureThrowsOnBareParentDotDot` (`".."`).
+
+    **Scope check**: grepped for the same `.appendingPathComponent("Goldens/...")` pattern elsewhere (`BuilderSurfaceTests.swift`, `LibrarianTests.swift`, `ToolAPIRendererTests.swift`) — all three use hardcoded string literals, not a caller-supplied `name` parameter, so they don't share this vulnerability. Left them untouched per the task's own scoping (reviewer's finding cited only this file/line).
+
+    **Verification**: `swift build --build-tests` clean (same single pre-existing unrelated mlx-swift bundle warning, zero new warnings). `swift test` — 213/213 main-suite tests green (210 baseline + 3 new), gated integration suite's 9 tests / 2 suites still report "skipped" in 0.001s, zero downloads. `swift test --filter TranscriptAssertionTests` — 24/24 green in isolation.
+
+    Task remains in `doing`, ready for `/review`.
+  timestamp: 2026-07-03T13:02:48.785240+00:00
 depends_on:
 - 01KWFNVX4RFZZKEKY4C08F8V0Y
 - 01KWFNWJECBNSZCANVMNTR3Z8J
@@ -63,14 +82,18 @@ Per plan.md M6.5 + Testing strategy "Integration tests": the real-model suite, m
 - [x] `swift test` WITHOUT the env var: integration suite reports skipped, zero downloads — verified: 9 tests / 2 suites all report "skipped" in 0.001s, no network activity, no hung processes.
 - [ ] With the env var on capable hardware + live Router: all four scenarios pass their trace assertions under at least one turn format, and the per-format results are recorded (test attachment or log) to settle the M4b/M4c default — **implemented but NOT executed in this sandbox** per explicit scoping/safety instruction: Router's `LiveModelLoader` path is now genuinely live (real MLX inference, real HF downloads), so running this here would attempt real network downloads. The 8 scenario tests (`SearchThenCallTests.swift`) are structurally complete, compile cleanly, and log per-format results (`print("RESULT [...] turnFormat=...")`) on every real run, but have never actually executed against a model. Needs a real run on capable hardware to close out.
 - [ ] Prefix-reuse measurement passes: second findAPIs call shows no full re-prefill, or the fork() fallback is confirmed engaged (assertion, not observation) — **implemented but NOT executed**, same reason as above. `PrefixReuseTests.swift` asserts `secondElapsed <= firstElapsed` as a real `#expect`, not just an observation, but has never run against real hardware.
-- [x] Transcript-parsing helpers are themselves unit-tested against checked-in fixture JSONL (runs in normal CI) — verified: 21/21 `TranscriptAssertionTests` pass against `Goldens/SearchThenCallTranscript.jsonl` + `Goldens/RepairTranscript.jsonl` (includes 3 regression tests added after an adversarial double-check found and this task fixed a real regex boundary bug in `toolCallPaths`).
+- [x] Transcript-parsing helpers are themselves unit-tested against checked-in fixture JSONL (runs in normal CI) — verified: 24/24 `TranscriptAssertionTests` pass against `Goldens/SearchThenCallTranscript.jsonl` + `Goldens/RepairTranscript.jsonl` (includes 3 regression tests added after an adversarial double-check found and this task fixed a real regex boundary bug in `toolCallPaths`, plus 3 more added closing a path-traversal review finding in `loadFixture(_:)`).
 - [x] Router live-path unavailable → suite skips with the typed reason, not failure — verified structurally (compiles, catch clause scoped to `GenerationError.notWiredForLiveInference`, returns without recording an issue); the live-unavailable *path itself* was not exercised since Router's live path is no longer typically unavailable (see task comment).
 
 ## Tests
 - [x] `Tests/FoundationModelsMultitoolIntegrationTests/SearchThenCallTests.swift` — the four gated scenarios × two turn formats
 - [x] `Tests/FoundationModelsMultitoolIntegrationTests/PrefixReuseTests.swift` — the gated prefix-reuse measurement
 - [x] `Tests/FoundationModelsMultitoolTests/TranscriptAssertionTests.swift` — ungated unit tests of the JSONL trace parser on fixtures
-- [x] `swift test --filter TranscriptAssertionTests` → passes in normal CI (21/21)
+- [x] `swift test --filter TranscriptAssertionTests` → passes in normal CI (24/24)
 
 ## Workflow
 - Use `/tdd` — write failing tests first, then implement to make them pass.
+
+## Review Findings (2026-07-03 07:47)
+
+- [x] `Tests/FoundationModelsMultitoolTests/TranscriptAssertionTests.swift:31` — Path traversal vulnerability: unvalidated `name` parameter is interpolated directly into a file path via `.appendingPathComponent("Goldens/\(name)")`, allowing an attacker to escape the intended directory using path traversal sequences like `..`. Validate the `name` parameter to prevent path traversal attacks. Use a whitelist approach (e.g., `guard name.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" || $0 == "." }) else { throw ValidationError() }`) or use `FileManager` APIs that normalize paths, or store a mapping of allowed fixture names to paths instead of constructing paths from user input. **Fixed**: added the suggested whitelist guard (plus an additional all-dots rejection an adversarial double-check found was needed, since `"."` alone passes the letters/digits/-/_/. whitelist and a bare `".."` would otherwise resolve one directory above `Goldens/`), throwing a new private `InvalidFixtureNameError`. Added 3 regression tests: `loadFixtureThrowsOnPathTraversal`, `loadFixtureThrowsOnPathSeparator`, `loadFixtureThrowsOnBareParentDotDot`.
