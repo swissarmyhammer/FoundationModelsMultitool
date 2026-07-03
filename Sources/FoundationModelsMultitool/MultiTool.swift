@@ -293,21 +293,51 @@ public struct MultiTool: Tool {
         let cancelledBox = OSAllocatedUnfairLock(initialState: false)
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
-                DispatchQueue.global(qos: .userInitiated).async {
-                    do {
-                        let result = try interpreter.run(
-                            code: code,
-                            installing: installing,
-                            isCancelled: { cancelledBox.withLock { $0 } }
-                        )
-                        continuation.resume(returning: result)
-                    } catch {
-                        continuation.resume(throwing: error)
-                    }
-                }
+                dispatchRun(
+                    code: code,
+                    installing: installing,
+                    using: interpreter,
+                    cancelledBox: cancelledBox,
+                    continuation: continuation
+                )
             }
         } onCancel: {
             cancelledBox.withLock { $0 = true }
+        }
+    }
+
+    /// The GCD-queue half of `run(code:installing:using:)`'s bridge: performs
+    /// the actual blocking `interpreter.run` off the cooperative pool and
+    /// settles `continuation` with its outcome. Pulled out of `run` itself so
+    /// that function's cancellation-handler/continuation nesting doesn't also
+    /// have to carry the dispatch-queue/do-catch levels below it.
+    ///
+    /// - Parameters:
+    ///   - code: the JavaScript source to run.
+    ///   - installing: the host functions to expose as globals.
+    ///   - interpreter: the sandbox to run `code` in.
+    ///   - cancelledBox: polled as `interpreter.run`'s `isCancelled` hook;
+    ///     flipped to `true` by `run(code:installing:using:)`'s `onCancel`.
+    ///   - continuation: resumed with `interpreter.run`'s result or thrown
+    ///     error.
+    private static func dispatchRun(
+        code: String,
+        installing: [HostFunction],
+        using interpreter: any Interpreter,
+        cancelledBox: OSAllocatedUnfairLock<Bool>,
+        continuation: CheckedContinuation<InterpreterResult, Error>
+    ) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                let result = try interpreter.run(
+                    code: code,
+                    installing: installing,
+                    isCancelled: { cancelledBox.withLock { $0 } }
+                )
+                continuation.resume(returning: result)
+            } catch {
+                continuation.resume(throwing: error)
+            }
         }
     }
 

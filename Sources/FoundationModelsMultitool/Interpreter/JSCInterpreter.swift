@@ -263,9 +263,7 @@ public final class JSCInterpreter: Interpreter {
     /// - Throws: `InterpreterError` for a thrown/syntax exception or a
     ///   watchdog timeout.
     public func run(code: String, installing: [HostFunction]) throws -> InterpreterResult {
-        try queue.sync {
-            try Self.evaluate(code: code, installing: installing, timeLimit: timeLimit, isCancelled: { false })
-        }
+        try runWithCancellation(code: code, installing: installing, isCancelled: { false })
     }
 
     /// Runs `code` exactly as `run(code:installing:)` does, but also
@@ -281,6 +279,27 @@ public final class JSCInterpreter: Interpreter {
     ///   the run otherwise completed; `InterpreterError` for a thrown/syntax
     ///   exception or a watchdog timeout.
     public func run(
+        code: String,
+        installing: [HostFunction],
+        isCancelled: @escaping @Sendable () -> Bool
+    ) throws -> InterpreterResult {
+        try runWithCancellation(code: code, installing: installing, isCancelled: isCancelled)
+    }
+
+    /// Shared body for both `run` overloads above — dispatches onto the
+    /// dedicated worker queue and evaluates, differing only in the
+    /// `isCancelled` polled while the snippet runs (`run(code:installing:)`
+    /// passes a closure that never reports cancellation).
+    ///
+    /// - Parameters:
+    ///   - code: the JavaScript source to run.
+    ///   - installing: host functions to expose as globals for this run only.
+    ///   - isCancelled: polled on a short interval while the snippet runs.
+    /// - Returns: the snippet's return value and captured console output.
+    /// - Throws: `CancellationError` if `isCancelled` reported `true` before
+    ///   the run otherwise completed; `InterpreterError` for a thrown/syntax
+    ///   exception or a watchdog timeout.
+    private func runWithCancellation(
         code: String,
         installing: [HostFunction],
         isCancelled: @escaping @Sendable () -> Bool

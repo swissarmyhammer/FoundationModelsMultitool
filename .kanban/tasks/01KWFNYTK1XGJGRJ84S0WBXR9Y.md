@@ -39,6 +39,25 @@ comments:
 
     Leaving the task in `doing` per the implement process, ready for /review.
   timestamp: 2026-07-03T11:03:22.403906+00:00
+- actor: wballard
+  id: 01kwkvc4bsn62aqqj8pkdpjr5y
+  text: |-
+    Addressed both review-findings checklist items:
+
+    1. JSCInterpreter.swift: extracted `private func runWithCancellation(code:installing:isCancelled:)` — both public `run(code:installing:)` and `run(code:installing:isCancelled:)` now delegate to it (the queue.sync { Self.evaluate(...) } body), eliminating the near-duplicate bodies. Pure extraction — the watchdog/evaluate/queue call path is byte-identical, just factored out.
+
+    2. MultiTool.swift: extracted `private static func dispatchRun(code:installing:using:cancelledBox:continuation:)` — pulls the `DispatchQueue.global(qos: .userInitiated).async { do {...} catch {...} }` body out of `run(code:installing:using:)`, which now just calls `dispatchRun(...)` from inside its `withCheckedThrowingContinuation` closure. Reduces nesting from 5 levels to withTaskCancellationHandler > withCheckedThrowingContinuation > (call to dispatchRun) in `run`, with the dispatch-queue/do-catch nesting isolated in `dispatchRun` itself.
+
+    Verified after both changes:
+    - `swift build`: clean, exit 0.
+    - `swift test` full suite: 164/164 pass, 14 suites, ~1s.
+    - `swift test --filter JSCInterpreterTests`: 14/14 pass, run 4x total (1 + 3 extra) with zero flakiness.
+    - `swift test --filter HardeningTests`: 17/17 pass, run 4x total (1 + 3 extra) with zero flakiness.
+    - No leftover swift-test/swiftpm-testing-helper processes for this project after any run (checked via ps aux).
+    - All commands run under hard shell timeouts (30-45s) per the safety requirement given the earlier watchdog hang.
+
+    Adversarial double-check dispatched via the double-check agent to scrutinize the extraction for byte-for-byte behavioral equivalence (capture semantics, queue/qos unchanged, no double/missed continuation.resume). Awaiting its verdict before finalizing.
+  timestamp: 2026-07-03T11:21:11.289682+00:00
 depends_on:
 - 01KWFNVX4RFZZKEKY4C08F8V0Y
 - 01KWFNWYGEJHW6X7VV7T92T9K1
@@ -66,3 +85,8 @@ Per plan.md M10:
 
 ## Workflow
 - Use `/tdd` — write failing tests first, then implement to make them pass.
+
+## Review Findings (2026-07-03 06:10)
+
+- [x] `Sources/FoundationModelsMultitool/Interpreter/JSCInterpreter.swift:190` — The body of the two `run` method overloads (lines 190–192 and 211–213) are near-verbatim: both call `queue.sync` with `Self.evaluate` using identical parameters except for `isCancelled` — one passes `{ false }`, the other passes the parameter. This is a single function with one parameterized value. Extract a private helper method that both public methods delegate to, parameterizing the `isCancelled` value: `private func runWithCancellation(code: String, installing: [HostFunction], isCancelled: @escaping @Sendable () -> Bool) throws -> InterpreterResult`. The first public `run` method then calls `runWithCancellation(..., isCancelled: { false })` and the second calls `runWithCancellation(..., isCancelled: isCancelled)`.
+- [x] `Sources/FoundationModelsMultitool/MultiTool.swift:242` — Function has 5 levels of syntactic nesting (withTaskCancellationHandler > withCheckedThrowingContinuation > DispatchQueue.async > do-catch > statements), exceeding the typical 4-level threshold for deep nesting. While driven by required Swift async/cancellation APIs, the depth makes the control flow harder to follow. Add inline documentation for each nesting level to clarify the control flow sequence, or consider extracting the dispatch logic into a named helper function to reduce nesting depth.
