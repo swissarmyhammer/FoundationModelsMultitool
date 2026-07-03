@@ -65,8 +65,8 @@ depends_on:
 - 01KWFNVX4RFZZKEKY4C08F8V0Y
 - 01KWFNWJECBNSZCANVMNTR3Z8J
 - 01KWFP7Q1REW7YKJ6DZJMB9F18
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: '8e80'
 title: 'M6.5a: Gated integration test target + four sample MultiTools'
 ---
 ## What
