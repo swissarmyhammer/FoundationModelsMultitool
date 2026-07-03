@@ -375,7 +375,13 @@ struct DirectToolCallTests {
 
         #expect(reply == "recovered from the failure")
         #expect(mainSession.receivedPrompts[1].contains("boom: AAA"))
-        #expect(mainSession.receivedPrompts[1].contains("Fix the request and call callTool again."))
+        // A single newline, matching the sibling in-message feedback
+        // functions' separator (e.g. `FindAPITool.format`'s "found:\n" and
+        // `discoveryUnavailableMessage`'s prose) — not
+        // `MultiToolAgent.transcriptSeparator`'s blank-line `"\n\n"`, which
+        // joins transcript entries, not text within a single message.
+        #expect(mainSession.receivedPrompts[1].contains("boom: AAA\nFix the request and call callTool again."))
+        #expect(!mainSession.receivedPrompts[1].contains("boom: AAA\n\nFix the request and call callTool again."))
     }
 
     // MARK: - The guided turn format also round-trips callTool correctly

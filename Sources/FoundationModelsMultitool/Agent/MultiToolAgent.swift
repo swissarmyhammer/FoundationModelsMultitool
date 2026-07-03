@@ -496,7 +496,7 @@ public struct MultiToolAgent: Sendable {
         } catch let cancellation as CancellationError {
             throw cancellation
         } catch {
-            return "callTool(\"\(name)\") failed: \(error)\(Self.transcriptSeparator)Fix the request and call callTool again."
+            return "callTool(\"\(name)\") failed: \(error)\nFix the request and call callTool again."
         }
     }
 

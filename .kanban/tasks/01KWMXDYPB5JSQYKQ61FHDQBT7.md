@@ -1,6 +1,25 @@
 ---
-position_column: todo
-position_ordinal: '9380'
+comments:
+- actor: wballard
+  id: 01kwn11h2ky5bve6zx4y2v60vr
+  text: |-
+    Confirmed current state via code_context grep: dispatchCallTool's catch block still used Self.transcriptSeparator ("\n\n"), matching the task's description exactly. Confirmed transcriptSeparator's two other uses in the file (respond(to:) transcript joining, sessionInstructions section joining) are legitimate and untouched. Confirmed sibling pattern via FindAPITool.format ("found:\n" + single \n) and discoveryUnavailableMessage/unknownDirectToolMessage/directCallUnavailableMessage (plain prose, no transcriptSeparator).
+
+    TDD: added two assertions to the existing test `directToolFailureThroughAgentLoopIsRepairable` in DirectToolCallTests.swift pinning the exact separator - one positive (single \n present) and one negative (double \n\n absent). Ran the test against the un-fixed source first and confirmed RED (both new assertions failed as expected, showing the double-newline text). Then applied the one-line fix in MultiToolAgent.swift's dispatchCallTool catch block (Self.transcriptSeparator -> \n). Re-ran and confirmed GREEN.
+
+    Full verification: swift build clean (no warnings), swift test: 247/247 main-suite tests pass, integration suite correctly skipped (MULTITOOL_INTEGRATION not set, per safety note). Confirmed MultiToolAgentTests.swift has no assertions referencing this message's separator (grep found nothing), so no updates needed there.
+
+    Launching double-check adversarial review agent before final handoff.
+  timestamp: 2026-07-03T22:19:29.747133+00:00
+- actor: wballard
+  id: 01kwn1538cgbrgjxwf14s7hq9f
+  text: |-
+    Double-check adversarial review: PASS. Verified independently: diff scoped to exactly one production line (dispatchCallTool's catch block) plus the two new test assertions; the other two transcriptSeparator uses in respond(to:) and sessionInstructions are untouched and legitimate; unknownDirectToolMessage/directCallUnavailableMessage never used transcriptSeparator so needed no change; new assertions are grounded (not tautological) against ThrowingToolError.description's actual literal output; MultiToolAgentTests.swift has zero references to this message; doc comments remain accurate. Full 247-test suite passes fresh.
+
+    Task complete and green. Leaving in doing for /review per the implement skill's process (not moving to review myself).
+  timestamp: 2026-07-03T22:21:26.668745+00:00
+position_column: doing
+position_ordinal: '80'
 title: 'MultiToolAgent.swift: dispatchCallTool error message regressed back to transcriptSeparator, contradicting an already-fixed review finding'
 ---
 ## What

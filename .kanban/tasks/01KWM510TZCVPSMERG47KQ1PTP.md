@@ -62,8 +62,8 @@ comments:
 
     All three checked out with no further code changes needed. Checked `## Acceptance Criteria` (both items) and `## Tests` (one item) to `[x]`; left `## Review Findings` as-is (already `[x]`). Leaving task in `doing` for `/review` per the implement skill's process.
   timestamp: 2026-07-03T22:14:09.605490+00:00
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: '9380'
 title: 'AgentEvaluators.swift: RepairedWithinNEvaluator passing rationale text overclaims .final was reached'
 ---
 ## What
