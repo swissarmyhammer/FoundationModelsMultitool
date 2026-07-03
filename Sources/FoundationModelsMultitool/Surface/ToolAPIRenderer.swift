@@ -230,6 +230,33 @@ public enum ToolAPIRenderer {
         )
     }
 
+    // MARK: - Raw JSON Schema text
+
+    /// Encodes `schema` to its raw JSON Schema source text — the same
+    /// `JSONEncoder` call `decode(_:subject:)` below makes on a tool's
+    /// schema (plan.md Finding #3: "encode is the read path"), exposed here
+    /// for a caller — `DirectToolCall`'s escape hatch — that needs the JSON
+    /// Schema *string* itself, to constrain a Router guided-generation
+    /// grammar (`Grammar.jsonSchema(_:)`), rather than a rendered
+    /// TypeScript declaration.
+    ///
+    /// - Parameter schema: the schema to encode.
+    /// - Returns: the encoded JSON Schema source text.
+    /// - Throws: `ToolAPIRendererError` if `schema` fails to encode — not
+    ///   expected for a real tool's `parameters` (a `GenerationSchema`
+    ///   derived from a `@Generable` `Arguments` struct always encodes
+    ///   successfully), kept as a defensive, reportable failure rather than
+    ///   a trap, matching this type's "throw rather than crash" posture.
+    public static func jsonSchemaString(for schema: GenerationSchema) throws -> String {
+        let data: Data
+        do {
+            data = try JSONEncoder().encode(schema)
+        } catch {
+            throw ToolAPIRendererError("Failed to encode GenerationSchema to JSON: \(error).")
+        }
+        return String(decoding: data, as: UTF8.self)
+    }
+
     // MARK: - Schema decoding
 
     /// A minimal, structural mirror of the JSON Schema `GenerationSchema`'s

@@ -75,15 +75,35 @@ that one tool's own `call(arguments:)`.
   and return a precise, repairable error on a mismatch, but that is
   validation *after the fact*, not a generation-time guarantee.
 - **Escape hatches**, when the hard argument guarantee matters for one tool:
-  - Call that tool directly via Router **guided generation** — derive a
-    grammar from its `parameters: GenerationSchema` and use
-    `RoutedLLM.respond(to:generating:)` (or a guided `RoutedSession`) so its
-    arguments are xgrammar-constrained and schema-valid, at the cost of one
-    extra round trip, instead of wrapping it as `tools.*`.
+  - **Register it as a *direct* tool instead of wrapping it** —
+    `MultiToolAgent(directTools:)` — and the agent loop surfaces a third
+    affordance, `callTool(name, args)`, alongside `runCode`/`findAPIs`. The
+    model gives the tool's exact name and a plain-language description of
+    what it wants the call to accomplish (never the literal argument
+    values); `DirectToolCall`
+    (`Sources/FoundationModelsMultitool/Agent/DirectToolCall.swift`) then:
+    encodes the tool's `parameters: GenerationSchema` to a JSON Schema
+    string (reusing `ToolAPIRenderer`'s own encode path,
+    `ToolAPIRenderer.jsonSchemaString(for:)`); constrains a one-shot Router
+    guided-generation call to that schema via **`RoutedLLM
+    .respond(to:matching:)`** — the *dynamic-JSON* guided shape, since the
+    tool's `Arguments` type is only known through existential opening and
+    isn't nameable as a compile-time `Generable` target for
+    `respond(to:generating:)`; builds a `GeneratedContent(json:)` from the
+    schema-valid `JSONValue` output; and invokes through the same
+    `ToolInvoker` pipeline the `runCode` wrapped-tool path uses. One extra
+    round trip buys xgrammar-constrained, schema-valid arguments end to end.
+    An unknown direct-tool name, or `callTool` used with no direct tools
+    configured, is rejected with an instructive, repairable message — never
+    a crash.
   - Place the `MultiTool` and that tool directly in an Apple built-in
     `SystemLanguageModel` `LanguageModelSession(tools:)` instead of a Router
     model — the only place `FoundationModels`'s own token-level tool-calling
-    loop applies here.
+    loop applies here. `DirectToolCall`'s guided-generation path is the
+    schema-valid escape hatch *on a Router model*; Apple's own
+    constrained-decoding tool loop is a different mechanism, available only
+    inside a built-in `SystemLanguageModel` session, never through
+    `MultiToolAgent`.
 - **A wrapped tool's own behavior is out of scope.** The sandbox bounds what
   a *snippet* can reach; it says nothing about what a wrapped `Tool`'s own
   `call(arguments:)` implementation does once invoked (e.g. a tool that
