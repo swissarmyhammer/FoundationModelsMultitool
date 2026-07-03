@@ -26,7 +26,9 @@ public struct ToolAPIRendererError: Error, Sendable, Equatable, CustomStringConv
     }
 
     /// A human-readable description of the error, satisfying
-    /// `CustomStringConvertible`. Identical to `message`.
+    /// `CustomStringConvertible`.
+    ///
+    /// Identical to `message`.
     public var description: String { message }
 }
 
@@ -60,19 +62,21 @@ public enum ToolAPIRenderer {
     public enum Returns: Sendable {
         /// `Output` (or its `PartiallyGenerated`/element type) is itself
         /// `Generable` — render its own `GenerationSchema` as the TS return
-        /// type, the same way `parameters` is rendered. This covers both
-        /// structured outputs (a `@Generable` struct → a TS object type) and
-        /// plain-text outputs, since `String` is itself `Generable` (its
-        /// schema is simply `{"type":"string"}`) — one pipeline for both
-        /// halves of plan.md's "Return-type handling".
+        /// type, the same way `parameters` is rendered.
+        ///
+        /// This covers both structured outputs (a `@Generable` struct → a TS
+        /// object type) and plain-text outputs, since `String` is itself
+        /// `Generable` (its schema is simply `{"type":"string"}`) — one
+        /// pipeline for both halves of plan.md's "Return-type handling".
         case schema(GenerationSchema)
 
         /// `Output` is only known to be `PromptRepresentable` (the `Tool`
         /// protocol's actual bound) — no schema is available, so there is no
-        /// author-supplied text to echo. Renders as `string`, documented
-        /// with fixed prose per plan.md's "otherwise... type it `string` and
-        /// document it in `@returns` prose" — the fallback for Findings #4's
-        /// worst case.
+        /// author-supplied text to echo.
+        ///
+        /// Renders as `string`, documented with fixed prose per plan.md's
+        /// "otherwise... type it `string` and document it in `@returns`
+        /// prose" — the fallback for Findings #4's worst case.
         case text
     }
 
@@ -111,9 +115,11 @@ public enum ToolAPIRenderer {
         )
     }
 
-    /// Renders a tool's raw surface pieces into a `ToolDescriptor`. This is
-    /// the primary, directly testable entry point — `render(_:onWiden:)`
-    /// above is a thin convenience wrapper over it for a real `Tool`.
+    /// Renders a tool's raw surface pieces into a `ToolDescriptor`.
+    ///
+    /// This is the primary, directly testable entry point —
+    /// `render(_:onWiden:)` above is a thin convenience wrapper over it for
+    /// a real `Tool`.
     ///
     /// - Parameters:
     ///   - name: the function name the snippet calls this tool by.
@@ -261,7 +267,9 @@ public enum ToolAPIRenderer {
 
     /// A minimal, structural mirror of the JSON Schema `GenerationSchema`'s
     /// `Encodable` conformance produces — just the keys `ToolAPIRenderer`
-    /// reads. Decoded straight off `JSONEncoder().encode(schema)`, since
+    /// reads.
+    ///
+    /// Decoded straight off `JSONEncoder().encode(schema)`, since
     /// `GenerationSchema` has no field-enumeration API of its own (plan.md
     /// Finding #3: encode is the read path).
     ///
@@ -361,13 +369,15 @@ public enum ToolAPIRenderer {
     /// bare — a tool name (as a `declare function <name>(...)` signature)
     /// or a property name (as an unquoted object-literal key): an ASCII
     /// letter, `_`, or `$`, followed by any number of ASCII letters,
-    /// digits, `_`, or `$`. Deliberately narrower than the full TypeScript
-    /// identifier grammar (which also permits non-ASCII Unicode
-    /// identifier characters) — a schema-derived name outside this
-    /// unambiguous subset is safer treated as "not a bare identifier"
-    /// (rejected outright for a tool name, or re-rendered as a quoted
-    /// string key for a property name via `objectKeyLiteral`) than risk
-    /// misclassifying an edge case as safe to emit unquoted.
+    /// digits, `_`, or `$`.
+    ///
+    /// Deliberately narrower than the full TypeScript identifier grammar
+    /// (which also permits non-ASCII Unicode identifier characters) — a
+    /// schema-derived name outside this unambiguous subset is safer
+    /// treated as "not a bare identifier" (rejected outright for a tool
+    /// name, or re-rendered as a quoted string key for a property name via
+    /// `objectKeyLiteral`) than risk misclassifying an edge case as safe
+    /// to emit unquoted.
     ///
     /// Built with `Regex(_:)` + matched via `wholeMatch(of:)` rather than
     /// `NSRegularExpression` with `^`/`$` anchors: `NSRegularExpression`'s
@@ -407,6 +417,7 @@ public enum ToolAPIRenderer {
     /// Renders `key` as an object-literal key for the auto-generated
     /// `@example` call: bare (`field`) when it's a legal TS identifier, or
     /// a quoted, escaped string-literal key (`"field\"x\""`) otherwise.
+    ///
     /// Shared by every example-literal builder that writes a property name
     /// as an object key (the top-level `exampleFields` in
     /// `render(name:description:parameters:returns:onWiden:)` and
@@ -444,8 +455,10 @@ public enum ToolAPIRenderer {
     /// The JSON Schema `"type"` keyword's scalar values this renderer
     /// recognizes, compared or switched on against `SchemaNode.type`
     /// throughout `tsType` and its sibling doc/example-synthesis helpers
-    /// below. Named rather than inlined because each is referenced at three
-    /// or more call sites.
+    /// below.
+    ///
+    /// Named rather than inlined because each is referenced at three or
+    /// more call sites.
     private static let typeObject = "object"
     private static let typeString = "string"
     private static let typeInteger = "integer"
@@ -454,11 +467,13 @@ public enum ToolAPIRenderer {
     private static let typeArray = "array"
 
     /// Renders `node`'s TypeScript type, resolving `$ref`s and recursing
-    /// into `object`/`array` structure. Widens anything this function
-    /// doesn't have a specific mapping for to `any`, reporting through
-    /// `onWiden` — except a missing `"type"` (and no `anyOf` either), which
-    /// means the node can't be identified at all, so it throws instead (the
-    /// completeness contract: throw rather than emit a lossy stub).
+    /// into `object`/`array` structure.
+    ///
+    /// Widens anything this function doesn't have a specific mapping for to
+    /// `any`, reporting through `onWiden` — except a missing `"type"` (and
+    /// no `anyOf` either), which means the node can't be identified at all,
+    /// so it throws instead (the completeness contract: throw rather than
+    /// emit a lossy stub).
     ///
     /// This throw is defensive: `GenerationSchema`'s own `Decodable`
     /// conformance already rejects a property lacking every one of
@@ -529,12 +544,13 @@ public enum ToolAPIRenderer {
     }
 
     /// Renders an `object` node's properties as an inline TS object type,
-    /// `{ a: T; b?: U }`, in declared order. Keys go through
-    /// `objectKeyLiteral`, same as the example-literal builders — this is
-    /// the *real* declared type (embedded in `declare function`'s
-    /// signature, not just a doc/example), so a schema-derived property
-    /// name containing a quote or other special character must not be
-    /// allowed to break out of the object-type syntax here either.
+    /// `{ a: T; b?: U }`, in declared order.
+    ///
+    /// Keys go through `objectKeyLiteral`, same as the example-literal
+    /// builders — this is the *real* declared type (embedded in `declare
+    /// function`'s signature, not just a doc/example), so a schema-derived
+    /// property name containing a quote or other special character must
+    /// not be allowed to break out of the object-type syntax here either.
     ///
     /// - Parameters:
     ///   - node: the object schema node to render.
@@ -565,11 +581,12 @@ public enum ToolAPIRenderer {
     // MARK: - Doc-comment rendering (the doc-mapping table)
 
     /// Splits `text` into JSDoc comment lines, each prefixed with
-    /// `docLinePrefix`. Text is author-supplied (`tool.description`) and
-    /// rendered verbatim — the renderer never fabricates or appends
-    /// punctuation to it — except for `escapeForJSDocComment`, which
-    /// neutralizes an embedded `*/` so it can't terminate the enclosing
-    /// `/** … */` block early.
+    /// `docLinePrefix`.
+    ///
+    /// Text is author-supplied (`tool.description`) and rendered verbatim —
+    /// the renderer never fabricates or appends punctuation to it — except
+    /// for `escapeForJSDocComment`, which neutralizes an embedded `*/` so
+    /// it can't terminate the enclosing `/** … */` block early.
     private static func commentLines(for text: String) -> [String] {
         guard !text.isEmpty else { return [] }
         return escapeForJSDocComment(text).split(separator: "\n", omittingEmptySubsequences: false)
@@ -622,12 +639,14 @@ public enum ToolAPIRenderer {
     }
 
     /// Renders a `(minimum, maximum)` bound pair as a parenthetical clause,
-    /// or `nil` if neither bound is present. Shared by `numericRangeClause`
-    /// and `countClause`, which were near-verbatim copies of the same
-    /// guard/switch/format/return-nil structure over `minimum`/`maximum`
-    /// vs. `minItems`/`maxItems` — the type guard and the three format
-    /// strings (both bounds, minimum-only, maximum-only) are the only real
-    /// per-call-site differences, so they're supplied as closures.
+    /// or `nil` if neither bound is present.
+    ///
+    /// Shared by `numericRangeClause` and `countClause`, which were
+    /// near-verbatim copies of the same guard/switch/format/return-nil
+    /// structure over `minimum`/`maximum` vs. `minItems`/`maxItems` — the
+    /// type guard and the three format strings (both bounds, minimum-only,
+    /// maximum-only) are the only real per-call-site differences, so
+    /// they're supplied as closures.
     ///
     /// - Parameters:
     ///   - minimum: the lower bound, if present.
@@ -656,7 +675,9 @@ public enum ToolAPIRenderer {
 
     /// Renders a numeric guide's `minimum`/`maximum`/`range` as a
     /// parenthetical, e.g. `"(range 1…10)"`, `"(minimum 1)"`, or
-    /// `"(maximum 10)"`. `nil` if neither bound is present.
+    /// `"(maximum 10)"`.
+    ///
+    /// `nil` if neither bound is present.
     private static func numericRangeClause(_ node: SchemaNode) -> String? {
         guard node.type == typeInteger || node.type == typeNumber else { return nil }
         return boundsClause(
@@ -669,8 +690,10 @@ public enum ToolAPIRenderer {
     }
 
     /// Renders a string guide's `pattern` as a parenthetical, e.g.
-    /// `"(pattern: /[A-Z]{3}/)"`. `nil` if no pattern is present. The
-    /// pattern is passed through `escapeForRegexLiteralDoc` — an
+    /// `"(pattern: /[A-Z]{3}/)"`.
+    ///
+    /// `nil` if no pattern is present. The pattern is passed through
+    /// `escapeForRegexLiteralDoc` — an
     /// unescaped `/` embedded in the pattern would otherwise prematurely
     /// close the doc text's `/…/` regex-literal form — and the whole
     /// clause through `escapeForJSDocComment`: a pattern ending in `*`
@@ -686,7 +709,9 @@ public enum ToolAPIRenderer {
 
     /// Renders an array guide's `minItems`/`maxItems`/`count` as a
     /// parenthetical, e.g. `"(1…3 items)"`, `"(1+ items)"`, or `"(up to 3
-    /// items)"`. `nil` if neither bound is present.
+    /// items)"`.
+    ///
+    /// `nil` if neither bound is present.
     private static func countClause(_ node: SchemaNode) -> String? {
         guard node.type == typeArray else { return nil }
         return boundsClause(
@@ -702,6 +727,7 @@ public enum ToolAPIRenderer {
 
     /// Synthesizes a plausible, syntactically valid JS literal for one
     /// required property, used to build the auto-generated `@example` call.
+    ///
     /// Optional properties are never included in the example (plan.md:
     /// "optionals are simply omitted... the call site is self-documenting").
     ///
@@ -758,6 +784,7 @@ public enum ToolAPIRenderer {
 
     /// Builds `{ field: value, … }` for an object node's required
     /// properties, recursively synthesizing each field's example literal.
+    ///
     /// Keys go through `objectKeyLiteral`, same as the top-level
     /// `exampleFields` in `render(name:description:parameters:returns:onWiden:)`.
     ///
@@ -796,11 +823,12 @@ public enum ToolAPIRenderer {
         values.map(tsLiteral).joined(separator: " | ")
     }
 
-    /// Renders one JSON scalar as a TS literal. `.string` is escaped via
-    /// `escapeForJSStringLiteral`, same as every other schema-derived
-    /// string this renderer wraps in double quotes — an enum/default
-    /// choice containing an embedded quote would otherwise break the TS
-    /// string-literal syntax it's spliced into.
+    /// Renders one JSON scalar as a TS literal.
+    ///
+    /// `.string` is escaped via `escapeForJSStringLiteral`, same as every
+    /// other schema-derived string this renderer wraps in double quotes —
+    /// an enum/default choice containing an embedded quote would
+    /// otherwise break the TS string-literal syntax it's spliced into.
     private static func tsLiteral(_ value: InterpreterValue) -> String {
         switch value {
         case .string(let string):

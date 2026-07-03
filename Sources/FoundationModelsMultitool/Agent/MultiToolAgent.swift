@@ -9,8 +9,10 @@ import os
 /// mechanics) — only a failure of the loop's own bounds.
 public enum MultiToolAgentError: Error, Sendable, Equatable, CustomStringConvertible {
     /// The loop reached its configured `maxTurns` without the model
-    /// producing a `final` step. Plan.md M4b: "The loop terminates at
-    /// max-turns with a typed error, never spins."
+    /// producing a `final` step.
+    ///
+    /// Plan.md M4b: "The loop terminates at max-turns with a typed error,
+    /// never spins."
     case maxTurnsExceeded(turns: Int)
 
     /// The turn format's parse-failure budget (`TurnFormat.maxRepairTurns`)
@@ -20,9 +22,10 @@ public enum MultiToolAgentError: Error, Sendable, Equatable, CustomStringConvert
     case unparseableTurn(turn: Int, reason: String)
 
     /// A human-readable description of the error, satisfying
-    /// `CustomStringConvertible`. Synthesized per case — unlike this
-    /// package's other `Error` types, there is no single underlying
-    /// `message` to echo verbatim.
+    /// `CustomStringConvertible`.
+    ///
+    /// Synthesized per case — unlike this package's other `Error` types,
+    /// there is no single underlying `message` to echo verbatim.
     public var description: String {
         switch self {
         case .maxTurnsExceeded(let turns):
@@ -71,8 +74,10 @@ public struct MultiToolAgent: Sendable {
     /// The blank-line separator joining transcript entries — each turn's raw
     /// response, repair instruction, and step result — into the running
     /// transcript `respond(to:)` resends as the next turn's prompt, and
-    /// joining `sessionInstructions`'s sections. A single named constant so
-    /// every call site agrees on the separator's format.
+    /// joining `sessionInstructions`'s sections.
+    ///
+    /// A single named constant so every call site agrees on the separator's
+    /// format.
     private static let transcriptSeparator = "\n\n"
 
     /// The catalog + live tool instances this agent's `runCode` dispatches
@@ -85,17 +90,22 @@ public struct MultiToolAgent: Sendable {
     private let multiTool: MultiTool
 
     /// The pluggable turn strategy — `.tolerantParse()` (M4b) or `.guided()`
-    /// (M4c); selecting either changes only how a turn is encoded/decoded
-    /// (and, in the production initializer below, how the main session is
-    /// built — see `TurnFormat.grammar`), never this type's loop logic.
+    /// (M4c).
+    ///
+    /// Selecting either changes only how a turn is encoded/decoded (and, in
+    /// the production initializer below, how the main session is built —
+    /// see `TurnFormat.grammar`), never this type's loop logic.
     private let turnFormat: any TurnFormat
 
     /// The bounded turn count `respond(to:)` never exceeds — plan.md M4b:
-    /// "under a bounded max-turn count." Clamped to at least `1` at init.
+    /// "under a bounded max-turn count."
+    ///
+    /// Clamped to at least `1` at init.
     private let maxTurns: Int
 
-    /// Creates the main agent session for one `respond(to:)` call. A
-    /// closure (not a stored session) so the production initializer can
+    /// Creates the main agent session for one `respond(to:)` call.
+    ///
+    /// A closure (not a stored session) so the production initializer can
     /// defer creating the real `RoutedSession` until a call actually needs
     /// one, and so a fresh session is used per `respond(to:)` call — each
     /// call is its own conversation, per plan.md's usage example (one
@@ -104,26 +114,32 @@ public struct MultiToolAgent: Sendable {
 
     /// Creates the librarian session `findAPIs` dispatches to, or `nil` when
     /// this agent has no librarian configured (plan.md: `librarian:
-    /// RoutedLLM?`). Like `makeSession`, deferred and re-created fresh per
-    /// `respond(to:)` call.
+    /// RoutedLLM?`).
+    ///
+    /// Like `makeSession`, deferred and re-created fresh per `respond(to:)`
+    /// call.
     private let makeLibrarianSession: (@Sendable () -> any AgentSession)?
 
     /// Every *direct* tool this agent's `callTool` step can dispatch to —
-    /// plan.md's escape hatch — keyed by `Tool.name`. Empty when this agent
-    /// has no direct tools configured (`MultiToolAgent(directTools:)`
-    /// defaults to `[]`), in which case `callTool` is never surfaced to the
-    /// model (`sessionInstructions` only appends `ToolDescriptions
-    /// .callTool` when non-empty) and any `callTool` step the model emits
-    /// anyway is rejected the same instructive way an unknown tool name is.
+    /// plan.md's escape hatch — keyed by `Tool.name`.
+    ///
+    /// Empty when this agent has no direct tools configured
+    /// (`MultiToolAgent(directTools:)` defaults to `[]`), in which case
+    /// `callTool` is never surfaced to the model (`sessionInstructions`
+    /// only appends `ToolDescriptions.callTool` when non-empty) and any
+    /// `callTool` step the model emits anyway is rejected the same
+    /// instructive way an unknown tool name is.
     private let directTools: [String: any Tool]
 
     /// The seam `DirectToolCall` drives to get schema-valid arguments for
     /// one `callTool` dispatch, or `nil` when no direct tools are configured
     /// (`directTools.isEmpty`) — mirrors `makeLibrarianSession`'s
-    /// nil-when-unconfigured shape. Not deferred/per-call like
-    /// `makeSession`/`makeLibrarianSession`: `RoutedDirectCallSession` (the
-    /// production conformer) is a thin, stateless wrapper over `model`, so
-    /// there is no per-call session state to keep fresh.
+    /// nil-when-unconfigured shape.
+    ///
+    /// Not deferred/per-call like `makeSession`/`makeLibrarianSession`:
+    /// `RoutedDirectCallSession` (the production conformer) is a thin,
+    /// stateless wrapper over `model`, so there is no per-call session
+    /// state to keep fresh.
     private let directCallSession: (any DirectCallSession)?
 
     /// Creates an agent bound to a resolved Router profile's generation slots.
@@ -568,13 +584,15 @@ public struct MultiToolAgent: Sendable {
 
         /// `callTool`'s description — plan.md's escape hatch — included only
         /// when this agent has at least one direct tool configured
-        /// (`directTools` non-empty). Lists each direct tool's name and
-        /// description so the model knows they exist and roughly what they
-        /// do; unlike `runCode`'s `tools.*` surface, no typed signature is
-        /// rendered here — the arguments themselves are produced separately,
-        /// under a grammar derived from the called tool's own schema, so the
-        /// main model only ever needs to describe its *intent* via `args`,
-        /// never the literal argument shape.
+        /// (`directTools` non-empty).
+        ///
+        /// Lists each direct tool's name and description so the model knows
+        /// they exist and roughly what they do; unlike `runCode`'s
+        /// `tools.*` surface, no typed signature is rendered here — the
+        /// arguments themselves are produced separately, under a grammar
+        /// derived from the called tool's own schema, so the main model
+        /// only ever needs to describe its *intent* via `args`, never the
+        /// literal argument shape.
         ///
         /// - Parameter directTools: this agent's direct tools, keyed by name.
         /// - Returns: `callTool`'s full description text.

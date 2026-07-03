@@ -94,6 +94,14 @@ struct ThrowingDirectCallSession: DirectCallSession {
     /// The error every call throws.
     let error: Error
 
+    /// Throws the configured `error` immediately, ignoring `prompt` and
+    /// `jsonSchema`.
+    ///
+    /// - Parameters:
+    ///   - prompt: ignored.
+    ///   - jsonSchema: ignored.
+    /// - Returns: never returns.
+    /// - Throws: the configured `error`, unconditionally.
     func respond(to prompt: String, matching jsonSchema: String) async throws -> JSONValue {
         throw error
     }
