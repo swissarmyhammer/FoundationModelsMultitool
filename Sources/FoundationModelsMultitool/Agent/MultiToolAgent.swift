@@ -76,8 +76,10 @@ public struct MultiToolAgent: Sendable {
     /// steps to.
     private let multiTool: MultiTool
 
-    /// The pluggable turn strategy — `.tolerantParse()` here (M4b); a
-    /// `.guided` strategy arrives in M4c without this type changing.
+    /// The pluggable turn strategy — `.tolerantParse()` (M4b) or `.guided()`
+    /// (M4c); selecting either changes only how a turn is encoded/decoded
+    /// (and, in the production initializer below, how the main session is
+    /// built — see `TurnFormat.grammar`), never this type's loop logic.
     private let turnFormat: any TurnFormat
 
     /// The bounded turn count `respond(to:)` never exceeds — plan.md M4b:
@@ -160,12 +162,22 @@ public struct MultiToolAgent: Sendable {
             } else {
                 nil
             }
+        let makeSession: @Sendable () -> any AgentSession =
+            if let grammar = resolvedTurnFormat.grammar {
+                {
+                    RoutedAgentSession(
+                        session: model.makeGuidedSession(grammar, instructions: sessionInstructions)
+                    )
+                }
+            } else {
+                { RoutedAgentSession(session: model.makeSession(instructions: sessionInstructions)) }
+            }
         self.init(
             registry: registry,
             configuration: configuration,
             turnFormat: resolvedTurnFormat,
             maxTurns: maxTurns ?? configuration.maxAgentTurns,
-            makeSession: { RoutedAgentSession(session: model.makeSession(instructions: sessionInstructions)) },
+            makeSession: makeSession,
             makeLibrarianSession: makeLibrarianSession
         )
     }

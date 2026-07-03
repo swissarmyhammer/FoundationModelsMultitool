@@ -62,8 +62,8 @@ depends_on:
 - 01KWFNVX4RFZZKEKY4C08F8V0Y
 - 01KWFNWYGEJHW6X7VV7T92T9K1
 - 01KWFNWJECBNSZCANVMNTR3Z8J
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: 8c80
 title: 'M10: Hardening — cancellation, limits, logging, security model'
 ---
 ## What

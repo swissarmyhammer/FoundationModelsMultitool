@@ -1,4 +1,5 @@
 import Foundation
+import FoundationModelsRouter
 
 /// One parsed step out of a raw agent-turn response — plan.md's "parse a
 /// tool call out of `raw` — runCode / findAPIs / final answer".
@@ -43,6 +44,23 @@ public struct TurnParseError: Error, Sendable, Equatable, CustomStringConvertibl
     public var description: String { message }
 }
 
+extension TurnParseError {
+    /// Extracts the human-readable reason from a `parseTurn(_:)` failure —
+    /// this error's own `message` when `error` is a `TurnParseError`, else
+    /// its generic description.
+    ///
+    /// Shared by every `TurnFormat.repairInstruction(for:)` conformer
+    /// (`TolerantParseTurnFormat`, `GuidedTurnFormat`) so the same
+    /// error-vs-message fallback isn't hand-copied per strategy.
+    ///
+    /// - Parameter error: the error `parseTurn(_:)` threw.
+    /// - Returns: `error`'s `TurnParseError.message` when available, else
+    ///   `String(describing: error)`.
+    static func reason(for error: Error) -> String {
+        (error as? TurnParseError)?.message ?? String(describing: error)
+    }
+}
+
 /// A pluggable strategy for how one agent turn is formatted (what
 /// `MultiToolAgent` tells the model about the response shape it expects)
 /// and parsed (how raw session text becomes an `AgentStep`).
@@ -50,11 +68,11 @@ public struct TurnParseError: Error, Sendable, Equatable, CustomStringConvertibl
 /// Plan.md Router integration: "Two ways to make the model emit a
 /// well-formed call rather than free prose... 1. Guided turns... 2. Prompted
 /// convention + tolerant parse." `TolerantParseTurnFormat` below is the
-/// second; a `.guided` conformer arrives in M4c. Because `MultiToolAgent`'s
-/// loop (`respond(to:)`) is written entirely against this protocol — never
-/// against `TolerantParseTurnFormat` directly — plugging in a second
-/// strategy is adding a new conformer and a new `.guided` static factory
-/// (mirroring `.tolerantParse` below); the loop itself does not change.
+/// second; `GuidedTurnFormat` (`AgentTurn.swift`, M4c) is the first. Because
+/// `MultiToolAgent`'s loop (`respond(to:)`) is written entirely against this
+/// protocol — never against either conformer directly — plugging in a
+/// second strategy is adding a new conformer and a new static factory
+/// (mirroring `.tolerantParse`/`.guided`); the loop itself does not change.
 public protocol TurnFormat: Sendable {
     /// How many consecutive parse failures `MultiToolAgent.respond(to:)`
     /// tolerates (each triggering a repair turn) before failing the loop
@@ -88,6 +106,28 @@ public protocol TurnFormat: Sendable {
     /// - Parameter error: the error `parseTurn(_:)` threw.
     /// - Returns: the repair instruction to append to the transcript.
     func repairInstruction(for error: Error) -> String
+
+    /// The Router grammar this format's session must be constrained to, or
+    /// `nil` for a plain, unconstrained session.
+    ///
+    /// `MultiToolAgent`'s production initializer reads this to decide how to
+    /// build the main session: non-`nil` routes through
+    /// `RoutedLLM.makeGuidedSession(_:instructions:workingDirectory:)`
+    /// (`GuidedTurnFormat`, M4c); `nil` routes through the plain
+    /// `RoutedLLM.makeSession(instructions:workingDirectory:)`
+    /// (`TolerantParseTurnFormat`, via the default below — plan.md Router
+    /// integration option 2, "Prompted convention + tolerant parse," has no
+    /// grammar constraint at all). Session *construction* is the only place
+    /// this differs; the loop's own dispatch/parse/repair code never reads
+    /// it.
+    var grammar: Grammar? { get }
+}
+
+extension TurnFormat {
+    /// Default: no grammar constraint — a plain, unconstrained session.
+    /// `TolerantParseTurnFormat` relies on this; `GuidedTurnFormat` is the
+    /// one conformer that overrides it.
+    public var grammar: Grammar? { nil }
 }
 
 /// Plan.md's "Prompted convention + tolerant parse": a ReAct-style
@@ -260,9 +300,8 @@ public struct TolerantParseTurnFormat: TurnFormat {
     ///   `TurnParseError.message` when available, else its description.
     /// - Returns: the repair instruction to append to the transcript.
     public func repairInstruction(for error: Error) -> String {
-        let reason = (error as? TurnParseError)?.message ?? String(describing: error)
         return """
-            Your previous response could not be parsed: \(reason)
+            Your previous response could not be parsed: \(TurnParseError.reason(for: error))
 
             Respond again with exactly one \(FieldMarker.action), in the required format, and nothing else.
             """
