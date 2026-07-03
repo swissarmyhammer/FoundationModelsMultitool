@@ -441,6 +441,20 @@ agent's working context.
 
 Plus in-language `help()`/`docs()` globals backed by the same surface.
 
+> **Planned migration →
+> [`../FoundationModelsMetadataRegistry`](../FoundationModelsMetadataRegistry/plan.md).**
+> The librarian pattern is being extracted into a generic package (its M5 is this
+> migration): `Librarian` becomes a thin wrapper over
+> `MetadataSearcher<APISurface.Entry>`, and `AgentSession` + `RoutedAgentSession` move
+> upstream. Deltas Multitool gains: (a) the guided output becomes **ids only**,
+> xgrammar-constrained to the candidate id enum, with `signature`/`doc`/`example`
+> looked up **verbatim from the surface** rather than re-typed by the model
+> (`FoundAPIs` becomes `FindAPITool` formatting); (b) the over-budget
+> `lexicallyFilter` keep/drop is replaced by ranked hybrid retrieval
+> (BM25 + trigram + cosine → RRF, from CodeContextKit); (c) `update(items:)` arrives
+> for catalogs that change after `build()`. Behavior and tests are otherwise
+> preserved — the existing librarian suite keeps passing against the wrapper.
+
 ```
 main agent loop   (RoutedSession on profile.standard; sees only: runCode, findAPIs)
    │  findAPIs("for each city in my trip, get weather and pick the warmest")
