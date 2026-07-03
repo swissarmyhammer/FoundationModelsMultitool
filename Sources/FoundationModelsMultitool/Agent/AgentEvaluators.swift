@@ -114,7 +114,9 @@ public struct AgentSubject: EvaluationSubject, Sendable {
 /// a scenario that doesn't expect discovery at all (`AgentScenarioExpectation
 /// .expectFindAPIs == false`) — deterministic, no judge model needed.
 public struct SearchedThenCalledEvaluator: EvaluatorProtocol, Sendable {
+    /// The evaluated sample type — `Evaluations.EvaluatorProtocol`'s `Input` requirement.
     public typealias Input = ModelSample<String>
+    /// The evaluated subject type — `Evaluations.EvaluatorProtocol`'s `Subject` requirement.
     public typealias Subject = AgentSubject
 
     /// Creates the evaluator. No configuration: the metric it grades is
@@ -122,6 +124,7 @@ public struct SearchedThenCalledEvaluator: EvaluatorProtocol, Sendable {
     /// expectation travels on the `Subject` it is called with.
     public init() {}
 
+    /// Grades `subject.steps` against `AgentMetricName.searchedThenCalled`, returning one passing, failing, or ignored metric.
     public func metrics(subject: AgentSubject, input: ModelSample<String>) async throws -> [Metric] {
         let metric = Metric(AgentMetricName.searchedThenCalled)
         guard subject.expectation.expectFindAPIs else {
@@ -140,12 +143,15 @@ public struct SearchedThenCalledEvaluator: EvaluatorProtocol, Sendable {
 /// (`TranscriptAnalyzer.invokedToolPaths(in:)`), failing otherwise —
 /// deterministic, no judge model needed.
 public struct CalledExpectedToolsEvaluator: EvaluatorProtocol, Sendable {
+    /// The evaluated sample type — `Evaluations.EvaluatorProtocol`'s `Input` requirement.
     public typealias Input = ModelSample<String>
+    /// The evaluated subject type — `Evaluations.EvaluatorProtocol`'s `Subject` requirement.
     public typealias Subject = AgentSubject
 
     /// Creates the evaluator. See `SearchedThenCalledEvaluator.init()`.
     public init() {}
 
+    /// Grades `subject.steps` against `AgentMetricName.calledExpectedTools`, returning one passing or failing metric.
     public func metrics(subject: AgentSubject, input: ModelSample<String>) async throws -> [Metric] {
         let metric = Metric(AgentMetricName.calledExpectedTools)
         let invoked = TranscriptAnalyzer.invokedToolPaths(in: subject.steps)
@@ -164,12 +170,15 @@ public struct CalledExpectedToolsEvaluator: EvaluatorProtocol, Sendable {
 /// `.runCode` attempts (`TranscriptAnalyzer.runCodeStepsBeforeFinal(in:)`),
 /// failing otherwise — deterministic, no judge model needed.
 public struct RepairedWithinNEvaluator: EvaluatorProtocol, Sendable {
+    /// The evaluated sample type — `Evaluations.EvaluatorProtocol`'s `Input` requirement.
     public typealias Input = ModelSample<String>
+    /// The evaluated subject type — `Evaluations.EvaluatorProtocol`'s `Subject` requirement.
     public typealias Subject = AgentSubject
 
     /// Creates the evaluator. See `SearchedThenCalledEvaluator.init()`.
     public init() {}
 
+    /// Grades `subject.steps` against `AgentMetricName.repairedWithinN`, returning one passing or failing metric.
     public func metrics(subject: AgentSubject, input: ModelSample<String>) async throws -> [Metric] {
         let metric = Metric(AgentMetricName.repairedWithinN)
         let attempts = TranscriptAnalyzer.runCodeStepsBeforeFinal(in: subject.steps)
