@@ -16,8 +16,9 @@ public enum AgentMetricName {
     /// plan.md's "CalledExpectedTools" metric — the snippet(s) invoked
     /// exactly the scenario's expected `tools.*` paths.
     public static let calledExpectedTools = "CalledExpectedTools"
-    /// plan.md's "RepairedWithinN" metric — the run reached `.final` within
-    /// a bounded number of `runCode` attempts.
+    /// plan.md's "RepairedWithinN" metric — the run used at most a bounded
+    /// number of `runCode` attempts before either reaching `.final` or
+    /// exhausting its steps.
     public static let repairedWithinN = "RepairedWithinN"
 }
 
@@ -124,7 +125,21 @@ public struct SearchedThenCalledEvaluator: EvaluatorProtocol, Sendable {
     /// expectation travels on the `Subject` it is called with.
     public init() {}
 
-    /// Grades `subject.steps` against `AgentMetricName.searchedThenCalled`, returning one passing, failing, or ignored metric.
+    /// Grades `subject.steps` against `AgentMetricName.searchedThenCalled`,
+    /// returning one passing, failing, or ignored metric.
+    ///
+    /// - Parameters:
+    ///   - subject: the completed run being graded; its `steps` and
+    ///     `expectation` supply everything this evaluator needs.
+    ///   - input: the sample `subject` was resolved from — unused here,
+    ///     since all grading data travels on `subject` rather than `input`.
+    /// - Returns: a single-element array holding one `Metric` for
+    ///   `AgentMetricName.searchedThenCalled`: `.passing` if a `.findAPIs`
+    ///   step precedes the first `.runCode` step, `.failing` if not, or
+    ///   `.ignore` if the scenario doesn't expect discovery at all
+    ///   (`AgentScenarioExpectation.expectFindAPIs == false`).
+    /// - Throws: never, for this deterministic evaluator; `throws` is
+    ///   `EvaluatorProtocol`'s requirement on `metrics(subject:input:)`.
     public func metrics(subject: AgentSubject, input: ModelSample<String>) async throws -> [Metric] {
         let metric = Metric(AgentMetricName.searchedThenCalled)
         guard subject.expectation.expectFindAPIs else {
@@ -151,7 +166,21 @@ public struct CalledExpectedToolsEvaluator: EvaluatorProtocol, Sendable {
     /// Creates the evaluator. See `SearchedThenCalledEvaluator.init()`.
     public init() {}
 
-    /// Grades `subject.steps` against `AgentMetricName.calledExpectedTools`, returning one passing or failing metric.
+    /// Grades `subject.steps` against `AgentMetricName.calledExpectedTools`,
+    /// returning one passing or failing metric.
+    ///
+    /// - Parameters:
+    ///   - subject: the completed run being graded; its `steps` and
+    ///     `expectation.expectedToolPaths` supply everything this evaluator
+    ///     needs.
+    ///   - input: the sample `subject` was resolved from — unused here,
+    ///     since all grading data travels on `subject` rather than `input`.
+    /// - Returns: a single-element array holding one `Metric` for
+    ///   `AgentMetricName.calledExpectedTools`: `.passing` if the invoked
+    ///   `tools.*` paths exactly equal `subject.expectation
+    ///   .expectedToolPaths`, `.failing` otherwise.
+    /// - Throws: never, for this deterministic evaluator; `throws` is
+    ///   `EvaluatorProtocol`'s requirement on `metrics(subject:input:)`.
     public func metrics(subject: AgentSubject, input: ModelSample<String>) async throws -> [Metric] {
         let metric = Metric(AgentMetricName.calledExpectedTools)
         let invoked = TranscriptAnalyzer.invokedToolPaths(in: subject.steps)
@@ -165,10 +194,11 @@ public struct CalledExpectedToolsEvaluator: EvaluatorProtocol, Sendable {
     }
 }
 
-/// plan.md's `Metric("RepairedWithinN")` — passing when the run reached
-/// `.final` within `AgentScenarioExpectation.maxRunCodeStepsBeforeFinal`
-/// `.runCode` attempts (`TranscriptAnalyzer.runCodeStepsBeforeFinal(in:)`),
-/// failing otherwise — deterministic, no judge model needed.
+/// plan.md's `Metric("RepairedWithinN")` — passing when the run used at
+/// most `AgentScenarioExpectation.maxRunCodeStepsBeforeFinal` `.runCode`
+/// steps before either reaching `.final` or exhausting its steps
+/// (`TranscriptAnalyzer.runCodeStepsBeforeFinal(in:)`), failing otherwise —
+/// deterministic, no judge model needed.
 public struct RepairedWithinNEvaluator: EvaluatorProtocol, Sendable {
     /// The evaluated sample type — `Evaluations.EvaluatorProtocol`'s `Input` requirement.
     public typealias Input = ModelSample<String>
@@ -178,7 +208,23 @@ public struct RepairedWithinNEvaluator: EvaluatorProtocol, Sendable {
     /// Creates the evaluator. See `SearchedThenCalledEvaluator.init()`.
     public init() {}
 
-    /// Grades `subject.steps` against `AgentMetricName.repairedWithinN`, returning one passing or failing metric.
+    /// Grades `subject.steps` against `AgentMetricName.repairedWithinN`,
+    /// returning one passing or failing metric.
+    ///
+    /// - Parameters:
+    ///   - subject: the completed run being graded; its `steps` and
+    ///     `expectation.maxRunCodeStepsBeforeFinal` supply everything this
+    ///     evaluator needs.
+    ///   - input: the sample `subject` was resolved from — unused here,
+    ///     since all grading data travels on `subject` rather than `input`.
+    /// - Returns: a single-element array holding one `Metric` for
+    ///   `AgentMetricName.repairedWithinN`: `.passing` if the run used at
+    ///   most `maxRunCodeStepsBeforeFinal` `.runCode` steps before either
+    ///   reaching `.final` or exhausting `subject.steps` (see
+    ///   `TranscriptAnalyzer.runCodeStepsBeforeFinal(in:)`), `.failing`
+    ///   otherwise.
+    /// - Throws: never, for this deterministic evaluator; `throws` is
+    ///   `EvaluatorProtocol`'s requirement on `metrics(subject:input:)`.
     public func metrics(subject: AgentSubject, input: ModelSample<String>) async throws -> [Metric] {
         let metric = Metric(AgentMetricName.repairedWithinN)
         let attempts = TranscriptAnalyzer.runCodeStepsBeforeFinal(in: subject.steps)
