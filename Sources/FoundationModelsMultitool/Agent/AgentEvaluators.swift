@@ -4,8 +4,9 @@ import FoundationModelsRouter
 
 /// Deterministic pass/fail metric names this package's `Evaluations`
 /// conformers grade — plan.md M6.5: `Metric("SearchedThenCalled")`,
-/// `Metric("CalledExpectedTools")`, `Metric("RepairedWithinN")`. Named
-/// constants (not repeated string literals) so an evaluator's own
+/// `Metric("CalledExpectedTools")`, `Metric("RepairedWithinN")`.
+///
+/// Named constants (not repeated string literals) so an evaluator's own
 /// `Metric(_:)` construction and a caller's aggregation-gate reference
 /// (`aggregator.computeMean(of: Metric(AgentMetricName.searchedThenCalled))`)
 /// can never drift apart.
@@ -46,9 +47,11 @@ public enum AgentMetricName {
 /// `SearchThenCallTests`/`ScenarioRunner` (M6.5a) already does.
 public struct AgentScenarioExpectation: Sendable {
     /// Whether a `.findAPIs` step is expected to precede the first
-    /// `.runCode` step. `false` for a scenario (like M6.5a's repair
-    /// scenario) that deliberately doesn't exercise discovery — in which
-    /// case `SearchedThenCalledEvaluator` reports `Metric.ignore(rationale:)`
+    /// `.runCode` step.
+    ///
+    /// `false` for a scenario (like M6.5a's repair scenario) that
+    /// deliberately doesn't exercise discovery — in which case
+    /// `SearchedThenCalledEvaluator` reports `Metric.ignore(rationale:)`
     /// rather than grading a property the scenario never claims to satisfy.
     public let expectFindAPIs: Bool
 
@@ -120,8 +123,10 @@ public struct SearchedThenCalledEvaluator: EvaluatorProtocol, Sendable {
     /// The evaluated subject type — `Evaluations.EvaluatorProtocol`'s `Subject` requirement.
     public typealias Subject = AgentSubject
 
-    /// Creates the evaluator. No configuration: the metric it grades is
-    /// fixed (`AgentMetricName.searchedThenCalled`), and the scenario's own
+    /// Creates the evaluator.
+    ///
+    /// No configuration: the metric it grades is fixed
+    /// (`AgentMetricName.searchedThenCalled`), and the scenario's own
     /// expectation travels on the `Subject` it is called with.
     public init() {}
 
@@ -163,7 +168,9 @@ public struct CalledExpectedToolsEvaluator: EvaluatorProtocol, Sendable {
     /// The evaluated subject type — `Evaluations.EvaluatorProtocol`'s `Subject` requirement.
     public typealias Subject = AgentSubject
 
-    /// Creates the evaluator. See `SearchedThenCalledEvaluator.init()`.
+    /// Creates the evaluator.
+    ///
+    /// See `SearchedThenCalledEvaluator.init()`.
     public init() {}
 
     /// Grades `subject.steps` against `AgentMetricName.calledExpectedTools`,
@@ -205,7 +212,9 @@ public struct RepairedWithinNEvaluator: EvaluatorProtocol, Sendable {
     /// The evaluated subject type — `Evaluations.EvaluatorProtocol`'s `Subject` requirement.
     public typealias Subject = AgentSubject
 
-    /// Creates the evaluator. See `SearchedThenCalledEvaluator.init()`.
+    /// Creates the evaluator.
+    ///
+    /// See `SearchedThenCalledEvaluator.init()`.
     public init() {}
 
     /// Grades `subject.steps` against `AgentMetricName.repairedWithinN`,
