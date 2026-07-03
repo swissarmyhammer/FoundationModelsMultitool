@@ -29,6 +29,27 @@ comments:
 
     Both acceptance criteria closed (AC1 was already done pre-task per prior comment; AC2 done here). Leaving task in doing for /review.
   timestamp: 2026-07-03T21:50:37.592521+00:00
+- actor: wballard
+  id: 01kwn03b5kty3fyh1swqz2r2wf
+  text: |-
+    Pulled back from review into doing to address review-findings checklist item. Re-read the file to confirm current location (line 181, not 206 — shifted since the finding was recorded). Confirmed the finding: `?? true` would make `#expect(!(... ?? true))` fail on a nil rationale, which contradicts the test's own stated intent ("must not claim .final was reached" — vacuously true if there's no rationale text at all).
+
+    Changed line 181 in Tests/FoundationModelsMultitoolTests/EvaluatorGateTests.swift:
+    `#expect(!(metrics.first?.rationale?.contains("final") ?? true), ...)` -> `?? false`
+
+    Verified: `swift build` exit 0; `swift test --filter FoundationModelsMultitoolTests` -> 247/247 passed; `swift test --filter EvaluatorGateTests` -> 10/10 passed (including the target test `repairedWithinNPassesWithoutReachingFinal`).
+
+    Marked the review-findings checklist item [x] in the task description. Spawned double-check agent for adversarial sign-off per really-done; awaiting verdict before finalizing. Leaving task in doing per /implement process.
+  timestamp: 2026-07-03T22:03:00.659442+00:00
+- actor: wballard
+  id: 01kwn064ehw037099n4c6t7neh
+  text: |-
+    double-check adversarial review: PASS, no findings. Independently confirmed via git diff that only the one line in EvaluatorGateTests.swift changed (plus kanban bookkeeping); walked all three cases of the `?? false` fallback (nil rationale -> vacuous pass; non-nil containing "final" -> fails; non-nil not containing "final" -> passes) and confirmed correctness; ran a fresh `swift build` (exit 0) and `swift test --filter EvaluatorGateTests` (10/10 passed) independently.
+
+    Noted for the record: `RepairedWithinNEvaluator.metrics`'s rationale is always non-nil in current production code (both passing/failing branches interpolate a string), so this fix has no observable production-behavior effect today — it's a correctness-of-intent fix for the test's own vacuous-truth semantics on a nil rationale, guarding against future evaluator changes that could return a nil rationale.
+
+    Full suite re-confirmed green: swift build exit 0; swift test --filter FoundationModelsMultitoolTests -> 247/247 passed. Review-findings checklist item marked [x]. Leaving task in doing for /review.
+  timestamp: 2026-07-03T22:04:32.081799+00:00
 position_column: doing
 position_ordinal: '80'
 title: 'AgentEvaluators.swift: RepairedWithinNEvaluator passing rationale text overclaims .final was reached'
@@ -52,3 +73,7 @@ Not fixed as part of the doc-comment task (M6.5b review round 3) because it's a 
 
 ## Tests
 - [ ] `swift test --filter EvaluatorGateTests` passes with the new case
+
+## Review Findings (2026-07-03 16:55)
+
+- [x] `Tests/FoundationModelsMultitoolTests/EvaluatorGateTests.swift:206` — The default value `true` in `?? true` causes the test to fail if `rationale` is nil. Since optional chaining on a nil rationale returns nil, the coalescing operator defaults to true, then negation produces false, failing the expectation. The test comment says 'the passing rationale must not claim .final was reached', which should pass whether rationale exists or not—the constraint is only that IF it exists, it must not contain 'final'. The correct default should be `false` to allow nil rationale. Change `?? true` to `?? false`: `#expect(!(metrics.first?.rationale?.contains("final") ?? false), ...)`.

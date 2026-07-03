@@ -178,7 +178,7 @@ struct EvaluatorGateTests {
         )
         let metrics = try await RepairedWithinNEvaluator().metrics(subject: subject, input: ModelSample(prompt: "x"))
         #expect(metrics.map(\.value) == [.passing])
-        #expect(!(metrics.first?.rationale?.contains("final") ?? true), "the passing rationale must not claim .final was reached")
+        #expect(!(metrics.first?.rationale?.contains("final") ?? false), "the passing rationale must not claim .final was reached")
     }
 
     // MARK: - Threshold gate: fixture metric values flip the gate expression
