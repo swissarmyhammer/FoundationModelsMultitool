@@ -10,11 +10,11 @@ import FoundationModelsMetadataRegistry
 /// enum and `findAPIs` feedback need to name a tool by.
 ///
 /// `renderBlock()` is `block`: the `// tools.<path>` banner plus verbatim
-/// `descriptor.source` — the same text `Librarian.assemblePrefix` already
-/// splices into the librarian's instruction prefix. `renderSummaryBlock()`
-/// is left at the protocol's default (identical to `renderBlock()`):
-/// descriptor blocks are already compact, so there's no shorter summary to
-/// offer.
+/// `descriptor.source` — the same text `FindAPITool` splices, verbatim,
+/// into the main agent's transcript for every selected entry.
+/// `renderSummaryBlock()` is left at the protocol's default (identical to
+/// `renderBlock()`): descriptor blocks are already compact, so there's no
+/// shorter summary to offer.
 extension APISurface.Entry: SearchableMetadata {
     /// This entry's fully-qualified `tools.*` call path, used as its
     /// unique identifier within the catalog.

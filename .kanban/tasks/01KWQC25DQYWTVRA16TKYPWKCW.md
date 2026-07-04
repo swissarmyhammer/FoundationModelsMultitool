@@ -1,8 +1,40 @@
 ---
+comments:
+- actor: wballard
+  id: 01kwqjwdfrryyjyhb3gy46mgzz
+  text: |-
+    Implementation complete. Changes:
+
+    - Deleted Sources/FoundationModelsMultitool/Agent/Librarian.swift and FoundAPIs.swift.
+    - Deleted Tests/FoundationModelsMultitoolTests/LibrarianTests.swift, Fixtures/LibrarianFixtures.swift, Goldens/LibrarianPrefix.txt.
+    - Relocated still-needed shared fakes (CallCounter, TripCitiesTool/TripCitiesOutput, RootSessionRespondCalledDirectlySession/Error) from LibrarianFixtures.swift into Fixtures/MultiToolAgentFixtures.swift, since CLIArgumentTests, GuidedTurnFormatTests, MultiToolAgentTests, and FindAPIToolTests still depend on them. RecordingSessionFactory was NOT relocated — nothing outside the deleted LibrarianTests.swift used it.
+    - TranscriptAnalyzer.swift: renamed `foundAPIs(in:slot:) -> [FoundAPIs]` to `selections(in:slot:) -> [Selection]`, decoding via `Selection(GeneratedContent(json:))`.
+    - TranscriptAssertionTests.swift + Goldens/SearchThenCallTranscript.jsonl updated to the ids-only Selection shape (`{"ids":["tripCities","weather"]}` replacing `{"functions":[...]}`).
+    - Integration test target (compiles, execution stays env-gated): PrefixReuseTests.swift now drives `MultiToolAgent.makeFindAPISearcher(registry:librarian:)` + `MetadataSearcher.search(intent:limit:)` instead of constructing `Librarian` directly; ScenarioRunner.swift's `expectedFoundAPINames` assertion decodes via `TranscriptAnalyzer.selections(...).flatMap(\.ids)`; IntegrationGate.swift's stale "drive a Librarian directly" doc comment fixed.
+    - AgentTurn.swift's doc no longer cites deleted `FoundAPI.init` (now cites `ToolDescriptor.init`); APISurface+SearchableMetadata.swift's doc no longer cites deleted `Librarian.assemblePrefix`.
+
+    Verification: `swift build`, `swift build --build-tests`, and `swift test` all green. Full test run: 250 tests in FoundationModelsMultitoolTests, only 1 failure — HardeningTests.readmeInjectedGlobalsListMatchesRuntime, the known pre-existing failure tracked separately (short_id 1pn8764), not introduced by this change. Gated FoundationModelsMultitoolIntegrationTests target compiles cleanly; its 11 tests skip cleanly (MULTITOOL_INTEGRATION unset).
+
+    `grep -rn "\bLibrarian(\|: Librarian\|Librarian\.\|FoundAPIs\|FoundAPI(" Sources/ Tests/` returns only prose doc-comment mentions (explanatory "formerly X" references in TranscriptAnalyzer.swift and MultiToolAgentFixtures.swift), no live Swift identifier references — matches the acceptance criterion's carve-out for prose handled by the docs task.
+
+    double-check adversarial review dispatched (async); will report its verdict once it returns.
+  timestamp: 2026-07-04T22:09:45.464428+00:00
+- actor: wballard
+  id: 01kwqk1fs6x3qzkxk4pa4wbcg9
+  text: |-
+    Adversarial double-check (via really-done) returned PASS, no findings:
+    - Selection/MetadataSearcher API usage verified against the actual checked-out FoundationModelsMetadataRegistry package source.
+    - No dangling references to Librarian/FoundAPIs/FoundAPI remain outside historical doc-comment prose; no leftover callers of the old foundAPIs(in:slot:) name.
+    - Relocated fixtures (CallCounter, TripCitiesTool/TripCitiesOutput, RootSessionRespondCalledDirectlySession/Error) are byte-for-byte consistent with their originals and confirmed used by CLIArgumentTests, MultiToolAgentTests, GuidedTurnFormatTests, FindAPIToolTests, APISurfaceSearchableMetadataTests, SelectionGrammarTests; RecordingSessionFactory correctly has zero remaining references.
+    - Golden JSONL fixture and its consuming assertions agree.
+    - Independently reran swift build / swift build --build-tests / swift test: 250 tests, exactly 1 failure (the known pre-existing HardeningTests README/runtime-globals sync check, short_id 1pn8764), matching the reported result exactly.
+
+    Task is green and complete. Leaving in `doing` per the implement skill's process — /review will pull it into review.
+  timestamp: 2026-07-04T22:12:31.654376+00:00
 depends_on:
 - 01KWQC1N0Q97RKK7J162RTCRHC
-position_column: todo
-position_ordinal: '8580'
+position_column: doing
+position_ordinal: '80'
 title: Delete Librarian and FoundAPIs; migrate TranscriptAnalyzer to Selection
 ---
 ## What

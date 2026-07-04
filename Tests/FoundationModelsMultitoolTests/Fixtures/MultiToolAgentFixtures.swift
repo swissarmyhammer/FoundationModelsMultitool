@@ -1,3 +1,4 @@
+import FoundationModels
 import FoundationModelsMetadataRegistry
 import os
 
@@ -115,6 +116,112 @@ func makeScriptedFindAPISearcher(
         mode: .selection,
         selection: SelectionConfig(model: { _ in root }, capacityCharacterLimit: .max)
     )
+}
+
+// MARK: - `CallCounter` — a thread-safe call counter
+
+/// A thread-safe call counter — used to assert a closure ran an exact number
+/// of times without needing a bespoke lock-boxed fixture per test.
+final class CallCounter: Sendable {
+    /// This counter's current count.
+    private let countBox = OSAllocatedUnfairLock<Int>(initialState: 0)
+
+    /// Creates a counter starting at `0`.
+    init() {}
+
+    /// Increments the count and returns its new value.
+    ///
+    /// - Returns: the count after incrementing.
+    @discardableResult
+    func increment() -> Int {
+        countBox.withLock { count -> Int in
+            count += 1
+            return count
+        }
+    }
+
+    /// This counter's current count.
+    var count: Int { countBox.withLock { $0 } }
+}
+
+// MARK: - `RootSessionRespondCalledDirectlySession` — a forking root double
+
+/// Thrown by `RootSessionRespondCalledDirectlySession.respond(to:)` if it is
+/// ever called directly — the registry's `SelectionTier` contract is that
+/// every `findAPIs`/selection call goes through a `fork()` of the
+/// prefix-rooted session, never the root itself
+/// (`RoutedSession.fork(workingDirectory:)`'s KV-cache-copy seam only pays
+/// off if the root is never asked to generate on its own transcript).
+struct RootSessionRespondCalledDirectlyError: Error, Equatable {}
+
+/// A selection-root `AgentSession` double: records how many times `fork()`
+/// was called and hands back a fresh, independently-scripted
+/// `ScriptedAgentSession` each time — but throws if `respond(to:)` is ever
+/// invoked on the root itself, asserting the "always via fork()" contract
+/// (M6 acceptance, now the registry's `SelectionTier`: "Each selection call
+/// goes through a fork() of the prefix-rooted session").
+///
+/// `final class ... Sendable` for the same reason as `ScriptedAgentSession`:
+/// `fork()` needs to record a call count visible after the `async` call
+/// returns, backed by an `OSAllocatedUnfairLock`.
+final class RootSessionRespondCalledDirectlySession: AgentSession, Sendable {
+    /// One scripted response per `fork()` call, in fork order — the raw
+    /// guided-generation JSON text the resulting fork's `respond(to:)`
+    /// returns.
+    private let forkResponses: [String]
+
+    /// How many `fork()` calls this root has handled so far.
+    private let forkCountBox = OSAllocatedUnfairLock<Int>(initialState: 0)
+
+    /// Creates a root double that hands back one freshly-scripted fork per
+    /// `fork()` call, in order.
+    ///
+    /// - Parameter forkResponses: one canned raw response per expected
+    ///   `fork()` call, in call order.
+    init(forkResponses: [String]) {
+        self.forkResponses = forkResponses
+    }
+
+    /// How many `fork()` calls this root has handled so far.
+    var forkCount: Int { forkCountBox.withLock { $0 } }
+
+    func respond(to prompt: String) async throws -> String {
+        throw RootSessionRespondCalledDirectlyError()
+    }
+
+    func fork() async throws -> any AgentSession {
+        let index = forkCountBox.withLock { count -> Int in
+            let index = count
+            count += 1
+            return index
+        }
+        guard index < forkResponses.count else {
+            throw ScriptedAgentSessionError(scriptedResponseCount: forkResponses.count)
+        }
+        return ScriptedAgentSession([forkResponses[index]])
+    }
+}
+
+// MARK: - `TripCitiesTool` — a standalone fixture tool
+
+/// The `Output` of `TripCitiesTool` — plan.md's own worked
+/// `tripCities(): string[]` example.
+@Generable
+struct TripCitiesOutput {
+    var cities: [String]
+}
+
+/// A standalone, no-argument tool returning a fixed trip itinerary — reuses
+/// `NoArguments` (`MultiToolExecutionFixtures.swift`), the established
+/// zero-meaningful-argument fixture shape this test target already uses for
+/// `CitiesTool`.
+struct TripCitiesTool: Tool {
+    let name = "tripCities"
+    let description = "The cities on the user's current trip, in itinerary order."
+
+    func call(arguments: NoArguments) async throws -> TripCitiesOutput {
+        TripCitiesOutput(cities: ["ATX", "SFO"])
+    }
 }
 
 // MARK: - A second `TurnFormat` conformer, proving the strategy seam

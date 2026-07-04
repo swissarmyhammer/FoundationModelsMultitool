@@ -1,9 +1,10 @@
 import Foundation
 import FoundationModels
+import FoundationModelsMetadataRegistry
 import FoundationModelsRouter
 
-/// Reconstructs an agent loop's `AgentStep`s (and a librarian's `FoundAPIs`
-/// picks) from a Router JSONL transcript (`RecordingLevel.full`) — plan.md's
+/// Reconstructs an agent loop's `AgentStep`s (and the selection tier's
+/// `Selection` picks) from a Router JSONL transcript (`RecordingLevel.full`) — plan.md's
 /// M6.5 trace assertions ("findAPIs before runCode", "librarian returned the
 /// expected minimal set", "snippet invoked exactly the expected tools.*",
 /// "repair within N turns") read the transcript rather than instrumenting the
@@ -29,15 +30,16 @@ import FoundationModelsRouter
 /// `AgentTurn` (`GuidedTurnFormat`); `nil` means the tolerant `ACTION:`
 /// convention (`TolerantParseTurnFormat`).
 ///
-/// **Which session is "the main agent" vs. "the librarian."** Rather than
-/// threading an opaque session id through every caller, every helper below
-/// filters on `TranscriptEvent.slot`: `MultiToolAgent`'s main loop always
-/// runs on `profile.standard` (`.standard`) and `Librarian`'s root/forked
-/// sessions always run on `profile.flash` (`.flash`) — plan.md's Router
-/// integration and Discovery sections — so the slot alone discriminates the
-/// two, correctly aggregating across every librarian `fork()` child a
-/// `respond(to:)` call created, in true chronological order (`MergedTranscript
-/// .merged(under:)`'s `(ts, seq)` order across every nested session file).
+/// **Which session is "the main agent" vs. "the selection tier."** Rather
+/// than threading an opaque session id through every caller, every helper
+/// below filters on `TranscriptEvent.slot`: `MultiToolAgent`'s main loop
+/// always runs on `profile.standard` (`.standard`) and the registry's
+/// `SelectionTier` root/forked sessions always run on `profile.flash`
+/// (`.flash`) — plan.md's Router integration and Discovery sections — so the
+/// slot alone discriminates the two, correctly aggregating across every
+/// selection tier `fork()` child a `respond(to:)` call created, in true
+/// chronological order (`MergedTranscript.merged(under:)`'s `(ts, seq)` order
+/// across every nested session file).
 enum TranscriptAnalyzer {
     /// Decodes newline-delimited JSON transcript text into events, in file
     /// order — the shape `JSONLRecorder` writes and `MergedTranscript
@@ -76,7 +78,7 @@ enum TranscriptAnalyzer {
 
     /// Every `.response` event stamped with `slot`, parsed into `AgentStep`s
     /// in recorded order — see this type's documentation for why `slot`
-    /// alone correctly discriminates the main agent from the librarian.
+    /// alone correctly discriminates the main agent from the selection tier.
     ///
     /// Parse failures are silently skipped: a bad turn `MultiToolAgent
     /// .respond(to:)` itself already recovers from via a repair turn is not
@@ -163,25 +165,28 @@ enum TranscriptAnalyzer {
         return count
     }
 
-    /// Decodes a librarian session's `FoundAPIs` results from its `.response`
+    /// Decodes the selection tier's `Selection` results from its `.response`
     /// events — the raw guided-generation JSON `AgentSession
     /// .respond(to:generating:)` decodes at call time — plan.md's "librarian
-    /// returned the expected minimal set" trace assertion.
+    /// returned the expected minimal set" trace assertion, now generalized
+    /// to the registry's ids-only `Selection` shape (plan.md §6: "Ids only,
+    /// grammar-enforced" — superseding Multitool's own former `FoundAPIs`,
+    /// which had the model reproduce each function's fields).
     ///
     /// - Parameters:
     ///   - events: the full decoded transcript.
     ///   - slot: the model slot whose `.response` events to decode —
     ///     typically `.flash` (see this type's documentation).
-    /// - Returns: every `FoundAPIs` result decoded from that slot's
+    /// - Returns: every `Selection` result decoded from that slot's
     ///   `.response` events, in recorded order — normally one per `findAPIs`
     ///   call.
     /// - Throws: a decoding error if a `.response` event's text isn't valid,
-    ///   schema-conforming JSON for `FoundAPIs`.
-    static func foundAPIs(in events: [TranscriptEvent], slot: ModelSlot) throws -> [FoundAPIs] {
+    ///   schema-conforming JSON for `Selection`.
+    static func selections(in events: [TranscriptEvent], slot: ModelSlot) throws -> [Selection] {
         try events
             .filter { $0.slot == slot && $0.kind == .response }
             .compactMap(\.text)
-            .map { try FoundAPIs(GeneratedContent(json: $0)) }
+            .map { try Selection(GeneratedContent(json: $0)) }
     }
 
     /// The compiled `tools.<name>` / `tools.<group>.<name>` call-site regex

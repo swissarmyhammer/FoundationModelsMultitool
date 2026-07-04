@@ -2,6 +2,7 @@ import Foundation
 import Testing
 
 import FoundationModels
+import FoundationModelsMetadataRegistry
 import FoundationModelsRouter
 @testable import FoundationModelsMultitool
 
@@ -19,8 +20,8 @@ import FoundationModelsRouter
 struct TranscriptAssertionTests {
     /// Loads a checked-in fixture transcript from `Goldens/<name>` next to
     /// this file — the same `#filePath`-relative pattern
-    /// `BuilderSurfaceTests`/`LibrarianTests`/`ToolAPIRendererTests` use for
-    /// their own golden files.
+    /// `BuilderSurfaceTests`/`ToolAPIRendererTests` use for their own golden
+    /// files.
     ///
     /// - Parameter name: the fixture file's name, e.g.
     ///   `"SearchThenCallTranscript.jsonl"`. Must consist solely of letters,
@@ -256,19 +257,19 @@ struct TranscriptAssertionTests {
         #expect(TranscriptAnalyzer.runCodeStepsBeforeFinal(in: steps) == 2)
     }
 
-    // MARK: - foundAPIs(in:slot:)
+    // MARK: - selections(in:slot:)
 
-    @Test("foundAPIs decodes the librarian's flash-slot response from the search-then-call fixture")
-    func foundAPIsDecodesLibrarianResponse() throws {
+    @Test("selections decodes the selection tier's flash-slot response from the search-then-call fixture")
+    func selectionsDecodesSelectionTierResponse() throws {
         let events = try TranscriptAnalyzer.decodeJSONL(try Self.loadFixture("SearchThenCallTranscript.jsonl"))
-        let found = try TranscriptAnalyzer.foundAPIs(in: events, slot: .flash)
+        let found = try TranscriptAnalyzer.selections(in: events, slot: .flash)
 
         #expect(found.count == 1)
-        #expect(found[0].functions.map(\.name) == ["tripCities", "weather"])
+        #expect(found[0].ids == ["tripCities", "weather"])
     }
 
-    @Test("foundAPIs decodes multiple flash-slot responses, one per findAPIs call, in recorded order")
-    func foundAPIsDecodesMultipleResponsesInOrder() throws {
+    @Test("selections decodes multiple flash-slot responses, one per findAPIs call, in recorded order")
+    func selectionsDecodesMultipleResponsesInOrder() throws {
         let events = [
             TranscriptEvent(
                 routerId: .generate(),
@@ -277,7 +278,7 @@ struct TranscriptAssertionTests {
                 seq: 0,
                 ts: Date(),
                 kind: .response,
-                text: cannedTripCitiesFoundAPIsJSON
+                text: cannedTripCitiesSelectionJSON
             ),
             TranscriptEvent(
                 routerId: .generate(),
@@ -286,15 +287,15 @@ struct TranscriptAssertionTests {
                 seq: 1,
                 ts: Date(),
                 kind: .response,
-                text: cannedWeatherFoundAPIsJSON
+                text: cannedWeatherSelectionJSON
             ),
         ]
-        let found = try TranscriptAnalyzer.foundAPIs(in: events, slot: .flash)
-        #expect(found.map { $0.functions.map(\.name) } == [["tripCities"], ["weather"]])
+        let found = try TranscriptAnalyzer.selections(in: events, slot: .flash)
+        #expect(found.map(\.ids) == [["tripCities"], ["weather"]])
     }
 
-    @Test("foundAPIs throws when a flash-slot response isn't valid FoundAPIs JSON")
-    func foundAPIsThrowsOnInvalidJSON() {
+    @Test("selections throws when a flash-slot response isn't valid Selection JSON")
+    func selectionsThrowsOnInvalidJSON() {
         let events = [
             TranscriptEvent(
                 routerId: .generate(),
@@ -307,10 +308,19 @@ struct TranscriptAssertionTests {
             )
         ]
         #expect(throws: (any Error).self) {
-            try TranscriptAnalyzer.foundAPIs(in: events, slot: .flash)
+            try TranscriptAnalyzer.selections(in: events, slot: .flash)
         }
     }
 }
+
+/// One canned, schema-valid `Selection` JSON payload naming `tripCities`
+/// only — the ids-only shape a real `.selection`-mode `MetadataSearcher`'s
+/// root session decodes.
+private let cannedTripCitiesSelectionJSON = #"{"ids":["tripCities"]}"#
+
+/// A second canned payload naming `weather` — used where a test needs a
+/// distinct selection result, one per recorded `findAPIs` call.
+private let cannedWeatherSelectionJSON = #"{"ids":["weather"]}"#
 
 /// A fixture `name` passed to `loadFixture(_:)` that failed the
 /// letters/digits/`-`/`_`/`.` whitelist check — guards against the name

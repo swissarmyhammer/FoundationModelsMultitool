@@ -32,8 +32,8 @@ depends_on:
 - 01KWQCK35ZRQGCSWX193Q0AR38
 - 01KWQC0DCNNCB2SJ3KNP44M84D
 - 01KWQC0TWTN5M1JX0150BV3XSE
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: '9980'
 title: Rewire findAPIs over MetadataSearcher (.selection mode)
 ---
 ## What

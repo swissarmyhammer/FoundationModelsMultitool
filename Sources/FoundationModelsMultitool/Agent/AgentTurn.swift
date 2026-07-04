@@ -80,8 +80,8 @@ public struct AgentTurn: Sendable, Equatable {
     /// Creates a guided agent turn.
     ///
     /// Explicit for the same reason as this package's other public
-    /// `@Generable` struct initializers (e.g. `FoundAPI.init`): a `public`
-    /// struct's synthesized memberwise initializer is only
+    /// `@Generable` struct initializers (e.g. `ToolDescriptor.init`): a
+    /// `public` struct's synthesized memberwise initializer is only
     /// `internal`-accessible.
     ///
     /// - Parameters:

@@ -1,24 +1,26 @@
 import Foundation
 import Testing
 
+import FoundationModelsMetadataRegistry
 import FoundationModelsRouter
 @testable import FoundationModelsMultitool
 
-/// M6.5a's gated librarian prefix-reuse pin (plan.md Finding #6 / "Remaining
-/// pins"): asserts the librarian's *second* `findAPIs` call does not
-/// re-prefill the surface prefix — compared via prefill latency evidence —
-/// or documents that the `fork()` fallback is the mechanism actually engaged.
+/// M6.5a's gated selection-tier prefix-reuse pin (plan.md Finding #6 /
+/// "Remaining pins"): asserts the selection tier's *second* `search(intent:
+/// limit:)` call does not re-prefill the surface prefix — compared via
+/// prefill latency evidence — or documents that the `fork()` fallback is the
+/// mechanism actually engaged.
 ///
-/// `Librarian` (`Sources/FoundationModelsMultitool/Agent/Librarian.swift`)
-/// is architected to `fork()` a fresh child from one cached, prefix-rooted
-/// root session per `findAPIs` call, specifically so the surface prefix is
-/// prefilled once rather than replayed on every call
+/// The registry's `SelectionTier` (generalizing Multitool's former
+/// `Librarian`) is architected to `fork()` a fresh child from one cached,
+/// prefix-rooted root session per selection call, specifically so the
+/// surface prefix is prefilled once rather than replayed on every call
 /// (`RoutedSession.fork(workingDirectory:)` seeds the child from a *copy* of
 /// the parent's prefilled KV cache). This suite is the empirical check of
 /// that design against real hardware: on a machine where `fork()`-based
 /// reuse genuinely avoids re-prefilling, the second call's wall-clock
 /// latency should be no slower than the first (which pays the cold prefill
-/// of the whole rendered surface); every `findAPIs` call still goes through
+/// of the whole rendered surface); every selection call still goes through
 /// exactly one `fork()`, so the mechanism-under-test is asserted, not merely
 /// observed, by construction.
 ///
@@ -26,14 +28,16 @@ import FoundationModelsRouter
 /// multitoolIntegrationEnabled)`, skipping cleanly (no recorded issue) when
 /// the live Router path throws `GenerationError.notWiredForLiveInference`.
 @Suite(
-    "Librarian prefix-reuse pin (M6.5a)",
+    "Selection tier prefix-reuse pin (M6.5a)",
     .serialized,
     .timeLimit(.minutes(30)),
     .enabled(if: multitoolIntegrationEnabled)
 )
 struct PrefixReuseTests {
-    @Test("a librarian's second findAPIs call is no slower than its first (fork()-inherited prefix, not re-prefilled)")
-    func secondFindAPIsCallReusesThePrefix() async throws {
+    @Test(
+        "a selection tier's second search(intent:limit:) call is no slower than its first (fork()-inherited prefix, not re-prefilled)"
+    )
+    func secondSearchCallReusesThePrefix() async throws {
         let fixture: LiveRouterFixture
         do {
             fixture = try await LiveRouterFixture.resolve()
@@ -46,17 +50,22 @@ struct PrefixReuseTests {
             // A surface large enough that a full re-prefill would be
             // measurably slower than a `fork()`-inherited one — the same
             // ~20-tool set `SearchThenCallTests`' discovery scenario uses.
-            let surface = try MultiTool.Builder()
+            let registry = try MultiTool.Builder()
                 .addTools([IntegrationWeatherTool(), IntegrationTripCitiesTool()] + integrationDistractorTools)
-                .build()
-            let librarian = try Librarian(surface: surface, librarian: fixture.profile.flash)
+                .buildRegistry()
+            // The production searcher factory (Sources/FoundationModelsMultitool/
+            // Agent/MultiToolAgent.swift) — never a reimplementation of the
+            // wiring — so this pin exercises the exact same selection-tier
+            // construction a real agent uses.
+            let searcher = try MultiToolAgent.makeFindAPISearcher(registry: registry, librarian: fixture.profile.flash)
+            let limit = registry.surface.entries.count
 
             let firstStart = Date()
-            _ = try await librarian.findAPIs(task: "list trip cities and get weather for each")
+            _ = try await searcher.search(intent: "list trip cities and get weather for each", limit: limit)
             let firstElapsed = Date().timeIntervalSince(firstStart)
 
             let secondStart = Date()
-            _ = try await librarian.findAPIs(task: "convert 100 USD to EUR")
+            _ = try await searcher.search(intent: "convert 100 USD to EUR", limit: limit)
             let secondElapsed = Date().timeIntervalSince(secondStart)
 
             // Prefix-reuse pin acceptance: "the second findAPIs call shows

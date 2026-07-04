@@ -32,7 +32,7 @@ import FoundationModelsRouter
 ///     `runCode` (plan.md's "search-then-code" trace assertion).
 ///   - expectedToolPaths: the exact `tools.*` call paths the snippet is
 ///     expected to invoke, or `nil` to skip that assertion.
-///   - expectedFoundAPINames: the exact function names the librarian is
+///   - expectedFoundAPINames: the exact entry paths the selection tier is
 ///     expected to have selected across every `findAPIs` call in the run
 ///     (plan.md's "librarian returned the expected minimal set" trace
 ///     assertion — the fused-surface selection-accuracy claim scenario 3
@@ -91,12 +91,11 @@ func runIntegrationScenario(
             )
         }
         if let expectedFoundAPINames {
-            let picked = try TranscriptAnalyzer.foundAPIs(in: events, slot: .flash)
-                .flatMap(\.functions)
-                .map(\.name)
+            let picked = try TranscriptAnalyzer.selections(in: events, slot: .flash)
+                .flatMap(\.ids)
             #expect(
                 Set(picked) == expectedFoundAPINames,
-                "[\(name)] expected the librarian to select exactly \(expectedFoundAPINames), got \(Set(picked))"
+                "[\(name)] expected the selection tier to select exactly \(expectedFoundAPINames), got \(Set(picked))"
             )
         }
         if let maxRunCodeStepsBeforeFinal {
