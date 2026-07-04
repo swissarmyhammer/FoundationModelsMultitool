@@ -19,29 +19,19 @@ comments:
 
     really-done gate satisfied. Leaving task in `doing` per /implement process — ready for /review.
   timestamp: 2026-07-04T20:48:11.868783+00:00
+- actor: wballard
+  id: 01kwqeqwjc3w51f550awnak1z3
+  text: |-
+    Resolved review finding: added a `///` doc comment to `renderBlock()` in APISurface+SearchableMetadata.swift ("The rendered content block for this entry."). Per /review scope rules, audited the whole file for other public declarations missing their own doc comment (per project pattern in APISurface.swift, where every public member — even inside an extension already covered by a type-level doc comment — carries its own `///`): found `public var id` was in the same situation (documented only by the extension-level comment, no per-declaration `///`), so added one to it too ("This entry's fully-qualified `tools.*` call path, used as its unique identifier within the catalog.") to prevent a re-review recurrence.
+
+    Verification: `swift build` exit 0. `swift test`: 251 tests, 1 failure — the known pre-existing, out-of-scope `HardeningTests.readmeInjectedGlobalsListMatchesRuntime` (tracked separately as task 1pn8764). All other 250 tests green, including the 3 SearchableMetadata tests from the original implementation.
+
+    Checked both acceptance-criteria/test checkboxes and the review-finding checkbox as done. Task left in `doing` per /implement process, ready for /review.
+  timestamp: 2026-07-04T20:57:22.764239+00:00
 depends_on:
 - 01KWQC004XSC6ZS9PW10WF5GAD
 position_column: doing
 position_ordinal: '80'
 title: Conform APISurface.Entry to SearchableMetadata
 ---
-## What
-Make the rendered tool catalog searchable by the registry: conform `APISurface.Entry` to the registry's `SearchableMetadata` protocol.
-
-- New file `Sources/FoundationModelsMultitool/Surface/APISurface+SearchableMetadata.swift`:
-  - `extension APISurface.Entry: SearchableMetadata` with `public var id: String { path }` and `public func renderBlock() -> String { block }`.
-  - `path` is the right id: it is the fully-qualified `tools.*` call path, unique per catalog (`MultiTool.Builder.build()` validates name collisions), and it is exactly what the selection grammar's id enum and `findAPIs` feedback need to name.
-  - `block` (the `// tools.<path>` banner + verbatim `descriptor.source`) is the search surface — the same text `Librarian.assemblePrefix` uses today.
-  - Rely on the protocol's default `renderSummaryBlock()` (identical to `renderBlock()`); descriptor blocks are already compact.
-
-## Acceptance Criteria
-- [ ] `APISurface.Entry` satisfies `SearchableMetadata`; `entry.id == entry.path` and `entry.renderBlock() == entry.block` hold for grouped and standalone entries.
-- [ ] A `MetadataSearcher(items: surface.entries, mode: .retrieval)` over a real built registry surface ranks the expected tool first for a keyword query.
-- [ ] `swift build` and full `swift test` green.
-
-## Tests
-- [ ] New `Tests/FoundationModelsMultitoolTests/APISurfaceSearchableMetadataTests.swift`: id/renderBlock identity assertions for a standalone and a grouped entry; a `.retrieval` search over a `MultiTool.Builder`-built surface (reuse existing tool fixtures) returns the expected `path` as the top match.
-- [ ] `swift test` — full suite green.
-
-## Workflow
-- Use `/tdd` — write failing tests first, then implement to make them pass.
+## What\nMake the rendered tool catalog searchable by the registry: conform `APISurface.Entry` to the registry's `SearchableMetadata` protocol.\n\n- New file `Sources/FoundationModelsMultitool/Surface/APISurface+SearchableMetadata.swift`:\n  - `extension APISurface.Entry: SearchableMetadata` with `public var id: String { path }` and `public func renderBlock() -> String { block }`.\n  - `path` is the right id: it is the fully-qualified `tools.*` call path, unique per catalog (`MultiTool.Builder.build()` validates name collisions), and it is exactly what the selection grammar's id enum and `findAPIs` feedback need to name.\n  - `block` (the `// tools.<path>` banner + verbatim `descriptor.source`) is the search surface — the same text `Librarian.assemblePrefix` uses today.\n  - Rely on the protocol's default `renderSummaryBlock()` (identical to `renderBlock()`); descriptor blocks are already compact.\n\n## Acceptance Criteria\n- [x] `APISurface.Entry` satisfies `SearchableMetadata`; `entry.id == entry.path` and `entry.renderBlock() == entry.block` hold for grouped and standalone entries.\n- [x] A `MetadataSearcher(items: surface.entries, mode: .retrieval)` over a real built registry surface ranks the expected tool first for a keyword query.\n- [x] `swift build` and full `swift test` green.\n\n## Tests\n- [x] New `Tests/FoundationModelsMultitoolTests/APISurfaceSearchableMetadataTests.swift`: id/renderBlock identity assertions for a standalone and a grouped entry; a `.retrieval` search over a `MultiTool.Builder`-built surface (reuse existing tool fixtures) returns the expected `path` as the top match.\n- [x] `swift test` — full suite green.\n\n## Workflow\n- Use `/tdd` — write failing tests first, then implement to make them pass.\n\n## Review Findings (2026-07-04 15:51)\n\n- [x] `Sources/FoundationModelsMultitool/Surface/APISurface+SearchableMetadata.swift:21` — Public function `renderBlock()` lacks its own `///` doc comment; rule requires every public declaration to carry documentation. Add a `///` doc comment, for example: `/// The rendered content block for this entry.`.\n

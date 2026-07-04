@@ -16,7 +16,10 @@ import FoundationModelsMetadataRegistry
 /// descriptor blocks are already compact, so there's no shorter summary to
 /// offer.
 extension APISurface.Entry: SearchableMetadata {
+    /// This entry's fully-qualified `tools.*` call path, used as its
+    /// unique identifier within the catalog.
     public var id: String { path }
 
+    /// The rendered content block for this entry.
     public func renderBlock() -> String { block }
 }
