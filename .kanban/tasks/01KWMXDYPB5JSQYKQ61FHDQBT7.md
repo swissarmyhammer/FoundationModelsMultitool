@@ -18,8 +18,8 @@ comments:
 
     Task complete and green. Leaving in doing for /review per the implement skill's process (not moving to review myself).
   timestamp: 2026-07-03T22:21:26.668745+00:00
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: '9480'
 title: 'MultiToolAgent.swift: dispatchCallTool error message regressed back to transcriptSeparator, contradicting an already-fixed review finding'
 ---
 ## What
