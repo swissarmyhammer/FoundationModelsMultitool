@@ -1,8 +1,17 @@
 ---
+comments:
+- actor: wballard
+  id: 01kwqf9g9gn7kyme19jjgbqrh3
+  text: 'Implemented: deleted Sources/FoundationModelsMultitool/Agent/AgentSession.swift (verified byte-identical protocol/struct now lives as `public` in FoundationModelsMetadataRegistry''s Session/AgentSession.swift). Added `import FoundationModelsMetadataRegistry` to MultiToolAgent.swift, Librarian.swift, Tests/.../Fixtures/MultiToolAgentFixtures.swift, and Tests/.../Fixtures/LibrarianFixtures.swift (alphabetical import ordering, matching existing convention). DirectToolCall.swift/TranscriptAnalyzer.swift only reference AgentSession in doc comments, no import needed there. `grep -rn "protocol AgentSession|struct RoutedAgentSession" Sources/ Tests/` returns nothing. `swift build` succeeds; `swift test` runs 251 tests with exactly 1 failure — the pre-existing, unrelated HardeningTests.readmeInjectedGlobalsListMatchesRuntime (tracked separately as task 1pn8764), no regressions introduced.'
+  timestamp: 2026-07-04T21:07:00.016054+00:00
+- actor: wballard
+  id: 01kwqff1yw6p4tbj05m4c0bhcj
+  text: 'really-done verification complete: swift build (exit 0) and swift test (251 tests, 21 suites, 1 pre-existing known failure unrelated to this change) run fresh; adversarial double-check agent independently re-ran build/test, diffed the deleted file against the registry''s copy (confirmed identical shape, only `public` + doc rewording added), confirmed no stray call sites, and returned verdict PASS with no findings. Task complete and green; leaving in `doing` for /review per the implement skill''s contract.'
+  timestamp: 2026-07-04T21:10:01.948491+00:00
 depends_on:
 - 01KWQC004XSC6ZS9PW10WF5GAD
-position_column: todo
-position_ordinal: '8380'
+position_column: doing
+position_ordinal: '80'
 title: Replace local AgentSession seam with the registry's public seam
 ---
 ## What

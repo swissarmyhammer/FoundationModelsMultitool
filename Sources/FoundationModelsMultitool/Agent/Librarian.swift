@@ -1,5 +1,6 @@
 import Foundation
 import FoundationModels
+import FoundationModelsMetadataRegistry
 import FoundationModelsRouter
 import os
 

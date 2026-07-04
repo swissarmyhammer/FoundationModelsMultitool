@@ -1,3 +1,4 @@
+import FoundationModelsMetadataRegistry
 import os
 
 @testable import FoundationModelsMultitool
