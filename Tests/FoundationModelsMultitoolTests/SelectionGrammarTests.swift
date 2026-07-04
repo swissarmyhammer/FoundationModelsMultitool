@@ -65,4 +65,21 @@ struct SelectionGrammarTests {
         let items = try #require(idsSchema["items"] as? [String: Any])
         #expect(items["enum"] as? [String] == [])
     }
+
+    // MARK: - Selection sessions are constrained to exactly the surface's entry paths
+
+    @Test("idEnumGrammar(ids:) fed a real registry's entry paths — MultiToolAgent.makeFindAPISearcher's own derivation — constrains the enum to exactly those paths, qualified paths included")
+    func idEnumGrammarConstrainedToSurfaceEntryPaths() throws {
+        let registry = try MultiTool.Builder()
+            .addTool(TripCitiesTool())
+            .addGroup(named: "github", [GithubCreateIssueTool()])
+            .buildRegistry()
+
+        let schema = try Self.decodeSchema(idEnumGrammar(ids: registry.surface.entries.map(\.path)))
+
+        let properties = try #require(schema["properties"] as? [String: Any])
+        let idsSchema = try #require(properties["ids"] as? [String: Any])
+        let items = try #require(idsSchema["items"] as? [String: Any])
+        #expect(items["enum"] as? [String] == ["tripCities", "github.createIssue"])
+    }
 }

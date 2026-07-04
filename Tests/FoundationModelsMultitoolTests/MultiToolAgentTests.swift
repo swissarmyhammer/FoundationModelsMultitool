@@ -1,4 +1,5 @@
 import FoundationModels
+import FoundationModelsMetadataRegistry
 import Testing
 
 @testable import FoundationModelsMultitool
@@ -21,12 +22,12 @@ struct MultiToolAgentTests {
             "ACTION: runCode\nCODE:\n```js\nreturn tools.cities().cities.length;\n```",
             "ACTION: final\nANSWER: There are 3 cities.",
         ])
-        let librarianRoot = RootSessionRespondCalledDirectlySession(forkResponses: [cannedCitiesFoundAPIsJSON])
-        let librarian = Librarian(surface: registry.surface, capacityCharacterLimit: .max) { _ in librarianRoot }
+        let librarianRoot = RootSessionRespondCalledDirectlySession(forkResponses: [cannedCitiesSelectionJSON])
+        let searcher = makeScriptedFindAPISearcher(registry: registry, root: librarianRoot)
         let agent = MultiToolAgent(
             registry: registry,
             session: mainSession,
-            librarian: librarian,
+            findAPISearcher: searcher,
             instructions: "You are a travel assistant."
         )
 
@@ -34,13 +35,13 @@ struct MultiToolAgentTests {
 
         #expect(reply == "There are 3 cities.")
         #expect(mainSession.callCount == 3)
-        // findAPIs went through the librarian's real dispatch pipeline: a
+        // findAPIs went through the searcher's real dispatch pipeline: a
         // fork() of the prefix-rooted session, never the root's own respond(to:).
         #expect(librarianRoot.forkCount == 1)
         // findAPIs's result — formatted by FindAPITool, not raw text — was
         // spliced back in as the next turn's context.
-        #expect(mainSession.receivedPrompts[1].contains("tools.cities(): { cities: string[] }"))
-        #expect(mainSession.receivedPrompts[1].contains("Example: tools.cities().cities;"))
+        #expect(mainSession.receivedPrompts[1].contains("declare function cities(args: { unused?: string }): { cities: string[] };"))
+        #expect(mainSession.receivedPrompts[1].contains("Example: tools.cities({});"))
         // The runCode result (3, the cities count) was fed back before the final turn.
         #expect(mainSession.receivedPrompts[2].contains("3"))
     }
@@ -58,18 +59,25 @@ struct MultiToolAgentTests {
             "ACTION: final\nANSWER: done",
         ])
         let librarianRoot = RootSessionRespondCalledDirectlySession(forkResponses: [
-            cannedCitiesFoundAPIsJSON,
-            cannedCitiesFoundAPIsJSON,
+            cannedCitiesSelectionJSON,
+            cannedCitiesSelectionJSON,
         ])
         let rootFactoryCallCount = CallCounter()
-        let librarian = Librarian(surface: registry.surface, capacityCharacterLimit: .max) { _ in
-            rootFactoryCallCount.increment()
-            return librarianRoot
-        }
+        let searcher = MetadataSearcher(
+            items: registry.surface.entries,
+            mode: .selection,
+            selection: SelectionConfig(
+                model: { _ in
+                    rootFactoryCallCount.increment()
+                    return librarianRoot
+                },
+                capacityCharacterLimit: .max
+            )
+        )
         let agent = MultiToolAgent(
             registry: registry,
             session: mainSession,
-            librarian: librarian,
+            findAPISearcher: searcher,
             instructions: "You are a travel assistant."
         )
 
@@ -78,12 +86,13 @@ struct MultiToolAgentTests {
         #expect(reply == "done")
         // The root session was created exactly once (cached across both
         // findAPIs calls in this respond(to:)), and each call reached it
-        // through its own fork() — the KV-cache-reuse contract Librarian
-        // exists for, not a coincidental similarity to it.
+        // through its own fork() — the KV-cache-reuse contract the
+        // searcher's selection tier exists for, not a coincidental
+        // similarity to it.
         #expect(rootFactoryCallCount.count == 1)
         #expect(librarianRoot.forkCount == 2)
-        #expect(mainSession.receivedPrompts[1].contains("tools.cities(): { cities: string[] }"))
-        #expect(mainSession.receivedPrompts[2].contains("tools.cities(): { cities: string[] }"))
+        #expect(mainSession.receivedPrompts[1].contains("declare function cities(args: { unused?: string }): { cities: string[] };"))
+        #expect(mainSession.receivedPrompts[2].contains("declare function cities(args: { unused?: string }): { cities: string[] };"))
     }
 
     // MARK: - Malformed turns → bounded repair turns → failure

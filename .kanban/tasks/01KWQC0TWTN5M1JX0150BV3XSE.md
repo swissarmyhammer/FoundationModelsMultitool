@@ -19,8 +19,8 @@ comments:
   timestamp: 2026-07-04T21:22:17.234772+00:00
 depends_on:
 - 01KWQC004XSC6ZS9PW10WF5GAD
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: '9780'
 title: Replace local AgentSession seam with the registry's public seam
 ---
 ## What

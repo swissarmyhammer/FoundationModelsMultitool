@@ -1,54 +1,74 @@
-/// plan.md Component 8 (the other half of "Discovery"): forwards the agent
-/// loop's `findAPIs(task)` step to a `Librarian`, formatting its decoded
-/// `FoundAPIs` result into the text spliced into the next main-agent turn.
-///
-/// `Librarian` answers *what* is relevant; `FindAPITool` owns *how that
-/// answer reaches the main agent's transcript* — splicing each selected
-/// function's `signature`/`doc`/`example` through **verbatim** (never
-/// re-derived or re-rendered), so the main model reads exactly what the
-/// librarian selected.
-struct FindAPITool: Sendable {
-    /// The librarian this tool forwards every `findAPIs(task)` call to.
-    private let librarian: Librarian
+import FoundationModelsMetadataRegistry
 
-    /// Creates a `findAPIs` dispatcher over `librarian`.
+/// plan.md Component 8 (the other half of "Discovery"): forwards the agent
+/// loop's `findAPIs(task)` step to a `MetadataSearcher<APISurface.Entry>`
+/// running in `.selection` mode, formatting its verbatim `Match`es into the
+/// text spliced into the next main-agent turn.
+///
+/// The searcher's selection tier answers *what* is relevant — ids only,
+/// grammar-enforced against the current candidate set (the registry's
+/// `SelectionTier`, generalizing Multitool's own former `Librarian`) — and
+/// `FindAPITool` owns *how that answer reaches the main agent's
+/// transcript* — splicing each selected entry's `Match.item.block`
+/// **verbatim** (never re-derived or re-rendered) plus its runnable
+/// example, so the main model reads exactly what the registry selected.
+struct FindAPITool: Sendable {
+    /// The catalog searcher this tool forwards every `findAPIs(task)` call
+    /// to — expected to run in `.selection` mode (`.retrieval`/`.auto` would
+    /// still format correctly, but wouldn't honor a guided model's ids-only
+    /// selection contract).
+    private let searcher: MetadataSearcher<APISurface.Entry>
+
+    /// The maximum number of matches to request per `search(intent:limit:)`
+    /// call — typically the catalog's own entry count, so nothing the model
+    /// legitimately selected from the full candidate set is ever truncated.
+    private let limit: Int
+
+    /// Creates a `findAPIs` dispatcher over `searcher`.
     ///
-    /// - Parameter librarian: the librarian to forward every `findAPIs(task)`
-    ///   call to.
-    init(librarian: Librarian) {
-        self.librarian = librarian
+    /// - Parameters:
+    ///   - searcher: the searcher to forward every `findAPIs(task)` call to.
+    ///   - limit: the maximum number of matches to request per call.
+    init(searcher: MetadataSearcher<APISurface.Entry>, limit: Int) {
+        self.searcher = searcher
+        self.limit = limit
     }
 
-    /// Dispatches one `findAPIs(task)` step: asks `librarian`, then formats
-    /// its result into the text to feed back into the main agent's
+    /// Dispatches one `findAPIs(task)` step: searches `searcher`, then
+    /// formats its result into the text to feed back into the main agent's
     /// transcript.
     ///
     /// - Parameter task: the plain-language goal the model passed to
     ///   `findAPIs`.
     /// - Returns: the text to splice into the next main-agent turn.
-    /// - Throws: whatever `librarian.findAPIs(task:)` throws.
+    /// - Throws: whatever `searcher.search(intent:limit:)` throws.
     func dispatch(task: String) async throws -> String {
-        let found = try await librarian.findAPIs(task: task)
-        return Self.format(task: task, found: found)
+        let matches = try await searcher.search(intent: task, limit: limit)
+        return Self.format(task: task, matches: matches)
     }
 
-    /// Formats a `FoundAPIs` result into the text spliced into the main
-    /// agent's transcript — one block per selected function, each function's
-    /// `signature`/`doc`/`example` copied through unmodified.
+    /// Formats a `.selection`-mode search result into the text spliced into
+    /// the main agent's transcript — one block per selected function, each
+    /// entry's verbatim `Match.item.block` — the `// tools.<path>` banner
+    /// naming its fully-qualified call path, followed by its unmodified
+    /// `declare function`/JSDoc source (`ToolDescriptor` fields are always
+    /// unqualified; `path`/`block` carry the namespace — see
+    /// `APISurface.swift`'s `Entry` documentation) — followed by its
+    /// runnable example.
     ///
     /// - Parameters:
     ///   - task: the plain-language goal the model passed to `findAPIs`,
     ///     echoed in the header line so the transcript reads naturally
     ///     alongside `runCode`'s own result feedback (mirrors
     ///     `MultiToolAgent`'s existing `runCode result:` framing).
-    ///   - found: the librarian's decoded result.
+    ///   - matches: the searcher's decoded result.
     /// - Returns: the formatted text.
-    static func format(task: String, found: FoundAPIs) -> String {
-        guard !found.functions.isEmpty else {
+    static func format(task: String, matches: [Match<APISurface.Entry>]) -> String {
+        guard !matches.isEmpty else {
             return "findAPIs(\"\(task)\") found no matching functions."
         }
-        let blocks = found.functions.map { api in
-            "\(api.signature)\n\(api.doc)\nExample: \(api.example)"
+        let blocks = matches.map { match in
+            "\(match.item.block)\nExample: \(match.item.descriptor.example)"
         }
         return "findAPIs(\"\(task)\") found:\n" + blocks.joined(separator: "\n\n")
     }

@@ -19,8 +19,8 @@ comments:
   timestamp: 2026-07-04T21:29:51.966692+00:00
 depends_on:
 - 01KWQC004XSC6ZS9PW10WF5GAD
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: '9880'
 title: Add id-enum selection grammar helper
 ---
 ## What

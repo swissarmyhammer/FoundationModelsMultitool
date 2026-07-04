@@ -176,7 +176,3 @@ let cannedWeatherFoundAPIsJSON = """
     {"functions":[{"name":"weather","signature":"tools.weather(args: { city: string }): { tempC: number }",\
     "doc":"Current weather for a city.","example":"const c = tools.weather({ city: \\"ATX\\" }).tempC;"}]}
     """
-
-/// A canned payload with an empty `functions` array — plan.md: "return an
-/// empty list if nothing fits."
-let cannedEmptyFoundAPIsJSON = #"{"functions":[]}"#

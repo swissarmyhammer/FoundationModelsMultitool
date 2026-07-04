@@ -77,19 +77,45 @@ final class ScriptedAgentSession: AgentSession, Sendable {
     }
 }
 
-// MARK: - Canned `FoundAPIs` JSON for `CitiesTool` (this file's own fixture
-// tool) — the guided-generation shape a real `Librarian`'s root session
-// decodes, mirroring `LibrarianFixtures.swift`'s `cannedTripCitiesFoundAPIsJSON`
-// for `MultiToolAgentTests`' own `CitiesTool`-based scenarios.
+// MARK: - Canned `Selection` JSON for `CitiesTool` (this file's own fixture
+// tool) — the guided-generation shape a real `.selection`-mode
+// `MetadataSearcher`'s root session decodes, so a `MultiToolAgentTests`
+// scenario can wire a real searcher (via
+// `RootSessionRespondCalledDirectlySession`) into `MultiToolAgent`'s
+// `findAPIs` dispatch instead of a raw scripted session.
 
-/// One canned, schema-valid `FoundAPIs` JSON payload naming `cities` only —
-/// matches `CitiesTool`'s shape, so a `MultiToolAgentTests` scenario can wire
-/// a real `Librarian` (via `RootSessionRespondCalledDirectlySession`) into
-/// `MultiToolAgent`'s `findAPIs` dispatch instead of a raw scripted session.
-let cannedCitiesFoundAPIsJSON = """
-    {"functions":[{"name":"cities","signature":"tools.cities(): { cities: string[] }",\
-    "doc":"The cities on the trip.","example":"tools.cities().cities;"}]}
-    """
+/// One canned, schema-valid `Selection` JSON payload naming `cities` only —
+/// matches `CitiesTool`'s `path`, so a `MultiToolAgentTests` scenario can
+/// wire a real `.selection`-mode `MetadataSearcher` (via
+/// `RootSessionRespondCalledDirectlySession`) into `MultiToolAgent`'s
+/// `findAPIs` dispatch instead of a raw scripted session.
+let cannedCitiesSelectionJSON = #"{"ids":["cities"]}"#
+
+/// Builds a `.selection`-mode `MetadataSearcher` over `registry.surface
+/// .entries`, wired to `root` as its cached root session — the
+/// `MetadataSearcher`/`SelectionConfig` analogue of the removed `Librarian(
+/// surface:capacityCharacterLimit:makeSession:)` test-facing initializer, so
+/// `MultiToolAgentTests`/`GuidedTurnFormatTests` scenarios still exercise the
+/// real cached-root/`fork()`-per-call contract — not a reimplementation of
+/// it — via `RootSessionRespondCalledDirectlySession`.
+///
+/// - Parameters:
+///   - registry: the catalog to search over.
+///   - root: the scripted root session `SelectionConfig.model` hands back on
+///     its first (and only) call.
+/// - Returns: a `.selection`-mode `MetadataSearcher` over `registry.surface
+///   .entries`, guaranteed under budget (`capacityCharacterLimit: .max`) so
+///   every call goes through the cached-root + `fork()`-per-call path.
+func makeScriptedFindAPISearcher(
+    registry: MultiTool.Registry,
+    root: any AgentSession
+) -> MetadataSearcher<APISurface.Entry> {
+    MetadataSearcher(
+        items: registry.surface.entries,
+        mode: .selection,
+        selection: SelectionConfig(model: { _ in root }, capacityCharacterLimit: .max)
+    )
+}
 
 // MARK: - A second `TurnFormat` conformer, proving the strategy seam
 

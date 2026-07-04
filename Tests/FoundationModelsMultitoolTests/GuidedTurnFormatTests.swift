@@ -1,5 +1,6 @@
 import Foundation
 import FoundationModels
+import FoundationModelsMetadataRegistry
 import FoundationModelsRouter
 import Testing
 
@@ -193,12 +194,12 @@ struct GuidedTurnFormatTests {
             #"{"kind":"runCode","code":"return tools.cities().cities.length;"}"#,
             #"{"kind":"final","text":"There are 3 cities."}"#,
         ])
-        let librarianRoot = RootSessionRespondCalledDirectlySession(forkResponses: [cannedCitiesFoundAPIsJSON])
-        let librarian = Librarian(surface: registry.surface, capacityCharacterLimit: .max) { _ in librarianRoot }
+        let librarianRoot = RootSessionRespondCalledDirectlySession(forkResponses: [cannedCitiesSelectionJSON])
+        let searcher = makeScriptedFindAPISearcher(registry: registry, root: librarianRoot)
         let agent = MultiToolAgent(
             registry: registry,
             session: mainSession,
-            librarian: librarian,
+            findAPISearcher: searcher,
             instructions: "You are a travel assistant.",
             turnFormat: .guided()
         )
@@ -209,7 +210,7 @@ struct GuidedTurnFormatTests {
         // Exactly 3 main-session calls — zero repair turns.
         #expect(mainSession.callCount == 3)
         #expect(librarianRoot.forkCount == 1)
-        #expect(mainSession.receivedPrompts[1].contains("tools.cities(): { cities: string[] }"))
+        #expect(mainSession.receivedPrompts[1].contains("declare function cities(args: { unused?: string }): { cities: string[] };"))
         #expect(mainSession.receivedPrompts[2].contains("3"))
         // No repair instruction was ever fed back.
         #expect(!mainSession.receivedPrompts.joined().contains("could not be used"))
@@ -274,15 +275,13 @@ struct GuidedTurnFormatTests {
             "ACTION: final\nANSWER: There are 3 cities.",
         ])
         let tolerantLibrarianRoot = RootSessionRespondCalledDirectlySession(forkResponses: [
-            cannedCitiesFoundAPIsJSON
+            cannedCitiesSelectionJSON
         ])
-        let tolerantLibrarian = Librarian(surface: registry.surface, capacityCharacterLimit: .max) { _ in
-            tolerantLibrarianRoot
-        }
+        let tolerantSearcher = makeScriptedFindAPISearcher(registry: registry, root: tolerantLibrarianRoot)
         let tolerantAgent = MultiToolAgent(
             registry: registry,
             session: tolerantSession,
-            librarian: tolerantLibrarian,
+            findAPISearcher: tolerantSearcher,
             instructions: "You are a travel assistant.",
             turnFormat: .tolerantParse()
         )
@@ -293,15 +292,13 @@ struct GuidedTurnFormatTests {
             #"{"kind":"final","text":"There are 3 cities."}"#,
         ])
         let guidedLibrarianRoot = RootSessionRespondCalledDirectlySession(forkResponses: [
-            cannedCitiesFoundAPIsJSON
+            cannedCitiesSelectionJSON
         ])
-        let guidedLibrarian = Librarian(surface: registry.surface, capacityCharacterLimit: .max) { _ in
-            guidedLibrarianRoot
-        }
+        let guidedSearcher = makeScriptedFindAPISearcher(registry: registry, root: guidedLibrarianRoot)
         let guidedAgent = MultiToolAgent(
             registry: registry,
             session: guidedSession,
-            librarian: guidedLibrarian,
+            findAPISearcher: guidedSearcher,
             instructions: "You are a travel assistant.",
             turnFormat: .guided()
         )

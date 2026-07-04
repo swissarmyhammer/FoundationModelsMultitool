@@ -38,36 +38,6 @@ struct LibrarianTests {
         #expect(prefix.contains("declare function weather("))
     }
 
-    // MARK: - Splice-through: a canned FoundAPIs result reaches the agent turn verbatim
-
-    @Test("a fake guided session's canned FoundAPIs result splices into FindAPITool's output verbatim, via a fork() of the prefix-rooted session")
-    func findAPIsSplicesCannedResultVerbatimThroughFork() async throws {
-        let surface = try MultiTool.Builder().addTool(TripCitiesTool()).build()
-        let root = RootSessionRespondCalledDirectlySession(forkResponses: [cannedTripCitiesFoundAPIsJSON])
-        let librarian = Librarian(surface: surface, capacityCharacterLimit: .max) { _ in root }
-        let findAPITool = FindAPITool(librarian: librarian)
-
-        let feedback = try await findAPITool.dispatch(task: "list the trip cities")
-
-        #expect(root.forkCount == 1)
-        #expect(feedback.contains("findAPIs(\"list the trip cities\") found:"))
-        #expect(feedback.contains("tools.tripCities(): string[]"))
-        #expect(feedback.contains("The cities on the user's current trip, in itinerary order."))
-        #expect(feedback.contains("const cs = tools.tripCities();"))
-    }
-
-    @Test("an empty FoundAPIs result formats as a clear \"no matching functions\" message, not an empty string")
-    func emptyFoundAPIsFormatsAsNoMatchMessage() async throws {
-        let surface = try MultiTool.Builder().addTool(TripCitiesTool()).build()
-        let root = RootSessionRespondCalledDirectlySession(forkResponses: [cannedEmptyFoundAPIsJSON])
-        let librarian = Librarian(surface: surface, capacityCharacterLimit: .max) { _ in root }
-        let findAPITool = FindAPITool(librarian: librarian)
-
-        let feedback = try await findAPITool.dispatch(task: "something no tool does")
-
-        #expect(feedback == "findAPIs(\"something no tool does\") found no matching functions.")
-    }
-
     // MARK: - fork()-per-call: the root session is cached, never queried directly
 
     @Test("each findAPIs call goes through its own fork() of the same cached root session, never the root's own respond(to:)")

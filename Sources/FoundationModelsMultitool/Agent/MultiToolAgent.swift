@@ -113,16 +113,16 @@ public struct MultiToolAgent: Sendable {
     /// `agent.respond(to:)` per user request).
     private let makeSession: @Sendable () -> any AgentSession
 
-    /// Dispatches every `findAPIs` step to a `Librarian` (M6), or `nil` when
-    /// this agent has no librarian configured (plan.md: `librarian:
-    /// RoutedLLM?`).
+    /// Dispatches every `findAPIs` step to a `MetadataSearcher<APISurface
+    /// .Entry>` running in `.selection` mode, or `nil` when this agent has
+    /// no librarian configured (plan.md: `librarian: RoutedLLM?`).
     ///
-    /// Unlike `makeSession`, not per-call: `Librarian` is an actor that
-    /// caches its own root session across calls (plan.md Finding #6's
-    /// prefix-reuse contract), so the same `FindAPITool` — wrapping the same
-    /// `Librarian` — is reused for every `findAPIs` step across every
-    /// `respond(to:)` call this agent makes, exactly like `Librarian`'s own
-    /// documented lifetime.
+    /// Unlike `makeSession`, not per-call: `MetadataSearcher` is an actor
+    /// whose selection tier caches its own root session across calls (the
+    /// same prefix-reuse contract Multitool's former `Librarian`
+    /// established, generalized by the registry's `SelectionTier`), so the
+    /// same `FindAPITool` — wrapping the same searcher — is reused for every
+    /// `findAPIs` step across every `respond(to:)` call this agent makes.
     private let findAPITool: FindAPITool?
 
     /// Every *direct* tool this agent's `callTool` step can dispatch to —
@@ -190,10 +190,10 @@ public struct MultiToolAgent: Sendable {
     ///     (no direct tools: `callTool` isn't surfaced to the model at all).
     ///     Every direct call's guided generation runs on `model` — the same
     ///     `RoutedLLM` the main loop runs on — via `RoutedDirectCallSession`.
-    /// - Throws: whatever `Librarian.init(surface:librarian:...)` throws
-    ///   while deriving `FoundAPIs`'s guided-generation grammar — not
-    ///   expected in practice (see that initializer's documentation), and
-    ///   only reachable when `librarian` is non-`nil`.
+    /// - Throws: whatever `idEnumGrammar(ids:)` throws while deriving the
+    ///   selection tier's id-enum grammar — not expected in practice (see
+    ///   that function's documentation), and only reachable when
+    ///   `librarian` is non-`nil`.
     public init(
         registry: MultiTool.Registry,
         model: RoutedLLM,
@@ -214,7 +214,10 @@ public struct MultiToolAgent: Sendable {
         )
         let findAPITool: FindAPITool? =
             if let librarian {
-                FindAPITool(librarian: try Librarian(surface: registry.surface, librarian: librarian))
+                FindAPITool(
+                    searcher: try Self.makeFindAPISearcher(registry: registry, librarian: librarian),
+                    limit: registry.surface.entries.count
+                )
             } else {
                 nil
             }
@@ -242,8 +245,39 @@ public struct MultiToolAgent: Sendable {
         )
     }
 
+    /// Builds the `.selection`-mode `MetadataSearcher` backing production
+    /// `findAPIs` dispatch: derives an id-enum grammar constraining every
+    /// selection session to exactly `registry.surface`'s entry paths (so the
+    /// model is structurally incapable of inventing one), and wires
+    /// `librarian`'s guided sessions through it.
+    ///
+    /// Extracted as its own factory — rather than inlined at the production
+    /// initializer above — so the gated integration test target can drive
+    /// this exact production wiring against a real `RoutedLLM`, not a
+    /// reimplementation of it.
+    ///
+    /// - Parameters:
+    ///   - registry: the catalog whose entries become the searcher's
+    ///     catalog and whose paths constrain the selection grammar.
+    ///   - librarian: the resolved `RoutedLLM` every selection session runs
+    ///     on — typically `profile.flash`.
+    /// - Returns: a `.selection`-mode `MetadataSearcher` over
+    ///   `registry.surface.entries`.
+    /// - Throws: whatever `idEnumGrammar(ids:)` throws deriving the
+    ///   selection grammar — not expected in practice.
+    static func makeFindAPISearcher(
+        registry: MultiTool.Registry,
+        librarian: RoutedLLM
+    ) throws -> MetadataSearcher<APISurface.Entry> {
+        let grammar = try idEnumGrammar(ids: registry.surface.entries.map(\.path))
+        let selection = SelectionConfig(model: { instructions in
+            RoutedAgentSession(session: librarian.makeGuidedSession(grammar, instructions: instructions))
+        })
+        return MetadataSearcher(items: registry.surface.entries, mode: .selection, selection: selection)
+    }
+
     /// Creates an agent driving a pre-built `AgentSession` (and, optionally,
-    /// a pre-built `Librarian`) directly.
+    /// a pre-built `findAPIs` searcher) directly.
     ///
     /// The test-facing entry point plan.md M4b calls for: "the
     /// `AgentSession` seam... so unit tests use a scripted fake with zero
@@ -255,12 +289,13 @@ public struct MultiToolAgent: Sendable {
     ///   - registry: the catalog + live tool instances to run the loop
     ///     over.
     ///   - session: the main agent session to drive.
-    ///   - librarian: the `Librarian` `findAPIs` dispatches to (wrapped in a
-    ///     `FindAPITool`), or `nil` to disable `findAPIs` dispatch. A test
-    ///     builds one over the internal `AgentSession` seam via `Librarian`'s
-    ///     own test-facing initializer, so `findAPIs` dispatch exercises the
-    ///     real prefix-caching/`fork()`-per-call contract, not a
-    ///     reimplementation of it.
+    ///   - findAPISearcher: the `.selection`-mode `MetadataSearcher`
+    ///     `findAPIs` dispatches to (wrapped in a `FindAPITool`), or `nil` to
+    ///     disable `findAPIs` dispatch. A test builds one with a scripted
+    ///     `SelectionConfig.model` factory over the internal `AgentSession`
+    ///     seam, so `findAPIs` dispatch exercises the searcher's real
+    ///     prefix-caching/`fork()`-per-call contract, not a reimplementation
+    ///     of it.
     ///   - instructions: the agent's persona/purpose text.
     ///   - configuration: the M10 hardening knobs this agent's loop and
     ///     `runCode` execution core enforce. Defaults to
@@ -282,7 +317,7 @@ public struct MultiToolAgent: Sendable {
     init(
         registry: MultiTool.Registry,
         session: any AgentSession,
-        librarian: Librarian? = nil,
+        findAPISearcher: MetadataSearcher<APISurface.Entry>? = nil,
         instructions: String,
         configuration: MultiToolConfiguration = .default,
         turnFormat: (any TurnFormat)? = nil,
@@ -290,7 +325,7 @@ public struct MultiToolAgent: Sendable {
         directTools: [any Tool] = [],
         directCallSession: (any DirectCallSession)? = nil
     ) {
-        let findAPITool = librarian.map { FindAPITool(librarian: $0) }
+        let findAPITool = findAPISearcher.map { FindAPITool(searcher: $0, limit: registry.surface.entries.count) }
         self.init(
             registry: registry,
             configuration: configuration,
@@ -347,11 +382,11 @@ public struct MultiToolAgent: Sendable {
     ///
     /// Starts a fresh main session for this call alone; nothing persists
     /// across separate `respond(to:)` calls except `findAPITool`'s own
-    /// `Librarian`, whose cached root session (plan.md Finding #6) outlives
-    /// any single `respond(to:)` call by design. Each turn's raw response is
-    /// appended to a running transcript that becomes the next turn's
-    /// prompt, since a Router session's `respond(to:)` carries no memory of
-    /// its own between calls.
+    /// searcher, whose selection tier's cached root session (plan.md Finding
+    /// #6) outlives any single `respond(to:)` call by design. Each turn's
+    /// raw response is appended to a running transcript that becomes the
+    /// next turn's prompt, since a Router session's `respond(to:)` carries
+    /// no memory of its own between calls.
     ///
     /// - Parameter prompt: the user's request.
     /// - Returns: the model's final answer text.
@@ -417,9 +452,11 @@ public struct MultiToolAgent: Sendable {
     /// Dispatches one `findAPIs(task)` step: rejects it with an instructive
     /// message when discovery isn't available (direct mode, or no librarian
     /// configured), otherwise forwards `task` to `findAPITool` — which asks
-    /// the underlying `Librarian` (`fork()`-ing its cached, prefix-rooted
-    /// session per call, per plan.md Finding #6) and formats the selected
-    /// functions into the text fed back into the transcript.
+    /// the underlying `MetadataSearcher`'s `.selection` tier (`fork()`-ing
+    /// its cached, prefix-rooted session per call under budget, per plan.md
+    /// Finding #6, now generalized by the registry's `SelectionTier`) and
+    /// formats the selected functions into the text fed back into the
+    /// transcript.
     ///
     /// - Parameter task: the plain-language goal the model passed to
     ///   `findAPIs`.

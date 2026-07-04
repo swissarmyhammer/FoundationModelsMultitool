@@ -1,10 +1,39 @@
 ---
+comments:
+- actor: wballard
+  id: 01kwqhq6je5q4n2bmvrexvwnsn
+  text: |-
+    Implementation landed:
+
+    - `Sources/FoundationModelsMultitool/Agent/FindAPITool.swift` rewritten to hold a `MetadataSearcher<APISurface.Entry>` + entry-count `limit`, dispatching via `searcher.search(intent:limit:)` and formatting each `Match` by splicing `match.item.block` (verbatim, banner included) + `Example: \(match.item.descriptor.example)`.
+    - `Sources/FoundationModelsMultitool/Agent/MultiToolAgent.swift`: production init now builds the searcher via new `static func makeFindAPISearcher(registry:librarian:)` (derives `idEnumGrammar(ids: registry.surface.entries.map(\.path))`, wires `SelectionConfig(model:)` to `RoutedAgentSession(session: librarian.makeGuidedSession(grammar, instructions:))`, constructs `MetadataSearcher(items:mode: .selection, selection:)`); internal test-facing init's `librarian: Librarian?` param replaced with `findAPISearcher: MetadataSearcher<APISurface.Entry>?`. `Librarian.swift` untouched (deletion is the next task).
+    - New `Tests/FoundationModelsMultitoolTests/FindAPIToolTests.swift`: scripted `.selection` searcher proving verbatim splice for a standalone tool, a grouped tool (qualified `tools.github.createIssue` banner), and empty-selection no-match message.
+    - `LibrarianTests.swift`: removed the two `FindAPITool(librarian:)`-based tests (migrated to FindAPIToolTests.swift); golden-prefix/fork-count/lexical-filter/grammar-derivation tests against `Librarian` itself kept as-is.
+    - `MultiToolAgentTests.swift`/`GuidedTurnFormatTests.swift`/`Fixtures/MultiToolAgentFixtures.swift`: findAPIs scenarios now build a `.selection`-mode `MetadataSearcher` (new `makeScriptedFindAPISearcher` helper) instead of a `Librarian`, scripted with `{"ids":[...]}` Selection JSON; content assertions updated to match the real `ToolAPIRenderer` output instead of canned `FoundAPIs` JSON text.
+    - `SelectionGrammarTests.swift`: added a test proving `idEnumGrammar(ids: registry.surface.entries.map(\.path))` (matching `makeFindAPISearcher`'s own derivation) constrains to the surface's real entry paths incl. a grouped tool's qualified path.
+
+    Verification: `swift build`, `swift build --build-tests`, and `swift test` all run clean. Full suite: 255/256 pass; the sole failure is the pre-existing, unrelated `HardeningTests.readmeInjectedGlobalsListMatchesRuntime` (tracked separately as task 1pn8764) — confirmed not a regression from this change.
+
+    Adversarial double-check dispatched for sign-off; will record its verdict once returned.
+  timestamp: 2026-07-04T21:49:25.966669+00:00
+- actor: wballard
+  id: 01kwqhwchtf5x5vvjsyth4ak73
+  text: |-
+    Adversarial double-check (independent agent) returned VERDICT: PASS. It independently confirmed:
+    - FindAPITool.swift/MultiToolAgent.swift match spec exactly (searcher+limit, makeFindAPISearcher factory, .selection mode, verbatim block+example splice, no-match message).
+    - Librarian.swift has zero diff — no scope creep, as required (its deletion is the next task).
+    - Test migration genuinely moved (not dropped) coverage: the two FindAPITool(librarian:) tests now live in FindAPIToolTests.swift with equal/greater coverage (standalone + grouped qualified-path + empty-selection).
+    - No dangling fixture references after removing cannedEmptyFoundAPIsJSON.
+    - Independently re-ran swift build / swift build --build-tests / swift test: 256 tests, 1 failure — the same pre-existing, unrelated HardeningTests README "Injected globals" failure (task 1pn8764), stemming from the prior README-rewrite commit e366c62.
+
+    Task is green per /implement's gate. Leaving in `doing` for `/review` to pick up next, per the implement skill's process (implement never moves a task to review itself).
+  timestamp: 2026-07-04T21:52:15.930256+00:00
 depends_on:
 - 01KWQCK35ZRQGCSWX193Q0AR38
 - 01KWQC0DCNNCB2SJ3KNP44M84D
 - 01KWQC0TWTN5M1JX0150BV3XSE
-position_column: todo
-position_ordinal: '8480'
+position_column: doing
+position_ordinal: '80'
 title: Rewire findAPIs over MetadataSearcher (.selection mode)
 ---
 ## What
