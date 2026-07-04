@@ -58,9 +58,25 @@ let warmest = try await multiTool.call(
 
 `MultiTool` conforms to `FoundationModels.Tool` itself, so it drops into an
 Apple `LanguageModelSession(tools:)` or a `MultiToolAgent` loop the same way
-any other tool would. Snippets run in a deny-by-default JavaScriptCore
-sandbox with no filesystem, network, or process access — see
-[the security model](docs/SECURITY.md) for what's bounded and what isn't.
+any other tool would.
+
+## Security model
+
+A `runCode` snippet executes inside a fresh, deny-by-default JavaScriptCore
+sandbox with no filesystem, network, or process access.
+
+### Injected globals
+
+The only globals beyond JavaScriptCore's standard ECMAScript environment that
+a fresh `runCode` sandbox can reach:
+
+- `console`
+- `tools`
+- `help`
+- `docs`
+
+See [the full security model](docs/SECURITY.md) for what each one guarantees
+and what the watchdog and caps bound.
 
 ## Install
 

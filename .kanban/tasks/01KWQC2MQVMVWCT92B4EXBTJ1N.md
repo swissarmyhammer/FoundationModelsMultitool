@@ -1,28 +1,47 @@
 ---
+comments:
+- actor: wballard
+  id: 01kwqmy0bveqewega1svmjsd4m
+  text: |-
+    Environment check: macOS 27.0 (26A5368g), Apple M3 Ultra / 512GB RAM. `SystemLanguageModel.default.availability` reports `available`. Network egress to huggingface.co confirmed. This machine can run the gated suite.
+
+    Found and fixed a pre-existing, unrelated ungated-suite failure blocking this task's "plain swift test remains green" AC: HardeningTests.readmeInjectedGlobalsListMatchesRuntime failed because commit e366c62 (README rewrite) removed the `### Injected globals` section from README.md (moved verbatim into docs/SECURITY.md as `## Injected globals`). This is already tracked as a separate task (01KWQD1B9CE0VYH55J21PN8764 / short_id 1pn8764). Fixed here by adding a compact "## Security model" / "### Injected globals" section back to README.md (linking out to docs/SECURITY.md for full detail) since it was blocking this task's own acceptance criterion. `swift test --filter HardeningTests` and full `swift test` (250+11 tests) now pass. Will leave a note on 1pn8764 too since it's now resolved as a side effect.
+
+    Next: running the gated suite with MULTITOOL_INTEGRATION=1.
+  timestamp: 2026-07-04T22:45:34.715676+00:00
+- actor: wballard
+  id: 01kwqrw5pq03dx36s25sxj3rke
+  text: |-
+    Comprehensive gated-run findings after 7 live full-suite runs plus targeted investigation. Environment: macOS 27.0 (26A5368g), Apple M3 Ultra, 512GB RAM, network egress confirmed.
+
+    INFRA BLOCKER (found + worked around): `MULTITOOL_INTEGRATION=1 swift test --filter FoundationModelsMultitoolIntegrationTests` cannot run via the literal `swift test` CLI — mlx-swift's Metal shader library ("Failed to load the default metallib") isn't discoverable through SwiftPM's own test runner. This is a pre-existing, already-documented environmental limitation, not a code bug: identical failure reproduced in the sibling FoundationModelsRouter package (see its task 01KWC5JSV0GM6AM05C6TXGN0TS's comment log — same error, same workaround, dated 2026-07-01). Workaround applied: `swift build --build-tests`, copy `.build/out/Products/Debug/mlx-swift_Cmlx.bundle/Contents/Resources/default.metallib` next to the built `.xctest`'s `Contents/MacOS/` binary, then run via `MULTITOOL_INTEGRATION=1 xcrun xctest .build/out/Products/Debug/FoundationModelsMultitoolIntegrationTests.xctest` directly. This genuinely resolves real models, downloads real weights, and runs real MLX inference — verified real (non-cached, real network activity, real generation).
+
+    PRE-EXISTING UNGATED BREAKAGE (found + fixed, unrelated to this task but blocking its own "ungated swift test stays green" AC): HardeningTests.readmeInjectedGlobalsListMatchesRuntime failed because commit e366c62 (README rewrite) dropped the `### Injected globals` section from README.md. Restored it (new "## Security model" section in README.md, linking to docs/SECURITY.md for full detail). Also resolves duplicate task 01KWQD1B9CE0VYH55J21PN8764 (commented there).
+
+    MODEL CAPABILITY FINDING (the actual gated-suite work): the original pinned generation model, `mlx-community/SmolLM-135M-Instruct-4bit` (reused from Router's own gated suite), is too weak for this suite's ReAct-style tool-orchestration ask. Empirically it produced hallucinated, off-topic prose (Stack Exchange/Google-account rambling) and pathological repetition (thousands of repeated `0` characters) instead of ever emitting a valid `ACTION:` line or non-degenerate `.guided` JSON turn — confirmed via temporary debug instrumentation (raw response dumps), since reverted (`git diff` on ScenarioRunner.swift is clean).
+
+    Fix applied: swapped `TinyModels.generation` (Tests/.../Support/IntegrationGate.swift) to `mlx-community/Qwen2.5-1.5B-Instruct-4bit` (still "few-hundred-MB-to-low-GB" per plan.md's own M6.5 guidance, ~870MB in 4-bit) — tried 0.5B first (large improvement but still flaky), settled on 1.5B (most reliable of the three tried). Bumped `multitoolTinyProfile.context` 2048 -> 8192 (ample RAM headroom, no reason to stay cramped). Mirrored the same model+context change into `Sources/multitool-cli/CLIRunner.demoProfile` since its own doc comment claims parity with the gated suite's profile. Also strengthened `GuidedTurnFormat.formatInstructions` (Sources/.../Agent/AgentTurn.swift) to explicitly and repeatedly warn the model never to leave the kind-matching field blank.
+
+    RESULT after tuning (reproduced across 3 full runs with the 1.5B model):
+    - `PrefixReuseTests` (the Finding #6 prefix-reuse pin, named in this task's AC) — PASSES reliably. E.g. first=1.24s second=1.17s (second call no slower than first, fork()-inherited prefix confirmed).
+    - `CLISmokeTests` (M9 live demo smoke test) — PASSES reliably.
+    - Selection accuracy (discovery-under-distractors' `expectedFoundAPINames` assertion, the other AC item) — passed cleanly in at least one full run (`{"ids": ["weather","tripCities"]}` exactly), but is NOT deterministic run-to-run.
+    - `SearchThenCallTests` (8 scenario/format combos) and `AgentEvaluationTests` — still intermittently fail. Root causes are now well-diagnosed and are model-sampling-variance issues, not code bugs:
+      1. Under `.guided`, the model sometimes leaves the `kind`-matching field (`task`/`code`/`text`) blank despite the schema's `@Guide` docs and the strengthened format instructions — xgrammar's schema can't make this conditionally-required (documented limitation in AgentTurn.swift already), and stronger prose didn't fully close the gap for a 1.5B model.
+      2. Under `.tolerantParse`, on some runs the model rambles past a natural stop point on multi-turn scenarios and hits Router's hardcoded 1024-token plain-generate cap (`GenerateParameters(maxTokens: liveGenerateMaxTokens)` in `FoundationModelsRouter/Sources/.../Resolution/LiveModelLoader.swift`, `private let liveGenerateMaxTokens = 1024`) before emitting `ACTION: final`, throwing `.incompleteOutput`. This constant lives in the sibling Router package, out of this repo/task's scope to tune.
+      3. `AgentEvaluationTests.searchThenCallEvaluation()` additionally hit `EncodingError.invalidValue: nan (Double)` in one run — Apple's own `Evaluations` framework choking on `computeStandardDeviation` when too few of the 4 scenario samples graded successfully (a framework-internal edge case, not Multitool code).
+      4. Occasional `invokedToolPaths` mismatches even when `findAPIs` correctly precedes `runCode`: the model sometimes writes a runCode snippet with plausible hardcoded logic instead of actually calling the described `tools.*` functions — a real small-model grounding/instruction-following limitation.
+
+    CONCLUSION: the literal AC "`MULTITOOL_INTEGRATION=1 swift test --filter FoundationModelsMultitoolIntegrationTests` passes on GPU hardware" is not met with 100% run-to-run reliability. This is not a code defect I can eliminate through further in-repo tuning — it's inherent sampling variance in genuinely small (sub-2B) real MLX models doing ReAct-style tool orchestration without native function-calling, which is exactly the scope plan.md's M6.5 chose ("small tool-calling-capable instruct models"). Two of the two explicitly-named must-fix items (prefix-reuse pin, selection accuracy) now pass reliably or have passed cleanly with root-caused, addressed tuning; the `.guided` format's blank-field issue and Router's own hardcoded generate-token cap are the remaining, well-diagnosed sources of flakiness, and the latter is out of this repo's control.
+
+    Leaving this task in `doing` rather than claiming full done, per the "no faking success" instruction — reporting this nuanced (real progress, not 100% green) outcome for review/decision: e.g. accept `.tolerantParse` as the sole supported real-model format for this milestone, or accept observed flakiness as expected small-model characteristic and re-run until green (since scenario correctness is real, just non-deterministic), or file a follow-up task for the Router-side maxTokens cap.
+
+    Diff is minimal and focused: README.md (Injected globals restore), Sources/FoundationModelsMultitool/Agent/AgentTurn.swift (guided instructions strengthened), Sources/multitool-cli/CLIRunner.swift (demo profile model/context parity), Tests/FoundationModelsMultitoolIntegrationTests/Support/IntegrationGate.swift (model + context). Ungated `swift test`: 250+11 tests, all green, zero failures. No `Librarian`/`FoundAPI` identifier references under Tests/FoundationModelsMultitoolIntegrationTests (verified via word-boundary grep — only prose doc-comment mentions of the historical `Librarian` name and the unrelated `expectedFoundAPINames` test parameter).
+  timestamp: 2026-07-04T23:54:28.951722+00:00
 depends_on:
 - 01KWQC25DQYWTVRA16TKYPWKCW
-position_column: todo
-position_ordinal: '8680'
+position_column: doing
+position_ordinal: '80'
 title: Run and fix the gated integration suite on real hardware
 ---
-## What
-The compile-level migration of `Tests/FoundationModelsMultitoolIntegrationTests` (PrefixReuseTests over the production `MetadataSearcher`, ScenarioRunner/SearchThenCallTests over Selection ids) lands in the preceding cleanup task. This task is the gated *execution* pass on GPU hardware: run the migrated suite against real models and fix what only a live run can surface.
-
-- Run `MULTITOOL_INTEGRATION=1 swift test --filter FoundationModelsMultitoolIntegrationTests` on capable hardware.
-- Verify and, if needed, fix:
-  - **Prefix reuse still holds end-to-end through this package's wiring:** `PrefixReuseTests`' second `search(intent:limit:)` call (fork-inherited prefix) is not slower than the first (cold prefill) — the empirical plan.md Finding #6 pin, now exercised through the registry's cached-root + fork-per-call path.
-  - **Selection accuracy:** scenario 3 selects `tripCities` + `weather` among ~20 distractors, now as grammar-constrained ids rather than generated `FoundAPIs` — assert via the Selection-decoding `TranscriptAnalyzer`.
-  - Scenario semantics unchanged: findAPIs-precedes-runCode, exact invoked `tools.*` paths, repair-turn bounds.
-- Real-model behavior may need tuning (e.g. the selection preamble via `SelectionConfig.preamble`, or the search `limit`); make such adjustments here with the gated suite as the arbiter.
-
-## Acceptance Criteria
-- [ ] `MULTITOOL_INTEGRATION=1 swift test --filter FoundationModelsMultitoolIntegrationTests` passes on GPU hardware.
-- [ ] Plain (ungated) `swift test` remains green.
-- [ ] No `Librarian`/`FoundAPI` identifier references exist under `Tests/FoundationModelsMultitoolIntegrationTests` (carried over from the cleanup task; re-verified here).
-
-## Tests
-- [ ] The gated suite itself: `MULTITOOL_INTEGRATION=1 swift test --filter FoundationModelsMultitoolIntegrationTests` — all scenarios pass.
-- [ ] `swift test` (ungated) — full suite green.
-
-## Workflow
-- Use `/tdd` — the gated suite is the failing-first signal; fix until green.
+## What\nThe compile-level migration of `Tests/FoundationModelsMultitoolIntegrationTests` (PrefixReuseTests over the production `MetadataSearcher`, ScenarioRunner/SearchThenCallTests over Selection ids) lands in the preceding cleanup task. This task is the gated *execution* pass on GPU hardware: run the migrated suite against real models and fix what only a live run can surface.\n\n- Run `MULTITOOL_INTEGRATION=1 swift test --filter FoundationModelsMultitoolIntegrationTests` on capable hardware.\n- Verify and, if needed, fix:\n  - **Prefix reuse still holds end-to-end through this package's wiring:** `PrefixReuseTests`' second `search(intent:limit:)` call (fork-inherited prefix) is not slower than the first (cold prefill) — the empirical plan.md Finding #6 pin, now exercised through the registry's cached-root + fork-per-call path.\n  - **Selection accuracy:** scenario 3 selects `tripCities` + `weather` among ~20 distractors, now as grammar-constrained ids rather than generated `FoundAPIs` — assert via the Selection-decoding `TranscriptAnalyzer`.\n  - Scenario semantics unchanged: findAPIs-precedes-runCode, exact invoked `tools.*` paths, repair-turn bounds.\n- Real-model behavior may need tuning (e.g. the selection preamble via `SelectionConfig.preamble`, or the search `limit`); make such adjustments here with the gated suite as the arbiter.\n\n## Acceptance Criteria\n- [ ] `MULTITOOL_INTEGRATION=1 swift test --filter FoundationModelsMultitoolIntegrationTests` passes on GPU hardware. **PARTIAL — see comments.** `PrefixReuseTests` and `CLISmokeTests` now pass reliably across multiple runs after swapping the gated suite's model to `Qwen2.5-1.5B-Instruct-4bit` (from the too-weak `SmolLM-135M-Instruct-4bit`) and bumping context 2048->8192. `SearchThenCallTests`/`AgentEvaluationTests` still intermittently fail — root-caused to real small-model sampling variance (`.guided` mode sometimes leaves the kind-matching field blank despite strengthened instructions; `.tolerantParse` occasionally hits Router's own hardcoded 1024-token generate cap on longer conversations) and one Apple `Evaluations`-framework internal edge case (NaN stddev), not Multitool code defects.\n- [x] Plain (ungated) `swift test` remains green. 250+11 tests, zero failures, verified fresh.\n- [x] No `Librarian`/`FoundAPI` identifier references exist under `Tests/FoundationModelsMultitoolIntegrationTests` (carried over from the cleanup task; re-verified here via word-boundary grep — only prose doc-comment mentions of the historical `Librarian` name remain).\n\n## Tests\n- [ ] The gated suite itself: `MULTITOOL_INTEGRATION=1 swift test --filter FoundationModelsMultitoolIntegrationTests` — all scenarios pass. Not yet 100% reliable; see comments for root causes and options.\n- [x] `swift test` (ungated) — full suite green.\n\n## Workflow\n- Use `/tdd` — the gated suite is the failing-first signal; fix until green.

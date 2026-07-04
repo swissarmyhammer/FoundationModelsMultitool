@@ -262,13 +262,17 @@ public struct GuidedTurnFormat: TurnFormat {
     public func formatInstructions(supportsFindAPIs: Bool, supportsDirectCall: Bool = false) -> String {
         var lines = [
             "Each turn, respond with a single JSON object matching the required schema.",
-            "Set \"kind\" to \"\(AgentTurn.Kind.runCode.rawValue)\" and \"code\" to the JavaScript snippet to run,",
-            "or set \"kind\" to \"\(AgentTurn.Kind.final.rawValue)\" and \"text\" to your final answer.",
+            "IMPORTANT: the field matching \"kind\" is REQUIRED and must never be left empty — a response",
+            "with \"kind\" set but its matching field missing or blank is rejected and wastes a turn.",
+            "Set \"kind\" to \"\(AgentTurn.Kind.runCode.rawValue)\" and \"code\" to the JavaScript snippet to run",
+            "(never leave \"code\" empty when kind is \"\(AgentTurn.Kind.runCode.rawValue)\"),",
+            "or set \"kind\" to \"\(AgentTurn.Kind.final.rawValue)\" and \"text\" to your final answer",
+            "(never leave \"text\" empty when kind is \"\(AgentTurn.Kind.final.rawValue)\").",
         ]
         if supportsFindAPIs {
             lines.append(
                 "Set \"kind\" to \"\(AgentTurn.Kind.findAPIs.rawValue)\" and \"task\" to search for relevant tool "
-                    + "functions first."
+                    + "functions first (never leave \"task\" empty when kind is \"\(AgentTurn.Kind.findAPIs.rawValue)\")."
             )
         } else {
             lines.append(
@@ -280,7 +284,8 @@ public struct GuidedTurnFormat: TurnFormat {
             lines.append(
                 "Set \"kind\" to \"\(AgentTurn.Kind.callTool.rawValue)\", \"toolName\" to the exact name of the "
                     + "direct tool to call, and \"task\" to a plain-language description of the arguments to use, "
-                    + "to call a direct tool with a schema-valid argument guarantee."
+                    + "to call a direct tool with a schema-valid argument guarantee (never leave \"toolName\" or "
+                    + "\"task\" empty when kind is \"\(AgentTurn.Kind.callTool.rawValue)\")."
             )
         } else {
             lines.append(

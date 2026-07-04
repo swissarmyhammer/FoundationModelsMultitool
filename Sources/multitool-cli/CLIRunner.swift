@@ -111,10 +111,10 @@ enum CLIRunner {
     static let demoProfile = ProfileDefinition(
         name: "multitool-cli-demo",
         description: "Small tool-calling-capable models for the multitool-cli sample.",
-        standard: ["mlx-community/SmolLM-135M-Instruct-4bit"],
-        flash: ["mlx-community/SmolLM-135M-Instruct-4bit"],
+        standard: ["mlx-community/Qwen2.5-1.5B-Instruct-4bit"],
+        flash: ["mlx-community/Qwen2.5-1.5B-Instruct-4bit"],
         embedding: ["mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ"],
-        context: 2048
+        context: 8192
     )
 
     /// The one prompt this sample asks — plan.md M9: "one prompt that

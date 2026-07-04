@@ -26,26 +26,49 @@ var multitoolIntegrationEnabled: Bool {
 /// models." `MultiToolAgent`'s tool-calling is plain prompted text (the
 /// `ACTION:`/`TASK:`/`CODE:` convention, or a guided JSON turn) rather than a
 /// model's own native function-calling API, so any capable small instruct
-/// model qualifies — the *same* generation/embedding refs Router's own gated
-/// suite already downloads for its `standard`/`flash`/`embedding` slots
-/// (`IntegrationTests.swift`'s `TinyModels`), reused here so a machine that
-/// already ran Router's suite shares the cached weights rather than fetching
-/// a second set.
+/// model qualifies.
+///
+/// `generation` deliberately does *not* reuse Router's own gated suite's
+/// pinned `SmolLM-135M-Instruct-4bit` (`IntegrationTests.swift`'s
+/// `TinyModels`): empirically, on this suite's live-hardware run
+/// (`exbtj1n`'s gated pass), that 135M model could not reliably follow even
+/// the single-tool `ACTION:`/`TASK:`/`CODE:` convention — its `tolerantParse`
+/// turns degenerated into unrelated hallucinated prose (and, in one repair
+/// scenario, thousands of repeated `0` characters) rather than ever emitting
+/// an `ACTION:` line, and its `.guided` turns looped calling `findAPIs` with
+/// a nonsense `task` value instead of ever reaching a `final`/`runCode` turn.
+/// A first step up, `Qwen2.5-0.5B-Instruct-4bit`, was a large improvement
+/// (reliable `ACTION:` lines, coherent single-tool scenarios) but still
+/// occasionally ran on past a natural stop point on harder multi-turn
+/// scenarios and, under `.guided`, sometimes populated the wrong optional
+/// field (`text` instead of `code`) for a `runCode` turn.
+/// `Qwen2.5-1.5B-Instruct-4bit` is the settled choice: still squarely in
+/// plan.md's "few-hundred-MB-to-low-GB instruct model" range (~870MB in
+/// 4-bit), and empirically the most reliable of the three at this suite's
+/// full ReAct-style search-then-call loop. Router's own suite only needs a
+/// model to produce *any* non-empty response (`endToEnd()` asserts a
+/// non-empty reply, valid guided schema-parse, embed dimension — never
+/// coherent multi-step reasoning), so its far lower capability bar tolerates
+/// a model this suite's tool orchestration cannot; hence the diverging
+/// pin. `embedding` is unaffected and still shares Router's own pinned ref.
 private enum TinyModels {
-    static let generation: ModelRef = "mlx-community/SmolLM-135M-Instruct-4bit"
+    static let generation: ModelRef = "mlx-community/Qwen2.5-1.5B-Instruct-4bit"
     static let embedding: ModelRef = "mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ"
 }
 
 /// The tiny co-fitting profile this suite resolves once per test — mirrors
-/// Router's own `tinyProfile`. A modest `context` keeps every slot's KV
-/// footprint small so the trio comfortably co-fits.
+/// Router's own `tinyProfile`. `context` is sized to comfortably fit this
+/// suite's largest rendered prompt — the ~20-distractor discovery scenario's
+/// assembled selection prefix plus its guided id-enum grammar's completion —
+/// with headroom to spare; the co-fitting trio's combined KV footprint is
+/// negligible next to the hardware this gated suite requires.
 let multitoolTinyProfile = ProfileDefinition(
     name: "multitool-integration-tiny",
     description: "Deliberately tiny, tool-calling-capable models for the gated M6.5 integration suite.",
     standard: [TinyModels.generation],
     flash: [TinyModels.generation],
     embedding: [TinyModels.embedding],
-    context: 2048
+    context: 8192
 )
 
 /// One resolved, live `Router` + `LanguageModelProfile` pair, together with
