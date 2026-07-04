@@ -1,8 +1,28 @@
 ---
+comments:
+- actor: wballard
+  id: 01kwqe3wth5qtzmeq990xa4fds
+  text: |-
+    Implemented via TDD:
+    - New `Sources/FoundationModelsMultitool/Surface/APISurface+SearchableMetadata.swift`: `extension APISurface.Entry: SearchableMetadata` with `id == path`, `renderBlock() == block`, relying on the protocol default `renderSummaryBlock()`.
+    - New `Tests/FoundationModelsMultitoolTests/APISurfaceSearchableMetadataTests.swift`: id/renderBlock identity tests for a standalone entry (WeatherTool) and a grouped entry (github group), plus a `.retrieval` `MetadataSearcher` test over a real `MultiTool.Builder`-built surface (weather + tripCities + github group) ranking `weather` first for a weather-flavored query.
+    - Watched RED first (compile failure: "value of type 'APISurface.Entry' has no member 'id'" / no conformance to SearchableMetadata), then implemented to GREEN.
+
+    Verification: `swift build` exit 0. `swift test` (main target): 251 tests, 1 failure — `HardeningTests.readmeInjectedGlobalsListMatchesRuntime` ("README.md has no ### Injected globals section"), the known pre-existing failure tracked separately as task 1pn8764, unrelated to this change. All other 250 tests green, including the 3 new ones. Integration target's gated tests skip as expected (no MULTITOOL_INTEGRATION env var).
+
+    Spawned double-check adversarial review before handoff; task left in `doing` per /implement process pending that review and report to user.
+  timestamp: 2026-07-04T20:46:27.665401+00:00
+- actor: wballard
+  id: 01kwqe72jwd66vq65mbmnqp8vz
+  text: |-
+    Adversarial double-check (independent agent) verdict: PASS, no findings. It independently re-ran `swift build` (exit 0) and `swift test` (251 tests, 1 pre-existing unrelated failure), read `MultiToolBuilder.swift`'s collision detection to confirm `path` uniqueness backs the `id` uniqueness claim, confirmed the new tests use a real `MultiTool.Builder`-built surface + genuine `MetadataSearcher(items:mode: .retrieval)` rather than hand-rolled fixtures, and confirmed wiring `Librarian`/`MultiToolAgent` to `MetadataSearcher` is out of scope here (that's the separate blocked task 01KWQC1N0Q97RKK7J162RTCRHC).
+
+    really-done gate satisfied. Leaving task in `doing` per /implement process — ready for /review.
+  timestamp: 2026-07-04T20:48:11.868783+00:00
 depends_on:
 - 01KWQC004XSC6ZS9PW10WF5GAD
-position_column: todo
-position_ordinal: '8280'
+position_column: doing
+position_ordinal: '80'
 title: Conform APISurface.Entry to SearchableMetadata
 ---
 ## What

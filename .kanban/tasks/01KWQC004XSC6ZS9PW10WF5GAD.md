@@ -11,8 +11,8 @@ comments:
     Discovery (unrelated to this task): full `swift test` has one pre-existing failure — `HardeningTests.readmeInjectedGlobalsListMatchesRuntime` — because commit e366c62 (README rewrite) moved the `### Injected globals` section out of `README.md` into `docs/SECURITY.md`, breaking that machine-checked sync test. Confirmed via `git stash -u` that this failure exists on `main` with none of this task's changes applied, so it's not a regression from this task. Filed as a new kanban task 1pn8764 ("Fix HardeningTests README/SECURITY.md drift") rather than fixing in scope here.
   timestamp: 2026-07-04T20:27:59.440598+00:00
 depends_on: []
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: '9580'
 title: Add FoundationModelsMetadataRegistry dependency to Package.swift
 ---
 ## What
