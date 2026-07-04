@@ -8,6 +8,15 @@ comments:
   id: 01kwqff1yw6p4tbj05m4c0bhcj
   text: 'really-done verification complete: swift build (exit 0) and swift test (251 tests, 21 suites, 1 pre-existing known failure unrelated to this change) run fresh; adversarial double-check agent independently re-ran build/test, diffed the deleted file against the registry''s copy (confirmed identical shape, only `public` + doc rewording added), confirmed no stray call sites, and returned verdict PASS with no findings. Task complete and green; leaving in `doing` for /review per the implement skill''s contract.'
   timestamp: 2026-07-04T21:10:01.948491+00:00
+- actor: wballard
+  id: 01kwqg5g0jgcfpvqc89tg7rkn7
+  text: |-
+    Re-verified the single open review finding (AgentSession.swift:1 "file empty/deleted") per its own note that no action is needed. Confirmed: `Sources/FoundationModelsMultitool/Agent/AgentSession.swift` is genuinely absent (ls/test -f), `grep -rn "protocol AgentSession\|struct RoutedAgentSession" Sources/ Tests/` returns nothing, and the registry's checked-out copy defines `public protocol AgentSession` / `public struct RoutedAgentSession` at `.build/checkouts/FoundationModelsMetadataRegistry/Sources/FoundationModelsMetadataRegistry/Session/AgentSession.swift`. All remaining `AgentSession` references in Sources/ and Tests/ are usages (conformances, type references) resolving through the `import FoundationModelsMetadataRegistry` already added in MultiToolAgent.swift, Librarian.swift, and the two test fixture files — no stray or accidental partial-deletion artifacts. Checked off the finding on the task description with a resolution note (no code change required).
+
+    Re-ran `swift build` (exit 0, clean) and `swift test` fresh: 251 tests, 21 suites, exactly 1 failure — `HardeningTests` "README's enumerated 'Injected globals' list is set-equal to the runtime-enumerated sandbox globals" (readmeInjectedGlobalsListMatchesRuntime), the pre-existing out-of-scope failure tracked separately as task 1pn8764. No regressions.
+
+    No source code changed this pass (only the kanban task description), so per really-done's adversarial gate ("skip if there is no diff"), the double-check agent was not spawned. Leaving task in `doing` for `/review`.
+  timestamp: 2026-07-04T21:22:17.234772+00:00
 depends_on:
 - 01KWQC004XSC6ZS9PW10WF5GAD
 position_column: doing
@@ -35,3 +44,7 @@ The registry publicly exports `AgentSession`, its `respond(to:generating:)`/`for
 
 ## Workflow
 - Use `/tdd` — the existing tests are the failing/passing signal; make the swap keeping them green.
+
+## Review Findings (2026-07-04 16:12)
+
+- [x] `Sources/FoundationModelsMultitool/Agent/AgentSession.swift:1` — File is empty (deleted) - no items to document. No action needed; this file is being removed as part of the refactor. **Resolved 2026-07-04**: re-verified — the file is genuinely absent (`ls`/`test -f` confirm no such path), `grep -rn "protocol AgentSession\|struct RoutedAgentSession" Sources/ Tests/` returns nothing, and the registry's checked-out copy (`FoundationModelsMetadataRegistry/Sources/FoundationModelsMetadataRegistry/Session/AgentSession.swift`) defines `public protocol AgentSession` and `public struct RoutedAgentSession` — the public seam the deleted local copy now defers to. All remaining `AgentSession` references in Sources/Tests are usages (conformances/type references) that resolve to the registry's import, not stray local definitions. No code change required; finding confirmed as informational only.
