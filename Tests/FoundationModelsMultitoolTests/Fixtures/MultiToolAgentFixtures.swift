@@ -107,7 +107,7 @@ let cannedCitiesSelectionJSON = #"{"ids":["cities"]}"#
 /// - Returns: a `.selection`-mode `MetadataSearcher` over `registry.surface
 ///   .entries`, guaranteed under budget (`capacityCharacterLimit: .max`) so
 ///   every call goes through the cached-root + `fork()`-per-call path.
-func makeScriptedFindAPISearcher(
+func makeScriptedSelectionSearcher(
     registry: MultiTool.Registry,
     root: any AgentSession
 ) -> MetadataSearcher<APISurface.Entry> {

@@ -8,7 +8,7 @@ import Testing
 /// `LibrarianTests` previously covered against `FindAPITool(librarian:)`,
 /// now driven against a real `.selection`-mode `MetadataSearcher` scripted
 /// through the internal `AgentSession` seam
-/// (`Fixtures/LibrarianFixtures.swift`'s `RootSessionRespondCalledDirectlySession`,
+/// (`Fixtures/MultiToolAgentFixtures.swift`'s `RootSessionRespondCalledDirectlySession`,
 /// reusing `MultiToolAgentTests`' zero-GPU pattern) — the searcher's
 /// selection tier does the real cached-root/`fork()`-per-call work, and
 /// `FindAPITool` splices its resolved `Match`es' verbatim `block`s, never a

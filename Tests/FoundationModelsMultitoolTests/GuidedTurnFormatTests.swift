@@ -195,7 +195,7 @@ struct GuidedTurnFormatTests {
             #"{"kind":"final","text":"There are 3 cities."}"#,
         ])
         let librarianRoot = RootSessionRespondCalledDirectlySession(forkResponses: [cannedCitiesSelectionJSON])
-        let searcher = makeScriptedFindAPISearcher(registry: registry, root: librarianRoot)
+        let searcher = makeScriptedSelectionSearcher(registry: registry, root: librarianRoot)
         let agent = MultiToolAgent(
             registry: registry,
             session: mainSession,
@@ -277,7 +277,7 @@ struct GuidedTurnFormatTests {
         let tolerantLibrarianRoot = RootSessionRespondCalledDirectlySession(forkResponses: [
             cannedCitiesSelectionJSON
         ])
-        let tolerantSearcher = makeScriptedFindAPISearcher(registry: registry, root: tolerantLibrarianRoot)
+        let tolerantSearcher = makeScriptedSelectionSearcher(registry: registry, root: tolerantLibrarianRoot)
         let tolerantAgent = MultiToolAgent(
             registry: registry,
             session: tolerantSession,
@@ -294,7 +294,7 @@ struct GuidedTurnFormatTests {
         let guidedLibrarianRoot = RootSessionRespondCalledDirectlySession(forkResponses: [
             cannedCitiesSelectionJSON
         ])
-        let guidedSearcher = makeScriptedFindAPISearcher(registry: registry, root: guidedLibrarianRoot)
+        let guidedSearcher = makeScriptedSelectionSearcher(registry: registry, root: guidedLibrarianRoot)
         let guidedAgent = MultiToolAgent(
             registry: registry,
             session: guidedSession,

@@ -5,8 +5,8 @@ import FoundationModelsRouter
 
 /// Reconstructs an agent loop's `AgentStep`s (and the selection tier's
 /// `Selection` picks) from a Router JSONL transcript (`RecordingLevel.full`) — plan.md's
-/// M6.5 trace assertions ("findAPIs before runCode", "librarian returned the
-/// expected minimal set", "snippet invoked exactly the expected tools.*",
+/// M6.5 trace assertions ("findAPIs before runCode", "selection tier returned
+/// the expected minimal set", "snippet invoked exactly the expected tools.*",
 /// "repair within N turns") read the transcript rather than instrumenting the
 /// loop itself, so the same on-disk artifact a real gated run produces is
 /// what both the gated integration suite
@@ -167,9 +167,9 @@ enum TranscriptAnalyzer {
 
     /// Decodes the selection tier's `Selection` results from its `.response`
     /// events — the raw guided-generation JSON `AgentSession
-    /// .respond(to:generating:)` decodes at call time — plan.md's "librarian
-    /// returned the expected minimal set" trace assertion, now generalized
-    /// to the registry's ids-only `Selection` shape (plan.md §6: "Ids only,
+    /// .respond(to:generating:)` decodes at call time — plan.md's "selection
+    /// tier returned the expected minimal set" trace assertion, now
+    /// generalized to the registry's ids-only `Selection` shape (plan.md §6: "Ids only,
     /// grammar-enforced" — superseding Multitool's own former `FoundAPIs`,
     /// which had the model reproduce each function's fields).
     ///

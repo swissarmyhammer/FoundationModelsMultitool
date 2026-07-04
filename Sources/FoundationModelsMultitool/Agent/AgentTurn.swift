@@ -121,44 +121,52 @@ public struct AgentTurn: Sendable, Equatable {
     func asAgentStep() throws -> AgentStep {
         switch kind {
         case .findAPIs:
-            guard let task, Self.isNonBlank(task) else {
-                throw TurnParseError(message: "A guided turn with kind \"\(kind.rawValue)\" must set a non-empty \"task\".")
-            }
-            return .findAPIs(task: task)
+            return .findAPIs(task: try requireNonBlank(task, fieldName: "task"))
 
         case .runCode:
-            guard let code, Self.isNonBlank(code) else {
-                throw TurnParseError(message: "A guided turn with kind \"\(kind.rawValue)\" must set a non-empty \"code\".")
-            }
-            return .runCode(code: code)
+            return .runCode(code: try requireNonBlank(code, fieldName: "code"))
 
         case .callTool:
-            guard let toolName, Self.isNonBlank(toolName) else {
-                throw TurnParseError(
-                    message: "A guided turn with kind \"\(kind.rawValue)\" must set a non-empty \"toolName\"."
-                )
-            }
-            guard let task, Self.isNonBlank(task) else {
-                throw TurnParseError(
-                    message: "A guided turn with kind \"\(kind.rawValue)\" must set a non-empty \"task\" describing "
-                        + "the arguments to use."
-                )
-            }
+            let toolName = try requireNonBlank(toolName, fieldName: "toolName")
+            let task = try requireNonBlank(task, fieldName: "task", context: "describing the arguments to use")
             return .callTool(name: toolName, task: task)
 
         case .final:
-            guard let text, Self.isNonBlank(text) else {
-                throw TurnParseError(message: "A guided turn with kind \"\(kind.rawValue)\" must set a non-empty \"text\".")
-            }
-            return .final(text: text)
+            return .final(text: try requireNonBlank(text, fieldName: "text"))
         }
     }
 
+    /// Requires that `value` is present and non-blank, matching the
+    /// cross-field rule `asAgentStep()` enforces uniformly for every
+    /// `kind`'s required field (see this type's documentation and
+    /// `isNonBlank(_:)`). Replaces what would otherwise be a near-identical
+    /// guard-and-throw block per field.
+    ///
+    /// - Parameters:
+    ///   - value: the field value to check.
+    ///   - fieldName: the field's name, quoted verbatim in the thrown error
+    ///     message (e.g. `"task"`).
+    ///   - context: an optional trailing clause appended to the error
+    ///     message, e.g. `"describing the arguments to use"`. Defaults to
+    ///     `nil`.
+    /// - Returns: `value`, unwrapped and confirmed non-blank.
+    /// - Throws: `TurnParseError` if `value` is `nil` or blank.
+    private func requireNonBlank(_ value: String?, fieldName: String, context: String? = nil) throws -> String {
+        guard let value, Self.isNonBlank(value) else {
+            let suffix = context.map { " " + $0 } ?? ""
+            throw TurnParseError(
+                message: "A guided turn with kind \"\(kind.rawValue)\" must set a non-empty \"\(fieldName)\"\(suffix)."
+            )
+        }
+        return value
+    }
+
     /// Whether `value` has any non-whitespace content — the blank-check
-    /// `asAgentStep()` applies uniformly to `task`/`code`/`text`, so a
-    /// whitespace-only field (e.g. `"   "`) is rejected the same way a
-    /// missing one is, for every kind alike (matching
-    /// `TolerantParseTurnFormat`'s own always-trimmed field extraction).
+    /// `requireNonBlank(_:fieldName:context:)` applies uniformly to
+    /// `task`/`code`/`toolName`/`text`, so a whitespace-only field (e.g.
+    /// `"   "`) is rejected the same way a missing one is, for every kind
+    /// alike (matching `TolerantParseTurnFormat`'s own always-trimmed field
+    /// extraction).
     ///
     /// - Parameter value: the field value to check.
     /// - Returns: `true` if `value` contains at least one non-whitespace

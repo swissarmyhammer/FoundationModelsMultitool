@@ -23,7 +23,7 @@ struct MultiToolAgentTests {
             "ACTION: final\nANSWER: There are 3 cities.",
         ])
         let librarianRoot = RootSessionRespondCalledDirectlySession(forkResponses: [cannedCitiesSelectionJSON])
-        let searcher = makeScriptedFindAPISearcher(registry: registry, root: librarianRoot)
+        let searcher = makeScriptedSelectionSearcher(registry: registry, root: librarianRoot)
         let agent = MultiToolAgent(
             registry: registry,
             session: mainSession,

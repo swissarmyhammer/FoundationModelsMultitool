@@ -152,9 +152,9 @@ private enum CLIArgumentTestsError: Error, Equatable {
 /// `output` closure writes — lets a test assert on what was printed without
 /// touching real stdout. `final class ... Sendable` for the same reason as
 /// this test target's other lock-boxed fixtures (e.g.
-/// `Fixtures/LibrarianFixtures.swift`'s `CallCounter`): `append` is called
-/// from concurrent contexts (`CLIRunner`'s console-progress poller runs on a
-/// background `Task` alongside the main call).
+/// `Fixtures/MultiToolAgentFixtures.swift`'s `CallCounter`): `append` is
+/// called from concurrent contexts (`CLIRunner`'s console-progress poller
+/// runs on a background `Task` alongside the main call).
 private final class OutputCollector: Sendable {
     /// Every line appended so far, in append order.
     private let linesBox = OSAllocatedUnfairLock<[String]>(initialState: [])
@@ -174,5 +174,5 @@ private final class OutputCollector: Sendable {
 }
 
 // `CallCounter` (a thread-safe call counter) is reused as-is from
-// `Fixtures/LibrarianFixtures.swift` — it's `internal`, already visible
+// `Fixtures/MultiToolAgentFixtures.swift` — it's `internal`, already visible
 // throughout this test target, so this file doesn't redeclare it.

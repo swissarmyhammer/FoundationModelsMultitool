@@ -7,7 +7,7 @@ import FoundationModelsMetadataRegistry
 /// `id` is `path`: the fully-qualified `tools.*` call path, unique per
 /// catalog (`MultiTool.Builder.build()` validates name collisions before an
 /// `Entry` is ever constructed), and exactly what the selection grammar's id
-/// enum and `findAPIs` feedback need to name a tool by.
+/// enum and selection feedback need to name a tool by.
 ///
 /// `renderBlock()` is `block`: the `// tools.<path>` banner plus verbatim
 /// `descriptor.source` — the same text `FindAPITool` splices, verbatim,

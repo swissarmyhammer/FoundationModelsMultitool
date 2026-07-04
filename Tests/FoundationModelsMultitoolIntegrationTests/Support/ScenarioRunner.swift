@@ -34,7 +34,7 @@ import FoundationModelsRouter
 ///     expected to invoke, or `nil` to skip that assertion.
 ///   - expectedFoundAPINames: the exact entry paths the selection tier is
 ///     expected to have selected across every `findAPIs` call in the run
-///     (plan.md's "librarian returned the expected minimal set" trace
+///     (plan.md's "selection tier returned the expected minimal set" trace
 ///     assertion — the fused-surface selection-accuracy claim scenario 3
 ///     exists to prove), or `nil` to skip that assertion.
 ///   - maxRunCodeStepsBeforeFinal: the bound the repair scenario's "repaired
