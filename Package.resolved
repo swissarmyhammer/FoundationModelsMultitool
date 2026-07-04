@@ -1,5 +1,5 @@
 {
-  "originHash" : "507760a38b34bb02fa5debeb228dd9ad5250e5e4247dc9d3d6f7bc57bf3d3cd7",
+  "originHash" : "bdb55b5ff0df767cd57d8228bf2798bb00ce18d20a22925c2c9d51d4f0e1509e",
   "pins" : [
     {
       "identity" : "eventsource",
@@ -8,6 +8,15 @@
       "state" : {
         "revision" : "a3a85a85214caf642abaa96ae664e4c772a59f6e",
         "version" : "1.4.1"
+      }
+    },
+    {
+      "identity" : "foundationmodelsmetadataregistry",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/swissarmyhammer/FoundationModelsMetadataRegistry",
+      "state" : {
+        "branch" : "main",
+        "revision" : "4e49de80e30fbe631d312cc1b09dd569944c47c0"
       }
     },
     {

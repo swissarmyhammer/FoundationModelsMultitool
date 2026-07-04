@@ -13,6 +13,18 @@ let cliTargetName = "multitool-cli"
 /// The name of the FoundationModelsRouter dependency package.
 let routerDependencyName = "FoundationModelsRouter"
 
+/// The name of the FoundationModelsMetadataRegistry dependency package.
+///
+/// Wired as a remote dependency (`main` branch) the same way
+/// `routerDependencyName` is — the registry is already consumable by URL
+/// (`../FoundationModelsMetadataRegistry/Package.swift`'s own `main` is in
+/// sync with `origin/main`), so no registry-side change is needed here.
+/// Supplies `SearchableMetadata`/`MetadataSearcher` — the catalog-search
+/// surface later tasks build the librarian's retrieval/selection tiers over —
+/// linked by the library target, the unit test target, and the gated
+/// integration test target below.
+let metadataRegistryDependencyName = "FoundationModelsMetadataRegistry"
+
 /// The MLX-backed model package `FoundationModelsRouter` itself depends on
 /// (`../FoundationModelsRouter/Package.swift`'s `mlxPackage`). Only two of
 /// its products are declared directly here (not Router's own broader
@@ -142,6 +154,10 @@ let package = Package(
             url: "https://github.com/swissarmyhammer/\(routerDependencyName)",
             branch: "main"
         ),
+        .package(
+            url: "https://github.com/swissarmyhammer/\(metadataRegistryDependencyName)",
+            branch: "main"
+        ),
         // Only the M9 CLI executable and the gated integration test target
         // below link products from these three — see their documentation
         // above.
@@ -162,7 +178,8 @@ let package = Package(
         .target(
             name: packageName,
             dependencies: [
-                .product(name: routerDependencyName, package: routerDependencyName)
+                .product(name: routerDependencyName, package: routerDependencyName),
+                .product(name: metadataRegistryDependencyName, package: metadataRegistryDependencyName),
             ],
             path: "Sources/\(packageName)"
         ),
@@ -193,6 +210,7 @@ let package = Package(
                 .target(name: packageName),
                 .target(name: cliTargetName),
                 .product(name: routerDependencyName, package: routerDependencyName),
+                .product(name: metadataRegistryDependencyName, package: metadataRegistryDependencyName),
             ],
             path: "Tests/\(packageName)Tests",
             resources: [
@@ -222,6 +240,7 @@ let package = Package(
                 .target(name: packageName),
                 .target(name: cliTargetName),
                 .product(name: routerDependencyName, package: routerDependencyName),
+                .product(name: metadataRegistryDependencyName, package: metadataRegistryDependencyName),
             ] + liveLoaderMLXProducts + hubProducts,
             path: "Tests/\(packageName)IntegrationTests"
         ),
