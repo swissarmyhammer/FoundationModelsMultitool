@@ -42,15 +42,54 @@ var multitoolIntegrationEnabled: Bool {
 /// occasionally ran on past a natural stop point on harder multi-turn
 /// scenarios and, under `.guided`, sometimes populated the wrong optional
 /// field (`text` instead of `code`) for a `runCode` turn.
-/// `Qwen2.5-1.5B-Instruct-4bit` is the settled choice: still squarely in
-/// plan.md's "few-hundred-MB-to-low-GB instruct model" range (~870MB in
-/// 4-bit), and empirically the most reliable of the three at this suite's
-/// full ReAct-style search-then-call loop. Router's own suite only needs a
-/// model to produce *any* non-empty response (`endToEnd()` asserts a
+/// `Qwen2.5-1.5B-Instruct-4bit` was, for a time, the settled choice: still
+/// squarely in plan.md's "few-hundred-MB-to-low-GB instruct model" range
+/// (~870MB in 4-bit), and empirically the most reliable of the three at this
+/// suite's full ReAct-style search-then-call loop. Router's own suite only
+/// needs a model to produce *any* non-empty response (`endToEnd()` asserts a
 /// non-empty reply, valid guided schema-parse, embed dimension — never
 /// coherent multi-step reasoning), so its far lower capability bar tolerates
-/// a model this suite's tool orchestration cannot; hence the diverging
-/// pin. `embedding` is unaffected and still shares Router's own pinned ref.
+/// a model this suite's tool orchestration cannot; hence the diverging pin.
+///
+/// A first retry to `mlx-community/Qwen3.5-2B-mxfp4` failed outright at
+/// Router's pre-flight co-fit sizing step, before any download or inference:
+/// that repo's `config.json` is VLM-shaped (nested `text_config`, hybrid
+/// linear/full-attention layers) and `FoundationModelsRouter`'s
+/// `RepoMetadata` parser (at the time) only read top-level
+/// `num_hidden_layers`/`num_attention_heads`, so it threw
+/// `RepoMetadataError.metadataUnavailable` for both the `standard` and
+/// `flash` slots — a hard regression, not a partial improvement, so that
+/// attempt was reverted.
+///
+/// This retry: `FoundationModelsRouter`'s `RepoMetadata` (`Sizing/
+/// RepoMetadata.swift`) now falls back to `text_config` when the top level
+/// lacks those fields (mirroring HF transformers' `get_text_config()`
+/// semantics, including hybrid `layer_types` KV-cache accounting), and its
+/// live loader's `maxTokens` is no longer a hardcoded 1024-token cap —
+/// `LiveModelLoader`'s `defaultMaxTokens` is now 8192, matching this
+/// profile's own `context`. With both upstream fixes in place, `Qwen3.5-2B-
+/// mxfp4` *does* now resolve and load successfully — the `text_config`
+/// sizing fix is confirmed working end to end (`standard`/`flash` both
+/// co-fit at ~2.1GB). But three full gated-suite runs against it showed a
+/// clear, consistent *capability* regression versus `Qwen2.5-1.5B-
+/// Instruct-4bit`: `SearchThenCallTests` failed almost every scenario/format
+/// combination in all three runs (`.incompleteOutput`, `maxTurnsExceeded`,
+/// and repair-budget exhaustion on both `.tolerantParse` and `.guided`),
+/// with per-scenario runtimes varying wildly (tens of seconds to 25+
+/// minutes) — this 2B hybrid-attention `mxfp4` checkpoint is markedly slower
+/// per-token and follows the `ACTION:`/`TASK:`/`CODE:` and guided-JSON
+/// conventions noticeably less reliably than the settled 1.5B pin. A
+/// dedicated `CLISmokeTests` check (isolating a pre-existing, unrelated
+/// stale-cache read issue in the persistent `~/Library/Caches/
+/// FoundationModelsRouter` repo-metadata cache, cleared to get a clean
+/// read) confirmed this isn't just a cache artifact: even resolved and
+/// loaded cleanly, the model twice answered the demo prompt without ever
+/// calling `runCode` — once asking a clarifying question, once hallucinating
+/// "Sydney" — rather than composing the described `tools.*` calls. Given
+/// this, the pin reverts to `Qwen2.5-1.5B-Instruct-4bit`, the previously
+/// verified-reliable choice; see `exbtj1n`'s task comments for the full
+/// repeated-run results this retry produced. `embedding` is unaffected and
+/// still shares Router's own pinned ref.
 private enum TinyModels {
     static let generation: ModelRef = "mlx-community/Qwen2.5-1.5B-Instruct-4bit"
     static let embedding: ModelRef = "mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ"

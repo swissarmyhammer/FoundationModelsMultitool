@@ -1,5 +1,5 @@
 {
-  "originHash" : "bdb55b5ff0df767cd57d8228bf2798bb00ce18d20a22925c2c9d51d4f0e1509e",
+  "originHash" : "22974d5d45c48c078c094362bbcdaa71d86daa0ed2e2fe6d4a547531fe19b8eb",
   "pins" : [
     {
       "identity" : "eventsource",
@@ -25,7 +25,7 @@
       "location" : "https://github.com/swissarmyhammer/FoundationModelsRouter",
       "state" : {
         "branch" : "main",
-        "revision" : "c61d3b770800097a22de545b53c0c35c1ef5f4ba"
+        "revision" : "869368dc758802b65c2b61b541a9c730a780d413"
       }
     },
     {
