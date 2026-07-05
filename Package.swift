@@ -20,7 +20,8 @@ let routerDependencyName = "FoundationModelsRouter"
 /// (`../FoundationModelsMetadataRegistry/Package.swift`'s own `main` is in
 /// sync with `origin/main`), so no registry-side change is needed here.
 /// Supplies `SearchableMetadata`/`MetadataSearcher` — the catalog-search
-/// surface later tasks build the librarian's retrieval/selection tiers over —
+/// surface `FindAPITool`'s registry-backed selection tier (`SelectionTier`,
+/// generalizing this package's own former `Librarian`) is built over —
 /// linked by the library target, the unit test target, and the gated
 /// integration test target below.
 let metadataRegistryDependencyName = "FoundationModelsMetadataRegistry"

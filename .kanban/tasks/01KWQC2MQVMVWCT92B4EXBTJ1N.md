@@ -38,6 +38,26 @@ comments:
 
     Diff is minimal and focused: README.md (Injected globals restore), Sources/FoundationModelsMultitool/Agent/AgentTurn.swift (guided instructions strengthened), Sources/multitool-cli/CLIRunner.swift (demo profile model/context parity), Tests/FoundationModelsMultitoolIntegrationTests/Support/IntegrationGate.swift (model + context). Ungated `swift test`: 250+11 tests, all green, zero failures. No `Librarian`/`FoundAPI` identifier references under Tests/FoundationModelsMultitoolIntegrationTests (verified via word-boundary grep — only prose doc-comment mentions of the historical `Librarian` name and the unrelated `expectedFoundAPINames` test parameter).
   timestamp: 2026-07-04T23:54:28.951722+00:00
+- actor: wballard
+  id: 01kwqs3mggk6gebr4qt5g0acas
+  text: |-
+    STUCK — reporting per /finish guardrail rather than continuing to iterate.
+
+    Substantial real progress was made and checkpointed (commit 91821d8): restored README's Injected globals section (also fixes task 1pn8764), swapped the gated suite's tiny test model from SmolLM-135M-Instruct-4bit to mlx-community/Qwen2.5-1.5B-Instruct-4bit, bumped context 2048->8192, and strengthened GuidedTurnFormat's format instructions. PrefixReuseTests and CLISmokeTests now pass reliably across multiple live-model runs. Plain (ungated) swift test is fully green (250+11 tests, 0 failures).
+
+    However SearchThenCallTests/AgentEvaluationTests still intermittently fail against the live model, with two root causes that are NOT fixable by further code changes in this repo:
+    1. Real small-model sampling variance — .guided mode occasionally leaves a required field blank despite strengthened instructions; this is inherent nondeterminism in a 1.5B-parameter model's output, not a code defect.
+    2. .tolerantParse occasionally hits the sibling FoundationModelsRouter package's own hardcoded 1024-token generate cap on longer conversations — a constant in a package outside this repo's scope to change.
+
+    This is a genuine contradiction between the acceptance criterion ("MULTITOOL_INTEGRATION=1 swift test ... passes on GPU hardware", implying 100% reliable pass) and the reality of live small-model inference, which is not deterministic. Per the /finish skill's scope rules, I'm not able to "fix the code at the root" for inherent model nondeterminism or a constant in an out-of-scope package, so I'm recording this as a blocker rather than force the task to done or keep spending further iterations chasing flaky live-model runs.
+
+    Options for a human to decide:
+    - Accept observed flakiness as an expected characteristic of small local models at this milestone, and relax the acceptance criterion to "passes reliably for PrefixReuseTests/CLISmokeTests; SearchThenCallTests/AgentEvaluationTests may occasionally require a retry."
+    - File a follow-up task to raise the Router's hardcoded 1024-token generate cap (in the sibling FoundationModelsRouter package) and re-test.
+    - Swap to a larger/more capable local model for the gated suite specifically (cost: slower gated runs).
+
+    Task left in `doing` (not forced to done). Ready for a human decision or further /implement iteration if a chosen fix direction is provided.
+  timestamp: 2026-07-04T23:58:33.488934+00:00
 depends_on:
 - 01KWQC25DQYWTVRA16TKYPWKCW
 position_column: doing

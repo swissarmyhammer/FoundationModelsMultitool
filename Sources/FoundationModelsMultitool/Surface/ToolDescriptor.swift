@@ -4,13 +4,14 @@ import Foundation
 /// output of `ToolAPIRenderer`.
 ///
 /// One generator (`ToolAPIRenderer`) produces this, and the very same
-/// descriptor feeds the runtime `tools.<name>` binding, the librarian's
-/// instruction prefix, and the in-snippet `help()`/`docs()` globals, so the
-/// declaration, doc comment, and example can never drift from one another
-/// (plan.md § "ToolAPIRenderer": "The renderer's output is captured per tool
-/// as a `ToolDescriptor`... The same descriptor feeds the runtime binding,
-/// the librarian prefix, and `help()`/`docs()` — one generator, one source of
-/// truth, never drifting.").
+/// descriptor feeds the runtime `tools.<name>` binding, the registry-backed
+/// selection tier's instruction prefix (`FoundationModelsMetadataRegistry`'s
+/// `MetadataSearcher`/`SelectionTier`), and the in-snippet `help()`/`docs()`
+/// globals, so the declaration, doc comment, and example can never drift
+/// from one another (plan.md § "ToolAPIRenderer": "The renderer's output is
+/// captured per tool as a `ToolDescriptor`... The same descriptor feeds the
+/// runtime binding, the librarian prefix, and `help()`/`docs()` — one
+/// generator, one source of truth, never drifting.").
 public struct ToolDescriptor: Sendable, Equatable {
     /// The identifier the snippet calls this function by, e.g. `"weather"`.
     /// A group's namespace prefix (`tools.<group>.<name>`) is applied by a
@@ -36,8 +37,8 @@ public struct ToolDescriptor: Sendable, Equatable {
     public let example: String
 
     /// The full renderable text block — `doc` followed by `declaration` —
-    /// exactly what's spliced into `findAPIs` results, the librarian's
-    /// instruction prefix, and `help()`/`docs()`.
+    /// exactly what's spliced into `findAPIs` results, the registry-backed
+    /// selection tier's instruction prefix, and `help()`/`docs()`.
     public let source: String
 
     /// Creates a rendered tool descriptor.

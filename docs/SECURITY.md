@@ -25,7 +25,9 @@ captured console output (`ResultRenderer`); it is not the browser/Node
 grouped tool) — each `tools.*` entry is a native bridge into exactly one
 wrapped `Tool`'s own `call(arguments:)`, nothing else. `help()`/`docs(name)`
 are read-only introspection over the same rendered `APISurface` the
-librarian and `findAPIs` use — they cannot mutate anything.
+registry-backed selection tier (`FoundationModelsMetadataRegistry`'s
+`MetadataSearcher`/`SelectionTier`) and `findAPIs` use — they cannot mutate
+anything.
 
 Every `tools.*` call is validated (`ArgumentMarshaler`, `ToolInvoker`) before
 it ever reaches the wrapped tool: a malformed call fails with a repairable

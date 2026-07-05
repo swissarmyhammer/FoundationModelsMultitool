@@ -173,8 +173,9 @@ extension MultiTool {
         /// `APISurface` — the rendered catalog alone, with no live tool
         /// instances attached. Equivalent to `try buildRegistry().surface`;
         /// kept as its own entry point for a caller that only wants the
-        /// model-agnostic catalog (the librarian prefix, `help()`/`docs()`,
-        /// or a host UI listing), not an executable `MultiTool`.
+        /// model-agnostic catalog (the registry-backed selection tier's
+        /// instruction prefix, `help()`/`docs()`, or a host UI listing), not
+        /// an executable `MultiTool`.
         ///
         /// - Returns: the rendered, model-agnostic catalog.
         /// - Throws: see `buildRegistry()` — this delegates to it entirely.

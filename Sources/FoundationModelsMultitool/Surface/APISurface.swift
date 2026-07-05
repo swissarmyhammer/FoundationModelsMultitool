@@ -1,6 +1,9 @@
 /// The rendered, model-agnostic tool catalog `MultiTool.Builder.build()`
 /// produces (plan.md Component 7): "the rendered catalog; backs the
-/// librarian prefix, `help()`/`docs()`, and a host-listable data view."
+/// librarian prefix, `help()`/`docs()`, and a host-listable data view." That
+/// "librarian prefix" is now realized by `FoundationModelsMetadataRegistry`'s
+/// registry-backed selection tier (`MetadataSearcher`/`SelectionTier`),
+/// which renders this same `source` as its instruction preamble.
 ///
 /// One `ToolAPIRenderer` call per wrapped tool produces every entry's
 /// `ToolDescriptor` (M2); this type layers on the *namespace* a tool was
@@ -85,8 +88,11 @@ public struct APISurface: Sendable, Equatable {
 
     /// The full rendered surface — every entry's `block`, in catalog
     /// order, separated by a blank line. This is what backs the
-    /// librarian's instruction prefix and the in-snippet `help()`/`docs()`
-    /// globals (plan.md § "Discovery: a prefix-cached 'librarian' agent").
+    /// registry-backed selection tier's instruction prefix
+    /// (`FoundationModelsMetadataRegistry`'s `MetadataSearcher`/
+    /// `SelectionTier`, prefix-cached per plan.md § "Discovery: a
+    /// prefix-cached 'librarian' agent") and the in-snippet `help()`/`docs()`
+    /// globals.
     public var source: String {
         entries.map(\.block).joined(separator: "\n\n")
     }

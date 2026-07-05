@@ -21,7 +21,8 @@ extension MultiTool {
     /// `any Tool` to invoke.
     public struct Registry: Sendable {
         /// The rendered, model-agnostic catalog — declarations, doc comments,
-        /// and examples only (M2.5). Backs the librarian prefix and
+        /// and examples only (M2.5). Backs the registry-backed selection
+        /// tier's instruction prefix (`FoundationModelsMetadataRegistry`) and
         /// `help()`/`docs()` (M6/M7); carries no tool instances of its own.
         public let surface: APISurface
 
@@ -605,10 +606,11 @@ public struct MultiTool: Tool {
     // `tools.*` — the *only* other globals a snippet can reach (plan.md:
     // "These are the only extra globals; the deny-by-default sandbox is
     // otherwise unchanged."). Both read from the very same
-    // `registry.surface`/`Entry` data the librarian prefix and `findAPIs`
-    // are built from (M2.5/M6) — plan.md's "one generator, one source of
-    // truth, never drifting" — so `help()`/`docs()` can never describe a
-    // tool differently than discovery does.
+    // `registry.surface`/`Entry` data the registry-backed selection tier's
+    // instruction prefix and `findAPIs` are built from (M2.5/M6) — plan.md's
+    // "one generator, one source of truth, never drifting" — so
+    // `help()`/`docs()` can never describe a tool differently than
+    // discovery does.
     //
     // Neither return value is ever spliced into generated JS *source* the
     // way `makePreamble`'s `tools.<path> = __toolN;` assignments are — a
