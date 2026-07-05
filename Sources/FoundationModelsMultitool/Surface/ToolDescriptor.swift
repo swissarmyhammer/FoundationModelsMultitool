@@ -11,7 +11,9 @@ import Foundation
 /// from one another (plan.md § "ToolAPIRenderer": "The renderer's output is
 /// captured per tool as a `ToolDescriptor`... The same descriptor feeds the
 /// runtime binding, the librarian prefix, and `help()`/`docs()` — one
-/// generator, one source of truth, never drifting.").
+/// generator, one source of truth, never drifting." — that "librarian
+/// prefix" is the registry-backed selection tier's instruction prefix
+/// referenced above).
 public struct ToolDescriptor: Sendable, Equatable {
     /// The identifier the snippet calls this function by, e.g. `"weather"`.
     /// A group's namespace prefix (`tools.<group>.<name>`) is applied by a
