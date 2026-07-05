@@ -90,6 +90,42 @@ var multitoolIntegrationEnabled: Bool {
 /// verified-reliable choice; see `exbtj1n`'s task comments for the full
 /// repeated-run results this retry produced. `embedding` is unaffected and
 /// still shares Router's own pinned ref.
+///
+/// A further retry stepped up within the same fixed Qwen3.5 architecture
+/// family to `mlx-community/Qwen3.5-9B-4bit` — same `text_config`-nested
+/// VLM-shaped config as the 2B `mxfp4` checkpoint (so it resolves via the
+/// same now-fixed Router sizing path), but a meaningfully larger backbone,
+/// on the theory that the 2B's failures were a raw-capability shortfall
+/// rather than an architecture-family mismatch. Confirmed: it resolves and
+/// loads cleanly (~5.9GB of `*.safetensors`, both shards). Three full gated
+/// runs gave a genuinely mixed picture rather than a clean win or a clean
+/// regression: `PrefixReuseTests` passed all 3 real attempts and
+/// `CLISmokeTests` passed 2 of 3 (the third run's failure — and that run's
+/// blanket "no *.safetensors weight files in the repo tree" sizing error
+/// across every non-embedding resolution — was a one-off, non-reproducing
+/// artifact, most likely transient HF API/rate-limit pressure from a burst
+/// of resolution calls right after a 485-second first test, not a Router or
+/// model defect: a manual, repeated `curl` against the same tree-listing
+/// endpoint immediately afterward succeeded every time, and neither of the
+/// other 2 runs reproduced it). Discounting that one-off run, the real
+/// signal is in `SearchThenCallTests`: `.tolerantParse` did markedly better
+/// than the settled 1.5B pin (7 of 8 across the 2 clean runs — including the
+/// hardest ~20-distractor discovery scenario passing both times, once in
+/// 692s), but `.guided` did not improve (2 of 8) and failed repeatedly on
+/// the same already-documented blank-`task`-field schema gap. Wall time
+/// exploded: whole-suite runs took 16 and 29 minutes (individual scenarios
+/// up to 692s), dwarfing the 1.5B pin's turnaround and stretching well past
+/// plan.md M6.5's "small tool-calling-capable instruct model" framing for a
+/// ~5.9GB checkpoint. Given no full clean run (same as the 1.5B pin's own
+/// history), a real but format-scoped improvement offset by a real
+/// format-scoped non-improvement, a new (likely infra, not model) flakiness
+/// surface observed under load, and a large cost increase in wall time and
+/// resident memory for that mixed result, this pin reverts to
+/// `Qwen2.5-1.5B-Instruct-4bit` rather than keep the 9B model — see
+/// `exbtj1n`'s task comments for the full repeated-run data. The
+/// `.tolerantParse`-specific improvement is worth revisiting if a future
+/// milestone ever scopes real-model runs to `.tolerantParse` only, or once
+/// `.guided`'s conditional-field grammar gap is closed.
 private enum TinyModels {
     static let generation: ModelRef = "mlx-community/Qwen2.5-1.5B-Instruct-4bit"
     static let embedding: ModelRef = "mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ"

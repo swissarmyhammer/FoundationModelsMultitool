@@ -120,6 +120,34 @@ comments:
 
     **Recommendation:** keep `Qwen2.5-1.5B-Instruct-4bit` as the gated suite's pin (as now reverted). Do not retry `Qwen3.5-2B-mxfp4` again for this suite without evidence of improved instruction-following on the `ACTION:`/`TASK:`/`CODE:`/guided-JSON convention specifically — the regression here isn't a sizing/config problem (that's fixed and confirmed) but a genuine small-model capability/speed mismatch. Separately, file a follow-up task against `FoundationModelsRouter` for the cache-schema-migration bug in `RepoMetadataCache.load` (item 4 above) — it's a real, reproducible defect that will bite again on the next `RepoMetadata` field addition. Diff is uncommitted (`git status`: `IntegrationGate.swift` modified with the extended doc comment only — `CLIRunner.swift` has no net diff since it reverted to its already-committed value; `Package.resolved` modified from the earlier `swift package update`), left for the orchestrator to checkpoint via `/commit`.
   timestamp: 2026-07-05T18:07:35.097194+00:00
+- actor: wballard
+  id: 01kwt1zweq99hppxn63xydhb0k
+  text: |-
+    Tried `mlx-community/Qwen3.5-9B-4bit` per follow-up instruction (step up from the failed 2B-mxfp4 attempt, same Qwen3.5 architecture family, same `text_config`-nested VLM-shaped config, so it should resolve via the now-fixed Router sizing path). Confirmed on Hugging Face: `architectures: ["Qwen3_5ForConditionalGeneration"]`, `model_type: "qwen3_5"`, `text_config.num_hidden_layers=32`, `layer_types` present — same shape as the 2B model that now resolves.
+
+    **Resolution/loading: confirmed working.** Downloaded cleanly (~5.9GB across 2 safetensors shards), loaded via the same `text_config`-fallback Router sizing path fixed for the 2B attempt.
+
+    **Three full gated-suite runs** (`MULTITOOL_INTEGRATION=1`, whole `FoundationModelsMultitoolIntegrationTests` bundle, `swift build --build-tests` + metallib-colocate + `xcrun xctest` workaround):
+
+    - Run 1 (14 issues/11 tests): `searchThenCallEvaluation()` failed (`.metricsNotFound`), and *every other test* — `CLISmokeTests`, `PrefixReuseTests`, all 8 `SearchThenCallTests` — failed identically with `ResolutionFailure: ... metadata unavailable (no *.safetensors weight files in the repo tree)` for the standard/flash slot, right after the first test's 485s run (which itself succeeded through sizing+download). This did **not** reproduce in runs 2 or 3, and a manual repeated `curl` against the same HF tree-listing endpoint immediately afterward succeeded every time (200, correct payload) — concluded this was a one-off, likely rate-limit/network-pressure artifact from a burst of resolution calls right after a very long first test, not a Router or model defect. Discounted from the reliability comparison below.
+    - Run 2 (6 issues/11 tests): `searchThenCallEvaluation()` failed (NaN stddev — the same pre-existing Apple `Evaluations`-framework edge case documented earlier in this task). `CLISmokeTests` passed (69.3s). `PrefixReuseTests` passed (13.0s). `SearchThenCallTests`: 3/8 passed — `.tolerantParse` 3/4 (one `.incompleteOutput` after 536.6s), `.guided` 0/4 (all failed on the same already-documented blank-`task`-field schema gap).
+    - Run 3 (4 issues/11 tests): `searchThenCallEvaluation()` failed (NaN stddev again). `CLISmokeTests` passed (132.7s). `PrefixReuseTests` passed (13.6s). `SearchThenCallTests`: 6/8 passed — `.tolerantParse` 4/4 (including the hardest ~20-distractor discovery scenario, which took 692s/11.5min), `.guided` 2/4 (compose/chain failed on `maxTurnsExceeded`, discovery failed on wrong tool/selection).
+
+    **Reliability verdict — genuinely mixed, not a clean win or a clean regression:**
+    - `PrefixReuseTests`/`CLISmokeTests`: reliable across the 2 clean runs, matching the 1.5B baseline.
+    - `SearchThenCallTests` under `.tolerantParse`: markedly better than the 1.5B baseline's documented intermittent flakiness — 7/8 across the 2 clean runs (100% in run 3, including the hardest discovery scenario).
+    - `SearchThenCallTests` under `.guided`: **not** better — 2/8 across the 2 clean runs, still hitting the same documented blank-`task`-field xgrammar schema gap.
+    - `AgentEvaluationTests`: still fails every run on the pre-existing NaN-stddev framework issue, unrelated to model choice.
+    - Wall time exploded: whole-suite runs took 16 and 29 minutes (vs. the 1.5B pin's much faster turnaround), with individual scenarios up to 692s — a ~5.9GB checkpoint that stretches well past plan.md M6.5's "small tool-calling-capable instruct model" framing.
+
+    **Decision: reverted the pin back to `mlx-community/Qwen2.5-1.5B-Instruct-4bit`.** No full clean gated run was achieved with the 9B model either (same status as the 1.5B pin's own history), the `.guided`-format regression offsets the real `.tolerantParse`-format improvement, a new (likely infra, not model) flakiness surface appeared under load, and the cost in wall time and resident memory increased substantially for a mixed, not clearly-better result. Extended (not rewrote) `IntegrationGate.swift`'s `TinyModels` doc comment with this attempt's full narrative, including a note that the `.tolerantParse`-specific improvement is worth revisiting if a future milestone scopes real-model runs to `.tolerantParse` only, or once `.guided`'s conditional-field grammar gap is closed.
+
+    **Files changed (uncommitted):** only `Tests/FoundationModelsMultitoolIntegrationTests/Support/IntegrationGate.swift` has a net diff (the extended doc comment — `TinyModels.generation` is back to `Qwen2.5-1.5B-Instruct-4bit`, matching the last commit). `Sources/multitool-cli/CLIRunner.swift` has no net diff (reverted to its already-committed value).
+
+    **Verification after revert:** `swift build --build-tests` succeeds. Plain (ungated) `swift test`: 250 tests + 11 gated tests skip cleanly, 0 failures. Left uncommitted for the orchestrator to checkpoint via `/commit` per instructions.
+
+    No AC checkboxes changed — this attempt doesn't improve on the already-recorded `Qwen2.5-1.5B-Instruct-4bit` state (SearchThenCallTests/AgentEvaluationTests intermittent-flakiness situation is unchanged overall, just with a different, format-scoped shape). Task left in `doing`.
+  timestamp: 2026-07-05T21:12:16.599540+00:00
 depends_on:
 - 01KWQC25DQYWTVRA16TKYPWKCW
 position_column: doing
