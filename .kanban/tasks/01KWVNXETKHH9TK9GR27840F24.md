@@ -1,4 +1,19 @@
 ---
+comments:
+- actor: claude-code
+  id: 01kwvwxsdyqskw3xanvbvv5zd0
+  text: |-
+    **Review addendum — deletion list corrections (verified against the repo 2026-07-06):**
+
+    Add to the deletion list:
+    - `Tests/FoundationModelsMultitoolTests/TurnFormatTests.swift` — a separate file from the already-listed `GuidedTurnFormatTests.swift`; tests `TolerantParseTurnFormat` and goes with `TurnFormat.swift`.
+    - `Tests/FoundationModelsMultitoolTests/EvaluatorGateTests.swift` — the ungated mirror of `AgentEvaluation.swift`; imports `Evaluations` and tests the `AgentEvaluators.swift` conformers (`SearchedThenCalledEvaluator`/`CalledExpectedToolsEvaluator`/`RepairedWithinNEvaluator`) against fixture transcripts. Breaks the moment `AgentEvaluators.swift` is deleted. Same retire-or-port judgment as `AgentEvaluation.swift` applies (see `k4mj1gm`).
+    - `Tests/FoundationModelsMultitoolTests/Goldens/SearchThenCallTranscript.jsonl` and `Goldens/RepairTranscript.jsonl` — checked-in old-loop turn-format transcript fixtures used by `TranscriptAssertionTests`/`EvaluatorGateTests`. NOTE: the grep acceptance criterion will NOT catch these (JSONL bodies don't contain the symbol names) — delete them explicitly. The other two goldens (`BuilderSurface.ts.txt`, `WeatherTool.ts.txt`) are renderer goldens unrelated to the loop and MUST stay.
+
+    Correction: the listed `Fixtures/LibrarianFixtures.swift` does not exist in the repo (no such file) — the only agent fixture file is `Fixtures/MultiToolAgentFixtures.swift`; ignore that entry.
+
+    Also check `Package.swift` for the `Evaluations` dependency once `EvaluatorGateTests`/`AgentEvaluation` are gone — if nothing else imports it, trim it.
+  timestamp: 2026-07-06T14:22:13.950652+00:00
 depends_on:
 - 01KWVNWP89T9551VNK3K4MJ1GM
 - 01KWVNV1NZ157PW3Y1GH6RQZ4V

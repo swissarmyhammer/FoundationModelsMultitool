@@ -1,4 +1,9 @@
 ---
+comments:
+- actor: claude-code
+  id: 01kwvwqz51nawgak49c5kvbf3s
+  text: '**Review note — guard against reintroducing an agent loop.** The description says "don''t design around the bug permanently" re: the upstream `qp8q4h9` single-tool-call-per-turn limitation. To be explicit: this must NOT be worked around with a temporary hand-rolled continuation loop either (e.g. detecting a fall-through-to-text after a tool result and calling `session.respond` again with re-injected context, or any turn-parsing/re-prompt machinery). The whole point of this pivot is that `LanguageModelSession` owns the tool-calling loop. If the upstream fix hasn''t landed, the accepted interim state is: one native tool call per turn, with the gated `SearchThenCallTests` port (`k4mj1gm`) documenting the shortfall as an expected, upstream-attributed failure. Exactly one `session.respond(to:)` call per user prompt in the demo — no loop of any kind in this package.'
+  timestamp: 2026-07-06T14:19:03.201949+00:00
 depends_on:
 - 01KWVNTEAPVS13BB8H04AVEEPP
 position_column: todo
