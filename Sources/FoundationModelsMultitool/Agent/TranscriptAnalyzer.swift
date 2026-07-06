@@ -55,7 +55,7 @@ enum TranscriptAnalyzer {
     /// - Returns: the decoded events, in file order.
     /// - Throws: a decoding error if any non-blank line isn't valid
     ///   `TranscriptEvent` JSON.
-    static func decodeJSONL(_ jsonl: String) throws -> [TranscriptEvent] {
+    static func decodeJsonl(_ jsonl: String) throws -> [TranscriptEvent] {
         let decoder = JSONDecoder()
         return try jsonl
             .split(separator: "\n", omittingEmptySubsequences: true)
@@ -107,7 +107,7 @@ enum TranscriptAnalyzer {
     /// - Returns: `true` if a `.findAPIs` step precedes the first `.runCode`
     ///   step; `false` if there is no `.runCode` step at all, or the first
     ///   `.runCode` step has no `.findAPIs` step before it.
-    static func findAPIsPrecedesRunCode(in steps: [AgentStep]) -> Bool {
+    static func findApisPrecedesRunCode(in steps: [AgentStep]) -> Bool {
         guard let runCodeIndex = steps.firstIndex(where: \.isRunCode) else { return false }
         return steps[..<runCodeIndex].contains(where: \.isFindApis)
     }
@@ -229,7 +229,7 @@ extension AgentStep {
 
     /// True if this step is `.runCode`.
     ///
-    /// Used as `TranscriptAnalyzer.findAPIsPrecedesRunCode(in:)`'s
+    /// Used as `TranscriptAnalyzer.findApisPrecedesRunCode(in:)`'s
     /// `firstIndex(where:)` predicate.
     fileprivate var isRunCode: Bool {
         Self.isSameCase(self, .runCode(code: ""))
@@ -237,7 +237,7 @@ extension AgentStep {
 
     /// True if this step is `.findAPIs`.
     ///
-    /// Used as `TranscriptAnalyzer.findAPIsPrecedesRunCode(in:)`'s
+    /// Used as `TranscriptAnalyzer.findApisPrecedesRunCode(in:)`'s
     /// `contains(where:)` predicate.
     fileprivate var isFindApis: Bool {
         Self.isSameCase(self, .findAPIs(task: ""))

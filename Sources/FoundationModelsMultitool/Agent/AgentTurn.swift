@@ -221,7 +221,7 @@ public struct GuidedTurnFormat: TurnFormat {
     ///   `findAPIs` kind; direct mode gets an explicit note that it isn't
     ///   available instead, since the grammar's `kind` enum always allows
     ///   every value regardless of this flag (only `MultiToolAgent
-    ///   .dispatchFindAPIs`'s runtime rejection actually enforces
+    ///   .dispatchFindApis`'s runtime rejection actually enforces
     ///   unavailability).
     /// - Returns: the format instructions.
     public func formatInstructions(supportsFindAPIs: Bool) -> String {

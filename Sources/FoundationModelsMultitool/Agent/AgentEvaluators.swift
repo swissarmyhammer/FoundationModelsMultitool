@@ -114,7 +114,7 @@ public struct AgentSubject: EvaluationSubject, Sendable {
 
 /// plan.md's `Metric("SearchedThenCalled")` — passing when a `.findAPIs`
 /// step precedes the first `.runCode` step (`TranscriptAnalyzer
-/// .findAPIsPrecedesRunCode(in:)`), failing when it doesn't, and ignored for
+/// .findApisPrecedesRunCode(in:)`), failing when it doesn't, and ignored for
 /// a scenario that doesn't expect discovery at all (`AgentScenarioExpectation
 /// .expectFindAPIs == false`) — deterministic, no judge model needed.
 public struct SearchedThenCalledEvaluator: EvaluatorProtocol, Sendable {
@@ -151,7 +151,7 @@ public struct SearchedThenCalledEvaluator: EvaluatorProtocol, Sendable {
             return [metric.ignore(rationale: "this scenario does not require findAPIs before runCode.")]
         }
         return [
-            TranscriptAnalyzer.findAPIsPrecedesRunCode(in: subject.steps)
+            TranscriptAnalyzer.findApisPrecedesRunCode(in: subject.steps)
                 ? metric.passing(rationale: "a findAPIs step preceded the first runCode step.")
                 : metric.failing(rationale: "no findAPIs step preceded the first runCode step.")
         ]

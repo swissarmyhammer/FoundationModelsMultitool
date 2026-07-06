@@ -64,7 +64,7 @@ struct EvaluatorGateTests {
     /// - Parameter fixtureName: the fixture file's name under `Goldens/`.
     /// - Returns: the parsed main-agent steps, in recorded order.
     private static func steps(fromFixture fixtureName: String) throws -> [AgentStep] {
-        let events = try TranscriptAnalyzer.decodeJSONL(try loadFixture(fixtureName))
+        let events = try TranscriptAnalyzer.decodeJsonl(try loadFixture(fixtureName))
         return TranscriptAnalyzer.steps(in: events, slot: .standard)
     }
 

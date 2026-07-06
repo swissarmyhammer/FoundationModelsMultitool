@@ -27,7 +27,7 @@ struct MultiToolAgentTests {
         let agent = MultiToolAgent(
             registry: registry,
             session: mainSession,
-            findAPISearcher: searcher,
+            findApiSearcher: searcher,
             instructions: "You are a travel assistant."
         )
 
@@ -77,7 +77,7 @@ struct MultiToolAgentTests {
         let agent = MultiToolAgent(
             registry: registry,
             session: mainSession,
-            findAPISearcher: searcher,
+            findApiSearcher: searcher,
             instructions: "You are a travel assistant."
         )
 

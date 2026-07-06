@@ -199,7 +199,7 @@ struct GuidedTurnFormatTests {
         let agent = MultiToolAgent(
             registry: registry,
             session: mainSession,
-            findAPISearcher: searcher,
+            findApiSearcher: searcher,
             instructions: "You are a travel assistant.",
             turnFormat: .guided()
         )
@@ -281,7 +281,7 @@ struct GuidedTurnFormatTests {
         let tolerantAgent = MultiToolAgent(
             registry: registry,
             session: tolerantSession,
-            findAPISearcher: tolerantSearcher,
+            findApiSearcher: tolerantSearcher,
             instructions: "You are a travel assistant.",
             turnFormat: .tolerantParse()
         )
@@ -298,7 +298,7 @@ struct GuidedTurnFormatTests {
         let guidedAgent = MultiToolAgent(
             registry: registry,
             session: guidedSession,
-            findAPISearcher: guidedSearcher,
+            findApiSearcher: guidedSearcher,
             instructions: "You are a travel assistant.",
             turnFormat: .guided()
         )

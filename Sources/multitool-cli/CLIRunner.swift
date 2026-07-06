@@ -31,7 +31,7 @@ struct CLIArguments: Equatable {
     var help = false
 }
 
-/// Thrown by `CLIRunner.parse(_:)` for an argument it doesn't recognize.
+/// An error thrown by `CLIRunner.parse(_:)` for an unrecognized argument.
 struct CLIArgumentError: Error, Equatable, CustomStringConvertible {
     /// The unrecognized argument, verbatim.
     let flag: String

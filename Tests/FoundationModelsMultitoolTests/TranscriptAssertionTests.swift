@@ -69,11 +69,11 @@ struct TranscriptAssertionTests {
         }
     }
 
-    // MARK: - decodeJSONL(_:)
+    // MARK: - decodeJsonl(_:)
 
-    @Test("decodeJSONL decodes every line of the search-then-call fixture, in file order")
-    func decodeJSONLDecodesEveryLine() throws {
-        let events = try TranscriptAnalyzer.decodeJSONL(try Self.loadFixture("SearchThenCallTranscript.jsonl"))
+    @Test("decodeJsonl decodes every line of the search-then-call fixture, in file order")
+    func decodeJsonlDecodesEveryLine() throws {
+        let events = try TranscriptAnalyzer.decodeJsonl(try Self.loadFixture("SearchThenCallTranscript.jsonl"))
 
         #expect(events.count == 10)
         #expect(events.map(\.seq) == Array(0...9))
@@ -82,21 +82,21 @@ struct TranscriptAssertionTests {
         #expect(events.last?.kind == .response)
     }
 
-    @Test("decodeJSONL throws on a malformed line")
-    func decodeJSONLThrowsOnMalformedLine() {
+    @Test("decodeJsonl throws on a malformed line")
+    func decodeJsonlThrowsOnMalformedLine() {
         #expect(throws: (any Error).self) {
-            try TranscriptAnalyzer.decodeJSONL("not JSON at all")
+            try TranscriptAnalyzer.decodeJsonl("not JSON at all")
         }
     }
 
-    @Test("decodeJSONL ignores blank lines")
-    func decodeJSONLIgnoresBlankLines() throws {
+    @Test("decodeJsonl ignores blank lines")
+    func decodeJsonlIgnoresBlankLines() throws {
         let jsonl = """
             {"routerId":"01ARZ3NDEKTSV4RRFFQ69G5FAV","sessionId":"01ARZ3NDEKTSV4RRFFQ69G5FAA","slot":"standard","seq":0,"ts":1,"kind":"session"}
 
             {"routerId":"01ARZ3NDEKTSV4RRFFQ69G5FAV","sessionId":"01ARZ3NDEKTSV4RRFFQ69G5FAA","slot":"standard","seq":1,"ts":2,"kind":"prompt","text":"hi"}
             """
-        let events = try TranscriptAnalyzer.decodeJSONL(jsonl)
+        let events = try TranscriptAnalyzer.decodeJsonl(jsonl)
         #expect(events.count == 2)
     }
 
@@ -147,7 +147,7 @@ struct TranscriptAssertionTests {
 
     @Test("steps(in:slot:) recovers exactly the main agent's three steps from the search-then-call fixture")
     func stepsInStandardSlotRecoversMainAgentSteps() throws {
-        let events = try TranscriptAnalyzer.decodeJSONL(try Self.loadFixture("SearchThenCallTranscript.jsonl"))
+        let events = try TranscriptAnalyzer.decodeJsonl(try Self.loadFixture("SearchThenCallTranscript.jsonl"))
         let steps = TranscriptAnalyzer.steps(in: events, slot: .standard)
 
         #expect(steps.count == 3)
@@ -160,37 +160,37 @@ struct TranscriptAssertionTests {
         #expect(steps[2] == .final(text: "Austin is the warmest at 31C."))
     }
 
-    // MARK: - findAPIsPrecedesRunCode(in:)
+    // MARK: - findApisPrecedesRunCode(in:)
 
-    @Test("findAPIsPrecedesRunCode is true for the search-then-call fixture")
-    func findAPIsPrecedesRunCodeTrueForSearchThenCall() throws {
-        let events = try TranscriptAnalyzer.decodeJSONL(try Self.loadFixture("SearchThenCallTranscript.jsonl"))
+    @Test("findApisPrecedesRunCode is true for the search-then-call fixture")
+    func findApisPrecedesRunCodeTrueForSearchThenCall() throws {
+        let events = try TranscriptAnalyzer.decodeJsonl(try Self.loadFixture("SearchThenCallTranscript.jsonl"))
         let steps = TranscriptAnalyzer.steps(in: events, slot: .standard)
-        #expect(TranscriptAnalyzer.findAPIsPrecedesRunCode(in: steps))
+        #expect(TranscriptAnalyzer.findApisPrecedesRunCode(in: steps))
     }
 
-    @Test("findAPIsPrecedesRunCode is false for the repair fixture (no findAPIs step at all)")
-    func findAPIsPrecedesRunCodeFalseForRepair() throws {
-        let events = try TranscriptAnalyzer.decodeJSONL(try Self.loadFixture("RepairTranscript.jsonl"))
+    @Test("findApisPrecedesRunCode is false for the repair fixture (no findAPIs step at all)")
+    func findApisPrecedesRunCodeFalseForRepair() throws {
+        let events = try TranscriptAnalyzer.decodeJsonl(try Self.loadFixture("RepairTranscript.jsonl"))
         let steps = TranscriptAnalyzer.steps(in: events, slot: .standard)
-        #expect(!TranscriptAnalyzer.findAPIsPrecedesRunCode(in: steps))
+        #expect(!TranscriptAnalyzer.findApisPrecedesRunCode(in: steps))
     }
 
-    @Test("findAPIsPrecedesRunCode is false when there is no runCode step at all")
-    func findAPIsPrecedesRunCodeFalseWithNoRunCode() {
+    @Test("findApisPrecedesRunCode is false when there is no runCode step at all")
+    func findApisPrecedesRunCodeFalseWithNoRunCode() {
         let steps: [AgentStep] = [.findAPIs(task: "look around"), .final(text: "done")]
-        #expect(!TranscriptAnalyzer.findAPIsPrecedesRunCode(in: steps))
+        #expect(!TranscriptAnalyzer.findApisPrecedesRunCode(in: steps))
     }
 
-    @Test("findAPIsPrecedesRunCode is true across multiple findAPIs calls, using the last findAPIs before runCode")
-    func findAPIsPrecedesRunCodeTrueWithMultipleFindAPIsCalls() {
+    @Test("findApisPrecedesRunCode is true across multiple findAPIs calls, using the last findAPIs before runCode")
+    func findApisPrecedesRunCodeTrueWithMultipleFindAPIsCalls() {
         let steps: [AgentStep] = [
             .findAPIs(task: "look around"),
             .findAPIs(task: "narrow it down"),
             .runCode(code: "return 1;"),
             .final(text: "done"),
         ]
-        #expect(TranscriptAnalyzer.findAPIsPrecedesRunCode(in: steps))
+        #expect(TranscriptAnalyzer.findApisPrecedesRunCode(in: steps))
     }
 
     // MARK: - toolCallPaths(in:)
@@ -239,14 +239,14 @@ struct TranscriptAssertionTests {
 
     @Test("runCodeStepsBeforeFinal counts two attempts for the repair fixture")
     func runCodeStepsBeforeFinalCountsRepairAttempts() throws {
-        let events = try TranscriptAnalyzer.decodeJSONL(try Self.loadFixture("RepairTranscript.jsonl"))
+        let events = try TranscriptAnalyzer.decodeJsonl(try Self.loadFixture("RepairTranscript.jsonl"))
         let steps = TranscriptAnalyzer.steps(in: events, slot: .standard)
         #expect(TranscriptAnalyzer.runCodeStepsBeforeFinal(in: steps) == 2)
     }
 
     @Test("runCodeStepsBeforeFinal counts one attempt for the search-then-call fixture")
     func runCodeStepsBeforeFinalCountsOneForSearchThenCall() throws {
-        let events = try TranscriptAnalyzer.decodeJSONL(try Self.loadFixture("SearchThenCallTranscript.jsonl"))
+        let events = try TranscriptAnalyzer.decodeJsonl(try Self.loadFixture("SearchThenCallTranscript.jsonl"))
         let steps = TranscriptAnalyzer.steps(in: events, slot: .standard)
         #expect(TranscriptAnalyzer.runCodeStepsBeforeFinal(in: steps) == 1)
     }
@@ -261,7 +261,7 @@ struct TranscriptAssertionTests {
 
     @Test("selections decodes the selection tier's flash-slot response from the search-then-call fixture")
     func selectionsDecodesSelectionTierResponse() throws {
-        let events = try TranscriptAnalyzer.decodeJSONL(try Self.loadFixture("SearchThenCallTranscript.jsonl"))
+        let events = try TranscriptAnalyzer.decodeJsonl(try Self.loadFixture("SearchThenCallTranscript.jsonl"))
         let found = try TranscriptAnalyzer.selections(in: events, slot: .flash)
 
         #expect(found.count == 1)
