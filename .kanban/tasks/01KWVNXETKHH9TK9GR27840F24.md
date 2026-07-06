@@ -1,0 +1,41 @@
+---
+depends_on:
+- 01KWVNWP89T9551VNK3K4MJ1GM
+- 01KWVNV1NZ157PW3Y1GH6RQZ4V
+- 01KWVNTEAPVS13BB8H04AVEEPP
+position_column: todo
+position_ordinal: '8780'
+title: Delete MultiToolAgent and the old ReAct-loop machinery (TurnFormat, AgentTurn, TranscriptAnalyzer, AgentEvaluators)
+---
+## What
+Part of the MultiToolAgent removal pivot (see board). Depends on `h6rqz4v` (callTool/DirectToolCall already retired, `MultiToolAgent` already updated to compile without it) and `4aveepp` (findAPIs already extracted, `MultiToolAgent` already updated to compile without the old `FindAPITool` shape) having landed.
+
+**Gate check — do this FIRST, before deleting anything**: read `k4mj1gm`'s recorded go/no-go comment on the kanban board (`op: "list comments", task_id: "<k4mj1gm's id>"`). Do NOT proceed with any deletion unless that comment records either (a) a real, hardware-verified pass at or above the documented baseline (≥7/8 on the ported `SearchThenCallTests`-equivalent), or (b) an explicit, reasoned exception for proceeding anyway. If neither is present, STOP and treat this task as blocked — do not delete on the assumption that "the task is marked done in kanban" is sufficient; the gate is this comment's content, not the task's board state.
+
+Delete:
+- `Sources/FoundationModelsMultitool/Agent/MultiToolAgent.swift`
+- `Sources/FoundationModelsMultitool/Agent/TurnFormat.swift` (`TolerantParseTurnFormat`, `GuidedTurnFormat`)
+- `Sources/FoundationModelsMultitool/Agent/AgentTurn.swift`
+- `Sources/FoundationModelsMultitool/Agent/TranscriptAnalyzer.swift`
+- `Sources/FoundationModelsMultitool/Agent/AgentEvaluators.swift`
+- The (by now empty, or near-empty) `Sources/FoundationModelsMultitool/Agent/` directory itself, if nothing legitimately remains in it.
+- Corresponding unit tests: `Tests/FoundationModelsMultitoolTests/MultiToolAgentTests.swift`, `GuidedTurnFormatTests.swift`, `TranscriptAssertionTests.swift`, and any fixtures in `Fixtures/MultiToolAgentFixtures.swift`/`Fixtures/LibrarianFixtures.swift` that only existed to support these (check for reuse by the extracted `findAPIsTool`'s own tests from task `4aveepp` first — don't delete a fixture task `4aveepp` still needs).
+- The old gated integration suite's now-superseded files, once task `k4mj1gm`'s port is confirmed complete and the old versions are no longer needed as a reference.
+
+Trim `Sources/FoundationModelsMultitool/MultiToolConfiguration.swift`: remove `maxAgentTurns`/`maxRepairTurns` (both existed solely for `MultiToolAgent`'s loop and `TolerantParseTurnFormat`'s repair budget) — **this is a public API break**; note it as such (e.g. in a changelog or release note if this package has one, or at minimum flag it prominently in the PR/commit this task produces). Keep whatever `runCode`-sandbox-level knobs remain relevant (execution time limit, result/console caps).
+
+Update `Sources/FoundationModelsMultitool/MultiTool.swift`/`Sources/FoundationModelsMultitool/Surface/APISurface.swift`'s doc comments that reference `MultiToolAgent`/the ReAct loop/the "librarian prefix" framing, to describe the new `LanguageModelSession`-driven design instead (or point at `findAPIsTool`'s own documentation).
+
+## Acceptance Criteria
+- [ ] `k4mj1gm`'s go/no-go comment was read and confirmed to authorize proceeding, before any file was deleted (record this confirmation as a comment on this task).
+- [ ] All listed files are deleted; no remaining references to `MultiToolAgent`/`TurnFormat`/`AgentTurn`/`AgentStep`/`TranscriptAnalyzer`/`AgentEvaluators` anywhere in `Sources/`/`Tests/` (grep confirms).
+- [ ] `MultiToolConfiguration`'s public surface no longer has `maxAgentTurns`/`maxRepairTurns`.
+- [ ] `Package.swift`: if the library target (`FoundationModelsMultitool`) no longer needs `FoundationModelsRouter` directly (check whether `findAPIsTool`'s selection-tier backing, from task `4aveepp`, still requires it at the library level, or only at the CLI/test-target level) — trim the dependency accordingly. Likely still needed for `RoutedSession`/`RoutedLLM` types the selection tier's backing closure references; verify rather than assume.
+- [ ] `swift build` and full `swift test` remain green.
+
+## Tests
+- [ ] Full `swift test` passes with no regressions.
+- [ ] `grep -rn "MultiToolAgent\|TurnFormat\|AgentTurn\|TranscriptAnalyzer\|AgentEvaluators" Sources/ Tests/` returns nothing (or only historical prose explicitly marked as such).
+
+## Workflow
+- This is primarily a deletion/cleanup task — verify the full suite stays green after each file removed, rather than deleting everything in one pass and debugging a large break at the end.

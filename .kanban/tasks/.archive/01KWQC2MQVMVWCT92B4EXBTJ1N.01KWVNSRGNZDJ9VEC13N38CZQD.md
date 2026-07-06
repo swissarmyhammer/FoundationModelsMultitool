@@ -148,6 +148,17 @@ comments:
 
     No AC checkboxes changed — this attempt doesn't improve on the already-recorded `Qwen2.5-1.5B-Instruct-4bit` state (SearchThenCallTests/AgentEvaluationTests intermittent-flakiness situation is unchanged overall, just with a different, format-scoped shape). Task left in `doing`.
   timestamp: 2026-07-05T21:12:16.599540+00:00
+- actor: wballard
+  id: 01kwvnsn1gdqh4thehjnfhah6h
+  text: |-
+    SUPERSEDED — archiving, not completing.
+
+    Following extensive real-hardware investigation on this task (documented in prior comments: model-size comparisons across Qwen2.5-1.5B-Instruct-4bit/Qwen3.5-2B-mxfp4/Qwen3.5-9B-4bit, the persistent .guided-mode blank-required-field failure that never improved with model size, and the since-fixed Router-side token-cap and metadata-cache bugs), the user made an architecture decision: remove MultiToolAgent (the ReAct/TurnFormat loop this task was gating) entirely, in favor of Apple's real native tool-calling via FoundationModels' LanguageModelSession, backed by a Router-resolved model through the MLXLanguageModel adapter.
+
+    This makes the gated suite this task was driving (built entirely around MultiToolAgent's hand-rolled turn parsing) moot — it tests a mechanism being deleted, not repaired. The new pivot's tasks (see the board) port the *scenarios* this suite proved valuable (prefix-reuse timing, selection accuracy, discovery-then-call composition) onto the new LanguageModelSession-driven design, with a hardware-verified gate required before any old code is deleted — so the empirical rigor this task established is not lost, just retargeted.
+
+    All findings from this task remain valuable historical record (model comparison data, the exact failure modes) — kept via this comment thread and the task's own history rather than discarded.
+  timestamp: 2026-07-06T12:17:38.352288+00:00
 depends_on:
 - 01KWQC25DQYWTVRA16TKYPWKCW
 position_column: doing
