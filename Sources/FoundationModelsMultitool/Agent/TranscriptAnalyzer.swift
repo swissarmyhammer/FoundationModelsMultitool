@@ -41,12 +41,13 @@ import FoundationModelsRouter
 /// chronological order (`MergedTranscript.merged(under:)`'s `(ts, seq)` order
 /// across every nested session file).
 enum TranscriptAnalyzer {
-    /// Decodes newline-delimited JSON transcript text into events, in file
-    /// order — the shape `JSONLRecorder` writes and `MergedTranscript
-    /// .merged(under:)` reads back, minus the cross-file `(ts, seq)` re-sort
-    /// that only matters once more than one session's file is involved (a
-    /// single session's own file is already in `seq` order, since one
-    /// recorder actor appends it serially).
+    /// Decodes newline-delimited JSON transcript text into events.
+    ///
+    /// Returns events in file order — the shape `JSONLRecorder` writes and
+    /// `MergedTranscript.merged(under:)` reads back, minus the cross-file
+    /// `(ts, seq)` re-sort that only matters once more than one session's
+    /// file is involved (a single session's own file is already in `seq`
+    /// order, since one recorder actor appends it serially).
     ///
     /// - Parameter jsonl: the transcript text, one JSON object per line;
     ///   blank lines are ignored.
@@ -60,8 +61,9 @@ enum TranscriptAnalyzer {
             .map { try decoder.decode(TranscriptEvent.self, from: Data($0.utf8)) }
     }
 
-    /// Parses one recorded `.response` event's text into an `AgentStep`,
-    /// selecting the turn format by the event's own `grammar` field — see
+    /// Parses a recorded response event into an `AgentStep`.
+    ///
+    /// Selects the turn format by the event's own `grammar` field — see
     /// this type's documentation.
     ///
     /// - Parameter event: a `.response`-kind event.
@@ -76,15 +78,15 @@ enum TranscriptAnalyzer {
         return try format.parseTurn(text)
     }
 
-    /// Every `.response` event stamped with `slot`, parsed into `AgentStep`s
-    /// in recorded order — see this type's documentation for why `slot`
-    /// alone correctly discriminates the main agent from the selection tier.
+    /// Parses every `.response` event stamped with `slot` into `AgentStep`s.
     ///
-    /// Parse failures are silently skipped: a bad turn `MultiToolAgent
-    /// .respond(to:)` itself already recovers from via a repair turn is not
-    /// a step at all, and every trace assertion this type supports
-    /// (search-then-code ordering, invoked tool paths, repair-turn counting)
-    /// only cares about *successfully parsed* steps.
+    /// Returns the steps in recorded order — see this type's documentation
+    /// for why `slot` alone correctly discriminates the main agent from the
+    /// selection tier. Parse failures are silently skipped: a bad turn
+    /// `MultiToolAgent.respond(to:)` itself already recovers from via a
+    /// repair turn is not a step at all, and every trace assertion this type
+    /// supports (search-then-code ordering, invoked tool paths, repair-turn
+    /// counting) only cares about *successfully parsed* steps.
     ///
     /// - Parameters:
     ///   - events: the full decoded transcript.
@@ -96,8 +98,9 @@ enum TranscriptAnalyzer {
             .compactMap { try? step(from: $0) }
     }
 
-    /// Whether a `.findAPIs` step occurs before the first `.runCode` step —
-    /// plan.md's "search-then-code" trace assertion.
+    /// Verifies that a `.findAPIs` step occurs before the first `.runCode` step.
+    ///
+    /// Implements plan.md's "search-then-code" trace assertion.
     ///
     /// - Parameter steps: the ordered steps to inspect (see `steps(in:slot:)`).
     /// - Returns: `true` if a `.findAPIs` step precedes the first `.runCode`
@@ -108,11 +111,11 @@ enum TranscriptAnalyzer {
         return steps[..<runCodeIndex].contains(where: \.isFindAPIs)
     }
 
-    /// The `tools.*` call paths a `runCode` snippet's code text invokes
-    /// *syntactically* — a lexical scan for `tools.<name>(` /
-    /// `tools.<group>.<name>(` call sites, not an interpreter run (the
-    /// transcript records the code text the model wrote, not which calls it
-    /// actually made at runtime).
+    /// Extracts the `tools.*` call paths a `runCode` snippet's code text invokes.
+    ///
+    /// Performs a lexical scan for `tools.<name>(` / `tools.<group>.<name>(`
+    /// call sites, not an interpreter run (the transcript records the code
+    /// text the model wrote, not which calls it actually made at runtime).
     ///
     /// - Parameter code: one `.runCode` step's JavaScript snippet text.
     /// - Returns: the distinct dotted call paths found, e.g. `["weather",
@@ -128,9 +131,11 @@ enum TranscriptAnalyzer {
         )
     }
 
-    /// Every distinct `tools.*` call path invoked across every `.runCode`
-    /// step in `steps` — plan.md's "snippet invoked exactly the expected
-    /// tools.*" trace assertion.
+    /// Collects every distinct `tools.*` call path invoked across every
+    /// `.runCode` step in `steps`.
+    ///
+    /// Implements plan.md's "snippet invoked exactly the expected tools.*"
+    /// trace assertion.
     ///
     /// - Parameter steps: the ordered steps to scan (see `steps(in:slot:)`).
     /// - Returns: the union of `toolCallPaths(in:)` over every `.runCode`
@@ -165,13 +170,14 @@ enum TranscriptAnalyzer {
         return count
     }
 
-    /// Decodes the selection tier's `Selection` results from its `.response`
-    /// events — the raw guided-generation JSON `AgentSession
+    /// Decodes the selection tier's `Selection` results from its `.response` events.
+    ///
+    /// Parses the raw guided-generation JSON `AgentSession
     /// .respond(to:generating:)` decodes at call time — plan.md's "selection
     /// tier returned the expected minimal set" trace assertion, now
-    /// generalized to the registry's ids-only `Selection` shape (plan.md §6: "Ids only,
-    /// grammar-enforced" — superseding Multitool's own former `FoundAPIs`,
-    /// which had the model reproduce each function's fields).
+    /// generalized to the registry's ids-only `Selection` shape (plan.md §6:
+    /// "Ids only, grammar-enforced" — superseding Multitool's own former
+    /// `FoundAPIs`, which had the model reproduce each function's fields).
     ///
     /// - Parameters:
     ///   - events: the full decoded transcript.
@@ -189,10 +195,11 @@ enum TranscriptAnalyzer {
             .map { try Selection(GeneratedContent(json: $0)) }
     }
 
-    /// The compiled `tools.<name>` / `tools.<group>.<name>` call-site regex
-    /// `toolCallPaths(in:)` scans with — computed once, since
-    /// `NSRegularExpression` compilation is comparatively expensive and this
-    /// pattern never changes.
+    /// The compiled call-site regex `toolCallPaths(in:)` scans with, matching
+    /// `tools.<name>` / `tools.<group>.<name>` call sites.
+    ///
+    /// Computed once, since `NSRegularExpression` compilation is
+    /// comparatively expensive and this pattern never changes.
     private static let toolCallRegex: NSRegularExpression = {
         let pattern = #"(?<![A-Za-z0-9_$])tools\.([A-Za-z_$][A-Za-z0-9_$]*(?:\.[A-Za-z_$][A-Za-z0-9_$]*)?)\s*\("#
         // The pattern is a fixed literal validated by this type's own tests;
@@ -208,8 +215,9 @@ enum TranscriptAnalyzer {
 }
 
 extension AgentStep {
-    /// Whether `lhs` is the same case as `rhs`, ignoring associated values —
-    /// the shared case-predicate helper `isRunCode`/`isFindAPIs` both
+    /// Compares `lhs` and `rhs` for the same enum case, ignoring associated values.
+    ///
+    /// The shared case-predicate helper `isRunCode`/`isFindAPIs` both
     /// delegate to, instead of each repeating its own `if case ... = self`
     /// boilerplate.
     fileprivate static func isSameCase(_ lhs: AgentStep, _ rhs: AgentStep) -> Bool {
@@ -221,14 +229,18 @@ extension AgentStep {
         }
     }
 
-    /// Whether this step is `.runCode` — `TranscriptAnalyzer
-    /// .findAPIsPrecedesRunCode(in:)`'s `firstIndex(where:)` predicate.
+    /// True if this step is `.runCode`.
+    ///
+    /// Used as `TranscriptAnalyzer.findAPIsPrecedesRunCode(in:)`'s
+    /// `firstIndex(where:)` predicate.
     fileprivate var isRunCode: Bool {
         Self.isSameCase(self, .runCode(code: ""))
     }
 
-    /// Whether this step is `.findAPIs` — `TranscriptAnalyzer
-    /// .findAPIsPrecedesRunCode(in:)`'s `contains(where:)` predicate.
+    /// True if this step is `.findAPIs`.
+    ///
+    /// Used as `TranscriptAnalyzer.findAPIsPrecedesRunCode(in:)`'s
+    /// `contains(where:)` predicate.
     fileprivate var isFindAPIs: Bool {
         Self.isSameCase(self, .findAPIs(task: ""))
     }

@@ -7,9 +7,10 @@ import MLXHuggingFace
 import MLXLMCommon
 import Tokenizers
 
-/// Shared prefix for every user-facing error message this executable
-/// prints, so error output is consistently attributable to
-/// `multitool-cli` — reused by `CLIArgumentError.description`,
+/// Prefix for all user-facing CLI error messages.
+///
+/// Ensures error output is consistently attributable to `multitool-cli` —
+/// reused by `CLIArgumentError.description`,
 /// `CLIRouterUnavailableError.description`, and `CLIRunner.run(...)`'s
 /// catch-all branch.
 private let cliErrorPrefix = "multitool-cli:"
@@ -18,12 +19,15 @@ private let cliErrorPrefix = "multitool-cli:"
 
 /// The command-line flags `CLIRunner.parse(_:)` recognizes.
 struct CLIArguments: Equatable {
-    /// `--direct`: run the agent in direct mode (`runCode` only, no
-    /// `findAPIs` discovery step) — plan.md "Direct mode (skip discovery)".
+    /// Enables direct mode: agent runs with `runCode` only, no discovery.
+    ///
+    /// When set, `findAPIs` is not surfaced to the model — plan.md "Direct
+    /// mode (skip discovery)".
     var direct = false
 
-    /// `--help`/`-h`: print usage text and exit, without touching the
-    /// Router.
+    /// Prints usage text and exits without touching the Router.
+    ///
+    /// Set by the `--help`/`-h` flags.
     var help = false
 }
 
@@ -41,6 +45,8 @@ struct CLIArgumentError: Error, Equatable, CustomStringConvertible {
 
 // MARK: - The Router-unavailable degrade path
 
+/// Error thrown when the Router's live path cannot be resolved.
+///
 /// Thrown by `CLIRunner.run(...)`'s internals when the demo can't proceed
 /// past model resolution — plan.md M9: "degrade gracefully (clear message +
 /// nonzero exit) when the Router live path is unavailable."
@@ -48,11 +54,12 @@ struct CLIRouterUnavailableError: Error, CustomStringConvertible {
     /// What `resolve` threw.
     let underlying: Error
 
-    /// The documented degrade message: what went wrong, plus why (the
-    /// Router's live inference path not being wired up in this
-    /// environment is the expected cause pre-Router-M7, but any resolution
-    /// failure — including an unsatisfiable profile or a download error —
-    /// surfaces the same way).
+    /// A human-readable message describing the Router unavailability.
+    ///
+    /// Explains what went wrong, plus why (the Router's live inference path
+    /// not being wired up in this environment is the expected cause
+    /// pre-Router-M7, but any resolution failure — including an
+    /// unsatisfiable profile or a download error — surfaces the same way).
     var description: String {
         """
         \(cliErrorPrefix) could not resolve a model via the Router: \(underlying)
@@ -61,9 +68,11 @@ struct CLIRouterUnavailableError: Error, CustomStringConvertible {
     }
 }
 
-/// A runnable demonstration of the whole FoundationModelsMultitool pipeline
-/// — plan.md M9: "a prompt that triggers findAPIs then a multi-tool
-/// runCode." Factored out of `main.swift` as a plain, testable entry point:
+/// A runnable demonstration of the FoundationModelsMultitool pipeline.
+///
+/// Implements plan.md M9: "a prompt that triggers findAPIs then a
+/// multi-tool runCode." Factored out of `main.swift` as a plain, testable
+/// entry point:
 ///
 /// - Argument parsing and the Router-unavailable degrade path are
 ///   unit-tested here with **no model at all**
@@ -80,8 +89,9 @@ enum CLIRunner {
         static let success: Int32 = 0
         /// Bad arguments — mirrors `sysexits.h`'s `EX_USAGE` (64).
         static let usageError: Int32 = 64
-        /// The Router's live path couldn't be resolved — mirrors
-        /// `sysexits.h`'s `EX_UNAVAILABLE` (69).
+        /// Exit code when the Router's live path cannot be resolved.
+        ///
+        /// Mirrors `sysexits.h`'s `EX_UNAVAILABLE` (69).
         static let unavailable: Int32 = 69
     }
 
@@ -103,9 +113,10 @@ enum CLIRunner {
         exercises the search-then-code loop (findAPIs, then a composing runCode).
         """
 
-    /// The demo profile this sample resolves — deliberately tiny,
-    /// tool-calling-capable models, matching the gated integration suite's
-    /// own `multitoolTinyProfile`
+    /// The profile used for the demo run.
+    ///
+    /// Deliberately uses tiny, tool-calling-capable models, matching the
+    /// gated integration suite's own `multitoolTinyProfile`
     /// (`Tests/FoundationModelsMultitoolIntegrationTests/Support/IntegrationGate.swift`)
     /// so a machine that already ran that suite shares the cached weights.
     static let demoProfile = ProfileDefinition(
@@ -117,13 +128,18 @@ enum CLIRunner {
         context: 8192
     )
 
-    /// The one prompt this sample asks — plan.md M9: "one prompt that
-    /// triggers findAPIs then a composing runCode," mirroring plan.md's own
-    /// worked `tripCities` -> `weather` -> warmest example.
+    /// The demo prompt that exercises the agent.
+    ///
+    /// Triggers both findAPIs and runCode to compose an answer — plan.md
+    /// M9: "one prompt that triggers findAPIs then a composing runCode,"
+    /// mirroring plan.md's own worked `tripCities` -> `weather` -> warmest
+    /// example.
     static let demoPrompt = "Of the cities on my trip, which is warmest right now?"
 
-    /// The step that turns an authored `ProfileDefinition` into a resolved,
-    /// resident `LanguageModelProfile` on a given `Router` — injectable so
+    /// Resolves a profile definition into a language model profile.
+    ///
+    /// Converts an authored `ProfileDefinition` into a resolved, resident
+    /// `LanguageModelProfile` on a given `Router` — injectable so
     /// `CLIArgumentTests` can exercise the Router-unavailable degrade path
     /// with a scripted failure, with no real model download/load involved.
     ///
@@ -139,14 +155,16 @@ enum CLIRunner {
         _ progress: ResolutionProgress
     ) async throws -> LanguageModelProfile
 
-    /// The production resolver: `router.resolve(_:reporting:)`, unchanged —
-    /// see `ProfileResolver`.
+    /// The default profile resolution implementation.
+    ///
+    /// Uses `router.resolve(_:reporting:)` unchanged — see `ProfileResolver`.
     static let defaultResolve: ProfileResolver = { router, definition, progress in
         try await router.resolve(definition, reporting: progress)
     }
 
-    /// Parses raw command-line arguments (excluding the executable name)
-    /// into `CLIArguments`.
+    /// Parses command-line arguments into `CLIArguments`.
+    ///
+    /// Excludes the executable name; recognizes `--direct`, `--help`, and `-h`.
     ///
     /// - Parameter arguments: the raw arguments, e.g.
     ///   `CommandLine.arguments.dropFirst()`.
@@ -168,11 +186,12 @@ enum CLIRunner {
         return result
     }
 
-    /// Runs the sample end to end: parses `arguments`, and — unless
-    /// `--help` was given or parsing failed — resolves `demoProfile`, wires
-    /// up the demo tools, drives `MultiToolAgent.respond(to:)` against
-    /// `demoPrompt`, and writes the answer plus a readable turn-by-turn
-    /// trace to `output`.
+    /// Runs the complete demo pipeline end-to-end.
+    ///
+    /// Parses `arguments`, and — unless `--help` was given or parsing
+    /// failed — resolves `demoProfile`, wires up the demo tools, drives
+    /// `MultiToolAgent.respond(to:)` against `demoPrompt`, and writes the
+    /// answer plus a readable turn-by-turn trace to `output`.
     ///
     /// - Parameters:
     ///   - arguments: the raw arguments (excluding the executable name).
@@ -294,6 +313,8 @@ enum CLIRunner {
 
     // MARK: - Console progress
 
+    /// Monitors and prints resolution progress.
+    ///
     /// Starts a background task that prints one line to `output` each time
     /// `progress.phase` changes, until cancelled — plan.md M9's "console
     /// progress."
@@ -322,8 +343,10 @@ enum CLIRunner {
 
     // MARK: - Turn trace
 
-    /// Reads back the demo run's recorded Router transcript and renders
-    /// each successfully parsed main-loop `AgentStep` as one readable trace
+    /// Generates readable trace lines from the Router transcript.
+    ///
+    /// Reads back the demo run's recorded transcript and renders each
+    /// successfully parsed main-loop `AgentStep` as one readable trace
     /// line — plan.md M9: "print... a readable trace of the loop turns."
     ///
     /// Mirrors the parse-by-grammar rule this package's own (internal)
@@ -366,9 +389,11 @@ enum CLIRunner {
 
     // MARK: - Recordings directory
 
-    /// Creates a fresh, unique temporary directory for this run's Router
-    /// transcript recordings — the source `traceLines(routerId:recordingsDir:)`
-    /// reads back from after the demo run completes.
+    /// Creates a temporary directory for Router transcript recordings.
+    ///
+    /// Returns the URL of a fresh, uniquely-named directory — the source
+    /// `traceLines(routerId:recordingsDir:)` reads back from after the demo
+    /// run completes.
     ///
     /// - Returns: the created directory's URL.
     private static func makeTempRecordingsDir() -> URL {

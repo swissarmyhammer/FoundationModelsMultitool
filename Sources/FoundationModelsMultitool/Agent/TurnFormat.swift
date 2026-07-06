@@ -13,8 +13,9 @@ public enum AgentStep: Sendable, Equatable {
     /// a snippet — plan.md's `findAPIs(task: string)`.
     case findAPIs(task: String)
 
-    /// The model wants to run a JavaScript snippet against `tools.*` —
-    /// plan.md's `runCode(code: string)`.
+    /// Represents the model's request to execute a JavaScript snippet.
+    ///
+    /// The snippet can invoke tools.* per plan.md's `runCode(code: string)`.
     case runCode(code: String)
 
     /// The model is done and `text` is its answer to the user.
@@ -39,15 +40,17 @@ public struct TurnParseError: Error, Sendable, Equatable, CustomStringConvertibl
         self.message = message
     }
 
-    /// A human-readable description of the error, satisfying
-    /// `CustomStringConvertible`. Identical to `message`.
+    /// A human-readable description of the error.
+    ///
+    /// Satisfies `CustomStringConvertible`; identical to `message`.
     public var description: String { message }
 }
 
 extension TurnParseError {
-    /// Extracts the human-readable reason from a `parseTurn(_:)` failure —
-    /// this error's own `message` when `error` is a `TurnParseError`, else
-    /// its generic description.
+    /// Extracts the human-readable reason from a `parseTurn(_:)` failure.
+    ///
+    /// Returns this error's own `message` when `error` is a `TurnParseError`,
+    /// else its generic description.
     ///
     /// Shared by every `TurnFormat.repairInstruction(for:)` conformer
     /// (`TolerantParseTurnFormat`, `GuidedTurnFormat`) so the same
@@ -61,9 +64,11 @@ extension TurnParseError {
     }
 }
 
-/// A pluggable strategy for how one agent turn is formatted (what
-/// `MultiToolAgent` tells the model about the response shape it expects)
-/// and parsed (how raw session text becomes an `AgentStep`).
+/// A strategy for formatting and parsing agent turns.
+///
+/// Defines what `MultiToolAgent` tells the model about the response shape
+/// it expects (formatting), and how raw session text becomes an
+/// `AgentStep` (parsing).
 ///
 /// Plan.md Router integration: "Two ways to make the model emit a
 /// well-formed call rather than free prose... 1. Guided turns... 2. Prompted
@@ -100,8 +105,10 @@ public protocol TurnFormat: Sendable {
     ///   parsed into a well-formed step.
     func parseTurn(_ raw: String) throws -> AgentStep
 
-    /// The text to feed back to the model after a parse failure, asking it
-    /// to try the turn again in the expected format.
+    /// Generates a repair instruction after a parse failure.
+    ///
+    /// Returns text to feed back to the model asking it to try the turn
+    /// again in the expected format.
     ///
     /// - Parameter error: the error `parseTurn(_:)` threw.
     /// - Returns: the repair instruction to append to the transcript.
@@ -152,31 +159,38 @@ public struct TolerantParseTurnFormat: TurnFormat {
         static let task = "TASK:"
         static let code = "CODE:"
         static let answer = "ANSWER:"
-        /// The Markdown code-fence delimiter `formatInstructions(supportsFindAPIs:)`
-        /// teaches the model and `extractCode(afterActionAt:in:)` scans for —
-        /// one named constant so both stay in sync.
+        /// The Markdown code-fence delimiter for code blocks.
+        ///
+        /// A named constant so `formatInstructions(supportsFindAPIs:)` and
+        /// `extractCode(afterActionAt:in:)` stay in sync.
         static let codeFence = "```"
     }
 
-    /// The `ACTION:` verbs `parseTurn(_:)` recognizes — one enum consolidating
-    /// what used to be two parallel definitions (`ActionVerb`, lowercased for
-    /// matching; `ActionName`, properly cased for display) that had to be kept
-    /// in sync by hand despite sharing an identical case set. `rawValue` is the
-    /// properly-cased spelling used in `formatInstructions(supportsFindAPIs:)`'s
-    /// example lines and in `parseTurn(_:)`'s error messages; `lowercased` is
-    /// the spelling `action.value.lowercased()` is compared against.
+    /// The `ACTION:` verbs `parseTurn(_:)` recognizes.
+    ///
+    /// One enum consolidating what used to be two parallel definitions
+    /// (`ActionVerb`, lowercased for matching; `ActionName`, properly cased
+    /// for display) that had to be kept in sync by hand despite sharing an
+    /// identical case set. `rawValue` is the properly-cased spelling used in
+    /// `formatInstructions(supportsFindAPIs:)`'s example lines and in
+    /// `parseTurn(_:)`'s error messages; `lowercased` is the spelling
+    /// `action.value.lowercased()` is compared against.
     private enum Action: String {
         case findAPIs
         case runCode
         case final
 
-        /// The lowercased spelling `parseTurn(_:)`'s `switch` matches
-        /// `action.value.lowercased()` against.
+        /// The lowercased variant of each action verb for case-insensitive matching.
+        ///
+        /// Returns `rawValue.lowercased()`, the spelling `parseTurn(_:)`'s
+        /// `switch` compares `action.value.lowercased()` against.
         var lowercased: String { rawValue.lowercased() }
     }
 
-    /// How many consecutive parse failures this format tolerates before
-    /// `MultiToolAgent.respond(to:)` fails the loop — see
+    /// Maximum repair turns for this format.
+    ///
+    /// Determines how many consecutive parse failures this format tolerates
+    /// before `MultiToolAgent.respond(to:)` fails the loop — see
     /// `TurnFormat.maxRepairTurns`. Set at `init`, clamped to `0` or above.
     public let maxRepairTurns: Int
 
@@ -190,8 +204,10 @@ public struct TolerantParseTurnFormat: TurnFormat {
         self.maxRepairTurns = max(0, maxRepairTurns)
     }
 
-    /// Builds the ReAct-style `ACTION:`/`TASK:`/`CODE:`/`ANSWER:` format
-    /// instructions this conformer's `parseTurn(_:)` expects — see
+    /// Builds format instructions for the ReAct-style action markers.
+    ///
+    /// Includes `ACTION:`, `TASK:`, `CODE:`, and `ANSWER:` markers this
+    /// conformer's `parseTurn(_:)` expects — see
     /// `TurnFormat.formatInstructions(supportsFindAPIs:)`.
     ///
     /// - Parameter supportsFindAPIs: whether to include the `findAPIs`
@@ -292,8 +308,10 @@ public struct TolerantParseTurnFormat: TurnFormat {
         }
     }
 
-    /// Builds the repair-turn text fed back to the model after a parse
-    /// failure — see `TurnFormat.repairInstruction(for:)`.
+    /// Builds a repair instruction for a parse failure.
+    ///
+    /// Generates the repair-turn text fed back to the model — see
+    /// `TurnFormat.repairInstruction(for:)`.
     ///
     /// - Parameter error: the error `parseTurn(_:)` threw — its
     ///   `TurnParseError.message` when available, else its description.
@@ -308,14 +326,17 @@ public struct TolerantParseTurnFormat: TurnFormat {
 
     // MARK: - Lenient extraction
 
-    /// One `marker:` field found while scanning `lines` — its line index
-    /// (so a caller can keep scanning after it) and the trimmed text
-    /// following the marker on that same line.
+    /// A field marker found while scanning `lines`.
+    ///
+    /// Contains its line index (so a caller can keep scanning after it) and
+    /// the trimmed text following the marker on that same line.
     private struct Field {
         let lineIndex: Int
         let value: String
     }
 
+    /// Finds the first field marker in the given lines.
+    ///
     /// Scans `lines`, from `startIndex` onward, for the first line whose
     /// trimmed text starts with `marker` (case-insensitively), and returns
     /// that line's index and the trimmed text after the marker.
@@ -337,10 +358,12 @@ public struct TolerantParseTurnFormat: TurnFormat {
         return nil
     }
 
-    /// Extracts a `runCode` snippet's body: the contents of the first fenced
-    /// code block (```` ``` ```` or ```` ```js ````, etc.) found after a
-    /// `CODE:` marker, or — if the model forgot the fence — everything from
-    /// `CODE:` to the end of the message, as a tolerant fallback.
+    /// Extracts the code body from a `runCode` action.
+    ///
+    /// Returns the contents of the first fenced code block (```` ``` ````
+    /// or ```` ```js ````, etc.) found after a `CODE:` marker, or — if the
+    /// model forgot the fence — everything from `CODE:` to the end of the
+    /// message, as a tolerant fallback.
     ///
     /// - Parameters:
     ///   - actionIndex: the line index of the `ACTION:` line to search
@@ -380,10 +403,11 @@ public struct TolerantParseTurnFormat: TurnFormat {
         return fallbackLines.joined(separator: "\n")
     }
 
-    /// Extracts everything from a marker (inclusive of the same-line
-    /// remainder) to the end of the message, trimmed — the shape a `final`
-    /// turn's `ANSWER:` field needs, since the answer text may itself span
-    /// multiple lines.
+    /// Extracts the full text from a marker to the end of the message.
+    ///
+    /// Includes the same-line remainder and all subsequent lines, trimmed —
+    /// the shape a `final` turn's `ANSWER:` field needs, since the answer
+    /// text may itself span multiple lines.
     ///
     /// - Parameters:
     ///   - marker: the field marker to search for, e.g. `"ANSWER:"`.
@@ -406,8 +430,10 @@ public struct TolerantParseTurnFormat: TurnFormat {
 }
 
 extension TurnFormat where Self == TolerantParseTurnFormat {
-    /// Plan.md's "Prompted convention + tolerant parse" strategy — see
-    /// `TolerantParseTurnFormat`.
+    /// Creates a tolerant-parse turn format with configurable repair turns.
+    ///
+    /// Implements plan.md's "Prompted convention + tolerant parse" strategy
+    /// — see `TolerantParseTurnFormat`.
     ///
     /// - Parameter maxRepairTurns: how many consecutive parse failures to
     ///   tolerate before the loop fails. Defaults to `1`.
