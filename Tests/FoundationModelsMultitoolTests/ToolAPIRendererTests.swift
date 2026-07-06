@@ -26,55 +26,55 @@ struct ToolAPIRendererTests {
             name: "string",
             schema: StringArgument.generationSchema,
             expectedArgsType: "{ value: string }",
-            expectedParamLine: "@param args.value — a plain string."
+            expectedParamLine: "@param args.value — a plain string. (required)"
         ),
         RenderCase(
             name: "number (float)",
             schema: NumberArgument.generationSchema,
             expectedArgsType: "{ measurement: number }",
-            expectedParamLine: "@param args.measurement — a floating point measurement."
+            expectedParamLine: "@param args.measurement — a floating point measurement. (required)"
         ),
         RenderCase(
             name: "integer, unconstrained",
             schema: IntegerArgument.generationSchema,
             expectedArgsType: "{ count: number }",
-            expectedParamLine: "@param args.count — an integer count. (integer)"
+            expectedParamLine: "@param args.count — an integer count. (integer) (required)"
         ),
         RenderCase(
             name: "integer with a range guide",
             schema: RangedIntegerArgument.generationSchema,
             expectedArgsType: "{ score: number }",
-            expectedParamLine: "@param args.score — a score. (integer) (range 1…10)"
+            expectedParamLine: "@param args.score — a score. (integer) (range 1…10) (required)"
         ),
         RenderCase(
             name: "boolean",
             schema: BooleanArgument.generationSchema,
             expectedArgsType: "{ enabled: boolean }",
-            expectedParamLine: "@param args.enabled — whether to enable something."
+            expectedParamLine: "@param args.enabled — whether to enable something. (required)"
         ),
         RenderCase(
             name: "enum / choice of constants",
             schema: EnumArgument.generationSchema,
             expectedArgsType: "{ size: \"small\" | \"medium\" | \"large\" }",
-            expectedParamLine: "@param args.size — the chosen size; one of \"small\" | \"medium\" | \"large\"."
+            expectedParamLine: "@param args.size — the chosen size; one of \"small\" | \"medium\" | \"large\". (required)"
         ),
         RenderCase(
             name: "array<string>, unconstrained",
             schema: ArrayArgument.generationSchema,
             expectedArgsType: "{ tags: string[] }",
-            expectedParamLine: "@param args.tags — free-form tags."
+            expectedParamLine: "@param args.tags — free-form tags. (required)"
         ),
         RenderCase(
             name: "array<integer> with a count guide",
             schema: CountedArrayArgument.generationSchema,
             expectedArgsType: "{ ratings: number[] }",
-            expectedParamLine: "@param args.ratings — ratings to record. (1…3 items)"
+            expectedParamLine: "@param args.ratings — ratings to record. (1…3 items) (required)"
         ),
         RenderCase(
             name: "string with a pattern guide",
             schema: PatternArgument.generationSchema,
             expectedArgsType: "{ code: string }",
-            expectedParamLine: "@param args.code — a three-letter code. (pattern: /[A-Z]{3}/)"
+            expectedParamLine: "@param args.code — a three-letter code. (pattern: /[A-Z]{3}/) (required)"
         ),
         RenderCase(
             name: "optional property",
@@ -86,13 +86,13 @@ struct ToolAPIRendererTests {
             name: "nested object",
             schema: NestedArgument.generationSchema,
             expectedArgsType: "{ address: { street: string; city: string } }",
-            expectedParamLine: "@param args.address — delivery address."
+            expectedParamLine: "@param args.address — delivery address. (required)"
         ),
         RenderCase(
             name: "array of nested object",
             schema: ArrayOfNestedArgument.generationSchema,
             expectedArgsType: "{ stops: { street: string; city: string }[] }",
-            expectedParamLine: "@param args.stops — route stops."
+            expectedParamLine: "@param args.stops — route stops. (required)"
         ),
     ]
 
@@ -215,10 +215,10 @@ struct ToolAPIRendererTests {
             description: "A test tool.",
             parameters: OneSidedBoundsArgument.generationSchema
         )
-        #expect(descriptor.doc.contains("@param args.atLeast — at least five. (integer) (minimum 5)"), "doc was: \(descriptor.doc)")
-        #expect(descriptor.doc.contains("@param args.atMost — at most five. (integer) (maximum 5)"), "doc was: \(descriptor.doc)")
-        #expect(descriptor.doc.contains("@param args.atLeastTags — at least one tag. (1+ items)"), "doc was: \(descriptor.doc)")
-        #expect(descriptor.doc.contains("@param args.atMostTags — at most three tags. (up to 3 items)"), "doc was: \(descriptor.doc)")
+        #expect(descriptor.doc.contains("@param args.atLeast — at least five. (integer) (minimum 5) (required)"), "doc was: \(descriptor.doc)")
+        #expect(descriptor.doc.contains("@param args.atMost — at most five. (integer) (maximum 5) (required)"), "doc was: \(descriptor.doc)")
+        #expect(descriptor.doc.contains("@param args.atLeastTags — at least one tag. (1+ items) (required)"), "doc was: \(descriptor.doc)")
+        #expect(descriptor.doc.contains("@param args.atMostTags — at most three tags. (up to 3 items) (required)"), "doc was: \(descriptor.doc)")
     }
 
     @Test("a mutual two-hop $ref cycle through named $defs is bounded, not just the single-type self-\"#\" case")

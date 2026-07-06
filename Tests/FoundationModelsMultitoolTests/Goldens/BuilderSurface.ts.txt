@@ -1,7 +1,7 @@
 // tools.weather
 /**
  * Current weather for a city.
- * @param args.city — IATA city code or city name.
+ * @param args.city — IATA city code or city name. (required)
  * @param args.units — temperature unit; one of "c" | "f". (optional)
  * @returns { tempC: number; summary: string } — current conditions.
  * @example const r = tools.weather({ city: "city" });
@@ -11,7 +11,7 @@ declare function weather(args: { city: string; units?: "c" | "f" }): { tempC: nu
 // tools.echo
 /**
  * Echoes text back.
- * @param args.value — a plain string.
+ * @param args.value — a plain string. (required)
  * @returns string — plain text result.
  * @example const r = tools.echo({ value: "value" });
  */
@@ -20,7 +20,7 @@ declare function echo(args: { value: string }): string;
 // tools.github.createIssue
 /**
  * Creates a GitHub issue.
- * @param args.title — the issue title.
+ * @param args.title — the issue title. (required)
  * @returns string — plain text result.
  * @example const r = tools.createIssue({ title: "title" });
  */
@@ -29,7 +29,7 @@ declare function createIssue(args: { title: string }): string;
 // tools.github.search
 /**
  * Searches GitHub issues.
- * @param args.query — the search query.
+ * @param args.query — the search query. (required)
  * @returns string — plain text result.
  * @example const r = tools.search({ query: "query" });
  */

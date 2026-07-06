@@ -602,9 +602,13 @@ public enum ToolAPIRenderer {
     /// author's `description`, joined to an `enum` clause with `"; "` when
     /// both are present; then any type-specific constraint parenthetical
     /// (`(integer)`, numeric range, pattern, or item count); then
-    /// `"(optional)"` for a non-required property. `GenerationSchema` has no
-    /// default-value concept (see `AppleEncoderParityTests`), so no `default
-    /// …` clause is ever rendered. The property's `description` is passed
+    /// `"(optional)"` for a non-required property, or `"(required)"` for a
+    /// required one — explicit and symmetric, so a reader (including the
+    /// small local model that discovers tools via `findAPIs`/`help()`/
+    /// `docs(name)`) never has to infer required-ness from the *absence* of
+    /// `"(optional)"`. `GenerationSchema` has no default-value concept (see
+    /// `AppleEncoderParityTests`), so no `default …` clause is ever
+    /// rendered. The property's `description` is passed
     /// through `escapeForJSDocComment`, same as the tool-level description
     /// in `commentLines`, since this clause lands inside the same `/** …
     /// */` block via an `@param` line.
@@ -630,7 +634,11 @@ public enum ToolAPIRenderer {
         if let rangeClause = numericRangeClause(node) { clauses.append(rangeClause) }
         if let patternClause = patternClause(node) { clauses.append(patternClause) }
         if let countClause = countClause(node) { clauses.append(countClause) }
-        if !required { clauses.append("(optional)") }
+        if required {
+            clauses.append("(required)")
+        } else {
+            clauses.append("(optional)")
+        }
 
         var fragments: [String] = []
         if !lead.isEmpty { fragments.append(lead) }
