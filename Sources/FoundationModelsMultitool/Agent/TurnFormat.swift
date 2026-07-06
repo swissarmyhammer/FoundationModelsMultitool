@@ -12,7 +12,7 @@ public enum AgentStep: Sendable, Equatable {
     /// The model wants to search for relevant tool functions before writing a snippet.
     ///
     /// Plan.md's `findAPIs(task: string)`.
-    case findAPIs(task: String)
+    case findApis(task: String)
 
     /// Represents the model's request to execute a JavaScript snippet.
     ///
@@ -281,7 +281,7 @@ public struct TolerantParseTurnFormat: TurnFormat {
                     message: "\(FieldMarker.action) \(Action.findApis.rawValue) requires a non-empty \"\(FieldMarker.task)\" line."
                 )
             }
-            return .findAPIs(task: task.value)
+            return .findApis(task: task.value)
 
         case Action.runCode.lowercased:
             guard let code = Self.extractCode(afterActionAt: action.lineIndex, in: lines),
@@ -381,26 +381,59 @@ public struct TolerantParseTurnFormat: TurnFormat {
             return nil
         }
 
-        var index = codeField.lineIndex + 1
-        while index < lines.count, lines[index].trimmingCharacters(in: .whitespaces).isEmpty {
-            index += 1
-        }
-
-        if index < lines.count, lines[index].trimmingCharacters(in: .whitespaces).hasPrefix(FieldMarker.codeFence) {
-            var codeLines: [String] = []
-            index += 1
-            while index < lines.count,
-                !lines[index].trimmingCharacters(in: .whitespaces).hasPrefix(FieldMarker.codeFence)
-            {
-                codeLines.append(lines[index])
-                index += 1
-            }
-            return codeLines.joined(separator: "\n")
+        let index = Self.firstNonBlankLine(from: codeField.lineIndex + 1, in: lines)
+        if let fenced = Self.extractFencedCode(startingAt: index, in: lines) {
+            return fenced
         }
 
         // Tolerant fallback: no fence — treat everything from CODE: onward
         // (including any text on the CODE: line itself) as the snippet.
         return Self.joinFieldValue(codeField.value, withLinesFrom: lines, startIndex: index, trimmed: false)
+    }
+
+    /// Scans `lines` from `index` onward for the first non-blank line.
+    ///
+    /// Shared by `extractCode(afterActionAt:in:)` to skip any blank lines
+    /// between the `CODE:` marker and its fenced block (or lack thereof).
+    ///
+    /// - Parameters:
+    ///   - index: the line index to start scanning from.
+    ///   - lines: the raw turn's lines.
+    /// - Returns: the index of the first non-blank line at or after `index`,
+    ///   or `lines.count` if every remaining line is blank.
+    private static func firstNonBlankLine(from index: Int, in lines: [String]) -> Int {
+        var index = index
+        while index < lines.count, lines[index].trimmingCharacters(in: .whitespaces).isEmpty {
+            index += 1
+        }
+        return index
+    }
+
+    /// Extracts a fenced code block's contents, if `lines[index]` opens one.
+    ///
+    /// Scans from the line immediately after the opening fence up to (but
+    /// not including) the next line that starts with `FieldMarker
+    /// .codeFence`, joining every line in between with `"\n"`.
+    ///
+    /// - Parameters:
+    ///   - index: the line index to check for a fence-opening line.
+    ///   - lines: the raw turn's lines.
+    /// - Returns: the fenced block's contents, or `nil` if `lines[index]`
+    ///   doesn't open a fence (including when `index` is out of bounds).
+    private static func extractFencedCode(startingAt index: Int, in lines: [String]) -> String? {
+        guard index < lines.count, lines[index].trimmingCharacters(in: .whitespaces).hasPrefix(FieldMarker.codeFence)
+        else {
+            return nil
+        }
+        var codeLines: [String] = []
+        var lineIndex = index + 1
+        while lineIndex < lines.count,
+            !lines[lineIndex].trimmingCharacters(in: .whitespaces).hasPrefix(FieldMarker.codeFence)
+        {
+            codeLines.append(lines[lineIndex])
+            lineIndex += 1
+        }
+        return codeLines.joined(separator: "\n")
     }
 
     /// Extracts the full text from a marker to the end of the message.

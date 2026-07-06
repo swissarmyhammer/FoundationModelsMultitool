@@ -76,7 +76,7 @@ public struct APISurface: Sendable, Equatable {
         /// `descriptor.example` — the auto-generated, runnable example
         /// call — with its bare `tools.<name>(` call prefix qualified the
         /// same way `block`'s embedded `@example` line is, so a caller
-        /// splicing this field directly (`FindAPITool.format`'s separate
+        /// splicing this field directly (`FindApiTool.format`'s separate
         /// `Example: ...` trailer) never shows a different, disagreeing
         /// call than the one `block` itself displays.
         ///

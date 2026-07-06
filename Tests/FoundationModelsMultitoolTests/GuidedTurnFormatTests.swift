@@ -19,10 +19,10 @@ struct GuidedTurnFormatTests {
 
     // MARK: - AgentTurn.asAgentStep(): the cross-field rule the grammar itself can't express
 
-    @Test("a findAPIs turn with a task converts to AgentStep.findAPIs")
+    @Test("a findAPIs turn with a task converts to AgentStep.findApis")
     func findApisTurnConvertsToStep() throws {
         let turn = AgentTurn(kind: .findApis, task: "find the weather tool")
-        #expect(try turn.asAgentStep() == .findAPIs(task: "find the weather tool"))
+        #expect(try turn.asAgentStep() == .findApis(task: "find the weather tool"))
     }
 
     @Test("a runCode turn with code converts to AgentStep.runCode")
@@ -78,7 +78,7 @@ struct GuidedTurnFormatTests {
     @Test("parses a well-formed findAPIs JSON turn")
     func parsesFindApisJson() throws {
         let step = try format.parseTurn(#"{"kind":"findAPIs","task":"find the weather tool"}"#)
-        #expect(step == .findAPIs(task: "find the weather tool"))
+        #expect(step == .findApis(task: "find the weather tool"))
     }
 
     @Test("parses a well-formed runCode JSON turn")

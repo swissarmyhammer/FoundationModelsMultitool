@@ -164,7 +164,7 @@ enum TranscriptAnalyzer {
                 count += 1
             case .final:
                 return count
-            case .findAPIs:
+            case .findApis:
                 continue
             }
         }
@@ -220,7 +220,7 @@ extension AgentStep {
     /// boilerplate.
     fileprivate static func isSameCase(_ lhs: AgentStep, _ rhs: AgentStep) -> Bool {
         switch (lhs, rhs) {
-        case (.findAPIs, .findAPIs), (.runCode, .runCode), (.final, .final):
+        case (.findApis, .findApis), (.runCode, .runCode), (.final, .final):
             return true
         default:
             return false
@@ -240,6 +240,6 @@ extension AgentStep {
     /// Used as `TranscriptAnalyzer.findApisPrecedesRunCode(in:)`'s
     /// `contains(where:)` predicate.
     fileprivate var isFindApis: Bool {
-        Self.isSameCase(self, .findAPIs(task: ""))
+        Self.isSameCase(self, .findApis(task: ""))
     }
 }

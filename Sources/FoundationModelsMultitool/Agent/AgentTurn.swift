@@ -30,9 +30,9 @@ import FoundationModelsRouter
 /// in the grammar itself.
 @Generable
 public struct AgentTurn: Sendable, Equatable {
-    /// Which action this turn takes — the discriminant `asAgentStep()`
-    /// switches on to decide which of `task`/`code`/`text` must be set. See
-    /// `AgentTurn`'s documentation for why this is a plain, payload-less
+    /// Which action this turn takes — the discriminant `asAgentStep()` switches on to decide which of `task`/`code`/`text` must be set.
+    ///
+    /// See `AgentTurn`'s documentation for why this is a plain, payload-less
     /// enum rather than the union itself.
     @Generable
     public enum Kind: String, Sendable, Equatable {
@@ -104,7 +104,7 @@ public struct AgentTurn: Sendable, Equatable {
     func asAgentStep() throws -> AgentStep {
         switch kind {
         case .findApis:
-            return .findAPIs(task: try requireNonBlank(task, fieldName: "task"))
+            return .findApis(task: try requireNonBlank(task, fieldName: "task"))
 
         case .runCode:
             return .runCode(code: try requireNonBlank(code, fieldName: "code"))

@@ -168,7 +168,7 @@ struct EvaluatorGateTests {
         // `.final`): such a run legitimately passes, and the rationale must
         // not claim `.final` was reached.
         let steps: [AgentStep] = [
-            .findAPIs(task: "look up the tool"),
+            .findApis(task: "look up the tool"),
             .runCode(code: "tools.book()"),
         ]
         let subject = AgentSubject(

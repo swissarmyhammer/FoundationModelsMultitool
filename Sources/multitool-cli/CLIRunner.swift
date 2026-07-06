@@ -439,7 +439,7 @@ enum CLIRunner {
                 // Renders the parsed step as a single readable trace line,
                 // e.g. `findAPIs("...")`, `runCode(<n> chars)`, or `final: ...`.
                 switch step {
-                case .findAPIs(let task):
+                 case .findApis(let task):
                     return "findAPIs(\"\(task)\")"
                 case .runCode(let code):
                     return "runCode(\(code.count) chars)"

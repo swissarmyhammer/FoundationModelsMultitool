@@ -38,7 +38,7 @@ struct MultiToolAgentTests {
         // findAPIs went through the searcher's real dispatch pipeline: a
         // fork() of the prefix-rooted session, never the root's own respond(to:).
         #expect(librarianRoot.forkCount == 1)
-        // findAPIs's result — formatted by FindAPITool, not raw text — was
+        // findAPIs's result — formatted by FindApiTool, not raw text — was
         // spliced back in as the next turn's context.
         #expect(mainSession.receivedPrompts[1].contains("declare function cities(args: { unused?: string }): { cities: string[] };"))
         #expect(mainSession.receivedPrompts[1].contains("Example: tools.cities({});"))

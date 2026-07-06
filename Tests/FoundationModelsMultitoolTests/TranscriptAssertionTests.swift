@@ -151,7 +151,7 @@ struct TranscriptAssertionTests {
         let steps = TranscriptAnalyzer.steps(in: events, slot: .standard)
 
         #expect(steps.count == 3)
-        #expect(steps[0] == .findAPIs(task: "list trip cities and get weather for each to find the warmest"))
+        #expect(steps[0] == .findApis(task: "list trip cities and get weather for each to find the warmest"))
         if case .runCode(let code) = steps[1] {
             #expect(code.contains("tools.tripCities()"))
         } else {
@@ -178,15 +178,15 @@ struct TranscriptAssertionTests {
 
     @Test("findApisPrecedesRunCode is false when there is no runCode step at all")
     func findApisPrecedesRunCodeFalseWithNoRunCode() {
-        let steps: [AgentStep] = [.findAPIs(task: "look around"), .final(text: "done")]
+        let steps: [AgentStep] = [.findApis(task: "look around"), .final(text: "done")]
         #expect(!TranscriptAnalyzer.findApisPrecedesRunCode(in: steps))
     }
 
     @Test("findApisPrecedesRunCode is true across multiple findAPIs calls, using the last findAPIs before runCode")
     func findApisPrecedesRunCodeTrueWithMultipleFindApisCalls() {
         let steps: [AgentStep] = [
-            .findAPIs(task: "look around"),
-            .findAPIs(task: "narrow it down"),
+            .findApis(task: "look around"),
+            .findApis(task: "narrow it down"),
             .runCode(code: "return 1;"),
             .final(text: "done"),
         ]
@@ -227,7 +227,7 @@ struct TranscriptAssertionTests {
     @Test("invokedToolPaths unions call paths across every runCode step")
     func invokedToolPathsUnionsAcrossSteps() {
         let steps: [AgentStep] = [
-            .findAPIs(task: "t"),
+            .findApis(task: "t"),
             .runCode(code: "tools.weather({ city: \"ATX\" });"),
             .runCode(code: "tools.github.createIssue({ title: \"x\" });"),
             .final(text: "done"),

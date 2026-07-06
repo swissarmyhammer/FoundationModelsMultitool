@@ -8,11 +8,11 @@ import FoundationModelsMetadataRegistry
 /// The searcher's selection tier answers *what* is relevant — ids only,
 /// grammar-enforced against the current candidate set (the registry's
 /// `SelectionTier`, generalizing Multitool's own former `Librarian`) — and
-/// `FindAPITool` owns *how that answer reaches the main agent's
+/// `FindApiTool` owns *how that answer reaches the main agent's
 /// transcript* — splicing each selected entry's `Match.item.block`
 /// **verbatim** (never re-derived or re-rendered) plus its runnable
 /// example, so the main model reads exactly what the registry selected.
-struct FindAPITool: Sendable {
+struct FindApiTool: Sendable {
     /// The catalog searcher this tool forwards every `findAPIs(task)` call
     /// to — expected to run in `.selection` mode (`.retrieval`/`.auto` would
     /// still format correctly, but wouldn't honor a guided model's ids-only
