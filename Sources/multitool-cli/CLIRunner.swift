@@ -40,8 +40,34 @@ struct CLIArgumentError: Error, Equatable, CustomStringConvertible {
     ///
     /// Satisfies `CustomStringConvertible`.
     var description: String {
-        "\(cliErrorPrefix) unknown argument \"\(flag)\". Run with --help for usage."
+        "\(cliErrorPrefix) unknown argument \"\(flag)\". Run with \(CLIRunner.helpFlag.names[0]) for usage."
     }
+}
+
+// MARK: - Flags
+
+/// One CLI flag: its recognized spelling(s), `OPTIONS:` description, and the
+/// effect it has on `CLIArguments` when parsed.
+///
+/// The single source of truth for a flag's name(s) — `CLIRunner.parse(_:)`'s
+/// dispatch, `CLIRunner.usageText`'s `OPTIONS:` listing, and
+/// `CLIArgumentError.description`'s "Run with --help" hint are all generated
+/// from (or reference) `CLIRunner.flags`/`CLIRunner.helpFlag`, instead of
+/// each site separately repeating a flag's literal spelling.
+struct Flag: Sendable {
+    /// The flag's recognized spellings, e.g. `["--help", "-h"]`.
+    ///
+    /// The first name is the canonical spelling shown in `USAGE:` and
+    /// referenced by error messages.
+    let names: [String]
+
+    /// The `OPTIONS:` description lines shown next to this flag's names,
+    /// pre-wrapped to `usageText`'s line width (excluding indentation, which
+    /// `usageText` computes from every flag's name-column width).
+    let descriptionLines: [String]
+
+    /// Applies this flag's effect to `arguments` when `parse(_:)` matches it.
+    let apply: @Sendable (_ arguments: inout CLIArguments) -> Void
 }
 
 // MARK: - The Router-unavailable degrade path
@@ -98,23 +124,58 @@ enum CLIRunner {
         static let unavailable: Int32 = 69
     }
 
-    /// `--help`'s usage text.
-    static let usageText = """
-        multitool-cli — a runnable demonstration of the FoundationModelsMultitool pipeline.
+    /// The `--direct` flag: run the agent in direct mode (`runCode` only, no `findAPIs` discovery).
+    static let directFlag = Flag(
+        names: ["--direct"],
+        descriptionLines: [
+            "Run the agent in direct mode: only runCode is surfaced to the",
+            "model (no findAPIs discovery step); the snippet discovers tools",
+            "via help()/docs() instead.",
+        ],
+        apply: { $0.direct = true }
+    )
 
-        USAGE:
-          multitool-cli [--direct] [--help]
+    /// The `--help`/`-h` flag: print usage text and exit without touching the Router.
+    static let helpFlag = Flag(
+        names: ["--help", "-h"],
+        descriptionLines: ["Print this usage text and exit."],
+        apply: { $0.help = true }
+    )
 
-        OPTIONS:
-          --direct     Run the agent in direct mode: only runCode is surfaced to the
-                       model (no findAPIs discovery step); the snippet discovers tools
-                       via help()/docs() instead.
-          --help, -h   Print this usage text and exit.
+    /// The flags `parse(_:)` recognizes, in `USAGE:`/`OPTIONS:` display order.
+    ///
+    /// The single source of truth `usageText` is generated from, and
+    /// `parse(_:)` dispatches against — see `Flag`'s documentation.
+    static let flags: [Flag] = [directFlag, helpFlag]
 
-        Resolves a small demo model profile via FoundationModelsRouter, wires up a
-        couple of fixture tools (tripCities, weather), and asks one question that
-        exercises the search-then-code loop (findAPIs, then a composing runCode).
-        """
+    /// `--help`'s usage text, generated from `flags`.
+    static var usageText: String {
+        let leadingIndent = "  "
+        let columnGap = "   "
+        let nameColumns = flags.map { $0.names.joined(separator: ", ") }
+        let columnWidth = nameColumns.map(\.count).max() ?? 0
+        let continuationIndent = String(repeating: " ", count: leadingIndent.count + columnWidth + columnGap.count)
+        let optionsLines = zip(flags, nameColumns).flatMap { flag, nameColumn -> [String] in
+            let paddedName = nameColumn.padding(toLength: columnWidth, withPad: " ", startingAt: 0)
+            return flag.descriptionLines.enumerated().map { index, line in
+                index == 0 ? "\(leadingIndent)\(paddedName)\(columnGap)\(line)" : "\(continuationIndent)\(line)"
+            }
+        }
+        let usageSummary = flags.map { "[\($0.names[0])]" }.joined(separator: " ")
+        return """
+            multitool-cli — a runnable demonstration of the FoundationModelsMultitool pipeline.
+
+            USAGE:
+              multitool-cli \(usageSummary)
+
+            OPTIONS:
+            \(optionsLines.joined(separator: "\n"))
+
+            Resolves a small demo model profile via FoundationModelsRouter, wires up a
+            couple of fixture tools (tripCities, weather), and asks one question that
+            exercises the search-then-code loop (findAPIs, then a composing runCode).
+            """
+    }
 
     /// The profile used for the demo run.
     ///
@@ -167,7 +228,7 @@ enum CLIRunner {
 
     /// Parses command-line arguments into `CLIArguments`.
     ///
-    /// Excludes the executable name; recognizes `--direct`, `--help`, and `-h`.
+    /// Excludes the executable name; recognizes every flag in `flags`.
     ///
     /// - Parameter arguments: the raw arguments, e.g.
     ///   `CommandLine.arguments.dropFirst()`.
@@ -177,14 +238,10 @@ enum CLIRunner {
     static func parse(_ arguments: [String]) throws -> CLIArguments {
         var result = CLIArguments()
         for argument in arguments {
-            switch argument {
-            case "--direct":
-                result.direct = true
-            case "--help", "-h":
-                result.help = true
-            default:
+            guard let flag = flags.first(where: { $0.names.contains(argument) }) else {
                 throw CLIArgumentError(flag: argument)
             }
+            flag.apply(&result)
         }
         return result
     }

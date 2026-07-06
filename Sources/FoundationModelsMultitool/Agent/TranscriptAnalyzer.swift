@@ -109,7 +109,7 @@ enum TranscriptAnalyzer {
     ///   `.runCode` step has no `.findAPIs` step before it.
     static func findAPIsPrecedesRunCode(in steps: [AgentStep]) -> Bool {
         guard let runCodeIndex = steps.firstIndex(where: \.isRunCode) else { return false }
-        return steps[..<runCodeIndex].contains(where: \.isFindAPIs)
+        return steps[..<runCodeIndex].contains(where: \.isFindApis)
     }
 
     /// Extracts the `tools.*` call paths a `runCode` snippet's code text invokes.
@@ -203,22 +203,19 @@ enum TranscriptAnalyzer {
     /// comparatively expensive and this pattern never changes.
     private static let toolCallRegex: NSRegularExpression = {
         let pattern = #"(?<![A-Za-z0-9_$])tools\.([A-Za-z_$][A-Za-z0-9_$]*(?:\.[A-Za-z_$][A-Za-z0-9_$]*)?)\s*\("#
-        // The pattern is a fixed literal validated by this type's own tests;
-        // an invalid pattern here would be a broken invariant in this type's
-        // own definition, not a runtime condition — the same category
-        // `AgentTurn.jsonSchemaSource` documents for its own unreachable
-        // failure branch.
-        guard let regex = try? NSRegularExpression(pattern: pattern) else {
-            preconditionFailure("TranscriptAnalyzer.toolCallRegex: invalid fixed regex pattern \"\(pattern)\".")
-        }
-        return regex
+        // `try!` is safe here: `pattern` is a compile-time-known literal that
+        // is valid by construction (and validated by this type's own tests),
+        // so `NSRegularExpression`'s initializer can never actually throw —
+        // the same category `AgentTurn.jsonSchemaSource` documents for its
+        // own unreachable failure branch.
+        return try! NSRegularExpression(pattern: pattern)
     }()
 }
 
 extension AgentStep {
     /// Compares `lhs` and `rhs` for the same enum case, ignoring associated values.
     ///
-    /// The shared case-predicate helper `isRunCode`/`isFindAPIs` both
+    /// The shared case-predicate helper `isRunCode`/`isFindApis` both
     /// delegate to, instead of each repeating its own `if case ... = self`
     /// boilerplate.
     fileprivate static func isSameCase(_ lhs: AgentStep, _ rhs: AgentStep) -> Bool {
@@ -242,7 +239,7 @@ extension AgentStep {
     ///
     /// Used as `TranscriptAnalyzer.findAPIsPrecedesRunCode(in:)`'s
     /// `contains(where:)` predicate.
-    fileprivate var isFindAPIs: Bool {
+    fileprivate var isFindApis: Bool {
         Self.isSameCase(self, .findAPIs(task: ""))
     }
 }
