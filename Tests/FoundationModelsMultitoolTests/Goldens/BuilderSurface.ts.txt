@@ -22,7 +22,7 @@ declare function echo(args: { value: string }): string;
  * Creates a GitHub issue.
  * @param args.title — the issue title. (required)
  * @returns string — plain text result.
- * @example const r = tools.createIssue({ title: "title" });
+ * @example const r = tools.github.createIssue({ title: "title" });
  */
 declare function createIssue(args: { title: string }): string;
 
@@ -31,6 +31,6 @@ declare function createIssue(args: { title: string }): string;
  * Searches GitHub issues.
  * @param args.query — the search query. (required)
  * @returns string — plain text result.
- * @example const r = tools.search({ query: "query" });
+ * @example const r = tools.github.search({ query: "query" });
  */
 declare function search(args: { query: string }): string;

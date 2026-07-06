@@ -9,9 +9,11 @@ import FoundationModelsMetadataRegistry
 /// `Entry` is ever constructed), and exactly what the selection grammar's id
 /// enum and selection feedback need to name a tool by.
 ///
-/// `renderBlock()` is `block`: the `// tools.<path>` banner plus verbatim
-/// `descriptor.source` — the same text `FindAPITool` splices, verbatim,
-/// into the main agent's transcript for every selected entry.
+/// `renderBlock()` is `block`: the `// tools.<path>` banner plus
+/// `descriptor.source` with its embedded `@example` call qualified to the
+/// entry's fully-qualified `path` (see `Entry.block`/`Entry.qualify(_:)`)
+/// — the same text `FindAPITool` splices, verbatim, into the main agent's
+/// transcript for every selected entry.
 /// `renderSummaryBlock()` is left at the protocol's default (identical to
 /// `renderBlock()`): descriptor blocks are already compact, so there's no
 /// shorter summary to offer.

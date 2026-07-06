@@ -56,7 +56,11 @@ public struct APISurface: Sendable, Equatable {
         /// namespace is visible even though `descriptor` itself never
         /// mentions it — see `path`'s documentation), followed by
         /// `descriptor.source` — its JSDoc doc comment and `declare
-        /// function` signature — verbatim and unmodified.
+        /// function` signature — with its embedded `@example` line's call
+        /// qualified the same way (see `qualify(_:)`), so the runnable
+        /// example a reader actually sees always matches the namespace the
+        /// banner just named — never the bare, unqualified call a model
+        /// has no way to infer needs a group prefix prepended.
         ///
         /// `path` is safe to splice bare into a `//` comment: it's built
         /// exclusively from `descriptor.name` (already validated as a
@@ -66,7 +70,53 @@ public struct APISurface: Sendable, Equatable {
         /// is ever constructed) — neither can contain a newline or other
         /// character that could break out of a single-line comment.
         public var block: String {
-            "// tools.\(path)\n\(descriptor.source)"
+            "// tools.\(path)\n\(qualify(descriptor.source))"
+        }
+
+        /// `descriptor.example` — the auto-generated, runnable example
+        /// call — with its bare `tools.<name>(` call prefix qualified the
+        /// same way `block`'s embedded `@example` line is, so a caller
+        /// splicing this field directly (`FindAPITool.format`'s separate
+        /// `Example: ...` trailer) never shows a different, disagreeing
+        /// call than the one `block` itself displays.
+        ///
+        /// A no-op for a standalone entry (`path == descriptor.name`) —
+        /// `descriptor.example` is returned unmodified.
+        public var qualifiedExample: String {
+            qualify(descriptor.example)
+        }
+
+        /// Replaces the unqualified `tools.<name>(` call prefix
+        /// `ToolAPIRenderer.render`'s `exampleCall` always renders with the
+        /// fully-qualified `tools.<path>(` prefix, everywhere it appears in
+        /// `text` — the embedded JSDoc `@example` line inside
+        /// `descriptor.source`, and `descriptor.example` itself.
+        ///
+        /// A targeted substitution rather than a re-render: `descriptor`
+        /// (M2's flat, unqualified rendering) is never re-derived, only its
+        /// one namespace-dependent call-path prefix is corrected. Safe to
+        /// splice, since `descriptor.name` is validated as a legal TS
+        /// identifier by `ToolAPIRenderer.render`: the replacement text can
+        /// never itself break out of the surrounding JSDoc/declaration
+        /// syntax. This does not guarantee the *search* substring
+        /// `"tools.\(descriptor.name)("` is unique within `text` — a tool's
+        /// author-supplied `description`/`@Guide` prose (also embedded
+        /// verbatim in `descriptor.source`) could in principle happen to
+        /// contain that exact literal substring — but the only place
+        /// `ToolAPIRenderer.render` itself ever emits it is the `@example`
+        /// line/`example` field this method targets, so this is a
+        /// theoretical, not a practical, concern for any real generated
+        /// doc. A no-op for a standalone entry, since `path ==
+        /// descriptor.name` there.
+        ///
+        /// - Parameter text: the rendered text to qualify — either
+        ///   `descriptor.source` or `descriptor.example`.
+        /// - Returns: `text` with its bare call prefix qualified.
+        private func qualify(_ text: String) -> String {
+            text.replacingOccurrences(
+                of: "tools.\(descriptor.name)(",
+                with: "tools.\(path)("
+            )
         }
     }
 

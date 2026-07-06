@@ -54,7 +54,9 @@ struct FindAPITool: Sendable {
     /// `declare function`/JSDoc source (`ToolDescriptor` fields are always
     /// unqualified; `path`/`block` carry the namespace — see
     /// `APISurface.swift`'s `Entry` documentation) — followed by its
-    /// runnable example.
+    /// runnable example, qualified the same way via `Entry.qualifiedExample`
+    /// so this trailer never shows a different, bare call than the one
+    /// `block`'s own embedded `@example` line just displayed.
     ///
     /// - Parameters:
     ///   - task: the plain-language goal the model passed to `findAPIs`,
@@ -68,7 +70,7 @@ struct FindAPITool: Sendable {
             return "findAPIs(\"\(task)\") found no matching functions."
         }
         let blocks = matches.map { match in
-            "\(match.item.block)\nExample: \(match.item.descriptor.example)"
+            "\(match.item.block)\nExample: \(match.item.qualifiedExample)"
         }
         return "findAPIs(\"\(task)\") found:\n" + blocks.joined(separator: "\n\n")
     }

@@ -25,8 +25,8 @@ comments:
 
     Task is green and ready for review.
   timestamp: 2026-07-06T14:34:03.659478+00:00
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: 9d80
 title: Add explicit "(required)" marker to ToolAPIRenderer's JSDoc @param clauses
 ---
 ## What

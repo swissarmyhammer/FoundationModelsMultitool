@@ -59,6 +59,14 @@ struct FindAPIToolTests {
         // survives the splice.
         #expect(feedback.contains("// tools.github.createIssue"))
         #expect(feedback.contains(entry.block))
+        // The rendered example call itself — both the embedded JSDoc
+        // `@example` line inside `block` and the separate `Example: ...`
+        // trailer — must show the fully-qualified `tools.github.createIssue(`
+        // call a model could actually invoke, never the bare, wrong
+        // `tools.createIssue(` call a model can't guess to qualify on its
+        // own.
+        #expect(feedback.contains("tools.github.createIssue("))
+        #expect(!feedback.contains("tools.createIssue("))
     }
 
     @Test("an empty selection formats as a clear \"no matching functions\" message, not an empty string")
