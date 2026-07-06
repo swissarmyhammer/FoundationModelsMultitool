@@ -40,9 +40,6 @@ public struct AgentTurn: Sendable, Equatable {
         case findAPIs
         /// Run a JavaScript snippet against `tools.*` — plan.md's `runCode(code: string)`.
         case runCode
-        /// Call one *direct* tool with a schema-valid argument guarantee —
-        /// plan.md's escape hatch, `callTool(name, args)`.
-        case callTool
         /// Give the final answer to the user.
         case final
     }
@@ -50,28 +47,20 @@ public struct AgentTurn: Sendable, Equatable {
     /// Which action this turn takes.
     @Guide(
         description: "which action this turn takes: \"findAPIs\" to search for tool functions, "
-            + "\"runCode\" to run a JavaScript snippet, \"callTool\" to call a direct tool with a "
-            + "schema-valid argument guarantee, or \"final\" to give the final answer."
+            + "\"runCode\" to run a JavaScript snippet, or \"final\" to give the final answer."
     )
     public var kind: Kind
 
-    /// The plain-language goal to search for, or (for `callTool`) a
-    /// plain-language description of the arguments to use — set only when
-    /// `kind` is `.findAPIs` or `.callTool`.
+    /// The plain-language goal to search for — set only when `kind` is `.findAPIs`.
     @Guide(
-        description: "for \"findAPIs\", the goal to search for, in plain language; for \"callTool\", a "
-            + "plain-language description of the arguments to use — never the literal argument values "
-            + "themselves. Set only when kind is \"findAPIs\" or \"callTool\"."
+        description: "for \"findAPIs\", the goal to search for, in plain language. Set only when kind is "
+            + "\"findAPIs\"."
     )
     public var task: String?
 
     /// The JavaScript snippet to run against `tools.*` — set only when `kind` is `.runCode`.
     @Guide(description: "the JavaScript snippet to run against tools.*. Set only when kind is \"runCode\".")
     public var code: String?
-
-    /// The exact name of the direct tool to call — set only when `kind` is `.callTool`.
-    @Guide(description: "the exact name of the direct tool to call. Set only when kind is \"callTool\".")
-    public var toolName: String?
 
     /// The final answer text — set only when `kind` is `.final`.
     @Guide(description: "the final answer text to give the user. Set only when kind is \"final\".")
@@ -86,24 +75,18 @@ public struct AgentTurn: Sendable, Equatable {
     ///
     /// - Parameters:
     ///   - kind: which action this turn takes.
-    ///   - task: the plain-language goal to search for, or (for `callTool`)
-    ///     a plain-language description of the arguments to use. Defaults
-    ///     to `nil`.
+    ///   - task: the plain-language goal to search for. Defaults to `nil`.
     ///   - code: the JavaScript snippet to run. Defaults to `nil`.
-    ///   - toolName: the exact name of the direct tool to call. Defaults to
-    ///     `nil`.
     ///   - text: the final answer text. Defaults to `nil`.
     public init(
         kind: Kind,
         task: String? = nil,
         code: String? = nil,
-        toolName: String? = nil,
         text: String? = nil
     ) {
         self.kind = kind
         self.task = task
         self.code = code
-        self.toolName = toolName
         self.text = text
     }
 
@@ -126,11 +109,6 @@ public struct AgentTurn: Sendable, Equatable {
         case .runCode:
             return .runCode(code: try requireNonBlank(code, fieldName: "code"))
 
-        case .callTool:
-            let toolName = try requireNonBlank(toolName, fieldName: "toolName")
-            let task = try requireNonBlank(task, fieldName: "task", context: "describing the arguments to use")
-            return .callTool(name: toolName, task: task)
-
         case .final:
             return .final(text: try requireNonBlank(text, fieldName: "text"))
         }
@@ -146,27 +124,22 @@ public struct AgentTurn: Sendable, Equatable {
     ///   - value: the field value to check.
     ///   - fieldName: the field's name, quoted verbatim in the thrown error
     ///     message (e.g. `"task"`).
-    ///   - context: an optional trailing clause appended to the error
-    ///     message, e.g. `"describing the arguments to use"`. Defaults to
-    ///     `nil`.
     /// - Returns: `value`, unwrapped and confirmed non-blank.
     /// - Throws: `TurnParseError` if `value` is `nil` or blank.
-    private func requireNonBlank(_ value: String?, fieldName: String, context: String? = nil) throws -> String {
+    private func requireNonBlank(_ value: String?, fieldName: String) throws -> String {
         guard let value, Self.isNonBlank(value) else {
-            let suffix = context.map { " " + $0 } ?? ""
             throw TurnParseError(
-                message: "A guided turn with kind \"\(kind.rawValue)\" must set a non-empty \"\(fieldName)\"\(suffix)."
+                message: "A guided turn with kind \"\(kind.rawValue)\" must set a non-empty \"\(fieldName)\"."
             )
         }
         return value
     }
 
     /// Whether `value` has any non-whitespace content — the blank-check
-    /// `requireNonBlank(_:fieldName:context:)` applies uniformly to
-    /// `task`/`code`/`toolName`/`text`, so a whitespace-only field (e.g.
-    /// `"   "`) is rejected the same way a missing one is, for every kind
-    /// alike (matching `TolerantParseTurnFormat`'s own always-trimmed field
-    /// extraction).
+    /// `requireNonBlank(_:fieldName:)` applies uniformly to `task`/`code`/`text`,
+    /// so a whitespace-only field (e.g. `"   "`) is rejected the same way a
+    /// missing one is, for every kind alike (matching
+    /// `TolerantParseTurnFormat`'s own always-trimmed field extraction).
     ///
     /// - Parameter value: the field value to check.
     /// - Returns: `true` if `value` contains at least one non-whitespace
@@ -239,27 +212,19 @@ public struct GuidedTurnFormat: TurnFormat {
     }
 
     /// Briefly explains the guided turn's fields — see
-    /// `TurnFormat.formatInstructions(supportsFindAPIs:supportsDirectCall:)`.
-    /// The response *shape* is already enforced by `grammar`, so this text
-    /// only needs to teach the model the *semantics* of
-    /// `kind`/`task`/`code`/`toolName`/`text`, not a response format to
-    /// follow.
+    /// `TurnFormat.formatInstructions(supportsFindAPIs:)`. The response
+    /// *shape* is already enforced by `grammar`, so this text only needs to
+    /// teach the model the *semantics* of `kind`/`task`/`code`/`text`, not a
+    /// response format to follow.
     ///
-    /// - Parameters:
-    ///   - supportsFindAPIs: whether to invite the model to use the
-    ///     `findAPIs` kind; direct mode gets an explicit note that it isn't
-    ///     available instead, since the grammar's `kind` enum always allows
-    ///     every value regardless of this flag (only `MultiToolAgent
-    ///     .dispatchFindAPIs`'s runtime rejection actually enforces
-    ///     unavailability).
-    ///   - supportsDirectCall: whether to invite the model to use the
-    ///     `callTool` kind; an agent with no direct tools configured gets an
-    ///     explicit note that it isn't available instead, for the same
-    ///     grammar-always-allows-it reason as `supportsFindAPIs`. Defaults
-    ///     to `false` (matching this method's own default for pre-existing
-    ///     call sites that never exercise the escape hatch).
+    /// - Parameter supportsFindAPIs: whether to invite the model to use the
+    ///   `findAPIs` kind; direct mode gets an explicit note that it isn't
+    ///   available instead, since the grammar's `kind` enum always allows
+    ///   every value regardless of this flag (only `MultiToolAgent
+    ///   .dispatchFindAPIs`'s runtime rejection actually enforces
+    ///   unavailability).
     /// - Returns: the format instructions.
-    public func formatInstructions(supportsFindAPIs: Bool, supportsDirectCall: Bool = false) -> String {
+    public func formatInstructions(supportsFindAPIs: Bool) -> String {
         var lines = [
             "Each turn, respond with a single JSON object matching the required schema.",
             "IMPORTANT: the field matching \"kind\" is REQUIRED and must never be left empty — a response",
@@ -278,18 +243,6 @@ public struct GuidedTurnFormat: TurnFormat {
             lines.append(
                 "\"\(AgentTurn.Kind.findAPIs.rawValue)\" is not available in this session; use help()/docs(name) "
                     + "inside runCode instead."
-            )
-        }
-        if supportsDirectCall {
-            lines.append(
-                "Set \"kind\" to \"\(AgentTurn.Kind.callTool.rawValue)\", \"toolName\" to the exact name of the "
-                    + "direct tool to call, and \"task\" to a plain-language description of the arguments to use, "
-                    + "to call a direct tool with a schema-valid argument guarantee (never leave \"toolName\" or "
-                    + "\"task\" empty when kind is \"\(AgentTurn.Kind.callTool.rawValue)\")."
-            )
-        } else {
-            lines.append(
-                "\"\(AgentTurn.Kind.callTool.rawValue)\" is not available in this session."
             )
         }
         return lines.joined(separator: "\n")

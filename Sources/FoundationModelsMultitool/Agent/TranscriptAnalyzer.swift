@@ -158,7 +158,7 @@ enum TranscriptAnalyzer {
                 count += 1
             case .final:
                 return count
-            case .findAPIs, .callTool:
+            case .findAPIs:
                 continue
             }
         }

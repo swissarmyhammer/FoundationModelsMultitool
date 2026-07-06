@@ -241,10 +241,9 @@ public enum ToolAPIRenderer {
     /// Encodes `schema` to its raw JSON Schema source text — the same
     /// `JSONEncoder` call `decode(_:subject:)` below makes on a tool's
     /// schema (plan.md Finding #3: "encode is the read path"), exposed here
-    /// for a caller — `DirectToolCall`'s escape hatch — that needs the JSON
-    /// Schema *string* itself, to constrain a Router guided-generation
-    /// grammar (`Grammar.jsonSchema(_:)`), rather than a rendered
-    /// TypeScript declaration.
+    /// for a caller that needs the JSON Schema *string* itself — e.g. to
+    /// constrain a guided-generation grammar (`Grammar.jsonSchema(_:)`) —
+    /// rather than a rendered TypeScript declaration.
     ///
     /// - Parameter schema: the schema to encode.
     /// - Returns: the encoded JSON Schema source text.

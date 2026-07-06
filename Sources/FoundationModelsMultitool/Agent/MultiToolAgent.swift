@@ -125,27 +125,6 @@ public struct MultiToolAgent: Sendable {
     /// `findAPIs` step across every `respond(to:)` call this agent makes.
     private let findAPITool: FindAPITool?
 
-    /// Every *direct* tool this agent's `callTool` step can dispatch to —
-    /// plan.md's escape hatch — keyed by `Tool.name`.
-    ///
-    /// Empty when this agent has no direct tools configured
-    /// (`MultiToolAgent(directTools:)` defaults to `[]`), in which case
-    /// `callTool` is never surfaced to the model (`sessionInstructions`
-    /// only appends `ToolDescriptions.callTool` when non-empty) and any
-    /// `callTool` step the model emits anyway is rejected the same
-    /// instructive way an unknown tool name is.
-    private let directTools: [String: any Tool]
-
-    /// The seam `DirectToolCall` drives to get schema-valid arguments for
-    /// one `callTool` dispatch, or `nil` when no direct tools are configured
-    /// (`directTools.isEmpty`) — mirrors `findAPITool`'s nil-when-unconfigured
-    /// shape.
-    ///
-    /// Not deferred/per-call like `makeSession`: `RoutedDirectCallSession`
-    /// (the production conformer) is a thin, stateless wrapper over `model`,
-    /// so there is no per-call session state to keep fresh.
-    private let directCallSession: (any DirectCallSession)?
-
     /// Creates an agent bound to a resolved Router profile's generation slots.
     ///
     /// Plan.md's "Usage: attaching to a session":
@@ -183,13 +162,6 @@ public struct MultiToolAgent: Sendable {
     ///     to `.tolerantParse(maxRepairTurns: configuration.maxRepairTurns)`.
     ///   - maxTurns: the bounded turn count `respond(to:)` never exceeds.
     ///     Defaults to `nil`, which resolves to `configuration.maxAgentTurns`.
-    ///   - directTools: plan.md's escape hatch — tools this agent calls
-    ///     through `callTool`'s guided-generation path (`DirectToolCall`)
-    ///     instead of wrapping as `tools.*` in a `runCode` snippet, keeping
-    ///     their arguments xgrammar-constrained end to end. Defaults to `[]`
-    ///     (no direct tools: `callTool` isn't surfaced to the model at all).
-    ///     Every direct call's guided generation runs on `model` — the same
-    ///     `RoutedLLM` the main loop runs on — via `RoutedDirectCallSession`.
     /// - Throws: whatever `idEnumGrammar(ids:)` throws while deriving the
     ///   selection tier's id-enum grammar — not expected in practice (see
     ///   that function's documentation), and only reachable when
@@ -201,16 +173,13 @@ public struct MultiToolAgent: Sendable {
         instructions: String,
         configuration: MultiToolConfiguration = .default,
         turnFormat: (any TurnFormat)? = nil,
-        maxTurns: Int? = nil,
-        directTools: [any Tool] = []
+        maxTurns: Int? = nil
     ) throws {
         let resolvedTurnFormat = turnFormat ?? .tolerantParse(maxRepairTurns: configuration.maxRepairTurns)
-        let indexedDirectTools = Self.indexDirectTools(directTools)
         let sessionInstructions = Self.sessionInstructions(
             userInstructions: instructions,
             registry: registry,
-            turnFormat: resolvedTurnFormat,
-            directTools: indexedDirectTools
+            turnFormat: resolvedTurnFormat
         )
         let findAPITool: FindAPITool? =
             if let librarian {
@@ -231,17 +200,13 @@ public struct MultiToolAgent: Sendable {
             } else {
                 { RoutedAgentSession(session: model.makeSession(instructions: sessionInstructions)) }
             }
-        let directCallSession: (any DirectCallSession)? =
-            indexedDirectTools.isEmpty ? nil : RoutedDirectCallSession(model: model)
         self.init(
             registry: registry,
             configuration: configuration,
             turnFormat: resolvedTurnFormat,
             maxTurns: maxTurns ?? configuration.maxAgentTurns,
             makeSession: makeSession,
-            findAPITool: findAPITool,
-            directTools: indexedDirectTools,
-            directCallSession: directCallSession
+            findAPITool: findAPITool
         )
     }
 
@@ -306,14 +271,6 @@ public struct MultiToolAgent: Sendable {
     ///     to `.tolerantParse(maxRepairTurns: configuration.maxRepairTurns)`.
     ///   - maxTurns: the bounded turn count `respond(to:)` never exceeds.
     ///     Defaults to `nil`, which resolves to `configuration.maxAgentTurns`.
-    ///   - directTools: plan.md's escape hatch — tools this agent calls
-    ///     through `callTool`'s guided-generation path. Defaults to `[]`.
-    ///   - directCallSession: the scripted `DirectCallSession` fake
-    ///     `callTool` dispatches through, or `nil` to disable `callTool`
-    ///     dispatch even when `directTools` is non-empty (a `callTool` step
-    ///     is then rejected with an instructive message, the same
-    ///     configuration-gap posture `findAPITool == nil` takes toward
-    ///     `findAPIs`). Defaults to `nil`.
     init(
         registry: MultiTool.Registry,
         session: any AgentSession,
@@ -321,9 +278,7 @@ public struct MultiToolAgent: Sendable {
         instructions: String,
         configuration: MultiToolConfiguration = .default,
         turnFormat: (any TurnFormat)? = nil,
-        maxTurns: Int? = nil,
-        directTools: [any Tool] = [],
-        directCallSession: (any DirectCallSession)? = nil
+        maxTurns: Int? = nil
     ) {
         let findAPITool = findAPISearcher.map { FindAPITool(searcher: $0, limit: registry.surface.entries.count) }
         self.init(
@@ -332,9 +287,7 @@ public struct MultiToolAgent: Sendable {
             turnFormat: turnFormat ?? .tolerantParse(maxRepairTurns: configuration.maxRepairTurns),
             maxTurns: maxTurns ?? configuration.maxAgentTurns,
             makeSession: { session },
-            findAPITool: findAPITool,
-            directTools: Self.indexDirectTools(directTools),
-            directCallSession: directCallSession
+            findAPITool: findAPITool
         )
     }
 
@@ -347,9 +300,7 @@ public struct MultiToolAgent: Sendable {
         turnFormat: any TurnFormat,
         maxTurns: Int,
         makeSession: @escaping @Sendable () -> any AgentSession,
-        findAPITool: FindAPITool?,
-        directTools: [String: any Tool],
-        directCallSession: (any DirectCallSession)?
+        findAPITool: FindAPITool?
     ) {
         self.registry = registry
         self.multiTool = MultiTool(registry: registry, configuration: configuration)
@@ -357,24 +308,6 @@ public struct MultiToolAgent: Sendable {
         self.maxTurns = max(1, maxTurns)
         self.makeSession = makeSession
         self.findAPITool = findAPITool
-        self.directTools = directTools
-        self.directCallSession = directCallSession
-    }
-
-    /// Indexes `tools` by `Tool.name` for `directTools`'s dispatch lookup —
-    /// shared by both public-facing initializers.
-    ///
-    /// Duplicate names keep the *first* occurrence, the same
-    /// `uniquingKeysWith` posture `ArgumentMarshaler.marshalArguments` takes
-    /// toward its own dictionary construction: `MultiToolAgent` is not a
-    /// validating catalog builder like `MultiTool.Builder` (which throws on
-    /// a genuine name collision), so a caller-supplied duplicate degrades
-    /// gracefully rather than failing `init`.
-    ///
-    /// - Parameter tools: the direct tools to index.
-    /// - Returns: `tools` keyed by `Tool.name`.
-    private static func indexDirectTools(_ tools: [any Tool]) -> [String: any Tool] {
-        Dictionary(tools.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
     }
 
     /// Runs the search-then-code loop to answer `prompt`, per this type's
@@ -437,10 +370,6 @@ public struct MultiToolAgent: Sendable {
             case .findAPIs(let task):
                 let feedback = try await dispatchFindAPIs(task: task)
                 transcript += "\(Self.transcriptSeparator)\(feedback)"
-
-            case .callTool(let name, let task):
-                let feedback = try await dispatchCallTool(name: name, task: task)
-                transcript += "\(Self.transcriptSeparator)\(feedback)"
             }
         }
 
@@ -495,78 +424,6 @@ public struct MultiToolAgent: Sendable {
         """
     }
 
-    // MARK: - callTool dispatch (plan.md's escape hatch)
-
-    /// Dispatches one `callTool(name, task)` step: rejects an unknown
-    /// direct-tool name, or a `callTool` step this agent can't dispatch at
-    /// all (no direct tools configured, or none supplied a guided-call
-    /// session), with an instructive message — never a crash — otherwise
-    /// runs `DirectToolCall.call` and renders its outcome.
-    ///
-    /// Mirrors `MultiTool.call`'s own posture toward a `runCode` failure:
-    /// every failure this function's own pipeline can produce (an unknown
-    /// tool name, a schema-derivation failure, a guided-session failure, a
-    /// malformed guided output, a pre-call validation failure, or the direct
-    /// tool's own thrown error) is rendered as **repairable text** fed back
-    /// into the transcript rather than propagated out of `respond(to:)` —
-    /// only `CancellationError` propagates unchanged, so cancelling the
-    /// `Task` running `respond(to:)` still reaches a `callTool` dispatch in
-    /// flight.
-    ///
-    /// - Parameters:
-    ///   - name: the direct tool's name the model passed to `callTool`.
-    ///   - task: the plain-language description of the arguments to use the
-    ///     model passed to `callTool`.
-    /// - Returns: the text to feed back to the model as this step's result.
-    /// - Throws: `CancellationError` if the calling `Task` is cancelled.
-    private func dispatchCallTool(name: String, task: String) async throws -> String {
-        try Task.checkCancellation()
-        guard let tool = directTools[name] else {
-            return Self.unknownDirectToolMessage(name: name, known: directTools.keys.sorted())
-        }
-        guard let directCallSession else {
-            return Self.directCallUnavailableMessage(name: name)
-        }
-        do {
-            let output = try await DirectToolCall.call(tool, task: task, using: directCallSession)
-            let rendered = try ArgumentMarshaler.renderOutput(output)
-            return "callTool(\"\(name)\") result:\n\(ResultRenderer.serialize(rendered))"
-        } catch let cancellation as CancellationError {
-            throw cancellation
-        } catch {
-            return "callTool(\"\(name)\") failed: \(error)\nFix the request and call callTool again."
-        }
-    }
-
-    /// The instructive rejection fed back to the model when it emits
-    /// `callTool` naming a tool this agent doesn't recognize — plan.md
-    /// acceptance criterion: "Unknown direct-tool name from the model → a
-    /// repairable error, not a crash."
-    ///
-    /// - Parameters:
-    ///   - name: the unrecognized direct-tool name the model passed to
-    ///     `callTool`.
-    ///   - known: every direct tool name this agent does recognize, for a
-    ///     helpful listing.
-    /// - Returns: the rejection text to feed back into the transcript.
-    private static func unknownDirectToolMessage(name: String, known: [String]) -> String {
-        guard !known.isEmpty else {
-            return "callTool(\"\(name)\") failed: no direct tools are registered."
-        }
-        return "callTool(\"\(name)\") failed: unknown direct tool. Known direct tools: \(known.joined(separator: ", "))."
-    }
-
-    /// The instructive rejection fed back to the model when `callTool`
-    /// can't be dispatched at all because no guided-call session is
-    /// configured — the `callTool` analogue of `discoveryUnavailableMessage`'s
-    /// "no librarian is configured" case.
-    ///
-    /// - Parameter name: the direct tool name the model passed to `callTool`.
-    /// - Returns: the rejection text to feed back into the transcript.
-    private static func directCallUnavailableMessage(name: String) -> String {
-        "callTool(\"\(name)\") failed: no guided-call session is configured for this agent's direct tools."
-    }
-
     // MARK: - Instructions assembly
 
     /// The fixed `runCode`/`findAPIs` description strings the loop teaches
@@ -607,59 +464,22 @@ public struct MultiToolAgent: Sendable {
               and a runnable example — so you can write a runCode snippet. Prefer this over
               guessing function names.
             """
-
-        /// `callTool`'s description — plan.md's escape hatch — included only
-        /// when this agent has at least one direct tool configured
-        /// (`directTools` non-empty).
-        ///
-        /// Lists each direct tool's name and description so the model knows
-        /// they exist and roughly what they do; unlike `runCode`'s
-        /// `tools.*` surface, no typed signature is rendered here — the
-        /// arguments themselves are produced separately, under a grammar
-        /// derived from the called tool's own schema, so the main model
-        /// only ever needs to describe its *intent* via `args`, never the
-        /// literal argument shape.
-        ///
-        /// - Parameter directTools: this agent's direct tools, keyed by name.
-        /// - Returns: `callTool`'s full description text.
-        static func callTool(directTools: [String: any Tool]) -> String {
-            let listing =
-                directTools
-                .values
-                .sorted { $0.name < $1.name }
-                .map { "  - \($0.name): \($0.description)" }
-                .joined(separator: "\n")
-            return """
-                callTool(name: string, args: string)
-                  Call one of the direct tools listed below with a schema-valid argument
-                  guarantee: unlike runCode's tools.*, its arguments are generated separately
-                  under a grammar derived from that tool's own schema, so they can never be
-                  malformed. Give the tool's exact name and, in args, describe in plain
-                  language what you want the call to accomplish — never the literal argument
-                  values themselves.
-                Available direct tools:
-                \(listing)
-                """
-        }
     }
 
     /// Assembles the full session instructions for the main agent loop: the
     /// caller's persona/purpose text, the fixed tool-description block
-    /// (honoring `registry.isDirectMode` and whether any direct tools are
-    /// configured), and the turn format's own response-shape instructions.
+    /// (honoring `registry.isDirectMode`), and the turn format's own
+    /// response-shape instructions.
     ///
     /// - Parameters:
     ///   - userInstructions: the caller-supplied persona/purpose text.
     ///   - registry: the catalog this agent's loop dispatches into.
     ///   - turnFormat: the turn strategy in use.
-    ///   - directTools: this agent's direct tools, keyed by name — plan.md's
-    ///     escape hatch.
     /// - Returns: the full session instructions.
     private static func sessionInstructions(
         userInstructions: String,
         registry: MultiTool.Registry,
-        turnFormat: any TurnFormat,
-        directTools: [String: any Tool]
+        turnFormat: any TurnFormat
     ) -> String {
         var sections = [
             userInstructions,
@@ -668,14 +488,8 @@ public struct MultiToolAgent: Sendable {
         if registry.supportsFindAPIs {
             sections.append(ToolDescriptions.findAPIs)
         }
-        if !directTools.isEmpty {
-            sections.append(ToolDescriptions.callTool(directTools: directTools))
-        }
         sections.append(
-            turnFormat.formatInstructions(
-                supportsFindAPIs: registry.supportsFindAPIs,
-                supportsDirectCall: !directTools.isEmpty
-            )
+            turnFormat.formatInstructions(supportsFindAPIs: registry.supportsFindAPIs)
         )
         return sections.joined(separator: Self.transcriptSeparator)
     }

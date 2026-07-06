@@ -17,15 +17,6 @@ public enum AgentStep: Sendable, Equatable {
     /// plan.md's `runCode(code: string)`.
     case runCode(code: String)
 
-    /// The model wants to call one *direct* tool with a schema-valid
-    /// argument guarantee — plan.md's escape hatch, `callTool(name, args)`:
-    /// `name` is the direct tool's exact name and `task` is a plain-language
-    /// description of what the caller wants the call to accomplish (never
-    /// the literal argument values themselves — those are produced
-    /// separately, under a grammar derived from the tool's own schema, by
-    /// `DirectToolCall`).
-    case callTool(name: String, task: String)
-
     /// The model is done and `text` is its answer to the user.
     case final(text: String)
 }
@@ -94,19 +85,12 @@ public protocol TurnFormat: Sendable {
     /// A guided strategy that constrains output via grammar rather than
     /// prose convention may return an empty string.
     ///
-    /// - Parameters:
-    ///   - supportsFindAPIs: whether the agent's registry surfaces
-    ///     `findAPIs` (`false` in direct mode) — the instructions should not
-    ///     describe an action the model can't actually take.
-    ///   - supportsDirectCall: whether the agent has any *direct* tools
-    ///     configured (`MultiToolAgent(directTools:)`) — plan.md's escape
-    ///     hatch, `callTool(name, args)`. `false` when no direct tools are
-    ///     registered, the same way `supportsFindAPIs` is `false` in direct
-    ///     mode: the instructions should not describe an affordance the
-    ///     model can't actually use.
+    /// - Parameter supportsFindAPIs: whether the agent's registry surfaces
+    ///   `findAPIs` (`false` in direct mode) — the instructions should not
+    ///   describe an action the model can't actually take.
     /// - Returns: the format instructions to append to the session's
     ///   instructions.
-    func formatInstructions(supportsFindAPIs: Bool, supportsDirectCall: Bool) -> String
+    func formatInstructions(supportsFindAPIs: Bool) -> String
 
     /// Parses one raw turn response into a well-formed `AgentStep`.
     ///
@@ -168,10 +152,7 @@ public struct TolerantParseTurnFormat: TurnFormat {
         static let task = "TASK:"
         static let code = "CODE:"
         static let answer = "ANSWER:"
-        /// A `callTool` turn's direct-tool-name field — plan.md's escape
-        /// hatch, `callTool(name, args)`'s `name`.
-        static let toolName = "NAME:"
-        /// The Markdown code-fence delimiter `formatInstructions(supportsFindAPIs:supportsDirectCall:)`
+        /// The Markdown code-fence delimiter `formatInstructions(supportsFindAPIs:)`
         /// teaches the model and `extractCode(afterActionAt:in:)` scans for —
         /// one named constant so both stay in sync.
         static let codeFence = "```"
@@ -184,7 +165,6 @@ public struct TolerantParseTurnFormat: TurnFormat {
     private enum ActionVerb {
         static let findAPIs = "findapis"
         static let runCode = "runcode"
-        static let callTool = "calltool"
         static let final = "final"
     }
 
@@ -195,7 +175,6 @@ public struct TolerantParseTurnFormat: TurnFormat {
     private enum ActionName {
         static let findAPIs = "findAPIs"
         static let runCode = "runCode"
-        static let callTool = "callTool"
         static let final = "final"
     }
 
@@ -216,18 +195,12 @@ public struct TolerantParseTurnFormat: TurnFormat {
 
     /// Builds the ReAct-style `ACTION:`/`TASK:`/`CODE:`/`ANSWER:` format
     /// instructions this conformer's `parseTurn(_:)` expects — see
-    /// `TurnFormat.formatInstructions(supportsFindAPIs:supportsDirectCall:)`.
+    /// `TurnFormat.formatInstructions(supportsFindAPIs:)`.
     ///
-    /// - Parameters:
-    ///   - supportsFindAPIs: whether to include the `findAPIs` action's
-    ///     instructions; omitted entirely in direct mode.
-    ///   - supportsDirectCall: whether to include the `callTool` action's
-    ///     instructions; omitted entirely when this agent has no direct
-    ///     tools configured. Defaults to `false` (matching this method's own
-    ///     default for `MultiToolAgentTests`'/`TurnFormatTests`' pre-existing
-    ///     call sites, which never exercise the escape hatch).
+    /// - Parameter supportsFindAPIs: whether to include the `findAPIs`
+    ///   action's instructions; omitted entirely in direct mode.
     /// - Returns: the full format instructions.
-    public func formatInstructions(supportsFindAPIs: Bool, supportsDirectCall: Bool = false) -> String {
+    public func formatInstructions(supportsFindAPIs: Bool) -> String {
         var lines = [
             "On each turn, respond with exactly one action, using exactly one of the",
             "formats below — nothing else in the message.",
@@ -250,15 +223,6 @@ public struct TolerantParseTurnFormat: TurnFormat {
             FieldMarker.codeFence,
             "",
         ])
-        if supportsDirectCall {
-            lines.append(contentsOf: [
-                "To call a direct tool with a schema-valid argument guarantee:",
-                "\(FieldMarker.action) \(ActionName.callTool)",
-                "\(FieldMarker.toolName) <the direct tool's exact name>",
-                "\(FieldMarker.task) <plain-language description of what you want the call to accomplish>",
-                "",
-            ])
-        }
         lines.append(contentsOf: [
             "To give your final answer:",
             "\(FieldMarker.action) \(ActionName.final)",
@@ -311,23 +275,6 @@ public struct TolerantParseTurnFormat: TurnFormat {
                 )
             }
             return .runCode(code: code)
-
-        case ActionVerb.callTool:
-            guard let toolName = Self.firstField(marker: FieldMarker.toolName, in: lines, from: action.lineIndex + 1),
-                !toolName.value.isEmpty
-            else {
-                throw TurnParseError(
-                    message: "\(FieldMarker.action) \(ActionName.callTool) requires a non-empty \"\(FieldMarker.toolName)\" line."
-                )
-            }
-            guard let task = Self.firstField(marker: FieldMarker.task, in: lines, from: toolName.lineIndex + 1),
-                !task.value.isEmpty
-            else {
-                throw TurnParseError(
-                    message: "\(FieldMarker.action) \(ActionName.callTool) requires a non-empty \"\(FieldMarker.task)\" line."
-                )
-            }
-            return .callTool(name: toolName.value, task: task.value)
 
         case ActionVerb.final:
             guard

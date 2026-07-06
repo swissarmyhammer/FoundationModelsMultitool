@@ -366,8 +366,6 @@ enum CLIRunner {
             return "findAPIs(\"\(task)\")"
         case .runCode(let code):
             return "runCode(\(code.count) chars)"
-        case .callTool(let name, let task):
-            return "callTool(\"\(name)\", \"\(task)\")"
         case .final(let text):
             return "final: \(text)"
         }

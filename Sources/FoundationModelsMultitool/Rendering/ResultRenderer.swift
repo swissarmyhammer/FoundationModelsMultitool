@@ -135,11 +135,7 @@ public enum ResultRenderer {
     ///   `.number` to `null` rather than throwing), so this fallback is
     ///   defensive, never a trap.
     ///
-    /// Internal (not `private`): `MultiToolAgent`'s `callTool` dispatch
-    /// (`DirectToolCall`'s escape hatch) reuses this exact serialization for
-    /// a direct tool's rendered result, rather than duplicating the same
-    /// `JSONEncoder`/`.sortedKeys` call a second time.
-    static func serialize(_ value: InterpreterValue) -> String {
+    private static func serialize(_ value: InterpreterValue) -> String {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         guard
