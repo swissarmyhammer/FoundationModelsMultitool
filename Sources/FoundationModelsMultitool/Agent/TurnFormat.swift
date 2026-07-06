@@ -158,24 +158,21 @@ public struct TolerantParseTurnFormat: TurnFormat {
         static let codeFence = "```"
     }
 
-    /// The `ACTION:` verbs `parseTurn(_:)` recognizes, lowercased to match
-    /// `action.value.lowercased()`'s case-insensitive comparison — named
-    /// constants so the verb spelled out in error messages and the one
-    /// compared against in the `switch` below can never drift apart.
-    private enum ActionVerb {
-        static let findAPIs = "findapis"
-        static let runCode = "runcode"
-        static let final = "final"
-    }
+    /// The `ACTION:` verbs `parseTurn(_:)` recognizes — one enum consolidating
+    /// what used to be two parallel definitions (`ActionVerb`, lowercased for
+    /// matching; `ActionName`, properly cased for display) that had to be kept
+    /// in sync by hand despite sharing an identical case set. `rawValue` is the
+    /// properly-cased spelling used in `formatInstructions(supportsFindAPIs:)`'s
+    /// example lines and in `parseTurn(_:)`'s error messages; `lowercased` is
+    /// the spelling `action.value.lowercased()` is compared against.
+    private enum Action: String {
+        case findAPIs
+        case runCode
+        case final
 
-    /// The action names as displayed to the model — in `formatInstructions(supportsFindAPIs:)`'s
-    /// example lines and in `parseTurn(_:)`'s error messages — properly cased, unlike
-    /// `ActionVerb`'s lowercased matching constants. One named constant per action so the
-    /// spelling can't drift between the format instructions and the error messages.
-    private enum ActionName {
-        static let findAPIs = "findAPIs"
-        static let runCode = "runCode"
-        static let final = "final"
+        /// The lowercased spelling `parseTurn(_:)`'s `switch` matches
+        /// `action.value.lowercased()` against.
+        var lowercased: String { rawValue.lowercased() }
     }
 
     /// How many consecutive parse failures this format tolerates before
@@ -209,14 +206,14 @@ public struct TolerantParseTurnFormat: TurnFormat {
         if supportsFindAPIs {
             lines.append(contentsOf: [
                 "To search for relevant tool functions:",
-                "\(FieldMarker.action) \(ActionName.findAPIs)",
+                "\(FieldMarker.action) \(Action.findAPIs.rawValue)",
                 "\(FieldMarker.task) <what you are trying to accomplish, in plain language>",
                 "",
             ])
         }
         lines.append(contentsOf: [
             "To run a JavaScript snippet against tools.*:",
-            "\(FieldMarker.action) \(ActionName.runCode)",
+            "\(FieldMarker.action) \(Action.runCode.rawValue)",
             FieldMarker.code,
             "\(FieldMarker.codeFence)js",
             "<your code here>",
@@ -225,7 +222,7 @@ public struct TolerantParseTurnFormat: TurnFormat {
         ])
         lines.append(contentsOf: [
             "To give your final answer:",
-            "\(FieldMarker.action) \(ActionName.final)",
+            "\(FieldMarker.action) \(Action.final.rawValue)",
             "\(FieldMarker.answer) <the final answer text>",
         ])
         return lines.joined(separator: "\n")
@@ -249,40 +246,40 @@ public struct TolerantParseTurnFormat: TurnFormat {
         let lines = raw.components(separatedBy: "\n")
         guard let action = Self.firstField(marker: FieldMarker.action, in: lines) else {
             throw TurnParseError(
-                message: "No \"\(FieldMarker.action)\" line found. Expected \"\(FieldMarker.action) \(ActionName.findAPIs)\", "
-                    + "\"\(FieldMarker.action) \(ActionName.runCode)\", or \"\(FieldMarker.action) \(ActionName.final)\"."
+                message: "No \"\(FieldMarker.action)\" line found. Expected \"\(FieldMarker.action) \(Action.findAPIs.rawValue)\", "
+                    + "\"\(FieldMarker.action) \(Action.runCode.rawValue)\", or \"\(FieldMarker.action) \(Action.final.rawValue)\"."
             )
         }
 
         switch action.value.lowercased() {
-        case ActionVerb.findAPIs:
+        case Action.findAPIs.lowercased:
             guard let task = Self.firstField(marker: FieldMarker.task, in: lines, from: action.lineIndex + 1),
                 !task.value.isEmpty
             else {
                 throw TurnParseError(
-                    message: "\(FieldMarker.action) \(ActionName.findAPIs) requires a non-empty \"\(FieldMarker.task)\" line."
+                    message: "\(FieldMarker.action) \(Action.findAPIs.rawValue) requires a non-empty \"\(FieldMarker.task)\" line."
                 )
             }
             return .findAPIs(task: task.value)
 
-        case ActionVerb.runCode:
+        case Action.runCode.lowercased:
             guard let code = Self.extractCode(afterActionAt: action.lineIndex, in: lines),
                 !code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             else {
                 throw TurnParseError(
-                    message: "\(FieldMarker.action) \(ActionName.runCode) requires a \"\(FieldMarker.code)\" section "
+                    message: "\(FieldMarker.action) \(Action.runCode.rawValue) requires a \"\(FieldMarker.code)\" section "
                         + "containing the snippet."
                 )
             }
             return .runCode(code: code)
 
-        case ActionVerb.final:
+        case Action.final.lowercased:
             guard
                 let answer = Self.extractRest(marker: FieldMarker.answer, afterActionAt: action.lineIndex, in: lines),
                 !answer.isEmpty
             else {
                 throw TurnParseError(
-                    message: "\(FieldMarker.action) \(ActionName.final) requires a non-empty \"\(FieldMarker.answer)\" field."
+                    message: "\(FieldMarker.action) \(Action.final.rawValue) requires a non-empty \"\(FieldMarker.answer)\" field."
                 )
             }
             return .final(text: answer)
@@ -290,7 +287,7 @@ public struct TolerantParseTurnFormat: TurnFormat {
         default:
             throw TurnParseError(
                 message: "Unrecognized \(FieldMarker.action) \"\(action.value)\". "
-                    + "Expected \(ActionName.findAPIs), \(ActionName.runCode), or \(ActionName.final)."
+                    + "Expected \(Action.findAPIs.rawValue), \(Action.runCode.rawValue), or \(Action.final.rawValue)."
             )
         }
     }

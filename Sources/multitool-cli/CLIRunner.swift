@@ -351,24 +351,17 @@ enum CLIRunner {
                 guard let text = event.text else { return nil }
                 let format: any TurnFormat = event.grammar != nil ? GuidedTurnFormat() : TolerantParseTurnFormat()
                 guard let step = try? format.parseTurn(text) else { return nil }
-                return Self.describe(step)
+                // Renders the parsed step as a single readable trace line,
+                // e.g. `findAPIs("...")`, `runCode(<n> chars)`, or `final: ...`.
+                switch step {
+                case .findAPIs(let task):
+                    return "findAPIs(\"\(task)\")"
+                case .runCode(let code):
+                    return "runCode(\(code.count) chars)"
+                case .final(let text):
+                    return "final: \(text)"
+                }
             }
-    }
-
-    /// Renders one parsed `AgentStep` as a single readable trace line.
-    ///
-    /// - Parameter step: the step to describe.
-    /// - Returns: e.g. `findAPIs("...")`, `runCode(<n> chars)`, or
-    ///   `final: ...`.
-    private static func describe(_ step: AgentStep) -> String {
-        switch step {
-        case .findAPIs(let task):
-            return "findAPIs(\"\(task)\")"
-        case .runCode(let code):
-            return "runCode(\(code.count) chars)"
-        case .final(let text):
-            return "final: \(text)"
-        }
     }
 
     // MARK: - Recordings directory

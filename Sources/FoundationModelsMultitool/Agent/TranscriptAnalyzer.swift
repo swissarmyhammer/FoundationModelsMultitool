@@ -208,17 +208,28 @@ enum TranscriptAnalyzer {
 }
 
 extension AgentStep {
+    /// Whether `lhs` is the same case as `rhs`, ignoring associated values —
+    /// the shared case-predicate helper `isRunCode`/`isFindAPIs` both
+    /// delegate to, instead of each repeating its own `if case ... = self`
+    /// boilerplate.
+    fileprivate static func isSameCase(_ lhs: AgentStep, _ rhs: AgentStep) -> Bool {
+        switch (lhs, rhs) {
+        case (.findAPIs, .findAPIs), (.runCode, .runCode), (.final, .final):
+            return true
+        default:
+            return false
+        }
+    }
+
     /// Whether this step is `.runCode` — `TranscriptAnalyzer
     /// .findAPIsPrecedesRunCode(in:)`'s `firstIndex(where:)` predicate.
     fileprivate var isRunCode: Bool {
-        if case .runCode = self { return true }
-        return false
+        Self.isSameCase(self, .runCode(code: ""))
     }
 
     /// Whether this step is `.findAPIs` — `TranscriptAnalyzer
     /// .findAPIsPrecedesRunCode(in:)`'s `contains(where:)` predicate.
     fileprivate var isFindAPIs: Bool {
-        if case .findAPIs = self { return true }
-        return false
+        Self.isSameCase(self, .findAPIs(task: ""))
     }
 }
