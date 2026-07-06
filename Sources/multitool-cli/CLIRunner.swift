@@ -36,8 +36,9 @@ struct CLIArgumentError: Error, Equatable, CustomStringConvertible {
     /// The unrecognized argument, verbatim.
     let flag: String
 
-    /// A human-readable description of the error, satisfying
-    /// `CustomStringConvertible`.
+    /// A human-readable description of the error.
+    ///
+    /// Satisfies `CustomStringConvertible`.
     var description: String {
         "\(cliErrorPrefix) unknown argument \"\(flag)\". Run with --help for usage."
     }
@@ -82,8 +83,10 @@ struct CLIRouterUnavailableError: Error, CustomStringConvertible {
 ///   end by the gated `CLISmokeTests`
 ///   (`Tests/FoundationModelsMultitoolIntegrationTests/CLISmokeTests.swift`).
 enum CLIRunner {
-    /// Process exit codes this runner returns — the BSD `sysexits.h`
-    /// convention for the two documented failure modes, `0` for success.
+    /// Process exit codes this runner returns.
+    ///
+    /// Follows the BSD `sysexits.h` convention for the two documented
+    /// failure modes; `0` for success.
     enum ExitCode {
         /// Ran to completion (or `--help` was requested).
         static let success: Int32 = 0
@@ -238,8 +241,10 @@ enum CLIRunner {
 
     // MARK: - The demo run
 
-    /// The resolve-through-print body of `run(...)`, factored out so
-    /// `run(...)` only has to decide which exit code an error maps to.
+    /// The resolve-through-print body of `run(...)`.
+    ///
+    /// Factored out so `run(...)` only has to decide which exit code an
+    /// error maps to.
     ///
     /// - Parameters:
     ///   - direct: whether to run the agent in direct mode

@@ -3,13 +3,14 @@ import FoundationModels
 import FoundationModelsMetadataRegistry
 import FoundationModelsRouter
 
-/// Reconstructs an agent loop's `AgentStep`s (and the selection tier's
-/// `Selection` picks) from a Router JSONL transcript (`RecordingLevel.full`) — plan.md's
-/// M6.5 trace assertions ("findAPIs before runCode", "selection tier returned
-/// the expected minimal set", "snippet invoked exactly the expected tools.*",
-/// "repair within N turns") read the transcript rather than instrumenting the
-/// loop itself, so the same on-disk artifact a real gated run produces is
-/// what both the gated integration suite
+/// Reconstructs an agent loop's `AgentStep`s and `Selection` picks from a Router JSONL transcript.
+///
+/// Recorded at `RecordingLevel.full`. Plan.md's M6.5 trace assertions
+/// ("findAPIs before runCode", "selection tier returned the expected
+/// minimal set", "snippet invoked exactly the expected tools.*", "repair
+/// within N turns") read the transcript rather than instrumenting the loop
+/// itself, so the same on-disk artifact a real gated run produces is what
+/// both the gated integration suite
 /// (`Tests/FoundationModelsMultitoolIntegrationTests`) and this type's own
 /// ungated unit tests (`TranscriptAssertionTests`, run in normal CI against
 /// checked-in fixture JSONL) exercise.
@@ -131,8 +132,7 @@ enum TranscriptAnalyzer {
         )
     }
 
-    /// Collects every distinct `tools.*` call path invoked across every
-    /// `.runCode` step in `steps`.
+    /// Collects every distinct `tools.*` call path invoked across every `.runCode` step in `steps`.
     ///
     /// Implements plan.md's "snippet invoked exactly the expected tools.*"
     /// trace assertion.
@@ -147,8 +147,9 @@ enum TranscriptAnalyzer {
         }
     }
 
-    /// How many `.runCode` steps occurred before the first `.final` step —
-    /// plan.md's "repair within N turns" trace assertion: a scenario that
+    /// Returns the count of `.runCode` steps occurring before the first `.final` step.
+    ///
+    /// Plan.md's "repair within N turns" trace assertion: a scenario that
     /// mis-calls a tool once and then corrects itself produces more than one
     /// `.runCode` step before `.final`.
     ///
@@ -195,10 +196,10 @@ enum TranscriptAnalyzer {
             .map { try Selection(GeneratedContent(json: $0)) }
     }
 
-    /// The compiled call-site regex `toolCallPaths(in:)` scans with, matching
-    /// `tools.<name>` / `tools.<group>.<name>` call sites.
+    /// The compiled call-site regex `toolCallPaths(in:)` scans for `tools.*` call sites.
     ///
-    /// Computed once, since `NSRegularExpression` compilation is
+    /// Matches `tools.<name>` / `tools.<group>.<name>` call sites. Computed
+    /// once, since `NSRegularExpression` compilation is
     /// comparatively expensive and this pattern never changes.
     private static let toolCallRegex: NSRegularExpression = {
         let pattern = #"(?<![A-Za-z0-9_$])tools\.([A-Za-z_$][A-Za-z0-9_$]*(?:\.[A-Za-z_$][A-Za-z0-9_$]*)?)\s*\("#

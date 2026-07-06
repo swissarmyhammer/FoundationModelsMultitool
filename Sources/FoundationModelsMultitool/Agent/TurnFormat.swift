@@ -1,16 +1,17 @@
 import Foundation
 import FoundationModelsRouter
 
-/// One parsed step out of a raw agent-turn response — plan.md's "parse a
-/// tool call out of `raw` — runCode / findAPIs / final answer".
+/// One parsed step out of a raw agent-turn response: `runCode`, `findAPIs`, or a final answer.
 ///
-/// `MultiToolAgent.respond(to:)` dispatches on this after a `TurnFormat`
-/// turns the session's raw text into one; the case names mirror the two
-/// tools the model sees (`runCode`, `findAPIs`) plus the loop's own
-/// terminal step (`final`, not a tool call at all).
+/// Plan.md: "parse a tool call out of `raw` — runCode / findAPIs / final
+/// answer". `MultiToolAgent.respond(to:)` dispatches on this after a
+/// `TurnFormat` turns the session's raw text into one; the case names
+/// mirror the two tools the model sees (`runCode`, `findAPIs`) plus the
+/// loop's own terminal step (`final`, not a tool call at all).
 public enum AgentStep: Sendable, Equatable {
-    /// The model wants to search for relevant tool functions before writing
-    /// a snippet — plan.md's `findAPIs(task: string)`.
+    /// The model wants to search for relevant tool functions before writing a snippet.
+    ///
+    /// Plan.md's `findAPIs(task: string)`.
     case findAPIs(task: String)
 
     /// Represents the model's request to execute a JavaScript snippet.
@@ -29,8 +30,9 @@ public enum AgentStep: Sendable, Equatable {
 /// failure triggers a bounded number of repair turns... before failing the
 /// loop").
 public struct TurnParseError: Error, Sendable, Equatable, CustomStringConvertible {
-    /// A human-readable description of why the turn couldn't be parsed —
-    /// specific enough to hand back to the model as a repair instruction.
+    /// A human-readable description of why the turn couldn't be parsed.
+    ///
+    /// Specific enough to hand back to the model as a repair instruction.
     public let message: String
 
     /// Creates a turn-parse error.
@@ -79,16 +81,18 @@ extension TurnParseError {
 /// second strategy is adding a new conformer and a new static factory
 /// (mirroring `.tolerantParse`/`.guided`); the loop itself does not change.
 public protocol TurnFormat: Sendable {
-    /// How many consecutive parse failures `MultiToolAgent.respond(to:)`
-    /// tolerates (each triggering a repair turn) before failing the loop
-    /// with `MultiToolAgentError.unparseableTurn`. Plan.md: "configurable,
-    /// default 1."
+    /// How many consecutive parse failures this format tolerates before `MultiToolAgent.respond(to:)` fails the loop.
+    ///
+    /// Each failure triggers a repair turn; exceeding this count fails the
+    /// loop with `MultiToolAgentError.unparseableTurn`. Plan.md:
+    /// "configurable, default 1."
     var maxRepairTurns: Int { get }
 
-    /// The turn-format-specific instructions to append to the agent's
-    /// session instructions, teaching the model how to shape its response.
-    /// A guided strategy that constrains output via grammar rather than
-    /// prose convention may return an empty string.
+    /// The turn-format-specific instructions to append to the agent's session instructions.
+    ///
+    /// Teaches the model how to shape its response. A guided strategy that
+    /// constrains output via grammar rather than prose convention may
+    /// return an empty string.
     ///
     /// - Parameter supportsFindAPIs: whether the agent's registry surfaces
     ///   `findAPIs` (`false` in direct mode) — the instructions should not
@@ -114,8 +118,7 @@ public protocol TurnFormat: Sendable {
     /// - Returns: the repair instruction to append to the transcript.
     func repairInstruction(for error: Error) -> String
 
-    /// The Router grammar this format's session must be constrained to, or
-    /// `nil` for a plain, unconstrained session.
+    /// The Router grammar this format's session must be constrained to, or `nil` for an unconstrained session.
     ///
     /// `MultiToolAgent`'s production initializer reads this to decide how to
     /// build the main session: non-`nil` routes through
@@ -132,14 +135,16 @@ public protocol TurnFormat: Sendable {
 
 extension TurnFormat {
     /// Default: no grammar constraint — a plain, unconstrained session.
+    ///
     /// `TolerantParseTurnFormat` relies on this; `GuidedTurnFormat` is the
     /// one conformer that overrides it.
     public var grammar: Grammar? { nil }
 }
 
-/// Plan.md's "Prompted convention + tolerant parse": a ReAct-style
-/// instruction plus a lenient extractor, falling back to a repair turn when
-/// parsing fails (plan.md Router integration, option 2).
+/// Plan.md's "Prompted convention + tolerant parse" strategy: a ReAct-style instruction plus a lenient extractor.
+///
+/// Falls back to a repair turn when parsing fails (plan.md Router
+/// integration, option 2).
 ///
 /// The convention asks the model for exactly one `ACTION:` line per turn
 /// (`findAPIs`, `runCode`, or `final`) followed by that action's field —
@@ -151,9 +156,10 @@ extension TurnFormat {
 /// case-insensitively, and `runCode` falls back to "everything after
 /// `CODE:`" when the model forgets the code fence.
 public struct TolerantParseTurnFormat: TurnFormat {
-    /// The field markers the format instructions teach the model and
-    /// `parseTurn(_:)` scans for — named constants so the two stay in sync
-    /// by construction rather than by two hand-kept copies of each literal.
+    /// The field markers the format instructions teach the model and `parseTurn(_:)` scans for.
+    ///
+    /// Named constants so the two stay in sync by construction rather than
+    /// by two hand-kept copies of each literal.
     private enum FieldMarker {
         static let action = "ACTION:"
         static let task = "TASK:"
@@ -244,8 +250,7 @@ public struct TolerantParseTurnFormat: TurnFormat {
         return lines.joined(separator: "\n")
     }
 
-    /// Leniently parses `raw` into an `AgentStep` — see
-    /// `TurnFormat.parseTurn(_:)`.
+    /// Leniently parses `raw` into an `AgentStep` — see `TurnFormat.parseTurn(_:)`.
     ///
     /// Scans for the first `ACTION:` marker (case-insensitively, tolerating
     /// preamble text before it), then extracts that action's field —
@@ -395,12 +400,7 @@ public struct TolerantParseTurnFormat: TurnFormat {
 
         // Tolerant fallback: no fence — treat everything from CODE: onward
         // (including any text on the CODE: line itself) as the snippet.
-        var fallbackLines: [String] = []
-        if !codeField.value.isEmpty {
-            fallbackLines.append(codeField.value)
-        }
-        fallbackLines.append(contentsOf: lines[index...])
-        return fallbackLines.joined(separator: "\n")
+        return Self.joinFieldValue(codeField.value, withLinesFrom: lines, startIndex: index, trimmed: false)
     }
 
     /// Extracts the full text from a marker to the end of the message.
@@ -418,14 +418,41 @@ public struct TolerantParseTurnFormat: TurnFormat {
     ///   isn't present.
     private static func extractRest(marker: String, afterActionAt actionIndex: Int, in lines: [String]) -> String? {
         guard let field = firstField(marker: marker, in: lines, from: actionIndex + 1) else { return nil }
+        return Self.joinFieldValue(field.value, withLinesFrom: lines, startIndex: field.lineIndex + 1, trimmed: true)
+    }
+
+    /// Joins a field's same-line value (if non-empty) with the lines that follow it.
+    ///
+    /// Shared by `extractCode(afterActionAt:in:)`'s no-fence fallback and
+    /// `extractRest(marker:afterActionAt:in:)`: both build an array
+    /// containing the field's own same-line text (when present) followed by
+    /// every line from `startIndex` onward, then join with `"\n"`.
+    ///
+    /// - Parameters:
+    ///   - fieldValue: the field's trimmed same-line text; included first
+    ///     when non-empty.
+    ///   - lines: the raw turn's lines.
+    ///   - startIndex: the first subsequent line to include; safe to pass an
+    ///     index equal to `lines.count` (no subsequent lines).
+    ///   - trimmed: whether to trim the joined result of leading/trailing
+    ///     whitespace and newlines. `extractRest` needs this; `extractCode`'s
+    ///     no-fence fallback does not.
+    /// - Returns: the joined text.
+    private static func joinFieldValue(
+        _ fieldValue: String,
+        withLinesFrom lines: [String],
+        startIndex: Int,
+        trimmed: Bool
+    ) -> String {
         var resultLines: [String] = []
-        if !field.value.isEmpty {
-            resultLines.append(field.value)
+        if !fieldValue.isEmpty {
+            resultLines.append(fieldValue)
         }
-        if field.lineIndex + 1 < lines.count {
-            resultLines.append(contentsOf: lines[(field.lineIndex + 1)...])
+        if startIndex < lines.count {
+            resultLines.append(contentsOf: lines[startIndex...])
         }
-        return resultLines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        let joined = resultLines.joined(separator: "\n")
+        return trimmed ? joined.trimmingCharacters(in: .whitespacesAndNewlines) : joined
     }
 }
 
