@@ -361,7 +361,7 @@ struct HardeningTests {
     /// its always-present `tools`/`help`/`docs` globals, with no per-tool
     /// positional bindings to complicate the enumeration.
     private static var emptyRegistry: MultiTool.Registry {
-        MultiTool.Registry(surface: APISurface(entries: []), tools: [:])
+        MultiTool.Registry(surface: ApiSurface(entries: []), tools: [:])
     }
 
     /// Parses the `### Injected globals` section of the repo root's

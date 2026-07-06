@@ -149,7 +149,7 @@ let multitoolTinyProfile = ProfileDefinition(
 /// One resolved, live `Router` + `LanguageModelProfile` pair, together with
 /// the recording root its sessions write their JSONL transcript under —
 /// everything a gated scenario needs to run `MultiToolAgent.respond(to:)` (or
-/// drive a `MetadataSearcher<APISurface.Entry>` in `.selection` mode
+/// drive a `MetadataSearcher<ApiSurface.Entry>` in `.selection` mode
 /// directly) and then read the resulting trace back via `TranscriptAnalyzer`.
 struct LiveRouterFixture {
     /// The router that resolved `profile` — its `id` roots the recording

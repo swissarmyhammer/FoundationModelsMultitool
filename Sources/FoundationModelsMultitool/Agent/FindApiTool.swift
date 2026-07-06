@@ -1,7 +1,7 @@
 import FoundationModelsMetadataRegistry
 
 /// plan.md Component 8 (the other half of "Discovery"): forwards the agent
-/// loop's `findAPIs(task)` step to a `MetadataSearcher<APISurface.Entry>`
+/// loop's `findAPIs(task)` step to a `MetadataSearcher<ApiSurface.Entry>`
 /// running in `.selection` mode, formatting its verbatim `Match`es into the
 /// text spliced into the next main-agent turn.
 ///
@@ -17,7 +17,7 @@ struct FindApiTool: Sendable {
     /// to — expected to run in `.selection` mode (`.retrieval`/`.auto` would
     /// still format correctly, but wouldn't honor a guided model's ids-only
     /// selection contract).
-    private let searcher: MetadataSearcher<APISurface.Entry>
+    private let searcher: MetadataSearcher<ApiSurface.Entry>
 
     /// The maximum number of matches to request per `search(intent:limit:)`
     /// call — typically the catalog's own entry count, so nothing the model
@@ -29,7 +29,7 @@ struct FindApiTool: Sendable {
     /// - Parameters:
     ///   - searcher: the searcher to forward every `findAPIs(task)` call to.
     ///   - limit: the maximum number of matches to request per call.
-    init(searcher: MetadataSearcher<APISurface.Entry>, limit: Int) {
+    init(searcher: MetadataSearcher<ApiSurface.Entry>, limit: Int) {
         self.searcher = searcher
         self.limit = limit
     }
@@ -53,7 +53,7 @@ struct FindApiTool: Sendable {
     /// naming its fully-qualified call path, followed by its unmodified
     /// `declare function`/JSDoc source (`ToolDescriptor` fields are always
     /// unqualified; `path`/`block` carry the namespace — see
-    /// `APISurface.swift`'s `Entry` documentation) — followed by its
+    /// `ApiSurface.swift`'s `Entry` documentation) — followed by its
     /// runnable example, qualified the same way via `Entry.qualifiedExample`
     /// so this trailer never shows a different, bare call than the one
     /// `block`'s own embedded `@example` line just displayed.
@@ -65,7 +65,7 @@ struct FindApiTool: Sendable {
     ///     `MultiToolAgent`'s existing `runCode result:` framing).
     ///   - matches: the searcher's decoded result.
     /// - Returns: the formatted text.
-    static func format(task: String, matches: [Match<APISurface.Entry>]) -> String {
+    static func format(task: String, matches: [Match<ApiSurface.Entry>]) -> String {
         guard !matches.isEmpty else {
             return "findAPIs(\"\(task)\") found no matching functions."
         }

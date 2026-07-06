@@ -7,12 +7,12 @@ extension MultiTool {
     /// produces — plan.md's "registry" (the value the "Adding tools is the
     /// easy path" usage sample assigns `Builder.build()`'s result to, and
     /// that `MultiToolAgent(registry:...)` and `MultiTool.init(registry:)`
-    /// both take): the rendered `APISurface` (M2.5) paired with the actual
+    /// both take): the rendered `ApiSurface` (M2.5) paired with the actual
     /// wrapped `any Tool` instances a `runCode` snippet's `tools.*` calls
     /// dispatch to.
     ///
-    /// `APISurface` alone can't drive execution — by its own design (see
-    /// `APISurface`'s documentation) it is "pure data: no model wiring, no
+    /// `ApiSurface` alone can't drive execution — by its own design (see
+    /// `ApiSurface`'s documentation) it is "pure data: no model wiring, no
     /// rendering logic of its own beyond composing already-rendered pieces,"
     /// carrying only each tool's rendered *descriptor*, never the tool object
     /// itself. `Registry` is the pairing that closes that gap for M4a: every
@@ -24,7 +24,7 @@ extension MultiTool {
         /// and examples only (M2.5). Backs the registry-backed selection
         /// tier's instruction prefix (`FoundationModelsMetadataRegistry`) and
         /// `help()`/`docs()` (M6/M7); carries no tool instances of its own.
-        public let surface: APISurface
+        public let surface: ApiSurface
 
         /// Every wrapped tool, keyed by its fully-qualified snippet call path
         /// (`surface.entries`'s own `path`, e.g. `"weather"` or
@@ -43,7 +43,7 @@ extension MultiTool {
         /// Creates a registry pairing a rendered surface with its live tool
         /// instances.
         ///
-        /// Explicit for the same reason as `APISurface.init`/
+        /// Explicit for the same reason as `ApiSurface.init`/
         /// `ToolDescriptor.init`: a `public` struct's synthesized initializer
         /// is only `internal`-accessible, and `Registry` is a public type of
         /// the `FoundationModelsMultitool` library product a caller must be
@@ -60,7 +60,7 @@ extension MultiTool {
         ///     never trap" posture, mirrored throughout this package).
         ///   - isDirectMode: whether this registry is in direct mode
         ///     (`runCode` only). Defaults to `false`.
-        public init(surface: APISurface, tools: [String: any Tool], isDirectMode: Bool = false) {
+        public init(surface: ApiSurface, tools: [String: any Tool], isDirectMode: Bool = false) {
             self.surface = surface
             self.tools = tools
             self.isDirectMode = isDirectMode
@@ -72,7 +72,7 @@ extension MultiTool {
         /// itself via `help()`/`docs()` (M7) rather than a `findAPIs` round
         /// trip. The executable surface itself (`surface`/`tools`) is
         /// unchanged — only the affordance metadata (`isDirectMode`,
-        /// `affordances`, `supportsFindAPIs`) flips.
+        /// `affordances`, `supportsFindApis`) flips.
         ///
         /// - Returns: a copy of this registry with `isDirectMode` set to
         ///   `true`.
@@ -91,7 +91,7 @@ extension MultiTool {
 
         /// Whether this registry surfaces `findAPIs` discovery — `false` in
         /// direct mode, `true` otherwise.
-        public var supportsFindAPIs: Bool {
+        public var supportsFindApis: Bool {
             !isDirectMode
         }
     }
@@ -403,7 +403,7 @@ public struct MultiTool: Tool {
     /// is ever constructed: a group name by `MultiTool.Builder.build()`
     /// (`isLegalTSIdentifier`), a tool's own `name` by `ToolAPIRenderer
     /// .render` (which throws otherwise) — the same invariant
-    /// `APISurface.Entry.block`'s own documentation relies on for its `//
+    /// `ApiSurface.Entry.block`'s own documentation relies on for its `//
     /// tools.<path>` banner comment.
     ///
     /// An entry with no matching `registry.tools[path]` is skipped
@@ -641,9 +641,9 @@ public struct MultiTool: Tool {
         ]
     }
 
-    /// Renders `docs(name)`'s result: the exact `APISurface.Entry.block`
+    /// Renders `docs(name)`'s result: the exact `ApiSurface.Entry.block`
     /// for the entry whose `path` matches `name` — plan.md: "reuse
-    /// `APISurface.Entry.block`... rather than re-rendering anything" — or,
+    /// `ApiSurface.Entry.block`... rather than re-rendering anything" — or,
     /// when `name` doesn't match any entry (including when it isn't a
     /// string at all), a helpful error naming the closest known names
     /// instead of crashing.
@@ -655,7 +655,7 @@ public struct MultiTool: Tool {
     ///   - surface: the catalog to look `name` up against.
     /// - Returns: the matching entry's full rendered block, or an error
     ///   message listing near-match suggestions.
-    private static func renderDocs(for argument: InterpreterValue?, in surface: APISurface) -> String {
+    private static func renderDocs(for argument: InterpreterValue?, in surface: ApiSurface) -> String {
         guard case .string(let name) = argument else {
             return "docs(name) requires a string tool name, e.g. docs(\"weather\")."
         }

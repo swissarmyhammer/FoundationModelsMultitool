@@ -9,9 +9,9 @@
 /// `ToolDescriptor` (M2); this type layers on the *namespace* a tool was
 /// added under — flat at `tools.<name>` for a standalone tool, or
 /// `tools.<group>.<name>` for one added via `addGroup(named:_:)` — per
-/// plan.md Resolved #5. `APISurface` itself is pure data: no model wiring,
+/// plan.md Resolved #5. `ApiSurface` itself is pure data: no model wiring,
 /// no rendering logic of its own beyond composing already-rendered pieces.
-public struct APISurface: Sendable, Equatable {
+public struct ApiSurface: Sendable, Equatable {
     /// One rendered tool in the catalog.
     public struct Entry: Sendable, Equatable {
         /// The fully-qualified path the snippet calls this tool by,
@@ -51,7 +51,7 @@ public struct APISurface: Sendable, Equatable {
         }
 
         /// This entry's full renderable text block, as it appears in the
-        /// concatenated `APISurface.source`: a `// tools.<path>` banner
+        /// concatenated `ApiSurface.source`: a `// tools.<path>` banner
         /// line naming its fully-qualified call path (so a grouped tool's
         /// namespace is visible even though `descriptor` itself never
         /// mentions it — see `path`'s documentation), followed by
@@ -128,7 +128,7 @@ public struct APISurface: Sendable, Equatable {
     ///
     /// Explicit for the same reason as `Entry.init` above: a `public`
     /// struct's synthesized initializer is only `internal`-accessible, and
-    /// `APISurface` is the public return type of `MultiTool.Builder.build()`
+    /// `ApiSurface` is the public return type of `MultiTool.Builder.build()`
     /// that a host may need to assemble directly (e.g. in tests).
     ///
     /// - Parameter entries: every tool in the catalog, in catalog order.

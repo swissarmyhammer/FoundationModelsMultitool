@@ -82,7 +82,7 @@ public struct MultiToolAgent: Sendable {
     private static let transcriptSeparator = "\n\n"
 
     /// The catalog + live tool instances this agent's `runCode` dispatches
-    /// into, and whose `isDirectMode`/`supportsFindAPIs` govern which
+    /// into, and whose `isDirectMode`/`supportsFindApis` govern which
     /// actions this agent's instructions offer the model.
     private let registry: MultiTool.Registry
 
@@ -113,7 +113,7 @@ public struct MultiToolAgent: Sendable {
     /// `agent.respond(to:)` per user request).
     private let makeSession: @Sendable () -> any AgentSession
 
-    /// Dispatches every `findAPIs` step to a `MetadataSearcher<APISurface
+    /// Dispatches every `findAPIs` step to a `MetadataSearcher<ApiSurface
     /// .Entry>` running in `.selection` mode, or `nil` when this agent has
     /// no librarian configured (plan.md: `librarian: RoutedLLM?`).
     ///
@@ -233,7 +233,7 @@ public struct MultiToolAgent: Sendable {
     static func makeFindApiSearcher(
         registry: MultiTool.Registry,
         librarian: RoutedLLM
-    ) throws -> MetadataSearcher<APISurface.Entry> {
+    ) throws -> MetadataSearcher<ApiSurface.Entry> {
         let grammar = try idEnumGrammar(ids: registry.surface.entries.map(\.path))
         let selection = SelectionConfig(model: { instructions in
             RoutedAgentSession(session: librarian.makeGuidedSession(grammar, instructions: instructions))
@@ -274,7 +274,7 @@ public struct MultiToolAgent: Sendable {
     init(
         registry: MultiTool.Registry,
         session: any AgentSession,
-        findApiSearcher: MetadataSearcher<APISurface.Entry>? = nil,
+        findApiSearcher: MetadataSearcher<ApiSurface.Entry>? = nil,
         instructions: String,
         configuration: MultiToolConfiguration = .default,
         turnFormat: (any TurnFormat)? = nil,
@@ -392,7 +392,7 @@ public struct MultiToolAgent: Sendable {
     /// - Returns: the text to feed back to the model as this step's result.
     /// - Throws: whatever `findApiTool.dispatch(task:)` throws.
     private func dispatchFindApis(task: String) async throws -> String {
-        guard registry.supportsFindAPIs else {
+        guard registry.supportsFindApis else {
             return Self.discoveryUnavailableMessage(
                 task: task,
                 reason: "this agent runs in direct mode (runCode only)"
@@ -456,7 +456,7 @@ public struct MultiToolAgent: Sendable {
         }
 
         /// `findAPIs`'s description, included only when `registry
-        /// .supportsFindAPIs`.
+        /// .supportsFindApis`.
         static let findApis = """
             findAPIs(task: string)
               Describe, in plain language, what you are trying to accomplish. Returns the few
@@ -483,13 +483,13 @@ public struct MultiToolAgent: Sendable {
     ) -> String {
         var sections = [
             userInstructions,
-            ToolDescriptions.runCode(supportsFindApis: registry.supportsFindAPIs),
+            ToolDescriptions.runCode(supportsFindApis: registry.supportsFindApis),
         ]
-        if registry.supportsFindAPIs {
+        if registry.supportsFindApis {
             sections.append(ToolDescriptions.findApis)
         }
         sections.append(
-            turnFormat.formatInstructions(supportsFindApis: registry.supportsFindAPIs)
+            turnFormat.formatInstructions(supportsFindApis: registry.supportsFindApis)
         )
         return sections.joined(separator: Self.transcriptSeparator)
     }

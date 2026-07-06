@@ -110,7 +110,7 @@ let cannedCitiesSelectionJson = #"{"ids":["cities"]}"#
 func makeScriptedSelectionSearcher(
     registry: MultiTool.Registry,
     root: any AgentSession
-) -> MetadataSearcher<APISurface.Entry> {
+) -> MetadataSearcher<ApiSurface.Entry> {
     MetadataSearcher(
         items: registry.surface.entries,
         mode: .selection,

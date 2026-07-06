@@ -5,10 +5,10 @@ import Testing
 @testable import FoundationModelsMultitool
 
 /// M7 coverage for `MultiTool`'s in-snippet `help()`/`docs()` globals —
-/// in-language introspection backed by the very same `APISurface`/`Entry`
+/// in-language introspection backed by the very same `ApiSurface`/`Entry`
 /// data that backs the registry-backed selection tier's instruction prefix
 /// and `findAPIs` (M2.5/M6) — plan.md M7: in-language introspection backed
-/// by the same `APISurface` (one source of truth with the selection tier's
+/// by the same `ApiSurface` (one source of truth with the selection tier's
 /// instruction prefix and findAPIs).
 ///
 /// Reuses `WeatherTool` (`ToolAPIRendererFixtures.swift`, plan.md's own
