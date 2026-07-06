@@ -12,7 +12,7 @@ struct TolerantParseTurnFormatTests {
     // MARK: - Well-formed turns
 
     @Test("parses a well-formed findAPIs turn")
-    func parsesFindAPIs() throws {
+    func parsesFindApis() throws {
         let step = try format.parseTurn("ACTION: findAPIs\nTASK: find the weather tool")
         #expect(step == .findAPIs(task: "find the weather tool"))
     }
@@ -81,7 +81,7 @@ struct TolerantParseTurnFormatTests {
     }
 
     @Test("throws TurnParseError when findAPIs has no TASK field")
-    func throwsWhenFindAPIsMissingTask() {
+    func throwsWhenFindApisMissingTask() {
         #expect(throws: TurnParseError.self) {
             try format.parseTurn("ACTION: findAPIs")
         }
@@ -104,13 +104,13 @@ struct TolerantParseTurnFormatTests {
     // MARK: - formatInstructions honors supportsFindAPIs
 
     @Test("formatInstructions mentions findAPIs when supported")
-    func formatInstructionsMentionsFindAPIsWhenSupported() {
+    func formatInstructionsMentionsFindApisWhenSupported() {
         let text = format.formatInstructions(supportsFindAPIs: true)
         #expect(text.contains("ACTION: findAPIs"))
     }
 
     @Test("formatInstructions omits findAPIs when not supported")
-    func formatInstructionsOmitsFindAPIsWhenUnsupported() {
+    func formatInstructionsOmitsFindApisWhenUnsupported() {
         let text = format.formatInstructions(supportsFindAPIs: false)
         #expect(!text.contains("ACTION: findAPIs"))
         #expect(text.contains("ACTION: runCode"))

@@ -90,7 +90,7 @@ final class ScriptedAgentSession: AgentSession, Sendable {
 /// wire a real `.selection`-mode `MetadataSearcher` (via
 /// `RootSessionRespondCalledDirectlySession`) into `MultiToolAgent`'s
 /// `findAPIs` dispatch instead of a raw scripted session.
-let cannedCitiesSelectionJSON = #"{"ids":["cities"]}"#
+let cannedCitiesSelectionJson = #"{"ids":["cities"]}"#
 
 /// Builds a `.selection`-mode `MetadataSearcher` over `registry.surface
 /// .entries`, wired to `root` as its cached root session — the

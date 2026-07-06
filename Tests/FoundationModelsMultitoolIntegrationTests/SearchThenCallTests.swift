@@ -31,7 +31,7 @@ struct SearchThenCallTests {
             tools: [IntegrationWeatherTool()],
             prompt: "How warm is it in Austin right now?",
             turnFormat: .tolerantParse(),
-            expectFindAPIs: true,
+            expectFindApis: true,
             expectedToolPaths: ["weather"]
         )
     }
@@ -43,7 +43,7 @@ struct SearchThenCallTests {
             tools: [IntegrationWeatherTool()],
             prompt: "How warm is it in Austin right now?",
             turnFormat: .guided(),
-            expectFindAPIs: true,
+            expectFindApis: true,
             expectedToolPaths: ["weather"]
         )
     }
@@ -57,7 +57,7 @@ struct SearchThenCallTests {
             tools: [IntegrationTripCitiesTool(), IntegrationWeatherTool()],
             prompt: "Of the cities on my trip, which is warmest right now?",
             turnFormat: .tolerantParse(),
-            expectFindAPIs: true,
+            expectFindApis: true,
             expectedToolPaths: ["tripCities", "weather"]
         )
     }
@@ -69,7 +69,7 @@ struct SearchThenCallTests {
             tools: [IntegrationTripCitiesTool(), IntegrationWeatherTool()],
             prompt: "Of the cities on my trip, which is warmest right now?",
             turnFormat: .guided(),
-            expectFindAPIs: true,
+            expectFindApis: true,
             expectedToolPaths: ["tripCities", "weather"]
         )
     }
@@ -83,9 +83,9 @@ struct SearchThenCallTests {
             tools: [IntegrationWeatherTool(), IntegrationTripCitiesTool()] + integrationDistractorTools,
             prompt: "Of the cities on my trip, which is warmest right now?",
             turnFormat: .tolerantParse(),
-            expectFindAPIs: true,
+            expectFindApis: true,
             expectedToolPaths: ["tripCities", "weather"],
-            expectedFoundAPINames: ["tripCities", "weather"]
+            expectedFoundApiNames: ["tripCities", "weather"]
         )
     }
 
@@ -96,9 +96,9 @@ struct SearchThenCallTests {
             tools: [IntegrationWeatherTool(), IntegrationTripCitiesTool()] + integrationDistractorTools,
             prompt: "Of the cities on my trip, which is warmest right now?",
             turnFormat: .guided(),
-            expectFindAPIs: true,
+            expectFindApis: true,
             expectedToolPaths: ["tripCities", "weather"],
-            expectedFoundAPINames: ["tripCities", "weather"]
+            expectedFoundApiNames: ["tripCities", "weather"]
         )
     }
 
@@ -111,7 +111,7 @@ struct SearchThenCallTests {
             tools: [IntegrationBookingTool()],
             prompt: "Confirm my booking, id 42.",
             turnFormat: .tolerantParse(),
-            expectFindAPIs: false,
+            expectFindApis: false,
             expectedToolPaths: ["book"],
             maxRunCodeStepsBeforeFinal: 3
         )
@@ -124,7 +124,7 @@ struct SearchThenCallTests {
             tools: [IntegrationBookingTool()],
             prompt: "Confirm my booking, id 42.",
             turnFormat: .guided(),
-            expectFindAPIs: false,
+            expectFindApis: false,
             expectedToolPaths: ["book"],
             maxRunCodeStepsBeforeFinal: 3
         )

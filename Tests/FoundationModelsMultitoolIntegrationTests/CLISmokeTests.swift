@@ -31,12 +31,12 @@ struct CLISmokeTests {
             "expected the live demo to succeed; output:\n\(output.lines.joined(separator: "\n"))"
         )
 
-        let findAPIsIndex = output.lines.firstIndex { $0.contains("findAPIs(") }
+        let findApisIndex = output.lines.firstIndex { $0.contains("findAPIs(") }
         let runCodeIndex = output.lines.firstIndex { $0.contains("runCode(") }
-        #expect(findAPIsIndex != nil, "expected a findAPIs(...) trace line in:\n\(output.lines.joined(separator: "\n"))")
+        #expect(findApisIndex != nil, "expected a findAPIs(...) trace line in:\n\(output.lines.joined(separator: "\n"))")
         #expect(runCodeIndex != nil, "expected a runCode(...) trace line in:\n\(output.lines.joined(separator: "\n"))")
-        if let findAPIsIndex, let runCodeIndex {
-            #expect(findAPIsIndex < runCodeIndex, "expected findAPIs to precede runCode in the trace")
+        if let findApisIndex, let runCodeIndex {
+            #expect(findApisIndex < runCodeIndex, "expected findAPIs to precede runCode in the trace")
         }
 
         let answerLine = output.lines.first { $0.hasPrefix("Answer: ") }

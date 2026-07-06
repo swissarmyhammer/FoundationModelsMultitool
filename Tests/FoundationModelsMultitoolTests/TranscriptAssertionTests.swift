@@ -183,7 +183,7 @@ struct TranscriptAssertionTests {
     }
 
     @Test("findApisPrecedesRunCode is true across multiple findAPIs calls, using the last findAPIs before runCode")
-    func findApisPrecedesRunCodeTrueWithMultipleFindAPIsCalls() {
+    func findApisPrecedesRunCodeTrueWithMultipleFindApisCalls() {
         let steps: [AgentStep] = [
             .findAPIs(task: "look around"),
             .findAPIs(task: "narrow it down"),
@@ -278,7 +278,7 @@ struct TranscriptAssertionTests {
                 seq: 0,
                 ts: Date(),
                 kind: .response,
-                text: cannedTripCitiesSelectionJSON
+                text: cannedTripCitiesSelectionJson
             ),
             TranscriptEvent(
                 routerId: .generate(),
@@ -287,7 +287,7 @@ struct TranscriptAssertionTests {
                 seq: 1,
                 ts: Date(),
                 kind: .response,
-                text: cannedWeatherSelectionJSON
+                text: cannedWeatherSelectionJson
             ),
         ]
         let found = try TranscriptAnalyzer.selections(in: events, slot: .flash)
@@ -295,7 +295,7 @@ struct TranscriptAssertionTests {
     }
 
     @Test("selections throws when a flash-slot response isn't valid Selection JSON")
-    func selectionsThrowsOnInvalidJSON() {
+    func selectionsThrowsOnInvalidJson() {
         let events = [
             TranscriptEvent(
                 routerId: .generate(),
@@ -316,11 +316,11 @@ struct TranscriptAssertionTests {
 /// One canned, schema-valid `Selection` JSON payload naming `tripCities`
 /// only — the ids-only shape a real `.selection`-mode `MetadataSearcher`'s
 /// root session decodes.
-private let cannedTripCitiesSelectionJSON = #"{"ids":["tripCities"]}"#
+private let cannedTripCitiesSelectionJson = #"{"ids":["tripCities"]}"#
 
 /// A second canned payload naming `weather` — used where a test needs a
 /// distinct selection result, one per recorded `findAPIs` call.
-private let cannedWeatherSelectionJSON = #"{"ids":["weather"]}"#
+private let cannedWeatherSelectionJson = #"{"ids":["weather"]}"#
 
 /// A fixture `name` passed to `loadFixture(_:)` that failed the
 /// letters/digits/`-`/`_`/`.` whitelist check — guards against the name

@@ -9,7 +9,7 @@ import os
 @Suite("JSCInterpreter")
 struct JSCInterpreterTests {
     @Test("a snippet's return value round-trips out as JSON")
-    func returnValueRoundTripsAsJSON() throws {
+    func returnValueRoundTripsAsJson() throws {
         let interpreter = JSCInterpreter()
         let result = try interpreter.run(
             code: "return { a: 1, b: \"two\", c: [true, null, 3.5] };",

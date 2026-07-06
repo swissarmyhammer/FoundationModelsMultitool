@@ -15,14 +15,14 @@ struct MultiToolAgentTests {
     // MARK: - findAPIs → runCode → final, dispatched correctly
 
     @Test("a scripted findAPIs → runCode → final turn sequence dispatches each step and returns the final text")
-    func dispatchesFindAPIsThenRunCodeThenFinal() async throws {
+    func dispatchesFindApisThenRunCodeThenFinal() async throws {
         let registry = try MultiTool.Builder().addTool(CitiesTool()).buildRegistry()
         let mainSession = ScriptedAgentSession([
             "ACTION: findAPIs\nTASK: list the trip cities",
             "ACTION: runCode\nCODE:\n```js\nreturn tools.cities().cities.length;\n```",
             "ACTION: final\nANSWER: There are 3 cities.",
         ])
-        let librarianRoot = RootSessionRespondCalledDirectlySession(forkResponses: [cannedCitiesSelectionJSON])
+        let librarianRoot = RootSessionRespondCalledDirectlySession(forkResponses: [cannedCitiesSelectionJson])
         let searcher = makeScriptedSelectionSearcher(registry: registry, root: librarianRoot)
         let agent = MultiToolAgent(
             registry: registry,
@@ -51,7 +51,7 @@ struct MultiToolAgentTests {
     @Test(
         "two findAPIs calls in one respond(to:) share one cached Librarian root session, each dispatched through its own fork()"
     )
-    func findAPIsCallsShareOneCachedLibrarianRootAcrossForks() async throws {
+    func findApisCallsShareOneCachedLibrarianRootAcrossForks() async throws {
         let registry = try MultiTool.Builder().addTool(CitiesTool()).buildRegistry()
         let mainSession = ScriptedAgentSession([
             "ACTION: findAPIs\nTASK: list the trip cities",
@@ -59,8 +59,8 @@ struct MultiToolAgentTests {
             "ACTION: final\nANSWER: done",
         ])
         let librarianRoot = RootSessionRespondCalledDirectlySession(forkResponses: [
-            cannedCitiesSelectionJSON,
-            cannedCitiesSelectionJSON,
+            cannedCitiesSelectionJson,
+            cannedCitiesSelectionJson,
         ])
         let rootFactoryCallCount = CallCounter()
         let searcher = MetadataSearcher(
@@ -227,7 +227,7 @@ struct MultiToolAgentTests {
     // MARK: - directMode: findAPIs is rejected, not dispatched
 
     @Test("directMode rejects a findAPIs step from the model with an instructive message, without crashing")
-    func directModeRejectsFindAPIsInstructively() async throws {
+    func directModeRejectsFindApisInstructively() async throws {
         let registry = try MultiTool.Builder().addTool(CitiesTool()).buildRegistry().directMode()
         let mainSession = ScriptedAgentSession([
             "ACTION: findAPIs\nTASK: find city tools",
@@ -247,7 +247,7 @@ struct MultiToolAgentTests {
     }
 
     @Test("a non-direct-mode registry with no librarian configured also rejects findAPIs instructively")
-    func noLibrarianRejectsFindAPIsInstructively() async throws {
+    func noLibrarianRejectsFindApisInstructively() async throws {
         let registry = try MultiTool.Builder().addTool(CitiesTool()).buildRegistry()
         let mainSession = ScriptedAgentSession([
             "ACTION: findAPIs\nTASK: find city tools",

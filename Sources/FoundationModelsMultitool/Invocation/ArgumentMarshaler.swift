@@ -24,7 +24,7 @@ public struct ArgumentMarshalerError: Error, Sendable, Equatable, CustomStringCo
         /// conformance (its `jsonString` is documented to always be valid
         /// JSON) — kept as a defensive, reportable failure rather than a
         /// trap, mirroring `ToolAPIRenderer`'s "throw rather than crash" posture.
-        case malformedOutputJSON
+        case malformedOutputJson
     }
 
     /// What kind of failure this was.
@@ -232,7 +232,7 @@ public enum ArgumentMarshaler {
     ///   expression should evaluate to.
     /// - Throws: `ArgumentMarshalerError` with kind `.outputNotGenerable` if
     ///   `output` is `PromptRepresentable` but not also
-    ///   `ConvertibleToGeneratedContent`; kind `.malformedOutputJSON` in the
+    ///   `ConvertibleToGeneratedContent`; kind `.malformedOutputJson` in the
     ///   unreachable-in-practice case that a `Generable` value's own
     ///   `jsonString` fails to decode.
     public static func renderOutput<Output: PromptRepresentable>(_ output: Output) throws -> InterpreterValue {
@@ -251,7 +251,7 @@ public enum ArgumentMarshaler {
             return try JSONDecoder().decode(InterpreterValue.self, from: Data(jsonString.utf8))
         } catch {
             throw ArgumentMarshalerError(
-                kind: .malformedOutputJSON,
+                kind: .malformedOutputJson,
                 message: "Output type \(type(of: output))'s GeneratedContent.jsonString was not "
                     + "valid JSON: \(error)."
             )

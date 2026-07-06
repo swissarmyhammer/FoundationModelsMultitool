@@ -20,7 +20,7 @@ struct GuidedTurnFormatTests {
     // MARK: - AgentTurn.asAgentStep(): the cross-field rule the grammar itself can't express
 
     @Test("a findAPIs turn with a task converts to AgentStep.findAPIs")
-    func findAPIsTurnConvertsToStep() throws {
+    func findApisTurnConvertsToStep() throws {
         let turn = AgentTurn(kind: .findAPIs, task: "find the weather tool")
         #expect(try turn.asAgentStep() == .findAPIs(task: "find the weather tool"))
     }
@@ -38,7 +38,7 @@ struct GuidedTurnFormatTests {
     }
 
     @Test("a findAPIs turn with no task throws TurnParseError")
-    func findAPIsWithoutTaskThrows() {
+    func findApisWithoutTaskThrows() {
         let turn = AgentTurn(kind: .findAPIs)
         #expect(throws: TurnParseError.self) { try turn.asAgentStep() }
     }
@@ -62,7 +62,7 @@ struct GuidedTurnFormatTests {
     }
 
     @Test("a findAPIs turn with only whitespace task throws TurnParseError, matching runCode's blank-check")
-    func findAPIsWithWhitespaceOnlyTaskThrows() {
+    func findApisWithWhitespaceOnlyTaskThrows() {
         let turn = AgentTurn(kind: .findAPIs, task: "   \n  ")
         #expect(throws: TurnParseError.self) { try turn.asAgentStep() }
     }
@@ -76,25 +76,25 @@ struct GuidedTurnFormatTests {
     // MARK: - GuidedTurnFormat.parseTurn(_:): decodes JSON, then applies the same validation
 
     @Test("parses a well-formed findAPIs JSON turn")
-    func parsesFindAPIsJSON() throws {
+    func parsesFindApisJson() throws {
         let step = try format.parseTurn(#"{"kind":"findAPIs","task":"find the weather tool"}"#)
         #expect(step == .findAPIs(task: "find the weather tool"))
     }
 
     @Test("parses a well-formed runCode JSON turn")
-    func parsesRunCodeJSON() throws {
+    func parsesRunCodeJson() throws {
         let step = try format.parseTurn(#"{"kind":"runCode","code":"return 1 + 1;"}"#)
         #expect(step == .runCode(code: "return 1 + 1;"))
     }
 
     @Test("parses a well-formed final JSON turn")
-    func parsesFinalJSON() throws {
+    func parsesFinalJson() throws {
         let step = try format.parseTurn(#"{"kind":"final","text":"Austin is warmest."}"#)
         #expect(step == .final(text: "Austin is warmest."))
     }
 
     @Test("throws TurnParseError for JSON that isn't a well-formed AgentTurn")
-    func throwsForMalformedJSON() {
+    func throwsForMalformedJson() {
         #expect(throws: TurnParseError.self) {
             try format.parseTurn("not JSON at all")
         }
@@ -110,13 +110,13 @@ struct GuidedTurnFormatTests {
     // MARK: - formatInstructions honors supportsFindAPIs
 
     @Test("formatInstructions mentions findAPIs when supported")
-    func formatInstructionsMentionsFindAPIsWhenSupported() {
+    func formatInstructionsMentionsFindApisWhenSupported() {
         let text = format.formatInstructions(supportsFindAPIs: true)
         #expect(text.contains("findAPIs"))
     }
 
     @Test("formatInstructions notes findAPIs is unavailable when not supported")
-    func formatInstructionsNotesFindAPIsUnavailable() {
+    func formatInstructionsNotesFindApisUnavailable() {
         let text = format.formatInstructions(supportsFindAPIs: false)
         #expect(text.contains("not available"))
     }
@@ -187,14 +187,14 @@ struct GuidedTurnFormatTests {
     // MARK: - End-to-end: findAPIs → runCode → final under .guided, zero repair turns
 
     @Test("a scripted findAPIs → runCode → final JSON turn sequence dispatches each step under .guided with zero repair turns")
-    func guidedDispatchesFindAPIsThenRunCodeThenFinal() async throws {
+    func guidedDispatchesFindApisThenRunCodeThenFinal() async throws {
         let registry = try MultiTool.Builder().addTool(CitiesTool()).buildRegistry()
         let mainSession = ScriptedAgentSession([
             #"{"kind":"findAPIs","task":"list the trip cities"}"#,
             #"{"kind":"runCode","code":"return tools.cities().cities.length;"}"#,
             #"{"kind":"final","text":"There are 3 cities."}"#,
         ])
-        let librarianRoot = RootSessionRespondCalledDirectlySession(forkResponses: [cannedCitiesSelectionJSON])
+        let librarianRoot = RootSessionRespondCalledDirectlySession(forkResponses: [cannedCitiesSelectionJson])
         let searcher = makeScriptedSelectionSearcher(registry: registry, root: librarianRoot)
         let agent = MultiToolAgent(
             registry: registry,
@@ -275,7 +275,7 @@ struct GuidedTurnFormatTests {
             "ACTION: final\nANSWER: There are 3 cities.",
         ])
         let tolerantLibrarianRoot = RootSessionRespondCalledDirectlySession(forkResponses: [
-            cannedCitiesSelectionJSON
+            cannedCitiesSelectionJson
         ])
         let tolerantSearcher = makeScriptedSelectionSearcher(registry: registry, root: tolerantLibrarianRoot)
         let tolerantAgent = MultiToolAgent(
@@ -292,7 +292,7 @@ struct GuidedTurnFormatTests {
             #"{"kind":"final","text":"There are 3 cities."}"#,
         ])
         let guidedLibrarianRoot = RootSessionRespondCalledDirectlySession(forkResponses: [
-            cannedCitiesSelectionJSON
+            cannedCitiesSelectionJson
         ])
         let guidedSearcher = makeScriptedSelectionSearcher(registry: registry, root: guidedLibrarianRoot)
         let guidedAgent = MultiToolAgent(

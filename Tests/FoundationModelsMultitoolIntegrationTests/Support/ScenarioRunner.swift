@@ -28,11 +28,11 @@ import FoundationModelsRouter
 ///   - prompt: the user request driving `MultiToolAgent.respond(to:)`.
 ///   - turnFormat: the turn strategy under test (`.tolerantParse()` or
 ///     `.guided()`).
-///   - expectFindAPIs: whether the scenario expects `findAPIs` to precede
+///   - expectFindApis: whether the scenario expects `findAPIs` to precede
 ///     `runCode` (plan.md's "search-then-code" trace assertion).
 ///   - expectedToolPaths: the exact `tools.*` call paths the snippet is
 ///     expected to invoke, or `nil` to skip that assertion.
-///   - expectedFoundAPINames: the exact entry paths the selection tier is
+///   - expectedFoundApiNames: the exact entry paths the selection tier is
 ///     expected to have selected across every `findAPIs` call in the run
 ///     (plan.md's "selection tier returned the expected minimal set" trace
 ///     assertion — the fused-surface selection-accuracy claim scenario 3
@@ -48,9 +48,9 @@ func runIntegrationScenario(
     tools: [any Tool],
     prompt: String,
     turnFormat: any TurnFormat,
-    expectFindAPIs: Bool,
+    expectFindApis: Bool,
     expectedToolPaths: Set<String>? = nil,
-    expectedFoundAPINames: Set<String>? = nil,
+    expectedFoundApiNames: Set<String>? = nil,
     maxRunCodeStepsBeforeFinal: Int? = nil
 ) async throws {
     let fixture: LiveRouterFixture
@@ -78,7 +78,7 @@ func runIntegrationScenario(
         let events = try fixture.transcriptEvents()
         let steps = TranscriptAnalyzer.steps(in: events, slot: .standard)
 
-        if expectFindAPIs {
+        if expectFindApis {
             #expect(
                 TranscriptAnalyzer.findApisPrecedesRunCode(in: steps),
                 "[\(name)] expected findAPIs before runCode"
@@ -90,12 +90,12 @@ func runIntegrationScenario(
                 "[\(name)] expected exactly \(expectedToolPaths) tools.* calls"
             )
         }
-        if let expectedFoundAPINames {
+        if let expectedFoundApiNames {
             let picked = try TranscriptAnalyzer.selections(in: events, slot: .flash)
                 .flatMap(\.ids)
             #expect(
-                Set(picked) == expectedFoundAPINames,
-                "[\(name)] expected the selection tier to select exactly \(expectedFoundAPINames), got \(Set(picked))"
+                Set(picked) == expectedFoundApiNames,
+                "[\(name)] expected the selection tier to select exactly \(expectedFoundApiNames), got \(Set(picked))"
             )
         }
         if let maxRunCodeStepsBeforeFinal {

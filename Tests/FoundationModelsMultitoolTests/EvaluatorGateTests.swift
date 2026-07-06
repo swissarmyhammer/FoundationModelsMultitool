@@ -75,7 +75,7 @@ struct EvaluatorGateTests {
         let subject = AgentSubject(
             value: "Austin is the warmest at 31C.",
             steps: try Self.steps(fromFixture: "SearchThenCallTranscript.jsonl"),
-            expectation: AgentScenarioExpectation(expectFindAPIs: true, expectedToolPaths: [], maxRunCodeStepsBeforeFinal: 1)
+            expectation: AgentScenarioExpectation(expectFindApis: true, expectedToolPaths: [], maxRunCodeStepsBeforeFinal: 1)
         )
         let metrics = try await SearchedThenCalledEvaluator().metrics(subject: subject, input: ModelSample(prompt: "x"))
         #expect(metrics.map(\.value) == [.passing])
@@ -86,7 +86,7 @@ struct EvaluatorGateTests {
         let subject = AgentSubject(
             value: "Booked the trip.",
             steps: try Self.steps(fromFixture: "RepairTranscript.jsonl"),
-            expectation: AgentScenarioExpectation(expectFindAPIs: true, expectedToolPaths: [], maxRunCodeStepsBeforeFinal: 5)
+            expectation: AgentScenarioExpectation(expectFindApis: true, expectedToolPaths: [], maxRunCodeStepsBeforeFinal: 5)
         )
         let metrics = try await SearchedThenCalledEvaluator().metrics(subject: subject, input: ModelSample(prompt: "x"))
         #expect(metrics.map(\.value) == [.failing])
@@ -97,7 +97,7 @@ struct EvaluatorGateTests {
         let subject = AgentSubject(
             value: "Booked the trip.",
             steps: try Self.steps(fromFixture: "RepairTranscript.jsonl"),
-            expectation: AgentScenarioExpectation(expectFindAPIs: false, expectedToolPaths: [], maxRunCodeStepsBeforeFinal: 5)
+            expectation: AgentScenarioExpectation(expectFindApis: false, expectedToolPaths: [], maxRunCodeStepsBeforeFinal: 5)
         )
         let metrics = try await SearchedThenCalledEvaluator().metrics(subject: subject, input: ModelSample(prompt: "x"))
         #expect(metrics.map(\.value) == [.ignore])
@@ -111,7 +111,7 @@ struct EvaluatorGateTests {
             value: "Austin is the warmest at 31C.",
             steps: try Self.steps(fromFixture: "SearchThenCallTranscript.jsonl"),
             expectation: AgentScenarioExpectation(
-                expectFindAPIs: true,
+                expectFindApis: true,
                 expectedToolPaths: ["tripCities", "weather"],
                 maxRunCodeStepsBeforeFinal: 1
             )
@@ -126,7 +126,7 @@ struct EvaluatorGateTests {
             value: "Booked the trip.",
             steps: try Self.steps(fromFixture: "RepairTranscript.jsonl"),
             expectation: AgentScenarioExpectation(
-                expectFindAPIs: false,
+                expectFindApis: false,
                 expectedToolPaths: ["weather"],
                 maxRunCodeStepsBeforeFinal: 5
             )
@@ -142,7 +142,7 @@ struct EvaluatorGateTests {
         let subject = AgentSubject(
             value: "Booked the trip.",
             steps: try Self.steps(fromFixture: "RepairTranscript.jsonl"),
-            expectation: AgentScenarioExpectation(expectFindAPIs: false, expectedToolPaths: ["book"], maxRunCodeStepsBeforeFinal: 2)
+            expectation: AgentScenarioExpectation(expectFindApis: false, expectedToolPaths: ["book"], maxRunCodeStepsBeforeFinal: 2)
         )
         let metrics = try await RepairedWithinNEvaluator().metrics(subject: subject, input: ModelSample(prompt: "x"))
         #expect(metrics.map(\.value) == [.passing])
@@ -153,7 +153,7 @@ struct EvaluatorGateTests {
         let subject = AgentSubject(
             value: "Booked the trip.",
             steps: try Self.steps(fromFixture: "RepairTranscript.jsonl"),
-            expectation: AgentScenarioExpectation(expectFindAPIs: false, expectedToolPaths: ["book"], maxRunCodeStepsBeforeFinal: 1)
+            expectation: AgentScenarioExpectation(expectFindApis: false, expectedToolPaths: ["book"], maxRunCodeStepsBeforeFinal: 1)
         )
         let metrics = try await RepairedWithinNEvaluator().metrics(subject: subject, input: ModelSample(prompt: "x"))
         #expect(metrics.map(\.value) == [.failing])
@@ -174,7 +174,7 @@ struct EvaluatorGateTests {
         let subject = AgentSubject(
             value: "Booked the trip.",
             steps: steps,
-            expectation: AgentScenarioExpectation(expectFindAPIs: false, expectedToolPaths: ["book"], maxRunCodeStepsBeforeFinal: 1)
+            expectation: AgentScenarioExpectation(expectFindApis: false, expectedToolPaths: ["book"], maxRunCodeStepsBeforeFinal: 1)
         )
         let metrics = try await RepairedWithinNEvaluator().metrics(subject: subject, input: ModelSample(prompt: "x"))
         #expect(metrics.map(\.value) == [.passing])
@@ -223,7 +223,7 @@ struct EvaluatorGateTests {
 
     @Test("the mean-aggregate SearchedThenCalled gate is false when every fixture sample fails, and true when every fixture sample passes")
     func meanAggregateGateFlipsAcrossThreshold() async throws {
-        // Both fixtures are graded with expectFindAPIs: true, so the
+        // Both fixtures are graded with expectFindApis: true, so the
         // repair fixture (which never calls findAPIs at all) is a genuine
         // failing sample here — not the .ignore outcome it would get under
         // its own real scenario configuration (see
@@ -231,7 +231,7 @@ struct EvaluatorGateTests {
         // deliberate: this test needs one guaranteed-failing and one
         // guaranteed-passing fixture-derived subject to prove the gate
         // flips in both directions.
-        let expectation = AgentScenarioExpectation(expectFindAPIs: true, expectedToolPaths: [], maxRunCodeStepsBeforeFinal: 5)
+        let expectation = AgentScenarioExpectation(expectFindApis: true, expectedToolPaths: [], maxRunCodeStepsBeforeFinal: 5)
         let passingSubject = AgentSubject(
             value: "Austin is the warmest at 31C.",
             steps: try Self.steps(fromFixture: "SearchThenCallTranscript.jsonl"),
@@ -268,7 +268,7 @@ struct EvaluatorGateTests {
 
     @Test("a mixed fixture dataset's mean sits strictly between the all-failing and all-passing means")
     func meanAggregateGateReflectsAMixedDataset() async throws {
-        let expectation = AgentScenarioExpectation(expectFindAPIs: true, expectedToolPaths: [], maxRunCodeStepsBeforeFinal: 5)
+        let expectation = AgentScenarioExpectation(expectFindApis: true, expectedToolPaths: [], maxRunCodeStepsBeforeFinal: 5)
         let passingSubject = AgentSubject(
             value: "Austin is the warmest at 31C.",
             steps: try Self.steps(fromFixture: "SearchThenCallTranscript.jsonl"),
