@@ -182,7 +182,7 @@ public struct TolerantParseTurnFormat: TurnFormat {
     /// `parseTurn(_:)`'s error messages; `lowercased` is the spelling
     /// `action.value.lowercased()` is compared against.
     private enum Action: String {
-        case findAPIs
+        case findApis = "findAPIs"
         case runCode
         case final
 
@@ -228,7 +228,7 @@ public struct TolerantParseTurnFormat: TurnFormat {
         if supportsFindApis {
             lines.append(contentsOf: [
                 "To search for relevant tool functions:",
-                "\(FieldMarker.action) \(Action.findAPIs.rawValue)",
+                "\(FieldMarker.action) \(Action.findApis.rawValue)",
                 "\(FieldMarker.task) <what you are trying to accomplish, in plain language>",
                 "",
             ])
@@ -267,18 +267,18 @@ public struct TolerantParseTurnFormat: TurnFormat {
         let lines = raw.components(separatedBy: "\n")
         guard let action = Self.firstField(marker: FieldMarker.action, in: lines) else {
             throw TurnParseError(
-                message: "No \"\(FieldMarker.action)\" line found. Expected \"\(FieldMarker.action) \(Action.findAPIs.rawValue)\", "
+                message: "No \"\(FieldMarker.action)\" line found. Expected \"\(FieldMarker.action) \(Action.findApis.rawValue)\", "
                     + "\"\(FieldMarker.action) \(Action.runCode.rawValue)\", or \"\(FieldMarker.action) \(Action.final.rawValue)\"."
             )
         }
 
         switch action.value.lowercased() {
-        case Action.findAPIs.lowercased:
+        case Action.findApis.lowercased:
             guard let task = Self.firstField(marker: FieldMarker.task, in: lines, from: action.lineIndex + 1),
                 !task.value.isEmpty
             else {
                 throw TurnParseError(
-                    message: "\(FieldMarker.action) \(Action.findAPIs.rawValue) requires a non-empty \"\(FieldMarker.task)\" line."
+                    message: "\(FieldMarker.action) \(Action.findApis.rawValue) requires a non-empty \"\(FieldMarker.task)\" line."
                 )
             }
             return .findAPIs(task: task.value)
@@ -308,7 +308,7 @@ public struct TolerantParseTurnFormat: TurnFormat {
         default:
             throw TurnParseError(
                 message: "Unrecognized \(FieldMarker.action) \"\(action.value)\". "
-                    + "Expected \(Action.findAPIs.rawValue), \(Action.runCode.rawValue), or \(Action.final.rawValue)."
+                    + "Expected \(Action.findApis.rawValue), \(Action.runCode.rawValue), or \(Action.final.rawValue)."
             )
         }
     }

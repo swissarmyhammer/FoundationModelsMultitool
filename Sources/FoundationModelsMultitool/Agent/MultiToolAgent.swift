@@ -123,7 +123,7 @@ public struct MultiToolAgent: Sendable {
     /// established, generalized by the registry's `SelectionTier`), so the
     /// same `FindAPITool` — wrapping the same searcher — is reused for every
     /// `findAPIs` step across every `respond(to:)` call this agent makes.
-    private let findApiTool: FindAPITool?
+    private let findAPITool: FindAPITool?
 
     /// Creates an agent bound to a resolved Router profile's generation slots.
     ///
@@ -181,7 +181,7 @@ public struct MultiToolAgent: Sendable {
             registry: registry,
             turnFormat: resolvedTurnFormat
         )
-        let findApiTool: FindAPITool? =
+        let findAPITool: FindAPITool? =
             if let librarian {
                 FindAPITool(
                     searcher: try Self.makeFindApiSearcher(registry: registry, librarian: librarian),
@@ -206,7 +206,7 @@ public struct MultiToolAgent: Sendable {
             turnFormat: resolvedTurnFormat,
             maxTurns: maxTurns ?? configuration.maxAgentTurns,
             makeSession: makeSession,
-            findApiTool: findApiTool
+            findAPITool: findAPITool
         )
     }
 
@@ -280,19 +280,19 @@ public struct MultiToolAgent: Sendable {
         turnFormat: (any TurnFormat)? = nil,
         maxTurns: Int? = nil
     ) {
-        let findApiTool = findApiSearcher.map { FindAPITool(searcher: $0, limit: registry.surface.entries.count) }
+        let findAPITool = findApiSearcher.map { FindAPITool(searcher: $0, limit: registry.surface.entries.count) }
         self.init(
             registry: registry,
             configuration: configuration,
             turnFormat: turnFormat ?? .tolerantParse(maxRepairTurns: configuration.maxRepairTurns),
             maxTurns: maxTurns ?? configuration.maxAgentTurns,
             makeSession: { session },
-            findApiTool: findApiTool
+            findAPITool: findAPITool
         )
     }
 
     /// The designated initializer both public-facing initializers above
-    /// delegate to, differing only in how `makeSession`/`findApiTool` are
+    /// delegate to, differing only in how `makeSession`/`findAPITool` are
     /// produced (a real `RoutedLLM` vs. a fixed test double).
     private init(
         registry: MultiTool.Registry,
@@ -300,21 +300,21 @@ public struct MultiToolAgent: Sendable {
         turnFormat: any TurnFormat,
         maxTurns: Int,
         makeSession: @escaping @Sendable () -> any AgentSession,
-        findApiTool: FindAPITool?
+        findAPITool: FindAPITool?
     ) {
         self.registry = registry
         self.multiTool = MultiTool(registry: registry, configuration: configuration)
         self.turnFormat = turnFormat
         self.maxTurns = max(1, maxTurns)
         self.makeSession = makeSession
-        self.findApiTool = findApiTool
+        self.findAPITool = findAPITool
     }
 
     /// Runs the search-then-code loop to answer `prompt`, per this type's
     /// documentation.
     ///
     /// Starts a fresh main session for this call alone; nothing persists
-    /// across separate `respond(to:)` calls except `findApiTool`'s own
+    /// across separate `respond(to:)` calls except `findAPITool`'s own
     /// searcher, whose selection tier's cached root session (plan.md Finding
     /// #6) outlives any single `respond(to:)` call by design. Each turn's
     /// raw response is appended to a running transcript that becomes the
@@ -327,7 +327,7 @@ public struct MultiToolAgent: Sendable {
     ///   repair-turn budget (`TurnFormat.maxRepairTurns`) is exhausted
     ///   before a well-formed turn arrives; `MultiToolAgentError
     ///   .maxTurnsExceeded` if `maxTurns` is reached with no `final` step;
-    ///   otherwise whatever the underlying session or `findApiTool` throws.
+    ///   otherwise whatever the underlying session or `findAPITool` throws.
     public func respond(to prompt: String) async throws -> String {
         let session = makeSession()
         var transcript = "User request:\n\(prompt)"
@@ -380,7 +380,7 @@ public struct MultiToolAgent: Sendable {
 
     /// Dispatches one `findAPIs(task)` step: rejects it with an instructive
     /// message when discovery isn't available (direct mode, or no librarian
-    /// configured), otherwise forwards `task` to `findApiTool` — which asks
+    /// configured), otherwise forwards `task` to `findAPITool` — which asks
     /// the underlying `MetadataSearcher`'s `.selection` tier (`fork()`-ing
     /// its cached, prefix-rooted session per call under budget, per plan.md
     /// Finding #6, now generalized by the registry's `SelectionTier`) and
@@ -390,7 +390,7 @@ public struct MultiToolAgent: Sendable {
     /// - Parameter task: the plain-language goal the model passed to
     ///   `findAPIs`.
     /// - Returns: the text to feed back to the model as this step's result.
-    /// - Throws: whatever `findApiTool.dispatch(task:)` throws.
+    /// - Throws: whatever `findAPITool.dispatch(task:)` throws.
     private func dispatchFindApis(task: String) async throws -> String {
         guard registry.supportsFindAPIs else {
             return Self.discoveryUnavailableMessage(
@@ -398,14 +398,14 @@ public struct MultiToolAgent: Sendable {
                 reason: "this agent runs in direct mode (runCode only)"
             )
         }
-        guard let findApiTool else {
+        guard let findAPITool else {
             return Self.discoveryUnavailableMessage(
                 task: task,
                 reason: "no librarian is configured for this agent"
             )
         }
 
-        return try await findApiTool.dispatch(task: task)
+        return try await findAPITool.dispatch(task: task)
     }
 
     /// The instructive rejection fed back to the model when it emits a

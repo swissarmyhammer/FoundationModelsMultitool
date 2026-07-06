@@ -21,7 +21,7 @@ struct GuidedTurnFormatTests {
 
     @Test("a findAPIs turn with a task converts to AgentStep.findAPIs")
     func findApisTurnConvertsToStep() throws {
-        let turn = AgentTurn(kind: .findAPIs, task: "find the weather tool")
+        let turn = AgentTurn(kind: .findApis, task: "find the weather tool")
         #expect(try turn.asAgentStep() == .findAPIs(task: "find the weather tool"))
     }
 
@@ -39,7 +39,7 @@ struct GuidedTurnFormatTests {
 
     @Test("a findAPIs turn with no task throws TurnParseError")
     func findApisWithoutTaskThrows() {
-        let turn = AgentTurn(kind: .findAPIs)
+        let turn = AgentTurn(kind: .findApis)
         #expect(throws: TurnParseError.self) { try turn.asAgentStep() }
     }
 
@@ -63,7 +63,7 @@ struct GuidedTurnFormatTests {
 
     @Test("a findAPIs turn with only whitespace task throws TurnParseError, matching runCode's blank-check")
     func findApisWithWhitespaceOnlyTaskThrows() {
-        let turn = AgentTurn(kind: .findAPIs, task: "   \n  ")
+        let turn = AgentTurn(kind: .findApis, task: "   \n  ")
         #expect(throws: TurnParseError.self) { try turn.asAgentStep() }
     }
 

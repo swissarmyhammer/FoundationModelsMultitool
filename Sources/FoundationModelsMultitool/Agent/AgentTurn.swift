@@ -37,7 +37,7 @@ public struct AgentTurn: Sendable, Equatable {
     @Generable
     public enum Kind: String, Sendable, Equatable {
         /// Search for relevant tool functions — plan.md's `findAPIs(task: string)`.
-        case findAPIs
+        case findApis = "findAPIs"
         /// Run a JavaScript snippet against `tools.*` — plan.md's `runCode(code: string)`.
         case runCode
         /// Give the final answer to the user.
@@ -103,7 +103,7 @@ public struct AgentTurn: Sendable, Equatable {
     ///   blank.
     func asAgentStep() throws -> AgentStep {
         switch kind {
-        case .findAPIs:
+        case .findApis:
             return .findAPIs(task: try requireNonBlank(task, fieldName: "task"))
 
         case .runCode:
@@ -236,12 +236,12 @@ public struct GuidedTurnFormat: TurnFormat {
         ]
         if supportsFindApis {
             lines.append(
-                "Set \"kind\" to \"\(AgentTurn.Kind.findAPIs.rawValue)\" and \"task\" to search for relevant tool "
-                    + "functions first (never leave \"task\" empty when kind is \"\(AgentTurn.Kind.findAPIs.rawValue)\")."
+                "Set \"kind\" to \"\(AgentTurn.Kind.findApis.rawValue)\" and \"task\" to search for relevant tool "
+                    + "functions first (never leave \"task\" empty when kind is \"\(AgentTurn.Kind.findApis.rawValue)\")."
             )
         } else {
             lines.append(
-                "\"\(AgentTurn.Kind.findAPIs.rawValue)\" is not available in this session; use help()/docs(name) "
+                "\"\(AgentTurn.Kind.findApis.rawValue)\" is not available in this session; use help()/docs(name) "
                     + "inside runCode instead."
             )
         }
