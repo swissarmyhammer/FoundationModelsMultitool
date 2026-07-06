@@ -94,12 +94,12 @@ public protocol TurnFormat: Sendable {
     /// constrains output via grammar rather than prose convention may
     /// return an empty string.
     ///
-    /// - Parameter supportsFindAPIs: whether the agent's registry surfaces
+    /// - Parameter supportsFindApis: whether the agent's registry surfaces
     ///   `findAPIs` (`false` in direct mode) — the instructions should not
     ///   describe an action the model can't actually take.
     /// - Returns: the format instructions to append to the session's
     ///   instructions.
-    func formatInstructions(supportsFindAPIs: Bool) -> String
+    func formatInstructions(supportsFindApis: Bool) -> String
 
     /// Parses one raw turn response into a well-formed `AgentStep`.
     ///
@@ -167,7 +167,7 @@ public struct TolerantParseTurnFormat: TurnFormat {
         static let answer = "ANSWER:"
         /// The Markdown code-fence delimiter for code blocks.
         ///
-        /// A named constant so `formatInstructions(supportsFindAPIs:)` and
+        /// A named constant so `formatInstructions(supportsFindApis:)` and
         /// `extractCode(afterActionAt:in:)` stay in sync.
         static let codeFence = "```"
     }
@@ -178,7 +178,7 @@ public struct TolerantParseTurnFormat: TurnFormat {
     /// (`ActionVerb`, lowercased for matching; `ActionName`, properly cased
     /// for display) that had to be kept in sync by hand despite sharing an
     /// identical case set. `rawValue` is the properly-cased spelling used in
-    /// `formatInstructions(supportsFindAPIs:)`'s example lines and in
+    /// `formatInstructions(supportsFindApis:)`'s example lines and in
     /// `parseTurn(_:)`'s error messages; `lowercased` is the spelling
     /// `action.value.lowercased()` is compared against.
     private enum Action: String {
@@ -214,18 +214,18 @@ public struct TolerantParseTurnFormat: TurnFormat {
     ///
     /// Includes `ACTION:`, `TASK:`, `CODE:`, and `ANSWER:` markers this
     /// conformer's `parseTurn(_:)` expects — see
-    /// `TurnFormat.formatInstructions(supportsFindAPIs:)`.
+    /// `TurnFormat.formatInstructions(supportsFindApis:)`.
     ///
-    /// - Parameter supportsFindAPIs: whether to include the `findAPIs`
+    /// - Parameter supportsFindApis: whether to include the `findAPIs`
     ///   action's instructions; omitted entirely in direct mode.
     /// - Returns: the full format instructions.
-    public func formatInstructions(supportsFindAPIs: Bool) -> String {
+    public func formatInstructions(supportsFindApis: Bool) -> String {
         var lines = [
             "On each turn, respond with exactly one action, using exactly one of the",
             "formats below — nothing else in the message.",
             "",
         ]
-        if supportsFindAPIs {
+        if supportsFindApis {
             lines.append(contentsOf: [
                 "To search for relevant tool functions:",
                 "\(FieldMarker.action) \(Action.findAPIs.rawValue)",

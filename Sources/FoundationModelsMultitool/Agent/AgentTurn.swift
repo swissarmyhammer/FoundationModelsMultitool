@@ -212,19 +212,19 @@ public struct GuidedTurnFormat: TurnFormat {
     }
 
     /// Briefly explains the guided turn's fields — see
-    /// `TurnFormat.formatInstructions(supportsFindAPIs:)`. The response
+    /// `TurnFormat.formatInstructions(supportsFindApis:)`. The response
     /// *shape* is already enforced by `grammar`, so this text only needs to
     /// teach the model the *semantics* of `kind`/`task`/`code`/`text`, not a
     /// response format to follow.
     ///
-    /// - Parameter supportsFindAPIs: whether to invite the model to use the
+    /// - Parameter supportsFindApis: whether to invite the model to use the
     ///   `findAPIs` kind; direct mode gets an explicit note that it isn't
     ///   available instead, since the grammar's `kind` enum always allows
     ///   every value regardless of this flag (only `MultiToolAgent
     ///   .dispatchFindApis`'s runtime rejection actually enforces
     ///   unavailability).
     /// - Returns: the format instructions.
-    public func formatInstructions(supportsFindAPIs: Bool) -> String {
+    public func formatInstructions(supportsFindApis: Bool) -> String {
         var lines = [
             "Each turn, respond with a single JSON object matching the required schema.",
             "IMPORTANT: the field matching \"kind\" is REQUIRED and must never be left empty — a response",
@@ -234,7 +234,7 @@ public struct GuidedTurnFormat: TurnFormat {
             "or set \"kind\" to \"\(AgentTurn.Kind.final.rawValue)\" and \"text\" to your final answer",
             "(never leave \"text\" empty when kind is \"\(AgentTurn.Kind.final.rawValue)\").",
         ]
-        if supportsFindAPIs {
+        if supportsFindApis {
             lines.append(
                 "Set \"kind\" to \"\(AgentTurn.Kind.findAPIs.rawValue)\" and \"task\" to search for relevant tool "
                     + "functions first (never leave \"task\" empty when kind is \"\(AgentTurn.Kind.findAPIs.rawValue)\")."

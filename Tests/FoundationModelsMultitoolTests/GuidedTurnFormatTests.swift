@@ -107,17 +107,17 @@ struct GuidedTurnFormatTests {
         }
     }
 
-    // MARK: - formatInstructions honors supportsFindAPIs
+    // MARK: - formatInstructions honors supportsFindApis
 
     @Test("formatInstructions mentions findAPIs when supported")
     func formatInstructionsMentionsFindApisWhenSupported() {
-        let text = format.formatInstructions(supportsFindAPIs: true)
+        let text = format.formatInstructions(supportsFindApis: true)
         #expect(text.contains("findAPIs"))
     }
 
     @Test("formatInstructions notes findAPIs is unavailable when not supported")
     func formatInstructionsNotesFindApisUnavailable() {
-        let text = format.formatInstructions(supportsFindAPIs: false)
+        let text = format.formatInstructions(supportsFindApis: false)
         #expect(text.contains("not available"))
     }
 

@@ -437,12 +437,12 @@ public struct MultiToolAgent: Sendable {
         /// model at in-snippet `help()`/`docs()` instead of a `findAPIs`
         /// step that doesn't exist.
         ///
-        /// - Parameter supportsFindAPIs: whether `findAPIs` is also
+        /// - Parameter supportsFindApis: whether `findAPIs` is also
         ///   surfaced to the model.
         /// - Returns: `runCode`'s full description text.
-        static func runCode(supportsFindAPIs: Bool) -> String {
+        static func runCode(supportsFindApis: Bool) -> String {
             let discoveryLine =
-                supportsFindAPIs
+                supportsFindApis
                 ? "Call findAPIs first to learn exact signatures, or help()/docs(name) in-snippet."
                 : "Use help()/docs(name) in-snippet to discover available functions and their signatures."
             return """
@@ -483,13 +483,13 @@ public struct MultiToolAgent: Sendable {
     ) -> String {
         var sections = [
             userInstructions,
-            ToolDescriptions.runCode(supportsFindAPIs: registry.supportsFindAPIs),
+            ToolDescriptions.runCode(supportsFindApis: registry.supportsFindAPIs),
         ]
         if registry.supportsFindAPIs {
             sections.append(ToolDescriptions.findAPIs)
         }
         sections.append(
-            turnFormat.formatInstructions(supportsFindAPIs: registry.supportsFindAPIs)
+            turnFormat.formatInstructions(supportsFindApis: registry.supportsFindAPIs)
         )
         return sections.joined(separator: Self.transcriptSeparator)
     }

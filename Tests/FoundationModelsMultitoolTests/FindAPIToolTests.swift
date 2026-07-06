@@ -25,9 +25,9 @@ struct FindAPIToolTests {
             mode: .selection,
             selection: SelectionConfig(model: { _ in root }, capacityCharacterLimit: .max)
         )
-        let findApiTool = FindAPITool(searcher: searcher, limit: surface.entries.count)
+        let findAPITool = FindAPITool(searcher: searcher, limit: surface.entries.count)
 
-        let feedback = try await findApiTool.dispatch(task: "list the trip cities")
+        let feedback = try await findAPITool.dispatch(task: "list the trip cities")
 
         #expect(root.forkCount == 1)
         #expect(feedback.contains("findAPIs(\"list the trip cities\") found:"))
@@ -50,9 +50,9 @@ struct FindAPIToolTests {
             mode: .selection,
             selection: SelectionConfig(model: { _ in root }, capacityCharacterLimit: .max)
         )
-        let findApiTool = FindAPITool(searcher: searcher, limit: surface.entries.count)
+        let findAPITool = FindAPITool(searcher: searcher, limit: surface.entries.count)
 
-        let feedback = try await findApiTool.dispatch(task: "file a github issue")
+        let feedback = try await findAPITool.dispatch(task: "file a github issue")
 
         // The qualified `// tools.github.createIssue` banner — never the bare
         // `declare function createIssue(...)` alone — proves the namespace
@@ -78,9 +78,9 @@ struct FindAPIToolTests {
             mode: .selection,
             selection: SelectionConfig(model: { _ in root }, capacityCharacterLimit: .max)
         )
-        let findApiTool = FindAPITool(searcher: searcher, limit: surface.entries.count)
+        let findAPITool = FindAPITool(searcher: searcher, limit: surface.entries.count)
 
-        let feedback = try await findApiTool.dispatch(task: "something no tool does")
+        let feedback = try await findAPITool.dispatch(task: "something no tool does")
 
         #expect(feedback == "findAPIs(\"something no tool does\") found no matching functions.")
     }

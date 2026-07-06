@@ -101,17 +101,17 @@ struct TolerantParseTurnFormatTests {
         }
     }
 
-    // MARK: - formatInstructions honors supportsFindAPIs
+    // MARK: - formatInstructions honors supportsFindApis
 
     @Test("formatInstructions mentions findAPIs when supported")
     func formatInstructionsMentionsFindApisWhenSupported() {
-        let text = format.formatInstructions(supportsFindAPIs: true)
+        let text = format.formatInstructions(supportsFindApis: true)
         #expect(text.contains("ACTION: findAPIs"))
     }
 
     @Test("formatInstructions omits findAPIs when not supported")
     func formatInstructionsOmitsFindApisWhenUnsupported() {
-        let text = format.formatInstructions(supportsFindAPIs: false)
+        let text = format.formatInstructions(supportsFindApis: false)
         #expect(!text.contains("ACTION: findAPIs"))
         #expect(text.contains("ACTION: runCode"))
         #expect(text.contains("ACTION: final"))

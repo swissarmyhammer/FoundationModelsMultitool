@@ -241,9 +241,9 @@ struct AlwaysFinalTurnFormat: TurnFormat {
     /// `MultiToolAgent.respond(to:)` never enters its repair path.
     let maxRepairTurns = 0
 
-    /// A fixed note; this fixture ignores `supportsFindAPIs`
+    /// A fixed note; this fixture ignores `supportsFindApis`
     /// since it never distinguishes actions in the first place.
-    func formatInstructions(supportsFindAPIs: Bool) -> String {
+    func formatInstructions(supportsFindApis: Bool) -> String {
         "Respond with anything; every turn is treated as the final answer."
     }
 
