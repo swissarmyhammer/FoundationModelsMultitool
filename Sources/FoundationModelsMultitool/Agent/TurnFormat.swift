@@ -210,44 +210,80 @@ public struct TolerantParseTurnFormat: TurnFormat {
         self.maxRepairTurns = max(0, maxRepairTurns)
     }
 
+    /// One action's format-instruction block: its intro line and the
+    /// field line(s) that follow its `ACTION:` line.
+    ///
+    /// `actionFormats` below is the single source of truth
+    /// `formatInstructions(supportsFindAPIs:)` loops over, rather than a
+    /// hardcoded if/else chain dispatching on the three known actions.
+    private struct ActionFormat {
+        /// The action this block documents.
+        let action: Action
+
+        /// Whether this block is included only when `findAPIs` is
+        /// supported — `true` for `findAPIs` alone; the other two actions
+        /// are always available.
+        let optional: Bool
+
+        /// The block's introductory line, e.g. "To give your final answer:".
+        let header: String
+
+        /// The lines following the block's `ACTION:` line, describing the
+        /// action's required field(s).
+        let fieldLines: [String]
+    }
+
+    /// The three known actions' format-instruction blocks, in the order
+    /// `formatInstructions(supportsFindAPIs:)` documents them.
+    private static let actionFormats: [ActionFormat] = [
+        ActionFormat(
+            action: .findAPIs,
+            optional: true,
+            header: "To search for relevant tool functions:",
+            fieldLines: ["\(FieldMarker.task) <what you are trying to accomplish, in plain language>"]
+        ),
+        ActionFormat(
+            action: .runCode,
+            optional: false,
+            header: "To run a JavaScript snippet against tools.*:",
+            fieldLines: [
+                FieldMarker.code,
+                "\(FieldMarker.codeFence)js",
+                "<your code here>",
+                FieldMarker.codeFence,
+            ]
+        ),
+        ActionFormat(
+            action: .final,
+            optional: false,
+            header: "To give your final answer:",
+            fieldLines: ["\(FieldMarker.answer) <the final answer text>"]
+        ),
+    ]
+
     /// Builds format instructions for the ReAct-style action markers.
     ///
     /// Includes `ACTION:`, `TASK:`, `CODE:`, and `ANSWER:` markers this
     /// conformer's `parseTurn(_:)` expects — see
-    /// `TurnFormat.formatInstructions(supportsFindAPIs:)`.
+    /// `TurnFormat.formatInstructions(supportsFindAPIs:)`. Loops over
+    /// `actionFormats`, a data-driven table of the three known actions,
+    /// rather than hardcoding a conditional block per action.
     ///
     /// - Parameter supportsFindAPIs: whether to include the `findAPIs`
     ///   action's instructions; omitted entirely in direct mode.
     /// - Returns: the full format instructions.
     public func formatInstructions(supportsFindAPIs: Bool) -> String {
-        var lines = [
+        let intro = [
             "On each turn, respond with exactly one action, using exactly one of the",
             "formats below — nothing else in the message.",
-            "",
         ]
-        if supportsFindAPIs {
-            lines.append(contentsOf: [
-                "To search for relevant tool functions:",
-                "\(FieldMarker.action) \(Action.findAPIs.rawValue)",
-                "\(FieldMarker.task) <what you are trying to accomplish, in plain language>",
-                "",
-            ])
-        }
-        lines.append(contentsOf: [
-            "To run a JavaScript snippet against tools.*:",
-            "\(FieldMarker.action) \(Action.runCode.rawValue)",
-            FieldMarker.code,
-            "\(FieldMarker.codeFence)js",
-            "<your code here>",
-            FieldMarker.codeFence,
-            "",
-        ])
-        lines.append(contentsOf: [
-            "To give your final answer:",
-            "\(FieldMarker.action) \(Action.final.rawValue)",
-            "\(FieldMarker.answer) <the final answer text>",
-        ])
-        return lines.joined(separator: "\n")
+        let blocks = Self.actionFormats
+            .filter { !$0.optional || supportsFindAPIs }
+            .map { format in
+                ([format.header, "\(FieldMarker.action) \(format.action.rawValue)"] + format.fieldLines)
+                    .joined(separator: "\n")
+            }
+        return ([intro.joined(separator: "\n")] + blocks).joined(separator: "\n\n")
     }
 
     /// Leniently parses `raw` into an `AgentStep` — see `TurnFormat.parseTurn(_:)`.
@@ -274,34 +310,29 @@ public struct TolerantParseTurnFormat: TurnFormat {
 
         switch action.value.lowercased() {
         case Action.findAPIs.lowercased:
-            guard let task = Self.firstField(marker: FieldMarker.task, in: lines, from: action.lineIndex + 1),
-                !task.value.isEmpty
-            else {
-                throw TurnParseError(
-                    message: "\(FieldMarker.action) \(Action.findAPIs.rawValue) requires a non-empty \"\(FieldMarker.task)\" line."
-                )
+            let task = try Self.requireField(
+                emptyMessage: "\(FieldMarker.action) \(Action.findAPIs.rawValue) requires a non-empty "
+                    + "\"\(FieldMarker.task)\" line."
+            ) {
+                Self.firstField(marker: FieldMarker.task, in: lines, from: action.lineIndex + 1)?.value
             }
-            return .findAPIs(task: task.value)
+            return .findAPIs(task: task)
 
         case Action.runCode.lowercased:
-            guard let code = Self.extractCode(afterActionAt: action.lineIndex, in: lines),
-                !code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            else {
-                throw TurnParseError(
-                    message: "\(FieldMarker.action) \(Action.runCode.rawValue) requires a \"\(FieldMarker.code)\" section "
-                        + "containing the snippet."
-                )
+            let code = try Self.requireField(
+                emptyMessage: "\(FieldMarker.action) \(Action.runCode.rawValue) requires a \"\(FieldMarker.code)\" "
+                    + "section containing the snippet."
+            ) {
+                Self.extractCode(afterActionAt: action.lineIndex, in: lines)
             }
             return .runCode(code: code)
 
         case Action.final.lowercased:
-            guard
-                let answer = Self.extractRest(marker: FieldMarker.answer, afterActionAt: action.lineIndex, in: lines),
-                !answer.isEmpty
-            else {
-                throw TurnParseError(
-                    message: "\(FieldMarker.action) \(Action.final.rawValue) requires a non-empty \"\(FieldMarker.answer)\" field."
-                )
+            let answer = try Self.requireField(
+                emptyMessage: "\(FieldMarker.action) \(Action.final.rawValue) requires a non-empty "
+                    + "\"\(FieldMarker.answer)\" field."
+            ) {
+                Self.extractRest(marker: FieldMarker.answer, afterActionAt: action.lineIndex, in: lines)
             }
             return .final(text: answer)
 
@@ -311,6 +342,32 @@ public struct TolerantParseTurnFormat: TurnFormat {
                     + "Expected \(Action.findAPIs.rawValue), \(Action.runCode.rawValue), or \(Action.final.rawValue)."
             )
         }
+    }
+
+    /// Extracts one action's required field, throwing a `TurnParseError` if it's missing or empty.
+    ///
+    /// Shared by every `parseTurn(_:)` switch case: each pulls one
+    /// action's required field via its own extractor (`firstField(marker
+    /// :in:from:)`'s `TASK:` value, `extractCode(afterActionAt:in:)`, or
+    /// `extractRest(marker:afterActionAt:in:)`), then throws an
+    /// action-specific message when the field is absent or blank — the
+    /// same guard-throw-return shape that used to be hand-copied three
+    /// times.
+    ///
+    /// - Parameters:
+    ///   - emptyMessage: the `TurnParseError.message` to throw when
+    ///     `extract()` returns `nil` or an all-whitespace value.
+    ///   - extract: produces the field's raw candidate value, or `nil` if
+    ///     the field is entirely absent.
+    /// - Returns: the extracted value.
+    /// - Throws: `TurnParseError(message: emptyMessage)` when the field is
+    ///   missing or empty after trimming whitespace and newlines.
+    private static func requireField(emptyMessage: @autoclosure () -> String, extract: () -> String?) throws -> String
+    {
+        guard let value = extract(), !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw TurnParseError(message: emptyMessage())
+        }
+        return value
     }
 
     /// Builds a repair instruction for a parse failure.

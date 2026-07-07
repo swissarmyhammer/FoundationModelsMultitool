@@ -131,19 +131,10 @@ public enum ArgumentMarshaler {
     ///   if `arguments` is not `.object`.
     public static func marshalArguments(_ arguments: InterpreterValue) throws -> GeneratedContent {
         guard case .object(let fields) = arguments else {
-            let kindDescription: String =
-                switch arguments {
-                case .null: "null"
-                case .bool: "a boolean"
-                case .number: "a number"
-                case .string: "a string"
-                case .array: "an array"
-                case .object: "an object"
-                }
             throw ArgumentMarshalerError(
                 kind: .argumentsNotAnObject,
                 message: "Tool call arguments must be a JS object (`tools.name({ … })`); "
-                    + "got \(kindDescription) instead."
+                    + "got \(kindDescription(of: arguments)) instead."
             )
         }
         // `fields` is a Swift `Dictionary`, so keys are already unique —
@@ -164,6 +155,26 @@ public enum ArgumentMarshaler {
             id: nil,
             uniquingKeysWith: { first, _ in first }
         )
+    }
+
+    /// Describes `value`'s `InterpreterValue` kind in a few words, for use
+    /// in `.argumentsNotAnObject`'s error message.
+    ///
+    /// Extracted out of `marshalArguments(_:)`'s `guard`/`else` so the
+    /// switch over every `InterpreterValue` case isn't nested inside it.
+    ///
+    /// - Parameter value: the value whose kind to describe.
+    /// - Returns: a short, human-readable noun phrase for `value`'s kind,
+    ///   e.g. `"a boolean"`.
+    private static func kindDescription(of value: InterpreterValue) -> String {
+        switch value {
+        case .null: "null"
+        case .bool: "a boolean"
+        case .number: "a number"
+        case .string: "a string"
+        case .array: "an array"
+        case .object: "an object"
+        }
     }
 
     /// Recursively converts one JSON-shaped `InterpreterValue` into the

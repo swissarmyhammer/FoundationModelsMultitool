@@ -342,14 +342,12 @@ public struct MultiToolAgent: Sendable {
             do {
                 step = try turnFormat.parseTurn(raw)
             } catch {
-                repairsUsed += 1
-                Self.logger.notice(
-                    "Turn \(turnNumber, privacy: .public) unparseable (repair \(repairsUsed, privacy: .public) of \(turnFormat.maxRepairTurns, privacy: .public)): \(String(describing: error), privacy: .public)"
+                try handleParseFailure(
+                    error,
+                    turnNumber: turnNumber,
+                    repairsUsed: &repairsUsed,
+                    transcript: &transcript
                 )
-                guard repairsUsed <= turnFormat.maxRepairTurns else {
-                    throw MultiToolAgentError.unparseableTurn(turn: turnNumber, reason: String(describing: error))
-                }
-                transcript += "\(Self.transcriptSeparator)\(turnFormat.repairInstruction(for: error))"
                 continue
             }
 
@@ -374,6 +372,42 @@ public struct MultiToolAgent: Sendable {
         }
 
         throw MultiToolAgentError.maxTurnsExceeded(turns: maxTurns)
+    }
+
+    /// Handles one `turnFormat.parseTurn(_:)` failure inside `respond(to:)`'s loop.
+    ///
+    /// Extracted out of `respond(to:)`'s `catch` block: logs the failure,
+    /// either throws once the repair-turn budget (`TurnFormat
+    /// .maxRepairTurns`) is exhausted, or appends a repair instruction to
+    /// `transcript` so the caller's `continue` retries the turn.
+    ///
+    /// - Parameters:
+    ///   - error: the error `turnFormat.parseTurn(_:)` threw.
+    ///   - turnNumber: the 1-based turn this failure occurred on, echoed
+    ///     into `MultiToolAgentError.unparseableTurn` if the budget is
+    ///     exhausted.
+    ///   - repairsUsed: the caller's consecutive-repair counter; incremented
+    ///     in place.
+    ///   - transcript: the caller's running transcript; a repair
+    ///     instruction is appended in place when the budget isn't yet
+    ///     exhausted.
+    /// - Throws: `MultiToolAgentError.unparseableTurn` once `repairsUsed`
+    ///   exceeds `turnFormat.maxRepairTurns`.
+    private func handleParseFailure(
+        _ error: Error,
+        turnNumber: Int,
+        repairsUsed: inout Int,
+        transcript: inout String
+    ) throws {
+        repairsUsed += 1
+        let repairsUsedSoFar = repairsUsed
+        Self.logger.notice(
+            "Turn \(turnNumber, privacy: .public) unparseable (repair \(repairsUsedSoFar, privacy: .public) of \(turnFormat.maxRepairTurns, privacy: .public)): \(String(describing: error), privacy: .public)"
+        )
+        guard repairsUsed <= turnFormat.maxRepairTurns else {
+            throw MultiToolAgentError.unparseableTurn(turn: turnNumber, reason: String(describing: error))
+        }
+        transcript += "\(Self.transcriptSeparator)\(turnFormat.repairInstruction(for: error))"
     }
 
     // MARK: - findAPIs dispatch

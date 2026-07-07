@@ -157,18 +157,8 @@ enum TranscriptAnalyzer {
     /// - Returns: how many `.runCode` steps precede the first `.final` step;
     ///   every `.runCode` step in `steps` if there is no `.final` step at all.
     static func runCodeStepsBeforeFinal(in steps: [AgentStep]) -> Int {
-        var count = 0
-        for step in steps {
-            switch step {
-            case .runCode:
-                count += 1
-            case .final:
-                return count
-            case .findAPIs:
-                continue
-            }
-        }
-        return count
+        let finalIndex = steps.firstIndex(where: \.isFinal) ?? steps.endIndex
+        return steps[..<finalIndex].count(where: \.isRunCode)
     }
 
     /// Decodes the selection tier's `Selection` results from its `.response` events.
@@ -241,5 +231,13 @@ extension AgentStep {
     /// `contains(where:)` predicate.
     fileprivate var isFindAPIs: Bool {
         Self.isSameCase(self, .findAPIs(task: ""))
+    }
+
+    /// True if this step is `.final`.
+    ///
+    /// Used as `TranscriptAnalyzer.runCodeStepsBeforeFinal(in:)`'s
+    /// `firstIndex(where:)` predicate.
+    fileprivate var isFinal: Bool {
+        Self.isSameCase(self, .final(text: ""))
     }
 }

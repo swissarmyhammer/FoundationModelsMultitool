@@ -50,6 +50,10 @@ let mlxPackage = "mlx-swift-lm"
 /// machine that already ran Router's gated suite shares the resolved
 /// checkout).
 let huggingFacePackage = "swift-huggingface"
+
+/// The Swift Transformers tokenizer package, paired with
+/// `huggingFacePackage` above — linked by the gated integration test target
+/// and the M9 `multitool-cli` executable.
 let transformersPackage = "swift-transformers"
 
 /// The Hub client + tokenizer products a live `LiveModelLoader` needs (via
