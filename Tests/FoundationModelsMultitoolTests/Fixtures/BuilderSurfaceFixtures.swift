@@ -1,6 +1,6 @@
 import FoundationModels
 
-// MARK: - M2.5 `MultiTool.Builder` / `ApiSurface` fixtures (plan.md
+// MARK: - M2.5 `MultiTool.Builder` / `APISurface` fixtures (plan.md
 // "Adding tools is the easy path" + Component 2/7)
 //
 // Reuses `WeatherTool` / `PlainTextTool` / `StringArgument` /

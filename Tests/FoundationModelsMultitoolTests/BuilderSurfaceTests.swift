@@ -4,7 +4,7 @@ import Testing
 import FoundationModels
 @testable import FoundationModelsMultitool
 
-/// M2.5 coverage for `MultiTool.Builder` + `ApiSurface`: assembling queued
+/// M2.5 coverage for `MultiTool.Builder` + `APISurface`: assembling queued
 /// tools into a rendered, model-agnostic catalog — namespacing (flat vs.
 /// grouped), collision detection, and the completeness contract
 /// (`build()` throws rather than emit a lossy stub) — plan.md § "Adding

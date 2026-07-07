@@ -9,9 +9,9 @@
 /// `ToolDescriptor` (M2); this type layers on the *namespace* a tool was
 /// added under — flat at `tools.<name>` for a standalone tool, or
 /// `tools.<group>.<name>` for one added via `addGroup(named:_:)` — per
-/// plan.md Resolved #5. `ApiSurface` itself is pure data: no model wiring,
+/// plan.md Resolved #5. `APISurface` itself is pure data: no model wiring,
 /// no rendering logic of its own beyond composing already-rendered pieces.
-public struct ApiSurface: Sendable, Equatable {
+public struct APISurface: Sendable, Equatable {
     /// One rendered tool in the catalog.
     public struct Entry: Sendable, Equatable {
         /// The fully-qualified path the snippet calls this tool by,
@@ -51,7 +51,7 @@ public struct ApiSurface: Sendable, Equatable {
         }
 
         /// This entry's full renderable text block, as it appears in the
-        /// concatenated `ApiSurface.source`: a `// tools.<path>` banner
+        /// concatenated `APISurface.source`: a `// tools.<path>` banner
         /// line naming its fully-qualified call path (so a grouped tool's
         /// namespace is visible even though `descriptor` itself never
         /// mentions it — see `path`'s documentation), followed by
@@ -76,7 +76,7 @@ public struct ApiSurface: Sendable, Equatable {
         /// `descriptor.example` — the auto-generated, runnable example
         /// call — with its bare `tools.<name>(` call prefix qualified the
         /// same way `block`'s embedded `@example` line is, so a caller
-        /// splicing this field directly (`FindApiTool.format`'s separate
+        /// splicing this field directly (`FindAPITool.format`'s separate
         /// `Example: ...` trailer) never shows a different, disagreeing
         /// call than the one `block` itself displays.
         ///
@@ -128,7 +128,7 @@ public struct ApiSurface: Sendable, Equatable {
     ///
     /// Explicit for the same reason as `Entry.init` above: a `public`
     /// struct's synthesized initializer is only `internal`-accessible, and
-    /// `ApiSurface` is the public return type of `MultiTool.Builder.build()`
+    /// `APISurface` is the public return type of `MultiTool.Builder.build()`
     /// that a host may need to assemble directly (e.g. in tests).
     ///
     /// - Parameter entries: every tool in the catalog, in catalog order.

@@ -63,7 +63,7 @@ public struct MultiToolBuilderError: Error, Sendable, Equatable, CustomStringCon
 
 extension MultiTool {
     /// Collects wrapped `Tool`s into a model-agnostic catalog and renders
-    /// them, via `ToolAPIRenderer`, into an `ApiSurface` — plan.md §
+    /// them, via `ToolAPIRenderer`, into an `APISurface` — plan.md §
     /// "Adding tools is the easy path" / Component 2: "The `Builder` is a
     /// pure catalog — no model wiring here."
     ///
@@ -73,7 +73,7 @@ extension MultiTool {
     ///     .addTool(thirdPartyToolFromSomePackage)
     ///     .addTools(myToolArray)
     ///     .addGroup(named: "github", githubTools)  // many Tools under one namespace
-    ///     .build()                                 // rendered ApiSurface; still model-agnostic
+    ///     .build()                                 // rendered APISurface; still model-agnostic
     /// ```
     ///
     /// A `final class` (not a `struct`): `addTool`/`addTools`/`addGroup`
@@ -170,7 +170,7 @@ extension MultiTool {
         }
 
         /// Renders every queued tool and assembles the result into an
-        /// `ApiSurface` — the rendered catalog alone, with no live tool
+        /// `APISurface` — the rendered catalog alone, with no live tool
         /// instances attached. Equivalent to `try buildRegistry().surface`;
         /// kept as its own entry point for a caller that only wants the
         /// model-agnostic catalog (the registry-backed selection tier's
@@ -179,13 +179,13 @@ extension MultiTool {
         ///
         /// - Returns: the rendered, model-agnostic catalog.
         /// - Throws: see `buildRegistry()` — this delegates to it entirely.
-        public func build() throws -> ApiSurface {
+        public func build() throws -> APISurface {
             try buildRegistry().surface
         }
 
         /// Renders every queued tool and assembles the result into a
         /// `MultiTool.Registry` — plan.md's "registry," pairing the same
-        /// rendered `ApiSurface` `build()` returns with the live `any Tool`
+        /// rendered `APISurface` `build()` returns with the live `any Tool`
         /// instances a `MultiTool` (M4a) dispatches `tools.*` calls to. This
         /// is the primary entry point; `build()` above is the thin,
         /// surface-only convenience wrapper over it.
@@ -211,7 +211,7 @@ extension MultiTool {
         ///   isn't a legal TypeScript identifier, or if two tools would
         ///   collide at the same top-level snippet call path.
         public func buildRegistry() throws -> MultiTool.Registry {
-            var entries: [ApiSurface.Entry] = []
+            var entries: [APISurface.Entry] = []
             var toolsByPath: [String: any Tool] = [:]
             var standaloneNames: Set<String> = []
             var groupNames: Set<String> = []
@@ -231,7 +231,7 @@ extension MultiTool {
                                 + "addGroup(named:_:) to disambiguate."
                         )
                     }
-                    entries.append(ApiSurface.Entry(path: descriptor.name, group: nil, descriptor: descriptor))
+                    entries.append(APISurface.Entry(path: descriptor.name, group: nil, descriptor: descriptor))
                     toolsByPath[descriptor.name] = tool
 
                 case .grouped(let group, let tool):
@@ -259,7 +259,7 @@ extension MultiTool {
                     namesByGroup[group] = namesInGroup
                     groupNames.insert(group)
                     let path = "\(group).\(descriptor.name)"
-                    entries.append(ApiSurface.Entry(path: path, group: group, descriptor: descriptor))
+                    entries.append(APISurface.Entry(path: path, group: group, descriptor: descriptor))
                     toolsByPath[path] = tool
                 }
             }
@@ -274,7 +274,7 @@ extension MultiTool {
                 )
             }
 
-            return MultiTool.Registry(surface: ApiSurface(entries: entries), tools: toolsByPath)
+            return MultiTool.Registry(surface: APISurface(entries: entries), tools: toolsByPath)
         }
     }
 }

@@ -55,7 +55,7 @@ enum TranscriptAnalyzer {
     /// - Returns: the decoded events, in file order.
     /// - Throws: a decoding error if any non-blank line isn't valid
     ///   `TranscriptEvent` JSON.
-    static func decodeJsonl(_ jsonl: String) throws -> [TranscriptEvent] {
+    static func decodeJSONL(_ jsonl: String) throws -> [TranscriptEvent] {
         let decoder = JSONDecoder()
         return try jsonl
             .split(separator: "\n", omittingEmptySubsequences: true)
@@ -107,9 +107,9 @@ enum TranscriptAnalyzer {
     /// - Returns: `true` if a `.findAPIs` step precedes the first `.runCode`
     ///   step; `false` if there is no `.runCode` step at all, or the first
     ///   `.runCode` step has no `.findAPIs` step before it.
-    static func findApisPrecedesRunCode(in steps: [AgentStep]) -> Bool {
+    static func findAPIsPrecedesRunCode(in steps: [AgentStep]) -> Bool {
         guard let runCodeIndex = steps.firstIndex(where: \.isRunCode) else { return false }
-        return steps[..<runCodeIndex].contains(where: \.isFindApis)
+        return steps[..<runCodeIndex].contains(where: \.isFindAPIs)
     }
 
     /// Extracts the `tools.*` call paths a `runCode` snippet's code text invokes.
@@ -164,7 +164,7 @@ enum TranscriptAnalyzer {
                 count += 1
             case .final:
                 return count
-            case .findApis:
+            case .findAPIs:
                 continue
             }
         }
@@ -215,12 +215,12 @@ enum TranscriptAnalyzer {
 extension AgentStep {
     /// Compares `lhs` and `rhs` for the same enum case, ignoring associated values.
     ///
-    /// The shared case-predicate helper `isRunCode`/`isFindApis` both
+    /// The shared case-predicate helper `isRunCode`/`isFindAPIs` both
     /// delegate to, instead of each repeating its own `if case ... = self`
     /// boilerplate.
     fileprivate static func isSameCase(_ lhs: AgentStep, _ rhs: AgentStep) -> Bool {
         switch (lhs, rhs) {
-        case (.findApis, .findApis), (.runCode, .runCode), (.final, .final):
+        case (.findAPIs, .findAPIs), (.runCode, .runCode), (.final, .final):
             return true
         default:
             return false
@@ -229,7 +229,7 @@ extension AgentStep {
 
     /// True if this step is `.runCode`.
     ///
-    /// Used as `TranscriptAnalyzer.findApisPrecedesRunCode(in:)`'s
+    /// Used as `TranscriptAnalyzer.findAPIsPrecedesRunCode(in:)`'s
     /// `firstIndex(where:)` predicate.
     fileprivate var isRunCode: Bool {
         Self.isSameCase(self, .runCode(code: ""))
@@ -237,9 +237,9 @@ extension AgentStep {
 
     /// True if this step is `.findAPIs`.
     ///
-    /// Used as `TranscriptAnalyzer.findApisPrecedesRunCode(in:)`'s
+    /// Used as `TranscriptAnalyzer.findAPIsPrecedesRunCode(in:)`'s
     /// `contains(where:)` predicate.
-    fileprivate var isFindApis: Bool {
-        Self.isSameCase(self, .findApis(task: ""))
+    fileprivate var isFindAPIs: Bool {
+        Self.isSameCase(self, .findAPIs(task: ""))
     }
 }

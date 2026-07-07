@@ -91,7 +91,7 @@ struct AgentEvaluation: Evaluation {
             prompt: "How warm is it in Austin right now?",
             tools: [IntegrationWeatherTool()],
             expectation: AgentScenarioExpectation(
-                expectFindApis: true,
+                expectFindAPIs: true,
                 expectedToolPaths: ["weather"],
                 maxRunCodeStepsBeforeFinal: 1
             )
@@ -101,7 +101,7 @@ struct AgentEvaluation: Evaluation {
             prompt: "Of the cities on my trip, which is warmest right now?",
             tools: [IntegrationTripCitiesTool(), IntegrationWeatherTool()],
             expectation: AgentScenarioExpectation(
-                expectFindApis: true,
+                expectFindAPIs: true,
                 expectedToolPaths: ["tripCities", "weather"],
                 maxRunCodeStepsBeforeFinal: 1
             )
@@ -114,7 +114,7 @@ struct AgentEvaluation: Evaluation {
             prompt: "Of all the trip-planning tools available, which city on my trip is warmest right now?",
             tools: [IntegrationWeatherTool(), IntegrationTripCitiesTool()] + integrationDistractorTools,
             expectation: AgentScenarioExpectation(
-                expectFindApis: true,
+                expectFindAPIs: true,
                 expectedToolPaths: ["tripCities", "weather"],
                 maxRunCodeStepsBeforeFinal: 1
             )
@@ -124,7 +124,7 @@ struct AgentEvaluation: Evaluation {
             prompt: "Confirm my booking, id 42.",
             tools: [IntegrationBookingTool()],
             expectation: AgentScenarioExpectation(
-                expectFindApis: false,
+                expectFindAPIs: false,
                 expectedToolPaths: ["book"],
                 maxRunCodeStepsBeforeFinal: 3
             )

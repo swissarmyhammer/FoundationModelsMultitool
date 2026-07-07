@@ -21,8 +21,8 @@ struct GuidedTurnFormatTests {
 
     @Test("a findAPIs turn with a task converts to AgentStep.findApis")
     func findApisTurnConvertsToStep() throws {
-        let turn = AgentTurn(kind: .findApis, task: "find the weather tool")
-        #expect(try turn.asAgentStep() == .findApis(task: "find the weather tool"))
+        let turn = AgentTurn(kind: .findAPIs, task: "find the weather tool")
+        #expect(try turn.asAgentStep() == .findAPIs(task: "find the weather tool"))
     }
 
     @Test("a runCode turn with code converts to AgentStep.runCode")
@@ -39,7 +39,7 @@ struct GuidedTurnFormatTests {
 
     @Test("a findAPIs turn with no task throws TurnParseError")
     func findApisWithoutTaskThrows() {
-        let turn = AgentTurn(kind: .findApis)
+        let turn = AgentTurn(kind: .findAPIs)
         #expect(throws: TurnParseError.self) { try turn.asAgentStep() }
     }
 
@@ -63,7 +63,7 @@ struct GuidedTurnFormatTests {
 
     @Test("a findAPIs turn with only whitespace task throws TurnParseError, matching runCode's blank-check")
     func findApisWithWhitespaceOnlyTaskThrows() {
-        let turn = AgentTurn(kind: .findApis, task: "   \n  ")
+        let turn = AgentTurn(kind: .findAPIs, task: "   \n  ")
         #expect(throws: TurnParseError.self) { try turn.asAgentStep() }
     }
 
@@ -78,7 +78,7 @@ struct GuidedTurnFormatTests {
     @Test("parses a well-formed findAPIs JSON turn")
     func parsesFindApisJson() throws {
         let step = try format.parseTurn(#"{"kind":"findAPIs","task":"find the weather tool"}"#)
-        #expect(step == .findApis(task: "find the weather tool"))
+        #expect(step == .findAPIs(task: "find the weather tool"))
     }
 
     @Test("parses a well-formed runCode JSON turn")
@@ -111,13 +111,13 @@ struct GuidedTurnFormatTests {
 
     @Test("formatInstructions mentions findAPIs when supported")
     func formatInstructionsMentionsFindApisWhenSupported() {
-        let text = format.formatInstructions(supportsFindApis: true)
+        let text = format.formatInstructions(supportsFindAPIs: true)
         #expect(text.contains("findAPIs"))
     }
 
     @Test("formatInstructions notes findAPIs is unavailable when not supported")
     func formatInstructionsNotesFindApisUnavailable() {
-        let text = format.formatInstructions(supportsFindApis: false)
+        let text = format.formatInstructions(supportsFindAPIs: false)
         #expect(text.contains("not available"))
     }
 
@@ -199,7 +199,7 @@ struct GuidedTurnFormatTests {
         let agent = MultiToolAgent(
             registry: registry,
             session: mainSession,
-            findApiSearcher: searcher,
+            findAPISearcher: searcher,
             instructions: "You are a travel assistant.",
             turnFormat: .guided()
         )
@@ -281,7 +281,7 @@ struct GuidedTurnFormatTests {
         let tolerantAgent = MultiToolAgent(
             registry: registry,
             session: tolerantSession,
-            findApiSearcher: tolerantSearcher,
+            findAPISearcher: tolerantSearcher,
             instructions: "You are a travel assistant.",
             turnFormat: .tolerantParse()
         )
@@ -298,7 +298,7 @@ struct GuidedTurnFormatTests {
         let guidedAgent = MultiToolAgent(
             registry: registry,
             session: guidedSession,
-            findApiSearcher: guidedSearcher,
+            findAPISearcher: guidedSearcher,
             instructions: "You are a travel assistant.",
             turnFormat: .guided()
         )

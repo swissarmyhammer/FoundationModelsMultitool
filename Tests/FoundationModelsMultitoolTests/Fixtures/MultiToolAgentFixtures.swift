@@ -110,7 +110,7 @@ let cannedCitiesSelectionJson = #"{"ids":["cities"]}"#
 func makeScriptedSelectionSearcher(
     registry: MultiTool.Registry,
     root: any AgentSession
-) -> MetadataSearcher<ApiSurface.Entry> {
+) -> MetadataSearcher<APISurface.Entry> {
     MetadataSearcher(
         items: registry.surface.entries,
         mode: .selection,
@@ -241,9 +241,9 @@ struct AlwaysFinalTurnFormat: TurnFormat {
     /// `MultiToolAgent.respond(to:)` never enters its repair path.
     let maxRepairTurns = 0
 
-    /// A fixed note; this fixture ignores `supportsFindApis`
+    /// A fixed note; this fixture ignores `supportsFindAPIs`
     /// since it never distinguishes actions in the first place.
-    func formatInstructions(supportsFindApis: Bool) -> String {
+    func formatInstructions(supportsFindAPIs: Bool) -> String {
         "Respond with anything; every turn is treated as the final answer."
     }
 

@@ -3,19 +3,19 @@ import Testing
 
 @testable import FoundationModelsMultitool
 
-/// Coverage for `FindApiTool` (task 2rtcrhc's rewire onto `MetadataSearcher`
+/// Coverage for `FindAPITool` (task 2rtcrhc's rewire onto `MetadataSearcher`
 /// `.selection` mode): the splice-through and empty-result behaviors
-/// `LibrarianTests` previously covered against `FindApiTool(librarian:)`,
+/// `LibrarianTests` previously covered against `FindAPITool(librarian:)`,
 /// now driven against a real `.selection`-mode `MetadataSearcher` scripted
 /// through the internal `AgentSession` seam
 /// (`Fixtures/MultiToolAgentFixtures.swift`'s `RootSessionRespondCalledDirectlySession`,
 /// reusing `MultiToolAgentTests`' zero-GPU pattern) — the searcher's
 /// selection tier does the real cached-root/`fork()`-per-call work, and
-/// `FindApiTool` splices its resolved `Match`es' verbatim `block`s, never a
+/// `FindAPITool` splices its resolved `Match`es' verbatim `block`s, never a
 /// bare unqualified `declaration`/`doc`.
-@Suite("FindApiTool")
-struct FindApiToolTests {
-    @Test("a scripted selection's matched standalone entry splices FindApiTool's output verbatim, via a fork() of the prefix-rooted session")
+@Suite("FindAPITool")
+struct FindAPIToolTests {
+    @Test("a scripted selection's matched standalone entry splices FindAPITool's output verbatim, via a fork() of the prefix-rooted session")
     func standaloneSelectionSplicesVerbatimBlockAndExample() async throws {
         let surface = try MultiTool.Builder().addTool(TripCitiesTool()).build()
         let entry = try #require(surface.entries.first)
@@ -25,9 +25,9 @@ struct FindApiToolTests {
             mode: .selection,
             selection: SelectionConfig(model: { _ in root }, capacityCharacterLimit: .max)
         )
-        let findApiTool = FindApiTool(searcher: searcher, limit: surface.entries.count)
+        let findAPITool = FindAPITool(searcher: searcher, limit: surface.entries.count)
 
-        let feedback = try await findApiTool.dispatch(task: "list the trip cities")
+        let feedback = try await findAPITool.dispatch(task: "list the trip cities")
 
         #expect(root.forkCount == 1)
         #expect(feedback.contains("findAPIs(\"list the trip cities\") found:"))
@@ -50,9 +50,9 @@ struct FindApiToolTests {
             mode: .selection,
             selection: SelectionConfig(model: { _ in root }, capacityCharacterLimit: .max)
         )
-        let findApiTool = FindApiTool(searcher: searcher, limit: surface.entries.count)
+        let findAPITool = FindAPITool(searcher: searcher, limit: surface.entries.count)
 
-        let feedback = try await findApiTool.dispatch(task: "file a github issue")
+        let feedback = try await findAPITool.dispatch(task: "file a github issue")
 
         // The qualified `// tools.github.createIssue` banner — never the bare
         // `declare function createIssue(...)` alone — proves the namespace
@@ -78,9 +78,9 @@ struct FindApiToolTests {
             mode: .selection,
             selection: SelectionConfig(model: { _ in root }, capacityCharacterLimit: .max)
         )
-        let findApiTool = FindApiTool(searcher: searcher, limit: surface.entries.count)
+        let findAPITool = FindAPITool(searcher: searcher, limit: surface.entries.count)
 
-        let feedback = try await findApiTool.dispatch(task: "something no tool does")
+        let feedback = try await findAPITool.dispatch(task: "something no tool does")
 
         #expect(feedback == "findAPIs(\"something no tool does\") found no matching functions.")
     }

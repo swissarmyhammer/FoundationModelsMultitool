@@ -57,7 +57,7 @@ struct PrefixReuseTests {
             // Agent/MultiToolAgent.swift) — never a reimplementation of the
             // wiring — so this pin exercises the exact same selection-tier
             // construction a real agent uses.
-            let searcher = try MultiToolAgent.makeFindApiSearcher(registry: registry, librarian: fixture.profile.flash)
+            let searcher = try MultiToolAgent.makeFindAPISearcher(registry: registry, librarian: fixture.profile.flash)
             let limit = registry.surface.entries.count
 
             let firstStart = Date()

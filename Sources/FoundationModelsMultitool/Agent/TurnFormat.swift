@@ -12,7 +12,7 @@ public enum AgentStep: Sendable, Equatable {
     /// The model wants to search for relevant tool functions before writing a snippet.
     ///
     /// Plan.md's `findAPIs(task: string)`.
-    case findApis(task: String)
+    case findAPIs(task: String)
 
     /// Represents the model's request to execute a JavaScript snippet.
     ///
@@ -94,12 +94,12 @@ public protocol TurnFormat: Sendable {
     /// constrains output via grammar rather than prose convention may
     /// return an empty string.
     ///
-    /// - Parameter supportsFindApis: whether the agent's registry surfaces
+    /// - Parameter supportsFindAPIs: whether the agent's registry surfaces
     ///   `findAPIs` (`false` in direct mode) — the instructions should not
     ///   describe an action the model can't actually take.
     /// - Returns: the format instructions to append to the session's
     ///   instructions.
-    func formatInstructions(supportsFindApis: Bool) -> String
+    func formatInstructions(supportsFindAPIs: Bool) -> String
 
     /// Parses one raw turn response into a well-formed `AgentStep`.
     ///
@@ -167,7 +167,7 @@ public struct TolerantParseTurnFormat: TurnFormat {
         static let answer = "ANSWER:"
         /// The Markdown code-fence delimiter for code blocks.
         ///
-        /// A named constant so `formatInstructions(supportsFindApis:)` and
+        /// A named constant so `formatInstructions(supportsFindAPIs:)` and
         /// `extractCode(afterActionAt:in:)` stay in sync.
         static let codeFence = "```"
     }
@@ -178,11 +178,11 @@ public struct TolerantParseTurnFormat: TurnFormat {
     /// (`ActionVerb`, lowercased for matching; `ActionName`, properly cased
     /// for display) that had to be kept in sync by hand despite sharing an
     /// identical case set. `rawValue` is the properly-cased spelling used in
-    /// `formatInstructions(supportsFindApis:)`'s example lines and in
+    /// `formatInstructions(supportsFindAPIs:)`'s example lines and in
     /// `parseTurn(_:)`'s error messages; `lowercased` is the spelling
     /// `action.value.lowercased()` is compared against.
     private enum Action: String {
-        case findApis = "findAPIs"
+        case findAPIs
         case runCode
         case final
 
@@ -214,21 +214,21 @@ public struct TolerantParseTurnFormat: TurnFormat {
     ///
     /// Includes `ACTION:`, `TASK:`, `CODE:`, and `ANSWER:` markers this
     /// conformer's `parseTurn(_:)` expects — see
-    /// `TurnFormat.formatInstructions(supportsFindApis:)`.
+    /// `TurnFormat.formatInstructions(supportsFindAPIs:)`.
     ///
-    /// - Parameter supportsFindApis: whether to include the `findAPIs`
+    /// - Parameter supportsFindAPIs: whether to include the `findAPIs`
     ///   action's instructions; omitted entirely in direct mode.
     /// - Returns: the full format instructions.
-    public func formatInstructions(supportsFindApis: Bool) -> String {
+    public func formatInstructions(supportsFindAPIs: Bool) -> String {
         var lines = [
             "On each turn, respond with exactly one action, using exactly one of the",
             "formats below — nothing else in the message.",
             "",
         ]
-        if supportsFindApis {
+        if supportsFindAPIs {
             lines.append(contentsOf: [
                 "To search for relevant tool functions:",
-                "\(FieldMarker.action) \(Action.findApis.rawValue)",
+                "\(FieldMarker.action) \(Action.findAPIs.rawValue)",
                 "\(FieldMarker.task) <what you are trying to accomplish, in plain language>",
                 "",
             ])
@@ -267,21 +267,21 @@ public struct TolerantParseTurnFormat: TurnFormat {
         let lines = raw.components(separatedBy: "\n")
         guard let action = Self.firstField(marker: FieldMarker.action, in: lines) else {
             throw TurnParseError(
-                message: "No \"\(FieldMarker.action)\" line found. Expected \"\(FieldMarker.action) \(Action.findApis.rawValue)\", "
+                message: "No \"\(FieldMarker.action)\" line found. Expected \"\(FieldMarker.action) \(Action.findAPIs.rawValue)\", "
                     + "\"\(FieldMarker.action) \(Action.runCode.rawValue)\", or \"\(FieldMarker.action) \(Action.final.rawValue)\"."
             )
         }
 
         switch action.value.lowercased() {
-        case Action.findApis.lowercased:
+        case Action.findAPIs.lowercased:
             guard let task = Self.firstField(marker: FieldMarker.task, in: lines, from: action.lineIndex + 1),
                 !task.value.isEmpty
             else {
                 throw TurnParseError(
-                    message: "\(FieldMarker.action) \(Action.findApis.rawValue) requires a non-empty \"\(FieldMarker.task)\" line."
+                    message: "\(FieldMarker.action) \(Action.findAPIs.rawValue) requires a non-empty \"\(FieldMarker.task)\" line."
                 )
             }
-            return .findApis(task: task.value)
+            return .findAPIs(task: task.value)
 
         case Action.runCode.lowercased:
             guard let code = Self.extractCode(afterActionAt: action.lineIndex, in: lines),
@@ -308,7 +308,7 @@ public struct TolerantParseTurnFormat: TurnFormat {
         default:
             throw TurnParseError(
                 message: "Unrecognized \(FieldMarker.action) \"\(action.value)\". "
-                    + "Expected \(Action.findApis.rawValue), \(Action.runCode.rawValue), or \(Action.final.rawValue)."
+                    + "Expected \(Action.findAPIs.rawValue), \(Action.runCode.rawValue), or \(Action.final.rawValue)."
             )
         }
     }

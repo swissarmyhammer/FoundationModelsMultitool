@@ -53,7 +53,7 @@ public struct AgentScenarioExpectation: Sendable {
     /// deliberately doesn't exercise discovery — in which case
     /// `SearchedThenCalledEvaluator` reports `Metric.ignore(rationale:)`
     /// rather than grading a property the scenario never claims to satisfy.
-    public let expectFindApis: Bool
+    public let expectFindAPIs: Bool
 
     /// The exact `tools.*` call paths the snippet(s) are expected to
     /// invoke — no more, no fewer.
@@ -66,14 +66,14 @@ public struct AgentScenarioExpectation: Sendable {
     /// Creates a scenario's grading configuration.
     ///
     /// - Parameters:
-    ///   - expectFindApis: whether `findAPIs` is expected to precede
+    ///   - expectFindAPIs: whether `findAPIs` is expected to precede
     ///     `runCode`.
     ///   - expectedToolPaths: the exact `tools.*` paths expected to be
     ///     invoked.
     ///   - maxRunCodeStepsBeforeFinal: the maximum `.runCode` attempts
     ///     allowed before `.final`.
-    public init(expectFindApis: Bool, expectedToolPaths: Set<String>, maxRunCodeStepsBeforeFinal: Int) {
-        self.expectFindApis = expectFindApis
+    public init(expectFindAPIs: Bool, expectedToolPaths: Set<String>, maxRunCodeStepsBeforeFinal: Int) {
+        self.expectFindAPIs = expectFindAPIs
         self.expectedToolPaths = expectedToolPaths
         self.maxRunCodeStepsBeforeFinal = maxRunCodeStepsBeforeFinal
     }
@@ -114,9 +114,9 @@ public struct AgentSubject: EvaluationSubject, Sendable {
 
 /// plan.md's `Metric("SearchedThenCalled")` — passing when a `.findAPIs`
 /// step precedes the first `.runCode` step (`TranscriptAnalyzer
-/// .findApisPrecedesRunCode(in:)`), failing when it doesn't, and ignored for
+/// .findAPIsPrecedesRunCode(in:)`), failing when it doesn't, and ignored for
 /// a scenario that doesn't expect discovery at all (`AgentScenarioExpectation
-/// .expectFindApis == false`) — deterministic, no judge model needed.
+/// .expectFindAPIs == false`) — deterministic, no judge model needed.
 public struct SearchedThenCalledEvaluator: EvaluatorProtocol, Sendable {
     /// The evaluated sample type — `Evaluations.EvaluatorProtocol`'s `Input` requirement.
     public typealias Input = ModelSample<String>
@@ -142,16 +142,16 @@ public struct SearchedThenCalledEvaluator: EvaluatorProtocol, Sendable {
     ///   `AgentMetricName.searchedThenCalled`: `.passing` if a `.findAPIs`
     ///   step precedes the first `.runCode` step, `.failing` if not, or
     ///   `.ignore` if the scenario doesn't expect discovery at all
-    ///   (`AgentScenarioExpectation.expectFindApis == false`).
+    ///   (`AgentScenarioExpectation.expectFindAPIs == false`).
     /// - Throws: never, for this deterministic evaluator; `throws` is
     ///   `EvaluatorProtocol`'s requirement on `metrics(subject:input:)`.
     public func metrics(subject: AgentSubject, input: ModelSample<String>) async throws -> [Metric] {
         let metric = Metric(AgentMetricName.searchedThenCalled)
-        guard subject.expectation.expectFindApis else {
+        guard subject.expectation.expectFindAPIs else {
             return [metric.ignore(rationale: "this scenario does not require findAPIs before runCode.")]
         }
         return [
-            TranscriptAnalyzer.findApisPrecedesRunCode(in: subject.steps)
+            TranscriptAnalyzer.findAPIsPrecedesRunCode(in: subject.steps)
                 ? metric.passing(rationale: "a findAPIs step preceded the first runCode step.")
                 : metric.failing(rationale: "no findAPIs step preceded the first runCode step.")
         ]

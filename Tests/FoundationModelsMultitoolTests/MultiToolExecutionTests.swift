@@ -5,7 +5,7 @@ import Testing
 
 /// M4a coverage for `MultiTool`: the `runCode` `Tool` conformance that wires
 /// together every prior milestone — `JSCInterpreter` (M1), `ArgumentMarshaler`
-/// + `ToolInvoker` (M3), `MultiTool.Builder` + `ApiSurface` (M2.5), and
+/// + `ToolInvoker` (M3), `MultiTool.Builder` + `APISurface` (M2.5), and
 /// `ResultRenderer` (M5) — into a single working execution path: `tools.*`
 /// installed in a fresh sandbox per call, dispatching into real wrapped
 /// `Tool`s. No model is needed for any of this; `RunCodeArguments` is built
@@ -92,13 +92,13 @@ struct MultiToolExecutionTests {
             .buildRegistry()
 
         #expect(registry.isDirectMode == false)
-        #expect(registry.supportsFindApis == true)
+        #expect(registry.supportsFindAPIs == true)
         #expect(registry.affordances == ["runCode", "findAPIs"])
 
         let direct = registry.directMode()
 
         #expect(direct.isDirectMode == true)
-        #expect(direct.supportsFindApis == false)
+        #expect(direct.supportsFindAPIs == false)
         #expect(direct.affordances == ["runCode"])
         // `directMode()` only flips the affordance metadata — the executable
         // surface itself (and its rendered catalog) is unchanged.

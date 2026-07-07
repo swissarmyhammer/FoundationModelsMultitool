@@ -37,7 +37,7 @@ public struct AgentTurn: Sendable, Equatable {
     @Generable
     public enum Kind: String, Sendable, Equatable {
         /// Search for relevant tool functions — plan.md's `findAPIs(task: string)`.
-        case findApis = "findAPIs"
+        case findAPIs
         /// Run a JavaScript snippet against `tools.*` — plan.md's `runCode(code: string)`.
         case runCode
         /// Give the final answer to the user.
@@ -103,8 +103,8 @@ public struct AgentTurn: Sendable, Equatable {
     ///   blank.
     func asAgentStep() throws -> AgentStep {
         switch kind {
-        case .findApis:
-            return .findApis(task: try requireNonBlank(task, fieldName: "task"))
+        case .findAPIs:
+            return .findAPIs(task: try requireNonBlank(task, fieldName: "task"))
 
         case .runCode:
             return .runCode(code: try requireNonBlank(code, fieldName: "code"))
@@ -212,19 +212,19 @@ public struct GuidedTurnFormat: TurnFormat {
     }
 
     /// Briefly explains the guided turn's fields — see
-    /// `TurnFormat.formatInstructions(supportsFindApis:)`. The response
+    /// `TurnFormat.formatInstructions(supportsFindAPIs:)`. The response
     /// *shape* is already enforced by `grammar`, so this text only needs to
     /// teach the model the *semantics* of `kind`/`task`/`code`/`text`, not a
     /// response format to follow.
     ///
-    /// - Parameter supportsFindApis: whether to invite the model to use the
+    /// - Parameter supportsFindAPIs: whether to invite the model to use the
     ///   `findAPIs` kind; direct mode gets an explicit note that it isn't
     ///   available instead, since the grammar's `kind` enum always allows
     ///   every value regardless of this flag (only `MultiToolAgent
-    ///   .dispatchFindApis`'s runtime rejection actually enforces
+    ///   .dispatchFindAPIs`'s runtime rejection actually enforces
     ///   unavailability).
     /// - Returns: the format instructions.
-    public func formatInstructions(supportsFindApis: Bool) -> String {
+    public func formatInstructions(supportsFindAPIs: Bool) -> String {
         var lines = [
             "Each turn, respond with a single JSON object matching the required schema.",
             "IMPORTANT: the field matching \"kind\" is REQUIRED and must never be left empty — a response",
@@ -234,14 +234,14 @@ public struct GuidedTurnFormat: TurnFormat {
             "or set \"kind\" to \"\(AgentTurn.Kind.final.rawValue)\" and \"text\" to your final answer",
             "(never leave \"text\" empty when kind is \"\(AgentTurn.Kind.final.rawValue)\").",
         ]
-        if supportsFindApis {
+        if supportsFindAPIs {
             lines.append(
-                "Set \"kind\" to \"\(AgentTurn.Kind.findApis.rawValue)\" and \"task\" to search for relevant tool "
-                    + "functions first (never leave \"task\" empty when kind is \"\(AgentTurn.Kind.findApis.rawValue)\")."
+                "Set \"kind\" to \"\(AgentTurn.Kind.findAPIs.rawValue)\" and \"task\" to search for relevant tool "
+                    + "functions first (never leave \"task\" empty when kind is \"\(AgentTurn.Kind.findAPIs.rawValue)\")."
             )
         } else {
             lines.append(
-                "\"\(AgentTurn.Kind.findApis.rawValue)\" is not available in this session; use help()/docs(name) "
+                "\"\(AgentTurn.Kind.findAPIs.rawValue)\" is not available in this session; use help()/docs(name) "
                     + "inside runCode instead."
             )
         }

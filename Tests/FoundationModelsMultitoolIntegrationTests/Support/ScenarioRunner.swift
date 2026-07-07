@@ -80,7 +80,7 @@ func runIntegrationScenario(
 
         if expectFindApis {
             #expect(
-                TranscriptAnalyzer.findApisPrecedesRunCode(in: steps),
+                TranscriptAnalyzer.findAPIsPrecedesRunCode(in: steps),
                 "[\(name)] expected findAPIs before runCode"
             )
         }

@@ -14,7 +14,7 @@ struct TolerantParseTurnFormatTests {
     @Test("parses a well-formed findAPIs turn")
     func parsesFindApis() throws {
         let step = try format.parseTurn("ACTION: findAPIs\nTASK: find the weather tool")
-        #expect(step == .findApis(task: "find the weather tool"))
+        #expect(step == .findAPIs(task: "find the weather tool"))
     }
 
     @Test("parses a well-formed runCode turn with a fenced code block")
@@ -49,7 +49,7 @@ struct TolerantParseTurnFormatTests {
     func tolerantOfPreamble() throws {
         let raw = "Thought: I should look this up.\nACTION: findAPIs\nTASK: weather lookup"
         let step = try format.parseTurn(raw)
-        #expect(step == .findApis(task: "weather lookup"))
+        #expect(step == .findAPIs(task: "weather lookup"))
     }
 
     @Test("matches markers case-insensitively")
@@ -105,13 +105,13 @@ struct TolerantParseTurnFormatTests {
 
     @Test("formatInstructions mentions findAPIs when supported")
     func formatInstructionsMentionsFindApisWhenSupported() {
-        let text = format.formatInstructions(supportsFindApis: true)
+        let text = format.formatInstructions(supportsFindAPIs: true)
         #expect(text.contains("ACTION: findAPIs"))
     }
 
     @Test("formatInstructions omits findAPIs when not supported")
     func formatInstructionsOmitsFindApisWhenUnsupported() {
-        let text = format.formatInstructions(supportsFindApis: false)
+        let text = format.formatInstructions(supportsFindAPIs: false)
         #expect(!text.contains("ACTION: findAPIs"))
         #expect(text.contains("ACTION: runCode"))
         #expect(text.contains("ACTION: final"))

@@ -4,12 +4,12 @@ import Testing
 
 @testable import FoundationModelsMultitool
 
-/// Coverage for `ApiSurface.Entry`'s `SearchableMetadata` conformance (task
+/// Coverage for `APISurface.Entry`'s `SearchableMetadata` conformance (task
 /// p44m84d): the rendered tool catalog becomes searchable by the registry
 /// once `entry.id`/`entry.renderBlock()` line up with `path`/`block`, the
 /// same identity the plan's "conform, don't wrap" approach calls for.
-@Suite("ApiSurfaceSearchableMetadata")
-struct ApiSurfaceSearchableMetadataTests {
+@Suite("APISurfaceSearchableMetadata")
+struct APISurfaceSearchableMetadataTests {
     @Test("a standalone entry's id and renderBlock() are its path and block")
     func standaloneEntryIdAndRenderBlockMatchPathAndBlock() throws {
         let surface = try MultiTool.Builder().addTool(WeatherTool()).build()
