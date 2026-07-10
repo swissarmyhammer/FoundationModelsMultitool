@@ -168,7 +168,7 @@ let package = Package(
         // above.
         .package(
             url: "https://github.com/swissarmyhammer/\(mlxPackage)",
-            branch: "mlx-foundationmodels"
+            branch: "foundationmodels-fixes"
         ),
         .package(
             url: "https://github.com/huggingface/\(huggingFacePackage)",

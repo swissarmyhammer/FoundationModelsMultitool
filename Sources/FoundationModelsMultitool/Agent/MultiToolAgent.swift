@@ -194,7 +194,7 @@ public struct MultiToolAgent: Sendable {
             if let grammar = resolvedTurnFormat.grammar {
                 {
                     RoutedAgentSession(
-                        session: model.makeGuidedSession(grammar, instructions: sessionInstructions)
+                        session: model.makeGuidedSession(grammar: grammar, instructions: sessionInstructions)
                     )
                 }
             } else {
@@ -236,7 +236,7 @@ public struct MultiToolAgent: Sendable {
     ) throws -> MetadataSearcher<APISurface.Entry> {
         let grammar = try idEnumGrammar(ids: registry.surface.entries.map(\.path))
         let selection = SelectionConfig(model: { instructions in
-            RoutedAgentSession(session: librarian.makeGuidedSession(grammar, instructions: instructions))
+            RoutedAgentSession(session: librarian.makeGuidedSession(grammar: grammar, instructions: instructions))
         })
         return MetadataSearcher(items: registry.surface.entries, mode: .selection, selection: selection)
     }

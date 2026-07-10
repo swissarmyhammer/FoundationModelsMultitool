@@ -166,7 +166,7 @@ struct LiveRouterFixture {
     /// own gated `IntegrationTests.endToEnd()`.
     ///
     /// - Returns: the resolved fixture.
-    /// - Throws: whatever `Router.resolve(_:reporting:)` throws — including
+    /// - Throws: whatever `Router.resolve(profile:reporting:)` throws — including
     ///   `GenerationError.notWiredForLiveInference` if the live decode path
     ///   isn't wired up in this environment (plan.md M6.5's typed skip
     ///   reason).
@@ -185,7 +185,7 @@ struct LiveRouterFixture {
             loader: loader
         )
         let progress = ResolutionProgress()
-        let profile = try await router.resolve(multitoolTinyProfile, reporting: progress)
+        let profile = try await router.resolve(profile: multitoolTinyProfile, reporting: progress)
         return LiveRouterFixture(router: router, profile: profile, recordingsDir: recordingsDir)
     }
 

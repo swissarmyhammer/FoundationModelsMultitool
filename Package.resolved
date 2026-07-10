@@ -1,5 +1,5 @@
 {
-  "originHash" : "22974d5d45c48c078c094362bbcdaa71d86daa0ed2e2fe6d4a547531fe19b8eb",
+  "originHash" : "5bbe405e4d644502eac47007db2cbaf7f73cea0928d3f6140794f9043a893a5e",
   "pins" : [
     {
       "identity" : "eventsource",
@@ -16,7 +16,7 @@
       "location" : "https://github.com/swissarmyhammer/FoundationModelsMetadataRegistry",
       "state" : {
         "branch" : "main",
-        "revision" : "4e49de80e30fbe631d312cc1b09dd569944c47c0"
+        "revision" : "9e9ff96a7391a5ce0481d58440dc15ecb5756e0e"
       }
     },
     {
@@ -25,7 +25,7 @@
       "location" : "https://github.com/swissarmyhammer/FoundationModelsRouter",
       "state" : {
         "branch" : "main",
-        "revision" : "869368dc758802b65c2b61b541a9c730a780d413"
+        "revision" : "0aaf917b21b85b8456265a5d4fdf74a0119b8333"
       }
     },
     {
@@ -33,8 +33,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/ml-explore/mlx-swift",
       "state" : {
-        "revision" : "eb889e01b7267bc6d9c01fde91bc517b09506c2d",
-        "version" : "0.31.5"
+        "revision" : "0bb916c67f4b9e5c682cbe02a42c701c93ab5021",
+        "version" : "0.31.6"
       }
     },
     {
@@ -42,8 +42,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/swissarmyhammer/mlx-swift-lm",
       "state" : {
-        "branch" : "mlx-foundationmodels",
-        "revision" : "e6ccd2721ab3b236b92e436bee2130086f48041c"
+        "branch" : "foundationmodels-fixes",
+        "revision" : "81b9a3b344ae8ec8bc9d7082d3192f987f4411c1"
       }
     },
     {
@@ -141,8 +141,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-system.git",
       "state" : {
-        "revision" : "7502b711c92a17741fa625d722b0ccbd595d8ed1",
-        "version" : "1.7.2"
+        "revision" : "b5544ba79a70a0cb3563e75bf26dc198d6b40ed3",
+        "version" : "1.7.4"
       }
     },
     {

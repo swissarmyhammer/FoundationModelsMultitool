@@ -221,9 +221,9 @@ enum CLIRunner {
 
     /// The default profile resolution implementation.
     ///
-    /// Uses `router.resolve(_:reporting:)` unchanged — see `ProfileResolver`.
+    /// Uses `router.resolve(profile:reporting:)` unchanged — see `ProfileResolver`.
     static let defaultResolve: ProfileResolver = { router, definition, progress in
-        try await router.resolve(definition, reporting: progress)
+        try await router.resolve(profile: definition, reporting: progress)
     }
 
     /// Parses command-line arguments into `CLIArguments`.
