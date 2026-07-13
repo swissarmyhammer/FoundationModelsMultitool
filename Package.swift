@@ -31,6 +31,20 @@ let routerDependencyName = "FoundationModelsRouter"
 /// integration test target below.
 let metadataRegistryDependencyName = "FoundationModelsMetadataRegistry"
 
+/// Base URL for packages published under the swissarmyhammer GitHub
+/// organization — `routerDependencyName`, `metadataRegistryDependencyName`,
+/// and `mlxPackage` are all fetched from here.
+let swissArmyHammerOrgURL = "https://github.com/swissarmyhammer/"
+
+/// Builds a `.package(url:branch:)` dependency for a package hosted under
+/// `swissArmyHammerOrgURL`, tracking `mainBranch`. Used for
+/// `routerDependencyName` and `metadataRegistryDependencyName`, whose
+/// declarations would otherwise be near-verbatim copies differing only in
+/// the package name.
+func swissArmyHammerPackage(_ name: String) -> Package.Dependency {
+    .package(url: "\(swissArmyHammerOrgURL)\(name)", branch: mainBranch)
+}
+
 /// The MLX-backed model package `FoundationModelsRouter` itself depends on
 /// (`../FoundationModelsRouter/Package.swift`'s `mlxPackage`). Only two of
 /// its products are declared directly here (not Router's own broader
@@ -45,6 +59,11 @@ let metadataRegistryDependencyName = "FoundationModelsMetadataRegistry"
 /// product set to build at all), so declaring these two directly for the
 /// targets below adds no new MLX/C++ compilation, only linking.
 let mlxPackage = "mlx-swift-lm"
+
+/// Base URL for packages published under the Hugging Face GitHub
+/// organization — `huggingFacePackage` and `transformersPackage` are both
+/// fetched from here.
+let huggingFaceOrgURL = "https://github.com/huggingface/"
 
 /// Hugging Face Hub client and tokenizer packages. Needed by every target
 /// below that constructs a real, live `LiveModelLoader` through the
@@ -143,6 +162,14 @@ let cliLinkerSettings: [LinkerSetting] = {
     return [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", xcodeContentsDirectory])]
 }()
 
+/// The `Sources/` subdirectory prefix used by every source target's `path`
+/// below.
+let sourcesPath = "Sources/"
+
+/// The `Tests/` subdirectory prefix used by every test target's `path`
+/// below.
+let testsPath = "Tests/"
+
 /// SwiftPM manifest for FoundationModelsMultitool.
 ///
 /// Integrates the FoundationModelsRouter package alongside the system
@@ -160,27 +187,21 @@ let package = Package(
         )
     ],
     dependencies: [
-        .package(
-            url: "https://github.com/swissarmyhammer/\(routerDependencyName)",
-            branch: mainBranch
-        ),
-        .package(
-            url: "https://github.com/swissarmyhammer/\(metadataRegistryDependencyName)",
-            branch: mainBranch
-        ),
+        swissArmyHammerPackage(routerDependencyName),
+        swissArmyHammerPackage(metadataRegistryDependencyName),
         // Only the M9 CLI executable and the gated integration test target
         // below link products from these three — see their documentation
         // above.
         .package(
-            url: "https://github.com/swissarmyhammer/\(mlxPackage)",
+            url: "\(swissArmyHammerOrgURL)\(mlxPackage)",
             branch: "foundationmodels-fixes"
         ),
         .package(
-            url: "https://github.com/huggingface/\(huggingFacePackage)",
+            url: "\(huggingFaceOrgURL)\(huggingFacePackage)",
             from: "0.9.0"
         ),
         .package(
-            url: "https://github.com/huggingface/\(transformersPackage)",
+            url: "\(huggingFaceOrgURL)\(transformersPackage)",
             from: "1.3.0"
         ),
     ],
@@ -191,7 +212,7 @@ let package = Package(
                 .product(name: routerDependencyName, package: routerDependencyName),
                 .product(name: metadataRegistryDependencyName, package: metadataRegistryDependencyName),
             ],
-            path: "Sources/\(packageName)"
+            path: "\(sourcesPath)\(packageName)"
         ),
         // M9: the sample CLI executable — plan.md "M9 — Sample CLI. A prompt
         // that triggers findAPIs then a multi-tool runCode." Links
@@ -207,7 +228,7 @@ let package = Package(
                 .target(name: packageName),
                 .product(name: routerDependencyName, package: routerDependencyName),
             ] + liveLoaderMLXProducts + hubProducts,
-            path: "Sources/\(cliTargetName)",
+            path: "\(sourcesPath)\(cliTargetName)",
             // See `cliLinkerSettings`'s documentation: without this, the
             // built executable fails to launch (`dyld: Library not
             // loaded`) trying to resolve the test-only `Evaluations`
@@ -222,7 +243,7 @@ let package = Package(
                 .product(name: routerDependencyName, package: routerDependencyName),
                 .product(name: metadataRegistryDependencyName, package: metadataRegistryDependencyName),
             ],
-            path: "Tests/\(packageName)Tests",
+            path: "\(testsPath)\(packageName)Tests",
             resources: [
                 // Golden files pinning `ToolAPIRenderer`'s rendered surface
                 // (M2), and checked-in fixture JSONL transcripts
@@ -252,7 +273,7 @@ let package = Package(
                 .product(name: routerDependencyName, package: routerDependencyName),
                 .product(name: metadataRegistryDependencyName, package: metadataRegistryDependencyName),
             ] + liveLoaderMLXProducts + hubProducts,
-            path: "Tests/\(packageName)IntegrationTests"
+            path: "\(testsPath)\(packageName)IntegrationTests"
         ),
     ]
 )
