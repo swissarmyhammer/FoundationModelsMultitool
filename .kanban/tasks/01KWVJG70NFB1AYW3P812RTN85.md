@@ -30,6 +30,10 @@ comments:
 
     Task is really-done. Leaving in `doing` for /review per the implement skill's process (not moving to review myself).
   timestamp: 2026-07-06T14:51:13.164165+00:00
+- actor: claude-code
+  id: 01kxe0bf3g1kxxm70a9dzenw2w
+  text: 'Resuming /finish on this task. Implementation was already landed and committed (b2f8f33 "fix(surface): qualify grouped tools'' rendered example call path") and every acceptance-criteria/test checkbox is already checked — it just never progressed through the test/commit/review leg to close out. /test verification (independent subagent): swift build/build-tests/test all green, 237 tests passed, 11 gated skipped, 0 failures — confirms current HEAD state. Proceeding to /commit (expect no-op, nothing uncommitted) then /review.'
+  timestamp: 2026-07-13T15:08:27.632640+00:00
 position_column: doing
 position_ordinal: '80'
 title: Qualify grouped tools' rendered example call path in findAPIs/docs()/help() results
