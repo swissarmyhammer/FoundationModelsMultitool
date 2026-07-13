@@ -28,6 +28,33 @@ comments:
   id: 01kxe4044pv09m8q3ndt572z4d
   text: '/test verification (independent subagent): swift build/build-tests/test all green. 239 tests passed in main suite, 11 gated integration tests skipped as expected (no live model), 0 failures. Confirms the implementer''s report. Proceeding to /commit checkpoint.'
   timestamp: 2026-07-13T16:12:10.262471+00:00
+- actor: claude-code
+  id: 01kxe41epqe91fgxhrxdykp8r7
+  text: 'Checkpoint committed: 841db86 "refactor(discovery): extract findAPIs into a standalone FoundationModels.Tool" (13 files). Not pushed. Proceeding to /review scoped to HEAD~1..HEAD.'
+  timestamp: 2026-07-13T16:12:53.847016+00:00
+- actor: claude-code
+  id: 01kxe4h59e717krvenrkkq79bb
+  text: 'Review (iteration 1) on HEAD~1..HEAD (841db86): 2 findings, both Package.swift:114/118 — "main" branch literal for SwiftPM dependencies duplicated, should be a shared named constant. Task moved doing->review. Proceeding to /implement to fix at root (extract a shared constant and apply everywhere the "main" branch literal appears in Package.swift, not just the two cited lines).'
+  timestamp: 2026-07-13T16:21:28.494368+00:00
+- actor: claude-code
+  id: 01kxe58tsbw43bashzcwsy3q6w
+  text: 'Review findings fixed: extracted `let mainBranch = "main"` as a top-level constant in Package.swift (near the other named constants), and replaced both `.package(url:branch: "main")` occurrences (routerDependencyName, metadataRegistryDependencyName) with `branch: mainBranch`. Confirmed via grep that zero `branch: "main"` literals remain in the file; mlxPackage''s distinct `branch: "foundationmodels-fixes"` was correctly left alone (not a duplicate). Verification: `swift build` clean, `swift build --build-tests` clean, `swift test --skip FoundationModelsMultitoolIntegrationTests` 239/239 passed, 21 suites, 0 failures. update task''s description_find/description_replace silently no-opped again (known intermittent issue), so checked off both boxes with resolution notes by editing .kanban/tasks/01KWVNTEAPVS13BB8H04AVEEPP.md directly and confirmed via get task. Adversarial double-check agent dispatched to independently verify; awaiting result before final handoff.'
+  timestamp: 2026-07-13T16:34:24.171469+00:00
+- actor: claude-code
+  id: 01kxe59c60xzbxar58vxr9wrtk
+  text: |-
+    Adversarial double-check: PASS, no findings. Independently confirmed: mainBranch constant declared once near the other named constants with correct doc comment; used at exactly the two correct .package() call sites (routerDependencyName, metadataRegistryDependencyName); zero remaining `branch: "main"` literals in Package.swift (grep hits only in README.md/plan.md prose, out of scope); mlxPackage's distinct `branch: "foundationmodels-fixes"` correctly untouched; diff scoped to Package.swift (+9/-2) plus kanban bookkeeping only; fresh swift build clean and swift test --skip FoundationModelsMultitoolIntegrationTests 239/239 passed, 21 suites, 0 failures.
+
+    Both review findings resolved and checked off. Task left in `doing` per /implement contract, ready for /review.
+  timestamp: 2026-07-13T16:34:41.984827+00:00
+- actor: claude-code
+  id: 01kxe59vbn64pcvmharknagva5
+  text: 'Iteration 2: /implement fixed both findings — extracted a shared mainBranch = "main" constant in Package.swift, applied to both .package(url:branch:) call sites, mlxPackage''s distinct foundationmodels-fixes branch left untouched. swift build/test green (239 passed), adversarial double-check PASS. Both checklist items checked off. Proceeding to /test then /commit checkpoint.'
+  timestamp: 2026-07-13T16:34:57.525594+00:00
+- actor: claude-code
+  id: 01kxe5c4cj1wcpm1jkcrfpvjxk
+  text: '/test iteration 2 verification (independent subagent): swift build/build-tests/test all green. 239 tests passed, 11 gated skipped, 0 failures. Proceeding to /commit checkpoint.'
+  timestamp: 2026-07-13T16:36:12.306640+00:00
 depends_on:
 - 01KWVJG70NFB1AYW3P812RTN85
 position_column: doing
@@ -63,3 +90,10 @@ Move/rename the extracted logic out of `Agent/` (that whole directory is being r
 
 ## Workflow
 - Use `/tdd` — write the new standalone-Tool tests first against the not-yet-extracted logic (watch them fail to compile/fail), then move+adapt `FindAPITool`/`SelectionGrammar`'s logic to make them pass, then fix `MultiToolAgent`'s call site to keep it green.
+
+## Review Findings (2026-07-13 11:13)
+
+> ⚠️ 1/14 review tasks failed — results are INCOMPLETE.
+
+- [x] `Package.swift:114` — Resolved: extracted `let mainBranch = "main"` as a top-level constant (with doc comment) near the other named constants (packageName, cliTargetName, routerDependencyName, etc.), and replaced the routerDependencyName `.package(url:branch:)` call's `branch: "main"` with `branch: mainBranch`.
+- [x] `Package.swift:118` — Resolved: replaced the metadataRegistryDependencyName `.package(url:branch:)` call's `branch: "main"` with `branch: mainBranch`, reusing the same constant. Verified via grep that zero occurrences of `branch: "main"` remain in Package.swift; the unrelated `mlxPackage` dependency's distinct `branch: "foundationmodels-fixes"` was correctly left untouched. `swift build`, `swift build --build-tests`, and `swift test --skip FoundationModelsMultitoolIntegrationTests` all green (239/239 tests, 0 failures).

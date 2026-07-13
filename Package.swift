@@ -10,6 +10,11 @@ let packageName = "FoundationModelsMultitool"
 /// The name of the M9 sample CLI executable target (and its Sources/ subdirectory).
 let cliTargetName = "multitool-cli"
 
+/// The git branch tracked by the `.package(url:branch:)` declarations for
+/// `routerDependencyName` and `metadataRegistryDependencyName` below — both
+/// dependencies are wired to their respective `main` branches.
+let mainBranch = "main"
+
 /// The name of the FoundationModelsRouter dependency package.
 let routerDependencyName = "FoundationModelsRouter"
 
@@ -157,11 +162,11 @@ let package = Package(
     dependencies: [
         .package(
             url: "https://github.com/swissarmyhammer/\(routerDependencyName)",
-            branch: "main"
+            branch: mainBranch
         ),
         .package(
             url: "https://github.com/swissarmyhammer/\(metadataRegistryDependencyName)",
-            branch: "main"
+            branch: mainBranch
         ),
         // Only the M9 CLI executable and the gated integration test target
         // below link products from these three — see their documentation
