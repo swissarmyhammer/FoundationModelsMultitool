@@ -4,10 +4,45 @@ comments:
   id: 01kwvwqz51nawgak49c5kvbf3s
   text: '**Review note — guard against reintroducing an agent loop.** The description says "don''t design around the bug permanently" re: the upstream `qp8q4h9` single-tool-call-per-turn limitation. To be explicit: this must NOT be worked around with a temporary hand-rolled continuation loop either (e.g. detecting a fall-through-to-text after a tool result and calling `session.respond` again with re-injected context, or any turn-parsing/re-prompt machinery). The whole point of this pivot is that `LanguageModelSession` owns the tool-calling loop. If the upstream fix hasn''t landed, the accepted interim state is: one native tool call per turn, with the gated `SearchThenCallTests` port (`k4mj1gm`) documenting the shortfall as an expected, upstream-attributed failure. Exactly one `session.respond(to:)` call per user prompt in the demo — no loop of any kind in this package.'
   timestamp: 2026-07-06T14:19:03.201949+00:00
+- actor: claude-code
+  id: 01kxekt4apnv9f5s7bfs5r79nk
+  text: |-
+    Implementation complete. Rewrote `Sources/multitool-cli/CLIRunner.swift`'s `runDemo` to build the canonical Router + LanguageModelSession + MultiTool example:
+
+    - Resolves `demoProfile` via Router as before.
+    - Builds `MultiTool.Registry` via `MultiTool.Builder` (unchanged); `MultiTool(registry:)` wraps it as a real `Tool`.
+    - New private `makeMLXLanguageModel(for:)` wraps the resolved `profile.standard` (`RoutedLLM`) as a fresh `MLXLanguageModel(configuration:capabilities:[.guidedGeneration, .toolCalling]:weightsLocation:load:)`, using `ModelConfiguration(id: routedLLM.chosen.repo, revision: ...)` — same model id the Router already loaded. `MLXLanguageModel` caches its `ModelContainer` in a process-global `ModelCache` keyed by model id (see `mlx-swift-lm`'s `MLXLanguageModel.swift`), so this reuses the already-resident weights without re-downloading/re-resolving. Declares `.toolCalling` (which Router's own internal model does not) so the session can register real `Tool`s.
+    - Builds `LanguageModelSession(model: mlxModel, tools: [multiTool] + (direct ? [] : [findAPIsTool]), instructions:)` and calls `session.respond(to: demoPrompt)` exactly once — no hand-rolled loop, no re-prompt/continuation logic anywhere in this file.
+    - `--direct` now means "omit `findAPIsTool` from the session's tools" (multiTool only), matching the task's decision.
+    - `findAPIsTool` (when included) is still backed by its own separate Router-resolved `profile.flash` session via `FindAPIsTool(registry:librarian:)` (task 4aveepp's work) — the "librarian on flash" split is preserved, independent of the main session's `mlxModel`.
+    - Deleted `traceLines`/turn-trace reading entirely (`TurnFormat`/`AgentStep`/`MergedTranscript` no longer referenced anywhere in `Sources/multitool-cli`). `runDemo` now just prints `Answer: \(response.content)`.
+    - `Package.swift`: added `.product(name: "MLXFoundationModels", package: mlxPackage)` to the `multitool-cli` executable target's dependencies.
+    - Had to disambiguate `[any FoundationModels.Tool]` explicitly — `MLXLMCommon` (transitively pulled in via `MLXFoundationModels`) also declares a `Tool` type, causing an ambiguous-lookup build error until qualified.
+    - Adapted `Tests/FoundationModelsMultitoolIntegrationTests/CLISmokeTests.swift`: removed the findAPIs(...)/runCode(...) trace-line assertions (no longer applicable — no trace is printed), kept only the exit-code-success + non-empty "Answer: ..." line assertions. Full scenario-level porting (prefix reuse, selection accuracy, multi-tool-call composition) is explicitly k4mj1gm's job per this task's own Tests checklist.
+    - `Tests/FoundationModelsMultitoolTests/CLIArgumentTests.swift` needed no changes — `CLIRunner.run`'s signature/`ExitCode`/`CLIArguments`/`Flag`s are all unchanged, and its scripted-resolver tests never reach the new tool/session code.
+
+    Verification: `swift build`, `swift build --build-tests`, `swift test` (ungated) all green, zero diagnostics warnings/errors. Manually ran the live binary on real Apple Silicon hardware (`swift run multitool-cli`, `--direct`, `--help`) with cached model weights (from a prior gated-suite run) — all completed end-to-end successfully, printing an `Answer:` line, with no re-download observed. One run's answer was semantically wrong (tiny 1.5B demo model), and one run showed the model falling through to plain text after a `runCode` tool error instead of retrying — this matches the task-acknowledged upstream `mlx-swift-lm` single-native-tool-call-per-turn limitation (`qp8q4h9`), which this task was explicitly told not to design around.
+
+    Note: `MULTITOOL_INTEGRATION=1 swift test` (the gated Swift Testing path, as opposed to `swift run`) currently fails with "MLX error: Failed to load the default metallib" — confirmed this is a PRE-EXISTING environment gap (reproduced identically on the untouched `PrefixReuseTests`, which doesn't use any code this task touched), not a regression from this change. It's a `swift test`-vs-`swift run` Metal-library-bundling gap in this sandbox. Full gated-suite verification remains k4mj1gm's job per this task's scope.
+  timestamp: 2026-07-13T20:48:31.062396+00:00
+- actor: claude-code
+  id: 01kxenmmc80b0h102g39bxqama
+  text: |-
+    Adversarial double-check (via really-done) returned REVISE with two minor findings, both fixed:
+
+    1. `makeMLXLanguageModel(for:)`'s `weightsLocation` closure ignored its `modelID` argument and always returned the bare temp-directory root — `MLXLanguageModel.availability`/`modelExistsOnDisk()`/`freeDiskSpaceBytes` would report `.unavailable(.modelNotDownloaded)` for an already-resident model if anything ever checked `.availability` on this instance (the load path itself was unaffected, since `ModelCache.load` never consults `weightsLocation` — confirmed via manual runs succeeding). Fixed by adding a real `weightsLocation(for:)` static resolver mirroring `MLXLanguageModel`'s own doc-comment example: resolves via `HubCache.default`/`Repo.ID(rawValue:)`/`resolveRevision`/`snapshotPath`, falling back to `repoDirectory`.
+    2. `Sources/multitool-cli/main.swift`'s header comment still described the retired `MultiToolAgent`-based pipeline. Updated to describe the Router -> MLXLanguageModel -> native LanguageModelSession pipeline.
+
+    Re-verified after the fix: `swift build`, `swift build --build-tests`, `swift test` (ungated) all green, zero diagnostics warnings/errors, and a fresh manual live run (`.build/out/Products/Debug/multitool-cli`) still completes end-to-end successfully with the new resolver in place ("Answer: None of the cities listed are currently the warmest." — model output quality is unrelated to plumbing correctness, tiny 1.5B demo model). Task remains in `doing`, ready for `/review`.
+  timestamp: 2026-07-13T21:20:28.040833+00:00
+- actor: claude-code
+  id: 01kxens1hr2phap8ndgynyqb2e
+  text: '/test verification (independent subagent): swift build/build-tests/test all green. 239 tests passed (unchanged count, tests adapted not added/removed), 11 gated skipped. Grep confirms zero live MultiToolAgent/TurnFormat/AgentStep/AgentTurn references in Sources/multitool-cli (only historical doc-comment prose describing what was replaced). Proceeding to /commit checkpoint.'
+  timestamp: 2026-07-13T21:22:52.600347+00:00
 depends_on:
 - 01KWVNTEAPVS13BB8H04AVEEPP
-position_column: todo
-position_ordinal: '8580'
+position_column: doing
+position_ordinal: '80'
 title: Build the canonical Router + LanguageModelSession + MultiTool example, replacing multitool-cli's MultiToolAgent-based demo
 ---
 ## What

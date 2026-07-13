@@ -4,24 +4,28 @@ import os
 
 @testable import multitool_cli
 
-/// M9's gated live smoke test — plan.md M9: "The live demo is verified by
-/// an automated gated smoke test in the integration target (no human
-/// eyeballing): it invokes the `CLIRunner` entry function under the env var
-/// and asserts the emitted trace lines (findAPIs before runCode, final
-/// answer non-empty)."
+/// The gated live smoke test for the canonical Router + `LanguageModelSession`
+/// + `MultiTool` example: it invokes the `CLIRunner` entry function under the
+/// env var and asserts a non-empty final answer.
 ///
 /// Runs `CLIRunner.run(...)` end to end with its default (production)
-/// resolver — a real Router resolve against `CLIRunner.demoProfile`, a real
-/// agent loop, and a real trace read back from the recorded transcript — and
-/// asserts on the emitted output lines rather than a human reading console
-/// output. `.enabled(if: multitoolIntegrationEnabled)` gates the whole
-/// suite behind `MULTITOOL_INTEGRATION`, so it never fires on a
-/// network/GPU-less box or in normal CI, mirroring every other gated
-/// suite in this target.
-@Suite("CLI smoke test (M9)", .enabled(if: multitoolIntegrationEnabled))
+/// resolver — a real Router resolve against `CLIRunner.demoProfile`, a
+/// native `LanguageModelSession` built directly over `multiTool` and
+/// `findAPIsTool`, and Apple's own tool-calling loop deciding when to call
+/// each — and asserts on the emitted output lines rather than a human
+/// reading console output. Unlike the retired `MultiToolAgent`-based demo
+/// this replaces, there is no hand-rolled turn trace to assert on: `runDemo`
+/// prints only the final answer, so this only asserts that it is present and
+/// non-empty. A deeper, scenario-level port of this suite (prefix reuse,
+/// selection accuracy, multi-tool-call composition) is the dedicated
+/// gated-suite migration task's job — see that task for the broader port.
+/// `.enabled(if: multitoolIntegrationEnabled)` gates the whole suite behind
+/// `MULTITOOL_INTEGRATION`, so it never fires on a network/GPU-less box or in
+/// normal CI, mirroring every other gated suite in this target.
+@Suite("CLI smoke test", .enabled(if: multitoolIntegrationEnabled))
 struct CLISmokeTests {
-    @Test("the live demo's emitted trace shows findAPIs before runCode, and a non-empty final answer")
-    func demoProducesSearchThenCodeTrace() async {
+    @Test("the live demo succeeds and prints a non-empty final answer")
+    func demoProducesNonEmptyAnswer() async {
         let output = OutputCollector()
 
         let exitCode = await CLIRunner.run(arguments: [], output: output.append)
@@ -30,14 +34,6 @@ struct CLISmokeTests {
             exitCode == CLIRunner.ExitCode.success,
             "expected the live demo to succeed; output:\n\(output.lines.joined(separator: "\n"))"
         )
-
-        let findApisIndex = output.lines.firstIndex { $0.contains("findAPIs(") }
-        let runCodeIndex = output.lines.firstIndex { $0.contains("runCode(") }
-        #expect(findApisIndex != nil, "expected a findAPIs(...) trace line in:\n\(output.lines.joined(separator: "\n"))")
-        #expect(runCodeIndex != nil, "expected a runCode(...) trace line in:\n\(output.lines.joined(separator: "\n"))")
-        if let findApisIndex, let runCodeIndex {
-            #expect(findApisIndex < runCodeIndex, "expected findAPIs to precede runCode in the trace")
-        }
 
         let answerLine = output.lines.first { $0.hasPrefix("Answer: ") }
         #expect(answerLine != nil, "expected an \"Answer: ...\" line in:\n\(output.lines.joined(separator: "\n"))")

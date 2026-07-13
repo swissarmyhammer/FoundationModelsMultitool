@@ -230,6 +230,11 @@ let package = Package(
             dependencies: [
                 .target(name: packageName),
                 .product(name: routerDependencyName, package: routerDependencyName),
+                // Needed to wrap a resolved Router generation slot as a real
+                // `FoundationModels.LanguageModel` (`MLXLanguageModel`), so
+                // the CLI can build a native `LanguageModelSession` directly
+                // over it — see `CLIRunner.makeMLXLanguageModel(for:)`.
+                .product(name: "MLXFoundationModels", package: mlxPackage),
             ] + liveLoaderMLXProducts + hubProducts,
             path: "\(sourcesPath)\(cliTargetName)",
             // See `cliLinkerSettings`'s documentation: without this, the

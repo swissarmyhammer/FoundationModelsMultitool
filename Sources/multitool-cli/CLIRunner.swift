@@ -3,6 +3,7 @@ import FoundationModels
 import FoundationModelsMultitool
 import FoundationModelsRouter
 import HuggingFace
+import MLXFoundationModels
 import MLXHuggingFace
 import MLXLMCommon
 import Tokenizers
@@ -19,10 +20,11 @@ private let cliErrorPrefix = "multitool-cli:"
 
 /// The command-line flags `CLIRunner.parse(_:)` recognizes.
 struct CLIArguments: Equatable {
-    /// Enables direct mode: agent runs with `runCode` only, no discovery.
+    /// Enables direct mode: only `multiTool`/`runCode` is registered with
+    /// the session, no discovery.
     ///
-    /// When set, `findAPIs` is not surfaced to the model — plan.md "Direct
-    /// mode (skip discovery)".
+    /// When set, `findAPIsTool` is not registered with the session —
+    /// plan.md "Direct mode (skip discovery)".
     var direct = false
 
     /// Prints usage text and exits without touching the Router.
@@ -97,16 +99,22 @@ struct CLIRouterUnavailableError: Error, CustomStringConvertible {
 
 /// A runnable demonstration of the FoundationModelsMultitool pipeline.
 ///
-/// Implements plan.md M9: "a prompt that triggers findAPIs then a
-/// multi-tool runCode." Factored out of `main.swift` as a plain, testable
-/// entry point:
+/// The canonical Router + `LanguageModelSession` + `MultiTool` example:
+/// resolves a model profile via `Router`, wraps the resolved `.standard`
+/// generation slot as a real `FoundationModels.LanguageModel`
+/// (`MLXLanguageModel`), and registers `multiTool` (and, unless `--direct`,
+/// `findAPIsTool`) directly on a native `FoundationModels
+/// .LanguageModelSession`. Apple's own tool-calling loop decides when to
+/// call `findAPIs` vs `runCode` — this file drives no turn-parsing loop of
+/// its own, unlike the retired `MultiToolAgent`-based demo this replaces.
+/// Factored out of `main.swift` as a plain, testable entry point:
 ///
 /// - Argument parsing and the Router-unavailable degrade path are
 ///   unit-tested here with **no model at all**
 ///   (`Tests/FoundationModelsMultitoolTests/CLIArgumentTests.swift`).
-/// - The full live run — resolving a real profile, driving the agent loop,
-///   and reading back a findAPIs-then-runCode trace — is exercised end to
-///   end by the gated `CLISmokeTests`
+/// - The full live run — resolving a real profile, constructing the native
+///   session, and printing the model's answer — is exercised end to end by
+///   the gated `CLISmokeTests`
 ///   (`Tests/FoundationModelsMultitoolIntegrationTests/CLISmokeTests.swift`).
 enum CLIRunner {
     /// Process exit codes this runner returns.
@@ -124,13 +132,14 @@ enum CLIRunner {
         static let unavailable: Int32 = 69
     }
 
-    /// The `--direct` flag: run the agent in direct mode (`runCode` only, no `findAPIs` discovery).
+    /// The `--direct` flag: run in direct mode (only `multiTool`/`runCode`
+    /// registered with the session, no `findAPIsTool`).
     static let directFlag = Flag(
         names: ["--direct"],
         descriptionLines: [
-            "Run the agent in direct mode: only runCode is surfaced to the",
-            "model (no findAPIs discovery step); the snippet discovers tools",
-            "via help()/docs() instead.",
+            "Run in direct mode: only the runCode tool is registered with the",
+            "session (no findAPIs tool); the snippet discovers tools via",
+            "help()/docs() instead.",
         ],
         apply: { $0.direct = true }
     )
@@ -249,17 +258,18 @@ enum CLIRunner {
     /// Runs the complete demo pipeline end-to-end.
     ///
     /// Parses `arguments`, and — unless `--help` was given or parsing
-    /// failed — resolves `demoProfile`, wires up the demo tools, drives
-    /// `MultiToolAgent.respond(to:)` against `demoPrompt`, and writes the
-    /// answer plus a readable turn-by-turn trace to `output`.
+    /// failed — resolves `demoProfile`, constructs a native
+    /// `LanguageModelSession` over `multiTool` (and, unless `--direct`,
+    /// `findAPIsTool`), calls `session.respond(to:)` once against
+    /// `demoPrompt`, and writes the answer to `output`.
     ///
     /// - Parameters:
     ///   - arguments: the raw arguments (excluding the executable name).
     ///   - resolve: the profile-resolution step. Defaults to
     ///     `defaultResolve`; a test injects a scripted failure to exercise
     ///     the Router-unavailable path with no model.
-    ///   - output: where every line of output (usage, errors, the trace,
-    ///     the final answer) is written. Defaults to `print(_:)`; a test
+    ///   - output: where every line of output (usage, errors, progress, the
+    ///     final answer) is written. Defaults to `print(_:)`; a test
     ///     injects a collector to assert on the emitted lines.
     /// - Returns: the process exit code — `ExitCode.success` on success or
     ///   `--help`, `ExitCode.usageError` for an argument error, or
@@ -304,13 +314,13 @@ enum CLIRunner {
     /// error maps to.
     ///
     /// - Parameters:
-    ///   - direct: whether to run the agent in direct mode
-    ///     (`registry.directMode()`, no librarian).
+    ///   - direct: whether to run in direct mode — only `multiTool` is
+    ///     registered with the session, `findAPIsTool` is omitted.
     ///   - resolve: the profile-resolution step.
-    ///   - output: where trace/answer lines are written.
+    ///   - output: where progress/answer lines are written.
     /// - Throws: `CLIRouterUnavailableError` if `resolve` throws; otherwise
-    ///   whatever building the registry or `MultiToolAgent.respond(to:)`
-    ///   throws.
+    ///   whatever building the tools, `findAPIsTool`'s own initializer, or
+    ///   `session.respond(to:)` throws.
     private static func runDemo(
         direct: Bool,
         resolve: ProfileResolver,
@@ -350,27 +360,106 @@ enum CLIRunner {
                 registry = registry.directMode()
             }
 
-            let agent = try MultiToolAgent(
-                registry: registry,
-                model: profile.standard,
-                librarian: direct ? nil : profile.flash,
+            let multiTool = MultiTool(registry: registry)
+            // Disambiguated against `MLXLMCommon.Tool` (also in scope via
+            // `MLXFoundationModels`/`MLXLMCommon`): the session's tools must
+            // be `FoundationModels.Tool` conformers.
+            var tools: [any FoundationModels.Tool] = [multiTool]
+            if !direct {
+                // `findAPIsTool`'s own internal selection tier is backed by a
+                // separate, Router-resolved `profile.flash` session — the
+                // registry-backed `SelectionTier`'s "librarian on flash"
+                // split — independent of `mlxModel`/the main session below.
+                tools.append(try FindAPIsTool(registry: registry, librarian: profile.flash))
+            }
+
+            let mlxModel = Self.makeMLXLanguageModel(for: profile.standard)
+            let session = LanguageModelSession(
+                model: mlxModel,
+                tools: tools,
                 instructions: "You are a helpful trip-planning assistant. Use runCode to get things done."
             )
 
-            let answer = try await agent.respond(to: demoPrompt)
+            let response = try await session.respond(to: demoPrompt)
 
             output("")
-            output("Trace:")
-            for line in Self.traceLines(routerId: router.id, recordingsDir: recordingsDir) {
-                output("  \(line)")
-            }
-            output("")
-            output("Answer: \(answer)")
+            output("Answer: \(response.content)")
             await profile.release()
         } catch {
             await profile.release()
             throw error
         }
+    }
+
+    /// Wraps a resolved Router generation slot as a real
+    /// `FoundationModels.LanguageModel`, so a native `LanguageModelSession`
+    /// can be built directly over it.
+    ///
+    /// Builds a fresh, lightweight `MLXLanguageModel` value over the same
+    /// model id `routedLLM` already resolved and loaded. `MLXLanguageModel`
+    /// loads and caches its `ModelContainer` in a process-global cache keyed
+    /// by model id (see its own documentation) — a second value constructed
+    /// over the same id reuses the already-resident weights the Router
+    /// loaded rather than re-resolving or re-downloading anything. This
+    /// declares `.toolCalling` alongside `.guidedGeneration` — which
+    /// Router's own internal model does not, since Router's generation
+    /// surface never exposes native tool-calling — so a session built over
+    /// it can register real `Tool` conformers and drive Apple's own native
+    /// tool-calling loop.
+    ///
+    /// - Parameter routedLLM: the resolved Router generation slot to wrap —
+    ///   typically `profile.standard`.
+    /// - Returns: an `MLXLanguageModel` over the same resident model.
+    private static func makeMLXLanguageModel(for routedLLM: RoutedLLM) -> MLXLanguageModel {
+        let modelConfiguration = ModelConfiguration(
+            id: routedLLM.chosen.repo,
+            revision: routedLLM.chosen.revision ?? "main"
+        )
+        return MLXLanguageModel(
+            configuration: modelConfiguration,
+            capabilities: [.guidedGeneration, .toolCalling],
+            weightsLocation: Self.weightsLocation,
+            load: { configuration, progressHandler in
+                try await loadModelContainer(
+                    from: #hubDownloader(),
+                    using: #huggingFaceTokenizerLoader(),
+                    configuration: configuration,
+                    progressHandler: progressHandler
+                )
+            }
+        )
+    }
+
+    /// Resolves a model id to its on-disk weights directory, for
+    /// `MLXLanguageModel`'s availability checks (`modelExistsOnDisk()`,
+    /// `freeDiskSpaceBytes`) — never consulted by the load path itself,
+    /// which always goes through `ModelCache`/`load` (see
+    /// `makeMLXLanguageModel(for:)`).
+    ///
+    /// Mirrors `MLXLanguageModel`'s own doc-comment example: resolves
+    /// against the same `HubCache` the injected `#hubDownloader()` downloads
+    /// into, so the availability checks see the weights the Router already
+    /// downloaded — the same cache directory `LiveModelLoader`'s default
+    /// `weightsLocation` stub deliberately does *not* resolve into (it
+    /// exists purely so `LoadedLLMContainer.availability` isn't Router's
+    /// concern), but does matter here since this instance's `.toolCalling`
+    /// capability makes it plausible a caller could check `.availability` on
+    /// it directly.
+    ///
+    /// - Parameter id: the model id (`ModelConfiguration.name`) to resolve.
+    /// - Returns: the resolved snapshot directory if the model is cached
+    ///   under a known revision; otherwise the repository's cache directory
+    ///   (present once any download has started) or, failing that, the
+    ///   cache root itself.
+    private static func weightsLocation(for id: String) -> URL {
+        let cache = HubCache.default
+        guard let repo = Repo.ID(rawValue: id) else { return cache.cacheDirectory }
+        if let commit = cache.resolveRevision(repo: repo, kind: .model, ref: "main"),
+            let snapshot = try? cache.snapshotPath(repo: repo, kind: .model, commitHash: commit)
+        {
+            return snapshot
+        }
+        return cache.repoDirectory(repo: repo, kind: .model)
     }
 
     // MARK: - Console progress
@@ -403,59 +492,14 @@ enum CLIRunner {
         }
     }
 
-    // MARK: - Turn trace
-
-    /// Generates readable trace lines from the Router transcript.
-    ///
-    /// Reads back the demo run's recorded transcript and renders each
-    /// successfully parsed main-loop `AgentStep` as one readable trace
-    /// line — plan.md M9: "print... a readable trace of the loop turns."
-    ///
-    /// Mirrors the parse-by-grammar rule this package's own (internal)
-    /// `TranscriptAnalyzer` uses for its trace assertions
-    /// (`Tests/FoundationModelsMultitoolIntegrationTests/Support/IntegrationGate.swift`'s
-    /// `LiveRouterFixture` pattern): reimplemented here, rather than
-    /// reused, because that analyzer is a test-support type internal to
-    /// the `FoundationModelsMultitool` module, not part of its public API.
-    ///
-    /// - Parameters:
-    ///   - routerId: the router that ran the demo — its recording root.
-    ///   - recordingsDir: the durable transcripts root the router recorded
-    ///     under.
-    /// - Returns: one readable line per successfully parsed `.standard`-slot
-    ///   turn, in recorded order; empty if the transcript can't be read
-    ///   back at all.
-    private static func traceLines(routerId: ULID, recordingsDir: URL) -> [String] {
-        let transcriptRoot = recordingsDir.appendingPathComponent(routerId.description)
-        guard let events = try? MergedTranscript.merged(under: transcriptRoot) else {
-            return []
-        }
-        return events
-            .filter { $0.slot == .standard && $0.kind == .response }
-            .compactMap { event -> String? in
-                guard let text = event.text else { return nil }
-                let format: any TurnFormat = event.grammar != nil ? GuidedTurnFormat() : TolerantParseTurnFormat()
-                guard let step = try? format.parseTurn(text) else { return nil }
-                // Renders the parsed step as a single readable trace line,
-                // e.g. `findAPIs("...")`, `runCode(<n> chars)`, or `final: ...`.
-                switch step {
-                 case .findAPIs(let task):
-                    return "findAPIs(\"\(task)\")"
-                case .runCode(let code):
-                    return "runCode(\(code.count) chars)"
-                case .final(let text):
-                    return "final: \(text)"
-                }
-            }
-    }
-
     // MARK: - Recordings directory
 
     /// Creates a temporary directory for Router transcript recordings.
     ///
-    /// Returns the URL of a fresh, uniquely-named directory — the source
-    /// `traceLines(routerId:recordingsDir:)` reads back from after the demo
-    /// run completes.
+    /// Returns the URL of a fresh, uniquely-named directory the `Router`
+    /// records `findAPIsTool`'s own selection-tier sessions under (the main
+    /// `LanguageModelSession` `runDemo` builds directly over `mlxModel` is
+    /// never Router-vended, so it is never recorded here).
     ///
     /// - Returns: the created directory's URL.
     private static func makeTempRecordingsDir() -> URL {
