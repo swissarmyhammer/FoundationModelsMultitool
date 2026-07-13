@@ -37,12 +37,13 @@ private let metadataRegistryDependencyName = "FoundationModelsMetadataRegistry"
 private let swissArmyHammerOrgURL = "https://github.com/swissarmyhammer/"
 
 /// Builds a `.package(url:branch:)` dependency for a package hosted under
-/// `swissArmyHammerOrgURL`, tracking `mainBranch`. Used for
-/// `routerDependencyName` and `metadataRegistryDependencyName`, whose
-/// declarations would otherwise be near-verbatim copies differing only in
-/// the package name.
-private func swissArmyHammerPackage(name: String) -> Package.Dependency {
-    .package(url: "\(swissArmyHammerOrgURL)\(name)", branch: mainBranch)
+/// `swissArmyHammerOrgURL`, tracking `branch` (`mainBranch` by default). Used
+/// for `routerDependencyName` and `metadataRegistryDependencyName` (default
+/// `mainBranch`) and `mlxPackage` (its own fork branch), whose declarations
+/// would otherwise be near-verbatim copies differing only in the package
+/// name and tracked branch.
+private func swissArmyHammerPackage(name: String, branch: String = mainBranch) -> Package.Dependency {
+    .package(url: "\(swissArmyHammerOrgURL)\(name)", branch: branch)
 }
 
 /// The MLX-backed model package `FoundationModelsRouter` itself depends on
@@ -201,10 +202,7 @@ let package = Package(
         // Only the M9 CLI executable and the gated integration test target
         // below link products from these three — see their documentation
         // above.
-        .package(
-            url: "\(swissArmyHammerOrgURL)\(mlxPackage)",
-            branch: "foundationmodels-fixes"
-        ),
+        swissArmyHammerPackage(name: mlxPackage, branch: "foundationmodels-fixes"),
         huggingFaceOrgPackage(name: huggingFacePackage, from: "0.9.0"),
         huggingFaceOrgPackage(name: transformersPackage, from: "1.3.0"),
     ],

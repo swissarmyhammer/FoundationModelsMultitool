@@ -39,6 +39,39 @@ comments:
   id: 01kxens1hr2phap8ndgynyqb2e
   text: '/test verification (independent subagent): swift build/build-tests/test all green. 239 tests passed (unchanged count, tests adapted not added/removed), 11 gated skipped. Grep confirms zero live MultiToolAgent/TurnFormat/AgentStep/AgentTurn references in Sources/multitool-cli (only historical doc-comment prose describing what was replaced). Proceeding to /commit checkpoint.'
   timestamp: 2026-07-13T21:22:52.600347+00:00
+- actor: claude-code
+  id: 01kxent2yamd29wk8mbg77zakm
+  text: 'Checkpoint committed: 41c70ab "feat(cli): replace MultiToolAgent demo with native LanguageModelSession tool-calling example" (8 files). Not pushed. Proceeding to /review scoped to HEAD~1..HEAD.'
+  timestamp: 2026-07-13T21:23:26.794856+00:00
+- actor: claude-code
+  id: 01kxep91czbev4sykckk6f3khy
+  text: 'Review (iteration 1) on HEAD~1..HEAD (41c70ab): 3 findings — Package.swift:179 mlxPackage should reuse the swissArmyHammerPackage helper (parameterized with an optional branch) instead of reimplementing the pattern; CLIRunner.swift:290 and :327 doc-comment first lines are sentence fragments, need to be complete sentences. Task stays in review. Proceeding to /implement.'
+  timestamp: 2026-07-13T21:31:36.735031+00:00
+- actor: claude-code
+  id: 01kxers64sbfrhtdyqvywzz4qw
+  text: |-
+    Fixed all 3 review findings from iteration 1 (41c70ab):
+
+    1. Package.swift:179 — parameterized `swissArmyHammerPackage(name:branch:)` with `branch: String = mainBranch` (default unchanged for `routerDependencyName`/`metadataRegistryDependencyName`); `mlxPackage`'s dependency is now `swissArmyHammerPackage(name: mlxPackage, branch: "foundationmodels-fixes")`, replacing the hand-rolled `.package(url:branch:)` call.
+    2. CLIRunner.swift `makeMLXLanguageModel(for:)` doc — first line is now a single complete sentence ending in a period, followed by a blank `///` and elaboration.
+    3. CLIRunner.swift `weightsLocation(for:)` doc — same fix.
+
+    Per the task's note that doc-comment findings tend to recur across a file, did a full sweep of every `///` doc comment in CLIRunner.swift and found 4 more first-line-fragment violations (multi-line first paragraph before the blank `///` separator, or no blank separator at all): `CLIArguments.direct`, `struct Flag`, `Flag.descriptionLines`, and `directFlag`. Fixed all of them the same way — merged the wrapped first sentence onto one line ending in a period.
+
+    Verified: `swift build`, `swift build --build-tests`, `swift test` all green — 239 tests passed, 11 gated skipped, 0 failures. `mcp__sah__diagnostics check working` reports 0 errors/warnings. Checked off all 3 Review Findings boxes on the task description (had to edit the .md file directly — `update task`'s description_find/description_replace no-op'd on this task). Task remains in `doing`, ready for `/review`.
+  timestamp: 2026-07-13T22:15:23.033075+00:00
+- actor: claude-code
+  id: 01kxes8z5vpdv7xd1jm39m4t9j
+  text: 'Adversarial double-check found one regression in the makeMLXLanguageModel(for:) doc-comment fix: the initial pass split the original single sentence across the paragraph boundary, leaving an orphaned "So a native `LanguageModelSession` can be built directly over it." clause merged into the next unrelated paragraph with no blank-line separation — technically satisfied "first line ends in a period" but produced a confusing run-on. Corrected by restoring the full original sentence unwrapped onto one `///` line (matching how the other 5 sibling doc-comment fixes in this diff were done), followed by a blank `///` and the original elaboration unchanged. Re-ran `swift build` and `swift test`: still green, 239 passed / 11 gated skipped / 0 failures. Updated the task description''s finding-2 checkbox note to reflect the corrected text.'
+  timestamp: 2026-07-13T22:24:00.187215+00:00
+- actor: claude-code
+  id: 01kxes9n6cbved1anq91gwewa9
+  text: 'Iteration 2: /implement fixed all 3 findings — mlxPackage now reuses swissArmyHammerPackage(name:branch:) with a new optional branch parameter, both doc-comment fragments fixed in CLIRunner.swift, plus a proactive sweep found+fixed 4 more fragment violations in the same file. swift build/test green (239 passed), diagnostics clean. Proceeding to /test then /commit checkpoint.'
+  timestamp: 2026-07-13T22:24:22.732280+00:00
+- actor: claude-code
+  id: 01kxesr21mpfz7sexhvwa662wf
+  text: '/test iteration 2 verification (independent subagent): swift package resolve/build/build-tests/test all green. 239 tests passed, 11 gated skipped, 0 failures, 0 LSP diagnostics. Confirmed dependency graph unchanged (same URL/branch resolved). Proceeding to /commit checkpoint.'
+  timestamp: 2026-07-13T22:32:14.644637+00:00
 depends_on:
 - 01KWVNTEAPVS13BB8H04AVEEPP
 position_column: doing
@@ -78,3 +111,9 @@ Rebuild `Sources/multitool-cli` (`CLIRunner.swift`, `DemoTools.swift`, `main.swi
 
 ## Workflow
 - Use `/tdd` for the argument-parsing/degrade-path unit tests. The live end-to-end behavior is necessarily hardware-gated — verify manually on real hardware during implementation, and hand off full automated gating to the dedicated integration-suite-porting task.
+
+## Review Findings (2026-07-13 16:23)
+
+- [x] `Package.swift:179` — Fixed. Parameterized `swissArmyHammerPackage(name:branch:)` with `branch: String = mainBranch`; `mlxPackage`'s dependency is now `swissArmyHammerPackage(name: mlxPackage, branch: "foundationmodels-fixes")`. `routerDependencyName`/`metadataRegistryDependencyName` call sites unchanged (still default to `mainBranch`).
+- [x] `Sources/multitool-cli/CLIRunner.swift:290` — Fixed. First line is now the full original sentence unwrapped onto one line ("Wraps a resolved Router generation slot as a real `FoundationModels.LanguageModel`, so a native `LanguageModelSession` can be built directly over it."), followed by a blank `///` and elaboration (an earlier pass split the sentence and left an orphaned clause merged into the next paragraph; corrected after adversarial review to unwrap cleanly like the other 5 sibling fixes).
+- [x] `Sources/multitool-cli/CLIRunner.swift:327` — Fixed. First line is now `/// Resolves a model id to its on-disk weights directory.`, followed by a blank `///` and elaboration. Also swept every other `///` doc comment in the file and fixed 4 more first-line-fragment violations found (`CLIArguments.direct`, `struct Flag`, `Flag.descriptionLines`, `directFlag`) so a re-review finds zero recurrences.

@@ -20,8 +20,7 @@ private let cliErrorPrefix = "multitool-cli:"
 
 /// The command-line flags `CLIRunner.parse(_:)` recognizes.
 struct CLIArguments: Equatable {
-    /// Enables direct mode: only `multiTool`/`runCode` is registered with
-    /// the session, no discovery.
+    /// Enables direct mode: only `multiTool`/`runCode` is registered with the session, no discovery.
     ///
     /// When set, `findAPIsTool` is not registered with the session —
     /// plan.md "Direct mode (skip discovery)".
@@ -48,8 +47,7 @@ struct CLIArgumentError: Error, Equatable, CustomStringConvertible {
 
 // MARK: - Flags
 
-/// One CLI flag: its recognized spelling(s), `OPTIONS:` description, and the
-/// effect it has on `CLIArguments` when parsed.
+/// One CLI flag: its recognized spelling(s), `OPTIONS:` description, and the effect it has on `CLIArguments` when parsed.
 ///
 /// The single source of truth for a flag's name(s) — `CLIRunner.parse(_:)`'s
 /// dispatch, `CLIRunner.usageText`'s `OPTIONS:` listing, and
@@ -63,9 +61,10 @@ struct Flag: Sendable {
     /// referenced by error messages.
     let names: [String]
 
-    /// The `OPTIONS:` description lines shown next to this flag's names,
-    /// pre-wrapped to `usageText`'s line width (excluding indentation, which
-    /// `usageText` computes from every flag's name-column width).
+    /// The `OPTIONS:` description lines shown next to this flag's names, pre-wrapped to `usageText`'s line width.
+    ///
+    /// Excludes indentation, which `usageText` computes from every flag's
+    /// name-column width.
     let descriptionLines: [String]
 
     /// Applies this flag's effect to `arguments` when `parse(_:)` matches it.
@@ -132,8 +131,7 @@ enum CLIRunner {
         static let unavailable: Int32 = 69
     }
 
-    /// The `--direct` flag: run in direct mode (only `multiTool`/`runCode`
-    /// registered with the session, no `findAPIsTool`).
+    /// The `--direct` flag: run in direct mode (only `multiTool`/`runCode` registered with the session, no `findAPIsTool`).
     static let directFlag = Flag(
         names: ["--direct"],
         descriptionLines: [
@@ -391,9 +389,7 @@ enum CLIRunner {
         }
     }
 
-    /// Wraps a resolved Router generation slot as a real
-    /// `FoundationModels.LanguageModel`, so a native `LanguageModelSession`
-    /// can be built directly over it.
+    /// Wraps a resolved Router generation slot as a real `FoundationModels.LanguageModel`, so a native `LanguageModelSession` can be built directly over it.
     ///
     /// Builds a fresh, lightweight `MLXLanguageModel` value over the same
     /// model id `routedLLM` already resolved and loaded. `MLXLanguageModel`
@@ -430,13 +426,13 @@ enum CLIRunner {
         )
     }
 
-    /// Resolves a model id to its on-disk weights directory, for
-    /// `MLXLanguageModel`'s availability checks (`modelExistsOnDisk()`,
+    /// Resolves a model id to its on-disk weights directory.
+    ///
+    /// For `MLXLanguageModel`'s availability checks (`modelExistsOnDisk()`,
     /// `freeDiskSpaceBytes`) — never consulted by the load path itself,
     /// which always goes through `ModelCache`/`load` (see
-    /// `makeMLXLanguageModel(for:)`).
-    ///
-    /// Mirrors `MLXLanguageModel`'s own doc-comment example: resolves
+    /// `makeMLXLanguageModel(for:)`). Mirrors `MLXLanguageModel`'s own
+    /// doc-comment example: resolves
     /// against the same `HubCache` the injected `#hubDownloader()` downloads
     /// into, so the availability checks see the weights the Router already
     /// downloaded — the same cache directory `LiveModelLoader`'s default
