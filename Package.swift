@@ -41,7 +41,7 @@ private let swissArmyHammerOrgURL = "https://github.com/swissarmyhammer/"
 /// `routerDependencyName` and `metadataRegistryDependencyName`, whose
 /// declarations would otherwise be near-verbatim copies differing only in
 /// the package name.
-private func swissArmyHammerPackage(_ name: String) -> Package.Dependency {
+private func swissArmyHammerPackage(name: String) -> Package.Dependency {
     .package(url: "\(swissArmyHammerOrgURL)\(name)", branch: mainBranch)
 }
 
@@ -69,8 +69,8 @@ private let huggingFaceOrgURL = "https://github.com/huggingface/"
 /// `huggingFaceOrgURL`, pinned to a minimum semantic version floor. Used for
 /// `huggingFacePackage` and `transformersPackage`, whose declarations would
 /// otherwise be near-verbatim copies differing only in the package name and
-/// version floor — mirrors `swissArmyHammerPackage(_:)` above.
-private func huggingFaceOrgPackage(_ name: String, from version: Version) -> Package.Dependency {
+/// version floor — mirrors `swissArmyHammerPackage(name:)` above.
+private func huggingFaceOrgPackage(name: String, from version: Version) -> Package.Dependency {
     .package(url: "\(huggingFaceOrgURL)\(name)", from: version)
 }
 
@@ -196,8 +196,8 @@ let package = Package(
         )
     ],
     dependencies: [
-        swissArmyHammerPackage(routerDependencyName),
-        swissArmyHammerPackage(metadataRegistryDependencyName),
+        swissArmyHammerPackage(name: routerDependencyName),
+        swissArmyHammerPackage(name: metadataRegistryDependencyName),
         // Only the M9 CLI executable and the gated integration test target
         // below link products from these three — see their documentation
         // above.
@@ -205,8 +205,8 @@ let package = Package(
             url: "\(swissArmyHammerOrgURL)\(mlxPackage)",
             branch: "foundationmodels-fixes"
         ),
-        huggingFaceOrgPackage(huggingFacePackage, from: "0.9.0"),
-        huggingFaceOrgPackage(transformersPackage, from: "1.3.0"),
+        huggingFaceOrgPackage(name: huggingFacePackage, from: "0.9.0"),
+        huggingFaceOrgPackage(name: transformersPackage, from: "1.3.0"),
     ],
     targets: [
         .target(

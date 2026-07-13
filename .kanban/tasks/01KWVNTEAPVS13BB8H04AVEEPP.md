@@ -121,6 +121,37 @@ comments:
   id: 01kxed75dwmkrjt3wh1bms228c
   text: '/test iteration 4 verification (independent subagent): swift package resolve/build/build-tests/test all green, manifest evaluates correctly with private declarations (confirmed via swift package describe/dump-package, no "Invalid manifest" error). 239 tests passed, 11 gated skipped, 0 failures. Proceeding to /commit checkpoint.'
   timestamp: 2026-07-13T18:53:18.140468+00:00
+- actor: claude-code
+  id: 01kxed86szyb7bzn5yezw46hs5
+  text: 'Iteration 4 checkpoint committed: d8a945b "refactor(deps): tighten Package.swift access control, dedupe HuggingFace deps" (3 files). Not pushed. Proceeding to /review scoped to HEAD~1..HEAD.'
+  timestamp: 2026-07-13T18:53:52.319249+00:00
+- actor: claude-code
+  id: 01kxedrh9akw53kxmf9zz2584d
+  text: 'Review (iteration 4) on HEAD~1..HEAD (d8a945b): 2 findings — swissArmyHammerPackage(_:) and huggingFaceOrgPackage(_:from:)''s first parameter labels violate the fluent-usage rule (label omission is for value-preserving conversions only; these add URL+branch/version, so they need explicit labels). Task stays in review. Note: this is the 5th round of Package.swift findings, converging on the two helper functions introduced in rounds 2-3 — flagging per finish skill guardrail awareness (no literal repeat yet, so not stuck, but watching closely). Proceeding to /implement.'
+  timestamp: 2026-07-13T19:02:47.338591+00:00
+- actor: claude-code
+  id: 01kxef3bza6gam2q6wfcktz0rp
+  text: |-
+    Iteration 5: fixed both findings from the 2026-07-13 13:54 review.
+
+    Added an explicit `name:` label to both first parameters, per the fluent-usage rule (label omission is reserved for value-preserving conversions; building a Package.Dependency from a name is not value-preserving — it adds a URL and branch/version):
+    - `private func swissArmyHammerPackage(_ name: String)` -> `private func swissArmyHammerPackage(name: String)`, both call sites updated (`swissArmyHammerPackage(name: routerDependencyName)`, `swissArmyHammerPackage(name: metadataRegistryDependencyName)`).
+    - `private func huggingFaceOrgPackage(_ name: String, from version: Version)` -> `private func huggingFaceOrgPackage(name: String, from version: Version)`, both call sites updated (`huggingFaceOrgPackage(name: huggingFacePackage, from: "0.9.0")`, `huggingFaceOrgPackage(name: transformersPackage, from: "1.3.0")`). Also updated the stale doc-comment cross-reference `swissArmyHammerPackage(_:)` -> `swissArmyHammerPackage(name:)`.
+
+    Verification (fresh, this session): `swift build` clean, `swift build --build-tests` clean, `swift test --skip FoundationModelsMultitoolIntegrationTests` 239/239 passed, 21 suites, 0 failures. Adversarial double-check agent: PASS — independently confirmed both signatures, all 4 call sites use `name:`, no other files reference these private functions, diff scoped to Package.swift + kanban bookkeeping only, re-ran build/test green.
+
+    Known description-update bug reproduced again this iteration: `update task`'s description_find/description_replace returned ok:true but silently no-opped (confirmed via follow-up `get task` showing the boxes still unchecked). Fixed by editing `.kanban/tasks/01KWVNTEAPVS13BB8H04AVEEPP.md` directly with real newline characters, then verified via `get task` that the description renders as proper multi-line prose (progress 1.0, both boxes checked, no `\n` corruption).
+
+    No blockers. Task left in `doing` per /implement contract — ready for /review.
+  timestamp: 2026-07-13T19:26:10.922420+00:00
+- actor: claude-code
+  id: 01kxef3qcf4jpmthmgznaqsnrg
+  text: 'Iteration 5: /implement fixed both findings — added explicit name: label to swissArmyHammerPackage/huggingFaceOrgPackage''s first parameter, updated all 4 call sites and a stale doc cross-reference. swift build/test green (239 passed), adversarial double-check PASS. Proceeding to /test then /commit checkpoint.'
+  timestamp: 2026-07-13T19:26:22.607768+00:00
+- actor: claude-code
+  id: 01kxef6jtptx98rm3htmw4egxz
+  text: '/test iteration 5 verification (independent subagent): swift package resolve/build/build-tests/test all green. 239 tests passed, 11 gated skipped, 0 failures. Confirmed diff scoped correctly (only the 2 helper functions + 4 call sites + 1 doc comment). Proceeding to /commit checkpoint.'
+  timestamp: 2026-07-13T19:27:56.246918+00:00
 depends_on:
 - 01KWVJG70NFB1AYW3P812RTN85
 position_column: doing
@@ -168,7 +199,7 @@ Move/rename the extracted logic out of `Agent/` (that whole directory is being r
 
 - [x] `Package.swift:152` — Resolved: extracted `func swissArmyHammerPackage(_ name: String) -> Package.Dependency` (near the other named constants) building `.package(url: "\(swissArmyHammerOrgURL)\(name)", branch: mainBranch)`; both declarations replaced with `swissArmyHammerPackage(routerDependencyName)` / `swissArmyHammerPackage(metadataRegistryDependencyName)`.
 - [x] `Package.swift:156` — Resolved: extracted `let swissArmyHammerOrgURL = "https://github.com/swissarmyhammer/"` as a top-level named constant; used by `swissArmyHammerPackage(_:)` and interpolated directly into the `mlxPackage` dependency's URL.
-- [x] `Package.swift:160` — Resolved: same `swissArmyHammerOrgURL` constant covers this occurrence (see line 156's note) — verified via grep that zero literal `"https://github.com/swissarmyhammer/"` occurrences remain outside the single constant declaration.
+- [x] `Package.swift:160` — Resolved: same `swissArmyHammerOrgURL` constant covers this occurrence — verified via grep that zero literal `"https://github.com/swissarmyhammer/"` occurrences remain outside the single constant declaration.
 - [x] `Package.swift:174` — Resolved: same `swissArmyHammerOrgURL` constant covers this occurrence (the `mlxPackage` dependency's URL, `branch: "foundationmodels-fixes"` — deliberately not routed through `swissArmyHammerPackage(_:)` since it doesn't track `mainBranch`).
 - [x] `Package.swift:178` — Resolved: extracted `let huggingFaceOrgURL = "https://github.com/huggingface/"` as a top-level named constant, interpolated into both the `huggingFacePackage` and `transformersPackage` dependency URLs.
 - [x] `Package.swift:200` — Resolved: extracted `let sourcesPath = "Sources/"` as a top-level named constant; used in the library target's `path: "\(sourcesPath)\(packageName)"`.
@@ -187,3 +218,8 @@ Move/rename the extracted logic out of `Agent/` (that whole directory is being r
 - [x] `Package.swift:167` — Resolved: extracted `private func huggingFaceOrgPackage(_ name: String, from version: Version) -> Package.Dependency` (mirrors `swissArmyHammerPackage(_:)`), building `.package(url: "\(huggingFaceOrgURL)\(name)", from: version)`; both `huggingFacePackage`/`transformersPackage` `.package()` declarations replaced with `huggingFaceOrgPackage(huggingFacePackage, from: "0.9.0")` / `huggingFaceOrgPackage(transformersPackage, from: "1.3.0")`.
 
 Full sweep beyond the 8 cited findings: per the review's stated rule ("Package.swift top-level declarations should be private unless there's a reason for wider visibility"), also marked `private` every other top-level `let`/`func` in the file that had no reason to stay non-private: `cliTargetName`, `mainBranch`, `routerDependencyName`, `swissArmyHammerOrgURL`, `mlxPackage`, `huggingFaceOrgURL`, `huggingFacePackage`, `transformersPackage`, `hubProducts`, `cliLinkerSettings`. Deliberately left `let package = Package(...)` untouched (no access modifier) — SwiftPM's manifest-loading tooling requires it; confirmed empirically that marking it `private` breaks `swift build` with an "Invalid manifest" compile error during manifest evaluation. Verification: `swift build` clean, `swift build --build-tests` clean, `swift package resolve` clean, `swift test --skip FoundationModelsMultitoolIntegrationTests` 239/239 passed (21 suites, 0 failures), `swift test --filter MultiToolAgentTests` 11/11 passed.
+
+## Review Findings (2026-07-13 13:54)
+
+- [x] `Package.swift:44` — Resolved: added an explicit `name:` label to `swissArmyHammerPackage`'s first parameter (`private func swissArmyHammerPackage(name: String) -> Package.Dependency`), and updated both call sites (`swissArmyHammerPackage(name: routerDependencyName)`, `swissArmyHammerPackage(name: metadataRegistryDependencyName)`). The adjacent doc comment's `swissArmyHammerPackage(_:)` cross-reference was also updated to `swissArmyHammerPackage(name:)`.
+- [x] `Package.swift:78` — Resolved: added an explicit `name:` label to `huggingFaceOrgPackage`'s first parameter (`private func huggingFaceOrgPackage(name: String, from version: Version) -> Package.Dependency`), and updated both call sites (`huggingFaceOrgPackage(name: huggingFacePackage, from: "0.9.0")`, `huggingFaceOrgPackage(name: transformersPackage, from: "1.3.0")`). Verification: `swift build` clean, `swift build --build-tests` clean, `swift test --skip FoundationModelsMultitoolIntegrationTests` 239/239 passed, 21 suites, 0 failures.
