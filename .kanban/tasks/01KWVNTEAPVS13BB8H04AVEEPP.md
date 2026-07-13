@@ -1,8 +1,37 @@
 ---
+comments:
+- actor: claude-code
+  id: 01kxe3xkrenz0fw92xb55stt3b
+  text: |-
+    Implemented via /tdd + /implement.
+
+    What changed:
+    - Moved Sources/FoundationModelsMultitool/Agent/FindAPITool.swift -> Sources/FoundationModelsMultitool/Discovery/FindAPIsTool.swift, replacing the old `FindAPITool` (plain struct, `dispatch(task:)`) with `public struct FindAPIsTool: Tool` — a real FoundationModels.Tool conformer (`name = "findAPIs"`, `description`, `call(arguments: FindAPIsArguments) async throws -> String`). New `public struct FindAPIsArguments` (@Generable, `task: String`) is the native Arguments type.
+    - Two initializers: `init(searcher: MetadataSearcher<APISurface.Entry>, limit: Int)` (low-level, test-facing, also used by MultiToolAgent) and `init(registry: MultiTool.Registry, librarian: RoutedLLM?, limit: Int? = nil) throws` (production/standalone entry point — builds a `.auto`-mode MetadataSearcher, wiring the selection tier through `librarian`'s `RoutedLLM.makeGuidedSession` only when non-nil; `.auto` degrades to retrieval-only when `librarian` is nil).
+    - Moved Sources/FoundationModelsMultitool/Agent/SelectionGrammar.swift -> Sources/FoundationModelsMultitool/Discovery/SelectionGrammar.swift verbatim, `idEnumGrammar(ids:)` unchanged.
+    - MultiToolAgent.swift: renamed `findAPITool`/`FindAPITool` -> `findAPIsTool`/`FindAPIsTool` throughout (fields, both initializers, doc comments), call site changed to `findAPIsTool.call(arguments: FindAPIsArguments(task: task))`. Deliberately left `makeFindAPISearcher(registry:librarian:)` (still `.selection` mode) untouched — MultiToolAgent still wires a pre-built `.selection`-mode searcher into `FindAPIsTool.init(searcher:limit:)` rather than the new `init(registry:librarian:)` convenience initializer, to keep its existing production behavior/tests byte-identical (minimal-diff, per task's "adapt MultiToolAgent... or add an adapter" latitude).
+    - Doc-comment-only fixes (old name -> new name) in APISurface.swift, APISurface+SearchableMetadata.swift, Package.swift, MultiToolAgentTests.swift.
+    - Tests: deleted FindAPIToolTests.swift, added FindAPIsToolTests.swift (5 tests) — standalone splice, grouped/qualified-path splice, empty-selection message (all migrated from the old suite onto the new Tool-shaped API), plus two new tests for `.auto` mode's retrieval-only fallback (no selection tier configured) and the production registry+librarian initializer with `librarian: nil`.
+
+    Verification (really-done, all fresh-run):
+    - `swift build` clean.
+    - `swift build --build-tests` clean (unit + gated integration targets both compile).
+    - `swift test --skip FoundationModelsMultitoolIntegrationTests`: 239/239 passed, 21 suites, zero failures/warnings.
+    - `swift test --filter FindAPIsTool`: 5/5 passed.
+    - `swift test --filter MultiToolAgentTests`: 11/11 passed (existing coverage untouched).
+    - `swift test --filter SelectionGrammarTests`: 4/4 passed.
+    - Adversarial double-check agent: PASS, no findings (independently re-ran all verification commands, confirmed no dependency on MultiToolAgent/TurnFormat/AgentStep, confirmed byte-identical format() behavior, confirmed no stray old-name references, confirmed all-caps API acronym naming convention followed consistently).
+
+    No blockers. Task left in `doing` per /implement contract — ready for /review.
+  timestamp: 2026-07-13T16:10:47.950846+00:00
+- actor: claude-code
+  id: 01kxe4044pv09m8q3ndt572z4d
+  text: '/test verification (independent subagent): swift build/build-tests/test all green. 239 tests passed in main suite, 11 gated integration tests skipped as expected (no live model), 0 failures. Confirms the implementer''s report. Proceeding to /commit checkpoint.'
+  timestamp: 2026-07-13T16:12:10.262471+00:00
 depends_on:
 - 01KWVJG70NFB1AYW3P812RTN85
-position_column: todo
-position_ordinal: '8380'
+position_column: doing
+position_ordinal: '80'
 title: Extract findAPIs into a standalone FoundationModels.Tool, decoupled from MultiToolAgent
 ---
 ## What
