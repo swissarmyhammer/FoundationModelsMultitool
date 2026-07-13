@@ -5,18 +5,18 @@ import Foundation
 import PackageDescription
 
 /// The name of this Swift package.
-let packageName = "FoundationModelsMultitool"
+private let packageName = "FoundationModelsMultitool"
 
 /// The name of the M9 sample CLI executable target (and its Sources/ subdirectory).
-let cliTargetName = "multitool-cli"
+private let cliTargetName = "multitool-cli"
 
 /// The git branch tracked by the `.package(url:branch:)` declarations for
 /// `routerDependencyName` and `metadataRegistryDependencyName` below — both
 /// dependencies are wired to their respective `main` branches.
-let mainBranch = "main"
+private let mainBranch = "main"
 
 /// The name of the FoundationModelsRouter dependency package.
-let routerDependencyName = "FoundationModelsRouter"
+private let routerDependencyName = "FoundationModelsRouter"
 
 /// The name of the FoundationModelsMetadataRegistry dependency package.
 ///
@@ -29,19 +29,19 @@ let routerDependencyName = "FoundationModelsRouter"
 /// generalizing this package's own former `Librarian`) is built over —
 /// linked by the library target, the unit test target, and the gated
 /// integration test target below.
-let metadataRegistryDependencyName = "FoundationModelsMetadataRegistry"
+private let metadataRegistryDependencyName = "FoundationModelsMetadataRegistry"
 
 /// Base URL for packages published under the swissarmyhammer GitHub
 /// organization — `routerDependencyName`, `metadataRegistryDependencyName`,
 /// and `mlxPackage` are all fetched from here.
-let swissArmyHammerOrgURL = "https://github.com/swissarmyhammer/"
+private let swissArmyHammerOrgURL = "https://github.com/swissarmyhammer/"
 
 /// Builds a `.package(url:branch:)` dependency for a package hosted under
 /// `swissArmyHammerOrgURL`, tracking `mainBranch`. Used for
 /// `routerDependencyName` and `metadataRegistryDependencyName`, whose
 /// declarations would otherwise be near-verbatim copies differing only in
 /// the package name.
-func swissArmyHammerPackage(_ name: String) -> Package.Dependency {
+private func swissArmyHammerPackage(_ name: String) -> Package.Dependency {
     .package(url: "\(swissArmyHammerOrgURL)\(name)", branch: mainBranch)
 }
 
@@ -58,12 +58,21 @@ func swissArmyHammerPackage(_ name: String) -> Package.Dependency {
 /// transitively (Router's own library target needs the *full* mlx-swift-lm
 /// product set to build at all), so declaring these two directly for the
 /// targets below adds no new MLX/C++ compilation, only linking.
-let mlxPackage = "mlx-swift-lm"
+private let mlxPackage = "mlx-swift-lm"
 
 /// Base URL for packages published under the Hugging Face GitHub
 /// organization — `huggingFacePackage` and `transformersPackage` are both
 /// fetched from here.
-let huggingFaceOrgURL = "https://github.com/huggingface/"
+private let huggingFaceOrgURL = "https://github.com/huggingface/"
+
+/// Builds a `.package(url:from:)` dependency for a package hosted under
+/// `huggingFaceOrgURL`, pinned to a minimum semantic version floor. Used for
+/// `huggingFacePackage` and `transformersPackage`, whose declarations would
+/// otherwise be near-verbatim copies differing only in the package name and
+/// version floor — mirrors `swissArmyHammerPackage(_:)` above.
+private func huggingFaceOrgPackage(_ name: String, from version: Version) -> Package.Dependency {
+    .package(url: "\(huggingFaceOrgURL)\(name)", from: version)
+}
 
 /// Hugging Face Hub client and tokenizer packages. Needed by every target
 /// below that constructs a real, live `LiveModelLoader` through the
@@ -73,24 +82,24 @@ let huggingFaceOrgURL = "https://github.com/huggingface/"
 /// package identities and version floors as Router's own gated suite, so a
 /// machine that already ran Router's gated suite shares the resolved
 /// checkout).
-let huggingFacePackage = "swift-huggingface"
+private let huggingFacePackage = "swift-huggingface"
 
 /// The Swift Transformers tokenizer package, paired with
 /// `huggingFacePackage` above — linked by the gated integration test target
 /// and the M9 `multitool-cli` executable.
-let transformersPackage = "swift-transformers"
+private let transformersPackage = "swift-transformers"
 
 /// The Hub client + tokenizer products a live `LiveModelLoader` needs (via
 /// the `MLXHuggingFace` macros) — linked by the gated integration test
 /// target and the M9 `multitool-cli` executable.
-let hubProducts: [Target.Dependency] = [
+private let hubProducts: [Target.Dependency] = [
     .product(name: "HuggingFace", package: huggingFacePackage),
     .product(name: "Tokenizers", package: transformersPackage),
 ]
 
 /// The `mlx-swift-lm` products a live `LiveModelLoader` needs, alongside
 /// `hubProducts` — see `mlxPackage`'s documentation above.
-let liveLoaderMLXProducts: [Target.Dependency] = [
+private let liveLoaderMLXProducts: [Target.Dependency] = [
     .product(name: "MLXLMCommon", package: mlxPackage),
     .product(name: "MLXHuggingFace", package: mlxPackage),
 ]
@@ -127,7 +136,7 @@ let liveLoaderMLXProducts: [Target.Dependency] = [
 ///   `xcode-select` isn't available or its output isn't a usable path
 ///   (e.g. command-line-tools-only, which couldn't build this package's
 ///   FoundationModels-framework code at all anyway).
-func xcodeContentsDirectory() -> String? {
+private func xcodeContentsDirectory() -> String? {
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/usr/bin/xcode-select")
     process.arguments = ["-p"]
@@ -157,18 +166,18 @@ func xcodeContentsDirectory() -> String? {
 /// macOS-27-SDK build already requires. Empty (no extra flags) when
 /// `xcodeContentsDirectory()` can't resolve one — see its documentation for
 /// the full story.
-let cliLinkerSettings: [LinkerSetting] = {
+private let cliLinkerSettings: [LinkerSetting] = {
     guard let xcodeContentsDirectory = xcodeContentsDirectory() else { return [] }
     return [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", xcodeContentsDirectory])]
 }()
 
 /// The `Sources/` subdirectory prefix used by every source target's `path`
 /// below.
-let sourcesPath = "Sources/"
+private let sourcesPath = "Sources/"
 
 /// The `Tests/` subdirectory prefix used by every test target's `path`
 /// below.
-let testsPath = "Tests/"
+private let testsPath = "Tests/"
 
 /// SwiftPM manifest for FoundationModelsMultitool.
 ///
@@ -196,14 +205,8 @@ let package = Package(
             url: "\(swissArmyHammerOrgURL)\(mlxPackage)",
             branch: "foundationmodels-fixes"
         ),
-        .package(
-            url: "\(huggingFaceOrgURL)\(huggingFacePackage)",
-            from: "0.9.0"
-        ),
-        .package(
-            url: "\(huggingFaceOrgURL)\(transformersPackage)",
-            from: "1.3.0"
-        ),
+        huggingFaceOrgPackage(huggingFacePackage, from: "0.9.0"),
+        huggingFaceOrgPackage(transformersPackage, from: "1.3.0"),
     ],
     targets: [
         .target(
