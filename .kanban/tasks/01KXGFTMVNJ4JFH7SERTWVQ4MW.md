@@ -65,10 +65,14 @@ comments:
   id: 01kxgth9fk93z8qbh90s704h50
   text: '/test iteration 2 verification (independent subagent): swift build/build-tests/test all green. 242 tests passed, 7 gated tests correctly skip, 0 failures. Proceeding to /commit checkpoint.'
   timestamp: 2026-07-14T17:24:30.323557+00:00
+- actor: claude-code
+  id: 01kxgtjdzp8a9sgj21jfr9rg6m
+  text: 'Iteration 2 checkpoint committed: ea5fbb0 "docs(evaluation): fix doc-comment, naming, and unused-declaration findings" (3 files). Not pushed. Proceeding to /review scoped to HEAD~1..HEAD.'
+  timestamp: 2026-07-14T17:25:07.702068+00:00
 depends_on:
 - 01KWVNWP89T9551VNK3K4MJ1GM
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: a480
 title: Port AgentEvaluation's Evaluations-framework scoring to grade native LanguageModelSession transcripts
 ---
 ## What

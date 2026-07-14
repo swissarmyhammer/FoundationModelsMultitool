@@ -21,11 +21,15 @@ comments:
   id: 01kxgdh7hdg3vee58je60tp0w0
   text: '/test verification (independent subagent): swift build/build-tests/test all green. 242 tests passed (239 baseline + 3 new ExamplesTests), 11 gated skipped, 0 failures. swift test --filter ExamplesTests confirms all 3 examples individually pass. Proceeding to /commit checkpoint.'
   timestamp: 2026-07-14T13:37:16.845110+00:00
+- actor: claude-code
+  id: 01kxgdj9d47rh67f2reh0q6gj2
+  text: 'Checkpoint committed: e87c72e "test(examples): add canonical-usage ExamplesTests suite" (5 files, new ExamplesTests.swift 262 lines). Not pushed. Proceeding to /review scoped to HEAD~1..HEAD.'
+  timestamp: 2026-07-14T13:37:51.524966+00:00
 depends_on:
 - 01KWVNTEAPVS13BB8H04AVEEPP
 - 01KWVNVV79AAK6FDHRJF329QVR
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: a280
 title: Add a canonical-usage ExamplesTests suite, mirroring FoundationModelsRouter/FoundationModelsMetadataRegistry's living-documentation pattern
 ---
 ## What

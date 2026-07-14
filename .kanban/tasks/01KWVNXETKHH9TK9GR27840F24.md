@@ -14,6 +14,10 @@ comments:
 
     Also check `Package.swift` for the `Evaluations` dependency once `EvaluatorGateTests`/`AgentEvaluation` are gone — if nothing else imports it, trim it.
   timestamp: 2026-07-06T14:22:13.950652+00:00
+- actor: claude-code
+  id: 01kxgmp19wvq90a5fxmechpxdf
+  text: '/finish scoped-batch pass: skipping this task despite kanban showing it #READY. Its own gate-check acceptance criterion requires reading k4mj1gm''s go/no-go comment before any deletion — k4mj1gm recorded an explicit, well-evidenced NO-GO (real hardware, 3 independent runs, upstream-fix excuses ruled out via git merge-base verification). Per this task''s own instructions, treating it as blocked and not proceeding. Will remain untouched until a human either resolves the underlying model/prefix-reuse regression (tracked as 9hchxj6) or explicitly overrides the gate.'
+  timestamp: 2026-07-14T15:42:14.332815+00:00
 depends_on:
 - 01KWVNWP89T9551VNK3K4MJ1GM
 - 01KWVNV1NZ157PW3Y1GH6RQZ4V

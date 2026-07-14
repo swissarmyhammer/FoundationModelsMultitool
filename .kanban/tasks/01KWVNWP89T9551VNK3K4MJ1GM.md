@@ -86,10 +86,14 @@ comments:
   id: 01kxgm27fa6xwxvggx5gk3fnw0
   text: '/test verification (independent subagent, ungated suite only per orchestrator instruction — gated suite already settled across 3 real-hardware runs): swift build/build-tests/test all green. 242 tests passed, 6 gated tests correctly reported skipped, 0 failures. Proceeding to /commit checkpoint.'
   timestamp: 2026-07-14T15:31:25.290450+00:00
+- actor: claude-code
+  id: 01kxgm55r18dab9khz6hj7xn0h
+  text: 'Checkpoint committed: 6910cbc "test(integration): port gated suite to native LanguageModelSession tool-calling" (16 files). Not pushed. Proceeding to /review scoped to HEAD~1..HEAD.'
+  timestamp: 2026-07-14T15:33:01.825818+00:00
 depends_on:
 - 01KWVNVV79AAK6FDHRJF329QVR
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: a380
 title: Port the gated integration suite to the LanguageModelSession-driven design, and gate old-loop deletion on it passing
 ---
 ## What
