@@ -20,11 +20,11 @@ private let routerDependencyName = "FoundationModelsRouter"
 
 /// The name of the FoundationModelsMetadataRegistry dependency package.
 ///
-/// Wired as a remote dependency (`main` branch) the same way
+/// It's wired as a remote dependency (`main` branch) the same way
 /// `routerDependencyName` is — the registry is already consumable by URL
 /// (`../FoundationModelsMetadataRegistry/Package.swift`'s own `main` is in
 /// sync with `origin/main`), so no registry-side change is needed here.
-/// Supplies `SearchableMetadata`/`MetadataSearcher` — the catalog-search
+/// It supplies `SearchableMetadata`/`MetadataSearcher` — the catalog-search
 /// surface `FindAPIsTool`'s registry-backed selection tier (`SelectionTier`,
 /// generalizing this package's own former `Librarian`) is built over —
 /// linked by the library target, the unit test target, and the gated
@@ -37,11 +37,12 @@ private let metadataRegistryDependencyName = "FoundationModelsMetadataRegistry"
 private let swissArmyHammerOrgURL = "https://github.com/swissarmyhammer/"
 
 /// Builds a `.package(url:branch:)` dependency for a package hosted under
-/// `swissArmyHammerOrgURL`, tracking `branch` (`mainBranch` by default). Used
-/// for `routerDependencyName` and `metadataRegistryDependencyName` (default
-/// `mainBranch`) and `mlxPackage` (its own fork branch), whose declarations
-/// would otherwise be near-verbatim copies differing only in the package
-/// name and tracked branch.
+/// `swissArmyHammerOrgURL`, tracking `branch` (`mainBranch` by default).
+///
+/// This is used for `routerDependencyName` and `metadataRegistryDependencyName`
+/// (default `mainBranch`) and `mlxPackage` (its own fork branch), whose
+/// declarations would otherwise be near-verbatim copies differing only in the
+/// package name and tracked branch.
 private func swissArmyHammerPackage(name: String, branch: String = mainBranch) -> Package.Dependency {
     .package(url: "\(swissArmyHammerOrgURL)\(name)", branch: branch)
 }
@@ -55,10 +56,10 @@ private func swissArmyHammerPackage(name: String, branch: String = mainBranch) -
 /// macros adapt a real Hugging Face Hub client into those protocols — the
 /// same macros Router's own gated `…IntegrationTests` target uses, and the
 /// M9 `multitool-cli` executable's default (production) model-resolution
-/// path uses too. Already part of this package's resolved dependency graph
-/// transitively (Router's own library target needs the *full* mlx-swift-lm
-/// product set to build at all), so declaring these two directly for the
-/// targets below adds no new MLX/C++ compilation, only linking.
+/// path uses too. This is already part of this package's resolved dependency
+/// graph transitively (Router's own library target needs the *full*
+/// mlx-swift-lm product set to build at all), so declaring these two directly
+/// for the targets below adds no new MLX/C++ compilation, only linking.
 private let mlxPackage = "mlx-swift-lm"
 
 /// Base URL for packages published under the Hugging Face GitHub
@@ -67,18 +68,20 @@ private let mlxPackage = "mlx-swift-lm"
 private let huggingFaceOrgURL = "https://github.com/huggingface/"
 
 /// Builds a `.package(url:from:)` dependency for a package hosted under
-/// `huggingFaceOrgURL`, pinned to a minimum semantic version floor. Used for
-/// `huggingFacePackage` and `transformersPackage`, whose declarations would
-/// otherwise be near-verbatim copies differing only in the package name and
-/// version floor — mirrors `swissArmyHammerPackage(name:)` above.
+/// `huggingFaceOrgURL`, pinned to a minimum semantic version floor.
+///
+/// This is used for `huggingFacePackage` and `transformersPackage`, whose
+/// declarations would otherwise be near-verbatim copies differing only in the
+/// package name and version floor — mirrors `swissArmyHammerPackage(name:)`
+/// above.
 private func huggingFaceOrgPackage(name: String, from version: Version) -> Package.Dependency {
     .package(url: "\(huggingFaceOrgURL)\(name)", from: version)
 }
 
-/// Hugging Face Hub client and tokenizer packages. Needed by every target
-/// below that constructs a real, live `LiveModelLoader` through the
-/// `MLXHuggingFace` macros (the gated integration test target, and the M9
-/// `multitool-cli` executable) — mirrors
+/// Hugging Face Hub client and tokenizer packages. These packages are needed
+/// by every target below that constructs a real, live `LiveModelLoader`
+/// through the `MLXHuggingFace` macros (the gated integration test target,
+/// and the M9 `multitool-cli` executable). This mirrors
 /// `../FoundationModelsRouter/Package.swift`'s own `hubProducts` (same
 /// package identities and version floors as Router's own gated suite, so a
 /// machine that already ran Router's gated suite shares the resolved
@@ -164,7 +167,7 @@ private func xcodeContentsDirectory() -> String? {
 /// just link — an `-rpath` pointing at `xcodeContentsDirectory()`, computed
 /// fresh (never hardcoded) so it resolves correctly on any machine/CI
 /// runner with a full Xcode install — the same install this package's
-/// macOS-27-SDK build already requires. Empty (no extra flags) when
+/// macOS-27-SDK build already requires. It's empty (no extra flags) when
 /// `xcodeContentsDirectory()` can't resolve one — see its documentation for
 /// the full story.
 private let cliLinkerSettings: [LinkerSetting] = {
@@ -182,7 +185,7 @@ private let testsPath = "Tests/"
 
 /// SwiftPM manifest for FoundationModelsMultitool.
 ///
-/// Integrates the FoundationModelsRouter package alongside the system
+/// Integration of the FoundationModelsRouter package alongside the system
 /// FoundationModels and JavaScriptCore frameworks.
 let package = Package(
     name: packageName,

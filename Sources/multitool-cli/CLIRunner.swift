@@ -10,23 +10,23 @@ import Tokenizers
 
 /// Prefix for all user-facing CLI error messages.
 ///
-/// Ensures error output is consistently attributable to `multitool-cli` —
-/// reused by `CLIArgumentError.description`,
+/// This prefix is reused by `CLIArgumentError.description`,
 /// `CLIRouterUnavailableError.description`, and `CLIRunner.run(...)`'s
-/// catch-all branch.
+/// catch-all branch, so error output is consistently attributable to
+/// `multitool-cli`.
 private let cliErrorPrefix = "multitool-cli:"
 
 // MARK: - Argument parsing
 
 /// The command-line flags `CLIRunner.parse(_:)` recognizes.
 struct CLIArguments: Equatable {
-    /// Enables direct mode: only `multiTool`/`runCode` is registered with the session, no discovery.
+    /// Whether to run in direct mode: only `multiTool`/`runCode` is registered with the session, no discovery.
     ///
     /// When set, `findAPIsTool` is not registered with the session —
     /// plan.md "Direct mode (skip discovery)".
     var direct = false
 
-    /// Prints usage text and exits without touching the Router.
+    /// Whether to print usage text and exit without touching the Router.
     ///
     /// Set by the `--help`/`-h` flags.
     var help = false
@@ -39,7 +39,7 @@ struct CLIArgumentError: Error, Equatable, CustomStringConvertible {
 
     /// A human-readable description of the error.
     ///
-    /// Satisfies `CustomStringConvertible`.
+    /// Implementation of the `CustomStringConvertible` protocol requirement.
     var description: String {
         "\(cliErrorPrefix) unknown argument \"\(flag)\". Run with \(CLIRunner.helpFlag.names[0]) for usage."
     }
@@ -63,11 +63,11 @@ struct Flag: Sendable {
 
     /// The `OPTIONS:` description lines shown next to this flag's names, pre-wrapped to `usageText`'s line width.
     ///
-    /// Excludes indentation, which `usageText` computes from every flag's
-    /// name-column width.
+    /// Indentation is excluded; `usageText` computes it separately from
+    /// every flag's name-column width.
     let descriptionLines: [String]
 
-    /// Applies this flag's effect to `arguments` when `parse(_:)` matches it.
+    /// The effect to apply to `arguments` when `parse(_:)` matches this flag.
     let apply: @Sendable (_ arguments: inout CLIArguments) -> Void
 }
 
@@ -79,15 +79,16 @@ struct Flag: Sendable {
 /// past model resolution — plan.md M9: "degrade gracefully (clear message +
 /// nonzero exit) when the Router live path is unavailable."
 struct CLIRouterUnavailableError: Error, CustomStringConvertible {
-    /// What `resolve` threw.
+    /// The error that `resolve` threw.
     let underlying: Error
 
     /// A human-readable message describing the Router unavailability.
     ///
-    /// Explains what went wrong, plus why (the Router's live inference path
-    /// not being wired up in this environment is the expected cause
-    /// pre-Router-M7, but any resolution failure — including an
-    /// unsatisfiable profile or a download error — surfaces the same way).
+    /// Explanation of what went wrong, plus why (the Router's live
+    /// inference path not being wired up in this environment is the
+    /// expected cause pre-Router-M7, but any resolution failure —
+    /// including an unsatisfiable profile or a download error — surfaces
+    /// the same way).
     var description: String {
         """
         \(cliErrorPrefix) could not resolve a model via the Router: \(underlying)
@@ -99,9 +100,9 @@ struct CLIRouterUnavailableError: Error, CustomStringConvertible {
 /// A runnable demonstration of the FoundationModelsMultitool pipeline.
 ///
 /// The canonical Router + `LanguageModelSession` + `MultiTool` example:
-/// resolves a model profile via `Router`, wraps the resolved `.standard`
+/// resolving a model profile via `Router`, wrapping the resolved `.standard`
 /// generation slot as a real `FoundationModels.LanguageModel`
-/// (`MLXLanguageModel`), and registers `multiTool` (and, unless `--direct`,
+/// (`MLXLanguageModel`), and registering `multiTool` (and, unless `--direct`,
 /// `findAPIsTool`) directly on a native `FoundationModels
 /// .LanguageModelSession`. Apple's own tool-calling loop decides when to
 /// call `findAPIs` vs `runCode` — this file drives no turn-parsing loop of
@@ -118,20 +119,20 @@ struct CLIRouterUnavailableError: Error, CustomStringConvertible {
 enum CLIRunner {
     /// Process exit codes this runner returns.
     ///
-    /// Follows the BSD `sysexits.h` convention for the two documented
-    /// failure modes; `0` for success.
+    /// The BSD `sysexits.h` convention for the two documented failure
+    /// modes; `0` for success.
     enum ExitCode {
-        /// Ran to completion (or `--help` was requested).
+        /// Exit code indicating successful completion (or that `--help` was requested).
         static let success: Int32 = 0
-        /// Bad arguments — mirrors `sysexits.h`'s `EX_USAGE` (64).
+        /// Bad arguments; the same value as `sysexits.h`'s `EX_USAGE` (64).
         static let usageError: Int32 = 64
         /// Exit code when the Router's live path cannot be resolved.
         ///
-        /// Mirrors `sysexits.h`'s `EX_UNAVAILABLE` (69).
+        /// The same value as `sysexits.h`'s `EX_UNAVAILABLE` (69).
         static let unavailable: Int32 = 69
     }
 
-    /// The `--direct` flag: run in direct mode (only `multiTool`/`runCode` registered with the session, no `findAPIsTool`).
+    /// The `--direct` flag, for running in direct mode (only `multiTool`/`runCode` registered with the session, no `findAPIsTool`).
     static let directFlag = Flag(
         names: ["--direct"],
         descriptionLines: [
@@ -142,7 +143,7 @@ enum CLIRunner {
         apply: { $0.direct = true }
     )
 
-    /// The `--help`/`-h` flag: print usage text and exit without touching the Router.
+    /// The `--help`/`-h` flag, for printing usage text and exiting without touching the Router.
     static let helpFlag = Flag(
         names: ["--help", "-h"],
         descriptionLines: ["Print this usage text and exit."],
@@ -186,7 +187,7 @@ enum CLIRunner {
 
     /// The profile used for the demo run.
     ///
-    /// Deliberately uses tiny, tool-calling-capable models, matching the
+    /// Deliberate use of tiny, tool-calling-capable models, matching the
     /// gated integration suite's own `multitoolTinyProfile`
     /// (`Tests/FoundationModelsMultitoolIntegrationTests/Support/IntegrationGate.swift`)
     /// so a machine that already ran that suite shares the cached weights.
@@ -201,16 +202,16 @@ enum CLIRunner {
 
     /// The demo prompt that exercises the agent.
     ///
-    /// Triggers both findAPIs and runCode to compose an answer — plan.md
+    /// Triggering both findAPIs and runCode to compose an answer — plan.md
     /// M9: "one prompt that triggers findAPIs then a composing runCode,"
     /// mirroring plan.md's own worked `tripCities` -> `weather` -> warmest
     /// example.
     static let demoPrompt = "Of the cities on my trip, which is warmest right now?"
 
-    /// Resolves a profile definition into a language model profile.
+    /// A function type for profile resolution, converting a profile definition into a language model profile.
     ///
-    /// Converts an authored `ProfileDefinition` into a resolved, resident
-    /// `LanguageModelProfile` on a given `Router` — injectable so
+    /// Conversion of an authored `ProfileDefinition` into a resolved,
+    /// resident `LanguageModelProfile` on a given `Router` — injectable so
     /// `CLIArgumentTests` can exercise the Router-unavailable degrade path
     /// with a scripted failure, with no real model download/load involved.
     ///
@@ -228,7 +229,7 @@ enum CLIRunner {
 
     /// The default profile resolution implementation.
     ///
-    /// Uses `router.resolve(profile:reporting:)` unchanged — see `ProfileResolver`.
+    /// `router.resolve(profile:reporting:)`, unchanged — see `ProfileResolver`.
     static let defaultResolve: ProfileResolver = { router, definition, progress in
         try await router.resolve(profile: definition, reporting: progress)
     }
@@ -431,8 +432,8 @@ enum CLIRunner {
     /// For `MLXLanguageModel`'s availability checks (`modelExistsOnDisk()`,
     /// `freeDiskSpaceBytes`) — never consulted by the load path itself,
     /// which always goes through `ModelCache`/`load` (see
-    /// `makeMLXLanguageModel(for:)`). Mirrors `MLXLanguageModel`'s own
-    /// doc-comment example: resolves
+    /// `makeMLXLanguageModel(for:)`). Following `MLXLanguageModel`'s own
+    /// doc-comment example, this resolves
     /// against the same `HubCache` the injected `#hubDownloader()` downloads
     /// into, so the availability checks see the weights the Router already
     /// downloaded — the same cache directory `LiveModelLoader`'s default
