@@ -100,6 +100,37 @@ comments:
   id: 01kxg8mwf9ma1m7528p3eyxd3v
   text: '/test iteration 3 verification (independent subagent): swift package resolve/build/build-tests/test all green. 239 tests passed, 11 gated skipped, 0 failures. Confirmed via line-by-line check that all 108 changed lines across Package.swift + CLIRunner.swift are comment lines, zero logic changes. Proceeding to /commit checkpoint.'
   timestamp: 2026-07-14T12:11:53.705858+00:00
+- actor: claude-code
+  id: 01kxg8nzgw94ktwbwprf67appr
+  text: 'Iteration 3 checkpoint committed: 2e62551 "docs(cli): fix doc-comment sentence-fragment and voice violations" (4 files). Not pushed. Proceeding to /review scoped to HEAD~1..HEAD.'
+  timestamp: 2026-07-14T12:12:29.596876+00:00
+- actor: claude-code
+  id: 01kxg9ez17c6nt5g8n5qmv6j9k
+  text: 'Review (iteration 3) on HEAD~1..HEAD (2e62551): 4 new findings — 3 Package.swift doc blocks missing blank-line `///` separators between sentences, 1 CLIRunner.swift runDemo doc using a noun phrase where an imperative verb phrase is expected for a function. Task stays in review. Reviewer flagged this as a possible convergence concern (4th consecutive doc-comment-only finding wave on the same 2 files, validator surfacing new formatting axes each round rather than trending to zero) — noting per finish skill''s guardrail letter (identical finding 3x, or 3 no-change iterations) this hasn''t technically triggered yet since each round''s findings are textually distinct. Proceeding to /implement to fix these 4 — if a 5th round produces yet another new doc-comment finding on these same two files, will treat as stuck and report to human rather than continue looping.'
+  timestamp: 2026-07-14T12:26:08.295844+00:00
+- actor: claude-code
+  id: 01kxgb29mgj1xeyh0dpwfh112e
+  text: |-
+    Iteration 4: fixed all 4 review findings from the 2026-07-14 07:12 round — 3 Package.swift doc blocks (mlxPackage, huggingFacePackage, cliLinkerSettings) each got a blank `///` line inserted between their summary sentence and elaboration paragraph; CLIRunner.swift's runDemo doc first line rewritten from the noun phrase "The resolve-through-print body of `run(...)`." to the imperative "Resolves a profile, builds the tool-equipped session, and prints the model's answer." (verified accurate against the actual function body).
+
+    Also did a full top-to-bottom re-sweep of every `///` doc comment in both files for (a) missing blank-line separators and (b) noun-phrase-vs-imperative-verb mismatches on function docs — found no further violations.
+
+    Checked off all 4 finding boxes with resolution notes. `update task`'s description_find/description_replace no-op'd again on finding 1 (consistent with this task's known history), and worse: the .md file's description body was found to be corrupted with literal `\n`/`\"` escape sequences (JSON-escaped text dumped as raw text, one giant single-line blob) rather than real newlines/quotes. Fixed properly this time by writing a small Python script that json.loads()-unescapes the body, applies the 4 checkbox replacements plus the sweep note, and writes back real markdown text — verified via `get task` that the description now renders as proper multi-line prose (progress: 1.0, no literal escape artifacts).
+
+    Verification: `swift build`, `swift build --build-tests`, `swift test` all green — 239 tests passed, 11 gated skipped, 0 failures. `mcp__sah__diagnostics check working` reports 0 errors/0 warnings. `git diff -- Package.swift Sources/multitool-cli/CLIRunner.swift` confirmed 100% comment-line changes (31 insertions, 26 deletions across 2 files), zero logic touched.
+
+    Ran the adversarial double-check (per really-done's contract): returned PASS, independently confirming the diff is comment-only, the 3 Package.swift blank-line fixes are correctly seated with no new fragments/run-ons, runDemo's new doc line is grammatically imperative and accurate, and a fresh independent sweep of every `///` block in both files found zero further instances of either anti-pattern. It flagged one non-blocking, pre-existing, out-of-scope observation (a couple of participial-phrase elaboration fragments elsewhere in CLIRunner.swift, e.g. demoPrompt/ProfileResolver) — not a defect in this round's diff, noted only in case a future round resumes on that specific pattern.
+
+    Task remains in `doing`, ready for `/review`.
+  timestamp: 2026-07-14T12:54:10.320749+00:00
+- actor: claude-code
+  id: 01kxgb2x4c9wm70hjg1d00g4zy
+  text: 'Iteration 4: /implement fixed all 4 findings — 3 Package.swift blank-line separators added, CLIRunner.swift''s runDemo doc rewritten as an accurate imperative verb phrase. Full sweep found no further violations, adversarial double-check PASS. swift build/test green (239 passed), diff confirmed comment-only. Description corruption from a prior round was also caught and fixed (JSON-escaped text had leaked into the raw markdown) — verified now clean (210 lines, real newlines, zero literal \n). Proceeding to /test then /commit checkpoint.'
+  timestamp: 2026-07-14T12:54:30.284447+00:00
+- actor: claude-code
+  id: 01kxgbdfhbwn22kxn8a1xahdcd
+  text: '/test iteration 4 verification (independent subagent): swift build/build-tests/test all green (twice, for confirmation). 239 tests passed, 11 gated skipped, 0 failures, 0 diagnostics. Confirmed diff scoped correctly to comment-only changes. Proceeding to /commit checkpoint.'
+  timestamp: 2026-07-14T13:00:16.811813+00:00
 depends_on:
 - 01KWVNTEAPVS13BB8H04AVEEPP
 position_column: doing
@@ -175,3 +206,13 @@ Additionally, during the full top-to-bottom sweep of `CLIRunner.swift` (per this
 5. (Disclosure fix, see the `Package.swift:151` note above) The prior-implementer `Package.swift` pass bundled 4 undisclosed same-pattern fixes beyond the 3 cited findings; now disclosed in the finding-3 note.
 
 Re-verified after the round-1 double-check fixes: `swift build`, `swift build --build-tests`, `swift test` all green (239 passed, 11 gated skipped, 0 failures), `mcp__sah__diagnostics check working` reports 0 errors/0 warnings. This round's entire diff remains doc-comment-only across both `Package.swift` and `CLIRunner.swift` — zero logic touched.
+
+## Review Findings (2026-07-14 07:12)
+
+- [x] `Package.swift:52` — Fixed. Inserted a blank `///` line immediately after the `mlxPackage` doc's first summary sentence ("...`mlxPackage`)."), separating it from the elaboration paragraph. Rewrapped the elaboration's line breaks for clean flow; kept it as one paragraph (matches this file's own established convention of a single elaboration paragraph after the blank line, e.g. `xcodeContentsDirectory()`'s doc, rather than sub-splitting every sentence).
+- [x] `Package.swift:77` — Fixed. Split `huggingFacePackage`'s doc into "Hugging Face Hub client and tokenizer packages." (summary) followed by a blank `///` line, then the "These packages are needed by every target below..." elaboration, exactly as the finding suggested.
+- [x] `Package.swift:139` — Fixed. `cliLinkerSettings`'s doc now ends its first sentence at "...already requires.", followed by a blank `///` line, then the "It's empty (no extra flags) when..." elaboration.
+- [x] `Sources/multitool-cli/CLIRunner.swift:312` — Fixed. `runDemo`'s doc first line is now the imperative "Resolves a profile, builds the tool-equipped session, and prints the model's answer." (accurately describing what the function does — resolves `demoProfile` via `resolve`, builds `multiTool`/`findAPIsTool` and the `LanguageModelSession`, calls `session.respond(to:)` once, prints the answer), followed by a blank `///` and an elaboration retaining the original "resolve-through-print body of `run(...)`" framing: "Factored out of `run(...)` as its resolve-through-print body, so `run(...)` only has to decide which exit code an error maps to."
+
+
+Full top-to-bottom re-sweep of every `///` doc comment in both `Package.swift` and `Sources/multitool-cli/CLIRunner.swift` performed alongside these 4 fixes (per this round's instructions to converge in one pass): checked every doc block for (a) missing blank-line separators between a summary sentence and its elaboration, and (b) noun-phrase-vs-imperative-verb mismatches on function docs specifically. No further violations found — every function doc (`swissArmyHammerPackage`, `huggingFaceOrgPackage`, `xcodeContentsDirectory`, `parse(_:)`, `run(...)`, `runDemo`, `makeMLXLanguageModel(for:)`, `weightsLocation(for:)`, `trackProgress`, `makeTempRecordingsDir`) already uses an imperative verb, and every property/type/constant doc already uses a noun phrase. `swift build`, `swift build --build-tests`, and `swift test` all green — 239 tests passed, 11 gated skipped, 0 failures. `mcp__sah__diagnostics check working` reports 0 errors/0 warnings. Entire diff remains doc-comment-only, zero logic touched.

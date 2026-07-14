@@ -48,18 +48,20 @@ private func swissArmyHammerPackage(name: String, branch: String = mainBranch) -
 }
 
 /// The MLX-backed model package `FoundationModelsRouter` itself depends on
-/// (`../FoundationModelsRouter/Package.swift`'s `mlxPackage`). Only two of
-/// its products are declared directly here (not Router's own broader
-/// `mlxProducts` set): `MLXLMCommon`, whose `Downloader`/`TokenizerLoader`
-/// protocols a live `LiveModelLoader` is constructed over, and
-/// `MLXHuggingFace`, whose `#hubDownloader()`/`#huggingFaceTokenizerLoader()`
-/// macros adapt a real Hugging Face Hub client into those protocols — the
-/// same macros Router's own gated `…IntegrationTests` target uses, and the
-/// M9 `multitool-cli` executable's default (production) model-resolution
-/// path uses too. This is already part of this package's resolved dependency
-/// graph transitively (Router's own library target needs the *full*
-/// mlx-swift-lm product set to build at all), so declaring these two directly
-/// for the targets below adds no new MLX/C++ compilation, only linking.
+/// (`../FoundationModelsRouter/Package.swift`'s `mlxPackage`).
+///
+/// Only two of its products are declared directly here (not Router's own
+/// broader `mlxProducts` set): `MLXLMCommon`, whose
+/// `Downloader`/`TokenizerLoader` protocols a live `LiveModelLoader` is
+/// constructed over, and `MLXHuggingFace`, whose
+/// `#hubDownloader()`/`#huggingFaceTokenizerLoader()` macros adapt a real
+/// Hugging Face Hub client into those protocols — the same macros Router's
+/// own gated `…IntegrationTests` target uses, and the M9 `multitool-cli`
+/// executable's default (production) model-resolution path uses too. This
+/// is already part of this package's resolved dependency graph transitively
+/// (Router's own library target needs the *full* mlx-swift-lm product set
+/// to build at all), so declaring these two directly for the targets below
+/// adds no new MLX/C++ compilation, only linking.
 private let mlxPackage = "mlx-swift-lm"
 
 /// Base URL for packages published under the Hugging Face GitHub
@@ -78,14 +80,15 @@ private func huggingFaceOrgPackage(name: String, from version: Version) -> Packa
     .package(url: "\(huggingFaceOrgURL)\(name)", from: version)
 }
 
-/// Hugging Face Hub client and tokenizer packages. These packages are needed
-/// by every target below that constructs a real, live `LiveModelLoader`
-/// through the `MLXHuggingFace` macros (the gated integration test target,
-/// and the M9 `multitool-cli` executable). This mirrors
-/// `../FoundationModelsRouter/Package.swift`'s own `hubProducts` (same
-/// package identities and version floors as Router's own gated suite, so a
-/// machine that already ran Router's gated suite shares the resolved
-/// checkout).
+/// Hugging Face Hub client and tokenizer packages.
+///
+/// These packages are needed by every target below that constructs a real,
+/// live `LiveModelLoader` through the `MLXHuggingFace` macros (the gated
+/// integration test target, and the M9 `multitool-cli` executable). This
+/// mirrors `../FoundationModelsRouter/Package.swift`'s own `hubProducts`
+/// (same package identities and version floors as Router's own gated
+/// suite, so a machine that already ran Router's gated suite shares the
+/// resolved checkout).
 private let huggingFacePackage = "swift-huggingface"
 
 /// The Swift Transformers tokenizer package, paired with
@@ -167,9 +170,10 @@ private func xcodeContentsDirectory() -> String? {
 /// just link — an `-rpath` pointing at `xcodeContentsDirectory()`, computed
 /// fresh (never hardcoded) so it resolves correctly on any machine/CI
 /// runner with a full Xcode install — the same install this package's
-/// macOS-27-SDK build already requires. It's empty (no extra flags) when
-/// `xcodeContentsDirectory()` can't resolve one — see its documentation for
-/// the full story.
+/// macOS-27-SDK build already requires.
+///
+/// It's empty (no extra flags) when `xcodeContentsDirectory()` can't
+/// resolve one — see its documentation for the full story.
 private let cliLinkerSettings: [LinkerSetting] = {
     guard let xcodeContentsDirectory = xcodeContentsDirectory() else { return [] }
     return [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", xcodeContentsDirectory])]

@@ -307,10 +307,11 @@ enum CLIRunner {
 
     // MARK: - The demo run
 
-    /// The resolve-through-print body of `run(...)`.
+    /// Resolves a profile, builds the tool-equipped session, and prints the
+    /// model's answer.
     ///
-    /// Factored out so `run(...)` only has to decide which exit code an
-    /// error maps to.
+    /// Factored out of `run(...)` as its resolve-through-print body, so
+    /// `run(...)` only has to decide which exit code an error maps to.
     ///
     /// - Parameters:
     ///   - direct: whether to run in direct mode — only `multiTool` is
