@@ -79,6 +79,14 @@ comments:
   id: 01kxh1b2x8phj2vjma8r71jbcq
   text: '/test verification (independent subagent): swift build/build-tests/test all green. 242 tests passed, 7 gated tests correctly skip, 0 failures. Confirmed zero source diff (pure investigation task). Proceeding to /commit checkpoint.'
   timestamp: 2026-07-14T19:23:27.016468+00:00
+- actor: claude-code
+  id: 01kxh1dhzagsk059sdcyrhk3pd
+  text: 'Correction: the maxItems fix task the implementer filed (short_id a50rrfh) was created on THIS repo''s board by mistake — its actual fix belongs in FoundationModelsMetadataRegistry''s own source (SelectionTier.idEnumGrammar), so it should live on that repo''s kanban board, not here. Recreated it there as short_id 678h0ex (same content) and deleted the misplaced duplicate here, mirroring the earlier correction for the mlx-swift-lm SDK-compat task. Proceeding with the finish loop for this investigation task.'
+  timestamp: 2026-07-14T19:24:47.978149+00:00
+- actor: claude-code
+  id: 01kxh1e16ap53ft2fqn05cj51e
+  text: swift build reconfirmed green after the board-migration correction. Proceeding to /commit checkpoint.
+  timestamp: 2026-07-14T19:25:03.562831+00:00
 depends_on:
 - 01KWVNWP89T9551VNK3K4MJ1GM
 position_column: doing
