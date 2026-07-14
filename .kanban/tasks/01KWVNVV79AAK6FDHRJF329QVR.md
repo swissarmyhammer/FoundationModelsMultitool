@@ -131,10 +131,14 @@ comments:
   id: 01kxgbdfhbwn22kxn8a1xahdcd
   text: '/test iteration 4 verification (independent subagent): swift build/build-tests/test all green (twice, for confirmation). 239 tests passed, 11 gated skipped, 0 failures, 0 diagnostics. Confirmed diff scoped correctly to comment-only changes. Proceeding to /commit checkpoint.'
   timestamp: 2026-07-14T13:00:16.811813+00:00
+- actor: claude-code
+  id: 01kxgbefnvh1q0an6jxx4gn1h0
+  text: 'Iteration 4 checkpoint committed: 53167b3 "docs(deps): add blank-line doc separators, fix runDemo doc voice" (4 files). Not pushed. Proceeding to /review scoped to HEAD~1..HEAD — this is the round to watch: if it surfaces yet another new doc-comment finding on Package.swift/CLIRunner.swift, treating as stuck per prior comment.'
+  timestamp: 2026-07-14T13:00:49.723229+00:00
 depends_on:
 - 01KWVNTEAPVS13BB8H04AVEEPP
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: a180
 title: Build the canonical Router + LanguageModelSession + MultiTool example, replacing multitool-cli's MultiToolAgent-based demo
 ---
 ## What
