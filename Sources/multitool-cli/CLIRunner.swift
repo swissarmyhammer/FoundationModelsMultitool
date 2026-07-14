@@ -380,7 +380,12 @@ enum CLIRunner {
                 instructions: "You are a helpful trip-planning assistant. Use runCode to get things done."
             )
 
-            let response = try await session.respond(to: demoPrompt)
+            // Explicitly typed: `FoundationModelsRanker` (pulled in
+            // transitively by the metadata registry) adds a shadowing
+            // `LanguageModelSession.respond(to:) -> String` extension for its
+            // `AgentSession` conformance; the annotation pins this call to
+            // the native FoundationModels API.
+            let response: LanguageModelSession.Response<String> = try await session.respond(to: demoPrompt)
 
             output("")
             output("Answer: \(response.content)")

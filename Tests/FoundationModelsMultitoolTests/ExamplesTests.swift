@@ -181,7 +181,10 @@ struct ExamplesTests {
             instructions: "Use runCode to answer questions about the trip."
         )
 
-        let response = try await session.respond(to: "List the cities on my trip.")
+        // Explicitly typed to pin the native FoundationModels API over
+        // `FoundationModelsRanker`'s shadowing `respond(to:) -> String`
+        // `AgentSession` extension.
+        let response: LanguageModelSession.Response<String> = try await session.respond(to: "List the cities on my trip.")
 
         #expect(response.content == "Your itinerary: ATX, then SFO.")
         // The round trip is real, not merely scripted: runCode's own
@@ -237,7 +240,8 @@ struct ExamplesTests {
             instructions: "Call findAPIs to discover tools, then runCode to use them."
         )
 
-        let response = try await session.respond(to: "How many open issues does the repo have?")
+        // Explicitly typed — same shadowing-extension disambiguation as above.
+        let response: LanguageModelSession.Response<String> = try await session.respond(to: "How many open issues does the repo have?")
 
         #expect(response.content == "There are 42 open issues.")
 

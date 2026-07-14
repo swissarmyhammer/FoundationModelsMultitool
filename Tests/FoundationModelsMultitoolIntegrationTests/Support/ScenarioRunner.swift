@@ -83,7 +83,10 @@ func runNativeIntegrationScenario(
         )
 
         let start = Date()
-        let response = try await session.respond(to: prompt)
+        // Explicitly typed to pin the native FoundationModels API over
+        // `FoundationModelsRanker`'s shadowing `respond(to:) -> String`
+        // `AgentSession` extension.
+        let response: LanguageModelSession.Response<String> = try await session.respond(to: prompt)
         let elapsed = Date().timeIntervalSince(start)
 
         let transcript = session.transcript

@@ -230,7 +230,10 @@ struct NativeToolCallEvaluation: Evaluation {
                 tools: [multiTool, findAPIsTool],
                 instructions: "You are a helpful assistant. Use runCode to get things done."
             )
-            let response = try await session.respond(to: scenario.prompt)
+            // Explicitly typed to pin the native FoundationModels API over
+            // `FoundationModelsRanker`'s shadowing `respond(to:) -> String`
+            // `AgentSession` extension.
+            let response: LanguageModelSession.Response<String> = try await session.respond(to: scenario.prompt)
             let subject = ModelSubject(value: response.content, transcript: session.transcript.structuredTranscript)
             await fixture.tearDown()
             return subject
