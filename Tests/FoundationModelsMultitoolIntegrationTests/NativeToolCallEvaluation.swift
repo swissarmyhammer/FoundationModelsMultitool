@@ -6,14 +6,16 @@ import FoundationModelsRouter
 @testable import FoundationModelsMultitool
 @testable import multitool_cli
 
-/// The successor to the retired `AgentEvaluation.swift` (task `k4mj1gm`
-/// deleted it porting the gated suite to the native `LanguageModelSession`
-/// design; this task, `twvq4mw`, was filed to investigate whether it could
-/// be rebuilt against the new transcript shape). It could: unlike
-/// `MultiToolAgent`'s hand-rolled Router transcript, a native
-/// `LanguageModelSession`'s own `FoundationModels.Transcript` is exactly
-/// what Apple's `Evaluations` framework's tool-calling machinery is built to
-/// grade.
+/// Grades native `LanguageModelSession` tool-call trajectories with Apple's `Evaluations` framework, succeeding the retired `AgentEvaluation.swift`.
+///
+/// The retired file's own doc comment recorded why it couldn't do this: task
+/// `k4mj1gm` deleted `AgentEvaluation.swift` when porting the gated suite to
+/// the native `LanguageModelSession` design, leaving this task, `twvq4mw`, to
+/// investigate whether it could be rebuilt against the new transcript shape.
+/// It could — unlike `MultiToolAgent`'s hand-rolled Router transcript, a
+/// native `LanguageModelSession`'s own `FoundationModels.Transcript` is
+/// exactly what Apple's `Evaluations` framework's tool-calling machinery is
+/// built to grade.
 ///
 /// **Verified against the shipping SDK's `.swiftinterface`** (the same
 /// approach the retired file's own doc comment used —
@@ -53,7 +55,7 @@ import FoundationModelsRouter
 ///   `.contains(argumentName:substring:)` (plus `.hasPrefix`/`.hasSuffix`/
 ///   `.naturalLanguage`), so a `runCode` `ToolExpectation` *can* assert that
 ///   its `code` argument contains a `tools.<path>(` call site —
-///   `runCodeExpectation(invoking:)` below does exactly that, for every
+///   `makeRunCodeExpectation(invoking:)` below does exactly that, for every
 ///   scenario's expected `tools.*` paths. What it can't express: the
 ///   retired `CalledExpectedToolsEvaluator`'s *exact-set* check (`invoked ==
 ///   expectedToolPaths`, no more, no fewer) — there is no "argument does
@@ -99,19 +101,23 @@ struct NativeToolCallEvaluation: Evaluation {
     typealias Subject = ModelSubject<String>
     typealias SampleLoader = ArrayLoader<ModelSample<String>>
 
-    /// One sample MultiTool scenario: the prompt to drive a native
-    /// `LanguageModelSession(tools: [multiTool, findAPIsTool])` with, the
-    /// tool set to wrap, and the trajectory `ToolCallEvaluator` grades the
-    /// resulting transcript against.
+    /// Holds one sample scenario: the prompt, the tool set to wrap, and the trajectory expectation to grade against.
+    ///
+    /// Drives a native `LanguageModelSession(tools: [multiTool, findAPIsTool])`
+    /// with `prompt`, wraps `tools` in the registry passed to it, and grades
+    /// the resulting transcript against `expectation` via the framework's
+    /// `ToolCallEvaluator`.
     private struct Scenario {
         let prompt: String
         let tools: [any Tool]
         let expectation: TrajectoryExpectation
     }
 
-    /// Builds a `"runCode"` `ToolExpectation` asserting its `code` argument
-    /// references every one of `toolPaths` — the presence half of the
-    /// retired `CalledExpectedToolsEvaluator`'s check (see this type's own
+    /// Builds a `"runCode"` `ToolExpectation` asserting presence of every expected tool-path call.
+    ///
+    /// Asserts that the call's `code` argument references each of
+    /// `toolPaths` — the presence half of the retired
+    /// `CalledExpectedToolsEvaluator`'s check (see this type's own
     /// documentation above for what's deliberately not ported).
     ///
     /// - Parameter toolPaths: the `tools.*` call paths the `runCode` call's
@@ -119,15 +125,15 @@ struct NativeToolCallEvaluation: Evaluation {
     ///   so the resulting `ToolExpectation` is deterministic across runs.
     /// - Returns: a `ToolExpectation("runCode", ...)` with one
     ///   `.contains(argumentName: "code", substring:)` matcher per path.
-    private static func runCodeExpectation(invoking toolPaths: Set<String>) -> ToolExpectation {
+    private static func makeRunCodeExpectation(invoking toolPaths: Set<String>) -> ToolExpectation {
         ToolExpectation(
             "runCode",
             arguments: toolPaths.sorted().map { .contains(argumentName: "code", substring: "tools.\($0)(") }
         )
     }
 
-    /// Reuses `SearchThenCallTests`' own four scenarios (tool sets, prompts,
-    /// and expected `tools.*` paths verbatim) as this evaluation's dataset.
+    /// Reuses `SearchThenCallTests`' own four scenarios (tool sets, prompts, and expected `tools.*` paths verbatim) as this evaluation's dataset.
+    ///
     /// Scenario 3's prompt is deliberately reworded from `SearchThenCallTests`'
     /// own text (which is identical to scenario 2's — fine for two
     /// independent `@Test` funcs but not here) — `subject(from:)` looks a
@@ -140,7 +146,7 @@ struct NativeToolCallEvaluation: Evaluation {
             prompt: "How warm is it in Austin right now?",
             tools: [IntegrationWeatherTool()],
             expectation: TrajectoryExpectation(
-                ordered: [ToolExpectation("findAPIs"), runCodeExpectation(invoking: ["weather"])]
+                ordered: [ToolExpectation("findAPIs"), makeRunCodeExpectation(invoking: ["weather"])]
             )
         ),
         // Scenario 2: compose/chain tripCities -> weather -> warmest.
@@ -148,7 +154,7 @@ struct NativeToolCallEvaluation: Evaluation {
             prompt: "Of the cities on my trip, which is warmest right now?",
             tools: [IntegrationTripCitiesTool(), IntegrationWeatherTool()],
             expectation: TrajectoryExpectation(
-                ordered: [ToolExpectation("findAPIs"), runCodeExpectation(invoking: ["tripCities", "weather"])]
+                ordered: [ToolExpectation("findAPIs"), makeRunCodeExpectation(invoking: ["tripCities", "weather"])]
             )
         ),
         // Scenario 3: discovery under ~20 distractors. Reworded prompt — see
@@ -157,7 +163,7 @@ struct NativeToolCallEvaluation: Evaluation {
             prompt: "Of all the trip-planning tools available, which city on my trip is warmest right now?",
             tools: [IntegrationWeatherTool(), IntegrationTripCitiesTool()] + integrationDistractorTools,
             expectation: TrajectoryExpectation(
-                ordered: [ToolExpectation("findAPIs"), runCodeExpectation(invoking: ["tripCities", "weather"])]
+                ordered: [ToolExpectation("findAPIs"), makeRunCodeExpectation(invoking: ["tripCities", "weather"])]
             )
         ),
         // Scenario 4: repair from a trip-prone tool. The retired suite's
@@ -173,22 +179,29 @@ struct NativeToolCallEvaluation: Evaluation {
         Scenario(
             prompt: "Confirm my booking, id 42.",
             tools: [IntegrationBookingTool()],
-            expectation: TrajectoryExpectation(unordered: [runCodeExpectation(invoking: ["book"])])
+            expectation: TrajectoryExpectation(unordered: [makeRunCodeExpectation(invoking: ["book"])])
         ),
     ]
 
-    var dataset: ArrayLoader<ModelSample<String>> {
+    /// Builds the `Evaluation.dataset` from `scenarios`, satisfying the protocol's `SampleLoader` requirement.
+    ///
+    /// Each scenario's prompt and `TrajectoryExpectation` become one
+    /// `ModelSample<String>`; `subject(from:)` below looks each sample back
+    /// up in `scenarios` by prompt to know which tools and session to drive.
+    var dataset: SampleLoader {
         ArrayLoader(samples: Self.scenarios.map { ModelSample(prompt: $0.prompt, expectations: $0.expectation) })
     }
 
-    /// Runs one scenario's prompt through a freshly-resolved live, native
-    /// `LanguageModelSession(tools: [multiTool, findAPIsTool])`, then reduces
-    /// the resulting `FoundationModels.Transcript` to a `ModelSubject` the
-    /// framework's own `ToolCallEvaluator` grades — the same construction
-    /// `runNativeIntegrationScenario` (`Support/ScenarioRunner.swift`) uses,
-    /// with a fresh `LiveRouterFixture` per scenario (never shared across
-    /// samples), so each subject's transcript reflects only that scenario's
-    /// own run.
+    /// Runs the sample's scenario through a live native session and returns the subject `evaluators` grades.
+    ///
+    /// Resolves a fresh `LiveRouterFixture` for the scenario matching
+    /// `sample`'s prompt, builds a `LanguageModelSession(tools: [multiTool,
+    /// findAPIsTool])` with the same construction `runNativeIntegrationScenario`
+    /// (`Support/ScenarioRunner.swift`) uses, and reduces the resulting
+    /// `FoundationModels.Transcript` to a `ModelSubject` the framework's own
+    /// `ToolCallEvaluator` grades. Each call resolves its own fixture (never
+    /// shared across samples), so each subject's transcript reflects only
+    /// that scenario's own run.
     ///
     /// - Parameter sample: the dataset sample to run.
     /// - Returns: the subject `evaluators` grades.
@@ -227,6 +240,13 @@ struct NativeToolCallEvaluation: Evaluation {
         }
     }
 
+    /// Declares the `ToolCallEvaluator` used to grade every sample, satisfying the protocol's `evaluators` requirement.
+    ///
+    /// `Evaluations.Evaluation.evaluators` is a DSL-style `@EvaluatorsBuilder`
+    /// property; this evaluation grades every sample with a single
+    /// `ToolCallEvaluator`, recording its `allPass`/`percentagePass`
+    /// outcomes under `NativeToolCallMetricName.allToolCallsPass`/
+    /// `.percentageToolCallsPass` for `aggregateMetrics` below to summarize.
     @EvaluatorsBuilder<Sample, Subject> var evaluators: Evaluators {
         ToolCallEvaluator<Sample>(
             allPass: Metric(NativeToolCallMetricName.allToolCallsPass),
@@ -234,6 +254,12 @@ struct NativeToolCallEvaluation: Evaluation {
         )
     }
 
+    /// Aggregates mean and standard deviation for both tool-call metrics, satisfying the protocol's `aggregateMetrics` requirement.
+    ///
+    /// Runs across every sample's per-scenario `ToolCallEvaluator` result,
+    /// producing the mean/stddev of `allToolCallsPass` and
+    /// `percentageToolCallsPass` that `NativeToolCallEvaluationTests` reads
+    /// back via `EvaluationContext.current.result`.
     func aggregateMetrics(using aggregator: inout MetricsAggregator) {
         aggregator.computeMean(of: Metric(NativeToolCallMetricName.allToolCallsPass))
         aggregator.computeStandardDeviation(of: Metric(NativeToolCallMetricName.allToolCallsPass))
@@ -242,27 +268,25 @@ struct NativeToolCallEvaluation: Evaluation {
     }
 }
 
-/// `Evaluations.ToolCallEvaluator`'s two metric names, graded per sample
-/// against `NativeToolCallEvaluation`'s `TrajectoryExpectation`s —
+/// Named metric-name constants for `Evaluations.ToolCallEvaluator`'s two grading outcomes.
+///
 /// `allPass` (did every expected call match) and `percentagePass` (what
-/// fraction did). Named constants (not repeated string literals), mirroring
-/// `AgentEvaluators.swift`'s `AgentMetricName`.
+/// fraction did), graded per sample against `NativeToolCallEvaluation`'s
+/// `TrajectoryExpectation`s — mirrors `AgentEvaluators.swift`'s
+/// `AgentMetricName` pattern of avoiding repeated string literals.
 enum NativeToolCallMetricName {
-    /// `Evaluations.ToolCallEvaluator`'s `allPass` metric: passing only when
-    /// every expected tool call in the sample's `TrajectoryExpectation`
-    /// matched.
+    /// `Evaluations.ToolCallEvaluator`'s `allPass` metric: passing only when every expected tool call in the sample's `TrajectoryExpectation` matched.
     static let allToolCallsPass = "AllNativeToolCallsPass"
-    /// `Evaluations.ToolCallEvaluator`'s `percentagePass` metric: the
-    /// fraction of the sample's expected tool calls that matched.
+    /// `Evaluations.ToolCallEvaluator`'s `percentagePass` metric: the fraction of the sample's expected tool calls that matched.
     static let percentageToolCallsPass = "PercentageNativeToolCallsPass"
 }
 
-/// A failure specific to `NativeToolCallEvaluation`'s own dataset/subject
-/// wiring — never expected in practice since `dataset` and `subject(from:)`
-/// are both derived from the same `NativeToolCallEvaluation.scenarios` list.
+/// A failure specific to `NativeToolCallEvaluation`'s own dataset/subject wiring.
+///
+/// Never expected in practice since `dataset` and `subject(from:)` are both
+/// derived from the same `NativeToolCallEvaluation.scenarios` list.
 enum NativeToolCallEvaluationError: Error, CustomStringConvertible {
-    /// `subject(from:)` received a sample whose prompt matches no entry in
-    /// `NativeToolCallEvaluation.scenarios`.
+    /// `subject(from:)` received a sample whose prompt matches no entry in `NativeToolCallEvaluation.scenarios`.
     case unknownScenario(prompt: String)
 
     var description: String {
@@ -273,11 +297,12 @@ enum NativeToolCallEvaluationError: Error, CustomStringConvertible {
     }
 }
 
-/// `twvq4mw`'s gated eval suite: the same `MULTITOOL_INTEGRATION` opt-in env
-/// var as `SearchThenCallTests`/`PrefixReuseTests` — unset (the default),
-/// `.enabled(if:)` skips the whole suite before `.evaluates(...)` ever
-/// invokes `NativeToolCallEvaluation.subject(from:)`, so `swift test` stays
-/// green with zero downloads and zero live inference.
+/// `twvq4mw`'s gated eval suite, opted into only via the `MULTITOOL_INTEGRATION` env var.
+///
+/// Unset (the default), `.enabled(if:)` skips the whole suite before
+/// `.evaluates(...)` ever invokes `NativeToolCallEvaluation.subject(from:)`
+/// — the same opt-in `SearchThenCallTests`/`PrefixReuseTests` use — so
+/// `swift test` stays green with zero downloads and zero live inference.
 ///
 /// `.timeLimit(.minutes(60))`: a real-hardware run of this suite resolves
 /// four fresh `LiveRouterFixture`s in sequence (one per scenario, per
@@ -294,8 +319,7 @@ enum NativeToolCallEvaluationError: Error, CustomStringConvertible {
     .timeLimit(.minutes(60))
 )
 struct NativeToolCallEvaluationTests {
-    /// The mean-aggregate pass threshold — mirrors the retired
-    /// `AgentEvaluationTests.passThreshold`.
+    /// The mean-aggregate pass threshold for `nativeToolCallEvaluation()`, mirroring the retired `AgentEvaluationTests.passThreshold`.
     private static let passThreshold = 0.9
 
     @Test(.evaluates(NativeToolCallEvaluation(), info: ["suite": "twvq4mw"]))
