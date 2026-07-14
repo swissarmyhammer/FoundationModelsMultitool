@@ -29,6 +29,17 @@ func idEnumGrammar(ids: [String]) throws -> Grammar {
                 "type": "array",
                 "items": ["type": "string", "enum": ids],
                 "uniqueItems": true,
+                // A hard structural cap on the array's length: a selection
+                // can never legitimately contain more ids than there are
+                // candidates. This is the constraint that actually stops
+                // runaway generation — the xgrammar pipeline enforces
+                // `maxItems` but silently ignores `uniqueItems`, so without
+                // it the compiled grammar permits an unbounded-length array
+                // of repeated enum members (observed as a deterministic
+                // ~6150-token, ~190s runaway on `PrefixReuseTests`' off-topic
+                // second `findAPIs` call). Mirrors the same fix in the
+                // registry's own `SelectionTier.idEnumGrammar(ids:)`.
+                "maxItems": ids.count,
             ] as [String: Any]
         ],
         "required": ["ids"],

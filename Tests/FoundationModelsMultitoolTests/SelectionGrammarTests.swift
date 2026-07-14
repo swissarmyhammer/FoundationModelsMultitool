@@ -48,6 +48,7 @@ struct SelectionGrammarTests {
         let idsSchema = try #require(properties["ids"] as? [String: Any])
         #expect(idsSchema["type"] as? String == "array")
         #expect(idsSchema["uniqueItems"] as? Bool == true)
+        #expect(idsSchema["maxItems"] as? Int == ids.count)
 
         let items = try #require(idsSchema["items"] as? [String: Any])
         #expect(items["type"] as? String == "string")

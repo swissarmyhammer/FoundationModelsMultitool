@@ -18,6 +18,22 @@ comments:
   id: 01kxgmp19wvq90a5fxmechpxdf
   text: '/finish scoped-batch pass: skipping this task despite kanban showing it #READY. Its own gate-check acceptance criterion requires reading k4mj1gm''s go/no-go comment before any deletion — k4mj1gm recorded an explicit, well-evidenced NO-GO (real hardware, 3 independent runs, upstream-fix excuses ruled out via git merge-base verification). Per this task''s own instructions, treating it as blocked and not proceeding. Will remain untouched until a human either resolves the underlying model/prefix-reuse regression (tracked as 9hchxj6) or explicitly overrides the gate.'
   timestamp: 2026-07-14T15:42:14.332815+00:00
+- actor: claude-code
+  id: 01kxhb9b3jth6taz31613es77b
+  text: |-
+    /finish scoped-batch pass (2026-07-14, second pass today): gate re-checked, still NO-GO — skipping again, no files touched.
+
+    Update since the 15:42 skip comment: the investigation task `9hchxj6` has since completed (19:25) but it **reaffirmed** the NO-GO rather than clearing it. Its final confirmatory real-hardware run: `SearchThenCallTests`-equivalent 0/4 (baseline requires ≥7/8), `PrefixReuseTests` FAIL (~101x second-call slowdown, 3rd consistent reproduction). Root cause of the prefix-reuse blowup was isolated to `SelectionTier.idEnumGrammar` missing a `maxItems` bound — NOT in this repo; fix filed as task `a50rrfh` on the FoundationModelsMetadataRegistry board.
+
+    Current blocker is therefore the upstream `a50rrfh` fix landing (and a subsequent re-run clearing the baseline, updating `k4mj1gm`'s go/no-go note to GO), or an explicit human override of the gate. Until one of those happens, this task's own gate-check acceptance criterion forbids proceeding despite the board showing it #READY.
+  timestamp: 2026-07-14T22:17:15.634369+00:00
+- actor: claude-code
+  id: 01kxheq553b86v5rrasschahck
+  text: |-
+    Gate re-checked after the registry update landed (registry pin → `ddb569a`): **still NO-GO — this task remains blocked.** See `k4mj1gm`'s fresh go/no-go note (2026-07-14, 5th hardware run) for full data.
+
+    Short version: the prefix-reuse runaway is now root-caused and FIXED (the missing `maxItems` cap lived in THIS repo's own `SelectionGrammar.swift`, not only upstream — fixed here with a unit test; second findAPIs call dropped 194.6s → 2.5s; a port of the fix for `FoundationModelsRanker`'s own unfixed copy is filed as `nkn73z2` on that board). But `SearchThenCallTests` scored 0/4 on the fresh run against the required ≥7/8 baseline — the native tool-calling reliability gap of the pinned tiny model is unchanged and is now the sole blocker. Until a model pin or instructions iteration clears that baseline (or a human overrides the gate), the deletion must not proceed.
+  timestamp: 2026-07-14T23:17:14.019852+00:00
 depends_on:
 - 01KWVNWP89T9551VNK3K4MJ1GM
 - 01KWVNV1NZ157PW3Y1GH6RQZ4V

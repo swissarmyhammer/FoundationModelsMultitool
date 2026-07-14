@@ -90,6 +90,22 @@ comments:
   id: 01kxgm55r18dab9khz6hj7xn0h
   text: 'Checkpoint committed: 6910cbc "test(integration): port gated suite to native LanguageModelSession tool-calling" (16 files). Not pushed. Proceeding to /review scoped to HEAD~1..HEAD.'
   timestamp: 2026-07-14T15:33:01.825818+00:00
+- actor: claude-code
+  id: 01kxheptnzcq9kvc58f6t9etyv
+  text: |-
+    GO/NO-GO UPDATE (2026-07-14, 5th independent real-hardware run, same M3 Ultra / Qwen2.5-1.5B-Instruct-4bit pin) — **still NO-GO, but the prefix-reuse mystery is now fully closed and fixed.**
+
+    **What changed since the last note:** the registry dependency was updated to `ddb569a` (includes the `maxItems` grammar-cap fix from its task `678h0ex`). That alone did NOT fix `PrefixReuseTests` — because the grammar in the live path was never the registry's: `FindAPIsTool` builds its selection grammar with THIS repo's own hand-built `idEnumGrammar(ids:)` (`Sources/FoundationModelsMultitool/Discovery/SelectionGrammar.swift`, the registry's documented integrator path), which had the identical missing-`maxItems` gap. Proven from the recorded session transcript: the effective grammar contained `enum`+`uniqueItems` but no `maxItems`, and the runaway response was literally `{"ids": ["convertCurrency", "convertCurrency", …]}` repeated for ~33KB — repeated enum members, exactly the mode the cap prevents (xgrammar enforces `maxItems` but silently ignores `uniqueItems`).
+
+    **Fix landed in this repo** (TDD, unit test added): `SelectionGrammar.swift` now sets `maxItems = ids.count`. Verified end to end on hardware: second `findAPIs` call dropped from ~194.6s → ~2.5-2.8s, and the recorded grammar now carries the cap. The same gap also exists in `FoundationModelsRanker`'s exported `SelectionTier.idEnumGrammar` (the extraction predated the registry fix) — filed as task `nkn73z2` on the ranker's own board.
+
+    **Fresh full gated run results:**
+    - CLISmokeTests: PASS (34.8s).
+    - PrefixReuseTests: FAIL, but now only *marginally* — first=1.89s second=2.54s. The ~101x pathology is gone; the residual gap is decode-length asymmetry (call 2 pads the ids array to the 20-id cap with repeats since `uniqueItems` is unenforceable, decoding ~10x more tokens than call 1's 2-id selection). The pinned property itself (fork-inherited prefix, no re-prefill) demonstrably holds — 95% prompt-cache hit per 9hchxj6's instrumentation, and 2.5s total is far below cold-prefill cost + decode.
+    - SearchThenCallTests: **0/4** — unchanged. singleCallWeather answered correctly but via 34 tool calls without findAPIs-before-runCode; composeChain hallucinated a literal "**[city]**" placeholder after 1 call; discoveryUnderDistractors made 0 tool calls and deflected; repairFromTripProneTool answered correctly in 3 calls but with wrong invokedToolPaths. This is the native tool-calling reliability gap 9hchxj6 documented — a model-capability issue, never a grammar/caching issue — and it alone keeps this NO-GO (baseline requires ≥7/8).
+
+    **Net:** the gate's blocker list has narrowed from two mysteries to one known, well-characterized model-capability gap. Paths that could flip this to GO remain the ones 9hchxj6 identified: a genuinely tool-calling-capable model pin (the 9B experiment failed too — but pins tuned FOR native tool-calling were never tried) and/or iterating on the instructions-tuning partial win (2 of 4 scenarios flipped to PASS in 9hchxj6's experiment).
+  timestamp: 2026-07-14T23:17:03.295961+00:00
 depends_on:
 - 01KWVNVV79AAK6FDHRJF329QVR
 position_column: done

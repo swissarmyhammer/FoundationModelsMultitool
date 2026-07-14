@@ -87,10 +87,14 @@ comments:
   id: 01kxh1e16ap53ft2fqn05cj51e
   text: swift build reconfirmed green after the board-migration correction. Proceeding to /commit checkpoint.
   timestamp: 2026-07-14T19:25:03.562831+00:00
+- actor: claude-code
+  id: 01kxh1ew99wft0vtmssa5wmhd9
+  text: 'Checkpoint committed: 7836077 "chore(kanban): remove misplaced fix task, migrated to FoundationModelsMetadataRegistry board" (kanban tracking only). Not pushed. Proceeding to /review scoped to HEAD~1..HEAD.'
+  timestamp: 2026-07-14T19:25:31.305179+00:00
 depends_on:
 - 01KWVNWP89T9551VNK3K4MJ1GM
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: a580
 title: Investigate native tool-calling reliability gap and fork() prefix-reuse regression surfaced by the ported gated integration suite
 ---
 ## What
