@@ -405,10 +405,19 @@ enum CLIRunner {
     /// it can register real `Tool` conformers and drive Apple's own native
     /// tool-calling loop.
     ///
+    /// Not `private`: the gated integration test target's own scenario suite
+    /// (`Tests/FoundationModelsMultitoolIntegrationTests/Support/
+    /// ScenarioRunner.swift`) reuses this exact production wiring via
+    /// `@testable import` to build its own `LanguageModelSession`s, rather
+    /// than reimplementing it — mirrors `MultiToolAgent
+    /// .makeFindAPISearcher(registry:librarian:)`'s own "extracted as its own
+    /// factory ... so the gated integration test target can drive this exact
+    /// production wiring" rationale.
+    ///
     /// - Parameter routedLLM: the resolved Router generation slot to wrap —
     ///   typically `profile.standard`.
     /// - Returns: an `MLXLanguageModel` over the same resident model.
-    private static func makeMLXLanguageModel(for routedLLM: RoutedLLM) -> MLXLanguageModel {
+    static func makeMLXLanguageModel(for routedLLM: RoutedLLM) -> MLXLanguageModel {
         let modelConfiguration = ModelConfiguration(
             id: routedLLM.chosen.repo,
             revision: routedLLM.chosen.revision ?? "main"

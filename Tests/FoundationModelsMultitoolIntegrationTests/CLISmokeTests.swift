@@ -26,6 +26,10 @@ import os
 struct CLISmokeTests {
     @Test("the live demo succeeds and prints a non-empty final answer")
     func demoProducesNonEmptyAnswer() async {
+        // `swift test`'s binary layout defeats mlx-swift's default metallib
+        // lookup (see `MetalLibraryTestBootstrap`'s documentation) — must run
+        // before `CLIRunner.run(...)` resolves a live model.
+        _ = MetalLibraryTestBootstrap.ensureColocatedMetallib
         let output = OutputCollector()
 
         let exitCode = await CLIRunner.run(arguments: [], output: output.append)

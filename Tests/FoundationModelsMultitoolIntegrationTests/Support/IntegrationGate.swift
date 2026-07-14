@@ -148,9 +148,12 @@ let multitoolTinyProfile = ProfileDefinition(
 
 /// One resolved, live `Router` + `LanguageModelProfile` pair, together with
 /// the recording root its sessions write their JSONL transcript under —
-/// everything a gated scenario needs to run `MultiToolAgent.respond(to:)` (or
-/// drive a `MetadataSearcher<APISurface.Entry>` in `.selection` mode
-/// directly) and then read the resulting trace back via `TranscriptAnalyzer`.
+/// everything a gated scenario needs to build a native `MLXLanguageModel` +
+/// `LanguageModelSession` over `profile.standard` (via `CLIRunner
+/// .makeMLXLanguageModel(for:)`, `findAPIsTool`'s own selection tier over
+/// `profile.flash`, and then read back the selection tier's own recorded
+/// trace (`NativeTranscript.selections(in:slot:)`) — the main session itself
+/// is never Router-vended, so it is never recorded here.
 struct LiveRouterFixture {
     /// The router that resolved `profile` — its `id` roots the recording
     /// tree `transcriptEvents()` reads back.
@@ -172,6 +175,10 @@ struct LiveRouterFixture {
     ///   reason).
     @MainActor
     static func resolve() async throws -> LiveRouterFixture {
+        // `swift test`'s binary layout defeats mlx-swift's default metallib
+        // lookup (see `MetalLibraryTestBootstrap`'s documentation) — must run
+        // before any live model resolution touches the GPU device.
+        _ = MetalLibraryTestBootstrap.ensureColocatedMetallib
         let cacheDir = Self.makeTempDir()
         let recordingsDir = Self.makeTempDir()
         let loader = LiveModelLoader(

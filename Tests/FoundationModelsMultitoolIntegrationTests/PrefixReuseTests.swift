@@ -1,15 +1,14 @@
 import Foundation
 import Testing
 
-import FoundationModelsMetadataRegistry
 import FoundationModelsRouter
 @testable import FoundationModelsMultitool
 
-/// M6.5a's gated selection-tier prefix-reuse pin (plan.md Finding #6 /
-/// "Remaining pins"): asserts the selection tier's *second* `search(intent:
-/// limit:)` call does not re-prefill the surface prefix — compared via
-/// prefill latency evidence — or documents that the `fork()` fallback is the
-/// mechanism actually engaged.
+/// The gated selection-tier prefix-reuse pin (plan.md Finding #6 /
+/// "Remaining pins"): asserts `findAPIsTool`'s own internal selection tier's
+/// *second* `findAPIs` call does not re-prefill the surface prefix —
+/// compared via prefill latency evidence — or documents that the `fork()`
+/// fallback is the mechanism actually engaged.
 ///
 /// The registry's `SelectionTier` (generalizing Multitool's former
 /// `Librarian`) is architected to `fork()` a fresh child from one cached,
@@ -24,6 +23,19 @@ import FoundationModelsRouter
 /// exactly one `fork()`, so the mechanism-under-test is asserted, not merely
 /// observed, by construction.
 ///
+/// **Native design, minimal change.** This scenario is about `findAPIsTool`'s
+/// own internal selection tier — a plain, Router-backed `RoutedLLM` session
+/// (task `4aveepp`'s decision, kept specifically to preserve this property)
+/// — not about `MultiToolAgent`'s retired ReAct loop, so it ports with
+/// minimal change: rather than driving a raw `MetadataSearcher` built via the
+/// retired `MultiToolAgent.makeFindAPISearcher(registry:librarian:)`, it now
+/// times `FindAPIsTool.call(arguments:)` directly — `findAPIsTool`'s own
+/// production, independently-constructible entry point (`FindAPIsTool
+/// .init(registry:librarian:limit:)`) — which forwards to the identical
+/// `.auto`-mode `MetadataSearcher`/`SelectionConfig`/`fork()` mechanism the
+/// old test exercised through the searcher directly, just reached through
+/// the real `Tool` surface instead of a production-only factory method.
+///
 /// Gated the same way as `SearchThenCallTests`: `.enabled(if:
 /// multitoolIntegrationEnabled)`, skipping cleanly (no recorded issue) when
 /// the live Router path throws `GenerationError.notWiredForLiveInference`.
@@ -35,7 +47,7 @@ import FoundationModelsRouter
 )
 struct PrefixReuseTests {
     @Test(
-        "a selection tier's second search(intent:limit:) call is no slower than its first (fork()-inherited prefix, not re-prefilled)"
+        "a selection tier's second findAPIs call is no slower than its first (fork()-inherited prefix, not re-prefilled)"
     )
     func secondSearchCallReusesThePrefix() async throws {
         let fixture: LiveRouterFixture
@@ -53,19 +65,18 @@ struct PrefixReuseTests {
             let registry = try MultiTool.Builder()
                 .addTools([IntegrationWeatherTool(), IntegrationTripCitiesTool()] + integrationDistractorTools)
                 .buildRegistry()
-            // The production searcher factory (Sources/FoundationModelsMultitool/
-            // Agent/MultiToolAgent.swift) — never a reimplementation of the
-            // wiring — so this pin exercises the exact same selection-tier
-            // construction a real agent uses.
-            let searcher = try MultiToolAgent.makeFindAPISearcher(registry: registry, librarian: fixture.profile.flash)
-            let limit = registry.surface.entries.count
+            // `findAPIsTool`'s own production initializer — never a
+            // reimplementation of its selection-tier wiring.
+            let findAPIsTool = try FindAPIsTool(registry: registry, librarian: fixture.profile.flash)
 
             let firstStart = Date()
-            _ = try await searcher.search(intent: "list trip cities and get weather for each", limit: limit)
+            _ = try await findAPIsTool.call(
+                arguments: FindAPIsArguments(task: "list trip cities and get weather for each")
+            )
             let firstElapsed = Date().timeIntervalSince(firstStart)
 
             let secondStart = Date()
-            _ = try await searcher.search(intent: "convert 100 USD to EUR", limit: limit)
+            _ = try await findAPIsTool.call(arguments: FindAPIsArguments(task: "convert 100 USD to EUR"))
             let secondElapsed = Date().timeIntervalSince(secondStart)
 
             // Prefix-reuse pin acceptance: "the second findAPIs call shows

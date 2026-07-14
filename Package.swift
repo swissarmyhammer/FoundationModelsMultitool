@@ -285,6 +285,13 @@ let package = Package(
                 .target(name: cliTargetName),
                 .product(name: routerDependencyName, package: routerDependencyName),
                 .product(name: metadataRegistryDependencyName, package: metadataRegistryDependencyName),
+                // Needed to construct `MLXLanguageModel`/`LanguageModelSession`
+                // directly, the same way `multitool-cli` itself does (via
+                // `CLIRunner.makeMLXLanguageModel(for:)`) — the gated scenarios
+                // in this target drive a real, native
+                // `LanguageModelSession(tools: [multiTool, findAPIsTool])`, not
+                // `MultiToolAgent`'s retired hand-rolled loop.
+                .product(name: "MLXFoundationModels", package: mlxPackage),
             ] + liveLoaderMLXProducts + hubProducts,
             path: "\(testsPath)\(packageName)IntegrationTests"
         ),
