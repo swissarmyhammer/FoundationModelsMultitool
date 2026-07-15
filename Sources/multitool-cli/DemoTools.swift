@@ -51,7 +51,7 @@ struct DemoWeatherArguments {
 @Generable(description: "current conditions.")
 struct DemoWeatherResult {
     /// The current temperature, in Celsius.
-    var tempC: Double
+    var temperatureCelsius: Double
     /// A short human-readable summary, e.g. "Sunny".
     var summary: String
 }
@@ -78,7 +78,7 @@ struct DemoWeatherTool: Tool {
     /// - Returns: that city's fixed conditions, or a generic 20°C fallback
     ///   for a city outside the fixed table.
     func call(arguments: DemoWeatherArguments) async throws -> DemoWeatherResult {
-        let tempC = Self.temperaturesByCity[arguments.city] ?? 20
-        return DemoWeatherResult(tempC: tempC, summary: "Sunny")
+        let temperatureCelsius = Self.temperaturesByCity[arguments.city] ?? 20
+        return DemoWeatherResult(temperatureCelsius: temperatureCelsius, summary: "Sunny")
     }
 }

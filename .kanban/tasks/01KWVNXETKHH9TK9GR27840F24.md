@@ -73,6 +73,10 @@ comments:
 
     Group D verification (fresh, this session): swift build green; full swift test green — 150 unit tests in 17 suites passed, gated integration bundle builds and its 7 tests skip as designed. Acceptance grep for MultiToolAgent|TurnFormat|AgentTurn|TranscriptAnalyzer|AgentEvaluators (plus AgentStep/maxAgentTurns/maxRepairTurns) over Sources/ + Tests/ returns only doc-comment prose explicitly marked retired/removed — no code references remain.
   timestamp: 2026-07-15T03:05:27.557237+00:00
+- actor: claude-code
+  id: 01kxj0se50x5rgjfe5hx2aex41
+  text: 'Review finding (2026-07-14 23:08) fixed: renamed `tempC` -> `temperatureCelsius` in Sources/multitool-cli/DemoTools.swift (property on `DemoWeatherResult`, the local variable in `DemoWeatherTool.call`, and the initializer call). Audited the whole file for other same-kind abbreviations — none found (`temperaturesByCity`, `cities`, `city`, `summary` are already full words). Knock-on check: `DemoWeatherResult` is referenced only inside DemoTools.swift; `grep -rn tempC Sources/` now returns nothing. Remaining `tempC` occurrences (ScenarioTools.swift''s IntegrationWeatherResult, ToolAPIRendererFixtures/MultiToolExecutionFixtures fixture types, goldens, README/plan.md examples) belong to separate types outside this finding''s scope and were deliberately left alone. Verified: `swift build --build-tests` exit 0; full `swift test` green — 150 unit tests in 17 suites passed, gated integration bundle''s 7 tests skip as designed (MULTITOOL_INTEGRATION not set). double-check adversarial verdict: PASS. Checklist item flipped to done; task left in `doing` for review.'
+  timestamp: 2026-07-15T04:33:03.136584+00:00
 depends_on:
 - 01KWVNWP89T9551VNK3K4MJ1GM
 - 01KWVNV1NZ157PW3Y1GH6RQZ4V
@@ -113,3 +117,8 @@ Update `Sources/FoundationModelsMultitool/MultiTool.swift`/`Sources/FoundationMo
 
 ## Workflow
 - This is primarily a deletion/cleanup task — verify the full suite stays green after each file removed, rather than deleting everything in one pass and debugging a large break at the end.
+
+
+## Review Findings (2026-07-14 23:08)
+
+- [x] `Sources/multitool-cli/DemoTools.swift:55` — Property name `tempC` abbreviates 'temperature' and 'Celsius' to save characters, violating the 'clarity over brevity' rule. The codebase consistently uses full names like `executionTimeLimit`, `returnValueCharacterLimit`, `consoleCharacterLimit` without abbreviation. Rename `tempC` to `temperatureCelsius` to match the established naming style in this codebase and fully comply with the clarity-over-brevity principle.
