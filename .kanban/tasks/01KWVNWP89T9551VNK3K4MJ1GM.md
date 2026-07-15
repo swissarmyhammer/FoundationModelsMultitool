@@ -147,6 +147,21 @@ comments:
 
     Running tally across all generation pins tried against the native suite: Qwen2.5-1.5B 0/4 stable (no grounding at all), Qwen3.5-9B ~1/4 (prior sessions), Gemma-4-31B 0/4 (invented snake_case names), Qwen3.6-35B-A3B unusable (arch unsupported), Qwen3.6-27B 1/4 (invented nested API + coordinates), **Qwen3-4B-Instruct-2507 1-3/4 (best)**. The pattern is now very clear: instruction-tuned scale does not substitute for function-calling-specific training that binds the model to PROVIDED definitions; the small 2507-instruct checkpoint beats models 7-8x its size at exactly this.
   timestamp: 2026-07-15T12:40:21.505851+00:00
+- actor: claude-code
+  id: 01kxk15y4kkgpw29zg9grek9va
+  text: |-
+    Fourth large-pin experiment (2026-07-15): **mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit** (research-ranked #1 candidate: agentic-coder training + supported qwen3_moe arch + Qwen tool-call format) — SearchThenCallTests **1/4** (singleCallWeather passed). Pin reverted to the landed Qwen3-4B config.
+
+    Qualitatively this is the most interesting failure profile yet — a NEW axis, distinct from every prior model:
+    - **Zero hallucination, zero invented APIs.** All snippets ground in real discovered `tools.*` names (invokedToolPaths shows genuine `tools.weather` calls); every failure ends in an honest "I'm unable to…" or a clarifying question. First large model with fully honest failure behavior.
+    - **The failure is discovery-intent myopia**: it decomposes "which trip city is warmest" into "get weather for multiple cities" — asks findAPIs exactly that (selection correctly returns only `weather`), and never thinks to ask discovery for the *trip cities themselves*. It treats the city list as missing user input ("I need to know which specific cities you're planning to visit…") rather than discoverable data. composeChain burned 19 calls fetching weather for cities it never obtained; repair burned 12 runCode calls without fixing the trip-prone tool's missing `confirm` argument.
+
+    Also ruled OUT an interpreter hypothesis along the way: the sandbox wraps snippets in a plain (non-async) IIFE, so top-level `await` would be a SyntaxError — but the coder model never wrote `await` (0 occurrences in the run log), so that's not what bit it here. Still worth a hardening task someday (async-IIFE wrapper) since models with async-JS priors WILL eventually hit it — Qwen3-4B wrote `await Promise.all` in one earlier run.
+
+    **Actionable lever this suggests** (cheaper than more pins): the zero-shot fix for discovery-intent myopia is prompt-surface, not model — e.g. findAPIsTool's tool description and/or the shared instructions explicitly saying "the user's own data (trip, bookings, live values) is ALSO behind discoverable functions — search for it before asking the user." Worth one iteration if anyone resumes this hunt.
+
+    Updated tally: Qwen3-4B-Instruct-2507 (1-3/4) remains the best pin. Coder-30B-A3B is second on honesty but loses on task decomposition.
+  timestamp: 2026-07-15T13:59:07.155724+00:00
 depends_on:
 - 01KWVNVV79AAK6FDHRJF329QVR
 position_column: done
