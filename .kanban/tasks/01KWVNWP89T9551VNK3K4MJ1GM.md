@@ -127,6 +127,26 @@ comments:
 
     `7840f24` is hereby cleared to proceed.
   timestamp: 2026-07-15T01:18:17.506426+00:00
+- actor: claude-code
+  id: 01kxjvjpk7nvpg1mpadcx2q459
+  text: |-
+    Two more user-requested large-model pin experiments run on real hardware (2026-07-15, temporary pin swaps in IntegrationGate.swift, both reverted — the landed Qwen3-4B/1.5B split-pin config is unchanged):
+
+    **mlx-community/gemma-4-31B-it-OptiQ-4bit** (largest coherent model tried to date): SearchThenCallTests **0/4**. Loads and generates coherently, and DOES write `tools.*`-grounded snippets — but it **invents its own function names from training priors** instead of using the discovered ones: `tools.get_current_weather`, `tools.get_trip_itinerary`, `tools.get_trips`, `tools.confirmBooking` (actual discovered names: `weather`, `tripCities`, `book`). When those error, it confidently hallucinates final answers with non-fixture cities ("Tokyo, 22°C", "Bangkok, 32°C" — fixtures are ATX/SFO/NYC at a fixed 31°C). Also refused singleCallWeather outright after one findAPIs call. Scale did not fix name-grounding; it made the hallucinations more fluent.
+
+    **mlx-community/Qwen3.6-35B-A3B-OptiQ-4bit**: SearchThenCallTests **0/4**, and the output is outright corrupted — raw un-parsed tool-call JSON leaking into the text reply (`{"name":"runCode","arguments":{"code":"'='st…`) and multilingual token salad (`:[中公,一**:و5Invar et In0…`). This looks like the pinned mlx-swift-lm not actually supporting this checkpoint (Qwen3.6 A3B MoE architecture and/or its OptiQ quantization decoding incorrectly), not a model-behavior finding — the same OptiQ quant scheme ran coherently on the Gemma checkpoint, so the suspect is the newer architecture. One scenario also hit an HF download timeout on shard 5/5 (transient, later scenarios found the cache). If anyone wants to pursue this checkpoint, the pinned `mlx-swift-lm` (foundationmodels-fixes branch, 4330528) needs verifying/updating for Qwen3.6-A3B support first.
+
+    **Standing conclusion:** Qwen3-4B-Instruct-2507-4bit remains the best-observed generation pin for native tool calling in this stack (stochastic 1-3/4). The failure axis is not raw scale — it's tool-calling-specific training that respects *provided* function definitions over priors. If a pin tuned specifically for agentic/function calling in this size class appears in mlx-community, that's the next thing worth one run.
+  timestamp: 2026-07-15T12:21:13.959020+00:00
+- actor: claude-code
+  id: 01kxjwnq81df1gza7eymbcf3g8
+  text: |-
+    Third user-requested large-pin experiment (2026-07-15): **mlx-community/Qwen3.6-27B-4bit** — SearchThenCallTests **1/4** (repairFromTripProneTool passed cleanly, 2 calls, correct answer). Dense architecture decodes coherently (confirming the 35B-A3B garbage was the MoE architecture being unsupported by the pinned mlx-swift-lm, not the Qwen3.6 family or OptiQ quant).
+
+    Failure shape matches Gemma-31B's prior-over-discovery disease, different flavor: singleCallWeather wrote `tools.weather.get_current_weather({latitude: 30.2672, longitude: -97.7431})` — an invented nested API using Austin's real-world coordinates from its priors — instead of the discovered `tools.weather({city:})`, then hallucinated "25°C" (fixture always returns 31°C). composeChain and discoveryUnderDistractors both made ZERO tool calls and asked the user a clarifying question ("I first need to know which cities…") instead of calling the discoverable `tripCities`.
+
+    Running tally across all generation pins tried against the native suite: Qwen2.5-1.5B 0/4 stable (no grounding at all), Qwen3.5-9B ~1/4 (prior sessions), Gemma-4-31B 0/4 (invented snake_case names), Qwen3.6-35B-A3B unusable (arch unsupported), Qwen3.6-27B 1/4 (invented nested API + coordinates), **Qwen3-4B-Instruct-2507 1-3/4 (best)**. The pattern is now very clear: instruction-tuned scale does not substitute for function-calling-specific training that binds the model to PROVIDED definitions; the small 2507-instruct checkpoint beats models 7-8x its size at exactly this.
+  timestamp: 2026-07-15T12:40:21.505851+00:00
 depends_on:
 - 01KWVNVV79AAK6FDHRJF329QVR
 position_column: done
