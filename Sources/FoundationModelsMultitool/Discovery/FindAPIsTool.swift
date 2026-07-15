@@ -59,7 +59,9 @@ public struct FindAPIsTool: Tool {
         Describe, in plain language, what you are trying to accomplish. Returns the few
         tool-functions relevant to that task — each with its typed signature, purpose,
         and a runnable example — so you can write a runCode snippet. Prefer this over
-        guessing function names.
+        guessing function names. The user's own data — their trip, bookings, and other
+        live values — is also behind functions here: search for it instead of asking
+        the user. Search once per kind of data you need.
         """
 
     /// The catalog searcher every `findAPIs` call forwards to — runs in

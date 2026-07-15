@@ -162,6 +162,21 @@ comments:
 
     Updated tally: Qwen3-4B-Instruct-2507 (1-3/4) remains the best pin. Coder-30B-A3B is second on honesty but loses on task decomposition.
   timestamp: 2026-07-15T13:59:07.155724+00:00
+- actor: claude-code
+  id: 01kxk8035t40syr09911j1ax8q
+  text: |-
+    Prompt-surface iteration + interpreter fix landed (2026-07-15, follow-up to the Coder-30B experiment's "discovery-intent myopia" finding):
+
+    **Two changes landed:**
+    1. **`findAPIs` description + shared `toolUseInstructions`** now state that the user's own data (trip, bookings, live values) is also behind discoverable functions — search for it instead of asking the user, once per kind of data. Directly targets the myopia failure where capable models treated the trip-city list as missing user input.
+    2. **`JSCInterpreter` async-IIFE wrapper** (TDD, 4 new tests): top-level `await` in runCode snippets now works instead of producing the misleading "Unexpected identifier 'tools'" SyntaxError that dead-ended models with async-JS priors. Rejections map to InterpreterError; never-settling awaits produce a diagnostic message, not a hang. The injected-global surface is unchanged (outcome object is a captured local; HardeningTests still pins {console, tools, help, docs}).
+
+    **Measured results (real hardware):**
+    - Qwen3-Coder-30B-A3B with both fixes: 3/4, 1/4, 2/4 across 3 runs (was 1/4 before) — including the discovery scenario's first-ever CORRECT grounded answer ("Austin (ATX) is currently the warmest"). Same stochastic band as the 4B at 7x the size → pin NOT changed.
+    - **Qwen3-4B (landed pin) with both fixes: 3/4 on the confirmatory run** — composeChain, discoveryUnderDistractors, AND repairFromTripProneTool all passed together for the first time on this pin; only singleCallWeather failed (called weather but flunked the findAPIs-before-runCode ordering). Previous best was 3/4 once; the myopic clarifying-question deflections did not appear.
+
+    Both scenario-level levers identified in the myopia analysis paid off. The gate remains closed on its reasoned-exception GO (deletion already done); these results just keep improving the measured baseline the suite records.
+  timestamp: 2026-07-15T15:58:15.738856+00:00
 depends_on:
 - 01KWVNVV79AAK6FDHRJF329QVR
 position_column: done
