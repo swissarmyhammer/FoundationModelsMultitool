@@ -205,6 +205,22 @@ comments:
 
     Tally unchanged: Qwen3-4B-Instruct-2507 (3/4 best) > GLM-4.7-Flash (2/4) ≈ Coder-30B (1-3/4) > others; Devstral N/A (blocked upstream).
   timestamp: 2026-07-15T16:47:58.909395+00:00
+- actor: claude-code
+  id: 01kxkcdzj34d9w6s0npm67hfbv
+  text: |-
+    Seventh large-pin experiment (2026-07-15): **mlx-community/Qwen3-30B-A3B-Instruct-2507-4bit** (the general-instruct sibling of the champion 4B's 2507 recipe, MoE 3.3B-active) — **2/4, 2/4 across two runs**. Pin reverted to Qwen3-4B (best 3/4).
+
+    Consistent but complementary profile vs the 4B:
+    - **singleCallWeather passed BOTH runs** — with the first exactly-correct grounded answers any model has produced for it ("It is currently 31°C (88°F) in Austin, with sunny weather" / "31°C" — the precise fixture values). This is the 4B's *weakest* scenario.
+    - repairFromTripProneTool passed run 2 cleanly (4 calls).
+    - composeChain run 2 produced a CORRECT grounded answer ("NYC with 31°C" — real fixture city/value) but failed the findAPIs-ordering and invokedToolPaths assertions — right destination, unapproved route.
+    - discovery failed both runs (deflected with "couldn't determine… weather data missing").
+    - Fast when cached: 133s/suite, comparable to the 4B.
+
+    Net: consistently grounded (zero hallucination in either run), stable 2/4 floor, but never reached the 4B's 3/4 ceiling. The 4B and 30B have nearly inverse scenario strengths (4B: composeChain+discovery; 30B: weather+repair) — suggesting the remaining failures are stochastic decomposition choices, not capability walls. Keeping the 4B: equal-or-better ceiling at 1/7th the size.
+
+    Untried from the ranked shortlist: gpt-oss-20b (arch supported, harmony-format risk), MiniMax-M2 (RAM permitting — both arch and dedicated parser wired), LFM2-8B-A1B (cheap; dedicated lfm2 format wired), Llama-3.3-70B (slow, lowest priority).
+  timestamp: 2026-07-15T17:15:45.091672+00:00
 depends_on:
 - 01KWVNVV79AAK6FDHRJF329QVR
 position_column: done
