@@ -192,6 +192,19 @@ comments:
 
     Tally stands: Qwen3-4B-Instruct-2507 (3/4 best, 1-3/4 band) > GLM-4.7-Flash (2/4, passes discovery, slow) ≈ Coder-30B (1-3/4, honest) > everything else.
   timestamp: 2026-07-15T16:17:46.747142+00:00
+- actor: claude-code
+  id: 01kxkav4dxnbjvs418h5v2c20q
+  text: |-
+    Sixth large-pin experiment (2026-07-15): **mlx-community/Devstral-Small-2-24B-Instruct-2512-4bit** (Mistral's agentic-coding model, 68% SWE-bench Verified, most-downloaded Devstral MLX build) — **0/4, hard incompatibility, not model behavior**. Pin reverted to Qwen3-4B.
+
+    Every scenario threw before generation: `TemplateException: "After the optional system message, conversation roles must alternate user and assistant"` — the tool-calling loop's transcript (user → assistant tool-call → tool output → assistant) renders in a shape Mistral3's strict-alternation chat template rejects. The model never got to infer a single token on 3 of 4 scenarios (the 4th spent its 247s on model load).
+
+    The parse side of the pinned mlx-swift-lm is mistral3-aware (ToolCallFormat.infer + MistralToolCallParser exist); the *prompt-rendering* side is what's broken for this family. Filed as task `xw6t27b` on the mlx-swift-lm board — second rendering-layer finding after the structural-tag one (`3tdscq4`); both reinforce the same architectural point that per-model tool-calling format handling belongs (and half-lives) in mlx-swift-lm.
+
+    Devstral is the model most worth re-running once `xw6t27b` is fixed — it's purpose-trained for exactly this suite's workload and currently can't play at all.
+
+    Tally unchanged: Qwen3-4B-Instruct-2507 (3/4 best) > GLM-4.7-Flash (2/4) ≈ Coder-30B (1-3/4) > others; Devstral N/A (blocked upstream).
+  timestamp: 2026-07-15T16:47:58.909395+00:00
 depends_on:
 - 01KWVNVV79AAK6FDHRJF329QVR
 position_column: done
