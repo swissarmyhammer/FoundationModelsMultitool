@@ -41,21 +41,19 @@ that one tool's own `call(arguments:)`.
   interpreter's watchdog (`JSContextGroupSetExecutionTimeLimit`), not left
   to run forever.
 - **Cancellation** — cancelling the Swift `Task` running
-  `MultiToolAgent.respond(to:)` or `MultiTool.call(arguments:)` force-
-  terminates the in-flight snippet through that same watchdog path and
-  propagates `CancellationError` — no leaked interpreter thread, no
-  semaphore deadlock.
+  `MultiTool.call(arguments:)` force-terminates the in-flight snippet
+  through that same watchdog path and propagates `CancellationError` — no
+  leaked interpreter thread, no semaphore deadlock.
 - **Return-value size** (`MultiToolConfiguration.returnValueCharacterLimit`,
   default 4,000 characters) and **console output size**
   (`MultiToolConfiguration.consoleCharacterLimit`, default 2,000 characters)
   — `ResultRenderer` truncates and appends a visible note rather than
   flooding the model's context with a fat result.
-- **Agent turns** (`MultiToolConfiguration.maxAgentTurns`, default 8) — the
-  search-then-code loop terminates with a typed error rather than spinning
-  forever.
-- **Repair turns** (`MultiToolConfiguration.maxRepairTurns`, default 1) — a
-  bounded number of malformed-turn recovery attempts before the agent loop
-  fails.
+
+Turn budgeting is no longer this package's to bound: the retired hand-rolled
+ReAct loop's `maxAgentTurns`/`maxRepairTurns` knobs were removed with it, and
+Apple's native `LanguageModelSession` tool-calling loop — the shipped main
+loop — owns how many `findAPIs`/`runCode` turns a request may take.
 
 ## What is NOT guaranteed
 
@@ -68,16 +66,15 @@ that one tool's own `call(arguments:)`.
   and return a precise, repairable error on a mismatch, but that is
   validation *after the fact*, not a generation-time guarantee.
 - **Escape hatch**, when the hard argument guarantee matters for one tool:
-  place the `MultiTool` and that tool directly in an Apple built-in
-  `SystemLanguageModel` `LanguageModelSession(tools:)` instead of a Router
-  model — the only place `FoundationModels`'s own token-level tool-calling
-  loop applies here. Every tool registered directly with such a session
-  already gets schema-valid, guaranteed-correct argument generation as a
-  basic property of native tool-calling itself, so there is no longer a
-  distinct "schema-guaranteed direct call" tier to escape into on the
-  `MultiToolAgent`/Router side — a tool not meant for JS-snippet composition
-  is simply registered as its own separate `Tool` alongside `multiTool` and
-  `findAPIsTool`, rather than routed through `MultiTool`'s registry at all.
+  register that tool directly with the session. The shipped main loop is
+  already `FoundationModels`'s own native tool-calling — a
+  `LanguageModelSession(tools:)` over a Router-resolved model wrapped as an
+  `MLXLanguageModel` (`Sources/multitool-cli/CLIRunner.swift`) — and every
+  tool registered directly with the session gets schema-constrained
+  argument generation as a basic property of native tool-calling itself. So
+  a tool not meant for JS-snippet composition is simply registered as its
+  own separate `Tool` alongside `multiTool` and `findAPIsTool`, rather than
+  routed through `MultiTool`'s registry at all.
 - **A wrapped tool's own behavior is out of scope.** The sandbox bounds what
   a *snippet* can reach; it says nothing about what a wrapped `Tool`'s own
   `call(arguments:)` implementation does once invoked (e.g. a tool that
