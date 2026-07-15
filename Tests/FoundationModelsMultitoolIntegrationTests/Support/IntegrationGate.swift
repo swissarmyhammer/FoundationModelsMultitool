@@ -142,12 +142,25 @@ var multitoolIntegrationEnabled: Bool {
 /// But the same 4B is *worse* at the selection tier's grammar-constrained
 /// id picking (it returns empty `{"ids": []}` selections where the 1.5B
 /// picks correctly and decisively), so the pins split per slot: `standard`
-/// (the main tool-calling session) runs the 4B, `flash` (the selection
-/// tier) keeps the 1.5B — each model where it is empirically strong. The
-/// remaining flakiness is main-model run-to-run variance (occasional
-/// real-time-data deflections and discovery-skipping), not a wiring defect.
+/// (the main tool-calling session) runs the tool-calling pin, `flash` (the
+/// selection tier) keeps the 1.5B — each model where it is empirically
+/// strong.
+///
+/// **Outcome-based rescoring dethroned the 4B.** When the suite's
+/// assertions moved from route (tool ordering, exact call sets) to outcome
+/// (a valid, fixture-grounded answer — see `runNativeIntegrationScenario`),
+/// the 4B's apparent 3/4 collapsed to 0/4: it reliably invokes the right
+/// `tools.*` functions, then mis-destructures their declared return shapes
+/// (`weather.temperature` against the declared `tempC`), reads `undefined`,
+/// and answers "I'm unable to retrieve…" — approved route, invalid answer,
+/// every run. `Qwen3-30B-A3B-Instruct-2507-4bit` (~17GB, 3.3B active, the
+/// same 2507 instruct recipe) scores 2/4 under outcome assertions with
+/// genuinely valid answers — the fixture's exact 31°C for weather, a real
+/// `book`-invoked confirmation for repair — and its failures are honest
+/// clarifying-question deflections, never hallucinations. `standard`
+/// therefore moves to the 30B; decode speed is comparable (3.3B active).
 private enum TinyModels {
-    static let generation: ModelRef = "mlx-community/Qwen3-4B-Instruct-2507-4bit"
+    static let generation: ModelRef = "mlx-community/Qwen3-30B-A3B-Instruct-2507-4bit"
     static let selection: ModelRef = "mlx-community/Qwen2.5-1.5B-Instruct-4bit"
     static let embedding: ModelRef = "mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ"
 }

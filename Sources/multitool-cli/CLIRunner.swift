@@ -196,12 +196,14 @@ enum CLIRunner {
         description: "Small tool-calling-capable models for the multitool-cli sample.",
         // Split pins, mirroring the gated suite's `multitoolTinyProfile`
         // (see `IntegrationGate.swift`'s pin history): the natively
-        // tool-calling-trained Qwen3-4B drives the main session (the
-        // 1.5B pin never grounded its runCode snippets in the discovered
-        // `tools.*` surface), while the 1.5B stays on `flash` for the
-        // selection tier, where it is empirically the more accurate and
-        // decisive grammar-constrained selector of the two.
-        standard: ["mlx-community/Qwen3-4B-Instruct-2507-4bit"],
+        // tool-calling-trained Qwen3-30B-A3B (3.3B active, so it decodes
+        // like a small model) drives the main session — under the suite's
+        // outcome-based assertions it is the only pin that produces valid,
+        // fixture-grounded answers rather than mis-destructuring tool
+        // results — while the 1.5B stays on `flash` for the selection
+        // tier, where it is empirically the more accurate and decisive
+        // grammar-constrained selector.
+        standard: ["mlx-community/Qwen3-30B-A3B-Instruct-2507-4bit"],
         flash: ["mlx-community/Qwen2.5-1.5B-Instruct-4bit"],
         embedding: ["mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ"],
         context: 8192

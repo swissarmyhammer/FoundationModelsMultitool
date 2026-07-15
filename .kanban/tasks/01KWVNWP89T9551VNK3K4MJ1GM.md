@@ -221,6 +221,21 @@ comments:
 
     Untried from the ranked shortlist: gpt-oss-20b (arch supported, harmony-format risk), MiniMax-M2 (RAM permitting — both arch and dedicated parser wired), LFM2-8B-A1B (cheap; dedicated lfm2 format wired), Llama-3.3-70B (slow, lowest priority).
   timestamp: 2026-07-15T17:15:45.091672+00:00
+- actor: claude-code
+  id: 01kxkf3x577t1k08n7bt83jfas
+  text: |-
+    **Suite rescored on outcomes, and the verdict flipped (2026-07-15, user-directed).** The user's call: what matters is a valid answer, not that the path/steps match predictions. The route assertions (findAPIs-before-runCode ordering, exact invokedToolPaths equality, exact selection picks, call budgets) were provably measuring the wrong thing — this suite once PASSED composeChain on "It seems there are no cities on your trip" (approved route, wrong answer) and FAILED it on "NYC, 31°C" (correct grounded answer, unapproved route).
+
+    **New assertions** (`runNativeIntegrationScenario`): (1) the reply contains fixture-grounded content — values a hallucinating model can't guess (the constant 31°C, the ATX/SFO/NYC trip), with a must-not-contain guard for failure phrasings ("unable to confirm" embeds "confirm"); (2) at least one tools.* call genuinely happened (grounding, any route); (3) side-effect claims require the claimed tool among invoked calls (containment, never equality — booking scenario only). Route details are now RESULT-line diagnostics.
+
+    **Rescored head-to-head on real hardware:**
+    - **Qwen3-4B (old champion): 0/4, twice.** Its former "3/4" was path-theater — it invokes the right tools every time, then mis-destructures their declared return shapes (`weather.temperature` vs the declared `tempC`), reads `undefined`, and answers "I'm unable to retrieve…". Approved route, invalid answer, every single run.
+    - **Qwen3-30B-A3B-Instruct-2507: 2/4** — weather passed with the exact fixture answer ("The current temperature in Austin is 31°C", 2 calls, 11s), repair passed with a genuine book-invoked confirmation. Failures were honest clarifying-question deflections (0 tool calls) — never hallucinations, never false claims.
+
+    **Pin flipped**: `standard` → Qwen3-30B-A3B-Instruct-2507-4bit (suite + CLI demoProfile, doc history updated). 3.3B active params keep decode speed comparable to the 4B. `flash` stays Qwen2.5-1.5B.
+
+    Historical scores in earlier comments (all the 1-3/4 tallies) are route-scored and NOT comparable to outcome scores going forward. Models worth re-running under outcome scoring when convenient: GLM-4.7-Flash (its "2/4" included grounded correct answers), Coder-30B.
+  timestamp: 2026-07-15T18:02:40.679213+00:00
 depends_on:
 - 01KWVNVV79AAK6FDHRJF329QVR
 position_column: done
