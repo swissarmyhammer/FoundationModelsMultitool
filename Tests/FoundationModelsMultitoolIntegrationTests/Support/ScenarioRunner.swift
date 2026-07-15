@@ -15,13 +15,35 @@ import FoundationModelsRouter
 /// `multiTool` and `findAPIsTool` (the latter backed by the resolved
 /// `.flash` slot, mirroring the "librarian on flash" split) directly with a
 /// `LanguageModelSession`, and lets Apple's own native tool-calling loop
-/// decide when to call each. Assertions read the session's own
-/// `FoundationModels.Transcript` via `NativeTranscript`'s helpers — no
-/// Router-recorded JSONL/`AgentStep` parsing, except for
-/// `expectedFoundApiNames`, which still reads `findAPIsTool`'s own
-/// selection-tier `.flash`-slot recording, since that tier remains
-/// Router-backed (task `4aveepp`'s decision, kept specifically to preserve
-/// `PrefixReuseTests`' fork()-based prefix-reuse property).
+/// decide when to call each.
+///
+/// **Outcome over path.** A scenario passes when the model produces a
+/// *valid, grounded answer* — not when it takes the exact route we
+/// predicted. Empirically (recorded on task `k4mj1gm`), asserting on the
+/// route failed in both directions: a run once *passed* the compose
+/// scenario while answering "there are no cities on your trip" (approved
+/// path, wrong answer), and another *failed* it while answering "NYC, 31°C"
+/// (correct grounded answer, unapproved path). So exactly three things are
+/// asserted:
+///
+/// 1. **The answer is valid** — the reply contains at least one of
+///    `answerContainsOneOf`, chosen per scenario to match the fixtures'
+///    distinctive values (e.g. the weather fixture's constant 31°C, the
+///    fixed trip-city list), so a hallucinated answer cannot match.
+/// 2. **The answer is grounded** — at least one `runCode` snippet genuinely
+///    invoked a `tools.*` function. Which functions, in what order, across
+///    how many calls is deliberately unasserted.
+/// 3. **Side effects really happened** — when `mustInvoke` is non-empty
+///    (the booking scenario), those `tools.*` paths appear among the
+///    invoked set: claiming "your booking is confirmed" without ever
+///    calling `book` is a false claim, not a valid answer. This is a
+///    containment check, never an equality — extra calls and any ordering
+///    are fine.
+///
+/// The old route assertions (findAPIs-before-runCode ordering, exact
+/// invoked-path sets, exact selection-tier picks, call-count budgets) are
+/// printed as diagnostics on the `RESULT` line instead, so runs remain
+/// comparable without gating on them.
 ///
 /// **Skip, not failure.** Mirrors the retired `runIntegrationScenario` this
 /// supersedes: if resolving the profile or running the session throws
@@ -37,19 +59,19 @@ import FoundationModelsRouter
 ///     printed result/skip line.
 ///   - tools: the scenario's fixed tool set.
 ///   - prompt: the user request driving `session.respond(to:)`.
-///   - expectFindApis: whether the scenario expects `findAPIs` to precede
-///     `runCode` (the "search-then-code" trace assertion).
-///   - expectedToolPaths: the exact `tools.*` call paths every `runCode`
-///     call's snippet is expected to invoke (unioned across every call), or
-///     `nil` to skip that assertion.
-///   - expectedFoundApiNames: the exact entry paths the selection tier is
-///     expected to have selected across every `findAPIs` call in the run, or
-///     `nil` to skip that assertion.
-///   - maxRunCodeCallsBeforeFinal: the bound a repair scenario's "repaired
-///     within N calls" assertion checks against, or `nil` to skip it. Every
-///     `runCode` call in a single `session.respond(to:)` run necessarily
-///     precedes its one final answer, so this is simply the total `runCode`
-///     call count.
+///   - answerContainsOneOf: candidate substrings, at least one of which the
+///     final reply must contain (case-insensitively) to count as a valid
+///     answer. Pick values a hallucinating model cannot guess — the
+///     fixtures' own distinctive data.
+///   - answerMustNotContain: substrings whose (case-insensitive) presence
+///     invalidates the answer even when a required substring matched —
+///     guards required words that also appear inside failure phrasings
+///     ("unable to confirm" contains "confirm"). Empty by default.
+///   - mustInvoke: `tools.*` paths that must appear among the genuinely
+///     invoked calls — for scenarios whose valid answer *claims a side
+///     effect happened* (booking confirmed). Empty (the default) for pure
+///     data-read scenarios, where the answer-content check already proves
+///     grounding.
 /// - Throws: any error other than `GenerationError.notWiredForLiveInference`
 ///   — including a failed `#expect` (Swift Testing turns a failed
 ///   expectation into a recorded issue, not a thrown error, so this
@@ -58,10 +80,9 @@ func runNativeIntegrationScenario(
     name: String,
     tools: [any Tool],
     prompt: String,
-    expectFindApis: Bool,
-    expectedToolPaths: Set<String>? = nil,
-    expectedFoundApiNames: Set<String>? = nil,
-    maxRunCodeCallsBeforeFinal: Int? = nil
+    answerContainsOneOf: [String],
+    answerMustNotContain: [String] = [],
+    mustInvoke: Set<String> = []
 ) async throws {
     let fixture: LiveRouterFixture
     do {
@@ -92,41 +113,45 @@ func runNativeIntegrationScenario(
         let elapsed = Date().timeIntervalSince(start)
 
         let transcript = session.transcript
+        let invoked = NativeTranscript.invokedToolPaths(in: transcript)
 
-        if expectFindApis {
+        // 1. Valid answer — the reply carries fixture-grounded content and
+        //    isn't a failure phrasing that happens to embed a required word.
+        #expect(
+            answerContainsOneOf.contains { response.content.localizedCaseInsensitiveContains($0) },
+            "[\(name)] expected the answer to contain one of \(answerContainsOneOf), got \"\(response.content)\""
+        )
+        for forbidden in answerMustNotContain {
             #expect(
-                NativeTranscript.findAPIsPrecedesRunCode(in: transcript),
-                "[\(name)] expected findAPIs before runCode"
+                !response.content.localizedCaseInsensitiveContains(forbidden),
+                "[\(name)] the answer contains \"\(forbidden)\", which invalidates it: \"\(response.content)\""
             )
         }
-        if let expectedToolPaths {
+
+        // 2. Grounded answer — produced through the tools surface at all,
+        //    by any route.
+        #expect(
+            !invoked.isEmpty,
+            "[\(name)] expected the answer to be grounded in at least one tools.* call, but no runCode snippet invoked any"
+        )
+
+        // 3. Claimed side effects really happened — containment, never
+        //    equality; extra calls and any ordering are fine.
+        if !mustInvoke.isEmpty {
             #expect(
-                NativeTranscript.invokedToolPaths(in: transcript) == expectedToolPaths,
-                "[\(name)] expected exactly \(expectedToolPaths) tools.* calls"
-            )
-        }
-        if let expectedFoundApiNames {
-            let events = try fixture.transcriptEvents()
-            let picked = try NativeTranscript.selections(in: events, slot: .flash).flatMap(\.ids)
-            #expect(
-                Set(picked) == expectedFoundApiNames,
-                "[\(name)] expected the selection tier to select exactly \(expectedFoundApiNames), got \(Set(picked))"
-            )
-        }
-        if let maxRunCodeCallsBeforeFinal {
-            let calls = NativeTranscript.toolCallCount(in: transcript, named: multiTool.name)
-            #expect(
-                calls <= maxRunCodeCallsBeforeFinal,
-                "[\(name)] expected repair within \(maxRunCodeCallsBeforeFinal) runCode calls, got \(calls)"
+                mustInvoke.isSubset(of: invoked),
+                "[\(name)] the answer claims an action that requires invoking \(mustInvoke.sorted()), but only \(invoked.sorted()) were invoked"
             )
         }
 
         // plan.md acceptance: "the per-format results are recorded (test
-        // attachment or log)" — this is the log half of that (see also
-        // `PrefixReuseTests` for the prefix-reuse measurement's own recorded
-        // evidence).
+        // attachment or log)" — the route details stay visible here as
+        // diagnostics (see also `PrefixReuseTests` for the prefix-reuse
+        // measurement's own recorded evidence), they just no longer gate.
         print(
             "RESULT [\(name)] elapsed=\(elapsed)s toolCalls=\(NativeTranscript.toolCallCount(in: transcript)) "
+                + "invoked=\(invoked.sorted()) "
+                + "findAPIsFirst=\(NativeTranscript.findAPIsPrecedesRunCode(in: transcript)) "
                 + "reply=\"\(response.content.prefix(80))\""
         )
         await fixture.tearDown()
