@@ -81,8 +81,8 @@ depends_on:
 - 01KWVNWP89T9551VNK3K4MJ1GM
 - 01KWVNV1NZ157PW3Y1GH6RQZ4V
 - 01KWVNTEAPVS13BB8H04AVEEPP
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: a680
 title: Delete MultiToolAgent and the old ReAct-loop machinery (TurnFormat, AgentTurn, TranscriptAnalyzer, AgentEvaluators)
 ---
 ## What
