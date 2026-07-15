@@ -131,12 +131,35 @@ enum NativeTranscript {
     /// - Returns: every `Selection` result decoded from that slot's
     ///   `.response` events, in recorded order — normally one per `findAPIs`
     ///   call.
-    /// - Throws: a decoding error if a `.response` event's text isn't valid,
+    /// - Throws: a decoding error if a `.response` event's body isn't valid,
     ///   schema-conforming JSON for `Selection`.
     static func selections(in events: [TranscriptEvent], slot: ModelSlot) throws -> [Selection] {
         try events
             .filter { $0.slot == slot && $0.kind == .response }
-            .compactMap(\.text)
+            .compactMap(Self.selectionJSON)
             .map { try Selection(GeneratedContent(json: $0)) }
+    }
+
+    /// Extracts a `.response` event's selection JSON body.
+    ///
+    /// A guided selection response is recorded as a **`.structure` segment**
+    /// (`contentJSON`) on the event's entry payload — never as `.text`, so
+    /// `TranscriptEvent.text` (which joins only `.text` segments) is `nil`
+    /// for it. Reads the first structured segment's JSON, falling back to
+    /// the event's plain `text` body for any recording shape that carries
+    /// the JSON as text instead.
+    ///
+    /// - Parameter event: the `.response` event to extract from.
+    /// - Returns: the selection's JSON body, or `nil` if the event carries
+    ///   neither a structured segment nor body text.
+    private static func selectionJSON(of event: TranscriptEvent) -> String? {
+        if let segments = event.entry?.segments {
+            for segment in segments {
+                if case .structure(_, _, let contentJSON) = segment {
+                    return contentJSON
+                }
+            }
+        }
+        return event.text
     }
 }
