@@ -106,6 +106,27 @@ comments:
 
     **Net:** the gate's blocker list has narrowed from two mysteries to one known, well-characterized model-capability gap. Paths that could flip this to GO remain the ones 9hchxj6 identified: a genuinely tool-calling-capable model pin (the 9B experiment failed too — but pins tuned FOR native tool-calling were never tried) and/or iterating on the instructions-tuning partial win (2 of 4 scenarios flipped to PASS in 9hchxj6's experiment).
   timestamp: 2026-07-14T23:17:03.295961+00:00
+- actor: claude-code
+  id: 01kxhnmtd28w12hwakz2025pkt
+  text: |-
+    GO/NO-GO UPDATE (2026-07-14, evening session): **GO — via the explicit, reasoned exception this gate's own description allows.** This supersedes the earlier NO-GO notes. User-authorized: the plan (bounded instructions-tuning + model-pin experiments, then a reasoned exception if neither clears the numeric bar) was proposed to and approved by the user before execution.
+
+    **The numeric bar was not met, and we are not pretending it was.** Best aggregate on the final landed configuration: `SearchThenCallTests` 7/16 scenario-passes across 4 independent runs (individual runs 2/4, 3/4, 1/4, 1/4) vs the ≥7/8 (87.5%) old-loop baseline. `CLISmokeTests` passes; `PrefixReuseTests` fails only by ~0.7s of decode-length asymmetry (the pinned no-re-prefill property itself demonstrably holds — the ~101x runaway was fixed earlier today via the `maxItems` grammar cap).
+
+    **What was empirically exhausted before invoking the exception** (all on real M3 Ultra hardware, logs in session records):
+    - 5 instruction variants across two sessions. Each fixed one failure mode and surfaced another: bare instructions → zero-tool-call hallucination; negation-heavy → runCode-as-print-channel hallucination; with a worked example → the model parroted the example's "Austin" into its first action; capability-affirming (landed, commit bd90904) → best overall, over-refusal reduced but not eliminated.
+    - 4 generation pins: Qwen2.5-1.5B (never grounded a single runCode snippet in the discovered `tools.*` surface — `invokedToolPaths` empty in EVERY run, it fetches imaginary APIs and hardcodes invented data instead), Qwen3.5-2B-mxfp4 and Qwen3.5-9B (prior sessions, no improvement), and Qwen3-4B-Instruct-2507 (landed) — the only pin that genuinely grounds snippets in discovered tools, taking the suite from a stable 0/4 to a stochastic 1-3/4.
+    - Split-slot pinning (landed): standard=Qwen3-4B (tool-calling loop), flash=Qwen2.5-1.5B (selection tier, where the 4B under-selects `{"ids": []}` and the 1.5B is accurate and decisive).
+    - Plus a real test-support bug found and fixed along the way (commit 73747c9): `NativeTranscript.selections` read only `.text` segments while guided selections are recorded as `.structure` segments, so the discovery scenario's picked-ids assertion was structurally unsatisfiable since the port.
+
+    **The reasoned exception for proceeding with `7840f24` anyway:**
+    1. **The old loop is dead code.** Nothing in the shipped product constructs `MultiToolAgent` — the CLI and every suite drive a native `LanguageModelSession` directly. Keeping the old loop does not make anything the package ships more reliable; it only preserves an unreferenced alternative implementation.
+    2. **The gate's purpose is already satisfied.** The gate existed to prevent "deleting the only empirical validation suite as a side effect." That suite was ported, runs on real hardware, caught real bugs this very session (the grammar cap, the selections parser), and REMAINS in place after the deletion — no test coverage is lost by deleting the old loop.
+    3. **The baseline is not apples-to-apples.** The 7/8 figure was achieved by a structurally different mechanism (a hand-rolled loop that FORCED a parseable action out of the model every turn). Native tool-calling depends on the model's trained propensity, which no small local pin currently delivers deterministically — a fact the gated suite now honestly documents, and which keeping dead code does not change.
+    4. **The shortfall is tracked, not buried.** The remaining gap (stochastic scenario variance on a 4B pin, the PrefixReuse assertion's decode-length sensitivity) is documented in `IntegrationGate.swift`'s pin history and this task's comments, and the gated suite keeps measuring it on every opt-in run.
+
+    `7840f24` is hereby cleared to proceed.
+  timestamp: 2026-07-15T01:18:17.506426+00:00
 depends_on:
 - 01KWVNVV79AAK6FDHRJF329QVR
 position_column: done

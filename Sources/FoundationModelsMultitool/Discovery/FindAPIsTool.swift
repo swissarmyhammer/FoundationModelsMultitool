@@ -29,9 +29,9 @@ public struct FindAPIsArguments: Sendable {
 /// plan.md Component 8 (Discovery) — `findAPIs` as its own real
 /// `FoundationModels.Tool` conformer, independently constructible and
 /// registerable directly alongside `MultiTool` in a native
-/// `LanguageModelSession(tools: [multiTool, findAPIsTool])`, decoupled from
-/// `MultiToolAgent`'s hand-rolled ReAct loop (`TurnFormat`/`AgentStep` never
-/// appear here).
+/// `LanguageModelSession(tools: [multiTool, findAPIsTool])`, fully decoupled
+/// from the retired `MultiToolAgent` hand-rolled ReAct loop and its turn
+/// machinery.
 ///
 /// `call(arguments:)` forwards every `findAPIs(task)` call to a
 /// `MetadataSearcher<APISurface.Entry>` running in `.auto` mode (plan.md §7):
@@ -90,9 +90,9 @@ public struct FindAPIsTool: Tool {
 
     /// Creates a `findAPIs` tool bound to a resolved Router profile's
     /// generation slot for its selection tier — the production, independently
-    /// constructible entry point plan.md calls for: no dependency on
-    /// `MultiToolAgent`, `TurnFormat`, or `AgentStep`, just a registry and an
-    /// optional selection-tier backing.
+    /// constructible entry point plan.md calls for: no dependency on any
+    /// agent loop or turn machinery, just a registry and an optional
+    /// selection-tier backing.
     ///
     /// Builds a `.auto`-mode `MetadataSearcher` over `registry.surface
     /// .entries`: when `librarian` is `nil`, `.auto` degrades to `.retrieval`

@@ -34,12 +34,51 @@ comments:
 
     Short version: the prefix-reuse runaway is now root-caused and FIXED (the missing `maxItems` cap lived in THIS repo's own `SelectionGrammar.swift`, not only upstream — fixed here with a unit test; second findAPIs call dropped 194.6s → 2.5s; a port of the fix for `FoundationModelsRanker`'s own unfixed copy is filed as `nkn73z2` on that board). But `SearchThenCallTests` scored 0/4 on the fresh run against the required ≥7/8 baseline — the native tool-calling reliability gap of the pinned tiny model is unchanged and is now the sole blocker. Until a model pin or instructions iteration clears that baseline (or a human overrides the gate), the deletion must not proceed.
   timestamp: 2026-07-14T23:17:14.019852+00:00
+- actor: claude-code
+  id: 01kxhnn70y1fpvz4rnkkt6vjgs
+  text: |-
+    Gate check re-run: `k4mj1gm`'s latest go/no-go note (2026-07-15T01:18Z) now records **GO via an explicit, reasoned, user-authorized exception** — the gate's acceptance criterion (b). Read and confirmed before touching any file, per this task's own instructions. Recording that confirmation here as the task requires.
+
+    Summary of the authorization: the ≥7/8 numeric baseline was NOT met (best 7/16 aggregate across 4 runs on the improved Qwen3-4B/1.5B split-pin configuration) after bounded, documented instructions-tuning and model-pin experiments; the exception rests on (1) the old loop being dead code nothing ships through, (2) the ported gated suite — the gate's actual protected asset — remaining fully in place after deletion, (3) the baseline measuring a structurally different forced-action mechanism, and (4) the shortfall being tracked in the suite and pin-history docs rather than buried. Full reasoning on `k4mj1gm`.
+
+    Proceeding to drive this task through implement → test → commit → review now. Deletion-list corrections from the 2026-07-06 review addendum comment (TurnFormatTests.swift, EvaluatorGateTests.swift, the two old-loop JSONL goldens; LibrarianFixtures.swift does not exist) are in scope.
+  timestamp: 2026-07-15T01:18:30.430394+00:00
+- actor: claude-code
+  id: 01kxhnzc0n4jkf573vnex8f1h7
+  text: |-
+    Picked up (moved to doing). Gate check confirmed satisfied: k4mj1gm records GO via explicit reasoned exception (2026-07-15T01:18Z), already recorded on this task — not re-litigating.
+
+    Research findings before any deletion:
+    - Fixture reuse (Fixtures/MultiToolAgentFixtures.swift): ScriptedAgentSession (needed transitively by RootSessionRespondCalledDirectlySession.fork(), plus HardeningTests' surviving tests use none directly), RootSessionRespondCalledDirectlySession (FindAPIsToolTests, ExamplesTests), TripCitiesTool/TripCitiesOutput (FindAPIsToolTests, ExamplesTests, SelectionGrammarTests, APISurfaceSearchableMetadataTests), CallCounter (CLIArgumentTests). Agent-only fixtures to delete with the file: AlwaysFinalTurnFormat, makeScriptedSelectionSearcher, cannedCitiesSelectionJson. Plan: move survivors to a new Fixtures/AgentSessionFixtures.swift with de-MultiToolAgent'd docs.
+    - AgentSession/RoutedAgentSession are defined in FoundationModelsMetadataRegistry/Router, NOT this repo — fixtures survive source deletion.
+    - HardeningTests.swift is mixed: keep config-clamp + MultiTool cancellation/limit tests; delete cancellationTerminatesAgentRespondMidRunCode + 4 maxAgentTurns/maxRepairTurns boundary tests + the 4 config assertions on those fields.
+    - Library target still needs FoundationModelsRouter: FindAPIsTool.swift (RoutedLLM, RoutedAgentSession) and SelectionGrammar.swift import it. NOT trimming.
+    - Only Sources/ import of Evaluations is AgentEvaluators.swift → after deletion the cliLinkerSettings rpath workaround in Package.swift is a removal candidate; will verify empirically (swift build + run CLI --help).
+    - Integration-test references to MultiToolAgent/TurnFormat/etc. are all historical prose explicitly marked "retired" — staying.
+
+    Execution order: (A) delete agent unit tests + 2 JSONL goldens + trim HardeningTests + fixture move, build/test; (B) delete Agent/ sources + trim MultiToolConfiguration (public API break: maxAgentTurns/maxRepairTurns removed) + doc sweeps, build/test; (C) Package.swift comment updates + empirical rpath check; (D) final grep + full suite.
+  timestamp: 2026-07-15T01:24:03.221538+00:00
+- actor: claude-code
+  id: 01kxhqpzet5mt5y89y2k73hp10
+  text: 'Group A landed and green (swift test: 150 unit tests in 17 suites passed; gated integration bundle builds, 7 tests skip as expected). Deleted: MultiToolAgentTests.swift, GuidedTurnFormatTests.swift, TurnFormatTests.swift, TranscriptAssertionTests.swift, EvaluatorGateTests.swift, Goldens/SearchThenCallTranscript.jsonl, Goldens/RepairTranscript.jsonl (renderer goldens kept). HardeningTests trimmed of the 5 agent-based tests + maxAgentTurns/maxRepairTurns assertions. Shared fixtures moved to new Fixtures/AgentSessionFixtures.swift (ScriptedAgentSession[Error], CallCounter, RootSessionRespondCalledDirectlySession, TripCitiesTool/Output — docs rewritten for the SelectionTier framing); agent-only fixtures (AlwaysFinalTurnFormat, makeScriptedSelectionSearcher, cannedCitiesSelectionJson) deleted with MultiToolAgentFixtures.swift. CLIArgumentTests comments repointed at the new fixture file. Proceeding to Group B (Agent/ source deletion + MultiToolConfiguration trim).'
+  timestamp: 2026-07-15T01:54:25.370327+00:00
+- actor: claude-code
+  id: 01kxhvs1r5g3k7ve358see4tm8
+  text: |-
+    Groups B, C, and D landed and green.
+
+    Group B (sources): deleted Sources/FoundationModelsMultitool/Agent/ entirely (MultiToolAgent.swift, TurnFormat.swift, AgentTurn.swift, TranscriptAnalyzer.swift, AgentEvaluators.swift — directory gone). Trimmed MultiToolConfiguration.swift: **PUBLIC API BREAK — `maxAgentTurns` and `maxRepairTurns` (properties + init parameters) removed**; runCode-sandbox knobs (executionTimeLimit, returnValueCharacterLimit, consoleCharacterLimit, resultLimits) kept. Doc sweeps: MultiTool.swift (Registry docs + MultiTool type doc now describe the native LanguageModelSession design), FindAPIsTool.swift, CLIRunner.swift, DemoTools.swift, SelectionGrammarTests test name, FindAPIsToolTests doc, IntegrationGate.swift model-pin rationale (was present-tense about the old prompted-text convention), NativeToolCallEvaluation metric-name doc. APISurface.swift verified: its "librarian prefix" framing already points at the current SelectionTier realization — no change needed.
+
+    Group C (Package.swift): library keeps FoundationModelsRouter (FindAPIsTool + SelectionGrammar import it for RoutedLLM/RoutedAgentSession/Grammar — verified, NOT trimmed). Removed xcodeContentsDirectory()/cliLinkerSettings rpath workaround — verified empirically: with AgentEvaluators.swift gone the library no longer imports Evaluations; rebuilt CLI has no Evaluations load command (otool -L), only default rpaths (otool -l), and `multitool-cli --help` runs and exits 0. Also updated the stale Goldens resources comment (JSONL transcripts gone).
+
+    Group D verification (fresh, this session): swift build green; full swift test green — 150 unit tests in 17 suites passed, gated integration bundle builds and its 7 tests skip as designed. Acceptance grep for MultiToolAgent|TurnFormat|AgentTurn|TranscriptAnalyzer|AgentEvaluators (plus AgentStep/maxAgentTurns/maxRepairTurns) over Sources/ + Tests/ returns only doc-comment prose explicitly marked retired/removed — no code references remain.
+  timestamp: 2026-07-15T03:05:27.557237+00:00
 depends_on:
 - 01KWVNWP89T9551VNK3K4MJ1GM
 - 01KWVNV1NZ157PW3Y1GH6RQZ4V
 - 01KWVNTEAPVS13BB8H04AVEEPP
-position_column: todo
-position_ordinal: '8780'
+position_column: doing
+position_ordinal: '80'
 title: Delete MultiToolAgent and the old ReAct-loop machinery (TurnFormat, AgentTurn, TranscriptAnalyzer, AgentEvaluators)
 ---
 ## What

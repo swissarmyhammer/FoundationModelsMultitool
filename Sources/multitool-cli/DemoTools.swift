@@ -21,9 +21,10 @@ struct DemoTripCitiesOutput {
     var cities: [String]
 }
 
-/// A small, fixed itinerary — one of the two demo tools `CLIRunner` wires
-/// into the sample `MultiToolAgent`, chosen (together with `DemoWeatherTool`)
-/// to trigger the compose/chain behavior plan.md's own usage example walks
+/// A small, fixed itinerary — one of the two demo tools `CLIRunner` wraps
+/// into the sample's `MultiTool` registry (driven by a native
+/// `LanguageModelSession`), chosen (together with `DemoWeatherTool`) to
+/// trigger the compose/chain behavior plan.md's own usage example walks
 /// through: `tripCities` -> `weather` per city -> pick the warmest.
 struct DemoTripCitiesTool: Tool {
     let name = "tripCities"

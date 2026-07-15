@@ -277,7 +277,7 @@ struct NativeToolCallEvaluation: Evaluation {
 ///
 /// `allPass` (did every expected call match) and `percentagePass` (what
 /// fraction did), graded per sample against `NativeToolCallEvaluation`'s
-/// `TrajectoryExpectation`s — mirrors `AgentEvaluators.swift`'s
+/// `TrajectoryExpectation`s — mirrors the retired `AgentEvaluators.swift`'s
 /// `AgentMetricName` pattern of avoiding repeated string literals.
 enum NativeToolCallMetricName {
     /// `Evaluations.ToolCallEvaluator`'s `allPass` metric: passing only when every expected tool call in the sample's `TrajectoryExpectation` matched.

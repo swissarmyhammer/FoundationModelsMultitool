@@ -23,10 +23,11 @@ var multitoolIntegrationEnabled: Bool {
 
 /// The deliberately small, tool-calling-capable `mlx-community` models this
 /// suite resolves — plan.md M6.5: "small tool-calling-capable instruct
-/// models." `MultiToolAgent`'s tool-calling is plain prompted text (the
-/// `ACTION:`/`TASK:`/`CODE:` convention, or a guided JSON turn) rather than a
-/// model's own native function-calling API, so any capable small instruct
-/// model qualifies.
+/// models." The suite drives Apple's own native tool-calling loop through a
+/// real `LanguageModelSession` (the retired `MultiToolAgent`'s prompted-text
+/// `ACTION:`/`TASK:`/`CODE:` convention is gone), so the pinned `standard`
+/// model must be genuinely trained for native function calling, not merely
+/// instruction-following.
 ///
 /// `generation` deliberately does *not* reuse Router's own gated suite's
 /// pinned `SmolLM-135M-Instruct-4bit` (`IntegrationTests.swift`'s

@@ -6,8 +6,9 @@ extension MultiTool {
     /// The built, executable artifact `MultiTool.Builder.buildRegistry()`
     /// produces — plan.md's "registry" (the value the "Adding tools is the
     /// easy path" usage sample assigns `Builder.build()`'s result to, and
-    /// that `MultiToolAgent(registry:...)` and `MultiTool.init(registry:)`
-    /// both take): the rendered `APISurface` (M2.5) paired with the actual
+    /// that `MultiTool.init(registry:)` and `FindAPIsTool
+    /// .init(registry:librarian:limit:)` both take): the rendered
+    /// `APISurface` (M2.5) paired with the actual
     /// wrapped `any Tool` instances a `runCode` snippet's `tools.*` calls
     /// dispatch to.
     ///
@@ -37,7 +38,7 @@ extension MultiTool {
         /// mode": discovery (`findAPIs`) is skipped, and a snippet is
         /// expected to introspect the surface itself via `help()`/`docs()`
         /// (M7) instead. `false` (the default) surfaces both `runCode` and
-        /// `findAPIs` to the agent loop (M4b/M6).
+        /// `findAPIs` to the session's tool-calling loop (M4b/M6).
         public let isDirectMode: Bool
 
         /// Creates a registry pairing a rendered surface with its live tool
@@ -67,8 +68,8 @@ extension MultiTool {
         }
 
         /// Returns a copy of this registry in **direct mode** — plan.md
-        /// "Direct mode (skip discovery)": only `runCode` is surfaced to the
-        /// agent loop; a snippet is expected to introspect the surface
+        /// "Direct mode (skip discovery)": only `runCode` is surfaced to
+        /// the session; a snippet is expected to introspect the surface
         /// itself via `help()`/`docs()` (M7) rather than a `findAPIs` round
         /// trip. The executable surface itself (`surface`/`tools`) is
         /// unchanged — only the affordance metadata (`isDirectMode`,
@@ -80,7 +81,7 @@ extension MultiTool {
             Registry(surface: surface, tools: tools, isDirectMode: true)
         }
 
-        /// The agent-loop-facing operations this registry surfaces —
+        /// The session-facing operations this registry surfaces —
         /// `["runCode"]` in direct mode, `["runCode", "findAPIs"]`
         /// otherwise. Plain, checkable metadata for a caller (or a test) to
         /// read without having to separately know `isDirectMode`'s exact
@@ -124,10 +125,10 @@ public struct RunCodeArguments {
 /// plan.md Component 1 ⭐ — the `runCode` `Tool`: the execution half of the
 /// MultiTool idea, "a single `Tool`... that wraps other, in-process `Tool`s
 /// and exposes them to the model as a callable code API." Conforms to
-/// `FoundationModels.Tool` (so it can also drop into an Apple built-in
-/// session, per plan.md's "Usage: attaching to a session" escape hatch), but
-/// on a Router model is driven by `MultiToolAgent` (M4b) instead of an Apple
-/// tool-calling loop.
+/// `FoundationModels.Tool`, so it registers directly on a native
+/// `LanguageModelSession(tools: [multiTool, findAPIsTool])` and Apple's own
+/// tool-calling loop decides when to call it (the hand-rolled
+/// `MultiToolAgent` ReAct loop that used to drive it is retired).
 ///
 /// Per call, `call(arguments:)`:
 /// 1. builds `tools.*` glue that assigns every registry entry's real,

@@ -19,8 +19,6 @@ struct HardeningTests {
         #expect(configuration.executionTimeLimit == 5.0)
         #expect(configuration.returnValueCharacterLimit == ResultRendererLimits.default.returnValueCharacterLimit)
         #expect(configuration.consoleCharacterLimit == ResultRendererLimits.default.consoleCharacterLimit)
-        #expect(configuration.maxAgentTurns == 8)
-        #expect(configuration.maxRepairTurns == 1)
     }
 
     @Test("MultiToolConfiguration clamps every limit to its valid range")
@@ -28,15 +26,11 @@ struct HardeningTests {
         let configuration = MultiToolConfiguration(
             executionTimeLimit: -1,
             returnValueCharacterLimit: -5,
-            consoleCharacterLimit: -5,
-            maxAgentTurns: -3,
-            maxRepairTurns: -3
+            consoleCharacterLimit: -5
         )
         #expect(configuration.executionTimeLimit == 0)
         #expect(configuration.returnValueCharacterLimit == 0)
         #expect(configuration.consoleCharacterLimit == 0)
-        #expect(configuration.maxAgentTurns == 1)
-        #expect(configuration.maxRepairTurns == 0)
     }
 
     // MARK: - Cancellation (plan.md M10 acceptance: "no leaked JS thread or semaphore deadlock")
@@ -54,31 +48,6 @@ struct HardeningTests {
         }
         // Let the loop actually start spinning before cancelling.
         try await Task.sleep(nanoseconds: 100_000_000)
-        task.cancel()
-
-        let start = ContinuousClock.now
-        await Self.expectCancellationError { _ = try await task.value }
-        #expect(start.duration(to: .now) < .seconds(3))
-    }
-
-    @Test("cancelling the task running MultiToolAgent.respond(to:) terminates an in-flight runCode snippet and throws CancellationError")
-    func cancellationTerminatesAgentRespondMidRunCode() async throws {
-        let registry = try MultiTool.Builder().addTool(CitiesTool()).buildRegistry()
-        let mainSession = ScriptedAgentSession([
-            "ACTION: runCode\nCODE:\n```js\nwhile (true) {}\n```"
-        ])
-        let configuration = MultiToolConfiguration(executionTimeLimit: 10.0)
-        let agent = MultiToolAgent(
-            registry: registry,
-            session: mainSession,
-            instructions: "You are a travel assistant.",
-            configuration: configuration
-        )
-
-        let task = Task {
-            try await agent.respond(to: "hello")
-        }
-        try await Task.sleep(nanoseconds: 150_000_000)
         task.cancel()
 
         let start = ContinuousClock.now
@@ -211,85 +180,6 @@ struct HardeningTests {
         )
 
         #expect(output.contains("truncated"))
-    }
-
-    @Test("a configured maxAgentTurns of N succeeds when the model finishes in exactly N turns")
-    func maxAgentTurnsBoundaryAtLimitSucceeds() async throws {
-        let registry = try MultiTool.Builder().addTool(CitiesTool()).buildRegistry()
-        let configuration = MultiToolConfiguration(maxAgentTurns: 2)
-        let session = ScriptedAgentSession([
-            "ACTION: runCode\nCODE:\n```js\nreturn 1;\n```",
-            "ACTION: final\nANSWER: done",
-        ])
-        let agent = MultiToolAgent(
-            registry: registry,
-            session: session,
-            instructions: "You are a travel assistant.",
-            configuration: configuration
-        )
-
-        let reply = try await agent.respond(to: "hello")
-
-        #expect(reply == "done")
-    }
-
-    @Test("a configured maxAgentTurns of N fails with a typed error when the model needs N+1 turns")
-    func maxAgentTurnsBoundaryOverLimitFails() async throws {
-        let registry = try MultiTool.Builder().addTool(CitiesTool()).buildRegistry()
-        let configuration = MultiToolConfiguration(maxAgentTurns: 2)
-        let neverEndingResponse = "ACTION: runCode\nCODE:\n```js\nreturn 1;\n```"
-        let session = ScriptedAgentSession(Array(repeating: neverEndingResponse, count: 5))
-        let agent = MultiToolAgent(
-            registry: registry,
-            session: session,
-            instructions: "You are a travel assistant.",
-            configuration: configuration
-        )
-
-        await #expect(throws: MultiToolAgentError.maxTurnsExceeded(turns: 2)) {
-            try await agent.respond(to: "hello")
-        }
-    }
-
-    @Test("a configured maxRepairTurns of N recovers when exactly N consecutive turns are malformed")
-    func maxRepairTurnsBoundaryAtLimitRecovers() async throws {
-        let registry = try MultiTool.Builder().addTool(CitiesTool()).buildRegistry()
-        let configuration = MultiToolConfiguration(maxRepairTurns: 1)
-        let session = ScriptedAgentSession([
-            "garbage, not a valid action",
-            "ACTION: final\nANSWER: recovered",
-        ])
-        let agent = MultiToolAgent(
-            registry: registry,
-            session: session,
-            instructions: "You are a travel assistant.",
-            configuration: configuration
-        )
-
-        let reply = try await agent.respond(to: "hello")
-
-        #expect(reply == "recovered")
-    }
-
-    @Test("a configured maxRepairTurns of N fails the loop when N+1 consecutive turns are malformed")
-    func maxRepairTurnsBoundaryOverLimitFails() async throws {
-        let registry = try MultiTool.Builder().addTool(CitiesTool()).buildRegistry()
-        let configuration = MultiToolConfiguration(maxRepairTurns: 1)
-        let session = ScriptedAgentSession([
-            "garbage one",
-            "garbage two",
-            "ACTION: final\nANSWER: too late",
-        ])
-        let agent = MultiToolAgent(
-            registry: registry,
-            session: session,
-            instructions: "You are a travel assistant.",
-            configuration: configuration
-        )
-
-        await #expect(throws: MultiToolAgentError.self) {
-            try await agent.respond(to: "hello")
-        }
     }
 
     // MARK: - Sandbox surface & README↔code sync

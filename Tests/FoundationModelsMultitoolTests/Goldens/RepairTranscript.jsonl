@@ -1,7 +1,0 @@
-{"routerId":"01ARZ3NDEKTSV4RRFFQ69G5FAV","sessionId":"01ARZ3NDEKTSV4RRFFQ69G5FAD","slot":"standard","seq":0,"ts":700001000,"kind":"session"}
-{"routerId":"01ARZ3NDEKTSV4RRFFQ69G5FAV","sessionId":"01ARZ3NDEKTSV4RRFFQ69G5FAD","slot":"standard","seq":1,"ts":700001001,"kind":"prompt","text":"User request:\nBook the trip using the flaky booking tool."}
-{"routerId":"01ARZ3NDEKTSV4RRFFQ69G5FAV","sessionId":"01ARZ3NDEKTSV4RRFFQ69G5FAD","slot":"standard","seq":2,"ts":700001002,"kind":"response","text":"ACTION: runCode\nCODE:\n```js\nreturn tools.book({ id: 1 });\n```"}
-{"routerId":"01ARZ3NDEKTSV4RRFFQ69G5FAV","sessionId":"01ARZ3NDEKTSV4RRFFQ69G5FAD","slot":"standard","seq":3,"ts":700001003,"kind":"prompt","text":"...(accumulated transcript omitted for fixture brevity)...\n\nrunCode result:\nError: booking requires confirm: true"}
-{"routerId":"01ARZ3NDEKTSV4RRFFQ69G5FAV","sessionId":"01ARZ3NDEKTSV4RRFFQ69G5FAD","slot":"standard","seq":4,"ts":700001004,"kind":"response","text":"ACTION: runCode\nCODE:\n```js\nreturn tools.book({ id: 1, confirm: true });\n```"}
-{"routerId":"01ARZ3NDEKTSV4RRFFQ69G5FAV","sessionId":"01ARZ3NDEKTSV4RRFFQ69G5FAD","slot":"standard","seq":5,"ts":700001005,"kind":"prompt","text":"...(accumulated transcript omitted for fixture brevity)...\n\nrunCode result:\n{\"confirmed\":true}"}
-{"routerId":"01ARZ3NDEKTSV4RRFFQ69G5FAV","sessionId":"01ARZ3NDEKTSV4RRFFQ69G5FAD","slot":"standard","seq":6,"ts":700001006,"kind":"response","text":"ACTION: final\nANSWER: Booked the trip."}

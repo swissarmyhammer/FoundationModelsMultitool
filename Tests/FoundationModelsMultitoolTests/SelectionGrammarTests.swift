@@ -69,7 +69,7 @@ struct SelectionGrammarTests {
 
     // MARK: - Selection sessions are constrained to exactly the surface's entry paths
 
-    @Test("idEnumGrammar(ids:) fed a real registry's entry paths — MultiToolAgent.makeFindAPISearcher's own derivation — constrains the enum to exactly those paths, qualified paths included")
+    @Test("idEnumGrammar(ids:) fed a real registry's entry paths — FindAPIsTool.init(registry:librarian:limit:)'s own derivation — constrains the enum to exactly those paths, qualified paths included")
     func idEnumGrammarConstrainedToSurfaceEntryPaths() throws {
         let registry = try MultiTool.Builder()
             .addTool(TripCitiesTool())

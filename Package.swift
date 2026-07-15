@@ -111,74 +111,6 @@ private let liveLoaderMLXProducts: [Target.Dependency] = [
     .product(name: "MLXHuggingFace", package: mlxPackage),
 ]
 
-/// Resolves the active Xcode installation's `Contents` directory (the
-/// parent of `Contents/Developer`) via `xcode-select -p`.
-///
-/// A discovered, real runtime gap motivates this: `Sources/
-/// FoundationModelsMultitool/Agent/AgentEvaluators.swift` (M6.5b) `import`s
-/// Apple's `Evaluations` framework — pure test infrastructure per plan.md,
-/// but declared in the *library* target, so its autolink metadata is part
-/// of the compiled `FoundationModelsMultitool` module and propagates to
-/// every consumer, including the M9 `multitool-cli` executable below.
-/// `Evaluations.framework` lives under the Xcode toolchain's platform
-/// `Developer/Library/Frameworks` (the same place `XCTest.framework`/
-/// `Testing.framework` live) — Xcode's `xctest` launcher arranges the
-/// search paths that resolve it there, which is why `swift test` runs
-/// fine, but a plain `swift build`/`swift run` executable's default rpaths
-/// (`.build/…/Products/Debug`, its `PackageFrameworks` subdirectory) don't
-/// include it, so the executable fails to launch at all (`dyld: Library
-/// not loaded`) — confirmed against this Xcode install: the failing load
-/// command is the *relative* `@rpath/Developer/Platforms/MacOSX.platform/
-/// Developer/Library/Frameworks/Evaluations.framework/…`, which resolves
-/// once an rpath entry for the Xcode `Contents` directory (the parent of
-/// that embedded `Developer/…` path) is present — exactly what this
-/// function resolves, fed into `cliLinkerSettings` below.
-///
-/// This is a workaround for the *symptom* (an unresolved runtime search
-/// path), not the underlying design gap — `Evaluations` belongs in a
-/// test-only target, not the shipped library — which is out of the M9
-/// executable-target task's scope to restructure.
-///
-/// - Returns: the `Contents` directory's absolute path, or `nil` if
-///   `xcode-select` isn't available or its output isn't a usable path
-///   (e.g. command-line-tools-only, which couldn't build this package's
-///   FoundationModels-framework code at all anyway).
-private func xcodeContentsDirectory() -> String? {
-    let process = Process()
-    process.executableURL = URL(fileURLWithPath: "/usr/bin/xcode-select")
-    process.arguments = ["-p"]
-    let outputPipe = Pipe()
-    process.standardOutput = outputPipe
-    process.standardError = Pipe()
-    do {
-        try process.run()
-        process.waitUntilExit()
-        guard process.terminationStatus == 0 else { return nil }
-        let data = outputPipe.fileHandleForReading.readDataToEndOfFile()
-        guard
-            let developerPath = String(data: data, encoding: .utf8)?
-                .trimmingCharacters(in: .whitespacesAndNewlines),
-            !developerPath.isEmpty
-        else { return nil }
-        return URL(fileURLWithPath: developerPath).deletingLastPathComponent().path
-    } catch {
-        return nil
-    }
-}
-
-/// Linker settings that make `multitool-cli` able to actually *launch*, not
-/// just link — an `-rpath` pointing at `xcodeContentsDirectory()`, computed
-/// fresh (never hardcoded) so it resolves correctly on any machine/CI
-/// runner with a full Xcode install — the same install this package's
-/// macOS-27-SDK build already requires.
-///
-/// It's empty (no extra flags) when `xcodeContentsDirectory()` can't
-/// resolve one — see its documentation for the full story.
-private let cliLinkerSettings: [LinkerSetting] = {
-    guard let xcodeContentsDirectory = xcodeContentsDirectory() else { return [] }
-    return [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", xcodeContentsDirectory])]
-}()
-
 /// The `Sources/` subdirectory prefix used by every source target's `path`
 /// below.
 private let sourcesPath = "Sources/"
@@ -241,12 +173,16 @@ let package = Package(
                 // over it — see `CLIRunner.makeMLXLanguageModel(for:)`.
                 .product(name: "MLXFoundationModels", package: mlxPackage),
             ] + liveLoaderMLXProducts + hubProducts,
-            path: "\(sourcesPath)\(cliTargetName)",
-            // See `cliLinkerSettings`'s documentation: without this, the
-            // built executable fails to launch (`dyld: Library not
-            // loaded`) trying to resolve the test-only `Evaluations`
-            // framework the library target transitively imports.
-            linkerSettings: cliLinkerSettings
+            path: "\(sourcesPath)\(cliTargetName)"
+            // No custom linker settings needed: the rpath workaround that
+            // used to live here existed only because the retired
+            // `Agent/AgentEvaluators.swift` made the *library* target import
+            // Apple's test-only `Evaluations` framework, whose autolink
+            // metadata propagated into this executable and broke its launch
+            // (`dyld: Library not loaded`). With that file deleted, the
+            // library no longer imports `Evaluations` and the executable
+            // launches with SwiftPM's default rpaths — verified by running
+            // the built binary directly.
         ),
         .testTarget(
             name: "\(packageName)Tests",
@@ -259,12 +195,9 @@ let package = Package(
             path: "\(testsPath)\(packageName)Tests",
             resources: [
                 // Golden files pinning `ToolAPIRenderer`'s rendered surface
-                // (M2), and checked-in fixture JSONL transcripts
-                // `TranscriptAnalyzer`'s ungated unit tests
-                // (`TranscriptAssertionTests`, M6.5a) parse. Tests read these
-                // directly off disk via `#filePath`, not `Bundle.module`;
-                // declared as a resource purely so SwiftPM doesn't warn about
-                // an unhandled source-tree file.
+                // (M2). Tests read these directly off disk via `#filePath`,
+                // not `Bundle.module`; declared as a resource purely so
+                // SwiftPM doesn't warn about an unhandled source-tree file.
                 .copy("Goldens")
             ]
         ),

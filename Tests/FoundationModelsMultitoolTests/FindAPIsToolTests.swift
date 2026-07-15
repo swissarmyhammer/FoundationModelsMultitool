@@ -4,8 +4,8 @@ import Testing
 @testable import FoundationModelsMultitool
 
 /// Coverage for `FindAPIsTool` (task 4aveepp's extraction: `findAPIs` as a
-/// standalone `FoundationModels.Tool` conformer, decoupled from
-/// `MultiToolAgent`/`TurnFormat`/`AgentStep`) — the splice-through and
+/// standalone `FoundationModels.Tool` conformer, decoupled from the retired
+/// `MultiToolAgent` loop and its turn machinery) — the splice-through and
 /// empty-result behaviors `FindAPIToolTests` previously covered against the
 /// retired `FindAPITool(searcher:limit:).dispatch(task:)` shape, now driven
 /// against `FindAPIsTool.call(arguments:)`'s native `Tool` shape, plus new
