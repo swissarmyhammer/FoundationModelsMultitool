@@ -177,6 +177,21 @@ comments:
 
     Both scenario-level levers identified in the myopia analysis paid off. The gate remains closed on its reasoned-exception GO (deletion already done); these results just keep improving the measured baseline the suite records.
   timestamp: 2026-07-15T15:58:15.738856+00:00
+- actor: claude-code
+  id: 01kxk93tqvchxd8m8n6w0zszvq
+  text: |-
+    Fifth large-pin experiment (2026-07-15): **mlx-community/GLM-4.7-Flash-4bit** (research shortlist #2) with the landed prompt+await fixes — SearchThenCallTests **2/4**. Pin reverted to Qwen3-4B (which scored 3/4 under identical conditions).
+
+    Notable profile:
+    - **PASSED discoveryUnderDistractors** — only the second model ever to pass the hardest ~20-distractor scenario (after the 4B), with a fully grounded correct answer listing the actual fixture cities.
+    - **PASSED repairFromTripProneTool** cleanly (2 calls).
+    - composeChain failed by running out of budget mid-plan (21 tool calls, reply still in planning voice) — inefficiency, not hallucination. singleCallWeather deflected after 1 call. One snippet confused the layering by calling `findAPIs(...)` *inside* runCode (it's a session-level tool, not an injected global) but recovered.
+    - Slow: 718s total for 4 scenarios (~4x the 4B), consistent with the larger MoE.
+
+    **Layering finding (user's point, verified in the pinned mlx-swift-lm checkout):** tool-call FORMAT handling is genuinely mlx-swift-lm's job and it half-does it — the parse side infers a per-model `ToolCallFormat` (`glm4*` → `GLM4ToolCallParser`) via `LLMModelFactory`, but the guided-generation side (`MLXFoundationModels/SchemaConverter.encodeToolCallingGrammar`) hardcodes Qwen's `<tool_call>` structural tag for every model, so non-Qwen models decode against a foreign wrapper grammar (the bare-JSON alternative is why GLM still functioned). Filed as task `3tdscq4` on the mlx-swift-lm board: derive the structural tag from the same inferred ToolCallFormat the parser uses. Worth re-running GLM after that lands — its 2/4 may be partly this tax.
+
+    Tally stands: Qwen3-4B-Instruct-2507 (3/4 best, 1-3/4 band) > GLM-4.7-Flash (2/4, passes discovery, slow) ≈ Coder-30B (1-3/4, honest) > everything else.
+  timestamp: 2026-07-15T16:17:46.747142+00:00
 depends_on:
 - 01KWVNVV79AAK6FDHRJF329QVR
 position_column: done
