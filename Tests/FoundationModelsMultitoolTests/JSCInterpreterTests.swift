@@ -213,4 +213,60 @@ struct JSCInterpreterTests {
             #expect(results[index] == .number(Double(index)))
         }
     }
+
+    // MARK: - Top-level await
+
+    @Test("a snippet may await a host function's result at the top level")
+    func topLevelAwaitOfHostFunctionResult() throws {
+        let interpreter = JSCInterpreter()
+        let weather = HostFunction(name: "weather") { _ in .object(["tempC": .number(31)]) }
+        let result = try interpreter.run(
+            code: """
+            const conditions = await weather();
+            return conditions.tempC;
+            """,
+            installing: [weather]
+        )
+        #expect(result.returnValue == .number(31))
+    }
+
+    @Test("a snippet may await a genuine promise at the top level")
+    func topLevelAwaitOfPromise() throws {
+        let interpreter = JSCInterpreter()
+        let result = try interpreter.run(
+            code: "return await Promise.resolve(42);",
+            installing: []
+        )
+        #expect(result.returnValue == .number(42))
+    }
+
+    @Test("an awaited rejection surfaces as InterpreterError with its message")
+    func awaitedRejectionSurfacesAsInterpreterError() throws {
+        let interpreter = JSCInterpreter()
+        #expect {
+            try interpreter.run(
+                code: "await Promise.reject(new Error(\"kaput\"));",
+                installing: []
+            )
+        } throws: { error in
+            guard let interpreterError = error as? InterpreterError else { return false }
+            return interpreterError.kind == .exception
+                && interpreterError.message.contains("kaput")
+        }
+    }
+
+    @Test("awaiting a promise that never settles surfaces as InterpreterError, not a hang")
+    func neverSettlingAwaitSurfacesAsInterpreterError() throws {
+        let interpreter = JSCInterpreter()
+        #expect {
+            try interpreter.run(
+                code: "await new Promise(function() {});",
+                installing: []
+            )
+        } throws: { error in
+            guard let interpreterError = error as? InterpreterError else { return false }
+            return interpreterError.kind == .exception
+                && interpreterError.message.contains("never settled")
+        }
+    }
 }

@@ -399,12 +399,29 @@ public final class JSCInterpreter: Interpreter {
             capturedException = exception
         }
 
-        // Wrap in an IIFE so a top-level `return` is legal. The opening
-        // `(function(){` is prepended to the snippet's own first line
-        // (rather than on a line of its own) so every reported line number
-        // still matches the caller's original source 1:1.
-        let wrapped = "(function(){\(code)\n})()"
-        let returnedValue = sandbox.context.evaluateScript(wrapped)
+        // Wrap in an *async* IIFE so both a top-level `return` and a
+        // top-level `await` are legal — models with async-JS priors
+        // routinely write `await tools.weather(...)`, and under a plain
+        // IIFE that is a bare syntax error whose message never mentions
+        // `await` ("Unexpected identifier 'tools'"), an unrecoverable
+        // dead end for the model. An outer plain IIFE holds the outcome
+        // object as a local (never a global — the sandbox's injected-global
+        // surface is pinned by `HardeningTests`) and returns it; the async
+        // IIFE's `.then` callbacks capture and mutate that same object. The
+        // whole prefix is prepended to the snippet's own first line (rather
+        // than on a line of its own) so every reported line number still
+        // matches the caller's original source 1:1. The settled result is
+        // readable by the time `evaluateScript` returns for any snippet
+        // whose awaits resolve without external events — host functions are
+        // synchronous, so their awaited results are already-settled values
+        // and JavaScriptCore drains the resulting microtasks when the
+        // evaluation's call stack empties.
+        let wrapped = """
+            (function(){ var outcome = {}; (async function(){\(code)
+            })().then(function(v){ outcome.value = v; outcome.done = true; }, \
+            function(e){ outcome.error = e; outcome.done = true; }); return outcome; })()
+            """
+        let outcome = sandbox.context.evaluateScript(wrapped)
 
         do {
             // Check the watchdog's recorded cause before the captured
@@ -427,7 +444,25 @@ public final class JSCInterpreter: Interpreter {
                 throw makeError(from: capturedException)
             }
 
-            let returnValue = try jsonValue(of: returnedValue, in: sandbox.context)
+            // An async IIFE reports a thrown/rejected error through its
+            // promise, not the context's exception handler — map it to the
+            // same `InterpreterError` a synchronous throw produces.
+            if let rejection = outcome?.objectForKeyedSubscript("error"), !rejection.isUndefined {
+                throw makeError(from: rejection)
+            }
+            // Settled with neither value nor error: the snippet awaited a
+            // promise no queued microtask could ever settle (the sandbox
+            // has no timers or I/O), so its result will never arrive.
+            guard let settled = outcome?.objectForKeyedSubscript("done"), settled.toBool() else {
+                throw InterpreterError(
+                    kind: .exception,
+                    message: "The snippet's result never settled — it awaited a promise that "
+                        + "nothing in the sandbox can resolve (there are no timers or I/O here). "
+                        + "Await only tool calls and already-resolved values."
+                )
+            }
+
+            let returnValue = try jsonValue(of: outcome?.objectForKeyedSubscript("value"), in: sandbox.context)
             let result = InterpreterResult(returnValue: returnValue, consoleLines: sandbox.consoleLines.lines)
             logger.debug("runCode snippet finished in \(start.duration(to: .now), privacy: .public).")
             return result
