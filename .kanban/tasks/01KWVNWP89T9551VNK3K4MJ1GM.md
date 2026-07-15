@@ -236,6 +236,21 @@ comments:
 
     Historical scores in earlier comments (all the 1-3/4 tallies) are route-scored and NOT comparable to outcome scores going forward. Models worth re-running under outcome scoring when convenient: GLM-4.7-Flash (its "2/4" included grounded correct answers), Coder-30B.
   timestamp: 2026-07-15T18:02:40.679213+00:00
+- actor: claude-code
+  id: 01kxkvrz6zqcfyh84n7xd8e9tb
+  text: |-
+    **Post-mlx-update model sweep (2026-07-15 evening, mlx-swift-lm `1fbeb5d` with the structural-tag fix `cf4fa81` and Mistral template fix `cd52383`; all outcome-scored; pin unchanged at Qwen3-30B-A3B-Instruct-2507 whose baseline is 2/4):**
+
+    1. **GLM-4.7-Flash-4bit: 0/4 — regressed** vs its pre-fix 2/4. The new GLM4 structural-tag wiring backfired: un-parsed Qwen-style `<tool_call>` JSON leaking into final replies, a 353s grammar runaway (thousands of repeated `}7}7` tokens), and zero grounded tools.* invocations. The generation-side tag and parse-side GLM4 parser appear to disagree about the wrapper GLM-4.7-Flash actually emits. Filed as `csfnhca` on the mlx-swift-lm board.
+
+    2. **Devstral-Small-2-24B-4bit: 0/4 — but the template fix WORKS** (no more TemplateException; it renders and generates now). Same leak+runaway signature as GLM though: literal `<tool_call>` as reply text, digit runaway (`tripCities2025060412345…`). The shared constrain/parse seam is the suspect (noted in `csfnhca`).
+
+    3. **Devstral-2-123B-4bit: blocked, new finding** — its config declares model_type `ministral3` (not `mistral3`), unsupported by LLMModelFactory → `.unsupportedModelType("ministral3")`. Filed as `bxndpt6` on the mlx-swift-lm board. Weights fully cached locally (~65GB) for cheap re-verification. (Also hit and worked around HF xet-bridge cold-CAS download timeouts: the swift downloader's 60s request timeout can't survive cold assembly of rarely-downloaded large repos; pre-fetching via python huggingface_hub snapshot_download into the shared ~/.cache/huggingface/hub is the reliable path.)
+
+    4. **MiniMax-M2-4bit: 0/4, blocked on rendering** — 3 scenarios threw `TemplateException: "Message has tool role, but there was no previous assistant message with a tool call!"` (same class as the fixed Mistral issue; M2's family needs the structured tool_calls rendering path too). The 4th scenario rendered but leaked what looks like reasoning into the reply. Filed as `9mv1q33` on the mlx-swift-lm board. Weights cached (~119GB).
+
+    **Net:** no pin change — Qwen3-30B-A3B-Instruct-2507 (2/4 outcome-scored) remains the only model producing valid grounded answers. Three fresh mlx-swift-lm work items (`csfnhca`, `bxndpt6`, `9mv1q33`); once those land, GLM-4.7-Flash, both Devstrals, and MiniMax-M2 are all one cheap cached re-run each.
+  timestamp: 2026-07-15T21:43:53.823923+00:00
 depends_on:
 - 01KWVNVV79AAK6FDHRJF329QVR
 position_column: done
