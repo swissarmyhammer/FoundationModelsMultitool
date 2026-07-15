@@ -34,8 +34,8 @@ comments:
   timestamp: 2026-07-15T05:07:03.808745+00:00
 depends_on:
 - 01KWVNXETKHH9TK9GR27840F24
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: a780
 title: Rewrite README.md/plan.md/docs/SECURITY.md for the LanguageModelSession-driven design
 ---
 ## What
