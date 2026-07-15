@@ -194,7 +194,14 @@ enum CLIRunner {
     static let demoProfile = ProfileDefinition(
         name: "multitool-cli-demo",
         description: "Small tool-calling-capable models for the multitool-cli sample.",
-        standard: ["mlx-community/Qwen2.5-1.5B-Instruct-4bit"],
+        // Split pins, mirroring the gated suite's `multitoolTinyProfile`
+        // (see `IntegrationGate.swift`'s pin history): the natively
+        // tool-calling-trained Qwen3-4B drives the main session (the
+        // 1.5B pin never grounded its runCode snippets in the discovered
+        // `tools.*` surface), while the 1.5B stays on `flash` for the
+        // selection tier, where it is empirically the more accurate and
+        // decisive grammar-constrained selector of the two.
+        standard: ["mlx-community/Qwen3-4B-Instruct-2507-4bit"],
         flash: ["mlx-community/Qwen2.5-1.5B-Instruct-4bit"],
         embedding: ["mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ"],
         context: 8192
@@ -207,6 +214,53 @@ enum CLIRunner {
     /// mirroring plan.md's own worked `tripCities` -> `weather` -> warmest
     /// example.
     static let demoPrompt = "Of the cities on my trip, which is warmest right now?"
+
+    /// The session instructions driving the model toward real tool use —
+    /// shared verbatim by this CLI's own session and the gated integration
+    /// suite's scenario sessions (`ScenarioRunner.swift`,
+    /// `NativeToolCallEvaluation.swift`), so the suite measures exactly the
+    /// instructions the product ships.
+    ///
+    /// Every clause targets an empirically observed failure mode of small
+    /// tool-calling models (recorded on tasks `9hchxj6`/`k4mj1gm`,
+    /// real-hardware runs on the pinned models):
+    ///
+    /// - "connected … you have real, working access … never refuse for lack
+    ///   of access": the over-refusal mode — a capable model discovering the
+    ///   right function via findAPIs and then *still* deflecting with "I
+    ///   can't access real-time data, check a weather website".
+    /// - "always call findAPIs first": the model skipping discovery and
+    ///   guessing function names under a many-tool surface.
+    /// - "never simulate or invent data in a snippet": the model calling
+    ///   `runCode` with hardcoded made-up city/temperature arrays, invented
+    ///   `fetch` calls to external APIs, or `console.log`ged answers instead
+    ///   of actually invoking the discovered `tools.*` functions.
+    /// - "read each discovered function's declared return type and
+    ///   destructure it accordingly": the model treating a declared
+    ///   `{ cities: string[] }` return as a bare array and bailing out on
+    ///   its own graceful-degradation branch.
+    /// - "finds no relevant function, say so": off-topic requests degrading
+    ///   to an invented answer instead of an honest miss.
+    ///
+    /// Deliberately example-free and affirmatively framed: one earlier draft
+    /// embedded a worked `return tools.weather({city: "Austin"});` example,
+    /// and on real hardware the model pattern-matched it into
+    /// `console.log`-ing an invented Austin temperature as its *first*
+    /// action; another, negation-heavy draft ("you have NO built-in
+    /// knowledge … you cannot answer …") primed over-refusals. The
+    /// instructions must neither mention a concrete tool or value the model
+    /// could parrot, nor talk it into believing it lacks access.
+    static let toolUseInstructions = """
+        You are a helpful assistant connected to the user's live data and services through \
+        tools. You have real, working access: always call findAPIs first to discover the \
+        functions available for the task, then call runCode with a JavaScript snippet that \
+        calls those functions under tools.* and returns the result. The tools genuinely execute \
+        and return real data — trust their outputs and use them to answer. Read each discovered \
+        function's declared return type and destructure it accordingly. Never answer data \
+        questions from your own knowledge, never simulate or invent data in a snippet, and \
+        never refuse for lack of access — you have access through the tools. If findAPIs truly \
+        finds no relevant function, say so.
+        """
 
     /// A function type for profile resolution, converting a profile definition into a language model profile.
     ///
@@ -377,7 +431,7 @@ enum CLIRunner {
             let session = LanguageModelSession(
                 model: mlxModel,
                 tools: tools,
-                instructions: "You are a helpful trip-planning assistant. Use runCode to get things done."
+                instructions: toolUseInstructions
             )
 
             // Explicitly typed: `FoundationModelsRanker` (pulled in

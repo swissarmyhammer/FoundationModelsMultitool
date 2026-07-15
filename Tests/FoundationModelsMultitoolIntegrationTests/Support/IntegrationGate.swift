@@ -126,8 +126,28 @@ var multitoolIntegrationEnabled: Bool {
 /// `.tolerantParse`-specific improvement is worth revisiting if a future
 /// milestone ever scopes real-model runs to `.tolerantParse` only, or once
 /// `.guided`'s conditional-field grammar gap is closed.
+///
+/// **Native-tool-calling era: the pins split per slot.** After the suite's
+/// port to the native `LanguageModelSession` design, `Qwen2.5-1.5B-Instruct-
+/// 4bit` proved unable to ground its `runCode` snippets in the discovered
+/// `tools.*` surface at all — across every instruction variant tried on real
+/// hardware it `console.log`ged invented answers, `fetch`ed imaginary
+/// external APIs, or hardcoded made-up data, and `invokedToolPaths` came
+/// back empty in every run (tasks `9hchxj6`/`k4mj1gm`). Swapping
+/// `generation` to the natively tool-calling-trained
+/// `Qwen3-4B-Instruct-2507-4bit` (~2.3GB) qualitatively fixed grounding —
+/// its snippets genuinely call the discovered `tools.*` functions — taking
+/// `SearchThenCallTests` from a stable 0/4 to a stochastic 1-3/4 per run.
+/// But the same 4B is *worse* at the selection tier's grammar-constrained
+/// id picking (it returns empty `{"ids": []}` selections where the 1.5B
+/// picks correctly and decisively), so the pins split per slot: `standard`
+/// (the main tool-calling session) runs the 4B, `flash` (the selection
+/// tier) keeps the 1.5B — each model where it is empirically strong. The
+/// remaining flakiness is main-model run-to-run variance (occasional
+/// real-time-data deflections and discovery-skipping), not a wiring defect.
 private enum TinyModels {
-    static let generation: ModelRef = "mlx-community/Qwen2.5-1.5B-Instruct-4bit"
+    static let generation: ModelRef = "mlx-community/Qwen3-4B-Instruct-2507-4bit"
+    static let selection: ModelRef = "mlx-community/Qwen2.5-1.5B-Instruct-4bit"
     static let embedding: ModelRef = "mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ"
 }
 
@@ -141,7 +161,7 @@ let multitoolTinyProfile = ProfileDefinition(
     name: "multitool-integration-tiny",
     description: "Deliberately tiny, tool-calling-capable models for the gated M6.5 integration suite.",
     standard: [TinyModels.generation],
-    flash: [TinyModels.generation],
+    flash: [TinyModels.selection],
     embedding: [TinyModels.embedding],
     context: 8192
 )

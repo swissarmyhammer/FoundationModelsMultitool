@@ -228,7 +228,9 @@ struct NativeToolCallEvaluation: Evaluation {
             let session = LanguageModelSession(
                 model: mlxModel,
                 tools: [multiTool, findAPIsTool],
-                instructions: "You are a helpful assistant. Use runCode to get things done."
+                // The production instructions, shared verbatim (see its doc
+                // comment) — the eval grades exactly what the CLI ships.
+                instructions: CLIRunner.toolUseInstructions
             )
             // Explicitly typed to pin the native FoundationModels API over
             // `FoundationModelsRanker`'s shadowing `respond(to:) -> String`

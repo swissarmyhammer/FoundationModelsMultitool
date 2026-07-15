@@ -79,7 +79,9 @@ func runNativeIntegrationScenario(
         let session = LanguageModelSession(
             model: mlxModel,
             tools: [multiTool, findAPIsTool],
-            instructions: "You are a helpful assistant. Use runCode to get things done."
+            // The production instructions, shared verbatim (see its doc
+            // comment) — the suite measures exactly what the CLI ships.
+            instructions: CLIRunner.toolUseInstructions
         )
 
         let start = Date()
