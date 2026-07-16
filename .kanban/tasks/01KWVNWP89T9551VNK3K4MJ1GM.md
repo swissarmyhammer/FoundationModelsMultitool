@@ -251,6 +251,22 @@ comments:
 
     **Net:** no pin change — Qwen3-30B-A3B-Instruct-2507 (2/4 outcome-scored) remains the only model producing valid grounded answers. Three fresh mlx-swift-lm work items (`csfnhca`, `bxndpt6`, `9mv1q33`); once those land, GLM-4.7-Flash, both Devstrals, and MiniMax-M2 are all one cheap cached re-run each.
   timestamp: 2026-07-15T21:43:53.823923+00:00
+- actor: claude-code
+  id: 01kxm7rrwem3gp0y15py598bw8
+  text: |-
+    **Second post-mlx-fix sweep (2026-07-15 late, mlx-swift-lm bumped to cc1728a — includes the csfnhca fix chain 44a96cf/b34643f/1c1f784 and ministral3 support; all outcome-scored; pin unchanged at Qwen3-30B-A3B, baseline 2/4):**
+
+    Batch context: the mlx /finish run completed csfnhca (done) and implemented+committed bxndpt6 (cc1728a) before being interrupted mid-review; 9mv1q33 (MiniMax rendering) was never implemented — it was stranded in `doing` by an earlier session interruption, so the resumed finish skipped it. I pushed the branch (1fbeb5d→cc1728a) to make the fixes fetchable. MiniMax-M2 therefore remains untested and blocked.
+
+    Results:
+    1. **GLM-4.7-Flash: 1/4** (was 0/4) — repairFromTripProneTool passed with a genuine grounded confirmation (7 calls, book invoked). But the `<tool_call>` reply leak + repeated-token runaway persist (composeChain: 353s of garbage), plus new stray-digit corruption in plain text ("…would9").
+    2. **Devstral-Small-2-24B: 0/4** — same leak (composeChain literal `<tool_call>` reply, 174s) and a new "announce the action then stop with zero calls" pattern.
+    3. **Devstral-2-123B: loads and runs now** (ministral3 fix verified working end to end — real unblock) **but 0/4**: invented nested API on weather (prior-over-discovery, same as its 27B sibling), deflections, and the SAME repeated-token runaway (`weatherPromises1010101010…`).
+
+    **Key cross-family finding filed upstream as `y4s0w2j` on the mlx-swift-lm board**: the repeated-token runaway (}7}7 / 202506041234… / 101010…) and the un-parsed `<tool_call>` reply leak now reproduce across THREE non-Qwen families while Qwen is unaffected — one shared constrained-decode/parser-agreement bug, not per-family issues. The csfnhca acceptance criteria passed at unit level but real-model behavior is unchanged — verification must be against live models.
+
+    **Standing tally (outcome-scored):** Qwen3-30B-A3B-Instruct-2507 2/4 (pin) > GLM-4.7-Flash 1/4 > everything else 0/4 or blocked. Next unlock: `y4s0w2j` (would open GLM + both Devstrals properly) and re-running finish for 9mv1q33 after moving it back to todo (would open MiniMax-M2).
+  timestamp: 2026-07-16T01:13:30.254559+00:00
 depends_on:
 - 01KWVNVV79AAK6FDHRJF329QVR
 position_column: done

@@ -52,7 +52,7 @@
       "location" : "https://github.com/swissarmyhammer/mlx-swift-lm",
       "state" : {
         "branch" : "foundationmodels-fixes",
-        "revision" : "1fbeb5df07211d35bedef555bf0cf7c8504242b2"
+        "revision" : "cc1728a4aba57fdad44f0e791a2c505dc6459c7f"
       }
     },
     {
