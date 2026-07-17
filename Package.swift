@@ -34,7 +34,7 @@ private let metadataRegistryDependencyName = "FoundationModelsMetadataRegistry"
 /// Base URL for packages published under the swissarmyhammer GitHub
 /// organization — `routerDependencyName`, `metadataRegistryDependencyName`,
 /// and `mlxPackage` are all fetched from here.
-private let swissArmyHammerOrgURL = "https://github.com/swissarmyhammer/"
+private let swissArmyHammerOrgURL = "git@github.com:swissarmyhammer/"
 
 /// Builds a `.package(url:branch:)` dependency for a package hosted under
 /// `swissArmyHammerOrgURL`, tracking `branch` (`mainBranch` by default).
@@ -44,7 +44,7 @@ private let swissArmyHammerOrgURL = "https://github.com/swissarmyhammer/"
 /// declarations would otherwise be near-verbatim copies differing only in the
 /// package name and tracked branch.
 private func swissArmyHammerPackage(name: String, branch: String = mainBranch) -> Package.Dependency {
-    .package(url: "\(swissArmyHammerOrgURL)\(name)", branch: branch)
+    .package(url: "\(swissArmyHammerOrgURL)\(name).git", branch: branch)
 }
 
 /// The MLX-backed model package `FoundationModelsRouter` itself depends on
