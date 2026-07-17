@@ -267,6 +267,18 @@ comments:
 
     **Standing tally (outcome-scored):** Qwen3-30B-A3B-Instruct-2507 2/4 (pin) > GLM-4.7-Flash 1/4 > everything else 0/4 or blocked. Next unlock: `y4s0w2j` (would open GLM + both Devstrals properly) and re-running finish for 9mv1q33 after moving it back to todo (would open MiniMax-M2).
   timestamp: 2026-07-16T01:13:30.254559+00:00
+- actor: claude-code
+  id: 01kxqyaegcywbjft2f45hmax6p
+  text: |-
+    **Third post-fix sweep (mlx-swift-lm 942d870, y4s0w2j fix landed — 6f337da "stop repeated-token runaways and tool-call text leaks in constrained decode"):**
+
+    Re-ran both Devstrals at the standard pin, outcome-scored. The upstream fix is verified live: no runaways, no `<tool_call>` reply leaks, no repeated-token corruption in either model.
+
+    - **Devstral-Small-2-24B-Instruct-2512-4bit: 1/4** (was 0/4). singleCallWeather genuinely passes — "It is currently 31°C (88°F) and sunny in Austin.", invoked=["weather"], findAPIsFirst=true, 13.6s. Remaining 3 failures are announce-then-stop myopia ("I will check the current temperatures…" then zero tool calls). All scenarios finish in 4–14s (previously 353s runaway).
+    - **Devstral-2-123B-Instruct-2512-4bit: 0/4** (unchanged score, but failure modes are now pure model behavior, not infra). singleCallWeather: invokes invented path `weather.getCurrentWeather`, hallucinates "25°C with clear skies" (fixture says 31). discoveryUnderDistractors: real discovery flow (findAPIsFirst=true, invoked=["tripCities"]) but claims it couldn't read the result. repair: fabricates "Your booking with ID 42 has been confirmed." with zero invocations. 155s total, no runaway.
+
+    Pin remains Qwen3-30B-A3B-Instruct-2507-4bit (2/4). Devstral-Small is now the closest challenger below it alongside GLM-4.7-Flash (1/4). Ungated suite 154/154 green on 942d870.
+  timestamp: 2026-07-17T11:45:21.420533+00:00
 depends_on:
 - 01KWVNVV79AAK6FDHRJF329QVR
 position_column: done
