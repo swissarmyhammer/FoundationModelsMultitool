@@ -373,6 +373,21 @@ comments:
 
     Pin stays Qwen3-30B-A3B-Instruct-2507 (unchanged this round — this was a prompt-surface/API change, not a pin experiment).
   timestamp: 2026-07-17T21:54:49.569962+00:00
+- actor: claude-code
+  id: 01kxs1k3ywsbthmcceh1fk6xt9
+  text: |-
+    **Model experiment: mlx-community/Qwen3.6-27B-mxfp4 with the shipped config (sessionInstructions + full-contract descriptions) — 4/4, cleanest run of the series.**
+
+    Every scenario passed with findAPIsFirst=true:
+    - singleCallWeather ✅ invoked=["weather"], "31°C and sunny in Austin" (21.9s)
+    - composeChain ✅ invoked=["tripCities","weather"], "Austin (ATX) at 31°C", findAPIsFirst=true (42.7s)
+    - discoveryUnderDistractors ✅ invoked=["tripCities","weather"] among ~20 distractors, "Austin is warmest", findAPIsFirst=true (43.4s)
+    - repair ✅ findAPIsFirst=true, invoked=["book"], "confirmed" (29.5s)
+
+    No wrong-guessing, no announce-then-stop, no over-refusal — every scenario opened with findAPIs. Notable: the raw 27B-mxfp4 scored 2/4 back in the pre-prompt-surface sweep (fabricated when it skipped discovery); with the enriched descriptions + sessionInstructions it's a clean 4/4 at 158s total. The dense 27B takes the opening move reliably where the 3B-active 35B-A3B varies.
+
+    Strong pin candidate: 4/4 (vs current pin Qwen3-30B-A3B-Instruct-2507 at 2/4 baseline), dense so honest-follow-through, mxfp4 so ~half the weight/bandwidth of the mxfp8 variant that also hit 4/4 (623s). Pin unchanged pending user decision.
+  timestamp: 2026-07-17T22:01:45.692877+00:00
 depends_on:
 - 01KWVNVV79AAK6FDHRJF329QVR
 position_column: done
