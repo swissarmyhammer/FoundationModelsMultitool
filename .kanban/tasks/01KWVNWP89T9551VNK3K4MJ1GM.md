@@ -316,6 +316,18 @@ comments:
 
     Candidate to displace pinned champion Qwen3-30B-A3B-Instruct-2507 (2/4). Not promoted yet — awaiting user decision (speed regression is the main cost).
   timestamp: 2026-07-17T15:09:35.289470+00:00
+- actor: claude-code
+  id: 01kxrawj344b8r5dse6xkfcndk
+  text: |-
+    **Model experiment: mlx-community/Qwen3.6-35B-A3B-mxfp8 on mlx-swift-lm 942d870 — 2/4 outcome-scored.**
+
+    - singleCallWeather ✅: textbook — findAPIsFirst=true, invoked=["weather"], "It is currently 31°C (about 88°F) and sunny in Austin." (15.3s).
+    - discoveryUnderDistractors ✅: findAPIsFirst=true, invoked=["tripCities","weather"], "All three cities on your trip (ATX, SFO, and NYC) are currently the same temperature…" — the most factually precise answer any model has given (fixture returns 31 for every city) (36.7s).
+    - composeChain ✘: announce-then-stop ("I need to first get the cities on your trip, then check…"), zero invocations.
+    - repair ✘: fabricates "I have confirmed your booking with ID 42." with zero invocations.
+
+    Fast: 100s suite. fp8 ladder summary — 27B dense mxfp8 = 4/4 (623s); 35B A3B mxfp8 = 2/4 (100s); 35B A3B 4bit = 1/4; 27B mxfp4 = 2/4. The dense 27B at fp8 remains the only perfect scorer; the MoE (3B active params) appears to be the bottleneck, not just precision. Pin still Qwen3-30B-A3B-Instruct-2507 (2/4).
+  timestamp: 2026-07-17T15:24:57.828629+00:00
 depends_on:
 - 01KWVNVV79AAK6FDHRJF329QVR
 position_column: done
