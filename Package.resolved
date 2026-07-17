@@ -16,7 +16,7 @@
       "location" : "git@github.com:swissarmyhammer/FoundationModelsMetadataRegistry.git",
       "state" : {
         "branch" : "main",
-        "revision" : "d4b9057905915b1eb4226b0a5ab98419bc0b64c2"
+        "revision" : "64debb7b8ff62a764a8b80daa43229177367521e"
       }
     },
     {
@@ -25,7 +25,7 @@
       "location" : "git@github.com:swissarmyhammer/FoundationModelsRanker.git",
       "state" : {
         "branch" : "main",
-        "revision" : "507c0109dcebddf2964d7c49d5d7974b34b3f4c0"
+        "revision" : "29ed9dd353ea3588bd6165d1c41547f974126c53"
       }
     },
     {
