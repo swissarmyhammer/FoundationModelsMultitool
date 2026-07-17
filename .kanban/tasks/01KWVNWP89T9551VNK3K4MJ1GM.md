@@ -328,6 +328,20 @@ comments:
 
     Fast: 100s suite. fp8 ladder summary — 27B dense mxfp8 = 4/4 (623s); 35B A3B mxfp8 = 2/4 (100s); 35B A3B 4bit = 1/4; 27B mxfp4 = 2/4. The dense 27B at fp8 remains the only perfect scorer; the MoE (3B active params) appears to be the bottleneck, not just precision. Pin still Qwen3-30B-A3B-Instruct-2507 (2/4).
   timestamp: 2026-07-17T15:24:57.828629+00:00
+- actor: claude-code
+  id: 01kxrdjqqrcw8sqq7rzxgs433x
+  text: |-
+    **Prompt-surface lever 1: did-you-mean repair hint for unknown tools.* calls (UnknownToolHint).**
+
+    When a runCode snippet calls a `tools.*` path that doesn't exist, the rendered error now extracts the failed path from the JS TypeError, ranks catalog entries by name similarity (containment + trigram Jaccard, threshold 0.2), and splices the top 3 in findAPIs block format between the failure and the "Fix the snippet" instruction; no close match → steer back to findAPIs. Guard: a mis-called *existing* tool keeps its plain error. TDD'd (4 new tests, UnknownToolHintTests), full suite 158/158.
+
+    **Measured with Qwen3.6-35B-A3B-mxfp8 (baseline 2/4): now 3/4.**
+    - composeChain FLIPPED ✘→✅: was announce-then-stop after a wrong-guess dead end; now findAPIsFirst=true, invoked=["tripCities","weather"], correct "all three cities same temperature" answer (30.2s).
+    - weather ✅ and discovery ✅ held (both textbook findAPIs-first).
+    - repair still ✘ but changed character: 4 tool calls, searched (findAPIs invoked) yet never called book; final reply still announces "I'll confirm your booking with ID 42 now." — announce-then-stop persists where the failed guess isn't the trigger. Lever 2 (imperative next-step footer on findAPIs results) targets exactly this.
+
+    Caveat: n=1 per scenario; composeChain's flip is consistent with the mechanism (its prior failure was exactly a wrong-guess dead end) but not proof.
+  timestamp: 2026-07-17T16:12:01.656074+00:00
 depends_on:
 - 01KWVNVV79AAK6FDHRJF329QVR
 position_column: done

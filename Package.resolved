@@ -1,5 +1,5 @@
 {
-  "originHash" : "ec3e354f29b9ae354b29a136dd9c11bee3a2a46acab920cd7c07fb09286aff86",
+  "originHash" : "a29084933a128f97bc8cb5a7d7e6138963389a0b737357a5b14bfe7296eaaf62",
   "pins" : [
     {
       "identity" : "eventsource",
@@ -13,7 +13,7 @@
     {
       "identity" : "foundationmodelsmetadataregistry",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/swissarmyhammer/FoundationModelsMetadataRegistry",
+      "location" : "git@github.com:swissarmyhammer/FoundationModelsMetadataRegistry.git",
       "state" : {
         "branch" : "main",
         "revision" : "ddb569adf1ddf44173691e08760494e09af5ec18"
@@ -31,7 +31,7 @@
     {
       "identity" : "foundationmodelsrouter",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/swissarmyhammer/FoundationModelsRouter",
+      "location" : "git@github.com:swissarmyhammer/FoundationModelsRouter.git",
       "state" : {
         "branch" : "main",
         "revision" : "0aaf917b21b85b8456265a5d4fdf74a0119b8333"
@@ -49,7 +49,7 @@
     {
       "identity" : "mlx-swift-lm",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/swissarmyhammer/mlx-swift-lm",
+      "location" : "git@github.com:swissarmyhammer/mlx-swift-lm.git",
       "state" : {
         "branch" : "foundationmodels-fixes",
         "revision" : "942d870c77bb02e4484ef6b44afca143f374f46f"

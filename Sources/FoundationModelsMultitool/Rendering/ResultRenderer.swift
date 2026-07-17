@@ -107,18 +107,24 @@ public enum ResultRenderer {
     }
 
     /// Renders a thrown `InterpreterError` as a repairable error: what kind
-    /// of failure it was, the exact underlying message, and an instruction
-    /// to fix the snippet and retry.
+    /// of failure it was, the exact underlying message, an optional repair
+    /// hint, and an instruction to fix the snippet and retry.
     ///
-    /// - Parameter error: the failure `Interpreter.run` threw.
+    /// - Parameters:
+    ///   - error: the failure `Interpreter.run` threw.
+    ///   - hint: optional repair guidance (e.g. `UnknownToolHint`'s
+    ///     did-you-mean suggestions) spliced between the failure and the
+    ///     retry instruction, where the model reads it as part of the error
+    ///     it is about to fix.
     /// - Returns: the repairable-error text handed back to the model.
-    public static func render(_ error: InterpreterError) -> String {
+    public static func render(_ error: InterpreterError, hint: String? = nil) -> String {
         let summary: String =
             switch error.kind {
             case .exception: "The snippet failed"
             case .timeout: "The snippet timed out"
             }
-        return "\(summary): \(error.description)\n\nFix the snippet and call runCode again."
+        let hintSection = hint.map { "\($0)\n\n" } ?? ""
+        return "\(summary): \(error.description)\n\n\(hintSection)Fix the snippet and call runCode again."
     }
 
     // MARK: - Serialization

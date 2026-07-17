@@ -243,7 +243,8 @@ public struct MultiTool: Tool {
             let result = try await Self.run(code: code, installing: hostFunctions, using: interpreter)
             return ResultRenderer.render(result, limits: limits)
         } catch let interpreterError as InterpreterError {
-            return ResultRenderer.render(interpreterError)
+            let hint = UnknownToolHint.hint(message: interpreterError.message, surface: registry.surface)
+            return ResultRenderer.render(interpreterError, hint: hint)
         }
     }
 
