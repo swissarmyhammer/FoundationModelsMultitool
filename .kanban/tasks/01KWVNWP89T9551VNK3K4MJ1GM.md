@@ -290,6 +290,18 @@ comments:
 
     Fast and clean: 73s suite total, no runaways, no leaks; failure mode is refusal/invented-path guessing, not fabrication. Pin remains Qwen3-30B-A3B-Instruct-2507-4bit (2/4). Challenger tier now: Qwen3.6-35B-A3B, Devstral-Small-2-24B, GLM-4.7-Flash all at 1/4 (each passing a different scenario mix).
   timestamp: 2026-07-17T14:23:11.910943+00:00
+- actor: claude-code
+  id: 01kxr8vhe3ydkysyzgwt8se9mc
+  text: |-
+    **Model experiment: mlx-community/Qwen3.6-27B-mxfp4 on mlx-swift-lm 942d870 — 2/4 outcome-scored, TIES the pinned champion with a different (arguably harder) pass profile.**
+
+    - discoveryUnderDistractors ✅ (first model to pass it): full genuine flow among ~20 distractors — findAPIsFirst=true, 7 tool calls, invoked=["tripCities","weather"], "The warmest city on your trip right now is Austin (ATX)…" (93.4s).
+    - repair ✅: findAPIsFirst=true, invoked=["book"], "I have confirmed your booking with ID 42." (34.7s).
+    - singleCallWeather ✘: fabricates "32°C, clear skies" (fixture says 31/Sunny) with zero tools.* invocations.
+    - composeChain ✘: fabricates "San Francisco at 22°C" — names a real fixture city so the answer check passed, but zero invocations → grounding fail.
+
+    Suite 199s, no runaways/leaks. Pass profile: champion Qwen3-30B-A3B-Instruct-2507 = weather+repair; Qwen3.6-27B-mxfp4 = discovery+repair. Failure mode is confident fabrication when it skips discovery — opposite of Qwen3.6-35B's honest refusal. Pin unchanged pending a tiebreak (e.g. re-run stability or prompt iteration).
+  timestamp: 2026-07-17T14:49:27.235337+00:00
 depends_on:
 - 01KWVNVV79AAK6FDHRJF329QVR
 position_column: done
