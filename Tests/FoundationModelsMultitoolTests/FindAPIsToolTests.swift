@@ -21,7 +21,7 @@ struct FindAPIsToolTests {
         let searcher = MetadataSearcher(
             items: surface.entries,
             mode: .auto,
-            selection: SelectionConfig(model: { _ in root }, capacityCharacterLimit: .max)
+            selection: SelectionConfig(model: { _, _ in root }, capacityCharacterLimit: .max)
         )
         let findAPIsTool = FindAPIsTool(searcher: searcher, limit: surface.entries.count)
 
@@ -46,7 +46,7 @@ struct FindAPIsToolTests {
         let searcher = MetadataSearcher(
             items: surface.entries,
             mode: .auto,
-            selection: SelectionConfig(model: { _ in root }, capacityCharacterLimit: .max)
+            selection: SelectionConfig(model: { _, _ in root }, capacityCharacterLimit: .max)
         )
         let findAPIsTool = FindAPIsTool(searcher: searcher, limit: surface.entries.count)
 
@@ -74,7 +74,7 @@ struct FindAPIsToolTests {
         let searcher = MetadataSearcher(
             items: surface.entries,
             mode: .auto,
-            selection: SelectionConfig(model: { _ in root }, capacityCharacterLimit: .max)
+            selection: SelectionConfig(model: { _, _ in root }, capacityCharacterLimit: .max)
         )
         let findAPIsTool = FindAPIsTool(searcher: searcher, limit: surface.entries.count)
 
@@ -114,6 +114,48 @@ struct FindAPIsToolTests {
         let blockRange = try #require(feedback.range(of: entry.block))
         let footerRange = try #require(feedback.range(of: "Now write one runCode snippet"))
         #expect(blockRange.upperBound <= footerRange.lowerBound)
+    }
+
+    @Test("findAPIs's description alone carries the access framing and the runCode workflow — no system prompt required")
+    func descriptionCarriesTheNoSystemPromptScaffolding() throws {
+        let registry = try MultiTool.Builder().addTool(TripCitiesTool()).buildRegistry()
+        // Collapse the multiline literal's hard line-wraps to single spaces
+        // so an assertion probes the guidance, not incidental wrapping.
+        let description = try FindAPIsTool(registry: registry, librarian: nil)
+            .description
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
+
+        // The full essence of the retired system prompt, verified clause by
+        // clause so a future paraphrase can't silently drop a load-bearing
+        // line (the whole point of moving it into the tool).
+        #expect(description.contains("real, working access")) // real access
+        #expect(description.localizedCaseInsensitiveContains("call findAPIs first")) // findAPIs-first stance
+        #expect(description.contains("instead of asking the user")) // search, don't ask
+        #expect(description.contains("once per kind of data")) // one search per kind
+        #expect(description.localizedCaseInsensitiveContains("never refuse")) // no over-refusal
+        #expect(description.contains("runCode")) // the runCode handoff
+        // Honest miss: when nothing matches, say so rather than invent.
+        #expect(description.localizedCaseInsensitiveContains("say so"))
+    }
+
+    @Test("FindAPIsTool.sessionInstructions is a persona-free, ready-to-use tool-calling directive")
+    func sessionInstructionsAreAnOperationalDirective() {
+        let instructions = FindAPIsTool.sessionInstructions
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
+
+        // Operational, not persona: no "helpful assistant" ritual — just
+        // clear information on how to call the tools.
+        #expect(!instructions.localizedCaseInsensitiveContains("helpful assistant"))
+        // The load-bearing first-move stance the tool descriptions can't
+        // prime upfront (measured: description-only regresses on small
+        // models). Usable whole, or appended to a caller's own instructions.
+        #expect(instructions.contains("real, working access"))
+        #expect(instructions.localizedCaseInsensitiveContains("call findAPIs first"))
+        #expect(instructions.contains("runCode"))
+        #expect(instructions.localizedCaseInsensitiveContains("answer only from what"))
+        #expect(instructions.localizedCaseInsensitiveContains("never refus"))
     }
 
     @Test("the production registry+librarian initializer wires .auto mode over the registry's own surface entries")

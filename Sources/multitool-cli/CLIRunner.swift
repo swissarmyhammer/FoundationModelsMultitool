@@ -217,55 +217,19 @@ enum CLIRunner {
     /// example.
     static let demoPrompt = "Of the cities on my trip, which is warmest right now?"
 
-    /// The session instructions driving the model toward real tool use —
-    /// shared verbatim by this CLI's own session and the gated integration
-    /// suite's scenario sessions (`ScenarioRunner.swift`,
-    /// `NativeToolCallEvaluation.swift`), so the suite measures exactly the
-    /// instructions the product ships.
+    /// The session instructions this CLI's session runs under — the
+    /// package-owned `FindAPIsTool.sessionInstructions`, shared verbatim by
+    /// the gated integration suite's scenario sessions
+    /// (`ScenarioRunner.swift`, `NativeToolCallEvaluation.swift`), so the
+    /// suite measures exactly what the product ships.
     ///
-    /// Every clause targets an empirically observed failure mode of small
-    /// tool-calling models (recorded on tasks `9hchxj6`/`k4mj1gm`,
-    /// real-hardware runs on the pinned models):
-    ///
-    /// - "connected … you have real, working access … never refuse for lack
-    ///   of access": the over-refusal mode — a capable model discovering the
-    ///   right function via findAPIs and then *still* deflecting with "I
-    ///   can't access real-time data, check a weather website".
-    /// - "always call findAPIs first": the model skipping discovery and
-    ///   guessing function names under a many-tool surface.
-    /// - "never simulate or invent data in a snippet": the model calling
-    ///   `runCode` with hardcoded made-up city/temperature arrays, invented
-    ///   `fetch` calls to external APIs, or `console.log`ged answers instead
-    ///   of actually invoking the discovered `tools.*` functions.
-    /// - "read each discovered function's declared return type and
-    ///   destructure it accordingly": the model treating a declared
-    ///   `{ cities: string[] }` return as a bare array and bailing out on
-    ///   its own graceful-degradation branch.
-    /// - "finds no relevant function, say so": off-topic requests degrading
-    ///   to an invented answer instead of an honest miss.
-    ///
-    /// Deliberately example-free and affirmatively framed: one earlier draft
-    /// embedded a worked `return tools.weather({city: "Austin"});` example,
-    /// and on real hardware the model pattern-matched it into
-    /// `console.log`-ing an invented Austin temperature as its *first*
-    /// action; another, negation-heavy draft ("you have NO built-in
-    /// knowledge … you cannot answer …") primed over-refusals. The
-    /// instructions must neither mention a concrete tool or value the model
-    /// could parrot, nor talk it into believing it lacks access.
-    static let toolUseInstructions = """
-        You are a helpful assistant connected to the user's live data and services through \
-        tools. You have real, working access: always call findAPIs first to discover the \
-        functions available for the task, then call runCode with a JavaScript snippet that \
-        calls those functions under tools.* and returns the result. The user's own data — \
-        their trip, bookings, and any live values — is also behind discoverable functions: \
-        search findAPIs for it instead of asking the user, searching once per kind of data \
-        you need. The tools genuinely execute and return real data — trust their outputs and \
-        use them to answer. Read each discovered function's declared return type and \
-        destructure it accordingly. Never answer data questions from your own knowledge, \
-        never simulate or invent data in a snippet, and never refuse for lack of access — \
-        you have access through the tools. If findAPIs truly finds no relevant function, \
-        say so.
-        """
+    /// Aliased, not redefined: the instruction has one source of truth, on
+    /// the tool that needs it (see `FindAPIsTool.sessionInstructions` for
+    /// why the load-bearing first-move stance lives on the tool rather than
+    /// only in the tool descriptions). The full behavioral contract lives in
+    /// the `findAPIs`/`runCode` descriptions themselves; this supplies the
+    /// opening move those descriptions structurally can't prime.
+    static let toolUseInstructions = FindAPIsTool.sessionInstructions
 
     /// A function type for profile resolution, converting a profile definition into a language model profile.
     ///

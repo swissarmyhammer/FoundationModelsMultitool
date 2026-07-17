@@ -215,7 +215,7 @@ struct ExamplesTests {
         let searcher = MetadataSearcher(
             items: registry.surface.entries,
             mode: .auto,
-            selection: SelectionConfig(model: { _ in selectionRoot }, capacityCharacterLimit: .max)
+            selection: SelectionConfig(model: { _, _ in selectionRoot }, capacityCharacterLimit: .max)
         )
         let findAPIsTool = FindAPIsTool(searcher: searcher, limit: registry.surface.entries.count)
 

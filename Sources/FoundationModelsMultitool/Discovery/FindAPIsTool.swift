@@ -53,15 +53,60 @@ public struct FindAPIsTool: Tool {
     /// This tool's `Tool`-protocol name, always `"findAPIs"`.
     public let name = "findAPIs"
 
+    /// The package-owned session instruction that makes the findAPIs +
+    /// runCode tool pair behave — ready to use whole as a
+    /// `LanguageModelSession`'s `instructions`, or to append to a caller's
+    /// own instructions.
+    ///
+    /// The tool descriptions already carry the full behavioral contract, so
+    /// this is deliberately not a duplicate of them — it is the one thing a
+    /// description structurally *can't* deliver: the upfront, first-move
+    /// stance. Empirically (recorded on task `k4mj1gm`, real-model gated
+    /// runs), descriptions alone leave a model announcing a plan and
+    /// stopping without acting — small models collapse to 1/4, and even a
+    /// capable model over-refuses the trivial single-tool case — because a
+    /// tool description is read when the model is already choosing a tool,
+    /// not when it decides its opening move. This instruction supplies that
+    /// opening move directly: real access, findAPIs first, then runCode, act
+    /// rather than narrate, answer only from returned data. Adding it takes
+    /// the same model from 1/4 to 4/4.
+    ///
+    /// Persona-free by design: no "you are a helpful assistant" framing,
+    /// just clear information on how to call the tools — the only part that
+    /// carries weight.
+    public static let sessionInstructions = """
+        You have real, working access to the user's live data and services through your \
+        tools, including anything real-time. Never refuse or claim you lack access to \
+        current data: instead, always call findAPIs first to discover the exact \
+        functions for the task, then call runCode to invoke them under tools.* — make \
+        the calls, do not merely describe what you would do — and answer only from what \
+        the tools return, never from your own assumptions.
+        """
+
     /// This tool's `Tool`-protocol description, presented to the model as
     /// usage instructions for `findAPIs`.
+    ///
+    /// Deliberately carries the whole behavioral contract a session needs —
+    /// the access framing (real access, the user's own data behind the
+    /// catalog, never ask or refuse instead of searching) and the workflow
+    /// (search, then one runCode snippet over the exact discovered paths,
+    /// answer only from returned data). The package must be drop-in usable
+    /// with no bespoke system prompt: registering `findAPIs` + `runCode`
+    /// alone is the product surface, so the "system prompt" lives here.
     public let description = """
-        Describe, in plain language, what you are trying to accomplish. Returns the few
-        tool-functions relevant to that task — each with its typed signature, purpose,
-        and a runnable example — so you can write a runCode snippet. Prefer this over
-        guessing function names. The user's own data — their trip, bookings, and other
-        live values — is also behind functions here: search for it instead of asking
-        the user. Search once per kind of data you need.
+        This is how you use your tools. You are connected to the user's live data and \
+        services, and you have real, working access: every function you might need — \
+        including the user's own data such as their trip, bookings, and other live \
+        values — is behind this catalog. Before you answer, and before you ask the user \
+        for anything, call findAPIs first: describe in plain language what you are \
+        trying to accomplish, and you get back the few relevant tool-functions, each \
+        with its typed signature, purpose, and a runnable example. Search here instead \
+        of asking the user, and instead of guessing function names, once per kind of \
+        data you need. The tools genuinely execute and return real data, so never \
+        refuse for lack of access — you have access through them. Then write one \
+        runCode snippet that calls those exact tools.* paths to get your answer. If \
+        findAPIs truly finds no relevant function for the request, say so honestly \
+        rather than invent an answer.
         """
 
     /// The catalog searcher every `findAPIs` call forwards to — runs in
@@ -99,33 +144,36 @@ public struct FindAPIsTool: Tool {
     /// Builds a `.auto`-mode `MetadataSearcher` over `registry.surface
     /// .entries`: when `librarian` is `nil`, `.auto` degrades to `.retrieval`
     /// (no session, no tokens); when it's supplied, `.auto` drives its
-    /// selection tier through `librarian`'s guided sessions, constrained to
-    /// exactly `registry.surface`'s entry paths via `idEnumGrammar(ids:)` —
-    /// mirroring the "librarian on the flash slot" split, decoupled from any
-    /// main loop's own turn machinery. Per `SelectionConfig`'s own
-    /// cached-root/`fork()`-per-call contract, `librarian`'s own `RoutedLLM
-    /// .makeGuidedSession(grammar:instructions:)` — not `LanguageModelSession`
-    /// — backs every selection call, since the FoundationModels interop path
-    /// doesn't expose the Router's cache-level `fork()`.
+    /// selection tier through `librarian`'s guided sessions — mirroring the
+    /// "librarian on the flash slot" split, decoupled from any main loop's
+    /// own turn machinery. Per `SelectionConfig`'s own cached-root/`fork()`
+    /// -per-call contract, `librarian`'s own `RoutedLLM.makeGuidedSession
+    /// (grammar:instructions:)` — not `LanguageModelSession` — backs every
+    /// selection call, since the FoundationModels interop path doesn't
+    /// expose the Router's cache-level `fork()`.
+    ///
+    /// The selection grammar is no longer built here: `SelectionConfig
+    /// .model` now receives the current call's `Grammar` alongside its
+    /// instructions, so the `SelectionTier` supplies the correctly-scoped
+    /// `idEnumGrammar(ids:)` per call (the whole catalog under budget, the
+    /// top-M candidates over budget) — this closure just threads that
+    /// grammar into `makeGuidedSession`.
     ///
     /// - Parameters:
-    ///   - registry: the catalog whose entries become the searcher's catalog
-    ///     and, when `librarian` is supplied, constrain the selection
-    ///     grammar.
+    ///   - registry: the catalog whose entries become the searcher's
+    ///     catalog and, when `librarian` is supplied, the id set the
+    ///     selection tier constrains its grammar to.
     ///   - librarian: the resolved `RoutedLLM` every selection session runs
     ///     on, or `nil` to leave the selection tier unconfigured — `.auto`
     ///     then always answers via retrieval alone.
     ///   - limit: the maximum number of matches to request per call. Defaults
     ///     to `nil`, which resolves to `registry.surface.entries.count` — so
     ///     nothing the searcher legitimately matched is ever truncated.
-    /// - Throws: whatever `idEnumGrammar(ids:)` throws while deriving the
-    ///   selection tier's id-enum grammar — not expected in practice (see
-    ///   that function's documentation), and only reachable when `librarian`
-    ///   is non-`nil`.
+    /// - Throws: reserved for API stability across selection-tier wiring
+    ///   changes; the current construction path has no fallible step.
     public init(registry: MultiTool.Registry, librarian: RoutedLLM?, limit: Int? = nil) throws {
-        let selection: SelectionConfig? = try librarian.map { librarian in
-            let grammar = try idEnumGrammar(ids: registry.surface.entries.map(\.path))
-            return SelectionConfig(model: { instructions in
+        let selection: SelectionConfig? = librarian.map { librarian in
+            SelectionConfig(model: { instructions, grammar in
                 RoutedAgentSession(session: librarian.makeGuidedSession(grammar: grammar, instructions: instructions))
             })
         }

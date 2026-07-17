@@ -83,6 +83,32 @@ struct MultiToolExecutionTests {
         #expect(output.contains("city"))
     }
 
+    // MARK: - Description: the no-system-prompt error-recovery contract
+
+    @Test("runCode's description alone carries the findAPIs-first workflow and the error-recovery contract — no system prompt required")
+    func descriptionCarriesTheErrorRecoveryContract() throws {
+        let registry = try MultiTool.Builder().addTool(TempTool()).buildRegistry()
+        // Collapse the multiline literal's hard line-wraps to single spaces
+        // so an assertion probes the guidance, not incidental wrapping.
+        let description = MultiTool(registry: registry)
+            .description
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
+
+        // The first-move stance — load-bearing, and only effective from a
+        // description the model reads upfront alongside every tool schema.
+        #expect(description.localizedCaseInsensitiveContains("call findAPIs first"))
+        // Read-and-destructure the declared return type.
+        #expect(description.localizedCaseInsensitiveContains("destructure"))
+        // Answer only from real returns — never own knowledge, never invented.
+        #expect(description.localizedCaseInsensitiveContains("never answer"))
+        #expect(description.localizedCaseInsensitiveContains("never simulate or invent"))
+        // The fix-and-retry contract.
+        #expect(description.contains("call runCode again"))
+        #expect(description.localizedCaseInsensitiveContains("never stop at an error"))
+        #expect(description.localizedCaseInsensitiveContains("never claim success"))
+    }
+
     // MARK: - directMode(): a runCode-only surface
 
     @Test("registry.directMode() reports no findAPIs affordance; a plain registry reports both")

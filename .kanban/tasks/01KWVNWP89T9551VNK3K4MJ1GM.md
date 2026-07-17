@@ -356,6 +356,23 @@ comments:
 
     Repair failure shapes across the three 35B runs: fabricated confirmation → announce-after-search → apologize-and-stop. It's consistently turn termination after the trip-prone error, not discovery failure.
   timestamp: 2026-07-17T17:59:23.474384+00:00
+- actor: claude-code
+  id: 01kxs16dk1120em8062192dcpf
+  text: |-
+    **Tool-owned instructions + full-contract descriptions (mlx-swift-lm 942d870+, deps bumped to MetadataRegistry 64debb7 / Ranker 29ed9dd).**
+
+    Design (per user): the "system prompt" now lives with the tools, not hand-written per caller.
+    - Both tool descriptions rewritten to carry 100% of the retired system-prompt essence (audited clause-by-clause; earlier lever-3 draft had silently dropped 5 clauses — findAPIs-first, destructure, never-invent, trust-outputs, honest-miss). runCode's description carries the findAPIs-first first-move (loads upfront). Unit tests now assert each clause so no future paraphrase can drop one.
+    - New `FindAPIsTool.sessionInstructions` static: persona-free, ready to use whole as `instructions:` or appended. Carries only the load-bearing opening move (real access, findAPIs-first, act-don't-narrate, answer-from-returns, never-refuse). CLIRunner.toolUseInstructions now aliases it (one source of truth on the tool). 162/162 unit green.
+    - Also fixes the build: MetadataRegistry/Ranker's SelectionConfig.model closure went 1-arg → 2-arg (String, Grammar); adapted FindAPIsTool init + 4 test call sites.
+
+    **Empirical findings (Qwen3.6-35B-A3B-mxfp8, outcome-scored):**
+    - Description-only, generic instruction: **1/4** even with 100% of content in descriptions — proves descriptions can't prime the first-move stance for this small MoE (announce-then-stop). My earlier 1/4 was NOT just an incomplete paraphrase; the complete version still fails.
+    - Description-only on capable dense Qwen3.6-27B-mxfp8: **3/4** — composeChain/discovery/repair pass from descriptions alone; only weather over-refuses. Capable models largely honor descriptions.
+    - sessionInstructions + descriptions (shipped config): **3–4/4 with run-to-run variance** — weather and discovery each flipped once across two runs; repair+composeChain stable. Anti-refusal front-load fixed the weather over-refusal. Model is stochastic at 3B active; not a stable 4/4.
+
+    Pin stays Qwen3-30B-A3B-Instruct-2507 (unchanged this round — this was a prompt-surface/API change, not a pin experiment).
+  timestamp: 2026-07-17T21:54:49.569962+00:00
 depends_on:
 - 01KWVNVV79AAK6FDHRJF329QVR
 position_column: done

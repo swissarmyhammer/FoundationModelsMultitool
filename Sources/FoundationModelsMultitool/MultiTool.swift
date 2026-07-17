@@ -147,13 +147,30 @@ public struct RunCodeArguments {
 public struct MultiTool: Tool {
     /// This tool's `Tool`-protocol name, always `"runCode"`.
     public let name = "runCode"
-    /// This tool's `Tool`-protocol description, presented to the model as usage instructions for `runCode`.
+    /// This tool's `Tool`-protocol description, presented to the model as
+    /// usage instructions for `runCode`.
+    ///
+    /// Together with `FindAPIsTool.description`, deliberately carries the
+    /// whole behavioral contract a session needs — the package must be
+    /// drop-in usable with no bespoke system prompt. `findAPIs` owns the
+    /// access framing and the search-then-snippet workflow; this side owns
+    /// the error-recovery contract: fix and immediately re-call on error,
+    /// never stop at an error to narrate, never claim an outcome no
+    /// snippet actually returned.
     public let description = """
-        Run a JavaScript snippet against the available tools, exposed as functions under
-        `tools.*`. Compose calls with normal code — variables, loops, map/filter — and
-        `return` the final value (only that comes back; intermediates stay private).
-        Call findAPIs first to learn exact signatures, or help()/docs(name) in-snippet.
-        Errors are returned to you to fix and retry.
+        Run a JavaScript snippet against the user's real tools, exposed as functions \
+        under `tools.*`. Always call findAPIs first to discover the exact functions and \
+        their signatures for the task (or help()/docs(name) in a snippet); never guess \
+        function names. Then compose calls with normal code — variables, loops, \
+        map/filter — and `return` the final value (only that comes back; intermediates \
+        stay private). Read each discovered function's declared return type and \
+        destructure it accordingly. These tools genuinely execute and return real data: \
+        answer only from what they return — never answer data questions from your own \
+        knowledge, and never simulate or invent data in a snippet. If a snippet fails, \
+        the error comes back for you to repair: fix the snippet and call runCode again \
+        immediately — never stop at an error to describe or apologize for what you were \
+        going to do, and never claim success for a call a snippet did not actually \
+        return.
         """
 
     /// Where this tool logs its M10 diagnostics — one `runCode` call's
