@@ -302,6 +302,20 @@ comments:
 
     Suite 199s, no runaways/leaks. Pass profile: champion Qwen3-30B-A3B-Instruct-2507 = weather+repair; Qwen3.6-27B-mxfp4 = discovery+repair. Failure mode is confident fabrication when it skips discovery — opposite of Qwen3.6-35B's honest refusal. Pin unchanged pending a tiebreak (e.g. re-run stability or prompt iteration).
   timestamp: 2026-07-17T14:49:27.235337+00:00
+- actor: claude-code
+  id: 01kxra0d5s6han2c85gj83z6w1
+  text: |-
+    **Model experiment: mlx-community/Qwen3.6-27B-mxfp8 on mlx-swift-lm 942d870 — 4/4 outcome-scored. FIRST PERFECT SCORE across all models tested.**
+
+    - singleCallWeather ✅: "It's currently 31°C (88°F) and sunny in Austin." — exact fixture values. Slow (438s): guessed wrong names first (invoked getCurrentWeather, getWeather) then self-repaired to the real `weather`.
+    - composeChain ✅: findAPIsFirst=true, invoked=["tripCities","weather"], "warmest city … is NYC at 31°C" (32.6s).
+    - discoveryUnderDistractors ✅: guessed wrong paths, recovered via discovery to tripCities+weather, "Austin (ATX) at 31°C" (66.5s).
+    - repair ✅: findAPIsFirst=true, 7 tool calls, invoked=["book"], "Your booking with ID 42 has been confirmed." (59.7s).
+
+    Every answer grounded in real invocations — the wrong-guess-then-recover behavior is exactly the repair loop working. Trade-off: suite total 623s (~3x the 4bit variants; fp8 ≈ 2x memory bandwidth + the 438s retry-heavy weather run). Compare mxfp4 sibling: 2/4 (fabricated when it skipped discovery); fp8 precision appears to fix the fabrication.
+
+    Candidate to displace pinned champion Qwen3-30B-A3B-Instruct-2507 (2/4). Not promoted yet — awaiting user decision (speed regression is the main cost).
+  timestamp: 2026-07-17T15:09:35.289470+00:00
 depends_on:
 - 01KWVNVV79AAK6FDHRJF329QVR
 position_column: done
