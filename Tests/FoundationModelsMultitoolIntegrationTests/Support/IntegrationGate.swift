@@ -159,8 +159,20 @@ var multitoolIntegrationEnabled: Bool {
 /// `book`-invoked confirmation for repair — and its failures are honest
 /// clarifying-question deflections, never hallucinations. `standard`
 /// therefore moves to the 30B; decode speed is comparable (3.3B active).
+///
+/// **Tool-owned contract promoted a dense 27B.** After the tool-use
+/// contract moved onto the tools themselves — the full behavioral essence
+/// in the `findAPIs`/`runCode` descriptions plus the load-bearing opening
+/// move in `FindAPIsTool.sessionInstructions` (task `k4mj1gm`) — a model
+/// sweep under the shipped config found `Qwen3.6-27B-mxfp4` scoring a clean
+/// 4/4, every scenario opening with `findAPIs`, no wrong-guessing,
+/// announce-then-stop, or over-refusal. It doubles the 30B-A3B's 2/4, and
+/// being a dense model it follows through reliably where the 3.3B-active
+/// MoE varies run to run (the 35B-A3B hovered at 3-4/4). At mxfp4 it is
+/// ~half the weight and memory bandwidth of the 27B-mxfp8 that also hit 4/4
+/// but took ~4x the wall time. `standard` therefore moves to the dense 27B.
 private enum TinyModels {
-    static let generation: ModelRef = "mlx-community/Qwen3-30B-A3B-Instruct-2507-4bit"
+    static let generation: ModelRef = "mlx-community/Qwen3.6-27B-mxfp4"
     static let selection: ModelRef = "mlx-community/Qwen2.5-1.5B-Instruct-4bit"
     static let embedding: ModelRef = "mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ"
 }
