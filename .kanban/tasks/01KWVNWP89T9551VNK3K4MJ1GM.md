@@ -279,6 +279,17 @@ comments:
 
     Pin remains Qwen3-30B-A3B-Instruct-2507-4bit (2/4). Devstral-Small is now the closest challenger below it alongside GLM-4.7-Flash (1/4). Ungated suite 154/154 green on 942d870.
   timestamp: 2026-07-17T11:45:21.420533+00:00
+- actor: claude-code
+  id: 01kxr7bf16seen8ff2e2rhzwr8
+  text: |-
+    **Model experiment: mlx-community/Qwen3.6-35B-A3B-4bit (non-OptiQ) on mlx-swift-lm 942d870 — 1/4 outcome-scored.**
+
+    - repair ✅ (the hardest scenario): findAPIsFirst=true, invoked=["book"], "Your booking with ID 42 has been successfully confirmed." — genuine repair loop, 18.9s.
+    - singleCallWeather ✘: zero calls, refuses "I don't have access to real-time weather data for Austin."
+    - composeChain / discoveryUnderDistractors ✘: both guess an invented tool path `getTrip` instead of discovering via findAPIs, then refuse "I don't have access to your trip information."
+
+    Fast and clean: 73s suite total, no runaways, no leaks; failure mode is refusal/invented-path guessing, not fabrication. Pin remains Qwen3-30B-A3B-Instruct-2507-4bit (2/4). Challenger tier now: Qwen3.6-35B-A3B, Devstral-Small-2-24B, GLM-4.7-Flash all at 1/4 (each passing a different scenario mix).
+  timestamp: 2026-07-17T14:23:11.910943+00:00
 depends_on:
 - 01KWVNVV79AAK6FDHRJF329QVR
 position_column: done
