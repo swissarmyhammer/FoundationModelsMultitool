@@ -342,6 +342,20 @@ comments:
 
     Caveat: n=1 per scenario; composeChain's flip is consistent with the mechanism (its prior failure was exactly a wrong-guess dead end) but not proof.
   timestamp: 2026-07-17T16:12:01.656074+00:00
+- actor: claude-code
+  id: 01kxrkqajjfg9xx502ke9y3ck5
+  text: |-
+    **Prompt-surface lever 2: imperative next-step footer on findAPIs results.**
+
+    Every non-empty findAPIs result now ends with: "Now write one runCode snippet that calls these exact tools.* paths — compose multiple calls in that one snippet with variables as needed — and return the real result. Do not describe a plan and do not answer from memory: call runCode now, and answer only from what it returns." Empty results unchanged (existing exact-equality test guards it). TDD'd (FindAPIsToolTests footer test), suite 159/159.
+
+    **Measured with Qwen3.6-35B-A3B-mxfp8: 3/4 (held; levers 1+2 combined).**
+    - weather ✅ with the full repair ramp visible live: guessed wrong first (findAPIsFirst=false), hit the lever-1 hint, searched, then genuinely invoked weather — 8 tool calls, exact "31°C and sunny" answer.
+    - composeChain ✅ and discovery ✅, both findAPIs-first with real tripCities+weather invocations.
+    - repair still ✘, new shape: ONE call then stop, reply "I apologize for the error. Let me use the correct function to find available API…" — announces the recovery the hint told it to make instead of performing it. The turn-termination reflex on the booking task survives both levers; the remaining lever (anti-narration line in toolUseInstructions + runCode description: "never reply with what you plan to do; a final answer must contain data a tool returned") targets exactly this.
+
+    Repair failure shapes across the three 35B runs: fabricated confirmation → announce-after-search → apologize-and-stop. It's consistently turn termination after the trip-prone error, not discovery failure.
+  timestamp: 2026-07-17T17:59:23.474384+00:00
 depends_on:
 - 01KWVNVV79AAK6FDHRJF329QVR
 position_column: done

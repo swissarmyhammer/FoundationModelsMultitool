@@ -98,6 +98,24 @@ struct FindAPIsToolTests {
         #expect(feedback.contains(entry.block))
     }
 
+    @Test("a non-empty result ends with the imperative call-runCode-now footer, after the match blocks")
+    func nonEmptyResultEndsWithImperativeFooter() async throws {
+        let surface = try MultiTool.Builder().addTool(TripCitiesTool()).build()
+        let entry = try #require(surface.entries.first)
+        let searcher = MetadataSearcher(items: surface.entries, mode: .auto)
+        let findAPIsTool = FindAPIsTool(searcher: searcher, limit: surface.entries.count)
+
+        let feedback = try await findAPIsTool.call(arguments: FindAPIsArguments(task: "trip cities"))
+
+        #expect(feedback.contains("Now write one runCode snippet"))
+        #expect(feedback.contains("exact tools.* paths"))
+        // The footer follows the match blocks — it is a next-step
+        // instruction, not a header.
+        let blockRange = try #require(feedback.range(of: entry.block))
+        let footerRange = try #require(feedback.range(of: "Now write one runCode snippet"))
+        #expect(blockRange.upperBound <= footerRange.lowerBound)
+    }
+
     @Test("the production registry+librarian initializer wires .auto mode over the registry's own surface entries")
     func registryInitializerBuildsAutoModeSearcherWithNoLibrarian() async throws {
         let registry = try MultiTool.Builder().addTool(TripCitiesTool()).buildRegistry()

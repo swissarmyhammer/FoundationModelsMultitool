@@ -147,6 +147,23 @@ public struct FindAPIsTool: Tool {
         return Self.format(task: arguments.task, matches: matches)
     }
 
+    /// The imperative next-step footer every non-empty result ends with.
+    ///
+    /// The result of a `findAPIs` call is the moment of maximum model
+    /// attention, and describing functions without prescribing the next
+    /// action leaves the two dominant failure modes open: announcing a plan
+    /// instead of acting, and answering from priors instead of from a
+    /// snippet's real return value. The footer closes both, and its
+    /// composition clause ("compose multiple calls in that one snippet")
+    /// is what multi-step tasks need spelled out — the models that fail
+    /// them stop after describing step one.
+    private static let nextStepFooter = """
+        Now write one runCode snippet that calls these exact tools.* paths — compose \
+        multiple calls in that one snippet with variables as needed — and return the \
+        real result. Do not describe a plan and do not answer from memory: call \
+        runCode now, and answer only from what it returns.
+        """
+
     /// Formats a search result into the text describing the matched
     /// tool-functions — one block per matched function, each entry's
     /// verbatim `Match.item.block` — the `// tools.<path>` banner naming its
@@ -156,7 +173,8 @@ public struct FindAPIsTool: Tool {
     /// `APISurface.swift`'s `Entry` documentation) — followed by its runnable
     /// example, qualified the same way via `Entry.qualifiedExample` so this
     /// trailer never shows a different, bare call than the one `block`'s own
-    /// embedded `@example` line just displayed.
+    /// embedded `@example` line just displayed. A non-empty result closes
+    /// with `nextStepFooter`.
     ///
     /// - Parameters:
     ///   - task: the plain-language goal passed to `findAPIs`, echoed in the
@@ -171,5 +189,6 @@ public struct FindAPIsTool: Tool {
             "\(match.item.block)\nExample: \(match.item.qualifiedExample)"
         }
         return "findAPIs(\"\(task)\") found:\n" + blocks.joined(separator: "\n\n")
+            + "\n\n\(nextStepFooter)"
     }
 }
