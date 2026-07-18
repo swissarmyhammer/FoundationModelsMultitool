@@ -111,6 +111,68 @@ private let liveLoaderMLXProducts: [Target.Dependency] = [
     .product(name: "MLXHuggingFace", package: mlxPackage),
 ]
 
+/// Resolves the active Xcode install's `Contents` directory (the parent of
+/// its embedded `Developer/…` tree), or `nil` if `xcode-select` isn't
+/// available or its output isn't a usable path (e.g. command-line-tools-only,
+/// which couldn't build this package's FoundationModels-framework code at
+/// all anyway).
+///
+/// Apple's test-only `Evaluations` framework (imported directly by
+/// `FoundationModelsMultitoolIntegrationTests`'
+/// `NativeToolCallEvaluation.swift`) lives under the Xcode toolchain's
+/// platform `Developer/Library/Frameworks` (the same place `XCTest
+/// .framework`/`Testing.framework` live). `swift test`'s
+/// `swiftpm-testing-helper` arranges the search paths that resolve it there,
+/// but CI's gated integration job invokes the built `.xctest` bundle
+/// directly via `xcrun xctest <bundle>` (see `swift-ci.yaml`'s integration
+/// job) — bypassing that helper — so the test binary's default rpaths
+/// (`.build/…/Products/Debug`, its `PackageFrameworks` subdirectory) don't
+/// include it, and the bundle fails to load at all (`dlopen`: `Library not
+/// loaded`, naming the *relative* `@rpath/Developer/Platforms/MacOSX
+/// .platform/Developer/Library/Frameworks/Evaluations.framework/…`) —
+/// resolved once an rpath entry for the Xcode `Contents` directory (the
+/// parent of that embedded `Developer/…` path) is present, fed into
+/// `integrationTestLinkerSettings` below.
+///
+/// - Returns: the `Contents` directory's absolute path, or `nil`.
+private func xcodeContentsDirectory() -> String? {
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/xcode-select")
+    process.arguments = ["-p"]
+    let outputPipe = Pipe()
+    process.standardOutput = outputPipe
+    process.standardError = Pipe()
+    do {
+        try process.run()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else { return nil }
+        let data = outputPipe.fileHandleForReading.readDataToEndOfFile()
+        guard
+            let developerPath = String(data: data, encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+            !developerPath.isEmpty
+        else { return nil }
+        return URL(fileURLWithPath: developerPath).deletingLastPathComponent().path
+    } catch {
+        return nil
+    }
+}
+
+/// Linker settings that let `FoundationModelsMultitoolIntegrationTests`'
+/// built `.xctest` bundle actually *load*, not just link, when CI's gated
+/// integration job invokes it directly via `xcrun xctest` — an `-rpath`
+/// pointing at `xcodeContentsDirectory()`, computed fresh (never hardcoded)
+/// so it resolves correctly on any machine/CI runner with a full Xcode
+/// install — the same install this package's macOS-27-SDK build already
+/// requires.
+///
+/// It's empty (no extra flags) when `xcodeContentsDirectory()` can't resolve
+/// one.
+private let integrationTestLinkerSettings: [LinkerSetting] = {
+    guard let xcodeContentsDirectory = xcodeContentsDirectory() else { return [] }
+    return [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", xcodeContentsDirectory])]
+}()
+
 /// The `Sources/` subdirectory prefix used by every source target's `path`
 /// below.
 private let sourcesPath = "Sources/"
@@ -226,7 +288,14 @@ let package = Package(
                 // `MultiToolAgent`'s retired hand-rolled loop.
                 .product(name: "MLXFoundationModels", package: mlxPackage),
             ] + liveLoaderMLXProducts + hubProducts,
-            path: "\(testsPath)\(packageName)IntegrationTests"
+            path: "\(testsPath)\(packageName)IntegrationTests",
+            // See `integrationTestLinkerSettings`'s documentation: without
+            // this, CI's gated integration job (which invokes this target's
+            // built `.xctest` bundle directly via `xcrun xctest`, bypassing
+            // `swift test`'s `swiftpm-testing-helper`) fails to load the
+            // bundle at all (`dlopen`: `Library not loaded`) resolving
+            // `NativeToolCallEvaluation.swift`'s `import Evaluations`.
+            linkerSettings: integrationTestLinkerSettings
         ),
     ]
 )
