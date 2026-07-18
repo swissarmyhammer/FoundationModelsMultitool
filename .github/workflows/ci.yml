@@ -13,3 +13,7 @@ concurrency:
 jobs:
   unit:
     uses: swissarmyhammer/workflows/.github/workflows/swift-ci.yaml@main
+    with:
+      integration-gate-env: MULTITOOL_INTEGRATION
+      integration-xctest-glob: "*IntegrationTests.xctest"
+      integration-metallib-glob: "*Cmlx*/default.metallib"
