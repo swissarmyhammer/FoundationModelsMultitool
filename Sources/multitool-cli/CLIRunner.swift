@@ -221,8 +221,8 @@ enum CLIRunner {
     /// The session instructions this CLI's session runs under — the
     /// package-owned `FindAPIsTool.sessionInstructions`, shared verbatim by
     /// the gated integration suite's scenario sessions
-    /// (`ScenarioRunner.swift`, `NativeToolCallEvaluation.swift`), so the
-    /// suite measures exactly what the product ships.
+    /// (`ScenarioRunner.swift`), so the suite measures exactly what the
+    /// product ships.
     ///
     /// Aliased, not redefined: the instruction has one source of truth, on
     /// the tool that needs it (see `FindAPIsTool.sessionInstructions` for
