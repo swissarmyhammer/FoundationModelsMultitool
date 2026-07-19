@@ -187,7 +187,7 @@ let multitoolTinyProfile = ProfileDefinition(
     name: "multitool-integration-tiny",
     description: "Deliberately tiny, tool-calling-capable models for the gated M6.5 integration suite.",
     standard: [TinyModels.generation],
-    flash: [TinyModels.generation],
+    flash: [TinyModels.selection],
     embedding: [TinyModels.embedding],
     context: 8192
 )
