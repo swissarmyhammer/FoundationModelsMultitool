@@ -38,7 +38,7 @@ each MultiTool. It is never behind a Builder option.
 
 The modules are opt-in: `withShell()`, `withFiles()`, and `withMCP(servers:)`.
 This agrees with the permission posture. A registered user tool gets the
-baseline automatically. The ambient context is bound around each invocation. As
+baseline automatically. Router or `ToolInvoker` binds the ambient context around each invocation. As
 a result, a tool pays no cost to use elicitation and events. It also pays no
 cost to ignore them.
 
@@ -260,12 +260,12 @@ await it. If a call describes or narrates, do not await it.
 
 - An unawaited *return* settles at the boundary. `ResultRenderer` awaits a
   thenable final value. As a result, `return tools.x.y(...)` is correct.
-- A *floating call* (`tools.files.write(...); return "done"`) is caught by
-  settle-before-return. The bridge records each promise that it creates.
+- Settle-before-return catches a *floating call*
+  (`tools.files.write(...); return "done"`). The bridge records each promise that it creates.
   `runCode` gives no result until all of them settle. The work occurs. A
   floating rejection becomes the run's error. It does not disappear. This is
   the settle window of do-more-per-call, applied at the snippet boundary.
-- *Property access on a pending result* is caught by a Proxy trap. The bridge
+- A Proxy trap catches *property access on a pending result*. The bridge
   returns proxied promises. For each property except `then`, `catch`, and
   `finally`, the `get` trap throws a precise repairable error. The error names
   the call and the property. It asks "did you forget `await`?".
@@ -346,8 +346,8 @@ presenting app:
 - Sensitive information (credentials, keys, payment) goes through URL mode
   only, never through a form.
 - The host shows the full URL.
-- The host does not pre-fetch the URL.
-- The host does not open the URL without explicit consent.
+- The host never pre-fetches the URL.
+- The host never opens the URL without explicit consent.
 - The host opens the URL in a surface that the client and the model cannot
   inspect.
 
@@ -411,7 +411,7 @@ the same way that boundary metadata keeps discovered-tool state. A
 post-compaction model reads its pending work from the boundary. Then it calls
 `status()`.
 
-## OperationTool is removed
+## We remove OperationTool
 
 Schema fusion exists to fit N schemas into a 4,096-token instruction window.
 MultiTool removes the same pressure differently: one `runCode` schema plus a
@@ -549,8 +549,8 @@ carries. It is not a run cancellation.
 
 **The surface never changes in place. A change means rebuild and swap.**
 Servers connect before `buildRegistry()`. A late server, a reconnect, or an MCP
-`tools/list_changed` starts a full rebuild. The new registry is rendered
-complete at the side. Then it is swapped in atomically at the next turn
+`tools/list_changed` starts a full rebuild. MultiTool renders the new registry
+complete at the side. Then MultiTool swaps it in atomically at the next turn
 boundary — the same boundary where the outbox folds in events.
 
 Nothing changes below a snippet that runs. An in-flight run keeps the registry
@@ -577,7 +577,7 @@ that envelope at the token level. The call is always well-formed, and `code` is
 always a string.
 
 The guarantee for the arguments of the wrapped tools changes. In the snippet,
-those arguments are model-written code. Their validation occurs at run time,
+those arguments are model-written code. Their validation occurs at runtime,
 not at decode time. The two layers of `ToolInvoker` do the validation, with
 precise, model-repairable errors and the immediate re-call contract. A
 decode-time guarantee becomes a runtime guarantee with a repair loop. That is
@@ -600,8 +600,8 @@ by `timeout`. Only the outer `runCode` elevates.
 There is one elevation point, at the boundary that the model already sees. As
 a result, no snippet branches on a pending envelope in the middle of code. A
 capability that wants detach semantics declares it as a usual argument
-(shell's `wait`). That argument returns its identifier for the builtins. The
-two clocks appear exactly one time, at the envelope.
+(shell's `wait`). The capability then returns the run's identifier for the
+builtins. The two clocks appear exactly one time, at the envelope.
 
 Does a weak model do better with per-tool decode-time constraints, or with the
 code envelope plus the repair loop? That is an empirical question for the gated
@@ -661,7 +661,7 @@ work.
 All other content is behavior, and the two descriptions carry all of it. There
 is no special system prompt, as fixed today. `runCode` keeps its half: never
 guess function names; answer only from what the tools return; on an error,
-repair and immediately call again.
+repair and re-call immediately.
 
 The half of `findAPIs` is the caution: *present your problem*, in task terms,
 and learn what exists. Do not do a name search for a function that the model
@@ -688,8 +688,8 @@ MultiTool). The scope:
   becomes typealiases that re-export Router's canonical types. As a result, one
   build that holds the two imports (ACPAgent does) sees one type, not two
   ambiguous types. The shim pulls MLX transitively into the builds of the
-  doomed packages. This is temporary build weight only, and each payer is
-  scheduled for deletion. The shim itself dies with OperationTool in phase 5.
+  doomed packages. This is temporary build weight only, and we schedule
+  each payer for deletion. The shim itself dies with OperationTool in phase 5.
 - The mailbox actor adjacent to `SessionOutbox`.
 - The `ElevatingTool` engine at the `Tool` protocol level, with the two-clocks
   model. Router mounts it for native sessions. `ToolInvoker` mounts it for
@@ -707,8 +707,7 @@ question. When Apple's `LanguageModelSession.respond` calls a tool, does the
 task-local `ToolContext` arrive, or is it `nil`? One probe tool reads
 `ToolContext.current` inside `call(arguments:)`. The test binds the context
 around `respond()`. It runs one prompt on the MLX path and one on the system
-model. The two answers are both acceptable, and the two branches are decided
-now:
+model. The two answers are both acceptable, and we decide the two branches now:
 
 - The context propagates → native tools get the ambient context free. We
   delete `EventEmittingTool` / `connecting(_:)` in this phase.
@@ -732,28 +731,28 @@ supervision moves to the shared engine. We delete `RunSupervisor` and the race
 logic of the shell `ProcessRegistry`, and the engine replaces them. Shell is
 the reference emitter. Its detached commands prove the elevation path end to
 end. Exit: ACPAgent, Extras, and Skills — the three org consumers of
-Shelltool — move to the MultiTool capability, and the
-FoundationModelsShelltool repository is archived.
+Shelltool — move to the MultiTool capability, and we archive the
+FoundationModelsShelltool repository.
 
 **Phase 3 — files. Tag: `consolidation-3-files`.** `Capabilities/Files` gets
 the six operations, `PathGuard`, `Hashline`, `EditEngine`, `AtomicWriter`,
 `FileChangeJournal`, and `DiagnosticsBridge`. It brings the
 FoundationModelsCodeContext dependency. Exit: ACPAgent and Skills move off
-FileTool, and the FoundationModelsFileTool repository is archived.
+FileTool, and we archive the FoundationModelsFileTool repository.
 
 **Phase 4 — mcp. Tag: `consolidation-4-mcp`.** `Capabilities/MCP` gets
 `MCPServer`, `StdioServerProcess`, the codec pair, `ToolContentRenderer` +
 `RenderBudget`, and `ToolCatalog`. Servers register as top-level groups. We
 remove the follow-up pseudo-tools, and the builtins replace them. The
 `ElicitationCoordinator` protocol becomes the host seam of
-`ToolContext.elicit`, URL mode included. Exit: the FoundationModelsMCP
-repository is archived. ACPAgent, its one org consumer, moves first.
+`ToolContext.elicit`, URL mode included. Exit: we archive the
+FoundationModelsMCP repository. ACPAgent, its one org consumer, moves first.
 
 **Phase 5 — operation. Tag: `consolidation-5-operation`.** Nothing imports
 `Operations` or `OperationsCLI` any longer. We make sure of this across the
 org. We do not assume it. Skills is the last known consumer and moves here.
 The per-capability CLIs are gone, and `multitool-cli` is the single demo and
-test binary. Exit: the FoundationModelsOperationTool repository is archived.
+test binary. Exit: we archive the FoundationModelsOperationTool repository.
 
 The order is fixed: 1 → 2 → 3 → 4 → 5. Phases 2–4 each depend only on phase 1.
 But they land serially. As a result, the elevation engine hardens against one
@@ -761,4 +760,4 @@ consumer at a time. Shell goes first, as the emitter that tests each path.
 
 ## Open
 
-None. Each item raised in the plan work is settled above.
+None. The sections above settle every item from the plan work.
