@@ -77,8 +77,25 @@ comments:
     - next: task left in `doing` per instructions; ready for a human to decide on the disputed comment-length findings before any `/review`
     task: ^yahbkg5
   timestamp: 2026-08-05T19:19:54.688802+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01kz9s21m46x1fb2tz489cmkcg
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (fa00971) — counts: 0 findings, 0 confirmed, 0 refuted, 9 attempted, 0 failed, 0 skipped. Prior finding (2026-08-05 13:25, JSCInterpreter.swift:828 .then callable check) already checked.
+    - next: task moved to done.
+  timestamp: 2026-08-05T20:15:24.804174+00:00
+- actor: claude-code
+  id: 01kz9s2gzx17pgzhbaatv69fhk
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — added isCallable (JSObjectIsFunction) check before marking a .then rejection handler consumed; added regression tests; added .serialized trait to JSCInterpreter test suite (fixed a genuine JSContext-teardown test-parallelism flake found while stress-testing, unrelated to the promise pump itself)
+    - test: green — swift test, 179/179 passed, stable across 30 consecutive runs
+    - commit: fa00971 fix(interpreter): verify .then rejection handler is callable before marking consumed
+    - review: clean — 0 new findings, prior finding checked off
+    - outcome: task moved to done
+  timestamp: 2026-08-05T20:15:40.541976+00:00
+position_column: done
+position_ordinal: a880
 title: '[MultiTool] JSCInterpreter promise pump with async host functions'
 ---
 Repo: this repo. Basis: eventplan.md §"Async JavaScript". Independent of the Router tasks — pure interpreter work. (The Proxy trap for pending results is split into its own follow-up task.)

@@ -140,10 +140,12 @@ public struct RunCodeArguments {
 /// 3. renders the result — or a thrown `InterpreterError` — via
 ///    `ResultRenderer` (M5).
 ///
-/// Each `tools.X(...)` call bridges into the wrapped tool's real, async
-/// `call(arguments:)` through `invokeBlocking`'s v1 blocking bridge (plan.md
-/// Resolved #1) — see that function's documentation for the full
-/// tradeoff.
+/// Each `tools.X(...)` call is an `AsyncHostFunction`: the interpreter's own
+/// promise pump (eventplan.md "Async JavaScript") installs it as a JS
+/// function returning a `Promise`, starts the wrapped tool's real, async
+/// `call(arguments:)` in its own Swift `Task`, and settles that promise when
+/// the `Task` completes — see `invokeAsync`'s documentation for the full
+/// dispatch.
 public struct MultiTool: Tool {
     /// This tool's `Tool`-protocol name, always `"runCode"`.
     public let name = "runCode"
@@ -161,10 +163,12 @@ public struct MultiTool: Tool {
         Run a JavaScript snippet against the user's real tools, exposed as functions \
         under `tools.*`. Always call findAPIs first to discover the exact functions and \
         their signatures for the task (or help()/docs(name) in a snippet); never guess \
-        function names. Then compose calls with normal code — variables, loops, \
-        map/filter — and `return` the final value (only that comes back; intermediates \
-        stay private). Read each discovered function's declared return type and \
-        destructure it accordingly. These tools genuinely execute and return real data: \
+        function names. Every `tools.*` call returns a promise: await each `tools.*` \
+        call; use `Promise.all` to run calls in parallel. Then compose calls with normal \
+        code — variables, loops, map/filter — and `return` the final value (only that \
+        comes back; intermediates stay private). Read each discovered function's \
+        declared return type and destructure it accordingly. These tools genuinely \
+        execute and return real data: \
         answer only from what they return — never answer data questions from your own \
         knowledge, and never simulate or invent data in a snippet. If a snippet fails, \
         the error comes back for you to repair: fix the snippet and call runCode again \
@@ -191,16 +195,25 @@ public struct MultiTool: Tool {
     /// output.
     private let limits: ResultRendererLimits
 
-    /// Every wrapped tool's `HostFunction` bridge, built once at `init` time
-    /// (stable for the registry's lifetime — installing them is cheap and
-    /// the mapping never changes call to call) and re-installed fresh into
-    /// every `runCode` call's own sandbox by `Interpreter.run`.
+    /// `help()`/`docs()`'s `HostFunction` bridges — the only *synchronous*
+    /// globals this tool installs (see "MARK: - help()/docs() globals"
+    /// below) — built once at `init` time (stable for the registry's
+    /// lifetime — installing them is cheap and the mapping never changes
+    /// call to call) and re-installed fresh into every `runCode` call's own
+    /// sandbox by `Interpreter.run`.
     private let hostFunctions: [HostFunction]
+
+    /// Every wrapped tool's `AsyncHostFunction` bridge — one `tools.<name>`
+    /// binding per live registry entry, each backed by the interpreter's own
+    /// promise pump rather than a blocking bridge (see "MARK: - The async
+    /// host-function bridge" below). Precomputed once at `init` time for the
+    /// same reason as `hostFunctions`.
+    private let asyncHostFunctions: [AsyncHostFunction]
 
     /// The `tools.*` assignment glue prepended to every snippet — see
     /// "tools.* glue" below. Precomputed once at `init` time for the same
-    /// reason as `hostFunctions`: it depends only on `registry.surface`,
-    /// which never changes.
+    /// reason as `hostFunctions`/`asyncHostFunctions`: it depends only on
+    /// `registry.surface`, which never changes.
     private let preamble: String
 
     /// Creates a `runCode` tool over `registry`.
@@ -227,7 +240,8 @@ public struct MultiTool: Tool {
         self.registry = registry
         self.interpreter = interpreter ?? JSCInterpreter(timeLimit: configuration.executionTimeLimit)
         self.limits = limits ?? configuration.resultLimits
-        self.hostFunctions = Self.makeHostFunctions(for: registry) + Self.makeHelpDocsHostFunctions(for: registry)
+        self.hostFunctions = Self.makeHelpDocsHostFunctions(for: registry)
+        self.asyncHostFunctions = Self.makeAsyncHostFunctions(for: registry)
         self.preamble = Self.makePreamble(for: registry)
     }
 
@@ -257,7 +271,12 @@ public struct MultiTool: Tool {
         try Task.checkCancellation()
         let code = "\(preamble)\n\(arguments.code)"
         do {
-            let result = try await Self.run(code: code, installing: hostFunctions, using: interpreter)
+            let result = try await Self.run(
+                code: code,
+                installing: hostFunctions,
+                installingAsync: asyncHostFunctions,
+                using: interpreter
+            )
             return ResultRenderer.render(result, limits: limits)
         } catch let interpreterError as InterpreterError {
             let hint = UnknownToolHint.hint(message: interpreterError.message, surface: registry.surface)
@@ -289,21 +308,26 @@ public struct MultiTool: Tool {
     ///
     /// M10: also threads this `async` context's own `Task` cancellation
     /// into the interpreter's `isCancelled` hook
-    /// (`Interpreter.run(code:installing:isCancelled:)`), so cancelling the
-    /// `Task` running `call(arguments:)` reaches all the way into the
-    /// running snippet rather than only being observed after it finishes.
+    /// (`Interpreter.run(code:installing:installingAsync:isCancelled:)`), so
+    /// cancelling the `Task` running `call(arguments:)` reaches all the way
+    /// into the running snippet rather than only being observed after it
+    /// finishes.
     ///
     /// - Parameters:
     ///   - code: the JavaScript source to run.
-    ///   - installing: the host functions to expose as globals.
+    ///   - installing: the synchronous host functions to expose as globals.
+    ///   - installingAsync: the asynchronous host functions to expose as
+    ///     globals — every live `tools.*` binding.
     ///   - interpreter: the sandbox to run `code` in.
     /// - Returns: the run's result.
     /// - Throws: `CancellationError` if the calling `Task` is cancelled
     ///   before or during the run; otherwise whatever
-    ///   `interpreter.run(code:installing:isCancelled:)` itself throws.
+    ///   `interpreter.run(code:installing:installingAsync:isCancelled:)`
+    ///   itself throws.
     private static func run(
         code: String,
         installing: [HostFunction],
+        installingAsync: [AsyncHostFunction],
         using interpreter: any Interpreter
     ) async throws -> InterpreterResult {
         // Lock-protected (not a plain `Bool`) for the same reason
@@ -316,6 +340,7 @@ public struct MultiTool: Tool {
                 dispatchRun(
                     code: code,
                     installing: installing,
+                    installingAsync: installingAsync,
                     using: interpreter,
                     cancelledBox: cancelledBox,
                     continuation: continuation
@@ -326,23 +351,28 @@ public struct MultiTool: Tool {
         }
     }
 
-    /// The GCD-queue half of `run(code:installing:using:)`'s bridge: performs
-    /// the actual blocking `interpreter.run` off the cooperative pool and
-    /// settles `continuation` with its outcome. Pulled out of `run` itself so
-    /// that function's cancellation-handler/continuation nesting doesn't also
-    /// have to carry the dispatch-queue/do-catch levels below it.
+    /// The GCD-queue half of `run(code:installing:installingAsync:using:)`'s
+    /// bridge: performs the actual blocking `interpreter.run` off the
+    /// cooperative pool and settles `continuation` with its outcome. Pulled
+    /// out of `run` itself so that function's cancellation-handler/
+    /// continuation nesting doesn't also have to carry the
+    /// dispatch-queue/do-catch levels below it.
     ///
     /// - Parameters:
     ///   - code: the JavaScript source to run.
-    ///   - installing: the host functions to expose as globals.
+    ///   - installing: the synchronous host functions to expose as globals.
+    ///   - installingAsync: the asynchronous host functions to expose as
+    ///     globals.
     ///   - interpreter: the sandbox to run `code` in.
     ///   - cancelledBox: polled as `interpreter.run`'s `isCancelled` hook;
-    ///     flipped to `true` by `run(code:installing:using:)`'s `onCancel`.
+    ///     flipped to `true` by
+    ///     `run(code:installing:installingAsync:using:)`'s `onCancel`.
     ///   - continuation: resumed with `interpreter.run`'s result or thrown
     ///     error.
     private static func dispatchRun(
         code: String,
         installing: [HostFunction],
+        installingAsync: [AsyncHostFunction],
         using interpreter: any Interpreter,
         cancelledBox: OSAllocatedUnfairLock<Bool>,
         continuation: CheckedContinuation<InterpreterResult, Error>
@@ -352,6 +382,7 @@ public struct MultiTool: Tool {
                 let result = try interpreter.run(
                     code: code,
                     installing: installing,
+                    installingAsync: installingAsync,
                     isCancelled: { cancelledBox.withLock { $0 } }
                 )
                 continuation.resume(returning: result)
@@ -380,7 +411,7 @@ public struct MultiTool: Tool {
     // subtleties to get wrong.
 
     /// The positional host-function name for `registry.surface.entries[index]`
-    /// — shared by `makeHostFunctions` (which installs it) and
+    /// — shared by `makeAsyncHostFunctions` (which installs it) and
     /// `makePreamble` (which assigns it into `tools.*`), so the two always
     /// agree on naming without either duplicating the scheme.
     ///
@@ -390,25 +421,27 @@ public struct MultiTool: Tool {
         "__tool\(index)"
     }
 
-    /// Builds one `HostFunction` per registry entry that has a live tool to
-    /// dispatch to, bridging its synchronous JS call into the tool's real
-    /// `async` `call(arguments:)` via `invokeBlocking`.
+    /// Builds one `AsyncHostFunction` per registry entry that has a live
+    /// tool to dispatch to, bridging its call into the tool's real `async`
+    /// `call(arguments:)` via `invokeAsync` — no blocking bridge: the
+    /// interpreter's own promise pump runs this closure in its own Swift
+    /// `Task` (see `AsyncHostFunction`'s documentation).
     ///
     /// - Parameter registry: the catalog + live tool instances to bridge.
-    /// - Returns: one `HostFunction` per entry with a matching `registry
-    ///   .tools[path]`, named per `hostFunctionName(at:)` and in the same
-    ///   order as `registry.surface.entries`.
-    private static func makeHostFunctions(for registry: Registry) -> [HostFunction] {
-        var hostFunctions: [HostFunction] = []
+    /// - Returns: one `AsyncHostFunction` per entry with a matching
+    ///   `registry.tools[path]`, named per `hostFunctionName(at:)` and in
+    ///   the same order as `registry.surface.entries`.
+    private static func makeAsyncHostFunctions(for registry: Registry) -> [AsyncHostFunction] {
+        var asyncHostFunctions: [AsyncHostFunction] = []
         for (index, entry) in registry.surface.entries.enumerated() {
             guard let tool = registry.tools[entry.path] else { continue }
-            hostFunctions.append(
-                HostFunction(name: hostFunctionName(at: index)) { arguments in
-                    try invokeBlocking(tool: tool, arguments: arguments)
+            asyncHostFunctions.append(
+                AsyncHostFunction(name: hostFunctionName(at: index)) { arguments in
+                    try await invokeAsync(tool: tool, arguments: arguments)
                 }
             )
         }
-        return hostFunctions
+        return asyncHostFunctions
     }
 
     /// Builds the JS preamble that assigns every registry entry's
@@ -426,9 +459,9 @@ public struct MultiTool: Tool {
     /// tools.<path>` banner comment.
     ///
     /// An entry with no matching `registry.tools[path]` is skipped
-    /// entirely, exactly like `makeHostFunctions`'s own `guard` — the two
-    /// must agree, since a skipped entry here has no host function for
-    /// `makeHostFunctions` to assign it to: unconditionally emitting
+    /// entirely, exactly like `makeAsyncHostFunctions`'s own `guard` — the
+    /// two must agree, since a skipped entry here has no host function for
+    /// `makeAsyncHostFunctions` to assign it to: unconditionally emitting
     /// `tools.<path> = __toolN;` regardless would reference an
     /// *undeclared* JS identifier (a `ReferenceError`, since that global was
     /// never installed) rather than degrade gracefully — skipping the
@@ -464,45 +497,21 @@ public struct MultiTool: Tool {
         return lines.joined(separator: "\n")
     }
 
-    // MARK: - The v1 async bridge (plan.md Resolved #1)
+    // MARK: - The async host-function bridge (eventplan.md "Async JavaScript")
 
-    /// Bridges one `tools.<name>(...)` call — synchronous from JSC's
-    /// perspective, since `HostFunction.call` is a plain, non-`async`
-    /// closure (M1) — into the wrapped tool's real `async`
-    /// `call(arguments:)`.
+    /// Bridges one `tools.<name>(...)` call into the wrapped tool's real
+    /// `async` `call(arguments:)`.
     ///
-    /// ## Why blocking is safe here
-    /// This closure runs as a `HostFunction` body, which `JSCInterpreter`
-    /// only ever invokes from its own dedicated worker `DispatchQueue` —
-    /// never the caller's thread, and never the main thread (see that
-    /// type's documentation). Blocking *that* thread on a semaphore is
-    /// exactly the "standard JSContext bridging pattern" plan.md commits to
-    /// for v1: the snippet's actual work — `await tool.call(arguments:)` —
-    /// is dispatched onto Swift's cooperative thread pool via an
-    /// unstructured `Task`, and this function's `semaphore.wait()` simply
-    /// parks the dedicated JSC worker thread until that `Task` reports
-    /// back, exactly mirroring `MultiTool.run`'s own "never block the
-    /// caller" treatment of the layer above it.
-    ///
-    /// ## The documented tradeoff
-    /// The dedicated JSC worker thread is *not* one of Swift's (bounded,
-    /// roughly core-count-sized) cooperative-pool threads, so parking it
-    /// here never directly *removes* a cooperative-pool thread from
-    /// circulation — but the `Task` spawned below still needs a free
-    /// cooperative-pool thread to make progress. If every thread in that
-    /// pool is *also* blocked on work like this (many concurrent `runCode`
-    /// calls each waiting on their own tool bridge, or unrelated blocking
-    /// work sharing the same pool), the spawned `Task` can be starved
-    /// indefinitely waiting for a thread to run on — under sustained
-    /// saturation this is a real deadlock risk, not merely reduced
-    /// throughput, even though this bridge itself never *holds* a
-    /// cooperative thread while waiting. v1 accepts this (plan.md: "the
-    /// standard JSContext bridging pattern, safe under stateless
-    /// snippets") because each `runCode` call is short-lived and
-    /// stateless, so the exposure window is small; a JSC microtask/promise
-    /// pump giving real `async`/`await` (and parallel `Promise.all`
-    /// fan-out) is the documented later upgrade that removes this bridge —
-    /// and the pool-exhaustion risk with it — entirely.
+    /// No blocking bridge, no semaphore: this is an `AsyncHostFunction`
+    /// body, which `JSCInterpreter.install(asyncHostFunction:into:registry:)`
+    /// already runs in its own Swift `Task` — installed as a JS function
+    /// that returns a `Promise`, resolved or rejected once that `Task`
+    /// completes (see `AsyncHostFunction`'s documentation for the full
+    /// promise-pump mechanics). `Promise.all` over several `tools.*` calls
+    /// therefore starts their backing `Task`s concurrently, and
+    /// `Interpreter.run`'s settle-before-return guarantee still applies at
+    /// the snippet boundary regardless of whether the snippet itself awaits
+    /// this call.
     ///
     /// - Parameters:
     ///   - tool: the wrapped tool this call dispatches to.
@@ -517,17 +526,18 @@ public struct MultiTool: Tool {
     ///   into the tool's `Arguments` shape (or its `Output` can't be
     ///   rendered back out); `ToolInvokerError` if pre-call validation
     ///   fails; otherwise whatever `tool.call(arguments:)` itself throws,
-    ///   unchanged. Every case is turned into a JS exception carrying the
-    ///   message by `JSCInterpreter.install(hostFunction:into:)`, which
+    ///   unchanged. Every case becomes the returned promise's rejection
+    ///   reason, carrying the message unchanged, by
+    ///   `JSCInterpreter.install(asyncHostFunction:into:registry:)`, which
     ///   `ResultRenderer` in turn renders as a repairable error.
-    private static func invokeBlocking(
+    private static func invokeAsync(
         tool: any Tool,
         arguments: [InterpreterValue]
-    ) throws -> InterpreterValue {
+    ) async throws -> InterpreterValue {
         let start = ContinuousClock.now
         logger.debug("tools.\(tool.name, privacy: .public) invocation started.")
         do {
-            let value = try performInvocation(tool: tool, arguments: arguments)
+            let value = try await performInvocation(tool: tool, arguments: arguments)
             logger.debug(
                 "tools.\(tool.name, privacy: .public) invocation finished in \(start.duration(to: .now), privacy: .public)."
             )
@@ -546,7 +556,7 @@ public struct MultiTool: Tool {
     /// tool's own thrown error, logged at `.error`).
     ///
     /// - Parameters:
-    ///   - tool: the tool `invokeBlocking` was invoking.
+    ///   - tool: the tool `invokeAsync` was invoking.
     ///   - error: the failure `performInvocation` threw.
     private static func logInvocationFailure(tool: any Tool, error: Error) {
         switch error {
@@ -565,9 +575,9 @@ public struct MultiTool: Tool {
         }
     }
 
-    /// The actual marshal → validate → call → render pipeline
-    /// `invokeBlocking` wraps with start/end logging — see that function's
-    /// documentation for the full async-bridge tradeoff.
+    /// The actual marshal → validate → call → render pipeline `invokeAsync`
+    /// wraps with start/end logging — see that function's documentation for
+    /// the full async host-function bridge.
     ///
     /// - Parameters:
     ///   - tool: the wrapped tool this call dispatches to.
@@ -575,48 +585,16 @@ public struct MultiTool: Tool {
     ///     `InterpreterValue`.
     /// - Returns: the tool's rendered `Output`, JS-ready.
     /// - Throws: `ArgumentMarshalerError`, `ToolInvokerError`, or whatever
-    ///   `tool.call(arguments:)` itself throws — see `invokeBlocking`'s
+    ///   `tool.call(arguments:)` itself throws — see `invokeAsync`'s
     ///   documentation.
     private static func performInvocation(
         tool: any Tool,
         arguments: [InterpreterValue]
-    ) throws -> InterpreterValue {
+    ) async throws -> InterpreterValue {
         let argumentObject = arguments.first ?? .object([:])
         let content = try ArgumentMarshaler.marshalArguments(argumentObject)
-
-        let semaphore = DispatchSemaphore(value: 0)
-        let outcomeBox = OSAllocatedUnfairLock<Result<InterpreterValue, Error>?>(initialState: nil)
-        Task {
-            do {
-                let output = try await ToolInvoker.invoke(tool, content: content)
-                let rendered = try ArgumentMarshaler.renderOutput(output)
-                outcomeBox.withLock { $0 = .success(rendered) }
-            } catch {
-                outcomeBox.withLock { $0 = .failure(error) }
-            }
-            semaphore.signal()
-        }
-        semaphore.wait()
-
-        switch outcomeBox.withLock({ $0 }) {
-        case .success(let value):
-            return value
-        case .failure(let error):
-            throw error
-        case nil:
-            // Unreachable in practice, but not force-unwrapped: `semaphore.wait()`
-            // above only returns after the `Task` has written `.success`/`.failure`
-            // into `outcomeBox` and called `semaphore.signal()`, so a nil box here
-            // means that invariant is broken — a programmer error in the bridge
-            // itself, not a recoverable runtime condition a caller could hit by
-            // passing bad arguments or a failing tool. Treat it as such.
-            preconditionFailure(
-                "MultiTool.invokeBlocking: outcomeBox was nil after semaphore.wait() "
-                    + "returned. The Task must write a Result into outcomeBox before "
-                    + "signaling the semaphore, so this indicates the bridge's "
-                    + "signal/write ordering invariant has been violated."
-            )
-        }
+        let output = try await ToolInvoker.invoke(tool, content: content)
+        return try ArgumentMarshaler.renderOutput(output)
     }
 
     // MARK: - help()/docs() globals (plan.md M7)

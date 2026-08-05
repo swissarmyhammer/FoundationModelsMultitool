@@ -6,8 +6,9 @@ import os
 //
 // Small mock tools that exercise `MultiTool`'s `runCode` execution path end
 // to end: composing two tools in one snippet, grouped-namespace dispatch,
-// the v1 async bridge (plan.md Resolved #1), and a mis-called tool's
-// repairable-error path. Outputs are wrapped in small `@Generable` structs
+// the async promise-pump bridge (eventplan.md "Async JavaScript"), and a
+// mis-called tool's repairable-error path. Outputs are wrapped in small
+// `@Generable` structs
 // (rather than a bare `Double`/`Int`/`[String]`) except where a bare `String`
 // Output is already proven safe by `ArgumentMarshalerTests
 // .plainStringOutputRendersAsString` — the same conservative posture this
@@ -99,13 +100,14 @@ struct IssueCountTool: Tool {
     }
 }
 
-// MARK: - Async bridge fixture (plan.md Resolved #1)
+// MARK: - Async bridge fixture (eventplan.md "Async JavaScript")
 
 /// A tool whose `call` genuinely suspends (`Task.sleep`) before returning,
-/// recording whether it observed `Thread.isMainThread` — exercises the v1
-/// async bridge: the wrapped tool's real `async` work runs on Swift's
-/// cooperative thread pool while the JS-calling (dedicated interpreter
-/// worker) thread blocks on a semaphore waiting for it.
+/// recording whether it observed `Thread.isMainThread` — exercises the async
+/// promise-pump bridge: the wrapped tool's real `async` work runs in its own
+/// Swift `Task` (started by `JSCInterpreter.install(asyncHostFunction:into:
+/// registry:)`) on Swift's cooperative thread pool, never on the JS-calling
+/// (dedicated interpreter worker) thread.
 ///
 /// `final class ... Sendable` (rather than a `struct`), the same pattern as
 /// `RecordingTool` (`ToolInvokerFixtures.swift`): recording requires shared
@@ -125,5 +127,51 @@ final class DelayedTool: Tool, Sendable {
         try await Task.sleep(nanoseconds: 20_000_000)
         ranOnMainThreadBox.withLock { $0 = Thread.isMainThread }
         return "delayed-result"
+    }
+}
+
+// MARK: - Promise.all concurrency fixture (eventplan.md "Async JavaScript")
+
+/// A tool that records the wall-clock window (`start`, `end`) its own `call`
+/// ran in — the concurrency-proving counterpart to `DelayedTool`: two of
+/// these, called through a snippet's `Promise.all([...])`, prove the
+/// underlying Swift `Task`s the async bridge starts for each `tools.*` call
+/// actually overlap in wall-clock time, rather than running one after
+/// another the way the retired v1 blocking bridge always did.
+///
+/// `final class ... Sendable` (rather than a `struct`), the same pattern as
+/// `DelayedTool`: the test inspects `window` after `MultiTool.call` returns,
+/// backed by an `OSAllocatedUnfairLock` so the type stays `Sendable`.
+final class WindowRecordingTool: Tool, Sendable {
+    let name: String
+    let description = "Waits for a fixed duration, recording the wall-clock window its call ran in."
+
+    private let delayNanoseconds: UInt64
+    private let windowBox = OSAllocatedUnfairLock<(start: ContinuousClock.Instant, end: ContinuousClock.Instant)?>(
+        initialState: nil
+    )
+
+    /// Creates a window-recording tool.
+    ///
+    /// - Parameters:
+    ///   - name: this tool's `tools.*` name.
+    ///   - delayNanoseconds: how long `call` sleeps before returning.
+    init(name: String, delayNanoseconds: UInt64) {
+        self.name = name
+        self.delayNanoseconds = delayNanoseconds
+    }
+
+    /// The wall-clock window `call` ran in — `nil` until it has run at least
+    /// once.
+    var window: (start: ContinuousClock.Instant, end: ContinuousClock.Instant)? {
+        windowBox.withLock { $0 }
+    }
+
+    func call(arguments: NoArguments) async throws -> String {
+        let start = ContinuousClock.now
+        try await Task.sleep(nanoseconds: delayNanoseconds)
+        let end = ContinuousClock.now
+        windowBox.withLock { $0 = (start, end) }
+        return "\(name)-result"
     }
 }

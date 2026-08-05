@@ -106,11 +106,17 @@ fully offline against a real `LanguageModelSession`.
 `MultiTool` is also directly callable — no session at all. One `runCode`
 call composes both tools; only the final value comes back:
 
+Every `tools.*` call returns a promise, so a snippet composing more than one
+call awaits each of them (or fans them out with `Promise.all`):
+
 ```swift
 let warmest = try await multiTool.call(
     arguments: RunCodeArguments(code: """
-        const cities = tools.tripCities().cities;
-        const temps = cities.map(c => tools.weather({ city: c }).tempC);
+        const cities = (await tools.tripCities()).cities;
+        const temps = [];
+        for (const city of cities) {
+          temps.push((await tools.weather({ city })).tempC);
+        }
         return Math.max(...temps);
         """)
 )
