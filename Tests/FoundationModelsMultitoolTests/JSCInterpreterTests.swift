@@ -686,6 +686,197 @@ struct JSCInterpreterTests {
         #expect(weakCanary == nil)
     }
 
+    // MARK: - Proxy trap on pending results
+
+    @Test("accessing a property other than then/catch/finally on a pending async host-function result throws a precise, model-repairable error naming the call and the property")
+    func propertyAccessOnPendingResultThrowsForgotAwaitError() throws {
+        let interpreter = JSCInterpreter()
+        let call = AsyncHostFunction(name: "tools.x.y") { _ in
+            try await Task.sleep(nanoseconds: 20_000_000)
+            return .object(["value": .number(1)])
+        }
+        #expect {
+            try interpreter.run(
+                code: """
+                const r = globalThis["tools.x.y"]();
+                return r.value;
+                """,
+                installing: [],
+                installingAsync: [call]
+            )
+        } throws: { error in
+            guard let interpreterError = error as? InterpreterError else { return false }
+            return interpreterError.kind == .exception
+                && interpreterError.message.contains("tools.x.y")
+                && interpreterError.message.contains("value")
+                && interpreterError.message.contains("did you forget")
+                && interpreterError.message.contains("await")
+        }
+    }
+
+    @Test("arithmetic coercion of a pending async host-function result throws a precise, model-repairable error naming the call, rather than escaping the trap")
+    func arithmeticCoercionOfPendingResultThrowsForgotAwaitError() throws {
+        // eventplan.md frames "truthiness/arithmetic on a promise" as one
+        // uncaught shape, but only bare truthiness genuinely evades this
+        // trap (`ToBoolean` on an object never looks up a property).
+        // Arithmetic reaches `ToPrimitive`, which does `Get`s for
+        // `@@toPrimitive`/`valueOf`/`toString` — none of them exempted here
+        // — so this is caught too, incidentally. Regression coverage for
+        // `describeNonExemptProperty`, which must render the `Symbol`
+        // property key `@@toPrimitive` names without itself crashing.
+        let interpreter = JSCInterpreter()
+        let call = AsyncHostFunction(name: "tools.x.y") { _ in
+            try await Task.sleep(nanoseconds: 20_000_000)
+            return .number(1)
+        }
+        #expect {
+            try interpreter.run(
+                code: """
+                const r = globalThis["tools.x.y"]();
+                return r + 1;
+                """,
+                installing: [],
+                installingAsync: [call]
+            )
+        } throws: { error in
+            guard let interpreterError = error as? InterpreterError else { return false }
+            return interpreterError.kind == .exception
+                && interpreterError.message.contains("tools.x.y")
+                && interpreterError.message.contains("did you forget")
+                && interpreterError.message.contains("await")
+        }
+    }
+
+    @Test("console.log on a pending async host-function result throws a precise, model-repairable error instead of crashing the process")
+    func consoleLogOnPendingResultThrowsForgotAwaitErrorInsteadOfCrashing() throws {
+        // Regression: `console.log(r)` coerces `r` via the same
+        // `ToPrimitive`/`@@toPrimitive` path as arithmetic, which trips this
+        // trap — and `installConsole`'s own argument-to-string conversion
+        // used to force-unwrap `JSValue.toString()`'s result, which is
+        // `nil` (not itself throwing) exactly when that coercion fails,
+        // crashing the whole host process instead of surfacing the trap's
+        // repairable error. Confirmed against JSC directly while
+        // implementing this fix.
+        let interpreter = JSCInterpreter()
+        let call = AsyncHostFunction(name: "tools.x.y") { _ in
+            try await Task.sleep(nanoseconds: 20_000_000)
+            return .number(1)
+        }
+        #expect {
+            try interpreter.run(
+                code: """
+                const r = globalThis["tools.x.y"]();
+                console.log(r);
+                return "unreachable";
+                """,
+                installing: [],
+                installingAsync: [call]
+            )
+        } throws: { error in
+            guard let interpreterError = error as? InterpreterError else { return false }
+            return interpreterError.kind == .exception
+                && interpreterError.message.contains("tools.x.y")
+                && interpreterError.message.contains("did you forget")
+        }
+    }
+
+    @Test("then, catch, and finally are exempt from the pending-result proxy trap")
+    func thenCatchFinallyAreExemptFromTheProxyTrap() throws {
+        let interpreter = JSCInterpreter()
+        let call = AsyncHostFunction(name: "tools.x.y") { _ in
+            try await Task.sleep(nanoseconds: 20_000_000)
+            return .number(1)
+        }
+        let result = try interpreter.run(
+            code: """
+            const r = globalThis["tools.x.y"]();
+            const hasThen = typeof r.then === "function";
+            const hasCatch = typeof r.catch === "function";
+            const hasFinally = typeof r.finally === "function";
+            await r;
+            return { hasThen: hasThen, hasCatch: hasCatch, hasFinally: hasFinally };
+            """,
+            installing: [],
+            installingAsync: [call]
+        )
+        #expect(
+            result.returnValue == .object([
+                "hasThen": .bool(true),
+                "hasCatch": .bool(true),
+                "hasFinally": .bool(true),
+            ])
+        )
+    }
+
+    @Test("a rejected proxied result is still catchable via .catch even though it is wrapped in a Proxy")
+    func proxiedRejectionIsStillCatchable() throws {
+        let interpreter = JSCInterpreter()
+        let boom = AsyncHostFunction(name: "tools.boom") { _ in
+            try await Task.sleep(nanoseconds: 20_000_000)
+            throw InterpreterError(kind: .exception, message: "nope")
+        }
+        let result = try interpreter.run(
+            code: """
+            return globalThis["tools.boom"]().catch(function(e) { return "caught:" + e; });
+            """,
+            installing: [],
+            installingAsync: [boom]
+        )
+        guard case .string(let value) = result.returnValue else {
+            Issue.record("expected a string return value")
+            return
+        }
+        #expect(value.hasPrefix("caught:"))
+    }
+
+    @Test("Promise.all resolves both values through the proxy wrapping each pending result")
+    func promiseAllResolvesBothProxiedResults() throws {
+        let interpreter = JSCInterpreter()
+        let a = AsyncHostFunction(name: "tools.a") { _ in
+            try await Task.sleep(nanoseconds: 20_000_000)
+            return .number(1)
+        }
+        let b = AsyncHostFunction(name: "tools.b") { _ in
+            try await Task.sleep(nanoseconds: 20_000_000)
+            return .number(2)
+        }
+        let result = try interpreter.run(
+            code: """
+            const values = await Promise.all([globalThis["tools.a"](), globalThis["tools.b"]()]);
+            return values[0] + values[1];
+            """,
+            installing: [],
+            installingAsync: [a, b]
+        )
+        #expect(result.returnValue == .number(3))
+    }
+
+    @Test("the forgot-await proxy trap error renders through ResultRenderer with the standard repair instruction")
+    func pendingResultPropertyAccessErrorRendersWithRepairInstruction() throws {
+        let interpreter = JSCInterpreter()
+        let call = AsyncHostFunction(name: "tools.x.y") { _ in
+            try await Task.sleep(nanoseconds: 20_000_000)
+            return .object(["value": .number(1)])
+        }
+        do {
+            _ = try interpreter.run(
+                code: """
+                const r = globalThis["tools.x.y"]();
+                return r.value;
+                """,
+                installing: [],
+                installingAsync: [call]
+            )
+            Issue.record("expected the run to throw")
+        } catch let interpreterError as InterpreterError {
+            let rendered = ResultRenderer.render(interpreterError)
+            #expect(rendered.contains("tools.x.y"))
+            #expect(rendered.contains("value"))
+            #expect(rendered.contains("await"))
+            #expect(rendered.hasSuffix("Fix the snippet and call runCode again."))
+        }
+    }
+
     @Test("isCancelled mid-await cancels a pending async host function and returns within the time limit")
     func cancellationCancelsPendingAsyncHostFunction() throws {
         let interpreter = JSCInterpreter(timeLimit: 10.0)

@@ -507,7 +507,20 @@ public final class JSCInterpreter: Interpreter {
         let log: @convention(block) () -> Void = {
             let arguments = (JSContext.currentArguments() as? [JSValue]) ?? []
             let line = arguments
-                .map { $0.isUndefined ? "undefined" : $0.toString() }
+                // `toString()` is `String!`: an implicit-unwrap force-unwrap
+                // hazard, not merely a style choice — it returns `nil`
+                // (rather than trapping itself) when converting `$0` raises
+                // a JS exception, e.g. a `wrapInForgotAwaitProxy` `get` trap
+                // firing on `console.log(pendingResult)`'s own `ToPrimitive`
+                // coercion (confirmed directly against JSC: an unguarded
+                // force-unwrap here crashes the whole host process instead
+                // of surfacing the trap's repairable error). `??` falls
+                // back to a placeholder instead; `context.exceptionHandler`
+                // has already captured the real exception by the time
+                // `toString()` returns `nil`, so `evaluate` still reports it
+                // as the run's `InterpreterError`, same as any other
+                // exception raised mid-snippet.
+                .map { $0.isUndefined ? "undefined" : ($0.toString() ?? "[unrepresentable value]") }
                 .joined(separator: " ")
             lines.append(line)
         }
@@ -772,8 +785,21 @@ public final class JSCInterpreter: Interpreter {
     /// property shadows an inherited one), so they route through tracking
     /// too — confirmed directly against JSC (`instanceof Promise`,
     /// `.catch(...)`, and `.finally(...)` all behave correctly; the wrapper
-    /// still `JSON.stringify`s to `{}` and has no enumerable keys, since
-    /// `then` is defined non-enumerable).
+    /// itself still `JSON.stringify`s to `{}` and has no enumerable keys,
+    /// since `then` is defined non-enumerable — though the snippet never
+    /// sees this object directly; see the next paragraph).
+    ///
+    /// This thenable is never itself the value handed back to the snippet:
+    /// it is, in turn, wrapped in a `Proxy` by `wrapInForgotAwaitProxy` —
+    /// eventplan.md "Async JavaScript": "A Proxy trap catches property
+    /// access on a pending result... For each property except then, catch,
+    /// and finally, the get trap throws a precise repairable error." The
+    /// Proxy is what the snippet actually receives; that function's own
+    /// documentation covers the trap itself and why `then` is forwarded
+    /// merely fetched (never bound) while `catch`/`finally` are the
+    /// opposite — that asymmetry is what keeps this thenable's own
+    /// `.then`/`.catch`/`.finally` behavior, described above, working
+    /// unchanged underneath it.
     ///
     /// The internal promise itself is *never captured by the `then` block* —
     /// only read back via `JSContext.currentThis()` from a non-enumerable
@@ -793,91 +819,310 @@ public final class JSCInterpreter: Interpreter {
     ) {
         let body: @convention(block) () -> JSValue? = {
             guard let currentContext = JSContext.current() else { return nil }
-            let values: [InterpreterValue]
             do {
-                values = try convertArguments(in: currentContext)
+                let values = try convertArguments(in: currentContext)
+                let (internalPromise, id) = try makeTrackedPromise(
+                    for: asyncHostFunction, arguments: values, in: currentContext, registry: registry
+                )
+                let thenable = try makeThenable(wrapping: internalPromise, id: id, in: currentContext, registry: registry)
+                guard let proxy = wrapInForgotAwaitProxy(thenable, callName: asyncHostFunction.name, in: currentContext) else {
+                    throw InterpreterError(kind: .exception, message: "Proxy is unavailable.")
+                }
+                return proxy
             } catch {
                 return setException(message: "\(asyncHostFunction.name): \(error)", in: currentContext)
             }
-
-            var createdID: Int?
-            let internalPromise = JSValue(newPromiseIn: currentContext) { resolve, reject in
-                guard let resolve, let reject else { return }
-                let id = registry.register(resolve: resolve, reject: reject, name: asyncHostFunction.name)
-                createdID = id
-                let task = Task {
-                    do {
-                        let result = try await asyncHostFunction.call(values)
-                        registry.complete(id: id, outcome: .success(result))
-                    } catch {
-                        registry.complete(id: id, outcome: .failure("\(error)"))
-                    }
-                }
-                registry.attachTask(id: id, task: task)
-            }
-            guard let internalPromise, let id = createdID else {
-                return setException(message: "\(asyncHostFunction.name): failed to create a promise.", in: currentContext)
-            }
-            guard
-                let objectConstructor = currentContext.objectForKeyedSubscript("Object"),
-                let defineProperty = objectConstructor.objectForKeyedSubscript("defineProperty"),
-                let create = objectConstructor.objectForKeyedSubscript("create"),
-                let promiseConstructor = currentContext.objectForKeyedSubscript("Promise"),
-                let promisePrototype = promiseConstructor.objectForKeyedSubscript("prototype")
-            else {
-                return setException(message: "\(asyncHostFunction.name): Object/Promise are unavailable.", in: currentContext)
-            }
-            guard let thenable = create.call(withArguments: [promisePrototype]), !thenable.isUndefined else {
-                return setException(message: "\(asyncHostFunction.name): failed to create a thenable.", in: currentContext)
-            }
-            defineProperty.call(withArguments: [
-                thenable, Self.internalPromisePropertyName,
-                ["value": internalPromise, "enumerable": false, "writable": false, "configurable": false],
-            ])
-            let consumed = ConsumedFlag()
-            let trackedThen: @convention(block) () -> JSValue? = {
-                let thenArguments = (JSContext.currentArguments() as? [JSValue]) ?? []
-                // A rejection is only genuinely handled — not merely
-                // observed — when the caller supplies its own callable
-                // `onRejected`; `await`/`Promise.all`/`.catch`/`.finally`
-                // all do, per the spec forms this thenable is built to
-                // intercept, but a bare `.then(onFulfilled)` does not, and
-                // rejects a whole new (untracked) derived promise the model
-                // likely never meant to create. `Promise.prototype.then`
-                // itself only ever invokes `onRejected` when it is callable
-                // (a non-callable second argument, e.g. `.then(undefined,
-                // false)`, is treated the same as omitting it and rethrows
-                // to the derived promise) — mirror that with `isCallable`
-                // here, or a non-function second argument would mark a
-                // rejection "handled" that no code can actually run to
-                // handle. The context for that check is fetched fresh from
-                // `JSContext.current()` on every call rather than captured
-                // from the enclosing scope — capturing any `JSValue` here
-                // would recreate the retain cycle this function's own
-                // documentation warns about. See this function's
-                // documentation for the known limitation this narrowing
-                // accepts.
-                if thenArguments.count > 1, let currentContext = JSContext.current(),
-                    isCallable(thenArguments[1], in: currentContext) {
-                    consumed.value = true
-                }
-                guard
-                    let this = JSContext.currentThis(),
-                    let realPromise = this.objectForKeyedSubscript(Self.internalPromisePropertyName),
-                    !realPromise.isUndefined
-                else {
-                    return nil
-                }
-                return realPromise.invokeMethod("then", withArguments: thenArguments)
-            }
-            defineProperty.call(withArguments: [
-                thenable, "then",
-                ["value": trackedThen, "enumerable": false, "writable": false, "configurable": false],
-            ])
-            registry.attachConsumedFlag(id: id, flag: consumed)
-            return thenable
         }
         context.setObject(body, forKeyedSubscript: asyncHostFunction.name as NSString)
+    }
+
+    /// Creates the internal promise backing one async host-function call:
+    /// registers its `resolve`/`reject` pair with `registry`, and starts the
+    /// backing `Task` that will eventually settle it — the executor half of
+    /// `install(asyncHostFunction:into:registry:)`, factored out to keep
+    /// that function's own body a flat, linear `do`/`try`/`catch` chain.
+    ///
+    /// - Parameters:
+    ///   - asyncHostFunction: the call being bridged — its `name` and `call`
+    ///     are both used.
+    ///   - values: the call's already-converted arguments.
+    ///   - context: the sandbox's context, in which the internal promise is
+    ///     created.
+    ///   - registry: the settle-before-return registry this call's
+    ///     `resolve`/`reject`/backing `Task` are registered against.
+    /// - Returns: the internal promise and the id `registry` tracks it
+    ///   under.
+    /// - Throws: an `InterpreterError` if `JSValue(newPromiseIn:
+    ///   fromExecutor:)` fails to produce a promise (never observed in
+    ///   practice; defensive, matching every other "standard surface
+    ///   unavailable" branch in this file).
+    private static func makeTrackedPromise(
+        for asyncHostFunction: AsyncHostFunction,
+        arguments values: [InterpreterValue],
+        in context: JSContext,
+        registry: PromiseRegistry
+    ) throws -> (promise: JSValue, id: Int) {
+        var createdID: Int?
+        let internalPromise = JSValue(newPromiseIn: context) { resolve, reject in
+            guard let resolve, let reject else { return }
+            let id = registry.register(resolve: resolve, reject: reject, name: asyncHostFunction.name)
+            createdID = id
+            let task = Task {
+                do {
+                    let result = try await asyncHostFunction.call(values)
+                    registry.complete(id: id, outcome: .success(result))
+                } catch {
+                    registry.complete(id: id, outcome: .failure("\(error)"))
+                }
+            }
+            registry.attachTask(id: id, task: task)
+        }
+        guard let internalPromise, let id = createdID else {
+            throw InterpreterError(kind: .exception, message: "failed to create a promise.")
+        }
+        return (internalPromise, id)
+    }
+
+    /// Builds the `thenable` `install(asyncHostFunction:into:registry:)`
+    /// wraps in a `Proxy` for one pending call: a plain object inheriting
+    /// `Promise.prototype`, holding `internalPromise` under
+    /// `Self.internalPromisePropertyName` and a tracked `then` that shadows
+    /// the inherited one — see `install(asyncHostFunction:into:registry:)`'s
+    /// own documentation for the full rationale (the retain-cycle avoidance,
+    /// the `ConsumedFlag`, and why a thenable rather than a real `Promise`
+    /// subclass). Factored out to keep that function's own body a flat,
+    /// linear `do`/`try`/`catch` chain.
+    ///
+    /// - Parameters:
+    ///   - internalPromise: the promise `makeTrackedPromise` created for
+    ///     this call.
+    ///   - id: `internalPromise`'s id in `registry`, from
+    ///     `makeTrackedPromise`.
+    ///   - context: the sandbox's context.
+    ///   - registry: the settle-before-return registry to attach this
+    ///     call's `ConsumedFlag` to.
+    /// - Returns: the thenable, ready for `wrapInForgotAwaitProxy`.
+    /// - Throws: an `InterpreterError` if `Object`/`Promise` or
+    ///   `Object.create` are unavailable, or `Object.create` fails to
+    ///   produce a value (never observed in practice; defensive, matching
+    ///   every other "standard surface unavailable" branch in this file).
+    private static func makeThenable(
+        wrapping internalPromise: JSValue,
+        id: Int,
+        in context: JSContext,
+        registry: PromiseRegistry
+    ) throws -> JSValue {
+        guard
+            let objectConstructor = context.objectForKeyedSubscript("Object"),
+            let defineProperty = objectConstructor.objectForKeyedSubscript("defineProperty"),
+            let create = objectConstructor.objectForKeyedSubscript("create"),
+            let promiseConstructor = context.objectForKeyedSubscript("Promise"),
+            let promisePrototype = promiseConstructor.objectForKeyedSubscript("prototype")
+        else {
+            throw InterpreterError(kind: .exception, message: "Object/Promise are unavailable.")
+        }
+        guard let thenable = create.call(withArguments: [promisePrototype]), !thenable.isUndefined else {
+            throw InterpreterError(kind: .exception, message: "failed to create a thenable.")
+        }
+        defineHiddenProperty(name: Self.internalPromisePropertyName, value: internalPromise, on: thenable, using: defineProperty)
+        let consumed = ConsumedFlag()
+        let trackedThen: @convention(block) () -> JSValue? = {
+            let thenArguments = (JSContext.currentArguments() as? [JSValue]) ?? []
+            // A rejection is only genuinely handled — not merely
+            // observed — when the caller supplies its own callable
+            // `onRejected`; `await`/`Promise.all`/`.catch`/`.finally`
+            // all do, per the spec forms this thenable is built to
+            // intercept, but a bare `.then(onFulfilled)` does not, and
+            // rejects a whole new (untracked) derived promise the model
+            // likely never meant to create. `Promise.prototype.then`
+            // itself only ever invokes `onRejected` when it is callable
+            // (a non-callable second argument, e.g. `.then(undefined,
+            // false)`, is treated the same as omitting it and rethrows
+            // to the derived promise) — mirror that with `isCallable`
+            // here, or a non-function second argument would mark a
+            // rejection "handled" that no code can actually run to
+            // handle. The context for that check is fetched fresh from
+            // `JSContext.current()` on every call rather than captured
+            // from the enclosing scope — capturing any `JSValue` here
+            // would recreate the retain cycle this function's own
+            // documentation warns about. See this function's
+            // documentation for the known limitation this narrowing
+            // accepts.
+            if thenArguments.count > 1, let currentContext = JSContext.current(),
+                isCallable(thenArguments[1], in: currentContext) {
+                consumed.value = true
+            }
+            guard
+                let this = JSContext.currentThis(),
+                let realPromise = this.objectForKeyedSubscript(Self.internalPromisePropertyName),
+                !realPromise.isUndefined
+            else {
+                return nil
+            }
+            return realPromise.invokeMethod("then", withArguments: thenArguments)
+        }
+        defineHiddenProperty(name: "then", value: trackedThen, on: thenable, using: defineProperty)
+        registry.attachConsumedFlag(id: id, flag: consumed)
+        return thenable
+    }
+
+    /// Defines `name` as a non-enumerable, non-configurable, non-writable
+    /// own property of `object` holding `value` — the exact shape
+    /// `thenable` needs for both its internal-promise marker
+    /// (`Self.internalPromisePropertyName`) and its tracked `then`, factored
+    /// out here so the two definitions can't drift apart.
+    ///
+    /// - Parameters:
+    ///   - name: the property's key.
+    ///   - value: the property's value.
+    ///   - object: the object to define the property on.
+    ///   - defineProperty: `Object.defineProperty`, passed in rather than
+    ///     looked up again, since every caller already fetched it once.
+    private static func defineHiddenProperty(name: String, value: Any, on object: JSValue, using defineProperty: JSValue) {
+        defineProperty.call(withArguments: [
+            object, name,
+            ["value": value, "enumerable": false, "writable": false, "configurable": false],
+        ])
+    }
+
+    /// Wraps `thenable` — the value `install(asyncHostFunction:into:
+    /// registry:)` built for one pending call — in a JS `Proxy` whose `get`
+    /// trap throws a precise, model-repairable error for every property
+    /// except `then`, `catch`, and `finally` (eventplan.md "Async
+    /// JavaScript": "A Proxy trap catches property access on a pending
+    /// result... For each property except then, catch, and finally, the get
+    /// trap throws a precise repairable error. The error names the call and
+    /// the property. It asks 'did you forget await?'."). This is the third
+    /// of the plan's four forgotten-`await` shapes; the plan frames the
+    /// fourth — truthiness/arithmetic on the pending result — as this trap's
+    /// uncaught backstop, covered only by description text and the repair
+    /// loop. That holds exactly for bare truthiness (`if (r)`): `ToBoolean`
+    /// on an object never performs a property lookup, per spec, so no `get`
+    /// fires. Arithmetic and string coercion are narrower than the plan's
+    /// wording suggests, though: `r + 1`, `` `${r}` ``, and similar reach
+    /// `ToPrimitive`, which does `Get`s for `@@toPrimitive`, then `valueOf`,
+    /// then `toString` (confirmed directly against JSC) — none of which are
+    /// exempted below, so this trap catches those too, incidentally.
+    ///
+    /// `then` is forwarded to the exact value `target.then` already is,
+    /// completely unwrapped — required, not merely simplest: `then` is a
+    /// non-configurable, non-writable own property of `thenable` (see
+    /// `install(asyncHostFunction:into:registry:)`), and the `Proxy`
+    /// invariants (ECMA-262 `[[Get]]`) mandate that a `get` trap's result
+    /// for such a property be `SameValue` as the target's own value — a
+    /// bound copy would trip that invariant and JSC throws a native
+    /// `TypeError` for it (confirmed directly against JSC). Because `then`
+    /// itself can't be rebound, whatever calls it (`await`, `Promise.all`,
+    /// or an explicit `.then(...)`) invokes it with the *Proxy* as `this` —
+    /// unavoidable, since a property read never changes what a later call's
+    /// own `this` will be; that is fixed by the call expression's own base
+    /// reference. `trackedThen`'s body copes by reading its internal
+    /// promise back through `this` (`JSContext.currentThis()`), so that
+    /// property — `Self.internalPromisePropertyName`, likewise
+    /// non-configurable/non-writable — is forwarded unwrapped for the exact
+    /// same invariant reason, alongside `then`.
+    ///
+    /// `catch` and `finally`, by contrast, are *not* own properties of
+    /// `thenable` — both are inherited from `Promise.prototype` — so no such
+    /// invariant constrains them, and each is returned bound to `target`
+    /// (`Function.prototype.bind`) rather than left to run with `this` as
+    /// the Proxy. This matters because JSC's actual `Promise.prototype
+    /// .finally` (unlike a naive `this.then(...)` polyfill) calls
+    /// `SpeciesConstructor(this, %Promise%)` first, which reads `this
+    /// .constructor` — a property this trap does not otherwise exempt.
+    /// Binding to `target` makes that internal lookup, and `catch`'s own
+    /// `this.then(...)` delegation, land directly on `thenable`, bypassing
+    /// this trap entirely for those internal accesses (confirmed directly
+    /// against JSC).
+    ///
+    /// - Parameters:
+    ///   - thenable: the plain object `install(asyncHostFunction:into:
+    ///     registry:)` built for this call.
+    ///   - callName: the async host function's name, named in the trap's
+    ///     error alongside the property that was accessed.
+    ///   - context: the sandbox's context.
+    /// - Returns: the proxy to hand back to the snippet in `thenable`'s
+    ///   place, or `nil` if `Proxy` is unavailable on `context` — the caller
+    ///   should raise a JS exception in that case, matching every other
+    ///   "standard surface unavailable" branch in this file.
+    private static func wrapInForgotAwaitProxy(
+        _ thenable: JSValue,
+        callName: String,
+        in context: JSContext
+    ) -> JSValue? {
+        guard
+            let proxyConstructor = context.objectForKeyedSubscript("Proxy"), !proxyConstructor.isUndefined,
+            let handler = JSValue(newObjectIn: context)
+        else {
+            return nil
+        }
+        let getTrap: @convention(block) () -> JSValue? = {
+            guard let currentContext = JSContext.current() else { return nil }
+            let arguments = (JSContext.currentArguments() as? [JSValue]) ?? []
+            guard arguments.count >= 2 else { return nil }
+            let target = arguments[0]
+            let propertyKey = arguments[1]
+            let propertyName: String? = propertyKey.isString ? propertyKey.toString() : nil
+            switch propertyName ?? "" {
+            case "then", Self.internalPromisePropertyName:
+                return target.objectForKeyedSubscript(propertyName ?? "")
+            case "catch", "finally":
+                guard let member = target.objectForKeyedSubscript(propertyName ?? "") else { return nil }
+                return member.invokeMethod("bind", withArguments: [target])
+            default:
+                let displayName = describeNonExemptProperty(propertyKey, knownName: propertyName, in: currentContext)
+                return setException(
+                    message: "\(callName): accessed property \"\(displayName)\" on a pending result — "
+                        + "did you forget `await`? Await the call (e.g. `await \(callName)(...)`) before "
+                        + "reading a property, or use `.then`, `.catch`, or `.finally`.",
+                    in: currentContext
+                )
+            }
+        }
+        handler.setObject(getTrap, forKeyedSubscript: "get" as NSString)
+        guard
+            let proxy = proxyConstructor.construct(withArguments: [thenable, handler]), !proxy.isUndefined
+        else {
+            return nil
+        }
+        return proxy
+    }
+
+    /// Describes `propertyKey` for the "did you forget `await`?" error
+    /// message the `get` trap's default case throws: `knownName` when the
+    /// key is already a string, otherwise `propertyKey` rendered through
+    /// the global `String` function.
+    ///
+    /// `String(value)`, called as a function (not `new String(value)`), has
+    /// a dedicated `Symbol` branch (`SymbolDescriptiveString`) that renders
+    /// e.g. `"Symbol(Symbol.toPrimitive)"` without throwing — unlike
+    /// ordinary `ToString` conversion (what `JSValue.toString()` performs),
+    /// which throws for a `Symbol` per spec. This matters because arithmetic
+    /// and string coercion on the pending result (`r + 1`, `` `${r}` ``)
+    /// reach this trap through exactly such a key — `@@toPrimitive` — via
+    /// `ToPrimitive` (confirmed directly against JSC; see
+    /// `wrapInForgotAwaitProxy`'s own documentation).
+    ///
+    /// - Parameters:
+    ///   - propertyKey: the `get` trap's raw property-key argument.
+    ///   - knownName: `propertyKey` already converted to a `String`, when
+    ///     the caller determined it is one; `nil` for a `Symbol` key.
+    ///   - context: the sandbox's context.
+    /// - Returns: `knownName` if given; otherwise `propertyKey` described via
+    ///   the global `String` function, or `"a non-string property"` if even
+    ///   that is unavailable.
+    private static func describeNonExemptProperty(_ propertyKey: JSValue, knownName: String?, in context: JSContext) -> String {
+        if let knownName {
+            return knownName
+        }
+        guard
+            let stringConstructor = context.objectForKeyedSubscript("String"),
+            let described = stringConstructor.call(withArguments: [propertyKey]), described.isString,
+            let text = described.toString()
+        else {
+            return "a non-string property"
+        }
+        return text
     }
 
     /// The non-enumerable own property name `install(asyncHostFunction:into:
@@ -978,18 +1223,27 @@ public final class JSCInterpreter: Interpreter {
         switch settlement.outcome {
         case .success(let value):
             guard let jsResult = try? jsValue(from: value, in: context) else {
-                let reason = JSValue(
-                    newErrorFromMessage: "\(settlement.name): could not convert the result to JSON.",
+                rejectWithMessage(
+                    message: "\(settlement.name): could not convert the result to JSON.",
+                    reject: settlement.reject,
                     in: context
                 )
-                settlement.reject.call(withArguments: [reason as Any])
                 return
             }
             settlement.resolve.call(withArguments: [jsResult])
         case .failure(let message):
-            let reason = JSValue(newErrorFromMessage: "\(settlement.name): \(message)", in: context)
-            settlement.reject.call(withArguments: [reason as Any])
+            rejectWithMessage(message: "\(settlement.name): \(message)", reject: settlement.reject, in: context)
         }
+    }
+
+    /// Rejects `reject` with a new JS `Error` built from `message` —
+    /// matching `install(hostFunction:into:)`'s sync-throw message shape.
+    /// Shared by `settle(_:in:)`'s two failure paths (a non-JSON-encodable
+    /// success value, and a genuine async host-function failure) so their
+    /// error construction can't drift apart.
+    private static func rejectWithMessage(message: String, reject: JSValue, in context: JSContext) {
+        let reason = JSValue(newErrorFromMessage: message, in: context)
+        reject.call(withArguments: [reason as Any])
     }
 
     // MARK: - Value conversion
