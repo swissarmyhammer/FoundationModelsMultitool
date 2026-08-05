@@ -30,6 +30,53 @@ comments:
     - next: ready for `/review`; human should confirm the cancellation-narrowing deviation noted above is acceptable
     task: ^yahbkg5
   timestamp: 2026-08-05T18:19:35.200990+00:00
+- actor: claude-code
+  id: 01kz9k873e2t7y603wwfqz6vhv
+  text: |-
+    ### review — findings
+    - evidence: `review sha HEAD~1..HEAD` (b743bd9) → 1 finding, 1 confirmed, 0 refuted — Sources/FoundationModelsMultitool/Interpreter/JSCInterpreter.swift:828 (the tracked `then` wrapper marks `consumed=true` off any non-undefined/non-null second argument without checking it's callable, e.g. `.then(undefined, false)`, so a genuinely-unhandled rejection could be reported as handled rather than floating)
+    - cancellation-narrowing deviation (flagged in the AC and both implementer comments): reviewed and assessed as an accepted, correctly-resolved true conflict between the AC's literal "reject each pending promise" wording and the watchdog's own documented bounded-time contract — not treated as a new finding requiring a code change. Full reasoning recorded in the task description's new Reviewer note section.
+    - next: implementer fixes the `.then` callable-check finding, then re-run `/review ^yahbkg5 HEAD~1..HEAD` (or `review working` if further changes land) for a clean pass
+    task: ^yahbkg5
+  timestamp: 2026-08-05T18:33:55.566940+00:00
+- actor: claude-code
+  id: 01kz9k97x7cehsa9herfth1x8e
+  text: |-
+    ### finish iteration 1 — findings
+    - implement: changed — verified/completed pre-existing diff (Interpreter.swift, JSCInterpreter.swift, JSCInterpreterTests.swift); checked off AC/Tests boxes
+    - test: green — swift test, 176/176 passed, 0 warnings
+    - commit: b743bd9 feat(interpreter): replace synchronous host functions with a JSC promise pump
+    - review: findings — Sources/FoundationModelsMultitool/Interpreter/JSCInterpreter.swift:828 (.then consumed-flag set without checking the handler arg is callable)
+    - next: implement fixes the .then callable-check finding, re-test, re-commit, re-review
+  timestamp: 2026-08-05T18:34:29.159804+00:00
+- actor: claude-code
+  id: 01kz9nwdj0e5thefq8m095qm5j
+  text: |-
+    Fixed the recorded finding (JSCInterpreter.swift:828, `.then` consumed-flag callable check) via TDD:
+
+    1. Added a failing test (`thenWithNonCallableRejectionHandlerStillFailsRun`, `.then(undefined, false)`) — confirmed RED against the buggy code (rejection silently swallowed).
+    2. Fixed by checking `thenArguments[1].isInstance(of: functionConstructor)` before setting `consumed = true` — this made the new test pass.
+    3. Ran `/double-check`, which found the first fix was itself wrong on two axes and reproduced both with runnable probes:
+       - **Retain-cycle regression**: capturing `functionConstructor` (a `JSValue`) in the outer `guard` and referencing it inside `trackedThen` recreates the exact retain-cycle leak this file's own doc comments warn about (context → native function → captured `JSValue` → its context). Reproduced with a minimal JSC probe (capturing leaks, not capturing frees).
+       - **`isInstance(of:)` is not `IsCallable`**: `Object.create(Function.prototype)` is `instanceof Function` but not callable (`typeof` → `"object"`) — false positive, the exact "swallowed rejection" bug recurring with a different witness. `Function.prototype` is callable (`typeof` → `"function"`) but not `instanceof Function` — false negative. Verified both with a runnable JSC probe (`isCallable`/`typeof` table, 8 cases, all consistent).
+
+    Fixed properly this pass:
+    - Added `private static func isCallable(_ value: JSValue, in context: JSContext) -> Bool` using the C API (`JSValueToObject` + `JSObjectIsFunction`), which matches `typeof value === "function"` exactly (verified against all 8 witness values).
+    - `trackedThen` now fetches `JSContext.current()` fresh on every call and calls `isCallable` — no `JSValue` is captured from the enclosing scope, so the retain-cycle risk is gone by construction.
+    - Fixed `asyncHostFunctionDoesNotLeakTheSandbox` (double-check's finding 3): the old design (`OSAllocatedUnfairLock<Canary?>`, nilled directly by the test) could never fail regardless of any real leak, since the test itself always held the last strong reference. Rewrote to capture `canary` directly in the async host function's closure (`[canary] _ in ...`) and check a `weak` reference after dropping the test's own `var` — the closure is the *only* other owner, so this actually proves the sandbox (and everything it retained) was torn down. Wrapped the `run()` call in `autoreleasepool { }` for deterministic ObjC-bridge deallocation timing (without it, ObjC-bridged blocks/JSValues can sit in a deferred autorelease pool and the test reports a false leak even when nothing is actually wrong — confirmed both ways: the fixed source passes only inside `autoreleasepool`, and reintroducing the capture bug inside that same `autoreleasepool`-wrapped test correctly fails again).
+    - Added two more `.then` test cases (double-check's finding 4) covering both directions of the `isInstance`-vs-`isCallable` gap: `.then(undefined, Object.create(Function.prototype))` (still fails the run) and `.then(undefined, Function.prototype)` (still handled, doesn't fail the run).
+
+    Verification: `swift build` clean (0 errors, 0 warnings beyond a pre-existing unrelated mlx-swift bundle warning). `swift test --filter JSCInterpreter` → 35/35 green. Full `swift test` → 179/179 green, 6 gated-integration tests correctly skipped without `MULTITOOL_INTEGRATION`. `mcp__sah__diagnostics check working` → 0 errors/warnings.
+
+    One self-review finding I did **not** act on: a `review working` pass flagged ~11 "multi-line comment" findings ("condense to one line") spanning both files, most of them in pre-existing code I never touched (e.g. the file's top-of-file watchdog-symbol pin comment, lines 7/15/402, none part of this diff) plus a few in comments I wrote this pass. No validator in this repo's `list validators`/`get validator` documents any such rule, it directly contradicts this file's own established, previously-and-repeatedly-reviewed style (long `//` explanations for non-obvious concurrency/retain-cycle hazards — exactly what the swift validator's own documentation rule sanctions for `///` doc comments: summary + elaboration), and "remove the cause from the whole file" would mean rewriting a large amount of unrelated, already-reviewed documentation on a memory-safety-sensitive file, well outside this task's scope. The finding's own counts were internally inconsistent (`confirmed: 11`, `refuted: 4`, `attempted: 9` — doesn't add up). Flagging this for a human rather than silently dropping it or silently obeying it.
+
+    Not committing (per instructions) — `eventplan.md` has pre-existing, unrelated uncommitted changes from another task in this working tree; left untouched.
+
+    ### implement — changed
+    - evidence: 2 files — Sources/FoundationModelsMultitool/Interpreter/JSCInterpreter.swift, Tests/FoundationModelsMultitoolTests/JSCInterpreterTests.swift; `swift build` clean; `swift test --filter JSCInterpreter` 35/35 pass; full `swift test` 179/179 pass
+    - next: task left in `doing` per instructions; ready for a human to decide on the disputed comment-length findings before any `/review`
+    task: ^yahbkg5
+  timestamp: 2026-08-05T19:19:54.688802+00:00
 position_column: doing
 position_ordinal: '80'
 title: '[MultiTool] JSCInterpreter promise pump with async host functions'
@@ -59,3 +106,13 @@ Replace the v1 "all host functions are synchronous" premise in `Sources/Foundati
 
 ## Workflow
 - Use `/tdd` — write failing tests first, then implement to make them pass. #phase-1
+
+## Review Findings (2026-08-05 13:25)
+
+- [x] `Sources/FoundationModelsMultitool/Interpreter/JSCInterpreter.swift:828` — The consumed flag is marked true if `.then` is called with a non-undefined/non-null second argument, but this doesn't guarantee the argument is callable. A call like `.then(undefined, false)` would mark consumed=true even though `false` is not a function, the rejection handler would fail, and the rejection would not actually be handled. This causes the unhandled rejection to be silently swallowed rather than reported as floating. Check if `thenArguments[1]` is actually a callable function before marking consumed=true. This may require invoking it to verify, or using a type check if JSValue provides one. Alternatively, add a test case that passes a non-function value (e.g., `.then(undefined, 0)`) to verify the rejection is still reported as floating.
+
+### Reviewer note on the recorded cancellation-narrowing deviation
+
+The task's AC bullet and both implementer comments flag a deliberate narrowing: on watchdog-forced termination, pending promises are never `resolve`/`reject`-settled (backing `Task`s are cancelled and the promises left permanently pending) rather than literally "reject each pending promise" per eventplan.md. Reviewed `PromiseRegistry.cancelAllPending` and `pumpUntilSettled`'s doc comments (JSCInterpreter.swift) against this claim.
+
+Assessment: this is a true conflict between the AC's literal wording and the watchdog's own documented bounded-time contract, and it is resolved correctly. Settling a promise via `resolve`/`reject.call(...)` runs JS synchronously and drains JSC's microtask queue — any `.then`/`.catch`/`.finally` continuation runs with no re-armed watchdog protection. For a snippet whose rejection handler is itself slow or non-terminating (exactly the class of input the watchdog exists to bound), literally rejecting pending promises on the forced-termination path could itself hang past the time limit — violating the same AC bullet's "returns within the time limit" clause. The externally observable contract (`CancellationError`/timeout thrown, bounded return) is preserved and covered by `cancellationCancelsPendingAsyncHostFunction`/`diagnosticCancellationForcesEarlyTermination`. This is not treated as a new finding requiring a code change — it is an accepted, disclosed, and tested safety-motivated narrowing scoped only to the watchdog-forced-termination path; ordinary drain-time rejections in `pumpUntilSettled` are unaffected and still settle normally.

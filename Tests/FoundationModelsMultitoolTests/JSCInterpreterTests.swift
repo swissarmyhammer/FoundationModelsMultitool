@@ -7,7 +7,7 @@ import os
 /// M1 coverage for `JSCInterpreter`: return-value capture, console capture,
 /// exception mapping, cross-run statelessness, host-function round-trips,
 /// and the execution-time watchdog. No model is needed for any of this.
-@Suite("JSCInterpreter")
+@Suite("JSCInterpreter", .serialized)
 struct JSCInterpreterTests {
     @Test("a snippet's return value round-trips out as JSON")
     func returnValueRoundTripsAsJson() throws {
@@ -533,6 +533,95 @@ struct JSCInterpreterTests {
         }
     }
 
+    @Test("a .then(undefined, nonFunction) with a non-callable rejection handler still fails the run on rejection")
+    func thenWithNonCallableRejectionHandlerStillFailsRun() throws {
+        // A non-undefined/non-null second argument to `.then` is not on its
+        // own proof of a genuine rejection handler — `.then(undefined,
+        // false)` supplies a value that cannot run as `onRejected`, so the
+        // real `Promise.prototype.then` treats it exactly like `undefined`
+        // (per spec, a non-callable `onRejected` is replaced with a default
+        // handler that rethrows). The rejection must still be reported as
+        // floating, not swallowed as "handled" merely because a second
+        // argument happened to be present.
+        let interpreter = JSCInterpreter()
+        let boom = AsyncHostFunction(name: "boomAsync") { _ in
+            try await Task.sleep(nanoseconds: 20_000_000)
+            throw InterpreterError(kind: .exception, message: "nope")
+        }
+        #expect {
+            try interpreter.run(
+                code: """
+                boomAsync().then(undefined, false);
+                return "done";
+                """,
+                installing: [],
+                installingAsync: [boom]
+            )
+        } throws: { error in
+            guard let interpreterError = error as? InterpreterError else { return false }
+            return interpreterError.kind == .exception
+                && interpreterError.message.contains("boomAsync")
+                && interpreterError.message.contains("nope")
+        }
+    }
+
+    @Test("a .then(undefined, objectInstanceofFunction) with a merely-instanceof-Function, non-callable handler still fails the run")
+    func thenWithInstanceOfFunctionButNonCallableHandlerStillFailsRun() throws {
+        // `instanceof Function` is neither necessary nor sufficient for
+        // callability: `Object.create(Function.prototype)` passes
+        // `instanceof Function` (it inherits from `Function.prototype`) yet
+        // has no internal `[[Call]]` — `typeof` reports `"object"`, and the
+        // real `Promise.prototype.then` cannot invoke it as `onRejected`.
+        // Marking this "handled" would be exactly the false positive the
+        // original finding named, just with a different witness value than
+        // `.then(undefined, false)`.
+        let interpreter = JSCInterpreter()
+        let boom = AsyncHostFunction(name: "boomAsync") { _ in
+            try await Task.sleep(nanoseconds: 20_000_000)
+            throw InterpreterError(kind: .exception, message: "nope")
+        }
+        #expect {
+            try interpreter.run(
+                code: """
+                boomAsync().then(undefined, Object.create(Function.prototype));
+                return "done";
+                """,
+                installing: [],
+                installingAsync: [boom]
+            )
+        } throws: { error in
+            guard let interpreterError = error as? InterpreterError else { return false }
+            return interpreterError.kind == .exception
+                && interpreterError.message.contains("boomAsync")
+                && interpreterError.message.contains("nope")
+        }
+    }
+
+    @Test("a .then(undefined, callableButNotInstanceofFunction) handler is still recognized as genuinely handling the rejection")
+    func thenWithCallableButNotInstanceOfFunctionHandlerDoesNotFailRun() throws {
+        // `Function.prototype` is itself callable (`typeof
+        // Function.prototype === "function"`, a real no-op function) but is
+        // NOT `instanceof Function` (its own prototype is
+        // `Object.prototype`, not `Function.prototype`). A rejection
+        // handler this permissive but genuinely callable must still count
+        // as handled — the other direction of the same false test the
+        // previous case guards.
+        let interpreter = JSCInterpreter()
+        let boom = AsyncHostFunction(name: "boomAsync") { _ in
+            try await Task.sleep(nanoseconds: 20_000_000)
+            throw InterpreterError(kind: .exception, message: "nope")
+        }
+        let result = try interpreter.run(
+            code: """
+            boomAsync().then(undefined, Function.prototype);
+            return "done";
+            """,
+            installing: [],
+            installingAsync: [boom]
+        )
+        #expect(result.returnValue == .string("done"))
+    }
+
     @Test("a bridge call's returned value supports .finally(...) and is instanceof Promise")
     func bridgeReturnValueSupportsFinallyAndIsPromise() throws {
         let interpreter = JSCInterpreter()
@@ -567,25 +656,34 @@ struct JSCInterpreterTests {
         // `JSValue`, the `JSValue` holds its `JSContext`) that kept the
         // whole sandbox alive forever. `run` blocks until every bridge
         // promise settles (`pumpUntilSettled`), so by the time it returns,
-        // the canary's only remaining reference is this test's own `var`.
-        final class Canary: @unchecked Sendable {
-            static let deinitCount = OSAllocatedUnfairLock(initialState: 0)
-            deinit { Canary.deinitCount.withLock { $0 += 1 } }
+        // the sandbox — and everything it retained, including the async
+        // host function's own closure — must have been torn down.
+        //
+        // The closure below captures `canary` directly, so the *only* two
+        // strong owners are this test's own `var` and that closure (which
+        // `install(asyncHostFunction:into:registry:)` embeds in the native
+        // function it installs on the context). Dropping this test's `var`
+        // after `run` returns and observing the `weak` reference go `nil`
+        // proves the closure — and the context that was the only other
+        // thing keeping it alive — was actually released, not merely that
+        // some unrelated shared box was cleared out from under it.
+        final class Canary: @unchecked Sendable {}
+        var canary: Canary? = Canary()
+        weak let weakCanary = canary
+        try autoreleasepool {
+            let interpreter = JSCInterpreter()
+            let touch = AsyncHostFunction(name: "touchAsync") { [canary] _ in
+                _ = canary
+                return .null
+            }
+            _ = try interpreter.run(
+                code: "touchAsync(); return \"done\";",
+                installing: [],
+                installingAsync: [touch]
+            )
         }
-        let before = Canary.deinitCount.withLock { $0 }
-        let canaryBox = OSAllocatedUnfairLock<Canary?>(initialState: Canary())
-        let interpreter = JSCInterpreter()
-        let touch = AsyncHostFunction(name: "touchAsync") { _ in
-            canaryBox.withLock { _ = $0 }
-            return .null
-        }
-        _ = try interpreter.run(
-            code: "touchAsync(); return \"done\";",
-            installing: [],
-            installingAsync: [touch]
-        )
-        canaryBox.withLock { $0 = nil }
-        #expect(Canary.deinitCount.withLock { $0 } == before + 1)
+        canary = nil
+        #expect(weakCanary == nil)
     }
 
     @Test("isCancelled mid-await cancels a pending async host function and returns within the time limit")

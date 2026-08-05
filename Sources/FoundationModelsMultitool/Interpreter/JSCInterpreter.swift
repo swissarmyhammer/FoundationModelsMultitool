@@ -552,6 +552,26 @@ public final class JSCInterpreter: Interpreter {
         return JSValue(undefinedIn: context)
     }
 
+    /// Reports whether `value` can actually run as a JS function — the real
+    /// `IsCallable` abstract operation, used by `install(asyncHostFunction:
+    /// into:registry:)`'s tracked `then` to decide whether a `.then`
+    /// rejection-handler argument can genuinely handle a rejection.
+    /// `JSValue` exposes no direct callability check: `isInstance(of:)`
+    /// tests the `instanceof` prototype-chain relationship, which is
+    /// neither necessary nor sufficient for callability —
+    /// `Object.create(Function.prototype)` is `instanceof Function` but has
+    /// no internal `[[Call]]`, while `Function.prototype` itself is
+    /// callable but is not `instanceof Function`. This goes through the C
+    /// API's `JSObjectIsFunction` instead, which matches `typeof value ===
+    /// "function"` exactly, including for `undefined`/`null`/primitives
+    /// (`JSValueToObject` boxes them into a non-function object rather than
+    /// throwing, since the out-parameter exception slot is `nil`).
+    private static func isCallable(_ value: JSValue, in context: JSContext) -> Bool {
+        let contextRef = context.jsGlobalContextRef
+        guard let object = JSValueToObject(contextRef, value.jsValueRef, nil) else { return false }
+        return JSObjectIsFunction(contextRef, object)
+    }
+
     // MARK: - Async host functions (promise pump)
 
     /// Whether `.then` was ever called on one bridge-created promise —
@@ -818,14 +838,27 @@ public final class JSCInterpreter: Interpreter {
             let trackedThen: @convention(block) () -> JSValue? = {
                 let thenArguments = (JSContext.currentArguments() as? [JSValue]) ?? []
                 // A rejection is only genuinely handled — not merely
-                // observed — when the caller supplies its own `onRejected`;
-                // `await`/`Promise.all`/`.catch`/`.finally` all do, per the
-                // spec forms this thenable is built to intercept, but a bare
-                // `.then(onFulfilled)` does not, and rejects a whole new
-                // (untracked) derived promise the model likely never meant
-                // to create. See this function's documentation for the
-                // known limitation this narrowing accepts.
-                if thenArguments.count > 1, !thenArguments[1].isUndefined, !thenArguments[1].isNull {
+                // observed — when the caller supplies its own callable
+                // `onRejected`; `await`/`Promise.all`/`.catch`/`.finally`
+                // all do, per the spec forms this thenable is built to
+                // intercept, but a bare `.then(onFulfilled)` does not, and
+                // rejects a whole new (untracked) derived promise the model
+                // likely never meant to create. `Promise.prototype.then`
+                // itself only ever invokes `onRejected` when it is callable
+                // (a non-callable second argument, e.g. `.then(undefined,
+                // false)`, is treated the same as omitting it and rethrows
+                // to the derived promise) — mirror that with `isCallable`
+                // here, or a non-function second argument would mark a
+                // rejection "handled" that no code can actually run to
+                // handle. The context for that check is fetched fresh from
+                // `JSContext.current()` on every call rather than captured
+                // from the enclosing scope — capturing any `JSValue` here
+                // would recreate the retain cycle this function's own
+                // documentation warns about. See this function's
+                // documentation for the known limitation this narrowing
+                // accepts.
+                if thenArguments.count > 1, let currentContext = JSContext.current(),
+                    isCallable(thenArguments[1], in: currentContext) {
                     consumed.value = true
                 }
                 guard
