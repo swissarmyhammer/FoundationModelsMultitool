@@ -56,6 +56,34 @@ struct HardeningTests {
     }
 
     @Test(
+        "cancelling the task running MultiTool.call while it's parked awaiting a pending tools.* promise still throws CancellationError within the watchdog window"
+    )
+    func cancellationCancelsWhileAwaitingAPendingToolCall() async throws {
+        // Regression for the async host-function bridge (eventplan.md "Async
+        // JavaScript"): unlike `while (true) {}` above, this snippet spends
+        // its time parked in the interpreter's promise pump
+        // (`pumpUntilSettled`) waiting on a pending `tools.*` call, not
+        // spinning the JS thread — a different code path M10's cancellation
+        // guarantee must also reach.
+        let configuration = MultiToolConfiguration(executionTimeLimit: 10.0)
+        let slowTool = WindowRecordingTool(name: "slow", delayNanoseconds: 5_000_000_000)
+        let registry = try MultiTool.Builder().addTool(slowTool).buildRegistry()
+        let multiTool = MultiTool(registry: registry, configuration: configuration)
+
+        let task = Task {
+            try await multiTool.call(arguments: RunCodeArguments(code: "return await tools.slow();"))
+        }
+        // Let the snippet actually start awaiting the pending call before
+        // cancelling.
+        try await Task.sleep(nanoseconds: 100_000_000)
+        task.cancel()
+
+        let start = ContinuousClock.now
+        await Self.expectCancellationError { _ = try await task.value }
+        #expect(start.duration(to: .now) < .seconds(3))
+    }
+
+    @Test(
         "repeated concurrent cancellations across many MultiTool.call invocations all complete cleanly, with no deadlock and no hung interpreter thread"
     )
     func cancellationStressTestNoDeadlock() async throws {
