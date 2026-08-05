@@ -1,0 +1,1 @@
+{"id":"01KZ6MY4E3XMW877S8RFRJ9X3P","timestamp":"2026-08-04T15:05:39.011026Z","op":"create","item_id":"01KZ6MY4E2N4FDHXDD29BKJ72C","forward_patch":"--- original\n+++ modified\n@@ -0,0 +1,2 @@\n+color: 7057ff\n+tag_name: phase-1\n","reverse_patch":"--- original\n+++ modified\n@@ -1,2 +0,0 @@\n-color: 7057ff\n-tag_name: phase-1\n","transaction_id":null}

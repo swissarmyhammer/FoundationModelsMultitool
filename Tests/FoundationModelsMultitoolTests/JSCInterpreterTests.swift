@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 import os
 
@@ -268,5 +269,357 @@ struct JSCInterpreterTests {
             return interpreterError.kind == .exception
                 && interpreterError.message.contains("never settled")
         }
+    }
+
+    // MARK: - Async host functions (promise pump)
+
+    @Test("a snippet may await an async host function's result at the top level")
+    func topLevelAwaitOfAsyncHostFunctionResult() throws {
+        let interpreter = JSCInterpreter()
+        let weather = AsyncHostFunction(name: "weatherAsync") { _ in
+            try await Task.sleep(nanoseconds: 20_000_000)
+            return .object(["tempC": .number(31)])
+        }
+        let result = try interpreter.run(
+            code: """
+            const conditions = await weatherAsync();
+            return conditions.tempC;
+            """,
+            installing: [],
+            installingAsync: [weather]
+        )
+        #expect(result.returnValue == .number(31))
+    }
+
+    @Test("the sandbox stays alive across multiple sequential async host-function awaits")
+    func sandboxSurvivesMultipleSequentialAwaits() throws {
+        let interpreter = JSCInterpreter()
+        let increment = AsyncHostFunction(name: "incrementAsync") { arguments in
+            guard case .number(let value) = arguments.first else {
+                throw InterpreterError(kind: .exception, message: "expected a number argument")
+            }
+            try await Task.sleep(nanoseconds: 20_000_000)
+            return .number(value + 1)
+        }
+        let result = try interpreter.run(
+            code: """
+            let total = 0;
+            total = await incrementAsync(total);
+            total = await incrementAsync(total);
+            total = await incrementAsync(total);
+            return total;
+            """,
+            installing: [],
+            installingAsync: [increment]
+        )
+        #expect(result.returnValue == .number(3))
+    }
+
+    @Test("Promise.all over two async host functions runs them concurrently")
+    func promiseAllRunsAsyncHostFunctionsConcurrently() throws {
+        let interpreter = JSCInterpreter()
+        let windows = OSAllocatedUnfairLock<[(start: ContinuousClock.Instant, end: ContinuousClock.Instant)]>(
+            initialState: []
+        )
+        func makeDelayed(name: String) -> AsyncHostFunction {
+            AsyncHostFunction(name: name) { _ in
+                let start = ContinuousClock.now
+                try await Task.sleep(nanoseconds: 200_000_000)
+                let end = ContinuousClock.now
+                windows.withLock { $0.append((start, end)) }
+                return .null
+            }
+        }
+        let result = try interpreter.run(
+            code: """
+            await Promise.all([slowA(), slowB()]);
+            return "done";
+            """,
+            installing: [],
+            installingAsync: [makeDelayed(name: "slowA"), makeDelayed(name: "slowB")]
+        )
+        #expect(result.returnValue == .string("done"))
+        let recorded = windows.withLock { $0 }
+        #expect(recorded.count == 2)
+        // Real concurrency, not serialization: each call's window overlaps
+        // the other's — if the bridge ran them one after another, one
+        // window would start only after the other had already ended.
+        let overlap = recorded[0].start < recorded[1].end && recorded[1].start < recorded[0].end
+        #expect(overlap)
+    }
+
+    @Test("a floating async host-function call completes before the run returns")
+    func floatingAsyncCallSettlesBeforeReturn() throws {
+        let interpreter = JSCInterpreter()
+        let completed = OSAllocatedUnfairLock(initialState: false)
+        let write = AsyncHostFunction(name: "writeAsync") { _ in
+            try await Task.sleep(nanoseconds: 100_000_000)
+            completed.withLock { $0 = true }
+            return .null
+        }
+        let result = try interpreter.run(
+            code: """
+            writeAsync();
+            return "done";
+            """,
+            installing: [],
+            installingAsync: [write]
+        )
+        #expect(result.returnValue == .string("done"))
+        #expect(completed.withLock { $0 })
+    }
+
+    @Test("a floating async host-function rejection fails the run")
+    func floatingAsyncRejectionFailsRun() throws {
+        let interpreter = JSCInterpreter()
+        let boom = AsyncHostFunction(name: "boomAsync") { _ in
+            try await Task.sleep(nanoseconds: 50_000_000)
+            throw InterpreterError(kind: .exception, message: "nope")
+        }
+        #expect {
+            try interpreter.run(
+                code: """
+                boomAsync();
+                return "done";
+                """,
+                installing: [],
+                installingAsync: [boom]
+            )
+        } throws: { error in
+            guard let interpreterError = error as? InterpreterError else { return false }
+            return interpreterError.kind == .exception
+                && interpreterError.message.contains("boomAsync")
+                && interpreterError.message.contains("nope")
+        }
+    }
+
+    @Test("an awaited async host-function rejection that is caught does not fail the run")
+    func caughtAsyncRejectionDoesNotFailRun() throws {
+        let interpreter = JSCInterpreter()
+        let boom = AsyncHostFunction(name: "boomAsync") { _ in
+            try await Task.sleep(nanoseconds: 20_000_000)
+            throw InterpreterError(kind: .exception, message: "nope")
+        }
+        let result = try interpreter.run(
+            code: """
+            try {
+              await boomAsync();
+              return "unreachable";
+            } catch (e) {
+              return "caught";
+            }
+            """,
+            installing: [],
+            installingAsync: [boom]
+        )
+        #expect(result.returnValue == .string("caught"))
+    }
+
+    @Test("a rejection that settles while a different sibling call is still pending is still caught, not reported as floating")
+    func delayedSequentialAwaitOfEarlierSettledRejectionIsStillCaught() throws {
+        // Regression: `pumpUntilSettled` used to decide "floating" per
+        // individual settlement, which fires too early here — `fast`
+        // rejects and settles while the snippet is still suspended on
+        // `await slow()`, well before the snippet's own code even reaches
+        // `await fast()`. Floating-rejection detection must only be decided
+        // once, after the whole registry has drained.
+        let interpreter = JSCInterpreter()
+        let slow = AsyncHostFunction(name: "slow") { _ in
+            try await Task.sleep(nanoseconds: 150_000_000)
+            return .string("slow-done")
+        }
+        let fast = AsyncHostFunction(name: "fast") { _ in
+            try await Task.sleep(nanoseconds: 10_000_000)
+            throw InterpreterError(kind: .exception, message: "fast-boom")
+        }
+        let result = try interpreter.run(
+            code: """
+            const slowPromise = slow();
+            const fastPromise = fast();
+            try {
+              await slowPromise;
+              await fastPromise;
+              return "unreachable";
+            } catch (e) {
+              return "caught";
+            }
+            """,
+            installing: [],
+            installingAsync: [slow, fast]
+        )
+        #expect(result.returnValue == .string("caught"))
+    }
+
+    @Test("a snippet's own floating rejection, unrelated to any async host function, does not fail the run")
+    func snippetOwnFloatingRejectionIsOutOfScope() throws {
+        // Floating-rejection detection is scoped to promises the async
+        // host-function bridge itself creates (eventplan.md: "each promise
+        // it creates") — a snippet's own `Promise.reject(...)`, with no
+        // async host functions installed at all, is untouched by it.
+        let interpreter = JSCInterpreter()
+        let result = try interpreter.run(
+            code: """
+            Promise.reject(new Error("snippet-made"));
+            return "ok";
+            """,
+            installing: []
+        )
+        #expect(result.returnValue == .string("ok"))
+    }
+
+    @Test("an async host function's unawaited RETURNED promise settles at the run's boundary")
+    func unawaitedReturnedPromiseSettlesAtBoundary() throws {
+        let interpreter = JSCInterpreter()
+        let weather = AsyncHostFunction(name: "weatherAsync") { _ in
+            try await Task.sleep(nanoseconds: 20_000_000)
+            return .object(["tempC": .number(31)])
+        }
+        let result = try interpreter.run(
+            code: "return weatherAsync();",
+            installing: [],
+            installingAsync: [weather]
+        )
+        #expect(result.returnValue == .object(["tempC": .number(31)]))
+    }
+
+    @Test("a bridge call's returned value supports .catch(...), not just await/.then")
+    func bridgeReturnValueSupportsCatch() throws {
+        let interpreter = JSCInterpreter()
+        let boom = AsyncHostFunction(name: "boomAsync") { _ in
+            try await Task.sleep(nanoseconds: 20_000_000)
+            throw InterpreterError(kind: .exception, message: "nope")
+        }
+        let result = try interpreter.run(
+            code: """
+            return boomAsync().catch(function(e) { return "caught:" + e; });
+            """,
+            installing: [],
+            installingAsync: [boom]
+        )
+        guard case .string(let value) = result.returnValue else {
+            Issue.record("expected a string return value")
+            return
+        }
+        #expect(value.hasPrefix("caught:"))
+    }
+
+    @Test("a .then(onFulfilled) with no rejection handler still fails the run on rejection")
+    func thenWithNoRejectionHandlerStillFailsRun() throws {
+        // Consumption means the rejection was genuinely handled, not merely
+        // that `.then` was called: `.then(onFulfilled)` alone supplies no
+        // `onRejected`, so a `boomAsync()` rejection here is exactly as
+        // unaddressed as `boomAsync(); return "done";` — it must still fail
+        // the run, not disappear into the untracked derived promise
+        // `.then(onFulfilled)` creates.
+        let interpreter = JSCInterpreter()
+        let boom = AsyncHostFunction(name: "boomAsync") { _ in
+            try await Task.sleep(nanoseconds: 20_000_000)
+            throw InterpreterError(kind: .exception, message: "nope")
+        }
+        #expect {
+            try interpreter.run(
+                code: """
+                boomAsync().then(function(v) { return v; });
+                return "done";
+                """,
+                installing: [],
+                installingAsync: [boom]
+            )
+        } throws: { error in
+            guard let interpreterError = error as? InterpreterError else { return false }
+            return interpreterError.kind == .exception
+                && interpreterError.message.contains("boomAsync")
+                && interpreterError.message.contains("nope")
+        }
+    }
+
+    @Test("a bridge call's returned value supports .finally(...) and is instanceof Promise")
+    func bridgeReturnValueSupportsFinallyAndIsPromise() throws {
+        let interpreter = JSCInterpreter()
+        let weather = AsyncHostFunction(name: "weatherAsync") { _ in
+            try await Task.sleep(nanoseconds: 20_000_000)
+            return .number(31)
+        }
+        let result = try interpreter.run(
+            code: """
+            let ranFinally = false;
+            const value = await weatherAsync().finally(function() { ranFinally = true; });
+            return { value: value, ranFinally: ranFinally, isPromise: weatherAsync() instanceof Promise };
+            """,
+            installing: [],
+            installingAsync: [weather]
+        )
+        #expect(
+            result.returnValue == .object([
+                "value": .number(31),
+                "ranFinally": .bool(true),
+                "isPromise": .bool(true),
+            ])
+        )
+    }
+
+    @Test("running a snippet with an async host function does not leak the sandbox")
+    func asyncHostFunctionDoesNotLeakTheSandbox() throws {
+        // Regression: an earlier version of the promise bridge captured the
+        // internal `JSValue` promise directly inside a native function
+        // installed into that same `JSContext` — a retain cycle (the
+        // context's heap holds the function, the function holds the
+        // `JSValue`, the `JSValue` holds its `JSContext`) that kept the
+        // whole sandbox alive forever. `run` blocks until every bridge
+        // promise settles (`pumpUntilSettled`), so by the time it returns,
+        // the canary's only remaining reference is this test's own `var`.
+        final class Canary: @unchecked Sendable {
+            static let deinitCount = OSAllocatedUnfairLock(initialState: 0)
+            deinit { Canary.deinitCount.withLock { $0 += 1 } }
+        }
+        let before = Canary.deinitCount.withLock { $0 }
+        let canaryBox = OSAllocatedUnfairLock<Canary?>(initialState: Canary())
+        let interpreter = JSCInterpreter()
+        let touch = AsyncHostFunction(name: "touchAsync") { _ in
+            canaryBox.withLock { _ = $0 }
+            return .null
+        }
+        _ = try interpreter.run(
+            code: "touchAsync(); return \"done\";",
+            installing: [],
+            installingAsync: [touch]
+        )
+        canaryBox.withLock { $0 = nil }
+        #expect(Canary.deinitCount.withLock { $0 } == before + 1)
+    }
+
+    @Test("isCancelled mid-await cancels a pending async host function and returns within the time limit")
+    func cancellationCancelsPendingAsyncHostFunction() throws {
+        let interpreter = JSCInterpreter(timeLimit: 10.0)
+        let cancelledBox = OSAllocatedUnfairLock(initialState: false)
+        let taskWasCancelled = OSAllocatedUnfairLock(initialState: false)
+        let slow = AsyncHostFunction(name: "slowAsync") { _ in
+            do {
+                try await Task.sleep(nanoseconds: 5_000_000_000)
+            } catch {
+                taskWasCancelled.withLock { $0 = true }
+                throw error
+            }
+            return .null
+        }
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.2) {
+            cancelledBox.withLock { $0 = true }
+        }
+        let start = ContinuousClock.now
+        #expect {
+            try interpreter.run(
+                code: "await slowAsync(); return \"done\";",
+                installing: [],
+                installingAsync: [slow],
+                isCancelled: { cancelledBox.withLock { $0 } }
+            )
+        } throws: { error in
+            error is CancellationError
+        }
+        #expect(start.duration(to: .now) < .seconds(3))
+        // Give the abandoned background Task a moment to observe its own
+        // cancellation after `run` has already returned.
+        Thread.sleep(forTimeInterval: 0.3)
+        #expect(taskWasCancelled.withLock { $0 })
     }
 }

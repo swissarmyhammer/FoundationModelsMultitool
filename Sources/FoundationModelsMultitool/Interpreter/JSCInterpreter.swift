@@ -214,14 +214,18 @@ private func jscTerminateCallback(_: JSContextRef?, _ info: UnsafeMutableRawPoin
 /// Each `run` gets a brand-new `JSContextGroup`/`JSContext` — deny-by-default,
 /// reachable only from the standard ECMAScript globals JSC ships with
 /// (`Math`, `JSON`, `Array`, …), the injected `console`, and whatever
-/// `HostFunction`s were installed for that run. Nothing set by one run (a
-/// global, a host function) is visible to the next.
+/// `HostFunction`s/`AsyncHostFunction`s were installed for that run. Nothing
+/// set by one run (a global, a host function) is visible to the next.
 ///
 /// The whole run executes on a dedicated background queue — never the
-/// caller's thread — which is groundwork for the M4 blocking async bridge:
-/// once `tools.X()` calls block that worker thread on a semaphore while the
-/// async `Tool.call` runs on the cooperative pool, that blocking must not
-/// happen on the caller's (potentially main) thread.
+/// caller's thread. `HostFunction` calls run synchronously, inline, on that
+/// queue. `AsyncHostFunction` calls return a JS `Promise` backed by its own
+/// Swift `Task`, running concurrently on the cooperative pool; the queue
+/// blocks only while waiting for those `Task`s to report back (see
+/// `pumpUntilSettled`), never for the caller's own thread — eventplan.md
+/// "Async JavaScript": "We remove the v1 blocking bridge... We do not build
+/// a semaphore-based park mechanism and its thread guards only to delete
+/// them later."
 public final class JSCInterpreter: Interpreter {
     /// Where this interpreter logs its M10 diagnostics — snippet start/end
     /// and duration, and how a run ended (clean, exception, timeout, or
@@ -253,74 +257,57 @@ public final class JSCInterpreter: Interpreter {
     }
 
     /// Runs `code` on the dedicated worker queue in a fresh, isolated
-    /// sandbox with `installing` made available as globals.
+    /// sandbox with `installing`/`installingAsync` made available as
+    /// globals — the sole requirement of `Interpreter` this type
+    /// implements; every other overload (`run(code:installing:)`,
+    /// `run(code:installing:isCancelled:)`,
+    /// `run(code:installing:installingAsync:)`) reaches this one through
+    /// `Interpreter`'s own default conformances.
     ///
     /// - Parameters:
     ///   - code: the JavaScript source to run. A top-level `return` is
     ///     supported — the snippet does not need to be an IIFE itself.
-    ///   - installing: host functions to expose as globals for this run only.
-    /// - Returns: the snippet's return value and captured console output.
-    /// - Throws: `InterpreterError` for a thrown/syntax exception or a
-    ///   watchdog timeout.
-    public func run(code: String, installing: [HostFunction]) throws -> InterpreterResult {
-        try runWithCancellation(code: code, installing: installing, isCancelled: { false })
-    }
-
-    /// Runs `code` exactly as `run(code:installing:)` does, but also
-    /// force-terminates the run as soon as `isCancelled` reports `true` — see
-    /// `Interpreter.run(code:installing:isCancelled:)`.
-    ///
-    /// - Parameters:
-    ///   - code: the JavaScript source to run.
-    ///   - installing: host functions to expose as globals for this run only.
+    ///   - installing: synchronous host functions to expose as globals for
+    ///     this run only.
+    ///   - installingAsync: asynchronous host functions to expose as
+    ///     globals for this run only — see `JSCInterpreter`'s own
+    ///     documentation for the promise-pump mechanism that backs them.
     ///   - isCancelled: polled on a short interval while the snippet runs.
     /// - Returns: the snippet's return value and captured console output.
     /// - Throws: `CancellationError` if `isCancelled` reported `true` before
     ///   the run otherwise completed; `InterpreterError` for a thrown/syntax
-    ///   exception or a watchdog timeout.
+    ///   exception, a watchdog timeout, or a floating rejection.
     public func run(
         code: String,
         installing: [HostFunction],
-        isCancelled: @escaping @Sendable () -> Bool
-    ) throws -> InterpreterResult {
-        try runWithCancellation(code: code, installing: installing, isCancelled: isCancelled)
-    }
-
-    /// Shared body for both `run` overloads above — dispatches onto the
-    /// dedicated worker queue and evaluates, differing only in the
-    /// `isCancelled` polled while the snippet runs (`run(code:installing:)`
-    /// passes a closure that never reports cancellation).
-    ///
-    /// - Parameters:
-    ///   - code: the JavaScript source to run.
-    ///   - installing: host functions to expose as globals for this run only.
-    ///   - isCancelled: polled on a short interval while the snippet runs.
-    /// - Returns: the snippet's return value and captured console output.
-    /// - Throws: `CancellationError` if `isCancelled` reported `true` before
-    ///   the run otherwise completed; `InterpreterError` for a thrown/syntax
-    ///   exception or a watchdog timeout.
-    private func runWithCancellation(
-        code: String,
-        installing: [HostFunction],
+        installingAsync: [AsyncHostFunction],
         isCancelled: @escaping @Sendable () -> Bool
     ) throws -> InterpreterResult {
         try queue.sync {
-            try Self.evaluate(code: code, installing: installing, timeLimit: timeLimit, isCancelled: isCancelled)
+            try Self.evaluate(
+                code: code,
+                installing: installing,
+                installingAsync: installingAsync,
+                timeLimit: timeLimit,
+                isCancelled: isCancelled
+            )
         }
     }
 
     // MARK: - Run
 
     /// A single run's sandbox: the `JSContextGroup`/`JSContext` pair, the
-    /// installed standard surface, and the watchdog wired to that group —
-    /// bundled together so `evaluate` doesn't have to juggle their lifetimes
-    /// (and matching teardown order) inline.
+    /// installed standard surface, the watchdog wired to that group, and the
+    /// async host-function bridge's own state — bundled together so
+    /// `evaluate` doesn't have to juggle their lifetimes (and matching
+    /// teardown order) inline.
     private struct Sandbox {
         fileprivate let group: JSContextGroupRef
         fileprivate let globalContextRef: JSGlobalContextRef
         fileprivate let context: JSContext
         fileprivate let consoleLines: ConsoleLines
         fileprivate let watchdogState: WatchdogState
+        fileprivate let promiseRegistry: PromiseRegistry
 
         fileprivate func tearDown() {
             JSContextGroupClearExecutionTimeLimit(group)
@@ -335,6 +322,7 @@ public final class JSCInterpreter: Interpreter {
     /// partially-created pieces on the way out if a later step fails.
     private static func makeSandbox(
         installing: [HostFunction],
+        installingAsync: [AsyncHostFunction],
         timeLimit: TimeInterval,
         isCancelled: @escaping @Sendable () -> Bool
     ) throws -> Sandbox {
@@ -357,6 +345,11 @@ public final class JSCInterpreter: Interpreter {
             install(hostFunction: hostFunction, into: context)
         }
 
+        let promiseRegistry = PromiseRegistry()
+        for asyncHostFunction in installingAsync {
+            install(asyncHostFunction: asyncHostFunction, into: context, registry: promiseRegistry)
+        }
+
         let watchdogState = WatchdogState(
             group: group,
             pollInterval: watchdogPollInterval,
@@ -371,7 +364,8 @@ public final class JSCInterpreter: Interpreter {
             globalContextRef: globalContextRef,
             context: context,
             consoleLines: consoleLines,
-            watchdogState: watchdogState
+            watchdogState: watchdogState,
+            promiseRegistry: promiseRegistry
         )
     }
 
@@ -385,13 +379,19 @@ public final class JSCInterpreter: Interpreter {
     private static func evaluate(
         code: String,
         installing: [HostFunction],
+        installingAsync: [AsyncHostFunction],
         timeLimit: TimeInterval,
         isCancelled: @escaping @Sendable () -> Bool
     ) throws -> InterpreterResult {
         let start = ContinuousClock.now
         logger.debug("runCode snippet started (\(code.count, privacy: .public) characters).")
 
-        let sandbox = try makeSandbox(installing: installing, timeLimit: timeLimit, isCancelled: isCancelled)
+        let sandbox = try makeSandbox(
+            installing: installing,
+            installingAsync: installingAsync,
+            timeLimit: timeLimit,
+            isCancelled: isCancelled
+        )
         defer { sandbox.tearDown() }
 
         var capturedException: JSValue?
@@ -424,6 +424,19 @@ public final class JSCInterpreter: Interpreter {
         let outcome = sandbox.context.evaluateScript(wrapped)
 
         do {
+            // Settle-before-return: block until every promise the async
+            // host-function bridge created has settled (or the watchdog
+            // forces the run to end) before deciding the run's outcome —
+            // see `pumpUntilSettled`. A snippet with no `installingAsync`
+            // calls leaves the registry empty from the start, so this is a
+            // no-op and every existing synchronous-only run behaves exactly
+            // as before. A non-`nil` result is a floating rejection — a
+            // bridge-created promise that rejected and that the snippet
+            // never consumed (`.then`/`.catch`/`.finally`/`await`), per
+            // eventplan.md "Async JavaScript": "A floating rejection becomes
+            // the run's error. It does not disappear."
+            let floatingRejectionError = pumpUntilSettled(sandbox: sandbox)
+
             // Check the watchdog's recorded cause before the captured
             // exception: a watchdog-forced termination (timeout or
             // cancellation) is not guaranteed to also populate a normal,
@@ -442,6 +455,9 @@ public final class JSCInterpreter: Interpreter {
             }
             if let capturedException {
                 throw makeError(from: capturedException)
+            }
+            if let floatingRejectionError {
+                throw floatingRejectionError
             }
 
             // An async IIFE reports a thrown/rejected error through its
@@ -505,20 +521,442 @@ public final class JSCInterpreter: Interpreter {
     private static func install(hostFunction: HostFunction, into context: JSContext) {
         let body: @convention(block) () -> JSValue? = {
             guard let currentContext = JSContext.current() else { return nil }
-            let arguments = (JSContext.currentArguments() as? [JSValue]) ?? []
             do {
-                let values = try arguments.map { try jsonValue(of: $0, in: currentContext) }
+                let values = try convertArguments(in: currentContext)
                 let resultValue = try hostFunction.call(values)
                 return try jsValue(from: resultValue, in: currentContext)
             } catch {
-                currentContext.exception = JSValue(
-                    newErrorFromMessage: "\(hostFunction.name): \(error)",
-                    in: currentContext
-                )
-                return JSValue(undefinedIn: currentContext)
+                return setException(message: "\(hostFunction.name): \(error)", in: currentContext)
             }
         }
         context.setObject(body, forKeyedSubscript: hostFunction.name as NSString)
+    }
+
+    /// Converts the current native call's arguments (as JSC hands them to a
+    /// `@convention(block)` body via `JSContext.currentArguments()`) through
+    /// `InterpreterValue` — the shared first step `install(hostFunction:into:)`
+    /// and `install(asyncHostFunction:into:registry:)` both take before
+    /// dispatching to the host function's own `call`.
+    private static func convertArguments(in context: JSContext) throws -> [InterpreterValue] {
+        let arguments = (JSContext.currentArguments() as? [JSValue]) ?? []
+        return try arguments.map { try jsonValue(of: $0, in: context) }
+    }
+
+    /// Sets `context`'s current exception to a JS `Error` carrying `message`
+    /// and returns the `undefined` value a native callable's body should
+    /// then return — the shared shape `install(hostFunction:into:)` and
+    /// `install(asyncHostFunction:into:registry:)` both surface a Swift
+    /// throw through.
+    private static func setException(message: String, in context: JSContext) -> JSValue {
+        context.exception = JSValue(newErrorFromMessage: message, in: context)
+        return JSValue(undefinedIn: context)
+    }
+
+    // MARK: - Async host functions (promise pump)
+
+    /// Whether `.then` was ever called on one bridge-created promise —
+    /// `install(asyncHostFunction:into:registry:)` returns a thenable whose
+    /// `then` method flips this before delegating to the real promise, so
+    /// `await`, `.then(...)`, `.catch(...)`, `.finally(...)`, and
+    /// `Promise.all([...])` (which all route through `.then` per spec) all
+    /// mark it, however late. Checked only once, after `pumpUntilSettled`
+    /// has drained the whole registry — see that function's documentation
+    /// for why checking per-settlement instead would be wrong.
+    /// JS-thread-confined, like `ConsoleLines`: `.then` is only ever invoked
+    /// while JS executes on the interpreter's dedicated worker queue.
+    private final class ConsumedFlag {
+        fileprivate var value = false
+    }
+
+    /// Every JS `Promise` the async host-function bridge has created for one
+    /// run, tracked from creation until it settles — the settle-before-return
+    /// registry: `evaluate` gives no result until this registry is empty
+    /// (see `pumpUntilSettled`), so a floating call's work always completes
+    /// (and a floating rejection is never silently dropped) before the run
+    /// returns, even when the snippet's own top-level `return` never awaited
+    /// it.
+    ///
+    /// Each entry's Swift `Task` reports its outcome back through
+    /// `complete(id:outcome:)`, from whichever thread the cooperative pool
+    /// happens to run it on — genuine concurrency, so `Promise.all` over
+    /// several calls runs them at once. Only `pumpUntilSettled`, running on
+    /// the interpreter's own dedicated worker queue (the "JS thread"), ever
+    /// touches a stored `resolve`/`reject`, so those `JSValue`s are never
+    /// touched off that queue — hopping back with `queue.async` from the
+    /// `Task` instead would deadlock the same serial queue `run` already
+    /// holds via `queue.sync`.
+    ///
+    /// `@unchecked`: split into two halves with different, non-overlapping
+    /// access patterns. `entries` (and `nextID`) hold the non-`Sendable`
+    /// `JSValue` resolvers and are touched *only* from the JS thread —
+    /// `register`/`attachTask`/`attachConsumedFlag` run inside the promise
+    /// executor, itself only ever invoked while JS executes on the
+    /// interpreter's dedicated worker queue, and
+    /// `takeReadyToSettle`/`cancelAllPending`/`isEmpty` run only from
+    /// `pumpUntilSettled`, which is called from the very same queue — so,
+    /// exactly like `ConsoleLines`, no lock is needed there. The completion
+    /// mailbox genuinely crosses threads (every backing `Task` writes to it
+    /// from wherever the cooperative pool runs it; the JS thread reads it),
+    /// so it alone is `lock`-guarded, and holds only `Sendable` data
+    /// (`Outcome`, not a raw `Result<InterpreterValue, Error>` — an
+    /// existential `Error` isn't `Sendable`, so each `Task` renders its
+    /// catch into a `String` immediately, matching
+    /// `install(hostFunction:into:)`'s own `"\(error)"` interpolation), and
+    /// a `semaphore` the JS thread waits on so a settlement wakes
+    /// `pumpUntilSettled` immediately instead of only on its next poll tick.
+    private final class PromiseRegistry: @unchecked Sendable {
+        /// A settled async host function call: success carries its
+        /// `InterpreterValue` result; failure carries the error already
+        /// rendered to a message, since `Error` itself isn't `Sendable`.
+        fileprivate enum Outcome: Sendable {
+            case success(InterpreterValue)
+            case failure(String)
+        }
+
+        /// One tracked promise: its JS resolvers, the host function's name
+        /// (for a consistent `"<name>: <error>"` rejection message, matching
+        /// `install(hostFunction:into:)`'s sync counterpart), the flag
+        /// tracking whether the snippet ever consumed it, and the backing
+        /// `Task` — cancelled, rather than settled, when the watchdog forces
+        /// the run to end before this entry's result arrives (see
+        /// `cancelAllPending`).
+        private struct Entry {
+            let resolve: JSValue
+            let reject: JSValue
+            let name: String
+            var consumed: ConsumedFlag?
+            var task: Task<Void, Never>?
+        }
+
+        /// JS-thread-confined; see this type's own documentation.
+        private var entries: [Int: Entry] = [:]
+        private var nextID = 0
+
+        private let lock = OSAllocatedUnfairLock(initialState: [Int: Outcome]())
+        private let semaphore = DispatchSemaphore(value: 0)
+
+        /// Registers a newly created promise's `resolve`/`reject` pair,
+        /// returning the id `complete(id:outcome:)`, `attachTask(id:task:)`,
+        /// and `attachConsumedFlag(id:flag:)` report against.
+        fileprivate func register(resolve: JSValue, reject: JSValue, name: String) -> Int {
+            let id = nextID
+            nextID += 1
+            entries[id] = Entry(resolve: resolve, reject: reject, name: name)
+            return id
+        }
+
+        /// Attaches `id`'s backing `Task` handle to its entry, once created
+        /// — a separate step from `register` because the `Task`'s own body
+        /// needs `id` before it exists.
+        fileprivate func attachTask(id: Int, task: Task<Void, Never>) {
+            entries[id]?.task = task
+        }
+
+        /// Attaches `id`'s `ConsumedFlag`, once the `.then`-shadowing wrapper
+        /// that flips it has been installed on the promise `id` names.
+        fileprivate func attachConsumedFlag(id: Int, flag: ConsumedFlag) {
+            entries[id]?.consumed = flag
+        }
+
+        /// Records the async host function's outcome for `id` and wakes
+        /// `waitAndTakeReadyToSettle`. Called from whichever thread the
+        /// backing `Task` completes on.
+        fileprivate func complete(id: Int, outcome: Outcome) {
+            lock.withLock { $0[id] = outcome }
+            semaphore.signal()
+        }
+
+        /// Whether any promise this registry created is still awaiting
+        /// settlement.
+        fileprivate var isEmpty: Bool {
+            entries.isEmpty
+        }
+
+        /// Waits up to `timeout` for at least one new completion, then
+        /// removes and returns every entry whose result has arrived (there
+        /// may be more than the one waited for), pairing each with the
+        /// `resolve`/`reject`/`consumed` `pumpUntilSettled` should use.
+        /// Returns empty on a timeout with nothing new.
+        fileprivate func waitAndTakeReadyToSettle(
+            timeout: DispatchTime
+        ) -> [(resolve: JSValue, reject: JSValue, name: String, outcome: Outcome, consumed: ConsumedFlag?)] {
+            guard semaphore.wait(timeout: timeout) == .success else { return [] }
+            let completed = lock.withLock { outcomes in
+                let taken = outcomes
+                outcomes.removeAll()
+                return taken
+            }
+            // The blocking `wait()` above consumed exactly one signal; a
+            // batch this size may correspond to several `complete(id:outcome:)`
+            // calls, each of which signalled once — drain their matching
+            // signals too (non-blocking, they are already known to be
+            // available) so the semaphore's count never drifts from the
+            // number of not-yet-drained completions.
+            if completed.count > 1 {
+                for _ in 1..<completed.count { _ = semaphore.wait(timeout: .now()) }
+            }
+            var ready: [(resolve: JSValue, reject: JSValue, name: String, outcome: Outcome, consumed: ConsumedFlag?)] = []
+            for (id, outcome) in completed {
+                guard let entry = entries.removeValue(forKey: id) else { continue }
+                ready.append((entry.resolve, entry.reject, entry.name, outcome, entry.consumed))
+            }
+            return ready
+        }
+
+        /// Cancels every still-pending entry's backing `Task` and drops it
+        /// — used when the watchdog forces the run to end before they
+        /// settle. Never calls `resolve`/`reject`: doing so would resume JS
+        /// execution outside the watchdog's own protection (see
+        /// `pumpUntilSettled`), and tearing down the sandbox with these
+        /// promises left permanently pending is the same supported path
+        /// already exercised by an ordinary never-settling `await`.
+        fileprivate func cancelAllPending() {
+            for entry in entries.values {
+                entry.task?.cancel()
+            }
+            entries.removeAll()
+        }
+    }
+
+    /// Installs `asyncHostFunction` as a global callable in `context` that
+    /// returns a JS *thenable* — not a native `Promise` instance, deliberately
+    /// (see below) — per the promise-executor mechanism `JSValue` exposes:
+    /// `JSValue(newPromiseIn:fromExecutor:)` runs its executor closure
+    /// synchronously, so `resolve`/`reject` are captured into `registry`
+    /// before this call even returns. Argument conversion happens
+    /// synchronously, exactly like `install(hostFunction:into:)`; the call
+    /// itself runs in its own `Task`, and its outcome settles the internal
+    /// promise later through `registry` (`pumpUntilSettled`), never directly
+    /// here.
+    ///
+    /// The value actually handed back to the snippet has `Promise.prototype`
+    /// as its `[[Prototype]]` (via `Object.create`) but only one *own*
+    /// property — a tracked `then` — not the internal promise itself.
+    /// `await value` on a genuine native `Promise` instance resolves it via
+    /// the internal `PerformPromiseThen` spec operation directly, which
+    /// **never reads the `then` property at all**; shadowing `.then` on a
+    /// real `Promise` therefore cannot observe a plain `await`, only an
+    /// explicit `.then(...)`/`.catch(...)`/`.finally(...)` call (confirmed
+    /// against JSC directly — an early version of this bridge did exactly
+    /// that and silently missed every `await`). A *thenable* — any object
+    /// with a callable `then`, promise or not — takes the opposite path:
+    /// `PromiseResolve` only fast-paths a value whose `constructor` is the
+    /// realm's own `Promise`, so for our thenable, `await`, `Promise.all`,
+    /// `Promise.resolve`, and an async function's own `return` all resolve
+    /// it by *calling* `.then` on it, same as any other thenable — which is
+    /// exactly the observation point `pumpUntilSettled` needs for "was this
+    /// rejection floating." Inheriting from `Promise.prototype` rather than
+    /// `Object.prototype` additionally gives the value working `.catch`/
+    /// `.finally` for free: both are defined there as thin wrappers that
+    /// call `this.then(...)`, which resolves to *our* own `then` (an own
+    /// property shadows an inherited one), so they route through tracking
+    /// too — confirmed directly against JSC (`instanceof Promise`,
+    /// `.catch(...)`, and `.finally(...)` all behave correctly; the wrapper
+    /// still `JSON.stringify`s to `{}` and has no enumerable keys, since
+    /// `then` is defined non-enumerable).
+    ///
+    /// The internal promise itself is *never captured by the `then` block* —
+    /// only read back via `JSContext.currentThis()` from a non-enumerable
+    /// own property on the thenable. Capturing a `JSValue` directly in a
+    /// native function installed into the very `JSContext` that `JSValue`
+    /// belongs to is a retain cycle: the context's JS heap holds the
+    /// function, the function holds the `JSValue`, and the `JSValue` holds
+    /// its `JSContext` — `Sandbox.tearDown()`'s `JSGlobalContextRelease`
+    /// then never reaches zero, leaking the whole sandbox on every run that
+    /// makes an async host-function call (confirmed empirically: an earlier
+    /// version of this bridge captured the internal promise directly and a
+    /// canary object never deinitialized).
+    private static func install(
+        asyncHostFunction: AsyncHostFunction,
+        into context: JSContext,
+        registry: PromiseRegistry
+    ) {
+        let body: @convention(block) () -> JSValue? = {
+            guard let currentContext = JSContext.current() else { return nil }
+            let values: [InterpreterValue]
+            do {
+                values = try convertArguments(in: currentContext)
+            } catch {
+                return setException(message: "\(asyncHostFunction.name): \(error)", in: currentContext)
+            }
+
+            var createdID: Int?
+            let internalPromise = JSValue(newPromiseIn: currentContext) { resolve, reject in
+                guard let resolve, let reject else { return }
+                let id = registry.register(resolve: resolve, reject: reject, name: asyncHostFunction.name)
+                createdID = id
+                let task = Task {
+                    do {
+                        let result = try await asyncHostFunction.call(values)
+                        registry.complete(id: id, outcome: .success(result))
+                    } catch {
+                        registry.complete(id: id, outcome: .failure("\(error)"))
+                    }
+                }
+                registry.attachTask(id: id, task: task)
+            }
+            guard let internalPromise, let id = createdID else {
+                return setException(message: "\(asyncHostFunction.name): failed to create a promise.", in: currentContext)
+            }
+            guard
+                let objectConstructor = currentContext.objectForKeyedSubscript("Object"),
+                let defineProperty = objectConstructor.objectForKeyedSubscript("defineProperty"),
+                let create = objectConstructor.objectForKeyedSubscript("create"),
+                let promiseConstructor = currentContext.objectForKeyedSubscript("Promise"),
+                let promisePrototype = promiseConstructor.objectForKeyedSubscript("prototype")
+            else {
+                return setException(message: "\(asyncHostFunction.name): Object/Promise are unavailable.", in: currentContext)
+            }
+            guard let thenable = create.call(withArguments: [promisePrototype]), !thenable.isUndefined else {
+                return setException(message: "\(asyncHostFunction.name): failed to create a thenable.", in: currentContext)
+            }
+            defineProperty.call(withArguments: [
+                thenable, Self.internalPromisePropertyName,
+                ["value": internalPromise, "enumerable": false, "writable": false, "configurable": false],
+            ])
+            let consumed = ConsumedFlag()
+            let trackedThen: @convention(block) () -> JSValue? = {
+                let thenArguments = (JSContext.currentArguments() as? [JSValue]) ?? []
+                // A rejection is only genuinely handled — not merely
+                // observed — when the caller supplies its own `onRejected`;
+                // `await`/`Promise.all`/`.catch`/`.finally` all do, per the
+                // spec forms this thenable is built to intercept, but a bare
+                // `.then(onFulfilled)` does not, and rejects a whole new
+                // (untracked) derived promise the model likely never meant
+                // to create. See this function's documentation for the
+                // known limitation this narrowing accepts.
+                if thenArguments.count > 1, !thenArguments[1].isUndefined, !thenArguments[1].isNull {
+                    consumed.value = true
+                }
+                guard
+                    let this = JSContext.currentThis(),
+                    let realPromise = this.objectForKeyedSubscript(Self.internalPromisePropertyName),
+                    !realPromise.isUndefined
+                else {
+                    return nil
+                }
+                return realPromise.invokeMethod("then", withArguments: thenArguments)
+            }
+            defineProperty.call(withArguments: [
+                thenable, "then",
+                ["value": trackedThen, "enumerable": false, "writable": false, "configurable": false],
+            ])
+            registry.attachConsumedFlag(id: id, flag: consumed)
+            return thenable
+        }
+        context.setObject(body, forKeyedSubscript: asyncHostFunction.name as NSString)
+    }
+
+    /// The non-enumerable own property name `install(asyncHostFunction:into:
+    /// registry:)` stashes the internal promise under, read back via
+    /// `JSContext.currentThis()` inside the tracked `then` — see that
+    /// function's documentation for why this indirection (rather than
+    /// simply capturing the internal promise) is required.
+    private static let internalPromisePropertyName = "__internalPromise"
+
+    /// Blocks the calling (JS) thread until every promise `sandbox`'s async
+    /// host-function bridge has created has settled — the settle-before-
+    /// return contract: `evaluate` gives no result until this returns, so
+    /// the work of a floating call (`tools.files.write(...); return
+    /// "done";`) always completes, and a floating rejection is never
+    /// silently dropped.
+    ///
+    /// Settling a promise (`resolve`/`reject.call(...)`) runs JS
+    /// synchronously and drains JavaScriptCore's own microtask queue before
+    /// returning — which can itself create *more* tracked promises (a
+    /// `.then` continuation that awaits another async host-function call),
+    /// so this keeps looping until the registry is genuinely empty, not just
+    /// empty at the moment it was first checked.
+    ///
+    /// While no promise has settled yet, no JS is executing, so JSC's own
+    /// watchdog callback (`jscTerminateCallback`) cannot fire — this polls
+    /// `sandbox.watchdogState.shouldTerminate()` itself instead, waking
+    /// immediately on a settlement (via `PromiseRegistry`'s semaphore) or, at
+    /// worst, every `watchdogPollInterval`. On a decision to terminate
+    /// (timeout or M10 cancellation), every still-pending entry's `Task` is
+    /// cancelled — never settled via `resolve`/`reject`, since resuming JS
+    /// execution here would run outside the watchdog's own re-armed
+    /// protection window (see `PromiseRegistry.cancelAllPending`'s
+    /// documentation) — and this returns `nil`; the caller's own
+    /// `sandbox.watchdogState.cause` check then throws the same
+    /// `CancellationError`/timeout it always has. This is a deliberate,
+    /// safety-motivated narrowing of eventplan.md "Async JavaScript"'s
+    /// literal "reject each pending promise" wording for the
+    /// watchdog-forced-termination path specifically — recorded on task
+    /// `01KZ6MYJSSSF41HXMC2YAHBKG5`.
+    ///
+    /// Floating-rejection detection (eventplan.md: "A floating rejection
+    /// becomes the run's error") is decided *once*, after the registry is
+    /// fully empty — never per-settlement. A rejected promise a still-pending
+    /// sibling gates (`const a = slow(); const b = fastReject(); try { await
+    /// a; await b } catch {}`) can settle, unconsumed, before the snippet
+    /// even reaches the `await` that will consume it; JSC's own
+    /// per-microtask-checkpoint unhandled-rejection notification was tried
+    /// here first and rejects runs like that one even though the snippet
+    /// does go on to catch it — measured directly against JSC, not
+    /// theoretical. Checking every bridge-created promise's `ConsumedFlag`
+    /// only after the whole registry drains sidesteps that: by then, the
+    /// snippet's async function body has either run to completion (so every
+    /// promise on its actual executed path was reached, and `.then` was
+    /// called on it, however late — see `install(asyncHostFunction:into:
+    /// registry:)`) or is stuck on an unrelated always-pending promise (the
+    /// pre-existing "never settled" case below), so a still-unconsumed
+    /// failure at that point is genuinely floating.
+    private static func pumpUntilSettled(sandbox: Sandbox) -> InterpreterError? {
+        var failures: [(name: String, message: String, consumed: ConsumedFlag?)] = []
+        while !sandbox.promiseRegistry.isEmpty {
+            let ready = sandbox.promiseRegistry.waitAndTakeReadyToSettle(timeout: .now() + watchdogPollInterval)
+            if !ready.isEmpty {
+                settle(ready, in: sandbox.context, recordingFailuresTo: &failures)
+                continue
+            }
+            guard !sandbox.watchdogState.shouldTerminate() else {
+                sandbox.promiseRegistry.cancelAllPending()
+                return nil
+            }
+        }
+        guard let floating = failures.first(where: { $0.consumed?.value != true }) else { return nil }
+        return InterpreterError(kind: .exception, message: "\(floating.name): \(floating.message)")
+    }
+
+    /// Settles every promise in `ready` (see `settle(_:in:)`), appending
+    /// each rejection's `name`/message/`ConsumedFlag` to `failures` for
+    /// `pumpUntilSettled`'s end-of-drain floating-rejection check.
+    private static func settle(
+        _ ready: [(resolve: JSValue, reject: JSValue, name: String, outcome: PromiseRegistry.Outcome, consumed: ConsumedFlag?)],
+        in context: JSContext,
+        recordingFailuresTo failures: inout [(name: String, message: String, consumed: ConsumedFlag?)]
+    ) {
+        for settlement in ready {
+            settle(settlement, in: context)
+            guard case .failure(let message) = settlement.outcome else { continue }
+            failures.append((settlement.name, message, settlement.consumed))
+        }
+    }
+
+    /// Settles one promise with its async host function's outcome: resolves
+    /// with the JSON-converted value on success, or rejects with an
+    /// `"<name>: <error>"` message on failure — matching
+    /// `install(hostFunction:into:)`'s sync-throw message shape.
+    private static func settle(
+        _ settlement: (resolve: JSValue, reject: JSValue, name: String, outcome: PromiseRegistry.Outcome, consumed: ConsumedFlag?),
+        in context: JSContext
+    ) {
+        switch settlement.outcome {
+        case .success(let value):
+            guard let jsResult = try? jsValue(from: value, in: context) else {
+                let reason = JSValue(
+                    newErrorFromMessage: "\(settlement.name): could not convert the result to JSON.",
+                    in: context
+                )
+                settlement.reject.call(withArguments: [reason as Any])
+                return
+            }
+            settlement.resolve.call(withArguments: [jsResult])
+        case .failure(let message):
+            let reason = JSValue(newErrorFromMessage: "\(settlement.name): \(message)", in: context)
+            settlement.reject.call(withArguments: [reason as Any])
+        }
     }
 
     // MARK: - Value conversion

@@ -92,6 +92,13 @@ extension InterpreterValue: Codable {
 /// wrapped `Tool`s in as `tools.<name>` functions; M1 only needs the shape —
 /// arguments and results cross in/out as `InterpreterValue`, same as the
 /// snippet's own `return` value.
+///
+/// `AsyncHostFunction`, below, mirrors this struct's shape exactly except for
+/// `call`'s `async`; that is deliberate, not overlooked duplication — Swift
+/// has no way to parameterize a stored closure's `async`-ness generically
+/// (there is no shared protocol/effect-polymorphism over `throws` vs.
+/// `async throws` closure types), so the two structs stay separate,
+/// hand-written types rather than one generic over the effect.
 public struct HostFunction: Sendable {
     /// The identifier the snippet calls this function by.
     public let name: String
@@ -114,6 +121,49 @@ public struct HostFunction: Sendable {
     ///   - name: the global identifier the snippet calls this function by.
     ///   - call: the native implementation.
     public init(name: String, call: @escaping @Sendable ([InterpreterValue]) throws -> InterpreterValue) {
+        self.name = name
+        self.call = call
+    }
+}
+
+/// A native Swift function installed into the interpreter's global scope for
+/// the duration of one `run`, callable from the snippet by `name` — the
+/// asynchronous counterpart to `HostFunction`.
+///
+/// The interpreter installs every `AsyncHostFunction` as a JS function that
+/// returns a `Promise`: `call` runs in its own Swift `Task`, and the
+/// interpreter settles the promise with that `Task`'s outcome once it
+/// completes (see `JSCInterpreter`'s promise-pump documentation). Two calls
+/// installed together run concurrently — a snippet's own
+/// `Promise.all([tools.a(), tools.b()])` starts both `Task`s at once.
+///
+/// Per the plan's one-rule contract (eventplan.md "Async JavaScript": "each
+/// call that goes into Swift effects returns a promise... these calls are
+/// synchronous: `help()`/`docs()`... and `notify()`/`progress()`"), reserve
+/// this for anything that does a real Swift effect — a tool invocation, an
+/// elicitation, a wait — and keep the synchronous `HostFunction` for pure
+/// surface reads and void enqueue-and-continue calls.
+public struct AsyncHostFunction: Sendable {
+    /// The identifier the snippet calls this function by.
+    public let name: String
+
+    /// The native implementation. Receives the call's arguments already
+    /// converted to `InterpreterValue`; its return value becomes the value
+    /// the returned JS `Promise` resolves to, and a thrown error becomes the
+    /// promise's rejection reason.
+    public let call: @Sendable ([InterpreterValue]) async throws -> InterpreterValue
+
+    /// Creates an async host function with the given name and
+    /// implementation.
+    ///
+    /// Explicit (rather than relying on the compiler-synthesized memberwise
+    /// initializer) for the same reason as `HostFunction.init`: a `public`
+    /// struct's synthesized initializer is only `internal`-accessible.
+    ///
+    /// - Parameters:
+    ///   - name: the global identifier the snippet calls this function by.
+    ///   - call: the native implementation.
+    public init(name: String, call: @escaping @Sendable ([InterpreterValue]) async throws -> InterpreterValue) {
         self.name = name
         self.call = call
     }
@@ -229,9 +279,9 @@ public protocol Interpreter: Sendable {
     /// - Parameters:
     ///   - code: the JavaScript source to run.
     ///   - installing: host functions to expose as globals for this run only.
-    ///   - isCancelled: polled while the snippet executes; a conformer with
-    ///     no external-cancellation hook may ignore it entirely (see the
-    ///     default implementation below).
+    ///   - isCancelled: polled while the snippet executes; the default
+    ///     conformance below forwards it unchanged to
+    ///     `run(code:installing:installingAsync:isCancelled:)`.
     /// - Returns: the snippet's return value and captured console output.
     /// - Throws: `CancellationError` if `isCancelled` reported `true` before
     ///   the run otherwise completed; `InterpreterError` for a thrown/syntax
@@ -241,23 +291,96 @@ public protocol Interpreter: Sendable {
         installing: [HostFunction],
         isCancelled: @escaping @Sendable () -> Bool
     ) throws -> InterpreterResult
+
+    /// Runs `code` exactly as `run(code:installing:isCancelled:)` does, but
+    /// also installs `installingAsync` — each call the snippet makes to one
+    /// of them returns a JS `Promise` backed by its own Swift `Task`, so
+    /// `Promise.all` over several calls runs them concurrently. This is the
+    /// designated requirement every other overload in this protocol
+    /// forwards to (see the default conformances below); a conformer needs
+    /// to implement only this one.
+    ///
+    /// The run gives no result until every promise the bridge created for
+    /// `installingAsync` has settled — a floating call
+    /// (`tools.files.write(...); return "done";`) always completes its
+    /// work, and a floating rejection always becomes the run's error, even
+    /// when the snippet's own `return` never awaited it (eventplan.md
+    /// "Async JavaScript": settle-before-return).
+    ///
+    /// - Parameters:
+    ///   - code: the JavaScript source to run.
+    ///   - installing: synchronous host functions to expose as globals for
+    ///     this run only.
+    ///   - installingAsync: asynchronous host functions to expose as
+    ///     globals for this run only.
+    ///   - isCancelled: polled on a short interval while the snippet
+    ///     executes.
+    /// - Returns: the snippet's return value and captured console output.
+    /// - Throws: `CancellationError` if `isCancelled` reported `true` before
+    ///   the run otherwise completed; `InterpreterError` for a thrown/syntax
+    ///   exception, a watchdog timeout, or a floating rejection, exactly as
+    ///   `run(code:installing:isCancelled:)`.
+    func run(
+        code: String,
+        installing: [HostFunction],
+        installingAsync: [AsyncHostFunction],
+        isCancelled: @escaping @Sendable () -> Bool
+    ) throws -> InterpreterResult
 }
 
 extension Interpreter {
-    /// Default conformance for an engine with no external-cancellation hook:
-    /// behaves exactly like `run(code:installing:)`, ignoring `isCancelled`.
+    /// Default conformance: forwards to
+    /// `run(code:installing:installingAsync:isCancelled:)` with no
+    /// asynchronous host functions.
     ///
     /// - Parameters:
     ///   - code: the JavaScript source to run.
     ///   - installing: host functions to expose as globals for this run only.
-    ///   - isCancelled: ignored by this default conformance.
+    ///   - isCancelled: polled on a short interval while the snippet
+    ///     executes.
     /// - Returns: the snippet's return value and captured console output.
-    /// - Throws: whatever `run(code:installing:)` itself throws.
+    /// - Throws: whatever
+    ///   `run(code:installing:installingAsync:isCancelled:)` itself throws.
     public func run(
         code: String,
         installing: [HostFunction],
         isCancelled: @escaping @Sendable () -> Bool
     ) throws -> InterpreterResult {
-        try run(code: code, installing: installing)
+        try run(code: code, installing: installing, installingAsync: [], isCancelled: isCancelled)
+    }
+
+    /// Default conformance: forwards to
+    /// `run(code:installing:installingAsync:isCancelled:)` with no
+    /// external-cancellation hook.
+    ///
+    /// - Parameters:
+    ///   - code: the JavaScript source to run.
+    ///   - installing: synchronous host functions to expose as globals for
+    ///     this run only.
+    ///   - installingAsync: asynchronous host functions to expose as
+    ///     globals for this run only.
+    /// - Returns: the snippet's return value and captured console output.
+    /// - Throws: whatever
+    ///   `run(code:installing:installingAsync:isCancelled:)` itself throws.
+    public func run(
+        code: String,
+        installing: [HostFunction],
+        installingAsync: [AsyncHostFunction]
+    ) throws -> InterpreterResult {
+        try run(code: code, installing: installing, installingAsync: installingAsync, isCancelled: { false })
+    }
+
+    /// Default conformance: forwards to
+    /// `run(code:installing:installingAsync:isCancelled:)` with no
+    /// asynchronous host functions.
+    ///
+    /// - Parameters:
+    ///   - code: the JavaScript source to run.
+    ///   - installing: host functions to expose as globals for this run only.
+    /// - Returns: the snippet's return value and captured console output.
+    /// - Throws: whatever
+    ///   `run(code:installing:installingAsync:isCancelled:)` itself throws.
+    public func run(code: String, installing: [HostFunction]) throws -> InterpreterResult {
+        try run(code: code, installing: installing, installingAsync: [], isCancelled: { false })
     }
 }

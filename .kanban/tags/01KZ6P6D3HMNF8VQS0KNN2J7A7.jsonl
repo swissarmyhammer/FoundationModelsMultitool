@@ -1,0 +1,1 @@
+{"id":"01KZ6P6D3HEG8V66QJM4X9ZA4D","timestamp":"2026-08-04T15:27:38.609249Z","op":"create","item_id":"01KZ6P6D3HMNF8VQS0KNN2J7A7","forward_patch":"--- original\n+++ modified\n@@ -0,0 +1,2 @@\n+color: fbca04\n+tag_name: router-first\n","reverse_patch":"--- original\n+++ modified\n@@ -1,2 +0,0 @@\n-color: fbca04\n-tag_name: router-first\n","transaction_id":null}
