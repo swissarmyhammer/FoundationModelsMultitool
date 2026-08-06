@@ -27,6 +27,9 @@ let gatedToolResult = "gated-result"
 /// isolation — neither side has an `await` to spare, and the state is one
 /// `Bool`.
 final class ToolReleaseLatch: Sendable {
+    /// Whether ``release()`` has been called — the one piece of state this
+    /// latch holds, lock-guarded because the blocked call polls it from the
+    /// sandbox's own thread while the test flips it from its own.
     private let releasedBox = OSAllocatedUnfairLock(initialState: false)
 
     /// Whether ``release()`` has already been called.
@@ -44,11 +47,23 @@ final class ToolReleaseLatch: Sendable {
 /// `wasCancelled` while the call is still in flight, backed by
 /// `OSAllocatedUnfairLock` so the type stays `Sendable`.
 final class GatedTool: Tool, Sendable {
+    /// The `Tool` name this fixture installs under — a snippet reaches it as
+    /// `tools.gated()`.
     let name = "gated"
+
+    /// The model-facing description this fixture carries; no test asserts on
+    /// it, but `Tool` requires one and a registry renders it into the surface.
     let description = "Blocks until the test releases it, then returns a fixed value."
 
+    /// The latch every call polls; releasing it lets all of them finish.
     private let latch: ToolReleaseLatch
+
+    /// Whether ``call(arguments:)`` has entered at least once. Lock-guarded so
+    /// a test may read it while a call is still in flight on another thread.
     private let startedBox = OSAllocatedUnfairLock(initialState: false)
+
+    /// Whether a call ended by cancellation rather than by release.
+    /// Lock-guarded for the same reason as ``startedBox``.
     private let cancelledBox = OSAllocatedUnfairLock(initialState: false)
 
     /// Creates a tool gated on `latch`.
@@ -68,6 +83,20 @@ final class GatedTool: Tool, Sendable {
     /// promise's own work.
     var wasCancelled: Bool { cancelledBox.withLock { $0 } }
 
+    /// Blocks until the latch is released, then returns ``gatedToolResult``.
+    ///
+    /// This is the whole point of the fixture: the call never returns on its
+    /// own, so the snippet awaiting it stays pending — and its JSC context
+    /// stays suspended — until the test either releases the latch or cancels
+    /// the call. The wait is a `Task.sleep` poll on
+    /// ``gateRecheckIntervalNanoseconds`` rather than a continuation, so
+    /// cancelling the call's `Task` ends it immediately; that cancellation is
+    /// recorded (see ``wasCancelled``) and rethrown, never swallowed.
+    ///
+    /// - Parameter arguments: unused — this tool takes none.
+    /// - Returns: ``gatedToolResult``, once the latch has been released.
+    /// - Throws: `CancellationError` when the call's `Task` is cancelled
+    ///   before the latch is released.
     func call(arguments: NoArguments) async throws -> String {
         startedBox.withLock { $0 = true }
         do {

@@ -1,0 +1,3 @@
+color: b60205
+description: Blocked on a human decision; an agent must not resolve it
+tag_name: stuck
