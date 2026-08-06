@@ -978,8 +978,19 @@ struct JSCInterpreterTests {
 
     /// The snippet the cancellation pin and both of its controls run
     /// unchanged: it witnesses that it entered the `try` block, that an
-    /// author-written `.catch()` on the pending call ran, and that an
-    /// author-written `finally {}` ran.
+    /// author-written `.catch()` was attached to the pending call, that that
+    /// `.catch()` ran, and that an author-written `finally {}` ran.
+    ///
+    /// The `attached` marker is what makes the pin's `.catch()` half a
+    /// construction rather than a timing margin. Entering the `try` already
+    /// arms `finally`, so `entered` on its own closes that arm — but a run
+    /// terminated between `entered` and the `.catch()` call would leave the
+    /// handler unattached and still produce the pin's markers, its
+    /// `CancellationError`, and its short duration. Binding the promise,
+    /// recording `attached` immediately after the handler is installed on it,
+    /// and awaiting the bound promise afterwards makes that false pass
+    /// unmatchable: the marker cannot land unless the handler is already live
+    /// on a call that has not settled.
     ///
     /// Shared verbatim so the pin's negative claim and the controls' positive
     /// ones are made about one piece of code rather than three that could
@@ -987,7 +998,9 @@ struct JSCInterpreterTests {
     private static let cleanupWitnessSnippet = """
         try {
             record("entered");
-            await slowAsync().catch(() => { record("catch"); });
+            const pending = slowAsync().catch(() => { record("catch"); });
+            record("attached");
+            await pending;
             record("afterAwait");
         } finally {
             record("finally");
@@ -1033,7 +1046,9 @@ struct JSCInterpreterTests {
         let interpreter = JSCInterpreter(timeLimit: 10.0)
         let cancelledBox = OSAllocatedUnfairLock(initialState: false)
         let markers = OSAllocatedUnfairLock<[InterpreterValue]>(initialState: [])
+        let pendingCallStarted = OSAllocatedUnfairLock(initialState: false)
         let slow = AsyncHostFunction(name: "slowAsync") { _ in
+            pendingCallStarted.withLock { $0 = true }
             try await Task.sleep(nanoseconds: 5_000_000_000)
             return .null
         }
@@ -1059,11 +1074,17 @@ struct JSCInterpreterTests {
         // which the pending call would have settled on its own — nothing in
         // this test waits that long.
         Thread.sleep(forTimeInterval: 0.3)
-        // `entered` and nothing after it. That first marker is the witness
-        // that the snippet really did start, so the absence of `catch` and
-        // `finally` is cleanup that was skipped, not a snippet the cancel beat
-        // to the `try` block.
-        #expect(markers.withLock { $0 } == [.string("entered")])
+        // `entered` and `attached`, and nothing after them. `entered` witnesses
+        // that the snippet really did start; `attached` witnesses that the
+        // author's `.catch()` was installed on the pending call before the
+        // cancel landed. So the absence of `catch` and `finally` is cleanup
+        // that was skipped, not a snippet the cancel beat to the `try` block or
+        // to the handler's installation.
+        #expect(markers.withLock { $0 } == [.string("entered"), .string("attached")])
+        // ...and the promise that handler was installed on was backed by a call
+        // that really was in flight, so the handler was live rather than
+        // attached to something already dead.
+        #expect(pendingCallStarted.withLock { $0 })
     }
 
     @Test("an uncancelled snippet does run its author-written finally {} after a pending call settles")
@@ -1088,7 +1109,7 @@ struct JSCInterpreterTests {
         #expect(result.returnValue == .string("done"))
         #expect(
             markers.withLock { $0 } == [
-                .string("entered"), .string("afterAwait"), .string("finally"),
+                .string("entered"), .string("attached"), .string("afterAwait"), .string("finally"),
             ]
         )
     }
@@ -1116,7 +1137,8 @@ struct JSCInterpreterTests {
         #expect(result.returnValue == .string("done"))
         #expect(
             markers.withLock { $0 } == [
-                .string("entered"), .string("catch"), .string("afterAwait"), .string("finally"),
+                .string("entered"), .string("attached"), .string("catch"), .string("afterAwait"),
+                .string("finally"),
             ]
         )
     }

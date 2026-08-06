@@ -261,15 +261,27 @@ public final class JSCInterpreter: Interpreter {
     /// Creates a JavaScriptCore-backed interpreter that enforces the given
     /// per-run time limit.
     ///
-    /// This default is only ever what a directly-constructed interpreter
-    /// enforces: `MultiTool` always arms its own sandbox with
-    /// `MultiToolConfiguration.executionTimeLimit`, the work clock's ceiling,
-    /// which is the value that has to stay clear of a `runCode` call's wait
-    /// clock (see that property's own documentation).
+    /// The default applies to every interpreter constructed without an
+    /// explicit `timeLimit`, including one a caller hands to `MultiTool.init`
+    /// as its `interpreter:`. Only the sandbox `MultiTool.init` builds for
+    /// itself — the one it constructs when the caller injects no `interpreter`
+    /// — is armed from `MultiToolConfiguration.executionTimeLimit`, the work
+    /// clock's ceiling, which is the value that has to stay clear of a
+    /// `runCode` call's wait clock (see that property's own documentation).
+    ///
+    /// For an injected interpreter that ceiling arms nothing, so a caller who
+    /// supplies one is arming this watchdog itself and should pass the same
+    /// ceiling its configuration carries. Leaving this default in place under a
+    /// `MultiTool` reinstates the collision with
+    /// `ElevationConfiguration.defaultWaitSeconds` that
+    /// `MultiToolConfiguration.executionTimeLimit` records as the bug its own
+    /// default was changed to fix: the watchdog force-terminates a snippet at
+    /// the exact instant its run elevates.
     ///
     /// - Parameter timeLimit: seconds a single `run` may execute before the
-    ///   watchdog terminates it. Defaults to a generous ceiling suitable for
-    ///   real tool-composing snippets.
+    ///   watchdog terminates it. Defaults to a ceiling sized for a
+    ///   directly-constructed interpreter running a self-contained snippet, not
+    ///   to the work clock a `MultiTool` configures.
     public init(timeLimit: TimeInterval = 5.0) {
         self.timeLimit = timeLimit
     }
