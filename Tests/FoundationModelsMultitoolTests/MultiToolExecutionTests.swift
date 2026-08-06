@@ -13,6 +13,36 @@ import Testing
 /// directly, standing in for what a real agent loop (M4b) would decode.
 @Suite("MultiToolExecution")
 struct MultiToolExecutionTests {
+    // MARK: - The runCode envelope (eventplan.md § "The constraint boundary")
+
+    @Test("runCode's schema exposes code, waitSeconds and timeout, each with its own guidance")
+    func runCodeSchemaExposesBothClocks() throws {
+        let registry = try MultiTool.Builder().addTool(TempTool()).buildRegistry()
+
+        let schema = try ToolAPIRenderer.jsonSchemaString(for: MultiTool(registry: registry).parameters)
+
+        for property in ["code", "waitSeconds", "timeout"] {
+            #expect(schema.contains(property))
+        }
+        // Each clock's own `@Guide` text, so the model reads what the two
+        // clocks mean rather than only their names.
+        #expect(schema.contains("hands back a pending completion token"))
+        #expect(schema.contains("Progress resets it"))
+    }
+
+    @Test("runCode arguments carrying only code still decode, leaving both clocks to their defaults")
+    func runCodeArgumentsDecodeFromCodeAlone() async throws {
+        let registry = try MultiTool.Builder().addTool(TempTool()).buildRegistry()
+        let content = try ArgumentMarshaler.marshalArguments(.object(["code": .string("return 1 + 1;")]))
+
+        let arguments = try RunCodeArguments(content)
+
+        #expect(arguments.code == "return 1 + 1;")
+        #expect(arguments.waitSeconds == nil)
+        #expect(arguments.timeout == nil)
+        #expect(try await MultiTool(registry: registry).call(arguments: arguments) == "2")
+    }
+
     // MARK: - Composition: intermediates stay in the sandbox
 
     @Test("composing two tools in one snippet returns only the final value; intermediates never appear in the rendered output")

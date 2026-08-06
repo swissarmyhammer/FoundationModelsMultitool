@@ -217,9 +217,19 @@ private func jscTerminateCallback(_: JSContextRef?, _ info: UnsafeMutableRawPoin
 /// `HostFunction`s/`AsyncHostFunction`s were installed for that run. Nothing
 /// set by one run (a global, a host function) is visible to the next.
 ///
-/// The whole run executes on a dedicated background queue — never the
-/// caller's thread. `HostFunction` calls run synchronously, inline, on that
-/// queue. `AsyncHostFunction` calls return a JS `Promise` backed by its own
+/// The whole run executes on a serial queue of its own — one per `run`, never
+/// one per interpreter, so two runs of the same interpreter never wait on each
+/// other. That matters as soon as a `runCode` call can elevate: an elevated
+/// call keeps its context (and its queue) for as long as it stays suspended,
+/// and the session's follow-up snippet — the `wait()` or `cancel()` that
+/// collects it — has to be able to run meanwhile. Nothing is shared for those
+/// runs to race: `evaluate` creates, owns, and tears down every piece of a
+/// run's state, starting with its own `JSContextGroup`. How many runs may be
+/// live at once is `MultiTool`'s to bound, not this type's (see
+/// `MultiToolConfiguration.liveContextLimit`).
+///
+/// `HostFunction` calls run synchronously, inline, on that queue.
+/// `AsyncHostFunction` calls return a JS `Promise` backed by its own
 /// Swift `Task`, running concurrently on the cooperative pool; the queue
 /// blocks only while waiting for those `Task`s to report back (see
 /// `pumpUntilSettled`), never for the caller's own thread — eventplan.md
@@ -242,21 +252,29 @@ public final class JSCInterpreter: Interpreter {
     /// Wall-clock ceiling for a single `run`, enforced by `WatchdogState`.
     private let timeLimit: TimeInterval
 
-    /// Dedicated worker the actual JS evaluation runs on (see the type doc).
-    private let queue: DispatchQueue
+    /// The label every run's own worker queue carries (see the type doc for
+    /// why the queue is per run rather than per interpreter). Shared rather
+    /// than made unique per run: it names the role in a stack trace, and no
+    /// dispatch behavior depends on it being distinct.
+    private static let queueLabel = "FoundationModelsMultitool.JSCInterpreter"
 
     /// Creates a JavaScriptCore-backed interpreter that enforces the given
     /// per-run time limit.
+    ///
+    /// This default is only ever what a directly-constructed interpreter
+    /// enforces: `MultiTool` always arms its own sandbox with
+    /// `MultiToolConfiguration.executionTimeLimit`, the work clock's ceiling,
+    /// which is the value that has to stay clear of a `runCode` call's wait
+    /// clock (see that property's own documentation).
     ///
     /// - Parameter timeLimit: seconds a single `run` may execute before the
     ///   watchdog terminates it. Defaults to a generous ceiling suitable for
     ///   real tool-composing snippets.
     public init(timeLimit: TimeInterval = 5.0) {
         self.timeLimit = timeLimit
-        self.queue = DispatchQueue(label: "FoundationModelsMultitool.JSCInterpreter")
     }
 
-    /// Runs `code` on the dedicated worker queue in a fresh, isolated
+    /// Runs `code` on this run's own worker queue in a fresh, isolated
     /// sandbox with `installing`/`installingAsync` made available as
     /// globals — the sole requirement of `Interpreter` this type
     /// implements; every other overload (`run(code:installing:)`,
@@ -283,7 +301,7 @@ public final class JSCInterpreter: Interpreter {
         installingAsync: [AsyncHostFunction],
         isCancelled: @escaping @Sendable () -> Bool
     ) throws -> InterpreterResult {
-        try queue.sync {
+        try DispatchQueue(label: Self.queueLabel).sync {
             try Self.evaluate(
                 code: code,
                 installing: installing,
@@ -596,7 +614,7 @@ public final class JSCInterpreter: Interpreter {
     /// has drained the whole registry — see that function's documentation
     /// for why checking per-settlement instead would be wrong.
     /// JS-thread-confined, like `ConsoleLines`: `.then` is only ever invoked
-    /// while JS executes on the interpreter's dedicated worker queue.
+    /// while JS executes on the run's dedicated worker queue.
     private final class ConsumedFlag {
         fileprivate var value = false
     }
@@ -613,7 +631,7 @@ public final class JSCInterpreter: Interpreter {
     /// `complete(id:outcome:)`, from whichever thread the cooperative pool
     /// happens to run it on — genuine concurrency, so `Promise.all` over
     /// several calls runs them at once. Only `pumpUntilSettled`, running on
-    /// the interpreter's own dedicated worker queue (the "JS thread"), ever
+    /// the run's own dedicated worker queue (the "JS thread"), ever
     /// touches a stored `resolve`/`reject`, so those `JSValue`s are never
     /// touched off that queue — hopping back with `queue.async` from the
     /// `Task` instead would deadlock the same serial queue `run` already
@@ -624,7 +642,7 @@ public final class JSCInterpreter: Interpreter {
     /// `JSValue` resolvers and are touched *only* from the JS thread —
     /// `register`/`attachTask`/`attachConsumedFlag` run inside the promise
     /// executor, itself only ever invoked while JS executes on the
-    /// interpreter's dedicated worker queue, and
+    /// run's dedicated worker queue, and
     /// `takeReadyToSettle`/`cancelAllPending`/`isEmpty` run only from
     /// `pumpUntilSettled`, which is called from the very same queue — so,
     /// exactly like `ConsoleLines`, no lock is needed there. The completion

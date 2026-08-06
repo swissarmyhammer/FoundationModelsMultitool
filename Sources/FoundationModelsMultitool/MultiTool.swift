@@ -100,9 +100,18 @@ extension MultiTool {
 }
 
 /// The arguments `MultiTool`'s `runCode` call accepts: the JavaScript
-/// snippet to run against `tools.*`.
+/// snippet to run against `tools.*`, and the two clocks that bound it.
+///
+/// The clocks are the envelope half of eventplan.md § "Consolidation of the
+/// siblings" — `waitSeconds` bounds how long the *caller* waits,
+/// ``timeout`` bounds how long the *work* runs — and reach the elevation
+/// engine through `MultiTool`'s `ElevationParameterProviding` conformance
+/// (see `MultiTool+Elevation.swift`). Both are optional: a call that supplies
+/// only `code` runs on the host's own defaults, exactly as every `runCode`
+/// call did before the clocks existed.
 @Generable
 public struct RunCodeArguments {
+    /// The JavaScript snippet to run against `tools.*`.
     @Guide(
         description: "JavaScript snippet to run against the available tools, exposed as functions "
             + "under `tools.*`. Compose calls with normal code — variables, loops, map/filter — and "
@@ -110,16 +119,44 @@ public struct RunCodeArguments {
     )
     public var code: String
 
-    /// Creates `runCode`'s arguments with the given snippet.
+    /// How long this call may block before it elevates, in seconds, or `nil`
+    /// to leave the wait clock to the host's mount. `0` detaches immediately;
+    /// nothing resets this clock.
+    @Guide(
+        description: "Optional. How many seconds to wait for this snippet before it hands back a "
+            + "pending completion token and keeps running in the background; follow it up with "
+            + "status(), wait(), or cancel(). Nothing resets this clock, and 0 detaches at once. "
+            + "Omit it to use the host's own default."
+    )
+    public var waitSeconds: Double?
+
+    /// How long this snippet's own work may run, in seconds, or `nil` to
+    /// leave the work clock to the host's configuration. Progress resets it,
+    /// and the host clamps it to its own ceiling.
+    @Guide(
+        description: "Optional. How many seconds the snippet's own work may run before it is "
+            + "cancelled. Progress resets it, so a snippet that keeps reporting keeps running. "
+            + "Omit it to use the host's own default; the host caps it at its configured ceiling."
+    )
+    public var timeout: Double?
+
+    /// Creates `runCode`'s arguments with the given snippet and clocks.
     ///
     /// Explicit for the same reason as every other public `@Generable`
     /// type's initializer in this package (e.g. `ToolDescriptor.init`): a
     /// `public` struct's synthesized memberwise initializer is only
     /// `internal`-accessible.
     ///
-    /// - Parameter code: the JavaScript snippet to run.
-    public init(code: String) {
+    /// - Parameters:
+    ///   - code: the JavaScript snippet to run.
+    ///   - waitSeconds: how long the call may block before it elevates, or
+    ///     `nil` to leave that to the host's mount.
+    ///   - timeout: how long the snippet's own work may run, or `nil` to
+    ///     leave that to the host's configuration.
+    public init(code: String, waitSeconds: Double? = nil, timeout: Double? = nil) {
         self.code = code
+        self.waitSeconds = waitSeconds
+        self.timeout = timeout
     }
 }
 
@@ -195,6 +232,15 @@ public struct MultiTool: Tool {
     /// The catalog + live tool instances this `runCode` dispatches into.
     private let registry: Registry
 
+    /// The M10 hardening knobs this tool enforces. Internal, not `private`,
+    /// because the elevation extension reads the work clock's ceiling out of
+    /// it (see `MultiTool+Elevation.swift`).
+    let configuration: MultiToolConfiguration
+
+    /// How many of this tool's `runCode` contexts are live right now, capped
+    /// at `configuration.liveContextLimit` — see ``LiveContextCounter``.
+    private let liveContexts: LiveContextCounter
+
     /// The sandbox this tool runs every snippet in. `any Interpreter` (not
     /// `JSCInterpreter` directly) so a test can substitute a fake — matching
     /// `Interpreter`'s own stated purpose ("the engine is swappable without
@@ -239,14 +285,17 @@ public struct MultiTool: Tool {
     /// - Parameters:
     ///   - registry: the catalog + live tool instances to expose as
     ///     `tools.*`.
-    ///   - configuration: the M10 hardening knobs (execution time limit,
-    ///     return/console caps) this tool enforces. Defaults to
-    ///     `MultiToolConfiguration.default`. Ignored for whichever of
-    ///     `interpreter`/`limits` is explicitly supplied instead of left
-    ///     `nil` — an explicit override always wins over the configuration's
-    ///     corresponding derived value.
+    ///   - configuration: the M10 hardening knobs (the work clock's ceiling,
+    ///     the live-context cap, return/console caps) this tool enforces.
+    ///     Defaults to `MultiToolConfiguration.default`. Ignored for
+    ///     whichever of `interpreter`/`limits` is explicitly supplied instead
+    ///     of left `nil` — an explicit override always wins over the
+    ///     configuration's corresponding derived value.
     ///   - interpreter: the sandbox to run every snippet in. Defaults to a
-    ///     fresh `JSCInterpreter` honoring `configuration.executionTimeLimit`.
+    ///     fresh `JSCInterpreter` armed with
+    ///     `configuration.executionTimeLimit` — the work clock's ceiling, and
+    ///     the only clock the interpreter itself owns (see
+    ///     `MultiToolConfiguration.executionTimeLimit`).
     ///   - limits: the size caps `ResultRenderer` enforces on this tool's
     ///     rendered output. Defaults to `configuration.resultLimits`.
     public init(
@@ -256,6 +305,8 @@ public struct MultiTool: Tool {
         limits: ResultRendererLimits? = nil
     ) {
         self.registry = registry
+        self.configuration = configuration
+        self.liveContexts = LiveContextCounter()
         self.interpreter = interpreter ?? JSCInterpreter(timeLimit: configuration.executionTimeLimit)
         self.limits = limits ?? configuration.resultLimits
         self.hostFunctions = Self.makeHelpDocsHostFunctions(for: registry)
@@ -275,7 +326,12 @@ public struct MultiTool: Tool {
     /// `CancellationError`" — so `CancellationError` always propagates
     /// unchanged.
     ///
-    /// - Parameter arguments: the snippet to run.
+    /// A call that would push this tool past `configuration
+    /// .liveContextLimit` never reaches the sandbox at all: it renders the
+    /// same repairable error text instead, naming the cap and the run-plane
+    /// globals that collect a parked snippet (see ``LiveContextCounter``).
+    ///
+    /// - Parameter arguments: the snippet to run, and the clocks bounding it.
     /// - Returns: the rendered `runCode` result — the snippet's return
     ///   value (plus any captured console output) on success, or a
     ///   repairable error description on failure.
@@ -287,6 +343,10 @@ public struct MultiTool: Tool {
     ///   other `Interpreter` conformer).
     public func call(arguments: RunCodeArguments) async throws -> String {
         try Task.checkCancellation()
+        guard liveContexts.claim(upTo: configuration.liveContextLimit) else {
+            return ResultRenderer.render(Self.liveContextCapError(limit: configuration.liveContextLimit))
+        }
+        defer { liveContexts.release() }
         // Captured here, and only here: this is the last point on the route
         // where the session's ambient `ToolContext` is still reachable. Every
         // `tools.*` call below runs in a `Task` the interpreter's promise pump
@@ -365,8 +425,8 @@ public struct MultiTool: Tool {
     /// thread (`JSCInterpreter`'s own documentation: "groundwork for the M4
     /// blocking async bridge... that blocking must not happen on the
     /// caller's (potentially main) thread") by dispatching internally onto
-    /// its own dedicated worker queue via `DispatchQueue.sync` — but calling
-    /// that *synchronously* from here would still tie up whichever
+    /// the run's own dedicated worker queue via `DispatchQueue.sync` — but
+    /// calling that *synchronously* from here would still tie up whichever
     /// cooperative-pool thread is running this `async` `call(arguments:)`
     /// for the run's entire duration. Wrapping it in
     /// `withCheckedThrowingContinuation` and dispatching onto a plain,

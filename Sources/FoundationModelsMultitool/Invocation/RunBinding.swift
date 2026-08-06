@@ -34,7 +34,7 @@ import FoundationModelsRouter
 ///
 /// Settlement needs no executor of its own here: `JSCInterpreter`'s promise
 /// registry already keys every bridge-created promise by id and resolves it
-/// from the interpreter's own dedicated worker queue (the "JS thread") in
+/// from the run's own dedicated worker queue (the "JS thread") in
 /// `pumpUntilSettled`, so the interpreter that created a promise is always
 /// the one that settles it.
 ///

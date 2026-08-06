@@ -3,6 +3,7 @@ import JavaScriptCore
 import Testing
 
 import FoundationModels
+import FoundationModelsRouter
 @testable import FoundationModelsMultitool
 
 /// M10 coverage: cancellation reaching into an in-flight `runCode` snippet,
@@ -13,10 +14,16 @@ import FoundationModels
 struct HardeningTests {
     // MARK: - MultiToolConfiguration itself
 
-    @Test("MultiToolConfiguration.default matches every mechanism's own pre-M10 default")
-    func defaultConfigurationMatchesHistoricalDefaults() {
+    @Test("MultiToolConfiguration.default carries the elevation engine's own work clock and each renderer default")
+    func defaultConfigurationMatchesTheEngineAndRendererDefaults() {
         let configuration = MultiToolConfiguration.default
-        #expect(configuration.executionTimeLimit == 5.0)
+        // The work clock's default is the engine's own, never the wait
+        // clock's: the two were both 5 seconds, so the interpreter's watchdog
+        // killed a snippet at the instant its run elevated — see
+        // `MultiToolConfiguration.executionTimeLimit`.
+        #expect(configuration.executionTimeLimit == ElevationConfiguration.defaultTimeoutSeconds)
+        #expect(configuration.executionTimeLimit > ElevationConfiguration.defaultWaitSeconds)
+        #expect(configuration.liveContextLimit == MultiToolConfiguration.defaultLiveContextLimit)
         #expect(configuration.returnValueCharacterLimit == ResultRendererLimits.default.returnValueCharacterLimit)
         #expect(configuration.consoleCharacterLimit == ResultRendererLimits.default.consoleCharacterLimit)
     }
@@ -25,10 +32,14 @@ struct HardeningTests {
     func configurationClampsInvalidLimits() {
         let configuration = MultiToolConfiguration(
             executionTimeLimit: -1,
+            liveContextLimit: 0,
             returnValueCharacterLimit: -5,
             consoleCharacterLimit: -5
         )
         #expect(configuration.executionTimeLimit == 0)
+        // One live context, never none: a cap of zero would refuse every
+        // `runCode` call outright.
+        #expect(configuration.liveContextLimit == 1)
         #expect(configuration.returnValueCharacterLimit == 0)
         #expect(configuration.consoleCharacterLimit == 0)
     }
@@ -137,8 +148,9 @@ struct HardeningTests {
 
         #expect(output.contains("timed out"))
         // Comfortably above the 0.3s configured limit (watchdog scheduling
-        // jitter) but far below the 5s package default — proves the
-        // configured limit, not the default, was the one enforced.
+        // jitter) but far below the package's own default work clock —
+        // proves the configured limit, not the default, was the one
+        // enforced.
         #expect(elapsed < .seconds(3))
     }
 
