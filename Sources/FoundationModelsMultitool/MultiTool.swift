@@ -203,16 +203,22 @@ public struct MultiTool: Tool {
     /// sandbox by `Interpreter.run`.
     private let hostFunctions: [HostFunction]
 
-    /// Every wrapped tool's `AsyncHostFunction` bridge — one `tools.<name>`
-    /// binding per live registry entry, each backed by the interpreter's own
-    /// promise pump rather than a blocking bridge (see "MARK: - The async
-    /// host-function bridge" below). Precomputed once at `init` time for the
-    /// same reason as `hostFunctions`.
-    private let asyncHostFunctions: [AsyncHostFunction]
+    /// Every registry entry that has a live tool to dispatch to, paired with
+    /// the flat host-function name its `tools.*` binding installs under —
+    /// precomputed once at `init` time for the same reason as
+    /// `hostFunctions`: it depends only on `registry`, which never changes.
+    ///
+    /// The `AsyncHostFunction`s built from it deliberately are *not*
+    /// precomputed: each one closes over the invocation's own `RunBinding`
+    /// (eventplan.md "Async JavaScript": one binding per `runCode`
+    /// invocation, captured at bind time and never inherited), so
+    /// `makeAsyncHostFunctions(binding:)` rebuilds them per call from this
+    /// stable pairing.
+    private let liveTools: [LiveTool]
 
     /// The `tools.*` assignment glue prepended to every snippet — see
     /// "tools.* glue" below. Precomputed once at `init` time for the same
-    /// reason as `hostFunctions`/`asyncHostFunctions`: it depends only on
+    /// reason as `hostFunctions`/`liveTools`: it depends only on
     /// `registry.surface`, which never changes.
     private let preamble: String
 
@@ -241,7 +247,7 @@ public struct MultiTool: Tool {
         self.interpreter = interpreter ?? JSCInterpreter(timeLimit: configuration.executionTimeLimit)
         self.limits = limits ?? configuration.resultLimits
         self.hostFunctions = Self.makeHelpDocsHostFunctions(for: registry)
-        self.asyncHostFunctions = Self.makeAsyncHostFunctions(for: registry)
+        self.liveTools = Self.makeLiveTools(for: registry)
         self.preamble = Self.makePreamble(for: registry)
     }
 
@@ -269,12 +275,18 @@ public struct MultiTool: Tool {
     ///   other `Interpreter` conformer).
     public func call(arguments: RunCodeArguments) async throws -> String {
         try Task.checkCancellation()
+        // Captured here, and only here: this is the last point on the route
+        // where the session's ambient `ToolContext` is still reachable. Every
+        // `tools.*` call below runs in a `Task` the interpreter's promise pump
+        // starts from a JSC callback, outside every task tree, where
+        // `ToolContext.current` is `nil` — see `RunBinding`.
+        let binding = RunBinding.ambient
         let code = "\(preamble)\n\(arguments.code)"
         do {
             let result = try await Self.run(
                 code: code,
                 installing: hostFunctions,
-                installingAsync: asyncHostFunctions,
+                installingAsync: makeAsyncHostFunctions(binding: binding),
                 using: interpreter
             )
             return ResultRenderer.render(result, limits: limits)
@@ -410,10 +422,20 @@ public struct MultiTool: Tool {
     // lockstep and collision-free by construction, with no escaping
     // subtleties to get wrong.
 
+    /// One registry entry that has a live tool to dispatch to, paired with
+    /// the flat global its `tools.*` binding installs under.
+    private struct LiveTool: Sendable {
+        /// The entry's flat host-function name — see `hostFunctionName(at:)`.
+        let hostFunctionName: String
+
+        /// The live tool a `tools.<path>(…)` call dispatches into.
+        let tool: any Tool
+    }
+
     /// The positional host-function name for `registry.surface.entries[index]`
-    /// — shared by `makeAsyncHostFunctions` (which installs it) and
-    /// `makePreamble` (which assigns it into `tools.*`), so the two always
-    /// agree on naming without either duplicating the scheme.
+    /// — shared by `makeLiveTools` (which names it) and `makePreamble` (which
+    /// assigns it into `tools.*`), so the two always agree on naming without
+    /// either duplicating the scheme.
     ///
     /// - Parameter index: the entry's position in `registry.surface.entries`.
     /// - Returns: that entry's flat host-function name.
@@ -421,27 +443,43 @@ public struct MultiTool: Tool {
         "__tool\(index)"
     }
 
-    /// Builds one `AsyncHostFunction` per registry entry that has a live
-    /// tool to dispatch to, bridging its call into the tool's real `async`
-    /// `call(arguments:)` via `invokeAsync` — no blocking bridge: the
-    /// interpreter's own promise pump runs this closure in its own Swift
-    /// `Task` (see `AsyncHostFunction`'s documentation).
+    /// Pairs every registry entry that has a live tool with the flat
+    /// host-function name it installs under.
     ///
     /// - Parameter registry: the catalog + live tool instances to bridge.
-    /// - Returns: one `AsyncHostFunction` per entry with a matching
+    /// - Returns: one pairing per entry with a matching
     ///   `registry.tools[path]`, named per `hostFunctionName(at:)` and in
     ///   the same order as `registry.surface.entries`.
-    private static func makeAsyncHostFunctions(for registry: Registry) -> [AsyncHostFunction] {
-        var asyncHostFunctions: [AsyncHostFunction] = []
+    private static func makeLiveTools(for registry: Registry) -> [LiveTool] {
+        var liveTools: [LiveTool] = []
         for (index, entry) in registry.surface.entries.enumerated() {
             guard let tool = registry.tools[entry.path] else { continue }
-            asyncHostFunctions.append(
-                AsyncHostFunction(name: hostFunctionName(at: index)) { arguments in
-                    try await invokeAsync(tool: tool, arguments: arguments)
-                }
-            )
+            liveTools.append(LiveTool(hostFunctionName: hostFunctionName(at: index), tool: tool))
         }
-        return asyncHostFunctions
+        return liveTools
+    }
+
+    /// Builds this invocation's `AsyncHostFunction`s — one per `liveTools`
+    /// pairing, bridging its call into the tool's real `async`
+    /// `call(arguments:)` via `invokeAsync` — no blocking bridge: the
+    /// interpreter's own promise pump runs each closure in its own Swift
+    /// `Task` (see `AsyncHostFunction`'s documentation).
+    ///
+    /// Per invocation rather than per registry, because each closure captures
+    /// `binding`: that `Task` runs outside every task tree, so the session it
+    /// belongs to has to be a captured value rather than an inherited one
+    /// (see `RunBinding`).
+    ///
+    /// - Parameter binding: this `runCode` invocation's captured session
+    ///   binding, or `nil` when it has none.
+    /// - Returns: one `AsyncHostFunction` per live tool, in `liveTools`'
+    ///   order.
+    private func makeAsyncHostFunctions(binding: RunBinding?) -> [AsyncHostFunction] {
+        liveTools.map { liveTool in
+            AsyncHostFunction(name: liveTool.hostFunctionName) { arguments in
+                try await Self.invokeAsync(tool: liveTool.tool, arguments: arguments, binding: binding)
+            }
+        }
     }
 
     /// Builds the JS preamble that assigns every registry entry's
@@ -459,9 +497,9 @@ public struct MultiTool: Tool {
     /// tools.<path>` banner comment.
     ///
     /// An entry with no matching `registry.tools[path]` is skipped
-    /// entirely, exactly like `makeAsyncHostFunctions`'s own `guard` — the
+    /// entirely, exactly like `makeLiveTools`'s own `guard` — the
     /// two must agree, since a skipped entry here has no host function for
-    /// `makeAsyncHostFunctions` to assign it to: unconditionally emitting
+    /// `makeLiveTools` to name: unconditionally emitting
     /// `tools.<path> = __toolN;` regardless would reference an
     /// *undeclared* JS identifier (a `ReferenceError`, since that global was
     /// never installed) rather than degrade gracefully — skipping the
@@ -513,6 +551,13 @@ public struct MultiTool: Tool {
     /// the snippet boundary regardless of whether the snippet itself awaits
     /// this call.
     ///
+    /// That `Task` lands outside every task tree, so the session behind the
+    /// call arrives as `binding` — a value captured back in
+    /// `call(arguments:)` — never as an inherited ambient context. `binding`
+    /// also selects the mount: through the elevation engine with elevation
+    /// off when a session bound one, natively when none did (see
+    /// `ToolInvoker`'s "The two mounts").
+    ///
     /// - Parameters:
     ///   - tool: the wrapped tool this call dispatches to.
     ///   - arguments: the JS call's arguments, already converted to
@@ -521,6 +566,8 @@ public struct MultiTool: Tool {
     ///     "object (named) parameters, always"); a missing or non-object
     ///     first argument is treated as `{}` and surfaces as an ordinary
     ///     `ArgumentMarshalerError`/`ToolInvokerError` below, never a crash.
+    ///   - binding: the enclosing `runCode` invocation's captured session
+    ///     binding, or `nil` when it has none.
     /// - Returns: the tool's rendered `Output`, JS-ready.
     /// - Throws: `ArgumentMarshalerError` if `arguments` can't be marshaled
     ///   into the tool's `Arguments` shape (or its `Output` can't be
@@ -532,12 +579,13 @@ public struct MultiTool: Tool {
     ///   `ResultRenderer` in turn renders as a repairable error.
     private static func invokeAsync(
         tool: any Tool,
-        arguments: [InterpreterValue]
+        arguments: [InterpreterValue],
+        binding: RunBinding?
     ) async throws -> InterpreterValue {
         let start = ContinuousClock.now
         logger.debug("tools.\(tool.name, privacy: .public) invocation started.")
         do {
-            let value = try await performInvocation(tool: tool, arguments: arguments)
+            let value = try await performInvocation(tool: tool, arguments: arguments, binding: binding)
             logger.debug(
                 "tools.\(tool.name, privacy: .public) invocation finished in \(start.duration(to: .now), privacy: .public)."
             )
@@ -583,17 +631,21 @@ public struct MultiTool: Tool {
     ///   - tool: the wrapped tool this call dispatches to.
     ///   - arguments: the JS call's arguments, already converted to
     ///     `InterpreterValue`.
+    ///   - binding: the enclosing `runCode` invocation's captured session
+    ///     binding, or `nil` when it has none — selects `ToolInvoker`'s
+    ///     mount.
     /// - Returns: the tool's rendered `Output`, JS-ready.
     /// - Throws: `ArgumentMarshalerError`, `ToolInvokerError`, or whatever
     ///   `tool.call(arguments:)` itself throws — see `invokeAsync`'s
     ///   documentation.
     private static func performInvocation(
         tool: any Tool,
-        arguments: [InterpreterValue]
+        arguments: [InterpreterValue],
+        binding: RunBinding?
     ) async throws -> InterpreterValue {
         let argumentObject = arguments.first ?? .object([:])
         let content = try ArgumentMarshaler.marshalArguments(argumentObject)
-        let output = try await ToolInvoker.invoke(tool, content: content)
+        let output = try await ToolInvoker.invoke(tool, content: content, binding: binding)
         return try ArgumentMarshaler.renderOutput(output)
     }
 

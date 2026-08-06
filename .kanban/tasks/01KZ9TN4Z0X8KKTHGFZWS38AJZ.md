@@ -80,10 +80,27 @@ comments:
     - evidence: 1 file — Tests/FoundationModelsMultitoolTests/JSCInterpreterTests.swift (new test `syncResultConversionFailureSurfacesUnderlyingError`); `swift build` clean apart from the known pre-existing mlx-swift manifest warning "missing creator for mutated node"; `swift test` 195 tests in 18 suites passed on 3 consecutive full runs, 0 failures, 0 compiler warnings; JSCInterpreter suite in isolation 44/44 on 3 consecutive runs, no flake and no sandbox-state leak (the tests that follow the sabotage in the same serialized suite re-exercise JSON.parse and pass)
     - next: ready for /review
   timestamp: 2026-08-06T11:44:58.383387+00:00
+- actor: claude-code
+  id: 01kzbekn2s4k6v9peq1eztqfv4
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (df19afa) — 0 findings, 0 confirmed, 0 refuted, 9 validators attempted, 0 failed, 0 skipped. Prior 2026-08-06 06:35 finding (JSCInterpreterTests.swift:485, symmetric sync-path coverage) is checked; all three acceptance criteria checked.
+    - next: none — task moved to done.
+  timestamp: 2026-08-06T11:51:16.313277+00:00
+- actor: claude-code
+  id: 01kzbemdxqa4epce9smeem3d3j
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — 1 file. Added `syncResultConversionFailureSurfacesUnderlyingError` to JSCInterpreterTests, giving the sync bridge symmetric coverage of the shared `jsValue(from:in:)` guard. Verified red-before-green by temporarily removing the guard (sync bridge silently handed the snippet `undefined`, same silent-failure mode). Confirmed the sync path's text does NOT diverge — it produces the same `"<name>: <error>"` shape the doc claims, so no doc correction was warranted.
+    - test: green — swift build clean, swift test 195/195 passed across 3 full runs; JSCInterpreter suite 44/44 isolated; the new test 5/5 in repeated isolated runs; no flakiness, no sandbox-state leak
+    - commit: df19afa test(interpreter): add symmetric sync-path coverage for jsValue conversion error
+    - review: clean — `review sha HEAD~1..HEAD` (df19afa), 0 findings, 9 validators attempted, 0 failed; the iteration-1 finding is checked off
+    - outcome: task moved to done
+  timestamp: 2026-08-06T11:51:41.751310+00:00
 depends_on:
 - 01KZ6N0G06Q27NNK51PZFF76MX
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ac80
 title: '[JSCInterpreter] Async host-function JSON-conversion-failure rejection loses the underlying error text'
 ---
 Discovered while implementing ^zff76mx ("[MultiTool] Remove the blocking bridge; tools.* return promises"), via an adversarial double-check review, while verifying that async-bridge error messages are byte-for-byte identical to the retired v1 sync bridge's.

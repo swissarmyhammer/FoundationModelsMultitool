@@ -125,6 +125,18 @@ public struct ToolInvokerError: Error, Sendable, Equatable, CustomStringConverti
 /// `ToolInvokerError` — it propagates unchanged, so a caller can always
 /// distinguish "never called" (`ToolInvokerError`) from "called and
 /// failed" (the tool's own error, message intact).
+///
+/// ## The two mounts
+///
+/// Both validation layers run identically whether or not the call has a
+/// session behind it; only what happens *after* they pass differs. Given a
+/// `RunBinding` — the ambient context `MultiTool.call(arguments:)` captured
+/// for this `runCode` invocation — the validated call is dispatched through
+/// the shared `ElevatingTool` engine with elevation off, so the engine owns
+/// its correlation, events, and outcome (eventplan.md "Elevation": "two
+/// mounts, one engine, two policies"). With no binding — a `MultiTool`
+/// constructed and called directly, outside any session — there is no run
+/// plane to correlate against, and the tool is called natively, unchanged.
 public enum ToolInvoker {
     /// Validates `content` against `tool`'s declared argument schema, then
     /// invokes `tool` natively via existential opening.
@@ -145,6 +157,31 @@ public enum ToolInvoker {
     ///   `tool.call` runs; otherwise, whatever `tool.call(arguments:)`
     ///   itself throws, unchanged.
     public static func invoke<T: Tool>(_ tool: T, content: GeneratedContent) async throws -> T.Output {
+        try await invoke(tool, content: content, binding: nil)
+    }
+
+    /// Validates `content` against `tool`'s declared argument schema, then
+    /// invokes `tool` on the mount `binding` selects — see this type's "The
+    /// two mounts".
+    ///
+    /// - Parameters:
+    ///   - tool: the wrapped tool to invoke, opened exactly as
+    ///     `invoke(_:content:)` opens it.
+    ///   - content: the call's arguments, already marshaled into
+    ///     `GeneratedContent`.
+    ///   - binding: the enclosing `runCode` invocation's captured session
+    ///     binding, or `nil` to call `tool` natively.
+    /// - Returns: `tool`'s `Output`, exactly as `tool.call(arguments:)`
+    ///   produced it.
+    /// - Throws: `ToolInvokerError` if `content` fails validation before
+    ///   `tool.call` runs; otherwise, whatever `tool.call(arguments:)`
+    ///   itself throws, unchanged, or whichever failure the engine itself
+    ///   produces (see `RunBinding.invoke(_:arguments:)`).
+    static func invoke<T: Tool>(
+        _ tool: T,
+        content: GeneratedContent,
+        binding: RunBinding?
+    ) async throws -> T.Output {
         try validate(content, against: tool.parameters, toolName: tool.name)
         let arguments: T.Arguments
         do {
@@ -155,7 +192,10 @@ public enum ToolInvoker {
                 message: "Tool \"\(tool.name)\" rejected its arguments: \(error)"
             )
         }
-        return try await tool.call(arguments: arguments)
+        guard let binding else {
+            return try await tool.call(arguments: arguments)
+        }
+        return try await binding.invoke(tool, arguments: arguments)
     }
 
     // MARK: - Pre-call validation
