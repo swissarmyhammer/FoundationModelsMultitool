@@ -29,9 +29,18 @@ extension MultiTool: ElevationParameterProviding {
     /// package's default work clock and its hard ceiling (see
     /// `MultiToolConfiguration.executionTimeLimit` for the full
     /// reconciliation). Answering it here is what keeps the engine's clock at
-    /// or under the one the interpreter's watchdog is armed with, so a
-    /// suspended context is never force-terminated before its own work clock
-    /// says so.
+    /// or under the one the interpreter's watchdog is armed with, so the
+    /// engine's own timeout is what a well-behaved suspended context meets
+    /// first.
+    ///
+    /// It is a bound, not a promise of survival. The two clocks are not the
+    /// same kind: the engine's timeout resets on every progress event, while
+    /// the watchdog measures from sandbox creation and nothing resets it
+    /// (`WatchdogState.runStart` is a `let`; `rearm()` re-arms the poll
+    /// interval, not the deadline). A snippet that keeps resetting the
+    /// engine's clock — by reporting progress, or by parking on `elicit()` —
+    /// therefore still meets the ceiling and is force-terminated there. The
+    /// absolute cap is the intended safety property, not a gap.
     ///
     /// - Parameter arguments: the call's arguments as opaque
     ///   `GeneratedContent` — the same content `RunCodeArguments` was decoded

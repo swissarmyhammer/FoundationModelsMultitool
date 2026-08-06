@@ -27,7 +27,11 @@ struct MultiToolExecutionTests {
         // Each clock's own `@Guide` text, so the model reads what the two
         // clocks mean rather than only their names.
         #expect(schema.contains("hands back a pending completion token"))
-        #expect(schema.contains("Progress resets it"))
+        #expect(schema.contains("Progress resets this clock"))
+        // The reset is bounded. The interpreter watchdog is armed from
+        // sandbox creation and nothing extends it, so the guidance must not
+        // leave a model believing progress buys unlimited time.
+        #expect(schema.contains("only up to the host's ceiling, which is absolute"))
     }
 
     @Test("runCode arguments carrying only code still decode, leaving both clocks to their defaults")

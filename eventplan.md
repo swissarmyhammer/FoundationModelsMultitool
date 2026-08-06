@@ -239,9 +239,23 @@ writes; one shell run for each command). Each async system must do this. Errors
 map without change: a rejected promise is a JS exception at the `await` point,
 with the same repairable message and the same fix-and-re-call contract.
 
-Cancellation maps to rejection. `cancel()` and the session sweep cancel the
-in-flight child Tasks. They reject each pending promise, drain the microtask
-queue, and remove the context in the time limit.
+Cancellation is terminate-without-settling. `cancel()` and the session sweep
+cancel the in-flight child Tasks, drop each pending promise **without settling
+it**, and remove the context in the time limit. A dropped promise is never
+resolved and never rejected. As a result, author-written `.catch()` and
+`finally {}` in the snippet do not run on cancel, and the microtask queue is
+not drained.
+
+This is deliberate, and it is not an approximation of rejection. To settle a
+promise is to resume author JS, and the run that is being cancelled has no
+armed watchdog left to stop that JS again: a snippet whose
+`finally { while (true) {} }` ran on cancel would be unkillable. The platform
+makes the same choice. A terminated Worker does not run `finally` either.
+
+Cleanup is the engine's job, not the snippet's. The engine cancels each backing
+Task, posts the honest terminal outcome, and releases the context. A snippet
+must not put a released resource's cleanup in a `finally {}` block and expect
+cancel to reach it.
 
 Elevation composes. A snippet that continues after `waitSeconds` elevates while
 its inner promises stay in flight. Call settlements and elicitation answers
@@ -383,9 +397,11 @@ promise plus a suspended JSC context. `respond` resolves them, and the snippet
 continues from the next statement.
 
 Two guards limit the cost: a configuration cap on live suspended contexts, and
-a hard unblock. `cancel(completionToken)` and the session-end sweep reject each
-pending promise, drain the microtask queue, and remove the context in the time
-limit. This obeys the cancellation-mid-snippet guarantee that exists.
+a hard unblock. `cancel(completionToken)` and the session-end sweep cancel each
+pending promise's backing Task and remove the context in the time limit,
+without settling the promise (see "Async JavaScript"). The suspended snippet
+never resumes, so its own `.catch()` and `finally {}` never run. This obeys the
+cancellation-mid-snippet guarantee that exists.
 
 The globals need no `findAPIs` entry. The two tool descriptions carry the full
 behavioral contract, with no special system prompt. This is intentional. As a
@@ -464,8 +480,17 @@ The two-clocks model of MCP goes into the engine without change. `waitSeconds`
 limits *the block of the tool call*. Nothing resets it. A per-call `timeout`
 limits *the work itself*. Progress resets it.
 
-Progress keeps the work alive. It never gives the caller more wait time. We
-remove the MCP follow-up pseudo-tools (`get_result`, `list_calls`,
+Progress keeps the work alive. It never gives the caller more wait time.
+
+Progress does not make a snippet immortal. The two clocks above belong to the
+engine. The host's interpreter has a third clock of its own: the watchdog that
+`MultiToolConfiguration.executionTimeLimit` arms. That clock is absolute. It
+measures from the start of the snippet, and nothing resets it — not progress,
+and not a park on `elicit()`. The engine's `timeout` is clamped to it. As a
+result, progress keeps the work alive up to that ceiling only, and a snippet
+that reaches the ceiling is force-terminated there.
+
+We remove the MCP follow-up pseudo-tools (`get_result`, `list_calls`,
 `cancel_call`) and the equivalent Shelltool operations. The uniform `status()`
 / `wait()` / `cancel()` builtins replace them.
 
@@ -591,7 +616,8 @@ documentation and token constraints:
   elevates. The default is the configured 5. A value of `0` detaches
   immediately (MCP's `bounded(.zero)` case).
 - `timeout` — the second clock. It is the hard limit on the work. Progress
-  resets it.
+  resets it, up to the host's absolute interpreter ceiling (see
+  "Consolidation of the siblings").
 
 `findAPIs` keeps its search argument as the discovery half. **Inner `tools.*`
 calls never elevate.** An awaited inner call runs until it completes, limited

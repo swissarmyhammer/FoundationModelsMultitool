@@ -39,8 +39,18 @@ public struct MultiToolConfiguration: Sendable, Equatable {
     /// The per-call `timeout` an envelope carries is enforced by the
     /// elevation engine — which resets it on every progress event and
     /// reaches the interpreter through the same cancellation path a
-    /// cancelled `Task` does — and is clamped to this ceiling, so the
-    /// watchdog can never fire before the run's own work clock does.
+    /// cancelled `Task` does — and is clamped to this ceiling.
+    ///
+    /// The clamp bounds the two clocks' *starting* values; it does not make
+    /// this one the looser of the two forever. The engine's clock resets on
+    /// progress. This one does not: it arms `WatchdogState`, which measures
+    /// from sandbox creation, and neither progress nor parking on `elicit()`
+    /// moves that reference point (`runStart` is a `let`; `rearm()` re-arms
+    /// the poll interval, not the deadline). So a snippet that keeps
+    /// resetting the engine's clock is force-terminated here instead, at this
+    /// ceiling. That is deliberate — it is the absolute cap on one snippet,
+    /// and the reason a suspended context cannot be kept alive indefinitely
+    /// by reporting progress.
     public let executionTimeLimit: TimeInterval
 
     /// How many `runCode` snippets may be live at once before a further call

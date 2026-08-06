@@ -975,4 +975,97 @@ struct JSCInterpreterTests {
         Thread.sleep(forTimeInterval: 0.3)
         #expect(taskWasCancelled.withLock { $0 })
     }
+
+    @Test(
+        "cancelling a snippet parked on a pending call runs none of its author-written .catch() or finally {}"
+    )
+    func cancellationSkipsAuthorCatchAndFinally() throws {
+        // Pins the ruled cancellation contract (eventplan.md "Async
+        // JavaScript"): `cancel` is terminate-without-settling, NOT
+        // reject-and-unwind. `PromiseRegistry.cancelAllPending` cancels each
+        // backing Swift Task and drops the entry without calling
+        // `resolve`/`reject`, so the suspended continuation never resumes and
+        // no author cleanup code runs. That is deliberate — settling would
+        // resume author JS outside any armed watchdog, which would make a
+        // cancelled snippet's `finally { while (true) {} }` unkillable.
+        //
+        // An `AsyncHostFunction` is what a `tools.*` call is at this layer, so
+        // this pins the same path `cancel(completionToken)` drives. The
+        // witness is a *synchronous* `HostFunction`: if the continuation ever
+        // resumed, the marker would land on the JS thread before `run`
+        // returned, with no race to lose.
+        let interpreter = JSCInterpreter(timeLimit: 10.0)
+        let cancelledBox = OSAllocatedUnfairLock(initialState: false)
+        let markers = OSAllocatedUnfairLock<[InterpreterValue]>(initialState: [])
+        let slow = AsyncHostFunction(name: "slowAsync") { _ in
+            try await Task.sleep(nanoseconds: 5_000_000_000)
+            return .null
+        }
+        let record = HostFunction(name: "record") { arguments in
+            markers.withLock { $0.append(arguments.first ?? .null) }
+            return .null
+        }
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.2) {
+            cancelledBox.withLock { $0 = true }
+        }
+        let start = ContinuousClock.now
+        #expect {
+            try interpreter.run(
+                code: """
+                try {
+                    await slowAsync().catch(() => { record("catch"); });
+                    record("afterAwait");
+                } finally {
+                    record("finally");
+                }
+                return "done";
+                """,
+                installing: [record],
+                installingAsync: [slow],
+                isCancelled: { cancelledBox.withLock { $0 } }
+            )
+        } throws: { error in
+            error is CancellationError
+        }
+        #expect(start.duration(to: .now) < .seconds(3))
+        // The sandbox is torn down by the time `run` returns; sleeping past
+        // the point where the pending call would have settled on its own
+        // proves nothing resurrects the continuation afterwards either.
+        Thread.sleep(forTimeInterval: 0.3)
+        #expect(markers.withLock { $0 }.isEmpty)
+    }
+
+    @Test("an uncancelled snippet does run its author-written finally {} after a pending call settles")
+    func uncancelledSnippetRunsAuthorFinally() throws {
+        // The control for `cancellationSkipsAuthorCatchAndFinally`. Same
+        // snippet, same witness, no cancellation — so the markers land. Without
+        // this, the pin's "markers are empty" assertion would still hold if the
+        // `record` host function or the async IIFE's `finally` handling broke
+        // outright, and the pin would pass while pinning nothing.
+        let interpreter = JSCInterpreter(timeLimit: 10.0)
+        let markers = OSAllocatedUnfairLock<[InterpreterValue]>(initialState: [])
+        let quick = AsyncHostFunction(name: "slowAsync") { _ in
+            try await Task.sleep(nanoseconds: 20_000_000)
+            return .null
+        }
+        let record = HostFunction(name: "record") { arguments in
+            markers.withLock { $0.append(arguments.first ?? .null) }
+            return .null
+        }
+        let result = try interpreter.run(
+            code: """
+            try {
+                await slowAsync().catch(() => { record("catch"); });
+                record("afterAwait");
+            } finally {
+                record("finally");
+            }
+            return "done";
+            """,
+            installing: [record],
+            installingAsync: [quick]
+        )
+        #expect(result.returnValue == .string("done"))
+        #expect(markers.withLock { $0 } == [.string("afterAwait"), .string("finally")])
+    }
 }

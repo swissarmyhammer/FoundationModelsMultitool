@@ -131,11 +131,19 @@ public struct RunCodeArguments {
     public var waitSeconds: Double?
 
     /// How long this snippet's own work may run, in seconds, or `nil` to
-    /// leave the work clock to the host's configuration. Progress resets it,
-    /// and the host clamps it to its own ceiling.
+    /// leave the work clock to the host's configuration. Progress resets this
+    /// per-call clock, and the host clamps it to its own ceiling.
+    ///
+    /// The ceiling itself is absolute. It arms the interpreter's watchdog
+    /// (`JSCInterpreter(timeLimit:)` in `MultiTool.init`), which measures from
+    /// sandbox creation and which nothing resets — not progress, and not
+    /// parking on `elicit()`. Progress therefore buys time only up to that
+    /// ceiling, never past it.
     @Guide(
         description: "Optional. How many seconds the snippet's own work may run before it is "
-            + "cancelled. Progress resets it, so a snippet that keeps reporting keeps running. "
+            + "cancelled. Progress resets this clock, so a snippet that keeps reporting keeps "
+            + "running — but only up to the host's ceiling, which is absolute: it is measured "
+            + "from the moment the snippet starts, and nothing extends it. "
             + "Omit it to use the host's own default; the host caps it at its configured ceiling."
     )
     public var timeout: Double?
