@@ -114,8 +114,33 @@ struct ToolAPIRendererTests {
             description: "A test tool.",
             parameters: OptionalArgument.generationSchema
         )
-        #expect(descriptor.example == "tools.tool({});")
-        #expect(descriptor.doc.contains("@example const r = tools.tool({});"))
+        #expect(descriptor.example == "await tools.tool({});")
+        #expect(descriptor.doc.contains("@example const r = await tools.tool({});"))
+    }
+
+    @Test("every tools.* call returns a promise, so the declared return type is Promise<T>, never the bare resolved type")
+    func declaredReturnTypeIsPromiseWrapped() throws {
+        let descriptor = try ToolAPIRenderer.render(WeatherTool())
+        #expect(
+            descriptor.declaration.hasSuffix("): Promise<{ tempC: number; summary: string }>;"),
+            "declaration was: \(descriptor.declaration)"
+        )
+        // The @returns line is rendered from the same string, so the doc a
+        // model reads can never disagree with the signature beside it.
+        #expect(
+            descriptor.doc.contains("@returns Promise<{ tempC: number; summary: string }> — current conditions."),
+            "doc was: \(descriptor.doc)"
+        )
+    }
+
+    @Test("the rendered example awaits the call, in both the @example line and the runnable example field")
+    func renderedExampleAwaitsTheCall() throws {
+        let descriptor = try ToolAPIRenderer.render(WeatherTool())
+        #expect(descriptor.example == #"await tools.weather({ city: "city" });"#)
+        #expect(
+            descriptor.doc.contains(#"@example const r = await tools.weather({ city: "city" });"#),
+            "doc was: \(descriptor.doc)"
+        )
     }
 
     @Test("a tagged union (anyOf of $refs) widens to `any` and reports a warning")
@@ -245,8 +270,8 @@ struct ToolAPIRendererTests {
     @Test("a Tool whose Output is only PromptRepresentable (not Generable) still gets @returns prose")
     func plainTextOutputStillGetsReturnsProse() throws {
         let descriptor = try ToolAPIRenderer.render(PlainTextTool())
-        #expect(descriptor.declaration.contains("): string;"), "declaration was: \(descriptor.declaration)")
-        #expect(descriptor.doc.contains("@returns string —"), "doc was: \(descriptor.doc)")
+        #expect(descriptor.declaration.contains("): Promise<string>;"), "declaration was: \(descriptor.declaration)")
+        #expect(descriptor.doc.contains("@returns Promise<string> —"), "doc was: \(descriptor.doc)")
     }
 
     @Test("the plan's worked WeatherTool example renders byte-identical to the golden file")
@@ -413,7 +438,7 @@ struct ToolAPIRendererTests {
     func returnsDescriptionWithCommentTerminatorIsEscaped() throws {
         let descriptor = try ToolAPIRenderer.render(ReturnsCommentTerminatorTool())
         #expect(
-            descriptor.doc.contains("@returns { summary: string } — current conditions * / then injects code."),
+            descriptor.doc.contains("@returns Promise<{ summary: string }> — current conditions * / then injects code."),
             "doc was: \(descriptor.doc)"
         )
         // Exactly one "*/" survives — the block's own closing terminator.
@@ -444,7 +469,7 @@ struct ToolAPIRendererTests {
             "doc was: \(descriptor.doc)"
         )
         #expect(
-            descriptor.doc.contains(#"@example const r = tools.tool({ option: "* /end" });"#),
+            descriptor.doc.contains(#"@example const r = await tools.tool({ option: "* /end" });"#),
             "doc was: \(descriptor.doc)"
         )
         #expect(
@@ -466,7 +491,7 @@ struct ToolAPIRendererTests {
         // The doc's @returns line uses an escaped copy, so the embedded
         // "*/" can't terminate the JSDoc block early.
         #expect(
-            descriptor.doc.contains(#"@returns { status: "* /ok" | "bad" }"#),
+            descriptor.doc.contains(#"@returns Promise<{ status: "* /ok" | "bad" }>"#),
             "doc was: \(descriptor.doc)"
         )
         #expect(
@@ -526,7 +551,7 @@ struct ToolAPIRendererTests {
         )
         #expect(descriptor.doc.contains("@param args.foo* /bar"), "doc was: \(descriptor.doc)")
         #expect(
-            descriptor.doc.contains(#"@example const r = tools.tool({ "foo* /bar": "foo* /bar" });"#),
+            descriptor.doc.contains(#"@example const r = await tools.tool({ "foo* /bar": "foo* /bar" });"#),
             "doc was: \(descriptor.doc)"
         )
         #expect(

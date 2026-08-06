@@ -45,6 +45,12 @@ public struct ToolAPIRendererError: Error, Sendable, Equatable, CustomStringConv
 /// comment per plan.md's type-mapping and doc-mapping tables. Nothing here
 /// executes — this is purely descriptive, build-time surface generation; the
 /// runtime call path (`ToolInvoker`, M3) carries no schema.
+///
+/// One thing the rendered surface states that no schema can: a `tools.*`
+/// binding is asynchronous. The declared return type is therefore
+/// `Promise<T>` around the schema's own `T`, and the `@example` call site
+/// awaits it — see
+/// `render(name:description:parameters:returns:onWiden:)`.
 public enum ToolAPIRenderer {
     /// `@usableFromInline` (rather than `private`) because the two `render`
     /// overloads' default `onWiden` argument references it, and a default
@@ -59,6 +65,10 @@ public enum ToolAPIRenderer {
     private static let docLinePrefix = " * "
 
     /// How a tool's `Output` should be rendered as its `@returns` type.
+    ///
+    /// Every case names the type a call *resolves to*; the renderer wraps it
+    /// in `Promise<…>` before declaring it, since a `tools.*` call returns a
+    /// promise (see `render(name:description:parameters:returns:onWiden:)`).
     public enum Returns: Sendable {
         /// `Output` (or its `PartiallyGenerated`/element type) is itself
         /// `Generable` — render its own `GenerationSchema` as the TS return
@@ -74,7 +84,7 @@ public enum ToolAPIRenderer {
         /// protocol's actual bound) — no schema is available, so there is no
         /// author-supplied text to echo.
         ///
-        /// Renders as `string`, documented with fixed prose per plan.md's
+        /// Resolves to `string`, documented with fixed prose per plan.md's
         /// "otherwise... type it `string` and document it in `@returns`
         /// prose" — the fallback for Findings #4's worst case.
         case text
@@ -184,18 +194,27 @@ public enum ToolAPIRenderer {
             }
         }
 
-        let returnsType: String
+        let resolvedType: String
         let returnsDescription: String?
         switch returns {
         case .schema(let schema):
             let node = try decode(schema, subject: "\"\(name)\"'s return")
             var returnsContext = RenderContext(root: node, defs: node.defs ?? [:])
-            returnsType = try tsType(for: node, context: &returnsContext, path: "returns", onWiden: onWiden)
+            resolvedType = try tsType(for: node, context: &returnsContext, path: "returns", onWiden: onWiden)
             returnsDescription = node.description
         case .text:
-            returnsType = typeString
+            resolvedType = typeString
             returnsDescription = "plain text result."
         }
+        // Every `tools.<name>` binding is installed as an `AsyncHostFunction`
+        // on the interpreter's promise pump (eventplan.md "Async JavaScript"),
+        // so the call evaluates to a JS `Promise` and the schema-derived
+        // `resolvedType` is only what awaiting it yields. Wrapping once here —
+        // rather than at each of the two splice sites — is what keeps the
+        // `declare function` signature and the `@returns` line (which derives
+        // from this same string, via `docReturnsType` below) from ever
+        // disagreeing about what a call actually returns.
+        let returnsType = "Promise<\(resolvedType)>"
         // `returnsType` also backs the real `declare function` return type
         // in `declaration` below, so it's escaped here into a doc-only
         // copy rather than in place — a schema-derived enum choice
@@ -209,7 +228,14 @@ public enum ToolAPIRenderer {
         } ?? "@returns \(docReturnsType)"
 
         let exampleArgsLiteral = exampleFields.isEmpty ? "{}" : "{ \(exampleFields.joined(separator: ", ")) }"
-        let exampleCall = "tools.\(name)(\(exampleArgsLiteral))"
+        // The `await` is part of the call this renderer teaches, not
+        // decoration: the call itself only yields the promise `returnsType`
+        // now declares, and reaching into that promise for a field
+        // (`r.tempC`) raises the interpreter's "did you forget `await`?"
+        // repair error instead of reading the resolved value. Every snippet
+        // body runs inside an async function, so this is directly runnable
+        // as written.
+        let exampleCall = "await tools.\(name)(\(exampleArgsLiteral))"
         // Same reasoning as `docReturnsType`: `exampleCall` also backs
         // `ToolDescriptor.example` below (left raw and runnable, for
         // direct copy-paste execution), so only this doc-line copy is

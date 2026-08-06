@@ -75,10 +75,32 @@ comments:
     ### human decision — blocker resolved (2026-08-05)
     The "No `DispatchSemaphore` remains in Sources/" criterion is AMENDED, by the plan author, to be scoped to the v1 blocking bridge in `MultiTool.swift` (verified: 0 occurrences there). The one remaining `DispatchSemaphore` — `PromiseRegistry.semaphore` in `Sources/FoundationModelsMultitool/Interpreter/JSCInterpreter.swift:669` — is the promise pump's deliberate JS-thread park/wake primitive from ^yahbkg5 and is expressly allowed; do not remove or redesign it under this task. The criterion was written during planning before the pump existed; eventplan.md's "no semaphore-based park mechanism" rationale rejected throwaway bridge-level machinery, not the pump's internals. No code change needed for this resolution — the task description's checkbox is now checked; proceed to review/close normally.
   timestamp: 2026-08-06T01:10:59.824202+00:00
+- actor: claude-code
+  id: 01kzaae6nyhydtt777b8pbdcpt
+  text: |-
+    ### review — clean
+    - evidence: `review sha fa00971..0b956ee` (the task's two code commits: a8db299 "feat(multitool)!: remove the blocking bridge; tools.* return promises", 0b956ee "test(multitool): cover cancellation while parked on a pending tools.* promise") — counts: 0 findings, 0 confirmed, 0 refuted, 9 validators attempted, 0 failed, 0 skipped. No prior `## Review Findings` sections on the card; all 7 acceptance-criteria/test checkboxes checked. Scope covered Sources/FoundationModelsMultitool/MultiTool.swift, Tests/FoundationModelsMultitoolTests/MultiToolExecutionTests.swift, Tests/FoundationModelsMultitoolTests/Fixtures/MultiToolExecutionFixtures.swift, Tests/FoundationModelsMultitoolTests/HardeningTests.swift, README.md.
+    - next: task moved to `done`. Follow-ups ^aspycka (ToolAPIRenderer still declares sync `tools.*` signatures) and ^ws38ajz (`settle()` JSON-conversion-failure path loses underlying error text) remain open as separate cards.
+
+    step: review
+    outcome: clean
+    evidence: 0 findings — review sha fa00971..0b956ee, 9 validators attempted, 0 failed
+    task: ^zff76mx
+  timestamp: 2026-08-06T01:19:08.990116+00:00
+- actor: claude-code
+  id: 01kzaaf765174thhjngycxwbjz
+  text: |-
+    ### finish iteration 2 — clean
+    - blocker: RESOLVED by the plan author between iterations — AC1 amended to scope "no DispatchSemaphore" to the v1 bridge in MultiTool.swift; the pump's PromiseRegistry.semaphore (^yahbkg5) is expressly allowed. No code change required, so no implement step ran this iteration.
+    - test: green — swift build clean, swift test 191/191 passed in 18 suites, 0 failures, 0 warnings (6 MULTITOOL_INTEGRATION-gated tests correctly skipped)
+    - commit: f053f35 docs(kanban): record human resolution of AC1 semaphore-scope blocker (kanban state only; the code work was already committed as a8db299 + 0b956ee in iteration 1)
+    - review: clean — `review sha fa00971..0b956ee` (this task's two code commits; HEAD~1..HEAD was avoided because f053f35 is kanban-metadata only and would have been a vacuous gate). 0 findings, 9 validators attempted, 0 failed.
+    - outcome: task moved to done. Unblocks ^fhr27kf, ^aspycka, ^ws38ajz.
+  timestamp: 2026-08-06T01:19:42.277523+00:00
 depends_on:
 - 01KZ6MYJSSSF41HXMC2YAHBKG5
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: aa80
 title: '[MultiTool] Remove the blocking bridge; tools.* return promises'
 ---
 Repo: this repo. Basis: eventplan.md §"Async JavaScript". Depends on the interpreter promise pump.

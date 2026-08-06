@@ -3,34 +3,34 @@
  * Current weather for a city.
  * @param args.city — IATA city code or city name. (required)
  * @param args.units — temperature unit; one of "c" | "f". (optional)
- * @returns { tempC: number; summary: string } — current conditions.
- * @example const r = tools.weather({ city: "city" });
+ * @returns Promise<{ tempC: number; summary: string }> — current conditions.
+ * @example const r = await tools.weather({ city: "city" });
  */
-declare function weather(args: { city: string; units?: "c" | "f" }): { tempC: number; summary: string };
+declare function weather(args: { city: string; units?: "c" | "f" }): Promise<{ tempC: number; summary: string }>;
 
 // tools.echo
 /**
  * Echoes text back.
  * @param args.value — a plain string. (required)
- * @returns string — plain text result.
- * @example const r = tools.echo({ value: "value" });
+ * @returns Promise<string> — plain text result.
+ * @example const r = await tools.echo({ value: "value" });
  */
-declare function echo(args: { value: string }): string;
+declare function echo(args: { value: string }): Promise<string>;
 
 // tools.github.createIssue
 /**
  * Creates a GitHub issue.
  * @param args.title — the issue title. (required)
- * @returns string — plain text result.
- * @example const r = tools.github.createIssue({ title: "title" });
+ * @returns Promise<string> — plain text result.
+ * @example const r = await tools.github.createIssue({ title: "title" });
  */
-declare function createIssue(args: { title: string }): string;
+declare function createIssue(args: { title: string }): Promise<string>;
 
 // tools.github.search
 /**
  * Searches GitHub issues.
  * @param args.query — the search query. (required)
- * @returns string — plain text result.
- * @example const r = tools.github.search({ query: "query" });
+ * @returns Promise<string> — plain text result.
+ * @example const r = await tools.github.search({ query: "query" });
  */
-declare function search(args: { query: string }): string;
+declare function search(args: { query: string }): Promise<string>;
