@@ -69,10 +69,20 @@ that one tool's own `call(arguments:)`.
 
 ## What the watchdog and caps bound
 
-- **Execution time** (`MultiToolConfiguration.executionTimeLimit`, default
-  5 seconds) — a runaway/infinite-loop snippet is force-terminated by the
-  interpreter's watchdog (`JSContextGroupSetExecutionTimeLimit`), not left
-  to run forever.
+- **Execution time** — a runaway/infinite-loop snippet is force-terminated by
+  the interpreter's watchdog (`JSContextGroupSetExecutionTimeLimit`), not left
+  to run forever. The ceiling it terminates at is the one that interpreter was
+  constructed with (`JSCInterpreter(timeLimit:)`). For the sandbox
+  `MultiTool.init` builds for itself — the one it constructs when the caller
+  injects no `interpreter` — that ceiling is
+  `MultiToolConfiguration.executionTimeLimit`, which defaults to
+  `ElevationConfiguration.defaultTimeoutSeconds` (120 seconds). An interpreter
+  injected through `MultiTool.init`'s `interpreter:` parameter instead carries
+  whatever limit its own constructor received, so the configured ceiling arms
+  nothing there and the watchdog fires at the injected limit. Either way the
+  ceiling is absolute: it is measured from sandbox creation, and neither
+  reporting progress nor parking on `elicit()` moves that reference point, so
+  no snippet can hold a context open indefinitely.
 - **Cancellation** — cancelling the Swift `Task` running
   `MultiTool.call(arguments:)` force-terminates the in-flight snippet
   through that same watchdog path and propagates `CancellationError` — no

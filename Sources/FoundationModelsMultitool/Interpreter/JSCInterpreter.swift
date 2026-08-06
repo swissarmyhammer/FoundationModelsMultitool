@@ -178,15 +178,26 @@ private final class WatchdogState: @unchecked Sendable {
     ///   window) otherwise.
     fileprivate func shouldTerminate() -> Bool {
         if isCancelled() {
-            lock.withLock { if $0 == nil { $0 = .cancelled } }
+            recordCause(.cancelled)
             return true
         }
         if runStart.duration(to: .now) >= .seconds(timeLimit) {
-            lock.withLock { if $0 == nil { $0 = .timedOut } }
+            recordCause(.timedOut)
             return true
         }
         rearm()
         return false
+    }
+
+    /// Records why this run is terminating, keeping whichever cause reached
+    /// this method first.
+    ///
+    /// `evaluate` reports one cause per run (see `cause`), so a later
+    /// decision must never overwrite the one already recorded.
+    ///
+    /// - Parameter cause: why this state has decided to terminate now.
+    private func recordCause(_ cause: Cause) {
+        lock.withLock { if $0 == nil { $0 = cause } }
     }
 
     /// Re-arms the group's execution time limit with a fresh short window,
