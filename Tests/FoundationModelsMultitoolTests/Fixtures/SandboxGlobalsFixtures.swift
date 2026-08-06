@@ -180,6 +180,27 @@ actor ScriptedElicitationSink: OperationEventSink {
         self.response = response
     }
 
+    /// Records `event` and, when it carries an elicitation, answers that
+    /// request through the mailbox with this sink's one scripted response.
+    ///
+    /// Every event is kept, not only the elicitations: a test asserts on the
+    /// full arrival order, and the non-elicitation events are what prove a
+    /// run's notices reached the sink on the right correlation.
+    ///
+    /// The answer is delivered from inside the post — synchronously with
+    /// observing the event, before this method returns — which is what makes
+    /// the round trip deterministic rather than timing-dependent; see the
+    /// type's own documentation for why the mailbox's ordering guarantees
+    /// that.
+    ///
+    /// A URL-mode accept comes back as `.acceptedAwaitingCompletion`: the
+    /// mailbox has recorded the accept, but the out-of-band flow is still
+    /// open and the waiting snippet stays parked until it closes. Only that
+    /// delivery gets the second `complete(elicitationId:)` step, because every
+    /// other delivery — a form accept, a decline, a cancel, or a rejected
+    /// answer — already settled the request.
+    ///
+    /// - Parameter event: the operation event the observed run posted.
     func post(_ event: OperationEvent) async {
         events.append(event)
         guard let request = event.elicitation else { return }

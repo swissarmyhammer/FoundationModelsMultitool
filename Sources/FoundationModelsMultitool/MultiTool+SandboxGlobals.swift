@@ -537,6 +537,12 @@ enum SandboxGlobalError: Error, Equatable, CustomStringConvertible {
     /// elicitation subset.
     case undecodableElicitationRequest(reason: String)
 
+    /// A human-readable description of the failure, satisfying
+    /// `CustomStringConvertible`.
+    ///
+    /// This is the text that reaches the snippet as its promise's rejection
+    /// reason, so every case is phrased as repair instructions for the model
+    /// rather than as a diagnosis for a human reader.
     var description: String {
         switch self {
         case .noRunPlane:
