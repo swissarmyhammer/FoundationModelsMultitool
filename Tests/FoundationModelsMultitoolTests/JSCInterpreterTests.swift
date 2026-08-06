@@ -128,6 +128,36 @@ struct JSCInterpreterTests {
         }
     }
 
+    @Test("a sync result the bridge cannot convert to JSON surfaces the underlying conversion error")
+    func syncResultConversionFailureSurfacesUnderlyingError() throws {
+        // The sync bridge and the async bridge convert a host function's
+        // successful result through the very same `jsValue(from:in:)`, and
+        // both report a failure of that conversion as `"<name>: <error>"`.
+        // This is the sync half of that pair; the async half is
+        // `asyncResultConversionFailureRejectsWithUnderlyingError`. Reaching
+        // the branch takes a snippet that breaks the sandbox's own
+        // `JSON.parse` — the mechanism the conversion goes through — before
+        // it calls the host function. The stub returns `undefined` rather
+        // than throwing: a throwing stub would additionally notify a
+        // TypeError into the context, which would surface instead of the
+        // message under test.
+        let interpreter = JSCInterpreter()
+        let weather = HostFunction(name: "weather") { _ in .object(["tempC": .number(31)]) }
+        let result = try interpreter.run(
+            code: """
+            JSON.parse = function () { return undefined; };
+            try {
+              weather();
+              return "unreachable";
+            } catch (e) {
+              return e.message;
+            }
+            """,
+            installing: [weather]
+        )
+        #expect(result.returnValue == .string("weather: JSON.parse is unavailable."))
+    }
+
     @Test("a JS syntax error surfaces as InterpreterError")
     func syntaxErrorSurfacesAsInterpreterError() throws {
         let interpreter = JSCInterpreter()

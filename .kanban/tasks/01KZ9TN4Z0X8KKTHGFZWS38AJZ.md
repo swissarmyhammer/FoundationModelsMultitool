@@ -38,6 +38,48 @@ comments:
     - evidence: 2 files — Sources/FoundationModelsMultitool/Interpreter/JSCInterpreter.swift, Tests/FoundationModelsMultitoolTests/JSCInterpreterTests.swift; `swift build` clean (only the known pre-existing mlx-swift "missing creator for mutated node" manifest warning); `swift test` 194 tests in 18 suites passed, 0 failures, 0 warnings (gated MULTITOOL_INTEGRATION suites skipped as always)
     - next: ready for /review
   timestamp: 2026-08-06T11:28:02.010648+00:00
+- actor: claude-code
+  id: 01kzbdvydnp3yd21j6wrnjsnyf
+  text: |-
+    ### review — findings
+    - evidence: 1 finding (1 confirmed, 0 refuted; 9 validator passes attempted, 0 failed) — scope `review sha HEAD~1..HEAD` (38d32a8) — Tests/FoundationModelsMultitoolTests/JSCInterpreterTests.swift:485
+    - next: add the symmetric sync-bridge conversion-failure regression test, then re-review
+  timestamp: 2026-08-06T11:38:19.445779+00:00
+- actor: claude-code
+  id: 01kzbdwtsf1b8z5mjbym3n30xd
+  text: |-
+    ### finish iteration 1 — findings
+    - implement: changed — 2 files. Took resolution option 1 (fix, not document): settle(_:in:) now interpolates the real thrown error via the shared rejectWithMessage, matching the sync bridge's `"<name>: <error>"` shape. Also added an `!parsed.isUndefined` guard to jsValue(from:in:) after probing JSC directly — its throw sites were provably unreachable because a failed JSValueToObject returns an undefined JSValue, not nil, so a sabotaged JSON.parse silently resolved promises with `undefined`. Added regression test asyncResultConversionFailureRejectsWithUnderlyingError.
+    - test: green — swift build clean, swift test 194/194 passed in 18 suites across 3 runs; JSCInterpreter suite 43/43 across 3 isolated runs; sabotage confirmed contained to its own per-run JSContext
+    - commit: 38d32a8 fix(interpreter): interpolate the real error in async JSON-conversion rejections
+    - review: findings — Tests/FoundationModelsMultitoolTests/JSCInterpreterTests.swift:485 (the `!parsed.isUndefined` guard lives in jsValue(from:in:), shared by both bridges, but only the async caller is covered; a symmetric test is needed for the sync host-function path)
+    - next: implement adds the symmetric sync-bridge test, then re-test, re-commit, re-review
+  timestamp: 2026-08-06T11:38:48.495399+00:00
+- actor: claude-code
+  id: 01kzbe7xp6x5kk4sm1gvjk4m08
+  text: |-
+    Addressed the review finding: added the symmetric sync-bridge regression test `syncResultConversionFailureSurfacesUnderlyingError` to `Tests/FoundationModelsMultitoolTests/JSCInterpreterTests.swift`, placed with the other sync host-function tests (between `hostFunctionThrowSurfacesAsInterpreterError` and `syntaxErrorSurfacesAsInterpreterError`).
+
+    Shape, mirroring `asyncResultConversionFailureRejectsWithUnderlyingError`'s rigor:
+    - end to end through the public `run`, no `@testable` reach into `jsValue(from:in:)`;
+    - a real sync `HostFunction` ("weather") returning a perfectly ordinary `.object(["tempC": .number(31)])`, so the failure is genuinely on the way back out, not a manufactured bad value;
+    - the same non-throwing sabotage, `JSON.parse = function () { return undefined; };`, for the same reason the async test uses it — a throwing stub also notifies a TypeError into the context, which would surface instead of the message under test;
+    - the snippet catches at the JS call site and returns `e.message`, so what is pinned is exactly what a snippet observes;
+    - exact equality on the full string, no `contains`/prefix: `#expect(result.returnValue == .string("weather: JSON.parse is unavailable."))`.
+
+    TDD, watched it fail first: with the `!parsed.isUndefined` guard temporarily removed from `jsValue(from:in:)`, the test failed with `result.returnValue → .string("unreachable")` — i.e. the sync bridge silently handed the snippet `undefined` and raised no exception at all, the exact same silent-failure mode the guard was added to close on the async side. Guard restored via `git checkout`; the test then passed on the message text, byte for byte.
+
+    Result relevant to the finding's own caveat ("if the sync path's observable text genuinely differs, report it"): it does not differ. The sync path produces `"weather: JSON.parse is unavailable."` — the same `"<name>: <error>"` shape the async path produces and the doc comment claims. No doc or code correction is needed.
+
+    No production code changed in this pass — the finding asked for a test, and the shared `jsValue(from:in:)` fix already in place is what the new test now covers from the second caller.
+  timestamp: 2026-08-06T11:44:51.910147+00:00
+- actor: claude-code
+  id: 01kzbe840fzt5tx8dv0tpqpza7
+  text: |-
+    ### implement — changed
+    - evidence: 1 file — Tests/FoundationModelsMultitoolTests/JSCInterpreterTests.swift (new test `syncResultConversionFailureSurfacesUnderlyingError`); `swift build` clean apart from the known pre-existing mlx-swift manifest warning "missing creator for mutated node"; `swift test` 195 tests in 18 suites passed on 3 consecutive full runs, 0 failures, 0 compiler warnings; JSCInterpreter suite in isolation 44/44 on 3 consecutive runs, no flake and no sandbox-state leak (the tests that follow the sabotage in the same serialized suite re-exercise JSON.parse and pass)
+    - next: ready for /review
+  timestamp: 2026-08-06T11:44:58.383387+00:00
 depends_on:
 - 01KZ6N0G06Q27NNK51PZFF76MX
 position_column: doing
@@ -73,3 +115,7 @@ In practice this path is close to unreachable (every `InterpreterValue` an `Inte
 - [x] Either: `settle(_:in:)`'s success-branch conversion failure interpolates the real `try jsValue(from:in:)` thrown error (matching the sync bridge's `"\(name): \(error)"` shape), OR the divergence is documented as an intentional, accepted exception with a comment explaining why.
 - [x] If code changes: a `JSCInterpreterTests` regression test pins the corrected message text for this failure mode.
 - [x] Full `swift test` green. #phase-1
+
+## Review Findings (2026-08-06 06:35)
+
+- [x] `Tests/FoundationModelsMultitoolTests/JSCInterpreterTests.swift:485` — The fix adds proper error formatting to `jsValue(from:in:)` with the `!parsed.isUndefined` guard, which is called by both the sync bridge (`install`) and async bridge (`settle`). The new test `asyncResultConversionFailureRejectsWithUnderlyingError` exercises only the async path (settle). The documentation at JSCInterpreter.swift:1219-1225 explicitly states the sync bridge should report identically, but no test exercises the sync path with a broken JSON.parse. Add a symmetric test for the sync host function path, similar to `asyncResultConversionFailureRejectsWithUnderlyingError` but calling a sync host function instead: verify that when JSON.parse is replaced with `function () { return undefined; }`, a sync host function call properly rejects with the `"<name>: JSON.parse is unavailable."` format.
