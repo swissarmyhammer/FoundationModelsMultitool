@@ -134,11 +134,16 @@ public struct RunCodeArguments {
     /// leave the work clock to the host's configuration. Progress resets this
     /// per-call clock, and the host clamps it to its own ceiling.
     ///
-    /// The ceiling itself is absolute. It arms the interpreter's watchdog
-    /// (`JSCInterpreter(timeLimit:)` in `MultiTool.init`), which measures from
-    /// sandbox creation and which nothing resets — not progress, and not
-    /// parking on `elicit()`. Progress therefore buys time only up to that
-    /// ceiling, never past it.
+    /// The ceiling itself is absolute. On the sandbox `MultiTool.init` builds
+    /// for itself — the `JSCInterpreter(timeLimit:)` it constructs from
+    /// `configuration.executionTimeLimit` when the caller injects no
+    /// `interpreter` — the ceiling arms that interpreter's watchdog, which
+    /// measures from sandbox creation and which nothing resets: not progress,
+    /// and not parking on `elicit()`. Progress therefore buys time only up to
+    /// that ceiling, never past it. An injected `interpreter` is armed with
+    /// whatever limit its own constructor received, so the ceiling arms
+    /// nothing there; it still clamps this per-call clock either way (see
+    /// `MultiToolConfiguration.executionTimeLimit`).
     @Guide(
         description: "Optional. How many seconds the snippet's own work may run before it is "
             + "cancelled. Progress resets this clock, so a snippet that keeps reporting keeps "

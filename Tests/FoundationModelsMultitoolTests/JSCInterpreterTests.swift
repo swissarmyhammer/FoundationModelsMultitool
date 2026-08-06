@@ -976,6 +976,43 @@ struct JSCInterpreterTests {
         #expect(taskWasCancelled.withLock { $0 })
     }
 
+    /// The snippet the cancellation pin and both of its controls run
+    /// unchanged: it witnesses that it entered the `try` block, that an
+    /// author-written `.catch()` on the pending call ran, and that an
+    /// author-written `finally {}` ran.
+    ///
+    /// Shared verbatim so the pin's negative claim and the controls' positive
+    /// ones are made about one piece of code rather than three that could
+    /// drift apart.
+    private static let cleanupWitnessSnippet = """
+        try {
+            record("entered");
+            await slowAsync().catch(() => { record("catch"); });
+            record("afterAwait");
+        } finally {
+            record("finally");
+        }
+        return "done";
+        """
+
+    /// Builds the `record(marker)` global ``cleanupWitnessSnippet`` calls.
+    ///
+    /// Deliberately a synchronous `HostFunction` rather than an
+    /// `AsyncHostFunction`: it runs inline on the run's own queue, so a marker
+    /// lands before `run` returns and a cancelled run cannot drop it for the
+    /// wrong reason.
+    ///
+    /// - Parameter markers: the recorded markers, appended to in call order.
+    /// - Returns: the host function to install as `record`.
+    private static func makeRecorder(
+        into markers: OSAllocatedUnfairLock<[InterpreterValue]>
+    ) -> HostFunction {
+        HostFunction(name: "record") { arguments in
+            markers.withLock { $0.append(arguments.first ?? .null) }
+            return .null
+        }
+    }
+
     @Test(
         "cancelling a snippet parked on a pending call runs none of its author-written .catch() or finally {}"
     )
@@ -991,18 +1028,13 @@ struct JSCInterpreterTests {
         //
         // An `AsyncHostFunction` is what a `tools.*` call is at this layer, so
         // this pins the same path `cancel(completionToken)` drives. The
-        // witness is a *synchronous* `HostFunction`: if the continuation ever
-        // resumed, the marker would land on the JS thread before `run`
-        // returned, with no race to lose.
+        // witness is `record` (see `makeRecorder(into:)`), and the snippet is
+        // the one both controls below run unchanged.
         let interpreter = JSCInterpreter(timeLimit: 10.0)
         let cancelledBox = OSAllocatedUnfairLock(initialState: false)
         let markers = OSAllocatedUnfairLock<[InterpreterValue]>(initialState: [])
         let slow = AsyncHostFunction(name: "slowAsync") { _ in
             try await Task.sleep(nanoseconds: 5_000_000_000)
-            return .null
-        }
-        let record = HostFunction(name: "record") { arguments in
-            markers.withLock { $0.append(arguments.first ?? .null) }
             return .null
         }
         DispatchQueue.global().asyncAfter(deadline: .now() + 0.2) {
@@ -1011,16 +1043,8 @@ struct JSCInterpreterTests {
         let start = ContinuousClock.now
         #expect {
             try interpreter.run(
-                code: """
-                try {
-                    await slowAsync().catch(() => { record("catch"); });
-                    record("afterAwait");
-                } finally {
-                    record("finally");
-                }
-                return "done";
-                """,
-                installing: [record],
+                code: Self.cleanupWitnessSnippet,
+                installing: [Self.makeRecorder(into: markers)],
                 installingAsync: [slow],
                 isCancelled: { cancelledBox.withLock { $0 } }
             )
@@ -1028,44 +1052,72 @@ struct JSCInterpreterTests {
             error is CancellationError
         }
         #expect(start.duration(to: .now) < .seconds(3))
-        // The sandbox is torn down by the time `run` returns; sleeping past
-        // the point where the pending call would have settled on its own
-        // proves nothing resurrects the continuation afterwards either.
+        // The sandbox is torn down by the time `run` returns. This sleep buys
+        // the cancelled backing Task time to unwind, and gives any late
+        // resumption of the suspended continuation a window to land a marker
+        // before the markers are read. It does not reach the five seconds at
+        // which the pending call would have settled on its own — nothing in
+        // this test waits that long.
         Thread.sleep(forTimeInterval: 0.3)
-        #expect(markers.withLock { $0 }.isEmpty)
+        // `entered` and nothing after it. That first marker is the witness
+        // that the snippet really did start, so the absence of `catch` and
+        // `finally` is cleanup that was skipped, not a snippet the cancel beat
+        // to the `try` block.
+        #expect(markers.withLock { $0 } == [.string("entered")])
     }
 
     @Test("an uncancelled snippet does run its author-written finally {} after a pending call settles")
     func uncancelledSnippetRunsAuthorFinally() throws {
-        // The control for `cancellationSkipsAuthorCatchAndFinally`. Same
-        // snippet, same witness, no cancellation — so the markers land. Without
-        // this, the pin's "markers are empty" assertion would still hold if the
-        // `record` host function or the async IIFE's `finally` handling broke
-        // outright, and the pin would pass while pinning nothing.
+        // The positive control for the `finally` half of
+        // `cancellationSkipsAuthorCatchAndFinally`. Same snippet, same witness,
+        // no cancellation — so the markers land. Without it, the pin's
+        // assertion would still hold if the `record` host function or the async
+        // IIFE's `finally` handling broke outright, and the pin would pass
+        // while pinning nothing.
         let interpreter = JSCInterpreter(timeLimit: 10.0)
         let markers = OSAllocatedUnfairLock<[InterpreterValue]>(initialState: [])
         let quick = AsyncHostFunction(name: "slowAsync") { _ in
             try await Task.sleep(nanoseconds: 20_000_000)
             return .null
         }
-        let record = HostFunction(name: "record") { arguments in
-            markers.withLock { $0.append(arguments.first ?? .null) }
-            return .null
-        }
         let result = try interpreter.run(
-            code: """
-            try {
-                await slowAsync().catch(() => { record("catch"); });
-                record("afterAwait");
-            } finally {
-                record("finally");
-            }
-            return "done";
-            """,
-            installing: [record],
+            code: Self.cleanupWitnessSnippet,
+            installing: [Self.makeRecorder(into: markers)],
             installingAsync: [quick]
         )
         #expect(result.returnValue == .string("done"))
-        #expect(markers.withLock { $0 } == [.string("afterAwait"), .string("finally")])
+        #expect(
+            markers.withLock { $0 } == [
+                .string("entered"), .string("afterAwait"), .string("finally"),
+            ]
+        )
+    }
+
+    @Test("an uncancelled snippet does run its author-written .catch() when a pending call rejects")
+    func uncancelledSnippetRunsAuthorCatch() throws {
+        // The positive control for the `.catch()` half of the same pin. The
+        // `finally` control above installs a `slowAsync` that resolves, so it
+        // never reaches the `.catch()` arm: on its own it would leave the pin
+        // asserting the absence of a marker nothing had shown could appear at
+        // all. Here the pending call rejects, so an uncancelled run must record
+        // `catch` — and the rejection is handled, so the run still completes
+        // through `afterAwait` and `finally`.
+        let interpreter = JSCInterpreter(timeLimit: 10.0)
+        let markers = OSAllocatedUnfairLock<[InterpreterValue]>(initialState: [])
+        let rejecting = AsyncHostFunction(name: "slowAsync") { _ in
+            try await Task.sleep(nanoseconds: 20_000_000)
+            throw InterpreterError(kind: .exception, message: "nope")
+        }
+        let result = try interpreter.run(
+            code: Self.cleanupWitnessSnippet,
+            installing: [Self.makeRecorder(into: markers)],
+            installingAsync: [rejecting]
+        )
+        #expect(result.returnValue == .string("done"))
+        #expect(
+            markers.withLock { $0 } == [
+                .string("entered"), .string("catch"), .string("afterAwait"), .string("finally"),
+            ]
+        )
     }
 }
