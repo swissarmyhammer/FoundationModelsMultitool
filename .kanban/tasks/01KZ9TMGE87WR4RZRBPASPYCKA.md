@@ -41,10 +41,27 @@ comments:
     - evidence: `swift build` clean (only the known pre-existing mlx-swift "missing creator for mutated node" manifest warning); `swift test` — 193 tests in 18 suites passed, 6 gated integration tests skipped as designed, 0 failures, 0 warnings.
     - next: /review
   timestamp: 2026-08-06T11:10:20.802626+00:00
+- actor: claude-code
+  id: 01kzbcm3fcz6xswgjfvb7qk558
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit 75d2606) — 0 findings, 0 confirmed, 0 refuted; 9 validators attempted, 0 failed, 0 skipped
+    - next: task moved to done; all 5 acceptance criteria checked, no prior review findings outstanding
+  timestamp: 2026-08-06T11:16:33.900340+00:00
+- actor: claude-code
+  id: 01kzbcmtq4g3bgmy3scyhqxa54
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 5 files. ToolAPIRenderer wraps the resolved type once as `Promise<T>` (so the `declare function` signature and the `@returns` doc line derive from one string and cannot drift) and emits `await tools.<name>(...)` at the single source backing both the `@example` doc line and the runnable `ToolDescriptor.example`. Goldens WeatherTool.ts.txt + BuilderSurface.ts.txt updated; ToolAPIRendererTests updated with two new contract tests (declaredReturnTypeIsPromiseWrapped, renderedExampleAwaitsTheCall). Also corrected the card's stale claim that unawaited property access silently yields `undefined` — ^wpq0q6d landed, so it now throws the "did you forget `await`?" repair error.
+    - test: green — swift build clean, swift test 193/193 passed in 18 suites, 0 failures, 0 warnings (6 MULTITOOL_INTEGRATION-gated tests correctly skipped)
+    - commit: 75d2606 fix(surface): render tools.* return types as Promise<T> and await examples
+    - review: clean — `review sha HEAD~1..HEAD`, 0 findings, 9 validators attempted, 0 failed
+    - outcome: task moved to done
+  timestamp: 2026-08-06T11:16:57.700393+00:00
 depends_on:
 - 01KZ6N0G06Q27NNK51PZFF76MX
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ab80
 title: '[ToolAPIRenderer] Render tools.* declared return types as Promise<T>, and await examples'
 ---
 Discovered while implementing ^zff76mx ("[MultiTool] Remove the blocking bridge; tools.* return promises"), via an adversarial double-check review.

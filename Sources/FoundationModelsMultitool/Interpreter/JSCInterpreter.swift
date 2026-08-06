@@ -1216,18 +1216,24 @@ public final class JSCInterpreter: Interpreter {
     /// with the JSON-converted value on success, or rejects with an
     /// `"<name>: <error>"` message on failure — matching
     /// `install(hostFunction:into:)`'s sync-throw message shape.
+    ///
+    /// Both failure modes carry that shape, including the one the sync
+    /// bridge reaches through the very same `jsValue(from:in:)` call: a
+    /// result the host function itself produced happily but that could not
+    /// be converted back into the sandbox. The thrown error is interpolated
+    /// rather than replaced with a fixed summary, so the two bridges report
+    /// an identical conversion failure identically.
     private static func settle(
         _ settlement: (resolve: JSValue, reject: JSValue, name: String, outcome: PromiseRegistry.Outcome, consumed: ConsumedFlag?),
         in context: JSContext
     ) {
         switch settlement.outcome {
         case .success(let value):
-            guard let jsResult = try? jsValue(from: value, in: context) else {
-                rejectWithMessage(
-                    message: "\(settlement.name): could not convert the result to JSON.",
-                    reject: settlement.reject,
-                    in: context
-                )
+            let jsResult: JSValue
+            do {
+                jsResult = try jsValue(from: value, in: context)
+            } catch {
+                rejectWithMessage(message: "\(settlement.name): \(error)", reject: settlement.reject, in: context)
                 return
             }
             settlement.resolve.call(withArguments: [jsResult])
@@ -1238,9 +1244,9 @@ public final class JSCInterpreter: Interpreter {
 
     /// Rejects `reject` with a new JS `Error` built from `message` —
     /// matching `install(hostFunction:into:)`'s sync-throw message shape.
-    /// Shared by `settle(_:in:)`'s two failure paths (a non-JSON-encodable
-    /// success value, and a genuine async host-function failure) so their
-    /// error construction can't drift apart.
+    /// Shared by `settle(_:in:)`'s two failure paths (a success value that
+    /// could not be converted back into the sandbox, and a genuine async
+    /// host-function failure) so their error construction can't drift apart.
     private static func rejectWithMessage(message: String, reject: JSValue, in context: JSContext) {
         let reason = JSValue(newErrorFromMessage: message, in: context)
         reject.call(withArguments: [reason as Any])
@@ -1281,13 +1287,25 @@ public final class JSCInterpreter: Interpreter {
 
     /// The inverse of `jsonValue(of:in:)`: encodes `value` to JSON and
     /// parses it back with the context's own sandboxed `JSON.parse`.
+    ///
+    /// The parse result is rejected when it is `undefined`, not only when it
+    /// is `nil` — mirroring `jsonValue(of:in:)`'s own `!stringified
+    /// .isUndefined` check on the opposite direction. `JSON.parse` never
+    /// returns `undefined` for what `JSONEncoder` produced, and the `nil`
+    /// checks alone cannot catch a sandbox whose `JSON.parse` a snippet
+    /// replaced: `JSValue`'s lookup and call methods hand back an
+    /// `undefined` `JSValue`, never `nil`, when the receiver is missing or
+    /// is not callable. Without the `undefined` check, a replaced
+    /// `JSON.parse` would quietly convert every value to `undefined` here
+    /// instead of failing.
     private static func jsValue(from value: InterpreterValue, in context: JSContext) throws -> JSValue {
         let data = try JSONEncoder().encode(value)
         let jsonString = String(decoding: data, as: UTF8.self)
         guard
             let json = context.objectForKeyedSubscript("JSON"),
             let parse = json.objectForKeyedSubscript("parse"),
-            let parsed = parse.call(withArguments: [jsonString])
+            let parsed = parse.call(withArguments: [jsonString]),
+            !parsed.isUndefined
         else {
             throw InterpreterError(kind: .exception, message: "JSON.parse is unavailable.")
         }

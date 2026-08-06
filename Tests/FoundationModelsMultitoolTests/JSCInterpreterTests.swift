@@ -482,6 +482,40 @@ struct JSCInterpreterTests {
         #expect(result.returnValue == .object(["tempC": .number(31)]))
     }
 
+    @Test("an async result the bridge cannot convert to JSON rejects with the underlying conversion error")
+    func asyncResultConversionFailureRejectsWithUnderlyingError() throws {
+        // `settle(_:in:)`'s success branch used to reject with a fixed
+        // "could not convert the result to JSON." string, discarding the
+        // real error and diverging from the sync bridge's
+        // `"<name>: <error>"` shape. Reaching that branch takes a snippet
+        // that breaks the sandbox's own `JSON.parse` — the mechanism
+        // `jsValue(from:in:)` converts through — after the call has started
+        // but before the pump settles it. The stub returns `undefined`
+        // rather than throwing: a throwing stub would additionally notify a
+        // TypeError into the context, which `evaluate` reports ahead of the
+        // rejection, hiding the message under test.
+        let interpreter = JSCInterpreter()
+        let weather = AsyncHostFunction(name: "weatherAsync") { _ in
+            try await Task.sleep(nanoseconds: 20_000_000)
+            return .object(["tempC": .number(31)])
+        }
+        let result = try interpreter.run(
+            code: """
+            const pending = weatherAsync();
+            JSON.parse = function () { return undefined; };
+            try {
+              await pending;
+              return "unreachable";
+            } catch (e) {
+              return e.message;
+            }
+            """,
+            installing: [],
+            installingAsync: [weather]
+        )
+        #expect(result.returnValue == .string("weatherAsync: JSON.parse is unavailable."))
+    }
+
     @Test("a bridge call's returned value supports .catch(...), not just await/.then")
     func bridgeReturnValueSupportsCatch() throws {
         let interpreter = JSCInterpreter()
