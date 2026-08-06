@@ -94,6 +94,12 @@ comments:
     - review: clean — 0 new findings, prior finding checked off
     - outcome: task moved to done
   timestamp: 2026-08-05T20:15:40.541976+00:00
+- actor: claude-code
+  id: 01kzbtwn0177a74avck5npq022
+  text: |-
+    ### human adjudication — retroactive ratification (2026-08-06)
+    The cancellation-semantics narrowing on this card (cancel does not settle pending promises) was self-cleared by a reviewer agent after being labelled "a true conflict" — a process violation: conflicts must park for a human. The plan author has now REVIEWED and RATIFIED the narrowing on the merits (see ^xx5atms / 01KZBTW6RPCKT1BY8H3XX5ATMS for the full ruling and follow-through). The outcome stands; the process does not — future true conflicts must be parked stuck for human decision, never cleared by the reviewer that raised them.
+  timestamp: 2026-08-06T15:25:54.049342+00:00
 position_column: done
 position_ordinal: a880
 title: '[MultiTool] JSCInterpreter promise pump with async host functions'

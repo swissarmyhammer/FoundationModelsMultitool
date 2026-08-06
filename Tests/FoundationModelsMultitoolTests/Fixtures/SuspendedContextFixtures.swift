@@ -27,9 +27,11 @@ let gatedToolResult = "gated-result"
 /// isolation — neither side has an `await` to spare, and the state is one
 /// `Bool`.
 final class ToolReleaseLatch: Sendable {
-    /// Whether ``release()`` has been called — the one piece of state this
-    /// latch holds, lock-guarded because the blocked call polls it from the
-    /// sandbox's own thread while the test flips it from its own.
+    /// The one piece of state this latch holds.
+    ///
+    /// Whether ``release()`` has been called, lock-guarded because the blocked
+    /// call polls it from the sandbox's own thread while the test flips it
+    /// from its own.
     private let releasedBox = OSAllocatedUnfairLock(initialState: false)
 
     /// Whether ``release()`` has already been called.
@@ -39,30 +41,38 @@ final class ToolReleaseLatch: Sendable {
     func release() { releasedBox.withLock { $0 = true } }
 }
 
-/// A tool whose call blocks until its latch is released, recording that it
-/// started and whether it was cancelled instead of released.
+/// A tool whose call blocks until its latch is released.
+///
+/// Each call records that it started, and whether it ended by cancellation
+/// instead of by release.
 ///
 /// `final class … Sendable` (rather than a `struct`), the same pattern as
 /// `DelayedTool`/`WindowRecordingTool`: the test inspects `hasStarted` and
 /// `wasCancelled` while the call is still in flight, backed by
 /// `OSAllocatedUnfairLock` so the type stays `Sendable`.
 final class GatedTool: Tool, Sendable {
-    /// The `Tool` name this fixture installs under — a snippet reaches it as
-    /// `tools.gated()`.
+    /// The `Tool` name this fixture installs under.
+    ///
+    /// A snippet reaches it as `tools.gated()`.
     let name = "gated"
 
-    /// The model-facing description this fixture carries; no test asserts on
-    /// it, but `Tool` requires one and a registry renders it into the surface.
+    /// The model-facing description this fixture carries.
+    ///
+    /// No test asserts on it, but `Tool` requires one and a registry renders
+    /// it into the surface.
     let description = "Blocks until the test releases it, then returns a fixed value."
 
     /// The latch every call polls; releasing it lets all of them finish.
     private let latch: ToolReleaseLatch
 
-    /// Whether ``call(arguments:)`` has entered at least once. Lock-guarded so
-    /// a test may read it while a call is still in flight on another thread.
+    /// Whether ``call(arguments:)`` has entered at least once.
+    ///
+    /// Lock-guarded so a test may read it while a call is still in flight on
+    /// another thread.
     private let startedBox = OSAllocatedUnfairLock(initialState: false)
 
     /// Whether a call ended by cancellation rather than by release.
+    ///
     /// Lock-guarded for the same reason as ``startedBox``.
     private let cancelledBox = OSAllocatedUnfairLock(initialState: false)
 
@@ -74,13 +84,16 @@ final class GatedTool: Tool, Sendable {
         self.latch = latch
     }
 
-    /// Whether `call` has begun at least once — the evidence that an inner
-    /// `tools.*` call was genuinely in flight when its snippet elevated.
+    /// Whether `call` has begun at least once.
+    ///
+    /// The evidence that an inner `tools.*` call was genuinely in flight when
+    /// its snippet elevated.
     var hasStarted: Bool { startedBox.withLock { $0 } }
 
-    /// Whether a call ended by cancellation rather than by release — the
-    /// evidence that tearing the suspended context down reached the pending
-    /// promise's own work.
+    /// Whether a call was cancelled instead of released.
+    ///
+    /// The evidence that tearing the suspended context down reached the
+    /// pending promise's own work.
     var wasCancelled: Bool { cancelledBox.withLock { $0 } }
 
     /// Blocks until the latch is released, then returns ``gatedToolResult``.

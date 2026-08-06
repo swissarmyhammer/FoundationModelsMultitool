@@ -5,9 +5,10 @@ import Testing
 
 @testable import FoundationModelsMultitool
 
-/// Phase-1 coverage for the `runCode` envelope's two clocks and the suspended
-/// JSC contexts they govern — eventplan.md § "The constraint boundary, and the
-/// escape hatch".
+/// Phase-1 coverage for the `runCode` envelope's two clocks.
+///
+/// The suspended JSC contexts those clocks govern are eventplan.md § "The
+/// constraint boundary, and the escape hatch".
 ///
 /// A `runCode` call that outlives its wait window hands back a pending envelope
 /// and keeps running: the pending items are the promise the snippet is awaiting
@@ -191,21 +192,26 @@ struct SuspendedContextTests {
 
     // MARK: - Fixtures
 
-    /// The soft deadline every elevating test detaches at, and the unit its
-    /// "still alive well past it" assertion is measured in.
+    /// The soft deadline every elevating test detaches at.
+    ///
+    /// Also the unit each test's "still alive well past it" assertion is
+    /// measured in.
     private static let shortWaitSeconds: TimeInterval = 0.2
 
-    /// A wait window no test could ever sit through — only a per-call
-    /// `waitSeconds` can detach a call mounted with this one.
+    /// A wait window no test could ever sit through.
+    ///
+    /// Only a per-call `waitSeconds` can detach a call mounted with this one.
     private static let generousWaitSeconds: TimeInterval = 30
 
-    /// How long past its wait window a suspended run must still be alive: three
-    /// wait windows, per the card's regression bound.
+    /// How long past its wait window a suspended run must still be alive.
+    ///
+    /// Three wait windows, per the card's regression bound.
     private static let aliveWindowNanoseconds = UInt64(shortWaitSeconds * 3 * 1_000_000_000)
 
-    /// The bound every "this happened promptly" assertion uses — generous
-    /// against scheduling jitter, and far below the clock it proves was not the
-    /// one enforced.
+    /// The bound every "this happened promptly" assertion uses.
+    ///
+    /// Generous against scheduling jitter, and far below the clock it proves
+    /// was not the one enforced.
     private static let promptResponseBound: Duration = .seconds(3)
 
     /// How often ``waitUntil(_:)`` re-reads its condition.
@@ -214,20 +220,26 @@ struct SuspendedContextTests {
     /// How long ``waitUntil(_:)`` keeps polling before recording a failure.
     private static let readinessDeadlineSeconds: TimeInterval = 10
 
-    /// The snippet every suspended-context test runs: one awaited `tools.*`
-    /// call that cannot return until the test releases it.
+    /// The snippet every suspended-context test runs.
+    ///
+    /// One awaited `tools.*` call that cannot return until the test releases
+    /// it.
     private static let gatedSnippet = "return await tools.gated();"
 
-    /// What `ResultRenderer` makes of `GatedTool`'s returned value — the text a
-    /// settled run's terminal event carries.
+    /// What `ResultRenderer` makes of `GatedTool`'s returned value.
+    ///
+    /// The text a settled run's terminal event carries.
     private static let renderedGatedResult = "\"\(gatedToolResult)\""
 
-    /// Thrown by a fixture whose own setup or synchronization failed, after it
-    /// has already recorded the `Issue` explaining what went wrong.
+    /// Thrown by a fixture whose own setup or synchronization failed.
+    ///
+    /// Always thrown after the fixture has already recorded the `Issue`
+    /// explaining what went wrong.
     private struct FixtureError: Error, Equatable {}
 
-    /// One `runCode` tool mounted the way Router's native session mounts it,
-    /// plus the gated tool its snippets call and the session plane its runs
+    /// One `runCode` tool mounted the way Router's native session mounts it.
+    ///
+    /// Carries the gated tool its snippets call, and the session plane its runs
     /// park and post on.
     private struct Harness {
         /// The gated tool `gatedSnippet` calls.
@@ -254,8 +266,9 @@ struct SuspendedContextTests {
         try MultiTool.Builder().addTool(gated).buildRegistry()
     }
 
-    /// Mounts a `runCode` tool over one gated tool exactly as Router's native
-    /// session mount does.
+    /// Mounts a `runCode` tool over one gated tool.
+    ///
+    /// The mount is exactly the one Router's native session builds.
     ///
     /// - Parameters:
     ///   - configuration: the `MultiTool` knobs under test. Defaults to
@@ -291,8 +304,9 @@ struct SuspendedContextTests {
         )
     }
 
-    /// The clocks `multiTool` reports for an envelope requesting these ones —
-    /// the round trip through `GeneratedContent` the elevation engine itself
+    /// The clocks `multiTool` reports for an envelope requesting these ones.
+    ///
+    /// The round trip through `GeneratedContent` the elevation engine itself
     /// makes.
     ///
     /// - Parameters:
@@ -320,8 +334,7 @@ struct SuspendedContextTests {
         try JSONDecoder().decode(PendingRunEnvelope.self, from: Data(rendered.utf8)).completionToken
     }
 
-    /// Awaits a parked run's settlement through the mailbox and returns its
-    /// terminal event.
+    /// Awaits a parked run's settlement through the mailbox.
     ///
     /// - Parameters:
     ///   - completionToken: the parked run's token.
@@ -340,8 +353,10 @@ struct SuspendedContextTests {
         return terminal
     }
 
-    /// Polls `condition` until it holds — a synchronization point, not a timing
-    /// assertion, so the deadline only bounds a genuine hang.
+    /// Polls `condition` until it holds.
+    ///
+    /// A synchronization point, not a timing assertion, so the deadline only
+    /// bounds a genuine hang.
     ///
     /// - Parameter condition: the state a test is waiting to observe.
     private static func waitUntil(_ condition: @Sendable () -> Bool) async throws {
