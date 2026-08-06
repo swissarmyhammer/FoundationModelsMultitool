@@ -17,6 +17,12 @@ a fresh `runCode` sandbox can reach:
 - `tools`
 - `help`
 - `docs`
+- `status`
+- `wait`
+- `cancel`
+- `elicit`
+- `notify`
+- `progress`
 
 `console` is a minimal `console.log` shim that appends its arguments to the
 captured console output (`ResultRenderer`); it is not the browser/Node
@@ -28,6 +34,33 @@ are read-only introspection over the same rendered `APISurface` the
 registry-backed selection tier (`FoundationModelsMetadataRegistry`'s
 `MetadataSearcher`/`SelectionTier`) and `findAPIs` use — they cannot mutate
 anything.
+
+`status()`, `wait()`, `cancel()`, `elicit()`, `notify()`, and `progress()`
+reach exactly one thing: the ambient `ToolContext` the session bound around
+this `runCode` call — its own `SessionMailbox` and its own upstream event
+sink, never another session's. Each is bounded by what that surface itself
+allows:
+
+- `status()`, `wait()`, and `cancel()` are the **run plane**, which carries
+  envelopes and outcomes only. `wait()` resolves to a run's terminal event —
+  a bounded output tail (`SessionMailbox.terminalDetailTailLimit`) plus the
+  run's identifier — never a capability's full store, and `status()` reports
+  a parked run's token, op, kind, and latest progress, never its output. An
+  unknown completion token is a reportable no-op, not a throw: one snippet
+  cannot probe another session's tokens, because the mailbox it reaches is
+  its own session's.
+- `elicit()` asks the user a question mid-snippet through
+  `ToolContext.elicit`, the same path a wrapped `Tool` uses. The request is
+  the restricted MCP form/URL schema, decoded by Router's own
+  `ElicitationRequest`, so a snippet can neither widen the schema nor reach
+  the user by any other route.
+- `notify()` and `progress()` enqueue one event apiece onto the session's
+  outbox and return nothing. They cannot read anything back.
+
+Outside a session — a `MultiTool` constructed and called directly, with no
+ambient context — there is no run plane to reach: `status()`, `wait()`,
+`cancel()`, and `elicit()` reject with a named, repairable error, and
+`notify()`/`progress()` are silent no-ops. None of the six traps.
 
 Every `tools.*` call is validated (`ArgumentMarshaler`, `ToolInvoker`) before
 it ever reaches the wrapped tool: a malformed call fails with a repairable

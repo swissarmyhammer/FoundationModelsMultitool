@@ -136,6 +136,18 @@ a fresh `runCode` sandbox can reach:
 - `tools`
 - `help`
 - `docs`
+- `status`
+- `wait`
+- `cancel`
+- `elicit`
+- `notify`
+- `progress`
+
+`status`, `wait`, `cancel`, and `elicit` are the ambient run-plane globals: a
+snippet awaits each of them, exactly as it awaits a `tools.*` call. Outside a
+session — a `MultiTool` called directly, with no run plane — each rejects with
+a named, repairable error rather than failing silently. `notify` and `progress`
+are synchronous and return nothing; outside a session they are no-ops.
 
 See [the full security model](docs/SECURITY.md) for what each one guarantees
 and what the watchdog and caps bound.

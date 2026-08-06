@@ -44,10 +44,28 @@ comments:
     evidence: swift test — 199 passed, 0 failed, 0 skipped-outside-gate (6 skipped under MULTITOOL_INTEGRATION gate as instructed), 0 warnings (excluding known pre-existing mlx-swift manifest warning); repeated 10x full runs + 5x isolated RunBindingTests runs, all green
     task: 01KZ6N3KMERCMS4DCMEFHR27KF
   timestamp: 2026-08-06T12:35:24.464899+00:00
+- actor: claude-code
+  id: 01kzbhghfdzz3mn1b6722q1hy9
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (1ea2eb6) — 9 validators attempted, 0 failed, 0 skipped; counts findings=0 confirmed=0 refuted=0. No prior `## Review Findings` sections; all acceptance/test checkboxes checked.
+    - next: moved to done. Three implementer-flagged decisions verified as grounded, not findings: (1) `ToolElevation.wrapping` seam is required because `ElevatingTool` fixes its Output (ElevatingTool.swift:216 is generic only over Arguments), and both decorators mint their own token and bind `ToolContext.$current` explicitly; (2) `ToolContext.sink` is `private let` on Router main (Hosting/ToolContext.swift:43) with no accessor or child-context derivation, so inner-run events riding the outer runCode correlation is a Router-side limitation not fixable from this repo, and it is documented on `AmbientUpstreamSink`; (3) omitting the interpreter's serial executor from `RunBinding` is sound — `JSCInterpreter.PromiseRegistry` keys each promise by id and settles on the interpreter's own dedicated worker queue, so the creating interpreter is always the settling one; the deviation from the card's What section is documented in `RunBinding`'s doc comment.
+  timestamp: 2026-08-06T12:42:00.045694+00:00
+- actor: claude-code
+  id: 01kzbhj1jsn4337j3f9vm7f54y
+  text: |-
+    ### finish iteration 1 — clean
+    - prerequisite: verified before starting — Router main in sync with origin/main at b5bf2ba, carrying Hosting/{ElevatingTool,ToolContext,SessionMailbox,OperationEventSink}.swift. Local checkout was stale at af9112fc; targeted `swift package update FoundationModelsRouter` moved it forward with no unrelated fallout. Package.resolved is gitignored here, so no pin change to stage.
+    - implement: changed — 5 files. New per-invocation RunBinding captures the ambient ToolContext once at the top of MultiTool.call; each inner tools.* call routes through ToolElevation.wrapping with elevation off, re-binds ToolContext.$current explicitly, and mints its own completion token. ToolInvoker gained an internal invoke(_:content:binding:); MultiTool builds host functions per-invocation so each closure captures the binding rather than inheriting. New RunBindingTests + fixtures cover the card's four cases.
+    - test: green — swift build clean, swift test 199/199 in 19 suites across 10 consecutive runs; RunBindingTests 4/4 across 5 isolated runs; zero flakiness on the concurrency/isolation cases
+    - commit: 1ea2eb6 feat(multitool): route tools.* through ElevatingTool with RunBinding
+    - review: clean — `review sha HEAD~1..HEAD`, 0 findings, 9 validators attempted, 0 failed. The reviewer independently confirmed three flagged decisions against Router source: ToolElevation.wrapping is forced (ElevatingTool is generic only over Arguments); the upstream-sink limitation is real and correctly documented (ToolContext.sink is private with no accessor, so inner-run events carry the outer correlation — no AC asks otherwise, and fixing it needs a Router-side change); and omitting the interpreter's serial executor from RunBinding is sound since PromiseRegistry already guarantees that routing.
+    - outcome: task moved to done. Unblocks ^az1xs92, ^e76zk99, ^6vmk88b.
+  timestamp: 2026-08-06T12:42:49.305618+00:00
 depends_on:
 - 01KZ6N0G06Q27NNK51PZFF76MX
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ad80
 title: '[MultiTool] Route tools.* through ElevatingTool with RunBinding'
 ---
 CROSS-BOARD PREREQUISITE: the Router-side foundation (vocabulary move → SessionMailbox → ToolContext → ElevatingTool engine, tasks tagged `router-first` on ../FoundationModelsRouter's own kanban board) must be done and pushed to Router `main` before this task can build. Verify `ElevatingTool` and `ToolContext` exist on Router `main` (`swift package update` here resolves them) before starting.

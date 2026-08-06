@@ -1,5 +1,6 @@
 import Foundation
 import FoundationModels
+import FoundationModelsRouter
 import os
 
 extension MultiTool {
@@ -136,7 +137,11 @@ public struct RunCodeArguments {
 ///    for a standalone tool, nested `tools.<group>.<name>` for a grouped
 ///    one — plan.md Resolved #5) — see "tools.* glue" below;
 /// 2. runs the glue followed by the snippet in a fresh `Interpreter` sandbox
-///    (M1) off the calling thread (see "Off-cooperative-thread dispatch");
+///    (M1) off the calling thread (see "Off-cooperative-thread dispatch"),
+///    with `help()`/`docs()` and the six ambient globals of eventplan.md §
+///    "The sandbox globals" — `status()`, `wait()`, `cancel()`, `elicit()`,
+///    `notify()`, `progress()`, see `MultiTool+SandboxGlobals.swift` — also
+///    installed;
 /// 3. renders the result — or a thrown `InterpreterError` — via
 ///    `ResultRenderer` (M5).
 ///
@@ -174,7 +179,12 @@ public struct MultiTool: Tool {
         the error comes back for you to repair: fix the snippet and call runCode again \
         immediately — never stop at an error to describe or apologize for what you were \
         going to do, and never claim success for a call a snippet did not actually \
-        return.
+        return. Six more globals are always there and never appear in findAPIs: \
+        `elicit()` asks the user a question in the middle of a snippet and resolves to \
+        their answer; `notify()` and `progress()` tell the user what is happening and \
+        return nothing; `status()`, `wait()`, and `cancel()` follow up on a long-running \
+        call's completion token. Await `elicit()`, `status()`, `wait()`, and `cancel()` \
+        like any `tools.*` call; never await `notify()` or `progress()`.
         """
 
     /// Where this tool logs its M10 diagnostics — one `runCode` call's
@@ -195,9 +205,11 @@ public struct MultiTool: Tool {
     /// output.
     private let limits: ResultRendererLimits
 
-    /// `help()`/`docs()`'s `HostFunction` bridges — the only *synchronous*
-    /// globals this tool installs (see "MARK: - help()/docs() globals"
-    /// below) — built once at `init` time (stable for the registry's
+    /// `help()`/`docs()`'s `HostFunction` bridges — the *surface-reading*
+    /// synchronous globals this tool installs (see "MARK: - help()/docs()
+    /// globals" below; `notify()`/`progress()` are synchronous too, but are
+    /// built per invocation because each closes over that invocation's own
+    /// notice outbox) — built once at `init` time (stable for the registry's
     /// lifetime — installing them is cheap and the mapping never changes
     /// call to call) and re-installed fresh into every `runCode` call's own
     /// sandbox by `Interpreter.run`.
@@ -281,22 +293,69 @@ public struct MultiTool: Tool {
         // starts from a JSC callback, outside every task tree, where
         // `ToolContext.current` is `nil` — see `RunBinding`.
         let binding = RunBinding.ambient
+        // One notice chain per invocation, for the same reason: `notify()`
+        // and `progress()` post through the captured context, never an
+        // inherited one. `nil` when this run has no session — both globals
+        // are then silent no-ops.
+        let notices = binding.map { SandboxNoticeOutbox(context: $0.context) }
         let code = "\(preamble)\n\(arguments.code)"
-        do {
-            let result = try await Self.run(
-                code: code,
-                installing: hostFunctions,
-                installingAsync: makeAsyncHostFunctions(binding: binding),
-                using: interpreter
-            )
+        let outcome = await Self.runCapturingOutcome(
+            code: code,
+            installing: hostFunctions + Self.makeNoticeHostFunctions(outbox: notices),
+            installingAsync: makeAsyncHostFunctions(binding: binding)
+                + Self.makeRunPlaneHostFunctions(binding: binding),
+            using: interpreter
+        )
+        // "They enqueue and continue; the bridge flushes them" — the flush,
+        // before this call hands anything back, so a run's last notice never
+        // reaches the session after the run's own result does. On the failure
+        // path too: a notice a snippet already made happened, whatever the
+        // snippet went on to do.
+        await notices?.flush()
+        switch outcome {
+        case .success(let result):
             return ResultRenderer.render(result, limits: limits)
-        } catch let interpreterError as InterpreterError {
+        case .failure(let interpreterError as InterpreterError):
             let hint = UnknownToolHint.hint(message: interpreterError.message, surface: registry.surface)
             return ResultRenderer.render(interpreterError, hint: hint)
+        case .failure(let error):
+            throw error
         }
     }
 
     // MARK: - Off-cooperative-thread dispatch
+
+    /// Runs one snippet and captures its outcome instead of throwing it, so
+    /// `call(arguments:)` can flush the invocation's notice chain on both the
+    /// success and the failure path before deciding what to hand back.
+    ///
+    /// - Parameters:
+    ///   - code: the JavaScript source to run.
+    ///   - installing: the synchronous host functions to expose as globals.
+    ///   - installingAsync: the asynchronous host functions to expose as
+    ///     globals.
+    ///   - interpreter: the sandbox to run `code` in.
+    /// - Returns: the run's result, or the error
+    ///   `run(code:installing:installingAsync:using:)` threw.
+    private static func runCapturingOutcome(
+        code: String,
+        installing: [HostFunction],
+        installingAsync: [AsyncHostFunction],
+        using interpreter: any Interpreter
+    ) async -> Result<InterpreterResult, Error> {
+        do {
+            return .success(
+                try await run(
+                    code: code,
+                    installing: installing,
+                    installingAsync: installingAsync,
+                    using: interpreter
+                )
+            )
+        } catch {
+            return .failure(error)
+        }
+    }
 
     /// Runs `interpreter.run(code:installing:)` — a synchronous, blocking
     /// call — without blocking the calling `async` context's own
@@ -509,7 +568,8 @@ public struct MultiTool: Tool {
     /// - Parameter registry: the catalog + live tool instances to build
     ///   glue for.
     /// - Returns: the JS preamble, one `tools.*` assignment per entry with a
-    ///   live tool, preceded by `globalThis.tools = {};`.
+    ///   live tool, preceded by `globalThis.tools = {};` and by the void
+    ///   re-binding of every name in `voidGlobalNames`.
     private static func makePreamble(for registry: Registry) -> String {
         // `globalThis.tools = {}` (not `var tools = {}`) so `tools` is a
         // genuine `globalThis` property — like `console`/`help`/`docs`,
@@ -521,7 +581,21 @@ public struct MultiTool: Tool {
         // one of the sandbox's *global* bindings the README's "Injected
         // globals" list and `HardeningTests`'s runtime enumeration
         // (`Object.getOwnPropertyNames(globalThis)`) document it as.
-        var lines = ["globalThis.tools = {};"]
+        // `notify()`/`progress()` are void (eventplan.md's one-rule
+        // contract), so their call expression must evaluate to `undefined` —
+        // and `InterpreterValue`, the seam their `HostFunction` results cross,
+        // has no `undefined` case to return. Each installed native global is
+        // therefore captured and replaced, in place, by a JS wrapper that
+        // calls it and returns nothing: the same "the seam cannot carry this
+        // shape, so build it in JS" move `tools.*` itself makes. Emitted on
+        // one line so the preamble costs the snippet's reported line numbers
+        // as little as possible.
+        var lines = [
+            "globalThis.tools = {};",
+            voidGlobalNames
+                .map { "globalThis.\($0) = (function (send) { return function (detail) { send(detail); }; })(globalThis.\($0));" }
+                .joined(separator: " "),
+        ]
         for (index, entry) in registry.surface.entries.enumerated() {
             guard registry.tools[entry.path] != nil else { continue }
             let hostName = hostFunctionName(at: index)
@@ -652,9 +726,12 @@ public struct MultiTool: Tool {
     // MARK: - help()/docs() globals (plan.md M7)
     //
     // Two more `HostFunction`s, installed as flat globals alongside
-    // `tools.*` — the *only* other globals a snippet can reach (plan.md:
-    // "These are the only extra globals; the deny-by-default sandbox is
-    // otherwise unchanged."). Both read from the very same
+    // `tools.*` — the surface-reading half of the fixed, enumerable global
+    // set a snippet can reach (plan.md: "These are the only extra globals;
+    // the deny-by-default sandbox is otherwise unchanged."). The other half
+    // is the six ambient globals of eventplan.md § "The sandbox globals" —
+    // see `MultiTool+SandboxGlobals.swift`; `HardeningTests` pins the whole
+    // set against the README's own list. Both read from the very same
     // `registry.surface`/`Entry` data the registry-backed selection tier's
     // instruction prefix and `findAPIs` are built from (M2.5/M6) — plan.md's
     // "one generator, one source of truth, never drifting" — so
@@ -673,8 +750,8 @@ public struct MultiTool: Tool {
     // containing a quote or newline just becomes a JS string value like any
     // other, safe by construction.
 
-    /// Builds the `help()` and `docs(name)` host functions — the only
-    /// globals `MultiTool` installs beyond `tools.*` itself.
+    /// Builds the `help()` and `docs(name)` host functions — the two
+    /// surface-reading globals `MultiTool` installs beyond `tools.*` itself.
     ///
     /// - Parameter registry: the catalog whose `surface` backs both
     ///   functions.

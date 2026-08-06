@@ -212,10 +212,15 @@ struct HardeningTests {
 
     // MARK: - Sandbox surface & README↔code sync
 
-    @Test("the injected globals reachable in a fresh MultiTool run, beyond JavaScriptCore's own standard environment, are exactly {console, tools, help, docs}")
+    @Test("the injected globals reachable in a fresh MultiTool run, beyond JavaScriptCore's own standard environment, are exactly the documented set")
     func sandboxInjectedGlobalsAreExactlyTheDocumentedSet() async throws {
         let injected = try await Self.injectedGlobals()
-        #expect(injected == ["console", "tools", "help", "docs"])
+        #expect(
+            injected == [
+                "console", "tools", "help", "docs",
+                "status", "wait", "cancel", "elicit", "notify", "progress",
+            ]
+        )
     }
 
     @Test("README's enumerated 'Injected globals' list is set-equal to the runtime-enumerated sandbox globals")
@@ -276,8 +281,9 @@ struct HardeningTests {
     }
 
     /// A registry with no wrapped tools — enough for `MultiTool` to install
-    /// its always-present `tools`/`help`/`docs` globals, with no per-tool
-    /// positional bindings to complicate the enumeration.
+    /// its always-present `tools`/`help`/`docs` globals and the six ambient
+    /// run-plane/notice globals, with no per-tool positional bindings to
+    /// complicate the enumeration.
     private static var emptyRegistry: MultiTool.Registry {
         MultiTool.Registry(surface: APISurface(entries: []), tools: [:])
     }

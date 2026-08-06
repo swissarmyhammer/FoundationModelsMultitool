@@ -109,10 +109,10 @@ struct HelpDocsTests {
         }
     }
 
-    // MARK: - Sandbox: help()/docs() are the only new globals
+    // MARK: - Sandbox: help()/docs() alongside the ambient globals
 
-    @Test("no globals beyond tools.*, help, and docs are newly reachable")
-    func sandboxExposesOnlyHelpAndDocsAsNewGlobals() async throws {
+    @Test("no globals beyond tools.*, help, docs, and the six ambient globals are newly reachable")
+    func sandboxExposesOnlyTheDocumentedGlobals() async throws {
         let registry = try makeRegistry()
         let multiTool = MultiTool(registry: registry)
 
@@ -121,6 +121,12 @@ struct HelpDocsTests {
                 const checks = [
                     typeof help === 'function',
                     typeof docs === 'function',
+                    typeof status === 'function',
+                    typeof wait === 'function',
+                    typeof cancel === 'function',
+                    typeof elicit === 'function',
+                    typeof notify === 'function',
+                    typeof progress === 'function',
                     typeof tools.weather === 'function',
                     typeof process === 'undefined',
                     typeof require === 'undefined',
