@@ -43,10 +43,27 @@ comments:
     evidence: 2 files — Sources/FoundationModelsMultitool/Interpreter/JSCInterpreter.swift, Tests/FoundationModelsMultitoolTests/JSCInterpreterTests.swift
     task: ^wpq0q6d
   timestamp: 2026-08-05T22:15:33.199946+00:00
+- actor: claude-code
+  id: 01kza0bsx3f9vddbn1nykdw5z7
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (commit f768e0c) — counts: 0 findings, 0 confirmed, 0 refuted, 9 attempted, 0 failed, 0 skipped
+    - next: task moved to done; all acceptance criteria and test checkboxes were already checked
+  timestamp: 2026-08-05T22:23:04.611827+00:00
+- actor: claude-code
+  id: 01kza0ccsqxt2j191k0rjg6nwk
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — wrapped each async host-function bridge promise in a JS Proxy with a "did you forget await?" get trap; adversarial double-check found and fixed a real process-crash bug (force-unwrapped JSValue.toString() in console.log path), two doc-comment errors, a Symbol-key rendering gap, and two naming-clarity issues
+    - test: green — swift test, 191/191 passed, stable across repeated runs
+    - commit: f768e0c feat(interpreter): throw "did you forget await?" on unawaited promise access
+    - review: clean — 0 new findings, all 9 checkboxes checked
+    - outcome: task moved to done
+  timestamp: 2026-08-05T22:23:23.959660+00:00
 depends_on:
 - 01KZ6MYJSSSF41HXMC2YAHBKG5
-position_column: doing
-position_ordinal: '8180'
+position_column: done
+position_ordinal: a980
 title: '[MultiTool] Proxy trap on pending results'
 ---
 Repo: this repo. Basis: eventplan.md §"Async Javascript", "A forgotten `await` has four shapes" — this is the third shape's catch. Split from the promise-pump task by the plan double-check (independent, purely additive ergonomics).

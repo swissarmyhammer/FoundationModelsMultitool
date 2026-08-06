@@ -58,6 +58,23 @@ comments:
     evidence: AC1 ("No DispatchSemaphore remains in Sources/") conflicts with the already-merged JSCInterpreter.swift PromiseRegistry semaphore from dependency task ^yahbkg5; recorded as `## Blocker` on this task's description, not resolved. All other acceptance criteria and tests are green (184 tests, 18 suites, 0 failures).
     task: ^zff76mx
   timestamp: 2026-08-05T20:44:05.263707+00:00
+- actor: claude-code
+  id: 01kz9v1239e1y29tcr54hehh0z
+  text: |-
+    ### finish iteration 1 — stuck
+    - implement: changed — removed the v1 blocking bridge, re-glued tools.* onto async host functions; an adversarial double-check caught a self-resolved AC (retracted) and a real cancellation-coverage gap (fixed with a new test)
+    - test: green — swift test, 184/184 passed (only warning is the pre-existing, unrelated mlx-swift dependency build-manifest artifact, confirmed present on unmodified main)
+    - commit: a8db299 (main implementation), 0b956ee (cancellation test + blocker state)
+    - blocker: acceptance criterion "No DispatchSemaphore remains in Sources/" conflicts with the already-merged interpreter promise pump (^yahbkg5), which structurally requires a semaphore in PromiseRegistry. True conflict per Scope rules — not resolved, recorded as a `## Blocker` section on the task description for human adjudication.
+    - filed follow-ups: ^aspycka (ToolAPIRenderer still declares sync signatures), ^ws38ajz (settle() JSON-conversion-failure path loses underlying error text)
+    - outcome: task left in doing, stuck — needs a human decision on AC1's scope before /review can proceed
+  timestamp: 2026-08-05T20:49:49.673482+00:00
+- actor: claude-code
+  id: 01kza9z8zggq8qvga48nm1grg6
+  text: |-
+    ### human decision — blocker resolved (2026-08-05)
+    The "No `DispatchSemaphore` remains in Sources/" criterion is AMENDED, by the plan author, to be scoped to the v1 blocking bridge in `MultiTool.swift` (verified: 0 occurrences there). The one remaining `DispatchSemaphore` — `PromiseRegistry.semaphore` in `Sources/FoundationModelsMultitool/Interpreter/JSCInterpreter.swift:669` — is the promise pump's deliberate JS-thread park/wake primitive from ^yahbkg5 and is expressly allowed; do not remove or redesign it under this task. The criterion was written during planning before the pump existed; eventplan.md's "no semaphore-based park mechanism" rationale rejected throwaway bridge-level machinery, not the pump's internals. No code change needed for this resolution — the task description's checkbox is now checked; proceed to review/close normally.
+  timestamp: 2026-08-06T01:10:59.824202+00:00
 depends_on:
 - 01KZ6MYJSSSF41HXMC2YAHBKG5
 position_column: doing
@@ -75,7 +92,7 @@ Delete the v1 blocking bridge in `Sources/FoundationModelsMultitool/MultiTool.sw
 - Update `MultiTool.description` (MultiTool.swift:160-174) with the one async line the plan specifies: await each `tools.*` call; use `Promise.all` to run calls in parallel. (`MultiToolExecutionTests` line 88 pins the description — update the pin.)
 
 ## Acceptance Criteria
-- [ ] No `DispatchSemaphore` remains in Sources/ — **BLOCKED, unresolved conflict, see `## Blocker` below.** True for `MultiTool.swift` itself (0 occurrences after this change), but `Sources/FoundationModelsMultitool/Interpreter/JSCInterpreter.swift`'s `PromiseRegistry` still has one. A prior self-review comment on this task claimed this was out of scope and released the criterion — that was improper (own judgment does not release a criterion) and is retracted here. Recorded as a blocker, not resolved; a human must decide whether this criterion is scoped to `MultiTool.swift` or the whole `Sources/` tree.
+- [x] No `DispatchSemaphore` remains in the v1 blocking bridge — `MultiTool.swift` has 0 occurrences. AMENDED BY HUMAN (plan author, 2026-08-05, see comments): the original wording "in Sources/" overreached — it was written before the pump was designed and aimed at the v1 bridge machinery specifically. The single remaining `DispatchSemaphore` in `Sources/FoundationModelsMultitool/Interpreter/JSCInterpreter.swift` (`PromiseRegistry.semaphore`) is the pump's own deliberate JS-thread park/wake primitive, landed and reviewed in ^yahbkg5, and is expressly ALLOWED. eventplan.md's "no semaphore-based park mechanism" line rejected throwaway bridge-level machinery, not the pump's internals.
 - [x] A snippet with `Promise.all` over two slow fixture tools completes in ~max, not ~sum, of their durations (use `DelayedTool`-style fixtures from `Tests/.../Fixtures/MultiToolExecutionFixtures.swift`) — new `WindowRecordingTool` fixture + `promiseAllRunsToolCallsConcurrently` test.
 - [x] A validation failure inside an awaited call rejects with the identical `ToolInvokerError` message text v1 produced — `awaitedValidationFailureRejectsWithIdenticalMessageText` test. (Parity holds for the thrown-error path pinned by this test; an adversarial review found one narrow, separate divergence in a different, close-to-unreachable failure mode — filed as ^ws38ajz.)
 - [x] Task cancellation of a running snippet still cancels within the watchdog window — pre-existing `HardeningTests` cancellation tests pass unmodified against the new `run`/`dispatchRun` signatures, **and** a new `cancellationCancelsWhileAwaitingAPendingToolCall` test now covers the new pump-wait path specifically (cancelling while parked in `pumpUntilSettled` awaiting a pending `tools.*` promise, not just the watchdog-timeout `while(true){}` path) — this gap was found by an adversarial double-check review and fixed.
@@ -85,8 +102,8 @@ Delete the v1 blocking bridge in `Sources/FoundationModelsMultitool/MultiTool.sw
 - [x] Update/extend `Tests/FoundationModelsMultitoolTests/MultiToolExecutionTests.swift`: awaited call happy path; parallel `Promise.all` concurrency; unawaited-return correctness; floating-call settle-before-return; rejection message parity; description pin update
 - [x] `swift test` green (all suites)
 
-## Blocker
-Acceptance criterion "No `DispatchSemaphore` remains in Sources/" conflicts with already-merged code: `Sources/FoundationModelsMultitool/Interpreter/JSCInterpreter.swift`'s `PromiseRegistry.semaphore` (`private let semaphore = DispatchSemaphore(value: 0)`), the interpreter's own promise-pump wait/signal mechanism, landed in the dependency task ^yahbkg5 and is structurally required by that design (it is how `waitAndTakeReadyToSettle` blocks the interpreter's worker thread until an async host function's `Task` reports completion — removing it would mean redesigning the already-reviewed promise pump, which is outside this task's "What" section). I believe the criterion's evident intent, read against the task's own "What" section and eventplan.md's "Async JavaScript" rationale ("We do not build a semaphore-based park mechanism... only to delete them later" — describing the *rejected* alternative, not the promise pump's own retained internal one), is scoped to `MultiTool.swift`'s v1 blocking bridge specifically. But per the review-findings rule, my own judgment does not get to release this — a human should confirm or amend the criterion's scope.
+## Blocker — RESOLVED by human decision (2026-08-05)
+The first acceptance criterion's original wording ("No `DispatchSemaphore` remains in Sources/") conflicted with `PromiseRegistry.semaphore` in `JSCInterpreter.swift`, which the dependency task ^yahbkg5 introduced as the pump's structural park/wake mechanism. The plan author confirmed the criterion's intent was scoped to the v1 blocking bridge in `MultiTool.swift`; the criterion has been amended above and checked. The pump's internal semaphore stays. No code change required for this resolution — proceed to review/close as normal.
 
 ## Workflow
 - Use `/tdd` — write failing tests first, then implement to make them pass. #phase-1
