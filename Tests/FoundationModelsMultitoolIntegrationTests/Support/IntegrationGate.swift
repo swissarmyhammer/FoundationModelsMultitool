@@ -192,6 +192,57 @@ let multitoolTinyProfile = ProfileDefinition(
     context: 8192
 )
 
+/// The one-at-a-time turnstile every gated scenario passes through before it
+/// puts a live profile on the GPU.
+///
+/// Swift Testing runs *suites* in parallel; `.serialized` only orders the tests
+/// **inside** one suite. With five gated suites in this target, five live
+/// profiles would otherwise resolve and generate at once, and measured on real
+/// hardware that is not merely slow — it is wrong. In a five-at-once run every
+/// scenario degraded together: `findAPIs` stopped preceding `runCode` in all of
+/// them, snippets called invented function names (`getTrip`, `getWeather`,
+/// `getInventory`) that exist in no fixture, and the replies came back fluent
+/// but ungrounded. The same suites run three-at-once, or one at a time, called
+/// the real fixtures and answered from them. One resident profile at a time is
+/// therefore a correctness requirement of this target, not a courtesy — and it
+/// is the same property `SearchThenCallTests`' own `.serialized` documents
+/// ("only one profile is resident at a time per `Router`"), extended across
+/// suite boundaries where a suite trait cannot reach.
+///
+/// A counting semaphore of one, written as an actor: both operations are
+/// decisions on the actor's own state, and a waiter parks on a continuation
+/// rather than blocking a thread.
+actor LiveProfileTurnstile {
+    /// The one turnstile the whole target shares.
+    static let shared = LiveProfileTurnstile()
+
+    /// Whether a profile currently holds the turnstile.
+    private var isOccupied = false
+
+    /// The scenarios parked until the holder leaves, in arrival order.
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    /// Takes the turnstile, waiting for the current holder to leave if there is
+    /// one. The caller owes a matching ``leave()``.
+    func enter() async {
+        guard isOccupied else {
+            isOccupied = true
+            return
+        }
+        await withCheckedContinuation { waiters.append($0) }
+    }
+
+    /// Gives the turnstile up, handing it straight to the longest-waiting
+    /// scenario if any is parked.
+    func leave() {
+        guard waiters.isEmpty else {
+            waiters.removeFirst().resume()
+            return
+        }
+        isOccupied = false
+    }
+}
+
 /// One resolved, live `Router` + `LanguageModelProfile` pair, together with
 /// the recording root its sessions write their JSONL transcript under —
 /// everything a gated scenario needs to build a native `MLXLanguageModel` +
@@ -214,6 +265,11 @@ struct LiveRouterFixture {
     /// real Hugging Face Hub client + tokenizer loader, mirroring Router's
     /// own gated `IntegrationTests.endToEnd()`.
     ///
+    /// Takes ``LiveProfileTurnstile/shared`` before resolving anything, so at
+    /// most one gated scenario in the target has a profile resident at a time;
+    /// ``tearDown()`` gives it back. A resolution that throws gives it back
+    /// itself, since its caller is left with no fixture to tear down.
+    ///
     /// - Returns: the resolved fixture.
     /// - Throws: whatever `Router.resolve(profile:reporting:)` throws — including
     ///   `GenerationError.notWiredForLiveInference` if the live decode path
@@ -225,28 +281,36 @@ struct LiveRouterFixture {
         // lookup (see `MetalLibraryTestBootstrap`'s documentation) — must run
         // before any live model resolution touches the GPU device.
         _ = MetalLibraryTestBootstrap.ensureColocatedMetallib
-        let cacheDir = Self.makeTempDir()
-        let recordingsDir = Self.makeTempDir()
-        let loader = LiveModelLoader(
-            downloader: #hubDownloader(),
-            tokenizerLoader: #huggingFaceTokenizerLoader()
-        )
-        let router = Router(
-            cacheDir: cacheDir,
-            recordingsDir: recordingsDir,
-            recordingLevel: .full,
-            loader: loader
-        )
-        let progress = ResolutionProgress()
-        let profile = try await router.resolve(profile: multitoolTinyProfile, reporting: progress)
-        return LiveRouterFixture(router: router, profile: profile, recordingsDir: recordingsDir)
+        await LiveProfileTurnstile.shared.enter()
+        do {
+            let cacheDir = Self.makeTempDir()
+            let recordingsDir = Self.makeTempDir()
+            let loader = LiveModelLoader(
+                downloader: #hubDownloader(),
+                tokenizerLoader: #huggingFaceTokenizerLoader()
+            )
+            let router = Router(
+                cacheDir: cacheDir,
+                recordingsDir: recordingsDir,
+                recordingLevel: .full,
+                loader: loader
+            )
+            let progress = ResolutionProgress()
+            let profile = try await router.resolve(profile: multitoolTinyProfile, reporting: progress)
+            return LiveRouterFixture(router: router, profile: profile, recordingsDir: recordingsDir)
+        } catch {
+            await LiveProfileTurnstile.shared.leave()
+            throw error
+        }
     }
 
-    /// Releases the resolved profile, evicting its three resident models.
+    /// Releases the resolved profile, evicting its three resident models, and
+    /// gives ``LiveProfileTurnstile/shared`` back to the next waiting scenario.
     /// Call once a scenario is done with this fixture, on every exit path
     /// (success, assertion failure, or thrown error).
     func tearDown() async {
         await profile.release()
+        await LiveProfileTurnstile.shared.leave()
     }
 
     /// Reads back this fixture's whole recorded run as a totally-ordered

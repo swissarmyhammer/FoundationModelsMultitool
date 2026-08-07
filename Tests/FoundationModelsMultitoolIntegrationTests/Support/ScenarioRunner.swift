@@ -84,22 +84,11 @@ func runNativeIntegrationScenario(
     answerMustNotContain: [String] = [],
     mustInvoke: Set<String> = []
 ) async throws {
-    let fixture: LiveRouterFixture
-    do {
-        fixture = try await LiveRouterFixture.resolve()
-    } catch GenerationError.notWiredForLiveInference {
-        print("SKIP [\(name)]: Router's live-inference path is not wired up in this environment.")
-        return
-    }
-
-    do {
-        let registry = try MultiTool.Builder().addTools(tools).buildRegistry()
-        let multiTool = MultiTool(registry: registry)
-        let findAPIsTool = try FindAPIsTool(registry: registry, librarian: fixture.profile.flash)
+    try await withLiveRouterFixture(name: name) { fixture in
         let mlxModel = CLIRunner.makeMLXLanguageModel(for: fixture.profile.standard)
         let session = LanguageModelSession(
             model: mlxModel,
-            tools: [multiTool, findAPIsTool],
+            tools: try makeScenarioSurface(over: tools, on: fixture),
             // The production instructions, shared verbatim (see its doc
             // comment) — the suite measures exactly what the CLI ships.
             instructions: CLIRunner.toolUseInstructions
@@ -117,16 +106,12 @@ func runNativeIntegrationScenario(
 
         // 1. Valid answer — the reply carries fixture-grounded content and
         //    isn't a failure phrasing that happens to embed a required word.
-        #expect(
-            answerContainsOneOf.contains { response.content.localizedCaseInsensitiveContains($0) },
-            "[\(name)] expected the answer to contain one of \(answerContainsOneOf), got \"\(response.content)\""
+        expectValidAnswer(
+            response.content,
+            name: name,
+            containsOneOf: answerContainsOneOf,
+            mustNotContain: answerMustNotContain
         )
-        for forbidden in answerMustNotContain {
-            #expect(
-                !response.content.localizedCaseInsensitiveContains(forbidden),
-                "[\(name)] the answer contains \"\(forbidden)\", which invalidates it: \"\(response.content)\""
-            )
-        }
 
         // 2. Grounded answer — produced through the tools surface at all,
         //    by any route.
@@ -154,12 +139,242 @@ func runNativeIntegrationScenario(
                 + "findAPIsFirst=\(NativeTranscript.findAPIsPrecedesRunCode(in: transcript)) "
                 + "reply=\"\(response.content.prefix(80))\""
         )
+    }
+}
+
+/// Runs one gated scenario end to end against a *Router-mounted* session, so
+/// the scenario's `runCode` calls really can elevate — eventplan.md §
+/// "Elevation: waitSeconds and the completion token".
+///
+/// **Why a second runner exists.** `runNativeIntegrationScenario` builds a
+/// bare `LanguageModelSession` over an `MLXLanguageModel`. That session has no
+/// elevation mount: `ElevatingTool` is applied only by Router's own
+/// per-session tool wiring (`ToolElevation.sessionMounted(tool:sessionID:
+/// mailbox:sink:cappedToTokenLimit:)`), so on that path a slow snippet simply
+/// blocks and a pending envelope can never appear. This runner vends a real
+/// `RoutedSession` through `RoutedLLM.makeSession(instructions:tools:)`
+/// instead, which mounts every tool under
+/// `ElevationConfiguration.nativeSessionMount` — elevation on, stock clocks —
+/// and gives the snippet a live run plane (`status()`, `wait()`, `cancel()`)
+/// to collect a parked run through.
+///
+/// **One turn, not two.** Splitting the scenario into a "start it" turn and a
+/// "collect it" turn was tried on real hardware and is worse in both halves: a
+/// turn that only asks to start the job gets an announcement and no `runCode`
+/// call at all, and a second turn asked to report the result re-scans or
+/// invents a code rather than reading the parked run (one run answered the
+/// right code in the opening turn and a made-up `8472` in the closing one).
+/// The single turn is also the honest unit of the claim — the model receives
+/// the pending envelope and still finishes the job it was given.
+///
+/// **What it asserts.** The same outcome-over-path posture as the native
+/// runner, plus the one mechanism this scenario exists to prove:
+///
+/// 1. **The answer is valid** — the reply carries the fixture's own
+///    distinctive value, which reaches the model only through the collected
+///    run's terminal `detail` (the capped output tail plus the run
+///    identifier, per `MultiTool.terminalEventFields(of:state:)`).
+/// 2. **A pending envelope really appeared** — some tool output on the way to
+///    that answer was exactly `PendingRunEnvelope.rendered`, checked with
+///    Router's own byte-shape recognizer. Which run-plane global the model
+///    then reached for, and how many rounds it took, is deliberately
+///    unasserted.
+///
+/// The answer is read off `RoutedSession.streamEvents(to:)` rather than
+/// `respond(to:)` because the same stream is what carries the tool outputs the
+/// envelope check reads. Every `textDelta` of a turn is accumulated, not just
+/// the run of them after the last tool call: the stream derives its events
+/// from committed transcript entries, so a turn's `toolCalls` entry can
+/// surface after the reply text it preceded, and dropping text on a tool call
+/// would throw the answer away.
+///
+/// **Skip, not failure.** Identical to `runNativeIntegrationScenario`: a
+/// `GenerationError.notWiredForLiveInference` prints a note and records no
+/// issue.
+///
+/// - Parameters:
+///   - name: a short label identifying the scenario, used only in the
+///     printed result/skip line.
+///   - tools: the scenario's fixed tool set.
+///   - prompt: the user request driving the session's turn.
+///   - answerContainsOneOf: candidate substrings, at least one of which the
+///     reply must contain (case-insensitively) to count as a valid answer.
+/// - Throws: any error other than `GenerationError.notWiredForLiveInference`.
+func runElevationIntegrationScenario(
+    name: String,
+    tools: [any Tool],
+    prompt: String,
+    answerContainsOneOf: [String]
+) async throws {
+    try await withLiveRouterFixture(name: name) { fixture in
+        let session = fixture.profile.standard.makeSession(
+            instructions: CLIRunner.toolUseInstructions,
+            tools: try makeScenarioSurface(over: tools, on: fixture)
+        )
+
+        let start = Date()
+        let turn = try await streamTurn(of: session, prompt: prompt)
+        let elapsed = Date().timeIntervalSince(start)
+
+        expectValidAnswer(turn.answer, name: name, containsOneOf: answerContainsOneOf, mustNotContain: [])
+
+        let pendingEnvelopes = turn.toolOutputs.filter(PendingRunEnvelope.isRendered)
+        #expect(
+            !pendingEnvelopes.isEmpty,
+            "[\(name)] expected at least one runCode call to elevate and return a pending envelope, but the tool outputs were \(turn.toolOutputs)"
+        )
+
+        print(
+            "RESULT [\(name)] elapsed=\(elapsed)s toolCalls=\(turn.toolCallCount) "
+                + "toolOutputs=\(turn.toolOutputs.count) "
+                + "pendingEnvelopes=\(pendingEnvelopes.count) "
+                + "reply=\"\(turn.answer.prefix(120))\""
+        )
+    }
+}
+
+/// Everything one streamed turn produced that an elevation scenario grades or
+/// reports.
+private struct StreamedTurn {
+    /// The turn's reply text, every `textDelta` in production order.
+    var answer = ""
+
+    /// How many tool calls the model made during the turn.
+    var toolCallCount = 0
+
+    /// Each completed tool call's own output text, in completion order.
+    var toolOutputs: [String] = []
+}
+
+/// Drives one turn of a mounted session and harvests it.
+///
+/// - Parameters:
+///   - session: the mounted session to drive.
+///   - prompt: the user request driving this turn.
+/// - Returns: the turn's reply, tool-call count, and tool outputs.
+/// - Throws: whatever the session's event stream throws.
+private func streamTurn(of session: RoutedSession, prompt: String) async throws -> StreamedTurn {
+    var turn = StreamedTurn()
+    for try await event in await session.streamEvents(to: prompt) {
+        switch event {
+        case .textDelta(let fragment):
+            turn.answer += fragment
+        case .toolCall:
+            turn.toolCallCount += 1
+        case .toolStatus(_, .completed, let summary):
+            turn.toolOutputs.append(summary ?? "")
+        case .toolStatus, .reasoningDelta, .compaction, .turnEnded:
+            break
+        }
+    }
+    return turn
+}
+
+/// Both spellings of one integer a model may write in prose: the bare digits
+/// and the locale's grouped form (`41,739`).
+///
+/// A grounded answer is graded on the value it carries, never on how the model
+/// chose to punctuate it, so every scenario whose distinctive fixture value is
+/// a number offers both candidates to `answerContainsOneOf`. Observed on real
+/// hardware: an elevation run collected the parked scan correctly and answered
+/// "exactly **41,739**" — the right value, spelled the way prose spells it —
+/// and was failed by an assertion that only accepted `41739`.
+///
+/// - Parameter value: the fixture value the answer must carry.
+/// - Returns: the candidate substrings for `answerContainsOneOf`.
+func integerAnswers(for value: Int) -> [String] {
+    ["\(value)", value.formatted(.number.grouping(.automatic))]
+}
+
+// MARK: - Shared scenario plumbing
+
+/// Resolves one live fixture, runs `body` against it, and releases it on every
+/// exit path — success, assertion failure, or thrown error.
+///
+/// A `GenerationError.notWiredForLiveInference` from either the resolution or
+/// the body is the typed "no live inference here" signal (plan.md M6.5): it
+/// prints a skip note and returns without recording an issue, so the suite
+/// stays green on a network/GPU-less box. Every other error propagates.
+///
+/// - Parameters:
+///   - name: the scenario label named in the skip note.
+///   - body: the scenario's own work, given the resolved fixture.
+/// - Throws: whatever `body` throws, other than
+///   `GenerationError.notWiredForLiveInference`.
+private func withLiveRouterFixture(
+    name: String,
+    _ body: (LiveRouterFixture) async throws -> Void
+) async throws {
+    let fixture: LiveRouterFixture
+    do {
+        fixture = try await LiveRouterFixture.resolve()
+    } catch GenerationError.notWiredForLiveInference {
+        printSkipNote(name)
+        return
+    }
+
+    do {
+        try await body(fixture)
         await fixture.tearDown()
     } catch GenerationError.notWiredForLiveInference {
-        print("SKIP [\(name)]: Router's live-inference path is not wired up in this environment.")
+        printSkipNote(name)
         await fixture.tearDown()
     } catch {
         await fixture.tearDown()
         throw error
     }
+}
+
+/// Builds the model-facing tool surface every scenario drives: `multiTool`
+/// over the scenario's own tools, plus `findAPIsTool` backed by the resolved
+/// `.flash` slot — the "librarian on flash" split the CLI ships.
+///
+/// - Parameters:
+///   - tools: the scenario's fixed tool set.
+///   - fixture: the resolved live fixture whose `.flash` slot backs the
+///     selection tier.
+/// - Returns: the two tools to register with the session, in that order.
+/// - Throws: whatever `MultiTool.Builder.buildRegistry()` or
+///   `FindAPIsTool.init(registry:librarian:)` throws.
+private func makeScenarioSurface(over tools: [any Tool], on fixture: LiveRouterFixture) throws -> [any Tool] {
+    let registry = try MultiTool.Builder().addTools(tools).buildRegistry()
+    let multiTool = MultiTool(registry: registry)
+    let findAPIsTool = try FindAPIsTool(registry: registry, librarian: fixture.profile.flash)
+    return [multiTool, findAPIsTool]
+}
+
+/// Asserts one scenario's reply is a valid answer: it carries at least one
+/// required substring, and none of the phrasings that would invalidate it.
+///
+/// - Parameters:
+///   - answer: the model's final reply.
+///   - name: the scenario label named in each expectation message.
+///   - containsOneOf: candidate substrings, at least one of which `answer`
+///     must contain case-insensitively.
+///   - mustNotContain: substrings whose case-insensitive presence invalidates
+///     `answer` even when a required substring matched.
+private func expectValidAnswer(
+    _ answer: String,
+    name: String,
+    containsOneOf: [String],
+    mustNotContain: [String]
+) {
+    #expect(
+        containsOneOf.contains { answer.localizedCaseInsensitiveContains($0) },
+        "[\(name)] expected the answer to contain one of \(containsOneOf), got \"\(answer)\""
+    )
+    for forbidden in mustNotContain {
+        #expect(
+            !answer.localizedCaseInsensitiveContains(forbidden),
+            "[\(name)] the answer contains \"\(forbidden)\", which invalidates it: \"\(answer)\""
+        )
+    }
+}
+
+/// Prints the standard note for a scenario skipped because this environment
+/// has no live-inference path wired up.
+///
+/// - Parameter name: the scenario label.
+private func printSkipNote(_ name: String) {
+    print("SKIP [\(name)]: Router's live-inference path is not wired up in this environment.")
 }

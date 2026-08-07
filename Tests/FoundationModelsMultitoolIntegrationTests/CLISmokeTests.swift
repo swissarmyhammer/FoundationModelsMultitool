@@ -32,7 +32,14 @@ struct CLISmokeTests {
         _ = MetalLibraryTestBootstrap.ensureColocatedMetallib
         let output = OutputCollector()
 
+        // This suite resolves its own profile through `CLIRunner`, not
+        // `LiveRouterFixture`, so it takes the target's one-resident-profile
+        // turnstile itself — otherwise it would generate alongside whichever
+        // scenario suite Swift Testing is running in parallel with it, which
+        // measurably destroys grounding (see `LiveProfileTurnstile`).
+        await LiveProfileTurnstile.shared.enter()
         let exitCode = await CLIRunner.run(arguments: [], output: output.append)
+        await LiveProfileTurnstile.shared.leave()
 
         #expect(
             exitCode == CLIRunner.ExitCode.success,

@@ -160,3 +160,94 @@ struct IntegrationBookingTool: Tool {
         return IntegrationBookingResult(confirmed: true)
     }
 }
+
+// MARK: - Scenario 5: elevation in code mode (eventplan.md phase-1 exit)
+
+/// `IntegrationDeepScanTool`'s output.
+@Generable(description: "a completed scan's report code.")
+struct IntegrationDeepScanOutput {
+    var reportCode: Int
+}
+
+/// How long `IntegrationDeepScanTool` works before it reports.
+///
+/// Chosen to sit between the two clocks Router's native session mount arms a
+/// `runCode` call with (`ElevationConfiguration.nativeSessionMount`): longer
+/// than its 5-second `defaultWaitSeconds`, so the outer `runCode` call that
+/// awaits this tool always outlives its wait window and elevates into a
+/// pending envelope; and far shorter than its 120-second
+/// `defaultTimeoutSeconds` (and than `MultiToolConfiguration
+/// .executionTimeLimit`, the sandbox watchdog's absolute ceiling), so the
+/// parked run settles on its own while the model is still composing the
+/// follow-up that collects it.
+let integrationDeepScanDuration: Duration = .seconds(8)
+
+/// The report code `IntegrationDeepScanTool` always returns.
+///
+/// A *code*, deliberately, and not a count of anything. An earlier version of
+/// this fixture reported "how many findings" the scan turned up, and the model
+/// repeatedly answered "42 findings" out of thin air without ever running the
+/// scan — a count of an unspecified thing is a question a model is happy to
+/// make up. It has no such prior for the report code of a scan of the user's
+/// own archive: that is a value it plainly cannot know, so the only way to it
+/// is to run the scan and collect the parked run — which is the whole point of
+/// the scenario.
+let integrationDeepScanReportCode = 41739
+
+/// The deliberately slow tool the elevation scenario drives: a snippet that
+/// awaits it cannot finish inside the mount's wait window, so the outer
+/// `runCode` call hands the model a pending envelope and keeps running in the
+/// background. Recovering the answer then requires the run-plane globals
+/// (`status()`, `wait(completionToken, seconds)`) the sandbox installs — which
+/// is exactly the round trip eventplan.md's phase 1 has to prove end to end.
+struct IntegrationDeepScanTool: Tool {
+    let name = "deepScan"
+    let description = "Runs a full deep scan of the user's archive and returns that scan's report code. "
+        + "The scan takes several seconds to complete."
+
+    func call(arguments: IntegrationNoArguments) async throws -> IntegrationDeepScanOutput {
+        try await Task.sleep(for: integrationDeepScanDuration)
+        return IntegrationDeepScanOutput(reportCode: integrationDeepScanReportCode)
+    }
+}
+
+// MARK: - Scenario 6: async fan-out over two independent tools
+
+/// The output both halves of the fan-out pair report.
+@Generable(description: "a stock count, in units.")
+struct IntegrationStockCount {
+    var units: Int
+}
+
+/// One stock counter — a named, fully-described tool that reports a fixed
+/// number of units.
+///
+/// Two instances make up the async fan-out scenario's pair. Neither depends on
+/// the other, so the natural snippet reads both at once (`Promise.all`) rather
+/// than chaining them, and only their sum answers the question — which is what
+/// makes the combined total a grounded assertion.
+struct IntegrationStockTool: Tool {
+    let name: String
+    let description: String
+
+    /// The unit count this counter always reports.
+    let units: Int
+
+    func call(arguments: IntegrationNoArguments) async throws -> IntegrationStockCount {
+        IntegrationStockCount(units: units)
+    }
+}
+
+/// The warehouse half of the async fan-out pair.
+let integrationWarehouseStockTool = IntegrationStockTool(
+    name: "warehouseStock",
+    description: "How many units of the product are in the warehouse right now.",
+    units: 1904
+)
+
+/// The store-floor half of the async fan-out pair.
+let integrationStoreStockTool = IntegrationStockTool(
+    name: "storeStock",
+    description: "How many units of the product are on the store floor right now.",
+    units: 268
+)

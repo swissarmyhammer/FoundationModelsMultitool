@@ -1,0 +1,43 @@
+import Testing
+
+/// The gated async fan-out scenario — eventplan.md's phase-1 exit proof that
+/// the "each call that goes into Swift effects returns a promise" contract
+/// composes: two independent fixture tools have no ordering between them, so
+/// the natural snippet awaits both at once (`Promise.all`) and combines the
+/// results.
+///
+/// **Outcome over path.** Like every scenario in `SearchThenCallTests`, this
+/// asserts the answer, never the route: whether the model actually reached for
+/// `Promise.all`, two sequential `await`s, or two separate `runCode` calls is
+/// deliberately unasserted — see `runNativeIntegrationScenario`'s
+/// documentation for why route assertions were retired. What is asserted is
+/// that the reply carries the two fixtures' *combined* total, which is only
+/// reachable by genuinely reading both.
+///
+/// Gated, serialized, and time-limited exactly like `SearchThenCallTests`:
+/// with `MULTITOOL_INTEGRATION` unset the whole suite is skipped, so ungated
+/// `swift test` stays green with zero downloads and zero live inference.
+@Suite(
+    "Gated async fan-out scenario (phase-1 exit)",
+    .serialized,
+    .timeLimit(.minutes(30)),
+    .enabled(if: multitoolIntegrationEnabled)
+)
+struct AsyncFanOutTests {
+    /// The total the two stock fixtures combine to — derived from the fixtures
+    /// themselves rather than restated, so the assertion cannot drift from the
+    /// data it grades.
+    private static let combinedUnits = integrationWarehouseStockTool.units + integrationStoreStockTool.units
+
+    @Test("async fan-out scenario answers with the two stock fixtures' combined total")
+    func fanOutOverTwoStockTools() async throws {
+        try await runNativeIntegrationScenario(
+            name: "fanOutOverTwoStockTools",
+            tools: [integrationWarehouseStockTool, integrationStoreStockTool],
+            prompt: "How many units do we have in total, counting both the warehouse and the store floor?",
+            // Only the sum is accepted — neither fixture's own count proves
+            // both were read.
+            answerContainsOneOf: integerAnswers(for: Self.combinedUnits)
+        )
+    }
+}
