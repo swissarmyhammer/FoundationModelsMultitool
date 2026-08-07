@@ -1,21 +1,20 @@
 import FoundationModels
 import FoundationModelsRouter
 
-// MARK: - Fork composition (eventplan.md § "MultiTool is a host and an
-// emitter")
+// MARK: - Fork composition (eventplan.md § "MultiTool is a host and an emitter")
 //
 // A host derives each child session's tool instance by conformance cast —
 // `((tool as? any ForkableTool)?.forked() ?? tool)` — before wrapping the
 // result in that session's own layers. Declaring the conformance here is how
 // `runCode` answers that question deliberately rather than by omission.
 
-/// `runCode` forks by identity: it inherits `ForkableTool`'s blanket
-/// `forked()`, which returns `self`, and declares no `forked()` of its own.
+/// `runCode` forks by identity.
 ///
-/// The protocol documents that default as the correct one for a
-/// value-semantics tool, and `MultiTool` is a `struct`. What makes it correct
-/// here in substance, rather than only in form, is where this tool keeps its
-/// state:
+/// It inherits `ForkableTool`'s blanket `forked()`, which returns `self`, and
+/// declares no `forked()` of its own. The protocol documents that default as
+/// the correct one for a value-semantics tool, and `MultiTool` is a `struct`.
+/// What makes it correct here in substance, rather than only in form, is where
+/// this tool keeps its state:
 ///
 /// - **Nothing derived at `init` can drift.** `registry`, and the
 ///   `hostFunctions`, `liveTools`, and `preamble` precomputed from it, are

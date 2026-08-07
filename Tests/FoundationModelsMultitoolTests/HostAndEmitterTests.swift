@@ -11,14 +11,16 @@ import Testing
 /// `runCode` run parks, which is the state the test is about.
 private let hostWaitSeconds: TimeInterval = 0.2
 
-/// The progress detail `AmbientRecordingTool(name: "recorder")` posts through
-/// the ambient context it ran under.
+/// The progress detail `AmbientRecordingTool(name: "recorder")` posts.
+///
+/// It goes out through whichever ambient context the tool ran under.
 private let recorderProgressDetail = "recorder ran"
 
 /// What `ResultRenderer` makes of that same tool's returned value.
 private let renderedRecorderResult = "\"recorder-result\""
 
-/// Phase-1 coverage for eventplan.md § "MultiTool is a host and an emitter":
+/// Phase-1 coverage for eventplan.md § "MultiTool is a host and an emitter".
+///
 /// `MultiTool` wires no emitter protocol, and it forks by identity.
 ///
 /// The emitter half is the ambient route. A registered tool posts through
@@ -29,10 +31,13 @@ private let renderedRecorderResult = "\"recorder-result\""
 /// **elevated** run, where the outer call has already handed back its pending
 /// envelope and the inner tool posts from the detached remainder.
 ///
-/// The host half is `ForkableTool`. `MultiTool` takes the protocol's blanket
-/// identity `forked()` (see `MultiTool+Forking.swift` for why), so what a fork
-/// must still do is serve the same registry onto the forking session's own
-/// ambient sink.
+/// The host half is `ForkableTool`, and what is pinned there is the discovery
+/// shape, not fork semantics. `MultiTool` takes the protocol's blanket identity
+/// `forked()` (see `MultiTool+Forking.swift` for why), so the value handed back
+/// is the original and no assertion can tell the two apart. What can still
+/// regress is the casting a host does to reach that value: the conformance
+/// staying visible off an `any Tool` existential, and the erased `forked()`
+/// return still downcasting to the `runCode` tool type a host mounts and runs.
 @Suite("HostAndEmitter")
 struct HostAndEmitterTests {
     // MARK: - The emitter half: events from an elevated run
@@ -90,15 +95,18 @@ struct HostAndEmitterTests {
         #expect(observation.completionToken != token)
     }
 
-    // MARK: - The host half: forking
+    // MARK: - The host half: the ForkableTool discovery shape
 
-    @Test("a host discovers runCode by ForkableTool cast, and the fork serves the same registry")
-    func forkedRunCodeStillServesItsRegistryOnTheSessionSink() async throws {
+    @Test("runCode casts to ForkableTool off an any Tool existential, and the erased forked() return downcasts and serves the registry")
+    func runCodeCastsToForkableToolAndTheErasedForkDowncastsAndServesTheRegistry() async throws {
         let recorder = AmbientRecordingTool(name: "recorder")
         let registry = try MultiTool.Builder().addTool(recorder).buildRegistry()
         // Exactly how a host derives a child session's instance: a conformance
         // cast against the `any Tool` existential — the shape `ForkableTool`
-        // declares no associated types to support — and then `forked()`.
+        // declares no associated types to support — and then `forked()`. The
+        // blanket `forked()` is identity, so `forked` IS `registered`; what the
+        // assertions below can see is that both casts hold and that the value
+        // they yield still runs the registry under the ambient context.
         let registered: any Tool = MultiTool(registry: registry)
         let forkable = try #require(registered as? any ForkableTool)
         let forked = try #require(forkable.forked() as? any Tool<RunCodeArguments, String>)
