@@ -1327,7 +1327,12 @@ public final class JSCInterpreter: Interpreter {
             // can't represent (functions, symbols, `undefined`).
             return .null
         }
-        let jsonString: String = stringified.toString()
+        // `toString()` is `String!`, so binding it to a non-optional `String`
+        // would force-unwrap and trap. Nothing here can prove it non-nil: the
+        // receiver is whatever the sandbox's own `JSON.stringify` returned.
+        guard let jsonString = stringified.toString() else {
+            throw InterpreterError(kind: .exception, message: "Could not read the stringified value as text.")
+        }
         guard let data = jsonString.data(using: .utf8) else {
             throw InterpreterError(kind: .exception, message: "Could not encode the value as UTF-8 JSON.")
         }
@@ -1370,14 +1375,23 @@ public final class JSCInterpreter: Interpreter {
 
     // MARK: - Error mapping
 
+    /// The message reported for a JS exception whose own text cannot be read.
+    ///
+    /// `JSValue.toString()` is `String!`, so every read of it needs a fallback
+    /// rather than an implicit unwrap that would trap while already handling a
+    /// failure. Named once because both of `makeError(from:)`'s branches need
+    /// the same wording — a reader of the rendered error should not be able to
+    /// tell which branch produced it.
+    private static let unreadableExceptionMessage = "Unknown JavaScript exception."
+
     /// Maps a captured JS exception to an `InterpreterError`, extracting a
     /// `message` and, when present, a `line`.
     private static func makeError(from exception: JSValue) -> InterpreterError {
         let message: String
         if exception.isObject, let messageValue = exception.objectForKeyedSubscript("message"), !messageValue.isUndefined {
-            message = messageValue.toString()
+            message = messageValue.toString() ?? Self.unreadableExceptionMessage
         } else {
-            message = exception.toString() ?? "Unknown JavaScript exception."
+            message = exception.toString() ?? Self.unreadableExceptionMessage
         }
 
         var line: Int?

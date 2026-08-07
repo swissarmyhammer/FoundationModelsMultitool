@@ -12,13 +12,14 @@ import Testing
 /// documentation for the exact three assertions and why route assertions
 /// (tool ordering, exact call sets, call budgets) were retired in favor of
 /// diagnostics. The `answerContainsOneOf` values below are the fixtures'
-/// own distinctive data (`Fixtures/ScenarioTools.swift`): the weather
-/// fixture reports 31°C for Austin, the trip is always ATX → SFO → NYC with
-/// exactly one warmest city among them, and the booking fixture confirms id
-/// 42 only when genuinely called with `confirm: true` — values a
+/// own distinctive data (`Fixtures/ScenarioTools.swift`), read from those
+/// fixtures rather than restated here: `IntegrationScenarioAnswers` derives
+/// both the single-call reading and the one warmest trip city from
+/// `integrationCityWeather`, and the booking fixture confirms id 42 only
+/// when genuinely called with `confirm: true`. These are values a
 /// hallucinating model has never guessed across the many recorded runs on
-/// task `k4mj1gm` (it said 72°F, 25°C, Tokyo, Bangkok, Miami — never 31,
-/// never the fixture cities).
+/// task `k4mj1gm` (it said 72°F, 25°C, Tokyo, Bangkok, Miami — never the
+/// fixture's own reading, never the fixture cities).
 ///
 /// **Native design.** Ported off `MultiToolAgent`'s hand-rolled ReAct loop
 /// (`TurnFormat`/`AgentStep`, retired alongside it — see the `7840f24` kanban
@@ -45,22 +46,6 @@ import Testing
     .enabled(if: multitoolIntegrationEnabled)
 )
 struct SearchThenCallTests {
-    /// The only valid answers to "which trip city is warmest": the single
-    /// warmest fixture city, by IATA code and by the spelled-out name models
-    /// routinely expand codes to. Any other city is wrong.
-    ///
-    /// Derived from `integrationCityWeather` rather than restated, so the
-    /// assertion cannot drift from the readings it grades.
-    ///
-    /// This listed all three trip cities until the human ruling of
-    /// 2026-08-07 (task `tkrdwb8`): against a fixture that returned the same
-    /// 31°C for every city, "which is warmest" had three equally correct
-    /// answers, and a six-substring list graded that tie as a pass.
-    private static let warmestCityAnswers = [
-        integrationWarmestCity.code,
-        integrationWarmestCity.name,
-    ]
-
     // MARK: - Scenario 1: single-call `getWeather`
 
     @Test("single-call weather scenario answers with the fixture's real temperature")
@@ -68,13 +53,21 @@ struct SearchThenCallTests {
         try await runNativeIntegrationScenario(
             name: "singleCallWeather",
             tools: [IntegrationWeatherTool()],
-            prompt: "How warm is it in Austin right now?",
-            // The weather fixture reports tempC 31 for Austin — a value no
-            // hallucinated forecast has ever produced (72°F, 25°C, 22°C
-            // were the observed inventions). Austin is deliberately not the
-            // warmest of the trip cities, so this reading cannot double as
-            // the compose/chain scenarios' answer.
-            answerContainsOneOf: ["31"]
+            // Both the city this asks about and the temperature it grades on
+            // are read from `integrationSingleCallCity`, so editing a reading
+            // moves the question and the answer together. Stating either as a
+            // literal is what let this scenario grade `"31"` against a fixture
+            // that had stopped reporting 31 — the drift the human ruling of
+            // 2026-08-07 (task `tkrdwb8`) removed from the compose scenario
+            // and this one inherited.
+            prompt: "How warm is it in \(integrationSingleCallCity.name) right now?",
+            // The fixture's own reading — a value no hallucinated forecast has
+            // ever produced (72°F, 25°C, 22°C were the observed inventions).
+            // `integrationSingleCallCity` is never the warmest trip city, and
+            // `IntegrationScenarioAnswers` enforces that this reading shares no
+            // substring with the warmest-city answers, so a reply that passes
+            // here cannot also pass the compose and discovery scenarios.
+            answerContainsOneOf: IntegrationScenarioAnswers.singleCall
         )
     }
 
@@ -86,7 +79,7 @@ struct SearchThenCallTests {
             name: "composeChain",
             tools: [IntegrationTripTool(), IntegrationWeatherTool()],
             prompt: "Of the cities on my trip, which is warmest right now?",
-            answerContainsOneOf: Self.warmestCityAnswers
+            answerContainsOneOf: IntegrationScenarioAnswers.warmestCity
         )
     }
 
@@ -98,7 +91,7 @@ struct SearchThenCallTests {
             name: "discoveryUnderDistractors",
             tools: [IntegrationWeatherTool(), IntegrationTripTool()] + integrationDistractorTools,
             prompt: "Of the cities on my trip, which is warmest right now?",
-            answerContainsOneOf: Self.warmestCityAnswers
+            answerContainsOneOf: IntegrationScenarioAnswers.warmestCity
         )
     }
 

@@ -12,6 +12,25 @@ import Testing
 struct UnknownToolHintTests {
     // MARK: - Unknown tools.* path: closest real path suggested
 
+    /// A guess whose suggestion cannot be read out of the failed-path echo.
+    ///
+    /// Every hint opens with `tools.<the guess> does not exist`, so asserting
+    /// that the output contains the *suggested* name passes on that echo alone
+    /// whenever the guess spells the real name inside itself — which every
+    /// containment-tier guess does, by definition. The tests below assert on
+    /// the rendered `declare function` line instead: that text appears only in
+    /// a real suggestion block.
+    ///
+    /// The guess itself is `getCitiesVisited` rather than `getCitiesOnTrip`
+    /// for margin. `getCitiesOnTrip` scores exactly 0.2000 against `getTrip`
+    /// — `similarityThreshold` itself, cleared only because the comparison is
+    /// `>=` — and `getTrip` is a name this very file's `travelCatalog()`
+    /// carries, so adding it to any catalog here would have made a
+    /// zero-margin pair live and re-tiered a test silently. `getCitiesVisited`
+    /// contains `getCities` (score 1.0) and scores at most 0.0556 against
+    /// every other name in this file, 0.144 clear of the threshold.
+    private static let citiesGuess = "getCitiesVisited"
+
     @Test("calling an unknown tools.* name suggests the closest real path")
     func unknownToolsCallSuggestsClosestRealPath() async throws {
         let registry = try MultiTool.Builder()
@@ -21,11 +40,11 @@ struct UnknownToolHintTests {
         let multiTool = MultiTool(registry: registry)
 
         let output = try await multiTool.call(
-            arguments: RunCodeArguments(code: "return tools.getCitiesOnTrip();")
+            arguments: RunCodeArguments(code: "return tools.\(Self.citiesGuess)();")
         )
 
-        #expect(output.contains("tools.getCitiesOnTrip does not exist"))
-        #expect(output.contains("tools.getCities"))
+        #expect(output.contains("tools.\(Self.citiesGuess) does not exist"))
+        #expect(output.contains("declare function getCities("))
         #expect(output.contains("Fix the snippet and call runCode again."))
     }
 
@@ -43,7 +62,7 @@ struct UnknownToolHintTests {
         )
 
         #expect(output.contains("tools.getTemperature.getCurrent does not exist"))
-        #expect(output.contains("tools.getTemperature"))
+        #expect(output.contains("declare function getTemperature("))
     }
 
     // MARK: - No close match: steer back to findAPIs
@@ -105,7 +124,7 @@ struct UnknownToolHintTests {
         )
 
         #expect(output.contains("tools.getWeatherForecast does not exist"))
-        #expect(output.contains("tools.getWeather"))
+        #expect(output.contains("declare function getWeather("))
     }
 
     /// The catalog-relevance tier's own coverage — the only test that reaches
@@ -135,12 +154,15 @@ struct UnknownToolHintTests {
 
         let output = try await multiTool.call(arguments: RunCodeArguments(code: "return tools.getItinerary();"))
 
-        // Measured: ranking `get itinerary` over this catalog returns
-        // exactly `["getTrip", "getWeather"]`, in that order. `getWeather`
-        // has nothing to do with looking up a trip — it ranks only because
-        // tier 2's ordering is relative, with no absolute floor — and naming
-        // it hands a model that just guessed a function name one more name
-        // to guess.
+        // Measured 2026-08-07: asked for its full ranking, the searcher
+        // answers `get itinerary` over this catalog with exactly
+        // `["getTrip", "getWeather"]`, in that order, and adds nothing at a
+        // higher limit. `relevanceSuggestionLimit` is 1, so a hint from this
+        // tier shows only the first — and this assertion is what holds that
+        // cut in place. `getWeather` has nothing to do with looking up a
+        // trip; it ranks only because tier 2's ordering is relative, with no
+        // absolute floor, and naming it hands a model that just guessed a
+        // function name one more name to guess.
         #expect(!output.contains("tools.getWeather"))
     }
 

@@ -50,31 +50,144 @@ let integrationCityWeather: [IntegrationCityWeather] = [
 /// and discovery scenarios' shared question.
 ///
 /// Derived from `integrationCityWeather` rather than restated, so an assertion
-/// built on it cannot drift from the readings it grades. Force-unwrapped: the
-/// readings are a non-empty literal directly above.
-let integrationWarmestCity = integrationCityWeather.max { $0.tempC < $1.tempC }!
-
-/// Thrown by `IntegrationWeatherTool.call` for a city the fixture has no
-/// reading for.
+/// built on it cannot drift from the readings it grades.
 ///
-/// A real weather API rejects a city it does not know rather than inventing a
+/// The derivation enforces the uniqueness the question depends on instead of
+/// assuming it. `max(by:)` answers a tie by returning one of the tied cities,
+/// which would leave "which is warmest?" with more than one correct answer
+/// while the assertion still looked derived — the unearned pass the human
+/// ruling of 2026-08-07 on task `tkrdwb8` removed. A fixture edit that
+/// reintroduces a tie now traps here.
+let integrationWarmestCity: IntegrationCityWeather = {
+    let byDescendingTemperature = integrationCityWeather.sorted { $0.tempC > $1.tempC }
+    precondition(
+        byDescendingTemperature.count >= 2,
+        "integrationCityWeather needs at least two readings for \"which is warmest?\" to be a question"
+    )
+    precondition(
+        byDescendingTemperature[0].tempC > byDescendingTemperature[1].tempC,
+        """
+        integrationCityWeather ties for warmest at \(byDescendingTemperature[0].tempC) °C \
+        (\(byDescendingTemperature[0].code) and \(byDescendingTemperature[1].code)); the compose and \
+        discovery scenarios grade on there being exactly one warmest trip city
+        """
+    )
+    return byDescendingTemperature[0]
+}()
+
+/// The trip city scenario 1 asks about by name, and whose own reading that
+/// scenario grades on.
+///
+/// The first reading that is not `integrationWarmestCity`, derived rather than
+/// named. Scenario 1's answer must not double as the compose and discovery
+/// scenarios' answer, and the warmest city's reading would: a reply naming
+/// that city and its temperature would satisfy both questions at once.
+/// Deriving the city means raising its temperature past every other reading
+/// moves scenario 1 onto a different city, instead of silently collapsing the
+/// two questions into one.
+let integrationSingleCallCity: IntegrationCityWeather = {
+    guard let city = integrationCityWeather.first(where: { $0.code != integrationWarmestCity.code }) else {
+        preconditionFailure("integrationCityWeather has no reading other than the warmest one")
+    }
+    return city
+}()
+
+/// Renders a fixture reading's temperature as the substring a reply states it
+/// with.
+///
+/// - Parameter tempC: the reading, in °C.
+/// - Returns: `tempC` as a whole number, with no decimal point.
+private func integrationTemperatureAnswer(_ tempC: Double) -> String {
+    precondition(
+        tempC == tempC.rounded(),
+        "fixture reading \(tempC) °C is not a whole number, so no whole-number substring grades it"
+    )
+    return String(Int(tempC))
+}
+
+/// The substrings the gated scenarios accept as answers to their two
+/// questions.
+///
+/// Both sets are derived from `integrationCityWeather`, and derived *together*
+/// so their distinctness is enforced rather than incidental. The two questions
+/// are only different questions while no reply can answer both: with
+/// hand-written literals the sets happened not to overlap, and raising one
+/// reading past the others would have made scenario 1's temperature and the
+/// warmest-city answer describe the same city without anything noticing. The
+/// derivation below traps on any overlap.
+enum IntegrationScenarioAnswers {
+    /// The only valid answers to scenario 1's question, "how warm is it in
+    /// `integrationSingleCallCity`": that city's own reading.
+    static let singleCall = derived.singleCall
+
+    /// The only valid answers to the compose/chain and discovery scenarios'
+    /// shared question, "which trip city is warmest": the single warmest
+    /// fixture city, by IATA code and by the spelled-out name models routinely
+    /// expand codes to. Any other city is wrong.
+    static let warmestCity = derived.warmestCity
+
+    /// Both answer sets, derived in one place so the distinctness check below
+    /// runs whenever either set is read.
+    private static let derived: (singleCall: [String], warmestCity: [String]) = {
+        let singleCall = [integrationTemperatureAnswer(integrationSingleCallCity.tempC)]
+        let warmestCity = [integrationWarmestCity.code, integrationWarmestCity.name]
+        let collisions = singleCall.flatMap { answer in
+            warmestCity
+                .filter { $0.lowercased().contains(answer.lowercased()) || answer.lowercased().contains($0.lowercased()) }
+                .map { "\"\(answer)\" and \"\($0)\"" }
+        }
+        precondition(
+            collisions.isEmpty,
+            """
+            the gated scenarios' graded answers overlap (\(collisions.joined(separator: ", "))): one reply \
+            would satisfy both questions, so neither scenario would grade the question it asks
+            """
+        )
+        return (singleCall, warmestCity)
+    }()
+}
+
+/// Thrown by `IntegrationWeatherTool.call` when an argument does not single
+/// out exactly one fixture reading.
+///
+/// A real weather API rejects a city it cannot resolve rather than inventing a
 /// reading, and these scenarios need that: a silent fallback temperature would
 /// let a snippet that passed the wrong argument still produce a number, and a
 /// number is exactly what the answer assertions grade.
-enum IntegrationWeatherError: Error, CustomStringConvertible {
+///
+/// Both cases close that hole, from the two directions an argument can miss.
+/// `.unknownCity` is the empty side. `.ambiguousCity` is the crowded side, and
+/// it is the one this fixture used to get wrong: matching took the first
+/// reading in itinerary order whose name appeared in the argument, so
+/// `"Austin, San Francisco, New York"` quietly answered for Austin. A caller
+/// that names several cities has singled out none of them, and a plausible
+/// reading for one of them is exactly the kind of wrong-but-gradeable answer
+/// the throw exists to prevent.
+///
+/// `Equatable` so the ungated `ScenarioFixtureTests` can assert *which* refusal
+/// a bad argument earns, rather than only that some error was thrown — the two
+/// cases describe different defects and a test that conflates them would pass
+/// while one of them regressed into the other.
+enum IntegrationWeatherError: Error, Equatable, CustomStringConvertible {
+    /// No fixture reading matches the requested city.
     case unknownCity(String)
 
+    /// The requested city matches more than one fixture reading, named here.
+    case ambiguousCity(String, matches: [String])
+
     var description: String {
+        let known = integrationCityWeather.map { "\($0.code) (\($0.name))" }.joined(separator: ", ")
         switch self {
         case .unknownCity(let city):
-            let known = integrationCityWeather.map { "\($0.code) (\($0.name))" }.joined(separator: ", ")
             return "no weather reading for \"\(city)\"; known cities are \(known)"
+        case .ambiguousCity(let city, let matches):
+            return "\"\(city)\" names \(matches.count) cities (\(matches.joined(separator: ", "))); "
+                + "ask for one city at a time. Known cities are \(known)"
         }
     }
 }
 
-/// Reduces a city code or name to the form the fixture readings match on, so
-/// `"SFO"`, `"San Francisco"` and `"san francisco, ca"` all find one city.
+/// Reduces a city code or name to the form the fixture readings match on.
 ///
 /// - Parameter city: the code or name exactly as the snippet passed it.
 /// - Returns: `city` lowercased, with every non-letter removed.
@@ -88,13 +201,30 @@ struct IntegrationWeatherTool: Tool {
     let name = "getWeather"
     let description = "Current weather for a city. Use when asked how warm/cold/rainy it is right now."
 
+    /// Reports the fixture reading for the one city `arguments` names.
+    ///
+    /// An argument resolves when it is exactly a city's code or exactly its
+    /// name (`"ATX"`, `"Austin"`), or when it spells that name inside a longer
+    /// phrase (`"San Francisco, CA"`). A three-letter code is matched only
+    /// exactly — short enough that containment would find one by accident in
+    /// unrelated text.
+    ///
+    /// - Parameter arguments: the requested city.
+    /// - Returns: that city's fixture reading.
+    /// - Throws: `IntegrationWeatherError.unknownCity` when no reading
+    ///   resolves, `IntegrationWeatherError.ambiguousCity` when more than one
+    ///   does.
     func call(arguments: IntegrationWeatherArguments) async throws -> IntegrationWeatherResult {
         let requested = integrationCityKey(arguments.city)
-        let match = integrationCityWeather.first {
-            requested.contains(integrationCityKey($0.code)) || requested.contains(integrationCityKey($0.name))
+        let matches = integrationCityWeather.filter { city in
+            let name = integrationCityKey(city.name)
+            return requested == integrationCityKey(city.code) || requested == name || requested.contains(name)
         }
-        guard let city = match else {
+        guard let city = matches.first else {
             throw IntegrationWeatherError.unknownCity(arguments.city)
+        }
+        guard matches.count == 1 else {
+            throw IntegrationWeatherError.ambiguousCity(arguments.city, matches: matches.map(\.name))
         }
         return IntegrationWeatherResult(tempC: city.tempC, summary: "Sunny")
     }
@@ -112,14 +242,19 @@ struct IntegrationNoArguments {
     var unused: String?
 }
 
-/// `IntegrationTripTool`'s output — a trip, not a bare city list.
+/// `IntegrationTripTool`'s output — a whole trip, not just its cities.
 ///
 /// Carries the trip's own booking fields alongside its cities, the way a real
 /// itinerary API answers, so a snippet has to read the declared shape and
-/// navigate to `.cities` instead of treating the whole result as the list. The
-/// bare `[String]` this replaced (plan.md's original worked `tripCities():
-/// string[]` example) let a snippet succeed without reading the declaration at
-/// all — see the human ruling of 2026-08-07 on task `tkrdwb8`.
+/// navigate to `.cities` rather than guess.
+///
+/// What the human ruling of 2026-08-07 on task `tkrdwb8` changed here is the
+/// four sibling fields, not the navigation. The type this replaced was already
+/// an object — `IntegrationTripCitiesOutput`, whose single field was `cities`
+/// — so a snippet already had to write `.cities`; it rendered as `{ cities:
+/// string[] }`, where the one field is the only thing it could possibly be and
+/// naming it costs no reading. Five fields make the declaration something a
+/// snippet has to consult.
 @Generable(description: "the user's current trip.")
 struct IntegrationTripOutput {
     var confirmationCode: String

@@ -419,10 +419,10 @@ What the native tool-calling loop does behind that one call:
 
 ```
 findAPIs({ task: "list trip cities, get weather for each" })
-  └─ selection tier (profile.flash, guided, fork-per-call) → tools.getTrip(): string[]
+  └─ selection tier (profile.flash, guided, fork-per-call) → tools.getTrip(): { cities: string[] }
                  tools.getWeather({ city: string; units?: "c"|"f" }): { tempC: number; summary: string }
 runCode({ code: `
-  const cities = tools.getTrip();
+  const cities = tools.getTrip().cities;
   const wx = cities.map(c => ({ c, t: tools.getWeather({ city: c }).tempC }));
   return wx.sort((a,b) => b.t - a.t)[0];
 ` })
@@ -526,7 +526,7 @@ FindAPIsTool ─► MetadataSearcher (.auto): hybrid retrieval → candidates
    ▼
 main model writes a snippet:
    runCode(`
-     const cities = tools.getTrip();
+     const cities = tools.getTrip().cities;
      const wx = cities.map(c => ({ c, t: tools.getWeather({city: c}).tempC }));
      return wx.sort((a,b) => b.t - a.t)[0].c;
    `)
@@ -580,10 +580,10 @@ invent functions; return an empty list if nothing fits.
 # Available functions
 /**
  * The cities on the user's current trip, in itinerary order.
- * @returns string[] — IATA city codes.
- * @example const cs = tools.getTrip();
+ * @returns { cities: string[] } — the itinerary's IATA city codes.
+ * @example const cs = tools.getTrip().cities;
  */
-declare function getTrip(): string[];
+declare function getTrip(): { cities: string[] };
 
 /**
  * Current weather for a city. Use when the user asks how warm/cold/rainy it is now.
@@ -618,11 +618,11 @@ findAPIs("list the cities on my trip and get the current weather for each") foun
 // tools.getTrip
 /**
  * The cities on the user's current trip, in itinerary order.
- * @returns string[] — IATA city codes.
- * @example const cs = tools.getTrip();
+ * @returns { cities: string[] } — the itinerary's IATA city codes.
+ * @example const cs = tools.getTrip().cities;
  */
-declare function getTrip(): string[];
-Example: const cs = tools.getTrip();
+declare function getTrip(): { cities: string[] };
+Example: const cs = tools.getTrip().cities;
 
 // tools.getWeather
 /**
@@ -662,17 +662,23 @@ surface those and lint for completeness (M2):
                         warm/cold/rainy it is now."   → reliably selected
 ```
 
-> **Naming, and one deliberate divergence (2026-08-07, task `tkrdwb8`).** The
-> `verbNoun` rule above is a human ruling, made after a gated `discoveryUnderDistractors`
-> run showed the model emitting `getTrip`/`getWeather` against fixtures named
-> `tripCities`/`weather`: ten of the twelve mounted tools were `verbNoun`, so the
-> model was inferring the convention correctly and the two fixtures were the
-> outliers. Every worked example above was renamed to match. The gated fixture's
-> `getTrip` diverges from the `getTrip(): string[]` shown here in one respect —
-> it returns a whole trip object (`cities` plus dates, traveler and confirmation
-> code), so the snippet has to navigate to `.cities` the way a real itinerary API
-> forces. The simpler `string[]` is kept here because this section is about
-> naming and rendering, not about return shapes.
+> **Naming (2026-08-07, task `tkrdwb8`).** The `verbNoun` rule above is a human
+> ruling, made after a gated `discoveryUnderDistractors` run showed the model
+> emitting `getTrip`/`getWeather` against fixtures named `tripCities`/`weather`:
+> ten of the twelve mounted tools were `verbNoun`, so the model was inferring the
+> convention correctly and the two fixtures were the outliers. Every worked
+> example in this document was renamed to match.
+>
+> The same pass corrected the worked `getTrip`'s **return shape**, which this
+> document had shown as `getTrip(): string[]` in every walkthrough. No tool in
+> this repo produces that shape, and none did before the rename either: the
+> gated fixture returns a whole trip object (`IntegrationTripOutput` — `cities`
+> plus dates, traveler and confirmation code), and the shipped CLI demo returns
+> an object too (`DemoTripOutput`, whose one field is `cities`). The divergence
+> was the document's, not one gated outlier's, so the examples above now
+> navigate to `.cities` the way a real itinerary API forces. A tool `Output` is
+> a `@Generable` struct, so an object is what the renderer emits; a bare
+> `string[]` was never reachable.
 
 ## Interpreter engine: JavaScriptCore (with a swappable seam)
 

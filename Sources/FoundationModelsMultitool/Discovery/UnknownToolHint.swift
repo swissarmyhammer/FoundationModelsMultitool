@@ -53,10 +53,16 @@ enum UnknownToolHint {
     /// The number of catalog-relevance matches a hint shows — exactly the
     /// best one.
     ///
-    /// Measured rather than chosen. Ranking a `getItinerary` guess against a
-    /// five-tool travel catalog returns `["getTrip", "getWeather"]`: the
+    /// This limit is the cut, not a description of what the ranking produces.
+    /// Asked for its full ranking, the searcher answers a `getItinerary` guess
+    /// against a five-tool travel catalog with `["getTrip", "getWeather"]` and
+    /// nothing further, however high the limit goes (measured 2026-08-07): the
     /// right entry first, then one that has nothing to do with looking up a
-    /// trip. Tier 1 can afford a list because every entry it returns cleared
+    /// trip. Passing 1 here is what drops the runner-up, so a hint built from
+    /// this tier names one entry — which is what
+    /// `catalogRelevanceHintNamesOnlyItsBestMatch` asserts.
+    ///
+    /// Tier 1 can afford a list because every entry it returns cleared
     /// `similarityThreshold`; tier 2's ranking is relative, with no absolute
     /// floor, so its runners-up are simply whatever ranked at all — and naming
     /// them hands a model that just guessed a function name more names to
@@ -151,7 +157,7 @@ enum UnknownToolHint {
     /// tier 1.
     ///
     /// Resemblance is deterministic and dependency-free: case-insensitive
-    /// containment in either direction (an invented `getCitiesOnTrip`
+    /// containment in either direction (an invented `getCitiesVisited`
     /// contains the real `getCities`; an invented
     /// `getTemperature.getCurrent` contains the real `getTemperature`)
     /// scores highest, with character-trigram overlap as the
