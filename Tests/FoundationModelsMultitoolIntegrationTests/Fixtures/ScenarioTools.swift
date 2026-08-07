@@ -56,7 +56,7 @@ struct IntegrationTripCitiesTool: Tool {
     }
 }
 
-// MARK: - Scenario 3: discovery under ~20 distractors (plan.md M6.5 scenario 3)
+// MARK: - Scenario 3: discovery under distractors (plan.md M6.5 scenario 3)
 
 /// Arguments every distractor tool shares — a single opaque `id`, just
 /// enough shape to render a complete, callable-looking declaration without
@@ -74,7 +74,7 @@ struct IntegrationDistractorOutput {
 }
 
 /// One generic, plausible-but-irrelevant distractor tool — plan.md M6.5
-/// scenario 3: "~20 wrapped tools where only 2 are relevant." Each instance
+/// scenario 3: "wrapped tools where only 2 are relevant." Each instance
 /// is fully documented (a real name/description, not a stub) so the
 /// completeness contract `ToolAPIRenderer`/`MultiTool.Builder.build()`
 /// enforces is satisfied the same way a real third-party tool would be.
@@ -87,9 +87,25 @@ struct IntegrationDistractorTool: Tool {
     }
 }
 
-/// 18 named, distinct distractor tools — combined with the 2 relevant tools
+/// 10 named, distinct distractor tools — combined with the 2 relevant tools
 /// (`weather`, `tripCities`) the discovery scenario also wraps, the surface
-/// totals ~20 tools, only 2 of which `findAPIs` should select.
+/// totals 12 tools, only 2 of which `findAPIs` should select.
+///
+/// Ten, not the eighteen this list carried through phase 1, by the human
+/// ruling of 2026-08-07 recorded on task `tkrdwb8`. The Bisect Protocol
+/// measured this scenario as the one carrying essentially the whole
+/// baseline-to-HEAD gap (5/5 → 2/5 while the other three scenarios stayed
+/// flat), and it is the scenario whose difficulty is set by how much
+/// model-visible tool surface competes for attention. Halving the
+/// competition is a deliberate change to the scenario, so its pass rate
+/// after this change is **not** comparable to any rate recorded before it —
+/// see the fresh baseline on that task.
+///
+/// The ten keep the travel-adjacent names (`bookHotel`, `cancelBooking`,
+/// `lookupFlight`, `createCalendarEvent`): those are the distractors that
+/// genuinely compete with `tripCities` for a trip-shaped query, so dropping
+/// them would have made the scenario easier in a second, hidden way on top
+/// of the intended one.
 let integrationDistractorTools: [any Tool] = [
     ("convertCurrency", "Converts an amount between two currencies."),
     ("bookHotel", "Books a hotel room for given dates."),
@@ -100,15 +116,7 @@ let integrationDistractorTools: [any Tool] = [
     ("lookupFlight", "Looks up a flight's status by number."),
     ("convertUnits", "Converts a measurement between unit systems."),
     ("summarizeText", "Summarizes a block of text."),
-    ("generateInvoice", "Generates an invoice PDF for an order."),
     ("trackPackage", "Tracks a shipment by tracking number."),
-    ("checkStockPrice", "Looks up a stock's current price."),
-    ("postToSocial", "Posts a message to a social feed."),
-    ("scheduleReminder", "Schedules a reminder for later."),
-    ("lookupRestaurant", "Finds restaurants near a location."),
-    ("convertTimezone", "Converts a time between timezones."),
-    ("queryDatabase", "Runs a read-only query against a database."),
-    ("resizeImage", "Resizes an image to given dimensions."),
 ].map { name, description in
     IntegrationDistractorTool(name: name, description: description)
 }

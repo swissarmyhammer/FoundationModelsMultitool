@@ -45,6 +45,11 @@ import FoundationModelsRouter
 /// printed as diagnostics on the `RESULT` line instead, so runs remain
 /// comparable without gating on them.
 ///
+/// **Per-scenario measurement.** Every one of those three conditions is
+/// collected as a `ScenarioCheck` before any of them is asserted, so a run
+/// reports its own verdict on a `SCENARIO` line — see
+/// `grade(scenario:checks:)` for why suite totals alone are not enough.
+///
 /// **Skip, not failure.** Mirrors the retired `runIntegrationScenario` this
 /// supersedes: if resolving the profile or running the session throws
 /// `GenerationError.notWiredForLiveInference`, this prints a note and returns
@@ -104,30 +109,34 @@ func runNativeIntegrationScenario(
         let transcript = session.transcript
         let invoked = NativeTranscript.invokedToolPaths(in: transcript)
 
-        // 1. Valid answer — the reply carries fixture-grounded content and
-        //    isn't a failure phrasing that happens to embed a required word.
-        expectValidAnswer(
+        var checks = answerChecks(
             response.content,
-            name: name,
             containsOneOf: answerContainsOneOf,
             mustNotContain: answerMustNotContain
         )
-
-        // 2. Grounded answer — produced through the tools surface at all,
-        //    by any route.
-        #expect(
-            !invoked.isEmpty,
-            "[\(name)] expected the answer to be grounded in at least one tools.* call, but no runCode snippet invoked any"
+        // Grounded answer — produced through the tools surface at all, by any
+        // route.
+        checks.append(
+            ScenarioCheck(
+                name: "grounded",
+                held: !invoked.isEmpty,
+                failureMessage:
+                    "expected the answer to be grounded in at least one tools.* call, but no runCode snippet invoked any"
+            )
         )
-
-        // 3. Claimed side effects really happened — containment, never
-        //    equality; extra calls and any ordering are fine.
+        // Claimed side effects really happened — containment, never equality;
+        // extra calls and any ordering are fine.
         if !mustInvoke.isEmpty {
-            #expect(
-                mustInvoke.isSubset(of: invoked),
-                "[\(name)] the answer claims an action that requires invoking \(mustInvoke.sorted()), but only \(invoked.sorted()) were invoked"
+            checks.append(
+                ScenarioCheck(
+                    name: "sideEffects",
+                    held: mustInvoke.isSubset(of: invoked),
+                    failureMessage:
+                        "the answer claims an action that requires invoking \(mustInvoke.sorted()), but only \(invoked.sorted()) were invoked"
+                )
             )
         }
+        grade(scenario: name, checks: checks)
 
         // plan.md acceptance: "the per-format results are recorded (test
         // attachment or log)" — the route details stay visible here as
@@ -216,13 +225,17 @@ func runElevationIntegrationScenario(
         let turn = try await streamTurn(of: session, prompt: prompt)
         let elapsed = Date().timeIntervalSince(start)
 
-        expectValidAnswer(turn.answer, name: name, containsOneOf: answerContainsOneOf, mustNotContain: [])
-
         let pendingEnvelopes = turn.toolOutputs.filter(PendingRunEnvelope.isRendered)
-        #expect(
-            !pendingEnvelopes.isEmpty,
-            "[\(name)] expected at least one runCode call to elevate and return a pending envelope, but the tool outputs were \(turn.toolOutputs)"
+        var checks = answerChecks(turn.answer, containsOneOf: answerContainsOneOf, mustNotContain: [])
+        checks.append(
+            ScenarioCheck(
+                name: "pendingEnvelope",
+                held: !pendingEnvelopes.isEmpty,
+                failureMessage:
+                    "expected at least one runCode call to elevate and return a pending envelope, but the tool outputs were \(turn.toolOutputs)"
+            )
         )
+        grade(scenario: name, checks: checks)
 
         print(
             "RESULT [\(name)] elapsed=\(elapsed)s toolCalls=\(turn.toolCallCount) "
@@ -343,32 +356,88 @@ private func makeScenarioSurface(over tools: [any Tool], on fixture: LiveRouterF
     return [multiTool, findAPIsTool]
 }
 
-/// Asserts one scenario's reply is a valid answer: it carries at least one
+// MARK: - Per-scenario grading and measurement
+
+/// One graded condition in a gated scenario's verdict.
+///
+/// A scenario's conditions are collected before any of them is asserted, so
+/// the same list drives both the recorded expectations and the per-scenario
+/// `SCENARIO` line — the verdict a run reports can never drift from the
+/// verdict it enforces.
+struct ScenarioCheck {
+    /// The short label naming this condition on the `SCENARIO` line.
+    let name: String
+
+    /// Whether the condition held on this run.
+    let held: Bool
+
+    /// What to say when it did not — the scenario label is prefixed by
+    /// `grade(scenario:checks:)`.
+    let failureMessage: String
+}
+
+/// Reports one scenario's verdict, then records an issue for each condition
+/// that did not hold.
+///
+/// The reported line is the point of this function, and it exists because
+/// suite totals hid where the failures actually were: across the recorded
+/// baseline-versus-HEAD tables (task `tkrdwb8`), three of the four gated
+/// scenarios were flat and one moved 5/5 → 2/5, which a total of 12/20
+/// against 16/20 does not show. A `SCENARIO` line per scenario per run makes
+/// each scenario's pass rate directly greppable out of a run's output, so
+/// before-and-after comparisons are per scenario rather than per suite.
+///
+/// Printed before the expectations are recorded so the line survives however
+/// the test then fails.
+///
+/// - Parameters:
+///   - name: the scenario label.
+///   - checks: every condition this scenario graded, in reporting order.
+private func grade(scenario name: String, checks: [ScenarioCheck]) {
+    let result = checks.allSatisfy(\.held) ? "PASS" : "FAIL"
+    let breakdown = checks.map { "\($0.name)=\($0.held ? "pass" : "fail")" }.joined(separator: " ")
+    print("SCENARIO [\(name)] result=\(result) \(breakdown)")
+
+    for check in checks {
+        #expect(check.held, "[\(name)] \(check.failureMessage)")
+    }
+}
+
+/// Grades one scenario's reply as a valid answer: it carries at least one
 /// required substring, and none of the phrasings that would invalidate it.
 ///
 /// - Parameters:
 ///   - answer: the model's final reply.
-///   - name: the scenario label named in each expectation message.
 ///   - containsOneOf: candidate substrings, at least one of which `answer`
 ///     must contain case-insensitively.
 ///   - mustNotContain: substrings whose case-insensitive presence invalidates
-///     `answer` even when a required substring matched.
-private func expectValidAnswer(
+///     `answer` even when a required substring matched. An empty list adds no
+///     check rather than a vacuously true one.
+/// - Returns: the answer-content checks, ready to extend with the scenario's
+///   own.
+private func answerChecks(
     _ answer: String,
-    name: String,
     containsOneOf: [String],
     mustNotContain: [String]
-) {
-    #expect(
-        containsOneOf.contains { answer.localizedCaseInsensitiveContains($0) },
-        "[\(name)] expected the answer to contain one of \(containsOneOf), got \"\(answer)\""
-    )
-    for forbidden in mustNotContain {
-        #expect(
-            !answer.localizedCaseInsensitiveContains(forbidden),
-            "[\(name)] the answer contains \"\(forbidden)\", which invalidates it: \"\(answer)\""
+) -> [ScenarioCheck] {
+    var checks = [
+        ScenarioCheck(
+            name: "validAnswer",
+            held: containsOneOf.contains { answer.localizedCaseInsensitiveContains($0) },
+            failureMessage: "expected the answer to contain one of \(containsOneOf), got \"\(answer)\""
+        )
+    ]
+    let invalidating = mustNotContain.filter { answer.localizedCaseInsensitiveContains($0) }
+    if !mustNotContain.isEmpty {
+        checks.append(
+            ScenarioCheck(
+                name: "answerNotInvalidated",
+                held: invalidating.isEmpty,
+                failureMessage: "the answer contains \(invalidating), which invalidates it: \"\(answer)\""
+            )
         )
     }
+    return checks
 }
 
 /// Prints the standard note for a scenario skipped because this environment

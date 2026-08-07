@@ -1,5 +1,6 @@
 import Foundation
 import FoundationModels
+import FoundationModelsMetadataRegistry
 import FoundationModelsRouter
 import os
 
@@ -272,6 +273,17 @@ public struct MultiTool: Tool {
     /// sandbox by `Interpreter.run`.
     private let hostFunctions: [HostFunction]
 
+    /// The catalog ranker `UnknownToolHint` resolves an invented `tools.*`
+    /// name against when no real path resembles its spelling.
+    ///
+    /// The same `MetadataSearcher` machinery `findAPIs` matches an intent to
+    /// tools with, over this registry's own entries, in `.retrieval` mode: no
+    /// selection tier and no embedder, so repairing a wrong guess costs no
+    /// model call and no tokens. Built once at `init` for the same reason as
+    /// `hostFunctions`/`liveTools` — it depends only on the registry, which
+    /// never changes over this tool's lifetime.
+    private let hintSearcher: MetadataSearcher<APISurface.Entry>
+
     /// Every registry entry that has a live tool to dispatch to, paired with
     /// the flat host-function name its `tools.*` binding installs under —
     /// precomputed once at `init` time for the same reason as
@@ -329,6 +341,7 @@ public struct MultiTool: Tool {
         self.hostFunctions = Self.makeHelpDocsHostFunctions(for: registry)
         self.liveTools = Self.makeLiveTools(for: registry)
         self.preamble = Self.makePreamble(for: registry)
+        self.hintSearcher = MetadataSearcher(items: registry.surface.entries, mode: .retrieval)
     }
 
     /// Runs `arguments.code` against `tools.*` and renders the outcome.
@@ -393,7 +406,11 @@ public struct MultiTool: Tool {
         case .success(let result):
             return ResultRenderer.render(result, limits: limits)
         case .failure(let interpreterError as InterpreterError):
-            let hint = UnknownToolHint.hint(message: interpreterError.message, surface: registry.surface)
+            let hint = await UnknownToolHint.hint(
+                message: interpreterError.message,
+                surface: registry.surface,
+                searcher: hintSearcher
+            )
             return ResultRenderer.render(interpreterError, hint: hint)
         case .failure(let error):
             throw error

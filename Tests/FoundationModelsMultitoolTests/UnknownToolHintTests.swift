@@ -63,6 +63,69 @@ struct UnknownToolHintTests {
         #expect(output.contains("findAPIs"))
     }
 
+    // MARK: - Recorded gated failures: the names real runs actually invented
+
+    /// The catalog recorded from the gated `discoveryUnderDistractors` runs
+    /// that invented `tools.getTrip` and `tools.getWeather`: the two relevant
+    /// tools, plus the trip-adjacent distractors that genuinely compete with
+    /// `tripCities` for a trip-shaped guess.
+    ///
+    /// - Returns: the tools to build the reproduction registry over.
+    private static func recordedDiscoveryCatalog() -> [any Tool] {
+        [
+            CatalogEntryTool(
+                name: "weather",
+                description: "Current weather for a city. Use when asked how warm/cold/rainy it is right now."
+            ),
+            CatalogEntryTool(
+                name: "tripCities",
+                description: "The cities on the user's current trip, in itinerary order."
+            ),
+            CatalogEntryTool(name: "bookHotel", description: "Books a hotel room for given dates."),
+            CatalogEntryTool(name: "lookupFlight", description: "Looks up a flight's status by number."),
+            CatalogEntryTool(name: "convertTimezone", description: "Converts a time between timezones."),
+        ]
+    }
+
+    @Test("the invented tools.getWeather resolves to the real weather tool")
+    func inventedGetWeatherResolvesToWeather() async throws {
+        let registry = try MultiTool.Builder().addTools(Self.recordedDiscoveryCatalog()).buildRegistry()
+        let multiTool = MultiTool(registry: registry)
+
+        let output = try await multiTool.call(
+            arguments: RunCodeArguments(code: "return tools.getWeather({ city: 'ATX' });")
+        )
+
+        #expect(output.contains("tools.getWeather does not exist"))
+        #expect(output.contains("tools.weather"))
+    }
+
+    @Test("the invented tools.getTrip resolves to the real tripCities tool")
+    func inventedGetTripResolvesToTripCities() async throws {
+        let registry = try MultiTool.Builder().addTools(Self.recordedDiscoveryCatalog()).buildRegistry()
+        let multiTool = MultiTool(registry: registry)
+
+        let output = try await multiTool.call(arguments: RunCodeArguments(code: "return tools.getTrip();"))
+
+        #expect(output.contains("tools.getTrip does not exist"))
+        #expect(output.contains("tools.tripCities"))
+    }
+
+    @Test("a catalog-relevance hint names only its best match, not its runners-up")
+    func catalogRelevanceHintNamesOnlyItsBestMatch() async throws {
+        let registry = try MultiTool.Builder().addTools(Self.recordedDiscoveryCatalog()).buildRegistry()
+        let multiTool = MultiTool(registry: registry)
+
+        let output = try await multiTool.call(arguments: RunCodeArguments(code: "return tools.getTrip();"))
+
+        // Measured: ranking `getTrip` over this catalog puts `tripCities`
+        // first, then `convertTimezone` and `bookHotel` — runners-up that
+        // have nothing to do with looking up a trip, and that a model which
+        // just guessed a function name would only guess at again.
+        #expect(!output.contains("tools.convertTimezone"))
+        #expect(!output.contains("tools.bookHotel"))
+    }
+
     // MARK: - Guard: a mis-called *existing* tool gets no did-you-mean noise
 
     @Test("a mis-called existing tool keeps its plain repairable error, with no does-not-exist hint")

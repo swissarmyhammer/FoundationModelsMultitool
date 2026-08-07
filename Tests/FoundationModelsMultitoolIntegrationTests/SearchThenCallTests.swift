@@ -82,9 +82,9 @@ struct SearchThenCallTests {
         )
     }
 
-    // MARK: - Scenario 3: discovery under ~20 distractors
+    // MARK: - Scenario 3: discovery under distractors
 
-    @Test("discovery scenario still answers with a real fixture trip city among ~20 distractor tools")
+    @Test("discovery scenario still answers with a real fixture trip city among the distractor tools")
     func discoveryUnderDistractors() async throws {
         try await runNativeIntegrationScenario(
             name: "discoveryUnderDistractors",
