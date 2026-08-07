@@ -272,29 +272,44 @@ public final class JSCInterpreter: Interpreter {
     /// Creates a JavaScriptCore-backed interpreter that enforces the given
     /// per-run time limit.
     ///
-    /// The default applies to every interpreter constructed without an
-    /// explicit `timeLimit`, including one a caller hands to `MultiTool.init`
-    /// as its `interpreter:`. Only the sandbox `MultiTool.init` builds for
-    /// itself — the one it constructs when the caller injects no `interpreter`
-    /// — is armed from `MultiToolConfiguration.executionTimeLimit`, the work
-    /// clock's ceiling, which is the value that has to stay clear of a
-    /// `runCode` call's wait clock (see that property's own documentation).
+    /// The default applies to an interpreter constructed without an explicit
+    /// `timeLimit` and run directly. Standing alone like that, this watchdog
+    /// is the only clock in play — there is no `runCode` wait clock for it to
+    /// race, because elevation belongs to a `MultiTool` mount.
     ///
-    /// For an injected interpreter that ceiling arms nothing, so a caller who
-    /// supplies one is arming this watchdog itself and should pass the same
-    /// ceiling its configuration carries. Leaving this default in place under a
-    /// `MultiTool` reinstates the collision with
-    /// `ElevationConfiguration.defaultWaitSeconds` that
-    /// `MultiToolConfiguration.executionTimeLimit` records as the bug its own
-    /// default was changed to fix: the watchdog force-terminates a snippet at
-    /// the exact instant its run elevates.
+    /// It does not survive that mount. `MultiTool.init` arms every
+    /// interpreter it runs — the sandbox it builds for itself, and one a
+    /// caller hands it as its `interpreter:`, alike — with
+    /// `MultiToolConfiguration.executionTimeLimit` through
+    /// ``withTimeLimit(_:)``, so under a `MultiTool` the watchdog always
+    /// fires at the configured ceiling, whatever this interpreter was
+    /// constructed with. That is the value kept clear of a `runCode` call's
+    /// wait clock (see that property's own documentation), and keeping the
+    /// two apart is not something an injecting caller has to arrange.
     ///
     /// - Parameter timeLimit: seconds a single `run` may execute before the
     ///   watchdog terminates it. Defaults to a ceiling sized for a
-    ///   directly-constructed interpreter running a self-contained snippet, not
-    ///   to the work clock a `MultiTool` configures.
+    ///   directly-constructed interpreter running a self-contained snippet;
+    ///   a `MultiTool` replaces it with its own configured ceiling.
     public init(timeLimit: TimeInterval = 5.0) {
         self.timeLimit = timeLimit
+    }
+
+    /// Returns a `JSCInterpreter` whose watchdog is armed with `seconds` in
+    /// place of this one's own limit.
+    ///
+    /// A fresh instance rather than a mutation: the limit is the whole of
+    /// this type's state, and the caller that constructed this interpreter
+    /// keeps the ceiling it asked for. Every other piece of a run's state is
+    /// created per `run` anyway (see this type's own documentation), so the
+    /// returned interpreter differs in nothing but the ceiling.
+    ///
+    /// - Parameter seconds: seconds a single `run` of the returned
+    ///   interpreter may execute before its watchdog terminates it.
+    /// - Returns: an interpreter that runs exactly as this one does, armed
+    ///   with `seconds`.
+    public func withTimeLimit(_ seconds: TimeInterval) -> any Interpreter {
+        JSCInterpreter(timeLimit: seconds)
     }
 
     /// Runs `code` on this run's own worker queue in a fresh, isolated

@@ -326,6 +326,35 @@ public protocol Interpreter: Sendable {
         installingAsync: [AsyncHostFunction],
         isCancelled: @escaping @Sendable () -> Bool
     ) throws -> InterpreterResult
+
+    /// Returns an interpreter that runs exactly as this one does, bounded by
+    /// `seconds` in place of whatever wall-clock ceiling this one carries.
+    ///
+    /// This is how a host that owns the time budget arms the sandbox it is
+    /// about to run in. `MultiTool.init` calls it on every interpreter it
+    /// runs — the one it builds for itself and one a caller injects alike —
+    /// with `MultiToolConfiguration.executionTimeLimit`, so a snippet's
+    /// ceiling is the configured one no matter how its interpreter was
+    /// constructed.
+    ///
+    /// The receiver is left alone: a conformer answers with a configured
+    /// copy, so the caller that handed its interpreter over keeps the
+    /// ceiling it constructed.
+    ///
+    /// This requirement deliberately has no default conformance below. A
+    /// default returning `self` would let a conformer silently keep its own
+    /// ceiling under a host that configured a different one — the exact
+    /// mismatch this member exists to make impossible, and one that put a
+    /// `JSCInterpreter()`'s stock limit within collision range of
+    /// `ElevationConfiguration.defaultWaitSeconds`. A conformer with no
+    /// wall-clock mechanism of its own has nothing to arm and returns
+    /// `self`, and says so in its own documentation.
+    ///
+    /// - Parameter seconds: the wall-clock ceiling a single `run` may reach
+    ///   before the conformer terminates it.
+    /// - Returns: an interpreter equivalent to this one, bounded by
+    ///   `seconds`.
+    func withTimeLimit(_ seconds: TimeInterval) -> any Interpreter
 }
 
 extension Interpreter {

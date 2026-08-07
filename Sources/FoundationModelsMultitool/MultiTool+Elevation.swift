@@ -29,11 +29,12 @@ extension MultiTool: ElevationParameterProviding {
     /// package's default work clock and its hard ceiling (see
     /// `MultiToolConfiguration.executionTimeLimit` for the full
     /// reconciliation). Answering it here is what keeps the engine's clock at
-    /// or under the limit the watchdog of the sandbox `MultiTool.init` builds
-    /// for itself is armed with, so the engine's own timeout is what a
-    /// well-behaved suspended context meets first. An interpreter injected
-    /// into `MultiTool.init` instead carries whatever limit its own
-    /// constructor received; the bound applied here is the same either way.
+    /// or under the limit the watchdog of the sandbox `MultiTool.init` runs
+    /// is armed with, so the engine's own timeout is what a well-behaved
+    /// suspended context meets first. That holds for an interpreter injected
+    /// into `MultiTool.init` too: it is re-armed from the same ceiling this
+    /// bound comes from (`Interpreter.withTimeLimit(_:)`), so the two sides
+    /// cannot disagree.
     ///
     /// It is a bound, not a promise of survival. The two clocks are not the
     /// same kind: the engine's timeout resets on every progress event, while
@@ -41,9 +42,9 @@ extension MultiTool: ElevationParameterProviding {
     /// (`WatchdogState.runStart` is a `let`; `rearm()` re-arms the poll
     /// interval, not the deadline). A snippet that keeps resetting the
     /// engine's clock — by reporting progress, or by parking on `elicit()` —
-    /// therefore still meets whatever limit its sandbox's watchdog was armed
-    /// with, and is force-terminated there. The absolute cap is the intended
-    /// safety property, not a gap.
+    /// therefore still meets the configured ceiling its sandbox's watchdog
+    /// was armed with, and is force-terminated there. The absolute cap is the
+    /// intended safety property, not a gap.
     ///
     /// - Parameter arguments: the call's arguments as opaque
     ///   `GeneratedContent` — the same content `RunCodeArguments` was decoded

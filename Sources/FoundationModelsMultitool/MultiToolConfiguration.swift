@@ -27,8 +27,8 @@ public struct MultiToolConfiguration: Sendable, Equatable {
     /// of the siblings"): `waitSeconds`, how long the call blocks before it
     /// elevates, and `timeout`, how long the work itself may run. Elevation
     /// exists precisely to keep a suspended JSC context alive past
-    /// `waitSeconds` — so this limit, which arms the watchdog of the sandbox
-    /// `MultiTool.init` builds for itself (`JSCInterpreter(timeLimit:)`),
+    /// `waitSeconds` — so this limit, which arms the watchdog of every
+    /// sandbox `MultiTool.init` runs (`Interpreter.withTimeLimit(_:)`),
     /// must never be a second clock racing the first. It was: this default and
     /// `ElevationConfiguration.defaultWaitSeconds` were both 5 seconds, so
     /// the watchdog force-terminated a snippet at the exact instant its run
@@ -43,21 +43,22 @@ public struct MultiToolConfiguration: Sendable, Equatable {
     ///
     /// The clamp bounds the two clocks' *starting* values; it does not make
     /// this one the looser of the two forever. The engine's clock resets on
-    /// progress. This one does not: it arms the `WatchdogState` of the
-    /// sandbox `MultiTool.init` builds for itself, which measures from
-    /// sandbox creation, and neither progress nor parking on `elicit()` moves
-    /// that reference point (`runStart` is a `let`; `rearm()` re-arms the
-    /// poll interval, not the deadline). So a snippet that keeps resetting
-    /// the engine's clock is force-terminated here instead, at this ceiling.
-    /// That is deliberate — it is the absolute cap on one snippet, and the
-    /// reason a suspended context cannot be kept alive indefinitely by
-    /// reporting progress.
+    /// progress. This one does not: it arms the `WatchdogState` of whatever
+    /// sandbox `MultiTool.init` runs, which measures from sandbox creation,
+    /// and neither progress nor parking on `elicit()` moves that reference
+    /// point (`runStart` is a `let`; `rearm()` re-arms the poll interval, not
+    /// the deadline). So a snippet that keeps resetting the engine's clock is
+    /// force-terminated here instead, at this ceiling. That is deliberate —
+    /// it is the absolute cap on one snippet, and the reason a suspended
+    /// context cannot be kept alive indefinitely by reporting progress.
     ///
-    /// The arming is that default sandbox's alone. A caller that hands
-    /// `MultiTool.init` an `interpreter:` of its own gets a watchdog armed
-    /// with whatever limit that interpreter was constructed with; this
-    /// ceiling then arms nothing, and only clamps the per-call work clock the
-    /// elevation engine enforces.
+    /// The arming covers every sandbox, not only the one `MultiTool.init`
+    /// builds for itself: an `interpreter:` a caller hands it is re-armed
+    /// with this ceiling too (`Interpreter.withTimeLimit(_:)`). So injecting
+    /// an interpreter cannot put a second, different limit under a `runCode`
+    /// call, and cannot reinstate the collision described above: a plain
+    /// `JSCInterpreter()`, whose own stock limit is the 5 seconds that
+    /// collision was made of, is armed from here like any other.
     public let executionTimeLimit: TimeInterval
 
     /// How many `runCode` snippets may be live at once before a further call

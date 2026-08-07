@@ -134,15 +134,13 @@ public struct RunCodeArguments {
     /// leave the work clock to the host's configuration. Progress resets this
     /// per-call clock, and the host clamps it to its own ceiling.
     ///
-    /// The ceiling itself is absolute. On the sandbox `MultiTool.init` builds
-    /// for itself — the `JSCInterpreter(timeLimit:)` it constructs from
-    /// `configuration.executionTimeLimit` when the caller injects no
-    /// `interpreter` — the ceiling arms that interpreter's watchdog, which
-    /// measures from sandbox creation and which nothing resets: not progress,
-    /// and not parking on `elicit()`. Progress therefore buys time only up to
-    /// that ceiling, never past it. An injected `interpreter` is armed with
-    /// whatever limit its own constructor received, so the ceiling arms
-    /// nothing there; it still clamps this per-call clock either way (see
+    /// The ceiling itself is absolute. `MultiTool.init` arms the watchdog of
+    /// whatever sandbox it runs — the one it builds for itself and one a
+    /// caller injects as its `interpreter:`, alike — from
+    /// `configuration.executionTimeLimit`, and that watchdog measures from
+    /// sandbox creation and nothing resets it: not progress, and not parking
+    /// on `elicit()`. Progress therefore buys time only up to that ceiling,
+    /// never past it. The same ceiling clamps this per-call clock (see
     /// `MultiToolConfiguration.executionTimeLimit`).
     @Guide(
         description: "Optional. How many seconds the snippet's own work may run before it is "
@@ -305,10 +303,12 @@ public struct MultiTool: Tool {
     ///     of left `nil` — an explicit override always wins over the
     ///     configuration's corresponding derived value.
     ///   - interpreter: the sandbox to run every snippet in. Defaults to a
-    ///     fresh `JSCInterpreter` armed with
-    ///     `configuration.executionTimeLimit` — the work clock's ceiling, and
-    ///     the only clock the interpreter itself owns (see
-    ///     `MultiToolConfiguration.executionTimeLimit`).
+    ///     fresh `JSCInterpreter`. Whichever sandbox is used, it is armed
+    ///     here with `configuration.executionTimeLimit` — the work clock's
+    ///     ceiling, and the only clock the interpreter itself owns (see
+    ///     `MultiToolConfiguration.executionTimeLimit`) — so an injected
+    ///     interpreter runs under the configured ceiling rather than
+    ///     whatever its own constructor received.
     ///   - limits: the size caps `ResultRenderer` enforces on this tool's
     ///     rendered output. Defaults to `configuration.resultLimits`.
     public init(
@@ -320,7 +320,11 @@ public struct MultiTool: Tool {
         self.registry = registry
         self.configuration = configuration
         self.liveContexts = LiveContextCounter()
-        self.interpreter = interpreter ?? JSCInterpreter(timeLimit: configuration.executionTimeLimit)
+        // One arming path for every sandbox this tool runs, injected or
+        // built here: the configured ceiling always wins, so a caller who
+        // passes a `JSCInterpreter()` never silently gets that interpreter's
+        // own stock limit instead (see `Interpreter.withTimeLimit(_:)`).
+        self.interpreter = (interpreter ?? JSCInterpreter()).withTimeLimit(configuration.executionTimeLimit)
         self.limits = limits ?? configuration.resultLimits
         self.hostFunctions = Self.makeHelpDocsHostFunctions(for: registry)
         self.liveTools = Self.makeLiveTools(for: registry)

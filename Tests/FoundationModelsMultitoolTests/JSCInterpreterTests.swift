@@ -112,6 +112,21 @@ struct JSCInterpreterTests {
         #expect(start.duration(to: .now) < .seconds(10))
     }
 
+    @Test("withTimeLimit returns an interpreter armed with the given limit, not the receiver's")
+    func withTimeLimitReturnsAnInterpreterArmedWithTheGivenLimit() throws {
+        let interpreter = JSCInterpreter(timeLimit: 30.0).withTimeLimit(0.3)
+        let start = ContinuousClock.now
+        #expect {
+            try interpreter.run(code: "while (true) {}", installing: [])
+        } throws: { error in
+            guard let interpreterError = error as? InterpreterError else { return false }
+            return interpreterError.kind == .timeout
+        }
+        // Far below the 30s limit the receiver was constructed with — proves
+        // the returned interpreter carries the requested limit instead.
+        #expect(start.duration(to: .now) < .seconds(10))
+    }
+
     @Test("a host function that throws surfaces as InterpreterError")
     func hostFunctionThrowSurfacesAsInterpreterError() throws {
         let interpreter = JSCInterpreter()

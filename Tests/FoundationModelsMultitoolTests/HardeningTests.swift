@@ -164,6 +164,55 @@ struct HardeningTests {
         #expect(output == "2")
     }
 
+    @Test("a configured executionTimeLimit below an injected interpreter's own limit is the one enforced")
+    func executionTimeLimitBelowAnInjectedInterpretersOwnLimitIsEnforced() async throws {
+        // `JSCInterpreter()` — the shape a caller reaches for first — carries
+        // its own stock time limit, far larger than this configuration's. The
+        // configured ceiling is the one that has to fire.
+        let configuration = MultiToolConfiguration(executionTimeLimit: 0.3)
+        let multiTool = MultiTool(
+            registry: Self.emptyRegistry,
+            configuration: configuration,
+            interpreter: JSCInterpreter()
+        )
+
+        let start = ContinuousClock.now
+        let output = try await multiTool.call(arguments: RunCodeArguments(code: "while (true) {}"))
+        let elapsed = start.duration(to: .now)
+
+        #expect(output.contains("timed out"))
+        // Comfortably above the 0.3s configured limit (watchdog scheduling
+        // jitter) but far below the interpreter's own stock limit — proves
+        // the configured ceiling, not the injected interpreter's, was the one
+        // enforced.
+        #expect(elapsed < .seconds(3))
+    }
+
+    @Test("a configured executionTimeLimit above an injected interpreter's own limit is the one enforced")
+    func executionTimeLimitAboveAnInjectedInterpretersOwnLimitIsEnforced() async throws {
+        // The mirror direction: a configured ceiling well above
+        // `JSCInterpreter`'s own stock limit, and an injected interpreter
+        // armed far tighter than the snippet below needs. The snippet reaches
+        // its `return` only if the configured ceiling replaced that limit.
+        let configuredLimit: TimeInterval = 20.0
+        let injectedLimit: TimeInterval = 0.3
+        let snippetMilliseconds = 1000
+        let configuration = MultiToolConfiguration(executionTimeLimit: configuredLimit)
+        let multiTool = MultiTool(
+            registry: Self.emptyRegistry,
+            configuration: configuration,
+            interpreter: JSCInterpreter(timeLimit: injectedLimit)
+        )
+
+        let output = try await multiTool.call(
+            arguments: RunCodeArguments(
+                code: "const end = Date.now() + \(snippetMilliseconds); while (Date.now() < end) {} return \"done\";"
+            )
+        )
+
+        #expect(output == "\"done\"")
+    }
+
     @Test("a return value serialized to exactly the configured returnValueCharacterLimit is not truncated")
     func returnValueCharacterLimitBoundaryAtLimitIsNotTruncated() async throws {
         let limit = 20

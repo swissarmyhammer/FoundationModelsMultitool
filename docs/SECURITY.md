@@ -71,18 +71,20 @@ that one tool's own `call(arguments:)`.
 
 - **Execution time** — a runaway/infinite-loop snippet is force-terminated by
   the interpreter's watchdog (`JSContextGroupSetExecutionTimeLimit`), not left
-  to run forever. The ceiling it terminates at is the one that interpreter was
-  constructed with (`JSCInterpreter(timeLimit:)`). For the sandbox
-  `MultiTool.init` builds for itself — the one it constructs when the caller
-  injects no `interpreter` — that ceiling is
+  to run forever. Under a `MultiTool` the ceiling it terminates at is always
   `MultiToolConfiguration.executionTimeLimit`, which defaults to
-  `ElevationConfiguration.defaultTimeoutSeconds` (120 seconds). An interpreter
-  injected through `MultiTool.init`'s `interpreter:` parameter instead carries
-  whatever limit its own constructor received, so the configured ceiling arms
-  nothing there and the watchdog fires at the injected limit. Either way the
-  ceiling is absolute: it is measured from sandbox creation, and neither
-  reporting progress nor parking on `elicit()` moves that reference point, so
-  no snippet can hold a context open indefinitely.
+  `ElevationConfiguration.defaultTimeoutSeconds` (120 seconds). That holds for
+  the sandbox `MultiTool.init` builds for itself and for one injected through
+  its `interpreter:` parameter alike: `MultiTool.init` re-arms whatever
+  interpreter it is given from the configured ceiling
+  (`Interpreter.withTimeLimit(_:)`), so a caller cannot leave a sandbox
+  running under some other limit by handing over a `JSCInterpreter()` built
+  with its own. A `JSCInterpreter` run directly, outside any `MultiTool`,
+  terminates at the limit its constructor received
+  (`JSCInterpreter(timeLimit:)`). The ceiling is absolute: it is measured from
+  sandbox creation, and neither reporting progress nor parking on `elicit()`
+  moves that reference point, so no snippet can hold a context open
+  indefinitely.
 - **Cancellation** — cancelling the Swift `Task` running
   `MultiTool.call(arguments:)` force-terminates the in-flight snippet
   through that same watchdog path and propagates `CancellationError` — no
