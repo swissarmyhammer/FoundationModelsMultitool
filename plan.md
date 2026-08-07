@@ -676,9 +676,14 @@ surface those and lint for completeness (M2):
 > plus dates, traveler and confirmation code), and the shipped CLI demo returns
 > an object too (`DemoTripOutput`, whose one field is `cities`). The divergence
 > was the document's, not one gated outlier's, so the examples above now
-> navigate to `.cities` the way a real itinerary API forces. A tool `Output` is
-> a `@Generable` struct, so an object is what the renderer emits; a bare
-> `string[]` was never reachable.
+> navigate to `.cities` the way a real itinerary API forces. What was wrong was
+> the shape claimed for these two tools, not the renderer's range: a bare
+> `string[]` return is a shape `ToolAPIRenderer` does emit. It requires an
+> object schema of a tool's `parameters` only, never of its return, and
+> `[String]` is itself `Generable`, so a tool returning one renders its array
+> root as `string[]`; an `Output` that is `PromptRepresentable` without being
+> `Generable` renders as `string` instead (the `echoText` fixture pinned in
+> `Tests/FoundationModelsMultitoolTests/Goldens/BuilderSurface.ts.txt`).
 
 ## Interpreter engine: JavaScriptCore (with a swappable seam)
 

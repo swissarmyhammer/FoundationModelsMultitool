@@ -35,11 +35,20 @@ struct ScenarioFixtureTests {
         // The shape this replaced is `Promise<{ cities: string[] }>` — an
         // object already, so `.cities` navigation is not what changed; the
         // four siblings are, and a single-field object is one a snippet can
-        // consume without reading the declaration at all. A bare
-        // `Promise<string[]>` was never one of the candidates: a tool's
-        // `Output` is a `@Generable` struct, which `ToolAPIRenderer` always
-        // renders as an object, so expecting a bare list to be absent would
-        // expect nothing.
+        // consume without reading the declaration at all.
+        //
+        // A bare `Promise<string[]>` is not asserted absent here, and the
+        // renderer is not the reason it cannot appear: `ToolAPIRenderer`
+        // requires an object schema of a tool's `parameters` only, never of
+        // its return, and `[String]` is itself `Generable`, so a tool
+        // returning one takes the schema branch and its array root renders
+        // `string[]`. A non-`Generable` `Output` takes the `.text` branch
+        // and renders `Promise<string>` — the `echoText` fixture in the main
+        // target's `BuilderSurface.ts.txt` golden. What rules the bare list
+        // out is local to this test: the registry holds `IntegrationTripTool`
+        // alone, whose `Output` is the five-field `IntegrationTripOutput`.
+        // The expectation below states that shape rather than guessing at
+        // which others the renderer could not have produced.
         #expect(
             source.contains(
                 """
