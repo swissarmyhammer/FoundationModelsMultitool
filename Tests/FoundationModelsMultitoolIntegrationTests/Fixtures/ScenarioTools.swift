@@ -38,8 +38,12 @@ struct IntegrationCityWeather {
 ///
 /// San Francisco is the warmest, and that is the point: on a trip that also
 /// visits Austin it is not the answer priors alone give, so naming it is
-/// evidence the snippet really read the readings. Austin keeps the 31 °C
-/// scenario 1 has always graded on.
+/// evidence the snippet really read the readings. Which city scenario 1 asks
+/// about follows from the same table rather than being fixed here: it is
+/// `integrationSingleCallCity`, the first reading below that is not the
+/// warmest one. Raising a temperature therefore moves that scenario onto
+/// another city instead of leaving it grading a reading that stopped being
+/// the one it asks about.
 let integrationCityWeather: [IntegrationCityWeather] = [
     IntegrationCityWeather(code: "ATX", name: "Austin", tempC: 31),
     IntegrationCityWeather(code: "SFO", name: "San Francisco", tempC: 34),

@@ -27,12 +27,27 @@ struct ScenarioFixtureTests {
 
         let source = registry.surface.source
 
-        #expect(source.contains("cities: string[]"))
-        #expect(source.contains("confirmationCode: string"))
-        // The shape the reshape replaced. A snippet can consume that one
-        // without reading the declaration at all, which is what made it a
-        // weaker test of discovery.
-        #expect(!source.contains("Promise<string[]>"))
+        // The rendered return type in full, rather than a sample of two of
+        // its fields: the reshape buys nothing unless the declaration a model
+        // reads names every sibling, so dropping one, renaming one or
+        // reordering them all fail here.
+        //
+        // The shape this replaced is `Promise<{ cities: string[] }>` — an
+        // object already, so `.cities` navigation is not what changed; the
+        // four siblings are, and a single-field object is one a snippet can
+        // consume without reading the declaration at all. A bare
+        // `Promise<string[]>` was never one of the candidates: a tool's
+        // `Output` is a `@Generable` struct, which `ToolAPIRenderer` always
+        // renders as an object, so expecting a bare list to be absent would
+        // expect nothing.
+        #expect(
+            source.contains(
+                """
+                Promise<{ confirmationCode: string; traveler: string; \
+                startDate: string; endDate: string; cities: string[] }>
+                """
+            )
+        )
     }
 
     @Test("a snippet reaches the itinerary through the trip result's cities field")
@@ -113,35 +128,79 @@ struct ScenarioFixtureTests {
 
     @Test("exactly one trip city is warmest, so the compose question has exactly one answer")
     func exactlyOneTripCityIsWarmest() {
-        let warmest = integrationCityWeather.filter { $0.tempC == integrationWarmestCity.tempC }
+        // The maximum is recomputed from the readings instead of read back off
+        // `integrationWarmestCity.tempC`. Filtering the readings by the
+        // warmest one's own temperature finds the warmest one whatever the
+        // derivation did, so that spelling states the derivation back to
+        // itself and cannot fail; a derivation that sorted the wrong way or
+        // stopped at the runner-up fails this one.
+        let hottest = integrationCityWeather.map(\.tempC).max()
+        let warmest = integrationCityWeather.filter { $0.tempC == hottest }
 
         #expect(warmest.count == 1)
         #expect(warmest.first?.code == integrationWarmestCity.code)
     }
 
     @Test("the single-call scenario asks about a city that is not the warmest one")
-    func theSingleCallCityIsNotTheWarmestCity() {
-        #expect(integrationSingleCallCity.code != integrationWarmestCity.code)
+    func theSingleCallCityIsNotTheWarmestCity() throws {
+        // `integrationSingleCallCity` is derived as
+        // `integrationCityWeather.first(where: { $0.code != integrationWarmestCity.code })`
+        // (`ScenarioTools.swift`), so comparing it back against
+        // `integrationWarmestCity.code` would only restate that exclusion —
+        // guaranteed true by the derivation itself, and unable to fail without
+        // editing that derivation. The hottest reading is recomputed here from
+        // scratch instead, exactly as `exactlyOneTripCityIsWarmest` does, so a
+        // bug shared between `integrationWarmestCity`'s sort and
+        // `integrationSingleCallCity`'s exclusion (for example, if the sort
+        // picked the wrong city and the exclusion inherited that mistake) is
+        // still caught: the single-call city's own reading would then equal
+        // the independently computed maximum.
+        let hottest = try #require(integrationCityWeather.map(\.tempC).max())
+
+        #expect(integrationSingleCallCity.tempC != hottest)
     }
 
-    @Test("neither scenario's graded answers can satisfy the other scenario's question")
-    func theTwoScenariosGradeOnDisjointAnswers() {
-        // Reading either set runs `IntegrationScenarioAnswers`' own
-        // overlap check, which is stricter than this assertion: it rejects a
-        // substring relation, not just an equal string. This test is what
-        // makes that check run under an ungated `swift test`.
-        let singleCall = Set(IntegrationScenarioAnswers.singleCall)
-        let warmestCity = Set(IntegrationScenarioAnswers.warmestCity)
+    @Test("the single-call scenario grades the reading getWeather reports for its own city")
+    func theSingleCallAnswerIsTheReadingTheToolReports() async throws {
+        // Read back through the tool rather than off the fixture row: the
+        // graded substring has to be the number a reply quoting `getWeather`
+        // states. A matcher that resolved this city to a different reading,
+        // or an answer set derived from a different city, leaves scenario 1
+        // grading a temperature the model was never shown, and only the round
+        // trip notices. The rendering here is deliberately the assertion's
+        // own and not the fixture's `integrationTemperatureAnswer` — reusing
+        // that helper would compare the answer set against the expression
+        // that produced it.
+        let reading = try await IntegrationWeatherTool()
+            .call(arguments: IntegrationWeatherArguments(city: integrationSingleCallCity.name))
 
-        #expect(!singleCall.isEmpty)
-        #expect(!warmestCity.isEmpty)
-        #expect(singleCall.isDisjoint(with: warmestCity))
+        #expect(IntegrationScenarioAnswers.singleCall == [String(Int(reading.tempC))])
     }
 
-    @Test("the single-call scenario's graded substring reads back as the fixture's own reading")
-    func theSingleCallAnswerReadsBackAsTheFixtureReading() {
-        #expect(
-            IntegrationScenarioAnswers.singleCall.allSatisfy { Double($0) == integrationSingleCallCity.tempC }
-        )
+    @Test("the compose scenario grades the city its own getTrip-then-getWeather walk finds warmest")
+    func theWarmestCityAnswersNameTheCityTheComposeWalkFinds() async throws {
+        // The walk the compose and discovery scenarios ask a snippet to write,
+        // run here in Swift: read the itinerary, read each city it lists, keep
+        // the warmest. Grading the answer set against what that walk produces
+        // is the part the set cannot check about itself — an itinerary and a
+        // weather table that drifted apart, or answers derived from a city the
+        // walk never reaches, fail here.
+        //
+        // Reading the set also runs `IntegrationScenarioAnswers`' own overlap
+        // check, which traps on a substring relation between the two
+        // scenarios' answers in either direction. That check is stricter than
+        // any expectation here could be, and this suite is what makes it run
+        // under an ungated `swift test`.
+        let trip = try await IntegrationTripTool().call(arguments: IntegrationNoArguments(unused: nil))
+        let weather = IntegrationWeatherTool()
+
+        var readings: [(code: String, tempC: Double)] = []
+        for code in trip.cities {
+            let reading = try await weather.call(arguments: IntegrationWeatherArguments(city: code))
+            readings.append((code: code, tempC: reading.tempC))
+        }
+        let warmest = try #require(readings.max { $0.tempC < $1.tempC })
+
+        #expect(IntegrationScenarioAnswers.warmestCity.contains(warmest.code))
     }
 }
