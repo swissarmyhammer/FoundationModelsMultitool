@@ -180,7 +180,7 @@ enum CLIRunner {
             \(optionsLines.joined(separator: "\n"))
 
             Resolves a small demo model profile via FoundationModelsRouter, wires up a
-            couple of fixture tools (tripCities, weather), and asks one question that
+            couple of fixture tools (getTrip, getWeather), and asks one question that
             exercises the search-then-code loop (findAPIs, then a composing runCode).
             """
     }
@@ -214,7 +214,7 @@ enum CLIRunner {
     ///
     /// Triggering both findAPIs and runCode to compose an answer — plan.md
     /// M9: "one prompt that triggers findAPIs then a composing runCode,"
-    /// mirroring plan.md's own worked `tripCities` -> `weather` -> warmest
+    /// mirroring the sample's own worked `getTrip` -> `getWeather` -> warmest
     /// example.
     static let demoPrompt = "Of the cities on my trip, which is warmest right now?"
 
@@ -377,7 +377,7 @@ enum CLIRunner {
         // let finish.
         do {
             var registry = try MultiTool.Builder()
-                .addTool(DemoTripCitiesTool())
+                .addTool(DemoTripTool())
                 .addTool(DemoWeatherTool())
                 .buildRegistry()
             if direct {

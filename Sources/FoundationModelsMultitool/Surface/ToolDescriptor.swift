@@ -15,13 +15,13 @@ import Foundation
 /// prefix" is the registry-backed selection tier's instruction prefix
 /// referenced above).
 public struct ToolDescriptor: Sendable, Equatable {
-    /// The identifier the snippet calls this function by, e.g. `"weather"`.
+    /// The identifier the snippet calls this function by, e.g. `"getWeather"`.
     /// A group's namespace prefix (`tools.<group>.<name>`) is applied by a
     /// later milestone; M2 always renders a flat, unqualified `name`.
     public let name: String
 
     /// The bare `declare function …` signature line, with no doc comment —
-    /// e.g. `declare function weather(args: { city: string }): Promise<string>;`.
+    /// e.g. `declare function getWeather(args: { city: string }): Promise<string>;`.
     ///
     /// The return type is always a `Promise<…>`: a `tools.*` binding is an
     /// async host function, so the call yields a promise and the declared
@@ -32,7 +32,7 @@ public struct ToolDescriptor: Sendable, Equatable {
     public let doc: String
 
     /// The auto-generated, runnable example call this tool would be invoked
-    /// with, e.g. `await tools.weather({ city: "city" });` — the same text
+    /// with, e.g. `await tools.getWeather({ city: "city" });` — the same text
     /// that also appears inside `doc`'s `@example` line, with one deliberate
     /// exception: if a schema-derived value spliced into the call (an enum
     /// choice or property name) contains an embedded JSDoc comment

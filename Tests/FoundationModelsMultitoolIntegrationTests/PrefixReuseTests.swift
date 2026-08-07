@@ -63,7 +63,7 @@ struct PrefixReuseTests {
             // measurably slower than a `fork()`-inherited one — the same
             // ~20-tool set `SearchThenCallTests`' discovery scenario uses.
             let registry = try MultiTool.Builder()
-                .addTools([IntegrationWeatherTool(), IntegrationTripCitiesTool()] + integrationDistractorTools)
+                .addTools([IntegrationWeatherTool(), IntegrationTripTool()] + integrationDistractorTools)
                 .buildRegistry()
             // `findAPIsTool`'s own production initializer — never a
             // reimplementation of its selection-tier wiring.

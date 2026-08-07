@@ -30,7 +30,7 @@ struct WeatherArguments {
 /// A real `Tool` conformance (no `ToolAPIRenderer`-specific hooks) — proof
 /// the renderer works purely off the public `Tool` surface.
 struct WeatherTool: Tool {
-    let name = "weather"
+    let name = "getWeather"
     let description = "Current weather for a city."
 
     func call(arguments: WeatherArguments) async throws -> WeatherResult {
@@ -232,7 +232,7 @@ struct PlainTextOutput: PromptRepresentable {
 }
 
 struct PlainTextTool: Tool {
-    let name = "echo"
+    let name = "echoText"
     let description = "Echoes text back."
 
     func call(arguments: StringArgument) async throws -> PlainTextOutput {
@@ -307,7 +307,7 @@ struct ReturnsCommentTerminatorResult {
 }
 
 struct ReturnsCommentTerminatorTool: Tool {
-    let name = "returnsTerminator"
+    let name = "getSummary"
     let description = "A test tool."
 
     func call(arguments: StringArgument) async throws -> ReturnsCommentTerminatorResult {
@@ -342,7 +342,7 @@ struct ReturnsEnumWithCommentTerminatorResult {
 }
 
 struct ReturnsEnumWithCommentTerminatorTool: Tool {
-    let name = "statusTool"
+    let name = "getStatus"
     let description = "A test tool."
 
     func call(arguments: StringArgument) async throws -> ReturnsEnumWithCommentTerminatorResult {

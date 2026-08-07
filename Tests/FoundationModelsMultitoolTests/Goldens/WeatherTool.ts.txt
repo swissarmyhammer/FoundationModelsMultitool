@@ -3,6 +3,6 @@
  * @param args.city — IATA city code or city name. (required)
  * @param args.units — temperature unit; one of "c" | "f". (optional)
  * @returns Promise<{ tempC: number; summary: string }> — current conditions.
- * @example const r = await tools.weather({ city: "city" });
+ * @example const r = await tools.getWeather({ city: "city" });
  */
-declare function weather(args: { city: string; units?: "c" | "f" }): Promise<{ tempC: number; summary: string }>;
+declare function getWeather(args: { city: string; units?: "c" | "f" }): Promise<{ tempC: number; summary: string }>;

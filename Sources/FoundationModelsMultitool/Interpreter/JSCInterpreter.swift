@@ -457,7 +457,7 @@ public final class JSCInterpreter: Interpreter {
 
         // Wrap in an *async* IIFE so both a top-level `return` and a
         // top-level `await` are legal — models with async-JS priors
-        // routinely write `await tools.weather(...)`, and under a plain
+        // routinely write `await tools.getWeather(...)`, and under a plain
         // IIFE that is a bare syntax error whose message never mentions
         // `await` ("Unexpected identifier 'tools'"), an unrecoverable
         // dead end for the model. An outer plain IIFE holds the outcome

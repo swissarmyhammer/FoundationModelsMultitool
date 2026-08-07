@@ -157,12 +157,12 @@ struct JSCInterpreterTests {
         // TypeError into the context, which would surface instead of the
         // message under test.
         let interpreter = JSCInterpreter()
-        let weather = HostFunction(name: "weather") { _ in .object(["tempC": .number(31)]) }
+        let weather = HostFunction(name: "getWeather") { _ in .object(["tempC": .number(31)]) }
         let result = try interpreter.run(
             code: """
             JSON.parse = function () { return undefined; };
             try {
-              weather();
+              getWeather();
               return "unreachable";
             } catch (e) {
               return e.message;
@@ -170,7 +170,7 @@ struct JSCInterpreterTests {
             """,
             installing: [weather]
         )
-        #expect(result.returnValue == .string("weather: JSON.parse is unavailable."))
+        #expect(result.returnValue == .string("getWeather: JSON.parse is unavailable."))
     }
 
     @Test("a JS syntax error surfaces as InterpreterError")
@@ -265,10 +265,10 @@ struct JSCInterpreterTests {
     @Test("a snippet may await a host function's result at the top level")
     func topLevelAwaitOfHostFunctionResult() throws {
         let interpreter = JSCInterpreter()
-        let weather = HostFunction(name: "weather") { _ in .object(["tempC": .number(31)]) }
+        let weather = HostFunction(name: "getWeather") { _ in .object(["tempC": .number(31)]) }
         let result = try interpreter.run(
             code: """
-            const conditions = await weather();
+            const conditions = await getWeather();
             return conditions.tempC;
             """,
             installing: [weather]
@@ -321,13 +321,13 @@ struct JSCInterpreterTests {
     @Test("a snippet may await an async host function's result at the top level")
     func topLevelAwaitOfAsyncHostFunctionResult() throws {
         let interpreter = JSCInterpreter()
-        let weather = AsyncHostFunction(name: "weatherAsync") { _ in
+        let weather = AsyncHostFunction(name: "getWeatherAsync") { _ in
             try await Task.sleep(nanoseconds: 20_000_000)
             return .object(["tempC": .number(31)])
         }
         let result = try interpreter.run(
             code: """
-            const conditions = await weatherAsync();
+            const conditions = await getWeatherAsync();
             return conditions.tempC;
             """,
             installing: [],
@@ -515,12 +515,12 @@ struct JSCInterpreterTests {
     @Test("an async host function's unawaited RETURNED promise settles at the run's boundary")
     func unawaitedReturnedPromiseSettlesAtBoundary() throws {
         let interpreter = JSCInterpreter()
-        let weather = AsyncHostFunction(name: "weatherAsync") { _ in
+        let weather = AsyncHostFunction(name: "getWeatherAsync") { _ in
             try await Task.sleep(nanoseconds: 20_000_000)
             return .object(["tempC": .number(31)])
         }
         let result = try interpreter.run(
-            code: "return weatherAsync();",
+            code: "return getWeatherAsync();",
             installing: [],
             installingAsync: [weather]
         )
@@ -540,13 +540,13 @@ struct JSCInterpreterTests {
         // TypeError into the context, which `evaluate` reports ahead of the
         // rejection, hiding the message under test.
         let interpreter = JSCInterpreter()
-        let weather = AsyncHostFunction(name: "weatherAsync") { _ in
+        let weather = AsyncHostFunction(name: "getWeatherAsync") { _ in
             try await Task.sleep(nanoseconds: 20_000_000)
             return .object(["tempC": .number(31)])
         }
         let result = try interpreter.run(
             code: """
-            const pending = weatherAsync();
+            const pending = getWeatherAsync();
             JSON.parse = function () { return undefined; };
             try {
               await pending;
@@ -558,7 +558,7 @@ struct JSCInterpreterTests {
             installing: [],
             installingAsync: [weather]
         )
-        #expect(result.returnValue == .string("weatherAsync: JSON.parse is unavailable."))
+        #expect(result.returnValue == .string("getWeatherAsync: JSON.parse is unavailable."))
     }
 
     @Test("a bridge call's returned value supports .catch(...), not just await/.then")
@@ -704,15 +704,15 @@ struct JSCInterpreterTests {
     @Test("a bridge call's returned value supports .finally(...) and is instanceof Promise")
     func bridgeReturnValueSupportsFinallyAndIsPromise() throws {
         let interpreter = JSCInterpreter()
-        let weather = AsyncHostFunction(name: "weatherAsync") { _ in
+        let weather = AsyncHostFunction(name: "getWeatherAsync") { _ in
             try await Task.sleep(nanoseconds: 20_000_000)
             return .number(31)
         }
         let result = try interpreter.run(
             code: """
             let ranFinally = false;
-            const value = await weatherAsync().finally(function() { ranFinally = true; });
-            return { value: value, ranFinally: ranFinally, isPromise: weatherAsync() instanceof Promise };
+            const value = await getWeatherAsync().finally(function() { ranFinally = true; });
+            return { value: value, ranFinally: ranFinally, isPromise: getWeatherAsync() instanceof Promise };
             """,
             installing: [],
             installingAsync: [weather]

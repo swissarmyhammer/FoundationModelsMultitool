@@ -28,13 +28,13 @@ import MLXFoundationModels
 @Generable
 struct NoArguments { @Guide(description: "unused.") var unused: String? }
 @Generable
-struct TripCitiesOutput { var cities: [String] }
+struct TripOutput { var cities: [String] }
 
-struct TripCitiesTool: Tool {
-    let name = "tripCities"
+struct TripTool: Tool {
+    let name = "getTrip"
     let description = "The cities on the user's current trip, in itinerary order."
-    func call(arguments: NoArguments) async throws -> TripCitiesOutput {
-        TripCitiesOutput(cities: ["ATX", "SFO", "NYC"])
+    func call(arguments: NoArguments) async throws -> TripOutput {
+        TripOutput(cities: ["ATX", "SFO", "NYC"])
     }
 }
 
@@ -44,7 +44,7 @@ struct WeatherArguments { @Guide(description: "IATA city code or city name.") va
 struct WeatherOutput { var tempC: Double }
 
 struct WeatherTool: Tool {
-    let name = "weather"
+    let name = "getWeather"
     let description = "Current weather for a city. Use when asked how warm/cold/rainy it is right now."
     func call(arguments: WeatherArguments) async throws -> WeatherOutput {
         WeatherOutput(tempC: ["ATX": 31, "SFO": 18, "NYC": 24][arguments.city] ?? 20)
@@ -53,7 +53,7 @@ struct WeatherTool: Tool {
 
 // 1. Collect the tools into a model-agnostic registry.
 let registry = try MultiTool.Builder()
-    .addTool(TripCitiesTool())
+    .addTool(TripTool())
     .addTool(WeatherTool())
     .buildRegistry()
 let multiTool = MultiTool(registry: registry)
@@ -112,10 +112,10 @@ call awaits each of them (or fans them out with `Promise.all`):
 ```swift
 let warmest = try await multiTool.call(
     arguments: RunCodeArguments(code: """
-        const cities = (await tools.tripCities()).cities;
+        const cities = (await tools.getTrip()).cities;
         const temps = [];
         for (const city of cities) {
-          temps.push((await tools.weather({ city })).tempC);
+          temps.push((await tools.getWeather({ city })).tempC);
         }
         return Math.max(...temps);
         """)

@@ -17,7 +17,7 @@ struct FindAPIsToolTests {
     func standaloneSelectionSplicesVerbatimBlockAndExample() async throws {
         let surface = try MultiTool.Builder().addTool(TripCitiesTool()).build()
         let entry = try #require(surface.entries.first)
-        let root = RootSessionRespondCalledDirectlySession(forkResponses: [#"{"ids":["tripCities"]}"#])
+        let root = RootSessionRespondCalledDirectlySession(forkResponses: [#"{"ids":["getTrip"]}"#])
         let searcher = MetadataSearcher(
             items: surface.entries,
             mode: .auto,

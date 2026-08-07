@@ -13,10 +13,9 @@ struct DemoNoArguments {
     var unused: String?
 }
 
-/// `DemoTripCitiesTool`'s output — plan.md's own worked `tripCities():
-/// string[]` example.
+/// `DemoTripTool`'s output — the trip's cities, in visit order.
 @Generable
-struct DemoTripCitiesOutput {
+struct DemoTripOutput {
     /// The itinerary's cities, in visit order.
     var cities: [String]
 }
@@ -25,17 +24,17 @@ struct DemoTripCitiesOutput {
 /// into the sample's `MultiTool` registry (driven by a native
 /// `LanguageModelSession`), chosen (together with `DemoWeatherTool`) to
 /// trigger the compose/chain behavior plan.md's own usage example walks
-/// through: `tripCities` -> `weather` per city -> pick the warmest.
-struct DemoTripCitiesTool: Tool {
-    let name = "tripCities"
+/// through: `getTrip` -> `getWeather` per city -> pick the warmest.
+struct DemoTripTool: Tool {
+    let name = "getTrip"
     let description = "The cities on the user's current trip, in itinerary order."
 
     /// Returns the sample's fixed itinerary.
     ///
     /// - Parameter arguments: unused.
     /// - Returns: the fixed itinerary.
-    func call(arguments: DemoNoArguments) async throws -> DemoTripCitiesOutput {
-        DemoTripCitiesOutput(cities: ["ATX", "SFO", "NYC"])
+    func call(arguments: DemoNoArguments) async throws -> DemoTripOutput {
+        DemoTripOutput(cities: ["ATX", "SFO", "NYC"])
     }
 }
 
@@ -60,10 +59,10 @@ struct DemoWeatherResult {
 /// Deterministic (no live weather API) so the demo's "warmest city" prompt
 /// always has one unambiguous right answer.
 struct DemoWeatherTool: Tool {
-    let name = "weather"
+    let name = "getWeather"
     let description = "Current weather for a city. Use when asked how warm/cold/rainy it is right now."
 
-    /// Deterministic per-city temperatures, keyed by `DemoTripCitiesTool`'s
+    /// Deterministic per-city temperatures, keyed by `DemoTripTool`'s
     /// itinerary codes, so the demo's "which is warmest" prompt has one
     /// unambiguous answer (Austin).
     private static let temperaturesByCity: [String: Double] = [

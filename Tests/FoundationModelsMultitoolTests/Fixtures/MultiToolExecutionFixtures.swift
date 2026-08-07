@@ -23,8 +23,7 @@ struct NoArguments {
     var unused: String?
 }
 
-/// The `Output` of `CitiesTool` — a fixed trip itinerary, plan.md's own
-/// worked `tripCities(): string[]` example.
+/// The `Output` of `CitiesTool` — a fixed trip itinerary.
 @Generable
 struct CitiesOutput {
     var cities: [String]
@@ -35,7 +34,7 @@ struct CitiesOutput {
 /// call the other tool per element — the "compose two tools, only the final
 /// value comes back" acceptance criterion.
 struct CitiesTool: Tool {
-    let name = "cities"
+    let name = "getCities"
     let description = "The cities on the trip."
 
     func call(arguments: NoArguments) async throws -> CitiesOutput {
@@ -65,7 +64,7 @@ private let fixtureTemperatures: [String: Double] = ["AAA": 11, "BBB": 22, "CCC"
 
 /// Per-city temperature lookup.
 struct TempTool: Tool {
-    let name = "temp"
+    let name = "getTemperature"
     let description = "Current temperature (Celsius) for a city."
 
     func call(arguments: TempArguments) async throws -> TempOutput {
@@ -89,10 +88,10 @@ struct IssueCountOutput {
 }
 
 /// A group fixture tool — added via `addGroup(named: "github", …)`, so a
-/// snippet dispatches it as `tools.github.issueCount({…})` — exercises
+/// snippet dispatches it as `tools.github.getIssueCount({…})` — exercises
 /// grouped-namespace dispatch (plan.md Resolved #5).
 struct IssueCountTool: Tool {
-    let name = "issueCount"
+    let name = "getIssueCount"
     let description = "Open issue count for a repository."
 
     func call(arguments: RepoArguments) async throws -> IssueCountOutput {

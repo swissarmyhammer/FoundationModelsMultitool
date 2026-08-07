@@ -136,9 +136,9 @@ struct ToolAPIRendererTests {
     @Test("the rendered example awaits the call, in both the @example line and the runnable example field")
     func renderedExampleAwaitsTheCall() throws {
         let descriptor = try ToolAPIRenderer.render(WeatherTool())
-        #expect(descriptor.example == #"await tools.weather({ city: "city" });"#)
+        #expect(descriptor.example == #"await tools.getWeather({ city: "city" });"#)
         #expect(
-            descriptor.doc.contains(#"@example const r = await tools.weather({ city: "city" });"#),
+            descriptor.doc.contains(#"@example const r = await tools.getWeather({ city: "city" });"#),
             "doc was: \(descriptor.doc)"
         )
     }
@@ -284,7 +284,7 @@ struct ToolAPIRendererTests {
         let golden = try String(contentsOf: goldenURL, encoding: .utf8)
             .trimmingCharacters(in: .newlines)
 
-        #expect(descriptor.name == "weather")
+        #expect(descriptor.name == "getWeather")
         #expect(descriptor.source.trimmingCharacters(in: .newlines) == golden)
     }
 

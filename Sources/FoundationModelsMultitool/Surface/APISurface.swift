@@ -15,7 +15,7 @@ public struct APISurface: Sendable, Equatable {
     /// One rendered tool in the catalog.
     public struct Entry: Sendable, Equatable {
         /// The fully-qualified path the snippet calls this tool by,
-        /// relative to `tools` — `"weather"` for a standalone tool, or
+        /// relative to `tools` — `"getWeather"` for a standalone tool, or
         /// `"<group>.<name>"` for a grouped one. Always equal to
         /// `descriptor.name` for a standalone entry (`group == nil`), and
         /// always `"\(group).\(descriptor.name)"` for a grouped one.

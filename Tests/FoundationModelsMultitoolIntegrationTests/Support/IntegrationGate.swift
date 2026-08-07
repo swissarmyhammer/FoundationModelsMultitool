@@ -151,14 +151,15 @@ var multitoolIntegrationEnabled: Bool {
 /// (a valid, fixture-grounded answer — see `runNativeIntegrationScenario`),
 /// the 4B's apparent 3/4 collapsed to 0/4: it reliably invokes the right
 /// `tools.*` functions, then mis-destructures their declared return shapes
-/// (`weather.temperature` against the declared `tempC`), reads `undefined`,
-/// and answers "I'm unable to retrieve…" — approved route, invalid answer,
-/// every run. `Qwen3-30B-A3B-Instruct-2507-4bit` (~17GB, 3.3B active, the
-/// same 2507 instruct recipe) scores 2/4 under outcome assertions with
-/// genuinely valid answers — the fixture's exact 31°C for weather, a real
-/// `book`-invoked confirmation for repair — and its failures are honest
-/// clarifying-question deflections, never hallucinations. `standard`
-/// therefore moves to the 30B; decode speed is comparable (3.3B active).
+/// (reading `.temperature` off the result against the declared `tempC`),
+/// reads `undefined`, and answers "I'm unable to retrieve…" — approved
+/// route, invalid answer, every run. `Qwen3-30B-A3B-Instruct-2507-4bit`
+/// (~17GB, 3.3B active, the same 2507 instruct recipe) scores 2/4 under
+/// outcome assertions with genuinely valid answers — the weather fixture's
+/// exact 31°C, a genuinely invoked booking confirmation for repair — and its
+/// failures are honest clarifying-question deflections, never
+/// hallucinations. `standard` therefore moves to the 30B; decode speed is
+/// comparable (3.3B active).
 ///
 /// **Tool-owned contract promoted a dense 27B.** After the tool-use
 /// contract moved onto the tools themselves — the full behavioral essence
@@ -200,10 +201,12 @@ let multitoolTinyProfile = ProfileDefinition(
 /// profiles would otherwise resolve and generate at once, and measured on real
 /// hardware that is not merely slow — it is wrong. In a five-at-once run every
 /// scenario degraded together: `findAPIs` stopped preceding `runCode` in all of
-/// them, snippets called invented function names (`getTrip`, `getWeather`,
-/// `getInventory`) that exist in no fixture, and the replies came back fluent
-/// but ungrounded. The same suites run three-at-once, or one at a time, called
-/// the real fixtures and answered from them. One resident profile at a time is
+/// them, snippets called function names that exist in no fixture
+/// (`getInventory`, plus `getTrip` and `getWeather` — invented names when that
+/// run was measured, real fixture names since the 2026-08-07 rename recorded on
+/// task `tkrdwb8`), and the replies came back fluent but ungrounded. The
+/// same suites run three-at-once, or one at a time, called the real fixtures
+/// and answered from them. One resident profile at a time is
 /// therefore a correctness requirement of this target, not a courtesy — and it
 /// is the same property `SearchThenCallTests`' own `.serialized` documents
 /// ("only one profile is resident at a time per `Router`"), extended across

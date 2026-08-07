@@ -154,7 +154,7 @@ becomes prose, so the *type* stays clean and the *guidance* is explicit:
 | default value | `@param … default <v>` |
 | required vs. optional | optional params marked `(optional)` |
 | `Output` shape (when known — see below) | `@returns <type> — <description>` |
-| auto-generated usage | `@example const r = tools.weather({ city: "ATX" });` |
+| auto-generated usage | `@example const r = tools.getWeather({ city: "ATX" });` |
 
 **Return-type handling.** `Output` is `PromptRepresentable`; its shape isn't always
 schema-described (Findings #4): if `Output` is structured (`ToolOutput` wrapping
@@ -171,10 +171,10 @@ and document it in `@returns` prose.
  * @param args.city — IATA city code or city name.
  * @param args.units — temperature unit; one of "c" | "f". default "c". (optional)
  * @returns { tempC: number; summary: string } — current conditions.
- * @example const c = tools.weather({ city: "ATX" }).tempC;
+ * @example const c = tools.getWeather({ city: "ATX" }).tempC;
  */
-declare function weather(args: { city: string; units?: "c" | "f" }): { tempC: number; summary: string };
-// callable in a snippet as tools.weather({ city: "ATX" })
+declare function getWeather(args: { city: string; units?: "c" | "f" }): { tempC: number; summary: string };
+// callable in a snippet as tools.getWeather({ city: "ATX" })
 ```
 
 The renderer's output is captured per tool as a `ToolDescriptor` (name, TS
@@ -218,7 +218,7 @@ func invoke<T: Tool>(_ tool: T, jsArgs: JSValue) async throws -> T.Output {
 }
 ```
 
-So for `tools.weather({ city: "ATX" })` the interpreter:
+So for `tools.getWeather({ city: "ATX" })` the interpreter:
 
 1. **Marshals** the JS argument object → `GeneratedContent(properties:id:)` built
    natively from its key/values (no schema, no JSON string; `init(json:)` is an
@@ -419,11 +419,11 @@ What the native tool-calling loop does behind that one call:
 
 ```
 findAPIs({ task: "list trip cities, get weather for each" })
-  └─ selection tier (profile.flash, guided, fork-per-call) → tools.tripCities(): string[]
-                 tools.weather({ city: string; units?: "c"|"f" }): { tempC: number; summary: string }
+  └─ selection tier (profile.flash, guided, fork-per-call) → tools.getTrip(): string[]
+                 tools.getWeather({ city: string; units?: "c"|"f" }): { tempC: number; summary: string }
 runCode({ code: `
-  const cities = tools.tripCities();
-  const wx = cities.map(c => ({ c, t: tools.weather({ city: c }).tempC }));
+  const cities = tools.getTrip();
+  const wx = cities.map(c => ({ c, t: tools.getWeather({ city: c }).tempC }));
   return wx.sort((a,b) => b.t - a.t)[0];
 ` })
   └─ fresh JSContext, each tools.X() → native Swift tool.call → returns { c: "Austin", t: 31 }
@@ -440,7 +440,7 @@ let session = LanguageModelSession(
     tools: [MultiTool(registry: registry.directMode())],  // only runCode; help()/docs() inside the snippet
     instructions: "Tools are documented via help(). Use runCode."
 )
-// in a snippet:  help() → ["tripCities","weather",…];  docs("weather") → signature + doc + example
+// in a snippet:  help() → ["getTrip","getWeather",…];  docs("getWeather") → signature + doc + example
 ```
 
 **Elicitation works wrapped.** A tool that asks the user for input is just another
@@ -526,8 +526,8 @@ FindAPIsTool ─► MetadataSearcher (.auto): hybrid retrieval → candidates
    ▼
 main model writes a snippet:
    runCode(`
-     const cities = tools.tripCities();
-     const wx = cities.map(c => ({ c, t: tools.weather({city: c}).tempC }));
+     const cities = tools.getTrip();
+     const wx = cities.map(c => ({ c, t: tools.getWeather({city: c}).tempC }));
      return wx.sort((a,b) => b.t - a.t)[0].c;
    `)
    ▼
@@ -581,18 +581,18 @@ invent functions; return an empty list if nothing fits.
 /**
  * The cities on the user's current trip, in itinerary order.
  * @returns string[] — IATA city codes.
- * @example const cs = tools.tripCities();
+ * @example const cs = tools.getTrip();
  */
-declare function tripCities(): string[];
+declare function getTrip(): string[];
 
 /**
  * Current weather for a city. Use when the user asks how warm/cold/rainy it is now.
  * @param args.city — IATA city code or city name.
  * @param args.units — one of "c" | "f". default "c". (optional)
  * @returns { tempC: number; summary: string }
- * @example const c = tools.weather({ city: "ATX" }).tempC;
+ * @example const c = tools.getWeather({ city: "ATX" }).tempC;
  */
-declare function weather(args: { city: string; units?: "c" | "f" }): { tempC: number; summary: string };
+declare function getWeather(args: { city: string; units?: "c" | "f" }): { tempC: number; summary: string };
 
 … (calendar, convertCurrency, … every candidate's block) …
 
@@ -605,7 +605,7 @@ enum of the candidate ids (`idEnumGrammar(ids:)`), so the pick is well-formed �
 and nothing *but* a pick — by construction:
 
 ```json
-{ "ids": ["tripCities", "weather"] }
+{ "ids": ["getTrip", "getWeather"] }
 ```
 
 `FindAPIsTool` then formats the tool output the main model reads by looking
@@ -615,22 +615,22 @@ selected, so they never reach the main context):
 
 ```
 findAPIs("list the cities on my trip and get the current weather for each") found:
-// tools.tripCities
+// tools.getTrip
 /**
  * The cities on the user's current trip, in itinerary order.
  * @returns string[] — IATA city codes.
- * @example const cs = tools.tripCities();
+ * @example const cs = tools.getTrip();
  */
-declare function tripCities(): string[];
-Example: const cs = tools.tripCities();
+declare function getTrip(): string[];
+Example: const cs = tools.getTrip();
 
-// tools.weather
+// tools.getWeather
 /**
  * Current weather for a city. Use when the user asks how warm/cold/rainy it is now.
  * …
  */
-declare function weather(args: { city: string; units?: "c" | "f" }): { tempC: number; summary: string };
-Example: const c = tools.weather({ city: "ATX" }).tempC;
+declare function getWeather(args: { city: string; units?: "c" | "f" }): { tempC: number; summary: string };
+Example: const c = tools.getWeather({ city: "ATX" }).tempC;
 ```
 
 ### Describing tools so agents pick them
@@ -642,8 +642,13 @@ surface those and lint for completeness (M2):
 
 - **Description states purpose AND trigger** — "what it does" + "when you'd use it."
   The selection tier matches the task's *intent*, so the trigger clause carries weight.
-- **Name is a verb-y identifier the model would guess** (`weather`, `tripCities`),
-  not an internal code (`wx_lookup_v2`).
+- **Name is `verbNoun`, the identifier the model would guess** (`getWeather`,
+  `getTrip`, `bookHotel`) — not a bare noun (`weather`, `tripCities`) and not an
+  internal code (`wx_lookup_v2`). The verb matters as much as the noun: a model
+  reading a catalog infers its dominant convention and *applies it to names it
+  has not seen*, so a catalog that is `verbNoun` everywhere except one tool
+  makes that one tool the hardest to call. Be consistent across the whole
+  catalog you mount.
 - **Every parameter has a `@Guide`** — these become the `@param` lines; an
   undocumented param is one the model fills in blind.
 - **Enums/ranges live in `@Guide`** so they render as `"c"|"f"` / `(range 1…10)`
@@ -651,9 +656,23 @@ surface those and lint for completeness (M2):
 
 ```
 ✗ name "lookup"   desc "Returns data."   → the selection tier can't tell when to pick it
-✓ name "weather"  desc "Current weather for a city. Use when the user asks how
+✗ name "weather"  desc "Current weather for a city…"   → right description, but the
+                        bare noun fights a catalog of verbNoun neighbours
+✓ name "getWeather"  desc "Current weather for a city. Use when the user asks how
                         warm/cold/rainy it is now."   → reliably selected
 ```
+
+> **Naming, and one deliberate divergence (2026-08-07, task `tkrdwb8`).** The
+> `verbNoun` rule above is a human ruling, made after a gated `discoveryUnderDistractors`
+> run showed the model emitting `getTrip`/`getWeather` against fixtures named
+> `tripCities`/`weather`: ten of the twelve mounted tools were `verbNoun`, so the
+> model was inferring the convention correctly and the two fixtures were the
+> outliers. Every worked example above was renamed to match. The gated fixture's
+> `getTrip` diverges from the `getTrip(): string[]` shown here in one respect —
+> it returns a whole trip object (`cities` plus dates, traveler and confirmation
+> code), so the snippet has to navigate to `.cities` the way a real itinerary API
+> forces. The simpler `string[]` is kept here because this section is about
+> naming and rendering, not about return shapes.
 
 ## Interpreter engine: JavaScriptCore (with a swappable seam)
 
@@ -827,9 +846,9 @@ search-then-code loop actually work?"
   `GenerationError.notWiredForLiveInference`.
 - **A few representative sample MultiTools**, each a small fixed tool set that
   forces the behavior we care about:
-  1. **single-call** — one obvious tool (`weather`); asserts the model finds it and
+  1. **single-call** — one obvious tool (`getWeather`); asserts the model finds it and
      calls it, not that it hallucinates an answer.
-  2. **compose/chain** — `tripCities` → `weather` per city → pick warmest; asserts
+  2. **compose/chain** — `getTrip` → `getWeather` per city → pick warmest; asserts
      the model writes *one* `runCode` snippet that composes (intermediates never
      re-enter context), not N single tool calls.
   3. **discovery under distractors** — ~20 wrapped tools where only 2 are relevant;

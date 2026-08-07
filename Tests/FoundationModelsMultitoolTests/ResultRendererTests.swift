@@ -206,17 +206,17 @@ struct ResultRendererTests {
         // surfaces back out as an `InterpreterError`. So this is a genuine
         // round trip through the real interpreter, not a hand-built stand-in.
         let interpreter = JSCInterpreter()
-        let failingTool = HostFunction(name: "weather") { _ in
+        let failingTool = HostFunction(name: "getWeather") { _ in
             throw ToolInvokerError(
                 kind: .missingRequiredField,
                 field: "city",
-                message: "Tool \"weather\" is missing its required argument \"city\"."
+                message: "Tool \"getWeather\" is missing its required argument \"city\"."
             )
         }
 
         var caught: InterpreterError?
         do {
-            _ = try interpreter.run(code: "return weather({});", installing: [failingTool])
+            _ = try interpreter.run(code: "return getWeather({});", installing: [failingTool])
         } catch let error as InterpreterError {
             caught = error
         }
@@ -225,7 +225,7 @@ struct ResultRendererTests {
         let rendered = ResultRenderer.render(interpreterError)
 
         #expect(rendered.contains("city"))
-        #expect(rendered.contains("Tool \"weather\" is missing its required argument \"city\"."))
+        #expect(rendered.contains("Tool \"getWeather\" is missing its required argument \"city\"."))
         #expect(rendered.lowercased().contains("fix"))
     }
 }

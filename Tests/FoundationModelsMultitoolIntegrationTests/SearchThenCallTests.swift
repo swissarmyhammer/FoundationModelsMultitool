@@ -13,11 +13,12 @@ import Testing
 /// (tool ordering, exact call sets, call budgets) were retired in favor of
 /// diagnostics. The `answerContainsOneOf` values below are the fixtures'
 /// own distinctive data (`Fixtures/ScenarioTools.swift`): the weather
-/// fixture always returns 31°C, the trip is always ATX → SFO → NYC, and the
-/// booking fixture confirms id 42 only when genuinely called with
-/// `confirm: true` — values a hallucinating model has never guessed across
-/// the many recorded runs on task `k4mj1gm` (it said 72°F, 25°C, Tokyo,
-/// Bangkok, Miami — never 31, never the fixture cities).
+/// fixture reports 31°C for Austin, the trip is always ATX → SFO → NYC with
+/// exactly one warmest city among them, and the booking fixture confirms id
+/// 42 only when genuinely called with `confirm: true` — values a
+/// hallucinating model has never guessed across the many recorded runs on
+/// task `k4mj1gm` (it said 72°F, 25°C, Tokyo, Bangkok, Miami — never 31,
+/// never the fixture cities).
 ///
 /// **Native design.** Ported off `MultiToolAgent`'s hand-rolled ReAct loop
 /// (`TurnFormat`/`AgentStep`, retired alongside it — see the `7840f24` kanban
@@ -44,18 +45,23 @@ import Testing
     .enabled(if: multitoolIntegrationEnabled)
 )
 struct SearchThenCallTests {
-    /// The valid answers to "which trip city is warmest": the fixture trip
-    /// is always ATX → SFO → NYC and the weather fixture returns the same
-    /// 31°C for every city, so *any* fixture city — IATA code or the
-    /// spelled-out name models routinely expand codes to — is a correct,
-    /// grounded answer, and any other city is a hallucination.
-    private static let fixtureCityAnswers = [
-        "ATX", "Austin",
-        "SFO", "San Francisco",
-        "NYC", "New York",
+    /// The only valid answers to "which trip city is warmest": the single
+    /// warmest fixture city, by IATA code and by the spelled-out name models
+    /// routinely expand codes to. Any other city is wrong.
+    ///
+    /// Derived from `integrationCityWeather` rather than restated, so the
+    /// assertion cannot drift from the readings it grades.
+    ///
+    /// This listed all three trip cities until the human ruling of
+    /// 2026-08-07 (task `tkrdwb8`): against a fixture that returned the same
+    /// 31°C for every city, "which is warmest" had three equally correct
+    /// answers, and a six-substring list graded that tie as a pass.
+    private static let warmestCityAnswers = [
+        integrationWarmestCity.code,
+        integrationWarmestCity.name,
     ]
 
-    // MARK: - Scenario 1: single-call `weather`
+    // MARK: - Scenario 1: single-call `getWeather`
 
     @Test("single-call weather scenario answers with the fixture's real temperature")
     func singleCallWeather() async throws {
@@ -63,34 +69,36 @@ struct SearchThenCallTests {
             name: "singleCallWeather",
             tools: [IntegrationWeatherTool()],
             prompt: "How warm is it in Austin right now?",
-            // The weather fixture always returns tempC 31 — a value no
+            // The weather fixture reports tempC 31 for Austin — a value no
             // hallucinated forecast has ever produced (72°F, 25°C, 22°C
-            // were the observed inventions).
+            // were the observed inventions). Austin is deliberately not the
+            // warmest of the trip cities, so this reading cannot double as
+            // the compose/chain scenarios' answer.
             answerContainsOneOf: ["31"]
         )
     }
 
-    // MARK: - Scenario 2: compose/chain tripCities -> weather -> warmest
+    // MARK: - Scenario 2: compose/chain getTrip -> getWeather -> warmest
 
-    @Test("compose/chain scenario names a real fixture trip city as warmest")
+    @Test("compose/chain scenario names the fixture's single warmest trip city")
     func composeChain() async throws {
         try await runNativeIntegrationScenario(
             name: "composeChain",
-            tools: [IntegrationTripCitiesTool(), IntegrationWeatherTool()],
+            tools: [IntegrationTripTool(), IntegrationWeatherTool()],
             prompt: "Of the cities on my trip, which is warmest right now?",
-            answerContainsOneOf: Self.fixtureCityAnswers
+            answerContainsOneOf: Self.warmestCityAnswers
         )
     }
 
     // MARK: - Scenario 3: discovery under distractors
 
-    @Test("discovery scenario still answers with a real fixture trip city among the distractor tools")
+    @Test("discovery scenario still names the warmest trip city among the distractor tools")
     func discoveryUnderDistractors() async throws {
         try await runNativeIntegrationScenario(
             name: "discoveryUnderDistractors",
-            tools: [IntegrationWeatherTool(), IntegrationTripCitiesTool()] + integrationDistractorTools,
+            tools: [IntegrationWeatherTool(), IntegrationTripTool()] + integrationDistractorTools,
             prompt: "Of the cities on my trip, which is warmest right now?",
-            answerContainsOneOf: Self.fixtureCityAnswers
+            answerContainsOneOf: Self.warmestCityAnswers
         )
     }
 
@@ -108,10 +116,10 @@ struct SearchThenCallTests {
             // it doesn't report failing at it.
             answerMustNotContain: ["unable", "couldn't", "cannot", "can't", "not able"],
             // "Your booking is confirmed" claims a side effect — the
-            // trip-prone `book` tool must genuinely have been invoked (any
-            // number of repair attempts, any route) for that claim to be
-            // true.
-            mustInvoke: ["book"]
+            // trip-prone `confirmBooking` tool must genuinely have been
+            // invoked (any number of repair attempts, any route) for that
+            // claim to be true.
+            mustInvoke: ["confirmBooking"]
         )
     }
 }

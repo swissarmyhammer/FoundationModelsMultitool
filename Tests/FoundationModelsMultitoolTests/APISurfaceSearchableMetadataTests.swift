@@ -43,6 +43,6 @@ struct APISurfaceSearchableMetadataTests {
         let searcher = MetadataSearcher(items: surface.entries, mode: .retrieval)
         let matches = try await searcher.search(intent: "current weather conditions for a city", limit: 3)
 
-        #expect(matches.first?.id == "weather")
+        #expect(matches.first?.id == "getWeather")
     }
 }

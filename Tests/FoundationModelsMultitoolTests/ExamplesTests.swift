@@ -146,14 +146,14 @@ struct ExamplesTests {
             .addGroup(named: "github", [GithubCreateIssueTool(), GithubSearchTool()])
             .build()
 
-        #expect(surface.entries.map(\.path) == ["weather", "github.createIssue", "github.search"])
-        #expect(surface.standaloneEntries.map(\.path) == ["weather"])
+        #expect(surface.entries.map(\.path) == ["getWeather", "github.createIssue", "github.search"])
+        #expect(surface.standaloneEntries.map(\.path) == ["getWeather"])
         #expect(surface.groupedEntries["github"]?.map(\.path) == ["github.createIssue", "github.search"])
 
         // Every entry's rendered block carries a banner naming its
         // fully-qualified call path, followed by its JSDoc + declaration.
-        #expect(surface.source.contains("// tools.weather"))
-        #expect(surface.source.contains("declare function weather("))
+        #expect(surface.source.contains("// tools.getWeather"))
+        #expect(surface.source.contains("declare function getWeather("))
         #expect(surface.source.contains("// tools.github.createIssue"))
         #expect(surface.source.contains("declare function createIssue("))
     }
@@ -169,7 +169,7 @@ struct ExamplesTests {
         let model = ScriptedLanguageModel { transcript in
             Self.hasToolOutput(transcript, from: "runCode")
                 ? .answer("Your itinerary: ATX, then SFO.")
-                : .callTool(name: "runCode", argumentsJSON: #"{"code": "return tools.tripCities();"}"#)
+                : .callTool(name: "runCode", argumentsJSON: #"{"code": "return tools.getTrip();"}"#)
         }
 
         // Real usage from here on: construct MultiTool(registry:), hand it
@@ -206,11 +206,11 @@ struct ExamplesTests {
         let multiTool = MultiTool(registry: registry)
 
         // findAPIs's own selection tier is scripted to pick
-        // "github.issueCount" by id — see FindAPIsToolTests for the same
+        // "github.getIssueCount" by id — see FindAPIsToolTests for the same
         // RootSessionRespondCalledDirectlySession pattern driving a real
         // MetadataSearcher/SelectionConfig.
         let selectionRoot = RootSessionRespondCalledDirectlySession(
-            forkResponses: [#"{"ids":["github.issueCount"]}"#]
+            forkResponses: [#"{"ids":["github.getIssueCount"]}"#]
         )
         let searcher = MetadataSearcher(
             items: registry.surface.entries,
@@ -228,7 +228,7 @@ struct ExamplesTests {
             if Self.hasToolOutput(transcript, from: "findAPIs") {
                 return .callTool(
                     name: "runCode",
-                    argumentsJSON: #"{"code": "return tools.github.issueCount({repo: \"demo\"});"}"#
+                    argumentsJSON: #"{"code": "return tools.github.getIssueCount({repo: \"demo\"});"}"#
                 )
             }
             return .callTool(name: "findAPIs", argumentsJSON: #"{"task": "count open github issues"}"#)
@@ -247,15 +247,15 @@ struct ExamplesTests {
 
         // The discovery text the model actually saw between the two steps —
         // the exact worked findAPIs("...") -> runCode(...) example: a
-        // rendered block naming the fully-qualified tools.github.issueCount
+        // rendered block naming the fully-qualified tools.github.getIssueCount
         // path, plus a runnable, properly-qualified example call (never the
-        // bare, wrong tools.issueCount(...) a model couldn't guess to
+        // bare, wrong tools.getIssueCount(...) a model couldn't guess to
         // qualify on its own — task 12rtn85's fix).
         let discovery = try #require(Self.toolOutputText(in: session.transcript, from: "findAPIs"))
         #expect(discovery.contains("findAPIs(\"count open github issues\") found:"))
-        #expect(discovery.contains("// tools.github.issueCount"))
-        #expect(discovery.contains("tools.github.issueCount("))
-        #expect(!discovery.contains("tools.issueCount("))
+        #expect(discovery.contains("// tools.github.getIssueCount"))
+        #expect(discovery.contains("tools.github.getIssueCount("))
+        #expect(!discovery.contains("tools.getIssueCount("))
 
         // The handoff is real, not merely scripted: runCode's own real
         // execution — using the exact qualified call findAPIs's discovery

@@ -21,11 +21,11 @@ struct UnknownToolHintTests {
         let multiTool = MultiTool(registry: registry)
 
         let output = try await multiTool.call(
-            arguments: RunCodeArguments(code: "return tools.getCities();")
+            arguments: RunCodeArguments(code: "return tools.getCitiesOnTrip();")
         )
 
-        #expect(output.contains("tools.getCities does not exist"))
-        #expect(output.contains("tools.cities"))
+        #expect(output.contains("tools.getCitiesOnTrip does not exist"))
+        #expect(output.contains("tools.getCities"))
         #expect(output.contains("Fix the snippet and call runCode again."))
     }
 
@@ -39,11 +39,11 @@ struct UnknownToolHintTests {
         let multiTool = MultiTool(registry: registry)
 
         let output = try await multiTool.call(
-            arguments: RunCodeArguments(code: "return tools.temp.getCurrent({ city: 'ATX' });")
+            arguments: RunCodeArguments(code: "return tools.getTemperature.getCurrent({ city: 'ATX' });")
         )
 
-        #expect(output.contains("tools.temp.getCurrent does not exist"))
-        #expect(output.contains("tools.temp"))
+        #expect(output.contains("tools.getTemperature.getCurrent does not exist"))
+        #expect(output.contains("tools.getTemperature"))
     }
 
     // MARK: - No close match: steer back to findAPIs
@@ -63,22 +63,30 @@ struct UnknownToolHintTests {
         #expect(output.contains("findAPIs"))
     }
 
-    // MARK: - Recorded gated failures: the names real runs actually invented
+    // MARK: - Wrong guesses against a realistic verbNoun catalog
 
-    /// The catalog recorded from the gated `discoveryUnderDistractors` runs
-    /// that invented `tools.getTrip` and `tools.getWeather`: the two relevant
-    /// tools, plus the trip-adjacent distractors that genuinely compete with
-    /// `tripCities` for a trip-shaped guess.
+    /// A realistic travel catalog for the ranking tests: two tools a
+    /// trip-shaped guess could be reaching for, plus the trip-adjacent
+    /// entries that genuinely compete with `getTrip` for one.
     ///
-    /// - Returns: the tools to build the reproduction registry over.
-    private static func recordedDiscoveryCatalog() -> [any Tool] {
+    /// Every name is verbNoun, the convention a real host catalog is
+    /// consistent about. These tests previously ran against `weather` and
+    /// `tripCities`, and graded `getTrip`/`getWeather` as invented names —
+    /// but the human ruling of 2026-08-07 (task `tkrdwb8`) established that
+    /// those were the model correctly inferring the catalog's dominant
+    /// convention against two fixtures that broke it. With the fixtures
+    /// following the convention, both guesses are real names, so the tests
+    /// below are re-based on names that are genuinely absent.
+    ///
+    /// - Returns: the tools to build the ranking registry over.
+    private static func travelCatalog() -> [any Tool] {
         [
             CatalogEntryTool(
-                name: "weather",
+                name: "getWeather",
                 description: "Current weather for a city. Use when asked how warm/cold/rainy it is right now."
             ),
             CatalogEntryTool(
-                name: "tripCities",
+                name: "getTrip",
                 description: "The cities on the user's current trip, in itinerary order."
             ),
             CatalogEntryTool(name: "bookHotel", description: "Books a hotel room for given dates."),
@@ -87,43 +95,53 @@ struct UnknownToolHintTests {
         ]
     }
 
-    @Test("the invented tools.getWeather resolves to the real weather tool")
-    func inventedGetWeatherResolvesToWeather() async throws {
-        let registry = try MultiTool.Builder().addTools(Self.recordedDiscoveryCatalog()).buildRegistry()
+    @Test("an invented name spelling out a real tool's name resolves to that tool")
+    func inventedGetWeatherForecastResolvesToGetWeather() async throws {
+        let registry = try MultiTool.Builder().addTools(Self.travelCatalog()).buildRegistry()
         let multiTool = MultiTool(registry: registry)
 
         let output = try await multiTool.call(
-            arguments: RunCodeArguments(code: "return tools.getWeather({ city: 'ATX' });")
+            arguments: RunCodeArguments(code: "return tools.getWeatherForecast({ city: 'ATX' });")
         )
 
-        #expect(output.contains("tools.getWeather does not exist"))
-        #expect(output.contains("tools.weather"))
+        #expect(output.contains("tools.getWeatherForecast does not exist"))
+        #expect(output.contains("tools.getWeather"))
     }
 
-    @Test("the invented tools.getTrip resolves to the real tripCities tool")
-    func inventedGetTripResolvesToTripCities() async throws {
-        let registry = try MultiTool.Builder().addTools(Self.recordedDiscoveryCatalog()).buildRegistry()
+    /// The catalog-relevance tier's own coverage — the only test that reaches
+    /// it, so the pair has to be one tier 1 genuinely cannot settle.
+    ///
+    /// `getItinerary` is contained by no catalog name and contains none, and
+    /// its best character-trigram Jaccard against any entry is ≈0.07 (against
+    /// `getTrip`, sharing only the `get` trigram) — far under
+    /// `similarityThreshold`. So tier 1 finds nothing and ranking falls
+    /// through to what the entries are *for*, where `getTrip`'s rendered
+    /// block is the only one that says "itinerary".
+    @Test("an invented name resembling nothing still resolves by catalog relevance")
+    func inventedGetItineraryResolvesToGetTrip() async throws {
+        let registry = try MultiTool.Builder().addTools(Self.travelCatalog()).buildRegistry()
         let multiTool = MultiTool(registry: registry)
 
-        let output = try await multiTool.call(arguments: RunCodeArguments(code: "return tools.getTrip();"))
+        let output = try await multiTool.call(arguments: RunCodeArguments(code: "return tools.getItinerary();"))
 
-        #expect(output.contains("tools.getTrip does not exist"))
-        #expect(output.contains("tools.tripCities"))
+        #expect(output.contains("tools.getItinerary does not exist"))
+        #expect(output.contains("tools.getTrip"))
     }
 
     @Test("a catalog-relevance hint names only its best match, not its runners-up")
     func catalogRelevanceHintNamesOnlyItsBestMatch() async throws {
-        let registry = try MultiTool.Builder().addTools(Self.recordedDiscoveryCatalog()).buildRegistry()
+        let registry = try MultiTool.Builder().addTools(Self.travelCatalog()).buildRegistry()
         let multiTool = MultiTool(registry: registry)
 
-        let output = try await multiTool.call(arguments: RunCodeArguments(code: "return tools.getTrip();"))
+        let output = try await multiTool.call(arguments: RunCodeArguments(code: "return tools.getItinerary();"))
 
-        // Measured: ranking `getTrip` over this catalog puts `tripCities`
-        // first, then `convertTimezone` and `bookHotel` — runners-up that
-        // have nothing to do with looking up a trip, and that a model which
-        // just guessed a function name would only guess at again.
-        #expect(!output.contains("tools.convertTimezone"))
-        #expect(!output.contains("tools.bookHotel"))
+        // Measured: ranking `get itinerary` over this catalog returns
+        // exactly `["getTrip", "getWeather"]`, in that order. `getWeather`
+        // has nothing to do with looking up a trip — it ranks only because
+        // tier 2's ordering is relative, with no absolute floor — and naming
+        // it hands a model that just guessed a function name one more name
+        // to guess.
+        #expect(!output.contains("tools.getWeather"))
     }
 
     // MARK: - Guard: a mis-called *existing* tool gets no did-you-mean noise
@@ -135,7 +153,7 @@ struct UnknownToolHintTests {
             .buildRegistry()
         let multiTool = MultiTool(registry: registry)
 
-        let output = try await multiTool.call(arguments: RunCodeArguments(code: "return tools.temp({});"))
+        let output = try await multiTool.call(arguments: RunCodeArguments(code: "return tools.getTemperature({});"))
 
         #expect(!output.contains("does not exist"))
         #expect(output.contains("Fix the snippet and call runCode again."))

@@ -28,15 +28,16 @@ import FoundationModelsRouter
 ///
 /// 1. **The answer is valid** — the reply contains at least one of
 ///    `answerContainsOneOf`, chosen per scenario to match the fixtures'
-///    distinctive values (e.g. the weather fixture's constant 31°C, the
-///    fixed trip-city list), so a hallucinated answer cannot match.
+///    distinctive values (e.g. the weather fixture's 31°C reading for
+///    Austin, and the single warmest trip city), so a hallucinated answer
+///    cannot match.
 /// 2. **The answer is grounded** — at least one `runCode` snippet genuinely
 ///    invoked a `tools.*` function. Which functions, in what order, across
 ///    how many calls is deliberately unasserted.
 /// 3. **Side effects really happened** — when `mustInvoke` is non-empty
 ///    (the booking scenario), those `tools.*` paths appear among the
 ///    invoked set: claiming "your booking is confirmed" without ever
-///    calling `book` is a false claim, not a valid answer. This is a
+///    calling `confirmBooking` is a false claim, not a valid answer. This is a
 ///    containment check, never an equality — extra calls and any ordering
 ///    are fine.
 ///

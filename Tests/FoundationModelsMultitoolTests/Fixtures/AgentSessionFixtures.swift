@@ -166,8 +166,7 @@ final class RootSessionRespondCalledDirectlySession: AgentSession, Sendable {
 
 // MARK: - `TripCitiesTool` — a standalone fixture tool
 
-/// The `Output` of `TripCitiesTool` — plan.md's own worked
-/// `tripCities(): string[]` example.
+/// The `Output` of `TripCitiesTool` — a fixed trip itinerary.
 @Generable
 struct TripCitiesOutput {
     var cities: [String]
@@ -178,7 +177,7 @@ struct TripCitiesOutput {
 /// zero-meaningful-argument fixture shape this test target already uses for
 /// `CitiesTool`.
 struct TripCitiesTool: Tool {
-    let name = "tripCities"
+    let name = "getTrip"
     let description = "The cities on the user's current trip, in itinerary order."
 
     func call(arguments: NoArguments) async throws -> TripCitiesOutput {

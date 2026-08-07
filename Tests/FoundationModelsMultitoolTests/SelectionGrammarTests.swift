@@ -81,6 +81,6 @@ struct SelectionGrammarTests {
         let properties = try #require(schema["properties"] as? [String: Any])
         let idsSchema = try #require(properties["ids"] as? [String: Any])
         let items = try #require(idsSchema["items"] as? [String: Any])
-        #expect(items["enum"] as? [String] == ["tripCities", "github.createIssue"])
+        #expect(items["enum"] as? [String] == ["getTrip", "github.createIssue"])
     }
 }

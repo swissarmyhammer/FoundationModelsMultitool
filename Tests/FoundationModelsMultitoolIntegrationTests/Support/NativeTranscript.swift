@@ -85,7 +85,7 @@ enum NativeTranscript {
     /// Extracts the `tools.*` call paths a JavaScript snippet invokes — see `invokedToolPaths(in:)`.
     ///
     /// - Parameter code: one `runCode` call's JavaScript snippet text.
-    /// - Returns: the distinct dotted call paths found, e.g. `["weather", "github.createIssue"]`.
+    /// - Returns: the distinct dotted call paths found, e.g. `["getWeather", "github.createIssue"]`.
     private static func toolCallPaths(in code: String) -> Set<String> {
         let range = NSRange(code.startIndex..., in: code)
         let matches = toolCallRegex.matches(in: code, range: range)

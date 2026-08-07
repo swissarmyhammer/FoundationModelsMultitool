@@ -12,13 +12,13 @@ import Testing
 /// instruction prefix and findAPIs).
 ///
 /// Reuses `WeatherTool` (`ToolAPIRendererFixtures.swift`, plan.md's own
-/// worked `weather` example) and `GithubCreateIssueTool`
+/// worked `getWeather` example) and `GithubCreateIssueTool`
 /// (`BuilderSurfaceFixtures.swift`, plan.md's own worked grouped example)
 /// rather than authoring bespoke fixtures — both are already the package's
 /// canonical stand-ins for a standalone and a grouped tool.
 @Suite("HelpDocs")
 struct HelpDocsTests {
-    /// A registry mixing a standalone tool (`weather`) and a grouped tool
+    /// A registry mixing a standalone tool (`getWeather`) and a grouped tool
     /// (`github.createIssue`), so `help()`'s grouped-layout entry (plan.md
     /// Resolved #5) has something real to report.
     private func makeRegistry() throws -> MultiTool.Registry {
@@ -38,18 +38,18 @@ struct HelpDocsTests {
         let output = try await multiTool.call(arguments: RunCodeArguments(code: "return help();"))
 
         let decoded = try JSONDecoder().decode([String].self, from: Data(output.utf8))
-        #expect(decoded == ["weather", "github.createIssue"])
+        #expect(decoded == ["getWeather", "github.createIssue"])
     }
 
     // MARK: - docs(name)
 
-    @Test("runCode(\"return docs('weather')\") returns the exact rendered block from the surface")
+    @Test("runCode(\"return docs('getWeather')\") returns the exact rendered block from the surface")
     func docsReturnsExactRenderedBlockForStandaloneTool() async throws {
         let registry = try makeRegistry()
         let multiTool = MultiTool(registry: registry)
-        let expectedEntry = try #require(registry.surface.entries.first { $0.path == "weather" })
+        let expectedEntry = try #require(registry.surface.entries.first { $0.path == "getWeather" })
 
-        let output = try await multiTool.call(arguments: RunCodeArguments(code: "return docs('weather');"))
+        let output = try await multiTool.call(arguments: RunCodeArguments(code: "return docs('getWeather');"))
 
         let decoded = try JSONDecoder().decode(String.self, from: Data(output.utf8))
         #expect(decoded == expectedEntry.block)
@@ -74,13 +74,13 @@ struct HelpDocsTests {
         let registry = try makeRegistry()
         let multiTool = MultiTool(registry: registry)
 
-        // "wether" is one deletion away from "weather" (edit distance 1),
-        // and much farther from "github.createIssue" — so a distance-ranked
-        // suggestion list should surface "weather" first.
-        let output = try await multiTool.call(arguments: RunCodeArguments(code: "return docs('wether');"))
+        // "getWether" is one deletion away from "getWeather" (edit distance
+        // 1), and much farther from "github.createIssue" — so a
+        // distance-ranked suggestion list should surface "getWeather" first.
+        let output = try await multiTool.call(arguments: RunCodeArguments(code: "return docs('getWether');"))
 
         let decoded = try JSONDecoder().decode(String.self, from: Data(output.utf8))
-        #expect(decoded.contains("weather"))
+        #expect(decoded.contains("getWeather"))
         #expect(decoded.lowercased().contains("unknown"))
     }
 
@@ -127,7 +127,7 @@ struct HelpDocsTests {
                     typeof elicit === 'function',
                     typeof notify === 'function',
                     typeof progress === 'function',
-                    typeof tools.weather === 'function',
+                    typeof tools.getWeather === 'function',
                     typeof process === 'undefined',
                     typeof require === 'undefined',
                     typeof fetch === 'undefined',

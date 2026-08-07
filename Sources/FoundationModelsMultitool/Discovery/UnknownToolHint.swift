@@ -5,8 +5,8 @@ import FoundationModelsMetadataRegistry
 /// snippet called a `tools.*` path that does not exist.
 ///
 /// The wrong-guess moment is the highest-leverage point in the whole
-/// search-then-call interaction: a model that invents `tools.getTrip` and
-/// receives only JavaScriptCore's bare `TypeError` routinely gives up —
+/// search-then-call interaction: a model that invents `tools.getItinerary`
+/// and receives only JavaScriptCore's bare `TypeError` routinely gives up —
 /// narrating a plan or fabricating an answer instead of repairing. This
 /// type turns that dead end into a ramp: it extracts the failed path from
 /// the exception message, ranks the catalog's real entries against it, and
@@ -18,17 +18,29 @@ import FoundationModelsMetadataRegistry
 ///
 /// 1. **Name resemblance** — case-insensitive containment in either
 ///    direction, with character-trigram overlap as its own fallback. Exact
-///    and free, and it settles the common guess: `getWeather` contains
-///    `weather`, `getCities` contains `cities`.
+///    and free, and it settles the common guess: `getWeatherForecast`
+///    contains `getWeather`, `getTemperature.getCurrent` contains
+///    `getTemperature`.
 /// 2. **Catalog relevance** — the same `MetadataSearcher` ranking `findAPIs`
 ///    matches an intent to tools with, over the same entries. This tier
-///    exists because name resemblance has a hard ceiling that real runs hit:
-///    `getTrip` shares no substring with `tripCities` and only ≈0.18 trigram
-///    Jaccard with it, so tier 1 rejects it as noise, while the entry's
+///    exists because name resemblance has a hard ceiling: a guess can be a
+///    perfectly reasonable synonym of a real entry and still share almost no
+///    characters with it. `getItinerary` against a catalog holding `getTrip`
+///    is the worked case — containment fails in both directions and trigram
+///    Jaccard is ≈0.07, so tier 1 rejects it as noise, while the entry's
 ///    rendered block — which is what the searcher ranks — says "the cities on
-///    the user's current trip". Lowering tier 1's threshold to reach that
-///    would admit genuine noise everywhere else; ranking by what an entry is
-///    *for* reaches it directly.
+///    the user's current trip, in itinerary order". Lowering tier 1's
+///    threshold to reach that would admit genuine noise everywhere else;
+///    ranking by what an entry is *for* reaches it directly.
+///
+///    The evidence originally recorded here was a real gated run guessing
+///    `getTrip` against a `tripCities` fixture. The human ruling of
+///    2026-08-07 (task `tkrdwb8`) reclassified that run: ten of the twelve
+///    tools mounted alongside it were verbNoun, so the model was inferring
+///    the catalog's convention correctly and the fixture was the outlier.
+///    That specific evidence is withdrawn. The tier stands on the general
+///    case above — real host catalogs do mix conventions, and a synonym is
+///    not a spelling mistake.
 ///
 /// Tier 2 runs only when tier 1 finds nothing, so every guess that already
 /// resolved by name resolves identically, and it runs retrieval-only — no
@@ -41,14 +53,14 @@ enum UnknownToolHint {
     /// The number of catalog-relevance matches a hint shows — exactly the
     /// best one.
     ///
-    /// Measured rather than chosen. Ranking the recorded `getTrip` guess
-    /// against the recorded discovery catalog puts `tripCities` first and
-    /// then `convertTimezone` and `bookHotel`, neither of which has anything
-    /// to do with looking up a trip. Tier 1 can afford a list because every
-    /// entry it returns cleared `similarityThreshold`; tier 2's ranking is
-    /// relative, with no absolute floor, so its runners-up are simply
-    /// whatever ranked at all — and naming them hands a model that just
-    /// guessed a function name two more names to guess.
+    /// Measured rather than chosen. Ranking a `getItinerary` guess against a
+    /// five-tool travel catalog returns `["getTrip", "getWeather"]`: the
+    /// right entry first, then one that has nothing to do with looking up a
+    /// trip. Tier 1 can afford a list because every entry it returns cleared
+    /// `similarityThreshold`; tier 2's ranking is relative, with no absolute
+    /// floor, so its runners-up are simply whatever ranked at all — and naming
+    /// them hands a model that just guessed a function name more names to
+    /// guess.
     private static let relevanceSuggestionLimit = 1
 
     /// The minimum name-resemblance score for an entry to count as a close
@@ -139,9 +151,10 @@ enum UnknownToolHint {
     /// tier 1.
     ///
     /// Resemblance is deterministic and dependency-free: case-insensitive
-    /// containment in either direction (an invented `getCities` contains
-    /// the real `cities`; an invented `temp.getCurrent` contains the real
-    /// `temp`) scores highest, with character-trigram overlap as the
+    /// containment in either direction (an invented `getCitiesOnTrip`
+    /// contains the real `getCities`; an invented
+    /// `getTemperature.getCurrent` contains the real `getTemperature`)
+    /// scores highest, with character-trigram overlap as the
     /// general fallback for guesses that share word stems without
     /// containing each other.
     ///
@@ -200,9 +213,10 @@ enum UnknownToolHint {
     /// Spells a dotted, camel-cased `tools.*` path out as the plain-language
     /// intent the searcher's ranking signals tokenize.
     ///
-    /// `getTrip` is an identifier, not a query: as one token it shares
+    /// `getItinerary` is an identifier, not a query: as one token it shares
     /// nothing with an entry whose description reads "the cities on the
-    /// user's current trip", while `get trip` matches on `trip` directly.
+    /// user's current trip, in itinerary order", while `get itinerary`
+    /// matches on `itinerary` directly.
     /// This is query formulation for the searcher's documented input, not a
     /// scoring rule of its own — the ranking stays entirely the searcher's.
     ///

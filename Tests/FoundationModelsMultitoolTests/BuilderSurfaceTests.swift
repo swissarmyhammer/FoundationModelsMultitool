@@ -25,7 +25,7 @@ struct BuilderSurfaceTests {
         let golden = try String(contentsOf: goldenURL, encoding: .utf8)
             .trimmingCharacters(in: .newlines)
 
-        #expect(surface.entries.map(\.path) == ["weather", "echo", "github.createIssue", "github.search"])
+        #expect(surface.entries.map(\.path) == ["getWeather", "echoText", "github.createIssue", "github.search"])
         #expect(surface.source.trimmingCharacters(in: .newlines) == golden)
     }
 
@@ -38,7 +38,7 @@ struct BuilderSurfaceTests {
                 .build()
         } throws: { error in
             guard let builderError = error as? MultiToolBuilderError else { return false }
-            return builderError.kind == .duplicateName && builderError.name == "weather"
+            return builderError.kind == .duplicateName && builderError.name == "getWeather"
         }
     }
 
@@ -134,6 +134,6 @@ struct BuilderSurfaceTests {
             .addTools([WeatherTool(), PlainTextTool()])
             .build()
 
-        #expect(surface.entries.map(\.path) == ["weather", "echo"])
+        #expect(surface.entries.map(\.path) == ["getWeather", "echoText"])
     }
 }

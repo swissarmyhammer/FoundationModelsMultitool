@@ -1,6 +1,6 @@
 import FoundationModels
 
-// MARK: - Scenario 1: single-call `weather` (plan.md M6.5 scenario 1)
+// MARK: - Scenario 1: single-call `getWeather` (plan.md M6.5 scenario 1)
 
 /// `IntegrationWeatherTool`'s arguments.
 @Generable
@@ -16,18 +16,91 @@ struct IntegrationWeatherResult {
     var summary: String
 }
 
-/// The one obvious tool scenario 1 asserts the model finds and calls,
-/// rather than hallucinating an answer — plan.md M6.5 scenario 1.
-struct IntegrationWeatherTool: Tool {
-    let name = "weather"
-    let description = "Current weather for a city. Use when asked how warm/cold/rainy it is right now."
+/// One trip city's fixture weather reading.
+struct IntegrationCityWeather {
+    /// The IATA code `IntegrationTripTool` reports this city by.
+    let code: String
 
-    func call(arguments: IntegrationWeatherArguments) async throws -> IntegrationWeatherResult {
-        IntegrationWeatherResult(tempC: 31, summary: "Sunny")
+    /// The city's spelled-out name, which models routinely expand codes to.
+    let name: String
+
+    /// The city's temperature, in °C.
+    let tempC: Double
+}
+
+/// The trip cities' fixture weather readings, in itinerary order.
+///
+/// Distinct per city, deliberately. One constant reading for every city leaves
+/// "which is warmest?" with three equally correct answers, so a scenario that
+/// accepts any of them grades a three-way tie as a pass — the unearned pass the
+/// human ruling of 2026-08-07 on task `tkrdwb8` called out. With these readings
+/// the question has exactly one answer.
+///
+/// San Francisco is the warmest, and that is the point: on a trip that also
+/// visits Austin it is not the answer priors alone give, so naming it is
+/// evidence the snippet really read the readings. Austin keeps the 31 °C
+/// scenario 1 has always graded on.
+let integrationCityWeather: [IntegrationCityWeather] = [
+    IntegrationCityWeather(code: "ATX", name: "Austin", tempC: 31),
+    IntegrationCityWeather(code: "SFO", name: "San Francisco", tempC: 34),
+    IntegrationCityWeather(code: "NYC", name: "New York", tempC: 22),
+]
+
+/// The single warmest trip city — the one correct answer to the compose/chain
+/// and discovery scenarios' shared question.
+///
+/// Derived from `integrationCityWeather` rather than restated, so an assertion
+/// built on it cannot drift from the readings it grades. Force-unwrapped: the
+/// readings are a non-empty literal directly above.
+let integrationWarmestCity = integrationCityWeather.max { $0.tempC < $1.tempC }!
+
+/// Thrown by `IntegrationWeatherTool.call` for a city the fixture has no
+/// reading for.
+///
+/// A real weather API rejects a city it does not know rather than inventing a
+/// reading, and these scenarios need that: a silent fallback temperature would
+/// let a snippet that passed the wrong argument still produce a number, and a
+/// number is exactly what the answer assertions grade.
+enum IntegrationWeatherError: Error, CustomStringConvertible {
+    case unknownCity(String)
+
+    var description: String {
+        switch self {
+        case .unknownCity(let city):
+            let known = integrationCityWeather.map { "\($0.code) (\($0.name))" }.joined(separator: ", ")
+            return "no weather reading for \"\(city)\"; known cities are \(known)"
+        }
     }
 }
 
-// MARK: - Scenario 2: compose/chain `tripCities` -> `weather` -> warmest (plan.md M6.5 scenario 2)
+/// Reduces a city code or name to the form the fixture readings match on, so
+/// `"SFO"`, `"San Francisco"` and `"san francisco, ca"` all find one city.
+///
+/// - Parameter city: the code or name exactly as the snippet passed it.
+/// - Returns: `city` lowercased, with every non-letter removed.
+private func integrationCityKey(_ city: String) -> String {
+    city.lowercased().filter(\.isLetter)
+}
+
+/// The one obvious tool scenario 1 asserts the model finds and calls,
+/// rather than hallucinating an answer — plan.md M6.5 scenario 1.
+struct IntegrationWeatherTool: Tool {
+    let name = "getWeather"
+    let description = "Current weather for a city. Use when asked how warm/cold/rainy it is right now."
+
+    func call(arguments: IntegrationWeatherArguments) async throws -> IntegrationWeatherResult {
+        let requested = integrationCityKey(arguments.city)
+        let match = integrationCityWeather.first {
+            requested.contains(integrationCityKey($0.code)) || requested.contains(integrationCityKey($0.name))
+        }
+        guard let city = match else {
+            throw IntegrationWeatherError.unknownCity(arguments.city)
+        }
+        return IntegrationWeatherResult(tempC: city.tempC, summary: "Sunny")
+    }
+}
+
+// MARK: - Scenario 2: compose/chain `getTrip` -> `getWeather` -> warmest (plan.md M6.5 scenario 2)
 
 /// Arguments for a tool that takes nothing meaningful — every `Tool
 /// .Arguments` must be an `object` schema, so an unused optional field
@@ -39,20 +112,39 @@ struct IntegrationNoArguments {
     var unused: String?
 }
 
-/// `IntegrationTripCitiesTool`'s output.
-@Generable
-struct IntegrationTripCitiesOutput {
+/// `IntegrationTripTool`'s output — a trip, not a bare city list.
+///
+/// Carries the trip's own booking fields alongside its cities, the way a real
+/// itinerary API answers, so a snippet has to read the declared shape and
+/// navigate to `.cities` instead of treating the whole result as the list. The
+/// bare `[String]` this replaced (plan.md's original worked `tripCities():
+/// string[]` example) let a snippet succeed without reading the declaration at
+/// all — see the human ruling of 2026-08-07 on task `tkrdwb8`.
+@Generable(description: "the user's current trip.")
+struct IntegrationTripOutput {
+    var confirmationCode: String
+    var traveler: String
+    var startDate: String
+    var endDate: String
     var cities: [String]
 }
 
-/// The first half of the compose/chain scenario — plan.md's own worked
-/// `tripCities(): string[]` example.
-struct IntegrationTripCitiesTool: Tool {
-    let name = "tripCities"
-    let description = "The cities on the user's current trip, in itinerary order."
+/// The first half of the compose/chain scenario.
+struct IntegrationTripTool: Tool {
+    let name = "getTrip"
+    let description = "The user's current trip: its cities in itinerary order, plus its dates, "
+        + "its traveler and its booking confirmation code."
 
-    func call(arguments: IntegrationNoArguments) async throws -> IntegrationTripCitiesOutput {
-        IntegrationTripCitiesOutput(cities: ["ATX", "SFO", "NYC"])
+    func call(arguments: IntegrationNoArguments) async throws -> IntegrationTripOutput {
+        IntegrationTripOutput(
+            confirmationCode: "QX7T2M",
+            traveler: "Dana Whitfield",
+            startDate: "2026-09-14",
+            endDate: "2026-09-21",
+            // Derived from the weather readings, so the itinerary and the
+            // temperatures a snippet looks up can never name different cities.
+            cities: integrationCityWeather.map(\.code)
+        )
     }
 }
 
@@ -88,7 +180,7 @@ struct IntegrationDistractorTool: Tool {
 }
 
 /// 10 named, distinct distractor tools — combined with the 2 relevant tools
-/// (`weather`, `tripCities`) the discovery scenario also wraps, the surface
+/// (`getWeather`, `getTrip`) the discovery scenario also wraps, the surface
 /// totals 12 tools, only 2 of which `findAPIs` should select.
 ///
 /// Ten, not the eighteen this list carried through phase 1, by the human
@@ -103,7 +195,7 @@ struct IntegrationDistractorTool: Tool {
 ///
 /// The ten keep the travel-adjacent names (`bookHotel`, `cancelBooking`,
 /// `lookupFlight`, `createCalendarEvent`): those are the distractors that
-/// genuinely compete with `tripCities` for a trip-shaped query, so dropping
+/// genuinely compete with `getTrip` for a trip-shaped query, so dropping
 /// them would have made the scenario easier in a second, hidden way on top
 /// of the intended one.
 let integrationDistractorTools: [any Tool] = [
@@ -158,7 +250,7 @@ enum IntegrationBookingError: Error, CustomStringConvertible {
 /// resulting repairable error is exactly what the repair-loop scenario needs
 /// to recover from.
 struct IntegrationBookingTool: Tool {
-    let name = "book"
+    let name = "confirmBooking"
     let description = "Confirms a trip booking by id."
 
     func call(arguments: IntegrationBookingArguments) async throws -> IntegrationBookingResult {
@@ -209,7 +301,7 @@ let integrationDeepScanReportCode = 41739
 /// (`status()`, `wait(completionToken, seconds)`) the sandbox installs — which
 /// is exactly the round trip eventplan.md's phase 1 has to prove end to end.
 struct IntegrationDeepScanTool: Tool {
-    let name = "deepScan"
+    let name = "runDeepScan"
     let description = "Runs a full deep scan of the user's archive and returns that scan's report code. "
         + "The scan takes several seconds to complete."
 
@@ -248,14 +340,14 @@ struct IntegrationStockTool: Tool {
 
 /// The warehouse half of the async fan-out pair.
 let integrationWarehouseStockTool = IntegrationStockTool(
-    name: "warehouseStock",
+    name: "getWarehouseStock",
     description: "How many units of the product are in the warehouse right now.",
     units: 1904
 )
 
 /// The store-floor half of the async fan-out pair.
 let integrationStoreStockTool = IntegrationStockTool(
-    name: "storeStock",
+    name: "getStoreStock",
     description: "How many units of the product are on the store floor right now.",
     units: 268
 )

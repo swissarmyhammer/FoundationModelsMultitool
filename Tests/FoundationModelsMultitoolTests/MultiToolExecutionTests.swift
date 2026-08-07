@@ -59,10 +59,10 @@ struct MultiToolExecutionTests {
 
         let output = try await multiTool.call(
             arguments: RunCodeArguments(code: """
-                const cities = (await tools.cities()).cities;
+                const cities = (await tools.getCities()).cities;
                 const temps = [];
                 for (const c of cities) {
-                  temps.push((await tools.temp({ city: c })).tempC);
+                  temps.push((await tools.getTemperature({ city: c })).tempC);
                 }
                 return Math.max(...temps);
                 """)
@@ -84,7 +84,7 @@ struct MultiToolExecutionTests {
         let multiTool = MultiTool(registry: registry)
 
         let output = try await multiTool.call(
-            arguments: RunCodeArguments(code: "return (await tools.github.issueCount({ repo: 'demo' })).count;")
+            arguments: RunCodeArguments(code: "return (await tools.github.getIssueCount({ repo: 'demo' })).count;")
         )
 
         #expect(output == "42")
@@ -181,7 +181,7 @@ struct MultiToolExecutionTests {
         let output = try await multiTool.call(
             arguments: RunCodeArguments(code: """
                 try {
-                  await tools.temp({});
+                  await tools.getTemperature({});
                   return "unreachable";
                 } catch (e) {
                   return e.message;
@@ -190,7 +190,7 @@ struct MultiToolExecutionTests {
         )
         let message = try JSONDecoder().decode(String.self, from: Data(output.utf8))
 
-        #expect(message.hasSuffix("Tool \"temp\" is missing its required argument \"city\"."))
+        #expect(message.hasSuffix("Tool \"getTemperature\" is missing its required argument \"city\"."))
     }
 
     // MARK: - Mis-called tool: repairable error, not a crash
@@ -202,7 +202,7 @@ struct MultiToolExecutionTests {
             .buildRegistry()
         let multiTool = MultiTool(registry: registry)
 
-        let output = try await multiTool.call(arguments: RunCodeArguments(code: "return tools.temp({});"))
+        let output = try await multiTool.call(arguments: RunCodeArguments(code: "return tools.getTemperature({});"))
 
         #expect(output.contains("Fix the snippet and call runCode again."))
         #expect(output.contains("city"))

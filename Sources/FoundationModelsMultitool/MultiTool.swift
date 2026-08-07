@@ -19,7 +19,7 @@ extension MultiTool {
     /// rendering logic of its own beyond composing already-rendered pieces,"
     /// carrying only each tool's rendered *descriptor*, never the tool object
     /// itself. `Registry` is the pairing that closes that gap for M4a: every
-    /// entry in `surface.entries` has a fully-qualified `path` (`"weather"`,
+    /// entry in `surface.entries` has a fully-qualified `path` (`"getWeather"`,
     /// `"github.createIssue"`, …), and `tools[path]` is that entry's live
     /// `any Tool` to invoke.
     public struct Registry: Sendable {
@@ -30,7 +30,7 @@ extension MultiTool {
         public let surface: APISurface
 
         /// Every wrapped tool, keyed by its fully-qualified snippet call path
-        /// (`surface.entries`'s own `path`, e.g. `"weather"` or
+        /// (`surface.entries`'s own `path`, e.g. `"getWeather"` or
         /// `"github.createIssue"`) — the pairing `MultiTool` uses to bind
         /// each `tools.*` entry point to a live `any Tool` to invoke via
         /// `ToolInvoker`.
@@ -877,7 +877,7 @@ public struct MultiTool: Tool {
     ///   message listing near-match suggestions.
     private static func renderDocs(for argument: InterpreterValue?, in surface: APISurface) -> String {
         guard case .string(let name) = argument else {
-            return "docs(name) requires a string tool name, e.g. docs(\"weather\")."
+            return "docs(name) requires a string tool name, e.g. docs(\"getWeather\")."
         }
         if let entry = surface.entries.first(where: { $0.path == name }) {
             return entry.block

@@ -51,7 +51,7 @@ struct SandboxGlobalsTests {
         let output = try await multiTool.call(arguments: RunCodeArguments(code: "return help();"))
 
         let helpPaths = try decode([String].self, from: output)
-        #expect(helpPaths == ["cities"])
+        #expect(helpPaths == ["getCities"])
         let surfacePaths = Set(registry.surface.entries.map(\.path))
         #expect(surfacePaths.isDisjoint(with: sandboxGlobalNames))
     }
