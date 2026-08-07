@@ -238,7 +238,8 @@ public struct MultiTool: Tool {
 
     /// Where this tool logs its M10 diagnostics — one `runCode` call's
     /// start/end, and each `tools.*` invocation's start/end/validation
-    /// failure.
+    /// failure — and, at `.notice`, every imagined `tools.*` name a snippet
+    /// reached for (see `logImaginedTool(_:)`).
     private static let logger = Logger(subsystem: "FoundationModelsMultitool", category: "MultiTool")
 
     /// The catalog + live tool instances this `runCode` dispatches into.
@@ -406,12 +407,15 @@ public struct MultiTool: Tool {
         case .success(let result):
             return ResultRenderer.render(result, limits: limits)
         case .failure(let interpreterError as InterpreterError):
-            let hint = await UnknownToolHint.hint(
+            let resolution = await UnknownToolHint.hint(
                 message: interpreterError.message,
                 surface: registry.surface,
                 searcher: hintSearcher
             )
-            return ResultRenderer.render(interpreterError, hint: hint)
+            if let resolution {
+                Self.logImaginedTool(resolution)
+            }
+            return ResultRenderer.render(interpreterError, hint: resolution?.text)
         case .failure(let error):
             throw error
         }
@@ -762,6 +766,40 @@ public struct MultiTool: Tool {
             logInvocationFailure(tool: tool, error: error)
             throw error
         }
+    }
+
+    /// Records one imagined `tools.*` path a snippet reached for, so a host
+    /// can mine its own log for the names its model expects.
+    ///
+    /// **Why this is logged at all.** An imagined name is free evidence
+    /// about the catalog: it is the model saying what it thought the tool
+    /// should be called. Accumulated across real sessions, those guesses
+    /// rank the synonyms a host's naming (or an alias table) should cover.
+    /// Nothing else on this route records them — the hint is rendered into
+    /// the model's error text and discarded.
+    ///
+    /// **Why `.notice`.** The corpus has to survive an ordinary host run to
+    /// be worth mining. `.debug` is disabled by default and never reaches
+    /// the store at all; `.info` reaches the in-memory buffer but is not
+    /// persisted to disk unless the subsystem's info level is turned on, so
+    /// it survives a live `log stream` and not a later `log show`.
+    /// `.notice` is the lowest level that persists by default. Against this
+    /// file's own gradient it also fits: the `.debug` lines here are
+    /// per-invocation and high-volume, and the `.warning`/`.error` lines
+    /// report a failure a host should act on — an imagined name is neither.
+    ///
+    /// **Why `.public`.** Every field is model- or catalog-authored and
+    /// carries no user data: `imaginedPath` is a name the model made up,
+    /// `suggestedPaths` are the host's own tool names (already `.public`
+    /// wherever `tool.name` is logged above), and the tier is one of three
+    /// fixed words. Nothing derived from a snippet's arguments, a tool's
+    /// output, or the user's prompt is in the line, and none is added: the
+    /// message is composed by `UnknownToolHint.Resolution.logMessage` from
+    /// exactly those three fields.
+    ///
+    /// - Parameter resolution: the unknown-path detection to record.
+    private static func logImaginedTool(_ resolution: UnknownToolHint.Resolution) {
+        logger.notice("\(resolution.logMessage, privacy: .public)")
     }
 
     /// Logs one `tools.*` invocation's failure — plan.md M10: "each

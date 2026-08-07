@@ -92,9 +92,10 @@ func runNativeIntegrationScenario(
 ) async throws {
     try await withLiveRouterFixture(name: name) { fixture in
         let mlxModel = CLIRunner.makeMLXLanguageModel(for: fixture.profile.standard)
+        let surface = try makeScenarioSurface(over: tools, on: fixture)
         let session = LanguageModelSession(
             model: mlxModel,
-            tools: try makeScenarioSurface(over: tools, on: fixture),
+            tools: surface.tools,
             // The production instructions, shared verbatim (see its doc
             // comment) — the suite measures exactly what the CLI ships.
             instructions: CLIRunner.toolUseInstructions
@@ -139,15 +140,34 @@ func runNativeIntegrationScenario(
         }
         grade(scenario: name, checks: checks)
 
+        let toolCallCount = NativeTranscript.toolCallCount(in: transcript)
+        let findAPIsFirst = NativeTranscript.findAPIsPrecedesRunCode(in: transcript)
         // plan.md acceptance: "the per-format results are recorded (test
         // attachment or log)" — the route details stay visible here as
         // diagnostics (see also `PrefixReuseTests` for the prefix-reuse
         // measurement's own recorded evidence), they just no longer gate.
         print(
-            "RESULT [\(name)] elapsed=\(elapsed)s toolCalls=\(NativeTranscript.toolCallCount(in: transcript)) "
+            "RESULT [\(name)] elapsed=\(elapsed)s toolCalls=\(toolCallCount) "
                 + "invoked=\(invoked.sorted()) "
-                + "findAPIsFirst=\(NativeTranscript.findAPIsPrecedesRunCode(in: transcript)) "
+                + "findAPIsFirst=\(findAPIsFirst) "
                 + "reply=\"\(response.content.prefix(80))\""
+        )
+        // The same run's failure modes, counted. Emitted alongside the
+        // `SCENARIO` verdict, never instead of it: nothing below is
+        // asserted, and the grade above is unchanged.
+        print(
+            ScenarioFailureModes(
+                ScenarioObservation(
+                    reply: response.content,
+                    toolCallCount: toolCallCount,
+                    invokedPaths: invoked,
+                    catalogPaths: surface.catalogPaths,
+                    findAPIsFirst: findAPIsFirst,
+                    returnedValues: NativeTranscript.returnedValues(in: transcript),
+                    validAnswer: checks.contains { $0.name == validAnswerCheckName && $0.held }
+                )
+            )
+            .line(scenario: name)
         )
     }
 }
@@ -219,7 +239,7 @@ func runElevationIntegrationScenario(
     try await withLiveRouterFixture(name: name) { fixture in
         let session = fixture.profile.standard.makeSession(
             instructions: CLIRunner.toolUseInstructions,
-            tools: try makeScenarioSurface(over: tools, on: fixture)
+            tools: try makeScenarioSurface(over: tools, on: fixture).tools
         )
 
         let start = Date()
@@ -339,6 +359,17 @@ private func withLiveRouterFixture(
     }
 }
 
+/// The model-facing tool surface one scenario drives, and the catalog
+/// behind it.
+private struct ScenarioSurface {
+    /// The two tools to register with the session, in mount order.
+    let tools: [any Tool]
+
+    /// Every `tools.*` path the mounted catalog actually defines — what an
+    /// invented path is measured against.
+    let catalogPaths: Set<String>
+}
+
 /// Builds the model-facing tool surface every scenario drives: `multiTool`
 /// over the scenario's own tools, plus `findAPIsTool` backed by the resolved
 /// `.flash` slot — the "librarian on flash" split the CLI ships.
@@ -347,14 +378,21 @@ private func withLiveRouterFixture(
 ///   - tools: the scenario's fixed tool set.
 ///   - fixture: the resolved live fixture whose `.flash` slot backs the
 ///     selection tier.
-/// - Returns: the two tools to register with the session, in that order.
+/// - Returns: the tools to register with the session, and the catalog paths
+///   behind them.
 /// - Throws: whatever `MultiTool.Builder.buildRegistry()` or
 ///   `FindAPIsTool.init(registry:librarian:)` throws.
-private func makeScenarioSurface(over tools: [any Tool], on fixture: LiveRouterFixture) throws -> [any Tool] {
+private func makeScenarioSurface(
+    over tools: [any Tool],
+    on fixture: LiveRouterFixture
+) throws -> ScenarioSurface {
     let registry = try MultiTool.Builder().addTools(tools).buildRegistry()
     let multiTool = MultiTool(registry: registry)
     let findAPIsTool = try FindAPIsTool(registry: registry, librarian: fixture.profile.flash)
-    return [multiTool, findAPIsTool]
+    return ScenarioSurface(
+        tools: [multiTool, findAPIsTool],
+        catalogPaths: Set(registry.surface.entries.map(\.path))
+    )
 }
 
 // MARK: - Per-scenario grading and measurement
@@ -404,6 +442,11 @@ private func grade(scenario name: String, checks: [ScenarioCheck]) {
     }
 }
 
+/// The label of the check that grades the reply's *form* — the one
+/// `ScenarioFailureModes` reads to tell a wrong-form answer from a right
+/// one.
+let validAnswerCheckName = "validAnswer"
+
 /// Grades one scenario's reply as a valid answer: it carries at least one
 /// required substring, and none of the phrasings that would invalidate it.
 ///
@@ -423,7 +466,7 @@ private func answerChecks(
 ) -> [ScenarioCheck] {
     var checks = [
         ScenarioCheck(
-            name: "validAnswer",
+            name: validAnswerCheckName,
             held: containsOneOf.contains { answer.localizedCaseInsensitiveContains($0) },
             failureMessage: "expected the answer to contain one of \(containsOneOf), got \"\(answer)\""
         )

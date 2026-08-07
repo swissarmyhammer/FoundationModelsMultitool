@@ -1,4 +1,6 @@
+import Foundation
 import FoundationModels
+import FoundationModelsMetadataRegistry
 import Testing
 
 @testable import FoundationModelsMultitool
@@ -179,5 +181,141 @@ struct UnknownToolHintTests {
 
         #expect(!output.contains("does not exist"))
         #expect(output.contains("Fix the snippet and call runCode again."))
+    }
+
+    // MARK: - Imagined names reach the system log
+
+    /// Ranks `failedPath` against `travelCatalog()` the way `MultiTool` does.
+    ///
+    /// `hint(message:surface:searcher:)` documents that its searcher must be
+    /// indexing exactly `surface.entries`, which is the pairing
+    /// `MultiTool.init` builds; these tier tests need the same pairing
+    /// without a `runCode` round trip, so they can name a tier directly
+    /// rather than inferring it from rendered text.
+    ///
+    /// - Parameter failedPath: the invented dotted path to resolve.
+    /// - Returns: the resolution, or nil when the message names no unknown
+    ///   path.
+    /// - Throws: whatever `MultiTool.Builder.buildRegistry()` throws.
+    private static func resolve(_ failedPath: String) async throws -> UnknownToolHint.Resolution? {
+        let registry = try MultiTool.Builder().addTools(travelCatalog()).buildRegistry()
+        return await UnknownToolHint.hint(
+            message: "tools.\(failedPath) is not a function",
+            surface: registry.surface,
+            searcher: MetadataSearcher(items: registry.surface.entries, mode: .retrieval)
+        )
+    }
+
+    @Test("a guess that resembles a real name is recorded against the resemblance tier")
+    func resemblanceTierIsRecordedInTheLogMessage() async throws {
+        let resolution = try #require(await Self.resolve("getWeatherOutlook"))
+
+        #expect(resolution.imaginedPath == "getWeatherOutlook")
+        #expect(resolution.tier == .nameResemblance)
+        #expect(resolution.suggestedPaths == ["getWeather"])
+        #expect(
+            resolution.logMessage
+                == "imaginedTool imagined=getWeatherOutlook tier=resemblance suggested=[getWeather]"
+        )
+    }
+
+    @Test("a guess that resembles nothing is recorded against the relevance tier")
+    func relevanceTierIsRecordedInTheLogMessage() async throws {
+        let resolution = try #require(await Self.resolve("getItinerary"))
+
+        #expect(resolution.tier == .catalogRelevance)
+        #expect(resolution.suggestedPaths == ["getTrip"])
+        #expect(
+            resolution.logMessage
+                == "imaginedTool imagined=getItinerary tier=relevance suggested=[getTrip]"
+        )
+    }
+
+    @Test("a guess no tier can answer is recorded as such, with an empty suggestion list")
+    func unansweredGuessIsRecordedWithNoTierAndNoSuggestions() async throws {
+        // `buildRegistry()` rejects an empty tool set, so the catalog that
+        // answers nothing is a one-tool catalog the guess has nothing to do
+        // with: `getCities` neither contains nor is contained by
+        // `sendEmail`, and the retrieval tier ranks only entries some signal
+        // genuinely matched.
+        let registry = try MultiTool.Builder().addTool(CitiesTool()).buildRegistry()
+
+        let resolution = try #require(
+            await UnknownToolHint.hint(
+                message: "tools.sendEmail is not a function",
+                surface: registry.surface,
+                searcher: MetadataSearcher(items: registry.surface.entries, mode: .retrieval)
+            )
+        )
+
+        #expect(resolution.tier == .noMatch)
+        #expect(resolution.suggestedPaths.isEmpty)
+        #expect(
+            resolution.logMessage == "imaginedTool imagined=sendEmail tier=none suggested=[]"
+        )
+    }
+
+    /// The guess the emission test drives, spelled so that no other test in
+    /// this process can produce a line carrying the same `imagined=` value —
+    /// the log store is read per process, not per test.
+    private static let emittedGuess = "getWeatherBulletin"
+
+    @Test("an unknown tools.* path reaches the system log, exactly once")
+    func unknownPathIsLoggedOnce() async throws {
+        let registry = try MultiTool.Builder().addTools(Self.travelCatalog()).buildRegistry()
+        let multiTool = MultiTool(registry: registry)
+        let start = Date()
+
+        _ = try await multiTool.call(
+            arguments: RunCodeArguments(code: "return tools.\(Self.emittedGuess)();")
+        )
+
+        let records = try await imaginedToolLogRecords(since: start, waitingFor: 1)
+        #expect(
+            records.filter { $0.imagined == Self.emittedGuess } == [
+                ImaginedToolLogRecord(
+                    imagined: Self.emittedGuess,
+                    tier: "resemblance",
+                    suggested: ["getWeather"]
+                )
+            ]
+        )
+    }
+
+    /// The control guess the non-emission test emits *after* the call it is
+    /// asserting produced nothing — see that test for why it is there.
+    private static let controlGuess = "getWeatherDigest"
+
+    @Test("a mis-called existing tool reaches the system log not at all")
+    func misCalledExistingToolIsNotLogged() async throws {
+        let registry = try MultiTool.Builder()
+            .addTools(Self.travelCatalog())
+            .addTool(TempTool())
+            .buildRegistry()
+        let multiTool = MultiTool(registry: registry)
+        let start = Date()
+
+        // A real catalog path, called wrongly: the snippet takes the same
+        // failure route the emitting test does, and the only difference is
+        // that the path it names exists. The rendered text is checked so
+        // this stays a mis-called *known* path rather than a snippet that
+        // failed for some other reason.
+        let misCall = try await multiTool.call(
+            arguments: RunCodeArguments(code: "return tools.getTemperature({});")
+        )
+        #expect(misCall.contains("getTemperature"))
+        #expect(!misCall.contains("does not exist"))
+        // Emitted second, and waited for below. Log delivery is ordered per
+        // process, so a `getWeather` line would have had to arrive before
+        // this one — which makes the absence below a real absence rather
+        // than a read taken too early. It is also what keeps this test from
+        // passing vacuously if the reader ever stopped working.
+        _ = try await multiTool.call(
+            arguments: RunCodeArguments(code: "return tools.\(Self.controlGuess)();")
+        )
+
+        let records = try await imaginedToolLogRecords(since: start, waitingFor: 1)
+        #expect(records.contains { $0.imagined == Self.controlGuess })
+        #expect(!records.contains { $0.imagined == "getTemperature" })
     }
 }

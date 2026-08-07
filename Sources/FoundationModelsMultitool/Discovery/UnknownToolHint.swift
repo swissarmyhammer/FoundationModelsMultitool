@@ -47,6 +47,58 @@ import FoundationModelsMetadataRegistry
 /// selection tier, no embedder — so repairing a wrong guess costs no model
 /// call and no tokens.
 enum UnknownToolHint {
+    /// Which of the two ranking tiers answered a guess.
+    enum SuggestionTier: String {
+        /// Tier 1 answered it — some catalog name resembles the guess.
+        case nameResemblance = "resemblance"
+
+        /// Tier 1 found nothing and tier 2 answered it — no catalog name
+        /// resembles the guess, but an entry's rendered block does.
+        case catalogRelevance = "relevance"
+
+        /// Neither tier answered it, so the hint steers back to `findAPIs`.
+        case noMatch = "none"
+    }
+
+    /// One unknown-`tools.*`-path detection: what the model reached for,
+    /// what the catalog offered back, and the text that carries the offer.
+    struct Resolution {
+        /// The `tools.*` path the model invented, without its `tools.`
+        /// prefix.
+        let imaginedPath: String
+
+        /// Which tier answered `imaginedPath`.
+        let tier: SuggestionTier
+
+        /// The catalog paths the hint names, best match first — empty when
+        /// `tier` is `noMatch`.
+        let suggestedPaths: [String]
+
+        /// The hint text appended to the model's repairable error.
+        let text: String
+
+        /// This detection rendered as one greppable log line.
+        ///
+        /// A host's log is where the synonym corpus accumulates, so the
+        /// shape is a parsing contract rather than prose: a fixed leading
+        /// token, then `key=value` fields in a fixed order. Every value is
+        /// delimiter-free by construction — a `tools.*` path is identifier
+        /// characters and dots (`firstUnknownPath(in:knownPaths:)`'s
+        /// pattern), a catalog path is the same, and a tier is one of three
+        /// fixed words — so a reader can split on spaces and `=` and get
+        /// `(imagined, suggested, tier)` back without a regex. The
+        /// suggestion list is bracketed so that "no suggestion" reads as an
+        /// empty list rather than as a missing field.
+        var logMessage: String {
+            "\(UnknownToolHint.logPrefix) imagined=\(imaginedPath) tier=\(tier.rawValue) "
+                + "suggested=[\(suggestedPaths.joined(separator: ","))]"
+        }
+    }
+
+    /// The leading token every imagined-tool log line carries, so one `grep`
+    /// picks the corpus out of a host's whole log.
+    static let logPrefix = "imaginedTool"
+
     /// The maximum number of name-resemblance matches a hint shows.
     private static let resemblanceSuggestionLimit = 3
 
@@ -74,13 +126,18 @@ enum UnknownToolHint {
     /// through to catalog relevance.
     private static let similarityThreshold = 0.2
 
-    /// Builds the hint for one failed snippet, or nil when the failure has
-    /// nothing to do with an unknown `tools.*` path.
+    /// Resolves one failed snippet's unknown `tools.*` path, or nil when the
+    /// failure has nothing to do with an unknown path.
     ///
     /// Scans `message` for `tools.<path>` references and hints on the first
     /// one naming a path the catalog does not contain. A message whose every
     /// `tools.*` reference is a real path (e.g. a mis-called existing tool)
     /// produces no hint — that error is already repairable as rendered.
+    ///
+    /// The result carries the ranking's own account of itself (which path
+    /// was imagined, which tier answered it, what it offered) alongside the
+    /// text, because a caller wants both: the text goes back to the model,
+    /// and the account goes to the host's log.
     ///
     /// - Parameters:
     ///   - message: the thrown JS exception's message text.
@@ -88,18 +145,38 @@ enum UnknownToolHint {
     ///   - searcher: the catalog-relevance ranker, which must be indexing
     ///     exactly `surface.entries` — otherwise tier 2 can suggest a path
     ///     the snippet's own `tools.*` glue does not define.
-    /// - Returns: the hint text, or nil when no unknown path was referenced.
+    /// - Returns: the resolution, or nil when no unknown path was
+    ///   referenced.
     static func hint(
         message: String,
         surface: APISurface,
         searcher: MetadataSearcher<APISurface.Entry>
-    ) async -> String? {
+    ) async -> Resolution? {
         let knownPaths = Set(surface.entries.map(\.path))
         guard let failedPath = firstUnknownPath(in: message, knownPaths: knownPaths) else {
             return nil
         }
 
-        let suggestions = await closestEntries(to: failedPath, in: surface, using: searcher)
+        let ranked = await closestEntries(to: failedPath, in: surface, using: searcher)
+        return Resolution(
+            imaginedPath: failedPath,
+            tier: ranked.tier,
+            suggestedPaths: ranked.entries.map(\.path),
+            text: text(forFailed: failedPath, suggesting: ranked.entries)
+        )
+    }
+
+    /// Renders the hint text handed back to the model.
+    ///
+    /// - Parameters:
+    ///   - failedPath: the unknown dotted path the snippet called.
+    ///   - suggestions: the entries to name, best match first, or empty to
+    ///     steer back to `findAPIs` instead.
+    /// - Returns: the hint text.
+    private static func text(
+        forFailed failedPath: String,
+        suggesting suggestions: [APISurface.Entry]
+    ) -> String {
         guard !suggestions.isEmpty else {
             return "tools.\(failedPath) does not exist, and nothing close matches. "
                 + "Call findAPIs to discover the available functions."
@@ -131,7 +208,8 @@ enum UnknownToolHint {
         return nil
     }
 
-    /// Ranks the catalog's entries against `failedPath`, best match first.
+    /// Ranks the catalog's entries against `failedPath`, best match first,
+    /// and reports which tier produced the ranking.
     ///
     /// Runs the two tiers described on the type: name resemblance first,
     /// catalog relevance only when name resemblance found nothing.
@@ -140,16 +218,18 @@ enum UnknownToolHint {
     ///   - failedPath: the unknown dotted path the snippet called.
     ///   - surface: the catalog to rank.
     ///   - searcher: the catalog-relevance ranker over `surface.entries`.
-    /// - Returns: the entries to suggest, best match first, or empty when
-    ///   neither tier found anything worth naming.
+    /// - Returns: the answering tier and the entries to suggest, best match
+    ///   first — `noMatch` and an empty list when neither tier found
+    ///   anything worth naming.
     private static func closestEntries(
         to failedPath: String,
         in surface: APISurface,
         using searcher: MetadataSearcher<APISurface.Entry>
-    ) async -> [APISurface.Entry] {
+    ) async -> (tier: SuggestionTier, entries: [APISurface.Entry]) {
         let byName = entriesResemblingName(of: failedPath, in: surface)
-        guard byName.isEmpty else { return byName }
-        return await entriesRelevantTo(failedPath, using: searcher)
+        guard byName.isEmpty else { return (.nameResemblance, byName) }
+        let byRelevance = await entriesRelevantTo(failedPath, using: searcher)
+        return (byRelevance.isEmpty ? .noMatch : .catalogRelevance, byRelevance)
     }
 
     /// Ranks the catalog's entries by name resemblance to `failedPath` and

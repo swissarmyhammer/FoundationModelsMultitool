@@ -19,6 +19,12 @@ import FoundationModelsRouter
 /// `7840f24` kanban task), so this gated suite's port does not itself become
 /// a reason to keep that file around.
 enum NativeTranscript {
+    /// The tool name `MultiTool` mounts under — the snippet runner.
+    private static let runCodeToolName = "runCode"
+
+    /// The tool name `FindAPIsTool` mounts under — the catalog searcher.
+    private static let findAPIsToolName = "findAPIs"
+
     /// Every `Transcript.ToolCall` across every `.toolCalls` entry, in transcript order.
     ///
     /// A single `.toolCalls` entry can itself carry more than one call (a
@@ -54,8 +60,10 @@ enum NativeTranscript {
     ///   `runCode` call has no preceding `findAPIs` call.
     static func findAPIsPrecedesRunCode(in transcript: Transcript) -> Bool {
         let calls = toolCalls(in: transcript)
-        guard let runCodeIndex = calls.firstIndex(where: { $0.toolName == "runCode" }) else { return false }
-        return calls[..<runCodeIndex].contains { $0.toolName == "findAPIs" }
+        guard let runCodeIndex = calls.firstIndex(where: { $0.toolName == runCodeToolName }) else {
+            return false
+        }
+        return calls[..<runCodeIndex].contains { $0.toolName == findAPIsToolName }
     }
 
     /// Extracts the `tools.*` call paths every `runCode` tool call's snippet invokes.
@@ -75,10 +83,86 @@ enum NativeTranscript {
     /// - Returns: the union of every `runCode` call's `tools.*` call paths.
     static func invokedToolPaths(in transcript: Transcript) -> Set<String> {
         toolCalls(in: transcript).reduce(into: Set<String>()) { paths, call in
-            guard call.toolName == "runCode",
+            guard call.toolName == runCodeToolName,
                 let code = try? call.arguments.value(String.self, forProperty: "code")
             else { return }
             paths.formUnion(toolCallPaths(in: code))
+        }
+    }
+
+    /// Extracts the scalar values the tools genuinely returned to the model.
+    ///
+    /// This is the counterpart to `invokedToolPaths(in:)` and answers the
+    /// opposite question. That one reads the code the model *wrote*; this
+    /// one reads what came *back*, so a caller can tell a reply that carries
+    /// real fixture data from one that carries an invention.
+    ///
+    /// Reads only `runCode` outputs, and only those that parse as JSON. A
+    /// clean `ResultRenderer.render(_:limits:)` success is the serialized
+    /// return value and nothing else — no frame text — so a `runCode` output
+    /// that parses is exactly the data a snippet returned, and its leaf
+    /// scalars are that data with no heuristic in between. An output that
+    /// does not parse contributes nothing rather than contributing noise:
+    /// that covers a repairable error, an appended `Console output:` section
+    /// and a truncation note, none of which is data the tools produced.
+    /// A `findAPIs` output is skipped outright — it is the catalog the model
+    /// was shown, not an answer it was given.
+    ///
+    /// Booleans are skipped: JSON `true` bridges to the same numeric type as
+    /// `1`, and a reply containing "1" is no evidence that anything came
+    /// back.
+    ///
+    /// - Parameter transcript: the transcript to scan.
+    /// - Returns: every distinct scalar the `runCode` outputs carried,
+    ///   rendered as text.
+    static func returnedValues(in transcript: Transcript) -> Set<String> {
+        transcript.reduce(into: Set<String>()) { values, entry in
+            guard case .toolOutput(let output) = entry, output.toolName == runCodeToolName else {
+                return
+            }
+            guard let data = text(of: output).data(using: .utf8),
+                let json = try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
+            else {
+                return
+            }
+            collectScalars(of: json, into: &values)
+        }
+    }
+
+    /// Joins one tool output's text segments.
+    ///
+    /// - Parameter output: the recorded tool output.
+    /// - Returns: the output's text, segments concatenated in order.
+    private static func text(of output: Transcript.ToolOutput) -> String {
+        output.segments
+            .compactMap { segment -> String? in
+                guard case .text(let textSegment) = segment else { return nil }
+                return textSegment.content
+            }
+            .joined()
+    }
+
+    /// Walks a decoded JSON value and collects its leaf scalars as text.
+    ///
+    /// - Parameters:
+    ///   - json: the decoded value to walk.
+    ///   - values: the set to insert each leaf scalar into.
+    private static func collectScalars(of json: Any, into values: inout Set<String>) {
+        switch json {
+        case let object as [String: Any]:
+            for value in object.values {
+                collectScalars(of: value, into: &values)
+            }
+        case let array as [Any]:
+            for value in array {
+                collectScalars(of: value, into: &values)
+            }
+        case let text as String:
+            values.insert(text)
+        case let number as NSNumber where CFGetTypeID(number) != CFBooleanGetTypeID():
+            values.insert(number.stringValue)
+        default:
+            break
         }
     }
 
