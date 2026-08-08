@@ -88,6 +88,79 @@ struct SandboxGlobalsTests {
         )
     }
 
+    // MARK: - Discovery: docs() carries the contract the description points at
+
+    @Test("docs(\"globals\") declares every ambient global")
+    func docsGlobalsDeclaresEveryAmbientGlobal() async throws {
+        let output = try await runSnippet("return docs(\"\(MultiTool.sandboxGlobalsDocsTopic)\");")
+
+        let page = try decode(String.self, from: output)
+        for name in sandboxGlobalNames {
+            #expect(page.contains("declare function \(name)("))
+        }
+    }
+
+    @Test("docs(\"globals\") reaches the snippet whole — runCode's return cap never truncates the contract")
+    func theGlobalsPageReachesTheSnippetWhole() async throws {
+        let output = try await runSnippet("return docs(\"\(MultiTool.sandboxGlobalsDocsTopic)\");")
+
+        #expect(try decode(String.self, from: output) == MultiTool.sandboxGlobalsPage)
+    }
+
+    @Test("docs(name) resolves each ambient global on its own, returning that one's block alone")
+    func docsResolvesEachAmbientGlobalByName() async throws {
+        for name in sandboxGlobalNames {
+            let output = try await runSnippet("return docs(\"\(name)\");")
+
+            let block = try decode(String.self, from: output)
+            #expect(sandboxGlobalNames.filter { block.contains("declare function \($0)(") } == [name])
+        }
+    }
+
+    @Test("the globals page states which calls are awaited by declaring their return types")
+    func theGlobalsPageStatesWhichCallsAreAwaited() {
+        let page = MultiTool.sandboxGlobalsPage
+
+        for name in sandboxGlobalNames where !MultiTool.voidGlobalNames.contains(name) {
+            #expect(declaredReturnType(of: name, in: page)?.hasPrefix("Promise<") == true)
+        }
+        for name in MultiTool.voidGlobalNames {
+            #expect(declaredReturnType(of: name, in: page) == "void")
+        }
+    }
+
+    @Test("the globals page declares the exact fields a parked run really reports")
+    func theGlobalsPageMatchesTheParkedRunItDocuments() async throws {
+        let mailbox = SessionMailbox()
+        _ = await parkScriptedRun(in: mailbox, progress: "step one")
+        let context = makeOuterRunContext(mailbox: mailbox, sink: RecordingEventSink())
+
+        let output = try await runSnippet(
+            "return Object.keys((await status())[0]).sort();",
+            under: context
+        )
+
+        let observed = try decode([String].self, from: output)
+        let documented = try #require(declaredFields(of: "ParkedRun", in: MultiTool.sandboxGlobalsPage))
+        #expect(documented == observed)
+    }
+
+    @Test("the globals page declares the exact fields an elicitation answer really carries")
+    func theGlobalsPageMatchesTheElicitationAnswerItDocuments() async throws {
+        let mailbox = SessionMailbox()
+        let sink = ScriptedElicitationSink(mailbox: mailbox, answering: .accept(content: ["repo": .string("sah")]))
+        let context = makeOuterRunContext(mailbox: mailbox, sink: sink)
+
+        let output = try await runSnippet(
+            "return Object.keys(await elicit(\"Which repository?\")).sort();",
+            under: context
+        )
+
+        let observed = try decode([String].self, from: output)
+        let documented = try #require(declaredFields(of: "ElicitationAnswer", in: MultiTool.sandboxGlobalsPage))
+        #expect(documented == observed)
+    }
+
     // MARK: - status()
 
     @Test("status() with no argument lists each parked run's token, op, and latest progress")
@@ -595,4 +668,47 @@ private func decode<Value: Decodable>(_ type: Value.Type, from output: String) t
 /// - Returns: the JavaScript array literal.
 private func jsArrayLiteral(of names: [String]) -> String {
     "[\(names.map { "\"\($0)\"" }.joined(separator: ", "))]"
+}
+
+/// The return type the globals page declares for the function named `name`.
+///
+/// Read out of the rendered page rather than off the constant that built it,
+/// so an assertion about which calls a snippet awaits is checked against the
+/// text a model actually reads.
+///
+/// - Parameters:
+///   - name: the global's name.
+///   - page: the rendered globals page.
+/// - Returns: the declared return type, or `nil` when the page declares no
+///   such function.
+private func declaredReturnType(of name: String, in page: String) -> String? {
+    guard
+        let line = page.split(separator: "\n").first(where: { $0.hasPrefix("declare function \(name)(") }),
+        let arguments = line.range(of: "): ", options: .backwards)
+    else {
+        return nil
+    }
+    return String(line[arguments.upperBound...].dropLast())
+}
+
+/// The field names the globals page's `declare type` line for `name` lists,
+/// sorted.
+///
+/// - Parameters:
+///   - name: the declared type's name.
+///   - page: the rendered globals page.
+/// - Returns: the declared field names in sorted order, or `nil` when the page
+///   declares no such type.
+private func declaredFields(of name: String, in page: String) -> [String]? {
+    guard
+        let line = page.split(separator: "\n").first(where: { $0.hasPrefix("declare type \(name) = {") }),
+        let open = line.firstIndex(of: "{"),
+        let close = line.lastIndex(of: "}")
+    else {
+        return nil
+    }
+    return line[line.index(after: open)..<close]
+        .split(separator: ";")
+        .compactMap { $0.split(separator: ":").first?.trimmingCharacters(in: .whitespaces) }
+        .sorted()
 }

@@ -213,6 +213,14 @@ public struct MultiTool: Tool {
     /// the error-recovery contract: fix and immediately re-call on error,
     /// never stop at an error to narrate, never claim an outcome no
     /// snippet actually returned.
+    ///
+    /// The ambient globals are the one part deliberately *not* carried here.
+    /// This text is read on every turn, alongside every tool schema, so
+    /// everything in it competes with the findAPIs-first instruction for the
+    /// model's attention — and the globals are the part a snippet needs only
+    /// once it is already writing a snippet. So this names them and where to
+    /// read them, and `docs("globals")` hands back the contract on demand
+    /// (see `MultiTool+SandboxGlobals.swift`, "MARK: - The docs() page").
     public let description = """
         Run a JavaScript snippet against the user's real tools, exposed as functions \
         under `tools.*`. Always call findAPIs first to discover the exact functions and \
@@ -228,12 +236,10 @@ public struct MultiTool: Tool {
         the error comes back for you to repair: fix the snippet and call runCode again \
         immediately — never stop at an error to describe or apologize for what you were \
         going to do, and never claim success for a call a snippet did not actually \
-        return. Six more globals are always there and never appear in findAPIs: \
-        `elicit()` asks the user a question in the middle of a snippet and resolves to \
-        their answer; `notify()` and `progress()` tell the user what is happening and \
-        return nothing; `status()`, `wait()`, and `cancel()` follow up on a long-running \
-        call's completion token. Await `elicit()`, `status()`, `wait()`, and `cancel()` \
-        like any `tools.*` call; never await `notify()` or `progress()`.
+        return. Beyond `tools.*` a few ambient globals are always there and never appear \
+        in findAPIs — for asking the user something mid-snippet, reporting what is \
+        happening, and following up on a long-running call. Run `docs("globals")` in a \
+        snippet to read them.
         """
 
     /// Where this tool logs its M10 diagnostics — one `runCode` call's
@@ -919,6 +925,12 @@ public struct MultiTool: Tool {
         }
         if let entry = surface.entries.first(where: { $0.path == name }) {
             return entry.block
+        }
+        // After the catalog, never before it: a wrapped tool actually named
+        // `globals` keeps its own block, and the ambient page is what `name`
+        // resolves to only when no entry claimed it.
+        if let globals = sandboxGlobalsDocumentation(for: name) {
+            return globals
         }
 
         let knownPaths = surface.entries.map(\.path)

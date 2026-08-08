@@ -236,12 +236,13 @@ struct MultiToolExecutionTests {
         // `tools.*` call returns a promise.
         #expect(description.localizedCaseInsensitiveContains("await each `tools.*` call"))
         #expect(description.contains("Promise.all"))
-        // The ambient-globals line (eventplan.md "The sandbox globals"): the
-        // six globals carry no `findAPIs` entry, so this sentence is the only
-        // place the model learns they exist.
-        for global in ["elicit()", "notify()", "progress()", "status()", "wait()", "cancel()"] {
-            #expect(description.contains(global))
-        }
+        // The ambient-globals pointer (eventplan.md "The sandbox globals"):
+        // the six globals carry no `findAPIs` entry, so the description is
+        // the only place the model learns they exist — but it carries the
+        // pointer, not the contract, which `docs("globals")` hands back on
+        // demand (`SandboxGlobalsTests` pins what comes back).
+        #expect(description.contains("never appear in findAPIs"))
+        #expect(description.contains("docs(\"\(MultiTool.sandboxGlobalsDocsTopic)\")"))
     }
 
     // MARK: - directMode(): a runCode-only surface

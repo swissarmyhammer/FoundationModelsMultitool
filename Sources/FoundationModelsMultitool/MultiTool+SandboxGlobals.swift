@@ -24,8 +24,12 @@ import FoundationModelsRouter
 // the last two are `HostFunction`s — and nothing else about them differs.
 //
 // None of the six is a `findAPIs` entry. A search result implies an item that
-// can be found or be absent; these are always present, and
-// `MultiTool.description`'s own text is where the model learns they exist.
+// can be found or be absent; these are always present. `MultiTool
+// .description` is therefore where the model learns they exist — but it
+// carries only that pointer. The contract itself is read on demand, through
+// `docs("globals")` or `docs(<one global's name>)`, which is `help()`/`docs()`
+// — the discovery path a snippet already has for the wrapped tools — rather
+// than a second mechanism built alongside it (see "MARK: - The docs() page").
 //
 // **No ambient context is a supported mode, not an error.** A `MultiTool`
 // constructed and called directly — outside any session, which is how every
@@ -75,6 +79,21 @@ private let elicitUsage = """
     elicit({ message, url }) for a URL flow.
     """
 
+/// One ambient global's `docs(name)` entry.
+///
+/// Rendered in the same shape ``APISurface/Entry/block`` gives a wrapped tool
+/// — a banner naming the call, a JSDoc comment, and a `declare function`
+/// signature — so a snippet that reads `docs("elicit")` and
+/// `docs("getWeather")` reads one format for both.
+private struct SandboxGlobalDoc: Sendable {
+    /// The name a snippet calls this global under, which is also the
+    /// `docs(name)` key that resolves this entry.
+    let name: String
+
+    /// This global's rendered documentation block.
+    let block: String
+}
+
 extension MultiTool {
     /// The two synchronous, void globals — `notify()` and `progress()`.
     ///
@@ -83,6 +102,165 @@ extension MultiTool {
     /// agree (see ``makeNoticeHostFunctions(outbox:)`` for why the wrapper
     /// exists).
     static let voidGlobalNames = ["notify", "progress"]
+
+    // MARK: - The docs() page: the contract, reached on demand
+
+    /// The `docs(name)` topic the whole ambient-globals page is filed under.
+    ///
+    /// `MultiTool.description` names this topic instead of restating the
+    /// contract. What a model needs upfront is that the globals exist and
+    /// where to read them; the detail costs nothing until a snippet asks for
+    /// it, which is the same lazy shape `findAPIs`/`docs()` already give the
+    /// wrapped tools. Naming the topic here keeps the pointer and the lookup
+    /// on one constant.
+    static let sandboxGlobalsDocsTopic = "globals"
+
+    /// The whole ambient-globals page — what `docs("globals")` hands back.
+    ///
+    /// The preface followed by every global's block, separated by a blank
+    /// line, exactly as ``APISurface/source`` concatenates the wrapped tools'
+    /// blocks.
+    static var sandboxGlobalsPage: String {
+        ([sandboxGlobalsPreface] + sandboxGlobalDocs.map(\.block)).joined(separator: "\n\n")
+    }
+
+    /// The documentation `docs(name)` answers `name` with, when `name` is the
+    /// globals topic or one global's own name.
+    ///
+    /// - Parameter name: the name a `docs(name)` call asked for.
+    /// - Returns: the whole page for the topic, one global's block for a
+    ///   global's name, or `nil` when `name` is neither.
+    static func sandboxGlobalsDocumentation(for name: String) -> String? {
+        if name == sandboxGlobalsDocsTopic {
+            return sandboxGlobalsPage
+        }
+        return sandboxGlobalDocs.first { $0.name == name }?.block
+    }
+
+    /// The page's preface: what the ambient globals are, the one rule saying
+    /// which of them a snippet awaits, and the object shapes the run plane
+    /// and `elicit()` hand back.
+    ///
+    /// Every `state` value is spliced from ``RunPlaneState`` rather than
+    /// retyped, so the documented discriminator and the one the globals
+    /// really stamp cannot drift apart.
+    ///
+    /// Kept tight on purpose: the whole page has to fit inside `runCode`'s
+    /// own return cap (``ResultRendererLimits/returnValueCharacterLimit``),
+    /// or the snippet that asked for it reads a truncated contract. Facts a
+    /// snippet already learns at the moment it needs them — chiefly the
+    /// no-run-plane rejection, which ``SandboxGlobalError/noRunPlane``
+    /// states in full — belong there rather than here.
+    private static let sandboxGlobalsPreface = """
+        // globals
+        /**
+         * The ambient globals every snippet already has, beyond `tools.*`.
+         * They are installed in every runCode sandbox, so they never appear
+         * in a findAPIs result and nothing has to be discovered before
+         * calling them. Await the four that return a promise; `notify()` and
+         * `progress()` return nothing, so never await those.
+         */
+        declare type ParkedRun = { state: "\(RunPlaneState.parked)"; completionToken: string; tool: string; op: string; kind: string; latestProgress: string | null };
+        declare type SettledRun = { state: "\(RunPlaneState.settled)" | "\(RunPlaneState.alreadySettled)"; completionToken: string; tool: string; op: string; detail: string; outcome: string | null };
+        declare type UnresolvedRun = { state: "\(RunPlaneState.deadlineElapsed)" | "\(RunPlaneState.unknownToken)"; completionToken: string };
+        declare type CancelReport = { state: "\(RunPlaneState.reported)"; completionToken: string; outcome: string };
+        declare type ElicitationAnswer = { action: string; content: object | null };
+        """
+
+    /// Every ambient global's `docs(name)` entry, in the order the preface
+    /// introduces them — the run plane, the elicitation, then the two notice
+    /// calls.
+    ///
+    /// No `@param` trailers, unlike ``APISurface/Entry/block``: a wrapped
+    /// tool's `args` fields carry meaning only its author's `@Guide` prose
+    /// states, whereas each global's own parameter is named and typed in the
+    /// declaration right below. Repeating it would spend the page's budget
+    /// (see ``sandboxGlobalsPreface``) on text the reader already has.
+    private static let sandboxGlobalDocs: [SandboxGlobalDoc] = [
+        SandboxGlobalDoc(
+            name: "status",
+            block: """
+                // status
+                /**
+                 * Reports what this session's long-running calls are doing. With no argument it
+                 * lists every run still parked; with a completion token — the token a
+                 * long-running call handed back — it reports that one run.
+                 * @returns Promise<ParkedRun[] | ParkedRun | SettledRun | UnresolvedRun> — read `state` to tell the shapes apart.
+                 * @example const parked = await status();
+                 */
+                declare function status(completionToken?: string): Promise<ParkedRun[] | ParkedRun | SettledRun | UnresolvedRun>;
+                """
+        ),
+        SandboxGlobalDoc(
+            name: "wait",
+            block: """
+                // wait
+                /**
+                 * Waits up to `seconds` for one long-running call to finish, then reports its
+                 * terminal event — the run's identifier and its bounded output tail, never a
+                 * tool's whole output. A deadline that passes with the run still parked reports
+                 * `\(RunPlaneState.deadlineElapsed)` rather than failing.
+                 * @returns Promise<SettledRun | UnresolvedRun> — read `state` to tell them apart.
+                 * @example const settled = await wait(token, 30);
+                 */
+                declare function wait(completionToken: string, seconds: number): Promise<SettledRun | UnresolvedRun>;
+                """
+        ),
+        SandboxGlobalDoc(
+            name: "cancel",
+            block: """
+                // cancel
+                /**
+                 * Asks one long-running call to stop, and reports the outcome its own canceler
+                 * reported — verbatim, never a guess. A run that already finished reports its
+                 * retained terminal event instead.
+                 * @returns Promise<CancelReport | SettledRun | UnresolvedRun> — read `state` to tell them apart.
+                 * @example const stopped = await cancel(token);
+                 */
+                declare function cancel(completionToken: string): Promise<CancelReport | SettledRun | UnresolvedRun>;
+                """
+        ),
+        SandboxGlobalDoc(
+            name: "elicit",
+            block: """
+                // elicit
+                /**
+                 * Asks the user a question in the middle of a snippet, and resolves to their
+                 * answer. \(elicitUsage)
+                 * @returns Promise<ElicitationAnswer> — `content` is null when the user declined or cancelled, so read `action` first.
+                 * @example const answer = await elicit("Which repository should I target?");
+                 */
+                declare function elicit(request: string | { message: string; requestedSchema?: object; url?: string }): Promise<ElicitationAnswer>;
+                """
+        ),
+        SandboxGlobalDoc(
+            name: "notify",
+            block: """
+                // notify
+                /**
+                 * Tells the user what is happening. The notice is enqueued and the snippet keeps
+                 * running; the run delivers the chain when it ends. A structured `detail` is
+                 * reported as JSON.
+                 * @returns void — nothing comes back, so never await it.
+                 * @example notify("starting the sweep");
+                 */
+                declare function notify(detail: string | object): void;
+                """
+        ),
+        SandboxGlobalDoc(
+            name: "progress",
+            block: """
+                // progress
+                /**
+                 * Reports how far along the snippet is, on the run's own progress channel.
+                 * Enqueued and delivered exactly as `notify()` is.
+                 * @returns void — nothing comes back, so never await it.
+                 * @example progress("3 of 8 cities done");
+                 */
+                declare function progress(detail: string | object): void;
+                """
+        ),
+    ]
 
     // MARK: - The run plane: status(), wait(), cancel(), and elicit()
 
