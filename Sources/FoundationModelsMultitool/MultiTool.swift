@@ -327,9 +327,10 @@ public struct MultiTool: Tool {
 
         It also exposes this session's API functions under `tools.*`.
 
-        Call findAPIs at least once in every session, on the user's first request,
-        before you answer it. Until you have called it you do not know what this
-        session mounts.
+        Call findAPIs at least once in every session, passing the user's own request
+        as the query, before you answer it. Until you have called it you do not know
+        what this session mounts. Narrow follow-up searches come after that one, not
+        instead of it.
 
         Assume any user request needs this session's functions. Almost all of them
         do. Call findAPIs first to get the exact functions and their signatures,

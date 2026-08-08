@@ -182,7 +182,12 @@ struct FindAPIsToolTests {
         // dominant recorded failure: a turn that ends with toolCalls=0, where
         // three of the sample arm's seven failures sat (task 9zk44z6).
         #expect(description.contains("Call findAPIs at least once in every session"))
-        #expect(description.contains("on the user's first request"))
+        #expect(description.contains("passing the user's own request"))
+        #expect(description.contains("as the query"))
+        // Narrow follow-up searches supplement the first one; they do not replace
+        // it. The generator is handed whatever query findAPIs received, so a model
+        // that only ever searches a sub-question hands it the wrong task.
+        #expect(description.contains("come after that one, not"))
         #expect(description.contains("you do not know what this session mounts"))
         // findAPIs is not one-shot. A request needing two kinds of data cannot be
         // served by a single search, and a model that searched once, came up short,
