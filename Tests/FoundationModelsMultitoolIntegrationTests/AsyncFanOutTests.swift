@@ -37,7 +37,11 @@ struct AsyncFanOutTests {
             prompt: "How many units do we have in total, counting both the warehouse and the store floor?",
             // Only the sum is accepted — neither fixture's own count proves
             // both were read.
-            answerContainsOneOf: integerAnswers(for: Self.combinedUnits)
+            answerContainsOneOf: integerAnswers(for: Self.combinedUnits),
+            // Both counters, for the same reason the sum is the only accepted
+            // answer: a total is knowable only once both of them handed a
+            // count back.
+            groundedIn: IntegrationScenarioGrounding.combinedStock
         )
     }
 }

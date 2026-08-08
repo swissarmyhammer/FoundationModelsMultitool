@@ -23,39 +23,52 @@ import FoundationModelsRouter
 /// route failed in both directions: a run once *passed* the compose
 /// scenario while answering "there are no cities on your trip" (approved
 /// path, wrong answer), and another *failed* it while answering "NYC, 31°C"
-/// (correct grounded answer, unapproved path). So exactly three things are
-/// asserted:
+/// (correct grounded answer, unapproved path). So what is asserted is exactly
+/// this:
 ///
 /// 1. **The answer is valid** — the reply contains at least one of
 ///    `answerContainsOneOf`, chosen per scenario to match the fixtures'
-///    distinctive values (e.g. the weather fixture's 31°C reading for
-///    Austin, and the single warmest trip city), so a hallucinated answer
-///    cannot match.
-/// 2. **The answer is grounded** — at least one fixture tool genuinely ran
-///    and handed a value back to a `runCode` snippet, as that tool itself
-///    recorded in the run's `ScenarioCallLog`. Which functions, in what
-///    order, across how many calls is deliberately unasserted. Read off the
-///    recorder rather than off the snippet source, because the source says
-///    only what the model typed: a run whose two `tools.*` call sites named
-///    functions no fixture defined once scored `grounded=pass` while both
-///    calls threw and nothing ran (task `0981ar3`).
-/// 3. **Side effects really happened** — when `mustReturn` is non-empty
-///    (the booking scenario), those `tools.*` paths are among the paths that
-///    *returned*: claiming "your booking is confirmed" is true only if
-///    `confirmBooking` actually handed a confirmation back, and the booking
-///    fixture throws rather than confirming when `confirm` is not `true`.
-///    This is a containment check, never an equality — extra calls and any
-///    ordering are fine.
+///    distinctive values (e.g. the weather fixture's own reading for the city
+///    scenario 1 asks about, and the single warmest trip city), so a
+///    hallucinated answer cannot match; and none of `answerMustNotContain`,
+///    the phrasings that invalidate a reply that otherwise matched.
+/// 2. **The answer is grounded in what it depends on** — every `tools.*` path
+///    the scenario declares in `groundedIn` handed a value back, as the tool
+///    itself recorded in the run's `ScenarioCallLog`.
+///
+///    Per scenario, because "grounded" is a question about the answer that
+///    scenario asks for. "Which trip city is warmest" depends on a temperature
+///    reading, so a run that fetched only the itinerary and then named a city
+///    answered by luck — and a recorded discovery run that did exactly that
+///    scored `grounded=pass` back when the check asked only whether *some*
+///    fixture call had returned (task `0981ar3`). The declarations live in
+///    `IntegrationScenarioGrounding`, beside the readings they are about.
+///
+///    Declared paths must have *returned*, not merely been invoked: a call
+///    that entered and then threw handed the snippet an error rather than
+///    data. That is also how a claimed side effect is graded — "your booking
+///    is confirmed" is true only if `confirmBooking` handed a confirmation
+///    back, and that fixture throws instead of confirming when `confirm` is
+///    not `true`, so the repair scenario declares that path and needs nothing
+///    further. Read off the recorder rather than off the snippet source,
+///    because the source says only what the model typed: a run whose two
+///    `tools.*` call sites named functions no fixture defined once scored
+///    `grounded=pass` while both calls threw and nothing ran (the same task).
+///
+///    A containment check, never an equality: which *other* functions ran, in
+///    what order, across how many calls stays deliberately unasserted.
 ///
 /// The old route assertions (findAPIs-before-runCode ordering, exact
 /// invoked-path sets, exact selection-tier picks, call-count budgets) are
 /// printed as diagnostics on the `RESULT` line instead, so runs remain
 /// comparable without gating on them.
 ///
-/// **Per-scenario measurement.** Every one of those three conditions is
-/// collected as a `ScenarioCheck` before any of them is asserted, so a run
-/// reports its own verdict on a `SCENARIO` line — see
-/// `grade(scenario:checks:)` for why suite totals alone are not enough.
+/// **Per-scenario measurement.** Every condition above is collected as a
+/// `ScenarioCheck` — by `scenarioChecks(for:answerContainsOneOf:
+/// answerMustNotContain:groundedIn:)`, which is where the grading rule itself
+/// is exercised ungated — before any of them is asserted, so a run reports its
+/// own verdict on a `SCENARIO` line. See `grade(scenario:checks:)` for why
+/// suite totals alone are not enough.
 ///
 /// **Skip, not failure.** Mirrors the retired `runIntegrationScenario` this
 /// supersedes: if resolving the profile or running the session throws
@@ -82,10 +95,11 @@ import FoundationModelsRouter
 ///     invalidates the answer even when a required substring matched —
 ///     guards required words that also appear inside failure phrasings
 ///     ("unable to confirm" contains "confirm"). Empty by default.
-///   - mustReturn: `tools.*` paths whose calls must genuinely have returned a
-///     value — for scenarios whose valid answer *claims a side effect
-///     happened* (booking confirmed). Empty (the default) for pure data-read
-///     scenarios, where the answer-content check already proves grounding.
+///   - groundedIn: the `tools.*` paths whose *returns* this scenario's answer
+///     depends on — see `IntegrationScenarioGrounding`, which declares one set
+///     per scenario question. Required rather than defaulted, and required to
+///     be non-empty, because a scenario that declares nothing would grade
+///     every run as grounded, including one that called nothing at all.
 /// - Throws: any error other than `GenerationError.notWiredForLiveInference`
 ///   — including a failed `#expect` (Swift Testing turns a failed
 ///   expectation into a recorded issue, not a thrown error, so this
@@ -96,7 +110,7 @@ func runNativeIntegrationScenario(
     prompt: String,
     answerContainsOneOf: [String],
     answerMustNotContain: [String] = [],
-    mustReturn: Set<String> = []
+    groundedIn: Set<String>
 ) async throws {
     try await withLiveRouterFixture(name: name) { fixture in
         // One fresh log per run, minted here and never shared: the tools this
@@ -122,49 +136,18 @@ func runNativeIntegrationScenario(
         let elapsed = Date().timeIntervalSince(start)
 
         let transcript = session.transcript
-        // Three signals, three different questions, deliberately kept apart.
-        // `typed` is what the model *wrote* into its snippets, read off the
-        // transcript; `invoked` is what a fixture tool actually *entered*;
-        // `returned` is what handed a value back. Only the first was ever
-        // measured before, and it answered the other two wrongly.
-        let typed = NativeTranscript.typedToolPaths(in: transcript)
-        let invoked = await log.invokedPaths
-        let returned = await log.returnedPaths
-
-        var checks = answerChecks(
-            response.content,
-            containsOneOf: answerContainsOneOf,
-            mustNotContain: answerMustNotContain
+        let evidence = ScenarioEvidence(
+            answer: response.content,
+            typedPaths: NativeTranscript.typedToolPaths(in: transcript),
+            invokedPaths: await log.invokedPaths,
+            returnedPaths: await log.returnedPaths
         )
-        // Grounded answer — produced through the tools surface at all, by any
-        // route. Graded on `returned`: a call that threw handed the snippet an
-        // error, not data, so it grounds nothing, and a call site the model
-        // merely typed never ran at all.
-        checks.append(
-            ScenarioCheck(
-                name: "grounded",
-                held: !returned.isEmpty,
-                failureMessage:
-                    "expected the answer to be grounded in at least one tools.* call that returned a value; "
-                    + "the snippets wrote \(typed.sorted()), the fixtures ran \(invoked.sorted()), "
-                    + "and none of them returned"
-            )
+        let checks = scenarioChecks(
+            for: evidence,
+            answerContainsOneOf: answerContainsOneOf,
+            answerMustNotContain: answerMustNotContain,
+            groundedIn: groundedIn
         )
-        // Claimed side effects really happened — containment, never equality;
-        // extra calls and any ordering are fine. Also graded on `returned`:
-        // the booking fixture throws instead of confirming when `confirm` is
-        // not `true`, so an invocation alone confirms nothing.
-        if !mustReturn.isEmpty {
-            checks.append(
-                ScenarioCheck(
-                    name: "sideEffects",
-                    held: mustReturn.isSubset(of: returned),
-                    failureMessage:
-                        "the answer claims an action that requires \(mustReturn.sorted()) to return, but only "
-                        + "\(returned.sorted()) returned (\(invoked.sorted()) were invoked at all)"
-                )
-            )
-        }
         grade(scenario: name, checks: checks)
 
         let toolCallCount = NativeTranscript.toolCallCount(in: transcript)
@@ -177,11 +160,15 @@ func runNativeIntegrationScenario(
         // All three path signals are printed, not just the graded one: a run
         // where `typed` names paths `invoked` does not is precisely the shape
         // that used to pass silently, and the line is where a reader sees it.
+        // The scenario's declaration is printed beside them, so which of those
+        // returns the grade required is readable off the run rather than only
+        // off this file.
         print(
             "RESULT [\(name)] elapsed=\(elapsed)s toolCalls=\(toolCallCount) "
-                + "typed=\(typed.sorted()) "
-                + "invoked=\(invoked.sorted()) "
-                + "returned=\(returned.sorted()) "
+                + "typed=\(evidence.typedPaths.sorted()) "
+                + "invoked=\(evidence.invokedPaths.sorted()) "
+                + "returned=\(evidence.returnedPaths.sorted()) "
+                + "groundedIn=\(groundedIn.sorted()) "
                 + "findAPIsFirst=\(findAPIsFirst) "
                 + "reply=\"\(response.content.prefix(80))\""
         )
@@ -193,8 +180,8 @@ func runNativeIntegrationScenario(
                 ScenarioObservation(
                     reply: response.content,
                     toolCallCount: toolCallCount,
-                    typedPaths: typed,
-                    invokedPaths: invoked,
+                    typedPaths: evidence.typedPaths,
+                    invokedPaths: evidence.invokedPaths,
                     catalogPaths: surface.catalogPaths,
                     findAPIsFirst: findAPIsFirst,
                     returnedValues: NativeTranscript.returnedValues(in: transcript),
@@ -511,6 +498,99 @@ private func grade(scenario name: String, checks: [ScenarioCheck]) {
 /// `ScenarioFailureModes` reads to tell a wrong-form answer from a right
 /// one.
 let validAnswerCheckName = "validAnswer"
+
+/// The label of the check that grades the answer as grounded in the returns it
+/// depends on.
+let groundedCheckName = "grounded"
+
+/// Everything one native scenario run produced that its verdict is graded on.
+///
+/// Three signals, three different questions, deliberately kept apart: the typed
+/// paths are what the model *wrote* into its snippets, read off the transcript;
+/// the invoked paths are what a fixture tool actually *entered*; the returned
+/// paths are what handed a value back. Only the first was ever measured, and it
+/// answered the other two wrongly (task `0981ar3`).
+///
+/// Distinct from `ScenarioObservation`, which the failure-mode instrument
+/// reads: that record carries `isValidAnswer`, which is read *off* this
+/// verdict, so the verdict cannot take it as input.
+struct ScenarioEvidence {
+    /// The model's final reply.
+    let answer: String
+
+    /// The `tools.*` paths the run's `runCode` snippets wrote — `NativeTranscript.typedToolPaths(in:)`.
+    ///
+    /// Reported in the grounding condition's failure message, and never graded
+    /// on: a path the model merely typed never ran.
+    let typedPaths: Set<String>
+
+    /// The `tools.*` paths a fixture tool entered — `ScenarioCallLog.invokedPaths`.
+    ///
+    /// Reported in the grounding condition's failure message, and never graded
+    /// on: a call that entered and then threw handed the snippet an error
+    /// rather than data.
+    let invokedPaths: Set<String>
+
+    /// The `tools.*` paths whose call handed a value back — `ScenarioCallLog.returnedPaths`.
+    let returnedPaths: Set<String>
+}
+
+/// Grades one native scenario run into the conditions its verdict is the
+/// conjunction of.
+///
+/// Separate from the run that produced the evidence so the grading rule is
+/// checkable without live inference: `ScenarioGradingTests` grades evidence
+/// built from real fixture calls and asserts which conditions hold, so the
+/// gated `SCENARIO` line rests on a rule that has itself been tested. The rule
+/// this replaced was checkable only by reading a gated run's output, and it
+/// passed a recorded run whose answer nothing it fetched could support (task
+/// `0981ar3`).
+///
+/// - Parameters:
+///   - evidence: what the run produced.
+///   - answerContainsOneOf: candidate substrings, at least one of which the
+///     reply must contain case-insensitively.
+///   - answerMustNotContain: substrings whose case-insensitive presence
+///     invalidates the reply even when a required substring matched.
+///   - groundedIn: the `tools.*` paths whose returns this scenario's answer
+///     depends on. Must not be empty: an empty declaration would grade every
+///     run as grounded, including one that called nothing.
+/// - Returns: every condition this run is graded on, in reporting order.
+func scenarioChecks(
+    for evidence: ScenarioEvidence,
+    answerContainsOneOf: [String],
+    answerMustNotContain: [String],
+    groundedIn: Set<String>
+) -> [ScenarioCheck] {
+    precondition(
+        !groundedIn.isEmpty,
+        """
+        a scenario must declare the tools.* returns its answer depends on; an empty declaration grades \
+        every run as grounded, including one that called nothing
+        """
+    )
+    var checks = answerChecks(
+        evidence.answer,
+        containsOneOf: answerContainsOneOf,
+        mustNotContain: answerMustNotContain
+    )
+    checks.append(
+        ScenarioCheck(
+            name: groundedCheckName,
+            // Containment, not emptiness: the question is whether the values
+            // this answer depends on were fetched, not whether anything came
+            // back at all. The rule this replaced asked the second question
+            // and passed a run that held the itinerary and named the warmest
+            // city off it.
+            held: groundedIn.isSubset(of: evidence.returnedPaths),
+            failureMessage:
+                "expected the answer to be grounded in what \(groundedIn.sorted()) returned, but only "
+                + "\(evidence.returnedPaths.sorted()) returned (\(evidence.invokedPaths.sorted()) were "
+                + "invoked at all, and the snippets wrote \(evidence.typedPaths.sorted()))"
+        )
+    )
+    return checks
+}
 
 /// Grades one scenario's reply as a valid answer: it carries at least one
 /// required substring, and none of the phrasings that would invalidate it.

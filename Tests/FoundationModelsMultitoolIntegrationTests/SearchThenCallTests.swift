@@ -10,7 +10,7 @@ import Testing
 ///
 /// **Outcome over path.** Each scenario passes when the model produces a
 /// valid, grounded answer — see `runNativeIntegrationScenario`'s
-/// documentation for the exact three assertions and why route assertions
+/// documentation for the exact assertions and why route assertions
 /// (tool ordering, exact call sets, call budgets) were retired in favor of
 /// diagnostics. The `answerContainsOneOf` values below are the fixtures'
 /// own distinctive data (`Fixtures/ScenarioTools.swift`), read from those
@@ -21,6 +21,13 @@ import Testing
 /// hallucinating model has never guessed across the many recorded runs on
 /// task `k4mj1gm` (it said 72°F, 25°C, Tokyo, Bangkok, Miami — never the
 /// fixture's own reading, never the fixture cities).
+///
+/// Each scenario also states what its answer must be *grounded in*, as
+/// `groundedIn: IntegrationScenarioGrounding.<question>` — the `tools.*`
+/// returns that answer depends on, declared beside the readings rather than
+/// spelled out here. A reply in the accepted form is not evidence on its own:
+/// a recorded discovery run named the warmest city having fetched only the
+/// itinerary, which no run can know, and it passed (task `0981ar3`).
 ///
 /// **Native design.** Ported off `MultiToolAgent`'s hand-rolled ReAct loop
 /// (`TurnFormat`/`AgentStep`, retired alongside it — see the `7840f24` kanban
@@ -68,7 +75,11 @@ struct SearchThenCallTests {
             // `IntegrationScenarioAnswers` enforces that this reading shares no
             // substring with the warmest-city answers, so a reply that passes
             // here cannot also pass the compose and discovery scenarios.
-            answerContainsOneOf: IntegrationScenarioAnswers.singleCall
+            answerContainsOneOf: IntegrationScenarioAnswers.singleCall,
+            // A reading, because that is what "how warm is it there" asks for:
+            // the city's own name is in the prompt already, so nothing about
+            // the reply proves a temperature was fetched except the fetch.
+            groundedIn: IntegrationScenarioGrounding.singleCall
         )
     }
 
@@ -80,7 +91,11 @@ struct SearchThenCallTests {
             name: "composeChain",
             tools: { log in [IntegrationTripTool(log: log), IntegrationWeatherTool(log: log)] },
             prompt: "Of the cities on my trip, which is warmest right now?",
-            answerContainsOneOf: IntegrationScenarioAnswers.warmestCity
+            answerContainsOneOf: IntegrationScenarioAnswers.warmestCity,
+            // The itinerary *and* a reading: which cities are candidates comes
+            // from one, which of them is warmest from the other. A trip-only
+            // run that names a city is guessing.
+            groundedIn: IntegrationScenarioGrounding.warmestCity
         )
     }
 
@@ -95,7 +110,12 @@ struct SearchThenCallTests {
                     + integrationDistractorTools(log: log)
             },
             prompt: "Of the cities on my trip, which is warmest right now?",
-            answerContainsOneOf: IntegrationScenarioAnswers.warmestCity
+            answerContainsOneOf: IntegrationScenarioAnswers.warmestCity,
+            // The same question, so the same dependency — the distractors
+            // change how hard the two relevant tools are to find, not what the
+            // answer rests on. This is the scenario whose recorded run named
+            // the warmest city off the itinerary alone (task `0981ar3`).
+            groundedIn: IntegrationScenarioGrounding.warmestCity
         )
     }
 
@@ -112,13 +132,14 @@ struct SearchThenCallTests {
             // failure phrasing — a valid answer affirms the confirmation,
             // it doesn't report failing at it.
             answerMustNotContain: ["unable", "couldn't", "cannot", "can't", "not able"],
-            // "Your booking is confirmed" claims a side effect — the
-            // trip-prone `confirmBooking` tool must genuinely have returned a
-            // confirmation (after any number of repair attempts, by any
-            // route) for that claim to be true. Reaching the tool is not
-            // enough: it throws instead of confirming when `confirm` is not
-            // `true`, which is exactly the mis-call this scenario provokes.
-            mustReturn: ["confirmBooking"]
+            // The confirmation itself, because that is the whole content of
+            // this answer: "your booking is confirmed" claims a side effect,
+            // and `confirmBooking` must genuinely have returned a confirmation
+            // (after any number of repair attempts, by any route) for the
+            // claim to be true. Reaching the tool is not enough — it throws
+            // instead of confirming when `confirm` is not `true`, which is
+            // exactly the mis-call this scenario provokes.
+            groundedIn: IntegrationScenarioGrounding.booking
         )
     }
 }

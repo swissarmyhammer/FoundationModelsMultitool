@@ -202,7 +202,14 @@ private func integrationCityKey(_ city: String) -> String {
 /// The one obvious tool scenario 1 asserts the model finds and calls,
 /// rather than hallucinating an answer — plan.md M6.5 scenario 1.
 struct IntegrationWeatherTool: Tool {
-    let name = "getWeather"
+    /// The `tools.*` path this fixture mounts under.
+    ///
+    /// Declared at the type level so a scenario can name the path its answer
+    /// depends on — see `IntegrationScenarioGrounding` — without spelling the
+    /// string a second time somewhere a rename would not reach.
+    static let path = "getWeather"
+
+    let name = IntegrationWeatherTool.path
     let description = "Current weather for a city. Use when asked how warm/cold/rainy it is right now."
 
     /// The scenario run's call log every invocation of this tool records itself in.
@@ -280,7 +287,14 @@ struct IntegrationTripOutput {
 
 /// The first half of the compose/chain scenario.
 struct IntegrationTripTool: Tool {
-    let name = "getTrip"
+    /// The `tools.*` path this fixture mounts under.
+    ///
+    /// Declared at the type level for the same reason as
+    /// `IntegrationWeatherTool.path`: the compose and discovery scenarios name
+    /// it in what their answer depends on.
+    static let path = "getTrip"
+
+    let name = IntegrationTripTool.path
     let description = "The user's current trip: its cities in itinerary order, plus its dates, "
         + "its traveler and its booking confirmation code."
 
@@ -430,7 +444,14 @@ enum IntegrationBookingError: Error, CustomStringConvertible {
 /// resulting repairable error is exactly what the repair-loop scenario needs
 /// to recover from.
 struct IntegrationBookingTool: Tool {
-    let name = "confirmBooking"
+    /// The `tools.*` path this fixture mounts under.
+    ///
+    /// Declared at the type level for the same reason as
+    /// `IntegrationWeatherTool.path`: the repair scenario names it in what its
+    /// answer depends on, since a confirmation is the whole of that answer.
+    static let path = "confirmBooking"
+
+    let name = IntegrationBookingTool.path
     let description = "Confirms a trip booking by id."
 
     /// The scenario run's call log every invocation of this tool records itself in.
@@ -560,6 +581,32 @@ let integrationWarehouseStockUnits = 1904
 /// How many units the store-floor half of the async fan-out pair reports.
 let integrationStoreStockUnits = 268
 
+/// The async fan-out pair's counters, as the rows both the counters themselves
+/// and their `tools.*` paths are built from.
+///
+/// One table, so `integrationStockTools(log:)` and `integrationStockPaths`
+/// cannot come to name different counters.
+private let integrationStockCounters: [(path: String, description: String, units: Int)] = [
+    (
+        "getWarehouseStock",
+        "How many units of the product are in the warehouse right now.",
+        integrationWarehouseStockUnits
+    ),
+    (
+        "getStoreStock",
+        "How many units of the product are on the store floor right now.",
+        integrationStoreStockUnits
+    ),
+]
+
+/// The `tools.*` paths the async fan-out pair mounts under.
+///
+/// Read off `integrationStockCounters` rather than restated, because the
+/// scenario's answer is the two counters' *sum*: it is knowable only when both
+/// of them returned, so what it depends on must never drift from what the
+/// fixture mounts.
+let integrationStockPaths = Set(integrationStockCounters.map(\.path))
+
 /// Builds the async fan-out scenario's pair of independent stock counters.
 ///
 /// A function rather than two shared constants, for two reasons: a counter
@@ -571,18 +618,56 @@ let integrationStoreStockUnits = 268
 /// - Parameter log: the scenario run's call log, shared by both counters.
 /// - Returns: the warehouse counter and the store-floor counter, in that order.
 func integrationStockTools(log: ScenarioCallLog) -> [IntegrationStockTool] {
-    [
-        (
-            "getWarehouseStock",
-            "How many units of the product are in the warehouse right now.",
-            integrationWarehouseStockUnits
-        ),
-        (
-            "getStoreStock",
-            "How many units of the product are on the store floor right now.",
-            integrationStoreStockUnits
-        ),
-    ].map { name, description, units in
-        IntegrationStockTool(name: name, description: description, units: units, log: log)
+    integrationStockCounters.map { counter in
+        IntegrationStockTool(
+            name: counter.path,
+            description: counter.description,
+            units: counter.units,
+            log: log
+        )
     }
+}
+
+// MARK: - What each scenario's answer has to be grounded in
+
+/// The `tools.*` returns each gated scenario's answer depends on — what
+/// "grounded" means for the question that scenario actually asks.
+///
+/// The companion to `IntegrationScenarioAnswers`: that names the substrings a
+/// reply is *accepted* for, this names the fixture returns the reply has to
+/// rest on. A run is graded grounded when every path the scenario declares here
+/// handed a value back (`ScenarioCallLog.returnedPaths`), never when merely
+/// *some* fixture call did.
+///
+/// The weaker question is what let a recorded discovery run pass while holding
+/// only the itinerary: it named the warmest city without ever fetching a
+/// temperature, and a run that read no reading cannot know which city is
+/// warmest (task `0981ar3`). The city names it did have were enough to satisfy
+/// "something returned and appears in the answer".
+///
+/// Every member names paths and never readings, and takes each path from the
+/// fixture tool's own `path` constant, so a renamed tool cannot leave a
+/// scenario depending on a path no fixture mounts.
+enum IntegrationScenarioGrounding {
+    /// What scenario 1's answer depends on: the reading `getWeather` reports
+    /// for `integrationSingleCallCity`. "How warm is it there" is a question
+    /// about a temperature, so the city's own name grounds nothing.
+    static let singleCall: Set<String> = [IntegrationWeatherTool.path]
+
+    /// What the compose/chain and discovery scenarios' shared answer depends
+    /// on: the itinerary that says which cities are candidates, and a
+    /// temperature reading that says which of them is warmest. Naming a city
+    /// is necessary and not sufficient — it is exactly what the recorded false
+    /// pass did.
+    static let warmestCity: Set<String> = [IntegrationTripTool.path, IntegrationWeatherTool.path]
+
+    /// What the repair scenario's answer depends on: the confirmation itself.
+    /// "Your booking is confirmed" is true only if `confirmBooking` handed a
+    /// confirmation back, and that fixture throws rather than confirming when
+    /// `confirm` is not `true`, so reaching it proves nothing.
+    static let booking: Set<String> = [IntegrationBookingTool.path]
+
+    /// What the async fan-out scenario's answer depends on: both counters,
+    /// since only their sum answers the question that scenario asks.
+    static let combinedStock = integrationStockPaths
 }
