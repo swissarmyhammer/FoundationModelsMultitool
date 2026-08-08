@@ -646,11 +646,9 @@ func integrationStockTools(log: ScenarioCallLog) -> [IntegrationStockTool] {
 /// "something returned and appears in the answer".
 ///
 /// Every member names paths and never readings, and no path is written out
-/// here. Each one comes from the fixture that mounts it: the weather, trip and
-/// booking fixtures each expose a type-level `path` that their own `name` also
-/// reads, and the fan-out pair's paths come from `integrationStockPaths`, the
-/// table `integrationStockTools(log:)` names the counters from. So a rename
-/// cannot leave a scenario depending on a path no fixture mounts.
+/// here: each is read from the same declaration the fixture mounting it takes
+/// its own name from. A rename therefore cannot leave a scenario depending on
+/// a path no fixture mounts.
 enum IntegrationScenarioGrounding {
     /// What scenario 1's answer depends on: the reading `getWeather` reports
     /// for `integrationSingleCallCity`. "How warm is it there" is a question
