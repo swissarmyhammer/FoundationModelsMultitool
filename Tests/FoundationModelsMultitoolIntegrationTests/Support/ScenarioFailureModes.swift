@@ -44,7 +44,7 @@ struct ScenarioObservation {
     var returnedValues: Set<String>
 
     /// Whether the reply carried the form the scenario grades on.
-    var validAnswer: Bool
+    var isValidAnswer: Bool
 }
 
 /// The fewest tool calls any scenario this runner drives can be answered
@@ -85,14 +85,14 @@ private let scenarioGroundingValueMinimumLength = 2
 struct ScenarioFailureModes {
     /// The reply denied access or capability and the turn called nothing at
     /// all.
-    let overRefusal: Bool
+    let isOverRefusal: Bool
 
     /// The reply answered substantively while no `tools.*` path ever ran.
     let answeredWithoutCalling: Bool
 
     /// The reply announced what the model was about to do, and the turn
     /// then ended without doing it.
-    let announceThenStop: Bool
+    let didAnnounceThenStop: Bool
 
     /// The `tools.*` paths a snippet wrote that the mounted catalog does
     /// not define, sorted.
@@ -106,13 +106,13 @@ struct ScenarioFailureModes {
 
     /// The turn made more calls than `scenarioThrashFactor` times the
     /// minimum the scenario needs.
-    let thrash: Bool
+    let didThrash: Bool
 
     /// The reply carried a value the tools genuinely returned, but not in
     /// the form the scenario grades on.
-    let groundedButWrongForm: Bool
+    let isGroundedButWrongForm: Bool
 
-    /// How many tool calls the turn made — the denominator `thrash` is read
+    /// How many tool calls the turn made — the denominator `didThrash` is read
     /// against, carried so a reader need not recompute it.
     let toolCallCount: Int
 
@@ -126,7 +126,7 @@ struct ScenarioFailureModes {
             !observation.reply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !deniesAccess && !announcesIntent
 
-        overRefusal = deniesAccess && observation.toolCallCount == 0
+        isOverRefusal = deniesAccess && observation.toolCallCount == 0
         // `invokedPaths`, not `typedPaths`: the question is whether the model
         // reached a tool at all, and a tool that ran and then threw was
         // reached. Writing a call site that never resolved is not calling
@@ -135,15 +135,15 @@ struct ScenarioFailureModes {
         // refused a bad argument was still called, and the reply that follows
         // is not an uncalled answer.
         answeredWithoutCalling = observation.invokedPaths.isEmpty && isSubstantive
-        announceThenStop = announcesIntent && observation.toolCallCount == 0
+        didAnnounceThenStop = announcesIntent && observation.toolCallCount == 0
         // `typedPaths`, deliberately: an invented path by definition never
         // reaches a tool, so no recorder can ever see it and only the snippet
         // source can report it.
         inventedPaths = observation.typedPaths.subtracting(observation.catalogPaths).sorted()
         searchedFirst = observation.findAPIsFirst
-        thrash = observation.toolCallCount > scenarioMinimumToolCalls * scenarioThrashFactor
-        groundedButWrongForm =
-            !observation.validAnswer
+        didThrash = observation.toolCallCount > scenarioMinimumToolCalls * scenarioThrashFactor
+        isGroundedButWrongForm =
+            !observation.isValidAnswer
             && observation.returnedValues.contains { value in
                 value.count >= scenarioGroundingValueMinimumLength
                     && observation.reply.localizedCaseInsensitiveContains(value)
@@ -163,13 +163,13 @@ struct ScenarioFailureModes {
     /// - Returns: the `MODES` line to print.
     func line(scenario: String) -> String {
         let flags = [
-            ("overRefusal", overRefusal),
+            ("overRefusal", isOverRefusal),
             ("answeredWithoutCalling", answeredWithoutCalling),
-            ("announceThenStop", announceThenStop),
+            ("announceThenStop", didAnnounceThenStop),
             ("inventedPath", !inventedPaths.isEmpty),
             ("searchedFirst", searchedFirst),
-            ("thrash", thrash),
-            ("groundedButWrongForm", groundedButWrongForm),
+            ("thrash", didThrash),
+            ("groundedButWrongForm", isGroundedButWrongForm),
         ]
         .map { name, held in "\(name)=\(held ? 1 : 0)" }
         .joined(separator: " ")

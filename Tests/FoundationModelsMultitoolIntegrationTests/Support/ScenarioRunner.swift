@@ -198,7 +198,7 @@ func runNativeIntegrationScenario(
                     catalogPaths: surface.catalogPaths,
                     findAPIsFirst: findAPIsFirst,
                     returnedValues: NativeTranscript.returnedValues(in: transcript),
-                    validAnswer: checks.contains { $0.name == validAnswerCheckName && $0.held }
+                    isValidAnswer: checks.contains { $0.name == validAnswerCheckName && $0.held }
                 )
             )
             .line(scenario: name)

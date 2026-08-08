@@ -26,7 +26,7 @@ struct ScenarioFailureModeTests {
             catalogPaths: ["getTrip", "getWeather"],
             findAPIsFirst: true,
             returnedValues: ["SFO", "San Francisco", "34"],
-            validAnswer: true
+            isValidAnswer: true
         )
     }
 
@@ -34,12 +34,12 @@ struct ScenarioFailureModeTests {
     func aCleanRunReportsNoFailureMode() {
         let modes = ScenarioFailureModes(Self.cleanRun())
 
-        #expect(!modes.overRefusal)
+        #expect(!modes.isOverRefusal)
         #expect(!modes.answeredWithoutCalling)
-        #expect(!modes.announceThenStop)
+        #expect(!modes.didAnnounceThenStop)
         #expect(modes.inventedPaths.isEmpty)
-        #expect(!modes.thrash)
-        #expect(!modes.groundedButWrongForm)
+        #expect(!modes.didThrash)
+        #expect(!modes.isGroundedButWrongForm)
         #expect(modes.searchedFirst)
     }
 
@@ -53,11 +53,11 @@ struct ScenarioFailureModeTests {
         observation.toolCallCount = 0
         observation.typedPaths = []
         observation.invokedPaths = []
-        observation.validAnswer = false
+        observation.isValidAnswer = false
 
         let modes = ScenarioFailureModes(observation)
 
-        #expect(modes.overRefusal)
+        #expect(modes.isOverRefusal)
         // The same reply is not also counted as an answer the model simply
         // did not ground: a refusal is not a substantive answer.
         #expect(!modes.answeredWithoutCalling)
@@ -67,9 +67,9 @@ struct ScenarioFailureModeTests {
     func denyingAccessAfterCallingIsNotOverRefusal() {
         var observation = Self.cleanRun()
         observation.reply = "I don't have access to next week's forecast."
-        observation.validAnswer = false
+        observation.isValidAnswer = false
 
-        #expect(!ScenarioFailureModes(observation).overRefusal)
+        #expect(!ScenarioFailureModes(observation).isOverRefusal)
     }
 
     // MARK: - Answered without calling
@@ -84,8 +84,8 @@ struct ScenarioFailureModeTests {
         let modes = ScenarioFailureModes(observation)
 
         #expect(modes.answeredWithoutCalling)
-        #expect(!modes.overRefusal)
-        #expect(!modes.announceThenStop)
+        #expect(!modes.isOverRefusal)
+        #expect(!modes.didAnnounceThenStop)
     }
 
     @Test("a substantive answer whose typed calls never reached a tool is answered-without-calling")
@@ -98,7 +98,7 @@ struct ScenarioFailureModeTests {
         observation.typedPaths = ["getItinerary", "getForecast"]
         observation.invokedPaths = []
         observation.returnedValues = []
-        observation.validAnswer = false
+        observation.isValidAnswer = false
 
         let modes = ScenarioFailureModes(observation)
 
@@ -115,7 +115,7 @@ struct ScenarioFailureModeTests {
         // passed a bad argument really did reach the tool. That is a call,
         // whatever it then returned.
         observation.returnedValues = []
-        observation.validAnswer = false
+        observation.isValidAnswer = false
 
         #expect(!ScenarioFailureModes(observation).answeredWithoutCalling)
     }
@@ -126,7 +126,7 @@ struct ScenarioFailureModeTests {
         observation.reply = "   \n"
         observation.typedPaths = []
         observation.invokedPaths = []
-        observation.validAnswer = false
+        observation.isValidAnswer = false
 
         #expect(!ScenarioFailureModes(observation).answeredWithoutCalling)
     }
@@ -140,11 +140,11 @@ struct ScenarioFailureModeTests {
         observation.toolCallCount = 0
         observation.typedPaths = []
         observation.invokedPaths = []
-        observation.validAnswer = false
+        observation.isValidAnswer = false
 
         let modes = ScenarioFailureModes(observation)
 
-        #expect(modes.announceThenStop)
+        #expect(modes.didAnnounceThenStop)
         #expect(!modes.answeredWithoutCalling)
     }
 
@@ -153,7 +153,7 @@ struct ScenarioFailureModeTests {
         var observation = Self.cleanRun()
         observation.reply = "Let me check — the warmest city is San Francisco."
 
-        #expect(!ScenarioFailureModes(observation).announceThenStop)
+        #expect(!ScenarioFailureModes(observation).didAnnounceThenStop)
     }
 
     // MARK: - Invented path
@@ -193,7 +193,7 @@ struct ScenarioFailureModeTests {
         var observation = Self.cleanRun()
         observation.toolCallCount = scenarioMinimumToolCalls * scenarioThrashFactor
 
-        #expect(!ScenarioFailureModes(observation).thrash)
+        #expect(!ScenarioFailureModes(observation).didThrash)
     }
 
     @Test("a turn that exceeds twice the calls it needs is thrashing")
@@ -201,7 +201,7 @@ struct ScenarioFailureModeTests {
         var observation = Self.cleanRun()
         observation.toolCallCount = scenarioMinimumToolCalls * scenarioThrashFactor + 1
 
-        #expect(ScenarioFailureModes(observation).thrash)
+        #expect(ScenarioFailureModes(observation).didThrash)
     }
 
     // MARK: - Grounded but wrong form
@@ -213,9 +213,9 @@ struct ScenarioFailureModeTests {
         // the model answered with the temperature it had genuinely fetched.
         observation.reply = "It is 31°C right now."
         observation.returnedValues = ["31", "Austin"]
-        observation.validAnswer = false
+        observation.isValidAnswer = false
 
-        #expect(ScenarioFailureModes(observation).groundedButWrongForm)
+        #expect(ScenarioFailureModes(observation).isGroundedButWrongForm)
     }
 
     @Test("a wrong-form answer carrying nothing the tools returned is not grounded-but-wrong-form")
@@ -223,9 +223,9 @@ struct ScenarioFailureModeTests {
         var observation = Self.cleanRun()
         observation.reply = "It is 25°C right now."
         observation.returnedValues = ["31", "Austin"]
-        observation.validAnswer = false
+        observation.isValidAnswer = false
 
-        #expect(!ScenarioFailureModes(observation).groundedButWrongForm)
+        #expect(!ScenarioFailureModes(observation).isGroundedButWrongForm)
     }
 
     @Test("an answer in the asserted form is never grounded-but-wrong-form")
@@ -233,7 +233,7 @@ struct ScenarioFailureModeTests {
         var observation = Self.cleanRun()
         observation.reply = "San Francisco, at 34°C."
 
-        #expect(!ScenarioFailureModes(observation).groundedButWrongForm)
+        #expect(!ScenarioFailureModes(observation).isGroundedButWrongForm)
     }
 
     @Test("a single character shared with a returned value does not count as grounding")
@@ -241,9 +241,9 @@ struct ScenarioFailureModeTests {
         var observation = Self.cleanRun()
         observation.reply = "There are 7 cities."
         observation.returnedValues = ["7"]
-        observation.validAnswer = false
+        observation.isValidAnswer = false
 
-        #expect(!ScenarioFailureModes(observation).groundedButWrongForm)
+        #expect(!ScenarioFailureModes(observation).isGroundedButWrongForm)
     }
 
     // MARK: - The reported line
