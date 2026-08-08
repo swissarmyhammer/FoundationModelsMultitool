@@ -141,7 +141,7 @@ struct ResultRendererTests {
         let rendered = ResultRenderer.render(result)
 
         #expect(rendered.contains("truncated"))
-        #expect(rendered.contains("4000"))
+        #expect(rendered.contains("\(ResultRendererLimits.defaultReturnValueCharacterLimit)"))
     }
 
     @Test("the default console limit truncates output over 2,000 characters")
@@ -151,7 +151,7 @@ struct ResultRendererTests {
         let rendered = ResultRenderer.render(result)
 
         #expect(rendered.contains("truncated"))
-        #expect(rendered.contains("2000"))
+        #expect(rendered.contains("\(ResultRendererLimits.defaultConsoleCharacterLimit)"))
     }
 
     // MARK: - Negative limits are clamped, never crash

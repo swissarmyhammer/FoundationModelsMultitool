@@ -24,12 +24,38 @@ public struct ResultRendererLimits: Sendable, Equatable {
     /// crowd out its actual result.
     public let consoleCharacterLimit: Int
 
-    /// Generous default limits, sized for an ordinary tool result while
-    /// still bounding a pathological one. `ResultRenderer.render` uses these
-    /// when the caller supplies none.
+    /// The stock cap on the serialized return value — the answer the snippet
+    /// was run for.
+    ///
+    /// Generous enough to carry an ordinary tool result whole, so the common
+    /// case reaches the model with nothing cut, while a pathological result is
+    /// still bounded. Twice ``defaultConsoleCharacterLimit``, because this is
+    /// the value the model asked for and console output is only the trace of
+    /// how the snippet reached it: when a snippet pushes on both caps at once,
+    /// the answer keeps the larger share of the model's context.
+    ///
+    /// `internal` is the right access level, matching `RepairDirective
+    /// .closingLine`: the value already reaches another module through
+    /// ``default``, which is the spelling a host overriding one cap and keeping
+    /// the other wants anyway, so `public` here would add a second
+    /// cross-module name for the same number.
+    static let defaultReturnValueCharacterLimit = 4_000
+
+    /// The stock cap on the joined `console.log` output — the trace of how the
+    /// snippet reached its return value.
+    ///
+    /// Half of ``defaultReturnValueCharacterLimit``, and enforced separately
+    /// from it, so a chatty snippet's logging is bounded on its own terms
+    /// instead of competing for room with the result it was logging about.
+    /// `internal` for the same reason as its sibling.
+    static let defaultConsoleCharacterLimit = 2_000
+
+    /// The limits `ResultRenderer.render` enforces when the caller supplies
+    /// none — see ``defaultReturnValueCharacterLimit`` and
+    /// ``defaultConsoleCharacterLimit`` for how each one is sized.
     public static let `default` = ResultRendererLimits(
-        returnValueCharacterLimit: 4_000,
-        consoleCharacterLimit: 2_000
+        returnValueCharacterLimit: defaultReturnValueCharacterLimit,
+        consoleCharacterLimit: defaultConsoleCharacterLimit
     )
 
     /// Creates a set of render limits, clamping either bound up to `0` if
