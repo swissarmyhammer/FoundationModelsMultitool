@@ -21,7 +21,7 @@ struct DemoTripOutput {
     var cities: [String]
 }
 
-/// A small, fixed itinerary.
+/// A fixed-fixture itinerary lookup, the sample's first demo tool.
 ///
 /// One of the two demo tools `CLIRunner` wraps into the sample's `MultiTool`
 /// registry, driven by a native `LanguageModelSession`. Chosen together with
@@ -29,7 +29,9 @@ struct DemoTripOutput {
 /// example walks through: `getTrip` -> `getWeather` per city -> pick the
 /// warmest.
 struct DemoTripTool: Tool {
+    /// The name the model calls this tool by.
     let name = "getTrip"
+    /// The one-line capability blurb the model selects this tool from.
     let description = "The cities on the user's current trip, in itinerary order."
 
     /// Returns the sample's fixed itinerary.
@@ -41,7 +43,7 @@ struct DemoTripTool: Tool {
     }
 }
 
-/// The city a weather lookup asks about.
+/// The arguments a weather lookup takes.
 @Generable
 struct DemoWeatherArguments {
     /// The city to look up.
@@ -63,7 +65,9 @@ struct DemoWeatherResult {
 /// Deterministic, with no live weather API, so the demo's "warmest city"
 /// prompt has one unambiguous right answer.
 struct DemoWeatherTool: Tool {
+    /// The name the model calls this tool by.
     let name = "getWeather"
+    /// The one-line capability blurb the model selects this tool from.
     let description = "Current weather for a city. Use when asked how warm/cold/rainy it is right now."
 
     /// The warmest of ``temperaturesByCity``'s three readings, in Celsius.
