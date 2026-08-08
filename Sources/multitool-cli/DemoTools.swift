@@ -68,18 +68,18 @@ struct DemoWeatherTool: Tool {
 
     /// The warmest of ``temperaturesByCity``'s three readings, in Celsius.
     ///
-    /// Austin's, and the largest of the three, so Austin is the unambiguous
-    /// answer to the demo's "which is warmest" prompt.
+    /// Austin's reading, and the largest of the three, so the demo's "which is
+    /// warmest" prompt has one unambiguous answer.
     private static let warmestTemperatureCelsius: Double = 31
 
     /// The middle of ``temperaturesByCity``'s three readings, in Celsius.
     ///
-    /// New York's.
+    /// New York City's reading, between the other two.
     private static let middleTemperatureCelsius: Double = 24
 
     /// The coolest of ``temperaturesByCity``'s three readings, in Celsius.
     ///
-    /// San Francisco's.
+    /// San Francisco's reading, the smallest of the three.
     private static let coolestTemperatureCelsius: Double = 18
 
     /// Deterministic per-city temperatures, keyed by `DemoTripTool`'s itinerary codes.
@@ -100,7 +100,7 @@ struct DemoWeatherTool: Tool {
 
     /// Looks up the fixed temperature for `arguments.city`.
     ///
-    /// - Parameter arguments: the city to look up.
+    /// - Parameter arguments: the lookup's arguments, carrying the city to read.
     /// - Returns: that city's fixed conditions, falling back to
     ///   ``fallbackTemperatureCelsius`` for a city outside the fixed table.
     func call(arguments: DemoWeatherArguments) async throws -> DemoWeatherResult {
