@@ -1,9 +1,10 @@
 import FoundationModels
 
-/// Arguments shared by every tool in this sample that takes no meaningful
-/// input — every `Tool.Arguments` must be an `object` schema, so an unused
-/// optional field stands in for "no arguments," mirroring this package's own
-/// test fixtures (e.g.
+/// Arguments for a demo tool that takes no meaningful input.
+///
+/// Every `Tool.Arguments` must be an `object` schema, so an unused optional
+/// field stands in for "no arguments," mirroring this package's own test
+/// fixtures (e.g.
 /// `Tests/FoundationModelsMultitoolTests/Fixtures/MultiToolExecutionFixtures.swift`'s
 /// `NoArguments`).
 @Generable
@@ -20,11 +21,13 @@ struct DemoTripOutput {
     var cities: [String]
 }
 
-/// A small, fixed itinerary — one of the two demo tools `CLIRunner` wraps
-/// into the sample's `MultiTool` registry (driven by a native
-/// `LanguageModelSession`), chosen (together with `DemoWeatherTool`) to
-/// trigger the compose/chain behavior plan.md's own usage example walks
-/// through: `getTrip` -> `getWeather` per city -> pick the warmest.
+/// A small, fixed itinerary.
+///
+/// One of the two demo tools `CLIRunner` wraps into the sample's `MultiTool`
+/// registry, driven by a native `LanguageModelSession`. Chosen together with
+/// `DemoWeatherTool` to trigger the compose/chain behavior plan.md's own usage
+/// example walks through: `getTrip` -> `getWeather` per city -> pick the
+/// warmest.
 struct DemoTripTool: Tool {
     let name = "getTrip"
     let description = "The cities on the user's current trip, in itinerary order."
@@ -55,9 +58,10 @@ struct DemoWeatherResult {
     var summary: String
 }
 
-/// A fixed-fixture weather lookup — the sample's second demo tool.
-/// Deterministic (no live weather API) so the demo's "warmest city" prompt
-/// always has one unambiguous right answer.
+/// A fixed-fixture weather lookup, the sample's second demo tool.
+///
+/// Deterministic, with no live weather API, so the demo's "warmest city"
+/// prompt has one unambiguous right answer.
 struct DemoWeatherTool: Tool {
     let name = "getWeather"
     let description = "Current weather for a city. Use when asked how warm/cold/rainy it is right now."
@@ -78,17 +82,17 @@ struct DemoWeatherTool: Tool {
     /// San Francisco's.
     private static let coolestTemperatureCelsius: Double = 18
 
-    /// Deterministic per-city temperatures, keyed by `DemoTripTool`'s
-    /// itinerary codes, so the demo's "which is warmest" prompt has one
-    /// unambiguous answer (Austin).
+    /// Deterministic per-city temperatures, keyed by `DemoTripTool`'s itinerary codes.
+    ///
+    /// Austin's is the largest, so the demo's "which is warmest" prompt has one
+    /// unambiguous answer.
     private static let temperaturesByCity: [String: Double] = [
         "ATX": warmestTemperatureCelsius,
         "SFO": coolestTemperatureCelsius,
         "NYC": middleTemperatureCelsius,
     ]
 
-    /// The temperature reported for a city ``temperaturesByCity`` does not
-    /// cover, in Celsius.
+    /// The Celsius temperature reported for a city outside ``temperaturesByCity``.
     ///
     /// Below ``warmestTemperatureCelsius``, so a city off the itinerary does
     /// not read warmer than Austin.
