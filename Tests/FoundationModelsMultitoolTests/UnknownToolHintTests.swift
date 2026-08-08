@@ -67,23 +67,6 @@ struct UnknownToolHintTests {
         #expect(output.contains("declare function getTemperature("))
     }
 
-    // MARK: - No close match: steer back to findAPIs
-
-    @Test("an unknown name with no close catalog match steers back to findAPIs")
-    func unknownNameWithNoCloseMatchSteersToFindAPIs() async throws {
-        let registry = try MultiTool.Builder()
-            .addTool(CitiesTool())
-            .buildRegistry()
-        let multiTool = MultiTool(registry: registry)
-
-        let output = try await multiTool.call(
-            arguments: RunCodeArguments(code: "return tools.sendEmail({ to: 'a@b.c' });")
-        )
-
-        #expect(output.contains("tools.sendEmail does not exist"))
-        #expect(output.contains("findAPIs"))
-    }
-
     // MARK: - Wrong guesses against a realistic verbNoun catalog
 
     /// A realistic travel catalog for the ranking tests: two tools a
@@ -168,6 +151,78 @@ struct UnknownToolHintTests {
         #expect(!output.contains("tools.getWeather"))
     }
 
+    // MARK: - A snippet that named nothing real is steered to discovery
+
+    /// The closing line a repairable error carries when the snippet is worth
+    /// fixing where it stands.
+    private static let repairClosing = "Fix the snippet and call runCode again."
+
+    /// The closing line a repairable error carries instead when the snippet
+    /// named nothing the catalog defines.
+    private static let discoveryClosing =
+        "Call findAPIs to get the real function names and signatures for this task, "
+        + "then write the snippet against those paths."
+
+    /// Replaces `unknownNameWithNoCloseMatchSteersToFindAPIs`, which drove
+    /// this exact call against this exact catalog and asserted only that the
+    /// word `findAPIs` appeared somewhere. Its two expectations are both kept
+    /// below — `discoveryClosing` opens with `Call findAPIs`, so it subsumes
+    /// the loose one — and the third is new.
+    @Test("a snippet whose every tools.* path is unknown is steered to findAPIs, not back to runCode")
+    func snippetNamingNothingRealIsSteeredToDiscovery() async throws {
+        let registry = try MultiTool.Builder()
+            .addTool(CitiesTool())
+            .buildRegistry()
+        let multiTool = MultiTool(registry: registry)
+
+        let output = try await multiTool.call(
+            arguments: RunCodeArguments(code: "return tools.sendEmail({ to: 'a@b.c' });")
+        )
+
+        #expect(output.contains("tools.sendEmail does not exist"))
+        #expect(output.contains(Self.discoveryClosing))
+        #expect(!output.contains(Self.repairClosing))
+    }
+
+    @Test("a snippet that already reached a real tool keeps the repair-and-retry closing")
+    func snippetThatReachedARealToolKeepsTheRepairClosing() async throws {
+        let registry = try MultiTool.Builder()
+            .addTool(CitiesTool())
+            .buildRegistry()
+        let multiTool = MultiTool(registry: registry)
+
+        // Same unknown path, same catalog, same `noMatch` tier as the test
+        // above — the one difference is that this snippet also names
+        // `tools.getCities`, which the catalog defines. A model holding a real
+        // path has already discovered; it needs its snippet fixed, not a
+        // search.
+        let output = try await multiTool.call(
+            arguments: RunCodeArguments(
+                code: "const trip = await tools.getCities(); return tools.sendEmail(trip);"
+            )
+        )
+
+        #expect(output.contains("tools.sendEmail does not exist"))
+        #expect(output.contains(Self.repairClosing))
+        #expect(!output.contains(Self.discoveryClosing))
+    }
+
+    @Test("a single-tool snippet written without any findAPIs call still runs and returns its value")
+    func singleToolSnippetWithoutPriorDiscoveryStillSucceeds() async throws {
+        let registry = try MultiTool.Builder()
+            .addTool(CitiesTool())
+            .buildRegistry()
+        let multiTool = MultiTool(registry: registry)
+
+        let output = try await multiTool.call(
+            arguments: RunCodeArguments(code: "return (await tools.getCities()).cities;")
+        )
+
+        #expect(output == "[\"AAA\",\"BBB\",\"CCC\"]")
+        #expect(!output.contains(Self.discoveryClosing))
+        #expect(!output.contains(Self.repairClosing))
+    }
+
     // MARK: - Guard: a mis-called *existing* tool gets no did-you-mean noise
 
     @Test("a mis-called existing tool keeps its plain repairable error, with no does-not-exist hint")
@@ -187,8 +242,8 @@ struct UnknownToolHintTests {
 
     /// Ranks `failedPath` against `travelCatalog()` the way `MultiTool` does.
     ///
-    /// `hint(message:surface:searcher:)` documents that its searcher must be
-    /// indexing exactly `surface.entries`, which is the pairing
+    /// `hint(message:snippet:surface:searcher:)` documents that its searcher
+    /// must be indexing exactly `surface.entries`, which is the pairing
     /// `MultiTool.init` builds; these tier tests need the same pairing
     /// without a `runCode` round trip, so they can name a tier directly
     /// rather than inferring it from rendered text.
@@ -201,6 +256,7 @@ struct UnknownToolHintTests {
         let registry = try MultiTool.Builder().addTools(travelCatalog()).buildRegistry()
         return await UnknownToolHint.hint(
             message: "tools.\(failedPath) is not a function",
+            snippet: "return tools.\(failedPath)();",
             surface: registry.surface,
             searcher: MetadataSearcher(items: registry.surface.entries, mode: .retrieval)
         )
@@ -243,6 +299,7 @@ struct UnknownToolHintTests {
         let resolution = try #require(
             await UnknownToolHint.hint(
                 message: "tools.sendEmail is not a function",
+                snippet: "return tools.sendEmail({ to: 'a@b.c' });",
                 surface: registry.surface,
                 searcher: MetadataSearcher(items: registry.surface.entries, mode: .retrieval)
             )

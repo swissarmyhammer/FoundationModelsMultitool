@@ -59,6 +59,38 @@ public struct ResultRendererLimits: Sendable, Equatable {
     }
 }
 
+/// The action a repairable `runCode` error closes by naming — the last thing
+/// the model reads before it decides what to do next.
+///
+/// The closing line is a directive, not decoration, and the two failures it
+/// has to separate call for opposite moves. A snippet that mis-called a real
+/// function, or guessed a name the catalog could resolve to a near match, is
+/// worth fixing where it stands: the model already holds real paths, and the
+/// error hands it the signature it got wrong. A snippet that named nothing
+/// the catalog defines is not — the model has no real path to repair toward,
+/// so telling it to fix and re-run is an invitation to guess again, which is
+/// the recorded `invented-path` → `thrash` loop (task `tkrdwb8`). That case
+/// gets discovery named as the next action instead.
+public enum RepairDirective: Sendable, Equatable {
+    /// The snippet is worth fixing where it stands.
+    case repairSnippet
+
+    /// The snippet named nothing real, so the next move is discovery rather
+    /// than another guess.
+    case discoverFunctions
+
+    /// The closing line this directive renders as.
+    var closingLine: String {
+        switch self {
+        case .repairSnippet:
+            "Fix the snippet and call runCode again."
+        case .discoverFunctions:
+            "Call findAPIs to get the real function names and signatures for this task, "
+                + "then write the snippet against those paths."
+        }
+    }
+}
+
 /// Turns the outcome of a `runCode` snippet — either a successful
 /// `InterpreterResult` or a thrown `InterpreterError` — into the text handed
 /// back to the model, per plan.md's "Output: intermediates stay in the
@@ -73,8 +105,8 @@ public struct ResultRendererLimits: Sendable, Equatable {
 ///   was, the exact underlying message (which, for a `ToolInvoker`
 ///   validation failure wrapped as a JS exception by `JSCInterpreter
 ///   .install(hostFunction:into:)`, is that error's field/constraint text,
-///   preserved verbatim through the round trip), and an instruction to fix
-///   the snippet and retry.
+///   preserved verbatim through the round trip), and the ``RepairDirective``
+///   naming what to do next.
 ///
 /// A clean run (no console output) renders as the return value alone — no
 /// error scaffolding — so the common case stays the smallest possible
@@ -108,23 +140,30 @@ public enum ResultRenderer {
 
     /// Renders a thrown `InterpreterError` as a repairable error: what kind
     /// of failure it was, the exact underlying message, an optional repair
-    /// hint, and an instruction to fix the snippet and retry.
+    /// hint, and the action to take next.
     ///
     /// - Parameters:
     ///   - error: the failure `Interpreter.run` threw.
     ///   - hint: optional repair guidance (e.g. `UnknownToolHint`'s
     ///     did-you-mean suggestions) spliced between the failure and the
-    ///     retry instruction, where the model reads it as part of the error
+    ///     closing directive, where the model reads it as part of the error
     ///     it is about to fix.
+    ///   - directive: what the closing line tells the model to do next.
+    ///     Defaults to ``RepairDirective/repairSnippet``, which is right for
+    ///     every failure a snippet can be edited out of.
     /// - Returns: the repairable-error text handed back to the model.
-    public static func render(_ error: InterpreterError, hint: String? = nil) -> String {
+    public static func render(
+        _ error: InterpreterError,
+        hint: String? = nil,
+        directive: RepairDirective = .repairSnippet
+    ) -> String {
         let summary: String =
             switch error.kind {
             case .exception: "The snippet failed"
             case .timeout: "The snippet timed out"
             }
         let hintSection = hint.map { "\($0)\n\n" } ?? ""
-        return "\(summary): \(error.description)\n\n\(hintSection)Fix the snippet and call runCode again."
+        return "\(summary): \(error.description)\n\n\(hintSection)\(directive.closingLine)"
     }
 
     // MARK: - Serialization

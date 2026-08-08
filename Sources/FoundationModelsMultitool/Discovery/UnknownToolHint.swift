@@ -46,6 +46,12 @@ import FoundationModelsMetadataRegistry
 /// resolved by name resolves identically, and it runs retrieval-only — no
 /// selection tier, no embedder — so repairing a wrong guess costs no model
 /// call and no tokens.
+///
+/// Alongside the suggestions, a resolution carries a ``RepairDirective`` —
+/// what the error's closing line should tell the model to do next. The
+/// suggestions answer "which function did you mean"; the directive answers
+/// the prior question, "is guessing again worth anything here at all". See
+/// `repairDirective(tier:snippet:knownPaths:)`.
 enum UnknownToolHint {
     /// Which of the two ranking tiers answered a guess.
     enum SuggestionTier: String {
@@ -74,6 +80,10 @@ enum UnknownToolHint {
         /// `tier` is `noMatch`.
         let suggestedPaths: [String]
 
+        /// What the repairable error's closing line should tell the model to
+        /// do next — see `repairDirective(tier:snippet:knownPaths:)`.
+        let directive: RepairDirective
+
         /// The hint text appended to the model's repairable error.
         let text: String
 
@@ -83,8 +93,8 @@ enum UnknownToolHint {
         /// shape is a parsing contract rather than prose: a fixed leading
         /// token, then `key=value` fields in a fixed order. Every value is
         /// delimiter-free by construction — a `tools.*` path is identifier
-        /// characters and dots (`firstUnknownPath(in:knownPaths:)`'s
-        /// pattern), a catalog path is the same, and a tier is one of three
+        /// characters and dots (`referencedToolPaths(in:)`'s pattern), a
+        /// catalog path is the same, and a tier is one of three
         /// fixed words — so a reader can split on spaces and `=` and get
         /// `(imagined, suggested, tier)` back without a regex. The
         /// suggestion list is bracketed so that "no suggestion" reads as an
@@ -141,6 +151,8 @@ enum UnknownToolHint {
     ///
     /// - Parameters:
     ///   - message: the thrown JS exception's message text.
+    ///   - snippet: the model's own `runCode` source, without the `tools.*`
+    ///     glue preamble — read to decide the directive, never to rank.
     ///   - surface: the catalog to rank suggestions from.
     ///   - searcher: the catalog-relevance ranker, which must be indexing
     ///     exactly `surface.entries` — otherwise tier 2 can suggest a path
@@ -149,6 +161,7 @@ enum UnknownToolHint {
     ///   referenced.
     static func hint(
         message: String,
+        snippet: String,
         surface: APISurface,
         searcher: MetadataSearcher<APISurface.Entry>
     ) async -> Resolution? {
@@ -158,28 +171,72 @@ enum UnknownToolHint {
         }
 
         let ranked = await closestEntries(to: failedPath, in: surface, using: searcher)
+        let directive = repairDirective(tier: ranked.tier, snippet: snippet, knownPaths: knownPaths)
         return Resolution(
             imaginedPath: failedPath,
             tier: ranked.tier,
             suggestedPaths: ranked.entries.map(\.path),
-            text: text(forFailed: failedPath, suggesting: ranked.entries)
+            directive: directive,
+            text: text(forFailed: failedPath, suggesting: ranked.entries, directive: directive)
         )
+    }
+
+    /// Decides what the repairable error should tell the model to do next.
+    ///
+    /// Discovery is named only where repairing cannot work: a guess no tier
+    /// could answer, written in a snippet that reached for nothing the
+    /// catalog defines. Both halves are load-bearing. A guess that resolved
+    /// to a near match already has its repair material in hand, and a snippet
+    /// that also names a real path proves the model is holding real names
+    /// already — in both cases the snippet is the thing to fix, and steering
+    /// to `findAPIs` would send a working session backwards.
+    ///
+    /// Note what this does *not* read: whether `findAPIs` was actually called
+    /// this session. `FindAPIsTool` is a separate `Tool` a host mounts (or
+    /// does not mount) independently, holding no session state and touching
+    /// no `ToolContext`, so that fact is not reachable here without new
+    /// cross-tool coupling. The snippet's own paths are the observable
+    /// proxy — weaker, because a model can hold a real name without having
+    /// searched, and that is exactly the case this leaves alone.
+    ///
+    /// - Parameters:
+    ///   - tier: which tier answered the failed guess.
+    ///   - snippet: the model's own `runCode` source.
+    ///   - knownPaths: every valid `APISurface.Entry.path`.
+    /// - Returns: the directive the error's closing line renders.
+    private static func repairDirective(
+        tier: SuggestionTier,
+        snippet: String,
+        knownPaths: Set<String>
+    ) -> RepairDirective {
+        guard tier == .noMatch else { return .repairSnippet }
+        let reached = referencedToolPaths(in: snippet).contains { knownPaths.contains($0) }
+        return reached ? .repairSnippet : .discoverFunctions
     }
 
     /// Renders the hint text handed back to the model.
     ///
     /// - Parameters:
     ///   - failedPath: the unknown dotted path the snippet called.
-    ///   - suggestions: the entries to name, best match first, or empty to
-    ///     steer back to `findAPIs` instead.
+    ///   - suggestions: the entries to name, best match first, or empty when
+    ///     no tier could answer the guess.
+    ///   - directive: what the error's closing line will already tell the
+    ///     model to do, so this text states the situation rather than
+    ///     repeating the instruction.
     /// - Returns: the hint text.
     private static func text(
         forFailed failedPath: String,
-        suggesting suggestions: [APISurface.Entry]
+        suggesting suggestions: [APISurface.Entry],
+        directive: RepairDirective
     ) -> String {
         guard !suggestions.isEmpty else {
-            return "tools.\(failedPath) does not exist, and nothing close matches. "
-                + "Call findAPIs to discover the available functions."
+            let opening = "tools.\(failedPath) does not exist, and nothing close matches. "
+            switch directive {
+            case .repairSnippet:
+                return opening + "Call findAPIs to discover the available functions."
+            case .discoverFunctions:
+                return opening + "No function name this snippet used is in the catalog."
+            }
         }
 
         let blocks = suggestions.map { entry in
@@ -198,14 +255,22 @@ enum UnknownToolHint {
     ///   - knownPaths: every valid `APISurface.Entry.path`.
     /// - Returns: the first unknown dotted path, without its `tools.` prefix.
     private static func firstUnknownPath(in message: String, knownPaths: Set<String>) -> String? {
+        referencedToolPaths(in: message).first { !knownPaths.contains($0) }
+    }
+
+    /// Extracts every `tools.<path>` reference in `text`, in the order they
+    /// appear, without their `tools.` prefix.
+    ///
+    /// Lexical, and deliberately so: it reads the same way whether it is
+    /// handed a thrown exception's message or the model's own snippet source,
+    /// which is what lets one pattern answer both "which path failed" and
+    /// "did this snippet reach for anything real".
+    ///
+    /// - Parameter text: the exception message or snippet source to scan.
+    /// - Returns: the referenced dotted paths, duplicates included.
+    private static func referencedToolPaths(in text: String) -> [String] {
         let pattern = /tools\.([A-Za-z_$][A-Za-z0-9_$]*(?:\.[A-Za-z_$][A-Za-z0-9_$]*)*)/
-        for match in message.matches(of: pattern) {
-            let path = String(match.1)
-            if !knownPaths.contains(path) {
-                return path
-            }
-        }
-        return nil
+        return text.matches(of: pattern).map { String($0.1) }
     }
 
     /// Ranks the catalog's entries against `failedPath`, best match first,

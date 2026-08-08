@@ -415,13 +415,22 @@ public struct MultiTool: Tool {
         case .failure(let interpreterError as InterpreterError):
             let resolution = await UnknownToolHint.hint(
                 message: interpreterError.message,
+                // `arguments.code`, never `code`: the preamble prepended above
+                // spells out every real `tools.*` path, so handing the glue to
+                // a rule that asks what the *model* reached for would find a
+                // real path every time.
+                snippet: arguments.code,
                 surface: registry.surface,
                 searcher: hintSearcher
             )
             if let resolution {
                 Self.logImaginedTool(resolution)
             }
-            return ResultRenderer.render(interpreterError, hint: resolution?.text)
+            return ResultRenderer.render(
+                interpreterError,
+                hint: resolution?.text,
+                directive: resolution?.directive ?? .repairSnippet
+            )
         case .failure(let error):
             throw error
         }
