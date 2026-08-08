@@ -31,15 +31,21 @@ import FoundationModelsRouter
 ///    distinctive values (e.g. the weather fixture's 31°C reading for
 ///    Austin, and the single warmest trip city), so a hallucinated answer
 ///    cannot match.
-/// 2. **The answer is grounded** — at least one `runCode` snippet genuinely
-///    invoked a `tools.*` function. Which functions, in what order, across
-///    how many calls is deliberately unasserted.
-/// 3. **Side effects really happened** — when `mustInvoke` is non-empty
-///    (the booking scenario), those `tools.*` paths appear among the
-///    invoked set: claiming "your booking is confirmed" without ever
-///    calling `confirmBooking` is a false claim, not a valid answer. This is a
-///    containment check, never an equality — extra calls and any ordering
-///    are fine.
+/// 2. **The answer is grounded** — at least one fixture tool genuinely ran
+///    and handed a value back to a `runCode` snippet, as that tool itself
+///    recorded in the run's `ScenarioCallLog`. Which functions, in what
+///    order, across how many calls is deliberately unasserted. Read off the
+///    recorder rather than off the snippet source, because the source says
+///    only what the model typed: a run whose two `tools.*` call sites named
+///    functions no fixture defined once scored `grounded=pass` while both
+///    calls threw and nothing ran (task `0981ar3`).
+/// 3. **Side effects really happened** — when `mustReturn` is non-empty
+///    (the booking scenario), those `tools.*` paths are among the paths that
+///    *returned*: claiming "your booking is confirmed" is true only if
+///    `confirmBooking` actually handed a confirmation back, and the booking
+///    fixture throws rather than confirming when `confirm` is not `true`.
+///    This is a containment check, never an equality — extra calls and any
+///    ordering are fine.
 ///
 /// The old route assertions (findAPIs-before-runCode ordering, exact
 /// invoked-path sets, exact selection-tier picks, call-count budgets) are
@@ -63,7 +69,10 @@ import FoundationModelsRouter
 /// - Parameters:
 ///   - name: a short label identifying the scenario, used only in the
 ///     printed result/skip line.
-///   - tools: the scenario's fixed tool set.
+///   - makeTools: builds the scenario's fixed tool set around the run's own
+///     call log. A builder rather than a ready-made array so exactly one
+///     fresh log exists per run and no call site can hand the tools a
+///     different log than this runner reads back.
 ///   - prompt: the user request driving `session.respond(to:)`.
 ///   - answerContainsOneOf: candidate substrings, at least one of which the
 ///     final reply must contain (case-insensitively) to count as a valid
@@ -73,26 +82,29 @@ import FoundationModelsRouter
 ///     invalidates the answer even when a required substring matched —
 ///     guards required words that also appear inside failure phrasings
 ///     ("unable to confirm" contains "confirm"). Empty by default.
-///   - mustInvoke: `tools.*` paths that must appear among the genuinely
-///     invoked calls — for scenarios whose valid answer *claims a side
-///     effect happened* (booking confirmed). Empty (the default) for pure
-///     data-read scenarios, where the answer-content check already proves
-///     grounding.
+///   - mustReturn: `tools.*` paths whose calls must genuinely have returned a
+///     value — for scenarios whose valid answer *claims a side effect
+///     happened* (booking confirmed). Empty (the default) for pure data-read
+///     scenarios, where the answer-content check already proves grounding.
 /// - Throws: any error other than `GenerationError.notWiredForLiveInference`
 ///   — including a failed `#expect` (Swift Testing turns a failed
 ///   expectation into a recorded issue, not a thrown error, so this
 ///   signature only actually throws for genuine setup/dispatch failures).
 func runNativeIntegrationScenario(
     name: String,
-    tools: [any Tool],
+    tools makeTools: (ScenarioCallLog) -> [any Tool],
     prompt: String,
     answerContainsOneOf: [String],
     answerMustNotContain: [String] = [],
-    mustInvoke: Set<String> = []
+    mustReturn: Set<String> = []
 ) async throws {
     try await withLiveRouterFixture(name: name) { fixture in
+        // One fresh log per run, minted here and never shared: the tools this
+        // scenario mounts record into it, so nothing another scenario did can
+        // be read back below.
+        let log = ScenarioCallLog()
         let mlxModel = CLIRunner.makeMLXLanguageModel(for: fixture.profile.standard)
-        let surface = try makeScenarioSurface(over: tools, on: fixture)
+        let surface = try makeScenarioSurface(over: makeTools(log), on: fixture)
         let session = LanguageModelSession(
             model: mlxModel,
             tools: surface.tools,
@@ -109,7 +121,14 @@ func runNativeIntegrationScenario(
         let elapsed = Date().timeIntervalSince(start)
 
         let transcript = session.transcript
-        let invoked = NativeTranscript.invokedToolPaths(in: transcript)
+        // Three signals, three different questions, deliberately kept apart.
+        // `typed` is what the model *wrote* into its snippets, read off the
+        // transcript; `invoked` is what a fixture tool actually *entered*;
+        // `returned` is what handed a value back. Only the first was ever
+        // measured before, and it answered the other two wrongly.
+        let typed = NativeTranscript.typedToolPaths(in: transcript)
+        let invoked = await log.invokedPaths
+        let returned = await log.returnedPaths
 
         var checks = answerChecks(
             response.content,
@@ -117,24 +136,31 @@ func runNativeIntegrationScenario(
             mustNotContain: answerMustNotContain
         )
         // Grounded answer — produced through the tools surface at all, by any
-        // route.
+        // route. Graded on `returned`: a call that threw handed the snippet an
+        // error, not data, so it grounds nothing, and a call site the model
+        // merely typed never ran at all.
         checks.append(
             ScenarioCheck(
                 name: "grounded",
-                held: !invoked.isEmpty,
+                held: !returned.isEmpty,
                 failureMessage:
-                    "expected the answer to be grounded in at least one tools.* call, but no runCode snippet invoked any"
+                    "expected the answer to be grounded in at least one tools.* call that returned a value; "
+                    + "the snippets wrote \(typed.sorted()), the fixtures ran \(invoked.sorted()), "
+                    + "and none of them returned"
             )
         )
         // Claimed side effects really happened — containment, never equality;
-        // extra calls and any ordering are fine.
-        if !mustInvoke.isEmpty {
+        // extra calls and any ordering are fine. Also graded on `returned`:
+        // the booking fixture throws instead of confirming when `confirm` is
+        // not `true`, so an invocation alone confirms nothing.
+        if !mustReturn.isEmpty {
             checks.append(
                 ScenarioCheck(
                     name: "sideEffects",
-                    held: mustInvoke.isSubset(of: invoked),
+                    held: mustReturn.isSubset(of: returned),
                     failureMessage:
-                        "the answer claims an action that requires invoking \(mustInvoke.sorted()), but only \(invoked.sorted()) were invoked"
+                        "the answer claims an action that requires \(mustReturn.sorted()) to return, but only "
+                        + "\(returned.sorted()) returned (\(invoked.sorted()) were invoked at all)"
                 )
             )
         }
@@ -146,9 +172,15 @@ func runNativeIntegrationScenario(
         // attachment or log)" — the route details stay visible here as
         // diagnostics (see also `PrefixReuseTests` for the prefix-reuse
         // measurement's own recorded evidence), they just no longer gate.
+        //
+        // All three path signals are printed, not just the graded one: a run
+        // where `typed` names paths `invoked` does not is precisely the shape
+        // that used to pass silently, and the line is where a reader sees it.
         print(
             "RESULT [\(name)] elapsed=\(elapsed)s toolCalls=\(toolCallCount) "
+                + "typed=\(typed.sorted()) "
                 + "invoked=\(invoked.sorted()) "
+                + "returned=\(returned.sorted()) "
                 + "findAPIsFirst=\(findAPIsFirst) "
                 + "reply=\"\(response.content.prefix(80))\""
         )
@@ -160,6 +192,7 @@ func runNativeIntegrationScenario(
                 ScenarioObservation(
                     reply: response.content,
                     toolCallCount: toolCallCount,
+                    typedPaths: typed,
                     invokedPaths: invoked,
                     catalogPaths: surface.catalogPaths,
                     findAPIsFirst: findAPIsFirst,
@@ -225,21 +258,28 @@ func runNativeIntegrationScenario(
 /// - Parameters:
 ///   - name: a short label identifying the scenario, used only in the
 ///     printed result/skip line.
-///   - tools: the scenario's fixed tool set.
+///   - makeTools: builds the scenario's fixed tool set around the run's own
+///     call log — the same builder shape `runNativeIntegrationScenario`
+///     takes, because every fixture tool needs a log to record into.
 ///   - prompt: the user request driving the session's turn.
 ///   - answerContainsOneOf: candidate substrings, at least one of which the
 ///     reply must contain (case-insensitively) to count as a valid answer.
 /// - Throws: any error other than `GenerationError.notWiredForLiveInference`.
 func runElevationIntegrationScenario(
     name: String,
-    tools: [any Tool],
+    tools makeTools: (ScenarioCallLog) -> [any Tool],
     prompt: String,
     answerContainsOneOf: [String]
 ) async throws {
     try await withLiveRouterFixture(name: name) { fixture in
+        // This runner grades on the collected run's answer and on the pending
+        // envelope, and emits no `MODES` line, so nothing reads the log back.
+        // It still exists per run because the fixture tools require one, and
+        // it is minted here so it cannot outlive this scenario.
+        let log = ScenarioCallLog()
         let session = fixture.profile.standard.makeSession(
             instructions: CLIRunner.toolUseInstructions,
-            tools: try makeScenarioSurface(over: tools, on: fixture).tools
+            tools: try makeScenarioSurface(over: makeTools(log), on: fixture).tools
         )
 
         let start = Date()

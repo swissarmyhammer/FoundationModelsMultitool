@@ -1,5 +1,6 @@
 import Testing
 
+import FoundationModels
 @testable import FoundationModelsMultitool
 
 /// Ungated coverage for the premises the gated scenarios grade on
@@ -14,6 +15,10 @@ import Testing
 /// break any of those premises and leave an ordinary `swift test` green while
 /// the gated assertions quietly stopped meaning what they say.
 ///
+/// The same holds for the fixtures' own call log: the gated runners grade on
+/// what `ScenarioCallLog` recorded, so its recording rules are exercised here
+/// too.
+///
 /// These tests carry no gate on purpose. They need no model, no download and
 /// no GPU: they render the surface and run snippets through the same
 /// `MultiTool` a host mounts, and read the fixtures directly.
@@ -23,7 +28,7 @@ struct ScenarioFixtureTests {
 
     @Test("the trip tool renders as a multi-field object rather than a bare list of cities")
     func tripToolRendersAsAMultiFieldObject() throws {
-        let registry = try MultiTool.Builder().addTool(IntegrationTripTool()).buildRegistry()
+        let registry = try MultiTool.Builder().addTool(IntegrationTripTool(log: ScenarioCallLog())).buildRegistry()
 
         let source = registry.surface.source
 
@@ -61,7 +66,7 @@ struct ScenarioFixtureTests {
 
     @Test("a snippet reaches the itinerary through the trip result's cities field")
     func tripSnippetNavigatesToCities() async throws {
-        let registry = try MultiTool.Builder().addTool(IntegrationTripTool()).buildRegistry()
+        let registry = try MultiTool.Builder().addTool(IntegrationTripTool(log: ScenarioCallLog())).buildRegistry()
         let multiTool = MultiTool(registry: registry)
 
         let output = try await multiTool.call(
@@ -73,7 +78,7 @@ struct ScenarioFixtureTests {
 
     @Test("a snippet that treats the whole trip result as the city list gets a repairable error")
     func tripSnippetThatSkipsCitiesFails() async throws {
-        let registry = try MultiTool.Builder().addTool(IntegrationTripTool()).buildRegistry()
+        let registry = try MultiTool.Builder().addTool(IntegrationTripTool(log: ScenarioCallLog())).buildRegistry()
         let multiTool = MultiTool(registry: registry)
 
         let output = try await multiTool.call(
@@ -87,7 +92,7 @@ struct ScenarioFixtureTests {
 
     @Test("every fixture city resolves by IATA code and by spelled-out name to its own reading")
     func everyCityResolvesByCodeAndByName() async throws {
-        let tool = IntegrationWeatherTool()
+        let tool = IntegrationWeatherTool(log: ScenarioCallLog())
 
         for city in integrationCityWeather {
             let byCode = try await tool.call(arguments: IntegrationWeatherArguments(city: city.code))
@@ -102,7 +107,7 @@ struct ScenarioFixtureTests {
     func aCityNameInsideALongerPhraseResolves() async throws {
         let city = integrationSingleCallCity
 
-        let reading = try await IntegrationWeatherTool()
+        let reading = try await IntegrationWeatherTool(log: ScenarioCallLog())
             .call(arguments: IntegrationWeatherArguments(city: "\(city.name) right now"))
 
         #expect(reading.tempC == city.tempC)
@@ -116,7 +121,8 @@ struct ScenarioFixtureTests {
         #expect(!integrationCityWeather.contains { $0.name == unknown })
 
         await #expect(throws: IntegrationWeatherError.unknownCity(unknown)) {
-            _ = try await IntegrationWeatherTool().call(arguments: IntegrationWeatherArguments(city: unknown))
+            _ = try await IntegrationWeatherTool(log: ScenarioCallLog())
+                .call(arguments: IntegrationWeatherArguments(city: unknown))
         }
     }
 
@@ -129,7 +135,8 @@ struct ScenarioFixtureTests {
         let request = everyName.joined(separator: ", ")
 
         await #expect(throws: IntegrationWeatherError.ambiguousCity(request, matches: everyName)) {
-            _ = try await IntegrationWeatherTool().call(arguments: IntegrationWeatherArguments(city: request))
+            _ = try await IntegrationWeatherTool(log: ScenarioCallLog())
+                .call(arguments: IntegrationWeatherArguments(city: request))
         }
     }
 
@@ -180,7 +187,7 @@ struct ScenarioFixtureTests {
         // own and not the fixture's `integrationTemperatureAnswer` — reusing
         // that helper would compare the answer set against the expression
         // that produced it.
-        let reading = try await IntegrationWeatherTool()
+        let reading = try await IntegrationWeatherTool(log: ScenarioCallLog())
             .call(arguments: IntegrationWeatherArguments(city: integrationSingleCallCity.name))
 
         #expect(IntegrationScenarioAnswers.singleCall == [String(Int(reading.tempC))])
@@ -200,8 +207,9 @@ struct ScenarioFixtureTests {
         // scenarios' answers in either direction. That check is stricter than
         // any expectation here could be, and this suite is what makes it run
         // under an ungated `swift test`.
-        let trip = try await IntegrationTripTool().call(arguments: IntegrationNoArguments(unused: nil))
-        let weather = IntegrationWeatherTool()
+        let log = ScenarioCallLog()
+        let trip = try await IntegrationTripTool(log: log).call(arguments: IntegrationNoArguments(unused: nil))
+        let weather = IntegrationWeatherTool(log: log)
 
         var readings: [(code: String, tempC: Double)] = []
         for code in trip.cities {
@@ -211,5 +219,116 @@ struct ScenarioFixtureTests {
         let warmest = try #require(readings.max { $0.tempC < $1.tempC })
 
         #expect(IntegrationScenarioAnswers.warmestCity.contains(warmest.code))
+    }
+
+    // MARK: - What the fixture tools recorded actually running
+
+    @Test("a fresh call log has recorded nothing")
+    func aFreshCallLogHasRecordedNothing() async {
+        let log = ScenarioCallLog()
+
+        #expect(await log.calls.isEmpty)
+        #expect(await log.invokedPaths.isEmpty)
+        #expect(await log.returnedPaths.isEmpty)
+    }
+
+    @Test("a fixture tool that hands a value back records an invocation that returned")
+    func aToolThatHandsAValueBackRecordsAReturnedInvocation() async throws {
+        let log = ScenarioCallLog()
+        let tool = IntegrationWeatherTool(log: log)
+
+        _ = try await tool.call(arguments: IntegrationWeatherArguments(city: integrationSingleCallCity.name))
+
+        #expect(await log.calls == [ScenarioCall(path: tool.name, outcome: .returned)])
+        #expect(await log.invokedPaths == [tool.name])
+        #expect(await log.returnedPaths == [tool.name])
+    }
+
+    @Test("a fixture tool that throws records an invocation that never returned")
+    func aToolThatThrowsRecordsAnInvocationThatNeverReturned() async throws {
+        let log = ScenarioCallLog()
+        let tool = IntegrationWeatherTool(log: log)
+
+        await #expect(throws: IntegrationWeatherError.self) {
+            _ = try await tool.call(arguments: IntegrationWeatherArguments(city: "Ulaanbaatar"))
+        }
+
+        // Entered, so it is an invocation; it handed nothing back, so it
+        // grounds nothing — the whole point of keeping the two apart.
+        #expect(await log.calls == [ScenarioCall(path: tool.name, outcome: .threw)])
+        #expect(await log.invokedPaths == [tool.name])
+        #expect(await log.returnedPaths.isEmpty)
+    }
+
+    @Test("every call of a snippet that awaits two tools at once is recorded")
+    func concurrentCallsThroughOneSnippetAreAllRecorded() async throws {
+        // `Promise.all` over two independent tools is the async fan-out
+        // scenario's own natural snippet, so the log really is written from
+        // two calls in flight at the same time.
+        let log = ScenarioCallLog()
+        let counters = integrationStockTools(log: log)
+        let registry = try MultiTool.Builder().addTools(counters).buildRegistry()
+        let multiTool = MultiTool(registry: registry)
+        let calls = counters.map { "tools.\($0.name)()" }.joined(separator: ", ")
+
+        let output = try await multiTool.call(
+            arguments: RunCodeArguments(
+                code: """
+                    const counts = await Promise.all([\(calls)]);
+                    return counts.reduce((total, count) => total + count.units, 0);
+                    """
+            )
+        )
+
+        #expect(output == "\(integrationWarehouseStockUnits + integrationStoreStockUnits)")
+        #expect(await log.calls.count == counters.count)
+        #expect(await log.invokedPaths == Set(counters.map(\.name)))
+        #expect(await log.returnedPaths == Set(counters.map(\.name)))
+    }
+
+    @Test("a snippet naming paths no fixture defines invokes nothing, though the scan still reports what it typed")
+    func aSnippetNamingPathsNoFixtureDefinesInvokesNothing() async throws {
+        // The recorded false pass this split exists to remove (task
+        // `0981ar3`): a compose run whose snippet called two names the mounted
+        // surface did not define scored `grounded=pass`, because the grade was
+        // read off the snippet's source text. Both calls threw; nothing ran;
+        // the temperature in the reply came from nowhere.
+        let log = ScenarioCallLog()
+        let registry = try MultiTool.Builder().addTool(IntegrationWeatherTool(log: log)).buildRegistry()
+        let multiTool = MultiTool(registry: registry)
+        let code = #"""
+            const trip = await tools.getItinerary();
+            return (await tools.getForecast({ city: trip.cities[0] })).tempC;
+            """#
+
+        let output = try await multiTool.call(arguments: RunCodeArguments(code: code))
+
+        #expect(output.contains("Fix the snippet and call runCode again."))
+        #expect(await log.invokedPaths.isEmpty)
+        #expect(await log.returnedPaths.isEmpty)
+        // The lexical scan still answers its own question — which names the
+        // model wrote — because that is the only place an invented path is
+        // visible at all, and it is what `inventedPath` is counted from.
+        #expect(
+            NativeTranscript.typedToolPaths(in: Self.transcriptRunning(code)) == ["getItinerary", "getForecast"]
+        )
+    }
+
+    /// Builds the transcript shape `NativeTranscript.typedToolPaths(in:)` scans: one recorded `runCode` call carrying a snippet.
+    ///
+    /// - Parameter code: the snippet the recorded call carries.
+    /// - Returns: a transcript holding that one tool call and nothing else.
+    private static func transcriptRunning(_ code: String) -> Transcript {
+        Transcript(entries: [
+            .toolCalls(
+                Transcript.ToolCalls([
+                    Transcript.ToolCall(
+                        id: "1",
+                        toolName: "runCode",
+                        arguments: GeneratedContent(properties: ["code": code])
+                    )
+                ])
+            )
+        ])
     }
 }

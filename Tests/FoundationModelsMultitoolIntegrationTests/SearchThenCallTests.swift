@@ -53,7 +53,7 @@ struct SearchThenCallTests {
     func singleCallWeather() async throws {
         try await runNativeIntegrationScenario(
             name: "singleCallWeather",
-            tools: [IntegrationWeatherTool()],
+            tools: { log in [IntegrationWeatherTool(log: log)] },
             // Both the city this asks about and the temperature it grades on
             // are read from `integrationSingleCallCity`, so editing a reading
             // moves the question and the answer together. Stating either as a
@@ -78,7 +78,7 @@ struct SearchThenCallTests {
     func composeChain() async throws {
         try await runNativeIntegrationScenario(
             name: "composeChain",
-            tools: [IntegrationTripTool(), IntegrationWeatherTool()],
+            tools: { log in [IntegrationTripTool(log: log), IntegrationWeatherTool(log: log)] },
             prompt: "Of the cities on my trip, which is warmest right now?",
             answerContainsOneOf: IntegrationScenarioAnswers.warmestCity
         )
@@ -90,7 +90,10 @@ struct SearchThenCallTests {
     func discoveryUnderDistractors() async throws {
         try await runNativeIntegrationScenario(
             name: "discoveryUnderDistractors",
-            tools: [IntegrationWeatherTool(), IntegrationTripTool()] + integrationDistractorTools,
+            tools: { log in
+                [IntegrationWeatherTool(log: log), IntegrationTripTool(log: log)]
+                    + integrationDistractorTools(log: log)
+            },
             prompt: "Of the cities on my trip, which is warmest right now?",
             answerContainsOneOf: IntegrationScenarioAnswers.warmestCity
         )
@@ -102,7 +105,7 @@ struct SearchThenCallTests {
     func repairFromTripProneTool() async throws {
         try await runNativeIntegrationScenario(
             name: "repairFromTripProneTool",
-            tools: [IntegrationBookingTool()],
+            tools: { log in [IntegrationBookingTool(log: log)] },
             prompt: "Confirm my booking, id 42.",
             answerContainsOneOf: ["confirm"],
             // "I was unable to confirm…" embeds the required word inside a
@@ -110,10 +113,12 @@ struct SearchThenCallTests {
             // it doesn't report failing at it.
             answerMustNotContain: ["unable", "couldn't", "cannot", "can't", "not able"],
             // "Your booking is confirmed" claims a side effect — the
-            // trip-prone `confirmBooking` tool must genuinely have been
-            // invoked (any number of repair attempts, any route) for that
-            // claim to be true.
-            mustInvoke: ["confirmBooking"]
+            // trip-prone `confirmBooking` tool must genuinely have returned a
+            // confirmation (after any number of repair attempts, by any
+            // route) for that claim to be true. Reaching the tool is not
+            // enough: it throws instead of confirming when `confirm` is not
+            // `true`, which is exactly the mis-call this scenario provokes.
+            mustReturn: ["confirmBooking"]
         )
     }
 }

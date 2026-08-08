@@ -27,13 +27,13 @@ struct AsyncFanOutTests {
     /// The total the two stock fixtures combine to — derived from the fixtures
     /// themselves rather than restated, so the assertion cannot drift from the
     /// data it grades.
-    private static let combinedUnits = integrationWarehouseStockTool.units + integrationStoreStockTool.units
+    private static let combinedUnits = integrationWarehouseStockUnits + integrationStoreStockUnits
 
     @Test("async fan-out scenario answers with the two stock fixtures' combined total")
     func fanOutOverTwoStockTools() async throws {
         try await runNativeIntegrationScenario(
             name: "fanOutOverTwoStockTools",
-            tools: [integrationWarehouseStockTool, integrationStoreStockTool],
+            tools: { log in integrationStockTools(log: log) },
             prompt: "How many units do we have in total, counting both the warehouse and the store floor?",
             // Only the sum is accepted — neither fixture's own count proves
             // both were read.

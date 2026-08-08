@@ -21,6 +21,7 @@ struct ScenarioFailureModeTests {
         ScenarioObservation(
             reply: "The warmest city on your trip is San Francisco.",
             toolCallCount: 2,
+            typedPaths: ["getTrip", "getWeather"],
             invokedPaths: ["getTrip", "getWeather"],
             catalogPaths: ["getTrip", "getWeather"],
             findAPIsFirst: true,
@@ -50,6 +51,7 @@ struct ScenarioFailureModeTests {
         // Recorded verbatim on task `tkrdwb8`, run C4.
         observation.reply = "I don't have access to your trip details or current weather data."
         observation.toolCallCount = 0
+        observation.typedPaths = []
         observation.invokedPaths = []
         observation.validAnswer = false
 
@@ -75,6 +77,7 @@ struct ScenarioFailureModeTests {
     @Test("a substantive answer with nothing invoked is answered-without-calling")
     func answeringWithNothingInvokedIsAnsweredWithoutCalling() {
         var observation = Self.cleanRun()
+        observation.typedPaths = []
         observation.invokedPaths = []
         observation.returnedValues = []
 
@@ -85,10 +88,43 @@ struct ScenarioFailureModeTests {
         #expect(!modes.announceThenStop)
     }
 
+    @Test("a substantive answer whose typed calls never reached a tool is answered-without-calling")
+    func answeringWithTypedCallsThatNeverRanIsAnsweredWithoutCalling() {
+        var observation = Self.cleanRun()
+        // The recorded false pass (task `0981ar3`): the snippet carried two
+        // `tools.*` call sites, both naming functions the mounted surface did
+        // not define, so both threw and no tool ever ran. Counting the typed
+        // call sites as calls is what scored that run `grounded=pass`.
+        observation.typedPaths = ["getItinerary", "getForecast"]
+        observation.invokedPaths = []
+        observation.returnedValues = []
+        observation.validAnswer = false
+
+        let modes = ScenarioFailureModes(observation)
+
+        #expect(modes.answeredWithoutCalling)
+        // And the typed paths still surface as invented, which is the one
+        // question only the snippet source can answer.
+        #expect(modes.inventedPaths == ["getForecast", "getItinerary"])
+    }
+
+    @Test("an answer whose calls ran and then threw is not answered-without-calling")
+    func answeringAfterCallsThatThrewIsNotAnsweredWithoutCalling() {
+        var observation = Self.cleanRun()
+        // `getWeather` refuses a city it cannot resolve, so a snippet that
+        // passed a bad argument really did reach the tool. That is a call,
+        // whatever it then returned.
+        observation.returnedValues = []
+        observation.validAnswer = false
+
+        #expect(!ScenarioFailureModes(observation).answeredWithoutCalling)
+    }
+
     @Test("an empty reply with nothing invoked is not counted as an answer")
     func anEmptyReplyIsNotAnAnswer() {
         var observation = Self.cleanRun()
         observation.reply = "   \n"
+        observation.typedPaths = []
         observation.invokedPaths = []
         observation.validAnswer = false
 
@@ -102,6 +138,7 @@ struct ScenarioFailureModeTests {
         var observation = Self.cleanRun()
         observation.reply = "Let me first find the right function for your trip."
         observation.toolCallCount = 0
+        observation.typedPaths = []
         observation.invokedPaths = []
         observation.validAnswer = false
 
@@ -124,7 +161,7 @@ struct ScenarioFailureModeTests {
     @Test("a namespaced call against a flat catalog is an invented path")
     func namespacingAFlatCatalogEntryIsAnInventedPath() {
         var observation = Self.cleanRun()
-        observation.invokedPaths = ["trips.getTrip", "getWeather"]
+        observation.typedPaths = ["trips.getTrip", "getWeather"]
 
         #expect(ScenarioFailureModes(observation).inventedPaths == ["trips.getTrip"])
     }
@@ -132,9 +169,21 @@ struct ScenarioFailureModeTests {
     @Test("invented paths are reported in a stable order, however the set enumerates")
     func inventedPathsAreReportedSorted() {
         var observation = Self.cleanRun()
-        observation.invokedPaths = ["zzzLast", "aaaFirst", "getTrip"]
+        observation.typedPaths = ["zzzLast", "aaaFirst", "getTrip"]
 
         #expect(ScenarioFailureModes(observation).inventedPaths == ["aaaFirst", "zzzLast"])
+    }
+
+    @Test("a path that really ran is never reported as invented, however the snippet spelled it")
+    func aPathThatRanIsNeverInvented() {
+        var observation = Self.cleanRun()
+        // Invented paths are read off what the model wrote, never off the
+        // recorder: a path the catalog does not define cannot reach a tool,
+        // so the recorder can never see it and could only ever under-report.
+        observation.typedPaths = ["getTrip", "getWeather"]
+        observation.invokedPaths = []
+
+        #expect(ScenarioFailureModes(observation).inventedPaths.isEmpty)
     }
 
     // MARK: - Thrash
@@ -202,7 +251,7 @@ struct ScenarioFailureModeTests {
     @Test("the reported line carries every mode as a countable flag")
     func theReportedLineCarriesEveryModeAsAFlag() {
         var observation = Self.cleanRun()
-        observation.invokedPaths = ["trips.getTrip"]
+        observation.typedPaths = ["trips.getTrip"]
         observation.toolCallCount = 9
 
         let line = ScenarioFailureModes(observation).line(scenario: "composeChain")

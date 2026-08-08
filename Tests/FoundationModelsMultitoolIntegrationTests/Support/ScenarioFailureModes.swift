@@ -19,12 +19,18 @@ struct ScenarioObservation {
 
     /// The `tools.*` paths the model's `runCode` snippets **wrote**.
     ///
-    /// This is a lexical scan of the snippet source, not a record of what
-    /// resolved — see `NativeTranscript.invokedToolPaths(in:)` and the open
-    /// defect `0981ar3`. It is the right evidence for `inventedPath`, whose
-    /// question is precisely what the model reached for, and it is the
-    /// wrong evidence for "did data come back", which
-    /// `returnedValues` answers instead.
+    /// A lexical scan of the snippet source, not a record of what resolved —
+    /// see `NativeTranscript.typedToolPaths(in:)`. It is the right evidence
+    /// for `inventedPath`, whose question is precisely what the model reached
+    /// for, and it is the wrong evidence for anything about what happened.
+    var typedPaths: Set<String>
+
+    /// The `tools.*` paths a fixture tool actually **entered**.
+    ///
+    /// Recorded by the fixture tools themselves as they ran — see
+    /// `ScenarioCallLog`. A path here genuinely executed, whether its call
+    /// then returned a value or threw. Which of them handed data back is a
+    /// third question, answered by `returnedValues`.
     var invokedPaths: Set<String>
 
     /// Every `tools.*` path the mounted catalog actually defines.
@@ -81,8 +87,7 @@ struct ScenarioFailureModes {
     /// all.
     let overRefusal: Bool
 
-    /// The reply answered substantively while no snippet invoked any
-    /// `tools.*` path.
+    /// The reply answered substantively while no `tools.*` path ever ran.
     let answeredWithoutCalling: Bool
 
     /// The reply announced what the model was about to do, and the turn
@@ -122,9 +127,19 @@ struct ScenarioFailureModes {
             && !deniesAccess && !announcesIntent
 
         overRefusal = deniesAccess && observation.toolCallCount == 0
+        // `invokedPaths`, not `typedPaths`: the question is whether the model
+        // reached a tool at all, and a tool that ran and then threw was
+        // reached. Writing a call site that never resolved is not calling
+        // anything — reading this off the snippet source is the false pass
+        // task `0981ar3` removed. Not `returnedValues` either: a tool that
+        // refused a bad argument was still called, and the reply that follows
+        // is not an uncalled answer.
         answeredWithoutCalling = observation.invokedPaths.isEmpty && isSubstantive
         announceThenStop = announcesIntent && observation.toolCallCount == 0
-        inventedPaths = observation.invokedPaths.subtracting(observation.catalogPaths).sorted()
+        // `typedPaths`, deliberately: an invented path by definition never
+        // reaches a tool, so no recorder can ever see it and only the snippet
+        // source can report it.
+        inventedPaths = observation.typedPaths.subtracting(observation.catalogPaths).sorted()
         searchedFirst = observation.findAPIsFirst
         thrash = observation.toolCallCount > scenarioMinimumToolCalls * scenarioThrashFactor
         groundedButWrongForm =

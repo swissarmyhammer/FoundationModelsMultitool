@@ -205,6 +205,9 @@ struct IntegrationWeatherTool: Tool {
     let name = "getWeather"
     let description = "Current weather for a city. Use when asked how warm/cold/rainy it is right now."
 
+    /// The scenario run's call log every invocation of this tool records itself in.
+    let log: ScenarioCallLog
+
     /// Reports the fixture reading for the one city `arguments` names.
     ///
     /// An argument resolves when it is exactly a city's code or exactly its
@@ -213,24 +216,31 @@ struct IntegrationWeatherTool: Tool {
     /// exactly — short enough that containment would find one by accident in
     /// unrelated text.
     ///
+    /// Both refusals below are recorded as invocations that did not return:
+    /// the snippet really did reach this tool, and got an error back rather
+    /// than a reading.
+    ///
     /// - Parameter arguments: the requested city.
     /// - Returns: that city's fixture reading.
     /// - Throws: `IntegrationWeatherError.unknownCity` when no reading
     ///   resolves, `IntegrationWeatherError.ambiguousCity` when more than one
     ///   does.
     func call(arguments: IntegrationWeatherArguments) async throws -> IntegrationWeatherResult {
-        let requested = integrationCityKey(arguments.city)
-        let matches = integrationCityWeather.filter { city in
-            let name = integrationCityKey(city.name)
-            return requested == integrationCityKey(city.code) || requested == name || requested.contains(name)
+        try await log.recordCall(to: name) {
+            let requested = integrationCityKey(arguments.city)
+            let matches = integrationCityWeather.filter { city in
+                let cityName = integrationCityKey(city.name)
+                return requested == integrationCityKey(city.code) || requested == cityName
+                    || requested.contains(cityName)
+            }
+            guard let city = matches.first else {
+                throw IntegrationWeatherError.unknownCity(arguments.city)
+            }
+            guard matches.count == 1 else {
+                throw IntegrationWeatherError.ambiguousCity(arguments.city, matches: matches.map(\.name))
+            }
+            return IntegrationWeatherResult(tempC: city.tempC, summary: "Sunny")
         }
-        guard let city = matches.first else {
-            throw IntegrationWeatherError.unknownCity(arguments.city)
-        }
-        guard matches.count == 1 else {
-            throw IntegrationWeatherError.ambiguousCity(arguments.city, matches: matches.map(\.name))
-        }
-        return IntegrationWeatherResult(tempC: city.tempC, summary: "Sunny")
     }
 }
 
@@ -274,16 +284,27 @@ struct IntegrationTripTool: Tool {
     let description = "The user's current trip: its cities in itinerary order, plus its dates, "
         + "its traveler and its booking confirmation code."
 
+    /// The scenario run's call log every invocation of this tool records itself in.
+    let log: ScenarioCallLog
+
+    /// Reports the fixture itinerary.
+    ///
+    /// - Parameter arguments: unused — this tool takes nothing.
+    /// - Returns: the fixture trip.
+    /// - Throws: nothing of its own; the signature is `Tool`'s, and
+    ///   `recordCall(to:_:)` only rethrows what its body throws.
     func call(arguments: IntegrationNoArguments) async throws -> IntegrationTripOutput {
-        IntegrationTripOutput(
-            confirmationCode: "QX7T2M",
-            traveler: "Dana Whitfield",
-            startDate: "2026-09-14",
-            endDate: "2026-09-21",
-            // Derived from the weather readings, so the itinerary and the
-            // temperatures a snippet looks up can never name different cities.
-            cities: integrationCityWeather.map(\.code)
-        )
+        await log.recordCall(to: name) {
+            IntegrationTripOutput(
+                confirmationCode: "QX7T2M",
+                traveler: "Dana Whitfield",
+                startDate: "2026-09-14",
+                endDate: "2026-09-21",
+                // Derived from the weather readings, so the itinerary and the
+                // temperatures a snippet looks up can never name different cities.
+                cities: integrationCityWeather.map(\.code)
+            )
+        }
     }
 }
 
@@ -313,14 +334,25 @@ struct IntegrationDistractorTool: Tool {
     let name: String
     let description: String
 
+    /// The scenario run's call log every invocation of this tool records itself in.
+    let log: ScenarioCallLog
+
+    /// Echoes the requested id back, labelled with this distractor's name.
+    ///
+    /// - Parameter arguments: the opaque id to echo.
+    /// - Returns: the labelled echo.
+    /// - Throws: nothing of its own; the signature is `Tool`'s, and
+    ///   `recordCall(to:_:)` only rethrows what its body throws.
     func call(arguments: IntegrationDistractorArguments) async throws -> IntegrationDistractorOutput {
-        IntegrationDistractorOutput(value: "distractor:\(name):\(arguments.id)")
+        await log.recordCall(to: name) {
+            IntegrationDistractorOutput(value: "distractor:\(name):\(arguments.id)")
+        }
     }
 }
 
-/// 10 named, distinct distractor tools — combined with the 2 relevant tools
-/// (`getWeather`, `getTrip`) the discovery scenario also wraps, the surface
-/// totals 12 tools, only 2 of which `findAPIs` should select.
+/// Builds 10 named, distinct distractor tools — combined with the 2 relevant
+/// tools (`getWeather`, `getTrip`) the discovery scenario also wraps, the
+/// surface totals 12 tools, only 2 of which `findAPIs` should select.
 ///
 /// Ten, not the eighteen this list carried through phase 1, by the human
 /// ruling of 2026-08-07 recorded on task `tkrdwb8`. The Bisect Protocol
@@ -337,19 +369,28 @@ struct IntegrationDistractorTool: Tool {
 /// genuinely compete with `getTrip` for a trip-shaped query, so dropping
 /// them would have made the scenario easier in a second, hidden way on top
 /// of the intended one.
-let integrationDistractorTools: [any Tool] = [
-    ("convertCurrency", "Converts an amount between two currencies."),
-    ("bookHotel", "Books a hotel room for given dates."),
-    ("cancelBooking", "Cancels an existing booking by id."),
-    ("translateText", "Translates text between two languages."),
-    ("sendEmail", "Sends an email to a recipient."),
-    ("createCalendarEvent", "Creates a calendar event."),
-    ("lookupFlight", "Looks up a flight's status by number."),
-    ("convertUnits", "Converts a measurement between unit systems."),
-    ("summarizeText", "Summarizes a block of text."),
-    ("trackPackage", "Tracks a shipment by tracking number."),
-].map { name, description in
-    IntegrationDistractorTool(name: name, description: description)
+///
+/// A function rather than a shared constant, because a distractor records
+/// into the run it belongs to: a set built once and reused would carry one
+/// scenario's log into the next.
+///
+/// - Parameter log: the scenario run's call log, shared by all ten.
+/// - Returns: the ten distractor tools, in a fixed order.
+func integrationDistractorTools(log: ScenarioCallLog) -> [any Tool] {
+    [
+        ("convertCurrency", "Converts an amount between two currencies."),
+        ("bookHotel", "Books a hotel room for given dates."),
+        ("cancelBooking", "Cancels an existing booking by id."),
+        ("translateText", "Translates text between two languages."),
+        ("sendEmail", "Sends an email to a recipient."),
+        ("createCalendarEvent", "Creates a calendar event."),
+        ("lookupFlight", "Looks up a flight's status by number."),
+        ("convertUnits", "Converts a measurement between unit systems."),
+        ("summarizeText", "Summarizes a block of text."),
+        ("trackPackage", "Tracks a shipment by tracking number."),
+    ].map { name, description in
+        IntegrationDistractorTool(name: name, description: description, log: log)
+    }
 }
 
 // MARK: - Scenario 4: repair from a trip-prone tool (plan.md M6.5 scenario 4)
@@ -392,11 +433,26 @@ struct IntegrationBookingTool: Tool {
     let name = "confirmBooking"
     let description = "Confirms a trip booking by id."
 
+    /// The scenario run's call log every invocation of this tool records itself in.
+    let log: ScenarioCallLog
+
+    /// Confirms the booking `arguments` names, if the caller really asked to.
+    ///
+    /// The refusal below is recorded as an invocation that did not return:
+    /// the model reached this tool, and nothing was confirmed. That is
+    /// exactly the difference the repair scenario's side-effect check grades.
+    ///
+    /// - Parameter arguments: the booking to confirm, and whether to confirm it.
+    /// - Returns: the confirmation.
+    /// - Throws: `IntegrationBookingError.confirmationRequired` when
+    ///   `arguments.confirm` is `false`.
     func call(arguments: IntegrationBookingArguments) async throws -> IntegrationBookingResult {
-        guard arguments.confirm else {
-            throw IntegrationBookingError.confirmationRequired
+        try await log.recordCall(to: name) {
+            guard arguments.confirm else {
+                throw IntegrationBookingError.confirmationRequired
+            }
+            return IntegrationBookingResult(confirmed: true)
         }
-        return IntegrationBookingResult(confirmed: true)
     }
 }
 
@@ -444,9 +500,19 @@ struct IntegrationDeepScanTool: Tool {
     let description = "Runs a full deep scan of the user's archive and returns that scan's report code. "
         + "The scan takes several seconds to complete."
 
+    /// The scenario run's call log every invocation of this tool records itself in.
+    let log: ScenarioCallLog
+
+    /// Runs the scan, slowly, and reports its code.
+    ///
+    /// - Parameter arguments: unused — this tool takes nothing.
+    /// - Returns: the fixture report code.
+    /// - Throws: a `CancellationError` if the run is cancelled mid-scan.
     func call(arguments: IntegrationNoArguments) async throws -> IntegrationDeepScanOutput {
-        try await Task.sleep(for: integrationDeepScanDuration)
-        return IntegrationDeepScanOutput(reportCode: integrationDeepScanReportCode)
+        try await log.recordCall(to: name) {
+            try await Task.sleep(for: integrationDeepScanDuration)
+            return IntegrationDeepScanOutput(reportCode: integrationDeepScanReportCode)
+        }
     }
 }
 
@@ -472,21 +538,51 @@ struct IntegrationStockTool: Tool {
     /// The unit count this counter always reports.
     let units: Int
 
+    /// The scenario run's call log every invocation of this tool records itself in.
+    let log: ScenarioCallLog
+
+    /// Reports this counter's fixed unit count.
+    ///
+    /// - Parameter arguments: unused — this tool takes nothing.
+    /// - Returns: this counter's unit count.
+    /// - Throws: nothing of its own; the signature is `Tool`'s, and
+    ///   `recordCall(to:_:)` only rethrows what its body throws.
     func call(arguments: IntegrationNoArguments) async throws -> IntegrationStockCount {
-        IntegrationStockCount(units: units)
+        await log.recordCall(to: name) {
+            IntegrationStockCount(units: units)
+        }
     }
 }
 
-/// The warehouse half of the async fan-out pair.
-let integrationWarehouseStockTool = IntegrationStockTool(
-    name: "getWarehouseStock",
-    description: "How many units of the product are in the warehouse right now.",
-    units: 1904
-)
+/// How many units the warehouse half of the async fan-out pair reports.
+let integrationWarehouseStockUnits = 1904
 
-/// The store-floor half of the async fan-out pair.
-let integrationStoreStockTool = IntegrationStockTool(
-    name: "getStoreStock",
-    description: "How many units of the product are on the store floor right now.",
-    units: 268
-)
+/// How many units the store-floor half of the async fan-out pair reports.
+let integrationStoreStockUnits = 268
+
+/// Builds the async fan-out scenario's pair of independent stock counters.
+///
+/// A function rather than two shared constants, for two reasons: a counter
+/// records into the run it belongs to, so an instance built once and reused
+/// would carry one scenario's log into the next; and building both from one
+/// table keeps them from drifting into two hand-maintained copies of the same
+/// tool.
+///
+/// - Parameter log: the scenario run's call log, shared by both counters.
+/// - Returns: the warehouse counter and the store-floor counter, in that order.
+func integrationStockTools(log: ScenarioCallLog) -> [IntegrationStockTool] {
+    [
+        (
+            "getWarehouseStock",
+            "How many units of the product are in the warehouse right now.",
+            integrationWarehouseStockUnits
+        ),
+        (
+            "getStoreStock",
+            "How many units of the product are on the store floor right now.",
+            integrationStoreStockUnits
+        ),
+    ].map { name, description, units in
+        IntegrationStockTool(name: name, description: description, units: units, log: log)
+    }
+}

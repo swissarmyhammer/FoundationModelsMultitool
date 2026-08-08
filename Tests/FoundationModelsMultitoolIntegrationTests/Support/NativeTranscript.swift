@@ -66,22 +66,35 @@ enum NativeTranscript {
         return calls[..<runCodeIndex].contains { $0.toolName == findAPIsToolName }
     }
 
-    /// Extracts the `tools.*` call paths every `runCode` tool call's snippet invokes.
+    /// Extracts the `tools.*` call paths every `runCode` tool call's snippet **wrote**.
     ///
-    /// Performs a lexical scan for `tools.<name>(` / `tools.<group>.<name>(`
-    /// call sites in each call's decoded `code` argument, not an interpreter
-    /// run (the transcript records the code text the model wrote, not which
-    /// calls it actually made at runtime) — the same "snippet invoked
-    /// exactly the expected tools.*" trace assertion the retired
-    /// `TranscriptAnalyzer.invokedToolPaths(in:)` implemented, ported to read
-    /// a `runCode` call's arguments directly via `GeneratedContent
+    /// Answers exactly one question: which `tools.*` names did the model type
+    /// into a snippet? It is a lexical scan for `tools.<name>(` /
+    /// `tools.<group>.<name>(` call sites in each call's decoded `code`
+    /// argument, never an interpreter run — the transcript records the code
+    /// text the model wrote, not which of those calls resolved, ran, or
+    /// returned.
+    ///
+    /// That makes it the right evidence for the `inventedPath` failure mode,
+    /// whose question is precisely what the model reached for: a path the
+    /// mounted catalog does not define never reaches a tool at all, so
+    /// nothing but the source text can report it. It is the wrong evidence
+    /// for any question about what happened. A snippet naming two functions
+    /// no fixture defines scans as two call sites while both calls throw and
+    /// nothing runs — the false pass task `0981ar3` removed.
+    /// `ScenarioCallLog`'s `invokedPaths` and `returnedPaths`, recorded by the
+    /// fixture tools themselves as they run, answer those questions instead.
+    ///
+    /// The same "snippet invoked exactly the expected tools.*" trace scan the
+    /// retired `TranscriptAnalyzer.invokedToolPaths(in:)` implemented, ported
+    /// to read a `runCode` call's arguments directly via `GeneratedContent
     /// .value(_:forProperty:)` rather than decoding through
     /// `RunCodeArguments`, so this file needs no `FoundationModelsMultitool`
     /// import at all.
     ///
     /// - Parameter transcript: the transcript to scan.
-    /// - Returns: the union of every `runCode` call's `tools.*` call paths.
-    static func invokedToolPaths(in transcript: Transcript) -> Set<String> {
+    /// - Returns: the union of every `runCode` call's typed `tools.*` call paths.
+    static func typedToolPaths(in transcript: Transcript) -> Set<String> {
         toolCalls(in: transcript).reduce(into: Set<String>()) { paths, call in
             guard call.toolName == runCodeToolName,
                 let code = try? call.arguments.value(String.self, forProperty: "code")
@@ -92,10 +105,12 @@ enum NativeTranscript {
 
     /// Extracts the scalar values the tools genuinely returned to the model.
     ///
-    /// This is the counterpart to `invokedToolPaths(in:)` and answers the
-    /// opposite question. That one reads the code the model *wrote*; this
+    /// This is the counterpart to `typedToolPaths(in:)` and answers a
+    /// different question. That one reads the code the model *wrote*; this
     /// one reads what came *back*, so a caller can tell a reply that carries
-    /// real fixture data from one that carries an invention.
+    /// real fixture data from one that carries an invention. Which *paths*
+    /// returned, as opposed to which values, is `ScenarioCallLog`'s
+    /// `returnedPaths`.
     ///
     /// Reads only `runCode` outputs, and only those that parse as JSON. A
     /// clean `ResultRenderer.render(_:limits:)` success is the serialized
@@ -166,7 +181,7 @@ enum NativeTranscript {
         }
     }
 
-    /// Extracts the `tools.*` call paths a JavaScript snippet invokes — see `invokedToolPaths(in:)`.
+    /// Extracts the `tools.*` call paths a JavaScript snippet writes — see `typedToolPaths(in:)`.
     ///
     /// - Parameter code: one `runCode` call's JavaScript snippet text.
     /// - Returns: the distinct dotted call paths found, e.g. `["getWeather", "github.createIssue"]`.

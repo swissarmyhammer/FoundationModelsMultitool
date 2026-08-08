@@ -30,7 +30,7 @@ struct ElevationTests {
     func elevationInCodeMode() async throws {
         try await runElevationIntegrationScenario(
             name: "elevationInCodeMode",
-            tools: [IntegrationDeepScanTool()],
+            tools: { log in [IntegrationDeepScanTool(log: log)] },
             // The whole job in one request, the way a user would ask for it.
             // Two weaker phrasings were tried on real hardware and are worse:
             // a bare "Start the deep scan of my archive." made the model

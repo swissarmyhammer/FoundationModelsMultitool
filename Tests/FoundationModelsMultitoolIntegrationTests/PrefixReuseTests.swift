@@ -62,8 +62,16 @@ struct PrefixReuseTests {
             // A surface large enough that a full re-prefill would be
             // measurably slower than a `fork()`-inherited one — the same
             // ~20-tool set `SearchThenCallTests`' discovery scenario uses.
+            // This measurement never calls a fixture tool — it times two
+            // `findAPIs` selections over the rendered surface — but every
+            // fixture still needs a log to construct, so it gets one that
+            // stays empty.
+            let log = ScenarioCallLog()
             let registry = try MultiTool.Builder()
-                .addTools([IntegrationWeatherTool(), IntegrationTripTool()] + integrationDistractorTools)
+                .addTools(
+                    [IntegrationWeatherTool(log: log), IntegrationTripTool(log: log)]
+                        + integrationDistractorTools(log: log)
+                )
                 .buildRegistry()
             // `findAPIsTool`'s own production initializer — never a
             // reimplementation of its selection-tier wiring.

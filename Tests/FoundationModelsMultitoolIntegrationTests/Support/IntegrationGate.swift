@@ -133,8 +133,11 @@ var multitoolIntegrationEnabled: Bool {
 /// 4bit` proved unable to ground its `runCode` snippets in the discovered
 /// `tools.*` surface at all — across every instruction variant tried on real
 /// hardware it `console.log`ged invented answers, `fetch`ed imaginary
-/// external APIs, or hardcoded made-up data, and `invokedToolPaths` came
-/// back empty in every run (tasks `9hchxj6`/`k4mj1gm`). Swapping
+/// external APIs, or hardcoded made-up data, and the snippet scan now called
+/// `NativeTranscript.typedToolPaths(in:)` came back empty in every run (tasks
+/// `9hchxj6`/`k4mj1gm`) — that pin never so much as *wrote* a `tools.*` call
+/// site, let alone ran one, so the lexical scan and the `ScenarioCallLog`
+/// recorder that now grades grounding agree on it. Swapping
 /// `generation` to the natively tool-calling-trained
 /// `Qwen3-4B-Instruct-2507-4bit` (~2.3GB) qualitatively fixed grounding —
 /// its snippets genuinely call the discovered `tools.*` functions — taking
