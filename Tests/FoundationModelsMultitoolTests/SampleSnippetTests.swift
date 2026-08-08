@@ -97,6 +97,19 @@ struct SampleSnippetTests {
         }
         #expect(opened.contains("one fenced code block"))
         #expect(opened.contains("tools.*"))
+        // The JavaScript licence is explicit: the functions fetch data, the code
+        // around them does the work. An earlier draft said "Call only the tools.*
+        // paths listed above", which reads as restricting the snippet to tool calls
+        // rather than restricting which paths are callable.
+        #expect(opened.contains("Write whatever JavaScript the task needs"))
+        #expect(opened.contains("The functions fetch data"))
+        #expect(!opened.contains("Call only the tools.* paths listed above"))
+        // Each rule carries its mechanical consequence, which is what the dry run
+        // actually enforces.
+        #expect(opened.contains("comes back as an error, not as data"))
+        #expect(opened.contains("without it you hold a promise, not a value"))
+        #expect(opened.contains("reading any other field is an error")
+            || opened.contains("reading any other field \\\n        is an error"))
     }
 
     // MARK: - The four failure kinds, each fed back into the same session

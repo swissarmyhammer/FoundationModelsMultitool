@@ -282,11 +282,17 @@ enum SampleSnippet {
 
         \(entries.map(\.block).joined(separator: "\n\n"))
 
+        Write whatever JavaScript the task needs — variables, loops, map/filter, \
+        sorting, comparison, arithmetic, string work. The functions fetch data; the \
+        JavaScript around them does the work of answering the task.
+
         Rules.
-        Call only the tools.* paths listed above.
-        Put `await` on every call.
+        Every tools.* path you call must be one listed above; a path that is not \
+        listed comes back as an error, not as data.
+        Put `await` on every call; without it you hold a promise, not a value.
         Pass values between calls with variables.
-        Read only the fields a declared return type has.
+        Read only the fields a declared return type has; reading any other field \
+        is an error.
         End with `return` on the value that answers the task.
 
         \(envelope)
