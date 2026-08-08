@@ -423,16 +423,22 @@ private struct ScenarioSurface {
 /// and mount order is part of what a host receives: hand-building the array
 /// would let the suite measure an order the product does not recommend.
 ///
-/// `findAPIs`'s sample-snippet generator is wired to the **`.standard`
-/// slot** — the same model the scenario's own session runs on — because that
-/// is the slot the card chose for it: the sample is code the model is told to
-/// run, so its quality matters more than its cost. That makes this harness the
-/// place the nested same-model call is measured, wall clock included.
+/// `findAPIs`'s sample-snippet generator is **off here**. It was measured on
+/// the `.standard` slot over a gated n=5 (task `9zk44z6`) and graded 13/20,
+/// the same value as the arm without it, while the suite's wall clock roughly
+/// doubled: every `findAPIs` call spawns a nested main-model generation, so a
+/// thrashing turn pays generation repeatedly and one run reached 16m35s. Three
+/// of that arm's seven failures were `toolCalls=0` turns that never called
+/// `findAPIs` at all, which a generated sample cannot reach. Switching it on
+/// again is a one-line change, and worth it only alongside a diagnostic that
+/// records whether a sample was returned and whether the model ran it —
+/// without that, an arm measures "the feature is on", not "the sample was
+/// used".
 ///
 /// - Parameters:
 ///   - tools: the scenario's fixed tool set.
 ///   - fixture: the resolved live fixture whose `.flash` slot backs the
-///     selection tier and whose `.standard` slot writes the sample snippet.
+///     selection tier.
 /// - Returns: the tools to register with the session, and the catalog paths
 ///   behind them.
 /// - Throws: whatever `MultiTool.Builder.buildRegistry()` or
@@ -443,10 +449,7 @@ private func makeScenarioSurface(
 ) throws -> ScenarioSurface {
     let registry = try MultiTool.Builder().addTools(tools).buildRegistry()
     return ScenarioSurface(
-        tools: try registry.makeSessionTools(
-            librarian: fixture.profile.flash,
-            sampleGenerator: fixture.profile.standard
-        ),
+        tools: try registry.makeSessionTools(librarian: fixture.profile.flash),
         catalogPaths: Set(registry.surface.entries.map(\.path))
     )
 }

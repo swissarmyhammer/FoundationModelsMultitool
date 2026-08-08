@@ -91,6 +91,10 @@ public struct FindAPIsTool: Tool {
         functions is loaded dynamically and changes from session to session, so
         findAPIs is what tells you the current set.
 
+        Call findAPIs at least once in every session, on the user's first request,
+        before you answer it. Until you have called it you do not know what this
+        session mounts.
+
         Assume any user request needs these functions. Almost all of them do. Call
         findAPIs first, before you answer and before you ask the user for anything.
         Describe in plain language what you are trying to accomplish. You get back

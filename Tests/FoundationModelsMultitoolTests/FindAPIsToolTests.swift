@@ -166,8 +166,7 @@ struct FindAPIsToolTests {
         // before acting: "does this need the user's data?" is the same shape of
         // pre-action judgment the retired "Never refuse ... instead, always call
         // findAPIs" phrasing let a confident model answer wrongly (task tkrdwb8).
-        #expect(description.contains("Call\n        findAPIs first")
-            || description.contains("Call findAPIs first"))
+        #expect(description.contains("Call findAPIs first"))
         // Search precedes the snippet, in the text as well as in the workflow.
         let searchRange = try #require(description.range(of: "findAPIs first"))
         let snippetRange = try #require(description.range(of: "Then write one runCode snippet"))
@@ -176,6 +175,15 @@ struct FindAPIsToolTests {
         // "does this need the user's data?" is the same shape of pre-action judgment
         // that the retired "instead" clause let a confident model answer wrongly.
         #expect(description.contains("Almost all of them do"))
+        // The session rule is checkable conversational state — "have I called
+        // findAPIs in this session yet?" — not the model's confidence. An
+        // "if you are unsure" trigger is one a confident model always passes,
+        // which is the defect this line of work has been chasing. It aims at the
+        // dominant recorded failure: a turn that ends with toolCalls=0, where
+        // three of the sample arm's seven failures sat (task 9zk44z6).
+        #expect(description.contains("Call findAPIs at least once in every session"))
+        #expect(description.contains("on the user's first request"))
+        #expect(description.contains("you do not know what this session mounts"))
         // findAPIs is not one-shot. A request needing two kinds of data cannot be
         // served by a single search, and a model that searched once, came up short,
         // and narrated what it still needed is the recorded announce-then-stop.

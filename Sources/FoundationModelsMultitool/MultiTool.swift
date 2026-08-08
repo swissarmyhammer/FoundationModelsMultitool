@@ -327,6 +327,10 @@ public struct MultiTool: Tool {
 
         It also exposes this session's API functions under `tools.*`.
 
+        Call findAPIs at least once in every session, on the user's first request,
+        before you answer it. Until you have called it you do not know what this
+        session mounts.
+
         Assume any user request needs this session's functions. Almost all of them
         do. Call findAPIs first to get the exact functions and their signatures,
         then write the snippet against the paths findAPIs returned. Only a request

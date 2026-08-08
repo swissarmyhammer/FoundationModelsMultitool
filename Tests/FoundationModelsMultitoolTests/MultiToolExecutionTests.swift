@@ -231,6 +231,15 @@ struct MultiToolExecutionTests {
         #expect(description.contains("arithmetic, string work, dates, sorting"))
         #expect(description.contains("rather than in your head"))
         #expect(description.contains("Assume any user request needs this session's functions"))
+        // The session rule is checkable conversational state — "have I called
+        // findAPIs in this session yet?" — not the model's confidence. An
+        // "if you are unsure" trigger is one a confident model always passes,
+        // which is the defect this line of work has been chasing. It aims at the
+        // dominant recorded failure: a turn that ends with toolCalls=0, where
+        // three of the sample arm's seven failures sat (task 9zk44z6).
+        #expect(description.contains("Call findAPIs at least once in every session"))
+        #expect(description.contains("on the user's first request"))
+        #expect(description.contains("you do not know what this session mounts"))
         #expect(description.contains("pure arithmetic or string work needs no functions"))
         #expect(!description.localizedCaseInsensitiveContains("real-time"))
         // Persona-free, and refusal is never named — naming it would put it
