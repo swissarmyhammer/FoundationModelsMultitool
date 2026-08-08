@@ -1016,7 +1016,9 @@ struct JSCInterpreterTests {
             #expect(rendered.contains("await"))
             // `hasSuffix`, not `contains`: the directive is the last thing the
             // model reads, so where it sits in the rendered error is part of
-            // what this asserts, and a hint spliced after it would fail here.
+            // what this asserts: `hasSuffix` pins that nothing follows the
+            // directive, which `contains` would not. This call site passes no
+            // hint, so it says nothing about where a hint would land.
             // Only the text is read off the directive instead of restated.
             #expect(rendered.hasSuffix(RepairDirective.repairSnippet.closingLine))
         }

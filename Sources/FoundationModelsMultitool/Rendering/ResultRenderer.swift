@@ -110,8 +110,11 @@ public enum RepairDirective: Sendable, Equatable {
     /// This is the only place the text is written. Both test targets read it
     /// here through `@testable import` instead of restating it, so rewording
     /// the line reaches every assertion that expects it and every synthetic
-    /// transcript that stands in for a rendered error, and leaves no copy in
-    /// a test to fall out of step with what the product emits. That is what
+    /// transcript that stands in for a rendered error. The claim stops at this
+    /// line: the surrounding render format is still restated in a test, where
+    /// `ScenarioFailureModeTests`'s synthetic segment hand-writes the
+    /// `.exception` summary and the `": "`/`"\n\n"` framing that
+    /// `render(_:hint:directive:)` builds around it. That is what
     /// keeps `internal` the right access level: the text reaches the model
     /// through ``ResultRenderer/render(_:hint:directive:)``, so no other
     /// module needs to read it, and widening it to `public` would add a
