@@ -14,7 +14,7 @@ struct DemoNoArguments {
     var unused: String?
 }
 
-/// `DemoTripTool`'s output — the trip's cities, in visit order.
+/// The cities on the trip, in visit order.
 @Generable
 struct DemoTripOutput {
     /// The itinerary's cities, in visit order.
@@ -41,7 +41,7 @@ struct DemoTripTool: Tool {
     }
 }
 
-/// `DemoWeatherTool`'s arguments.
+/// The city a weather lookup asks about.
 @Generable
 struct DemoWeatherArguments {
     /// The city to look up.
@@ -49,7 +49,7 @@ struct DemoWeatherArguments {
     var city: String
 }
 
-/// `DemoWeatherTool`'s output.
+/// A city's current temperature and a short summary of its conditions.
 @Generable(description: "current conditions.")
 struct DemoWeatherResult {
     /// The current temperature, in Celsius.
