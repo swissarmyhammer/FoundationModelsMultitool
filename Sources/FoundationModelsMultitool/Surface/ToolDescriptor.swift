@@ -47,6 +47,18 @@ public struct ToolDescriptor: Sendable, Equatable {
     /// selection tier's instruction prefix, and `help()`/`docs()`.
     public let source: String
 
+    /// The same signature `declaration` states, as structure rather than
+    /// text: what the single `args` object declares, and what awaiting the
+    /// call resolves to.
+    ///
+    /// `declaration` is rendered *from* this value (see
+    /// `ToolValueShape.declaredType`), so anything checking a call against
+    /// this shape is checking it against exactly the signature the model was
+    /// shown. That is what lets `FindAPIsTool`'s sample gate check a
+    /// generated snippet's arguments and field reads without a second,
+    /// independently-derived notion of the tool's type.
+    public let signature: ToolSignature
+
     /// Creates a rendered tool descriptor.
     ///
     /// Explicit (rather than relying on the compiler-synthesized memberwise
@@ -61,11 +73,20 @@ public struct ToolDescriptor: Sendable, Equatable {
     ///   - doc: the JSDoc doc comment block rendered for `declaration`.
     ///   - example: the auto-generated, runnable example call.
     ///   - source: the full renderable text block (`doc` + `declaration`).
-    public init(name: String, declaration: String, doc: String, example: String, source: String) {
+    ///   - signature: the same signature `declaration` states, as structure.
+    public init(
+        name: String,
+        declaration: String,
+        doc: String,
+        example: String,
+        source: String,
+        signature: ToolSignature
+    ) {
         self.name = name
         self.declaration = declaration
         self.doc = doc
         self.example = example
         self.source = source
+        self.signature = signature
     }
 }

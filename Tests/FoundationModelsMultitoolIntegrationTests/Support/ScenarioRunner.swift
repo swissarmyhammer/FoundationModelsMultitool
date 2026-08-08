@@ -423,21 +423,30 @@ private struct ScenarioSurface {
 /// and mount order is part of what a host receives: hand-building the array
 /// would let the suite measure an order the product does not recommend.
 ///
+/// `findAPIs`'s sample-snippet generator is wired to the **`.standard`
+/// slot** — the same model the scenario's own session runs on — because that
+/// is the slot the card chose for it: the sample is code the model is told to
+/// run, so its quality matters more than its cost. That makes this harness the
+/// place the nested same-model call is measured, wall clock included.
+///
 /// - Parameters:
 ///   - tools: the scenario's fixed tool set.
 ///   - fixture: the resolved live fixture whose `.flash` slot backs the
-///     selection tier.
+///     selection tier and whose `.standard` slot writes the sample snippet.
 /// - Returns: the tools to register with the session, and the catalog paths
 ///   behind them.
 /// - Throws: whatever `MultiTool.Builder.buildRegistry()` or
-///   `MultiTool.Registry.makeSessionTools(librarian:)` throws.
+///   `MultiTool.Registry.makeSessionTools(librarian:sampleGenerator:)` throws.
 private func makeScenarioSurface(
     over tools: [any Tool],
     on fixture: LiveRouterFixture
 ) throws -> ScenarioSurface {
     let registry = try MultiTool.Builder().addTools(tools).buildRegistry()
     return ScenarioSurface(
-        tools: try registry.makeSessionTools(librarian: fixture.profile.flash),
+        tools: try registry.makeSessionTools(
+            librarian: fixture.profile.flash,
+            sampleGenerator: fixture.profile.standard
+        ),
         catalogPaths: Set(registry.surface.entries.map(\.path))
     )
 }

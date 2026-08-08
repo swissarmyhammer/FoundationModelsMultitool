@@ -129,19 +129,35 @@ extension MultiTool {
         /// to check; it is a capability list, not a mount order, and only
         /// this method's result reaches the model.
         ///
-        /// - Parameter librarian: the model backing `findAPIs`'s selection
-        ///   tier, or `nil` to leave its searcher in cheap retrieval. Unused
-        ///   in direct mode, which vends no `findAPIs` to configure.
+        /// - Parameters:
+        ///   - librarian: the model backing `findAPIs`'s selection
+        ///     tier, or `nil` to leave its searcher in cheap retrieval. Unused
+        ///     in direct mode, which vends no `findAPIs` to configure.
+        ///   - sampleGenerator: the model `findAPIs` writes its runnable
+        ///     sample snippet on, or `nil` (the default) to leave sample
+        ///     generation unconfigured, so `findAPIs` answers with signatures
+        ///     alone exactly as it always has. Pass the **main** generation
+        ///     slot: the sample is code the model is told to run, so its
+        ///     quality matters more than its cost. Unused in direct mode.
         /// - Returns: `findAPIs` followed by `runCode`, or `runCode` alone in
         ///   direct mode.
-        /// - Throws: whatever `FindAPIsTool.init(registry:librarian:limit:)`
+        /// - Throws: whatever
+        ///   `FindAPIsTool.init(registry:librarian:limit:sampleGenerator:)`
         ///   throws.
-        public func makeSessionTools(librarian: RoutedLLM?) throws -> [any Tool] {
+        public func makeSessionTools(
+            librarian: RoutedLLM?,
+            sampleGenerator: RoutedLLM? = nil
+        ) throws -> [any Tool] {
             let runCode = MultiTool(registry: self)
             guard supportsFindAPIs else {
                 return [runCode]
             }
-            return [try FindAPIsTool(registry: self, librarian: librarian), runCode]
+            let findAPIs = try FindAPIsTool(
+                registry: self,
+                librarian: librarian,
+                sampleGenerator: sampleGenerator
+            )
+            return [findAPIs, runCode]
         }
     }
 }

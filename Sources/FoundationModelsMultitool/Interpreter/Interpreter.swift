@@ -327,6 +327,32 @@ public protocol Interpreter: Sendable {
         isCancelled: @escaping @Sendable () -> Bool
     ) throws -> InterpreterResult
 
+    /// Parses `code` and reports whether it is syntactically valid, without
+    /// installing a single host function and without executing any of it.
+    ///
+    /// The parse covers exactly what `run` would evaluate, wrapping included,
+    /// so a top-level `return` and a top-level `await` are as legal here as
+    /// they are there, and a reported line number refers to the caller's own
+    /// source.
+    ///
+    /// This is the deterministic first gate a caller applies to a snippet it
+    /// did not write — `FindAPIsTool`'s generated sample — before it is worth
+    /// looking at anything else about it. An unresolved identifier is not a
+    /// syntax error, so a snippet naming a global this check never installed
+    /// still parses.
+    ///
+    /// Like ``withTimeLimit(_:)``, this requirement deliberately has no default
+    /// conformance below. Either default would answer for a conformer that has
+    /// no parser to ask: one that never throws turns the gate into a rubber
+    /// stamp, and one that always throws turns off sample generation entirely.
+    /// A conformer answers for itself instead.
+    ///
+    /// - Parameter code: the JavaScript source to parse.
+    /// - Throws: `InterpreterError` of kind `.exception`, carrying the
+    ///   engine's own parse-failure message and the line it blames, when
+    ///   `code` does not parse.
+    func checkSyntax(of code: String) throws
+
     /// Returns an interpreter that runs exactly as this one does, bounded by
     /// `seconds` in place of whatever wall-clock ceiling this one carries.
     ///

@@ -350,7 +350,82 @@ public final class JSCInterpreter: Interpreter {
         }
     }
 
+    /// Parses `code` — wrapped exactly as `run` wraps it — in a fresh
+    /// `JSContext` with nothing installed, and throws when it does not parse.
+    ///
+    /// `JSCheckScriptSyntax` is JavaScriptCore's own parser entry point: it
+    /// reports a `SyntaxError` for source it cannot parse and evaluates
+    /// nothing at all, so an infinite loop parses instantly and a call to a
+    /// global that was never installed parses too. That is the whole point —
+    /// this answers "does this source parse", nothing more.
+    ///
+    /// - Parameter code: the JavaScript source to parse.
+    /// - Throws: `InterpreterError` of kind `.exception`, carrying the
+    ///   parser's own message and the line it blames, when `code` does not
+    ///   parse.
+    public func checkSyntax(of code: String) throws {
+        try Self.parse(code: code)
+    }
+
     // MARK: - Run
+
+    /// Wraps a snippet in the async IIFE every evaluation of it runs inside.
+    ///
+    /// Wrapping in an *async* IIFE is what makes both a top-level `return`
+    /// and a top-level `await` legal — models with async-JS priors routinely
+    /// write `await tools.getWeather(...)`, and under a plain IIFE that is a
+    /// bare syntax error whose message never mentions `await` ("Unexpected
+    /// identifier 'tools'"), an unrecoverable dead end for the model. An
+    /// outer plain IIFE holds the outcome object as a local (never a global —
+    /// the sandbox's injected-global surface is pinned by `HardeningTests`)
+    /// and returns it; the async IIFE's `.then` callbacks capture and mutate
+    /// that same object. The whole prefix is prepended to the snippet's own
+    /// first line (rather than on a line of its own) so every reported line
+    /// number still matches the caller's original source 1:1. The settled
+    /// result is readable by the time `evaluateScript` returns for any
+    /// snippet whose awaits resolve without external events — host functions
+    /// are synchronous, so their awaited results are already-settled values
+    /// and JavaScriptCore drains the resulting microtasks when the
+    /// evaluation's call stack empties.
+    ///
+    /// Shared by `evaluate` and `parse(code:)` rather than written out at
+    /// each: `checkSyntax(of:)` is only worth anything if it accepts and
+    /// rejects exactly the sources `run` accepts and rejects, and one wrapper
+    /// is what makes that true by construction.
+    ///
+    /// - Parameter code: the snippet source to wrap.
+    /// - Returns: the wrapped source to evaluate or parse.
+    private static func wrap(code: String) -> String {
+        """
+        (function(){ var outcome = {}; (async function(){\(code)
+        })().then(function(v){ outcome.value = v; outcome.done = true; }, \
+        function(e){ outcome.error = e; outcome.done = true; }); return outcome; })()
+        """
+    }
+
+    /// Parses `wrap(code:)`'s output through `JSCheckScriptSyntax` and throws
+    /// when the parser rejects it.
+    ///
+    /// The context is created solely to give the parser somewhere to allocate
+    /// its exception value and to convert it back: nothing is installed into
+    /// it, and nothing is evaluated in it.
+    ///
+    /// - Parameter code: the snippet source to parse.
+    /// - Throws: `InterpreterError` of kind `.exception` when the parser
+    ///   rejects the wrapped source.
+    private static func parse(code: String) throws {
+        guard let context = JSContext() else {
+            throw InterpreterError(kind: .exception, message: "Failed to create a JSContext.")
+        }
+        let script = JSStringCreateWithCFString(wrap(code: code) as CFString)
+        defer { JSStringRelease(script) }
+        var exception: JSValueRef?
+        guard !JSCheckScriptSyntax(context.jsGlobalContextRef, script, nil, 1, &exception) else { return }
+        guard let exception, let reported = JSValue(jsValueRef: exception, in: context) else {
+            throw InterpreterError(kind: .exception, message: unreadableExceptionMessage)
+        }
+        throw makeError(from: reported)
+    }
 
     /// A single run's sandbox: the `JSContextGroup`/`JSContext` pair, the
     /// installed standard surface, the watchdog wired to that group, and the
@@ -455,29 +530,7 @@ public final class JSCInterpreter: Interpreter {
             capturedException = exception
         }
 
-        // Wrap in an *async* IIFE so both a top-level `return` and a
-        // top-level `await` are legal — models with async-JS priors
-        // routinely write `await tools.getWeather(...)`, and under a plain
-        // IIFE that is a bare syntax error whose message never mentions
-        // `await` ("Unexpected identifier 'tools'"), an unrecoverable
-        // dead end for the model. An outer plain IIFE holds the outcome
-        // object as a local (never a global — the sandbox's injected-global
-        // surface is pinned by `HardeningTests`) and returns it; the async
-        // IIFE's `.then` callbacks capture and mutate that same object. The
-        // whole prefix is prepended to the snippet's own first line (rather
-        // than on a line of its own) so every reported line number still
-        // matches the caller's original source 1:1. The settled result is
-        // readable by the time `evaluateScript` returns for any snippet
-        // whose awaits resolve without external events — host functions are
-        // synchronous, so their awaited results are already-settled values
-        // and JavaScriptCore drains the resulting microtasks when the
-        // evaluation's call stack empties.
-        let wrapped = """
-            (function(){ var outcome = {}; (async function(){\(code)
-            })().then(function(v){ outcome.value = v; outcome.done = true; }, \
-            function(e){ outcome.error = e; outcome.done = true; }); return outcome; })()
-            """
-        let outcome = sandbox.context.evaluateScript(wrapped)
+        let outcome = sandbox.context.evaluateScript(Self.wrap(code: code))
 
         do {
             // Settle-before-return: block until every promise the async

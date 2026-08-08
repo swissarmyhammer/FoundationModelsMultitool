@@ -140,6 +140,14 @@ public struct FindAPIsTool: Tool {
     /// legitimately selected from the full candidate set is ever truncated.
     private let limit: Int
 
+    /// How to generate and validate the runnable sample this tool leads its
+    /// result with, or `nil` to answer with the signatures alone.
+    ///
+    /// Absent by default, exactly like the searcher's selection tier: a host
+    /// that supplies nothing here gets the result `findAPIs` has always
+    /// returned, byte for byte.
+    private let sample: SampleSnippetConfig?
+
     /// Creates a `findAPIs` tool over an already-built `searcher`.
     ///
     /// The test-facing/low-level entry point: a caller (production or test)
@@ -151,9 +159,17 @@ public struct FindAPIsTool: Tool {
     /// - Parameters:
     ///   - searcher: the searcher to forward every `findAPIs(task)` call to.
     ///   - limit: the maximum number of matches to request per call.
-    public init(searcher: MetadataSearcher<APISurface.Entry>, limit: Int) {
+    ///   - sample: how to generate and validate the runnable sample snippet
+    ///     this tool leads its result with. Defaults to `nil` — no sample, and
+    ///     the signatures-only result this tool has always returned.
+    public init(
+        searcher: MetadataSearcher<APISurface.Entry>,
+        limit: Int,
+        sample: SampleSnippetConfig? = nil
+    ) {
         self.searcher = searcher
         self.limit = limit
+        self.sample = sample
     }
 
     /// Creates a `findAPIs` tool bound to a resolved Router profile's
@@ -190,17 +206,38 @@ public struct FindAPIsTool: Tool {
     ///   - limit: the maximum number of matches to request per call. Defaults
     ///     to `nil`, which resolves to `registry.surface.entries.count` — so
     ///     nothing the searcher legitimately matched is ever truncated.
+    ///   - sampleGenerator: the resolved `RoutedLLM` the sample-snippet
+    ///     generation session runs on, or `nil` to leave sample generation
+    ///     unconfigured — this tool then answers with the signatures alone,
+    ///     exactly as it always has. Pass the **main** generation slot rather
+    ///     than the librarian's: the sample is code the model is told to run,
+    ///     so its quality matters more than its cost. The session is vended
+    ///     through `RoutedLLM.makeSession(instructions:)` with no `tools:`
+    ///     argument, which is what keeps `findAPIs` off the generation
+    ///     session's own surface: it writes a snippet, it does not execute
+    ///     one.
     /// - Throws: reserved for API stability across selection-tier wiring
     ///   changes; the current construction path has no fallible step.
-    public init(registry: MultiTool.Registry, librarian: RoutedLLM?, limit: Int? = nil) throws {
+    public init(
+        registry: MultiTool.Registry,
+        librarian: RoutedLLM?,
+        limit: Int? = nil,
+        sampleGenerator: RoutedLLM? = nil
+    ) throws {
         let selection: SelectionConfig? = librarian.map { librarian in
             SelectionConfig(model: { instructions, grammar in
                 RoutedAgentSession(session: librarian.makeGuidedSession(grammar: grammar, instructions: instructions))
             })
         }
+        let sample: SampleSnippetConfig? = sampleGenerator.map { generator in
+            SampleSnippetConfig(makeSession: { instructions in
+                RoutedAgentSession(session: generator.makeSession(instructions: instructions))
+            })
+        }
         self.init(
             searcher: MetadataSearcher(items: registry.surface.entries, mode: .auto, selection: selection),
-            limit: limit ?? registry.surface.entries.count
+            limit: limit ?? registry.surface.entries.count,
+            sample: sample
         )
     }
 
@@ -208,15 +245,32 @@ public struct FindAPIsTool: Tool {
     /// result into this tool's `Output`.
     ///
     /// - Parameter arguments: the plain-language goal to search for.
-    /// - Returns: the text describing the matched tool-functions — see
-    ///   `format(task:matches:)`.
-    /// - Throws: whatever `searcher.search(intent:limit:)` throws.
+    /// - Returns: the text describing the matched tool-functions, led by a
+    ///   validated runnable snippet when one was generated — see
+    ///   `format(task:matches:sample:)`.
+    /// - Throws: whatever `searcher.search(intent:limit:)` throws. Sample
+    ///   generation never throws out of here: a failure in it yields no
+    ///   sample, and discovery answers with the signatures alone.
     public func call(arguments: FindAPIsArguments) async throws -> String {
         let matches = try await searcher.search(intent: arguments.task, limit: limit)
-        return Self.format(task: arguments.task, matches: matches)
+        let snippet = await generateSample(forTask: arguments.task, over: matches.map(\.item))
+        return Self.format(task: arguments.task, matches: matches, sample: snippet)
     }
 
-    /// The imperative next-step footer every non-empty result ends with.
+    /// Generates and validates the runnable sample for one call, or answers
+    /// `nil` when this tool has no generator configured or the gate rejected
+    /// every candidate.
+    ///
+    /// - Parameters:
+    ///   - task: the plain-language goal passed to `findAPIs`.
+    ///   - entries: the matched entries the snippet may call.
+    /// - Returns: the validated snippet, or `nil`.
+    private func generateSample(forTask task: String, over entries: [APISurface.Entry]) async -> String? {
+        guard let sample else { return nil }
+        return await SampleSnippet.generate(forTask: task, over: entries, using: sample)
+    }
+
+    /// The imperative next-step footer a signatures-only result ends with.
     ///
     /// The result of a `findAPIs` call is the moment of maximum model
     /// attention, and describing functions without prescribing the next
@@ -233,6 +287,31 @@ public struct FindAPIsTool: Tool {
         returns.
         """
 
+    /// The imperative next-step footer a result carrying a validated sample
+    /// ends with, in place of ``nextStepFooter``.
+    ///
+    /// "Now write one runCode snippet" is false once a snippet has been
+    /// supplied — following it literally means discarding the sample and
+    /// writing another, which throws away the whole point of generating one.
+    /// So this footer points at *that* snippet, and demotes the signature
+    /// blocks behind it to what they now are: the material for repairing a
+    /// real error, not the material for composing a first attempt.
+    ///
+    /// The sample earned that framing by clearing the gate — real syntax, real
+    /// paths, real arities, real field access. What can survive the gate is
+    /// semantic wrongness, and `runCode`'s own repair path already handles
+    /// that: the error comes back and the model fixes the snippet.
+    private static let runSampleFooter = """
+        Call runCode now with that snippet, and answer only from what it returns. The \
+        signatures it was written against are below — read them only to fix an error \
+        runCode hands back.
+        """
+
+    /// The heading the signature blocks sit under when a sample leads the
+    /// result, so their demotion to supporting material is stated rather than
+    /// merely implied by position.
+    private static let signaturesHeading = "The functions that snippet calls:"
+
     /// Formats a search result into the text describing the matched
     /// tool-functions — one block per matched function, each entry's
     /// verbatim `Match.item.block` — the `// tools.<path>` banner naming its
@@ -245,19 +324,31 @@ public struct FindAPIsTool: Tool {
     /// embedded `@example` line just displayed. A non-empty result closes
     /// with `nextStepFooter`.
     ///
+    /// When `sample` is present the runnable snippet **leads**, and the
+    /// signature blocks follow it as supporting material: the deliverable is
+    /// code to run, not documentation to read, so the code is what the model
+    /// reads first. When it is absent the result is exactly what it has always
+    /// been, down to the byte — a generator that failed, timed out, or was
+    /// never configured must never cost discovery anything.
+    ///
     /// - Parameters:
     ///   - task: the plain-language goal passed to `findAPIs`, echoed in the
     ///     header line.
     ///   - matches: the searcher's decoded result.
+    ///   - sample: the validated runnable snippet to lead with, or `nil` for
+    ///     the signatures-only result. Defaults to `nil`.
     /// - Returns: the formatted text.
-    static func format(task: String, matches: [Match<APISurface.Entry>]) -> String {
+    static func format(task: String, matches: [Match<APISurface.Entry>], sample: String? = nil) -> String {
         guard !matches.isEmpty else {
             return "findAPIs(\"\(task)\") found no matching functions."
         }
-        let blocks = matches.map { match in
-            "\(match.item.block)\nExample: \(match.item.qualifiedExample)"
+        let blocks = matches
+            .map { match in "\(match.item.block)\nExample: \(match.item.qualifiedExample)" }
+            .joined(separator: "\n\n")
+        guard let sample else {
+            return "findAPIs(\"\(task)\") found:\n" + blocks + "\n\n\(nextStepFooter)"
         }
-        return "findAPIs(\"\(task)\") found:\n" + blocks.joined(separator: "\n\n")
-            + "\n\n\(nextStepFooter)"
+        return "findAPIs(\"\(task)\") wrote this snippet for that task:\n\n\(sample)\n\n"
+            + "\(runSampleFooter)\n\n\(signaturesHeading)\n" + blocks
     }
 }

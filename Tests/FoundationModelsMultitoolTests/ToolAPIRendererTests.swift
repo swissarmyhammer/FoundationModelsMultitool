@@ -559,4 +559,91 @@ struct ToolAPIRendererTests {
             "expected exactly one \"*/\" (the block's own terminator); doc was: \(descriptor.doc)"
         )
     }
+
+    // MARK: - The structural signature behind the declaration
+
+    @Test("the signature carries the argument object's declared shape, with required-ness and enum choices")
+    func signatureCarriesArgumentObjectShape() throws {
+        let descriptor = try ToolAPIRenderer.render(WeatherTool())
+
+        #expect(descriptor.signature.arguments.properties.map(\.name) == ["city", "units"])
+        let city = try #require(descriptor.signature.arguments.property(named: "city"))
+        #expect(city.isRequired)
+        #expect(city.shape == .string(choices: []))
+        let units = try #require(descriptor.signature.arguments.property(named: "units"))
+        #expect(!units.isRequired)
+        #expect(units.shape == .string(choices: [.string("c"), .string("f")]))
+    }
+
+    @Test("the signature and the declaration cannot disagree: the declaration is rendered from the signature")
+    func declarationIsRenderedFromTheSignature() throws {
+        let descriptor = try ToolAPIRenderer.render(WeatherTool())
+
+        // The one string the model reads and the one shape the checker reads
+        // come from the same value, so this is an identity rather than two
+        // independently-derived renderings that happen to agree.
+        #expect(
+            descriptor.declaration == "declare function getWeather("
+                + "args: \(descriptor.signature.arguments.declaredType)): "
+                + "Promise<\(descriptor.signature.result.declaredType)>;"
+        )
+    }
+
+    @Test("the signature's result mirrors a structured Output's own schema")
+    func signatureResultMirrorsStructuredOutputSchema() throws {
+        let descriptor = try ToolAPIRenderer.render(WeatherTool())
+
+        #expect(
+            descriptor.signature.result
+                == .object(
+                    ToolObjectShape(properties: [
+                        ToolObjectShape.Property(name: "tempC", shape: .number, isRequired: true),
+                        ToolObjectShape.Property(name: "summary", shape: .string(choices: []), isRequired: true),
+                    ])
+                )
+        )
+    }
+
+    @Test("the signature's result is a plain string for a non-Generable Output")
+    func signatureResultIsStringForPlainTextOutput() throws {
+        let descriptor = try ToolAPIRenderer.render(PlainTextTool())
+
+        #expect(descriptor.signature.result == .string(choices: []))
+    }
+
+    @Test("an array of nested objects renders as an array shape over an object shape")
+    func signatureOfArrayOfNestedObjects() throws {
+        let descriptor = try ToolAPIRenderer.render(
+            name: "route",
+            description: "A route.",
+            parameters: ArrayOfNestedArgument.generationSchema
+        )
+
+        let stops = try #require(descriptor.signature.arguments.property(named: "stops"))
+        #expect(
+            stops.shape
+                == .array(
+                    element: .object(
+                        ToolObjectShape(properties: [
+                            ToolObjectShape.Property(name: "street", shape: .string(choices: []), isRequired: true),
+                            ToolObjectShape.Property(name: "city", shape: .string(choices: []), isRequired: true),
+                        ])
+                    )
+                )
+        )
+    }
+
+    @Test("the signature widens to any exactly where the declaration does")
+    func signatureWidensWhereDeclarationWidens() throws {
+        let descriptor = try ToolAPIRenderer.render(
+            name: "describeShape",
+            description: "Describes a shape.",
+            parameters: UnrenderableArgument.generationSchema,
+            onWiden: { _ in }
+        )
+
+        #expect(descriptor.declaration.contains("shape: any"))
+        let shape = try #require(descriptor.signature.arguments.property(named: "shape"))
+        #expect(shape.shape == .any)
+    }
 }

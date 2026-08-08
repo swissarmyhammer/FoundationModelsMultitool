@@ -269,9 +269,15 @@ enum UnknownToolHint {
     /// which is what lets one pattern answer both "which path failed" and
     /// "did this snippet reach for anything real".
     ///
+    /// Internal (not `private`), rather than duplicated, because the same
+    /// question — "which `tools.*` paths does this text name" — is what
+    /// `SampleSnippet`'s gate asks of a generated candidate before it will
+    /// hand it to the model. One pattern, one answer, whether the text is a
+    /// thrown message, the model's own snippet, or a generated one.
+    ///
     /// - Parameter text: the exception message or snippet source to scan.
     /// - Returns: the referenced dotted paths, duplicates included.
-    private static func referencedToolPaths(in text: String) -> [String] {
+    static func referencedToolPaths(in text: String) -> [String] {
         let pattern = /tools\.([A-Za-z_$][A-Za-z0-9_$]*(?:\.[A-Za-z_$][A-Za-z0-9_$]*)*)/
         return text.matches(of: pattern).map { String($0.1) }
     }

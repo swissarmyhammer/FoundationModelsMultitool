@@ -316,6 +316,68 @@ struct JSCInterpreterTests {
         }
     }
 
+    // MARK: - Parse-only syntax check
+
+    @Test("checkSyntax accepts a snippet that parses")
+    func syntaxCheckAcceptsParseableSnippet() throws {
+        let interpreter = JSCInterpreter()
+        #expect(throws: Never.self) {
+            try interpreter.checkSyntax(of: "const x = 1;\nreturn x + 1;")
+        }
+    }
+
+    @Test("checkSyntax accepts a top-level await and a top-level return, exactly as run does")
+    func syntaxCheckAcceptsTopLevelAwaitAndReturn() throws {
+        let interpreter = JSCInterpreter()
+        // Neither is legal at the true top level of a script — both are legal
+        // only inside the async IIFE `run` wraps every snippet in, so this
+        // passing is what proves the check parses the same wrapped source
+        // `run` evaluates.
+        #expect(throws: Never.self) {
+            try interpreter.checkSyntax(of: "const w = await someCall();\nreturn w.field;")
+        }
+    }
+
+    @Test("checkSyntax rejects a snippet that does not parse, reporting the engine's own message and line")
+    func syntaxCheckRejectsUnparseableSnippet() throws {
+        let interpreter = JSCInterpreter()
+        #expect {
+            try interpreter.checkSyntax(of: "const x = 1;\nreturn x +;")
+        } throws: { error in
+            guard let interpreterError = error as? InterpreterError else { return false }
+            return interpreterError.kind == .exception
+                && !interpreterError.message.isEmpty
+                && interpreterError.line == 2
+        }
+    }
+
+    @Test("checkSyntax executes nothing: an infinite loop parses instead of hitting the watchdog")
+    func syntaxCheckExecutesNothing() throws {
+        // `run` on this source terminates only via the watchdog, after the
+        // whole time limit. Parsing it returns at once, which is the
+        // observable difference between checking and running.
+        let interpreter = JSCInterpreter(timeLimit: 30.0)
+        let start = ContinuousClock.now
+        #expect(throws: Never.self) {
+            try interpreter.checkSyntax(of: "while (true) {}")
+        }
+        #expect(start.duration(to: .now) < .seconds(1))
+    }
+
+    @Test("checkSyntax installs nothing: a snippet naming an uninstalled global still parses")
+    func syntaxCheckInstallsNothing() throws {
+        let interpreter = JSCInterpreter()
+        // `tools` is never installed by `checkSyntax`, and an unresolved
+        // identifier is a runtime failure rather than a parse failure — so
+        // this parses, and would throw a `ReferenceError` under `run`.
+        #expect(throws: Never.self) {
+            try interpreter.checkSyntax(of: "return tools.whatever();")
+        }
+        #expect(throws: InterpreterError.self) {
+            try interpreter.run(code: "return tools.whatever();", installing: [])
+        }
+    }
+
     // MARK: - Async host functions (promise pump)
 
     @Test("a snippet may await an async host function's result at the top level")

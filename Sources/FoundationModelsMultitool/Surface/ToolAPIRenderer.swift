@@ -171,7 +171,8 @@ public enum ToolAPIRenderer {
         }
 
         var argsContext = RenderContext(root: parametersNode, defs: parametersNode.defs ?? [:])
-        let argsType = try tsType(for: parametersNode, context: &argsContext, path: "args", onWiden: onWiden)
+        let argumentsShape = try objectShape(parametersNode, context: &argsContext, path: "args", onWiden: onWiden)
+        let argsType = argumentsShape.declaredType
 
         let order = propertyOrder(of: parametersNode)
         let required = Set(parametersNode.required ?? [])
@@ -194,18 +195,19 @@ public enum ToolAPIRenderer {
             }
         }
 
-        let resolvedType: String
+        let resultShape: ToolValueShape
         let returnsDescription: String?
         switch returns {
         case .schema(let schema):
             let node = try decode(schema, subject: "\"\(name)\"'s return")
             var returnsContext = RenderContext(root: node, defs: node.defs ?? [:])
-            resolvedType = try tsType(for: node, context: &returnsContext, path: "returns", onWiden: onWiden)
+            resultShape = try shape(for: node, context: &returnsContext, path: "returns", onWiden: onWiden)
             returnsDescription = node.description
         case .text:
-            resolvedType = typeString
+            resultShape = .string(choices: [])
             returnsDescription = "plain text result."
         }
+        let resolvedType = resultShape.declaredType
         // Every `tools.<name>` binding is installed as an `AsyncHostFunction`
         // on the interpreter's promise pump (eventplan.md "Async JavaScript"),
         // so the call evaluates to a JS `Promise` and the schema-derived
@@ -258,7 +260,8 @@ public enum ToolAPIRenderer {
             declaration: declaration,
             doc: doc,
             example: "\(exampleCall);",
-            source: "\(doc)\n\(declaration)"
+            source: "\(doc)\n\(declaration)",
+            signature: ToolSignature(arguments: argumentsShape, result: resultShape)
         )
     }
 
@@ -434,7 +437,12 @@ public enum ToolAPIRenderer {
     /// string literal: backslashes first (so a backslash already present
     /// in `text` isn't re-escaped by the quote-escaping step that
     /// follows), then double quotes.
-    private static func escapeForJSStringLiteral(_ text: String) -> String {
+    ///
+    /// Internal (not `private`), rather than duplicated, so `TypedMockDryRun`
+    /// can build on it when it splices a rendered declared type or a property
+    /// name into the JavaScript harness it generates — the same posture this
+    /// file takes toward sharing `isLegalTSIdentifier`.
+    static func escapeForJSStringLiteral(_ text: String) -> String {
         text.replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")
     }
@@ -473,14 +481,14 @@ public enum ToolAPIRenderer {
     // MARK: - Type rendering (the type-mapping table)
 
     /// The TypeScript `any` type name, returned whenever a schema element
-    /// widens rather than mapping to a precise TS type — `tsType` returns it
-    /// from three distinct widening branches.
+    /// widens rather than mapping to a precise TS type — `shape(for:context:
+    /// path:onWiden:)` widens from three distinct branches.
     private static let anyTypeName = "any"
 
     /// The JSON Schema `"type"` keyword's scalar values this renderer
     /// recognizes, compared or switched on against `SchemaNode.type`
-    /// throughout `tsType` and its sibling doc/example-synthesis helpers
-    /// below.
+    /// throughout `shape(for:context:path:onWiden:)` and its sibling
+    /// doc/example-synthesis helpers below.
     ///
     /// Named rather than inlined because each is referenced at three or
     /// more call sites.
@@ -491,11 +499,60 @@ public enum ToolAPIRenderer {
     private static let typeBoolean = "boolean"
     private static let typeArray = "array"
 
-    /// Renders `node`'s TypeScript type, resolving `$ref`s and recursing
-    /// into `object`/`array` structure.
+    /// Renders `shape`'s TypeScript type — the one place a `ToolValueShape`
+    /// becomes the text a `declare function` line carries.
+    ///
+    /// Backs `ToolValueShape.declaredType`. Rendering from the shape rather
+    /// than from the schema a second time is what makes the advertised
+    /// signature and the structural signature one description of a tool
+    /// instead of two: there is no second traversal to fall out of step.
+    ///
+    /// - Parameter shape: the declared shape to render.
+    /// - Returns: the rendered TypeScript type.
+    static func declaredType(of shape: ToolValueShape) -> String {
+        switch shape {
+        case .string(let choices):
+            return choices.isEmpty ? typeString : enumUnion(choices)
+        case .number:
+            return typeNumber
+        case .boolean:
+            return typeBoolean
+        case .array(let element):
+            return "\(declaredType(of: element))[]"
+        case .object(let object):
+            return declaredType(ofObject: object)
+        case .any:
+            return anyTypeName
+        }
+    }
+
+    /// Renders an object shape as an inline TS object type, `{ a: T; b?: U }`,
+    /// in declared order.
+    ///
+    /// Keys go through `objectKeyLiteral`, same as the example-literal
+    /// builders — this is the *real* declared type (embedded in `declare
+    /// function`'s signature, not just a doc/example), so a schema-derived
+    /// property name containing a quote or other special character must
+    /// not be allowed to break out of the object-type syntax here either.
+    ///
+    /// Backs `ToolObjectShape.declaredType`.
+    ///
+    /// - Parameter object: the declared object shape to render.
+    /// - Returns: the rendered inline TS object type.
+    static func declaredType(ofObject object: ToolObjectShape) -> String {
+        guard !object.properties.isEmpty else { return "{}" }
+        let parts = object.properties.map { property in
+            let optionalMark = property.isRequired ? "" : "?"
+            return "\(objectKeyLiteral(property.name))\(optionalMark): \(declaredType(of: property.shape))"
+        }
+        return "{ \(parts.joined(separator: "; ")) }"
+    }
+
+    /// Reads `node`'s declared shape, resolving `$ref`s and recursing into
+    /// `object`/`array` structure.
     ///
     /// Widens anything this function doesn't have a specific mapping for to
-    /// `any`, reporting through `onWiden` — except a missing `"type"` (and
+    /// `.any`, reporting through `onWiden` — except a missing `"type"` (and
     /// no `anyOf` either), which means the node can't be identified at all,
     /// so it throws instead (the completeness contract: throw rather than
     /// emit a lossy stub).
@@ -510,97 +567,90 @@ public enum ToolAPIRenderer {
     /// independent line of defense rather than dead weight to remove.
     ///
     /// - Parameters:
-    ///   - node: the schema node whose TypeScript type to render.
+    ///   - node: the schema node whose declared shape to read.
     ///   - context: the rendering context for `$ref` resolution and cycle
     ///     detection.
     ///   - path: the node's location within the schema, for error and
     ///     `onWiden` messages.
-    ///   - onWiden: called when this node's type widens to `any`.
-    /// - Returns: the rendered TypeScript type.
-    private static func tsType(
+    ///   - onWiden: called when this node's shape widens to `.any`.
+    /// - Returns: the node's declared shape.
+    /// - Throws: `ToolAPIRendererError` when the node cannot be identified,
+    ///   references an unresolvable `$ref`, or is an array missing `"items"`.
+    private static func shape(
         for node: SchemaNode,
         context: inout RenderContext,
         path: String,
         onWiden: (String) -> Void
-    ) throws -> String {
+    ) throws -> ToolValueShape {
         if let ref = node.ref {
             guard !context.inProgressRefs.contains(ref) else {
                 onWiden("Cyclic $ref \"\(ref)\" at \(path); widening to `any`.")
-                return anyTypeName
+                return .any
             }
             guard let resolved = context.resolve(ref) else {
                 throw ToolAPIRendererError("Unresolvable $ref \"\(ref)\" at \(path).")
             }
             context.inProgressRefs.insert(ref)
             defer { context.inProgressRefs.remove(ref) }
-            return try tsType(for: resolved, context: &context, path: path, onWiden: onWiden)
+            return try shape(for: resolved, context: &context, path: path, onWiden: onWiden)
         }
 
         guard let type = node.type else {
             if node.anyOf != nil {
                 onWiden("Unrenderable schema element (anyOf) at \(path); widening to `any`.")
-                return anyTypeName
+                return .any
             }
             throw ToolAPIRendererError("Schema node at \(path) has no \"type\" and cannot be rendered.")
         }
 
         switch type {
         case typeObject:
-            return try renderObjectType(node, context: &context, path: path, onWiden: onWiden)
+            return .object(try objectShape(node, context: &context, path: path, onWiden: onWiden))
         case typeString:
-            if let enumValues = node.enumValues, !enumValues.isEmpty {
-                return enumUnion(enumValues)
-            }
-            return typeString
+            return .string(choices: node.enumValues ?? [])
         case typeInteger, typeNumber:
-            return typeNumber
+            return .number
         case typeBoolean:
-            return typeBoolean
+            return .boolean
         case typeArray:
             guard let items = node.items else {
                 throw ToolAPIRendererError("Array schema at \(path) is missing \"items\".")
             }
-            let elementType = try tsType(for: items, context: &context, path: "\(path)[]", onWiden: onWiden)
-            return "\(elementType)[]"
+            return .array(element: try shape(for: items, context: &context, path: "\(path)[]", onWiden: onWiden))
         default:
             onWiden("Unrecognized schema type \"\(type)\" at \(path); widening to `any`.")
-            return anyTypeName
+            return .any
         }
     }
 
-    /// Renders an `object` node's properties as an inline TS object type,
-    /// `{ a: T; b?: U }`, in declared order.
-    ///
-    /// Keys go through `objectKeyLiteral`, same as the example-literal
-    /// builders — this is the *real* declared type (embedded in `declare
-    /// function`'s signature, not just a doc/example), so a schema-derived
-    /// property name containing a quote or other special character must
-    /// not be allowed to break out of the object-type syntax here either.
+    /// Reads an `object` node's declared properties, in declared order.
     ///
     /// - Parameters:
-    ///   - node: the object schema node to render.
+    ///   - node: the object schema node to read.
     ///   - context: the rendering context for `$ref` resolution.
     ///   - path: the node's location within the schema, for error and
     ///     `onWiden` messages.
-    ///   - onWiden: called when a property's type widens to `any`.
-    /// - Returns: the rendered inline TS object type.
-    private static func renderObjectType(
+    ///   - onWiden: called when a property's shape widens to `.any`.
+    /// - Returns: the node's declared object shape.
+    /// - Throws: whatever `shape(for:context:path:onWiden:)` throws for one of
+    ///   the node's properties.
+    private static func objectShape(
         _ node: SchemaNode,
         context: inout RenderContext,
         path: String,
         onWiden: (String) -> Void
-    ) throws -> String {
+    ) throws -> ToolObjectShape {
         let properties = node.properties ?? [:]
-        guard !properties.isEmpty else { return "{}" }
         let required = Set(node.required ?? [])
-        var parts: [String] = []
+        var declared: [ToolObjectShape.Property] = []
         for key in propertyOrder(of: node) {
             guard let propertyNode = properties[key] else { continue }
-            let propertyType = try tsType(for: propertyNode, context: &context, path: "\(path).\(key)", onWiden: onWiden)
-            let optionalMark = required.contains(key) ? "" : "?"
-            parts.append("\(objectKeyLiteral(key))\(optionalMark): \(propertyType)")
+            let propertyShape = try shape(for: propertyNode, context: &context, path: "\(path).\(key)", onWiden: onWiden)
+            declared.append(
+                ToolObjectShape.Property(name: key, shape: propertyShape, isRequired: required.contains(key))
+            )
         }
-        return "{ \(parts.joined(separator: "; ")) }"
+        return ToolObjectShape(properties: declared)
     }
 
     // MARK: - Doc-comment rendering (the doc-mapping table)

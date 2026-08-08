@@ -1,5 +1,6 @@
 import FoundationModelsMetadataRegistry
 import Testing
+import os
 
 @testable import FoundationModelsMultitool
 
@@ -211,5 +212,105 @@ struct FindAPIsToolTests {
 
         #expect(feedback.contains("findAPIs(\"trip cities\") found:"))
         #expect(findAPIsTool.name == "findAPIs")
+    }
+
+    // MARK: - The generated sample leads the output
+
+    /// A candidate snippet that clears every gate against a
+    /// `CitiesTool` + `TempTool` catalog.
+    static let sampleReply = """
+        ```js
+        const trip = await tools.getCities({});
+        const temp = await tools.getTemperature({ city: trip.cities[0] });
+        return temp.tempC;
+        ```
+        """
+
+    /// Builds a `findAPIs` over a `CitiesTool` + `TempTool` catalog, with a
+    /// scripted sample generator whose turns are `replies`.
+    ///
+    /// - Parameter replies: one canned generator reply per expected turn, or
+    ///   an empty array to configure no generator at all.
+    /// - Returns: the catalog and the tool over it.
+    static func toolWithScriptedGenerator(
+        replies: [String]?
+    ) throws -> (surface: APISurface, tool: FindAPIsTool) {
+        let surface = try MultiTool.Builder().addTool(CitiesTool()).addTool(TempTool()).build()
+        let searcher = MetadataSearcher(items: surface.entries, mode: .auto)
+        let sample = replies.map { replies in
+            let session = ScriptedAgentSession(replies)
+            return SampleSnippetConfig(
+                makeSession: { _ in session },
+                interpreter: JSCInterpreter(timeLimit: 5.0)
+            )
+        }
+        return (surface, FindAPIsTool(searcher: searcher, limit: surface.entries.count, sample: sample))
+    }
+
+    @Test("a validated sample leads the result, ahead of the signature blocks, and replaces the write-a-snippet footer")
+    func validatedSampleLeadsTheResult() async throws {
+        let (surface, tool) = try Self.toolWithScriptedGenerator(replies: [Self.sampleReply])
+        let entry = try #require(surface.entries.first { $0.path == "getCities" })
+
+        let feedback = try await tool.call(arguments: FindAPIsArguments(task: "how warm is the trip"))
+
+        // The snippet itself, unfenced, is what the model reads first.
+        #expect(feedback.contains("const trip = await tools.getCities({});"))
+        #expect(!feedback.contains("```"))
+        // The footer directs the model at *this* snippet; the old "go write
+        // one" instruction would tell it to discard the snippet and write
+        // another.
+        #expect(feedback.contains("Call runCode now"))
+        #expect(!feedback.contains("Now write one runCode snippet"))
+        // Signatures are supporting material behind the code, not ahead of it.
+        let snippetRange = try #require(feedback.range(of: "return temp.tempC;"))
+        let blockRange = try #require(feedback.range(of: entry.block))
+        #expect(snippetRange.upperBound <= blockRange.lowerBound)
+    }
+
+    @Test("an always-failing generator returns exactly the result no generator at all would return")
+    func failingGeneratorFallsBackToTheSignaturesOnlyResult() async throws {
+        let unusable = "I will not write that."
+        let (_, withGenerator) = try Self.toolWithScriptedGenerator(replies: [unusable, unusable, unusable])
+        let (_, withoutGenerator) = try Self.toolWithScriptedGenerator(replies: nil)
+        let arguments = FindAPIsArguments(task: "how warm is the trip")
+
+        let fallback = try await withGenerator.call(arguments: arguments)
+        let today = try await withoutGenerator.call(arguments: arguments)
+
+        #expect(fallback == today)
+        #expect(fallback.contains("Now write one runCode snippet"))
+    }
+
+    @Test("a generator is never asked for a sample when nothing matched")
+    func noMatchesNeverAsksTheGenerator() async throws {
+        let surface = try MultiTool.Builder().addTool(CitiesTool()).build()
+        let root = RootSessionRespondCalledDirectlySession(forkResponses: [#"{"ids":[]}"#])
+        let searcher = MetadataSearcher(
+            items: surface.entries,
+            mode: .auto,
+            selection: SelectionConfig(model: { _, _ in root }, capacityCharacterLimit: .max)
+        )
+        let session = ScriptedAgentSession([Self.sampleReply])
+        let tool = FindAPIsTool(
+            searcher: searcher,
+            limit: surface.entries.count,
+            sample: SampleSnippetConfig(makeSession: { _ in session }, interpreter: JSCInterpreter(timeLimit: 5.0))
+        )
+
+        let feedback = try await tool.call(arguments: FindAPIsArguments(task: "something no tool does"))
+
+        #expect(feedback == "findAPIs(\"something no tool does\") found no matching functions.")
+        #expect(session.callCount == 0)
+    }
+
+    @Test("the production initializer leaves sample generation unconfigured unless a generator is supplied")
+    func productionInitializerLeavesSampleGenerationOff() async throws {
+        let registry = try MultiTool.Builder().addTool(CitiesTool()).buildRegistry()
+
+        let tool = try FindAPIsTool(registry: registry, librarian: nil, sampleGenerator: nil)
+        let feedback = try await tool.call(arguments: FindAPIsArguments(task: "trip cities"))
+
+        #expect(feedback.contains("Now write one runCode snippet"))
     }
 }
