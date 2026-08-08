@@ -136,6 +136,17 @@ enum UnknownToolHint {
     /// through to catalog relevance.
     private static let similarityThreshold = 0.2
 
+    /// The character-window width `trigrams(of:)` splits a name into — the
+    /// "tri" in trigram, and what makes `trigramSimilarity(_:_:)` a trigram
+    /// overlap rather than an n-gram overlap at some other width.
+    private static let trigramLength = 3
+
+    /// The characters that separate words inside a `tools.*` path: the dotted
+    /// path's own separator, plus the two non-alphanumeric characters a
+    /// JavaScript identifier may contain (`referencedToolPaths(in:)`'s
+    /// pattern).
+    private static let wordSeparators: Set<Character> = [".", "_", "$"]
+
     /// Resolves one failed snippet's unknown `tools.*` path, or nil when the
     /// failure has nothing to do with an unknown path.
     ///
@@ -386,18 +397,52 @@ enum UnknownToolHint {
         var words: [String] = []
         var word = ""
         for character in failedPath {
-            if character == "." || character == "_" || character == "$" {
+            switch wordBoundary(at: character, continuing: word) {
+            case .separator:
                 words.append(word)
                 word = ""
-            } else if character.isUppercase, !word.isEmpty {
+            case .wordStart:
                 words.append(word)
                 word = String(character)
-            } else {
+            case .continuation:
                 word.append(character)
             }
         }
         words.append(word)
         return words.filter { !$0.isEmpty }.joined(separator: " ").lowercased()
+    }
+
+    /// What one character of a dotted, camel-cased `tools.*` path does to the
+    /// word `intent(spelling:)` is accumulating.
+    private enum WordBoundary {
+        /// A `wordSeparators` character: it closes the word before it and is
+        /// part of no word itself.
+        case separator
+
+        /// The first character of a new word — where camel case splits.
+        case wordStart
+
+        /// A character that continues the word being accumulated.
+        case continuation
+    }
+
+    /// Classifies one character of a dotted, camel-cased path by the word
+    /// boundary it introduces.
+    ///
+    /// Separate from `intent(spelling:)`'s loop so that deciding *what* a
+    /// character is stays apart from acting on it: the loop reads as the three
+    /// things that can happen to the word being accumulated, and this reads as
+    /// the classification alone.
+    ///
+    /// - Parameters:
+    ///   - character: the character to classify.
+    ///   - word: the word accumulated so far, which is what decides whether an
+    ///     uppercase character starts a new word or is simply the first
+    ///     character of the current one.
+    /// - Returns: the boundary `character` introduces.
+    private static func wordBoundary(at character: Character, continuing word: String) -> WordBoundary {
+        if wordSeparators.contains(character) { return .separator }
+        return character.isUppercase && !word.isEmpty ? .wordStart : .continuation
     }
 
     /// Computes the Jaccard similarity of the two strings' character
@@ -417,13 +462,17 @@ enum UnknownToolHint {
         return Double(intersection) / Double(union)
     }
 
-    /// Splits `text` into its set of 3-character substrings.
+    /// Splits `text` into its set of `trigramLength`-character substrings.
     ///
     /// - Parameter text: the (lowercased) name to split.
-    /// - Returns: every consecutive 3-character window in `text`.
+    /// - Returns: every consecutive `trigramLength`-character window in `text`.
     private static func trigrams(of text: String) -> Set<String> {
         let characters = Array(text)
-        guard characters.count >= 3 else { return [] }
-        return Set((0...(characters.count - 3)).map { String(characters[$0..<($0 + 3)]) })
+        guard characters.count >= trigramLength else { return [] }
+        return Set(
+            (0...(characters.count - trigramLength)).map {
+                String(characters[$0..<($0 + trigramLength)])
+            }
+        )
     }
 }

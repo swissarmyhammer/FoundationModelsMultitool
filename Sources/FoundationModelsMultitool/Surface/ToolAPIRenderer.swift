@@ -928,11 +928,21 @@ public enum ToolAPIRenderer {
         }
     }
 
+    /// The magnitude a whole-valued `Double` must stay under to be rendered
+    /// through `Int64`.
+    ///
+    /// Well inside both limits that matter: `Int64`'s range, which the
+    /// conversion would otherwise trap outside of, and 2^53, above which a
+    /// `Double` no longer holds consecutive integers — so a value this far out
+    /// is rendered by `Double`'s own description, which says what the value
+    /// actually is rather than what an integer cast made of it.
+    private static let integerRenderingMagnitudeLimit: Double = 1e15
+
     /// Formats a `Double` without a trailing `.0` for whole numbers (JSON
     /// Schema `minimum`/`maximum` decode as `Double` even for an `integer`
     /// schema), and via its normal description otherwise.
     private static func formatNumber(_ value: Double) -> String {
-        if value == value.rounded(), abs(value) < 1e15 {
+        if value == value.rounded(), abs(value) < integerRenderingMagnitudeLimit {
             return String(Int64(value))
         }
         return String(value)

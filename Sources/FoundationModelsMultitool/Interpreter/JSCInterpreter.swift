@@ -1168,7 +1168,7 @@ public final class JSCInterpreter: Interpreter {
         let getTrap: @convention(block) () -> JSValue? = {
             guard let currentContext = JSContext.current() else { return nil }
             let arguments = (JSContext.currentArguments() as? [JSValue]) ?? []
-            guard arguments.count >= 2 else { return nil }
+            guard arguments.count >= proxyGetTrapArgumentsRead else { return nil }
             let target = arguments[0]
             let propertyKey = arguments[1]
             let propertyName: String? = propertyKey.isString ? propertyKey.toString() : nil
@@ -1234,6 +1234,12 @@ public final class JSCInterpreter: Interpreter {
         return text
     }
 
+    /// How many of a `get` trap's arguments `wrapInForgotAwaitProxy`'s trap
+    /// reads: ECMA-262 calls a `get` trap with `(target, property, receiver)`,
+    /// and the trap needs the first two — the object to forward an exempt
+    /// property to, and the key that decides whether it is exempt.
+    private static let proxyGetTrapArgumentsRead = 2
+
     /// The non-enumerable own property name `install(asyncHostFunction:into:
     /// registry:)` stashes the internal promise under, read back via
     /// `JSContext.currentThis()` inside the tracked `then` — see that
@@ -1257,7 +1263,8 @@ public final class JSCInterpreter: Interpreter {
     ///
     /// While no promise has settled yet, no JS is executing, so JSC's own
     /// watchdog callback (`jscTerminateCallback`) cannot fire — this polls
-    /// `sandbox.watchdogState.shouldTerminate()` itself instead, waking
+    /// `sandbox.watchdogState.shouldTerminate()` itself instead (through
+    /// `handleSettlements(ready:in:recordingFailuresTo:)`), waking
     /// immediately on a settlement (via `PromiseRegistry`'s semaphore) or, at
     /// worst, every `watchdogPollInterval`. On a decision to terminate
     /// (timeout or M10 cancellation), every still-pending entry's `Task` is
@@ -1293,17 +1300,59 @@ public final class JSCInterpreter: Interpreter {
         var failures: [(name: String, message: String, consumed: ConsumedFlag?)] = []
         while !sandbox.promiseRegistry.isEmpty {
             let ready = sandbox.promiseRegistry.waitAndTakeReadyToSettle(timeout: .now() + watchdogPollInterval)
-            if !ready.isEmpty {
-                settle(ready, in: sandbox.context, recordingFailuresTo: &failures)
+            switch handleSettlements(ready: ready, in: sandbox, recordingFailuresTo: &failures) {
+            case .keepPolling:
                 continue
-            }
-            guard !sandbox.watchdogState.shouldTerminate() else {
-                sandbox.promiseRegistry.cancelAllPending()
+            case .terminated:
                 return nil
             }
         }
         guard let floating = failures.first(where: { $0.consumed?.value != true }) else { return nil }
         return InterpreterError(kind: .exception, message: "\(floating.name): \(floating.message)")
+    }
+
+    /// What one poll of `pumpUntilSettled`'s loop decided.
+    private enum PollOutcome {
+        /// Poll again: either a batch of promises just settled, or the poll
+        /// timed out with the watchdog content to let the run continue.
+        case keepPolling
+
+        /// Stop: the watchdog decided to terminate the run, and every
+        /// still-pending entry's `Task` has been cancelled.
+        case terminated
+    }
+
+    /// Handles one poll of `pumpUntilSettled`'s loop, and reports whether that
+    /// loop should poll again.
+    ///
+    /// The two things a poll can come back with are handled here rather than in
+    /// the loop, so the loop reads as the polling contract — poll again, or the
+    /// run is over — instead of as nested branches. `ready` carries whichever
+    /// happened: a non-empty batch is settled, and an empty one means the poll
+    /// timed out with nothing new, which is the only moment the watchdog gets
+    /// asked (see `pumpUntilSettled`'s own documentation for why the watchdog
+    /// has to be polled from here at all).
+    ///
+    /// - Parameters:
+    ///   - ready: the batch `waitAndTakeReadyToSettle(timeout:)` returned,
+    ///     empty when that poll timed out.
+    ///   - sandbox: the run's sandbox — its context settles the promises, and
+    ///     its `watchdogState` decides termination.
+    ///   - failures: the rejections recorded so far, appended to for
+    ///     `pumpUntilSettled`'s end-of-drain floating-rejection check.
+    /// - Returns: whether `pumpUntilSettled` should poll again.
+    private static func handleSettlements(
+        ready: [(resolve: JSValue, reject: JSValue, name: String, outcome: PromiseRegistry.Outcome, consumed: ConsumedFlag?)],
+        in sandbox: Sandbox,
+        recordingFailuresTo failures: inout [(name: String, message: String, consumed: ConsumedFlag?)]
+    ) -> PollOutcome {
+        if !ready.isEmpty {
+            settle(ready, in: sandbox.context, recordingFailuresTo: &failures)
+            return .keepPolling
+        }
+        guard sandbox.watchdogState.shouldTerminate() else { return .keepPolling }
+        sandbox.promiseRegistry.cancelAllPending()
+        return .terminated
     }
 
     /// Settles every promise in `ready` (see `settle(_:in:)`), appending
