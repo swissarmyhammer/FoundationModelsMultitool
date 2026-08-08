@@ -135,26 +135,34 @@ struct MultiToolExecutionTests {
             .buildRegistry()
         let multiTool = MultiTool(registry: registry)
 
-        let start = ContinuousClock.now
         let output = try await multiTool.call(
             arguments: RunCodeArguments(code: """
                 await Promise.all([tools.slowA(), tools.slowB()]);
                 return "done";
                 """)
         )
-        let elapsed = start.duration(to: .now)
-
         #expect(output == "\"done\"")
-        // ~max (150ms) of the two delays, not ~sum (300ms) — real
-        // concurrency, not the old bridge's serialized blocking.
-        #expect(elapsed < .milliseconds(280))
+
         let windowA = try #require(toolA.window)
         let windowB = try #require(toolB.window)
-        // Each call's run window overlaps the other's — if the two ran one
-        // after another, one window would start only after the other had
-        // already ended.
-        let overlap = windowA.start < windowB.end && windowB.start < windowA.end
-        #expect(overlap)
+        let callA = windowA.start.duration(to: windowA.end)
+        let callB = windowB.start.duration(to: windowB.end)
+        let span = min(windowA.start, windowB.start)
+            .duration(to: max(windowA.end, windowB.end))
+        // How much of the two calls ran at the same time: their durations added
+        // together, less the span they jointly occupy. Serialized calls leave
+        // disjoint windows, so this is zero or negative however slow the box is.
+        let overlap = (callA + callB) - span
+        // Half of the shorter call. Serialized execution overlaps by nothing at
+        // all, so any positive share separates the two cases; a half leaves room
+        // for scheduling jitter without pinning the test to a wall-clock speed.
+        let minimumOverlapShare = 0.5
+        // Read from the calls' own clocks rather than the turn's, so machine load
+        // stretches both sides of the comparison together. No absolute budget on
+        // the whole turn can separate these cases: a genuinely concurrent run has
+        // been measured at 319ms under load, slower than the 321ms a serialized
+        // control measures on an idle box.
+        #expect(overlap >= min(callA, callB) * minimumOverlapShare)
     }
 
     @Test("a floating (unawaited) tools.* call still completes its real work before runCode returns")
