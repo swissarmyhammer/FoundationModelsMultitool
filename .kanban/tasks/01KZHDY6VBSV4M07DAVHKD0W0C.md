@@ -108,8 +108,76 @@ comments:
     - next: exit condition is a single audit of every `///` against every bullet of the `swift` validator's `documentation` and `doc-parameter-naming` rules. That audit is recorded on the card and yields exactly these two sites and nothing else — the first pass whose hand audit and the engine agree exactly. `grep -n 'func .*throws'` confirms `:41` and `:110` are the only `throws` functions in the file, so both instances of the cause are named. Task stays in `review`.
     - note: gated `MULTITOOL_INTEGRATION` not run; `MultiToolExecutionTests.swift:150` (^hba675d) did not fire. `eventplan.md` untouched and unstaged (`ae2085ac841495d46c03b81d11c068975fa727b2`); nothing staged, pushed or tagged, no validator edited. `:35` and `:38` not re-litigated.
   timestamp: 2026-08-08T22:54:17.994811+00:00
-position_column: review
-position_ordinal: '80'
+- actor: claude-code
+  id: 01kzhssazh16nq5awz3n8xzv8m
+  text: |-
+    ### review — clean
+
+    - evidence: `review sha HEAD~1..HEAD` (`00c3a83`, parent `adf5f9c`) → **0 findings**, 9 validators attempted, 0 failed, 0 skipped. `review file Sources/multitool-cli/DemoTools.swift` → **0 findings**, 9 validators, 0 confirmed / 0 refuted. First pass on this card where the file-scoped run is also empty; passes 2–6 each returned 1–5 confirmed findings there.
+    - next: none. Card moves to `done`.
+
+    #### Pass 6's full-rule audit is CONFIRMED, redone independently
+
+    Every `///` in `DemoTools.swift` was read at `00c3a83` against every bullet of `documentation` and `doc-parameter-naming`, not against the shape of the previous finding. The 22 documented declarations are `:3`, `:12`, `:17`, `:20`, `:24`, `:32`, `:34`, `:37`, `:47`, `:50`, `:55`, `:58`, `:60`, `:64`, `:69`, `:71`, `:74`, `:80`, `:85`, `:90`, `:100`, `:106`.
+
+    - **`///` not `/** */`** — `grep -c '/\*'` is 0. Holds.
+    - **Every `public`/`open` declaration documented** — `grep -cE '\b(public|open)\b'` is 0; nothing in the file is either. All 22 declarations are documented regardless.
+    - **Single-sentence summary ending in a period; elaboration after a blank `///`** — holds at all 22. The nine elaborating comments each carry the blank separator: `:4`, `:25`, `:38`, `:65`, `:75`, `:81`, `:86`, `:91`, `:101`, `:107`.
+    - **Document exactly the parameters, return, and throws — no more, no less** — now holds, and this is the bullet pass 6 failed. `grep -nE 'func .*throws'` returns exactly `:42` and `:112`; `- Throws:` now appears at `:40` and `:109`, one per throwing function and nowhere else. `- Returns:` at `:41` and `:110`, both on non-`Void` results. `- Parameter` at `:39` and `:108`, one per single-parameter signature. No clause documents anything the signature lacks.
+    - **Doc-parameter naming uses the internal name** — both `call(arguments:)` declare `arguments` with no separate external label, so it is the only documentable name; both docs key on `- Parameter arguments:`. Correct, and not to be flagged toward a label.
+    - **What/why, not how** — no comment narrates an implementation. `:106` states the what; the `??` fallback appears as behaviour in `- Returns:` at `:110-111`, not as a description of the operator.
+    - **Voice matches kind** — noun phrases on all types and values; verb phrases on both effectful methods (`:37`, `:106`).
+    - **Symbol references in backticks** — all wrapped, including the DocC double-backtick links ``temperaturesByCity``, ``warmestTemperatureCelsius``, ``fallbackTemperatureCelsius``. `plan.md` at `:28` is a file, not a symbol; `"Sunny"` at `:60` is a string literal, not a symbol. Neither is a violation.
+
+    No bullet of either rule is violated at any site. Pass 6's convergence claim rests on a complete audit — there is no remaining list.
+
+    #### The `- Throws:` wording is correct and honest, and is the better of the two satisfying options
+
+    ``/// - Throws: Never; the `throws` comes from `Tool`'s requirement.``
+
+    - **"Never" is accurate.** `grep -c 'try '` over the file is 0, and neither body contains a throwing expression: `DemoTripTool.call` is a synthesized memberwise init on a `@Generable` struct, and `DemoWeatherTool.call` is a dictionary subscript, `??`, and a memberwise init. None can throw.
+    - **The second clause is accurate and is the *why* the rule asks for.** `throws` is imposed by `Tool`'s protocol requirement, not chosen by these implementations. It also forecloses the misreading "Never" could otherwise invite — a caller going through the protocol still writes `try`, and the clause says exactly why the keyword is on a signature that cannot use it. The clause documents this implementation, not the protocol contract, and says so.
+    - **Clause order is right.** `- Parameter` → `- Throws:` → `- Returns:` is DocC order at both sites.
+    - **Dropping `- Parameter`/`- Returns` instead would satisfy the rule but is the worse fix.** The rule's "**Optionally**" makes both routes valid, so this is a choice, not a requirement. Deleting them would discard information the signature does not carry: `:110-111` documents the fallback to ``fallbackTemperatureCelsius`` for a city outside the fixed table, which is real behaviour discoverable nowhere else, and `:39` records that the parameter is unused. Adding the third clause keeps that and closes the gap; deleting two clauses closes the gap by removing documentation. Adding is correct.
+
+    #### Directed checks (all verified, no finding)
+
+    - [x] The commit is doc comments only, and matches its message. `git show 00c3a83 --stat` is `Sources/multitool-cli/DemoTools.swift` 2 insertions plus this card file. Filtering `git diff HEAD~1..HEAD -- Sources/multitool-cli/DemoTools.swift` for any changed line that is not a `///` line returns nothing. The two added lines are the two `- Throws:` clauses, exactly the two sites pass 6 named — no more.
+    - [x] No declaration or value changed. `DemoTripTool` still returns `["ATX", "SFO", "NYC"]` at `:43`; `warmestTemperatureCelsius` = 31 (`:78`), `middleTemperatureCelsius` = 24 (`:83`), `coolestTemperatureCelsius` = 18 (`:88`), `fallbackTemperatureCelsius` = 20 (`:104`), and `temperaturesByCity`'s keying of `"ATX"` / `"SFO"` / `"NYC"` to warmest / coolest / middle at `:95-97` are untouched.
+    - [x] Acceptance criterion 1 re-measured at `HEAD`, not carried forward. swiftlint 0.65.0, `only_rules: [no_magic_numbers]`, `allowed_numbers: [0, 1, -1, 100]`, temp config, `--no-cache`, over `Sources`: **`Found 0 violations, 0 serious in 27 files`**.
+    - [x] Acceptance criterion 3 holds. Both model pins are intact and `CLIRunner.swift` has not been touched since `3ba1729` — `git diff --name-only 3ba1729..HEAD -- Sources/multitool-cli/CLIRunner.swift` is empty. `:213-215` still pin `Qwen3.6-27B-mxfp4` / `Qwen2.5-1.5B-Instruct-4bit` / `Qwen3-Embedding-0.6B-4bit-DWQ`, and `:216` is `context: demoContextTokens`.
+    - [x] Acceptance criterion 4 holds. `swift build` exits 0, "Build complete! (2.51 sec)". Ungated `swift test` is green: **`Test run with 309 tests in 24 suites passed`** and **`Test run with 49 tests in 8 suites passed`**, exit 0, no `✘` in 1062 lines. The only `warning:` is the pre-existing SwiftPM build-system message `missing creator for mutated node: (… mlx-swift_Cmlx.bundle/Contents/MacOS)`, about a dependency bundle. `MULTITOOL_INTEGRATION` was NOT set — no gated run. The known load-sensitive flake `MultiToolExecutionTests.swift:150` (^hba675d) did not fire, so no rerun was needed.
+    - [x] The four unchecked Acceptance Criteria are each independently verified at `00c3a83` by the checks above, but were left unflipped — the implementer owns the marks. Zero unchecked items remain in any `## Review Findings` section (52 checked, 0 unchecked across all six prior sections), which is the review gate.
+    - [x] Two near-misses examined and cleared, recorded so a later pass does not re-litigate them. `:17` (`DemoTripOutput` — "The cities on the trip, in visit order.") reads close to its own field's doc at `:20`, but `cities` is the type's entire content, so the summary names the whole value rather than substituting a payload for a wrapper — the same reasoning pass 5 used to clear `:38`, and the opposite of the `:44` case, where `DemoWeatherArguments` was an arguments wrapper named by its `city` field. `:12` (`unused`) joins two clauses with a semicolon and is still one sentence ending in a period. `:35`/`:38`/`:37` stay cleared as passes 5 and 6 cleared them.
+    - [x] The repo did not move under the review, and no foreign state was touched. `HEAD` is `00c3a83` at the start and end. `git status --porcelain -- Sources/ eventplan.md` reports only ` M eventplan.md` throughout; `eventplan.md` hashes to `ae2085ac841495d46c03b81d11c068975fa727b2`, byte-identical to the hash pass 6 recorded, and was neither opened for edit nor staged. `git diff --cached --name-only` is empty — nothing staged, committed, pushed, or tagged, no validator edited.
+    - [x] Rank and city can still silently disagree — carried forward as an observation, not raised as a finding, agreeing with all six previous passes. No test references `DemoWeatherTool` or `DemoTripTool`, so setting `warmestTemperatureCelsius` below 24 would compile and pass. The engine raised nothing here at this commit, as it did not at `adf5f9c`, `3ba1729`, `34ed0e5`, `54c7f29` or `1f62390`.
+  timestamp: 2026-08-08T23:02:03.505205+00:00
+- actor: claude-code
+  id: 01kzhstxw9sdj709z6fsytz1v0
+  text: |-
+    ### finish iteration 7 — clean
+
+    - implement: changed — Sources/multitool-cli/DemoTools.swift, `- Throws:` added at both `call(arguments:)` sites (:41, :110)
+    - test: green — ungated `swift test`, 309 tests / 24 suites + 49 tests / 8 suites, zero failures
+    - commit: 00c3a83
+    - review: clean — `review sha HEAD~1..HEAD` 0 findings / 9 validators; `review file DemoTools.swift` 0 findings / 9 validators. First pass on this card where the file-scoped run is also empty; passes 2–6 each returned 1–5 confirmed findings there.
+    - acceptance criteria: 4/4 flipped, verified independently by pass 7 at 00c3a83. Zero unchecked items remain anywhere on the card.
+
+    **Why this card took seven passes, recorded so the next one does not repeat it.**
+
+    Passes 2–6 each returned a doc-comment finding in one file and each fix was correct, yet the loop did not converge. Two distinct causes, both worth naming:
+
+    1. **A fix planted the next finding.** Pass 3's commit `34ed0e5` fixed the ownership form at `:44` (`` `DemoWeatherTool`'s arguments ``) by writing the payload form (`The city a weather lookup asks about`) — the same class in a different shape. Pass 4 then flagged that class one line away at `:103` and left `:44` standing.
+    2. **Each "closed list" was closed against the previous finding's shape, not against the rule.** Passes 2–3 audited summary form (single sentence, terminal period, blank `///` separator). Passes 4–5 audited summary voice (does the noun name the thing itself). Nobody audited the clause actually violated at `:41`/`:110` — "document exactly the parameters, return, and throws the signature has, no more and no less" — until pass 6.
+
+    The validator surfaces one instance per run, not the class, which is what let `:44`/`:52` and `:103` hide behind earlier findings across four passes.
+
+    **The exit condition that worked:** audit every `///` in the file against *every bullet* of the `documentation` and `doc-parameter-naming` rules at once, then fix the whole resulting list in one commit. Pass 6 did that and produced a two-site list; pass 7 redid the audit independently and confirmed it. Convergence signal was the hand audit and the engine output agreeing exactly — the first time that happened on this card.
+
+    Commits: 1f62390 (named six literals), 54c7f29, 34ed0e5, 3ba1729, adf5f9c, 00c3a83. All local; nothing pushed, no tags.
+  timestamp: 2026-08-08T23:02:55.625713+00:00
+position_column: done
+position_ordinal: b780
 title: '[Multitool] Six unnamed numeric literals in the multitool-cli target'
 ---
 Discovered while sweeping `ResultRenderer.swift` for `^esyyqjv`'s two `no_magic_numbers` findings. That card's sweep is scoped to its own file and is complete; running the same rule over all of `Sources/` shows the cause is not confined to that file.
@@ -140,10 +208,10 @@ The six are not one kind of number, and the right fix differs per group:
 
 ## Acceptance Criteria
 
-- [ ] `swiftlint --config <temp> --no-cache Sources` with `only_rules: [no_magic_numbers]` and `allowed_numbers: [0, 1, -1, 100]` reports **0 violations**, reported as a count rather than asserted
-- [ ] Every constant carries a `///` doc comment in the prevailing style, naming what it bounds and why — `100_000_000` names its unit
-- [ ] Behaviour unchanged: the demo still answers Austin as warmest, and both model pins in `CLIRunner`'s `ModelProfile` are byte-identical
-- [ ] `swift build` clean, `swift test` ungated at or above 309 tests / 24 suites main and 46 / 7 integration, zero warnings
+- [x] `swiftlint --config <temp> --no-cache Sources` with `only_rules: [no_magic_numbers]` and `allowed_numbers: [0, 1, -1, 100]` reports **0 violations**, reported as a count rather than asserted
+- [x] Every constant carries a `///` doc comment in the prevailing style, naming what it bounds and why — `100_000_000` names its unit
+- [x] Behaviour unchanged: the demo still answers Austin as warmest, and both model pins in `CLIRunner`'s `ModelProfile` are byte-identical
+- [x] `swift build` clean, `swift test` ungated at or above 309 tests / 24 suites main and 46 / 7 integration, zero warnings
 
 #phase-1
 
