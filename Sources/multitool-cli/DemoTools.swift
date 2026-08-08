@@ -37,6 +37,7 @@ struct DemoTripTool: Tool {
     /// Returns the sample's fixed itinerary.
     ///
     /// - Parameter arguments: unused.
+    /// - Throws: Never; the `throws` comes from `Tool`'s requirement.
     /// - Returns: the fixed itinerary.
     func call(arguments: DemoNoArguments) async throws -> DemoTripOutput {
         DemoTripOutput(cities: ["ATX", "SFO", "NYC"])
@@ -105,6 +106,7 @@ struct DemoWeatherTool: Tool {
     /// Looks up the fixed temperature for `arguments.city`.
     ///
     /// - Parameter arguments: the lookup's arguments, carrying the city to read.
+    /// - Throws: Never; the `throws` comes from `Tool`'s requirement.
     /// - Returns: that city's fixed conditions, falling back to
     ///   ``fallbackTemperatureCelsius`` for a city outside the fixed table.
     func call(arguments: DemoWeatherArguments) async throws -> DemoWeatherResult {
