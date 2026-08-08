@@ -186,6 +186,12 @@ enum CLIRunner {
             """
     }
 
+    /// The working context size, in tokens, that ``demoProfile`` pins.
+    ///
+    /// The same figure the gated suite's `multitoolTinyProfile` pins
+    /// (`Tests/FoundationModelsMultitoolIntegrationTests/Support/IntegrationGate.swift`).
+    private static let demoContextTokens = 8192
+
     /// The profile used for the demo run.
     ///
     /// Deliberate use of tiny, tool-calling-capable models, matching the
@@ -207,7 +213,7 @@ enum CLIRunner {
         standard: ["mlx-community/Qwen3.6-27B-mxfp4"],
         flash: ["mlx-community/Qwen2.5-1.5B-Instruct-4bit"],
         embedding: ["mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ"],
-        context: 8192
+        context: demoContextTokens
     )
 
     /// The demo prompt that exercises the agent.
@@ -490,6 +496,13 @@ enum CLIRunner {
 
     // MARK: - Console progress
 
+    /// How long ``trackProgress(_:output:)`` waits between reads of
+    /// `progress.phase`, in nanoseconds.
+    ///
+    /// A tenth of a second, the granularity at which a phase change reaches
+    /// the console.
+    private static let progressPollIntervalNanoseconds: UInt64 = 100_000_000
+
     /// Monitors and prints resolution progress.
     ///
     /// Starts a background task that prints one line to `output` each time
@@ -513,7 +526,7 @@ enum CLIRunner {
                     lastPhase = phase
                     output("Resolving model profile: \(phase)")
                 }
-                try? await Task.sleep(nanoseconds: 100_000_000)
+                try? await Task.sleep(nanoseconds: progressPollIntervalNanoseconds)
             }
         }
     }

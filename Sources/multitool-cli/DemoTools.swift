@@ -62,22 +62,45 @@ struct DemoWeatherTool: Tool {
     let name = "getWeather"
     let description = "Current weather for a city. Use when asked how warm/cold/rainy it is right now."
 
+    /// The warmest of ``temperaturesByCity``'s three readings, in Celsius.
+    ///
+    /// Austin's, and the largest of the three, so Austin is the unambiguous
+    /// answer to the demo's "which is warmest" prompt.
+    private static let warmestTemperatureCelsius: Double = 31
+
+    /// The middle of ``temperaturesByCity``'s three readings, in Celsius.
+    ///
+    /// New York's.
+    private static let middleTemperatureCelsius: Double = 24
+
+    /// The coolest of ``temperaturesByCity``'s three readings, in Celsius.
+    ///
+    /// San Francisco's.
+    private static let coolestTemperatureCelsius: Double = 18
+
     /// Deterministic per-city temperatures, keyed by `DemoTripTool`'s
     /// itinerary codes, so the demo's "which is warmest" prompt has one
     /// unambiguous answer (Austin).
     private static let temperaturesByCity: [String: Double] = [
-        "ATX": 31,
-        "SFO": 18,
-        "NYC": 24,
+        "ATX": warmestTemperatureCelsius,
+        "SFO": coolestTemperatureCelsius,
+        "NYC": middleTemperatureCelsius,
     ]
+
+    /// The temperature reported for a city ``temperaturesByCity`` does not
+    /// cover, in Celsius.
+    ///
+    /// Below ``warmestTemperatureCelsius``, so a city off the itinerary does
+    /// not read warmer than Austin.
+    private static let fallbackTemperatureCelsius: Double = 20
 
     /// Looks up the fixed temperature for `arguments.city`.
     ///
     /// - Parameter arguments: the city to look up.
-    /// - Returns: that city's fixed conditions, or a generic 20°C fallback
-    ///   for a city outside the fixed table.
+    /// - Returns: that city's fixed conditions, falling back to
+    ///   ``fallbackTemperatureCelsius`` for a city outside the fixed table.
     func call(arguments: DemoWeatherArguments) async throws -> DemoWeatherResult {
-        let temperatureCelsius = Self.temperaturesByCity[arguments.city] ?? 20
+        let temperatureCelsius = Self.temperaturesByCity[arguments.city] ?? Self.fallbackTemperatureCelsius
         return DemoWeatherResult(temperatureCelsius: temperatureCelsius, summary: "Sunny")
     }
 }
