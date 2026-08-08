@@ -8,8 +8,8 @@ import FoundationModelsRouter
 @Generable
 public struct FindAPIsArguments: Sendable {
     @Guide(
-        description: "Describe, in plain language, what you are trying to accomplish. Returns the few "
-            + "tool-functions relevant to that task."
+        description: "Describe the task in plain language. Returns the tool-functions for that task, "
+            + "each with its typed signature and a runnable example."
     )
     public var task: String
 
@@ -78,12 +78,41 @@ public struct FindAPIsTool: Tool {
     /// just clear information on how to call the tools — the only part that
     /// carries weight.
     public static let sessionInstructions = """
-        You have real, working access to the user's live data and services through your \
-        tools, including anything real-time. Never refuse or claim you lack access to \
-        current data: instead, always call findAPIs first to discover the exact \
-        functions for the task, then call runCode to invoke them under tools.* — make \
-        the calls, do not merely describe what you would do — and answer only from what \
-        the tools return, never from your own assumptions.
+        You have real, working access to the user's live data and services through your
+        tools, including anything real-time.
+
+        Every task runs these three steps in order.
+
+        1. Call findAPIs first. Describe the task in plain language. findAPIs returns
+           the exact functions for that task, each with its signature.
+        2. Call runCode. Write one JavaScript snippet calling the exact tools.* paths
+           findAPIs returned. Put every call the task needs in that one snippet.
+        3. Answer only from what runCode returned.
+
+        Worked example.
+
+        Step 1 — findAPIs("read a document's title") returns:
+
+            // tools.getDocument
+            declare function getDocument(id: string): Promise<{ title: string }>
+            Example: tools.getDocument("d-17")
+
+        Step 2 — runCode:
+
+            const doc = await tools.getDocument("d-17");
+            return doc.title;
+
+        Step 3 — runCode returns "Q3 Rollout Plan". Answer: the document's title is
+        "Q3 Rollout Plan".
+
+        Start at step 1 on every task, before you name any function and before you ask
+        the user for anything.
+
+        Call only tools.* paths findAPIs returned. Take every value in your answer from
+        a runCode return.
+
+        When findAPIs returns no function for the task, name the capability that is
+        missing.
         """
 
     /// This tool's `Tool`-protocol description, presented to the model as
@@ -97,19 +126,24 @@ public struct FindAPIsTool: Tool {
     /// with no bespoke system prompt: registering `findAPIs` + `runCode`
     /// alone is the product surface, so the "system prompt" lives here.
     public let description = """
-        This is how you use your tools. You are connected to the user's live data and \
-        services, and you have real, working access: every function you might need — \
-        including the user's own data such as their trip, bookings, and other live \
-        values — is behind this catalog. Before you answer, and before you ask the user \
-        for anything, call findAPIs first: describe in plain language what you are \
-        trying to accomplish, and you get back the few relevant tool-functions, each \
-        with its typed signature, purpose, and a runnable example. Search here instead \
-        of asking the user, and instead of guessing function names, once per kind of \
-        data you need. The tools genuinely execute and return real data, so never \
-        refuse for lack of access — you have access through them. Then write one \
-        runCode snippet that calls those exact tools.* paths to get your answer. If \
-        findAPIs truly finds no relevant function for the request, say so honestly \
-        rather than invent an answer.
+        This is how you use your tools. You are connected to the user's live data and
+        services, and you have real, working access: every function you need —
+        including the user's own data such as their trip, bookings, and other live
+        values — is behind this catalog. The tools execute and return real data.
+
+        Call findAPIs first, on every task, before you answer and before you ask the
+        user for anything. Describe in plain language what you are trying to
+        accomplish. You get back the few relevant tool-functions, each with its typed
+        signature, purpose, and a runnable example.
+
+        Search here instead of asking the user, and instead of naming a function
+        yourself, once per kind of data you need.
+
+        Then write one runCode snippet calling those exact tools.* paths, and answer
+        from what that snippet returns.
+
+        When findAPIs returns no relevant function for the request, say so and name
+        the capability that is missing.
         """
 
     /// The catalog searcher every `findAPIs` call forwards to — runs in
@@ -209,10 +243,10 @@ public struct FindAPIsTool: Tool {
     /// is what multi-step tasks need spelled out — the models that fail
     /// them stop after describing step one.
     private static let nextStepFooter = """
-        Now write one runCode snippet that calls these exact tools.* paths — compose \
-        multiple calls in that one snippet with variables as needed — and return the \
-        real result. Do not describe a plan and do not answer from memory: call \
-        runCode now, and answer only from what it returns.
+        Now write one runCode snippet that calls these exact tools.* paths. Put every \
+        call the task needs in that one snippet, passing values between them with \
+        variables, and return the result. Call runCode now. Answer only from what it \
+        returns.
         """
 
     /// Formats a search result into the text describing the matched

@@ -158,8 +158,9 @@ public struct RunCodeArguments {
     /// The JavaScript snippet to run against `tools.*`.
     @Guide(
         description: "JavaScript snippet to run against the available tools, exposed as functions "
-            + "under `tools.*`. Compose calls with normal code — variables, loops, map/filter — and "
-            + "`return` the final value; only that value (and any console output) comes back."
+            + "under `tools.*`. Call the exact paths findAPIs returned. Compose calls with normal "
+            + "code — variables, loops, map/filter — and `return` the final value; only that value "
+            + "(and any console output) comes back."
     )
     public var code: String
 
@@ -269,23 +270,40 @@ public struct MultiTool: Tool {
     /// read them, and `docs("globals")` hands back the contract on demand
     /// (see `MultiTool+SandboxGlobals.swift`, "MARK: - The docs() page").
     public let description = """
-        Run a JavaScript snippet against the user's real tools, exposed as functions \
-        under `tools.*`. Always call findAPIs first to discover the exact functions and \
-        their signatures for the task (or help()/docs(name) in a snippet); never guess \
-        function names. Every `tools.*` call returns a promise: await each `tools.*` \
-        call; use `Promise.all` to run calls in parallel. Then compose calls with normal \
-        code — variables, loops, map/filter — and `return` the final value (only that \
-        comes back; intermediates stay private). Read each discovered function's \
-        declared return type and destructure it accordingly. These tools genuinely \
-        execute and return real data: \
-        answer only from what they return — never answer data questions from your own \
-        knowledge, and never simulate or invent data in a snippet. If a snippet fails, \
-        the error comes back for you to repair: fix the snippet and call runCode again \
-        immediately — never stop at an error to describe or apologize for what you were \
-        going to do, and never claim success for a call a snippet did not actually \
-        return. Beyond `tools.*` a few ambient globals are always there and never appear \
-        in findAPIs — for asking the user something mid-snippet, reporting what is \
-        happening, and following up on a long-running call. Run `docs("globals")` in a \
+        Run a JavaScript snippet against the user's real tools, exposed as functions
+        under `tools.*`.
+
+        Call findAPIs first to get the exact functions and their signatures for the
+        task. Write the snippet against the paths findAPIs returned.
+
+        Writing the snippet:
+
+        1. await each `tools.*` call. Every one returns a promise. Use `Promise.all`
+           to run independent calls in parallel.
+        2. Read each discovered function's declared return type and destructure it
+           accordingly.
+        3. Compose the calls with normal code — variables, loops, map/filter.
+        4. `return` the final value. Only that value comes back; intermediates stay
+           private.
+
+        Worked example:
+
+            const doc = await tools.getDocument("d-17");
+            const rev = await tools.getRevision(doc.latestRevisionId);
+            return { title: doc.title, editor: rev.editor };
+
+        These tools execute and return real data: answer only from what they return —
+        never answer data questions from your own knowledge, and never simulate or
+        invent data in a snippet.
+
+        When a snippet fails, the error comes back for you to repair: fix the snippet
+        and call runCode again immediately — never stop at an error to describe or
+        apologize for what you were going to do, and never claim success for a call a
+        snippet did not actually return.
+
+        Beyond `tools.*` a few ambient globals are always there and never appear in
+        findAPIs — for asking the user something mid-snippet, reporting what is
+        happening, and following up on a long-running call. Run `docs("globals")` in a
         snippet to read them.
         """
 

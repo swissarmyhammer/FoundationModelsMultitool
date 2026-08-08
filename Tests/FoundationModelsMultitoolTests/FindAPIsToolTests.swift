@@ -133,7 +133,12 @@ struct FindAPIsToolTests {
         #expect(description.localizedCaseInsensitiveContains("call findAPIs first")) // findAPIs-first stance
         #expect(description.contains("instead of asking the user")) // search, don't ask
         #expect(description.contains("once per kind of data")) // one search per kind
-        #expect(description.localizedCaseInsensitiveContains("never refuse")) // no over-refusal
+        // Access is stated as a plain fact, with no never-refuse clause for
+        // the search rule to hang off — that subordination is the defect this
+        // wording replaces (task tkrdwb8).
+        #expect(description.contains("The tools execute and return real data"))
+        #expect(!description.localizedCaseInsensitiveContains("refus"))
+        #expect(description.contains("name the capability that is missing"))
         #expect(description.contains("runCode")) // the runCode handoff
         // Honest miss: when nothing matches, say so rather than invent.
         #expect(description.localizedCaseInsensitiveContains("say so"))
@@ -155,7 +160,19 @@ struct FindAPIsToolTests {
         #expect(instructions.localizedCaseInsensitiveContains("call findAPIs first"))
         #expect(instructions.contains("runCode"))
         #expect(instructions.localizedCaseInsensitiveContains("answer only from what"))
-        #expect(instructions.localizedCaseInsensitiveContains("never refus"))
+        // The sequence is unconditional. Nothing asks the model to judge
+        // whether it already has a tool before step 1 — the retired
+        // "Never refuse ... instead, always call findAPIs" phrasing scoped
+        // searching to the about-to-refuse reader and never reached the
+        // confident guesser, which is the failing population (task tkrdwb8).
+        #expect(instructions.contains("Every task runs these three steps in order"))
+        #expect(instructions.contains("Start at step 1 on every task"))
+        // Refusal is not named anywhere, so it is not in the option set. An
+        // honest failure report is what replaces it.
+        #expect(!instructions.localizedCaseInsensitiveContains("refus"))
+        #expect(instructions.contains("name the capability that is missing"))
+        // A shown sequence, not only a stated rule.
+        #expect(instructions.contains("Worked example"))
     }
 
     @Test("the production registry+librarian initializer wires .auto mode over the registry's own surface entries")

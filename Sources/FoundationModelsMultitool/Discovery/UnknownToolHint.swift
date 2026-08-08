@@ -221,8 +221,8 @@ enum UnknownToolHint {
     ///   - suggestions: the entries to name, best match first, or empty when
     ///     no tier could answer the guess.
     ///   - directive: what the error's closing line will already tell the
-    ///     model to do, so this text states the situation rather than
-    ///     repeating the instruction.
+    ///     model to do, so the no-suggestion branches lead into that closing
+    ///     line instead of competing with it.
     /// - Returns: the hint text.
     private static func text(
         forFailed failedPath: String,
@@ -233,7 +233,7 @@ enum UnknownToolHint {
             let opening = "tools.\(failedPath) does not exist, and nothing close matches. "
             switch directive {
             case .repairSnippet:
-                return opening + "Call findAPIs to discover the available functions."
+                return opening + "Call findAPIs for the real path, then rewrite that call."
             case .discoverFunctions:
                 return opening + "No function name this snippet used is in the catalog."
             }
@@ -242,7 +242,10 @@ enum UnknownToolHint {
         let blocks = suggestions.map { entry in
             "\(entry.block)\nExample: \(entry.qualifiedExample)"
         }
-        return "tools.\(failedPath) does not exist. Closest available functions:\n\n"
+        let instruction = suggestions.count == 1
+            ? "Call tools.\(suggestions[0].path) instead."
+            : "Call tools.\(suggestions[0].path) instead, or one of the others listed."
+        return "tools.\(failedPath) does not exist. \(instruction)\n\n"
             + blocks.joined(separator: "\n\n")
     }
 
