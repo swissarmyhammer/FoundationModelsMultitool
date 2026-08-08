@@ -645,9 +645,12 @@ func integrationStockTools(log: ScenarioCallLog) -> [IntegrationStockTool] {
 /// warmest (task `0981ar3`). The city names it did have were enough to satisfy
 /// "something returned and appears in the answer".
 ///
-/// Every member names paths and never readings, and takes each path from the
-/// fixture tool's own `path` constant, so a renamed tool cannot leave a
-/// scenario depending on a path no fixture mounts.
+/// Every member names paths and never readings, and never spells a path out
+/// here: the single-tool members read the fixture's own `path` constant, and
+/// `combinedStock` reads `integrationStockPaths`, which the fan-out pair is
+/// itself built from. Either way the declaration and the mounted tool come
+/// from one source, so a rename cannot leave a scenario depending on a path no
+/// fixture mounts.
 enum IntegrationScenarioGrounding {
     /// What scenario 1's answer depends on: the reading `getWeather` reports
     /// for `integrationSingleCallCity`. "How warm is it there" is a question
