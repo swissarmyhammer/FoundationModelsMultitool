@@ -80,6 +80,16 @@ public enum RepairDirective: Sendable, Equatable {
     case discoverFunctions
 
     /// The closing line this directive renders as.
+    ///
+    /// This is the only place the text is written. Both test targets read it
+    /// here through `@testable import` instead of restating it, so rewording
+    /// the line reaches every assertion that expects it and every synthetic
+    /// transcript that stands in for a rendered error, and leaves no copy in
+    /// a test to fall out of step with what the product emits. That is what
+    /// keeps `internal` the right access level: the text reaches the model
+    /// through ``ResultRenderer/render(_:hint:directive:)``, so no other
+    /// module needs to read it, and widening it to `public` would add a
+    /// second, cross-module contract for the same string.
     var closingLine: String {
         switch self {
         case .repairSnippet:

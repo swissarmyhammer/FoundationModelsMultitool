@@ -1014,7 +1014,11 @@ struct JSCInterpreterTests {
             #expect(rendered.contains("tools.x.y"))
             #expect(rendered.contains("value"))
             #expect(rendered.contains("await"))
-            #expect(rendered.hasSuffix("Fix the snippet and call runCode again."))
+            // `hasSuffix`, not `contains`: the directive is the last thing the
+            // model reads, so where it sits in the rendered error is part of
+            // what this asserts, and a hint spliced after it would fail here.
+            // Only the text is read off the directive instead of restated.
+            #expect(rendered.hasSuffix(RepairDirective.repairSnippet.closingLine))
         }
     }
 

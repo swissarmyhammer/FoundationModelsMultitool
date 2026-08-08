@@ -12,6 +12,27 @@ import Testing
 /// only JavaScriptCore's bare `TypeError` text.
 @Suite("UnknownToolHint")
 struct UnknownToolHintTests {
+    // MARK: - The two closing lines, read from the directive that renders them
+
+    /// The closing line a repairable error carries when the snippet is worth
+    /// fixing where it stands.
+    ///
+    /// Read off `RepairDirective` rather than spelled out again. A copy of
+    /// the wording here would go on satisfying this file's negative
+    /// expectations — `!output.contains(_:)` — after the shipped line was
+    /// reworded, because output that no longer carries the old text passes
+    /// them for the wrong reason.
+    private static let repairClosing = RepairDirective.repairSnippet.closingLine
+
+    /// The closing line a repairable error carries instead when the snippet
+    /// named nothing the catalog defines.
+    ///
+    /// Read off `RepairDirective` for the same reason as `repairClosing`, and
+    /// for one more: the tests below grade the two lines against each other,
+    /// which holds only while both come from the enum that chooses between
+    /// them.
+    private static let discoveryClosing = RepairDirective.discoverFunctions.closingLine
+
     // MARK: - Unknown tools.* path: closest real path suggested
 
     /// A guess whose suggestion cannot be read out of the failed-path echo.
@@ -47,7 +68,7 @@ struct UnknownToolHintTests {
 
         #expect(output.contains("tools.\(Self.citiesGuess) does not exist"))
         #expect(output.contains("declare function getCities("))
-        #expect(output.contains("Fix the snippet and call runCode again."))
+        #expect(output.contains(Self.repairClosing))
     }
 
     // MARK: - Invented sub-path on a real tool
@@ -153,16 +174,6 @@ struct UnknownToolHintTests {
 
     // MARK: - A snippet that named nothing real is steered to discovery
 
-    /// The closing line a repairable error carries when the snippet is worth
-    /// fixing where it stands.
-    private static let repairClosing = "Fix the snippet and call runCode again."
-
-    /// The closing line a repairable error carries instead when the snippet
-    /// named nothing the catalog defines.
-    private static let discoveryClosing =
-        "Call findAPIs to get the real function names and signatures for this task, "
-        + "then write the snippet against those paths."
-
     /// Replaces `unknownNameWithNoCloseMatchSteersToFindAPIs`, which drove
     /// this exact call against this exact catalog and asserted only that the
     /// word `findAPIs` appeared somewhere. Its two expectations are both kept
@@ -235,7 +246,7 @@ struct UnknownToolHintTests {
         let output = try await multiTool.call(arguments: RunCodeArguments(code: "return tools.getTemperature({});"))
 
         #expect(!output.contains("does not exist"))
-        #expect(output.contains("Fix the snippet and call runCode again."))
+        #expect(output.contains(Self.repairClosing))
     }
 
     // MARK: - Imagined names reach the system log

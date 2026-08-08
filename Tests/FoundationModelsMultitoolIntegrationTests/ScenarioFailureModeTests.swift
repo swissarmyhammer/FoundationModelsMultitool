@@ -2,6 +2,7 @@ import Foundation
 import Testing
 
 import FoundationModels
+@testable import FoundationModelsMultitool
 
 /// Coverage for the per-scenario failure-mode instrument — the derivation
 /// `ScenarioRunner` reports a gated run's `MODES` line from.
@@ -298,9 +299,15 @@ struct ScenarioFailureModeTests {
                     toolName: "runCode",
                     segments: [
                         .text(
+                            // The shipped closing line is interpolated rather
+                            // than copied. This transcript stands in for what
+                            // `ResultRenderer` renders, and a copy of the
+                            // wording would go on compiling and passing after
+                            // the shipped line moved on, while no longer
+                            // standing in for any output the product emits.
                             Transcript.TextSegment(
                                 content: "The snippet failed: TypeError: tools.getTrip is not a "
-                                    + "function\n\nFix the snippet and call runCode again."
+                                    + "function\n\n\(RepairDirective.repairSnippet.closingLine)"
                             )
                         )
                     ]

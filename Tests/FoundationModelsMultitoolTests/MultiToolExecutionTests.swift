@@ -204,7 +204,7 @@ struct MultiToolExecutionTests {
 
         let output = try await multiTool.call(arguments: RunCodeArguments(code: "return tools.getTemperature({});"))
 
-        #expect(output.contains("Fix the snippet and call runCode again."))
+        #expect(output.contains(RepairDirective.repairSnippet.closingLine))
         #expect(output.contains("city"))
     }
 

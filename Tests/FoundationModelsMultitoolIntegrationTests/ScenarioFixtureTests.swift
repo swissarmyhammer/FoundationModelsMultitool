@@ -85,7 +85,7 @@ struct ScenarioFixtureTests {
             arguments: RunCodeArguments(code: #"return (await tools.getTrip()).join("-");"#)
         )
 
-        #expect(output.contains("Fix the snippet and call runCode again."))
+        #expect(output.contains(RepairDirective.repairSnippet.closingLine))
     }
 
     // MARK: - `getWeather` resolves exactly one city, or refuses
@@ -303,7 +303,7 @@ struct ScenarioFixtureTests {
 
         let output = try await multiTool.call(arguments: RunCodeArguments(code: code))
 
-        #expect(output.contains("Fix the snippet and call runCode again."))
+        #expect(output.contains(RepairDirective.repairSnippet.closingLine))
         #expect(await log.invokedPaths.isEmpty)
         #expect(await log.returnedPaths.isEmpty)
         // The lexical scan still answers its own question — which names the

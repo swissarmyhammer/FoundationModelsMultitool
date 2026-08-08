@@ -156,7 +156,7 @@ struct SuspendedContextTests {
         let refused = try await multiTool.call(arguments: RunCodeArguments(code: "return 1 + 1;"))
 
         #expect(refused.contains("Too many runCode snippets are running at once"))
-        #expect(refused.contains("Fix the snippet and call runCode again."))
+        #expect(refused.contains(RepairDirective.repairSnippet.closingLine))
         latch.release()
         #expect(try await parked.value == Self.renderedGatedResult)
     }
