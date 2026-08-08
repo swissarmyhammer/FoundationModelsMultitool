@@ -56,7 +56,6 @@ let registry = try MultiTool.Builder()
     .addTool(TripTool())
     .addTool(WeatherTool())
     .buildRegistry()
-let multiTool = MultiTool(registry: registry)
 
 // 2. Resolve a model profile via FoundationModelsRouter (RAM-aware model
 //    selection). The Router provides models — never a tool-calling loop.
@@ -64,20 +63,22 @@ let multiTool = MultiTool(registry: registry)
 //    first step, verbatim.
 let profile = try await router.resolve(profile: demoProfile, reporting: progress)
 
-// 3. Discovery: `findAPIs` is its own `Tool`. Its internal selection tier
-//    runs on the same resolved profile's cheaper/faster `flash` slot,
-//    through Router-backed sessions (fork-per-call prefix reuse).
-let findAPIsTool = try FindAPIsTool(registry: registry, librarian: profile.flash)
-
-// 4. Wrap the resolved `.standard` slot as a real `FoundationModels
+// 3. Wrap the resolved `.standard` slot as a real `FoundationModels
 //    .LanguageModel` declaring `.toolCalling` — an `MLXLanguageModel`, built
-//    exactly as `CLIRunner.makeMLXLanguageModel(for:)` does — and register
-//    both tools on a native session. Apple's own tool-calling loop drives
-//    the findAPIs → runCode handoff; there is no hand-rolled agent loop.
+//    exactly as `CLIRunner.makeMLXLanguageModel(for:)` does — and mount what
+//    the registry vends. Apple's own tool-calling loop drives the findAPIs →
+//    runCode handoff; there is no hand-rolled agent loop.
+//
+//    `makeSessionTools(librarian:)` builds both tools and orders them:
+//    `findAPIs` first, then `runCode`, so the model reads "discover what
+//    exists" before "execute code". `findAPIs`'s internal selection tier
+//    runs on the same resolved profile's cheaper/faster `flash` slot,
+//    through Router-backed sessions (fork-per-call prefix reuse). A
+//    `directMode()` registry vends `runCode` alone.
 let mlxModel = makeMLXLanguageModel(for: profile.standard)
 let session = LanguageModelSession(
     model: mlxModel,
-    tools: [multiTool, findAPIsTool],
+    tools: try registry.makeSessionTools(librarian: profile.flash),
     instructions: toolUseInstructions  // CLIRunner.toolUseInstructions, shared with the gated integration suite
 )
 
@@ -92,9 +93,9 @@ session, and `mlx-community/Qwen2.5-1.5B-Instruct-4bit` on `flash` for
 `findAPIs`'s selection tier (see `CLIRunner.demoProfile` for the rationale).
 
 For a small, fixed tool set, skip discovery entirely — direct mode: build the
-registry with `.directMode()`, register only `multiTool` with the session,
-and let snippets introspect the surface via `help()`/`docs(name)` instead
-(the demo's `--direct` flag).
+registry with `.directMode()` and mount it the same way. A direct-mode
+registry vends `runCode` alone, and snippets introspect the surface via
+`help()`/`docs(name)` instead (the demo's `--direct` flag).
 
 The living-documentation suite,
 [`Tests/FoundationModelsMultitoolTests/ExamplesTests.swift`](Tests/FoundationModelsMultitoolTests/ExamplesTests.swift),
@@ -110,6 +111,7 @@ Every `tools.*` call returns a promise, so a snippet composing more than one
 call awaits each of them (or fans them out with `Promise.all`):
 
 ```swift
+let multiTool = MultiTool(registry: registry)
 let warmest = try await multiTool.call(
     arguments: RunCodeArguments(code: """
         const cities = (await tools.getTrip()).cities;

@@ -234,9 +234,14 @@ struct ExamplesTests {
             return .callTool(name: "findAPIs", argumentsJSON: #"{"task": "count open github issues"}"#)
         }
 
+        // `findAPIs` ahead of `runCode`, the order
+        // `MultiTool.Registry.makeSessionTools(librarian:)` vends. This
+        // example builds the pair by hand because its `findAPIs` is over a
+        // scripted searcher rather than a Router-backed librarian, so it
+        // states the order the vending API would have applied.
         let session = LanguageModelSession(
             model: model,
-            tools: [multiTool, findAPIsTool],
+            tools: [findAPIsTool, multiTool],
             instructions: "Call findAPIs to discover tools, then runCode to use them."
         )
 

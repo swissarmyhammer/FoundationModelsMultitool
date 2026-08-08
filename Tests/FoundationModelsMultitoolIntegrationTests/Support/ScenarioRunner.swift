@@ -362,7 +362,8 @@ private func withLiveRouterFixture(
 /// The model-facing tool surface one scenario drives, and the catalog
 /// behind it.
 private struct ScenarioSurface {
-    /// The two tools to register with the session, in mount order.
+    /// The tools to register with the session, in the mount order the
+    /// registry itself vends.
     let tools: [any Tool]
 
     /// Every `tools.*` path the mounted catalog actually defines — what an
@@ -370,9 +371,15 @@ private struct ScenarioSurface {
     let catalogPaths: Set<String>
 }
 
-/// Builds the model-facing tool surface every scenario drives: `multiTool`
-/// over the scenario's own tools, plus `findAPIsTool` backed by the resolved
-/// `.flash` slot — the "librarian on flash" split the CLI ships.
+/// Builds the model-facing tool surface every scenario drives, by asking the
+/// registry for it — `MultiTool.Registry.makeSessionTools(librarian:)`, the
+/// same call `CLIRunner.runDemo` makes, backed by the resolved `.flash` slot
+/// (the "librarian on flash" split the CLI ships).
+///
+/// Vended rather than assembled here on purpose. Under the suite's intent
+/// statement the harness must mount `MultiTool` exactly the way a host does,
+/// and mount order is part of what a host receives: hand-building the array
+/// would let the suite measure an order the product does not recommend.
 ///
 /// - Parameters:
 ///   - tools: the scenario's fixed tool set.
@@ -381,16 +388,14 @@ private struct ScenarioSurface {
 /// - Returns: the tools to register with the session, and the catalog paths
 ///   behind them.
 /// - Throws: whatever `MultiTool.Builder.buildRegistry()` or
-///   `FindAPIsTool.init(registry:librarian:)` throws.
+///   `MultiTool.Registry.makeSessionTools(librarian:)` throws.
 private func makeScenarioSurface(
     over tools: [any Tool],
     on fixture: LiveRouterFixture
 ) throws -> ScenarioSurface {
     let registry = try MultiTool.Builder().addTools(tools).buildRegistry()
-    let multiTool = MultiTool(registry: registry)
-    let findAPIsTool = try FindAPIsTool(registry: registry, librarian: fixture.profile.flash)
     return ScenarioSurface(
-        tools: [multiTool, findAPIsTool],
+        tools: try registry.makeSessionTools(librarian: fixture.profile.flash),
         catalogPaths: Set(registry.surface.entries.map(\.path))
     )
 }

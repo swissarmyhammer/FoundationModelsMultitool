@@ -222,7 +222,8 @@ let package = Package(
                 // directly, the same way `multitool-cli` itself does (via
                 // `CLIRunner.makeMLXLanguageModel(for:)`) — the gated scenarios
                 // in this target drive a real, native
-                // `LanguageModelSession(tools: [multiTool, findAPIsTool])`, not
+                // `LanguageModelSession` over the tools
+                // `MultiTool.Registry.makeSessionTools(librarian:)` vends, not
                 // `MultiToolAgent`'s retired hand-rolled loop.
                 .product(name: "MLXFoundationModels", package: mlxPackage),
             ] + liveLoaderMLXProducts + hubProducts,

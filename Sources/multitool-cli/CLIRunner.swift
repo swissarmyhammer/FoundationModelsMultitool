@@ -102,9 +102,10 @@ struct CLIRouterUnavailableError: Error, CustomStringConvertible {
 /// The canonical Router + `LanguageModelSession` + `MultiTool` example:
 /// resolving a model profile via `Router`, wrapping the resolved `.standard`
 /// generation slot as a real `FoundationModels.LanguageModel`
-/// (`MLXLanguageModel`), and registering `multiTool` (and, unless `--direct`,
-/// `findAPIsTool`) directly on a native `FoundationModels
-/// .LanguageModelSession`. Apple's own tool-calling loop decides when to
+/// (`MLXLanguageModel`), and mounting whatever
+/// `MultiTool.Registry.makeSessionTools(librarian:)` vends — `findAPIs` then
+/// `runCode`, or `runCode` alone under `--direct` — directly on a native
+/// `FoundationModels.LanguageModelSession`. Apple's own tool-calling loop decides when to
 /// call `findAPIs` vs `runCode` — this file drives no turn-parsing loop of
 /// its own, unlike the retired `MultiToolAgent`-based demo this replaces.
 /// Factored out of `main.swift` as a plain, testable entry point:
@@ -282,8 +283,8 @@ enum CLIRunner {
     ///
     /// Parses `arguments`, and — unless `--help` was given or parsing
     /// failed — resolves `demoProfile`, constructs a native
-    /// `LanguageModelSession` over `multiTool` (and, unless `--direct`,
-    /// `findAPIsTool`), calls `session.respond(to:)` once against
+    /// `LanguageModelSession` over the tools the registry vends (`findAPIs`
+    /// then `runCode`, or `runCode` alone under `--direct`), calls `session.respond(to:)` once against
     /// `demoPrompt`, and writes the answer to `output`.
     ///
     /// - Parameters:
@@ -384,18 +385,18 @@ enum CLIRunner {
                 registry = registry.directMode()
             }
 
-            let multiTool = MultiTool(registry: registry)
-            // Disambiguated against `MLXLMCommon.Tool` (also in scope via
-            // `MLXFoundationModels`/`MLXLMCommon`): the session's tools must
-            // be `FoundationModels.Tool` conformers.
-            var tools: [any FoundationModels.Tool] = [multiTool]
-            if !direct {
-                // `findAPIsTool`'s own internal selection tier is backed by a
-                // separate, Router-resolved `profile.flash` session — the
-                // registry-backed `SelectionTier`'s "librarian on flash"
-                // split — independent of `mlxModel`/the main session below.
-                tools.append(try FindAPIsTool(registry: registry, librarian: profile.flash))
-            }
+            // The registry vends its own mounted tools, in the order the
+            // model reads them — `findAPIs` before `runCode`, and `runCode`
+            // alone once `directMode()` above has taken discovery away. The
+            // `findAPIs` half's internal selection tier is backed by a
+            // separate, Router-resolved `profile.flash` session — the
+            // registry-backed `SelectionTier`'s "librarian on flash" split —
+            // independent of `mlxModel`/the main session below.
+            //
+            // Explicitly typed for the same reason the local was before:
+            // disambiguation against `MLXLMCommon.Tool`, also in scope via
+            // `MLXFoundationModels`/`MLXLMCommon`.
+            let tools: [any FoundationModels.Tool] = try registry.makeSessionTools(librarian: profile.flash)
 
             let mlxModel = Self.makeMLXLanguageModel(for: profile.standard)
             let session = LanguageModelSession(

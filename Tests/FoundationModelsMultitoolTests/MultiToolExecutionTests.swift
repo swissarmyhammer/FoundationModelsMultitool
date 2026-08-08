@@ -266,4 +266,54 @@ struct MultiToolExecutionTests {
         // surface itself (and its rendered catalog) is unchanged.
         #expect(direct.surface.entries.map(\.path) == registry.surface.entries.map(\.path))
     }
+
+    // MARK: - makeSessionTools(): the array a host mounts, in presentation order
+
+    @Test("makeSessionTools() presents findAPIs before runCode")
+    func sessionToolsPresentDiscoveryBeforeExecution() throws {
+        let registry = try MultiTool.Builder()
+            .addTool(CitiesTool())
+            .buildRegistry()
+
+        let mounted = try registry.makeSessionTools(librarian: nil)
+
+        #expect(mounted.map(\.name) == ["findAPIs", "runCode"])
+    }
+
+    @Test("A direct-mode registry vends runCode alone — there is no findAPIs to present")
+    func directModeSessionToolsOmitFindAPIs() throws {
+        let registry = try MultiTool.Builder()
+            .addTool(CitiesTool())
+            .buildRegistry()
+            .directMode()
+
+        let mounted = try registry.makeSessionTools(librarian: nil)
+
+        #expect(mounted.map(\.name) == ["runCode"])
+    }
+
+    @Test("Both vended tools are backed by the registry they were vended from, not an empty one")
+    func vendedToolsAreBackedByTheirOwnRegistry() async throws {
+        let registry = try MultiTool.Builder()
+            .addTool(CitiesTool())
+            .buildRegistry()
+
+        let mounted = try registry.makeSessionTools(librarian: nil)
+
+        // The runCode half dispatches into the registry's real wrapped tool:
+        // a `MultiTool` over an empty registry would render a repairable
+        // error for `tools.getCities` instead of the itinerary.
+        let runCode = try #require(mounted.last as? MultiTool)
+        let itinerary = try await runCode.call(
+            arguments: RunCodeArguments(code: #"return (await tools.getCities()).cities.join("-");"#)
+        )
+        #expect(itinerary == "\"AAA-BBB-CCC\"")
+
+        // The findAPIs half searches the same registry's rendered catalog.
+        // `librarian: nil` leaves the searcher in cheap retrieval, so this
+        // needs no model.
+        let findAPIs = try #require(mounted.first as? FindAPIsTool)
+        let discovery = try await findAPIs.call(arguments: FindAPIsArguments(task: "the cities on the trip"))
+        #expect(discovery.contains("tools.getCities"))
+    }
 }

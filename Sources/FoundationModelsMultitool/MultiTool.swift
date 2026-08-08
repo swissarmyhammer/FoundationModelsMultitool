@@ -97,6 +97,49 @@ extension MultiTool {
         public var supportsFindAPIs: Bool {
             !isDirectMode
         }
+
+        /// Builds the tools a host mounts on its `LanguageModelSession`, in
+        /// the order the model reads them.
+        ///
+        /// `findAPIs` comes first, `runCode` second. A session's tool list is
+        /// read as a whole before the model picks its opening move, so the
+        /// list is itself the first statement of what a turn looks like here:
+        /// discover what exists, then execute against what came back.
+        /// Presenting `runCode` first states the opposite — that execution is
+        /// the primary affordance and discovery an aside — which is the
+        /// reverse of what `FindAPIsTool.sessionInstructions` and both tool
+        /// descriptions ask for.
+        ///
+        /// That order is vended rather than only documented because a host
+        /// assembling the array by hand has to get it right every time and
+        /// nothing tells it when it does not. Direct mode is folded in for
+        /// the same reason: `runCode` comes back alone, so a caller never
+        /// re-derives from `isDirectMode` what `supportsFindAPIs` already
+        /// knows.
+        ///
+        /// This is the whole host contract. A host builds a registry, mounts
+        /// what this returns, and passes `FindAPIsTool.sessionInstructions`
+        /// as the session's instructions — nothing bespoke beyond that.
+        ///
+        /// The order here is deliberately not `affordances`'s. That property
+        /// names which operations a registry surfaces, for a caller or a test
+        /// to check; it is a capability list, not a mount order, and only
+        /// this method's result reaches the model.
+        ///
+        /// - Parameter librarian: the model backing `findAPIs`'s selection
+        ///   tier, or `nil` to leave its searcher in cheap retrieval. Unused
+        ///   in direct mode, which vends no `findAPIs` to configure.
+        /// - Returns: `findAPIs` followed by `runCode`, or `runCode` alone in
+        ///   direct mode.
+        /// - Throws: whatever `FindAPIsTool.init(registry:librarian:limit:)`
+        ///   throws.
+        public func makeSessionTools(librarian: RoutedLLM?) throws -> [any Tool] {
+            let runCode = MultiTool(registry: self)
+            guard supportsFindAPIs else {
+                return [runCode]
+            }
+            return [try FindAPIsTool(registry: self, librarian: librarian), runCode]
+        }
     }
 }
 
@@ -176,9 +219,13 @@ public struct RunCodeArguments {
 /// MultiTool idea, "a single `Tool`... that wraps other, in-process `Tool`s
 /// and exposes them to the model as a callable code API." Conforms to
 /// `FoundationModels.Tool`, so it registers directly on a native
-/// `LanguageModelSession(tools: [multiTool, findAPIsTool])` and Apple's own
-/// tool-calling loop decides when to call it (the hand-rolled
-/// `MultiToolAgent` ReAct loop that used to drive it is retired).
+/// `LanguageModelSession(tools: try registry.makeSessionTools(librarian:))`
+/// and Apple's own tool-calling loop decides when to call it (the
+/// hand-rolled `MultiToolAgent` ReAct loop that used to drive it is
+/// retired). Mount through `Registry.makeSessionTools(librarian:)` rather
+/// than assembling the array by hand: it puts `findAPIs` ahead of `runCode`,
+/// which is the order this package's whole search-then-call premise depends
+/// on, and drops `findAPIs` under `directMode()`.
 ///
 /// Per call, `call(arguments:)`:
 /// 1. builds `tools.*` glue that assigns every registry entry's real,

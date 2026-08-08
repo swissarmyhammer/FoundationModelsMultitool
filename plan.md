@@ -264,14 +264,13 @@ let registry = try MultiTool.Builder()
 let router  = Router()                                          // FoundationModelsRouter, an actor
 let profile = try await router.resolve(profile: travelProfile, reporting: progress)   // ProfileDefinition → LanguageModelProfile
 
-// 3. Register both tools on a native LanguageModelSession over the resolved standard
-//    slot, wrapped as an MLXLanguageModel (Router integration below). findAPIs's own
-//    selection tier runs on the same profile's cheaper/faster flash slot.
-let multiTool    = MultiTool(registry: registry)
-let findAPIsTool = try FindAPIsTool(registry: registry, librarian: profile.flash)
+// 3. Mount the registry's own tools on a native LanguageModelSession over the resolved
+//    standard slot, wrapped as an MLXLanguageModel (Router integration below). findAPIs's
+//    own selection tier runs on the same profile's cheaper/faster flash slot.
+//    makeSessionTools orders the pair: findAPIs first, then runCode.
 let session = LanguageModelSession(
     model: mlxModel,                        // MLXLanguageModel over profile.standard
-    tools: [multiTool, findAPIsTool],
+    tools: try registry.makeSessionTools(librarian: profile.flash),
     instructions: "You are a travel assistant. Use runCode to get things done."
 )
 // The session surfaces exactly two operations to the model: runCode + findAPIs.
@@ -337,9 +336,10 @@ tool-calling loop — and the main loop is Apple's own. `MLXFoundationModels`'s
 `MLXLanguageModel` wraps the Router-resolved `profile.standard` slot as a real
 `FoundationModels.LanguageModel` declaring `.toolCalling` (and
 `.guidedGeneration`), built over the same resident weights the Router already
-loaded. A **native `LanguageModelSession(tools: [multiTool, findAPIsTool])`**
-over that model lets Apple's own token-level tool-calling loop decide when to
-call `findAPIs` vs `runCode` — this package drives no turn loop of its own.
+loaded. A **native `LanguageModelSession` over
+`registry.makeSessionTools(librarian:)`** — `findAPIs` presented before
+`runCode` — lets Apple's own token-level tool-calling loop decide when to
+call `findAPIs` vs `runCode`; this package drives no turn loop of its own.
 The production wiring is `Sources/multitool-cli/CLIRunner.swift`
 (`makeMLXLanguageModel(for:)` + `runDemo`, including the shared
 `toolUseInstructions`); the offline call-pattern reference is
@@ -400,13 +400,10 @@ exactly two operations — `runCode` + `findAPIs` — to the model (mirroring
 let router  = Router()
 let profile = try await router.resolve(profile: travelProfile, reporting: progress)   // FoundationModelsRouter
 
-let multiTool    = MultiTool(registry: registry)
-let findAPIsTool = try FindAPIsTool(registry: registry, librarian: profile.flash)
-
 let mlxModel = makeMLXLanguageModel(for: profile.standard)   // MLXLanguageModel: .toolCalling over the resident weights
 let session  = LanguageModelSession(
     model: mlxModel,
-    tools: [multiTool, findAPIsTool],
+    tools: try registry.makeSessionTools(librarian: profile.flash),   // findAPIs, then runCode
     instructions: "You are a travel assistant. Use runCode to get things done."
 )
 

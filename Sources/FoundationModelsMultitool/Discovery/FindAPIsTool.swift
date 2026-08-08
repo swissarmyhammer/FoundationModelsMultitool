@@ -29,9 +29,12 @@ public struct FindAPIsArguments: Sendable {
 /// plan.md Component 8 (Discovery) — `findAPIs` as its own real
 /// `FoundationModels.Tool` conformer, independently constructible and
 /// registerable directly alongside `MultiTool` in a native
-/// `LanguageModelSession(tools: [multiTool, findAPIsTool])`, fully decoupled
-/// from the retired `MultiToolAgent` hand-rolled ReAct loop and its turn
-/// machinery.
+/// `LanguageModelSession(tools: try registry.makeSessionTools(librarian:))`,
+/// fully decoupled from the retired `MultiToolAgent` hand-rolled ReAct loop
+/// and its turn machinery. That vending call is how a host should mount the
+/// pair — it presents this tool *before* `runCode`, so the model reads
+/// "discover what exists" before "execute code" when it picks its opening
+/// move (see `MultiTool.Registry.makeSessionTools(librarian:)`).
 ///
 /// `call(arguments:)` forwards every `findAPIs(task)` call to a
 /// `MetadataSearcher<APISurface.Entry>` running in `.auto` mode (plan.md §7):

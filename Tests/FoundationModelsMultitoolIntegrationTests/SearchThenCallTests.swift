@@ -3,9 +3,10 @@ import Testing
 @testable import FoundationModelsMultitool
 
 /// The gated real-model suite: the four sample MultiTools scenarios,
-/// retargeted at a native `LanguageModelSession(tools: [multiTool,
-/// findAPIsTool])`-driven run — "this is where the plan's empirical
-/// search-then-call behavior is proven against real hardware."
+/// retargeted at a native `LanguageModelSession` driven over the tools
+/// `MultiTool.Registry.makeSessionTools(librarian:)` vends — "this is where
+/// the plan's empirical search-then-call behavior is proven against real
+/// hardware."
 ///
 /// **Outcome over path.** Each scenario passes when the model produces a
 /// valid, grounded answer — see `runNativeIntegrationScenario`'s
