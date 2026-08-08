@@ -56,94 +56,78 @@ public struct FindAPIsTool: Tool {
     /// This tool's `Tool`-protocol name, always `"findAPIs"`.
     public let name = "findAPIs"
 
-    /// The package-owned session instruction that makes the findAPIs +
-    /// runCode tool pair behave — ready to use whole as a
-    /// `LanguageModelSession`'s `instructions`, or to append to a caller's
-    /// own instructions.
+    /// This tool's `Tool`-protocol description, presented to the model as
+    /// usage instructions for `findAPIs`.
     ///
-    /// The tool descriptions already carry the full behavioral contract, so
-    /// this is deliberately not a duplicate of them — it is the one thing a
-    /// description structurally *can't* deliver: the upfront, first-move
-    /// stance. Empirically (recorded on task `k4mj1gm`, real-model gated
-    /// runs), descriptions alone leave a model announcing a plan and
-    /// stopping without acting — small models collapse to 1/4, and even a
-    /// capable model over-refuses the trivial single-tool case — because a
-    /// tool description is read when the model is already choosing a tool,
-    /// not when it decides its opening move. This instruction supplies that
-    /// opening move directly: real access, findAPIs first, then runCode, act
-    /// rather than narrate, answer only from returned data. Adding it takes
-    /// the same model from 1/4 to 4/4.
+    /// Together with `MultiTool.description` this carries the **whole**
+    /// behavioral contract a session needs. Mounting the two tools is the
+    /// entire integration: a `Tool` conformance's description is serialized
+    /// into the prompt on every turn, whereas a session instruction is
+    /// optional and a host may not pass one, so nothing load-bearing may
+    /// live outside these two strings.
+    ///
+    /// Ordered the way the surveyed code-execution tool prompts order theirs
+    /// (Cloudflare `@cloudflare/codemode`, HuggingFace `smolagents`,
+    /// Microsoft TaskWeaver, Vercel `ai-sdk-tool-code-execution`): the
+    /// numbered procedure comes first, before any rule, because the
+    /// procedure *is* the discovery mandate; each rule then carries its own
+    /// mechanical consequence, which is specification rather than
+    /// persuasion. The anti-guessing rule triggers on checkable
+    /// conversational state ("if you have not called findAPIs in this
+    /// conversation") rather than on the model's own confidence — a
+    /// confident model always passes an "if you are unsure" test, which is
+    /// the failure this wording exists to close.
     ///
     /// Persona-free by design: no "you are a helpful assistant" framing,
     /// just clear information on how to call the tools — the only part that
     /// carries weight.
-    public static let sessionInstructions = """
-        You have real, working access to the user's live data and services through your
-        tools, including anything real-time.
-
-        Every task runs these three steps in order.
-
-        1. Call findAPIs first. Describe the task in plain language. findAPIs returns
-           the exact functions for that task, each with its signature.
-        2. Call runCode. Write one JavaScript snippet calling the exact tools.* paths
-           findAPIs returned. Put every call the task needs in that one snippet.
-        3. Answer only from what runCode returned.
-
-        Worked example.
-
-        Step 1 — findAPIs("read a document's title") returns:
-
-            // tools.getDocument
-            declare function getDocument(id: string): Promise<{ title: string }>
-            Example: tools.getDocument("d-17")
-
-        Step 2 — runCode:
-
-            const doc = await tools.getDocument("d-17");
-            return doc.title;
-
-        Step 3 — runCode returns "Q3 Rollout Plan". Answer: the document's title is
-        "Q3 Rollout Plan".
-
-        Start at step 1 on every task, before you name any function and before you ask
-        the user for anything.
-
-        Call only tools.* paths findAPIs returned. Take every value in your answer from
-        a runCode return.
-
-        When findAPIs returns no function for the task, name the capability that is
-        missing.
-        """
-
-    /// This tool's `Tool`-protocol description, presented to the model as
-    /// usage instructions for `findAPIs`.
     ///
-    /// Deliberately carries the whole behavioral contract a session needs —
-    /// the access framing (real access, the user's own data behind the
-    /// catalog, never ask or refuse instead of searching) and the workflow
-    /// (search, then one runCode snippet over the exact discovered paths,
-    /// answer only from returned data). The package must be drop-in usable
-    /// with no bespoke system prompt: registering `findAPIs` + `runCode`
-    /// alone is the product surface, so the "system prompt" lives here.
+    /// The worked example uses `getDocument`/`getRevision` deliberately.
+    /// Fixture-shaped example data (weather, trips) would hand a model the
+    /// very value a gated scenario grades on, which passes with zero calls.
     public let description = """
-        This is how you use your tools. You are connected to the user's live data and
-        services, and you have real, working access: every function you need —
-        including the user's own data such as their trip, bookings, and other live
-        values — is behind this catalog. The tools execute and return real data.
+        This is how you use your tools. findAPIs and runCode together reach every
+        function this session has, including the user's own data. The set of
+        functions is loaded dynamically and changes from session to session, so
+        findAPIs is what tells you the current set.
 
-        Call findAPIs first, on every task, before you answer and before you ask the
-        user for anything. Describe in plain language what you are trying to
-        accomplish. You get back the few relevant tool-functions, each with its typed
-        signature, purpose, and a runnable example.
+        Assume any user request needs these functions. Almost all of them do. Call
+        findAPIs first, before you answer and before you ask the user for anything.
+        Describe in plain language what you are trying to accomplish. You get back
+        the few relevant tool-functions, each with its typed signature, purpose,
+        and a runnable example.
 
         Search here instead of asking the user, and instead of naming a function
-        yourself, once per kind of data you need.
+        yourself. Call findAPIs once per kind of data you need, and again whenever
+        the request still needs a function you do not hold yet.
 
         Then write one runCode snippet calling those exact tools.* paths, and answer
         from what that snippet returns.
 
+        Worked example.
+
+        findAPIs("read a document's title") returns:
+
+            // tools.getDocument
+            declare function getDocument(id: string): Promise<{ title: string }>
+
+        The request also needs the editor's name and no function for that came back,
+        so findAPIs("who last edited a document") returns:
+
+            // tools.getRevision
+            declare function getRevision(id: string): Promise<{ editor: string }>
+
+        Both functions are in hand, so one runCode snippet finishes the task:
+
+            const doc = await tools.getDocument("d-17");
+            const rev = await tools.getRevision(doc.latestRevisionId);
+            return { title: doc.title, editor: rev.editor };
+
         When findAPIs returns no relevant function for the request, say so and name
         the capability that is missing.
+
+        Only a request that is pure arithmetic or string work needs no functions at
+        all. Run a runCode snippet and return the result.
         """
 
     /// The catalog searcher every `findAPIs` call forwards to — runs in

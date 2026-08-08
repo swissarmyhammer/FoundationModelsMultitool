@@ -165,10 +165,10 @@ var multitoolIntegrationEnabled: Bool {
 /// comparable (3.3B active).
 ///
 /// **Tool-owned contract promoted a dense 27B.** After the tool-use
-/// contract moved onto the tools themselves — the full behavioral essence
-/// in the `findAPIs`/`runCode` descriptions plus the load-bearing opening
-/// move in `FindAPIsTool.sessionInstructions` (task `k4mj1gm`) — a model
-/// sweep under the shipped config found `Qwen3.6-27B-mxfp4` scoring a clean
+/// contract moved onto the tools themselves — the full behavioral essence in
+/// the `findAPIs`/`runCode` descriptions, which is now the whole of it (task
+/// `k4mj1gm`, then `tkrdwb8`) — a model sweep under the shipped config found
+/// `Qwen3.6-27B-mxfp4` scoring a clean
 /// 4/4, every scenario opening with `findAPIs`, no wrong-guessing,
 /// announce-then-stop, or over-refusal. It doubles the 30B-A3B's 2/4, and
 /// being a dense model it follows through reliably where the 3.3B-active

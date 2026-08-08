@@ -107,8 +107,7 @@ extension MultiTool {
         /// discover what exists, then execute against what came back.
         /// Presenting `runCode` first states the opposite — that execution is
         /// the primary affordance and discovery an aside — which is the
-        /// reverse of what `FindAPIsTool.sessionInstructions` and both tool
-        /// descriptions ask for.
+        /// reverse of what both tool descriptions ask for.
         ///
         /// That order is vended rather than only documented because a host
         /// assembling the array by hand has to get it right every time and
@@ -117,9 +116,13 @@ extension MultiTool {
         /// re-derives from `isDirectMode` what `supportsFindAPIs` already
         /// knows.
         ///
-        /// This is the whole host contract. A host builds a registry, mounts
-        /// what this returns, and passes `FindAPIsTool.sessionInstructions`
-        /// as the session's instructions — nothing bespoke beyond that.
+        /// This is the whole host contract. A host builds a registry and
+        /// mounts what this returns — nothing else. In particular it passes
+        /// **no session instructions**: the two tool descriptions carry the
+        /// entire behavioral contract, and they do so because a `Tool`
+        /// conformance's description is serialized into the prompt on every
+        /// turn while a session instruction is optional and a host may not
+        /// pass one at all.
         ///
         /// The order here is deliberately not `affordances`'s. That property
         /// names which operations a registry surfaces, for a caller or a test
@@ -254,27 +257,64 @@ public struct MultiTool: Tool {
     /// This tool's `Tool`-protocol description, presented to the model as
     /// usage instructions for `runCode`.
     ///
-    /// Together with `FindAPIsTool.description`, deliberately carries the
-    /// whole behavioral contract a session needs — the package must be
-    /// drop-in usable with no bespoke system prompt. `findAPIs` owns the
-    /// access framing and the search-then-snippet workflow; this side owns
-    /// the error-recovery contract: fix and immediately re-call on error,
-    /// never stop at an error to narrate, never claim an outcome no
-    /// snippet actually returned.
+    /// Together with `FindAPIsTool.description` this carries the **whole**
+    /// behavioral contract a session needs. Mounting the two tools is the
+    /// entire integration: a `Tool` conformance's description is serialized
+    /// into the prompt on every turn, whereas a session instruction is
+    /// optional and a host may not pass one, so nothing load-bearing may live
+    /// outside these two strings. `findAPIs` owns the discovery mandate; this
+    /// side owns the snippet, the provenance rule, and the error-recovery
+    /// contract.
     ///
-    /// The ambient globals are the one part deliberately *not* carried here.
-    /// This text is read on every turn, alongside every tool schema, so
-    /// everything in it competes with the findAPIs-first instruction for the
-    /// model's attention — and the globals are the part a snippet needs only
-    /// once it is already writing a snippet. So this names them and where to
-    /// read them, and `docs("globals")` hands back the contract on demand
-    /// (see `MultiTool+SandboxGlobals.swift`, "MARK: - The docs() page").
+    /// Ordered the way the surveyed code-execution tool prompts order theirs
+    /// (Cloudflare `@cloudflare/codemode`, HuggingFace `smolagents`,
+    /// Microsoft TaskWeaver, Vercel `ai-sdk-tool-code-execution`): the
+    /// numbered procedure comes first, before any rule, and each rule then
+    /// carries its own mechanical consequence, which is specification rather
+    /// than persuasion.
+    ///
+    /// Three placements are deliberate and were previously the recorded
+    /// failure sites:
+    /// - **In-sandbox discovery is named at step 1**, not left as an aside.
+    ///   `help()`/`docs(name)` are synchronous host functions *inside* the
+    ///   sandbox (see "MARK: - help()/docs() globals"), so a snippet can
+    ///   confirm the surface and keep going in the same call. Every recorded
+    ///   plan-and-stop happens at the `findAPIs` → `runCode` turn boundary,
+    ///   and that path removes the boundary.
+    /// - **The anti-guessing rule triggers on checkable conversational
+    ///   state** ("if you have not called findAPIs in this conversation"),
+    ///   never on the model's own confidence: a confident model always passes
+    ///   an "if you are unsure" test, which is the failure being closed.
+    /// - **The provenance rule sits directly under the procedure**, with the
+    ///   consequence attached. It was previously buried in the second half
+    ///   and got violated by runs that reported a booking as confirmed with
+    ///   nothing invoked.
+    ///
+    /// The ambient globals' *contract* is the one part deliberately not
+    /// carried here. This text is read on every turn, alongside every tool
+    /// schema, so everything in it competes with the discovery mandate for
+    /// the model's attention — and the globals are the part a snippet needs
+    /// only once it is already writing a snippet. So this names them, closes
+    /// the global world around them, and points at `docs("globals")`, which
+    /// hands back the contract on demand (see
+    /// `MultiTool+SandboxGlobals.swift`, "MARK: - The docs() page").
+    ///
+    /// The worked example uses `getDocument`/`getRevision` deliberately.
+    /// Fixture-shaped example data (weather, trips) would hand a model the
+    /// very value a gated scenario grades on, which passes with zero calls.
     public let description = """
-        Run a JavaScript snippet against the user's real tools, exposed as functions
-        under `tools.*`.
+        runCode is an isolated JavaScript runtime. It runs one snippet and returns
+        what that snippet returns.
 
-        Call findAPIs first to get the exact functions and their signatures for the
-        task. Write the snippet against the paths findAPIs returned.
+        Use it for any computation: arithmetic, string work, dates, sorting,
+        reshaping JSON. Work it out in the snippet rather than in your head.
+
+        It also exposes this session's API functions under `tools.*`.
+
+        Assume any user request needs this session's functions. Almost all of them
+        do. Call findAPIs first to get the exact functions and their signatures,
+        then write the snippet against the paths findAPIs returned. Only a request
+        that is pure arithmetic or string work needs no functions at all.
 
         Writing the snippet:
 
@@ -292,9 +332,9 @@ public struct MultiTool: Tool {
             const rev = await tools.getRevision(doc.latestRevisionId);
             return { title: doc.title, editor: rev.editor };
 
-        These tools execute and return real data: answer only from what they return —
-        never answer data questions from your own knowledge, and never simulate or
-        invent data in a snippet.
+        Every fact you state about the user's data comes from a `tools.*` return
+        value — never answer data questions from your own knowledge, and never
+        simulate or invent data in a snippet.
 
         When a snippet fails, the error comes back for you to repair: fix the snippet
         and call runCode again immediately — never stop at an error to describe or

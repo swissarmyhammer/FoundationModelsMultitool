@@ -116,7 +116,7 @@ struct FindAPIsToolTests {
         #expect(blockRange.upperBound <= footerRange.lowerBound)
     }
 
-    @Test("findAPIs's description alone carries the access framing and the runCode workflow — no system prompt required")
+    @Test("findAPIs's description alone carries the whole contract — the mounted tools are the entire integration, with no session instructions")
     func descriptionCarriesTheNoSystemPromptScaffolding() throws {
         let registry = try MultiTool.Builder().addTool(TripCitiesTool()).buildRegistry()
         // Collapse the multiline literal's hard line-wraps to single spaces
@@ -128,51 +128,74 @@ struct FindAPIsToolTests {
 
         // The full essence of the retired system prompt, verified clause by
         // clause so a future paraphrase can't silently drop a load-bearing
-        // line (the whole point of moving it into the tool).
-        #expect(description.contains("real, working access")) // real access
+        // line. `sessionInstructions` is gone (task tkrdwb8): a `Tool`
+        // description is serialized into the prompt on every turn, while a
+        // session instruction is optional and a host may never pass one, so
+        // every guarantee that instruction carried is asserted here instead.
+        #expect(description.contains("loaded dynamically")) // the set is not knowable in advance
+        // Provenance is stated positively. The negative form inverted once in
+        // review ("State no fact ... that a tools.* call returned"), which forbids
+        // exactly what it means to require.
+        // Provenance: the answer comes from the snippet's return, not from priors.
+        // The stronger per-fact wording lives on runCode's description, which is
+        // where a snippet is actually written.
+        #expect(description.contains("answer from what that snippet returns"))
         #expect(description.localizedCaseInsensitiveContains("call findAPIs first")) // findAPIs-first stance
         #expect(description.contains("instead of asking the user")) // search, don't ask
         #expect(description.contains("once per kind of data")) // one search per kind
+        // Operational, not persona: no "helpful assistant" ritual — just
+        // clear information on how to call the tools.
+        #expect(!description.localizedCaseInsensitiveContains("helpful assistant"))
         // Access is stated as a plain fact, with no never-refuse clause for
         // the search rule to hang off — that subordination is the defect this
         // wording replaces (task tkrdwb8).
-        #expect(description.contains("The tools execute and return real data"))
+        #expect(description.contains("findAPIs is what tells you the current set"))
         #expect(!description.localizedCaseInsensitiveContains("refus"))
         #expect(description.contains("name the capability that is missing"))
         #expect(description.contains("runCode")) // the runCode handoff
         // Honest miss: when nothing matches, say so rather than invent.
         #expect(description.localizedCaseInsensitiveContains("say so"))
-    }
-
-    @Test("FindAPIsTool.sessionInstructions is a persona-free, ready-to-use tool-calling directive")
-    func sessionInstructionsAreAnOperationalDirective() {
-        let instructions = FindAPIsTool.sessionInstructions
-            .split(whereSeparator: \.isWhitespace)
-            .joined(separator: " ")
-
-        // Operational, not persona: no "helpful assistant" ritual — just
-        // clear information on how to call the tools.
-        #expect(!instructions.localizedCaseInsensitiveContains("helpful assistant"))
-        // The load-bearing first-move stance the tool descriptions can't
-        // prime upfront (measured: description-only regresses on small
-        // models). Usable whole, or appended to a caller's own instructions.
-        #expect(instructions.contains("real, working access"))
-        #expect(instructions.localizedCaseInsensitiveContains("call findAPIs first"))
-        #expect(instructions.contains("runCode"))
-        #expect(instructions.localizedCaseInsensitiveContains("answer only from what"))
-        // The sequence is unconditional. Nothing asks the model to judge
-        // whether it already has a tool before step 1 — the retired
-        // "Never refuse ... instead, always call findAPIs" phrasing scoped
-        // searching to the about-to-refuse reader and never reached the
-        // confident guesser, which is the failing population (task tkrdwb8).
-        #expect(instructions.contains("Every task runs these three steps in order"))
-        #expect(instructions.contains("Start at step 1 on every task"))
-        // Refusal is not named anywhere, so it is not in the option set. An
-        // honest failure report is what replaces it.
-        #expect(!instructions.localizedCaseInsensitiveContains("refus"))
-        #expect(instructions.contains("name the capability that is missing"))
-        // A shown sequence, not only a stated rule.
-        #expect(instructions.contains("Worked example"))
+        // The numbered procedure comes before any rule, and it is
+        // unconditional: nothing asks the model to judge whether it already
+        // has a tool before step 1. The retired "Never refuse ... instead,
+        // always call findAPIs" phrasing scoped searching to the
+        // about-to-refuse reader and never reached the confident guesser,
+        // which is the failing population (task tkrdwb8).
+        // The prior is stated, not left as a classification the model performs
+        // before acting: "does this need the user's data?" is the same shape of
+        // pre-action judgment the retired "Never refuse ... instead, always call
+        // findAPIs" phrasing let a confident model answer wrongly (task tkrdwb8).
+        #expect(description.contains("Call\n        findAPIs first")
+            || description.contains("Call findAPIs first"))
+        // Search precedes the snippet, in the text as well as in the workflow.
+        let searchRange = try #require(description.range(of: "findAPIs first"))
+        let snippetRange = try #require(description.range(of: "Then write one runCode snippet"))
+        #expect(searchRange.upperBound <= snippetRange.lowerBound)
+        // A stated prior, not a classification the model performs before acting:
+        // "does this need the user's data?" is the same shape of pre-action judgment
+        // that the retired "instead" clause let a confident model answer wrongly.
+        #expect(description.contains("Almost all of them do"))
+        // findAPIs is not one-shot. A request needing two kinds of data cannot be
+        // served by a single search, and a model that searched once, came up short,
+        // and narrated what it still needed is the recorded announce-then-stop.
+        #expect(description.contains("again whenever"))
+        #expect(description.contains("still needs a function you do not hold yet"))
+        // The anti-guessing trigger is checkable conversational state, never
+        // the model's own confidence — a confident model always passes an
+        // "if you are unsure" test, which is the failure being closed.
+        #expect(description.contains("instead of naming a function yourself"))
+        #expect(!description.localizedCaseInsensitiveContains("if you are unsure"))
+        #expect(!description.localizedCaseInsensitiveContains("real-time"))
+        // Only a pure calculation needs no API at all.
+        #expect(description.contains("pure arithmetic or string work needs no functions"))
+        // A shown sequence, not only a stated rule — and the worked example
+        // shows the *second* search, so the iteration licence is demonstrated
+        // and not merely asserted.
+        #expect(description.contains("Worked example"))
+        // The worked example demonstrates the second search rather than only
+        // stating that iteration is allowed.
+        #expect(description.contains("no function for that came back"))
+        #expect(description.contains("who last edited a document"))
     }
 
     @Test("the production registry+librarian initializer wires .auto mode over the registry's own surface entries")

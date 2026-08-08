@@ -341,8 +341,8 @@ loaded. A **native `LanguageModelSession` over
 `runCode` — lets Apple's own token-level tool-calling loop decide when to
 call `findAPIs` vs `runCode`; this package drives no turn loop of its own.
 The production wiring is `Sources/multitool-cli/CLIRunner.swift`
-(`makeMLXLanguageModel(for:)` + `runDemo`, including the shared
-`toolUseInstructions`); the offline call-pattern reference is
+(`makeMLXLanguageModel(for:)` + `runDemo`, which passes no session
+instructions at all); the offline call-pattern reference is
 `Tests/FoundationModelsMultitoolTests/ExamplesTests.swift`. Router-backed
 `RoutedSession`s remain in exactly one place — `findAPIsTool`'s internal
 selection tier (see **Discovery** below), which needs the Router's cache-level
@@ -538,10 +538,12 @@ ResultRenderer ─► ToolOutput ─► back to the model (the session's own too
 
 These two `description`s *are* the prompt that makes the model search-then-code —
 fixed strings, not per-tool, handed to the native session the same way any
-tool's description is. On the shipped session they are joined by the
-session-level instructions (`CLIRunner.toolUseInstructions`, shared verbatim
-with the gated integration suite), each clause of which targets an empirically
-observed small-model failure mode. This is the search affordance:
+tool's description is. They are the *whole* prompt: the shipped session — and
+the gated integration suite alike — passes no session-level instructions,
+because a `Tool` description is serialized into the prompt on every turn while
+a session instruction is optional and a host may never pass one. Each clause
+targets an empirically observed small-model failure mode. This is the search
+affordance:
 
 ```
 runCode(code: string)

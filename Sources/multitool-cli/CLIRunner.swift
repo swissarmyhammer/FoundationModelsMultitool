@@ -198,10 +198,9 @@ enum CLIRunner {
         // Split pins, mirroring the gated suite's `multitoolTinyProfile`
         // (see `IntegrationGate.swift`'s pin history): the dense
         // Qwen3.6-27B drives the main session — under the suite's
-        // outcome-based assertions, with the tool-use contract now carried
-        // by the tools themselves (`FindAPIsTool.sessionInstructions` + the
-        // findAPIs/runCode descriptions), it scores a clean 4/4, opening
-        // every scenario with findAPIs and following through reliably where
+        // outcome-based assertions, with the tool-use contract carried
+        // entirely by the findAPIs/runCode descriptions, it opens
+        // every scenario with findAPIs and follows through reliably where
         // the 3.3B-active MoE varied — while the 1.5B stays on `flash` for
         // the selection tier, where it is empirically the more accurate and
         // decisive grammar-constrained selector.
@@ -218,20 +217,6 @@ enum CLIRunner {
     /// mirroring the sample's own worked `getTrip` -> `getWeather` -> warmest
     /// example.
     static let demoPrompt = "Of the cities on my trip, which is warmest right now?"
-
-    /// The session instructions this CLI's session runs under — the
-    /// package-owned `FindAPIsTool.sessionInstructions`, shared verbatim by
-    /// the gated integration suite's scenario sessions
-    /// (`ScenarioRunner.swift`), so the suite measures exactly what the
-    /// product ships.
-    ///
-    /// Aliased, not redefined: the instruction has one source of truth, on
-    /// the tool that needs it (see `FindAPIsTool.sessionInstructions` for
-    /// why the load-bearing first-move stance lives on the tool rather than
-    /// only in the tool descriptions). The full behavioral contract lives in
-    /// the `findAPIs`/`runCode` descriptions themselves; this supplies the
-    /// opening move those descriptions structurally can't prime.
-    static let toolUseInstructions = FindAPIsTool.sessionInstructions
 
     /// A function type for profile resolution, converting a profile definition into a language model profile.
     ///
@@ -399,10 +384,14 @@ enum CLIRunner {
             let tools: [any FoundationModels.Tool] = try registry.makeSessionTools(librarian: profile.flash)
 
             let mlxModel = Self.makeMLXLanguageModel(for: profile.standard)
+            // No instructions. Mounting the two tools is the whole host
+            // contract — their descriptions carry the entire behavioral
+            // contract, and a session instruction a real host may never pass
+            // must not be load-bearing (see
+            // `Registry.makeSessionTools(librarian:)`).
             let session = LanguageModelSession(
                 model: mlxModel,
-                tools: tools,
-                instructions: toolUseInstructions
+                tools: tools
             )
 
             // Explicitly typed: `FoundationModelsRanker` (pulled in

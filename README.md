@@ -75,11 +75,15 @@ let profile = try await router.resolve(profile: demoProfile, reporting: progress
 //    runs on the same resolved profile's cheaper/faster `flash` slot,
 //    through Router-backed sessions (fork-per-call prefix reuse). A
 //    `directMode()` registry vends `runCode` alone.
+//
+//    No `instructions:`. Mounting the two tools is the whole integration —
+//    their descriptions carry the entire behavioral contract, because a
+//    `Tool` description is in the prompt on every turn while a session
+//    instruction is optional.
 let mlxModel = makeMLXLanguageModel(for: profile.standard)
 let session = LanguageModelSession(
     model: mlxModel,
-    tools: try registry.makeSessionTools(librarian: profile.flash),
-    instructions: toolUseInstructions  // CLIRunner.toolUseInstructions, shared with the gated integration suite
+    tools: try registry.makeSessionTools(librarian: profile.flash)
 )
 
 let response: LanguageModelSession.Response<String> =

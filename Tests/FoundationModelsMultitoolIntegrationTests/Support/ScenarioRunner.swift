@@ -105,12 +105,13 @@ func runNativeIntegrationScenario(
         let log = ScenarioCallLog()
         let mlxModel = CLIRunner.makeMLXLanguageModel(for: fixture.profile.standard)
         let surface = try makeScenarioSurface(over: makeTools(log), on: fixture)
+        // No instructions. Mounting the two tools is the whole product surface, so
+        // the suite exercises exactly that: their descriptions carry the contract,
+        // and a session instruction would be a harness-side assist a real host
+        // never has to supply.
         let session = LanguageModelSession(
             model: mlxModel,
-            tools: surface.tools,
-            // The production instructions, shared verbatim (see its doc
-            // comment) — the suite measures exactly what the CLI ships.
-            instructions: CLIRunner.toolUseInstructions
+            tools: surface.tools
         )
 
         let start = Date()
@@ -277,8 +278,9 @@ func runElevationIntegrationScenario(
         // It still exists per run because the fixture tools require one, and
         // it is minted here so it cannot outlive this scenario.
         let log = ScenarioCallLog()
+        // No instructions, for the same reason as the native runner above: mounting
+        // the tools is the whole product surface.
         let session = fixture.profile.standard.makeSession(
-            instructions: CLIRunner.toolUseInstructions,
             tools: try makeScenarioSurface(over: makeTools(log), on: fixture).tools
         )
 
