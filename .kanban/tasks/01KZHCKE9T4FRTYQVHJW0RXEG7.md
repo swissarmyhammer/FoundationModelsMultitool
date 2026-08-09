@@ -154,8 +154,29 @@ comments:
 
     - next: unchanged — /implement ^w0rxeg7 to close the three findings at ResultRenderer.swift:118, :134, :141.
   timestamp: 2026-08-09T12:18:49.541065+00:00
-position_column: review
-position_ordinal: '80'
+- actor: claude-code
+  id: 01kzk9dnfb8ppgdgcq3h6kf5qe
+  text: |-
+    ### RULING (human, 2026-08-09) — the switch is correct, the rule was wrong
+
+    The conflict recorded above is resolved in favour of the code. Findings `:118` and `:141` are overruled, and the rule that produced them has been corrected rather than worked around. No code changed in this repo for either finding.
+
+    **Rule corrected:** `/Users/wballard/.validators/code-hygiene/rules/data-driven.md`, a new fourth carve-out:
+
+    > **A match the compiler already checks for exhaustiveness.** Where the language verifies at compile time that a match over a closed type covers every case — a Swift `switch` over an enum with no `default:`, a Rust `match` over an enum with no `_` arm, an exhaustive Kotlin `when` over a sealed class — the match *is* the table, and the compiler enforces that every row exists. A map keyed by that type is not an improvement: its lookup returns an optional, so adding a case compiles clean and produces a missing row at runtime instead of failing the build. Flagging here trades a compile error for a silent hole. Flag only when the replacement lookup can be made total without one — the type carries a raw value, or the map is built through a constructor the compiler checks covers every case.
+
+    Written to match the rule set's existing convention that a carve-out is a structural fact readable off the definition, not a judgement the reviewer makes.
+
+    **Verified, not assumed.** `review file Sources/FoundationModelsMultitool/Rendering/ResultRenderer.swift --validators code-hygiene` after the edit: **0 findings, 2 refuted, 9 attempted, 0 failed**. The same two sites that were confirmed findings before the edit are now refuted by the carve-out. The rule still runs; it just no longer fires here.
+
+    The carve-out is deliberately language-general rather than a `data-driven-swift` variant, because Rust `match`, Kotlin sealed `when` and Scala sealed traits have the identical property. The rule directory does contain per-language variants (`magic-numbers-swift`, `complexity-swift`, …), but those exist to bind a language-specific *tool*; this is a property of exhaustiveness checking itself.
+
+    **Two things to know about the change.** `/Users/wballard/.validators` is **not** a git repository, so this edit is live and unversioned — there is no history or rollback for it. And it sits in the `user` source layer, so it applies to every repo on this machine, not only this one.
+
+    **Card state.** All three findings are now closed: `:134` fixed in `90603d7`, `:118` and `:141` overruled here. Zero unchecked items remain. Ungated suite green, 309/24 + 49/8.
+  timestamp: 2026-08-09T12:54:32.683347+00:00
+position_column: done
+position_ordinal: b980
 title: '[Multitool] ResultRenderer''s "The snippet failed" summary is hand-copied into the synthetic transcript fixture'
 ---
 Discovered while implementing `^esyyqjv`, which deduplicated `RepairDirective.repairSnippet.closingLine` out of nine test literals. The same fixture carries a second copy of shipped wording that the card did not cover.
@@ -196,6 +217,6 @@ Check whether any other test hand-writes `The snippet failed` or `The snippet ti
 
 > tool rule 'code-hygiene/dead-code-swift' is unavailable (tool missing: exited with exit status: 1); prompt rule 'dead-code' ran instead.
 
-- [ ] `Sources/FoundationModelsMultitool/Rendering/ResultRenderer.swift:141` — Switch statement over a known enum set (InterpreterError.Kind) with arms differing only in string constants should be expressed as a data table rather than control flow. Express this as a static dictionary: `static let errorSummaries: [Kind: String] = [.exception: "The snippet failed", .timeout: "The snippet timed out"]`, then use `Self.errorSummaries[self]` in the computed property.
-- [ ] `Sources/FoundationModelsMultitool/Rendering/ResultRenderer.swift:118` — Same cause as the finding above, second instance in the same file: `RepairDirective.closingLine` is a switch over a known enum set (`.repairSnippet`/`.discoverFunctions`) whose arms differ only in string constants. The finding at :141 shows one example of the cause; close it across the whole file in one pass rather than leaving this site for a later round.
+- [x] `Sources/FoundationModelsMultitool/Rendering/ResultRenderer.swift:141` — Switch statement over a known enum set (InterpreterError.Kind) with arms differing only in string constants should be expressed as a data table rather than control flow. Express this as a static dictionary: `static let errorSummaries: [Kind: String] = [.exception: "The snippet failed", .timeout: "The snippet timed out"]`, then use `Self.errorSummaries[self]` in the computed property. **— OVERRULED by human ruling 2026-08-09: the switch is correct. The `data-driven` rule was wrong to fire and has been corrected; see the ruling comment.**
+- [x] `Sources/FoundationModelsMultitool/Rendering/ResultRenderer.swift:118` — Same cause as the finding above, second instance in the same file: `RepairDirective.closingLine` is a switch over a known enum set (`.repairSnippet`/`.discoverFunctions`) whose arms differ only in string constants. The finding at :141 shows one example of the cause; close it across the whole file in one pass rather than leaving this site for a later round. **— OVERRULED by human ruling 2026-08-09: the switch is correct. The `data-driven` rule was wrong to fire and has been corrected; see the ruling comment.**
 - [x] `Sources/FoundationModelsMultitool/Rendering/ResultRenderer.swift:134` — The doc comment on `repairableErrorSummary` states "Both test targets read it here through `@testable import` rather than restating it". That is false for this member. `rg -n 'repairableErrorSummary' Tests/` returns exactly two references, both in the `FoundationModelsMultitoolTests` target (`HardeningTests.swift:149`, `HardeningTests.swift:183`); `FoundationModelsMultitoolIntegrationTests` contains no reference to it and reaches the wording through the public `ResultRenderer.render(_:)` instead. The sentence was copied from ``RepairDirective/closingLine``, where it is true (that member is read by both targets: `ScenarioFixtureTests.swift:88`/`:306` in the integration target and `MultiToolExecutionTests.swift:215`, `JSCInterpreterTests.swift:1023`, `UnknownToolHintTests.swift:25`/`:34`, `SuspendedContextTests.swift:159` in the unit target). State what the code guarantees for this member instead of inheriting the sibling's claim.
