@@ -173,9 +173,9 @@ public enum ResultRenderer {
     /// text above it.
     ///
     /// The only place it is written: ``capped(_:limit:label:)`` builds its
-    /// note from it, and both test targets read it here rather than restating
-    /// it. That matters most for the expectations that assert a note is
-    /// *absent* — a copy of the word in a test would go on satisfying
+    /// note from it, and `FoundationModelsMultitoolTests` reads it here rather
+    /// than restating it. That matters most for the expectations asserting a
+    /// note is *absent* — a copy of the word in a test would go on satisfying
     /// `!output.contains(_:)` after a reword, holding whether or not anything
     /// was truncated. `internal` is the right access level: the word reaches
     /// the model inside rendered text, so no other module needs to read it.

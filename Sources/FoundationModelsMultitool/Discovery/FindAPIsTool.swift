@@ -288,11 +288,12 @@ public struct FindAPIsTool: Tool {
     /// The sentence that orders a model to write a snippet from scratch.
     ///
     /// The only place it is written. ``nextStepFooter`` opens with it, and
-    /// `FindAPIsToolTests` negates against it to prove a sample-carrying
-    /// result ends with ``runSampleFooter`` instead. It carries that proof
-    /// alone: "Call runCode now" appears in both footers, so only this
-    /// sentence tells them apart. A copy of it in the test would keep holding
-    /// after a reword, whichever footer shipped.
+    /// `FindAPIsToolTests` reads it here in both directions — asserting it is
+    /// present when no sample was generated, and absent when one was. The
+    /// absent case carries that proof alone: "Call runCode now" appears in
+    /// both this footer and ``runSampleFooter``, so only this sentence tells
+    /// them apart. A copy of it in the test would keep holding after a
+    /// reword, whichever footer shipped.
     static let writeSnippetInstruction = "Now write one runCode snippet"
 
     private static let nextStepFooter = """
