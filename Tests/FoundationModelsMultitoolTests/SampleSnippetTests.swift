@@ -146,7 +146,7 @@ struct SampleSnippetTests {
 
         #expect(prompts.count == 2)
         #expect(prompts[1].contains("tools.getItinerary"))
-        #expect(prompts[1].contains("does not exist"))
+        #expect(prompts[1].contains(UnknownToolHint.missingPathPhrase))
         #expect(prompts[1].contains("tools.getCities"))
         #expect(prompts[1].contains("tools.getTemperature"))
         #expect(sample != nil)

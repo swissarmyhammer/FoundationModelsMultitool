@@ -336,7 +336,7 @@ enum SampleSnippet {
     /// - Returns: the feedback text.
     private static func unknownPathFeedback(named invented: String, matchedPaths: [String]) -> String {
         let available = matchedPaths.map { "tools.\($0)" }.joined(separator: ", ")
-        return "That snippet calls tools.\(invented), which does not exist. "
+        return "That snippet calls tools.\(invented), which \(UnknownToolHint.missingPathPhrase). "
             + "These are the only paths that exist: \(available). Rewrite it using those. \(envelope)"
     }
 

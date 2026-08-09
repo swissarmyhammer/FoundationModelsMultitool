@@ -53,6 +53,17 @@ import FoundationModelsMetadataRegistry
 /// the prior question, "is guessing again worth anything here at all". See
 /// `repairDirective(tier:snippet:knownPaths:)`.
 enum UnknownToolHint {
+    /// How every hint says a `tools.*` path is not in the catalog.
+    ///
+    /// The only place the phrase is written. Both branches of
+    /// ``text(forFailed:suggesting:directive:)`` build their opening from it,
+    /// and `SampleSnippet`'s unknown-path feedback uses it too, so a reword
+    /// moves all three together. `UnknownToolHintTests` negates against it
+    /// rather than restating it: a copy in the test would go on satisfying
+    /// `!output.contains(_:)` after a reword, passing for the wrong reason —
+    /// the same trap this file already documents for the two closing lines.
+    static let missingPathPhrase = "does not exist"
+
     /// Which of the two ranking tiers answered a guess.
     enum SuggestionTier: String {
         /// Tier 1 answered it — some catalog name resembles the guess.
@@ -241,7 +252,7 @@ enum UnknownToolHint {
         directive: RepairDirective
     ) -> String {
         guard !suggestions.isEmpty else {
-            let opening = "tools.\(failedPath) does not exist, and nothing close matches. "
+            let opening = "tools.\(failedPath) \(missingPathPhrase), and nothing close matches. "
             switch directive {
             case .repairSnippet:
                 return opening + "Call findAPIs for the real path, then rewrite that call."
@@ -256,7 +267,7 @@ enum UnknownToolHint {
         let instruction = suggestions.count == 1
             ? "Call tools.\(suggestions[0].path) instead."
             : "Call tools.\(suggestions[0].path) instead, or one of the others listed."
-        return "tools.\(failedPath) does not exist. \(instruction)\n\n"
+        return "tools.\(failedPath) \(missingPathPhrase). \(instruction)\n\n"
             + blocks.joined(separator: "\n\n")
     }
 

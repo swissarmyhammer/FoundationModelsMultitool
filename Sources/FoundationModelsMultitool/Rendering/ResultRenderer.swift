@@ -169,6 +169,18 @@ extension InterpreterError.Kind {
 /// error scaffolding — so the common case stays the smallest possible
 /// payload back to the model.
 public enum ResultRenderer {
+    /// The word a truncation note opens with, naming what happened to the
+    /// text above it.
+    ///
+    /// The only place it is written: ``capped(_:limit:label:)`` builds its
+    /// note from it, and both test targets read it here rather than restating
+    /// it. That matters most for the expectations that assert a note is
+    /// *absent* — a copy of the word in a test would go on satisfying
+    /// `!output.contains(_:)` after a reword, holding whether or not anything
+    /// was truncated. `internal` is the right access level: the word reaches
+    /// the model inside rendered text, so no other module needs to read it.
+    static let truncationMarker = "truncated"
+
     /// Renders a successful `InterpreterResult` as the text handed back to
     /// the model.
     ///
@@ -267,7 +279,7 @@ public enum ResultRenderer {
         let originalLength = text.count
         guard originalLength > limit else { return text }
         let truncated = String(text.prefix(limit))
-        return "\(truncated)\n[truncated: \(label) is \(originalLength) characters, "
+        return "\(truncated)\n[\(Self.truncationMarker): \(label) is \(originalLength) characters, "
             + "exceeding the \(limit)-character cap; showing the first \(limit)]"
     }
 }

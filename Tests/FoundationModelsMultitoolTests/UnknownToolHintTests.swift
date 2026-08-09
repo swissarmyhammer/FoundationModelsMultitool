@@ -33,11 +33,20 @@ struct UnknownToolHintTests {
     /// them.
     private static let discoveryClosing = RepairDirective.discoverFunctions.closingLine
 
+    /// How a hint says a `tools.*` path is not in the catalog.
+    ///
+    /// Read off `UnknownToolHint` for the same reason as the two closing
+    /// lines, and it matters more here: the two expectations that use it are
+    /// negative, so a copy would not fail loudly after a reword — it would
+    /// quietly hold forever, whether or not the branch it rules out ran.
+    private static let missingPathPhrase = UnknownToolHint.missingPathPhrase
+
     // MARK: - Unknown tools.* path: closest real path suggested
 
     /// A guess whose suggestion cannot be read out of the failed-path echo.
     ///
-    /// Every hint opens with `tools.<the guess> does not exist`, so asserting
+    /// Every hint opens with `tools.<the guess>` followed by
+    /// ``UnknownToolHint/missingPathPhrase``, so asserting
     /// that the output contains the *suggested* name passes on that echo alone
     /// whenever the guess spells the real name inside itself — which every
     /// containment-tier guess does, by definition. The tests below assert on
@@ -66,7 +75,7 @@ struct UnknownToolHintTests {
             arguments: RunCodeArguments(code: "return tools.\(Self.citiesGuess)();")
         )
 
-        #expect(output.contains("tools.\(Self.citiesGuess) does not exist"))
+        #expect(output.contains("tools.\(Self.citiesGuess) \(Self.missingPathPhrase)"))
         #expect(output.contains("declare function getCities("))
         #expect(output.contains(Self.repairClosing))
     }
@@ -84,7 +93,7 @@ struct UnknownToolHintTests {
             arguments: RunCodeArguments(code: "return tools.getTemperature.getCurrent({ city: 'ATX' });")
         )
 
-        #expect(output.contains("tools.getTemperature.getCurrent does not exist"))
+        #expect(output.contains("tools.getTemperature.getCurrent \(Self.missingPathPhrase)"))
         #expect(output.contains("declare function getTemperature("))
     }
 
@@ -129,7 +138,7 @@ struct UnknownToolHintTests {
             arguments: RunCodeArguments(code: "return tools.getWeatherForecast({ city: 'ATX' });")
         )
 
-        #expect(output.contains("tools.getWeatherForecast does not exist"))
+        #expect(output.contains("tools.getWeatherForecast \(Self.missingPathPhrase)"))
         #expect(output.contains("declare function getWeather("))
     }
 
@@ -149,7 +158,7 @@ struct UnknownToolHintTests {
 
         let output = try await multiTool.call(arguments: RunCodeArguments(code: "return tools.getItinerary();"))
 
-        #expect(output.contains("tools.getItinerary does not exist"))
+        #expect(output.contains("tools.getItinerary \(Self.missingPathPhrase)"))
         #expect(output.contains("tools.getTrip"))
     }
 
@@ -190,7 +199,7 @@ struct UnknownToolHintTests {
             arguments: RunCodeArguments(code: "return tools.sendEmail({ to: 'a@b.c' });")
         )
 
-        #expect(output.contains("tools.sendEmail does not exist"))
+        #expect(output.contains("tools.sendEmail \(Self.missingPathPhrase)"))
         #expect(output.contains(Self.discoveryClosing))
         #expect(!output.contains(Self.repairClosing))
     }
@@ -213,7 +222,7 @@ struct UnknownToolHintTests {
             )
         )
 
-        #expect(output.contains("tools.sendEmail does not exist"))
+        #expect(output.contains("tools.sendEmail \(Self.missingPathPhrase)"))
         #expect(output.contains(Self.repairClosing))
         #expect(!output.contains(Self.discoveryClosing))
     }
@@ -245,7 +254,7 @@ struct UnknownToolHintTests {
 
         let output = try await multiTool.call(arguments: RunCodeArguments(code: "return tools.getTemperature({});"))
 
-        #expect(!output.contains("does not exist"))
+        #expect(!output.contains(Self.missingPathPhrase))
         #expect(output.contains(Self.repairClosing))
     }
 
@@ -372,7 +381,7 @@ struct UnknownToolHintTests {
             arguments: RunCodeArguments(code: "return tools.getTemperature({});")
         )
         #expect(misCall.contains("getTemperature"))
-        #expect(!misCall.contains("does not exist"))
+        #expect(!misCall.contains(Self.missingPathPhrase))
         // Emitted second, and waited for below. Log delivery is ordered per
         // process, so a `getWeather` line would have had to arrive before
         // this one — which makes the absence below a real absence rather

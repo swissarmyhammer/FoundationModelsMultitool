@@ -224,7 +224,7 @@ struct HardeningTests {
         let value = String(repeating: "a", count: limit - 2)
         let output = try await multiTool.call(arguments: RunCodeArguments(code: "return \"\(value)\";"))
 
-        #expect(!output.contains("truncated"))
+        #expect(!output.contains(ResultRenderer.truncationMarker))
         #expect(output == "\"\(value)\"")
     }
 
@@ -239,7 +239,7 @@ struct HardeningTests {
         let value = String(repeating: "a", count: limit - 1)
         let output = try await multiTool.call(arguments: RunCodeArguments(code: "return \"\(value)\";"))
 
-        #expect(output.contains("truncated"))
+        #expect(output.contains(ResultRenderer.truncationMarker))
     }
 
     @Test("console output at exactly the configured consoleCharacterLimit is not truncated")
@@ -253,7 +253,7 @@ struct HardeningTests {
             arguments: RunCodeArguments(code: "console.log(\"\(value)\"); return null;")
         )
 
-        #expect(!output.contains("truncated"))
+        #expect(!output.contains(ResultRenderer.truncationMarker))
         #expect(output.contains(value))
     }
 
@@ -268,7 +268,7 @@ struct HardeningTests {
             arguments: RunCodeArguments(code: "console.log(\"\(value)\"); return null;")
         )
 
-        #expect(output.contains("truncated"))
+        #expect(output.contains(ResultRenderer.truncationMarker))
     }
 
     // MARK: - Sandbox surface & README↔code sync

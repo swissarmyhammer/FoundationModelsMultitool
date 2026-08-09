@@ -36,7 +36,7 @@ struct ResultRendererTests {
         let rendered = ResultRenderer.render(result, limits: limits)
 
         #expect(rendered == "\"hi\"")
-        #expect(!rendered.contains("truncated"))
+        #expect(!rendered.contains(ResultRenderer.truncationMarker))
     }
 
     @Test("a return value exactly at the cap is not truncated")
@@ -48,7 +48,7 @@ struct ResultRendererTests {
         let rendered = ResultRenderer.render(result, limits: limits)
 
         #expect(rendered == "\"aaaa\"")
-        #expect(!rendered.contains("truncated"))
+        #expect(!rendered.contains(ResultRenderer.truncationMarker))
     }
 
     @Test("a return value over the cap is truncated and carries a visible truncation note")
@@ -60,7 +60,7 @@ struct ResultRendererTests {
         let rendered = ResultRenderer.render(result, limits: limits)
 
         #expect(rendered.hasPrefix("\"aaaaa"))
-        #expect(rendered.contains("truncated"))
+        #expect(rendered.contains(ResultRenderer.truncationMarker))
         #expect(rendered.contains("6"))
     }
 
@@ -80,7 +80,7 @@ struct ResultRendererTests {
         // characters, so the first 10 characters are the quote plus the
         // first 9 emoji — never a torn one.
         #expect(rendered.prefix(10) == "\"" + String(repeating: "🎉", count: 9))
-        #expect(rendered.contains("truncated"))
+        #expect(rendered.contains(ResultRenderer.truncationMarker))
     }
 
     // MARK: - Console output: included, capped independently
@@ -118,7 +118,7 @@ struct ResultRendererTests {
         // ...but the console section is cut down to its own small cap.
         #expect(rendered.contains("aaaa"))
         #expect(!rendered.contains("aaaaaaaaaa"))
-        #expect(rendered.contains("truncated"))
+        #expect(rendered.contains(ResultRenderer.truncationMarker))
     }
 
     @Test("console output at its cap is not truncated")
@@ -129,7 +129,7 @@ struct ResultRendererTests {
         let rendered = ResultRenderer.render(result, limits: limits)
 
         #expect(rendered.contains("abcd"))
-        #expect(!rendered.contains("truncated"))
+        #expect(!rendered.contains(ResultRenderer.truncationMarker))
     }
 
     // MARK: - Default limits, exercised at their real boundary
@@ -140,7 +140,7 @@ struct ResultRendererTests {
 
         let rendered = ResultRenderer.render(result)
 
-        #expect(rendered.contains("truncated"))
+        #expect(rendered.contains(ResultRenderer.truncationMarker))
         #expect(rendered.contains("\(ResultRendererLimits.defaultReturnValueCharacterLimit)"))
     }
 
@@ -150,7 +150,7 @@ struct ResultRendererTests {
 
         let rendered = ResultRenderer.render(result)
 
-        #expect(rendered.contains("truncated"))
+        #expect(rendered.contains(ResultRenderer.truncationMarker))
         #expect(rendered.contains("\(ResultRendererLimits.defaultConsoleCharacterLimit)"))
     }
 
@@ -169,7 +169,7 @@ struct ResultRendererTests {
         let result = InterpreterResult(returnValue: .string("hi"), consoleLines: ["log"])
         let rendered = ResultRenderer.render(result, limits: limits)
 
-        #expect(rendered.contains("truncated"))
+        #expect(rendered.contains(ResultRenderer.truncationMarker))
         #expect(!rendered.contains("\"hi\""))
     }
 

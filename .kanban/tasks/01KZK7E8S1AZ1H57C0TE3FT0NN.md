@@ -42,10 +42,10 @@ Check `Tests/` for other `!...contains(` assertions against shipped wording whil
 
 ## Acceptance Criteria
 
-- [ ] Neither `:248` nor `:375` can pass hollowly after a reword of the no-match hint — prove it by rewording the shipped wording and confirming the tests still discriminate, then restore
-- [ ] Every other `!...contains(` assertion in `Tests/` that names shipped wording is enumerated and either fixed the same way or recorded with a reason it is safe
-- [ ] No weakened assertion, no shipped behaviour change
-- [ ] Ungated `swift test` green at or above 309 tests / 24 suites main and 49 / 8 integration, run more than once
+- [x] Neither `:248` nor `:375` can pass hollowly after a reword of the no-match hint — prove it by rewording the shipped wording and confirming the tests still discriminate, then restore
+- [x] Every other `!...contains(` assertion in `Tests/` that names shipped wording is enumerated and either fixed the same way or recorded with a reason it is safe
+- [x] No weakened assertion, no shipped behaviour change
+- [x] Ungated `swift test` green at or above 309 tests / 24 suites main and 49 / 8 integration, run more than once
 
 ## Note
 

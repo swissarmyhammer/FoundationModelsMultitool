@@ -285,8 +285,18 @@ public struct FindAPIsTool: Tool {
     /// composition clause ("compose multiple calls in that one snippet")
     /// is what multi-step tasks need spelled out — the models that fail
     /// them stop after describing step one.
+    /// The sentence that orders a model to write a snippet from scratch.
+    ///
+    /// The only place it is written. ``nextStepFooter`` opens with it, and
+    /// `FindAPIsToolTests` negates against it to prove a sample-carrying
+    /// result ends with ``runSampleFooter`` instead. It carries that proof
+    /// alone: "Call runCode now" appears in both footers, so only this
+    /// sentence tells them apart. A copy of it in the test would keep holding
+    /// after a reword, whichever footer shipped.
+    static let writeSnippetInstruction = "Now write one runCode snippet"
+
     private static let nextStepFooter = """
-        Now write one runCode snippet that calls these exact tools.* paths. Put every \
+        \(writeSnippetInstruction) that calls these exact tools.* paths. Put every \
         call the task needs in that one snippet, passing values between them with \
         variables, and return the result. Call runCode now. Answer only from what it \
         returns.

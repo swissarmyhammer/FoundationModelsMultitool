@@ -108,12 +108,12 @@ struct FindAPIsToolTests {
 
         let feedback = try await findAPIsTool.call(arguments: FindAPIsArguments(task: "trip cities"))
 
-        #expect(feedback.contains("Now write one runCode snippet"))
+        #expect(feedback.contains(FindAPIsTool.writeSnippetInstruction))
         #expect(feedback.contains("exact tools.* paths"))
         // The footer follows the match blocks — it is a next-step
         // instruction, not a header.
         let blockRange = try #require(feedback.range(of: entry.block))
-        let footerRange = try #require(feedback.range(of: "Now write one runCode snippet"))
+        let footerRange = try #require(feedback.range(of: FindAPIsTool.writeSnippetInstruction))
         #expect(blockRange.upperBound <= footerRange.lowerBound)
     }
 
@@ -274,7 +274,7 @@ struct FindAPIsToolTests {
         // one" instruction would tell it to discard the snippet and write
         // another.
         #expect(feedback.contains("Call runCode now"))
-        #expect(!feedback.contains("Now write one runCode snippet"))
+        #expect(!feedback.contains(FindAPIsTool.writeSnippetInstruction))
         // Signatures are supporting material behind the code, not ahead of it.
         let snippetRange = try #require(feedback.range(of: "return temp.tempC;"))
         let blockRange = try #require(feedback.range(of: entry.block))
@@ -292,7 +292,7 @@ struct FindAPIsToolTests {
         let today = try await withoutGenerator.call(arguments: arguments)
 
         #expect(fallback == today)
-        #expect(fallback.contains("Now write one runCode snippet"))
+        #expect(fallback.contains(FindAPIsTool.writeSnippetInstruction))
     }
 
     @Test("a generator is never asked for a sample when nothing matched")
@@ -324,6 +324,6 @@ struct FindAPIsToolTests {
         let tool = try FindAPIsTool(registry: registry, librarian: nil, sampleGenerator: nil)
         let feedback = try await tool.call(arguments: FindAPIsArguments(task: "trip cities"))
 
-        #expect(feedback.contains("Now write one runCode snippet"))
+        #expect(feedback.contains(FindAPIsTool.writeSnippetInstruction))
     }
 }
