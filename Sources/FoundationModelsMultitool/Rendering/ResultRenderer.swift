@@ -131,13 +131,15 @@ extension InterpreterError.Kind {
     /// underlying message describes.
     ///
     /// This is the only place the text is written, on the same terms as
-    /// ``RepairDirective/closingLine``. Both test targets read it here
-    /// through `@testable import` rather than restating it, so rewording a
-    /// summary reaches every assertion that expects it and every synthetic
-    /// transcript that stands in for a rendered error. `internal` is the
-    /// right access level for the same reason: the text reaches the model
-    /// through ``ResultRenderer/render(_:hint:directive:)``, so no other
-    /// module needs to read it.
+    /// ``RepairDirective/closingLine``. `FoundationModelsMultitoolTests`
+    /// reads it here through `@testable import` rather than restating it, so
+    /// rewording a summary reaches every assertion that expects it;
+    /// `FoundationModelsMultitoolIntegrationTests` needs no reference of its
+    /// own, because its synthetic transcripts render through
+    /// ``ResultRenderer/render(_:hint:directive:)`` and pick up the reword
+    /// with them. `internal` is the right access level for the same reason:
+    /// the text reaches the model through that renderer, so no other module
+    /// needs to read it.
     var repairableErrorSummary: String {
         switch self {
         case .exception: "The snippet failed"
