@@ -2652,6 +2652,27 @@ comments:
 
     **Step-4 re-measure now waits on THREE cards: ^5qadve5 here + the two Router cards (01KZFH9TT... envelope, 01KZFHJSB... seeding).** Re-measuring before the rename would measure a surface about to be discarded. Steps 1–2 of the RESOLUTION are already done (0981ar3 closed; collect-pattern text landed); step 3 (Router-path SearchThenCall) can proceed once prereq 6 is pushed.
   timestamp: 2026-08-09T13:57:15.691565+00:00
+- actor: claude-code
+  id: 01kzmdab9nmmxs79846xpnkgyk
+  text: |-
+    ### Pre-re-measure prerequisite landed: `^5qadve5` is done
+
+    Recorded here because `^5qadve5` requires it ("Recorded on ^tkrdwb8: this card landed pre-re-measure") and because step 4's gated re-measure must run against the final name and final text.
+
+    **What changed under the model.** The discovery tool's wire name is now `searchTools`, not `findAPIs` — types `SearchToolsTool` / `SearchToolsArguments`, no alias. Both tool descriptions were cut from 279 words each to 90 (searchTools, 4 sentences) and 125 (runCode, 5 sentences). The arithmetic exemption is gone from both, and the search-first mandate is stated once rather than restated in each.
+
+    Commits: `48a8f1c`, `84c9def`, `65ebe01`, `bcea93d`, `a86da19`. Ungated green throughout.
+
+    **Two things this changes for step 4.**
+
+    Any transcript, grader, or scenario expectation that names `findAPIs` is now stale. `grep -ri findapis Sources Tests` is 0, but the gated harness's recorded transcripts under `$TMPDIR/FMMultitoolIntegration-*` and any prior baseline notes still use the old name.
+
+    More importantly: **the 12/20 reference baseline at `8c7d9ff` no longer describes the shipped surface.** It was measured against the old name and the long descriptions. The re-measure is not a comparison against it — it is a new baseline. The compression is entirely unmeasured, and it cut the surface that produced the one clean text result on record (over-refusal 3/20→0/20, answered-without-calling 2/20→0/20). If the re-measure regresses, this card is the first place to look, and `65ebe01` documents exactly which sentences went.
+
+    **Still blocking step 4:** the three Router cards must be committed and pushed on Router main before `swift package update` can pull them, because this package pins Router by branch.
+
+    Two stale items on this card, noticed while reading it: acceptance criterion 1 still shows `^0981ar3` unchecked though it is closed, and criterion 4 names `46 / 7` integration where current is `49 / 8`.
+  timestamp: 2026-08-09T23:21:52.693966+00:00
 depends_on:
 - 01KZ6N4Q7K53WSTJ3M6E76ZK99
 - 01KZ6N545VYCB60H716AZ1XS92
