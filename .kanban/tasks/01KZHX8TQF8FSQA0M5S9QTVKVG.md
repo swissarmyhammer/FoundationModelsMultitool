@@ -35,10 +35,10 @@ Do **not** raise the limit and leave it, and do not add retry logic. `^hba675d` 
 
 ## Acceptance Criteria
 
-- [ ] The assertion no longer rests on a wall-clock budget for the whole operation, or the budget is demoted to a hang guard with the real claim asserted directly
-- [ ] The test still fails if cancellation never reaches the context — prove it with a temporary control that drops the cancellation, and report which assertion fired
-- [ ] No retry logic and no raised-and-left timeout
-- [ ] The full ungated suite runs green at or above 309 tests / 24 suites main and 49 / 8 integration, **run at least five times**, since this reproduces at roughly 1 run in 3 and a single green run is not evidence
+- [x] The assertion no longer rests on a wall-clock budget for the whole operation, or the budget is demoted to a hang guard with the real claim asserted directly
+- [x] The test still fails if cancellation never reaches the context — prove it with a temporary control that drops the cancellation, and report which assertion fired
+- [x] No retry logic and no raised-and-left timeout
+- [x] The full ungated suite runs green at or above 309 tests / 24 suites main and 49 / 8 integration, **run at least five times**, since this reproduces at roughly 1 run in 3 and a single green run is not evidence
 
 ## Note on reporting
 

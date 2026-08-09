@@ -183,8 +183,11 @@ struct SuspendedContextTests {
         #expect(start.duration(to: .now) < Self.promptResponseBound)
         #expect(terminal.outcome == .cancelled)
         // The pending promise's own work was torn down with the context —
-        // nothing released the gate.
-        #expect(harness.gated.wasCancelled)
+        // nothing released the gate. `wasCancelled` is written by the tool's
+        // own task as it unwinds, and the terminal event above can be observed
+        // before that write lands, so wait for it the way ``waitUntil(_:)``
+        // exists to — sampling it here is a race, not a check.
+        try await Self.waitUntil { harness.gated.wasCancelled }
         #expect(!harness.latch.isReleased)
         let parked = await harness.mailbox.status()
         #expect(parked.isEmpty)
