@@ -1,8 +1,34 @@
 ---
 assignees:
 - claude-code
-position_column: todo
-position_ordinal: '8180'
+comments:
+- actor: claude-code
+  id: 01kzkcp4pkkjcpe4wqn52hgx0x
+  text: |-
+    ### finish iteration 1 — clean
+
+    - implement: changed — 1 file, `Tests/FoundationModelsMultitoolTests/SuspendedContextTests.swift`
+    - test: green — ungated `swift test` on 5 consecutive runs, each 309 tests / 24 suites + 49 tests / 8 suites, zero failures
+    - commit: 6d54aa4
+    - review: clean — `review sha HEAD~1..HEAD` 0 findings / 9 validators; `review file SuspendedContextTests.swift` 0 findings / 9 validators
+    - acceptance criteria: 4/4
+
+    **This card's premise was wrong, and it was mine.** The title says the assertion is a wall-clock time limit. `:187` is `#expect(harness.gated.wasCancelled)` — a boolean on cross-task state, no clock in it. I wrote that diagnosis by analogy to `^hba675d` without reading the line.
+
+    **The real defect** is a happens-before gap. `wasCancelled` is written by the gated tool's own task, in the `catch` that runs as `Task.sleep` throws `CancellationError`. Nothing orders that write against the terminal event the test observes just above it, so the test can sample the flag before the tool has written it.
+
+    **The fix was already in the file.** `:154` waits with `waitUntil { gated.hasStarted }`, documented as "A synchronization point, not a timing assertion, so the deadline only bounds a genuine hang." `wasCancelled` was the one positive cross-task read still sampled; it now waits the same way. The other two reads at `:85` and `:109` are negative (`!wasCancelled`) — sampling is correct there — and `:108`'s positive `hasStarted` is already ordered by the `waitUntil` inside `makeHarness`. So the class is closed at one site, and that is the whole list.
+
+    **Not a weakening.** `waitUntil` records an Issue and throws when the condition never holds. Control: dropping the `cancelledBox` write from the fixture fails the test with `condition never held within 10.0s` at `:369` — a better failure message than a bare false `#expect`. Fixture restored, `git diff` empty.
+
+    **Left alone deliberately:** `:183`, `#expect(start.duration(to: .now) < Self.promptResponseBound)` — a real 3-second timing assertion, and the thing the card's title was reaching for. It is documented as discriminating a prompt settlement from a longer clock, its margin is 3s against a test that runs in about 1s, and no run today failed there. Changing it would be speculative. Flagged here rather than silently swept.
+
+    **Reproduction: none.** 34 runs today — 14 full-suite, 20 targeted — 26 under 48–60 spinners plus concurrent swiftlint, the condition the original sighting was recorded under. Zero failures. So the fix rests on the ordering gap being real by construction, not on a reproduction. Sampling a value another task writes is a race whether or not it lost today; but anyone reading this should know the original 1-in-3 rate was not reproducible, and `^hba675d`'s fix landed today and changed suite contention, which may be why.
+
+    Loop ran directly rather than through sub agents: the session hit its 200-agent cap before this card started.
+  timestamp: 2026-08-09T13:51:36.147592+00:00
+position_column: done
+position_ordinal: ba80
 title: '[Multitool] SuspendedContextTests'' cancellation teardown asserts a wall-clock time limit'
 ---
 Split out of `^hba675d`. That card was filed for `promiseAllRunsToolCallsConcurrently`, then widened by a 2026-08-08 comment to cover three tests sharing one cause. `d693d77` fixed the Promise.all test and closed the card; this one is the remainder, carded so the widening is not lost.
