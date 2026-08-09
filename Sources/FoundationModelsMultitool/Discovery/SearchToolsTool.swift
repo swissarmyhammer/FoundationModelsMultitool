@@ -2,9 +2,10 @@ import FoundationModels
 import FoundationModelsMetadataRegistry
 import FoundationModelsRouter
 
-/// The arguments `SearchToolsTool.call(arguments:)` accepts — the plain-language
-/// goal a `LanguageModelSession`'s native tool-calling loop passes when it
-/// decides to call `searchTools`.
+/// The arguments a `searchTools` call carries.
+///
+/// The plain-language goal a `LanguageModelSession`'s native tool-calling loop
+/// passes when it decides to call `searchTools`.
 @Generable
 public struct SearchToolsArguments: Sendable {
     /// The plain-language goal to search the catalog for.
@@ -27,7 +28,9 @@ public struct SearchToolsArguments: Sendable {
     }
 }
 
-/// plan.md Component 8 (Discovery) — `searchTools` as its own real
+/// The discovery tool a session searches for its mounted functions.
+///
+/// plan.md Component 8 (Discovery): `searchTools` as its own real
 /// `FoundationModels.Tool` conformer, independently constructible and
 /// registerable directly alongside `MultiTool` in a native
 /// `LanguageModelSession(tools: try registry.makeSessionTools(librarian:))`,
@@ -37,8 +40,10 @@ public struct SearchToolsArguments: Sendable {
 /// "discover what exists" before "execute code" when it picks its opening
 /// move (see `MultiTool.Registry.makeSessionTools(librarian:)`).
 ///
-/// `call(arguments:)` forwards every `searchTools(task)` call to a
-/// `MetadataSearcher<APISurface.Entry>` running in `.auto` mode (plan.md §7):
+/// Every call forwards to a searcher running in `.auto` mode.
+///
+/// `call(arguments:)` hands each `searchTools(task)` call to a
+/// `MetadataSearcher<APISurface.Entry>` in `.auto` mode (plan.md §7):
 /// cheap retrieval (BM25/trigram/cosine signals fused by RRF) when no
 /// selection tier is configured, retrieval-then-LLM-selection over the
 /// narrowed candidates when one is — never `.selection` unconditionally, so
@@ -57,8 +62,9 @@ public struct SearchToolsTool: Tool {
     /// This tool's `Tool`-protocol name, always `"searchTools"`.
     public let name = "searchTools"
 
-    /// This tool's `Tool`-protocol description, presented to the model as
-    /// usage instructions for `searchTools`.
+    /// This tool's usage instructions, as the model reads them.
+    ///
+    /// The `Tool`-protocol description presented for `searchTools`.
     ///
     /// Together with `MultiTool.description` this carries the **whole**
     /// behavioral contract a session needs. Mounting the two tools is the
@@ -97,18 +103,21 @@ public struct SearchToolsTool: Tool {
         fetch.
         """
 
-    /// The catalog searcher every `searchTools` call forwards to — runs in
-    /// `.auto` mode (plan.md §7): retrieval-only when no selection tier is
-    /// configured, retrieval-then-selection when one is.
+    /// The catalog searcher every `searchTools` call forwards to.
+    ///
+    /// Runs in `.auto` mode (plan.md §7): retrieval-only when no selection tier
+    /// is configured, retrieval-then-selection when one is.
     private let searcher: MetadataSearcher<APISurface.Entry>
 
-    /// The maximum number of matches to request per `search(intent:limit:)`
-    /// call — typically the catalog's own entry count, so nothing the model
+    /// The maximum number of matches to request per search call.
+    ///
+    /// Typically the catalog's own entry count, so nothing the model
     /// legitimately selected from the full candidate set is ever truncated.
     private let limit: Int
 
-    /// How to generate and validate the runnable sample this tool leads its
-    /// result with, or `nil` to answer with the signatures alone.
+    /// How to generate and validate this tool's runnable sample.
+    ///
+    /// `nil` answers with the signatures alone.
     ///
     /// Absent by default, exactly like the searcher's selection tier: a host
     /// that supplies nothing here gets the result `searchTools` has always
@@ -139,8 +148,10 @@ public struct SearchToolsTool: Tool {
         self.sample = sample
     }
 
-    /// Creates a `searchTools` tool bound to a resolved Router profile's
-    /// generation slot for its selection tier — the production, independently
+    /// Creates a `searchTools` tool bound to a Router profile.
+    ///
+    /// Uses the resolved profile's generation slot for its selection tier — the
+    /// production, independently
     /// constructible entry point plan.md calls for: no dependency on any
     /// agent loop or turn machinery, just a registry and an optional
     /// selection-tier backing.
@@ -208,8 +219,9 @@ public struct SearchToolsTool: Tool {
         )
     }
 
-    /// Runs one `searchTools(task)` call: searches `searcher`, then formats its
-    /// result into this tool's `Output`.
+    /// Runs one `searchTools(task)` call.
+    ///
+    /// Searches `searcher`, then formats the result into this tool's `Output`.
     ///
     /// - Parameter arguments: the plain-language goal to search for.
     /// - Returns: the text describing the matched tool-functions, led by a
@@ -224,9 +236,10 @@ public struct SearchToolsTool: Tool {
         return Self.format(task: arguments.task, matches: matches, sample: snippet)
     }
 
-    /// Generates and validates the runnable sample for one call, or answers
-    /// `nil` when this tool has no generator configured or the gate rejected
-    /// every candidate.
+    /// Generates and validates the runnable sample for one call.
+    ///
+    /// Answers `nil` when this tool has no generator configured or the gate
+    /// rejected every candidate.
     ///
     /// - Parameters:
     ///   - task: the plain-language goal passed to `searchTools`.
@@ -265,8 +278,9 @@ public struct SearchToolsTool: Tool {
         returns.
         """
 
-    /// The imperative next-step footer a result carrying a validated sample
-    /// ends with, in place of ``nextStepFooter``.
+    /// The next-step footer a sample-carrying result ends with.
+    ///
+    /// Used in place of ``nextStepFooter``.
     ///
     /// "Now write one runCode snippet" is false once a snippet has been
     /// supplied — following it literally means discarding the sample and
@@ -285,13 +299,15 @@ public struct SearchToolsTool: Tool {
         runCode hands back.
         """
 
-    /// The heading the signature blocks sit under when a sample leads the
-    /// result, so their demotion to supporting material is stated rather than
-    /// merely implied by position.
+    /// The heading the signature blocks sit under when a sample leads.
+    ///
+    /// Their demotion to supporting material is stated rather than merely
+    /// implied by position.
     private static let signaturesHeading = "The functions that snippet calls:"
 
-    /// Formats a search result into the text describing the matched
-    /// tool-functions — one block per matched function, each entry's
+    /// Formats a search result into the text the model reads.
+    ///
+    /// One block per matched function, each entry's
     /// verbatim `Match.item.block` — the `// tools.<path>` banner naming its
     /// fully-qualified call path, followed by its unmodified `declare
     /// function`/JSDoc source (`ToolDescriptor` fields are always
