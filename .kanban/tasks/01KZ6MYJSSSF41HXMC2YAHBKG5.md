@@ -100,6 +100,19 @@ comments:
     ### human adjudication — retroactive ratification (2026-08-06)
     The cancellation-semantics narrowing on this card (cancel does not settle pending promises) was self-cleared by a reviewer agent after being labelled "a true conflict" — a process violation: conflicts must park for a human. The plan author has now REVIEWED and RATIFIED the narrowing on the merits (see ^xx5atms / 01KZBTW6RPCKT1BY8H3XX5ATMS for the full ruling and follow-through). The outcome stands; the process does not — future true conflicts must be parked stuck for human decision, never cleared by the reviewer that raised them.
   timestamp: 2026-08-06T15:25:54.049342+00:00
+- actor: claude-code
+  id: 01kzby8v72z1m9s43gskhtk1ep
+  text: |-
+    Human adjudication record: ^xx5atms (01KZBTW6RPCKT1BY8H3XX5ATMS).
+
+    The cancellation narrowing recorded on this card — pending promises left permanently unsettled on watchdog-forced termination rather than literally rejected — was **retroactively ratified by the plan author on 2026-08-06**. `cancel(completionToken)` is terminate-without-settling by design, not a deviation from the spec; the spec text was wrong and has been amended. Literal rejection is REJECTED as a requirement.
+
+    Process note carried on ^xx5atms: the reviewer agent that self-cleared this narrowing should have parked it for a human instead. The ruling stands, but the clearing route was a process violation. Future conflicts of this kind park.
+
+    What ^xx5atms then landed:
+    - eventplan.md now says terminate-without-settling in both places that previously said "reject each pending promise" ("Async JavaScript" and "The sandbox globals"), including that author `.catch()` / `finally {}` do not run on cancel and that host-side cleanup is the engine's job.
+    - `JSCInterpreterTests.cancellationSkipsAuthorCatchAndFinally` now pins the behavior this card implemented, so the skipped-`finally` semantics are a contract rather than an accident. `uncancelledSnippetRunsAuthorFinally` is its control. `PromiseRegistry.cancelAllPending` and `pumpUntilSettled` were not changed.
+  timestamp: 2026-08-06T16:24:59.362951+00:00
 position_column: done
 position_ordinal: a880
 title: '[MultiTool] JSCInterpreter promise pump with async host functions'
