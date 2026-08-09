@@ -7,6 +7,7 @@ import FoundationModelsRouter
 /// decides to call `searchTools`.
 @Generable
 public struct SearchToolsArguments: Sendable {
+    /// The plain-language goal to search the catalog for.
     @Guide(
         description: "Describe the task in plain language. Returns the tool-functions for that task, "
             + "each with its typed signature and a runnable example."
