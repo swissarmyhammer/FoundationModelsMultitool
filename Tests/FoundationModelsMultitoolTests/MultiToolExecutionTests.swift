@@ -231,6 +231,11 @@ struct MultiToolExecutionTests {
         // The first-move stance — load-bearing, and only effective from a
         // description the model reads upfront alongside every tool schema.
         #expect(description.localizedCaseInsensitiveContains("call searchTools first"))
+        // The session mandate ("call searchTools at least once, with the user's own
+        // request") is asserted once, on searchTools' own description, which is in
+        // the prompt alongside this one. Restating it here was the duplication
+        // task 5qadve5 removed; runCode's share of the contract is the sentence
+        // below, which points the snippet at the paths searchTools returned.
         // runCode is a general-purpose isolated runtime, and the searchTools prior is
         // stated rather than left as a judgment the model makes before acting. This
         // description is always in the prompt, and `sessionInstructions` no longer
@@ -239,21 +244,6 @@ struct MultiToolExecutionTests {
         #expect(description.contains("arithmetic, string work, dates, sorting"))
         #expect(description.contains("rather than in your head"))
         #expect(description.contains("Assume any user request needs this session's functions"))
-        // The session rule is checkable conversational state — "have I called
-        // searchTools in this session yet?" — not the model's confidence. An
-        // "if you are unsure" trigger is one a confident model always passes,
-        // which is the defect this line of work has been chasing. It aims at the
-        // dominant recorded failure: a turn that ends with toolCalls=0, where
-        // three of the sample arm's seven failures sat (task 9zk44z6).
-        #expect(description.contains("Call searchTools at least once in every session"))
-        #expect(description.contains("passing the user's own request"))
-        #expect(description.contains("as the query"))
-        // Narrow follow-up searches supplement the first one; they do not replace
-        // it. The generator is handed whatever query searchTools received, so a model
-        // that only ever searches a sub-question hands it the wrong task.
-        #expect(description.contains("come after that one, not"))
-        #expect(description.contains("you do not know what this session mounts"))
-        #expect(description.contains("pure arithmetic or string work needs no functions"))
         #expect(!description.localizedCaseInsensitiveContains("real-time"))
         // Persona-free, and refusal is never named — naming it would put it
         // back in the option set. An honest failure report replaces it.

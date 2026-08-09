@@ -327,15 +327,9 @@ public struct MultiTool: Tool {
 
         It also exposes this session's API functions under `tools.*`.
 
-        Call searchTools at least once in every session, passing the user's own request
-        as the query, before you answer it. Until you have called it you do not know
-        what this session mounts. Narrow follow-up searches come after that one, not
-        instead of it.
-
         Assume any user request needs this session's functions. Almost all of them
         do. Call searchTools first to get the exact functions and their signatures,
-        then write the snippet against the paths searchTools returned. Only a request
-        that is pure arithmetic or string work needs no functions at all.
+        then write the snippet against the paths searchTools returned.
 
         Writing the snippet:
 

@@ -93,8 +93,7 @@ public struct SearchToolsTool: Tool {
 
         Call searchTools at least once in every session, passing the user's own request
         as the query, before you answer it. Until you have called it you do not know
-        what this session mounts. Narrow follow-up searches come after that one, not
-        instead of it.
+        what this session mounts.
 
         Assume any user request needs these functions. Almost all of them do. Call
         searchTools first, before you answer and before you ask the user for anything.
@@ -130,9 +129,6 @@ public struct SearchToolsTool: Tool {
 
         When searchTools returns no relevant function for the request, say so and name
         the capability that is missing.
-
-        Only a request that is pure arithmetic or string work needs no functions at
-        all. Run a runCode snippet and return the result.
         """
 
     /// The catalog searcher every `searchTools` call forwards to — runs in

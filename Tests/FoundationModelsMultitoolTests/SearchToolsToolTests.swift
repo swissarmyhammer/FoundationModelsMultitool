@@ -184,10 +184,6 @@ struct SearchToolsToolTests {
         #expect(description.contains("Call searchTools at least once in every session"))
         #expect(description.contains("passing the user's own request"))
         #expect(description.contains("as the query"))
-        // Narrow follow-up searches supplement the first one; they do not replace
-        // it. The generator is handed whatever query searchTools received, so a model
-        // that only ever searches a sub-question hands it the wrong task.
-        #expect(description.contains("come after that one, not"))
         #expect(description.contains("you do not know what this session mounts"))
         // searchTools is not one-shot. A request needing two kinds of data cannot be
         // served by a single search, and a model that searched once, came up short,
@@ -200,8 +196,9 @@ struct SearchToolsToolTests {
         #expect(description.contains("instead of naming a function yourself"))
         #expect(!description.localizedCaseInsensitiveContains("if you are unsure"))
         #expect(!description.localizedCaseInsensitiveContains("real-time"))
-        // Only a pure calculation needs no API at all.
-        #expect(description.contains("pure arithmetic or string work needs no functions"))
+        // No exemption clause: task 5qadve5 deleted the arithmetic carve-out, so
+        // nothing in the surface gives a reason to skip the search.
+        #expect(!description.localizedCaseInsensitiveContains("needs no functions"))
         // A shown sequence, not only a stated rule — and the worked example
         // shows the *second* search, so the iteration licence is demonstrated
         // and not merely asserted.
