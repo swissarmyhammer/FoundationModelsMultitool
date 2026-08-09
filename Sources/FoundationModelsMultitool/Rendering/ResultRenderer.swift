@@ -120,7 +120,7 @@ public enum RepairDirective: Sendable, Equatable {
         case .repairSnippet:
             "Fix the snippet and call runCode again."
         case .discoverFunctions:
-            "Call findAPIs to get the real function names and signatures for this task, "
+            "Call searchTools to get the real function names and signatures for this task, "
                 + "then write the snippet against those paths."
         }
     }

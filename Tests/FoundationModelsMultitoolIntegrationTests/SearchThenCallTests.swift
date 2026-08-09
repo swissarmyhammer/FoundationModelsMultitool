@@ -34,7 +34,7 @@ import Testing
 /// task): every scenario drives `runNativeIntegrationScenario` (`Support/
 /// ScenarioRunner.swift`), which builds a real `MLXLanguageModel` +
 /// `LanguageModelSession` and lets Apple's own native tool-calling loop
-/// decide when to call `findAPIs` vs `runCode`. There is no turn-format
+/// decide when to call `searchTools` vs `runCode`. There is no turn-format
 /// matrix anymore — `.tolerantParse`/`.guided` were `MultiToolAgent`-specific
 /// prompted-text conventions with no equivalent in native tool-calling — so
 /// each scenario runs once, not twice.

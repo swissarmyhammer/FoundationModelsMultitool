@@ -11,7 +11,7 @@ import os
 /// Runs `CLIRunner.run(...)` end to end with its default (production)
 /// resolver — a real Router resolve against `CLIRunner.demoProfile`, a
 /// native `LanguageModelSession` built directly over `multiTool` and
-/// `findAPIsTool`, and Apple's own tool-calling loop deciding when to call
+/// `searchToolsTool`, and Apple's own tool-calling loop deciding when to call
 /// each — and asserts on the emitted output lines rather than a human
 /// reading console output. Unlike the retired `MultiToolAgent`-based demo
 /// this replaces, there is no hand-rolled turn trace to assert on: `runDemo`

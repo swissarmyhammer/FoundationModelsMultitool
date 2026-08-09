@@ -36,7 +36,7 @@ var multitoolIntegrationEnabled: Bool {
 /// the single-tool `ACTION:`/`TASK:`/`CODE:` convention — its `tolerantParse`
 /// turns degenerated into unrelated hallucinated prose (and, in one repair
 /// scenario, thousands of repeated `0` characters) rather than ever emitting
-/// an `ACTION:` line, and its `.guided` turns looped calling `findAPIs` with
+/// an `ACTION:` line, and its `.guided` turns looped calling `searchTools` with
 /// a nonsense `task` value instead of ever reaching a `final`/`runCode` turn.
 /// A first step up, `Qwen2.5-0.5B-Instruct-4bit`, was a large improvement
 /// (reliable `ACTION:` lines, coherent single-tool scenarios) but still
@@ -166,10 +166,10 @@ var multitoolIntegrationEnabled: Bool {
 ///
 /// **Tool-owned contract promoted a dense 27B.** After the tool-use
 /// contract moved onto the tools themselves — the full behavioral essence in
-/// the `findAPIs`/`runCode` descriptions, which is now the whole of it (task
+/// the `searchTools`/`runCode` descriptions, which is now the whole of it (task
 /// `k4mj1gm`, then `tkrdwb8`) — a model sweep under the shipped config found
 /// `Qwen3.6-27B-mxfp4` scoring a clean
-/// 4/4, every scenario opening with `findAPIs`, no wrong-guessing,
+/// 4/4, every scenario opening with `searchTools`, no wrong-guessing,
 /// announce-then-stop, or over-refusal. It doubles the 30B-A3B's 2/4, and
 /// being a dense model it follows through reliably where the 3.3B-active
 /// MoE varies run to run (the 35B-A3B hovered at 3-4/4). At mxfp4 it is
@@ -203,7 +203,7 @@ let multitoolTinyProfile = ProfileDefinition(
 /// **inside** one suite. With five gated suites in this target, five live
 /// profiles would otherwise resolve and generate at once, and measured on real
 /// hardware that is not merely slow — it is wrong. In a five-at-once run every
-/// scenario degraded together: `findAPIs` stopped preceding `runCode` in all of
+/// scenario degraded together: `searchTools` stopped preceding `runCode` in all of
 /// them, snippets called function names that exist in no fixture
 /// (`getInventory`, plus `getTrip` and `getWeather` — invented names when that
 /// run was measured, real fixture names since the 2026-08-07 rename recorded on
@@ -253,7 +253,7 @@ actor LiveProfileTurnstile {
 /// the recording root its sessions write their JSONL transcript under —
 /// everything a gated scenario needs to build a native `MLXLanguageModel` +
 /// `LanguageModelSession` over `profile.standard` (via `CLIRunner
-/// .makeMLXLanguageModel(for:)`, `findAPIsTool`'s own selection tier over
+/// .makeMLXLanguageModel(for:)`, `searchToolsTool`'s own selection tier over
 /// `profile.flash`, and then read back the selection tier's own recorded
 /// trace (`NativeTranscript.selections(in:slot:)`) — the main session itself
 /// is never Router-vended, so it is never recorded here.

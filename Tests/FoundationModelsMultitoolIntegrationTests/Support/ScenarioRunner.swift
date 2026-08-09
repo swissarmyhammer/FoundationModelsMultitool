@@ -12,7 +12,7 @@ import FoundationModelsRouter
 /// real `MLXLanguageModel` over the resolved `.standard` slot via
 /// `CLIRunner.makeMLXLanguageModel(for:)` (the exact production wiring
 /// `multitool-cli` itself uses — never a reimplementation of it), registers
-/// `multiTool` and `findAPIsTool` (the latter backed by the resolved
+/// `multiTool` and `searchToolsTool` (the latter backed by the resolved
 /// `.flash` slot, mirroring the "librarian on flash" split) directly with a
 /// `LanguageModelSession`, and lets Apple's own native tool-calling loop
 /// decide when to call each.
@@ -58,7 +58,7 @@ import FoundationModelsRouter
 ///    A containment check, never an equality: which *other* functions ran, in
 ///    what order, across how many calls stays deliberately unasserted.
 ///
-/// The old route assertions (findAPIs-before-runCode ordering, exact
+/// The old route assertions (searchTools-before-runCode ordering, exact
 /// invoked-path sets, exact selection-tier picks, call-count budgets) are
 /// printed as diagnostics on the `RESULT` line instead, so runs remain
 /// comparable without gating on them.
@@ -151,7 +151,7 @@ func runNativeIntegrationScenario(
         grade(scenario: name, checks: checks)
 
         let toolCallCount = NativeTranscript.toolCallCount(in: transcript)
-        let findAPIsFirst = NativeTranscript.findAPIsPrecedesRunCode(in: transcript)
+        let searchToolsFirst = NativeTranscript.searchToolsPrecedesRunCode(in: transcript)
         // plan.md acceptance: "the per-format results are recorded (test
         // attachment or log)" — the route details stay visible here as
         // diagnostics (see also `PrefixReuseTests` for the prefix-reuse
@@ -169,7 +169,7 @@ func runNativeIntegrationScenario(
                 + "invoked=\(evidence.invokedPaths.sorted()) "
                 + "returned=\(evidence.returnedPaths.sorted()) "
                 + "groundedIn=\(groundedIn.sorted()) "
-                + "findAPIsFirst=\(findAPIsFirst) "
+                + "searchToolsFirst=\(searchToolsFirst) "
                 + "reply=\"\(response.content.prefix(80))\""
         )
         // The same run's failure modes, counted. Emitted alongside the
@@ -183,7 +183,7 @@ func runNativeIntegrationScenario(
                     typedPaths: evidence.typedPaths,
                     invokedPaths: evidence.invokedPaths,
                     catalogPaths: surface.catalogPaths,
-                    findAPIsFirst: findAPIsFirst,
+                    searchToolsFirst: searchToolsFirst,
                     returnedValues: NativeTranscript.returnedValues(in: transcript),
                     isValidAnswer: checks.contains { $0.name == validAnswerCheckName && $0.held }
                 )
@@ -410,7 +410,7 @@ private struct ScenarioSurface {
 /// and mount order is part of what a host receives: hand-building the array
 /// would let the suite measure an order the product does not recommend.
 ///
-/// `findAPIs`'s sample-snippet generator runs on the **`.standard` slot** —
+/// `searchTools`'s sample-snippet generator runs on the **`.standard` slot** —
 /// the same model the scenario's own session uses — because the sample is code
 /// the model is told to run, so its quality matters more than its cost. This
 /// harness is therefore where the nested same-model call is measured, wall
@@ -419,7 +419,7 @@ private struct ScenarioSurface {
 /// Two things that arm established, worth knowing before reading its numbers.
 /// A gated n=5 (task `9zk44z6`) graded 13/20, the same value as the arm
 /// without it, and the suite's wall clock roughly doubled with one run at
-/// 16m35s — every `findAPIs` call spawns a nested generation, so a thrashing
+/// 16m35s — every `searchTools` call spawns a nested generation, so a thrashing
 /// turn pays it repeatedly. And nothing here yet records whether a sample was
 /// returned or whether the model ran it, so an arm measures "the generator is
 /// wired" rather than "the sample was used"; a result cannot be attributed to

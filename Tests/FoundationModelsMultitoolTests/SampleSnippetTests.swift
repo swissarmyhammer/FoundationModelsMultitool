@@ -4,7 +4,7 @@ import os
 
 @testable import FoundationModelsMultitool
 
-/// Coverage for `SampleSnippet` — the generation-and-repair loop `findAPIs`
+/// Coverage for `SampleSnippet` — the generation-and-repair loop `searchTools`
 /// runs to come back with code rather than only signatures.
 ///
 /// Every case drives a `ScriptedAgentSession`, so the loop is exercised with

@@ -43,7 +43,7 @@ public struct ToolDescriptor: Sendable, Equatable {
     public let example: String
 
     /// The full renderable text block — `doc` followed by `declaration` —
-    /// exactly what's spliced into `findAPIs` results, the registry-backed
+    /// exactly what's spliced into `searchTools` results, the registry-backed
     /// selection tier's instruction prefix, and `help()`/`docs()`.
     public let source: String
 
@@ -54,7 +54,7 @@ public struct ToolDescriptor: Sendable, Equatable {
     /// `declaration` is rendered *from* this value (see
     /// `ToolValueShape.declaredType`), so anything checking a call against
     /// this shape is checking it against exactly the signature the model was
-    /// shown. That is what lets `FindAPIsTool`'s sample gate check a
+    /// shown. That is what lets `SearchToolsTool`'s sample gate check a
     /// generated snippet's arguments and field reads without a second,
     /// independently-derived notion of the tool's type.
     public let signature: ToolSignature

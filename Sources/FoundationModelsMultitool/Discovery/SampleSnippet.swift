@@ -1,12 +1,12 @@
 import Foundation
 import FoundationModelsMetadataRegistry
 
-/// How `findAPIs` generates and validates the runnable sample snippet it leads
+/// How `searchTools` generates and validates the runnable sample snippet it leads
 /// its result with.
 ///
 /// Injectable and absent by default, exactly like the searcher's selection
 /// tier: a host that supplies no config gets the signatures-only result
-/// `findAPIs` has always returned, byte for byte, and a test supplies a
+/// `searchTools` has always returned, byte for byte, and a test supplies a
 /// scripted session instead of a model.
 public struct SampleSnippetConfig: Sendable {
     /// How many turns the generation session gets in total, the first attempt
@@ -22,7 +22,7 @@ public struct SampleSnippetConfig: Sendable {
     /// candidate.
     ///
     /// Small on purpose: nothing real runs, every mock resolves immediately,
-    /// and this budget is spent inside a `findAPIs` call the model is waiting
+    /// and this budget is spent inside a `searchTools` call the model is waiting
     /// on. A candidate that cannot finish in it is reported as a failure and
     /// fed back.
     public static let defaultCheckTimeLimit: TimeInterval = 2.0
@@ -30,8 +30,8 @@ public struct SampleSnippetConfig: Sendable {
     /// Opens the generation session, given the instructions to run it under.
     ///
     /// The session must mount **no tools** — it writes a snippet, it does not
-    /// execute one, and a session holding `findAPIs` could call `findAPIs`
-    /// from inside a `findAPIs` call. `RoutedLLM.makeSession(instructions:)`
+    /// execute one, and a session holding `searchTools` could call `searchTools`
+    /// from inside a `searchTools` call. `RoutedLLM.makeSession(instructions:)`
     /// mounts none by default, which is how the production wiring satisfies
     /// this.
     ///
@@ -67,13 +67,13 @@ public struct SampleSnippetConfig: Sendable {
     }
 }
 
-/// Generates a candidate `runCode` snippet for one `findAPIs` query, validates
+/// Generates a candidate `runCode` snippet for one `searchTools` query, validates
 /// it deterministically, and repairs it in-band until it passes or the attempts
 /// run out.
 ///
 /// ## Why this exists
 ///
-/// `findAPIs` used to answer with signatures and an instruction to go write a
+/// `searchTools` used to answer with signatures and an instruction to go write a
 /// snippet. That handoff is where the recorded failures happen: announcing a
 /// plan and stopping, one call then narration, invented paths. This closes the
 /// handoff by doing the writing here, where the answer can be *checked* before
@@ -104,13 +104,13 @@ public struct SampleSnippetConfig: Sendable {
 /// ## Never blocking discovery
 ///
 /// A generator error, a timeout, exhausted attempts, or no matched entries all
-/// yield `nil`, and `findAPIs` then answers with the signatures exactly as it
+/// yield `nil`, and `searchTools` then answers with the signatures exactly as it
 /// always has. An unvalidated candidate is never returned.
 enum SampleSnippet {
     /// Generates and validates a sample snippet for `task` over `entries`.
     ///
     /// - Parameters:
-    ///   - task: the plain-language goal the caller passed to `findAPIs`.
+    ///   - task: the plain-language goal the caller passed to `searchTools`.
     ///   - entries: the matched catalog entries the snippet may use — the only
     ///     `tools.*` paths it is allowed to name.
     ///   - config: how to open the generation session, and what to check with.
@@ -153,7 +153,7 @@ enum SampleSnippet {
     /// `TypedMockDryRun.apiUsageFailure(in:against:using:)` blocks until the
     /// mocked snippet finishes or the sandbox's watchdog ends it. Called
     /// directly from this `async` context, that would tie up whichever
-    /// cooperative-pool thread is running the enclosing `findAPIs` call for the
+    /// cooperative-pool thread is running the enclosing `searchTools` call for the
     /// whole check. Dispatching onto an elastic GCD queue and suspending
     /// instead means this function *suspends* rather than *blocks* — the same
     /// "never block the caller" treatment `MultiTool` gives the real
@@ -268,7 +268,7 @@ enum SampleSnippet {
     /// The instructions the generation session runs under.
     ///
     /// Carries the matched entries' own rendered blocks verbatim — the same
-    /// text `findAPIs` shows the model — so the snippet is written against the
+    /// text `searchTools` shows the model — so the snippet is written against the
     /// real signatures rather than a paraphrase of them. No worked example and
     /// no sample data: an example built from a fixture-shaped call would hand
     /// the generator, and through it the model, a value a scenario grades on.
@@ -301,7 +301,7 @@ enum SampleSnippet {
 
     /// The first turn's prompt: the task, and nothing else.
     ///
-    /// - Parameter task: the plain-language goal passed to `findAPIs`.
+    /// - Parameter task: the plain-language goal passed to `searchTools`.
     /// - Returns: the opening prompt.
     private static func openingPrompt(forTask task: String) -> String {
         """

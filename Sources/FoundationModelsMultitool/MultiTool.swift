@@ -8,7 +8,7 @@ extension MultiTool {
     /// The built, executable artifact `MultiTool.Builder.buildRegistry()`
     /// produces — plan.md's "registry" (the value the "Adding tools is the
     /// easy path" usage sample assigns `Builder.build()`'s result to, and
-    /// that `MultiTool.init(registry:)` and `FindAPIsTool
+    /// that `MultiTool.init(registry:)` and `SearchToolsTool
     /// .init(registry:librarian:limit:)` both take): the rendered
     /// `APISurface` (M2.5) paired with the actual
     /// wrapped `any Tool` instances a `runCode` snippet's `tools.*` calls
@@ -37,10 +37,10 @@ extension MultiTool {
         public let tools: [String: any Tool]
 
         /// Whether this registry surfaces only `runCode` — plan.md's "direct
-        /// mode": discovery (`findAPIs`) is skipped, and a snippet is
+        /// mode": discovery (`searchTools`) is skipped, and a snippet is
         /// expected to introspect the surface itself via `help()`/`docs()`
         /// (M7) instead. `false` (the default) surfaces both `runCode` and
-        /// `findAPIs` to the session's tool-calling loop (M4b/M6).
+        /// `searchTools` to the session's tool-calling loop (M4b/M6).
         public let isDirectMode: Bool
 
         /// Creates a registry pairing a rendered surface with its live tool
@@ -72,10 +72,10 @@ extension MultiTool {
         /// Returns a copy of this registry in **direct mode** — plan.md
         /// "Direct mode (skip discovery)": only `runCode` is surfaced to
         /// the session; a snippet is expected to introspect the surface
-        /// itself via `help()`/`docs()` (M7) rather than a `findAPIs` round
+        /// itself via `help()`/`docs()` (M7) rather than a `searchTools` round
         /// trip. The executable surface itself (`surface`/`tools`) is
         /// unchanged — only the affordance metadata (`isDirectMode`,
-        /// `affordances`, `supportsFindAPIs`) flips.
+        /// `affordances`, `supportsSearchTools`) flips.
         ///
         /// - Returns: a copy of this registry with `isDirectMode` set to
         ///   `true`.
@@ -84,24 +84,24 @@ extension MultiTool {
         }
 
         /// The session-facing operations this registry surfaces —
-        /// `["runCode"]` in direct mode, `["runCode", "findAPIs"]`
+        /// `["runCode"]` in direct mode, `["runCode", "searchTools"]`
         /// otherwise. Plain, checkable metadata for a caller (or a test) to
         /// read without having to separately know `isDirectMode`'s exact
         /// semantics.
         public var affordances: [String] {
-            isDirectMode ? ["runCode"] : ["runCode", "findAPIs"]
+            isDirectMode ? ["runCode"] : ["runCode", "searchTools"]
         }
 
-        /// Whether this registry surfaces `findAPIs` discovery — `false` in
+        /// Whether this registry surfaces `searchTools` discovery — `false` in
         /// direct mode, `true` otherwise.
-        public var supportsFindAPIs: Bool {
+        public var supportsSearchTools: Bool {
             !isDirectMode
         }
 
         /// Builds the tools a host mounts on its `LanguageModelSession`, in
         /// the order the model reads them.
         ///
-        /// `findAPIs` comes first, `runCode` second. A session's tool list is
+        /// `searchTools` comes first, `runCode` second. A session's tool list is
         /// read as a whole before the model picks its opening move, so the
         /// list is itself the first statement of what a turn looks like here:
         /// discover what exists, then execute against what came back.
@@ -113,7 +113,7 @@ extension MultiTool {
         /// assembling the array by hand has to get it right every time and
         /// nothing tells it when it does not. Direct mode is folded in for
         /// the same reason: `runCode` comes back alone, so a caller never
-        /// re-derives from `isDirectMode` what `supportsFindAPIs` already
+        /// re-derives from `isDirectMode` what `supportsSearchTools` already
         /// knows.
         ///
         /// This is the whole host contract. A host builds a registry and
@@ -130,34 +130,34 @@ extension MultiTool {
         /// this method's result reaches the model.
         ///
         /// - Parameters:
-        ///   - librarian: the model backing `findAPIs`'s selection
+        ///   - librarian: the model backing `searchTools`'s selection
         ///     tier, or `nil` to leave its searcher in cheap retrieval. Unused
-        ///     in direct mode, which vends no `findAPIs` to configure.
-        ///   - sampleGenerator: the model `findAPIs` writes its runnable
+        ///     in direct mode, which vends no `searchTools` to configure.
+        ///   - sampleGenerator: the model `searchTools` writes its runnable
         ///     sample snippet on, or `nil` (the default) to leave sample
-        ///     generation unconfigured, so `findAPIs` answers with signatures
+        ///     generation unconfigured, so `searchTools` answers with signatures
         ///     alone exactly as it always has. Pass the **main** generation
         ///     slot: the sample is code the model is told to run, so its
         ///     quality matters more than its cost. Unused in direct mode.
-        /// - Returns: `findAPIs` followed by `runCode`, or `runCode` alone in
+        /// - Returns: `searchTools` followed by `runCode`, or `runCode` alone in
         ///   direct mode.
         /// - Throws: whatever
-        ///   `FindAPIsTool.init(registry:librarian:limit:sampleGenerator:)`
+        ///   `SearchToolsTool.init(registry:librarian:limit:sampleGenerator:)`
         ///   throws.
         public func makeSessionTools(
             librarian: RoutedLLM?,
             sampleGenerator: RoutedLLM? = nil
         ) throws -> [any Tool] {
             let runCode = MultiTool(registry: self)
-            guard supportsFindAPIs else {
+            guard supportsSearchTools else {
                 return [runCode]
             }
-            let findAPIs = try FindAPIsTool(
+            let searchTools = try SearchToolsTool(
                 registry: self,
                 librarian: librarian,
                 sampleGenerator: sampleGenerator
             )
-            return [findAPIs, runCode]
+            return [searchTools, runCode]
         }
     }
 }
@@ -177,7 +177,7 @@ public struct RunCodeArguments {
     /// The JavaScript snippet to run against `tools.*`.
     @Guide(
         description: "JavaScript snippet to run against the available tools, exposed as functions "
-            + "under `tools.*`. Call the exact paths findAPIs returned. Compose calls with normal "
+            + "under `tools.*`. Call the exact paths searchTools returned. Compose calls with normal "
             + "code — variables, loops, map/filter — and `return` the final value; only that value "
             + "(and any console output) comes back."
     )
@@ -243,9 +243,9 @@ public struct RunCodeArguments {
 /// and Apple's own tool-calling loop decides when to call it (the
 /// hand-rolled `MultiToolAgent` ReAct loop that used to drive it is
 /// retired). Mount through `Registry.makeSessionTools(librarian:)` rather
-/// than assembling the array by hand: it puts `findAPIs` ahead of `runCode`,
+/// than assembling the array by hand: it puts `searchTools` ahead of `runCode`,
 /// which is the order this package's whole search-then-call premise depends
-/// on, and drops `findAPIs` under `directMode()`.
+/// on, and drops `searchTools` under `directMode()`.
 ///
 /// Per call, `call(arguments:)`:
 /// 1. builds `tools.*` glue that assigns every registry entry's real,
@@ -273,12 +273,12 @@ public struct MultiTool: Tool {
     /// This tool's `Tool`-protocol description, presented to the model as
     /// usage instructions for `runCode`.
     ///
-    /// Together with `FindAPIsTool.description` this carries the **whole**
+    /// Together with `SearchToolsTool.description` this carries the **whole**
     /// behavioral contract a session needs. Mounting the two tools is the
     /// entire integration: a `Tool` conformance's description is serialized
     /// into the prompt on every turn, whereas a session instruction is
     /// optional and a host may not pass one, so nothing load-bearing may live
-    /// outside these two strings. `findAPIs` owns the discovery mandate; this
+    /// outside these two strings. `searchTools` owns the discovery mandate; this
     /// side owns the snippet, the provenance rule, and the error-recovery
     /// contract.
     ///
@@ -295,10 +295,10 @@ public struct MultiTool: Tool {
     ///   `help()`/`docs(name)` are synchronous host functions *inside* the
     ///   sandbox (see "MARK: - help()/docs() globals"), so a snippet can
     ///   confirm the surface and keep going in the same call. Every recorded
-    ///   plan-and-stop happens at the `findAPIs` → `runCode` turn boundary,
+    ///   plan-and-stop happens at the `searchTools` → `runCode` turn boundary,
     ///   and that path removes the boundary.
     /// - **The anti-guessing rule triggers on checkable conversational
-    ///   state** ("if you have not called findAPIs in this conversation"),
+    ///   state** ("if you have not called searchTools in this conversation"),
     ///   never on the model's own confidence: a confident model always passes
     ///   an "if you are unsure" test, which is the failure being closed.
     /// - **The provenance rule sits directly under the procedure**, with the
@@ -327,14 +327,14 @@ public struct MultiTool: Tool {
 
         It also exposes this session's API functions under `tools.*`.
 
-        Call findAPIs at least once in every session, passing the user's own request
+        Call searchTools at least once in every session, passing the user's own request
         as the query, before you answer it. Until you have called it you do not know
         what this session mounts. Narrow follow-up searches come after that one, not
         instead of it.
 
         Assume any user request needs this session's functions. Almost all of them
-        do. Call findAPIs first to get the exact functions and their signatures,
-        then write the snippet against the paths findAPIs returned. Only a request
+        do. Call searchTools first to get the exact functions and their signatures,
+        then write the snippet against the paths searchTools returned. Only a request
         that is pure arithmetic or string work needs no functions at all.
 
         Writing the snippet:
@@ -363,7 +363,7 @@ public struct MultiTool: Tool {
         snippet did not actually return.
 
         Beyond `tools.*` a few ambient globals are always there and never appear in
-        findAPIs — for asking the user something mid-snippet, reporting what is
+        searchTools — for asking the user something mid-snippet, reporting what is
         happening, and following up on a long-running call. Run `docs("globals")` in a
         snippet to read them.
         """
@@ -409,7 +409,7 @@ public struct MultiTool: Tool {
     /// The catalog ranker `UnknownToolHint` resolves an invented `tools.*`
     /// name against when no real path resembles its spelling.
     ///
-    /// The same `MetadataSearcher` machinery `findAPIs` matches an intent to
+    /// The same `MetadataSearcher` machinery `searchTools` matches an intent to
     /// tools with, over this registry's own entries, in `.retrieval` mode: no
     /// selection tier and no embedder, so repairing a wrong guess costs no
     /// model call and no tokens. Built once at `init` for the same reason as
@@ -1006,7 +1006,7 @@ public struct MultiTool: Tool {
     // see `MultiTool+SandboxGlobals.swift`; `HardeningTests` pins the whole
     // set against the README's own list. Both read from the very same
     // `registry.surface`/`Entry` data the registry-backed selection tier's
-    // instruction prefix and `findAPIs` are built from (M2.5/M6) — plan.md's
+    // instruction prefix and `searchTools` are built from (M2.5/M6) — plan.md's
     // "one generator, one source of truth, never drifting" — so
     // `help()`/`docs()` can never describe a tool differently than
     // discovery does.

@@ -2,18 +2,18 @@ import FoundationModels
 import FoundationModelsMetadataRegistry
 import FoundationModelsRouter
 
-/// The arguments `FindAPIsTool.call(arguments:)` accepts — the plain-language
+/// The arguments `SearchToolsTool.call(arguments:)` accepts — the plain-language
 /// goal a `LanguageModelSession`'s native tool-calling loop passes when it
-/// decides to call `findAPIs`.
+/// decides to call `searchTools`.
 @Generable
-public struct FindAPIsArguments: Sendable {
+public struct SearchToolsArguments: Sendable {
     @Guide(
         description: "Describe the task in plain language. Returns the tool-functions for that task, "
             + "each with its typed signature and a runnable example."
     )
     public var task: String
 
-    /// Creates `findAPIs`'s arguments with the given task description.
+    /// Creates `searchTools`'s arguments with the given task description.
     ///
     /// Explicit for the same reason as every other public `@Generable` type's
     /// initializer in this package (e.g. `RunCodeArguments.init`): a
@@ -26,7 +26,7 @@ public struct FindAPIsArguments: Sendable {
     }
 }
 
-/// plan.md Component 8 (Discovery) — `findAPIs` as its own real
+/// plan.md Component 8 (Discovery) — `searchTools` as its own real
 /// `FoundationModels.Tool` conformer, independently constructible and
 /// registerable directly alongside `MultiTool` in a native
 /// `LanguageModelSession(tools: try registry.makeSessionTools(librarian:))`,
@@ -36,7 +36,7 @@ public struct FindAPIsArguments: Sendable {
 /// "discover what exists" before "execute code" when it picks its opening
 /// move (see `MultiTool.Registry.makeSessionTools(librarian:)`).
 ///
-/// `call(arguments:)` forwards every `findAPIs(task)` call to a
+/// `call(arguments:)` forwards every `searchTools(task)` call to a
 /// `MetadataSearcher<APISurface.Entry>` running in `.auto` mode (plan.md §7):
 /// cheap retrieval (BM25/trigram/cosine signals fused by RRF) when no
 /// selection tier is configured, retrieval-then-LLM-selection over the
@@ -47,17 +47,17 @@ public struct FindAPIsArguments: Sendable {
 /// The searcher's selection tier (when configured) answers *what* is
 /// relevant — ids only, grammar-enforced against the current candidate set
 /// via `idEnumGrammar(ids:)` (the registry's `SelectionTier`, generalizing
-/// Multitool's own former `Librarian`) — and `FindAPIsTool` owns *how that
+/// Multitool's own former `Librarian`) — and `SearchToolsTool` owns *how that
 /// answer reaches the caller* — splicing each selected entry's `Match.item
 /// .block` **verbatim** (never re-derived or re-rendered) plus its runnable,
 /// namespace-qualified example, so the model reads exactly what the
 /// searcher matched.
-public struct FindAPIsTool: Tool {
-    /// This tool's `Tool`-protocol name, always `"findAPIs"`.
-    public let name = "findAPIs"
+public struct SearchToolsTool: Tool {
+    /// This tool's `Tool`-protocol name, always `"searchTools"`.
+    public let name = "searchTools"
 
     /// This tool's `Tool`-protocol description, presented to the model as
-    /// usage instructions for `findAPIs`.
+    /// usage instructions for `searchTools`.
     ///
     /// Together with `MultiTool.description` this carries the **whole**
     /// behavioral contract a session needs. Mounting the two tools is the
@@ -73,7 +73,7 @@ public struct FindAPIsTool: Tool {
     /// procedure *is* the discovery mandate; each rule then carries its own
     /// mechanical consequence, which is specification rather than
     /// persuasion. The anti-guessing rule triggers on checkable
-    /// conversational state ("if you have not called findAPIs in this
+    /// conversational state ("if you have not called searchTools in this
     /// conversation") rather than on the model's own confidence — a
     /// confident model always passes an "if you are unsure" test, which is
     /// the failure this wording exists to close.
@@ -86,24 +86,24 @@ public struct FindAPIsTool: Tool {
     /// Fixture-shaped example data (weather, trips) would hand a model the
     /// very value a gated scenario grades on, which passes with zero calls.
     public let description = """
-        This is how you use your tools. findAPIs and runCode together reach every
+        This is how you use your tools. searchTools and runCode together reach every
         function this session has, including the user's own data. The set of
         functions is loaded dynamically and changes from session to session, so
-        findAPIs is what tells you the current set.
+        searchTools is what tells you the current set.
 
-        Call findAPIs at least once in every session, passing the user's own request
+        Call searchTools at least once in every session, passing the user's own request
         as the query, before you answer it. Until you have called it you do not know
         what this session mounts. Narrow follow-up searches come after that one, not
         instead of it.
 
         Assume any user request needs these functions. Almost all of them do. Call
-        findAPIs first, before you answer and before you ask the user for anything.
+        searchTools first, before you answer and before you ask the user for anything.
         Describe in plain language what you are trying to accomplish. You get back
         the few relevant tool-functions, each with its typed signature, purpose,
         and a runnable example.
 
         Search here instead of asking the user, and instead of naming a function
-        yourself. Call findAPIs once per kind of data you need, and again whenever
+        yourself. Call searchTools once per kind of data you need, and again whenever
         the request still needs a function you do not hold yet.
 
         Then write one runCode snippet calling those exact tools.* paths, and answer
@@ -111,13 +111,13 @@ public struct FindAPIsTool: Tool {
 
         Worked example.
 
-        findAPIs("read a document's title") returns:
+        searchTools("read a document's title") returns:
 
             // tools.getDocument
             declare function getDocument(id: string): Promise<{ title: string }>
 
         The request also needs the editor's name and no function for that came back,
-        so findAPIs("who last edited a document") returns:
+        so searchTools("who last edited a document") returns:
 
             // tools.getRevision
             declare function getRevision(id: string): Promise<{ editor: string }>
@@ -128,14 +128,14 @@ public struct FindAPIsTool: Tool {
             const rev = await tools.getRevision(doc.latestRevisionId);
             return { title: doc.title, editor: rev.editor };
 
-        When findAPIs returns no relevant function for the request, say so and name
+        When searchTools returns no relevant function for the request, say so and name
         the capability that is missing.
 
         Only a request that is pure arithmetic or string work needs no functions at
         all. Run a runCode snippet and return the result.
         """
 
-    /// The catalog searcher every `findAPIs` call forwards to — runs in
+    /// The catalog searcher every `searchTools` call forwards to — runs in
     /// `.auto` mode (plan.md §7): retrieval-only when no selection tier is
     /// configured, retrieval-then-selection when one is.
     private let searcher: MetadataSearcher<APISurface.Entry>
@@ -149,11 +149,11 @@ public struct FindAPIsTool: Tool {
     /// result with, or `nil` to answer with the signatures alone.
     ///
     /// Absent by default, exactly like the searcher's selection tier: a host
-    /// that supplies nothing here gets the result `findAPIs` has always
+    /// that supplies nothing here gets the result `searchTools` has always
     /// returned, byte for byte.
     private let sample: SampleSnippetConfig?
 
-    /// Creates a `findAPIs` tool over an already-built `searcher`.
+    /// Creates a `searchTools` tool over an already-built `searcher`.
     ///
     /// The test-facing/low-level entry point: a caller (production or test)
     /// that has already assembled a `MetadataSearcher` — with or without a
@@ -162,7 +162,7 @@ public struct FindAPIsTool: Tool {
     /// scripted searcher through the internal `AgentSession` seam.
     ///
     /// - Parameters:
-    ///   - searcher: the searcher to forward every `findAPIs(task)` call to.
+    ///   - searcher: the searcher to forward every `searchTools(task)` call to.
     ///   - limit: the maximum number of matches to request per call.
     ///   - sample: how to generate and validate the runnable sample snippet
     ///     this tool leads its result with. Defaults to `nil` — no sample, and
@@ -177,7 +177,7 @@ public struct FindAPIsTool: Tool {
         self.sample = sample
     }
 
-    /// Creates a `findAPIs` tool bound to a resolved Router profile's
+    /// Creates a `searchTools` tool bound to a resolved Router profile's
     /// generation slot for its selection tier — the production, independently
     /// constructible entry point plan.md calls for: no dependency on any
     /// agent loop or turn machinery, just a registry and an optional
@@ -218,7 +218,7 @@ public struct FindAPIsTool: Tool {
     ///     than the librarian's: the sample is code the model is told to run,
     ///     so its quality matters more than its cost. The session is vended
     ///     through `RoutedLLM.makeSession(instructions:)` with no `tools:`
-    ///     argument, which is what keeps `findAPIs` off the generation
+    ///     argument, which is what keeps `searchTools` off the generation
     ///     session's own surface: it writes a snippet, it does not execute
     ///     one.
     /// - Throws: reserved for API stability across selection-tier wiring
@@ -246,7 +246,7 @@ public struct FindAPIsTool: Tool {
         )
     }
 
-    /// Runs one `findAPIs(task)` call: searches `searcher`, then formats its
+    /// Runs one `searchTools(task)` call: searches `searcher`, then formats its
     /// result into this tool's `Output`.
     ///
     /// - Parameter arguments: the plain-language goal to search for.
@@ -256,7 +256,7 @@ public struct FindAPIsTool: Tool {
     /// - Throws: whatever `searcher.search(intent:limit:)` throws. Sample
     ///   generation never throws out of here: a failure in it yields no
     ///   sample, and discovery answers with the signatures alone.
-    public func call(arguments: FindAPIsArguments) async throws -> String {
+    public func call(arguments: SearchToolsArguments) async throws -> String {
         let matches = try await searcher.search(intent: arguments.task, limit: limit)
         let snippet = await generateSample(forTask: arguments.task, over: matches.map(\.item))
         return Self.format(task: arguments.task, matches: matches, sample: snippet)
@@ -267,7 +267,7 @@ public struct FindAPIsTool: Tool {
     /// every candidate.
     ///
     /// - Parameters:
-    ///   - task: the plain-language goal passed to `findAPIs`.
+    ///   - task: the plain-language goal passed to `searchTools`.
     ///   - entries: the matched entries the snippet may call.
     /// - Returns: the validated snippet, or `nil`.
     private func generateSample(forTask task: String, over entries: [APISurface.Entry]) async -> String? {
@@ -277,7 +277,7 @@ public struct FindAPIsTool: Tool {
 
     /// The imperative next-step footer a signatures-only result ends with.
     ///
-    /// The result of a `findAPIs` call is the moment of maximum model
+    /// The result of a `searchTools` call is the moment of maximum model
     /// attention, and describing functions without prescribing the next
     /// action leaves the two dominant failure modes open: announcing a plan
     /// instead of acting, and answering from priors instead of from a
@@ -288,7 +288,7 @@ public struct FindAPIsTool: Tool {
     /// The sentence that orders a model to write a snippet from scratch.
     ///
     /// The only place it is written. ``nextStepFooter`` opens with it, and
-    /// `FindAPIsToolTests` reads it here in both directions — asserting it is
+    /// `SearchToolsToolTests` reads it here in both directions — asserting it is
     /// present when no sample was generated, and absent when one was. The
     /// absent case carries that proof alone: "Call runCode now" appears in
     /// both this footer and ``runSampleFooter``, so only this sentence tells
@@ -348,7 +348,7 @@ public struct FindAPIsTool: Tool {
     /// never configured must never cost discovery anything.
     ///
     /// - Parameters:
-    ///   - task: the plain-language goal passed to `findAPIs`, echoed in the
+    ///   - task: the plain-language goal passed to `searchTools`, echoed in the
     ///     header line.
     ///   - matches: the searcher's decoded result.
     ///   - sample: the validated runnable snippet to lead with, or `nil` for
@@ -356,15 +356,15 @@ public struct FindAPIsTool: Tool {
     /// - Returns: the formatted text.
     static func format(task: String, matches: [Match<APISurface.Entry>], sample: String? = nil) -> String {
         guard !matches.isEmpty else {
-            return "findAPIs(\"\(task)\") found no matching functions."
+            return "searchTools(\"\(task)\") found no matching functions."
         }
         let blocks = matches
             .map { match in "\(match.item.block)\nExample: \(match.item.qualifiedExample)" }
             .joined(separator: "\n\n")
         guard let sample else {
-            return "findAPIs(\"\(task)\") found:\n" + blocks + "\n\n\(nextStepFooter)"
+            return "searchTools(\"\(task)\") found:\n" + blocks + "\n\n\(nextStepFooter)"
         }
-        return "findAPIs(\"\(task)\") wrote this snippet for that task:\n\n\(sample)\n\n"
+        return "searchTools(\"\(task)\") wrote this snippet for that task:\n\n\(sample)\n\n"
             + "\(runSampleFooter)\n\n\(signaturesHeading)\n" + blocks
     }
 }

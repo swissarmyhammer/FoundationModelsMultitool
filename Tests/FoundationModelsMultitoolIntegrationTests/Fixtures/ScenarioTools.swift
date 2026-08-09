@@ -366,7 +366,7 @@ struct IntegrationDistractorTool: Tool {
 
 /// Builds 10 named, distinct distractor tools — combined with the 2 relevant
 /// tools (`getWeather`, `getTrip`) the discovery scenario also wraps, the
-/// surface totals 12 tools, only 2 of which `findAPIs` should select.
+/// surface totals 12 tools, only 2 of which `searchTools` should select.
 ///
 /// Ten, not the eighteen this list carried through phase 1, by the human
 /// ruling of 2026-08-07 recorded on task `tkrdwb8`. The Bisect Protocol

@@ -7,9 +7,9 @@ import Testing
 /// M7 coverage for `MultiTool`'s in-snippet `help()`/`docs()` globals —
 /// in-language introspection backed by the very same `APISurface`/`Entry`
 /// data that backs the registry-backed selection tier's instruction prefix
-/// and `findAPIs` (M2.5/M6) — plan.md M7: in-language introspection backed
+/// and `searchTools` (M2.5/M6) — plan.md M7: in-language introspection backed
 /// by the same `APISurface` (one source of truth with the selection tier's
-/// instruction prefix and findAPIs).
+/// instruction prefix and searchTools).
 ///
 /// Reuses `WeatherTool` (`ToolAPIRendererFixtures.swift`, plan.md's own
 /// worked `getWeather` example) and `GithubCreateIssueTool`

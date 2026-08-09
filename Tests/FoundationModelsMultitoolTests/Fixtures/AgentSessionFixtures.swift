@@ -108,7 +108,7 @@ final class CallCounter: Sendable {
 
 /// Thrown by `RootSessionRespondCalledDirectlySession.respond(to:)` if it is
 /// ever called directly — the registry's `SelectionTier` contract is that
-/// every `findAPIs`/selection call goes through a `fork()` of the
+/// every `searchTools`/selection call goes through a `fork()` of the
 /// prefix-rooted session, never the root itself
 /// (`RoutedSession.fork(workingDirectory:)`'s KV-cache-copy seam only pays
 /// off if the root is never asked to generate on its own transcript).
@@ -120,7 +120,7 @@ struct RootSessionRespondCalledDirectlyError: Error, Equatable {}
 /// invoked on the root itself, asserting the "always via fork()" contract
 /// (M6 acceptance, now the registry's `SelectionTier`: "Each selection call
 /// goes through a fork() of the prefix-rooted session"). Used by
-/// `FindAPIsToolTests`/`ExamplesTests` to drive `FindAPIsTool`'s selection
+/// `SearchToolsToolTests`/`ExamplesTests` to drive `SearchToolsTool`'s selection
 /// tier without a GPU.
 ///
 /// `final class ... Sendable` for the same reason as `ScriptedAgentSession`:

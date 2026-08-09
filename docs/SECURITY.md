@@ -32,7 +32,7 @@ grouped tool) — each `tools.*` entry is a native bridge into exactly one
 wrapped `Tool`'s own `call(arguments:)`, nothing else. `help()`/`docs(name)`
 are read-only introspection over the same rendered `APISurface` the
 registry-backed selection tier (`FoundationModelsMetadataRegistry`'s
-`MetadataSearcher`/`SelectionTier`) and `findAPIs` use — they cannot mutate
+`MetadataSearcher`/`SelectionTier`) and `searchTools` use — they cannot mutate
 anything.
 
 `status()`, `wait()`, `cancel()`, `elicit()`, `notify()`, and `progress()`
@@ -98,7 +98,7 @@ that one tool's own `call(arguments:)`.
 Turn budgeting is no longer this package's to bound: the retired hand-rolled
 ReAct loop's `maxAgentTurns`/`maxRepairTurns` knobs were removed with it, and
 Apple's native `LanguageModelSession` tool-calling loop — the shipped main
-loop — owns how many `findAPIs`/`runCode` turns a request may take.
+loop — owns how many `searchTools`/`runCode` turns a request may take.
 
 ## What is NOT guaranteed
 
@@ -118,7 +118,7 @@ loop — owns how many `findAPIs`/`runCode` turns a request may take.
   tool registered directly with the session gets schema-constrained
   argument generation as a basic property of native tool-calling itself. So
   a tool not meant for JS-snippet composition is simply registered as its
-  own separate `Tool` alongside `multiTool` and `findAPIsTool`, rather than
+  own separate `Tool` alongside `multiTool` and `searchToolsTool`, rather than
   routed through `MultiTool`'s registry at all.
 - **A wrapped tool's own behavior is out of scope.** The sandbox bounds what
   a *snippet* can reach; it says nothing about what a wrapped `Tool`'s own

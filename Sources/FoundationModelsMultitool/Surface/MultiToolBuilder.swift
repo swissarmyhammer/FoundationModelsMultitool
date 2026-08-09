@@ -201,7 +201,7 @@ extension MultiTool {
         ///
         /// - Returns: the rendered catalog paired with its live tool
         ///   instances, in `.directMode() == false` (both `runCode` and
-        ///   `findAPIs` surfaced).
+        ///   `searchTools` surfaced).
         /// - Throws: `ToolAPIRendererError`, propagated unchanged (never
         ///   wrapped — the same posture `ToolInvoker` takes toward a
         ///   tool's own thrown error), if any queued tool can't be fully

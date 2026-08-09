@@ -36,8 +36,8 @@ struct ScenarioObservation {
     /// Every `tools.*` path the mounted catalog actually defines.
     var catalogPaths: Set<String>
 
-    /// Whether a `findAPIs` call preceded the first `runCode` call.
-    var findAPIsFirst: Bool
+    /// Whether a `searchTools` call preceded the first `runCode` call.
+    var searchToolsFirst: Bool
 
     /// The scalar values the tools genuinely returned to the model this
     /// turn — see `NativeTranscript.returnedValues(in:)`.
@@ -48,10 +48,10 @@ struct ScenarioObservation {
 }
 
 /// The fewest tool calls any scenario this runner drives can be answered
-/// in: one `findAPIs` to learn the catalog's real names, then one `runCode`
+/// in: one `searchTools` to learn the catalog's real names, then one `runCode`
 /// to call them.
 ///
-/// A host mounts `MultiTool` with the catalog behind `findAPIs` rather than
+/// A host mounts `MultiTool` with the catalog behind `searchTools` rather than
 /// in the session instructions, so a model that has not searched does not
 /// know a single real name — which is why the floor is two rather than one,
 /// and why it is the same floor for all four scenarios.
@@ -101,7 +101,7 @@ struct ScenarioFailureModes {
     /// next run's.
     let inventedPaths: [String]
 
-    /// A `findAPIs` call preceded the first `runCode` call.
+    /// A `searchTools` call preceded the first `runCode` call.
     let searchedFirst: Bool
 
     /// The turn made more calls than `scenarioThrashFactor` times the
@@ -140,7 +140,7 @@ struct ScenarioFailureModes {
         // reaches a tool, so no recorder can ever see it and only the snippet
         // source can report it.
         inventedPaths = observation.typedPaths.subtracting(observation.catalogPaths).sorted()
-        searchedFirst = observation.findAPIsFirst
+        searchedFirst = observation.searchToolsFirst
         didThrash = observation.toolCallCount > scenarioMinimumToolCalls * scenarioThrashFactor
         isGroundedButWrongForm =
             !observation.isValidAnswer

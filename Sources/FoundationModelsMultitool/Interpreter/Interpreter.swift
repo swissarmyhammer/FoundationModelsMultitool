@@ -336,7 +336,7 @@ public protocol Interpreter: Sendable {
     /// source.
     ///
     /// This is the deterministic first gate a caller applies to a snippet it
-    /// did not write — `FindAPIsTool`'s generated sample — before it is worth
+    /// did not write — `SearchToolsTool`'s generated sample — before it is worth
     /// looking at anything else about it. An unresolved identifier is not a
     /// syntax error, so a snippet naming a global this check never installed
     /// still parses.

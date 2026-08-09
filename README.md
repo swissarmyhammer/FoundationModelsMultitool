@@ -11,10 +11,10 @@ answer.
 
 ## Usage: register on a native `LanguageModelSession`
 
-`MultiTool` and `FindAPIsTool` are ordinary `FoundationModels.Tool`
+`MultiTool` and `SearchToolsTool` are ordinary `FoundationModels.Tool`
 conformers, so the primary integration is Apple's own native tool-calling
 loop: register both directly on a `LanguageModelSession`, and the session
-decides when to call `findAPIs` (discovery) and `runCode` (execution). This
+decides when to call `searchTools` (discovery) and `runCode` (execution). This
 example mirrors the runnable demo in `Sources/multitool-cli`
 (`CLIRunner.runDemo`), which drives exactly this wiring end to end:
 
@@ -66,12 +66,12 @@ let profile = try await router.resolve(profile: demoProfile, reporting: progress
 // 3. Wrap the resolved `.standard` slot as a real `FoundationModels
 //    .LanguageModel` declaring `.toolCalling` — an `MLXLanguageModel`, built
 //    exactly as `CLIRunner.makeMLXLanguageModel(for:)` does — and mount what
-//    the registry vends. Apple's own tool-calling loop drives the findAPIs →
+//    the registry vends. Apple's own tool-calling loop drives the searchTools →
 //    runCode handoff; there is no hand-rolled agent loop.
 //
 //    `makeSessionTools(librarian:)` builds both tools and orders them:
-//    `findAPIs` first, then `runCode`, so the model reads "discover what
-//    exists" before "execute code". `findAPIs`'s internal selection tier
+//    `searchTools` first, then `runCode`, so the model reads "discover what
+//    exists" before "execute code". `searchTools`'s internal selection tier
 //    runs on the same resolved profile's cheaper/faster `flash` slot,
 //    through Router-backed sessions (fork-per-call prefix reuse). A
 //    `directMode()` registry vends `runCode` alone.
@@ -94,7 +94,7 @@ print(response.content)
 The demo pins deliberately small models: the natively tool-calling-trained
 `mlx-community/Qwen3-4B-Instruct-2507-4bit` on `standard` for the main
 session, and `mlx-community/Qwen2.5-1.5B-Instruct-4bit` on `flash` for
-`findAPIs`'s selection tier (see `CLIRunner.demoProfile` for the rationale).
+`searchTools`'s selection tier (see `CLIRunner.demoProfile` for the rationale).
 
 For a small, fixed tool set, skip discovery entirely — direct mode: build the
 registry with `.directMode()` and mount it the same way. A direct-mode

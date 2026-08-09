@@ -4,7 +4,7 @@
 // Router profile resolution -> wrapping the resolved model as a real
 // FoundationModels.LanguageModel (MLXLanguageModel) -> a native
 // LanguageModelSession registering multiTool and (unless --direct)
-// findAPIsTool, driven by Apple's own tool-calling loop for one demo prompt.
+// searchToolsTool, driven by Apple's own tool-calling loop for one demo prompt.
 // All the actual logic lives in `CLIRunner` (`CLIRunner.swift`) so it's
 // directly unit-testable; this file is just the process entry point.
 //

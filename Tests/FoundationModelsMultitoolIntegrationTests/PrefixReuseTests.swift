@@ -5,8 +5,8 @@ import FoundationModelsRouter
 @testable import FoundationModelsMultitool
 
 /// The gated selection-tier prefix-reuse pin (plan.md Finding #6 /
-/// "Remaining pins"): asserts `findAPIsTool`'s own internal selection tier's
-/// *second* `findAPIs` call does not re-prefill the surface prefix —
+/// "Remaining pins"): asserts `searchToolsTool`'s own internal selection tier's
+/// *second* `searchTools` call does not re-prefill the surface prefix —
 /// compared via prefill latency evidence — or documents that the `fork()`
 /// fallback is the mechanism actually engaged.
 ///
@@ -23,14 +23,14 @@ import FoundationModelsRouter
 /// exactly one `fork()`, so the mechanism-under-test is asserted, not merely
 /// observed, by construction.
 ///
-/// **Native design, minimal change.** This scenario is about `findAPIsTool`'s
+/// **Native design, minimal change.** This scenario is about `searchToolsTool`'s
 /// own internal selection tier — a plain, Router-backed `RoutedLLM` session
 /// (task `4aveepp`'s decision, kept specifically to preserve this property)
 /// — not about `MultiToolAgent`'s retired ReAct loop, so it ports with
 /// minimal change: rather than driving a raw `MetadataSearcher` built via the
-/// retired `MultiToolAgent.makeFindAPISearcher(registry:librarian:)`, it now
-/// times `FindAPIsTool.call(arguments:)` directly — `findAPIsTool`'s own
-/// production, independently-constructible entry point (`FindAPIsTool
+/// retired `MultiToolAgent.makeSearchToolsSearcher(registry:librarian:)`, it now
+/// times `SearchToolsTool.call(arguments:)` directly — `searchToolsTool`'s own
+/// production, independently-constructible entry point (`SearchToolsTool
 /// .init(registry:librarian:limit:)`) — which forwards to the identical
 /// `.auto`-mode `MetadataSearcher`/`SelectionConfig`/`fork()` mechanism the
 /// old test exercised through the searcher directly, just reached through
@@ -47,7 +47,7 @@ import FoundationModelsRouter
 )
 struct PrefixReuseTests {
     @Test(
-        "a selection tier's second findAPIs call is no slower than its first (fork()-inherited prefix, not re-prefilled)"
+        "a selection tier's second searchTools call is no slower than its first (fork()-inherited prefix, not re-prefilled)"
     )
     func secondSearchCallReusesThePrefix() async throws {
         let fixture: LiveRouterFixture
@@ -63,7 +63,7 @@ struct PrefixReuseTests {
             // measurably slower than a `fork()`-inherited one — the same
             // ~20-tool set `SearchThenCallTests`' discovery scenario uses.
             // This measurement never calls a fixture tool — it times two
-            // `findAPIs` selections over the rendered surface — but every
+            // `searchTools` selections over the rendered surface — but every
             // fixture still needs a log to construct, so it gets one that
             // stays empty.
             let log = ScenarioCallLog()
@@ -73,21 +73,21 @@ struct PrefixReuseTests {
                         + integrationDistractorTools(log: log)
                 )
                 .buildRegistry()
-            // `findAPIsTool`'s own production initializer — never a
+            // `searchToolsTool`'s own production initializer — never a
             // reimplementation of its selection-tier wiring.
-            let findAPIsTool = try FindAPIsTool(registry: registry, librarian: fixture.profile.flash)
+            let searchToolsTool = try SearchToolsTool(registry: registry, librarian: fixture.profile.flash)
 
             let firstStart = Date()
-            _ = try await findAPIsTool.call(
-                arguments: FindAPIsArguments(task: "list trip cities and get weather for each")
+            _ = try await searchToolsTool.call(
+                arguments: SearchToolsArguments(task: "list trip cities and get weather for each")
             )
             let firstElapsed = Date().timeIntervalSince(firstStart)
 
             let secondStart = Date()
-            _ = try await findAPIsTool.call(arguments: FindAPIsArguments(task: "convert 100 USD to EUR"))
+            _ = try await searchToolsTool.call(arguments: SearchToolsArguments(task: "convert 100 USD to EUR"))
             let secondElapsed = Date().timeIntervalSince(secondStart)
 
-            // Prefix-reuse pin acceptance: "the second findAPIs call shows
+            // Prefix-reuse pin acceptance: "the second searchTools call shows
             // no full re-prefill... an assertion, not an observation." A
             // cold first call pays the whole surface's prefill; a
             // `fork()`-inherited second call should not pay it again, so it
@@ -95,7 +95,7 @@ struct PrefixReuseTests {
             #expect(
                 secondElapsed <= firstElapsed,
                 """
-                expected the second findAPIs call (fork()-inherited prefix) to be no slower than the first \
+                expected the second searchTools call (fork()-inherited prefix) to be no slower than the first \
                 (cold prefill): first=\(firstElapsed)s second=\(secondElapsed)s — if this fails on real \
                 hardware, it means fork()-based prefix reuse is NOT avoiding a full re-prefill here, and \
                 the plan's Finding #6 pin should be recorded as unresolved rather than confirmed

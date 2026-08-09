@@ -218,7 +218,7 @@ struct MultiToolExecutionTests {
 
     // MARK: - Description: the no-system-prompt error-recovery contract
 
-    @Test("runCode's description alone carries the findAPIs-first workflow and the error-recovery contract — no system prompt required")
+    @Test("runCode's description alone carries the searchTools-first workflow and the error-recovery contract — no system prompt required")
     func descriptionCarriesTheErrorRecoveryContract() throws {
         let registry = try MultiTool.Builder().addTool(TempTool()).buildRegistry()
         // Collapse the multiline literal's hard line-wraps to single spaces
@@ -230,8 +230,8 @@ struct MultiToolExecutionTests {
 
         // The first-move stance — load-bearing, and only effective from a
         // description the model reads upfront alongside every tool schema.
-        #expect(description.localizedCaseInsensitiveContains("call findAPIs first"))
-        // runCode is a general-purpose isolated runtime, and the findAPIs prior is
+        #expect(description.localizedCaseInsensitiveContains("call searchTools first"))
+        // runCode is a general-purpose isolated runtime, and the searchTools prior is
         // stated rather than left as a judgment the model makes before acting. This
         // description is always in the prompt, and `sessionInstructions` no longer
         // exists (task tkrdwb8), so the contract has to hold here on its own.
@@ -240,16 +240,16 @@ struct MultiToolExecutionTests {
         #expect(description.contains("rather than in your head"))
         #expect(description.contains("Assume any user request needs this session's functions"))
         // The session rule is checkable conversational state — "have I called
-        // findAPIs in this session yet?" — not the model's confidence. An
+        // searchTools in this session yet?" — not the model's confidence. An
         // "if you are unsure" trigger is one a confident model always passes,
         // which is the defect this line of work has been chasing. It aims at the
         // dominant recorded failure: a turn that ends with toolCalls=0, where
         // three of the sample arm's seven failures sat (task 9zk44z6).
-        #expect(description.contains("Call findAPIs at least once in every session"))
+        #expect(description.contains("Call searchTools at least once in every session"))
         #expect(description.contains("passing the user's own request"))
         #expect(description.contains("as the query"))
         // Narrow follow-up searches supplement the first one; they do not replace
-        // it. The generator is handed whatever query findAPIs received, so a model
+        // it. The generator is handed whatever query searchTools received, so a model
         // that only ever searches a sub-question hands it the wrong task.
         #expect(description.contains("come after that one, not"))
         #expect(description.contains("you do not know what this session mounts"))
@@ -261,7 +261,7 @@ struct MultiToolExecutionTests {
         #expect(!description.localizedCaseInsensitiveContains("refus"))
         // The numbered procedure comes before any rule.
         #expect(description.contains("Writing the snippet:"))
-        // The findAPIs-first prior comes before the snippet mechanics, so a reader
+        // The searchTools-first prior comes before the snippet mechanics, so a reader
         // meets "search first" before "here is how to write it".
         let priorRange = try #require(description.range(of: "Assume any user request needs this session's functions"))
         let mechanicsRange = try #require(description.range(of: "Writing the snippet:"))
@@ -276,7 +276,7 @@ struct MultiToolExecutionTests {
         // where every recorded plan-and-stop happens.
         // The anti-guessing trigger is checkable conversational state, never
         // the model's own confidence.
-        #expect(description.contains("write the snippet against the paths findAPIs returned"))
+        #expect(description.contains("write the snippet against the paths searchTools returned"))
         #expect(!description.localizedCaseInsensitiveContains("if you are unsure"))
         // Read-and-destructure the declared return type.
         #expect(description.localizedCaseInsensitiveContains("destructure"))
@@ -299,30 +299,30 @@ struct MultiToolExecutionTests {
         #expect(description.localizedCaseInsensitiveContains("await each `tools.*` call"))
         #expect(description.contains("Promise.all"))
         // The ambient-globals pointer (eventplan.md "The sandbox globals"):
-        // the six globals carry no `findAPIs` entry, so the description is
+        // the six globals carry no `searchTools` entry, so the description is
         // the only place the model learns they exist — but it carries the
         // pointer, not the contract, which `docs("globals")` hands back on
         // demand (`SandboxGlobalsTests` pins what comes back).
-        #expect(description.contains("never appear in findAPIs"))
+        #expect(description.contains("never appear in searchTools"))
         #expect(description.contains("docs(\"\(MultiTool.sandboxGlobalsDocsTopic)\")"))
     }
 
     // MARK: - directMode(): a runCode-only surface
 
-    @Test("registry.directMode() reports no findAPIs affordance; a plain registry reports both")
+    @Test("registry.directMode() reports no searchTools affordance; a plain registry reports both")
     func directModeReportsRunCodeOnlySurface() throws {
         let registry = try MultiTool.Builder()
             .addTool(CitiesTool())
             .buildRegistry()
 
         #expect(registry.isDirectMode == false)
-        #expect(registry.supportsFindAPIs == true)
-        #expect(registry.affordances == ["runCode", "findAPIs"])
+        #expect(registry.supportsSearchTools == true)
+        #expect(registry.affordances == ["runCode", "searchTools"])
 
         let direct = registry.directMode()
 
         #expect(direct.isDirectMode == true)
-        #expect(direct.supportsFindAPIs == false)
+        #expect(direct.supportsSearchTools == false)
         #expect(direct.affordances == ["runCode"])
         // `directMode()` only flips the affordance metadata — the executable
         // surface itself (and its rendered catalog) is unchanged.
@@ -331,7 +331,7 @@ struct MultiToolExecutionTests {
 
     // MARK: - makeSessionTools(): the array a host mounts, in presentation order
 
-    @Test("makeSessionTools() presents findAPIs before runCode")
+    @Test("makeSessionTools() presents searchTools before runCode")
     func sessionToolsPresentDiscoveryBeforeExecution() throws {
         let registry = try MultiTool.Builder()
             .addTool(CitiesTool())
@@ -339,11 +339,11 @@ struct MultiToolExecutionTests {
 
         let mounted = try registry.makeSessionTools(librarian: nil)
 
-        #expect(mounted.map(\.name) == ["findAPIs", "runCode"])
+        #expect(mounted.map(\.name) == ["searchTools", "runCode"])
     }
 
-    @Test("A direct-mode registry vends runCode alone — there is no findAPIs to present")
-    func directModeSessionToolsOmitFindAPIs() throws {
+    @Test("A direct-mode registry vends runCode alone — there is no searchTools to present")
+    func directModeSessionToolsOmitSearchTools() throws {
         let registry = try MultiTool.Builder()
             .addTool(CitiesTool())
             .buildRegistry()
@@ -371,11 +371,11 @@ struct MultiToolExecutionTests {
         )
         #expect(itinerary == "\"AAA-BBB-CCC\"")
 
-        // The findAPIs half searches the same registry's rendered catalog.
+        // The searchTools half searches the same registry's rendered catalog.
         // `librarian: nil` leaves the searcher in cheap retrieval, so this
         // needs no model.
-        let findAPIs = try #require(mounted.first as? FindAPIsTool)
-        let discovery = try await findAPIs.call(arguments: FindAPIsArguments(task: "the cities on the trip"))
+        let searchTools = try #require(mounted.first as? SearchToolsTool)
+        let discovery = try await searchTools.call(arguments: SearchToolsArguments(task: "the cities on the trip"))
         #expect(discovery.contains("tools.getCities"))
     }
 }

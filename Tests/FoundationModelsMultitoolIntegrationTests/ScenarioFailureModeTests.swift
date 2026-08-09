@@ -25,7 +25,7 @@ struct ScenarioFailureModeTests {
             typedPaths: ["getTrip", "getWeather"],
             invokedPaths: ["getTrip", "getWeather"],
             catalogPaths: ["getTrip", "getWeather"],
-            findAPIsFirst: true,
+            searchToolsFirst: true,
             returnedValues: ["SFO", "San Francisco", "34"],
             isValidAnswer: true
         )
@@ -322,13 +322,13 @@ struct ScenarioFailureModeTests {
         #expect(NativeTranscript.returnedValues(in: transcript).isEmpty)
     }
 
-    @Test("a findAPIs output contributes nothing, however it is shaped")
-    func aFindAPIsOutputContributesNothing() {
+    @Test("a searchTools output contributes nothing, however it is shaped")
+    func aSearchToolsOutputContributesNothing() {
         let transcript = Transcript(entries: [
             .toolOutput(
                 Transcript.ToolOutput(
                     id: "1",
-                    toolName: "findAPIs",
+                    toolName: "searchTools",
                     segments: [.text(Transcript.TextSegment(content: #"["getTrip"]"#))]
                 )
             )

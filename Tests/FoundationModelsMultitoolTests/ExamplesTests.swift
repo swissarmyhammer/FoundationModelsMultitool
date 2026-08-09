@@ -15,9 +15,9 @@ import Testing
 /// `FoundationModelsMetadataRegistry`'s `ExamplesSmokeTests.swift`. Read
 /// these first to learn the call patterns: author a catalog with
 /// `MultiTool.Builder`, register `MultiTool` (and, for discovery,
-/// `FindAPIsTool`) directly on a native `FoundationModels
+/// `SearchToolsTool`) directly on a native `FoundationModels
 /// .LanguageModelSession`, and let Apple's own tool-calling loop drive the
-/// findAPIs → runCode handoff.
+/// searchTools → runCode handoff.
 ///
 /// Every example here runs fully offline — no live model, no network, no
 /// `MULTITOOL_INTEGRATION` gate — via `ScriptedLanguageModel` below, the
@@ -29,7 +29,7 @@ import Testing
 /// these examples need neither MLX weights nor Apple Intelligence. Every
 /// line *after* a `ScriptedLanguageModel` is constructed is real usage: a
 /// genuine `LanguageModelSession` drives its own native multi-turn
-/// tool-calling loop, actually invoking the real `MultiTool`/`FindAPIsTool`
+/// tool-calling loop, actually invoking the real `MultiTool`/`SearchToolsTool`
 /// this suite registers with it.
 @Suite("Examples: canonical usage of the public API")
 struct ExamplesTests {
@@ -196,17 +196,17 @@ struct ExamplesTests {
         #expect(toolOutput.contains("SFO"))
     }
 
-    // MARK: - findAPIs -> runCode discovery-then-call handoff
+    // MARK: - searchTools -> runCode discovery-then-call handoff
 
-    @Test("The findAPIs -> runCode discovery-then-call handoff, via native tool-calling")
-    func findAPIsThenRunCodeHandoff() async throws {
+    @Test("The searchTools -> runCode discovery-then-call handoff, via native tool-calling")
+    func searchToolsThenRunCodeHandoff() async throws {
         let registry = try MultiTool.Builder()
             .addGroup(named: "github", [IssueCountTool()])
             .buildRegistry()
         let multiTool = MultiTool(registry: registry)
 
-        // findAPIs's own selection tier is scripted to pick
-        // "github.getIssueCount" by id — see FindAPIsToolTests for the same
+        // searchTools's own selection tier is scripted to pick
+        // "github.getIssueCount" by id — see SearchToolsToolTests for the same
         // RootSessionRespondCalledDirectlySession pattern driving a real
         // MetadataSearcher/SelectionConfig.
         let selectionRoot = RootSessionRespondCalledDirectlySession(
@@ -217,32 +217,32 @@ struct ExamplesTests {
             mode: .auto,
             selection: SelectionConfig(model: { _, _ in selectionRoot }, capacityCharacterLimit: .max)
         )
-        let findAPIsTool = FindAPIsTool(searcher: searcher, limit: registry.surface.entries.count)
+        let searchToolsTool = SearchToolsTool(searcher: searcher, limit: registry.surface.entries.count)
 
-        // The stub "model": findAPIs first, then runCode with the
+        // The stub "model": searchTools first, then runCode with the
         // discovered, properly-qualified call, then answer.
         let model = ScriptedLanguageModel { transcript in
             if Self.hasToolOutput(transcript, from: "runCode") {
                 return .answer("There are 42 open issues.")
             }
-            if Self.hasToolOutput(transcript, from: "findAPIs") {
+            if Self.hasToolOutput(transcript, from: "searchTools") {
                 return .callTool(
                     name: "runCode",
                     argumentsJSON: #"{"code": "return tools.github.getIssueCount({repo: \"demo\"});"}"#
                 )
             }
-            return .callTool(name: "findAPIs", argumentsJSON: #"{"task": "count open github issues"}"#)
+            return .callTool(name: "searchTools", argumentsJSON: #"{"task": "count open github issues"}"#)
         }
 
-        // `findAPIs` ahead of `runCode`, the order
+        // `searchTools` ahead of `runCode`, the order
         // `MultiTool.Registry.makeSessionTools(librarian:)` vends. This
-        // example builds the pair by hand because its `findAPIs` is over a
+        // example builds the pair by hand because its `searchTools` is over a
         // scripted searcher rather than a Router-backed librarian, so it
         // states the order the vending API would have applied.
         let session = LanguageModelSession(
             model: model,
-            tools: [findAPIsTool, multiTool],
-            instructions: "Call findAPIs to discover tools, then runCode to use them."
+            tools: [searchToolsTool, multiTool],
+            instructions: "Call searchTools to discover tools, then runCode to use them."
         )
 
         // Explicitly typed — same shadowing-extension disambiguation as above.
@@ -251,19 +251,19 @@ struct ExamplesTests {
         #expect(response.content == "There are 42 open issues.")
 
         // The discovery text the model actually saw between the two steps —
-        // the exact worked findAPIs("...") -> runCode(...) example: a
+        // the exact worked searchTools("...") -> runCode(...) example: a
         // rendered block naming the fully-qualified tools.github.getIssueCount
         // path, plus a runnable, properly-qualified example call (never the
         // bare, wrong tools.getIssueCount(...) a model couldn't guess to
         // qualify on its own — task 12rtn85's fix).
-        let discovery = try #require(Self.toolOutputText(in: session.transcript, from: "findAPIs"))
-        #expect(discovery.contains("findAPIs(\"count open github issues\") found:"))
+        let discovery = try #require(Self.toolOutputText(in: session.transcript, from: "searchTools"))
+        #expect(discovery.contains("searchTools(\"count open github issues\") found:"))
         #expect(discovery.contains("// tools.github.getIssueCount"))
         #expect(discovery.contains("tools.github.getIssueCount("))
         #expect(!discovery.contains("tools.getIssueCount("))
 
         // The handoff is real, not merely scripted: runCode's own real
-        // execution — using the exact qualified call findAPIs's discovery
+        // execution — using the exact qualified call searchTools's discovery
         // text handed back — actually called the real IssueCountTool.
         let runCodeOutput = try #require(Self.toolOutputText(in: session.transcript, from: "runCode"))
         #expect(runCodeOutput.contains("42"))

@@ -22,8 +22,8 @@ enum NativeTranscript {
     /// The tool name `MultiTool` mounts under — the snippet runner.
     private static let runCodeToolName = "runCode"
 
-    /// The tool name `FindAPIsTool` mounts under — the catalog searcher.
-    private static let findAPIsToolName = "findAPIs"
+    /// The tool name `SearchToolsTool` mounts under — the catalog searcher.
+    private static let searchToolsToolName = "searchTools"
 
     /// Every `Transcript.ToolCall` across every `.toolCalls` entry, in transcript order.
     ///
@@ -52,18 +52,18 @@ enum NativeTranscript {
         toolCalls(in: transcript).count { name == nil || $0.toolName == name }
     }
 
-    /// Verifies that a `findAPIs` call occurs before the first `runCode` call — the "search-then-code" trace assertion.
+    /// Verifies that a `searchTools` call occurs before the first `runCode` call — the "search-then-code" trace assertion.
     ///
     /// - Parameter transcript: the transcript to scan.
-    /// - Returns: `true` if a `findAPIs` call precedes the first `runCode`
+    /// - Returns: `true` if a `searchTools` call precedes the first `runCode`
     ///   call; `false` if there is no `runCode` call at all, or the first
-    ///   `runCode` call has no preceding `findAPIs` call.
-    static func findAPIsPrecedesRunCode(in transcript: Transcript) -> Bool {
+    ///   `runCode` call has no preceding `searchTools` call.
+    static func searchToolsPrecedesRunCode(in transcript: Transcript) -> Bool {
         let calls = toolCalls(in: transcript)
         guard let runCodeIndex = calls.firstIndex(where: { $0.toolName == runCodeToolName }) else {
             return false
         }
-        return calls[..<runCodeIndex].contains { $0.toolName == findAPIsToolName }
+        return calls[..<runCodeIndex].contains { $0.toolName == searchToolsToolName }
     }
 
     /// Extracts the `tools.*` call paths every `runCode` tool call's snippet **wrote**.
@@ -120,7 +120,7 @@ enum NativeTranscript {
     /// does not parse contributes nothing rather than contributing noise:
     /// that covers a repairable error, an appended `Console output:` section
     /// and a truncation note, none of which is data the tools produced.
-    /// A `findAPIs` output is skipped outright — it is the catalog the model
+    /// A `searchTools` output is skipped outright — it is the catalog the model
     /// was shown, not an answer it was given.
     ///
     /// Booleans are skipped: JSON `true` bridges to the same numeric type as
@@ -210,9 +210,9 @@ enum NativeTranscript {
         return try! NSRegularExpression(pattern: pattern)
     }()
 
-    /// Decodes `findAPIsTool`'s selection-tier `Selection` results from its own recorded transcript.
+    /// Decodes `searchToolsTool`'s selection-tier `Selection` results from its own recorded transcript.
     ///
-    /// `findAPIsTool`'s internal selection tier remains Router-backed (task
+    /// `searchToolsTool`'s internal selection tier remains Router-backed (task
     /// `4aveepp`'s decision, kept specifically to preserve `PrefixReuseTests`'
     /// fork()-based prefix-reuse property) — every selection call is still a
     /// real, recorded Router session, independent of the *main*
@@ -226,9 +226,9 @@ enum NativeTranscript {
     ///   - events: the full decoded Router transcript (see
     ///     `LiveRouterFixture.transcriptEvents()`).
     ///   - slot: the model slot whose `.response` events to decode — always
-    ///     `.flash` for `findAPIsTool`'s selection tier in this suite.
+    ///     `.flash` for `searchToolsTool`'s selection tier in this suite.
     /// - Returns: every `Selection` result decoded from that slot's
-    ///   `.response` events, in recorded order — normally one per `findAPIs`
+    ///   `.response` events, in recorded order — normally one per `searchTools`
     ///   call.
     /// - Throws: a decoding error if a `.response` event's body isn't valid,
     ///   schema-conforming JSON for `Selection`.

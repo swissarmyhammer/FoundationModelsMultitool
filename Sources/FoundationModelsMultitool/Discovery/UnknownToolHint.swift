@@ -11,7 +11,7 @@ import FoundationModelsMetadataRegistry
 /// type turns that dead end into a ramp: it extracts the failed path from
 /// the exception message, ranks the catalog's real entries against it, and
 /// renders the closest matches in the same signature-plus-example block
-/// format `findAPIs` results use — so the repair material is already in the
+/// format `searchTools` results use — so the repair material is already in the
 /// exact shape the model knows how to call.
 ///
 /// Ranking runs in two tiers, in this order:
@@ -21,7 +21,7 @@ import FoundationModelsMetadataRegistry
 ///    and free, and it settles the common guess: `getWeatherForecast`
 ///    contains `getWeather`, `getTemperature.getCurrent` contains
 ///    `getTemperature`.
-/// 2. **Catalog relevance** — the same `MetadataSearcher` ranking `findAPIs`
+/// 2. **Catalog relevance** — the same `MetadataSearcher` ranking `searchTools`
 ///    matches an intent to tools with, over the same entries. This tier
 ///    exists because name resemblance has a hard ceiling: a guess can be a
 ///    perfectly reasonable synonym of a real entry and still share almost no
@@ -73,7 +73,7 @@ enum UnknownToolHint {
         /// resembles the guess, but an entry's rendered block does.
         case catalogRelevance = "relevance"
 
-        /// Neither tier answered it, so the hint steers back to `findAPIs`.
+        /// Neither tier answered it, so the hint steers back to `searchTools`.
         case noMatch = "none"
     }
 
@@ -211,10 +211,10 @@ enum UnknownToolHint {
     /// to a near match already has its repair material in hand, and a snippet
     /// that also names a real path proves the model is holding real names
     /// already — in both cases the snippet is the thing to fix, and steering
-    /// to `findAPIs` would send a working session backwards.
+    /// to `searchTools` would send a working session backwards.
     ///
-    /// Note what this does *not* read: whether `findAPIs` was actually called
-    /// this session. `FindAPIsTool` is a separate `Tool` a host mounts (or
+    /// Note what this does *not* read: whether `searchTools` was actually called
+    /// this session. `SearchToolsTool` is a separate `Tool` a host mounts (or
     /// does not mount) independently, holding no session state and touching
     /// no `ToolContext`, so that fact is not reachable here without new
     /// cross-tool coupling. The snippet's own paths are the observable
@@ -255,7 +255,7 @@ enum UnknownToolHint {
             let opening = "tools.\(failedPath) \(missingPathPhrase), and nothing close matches. "
             switch directive {
             case .repairSnippet:
-                return opening + "Call findAPIs for the real path, then rewrite that call."
+                return opening + "Call searchTools for the real path, then rewrite that call."
             case .discoverFunctions:
                 return opening + "No function name this snippet used is in the catalog."
             }
@@ -366,7 +366,7 @@ enum UnknownToolHint {
     /// Ranks the catalog's entries by how relevant they are to what
     /// `failedPath` was reaching for — the hint's tier 2.
     ///
-    /// Forwards to the same `MetadataSearcher` ranking `findAPIs` answers
+    /// Forwards to the same `MetadataSearcher` ranking `searchTools` answers
     /// with, so a wrong guess is resolved by the one ranking the catalog
     /// already trusts rather than by a second, hint-only notion of "close".
     /// The searcher's contract is a plain-language intent, so the identifier

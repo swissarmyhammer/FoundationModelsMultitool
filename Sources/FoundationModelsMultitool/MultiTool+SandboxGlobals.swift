@@ -23,7 +23,7 @@ import FoundationModelsRouter
 // `notify()` / `progress()`." So the first four are `AsyncHostFunction`s and
 // the last two are `HostFunction`s — and nothing else about them differs.
 //
-// None of the six is a `findAPIs` entry. A search result implies an item that
+// None of the six is a `searchTools` entry. A search result implies an item that
 // can be found or be absent; these are always present. `MultiTool
 // .description` is therefore where the model learns they exist — but it
 // carries only that pointer. The contract itself is read on demand, through
@@ -110,7 +110,7 @@ extension MultiTool {
     /// `MultiTool.description` names this topic instead of restating the
     /// contract. What a model needs upfront is that the globals exist and
     /// where to read them; the detail costs nothing until a snippet asks for
-    /// it, which is the same lazy shape `findAPIs`/`docs()` already give the
+    /// it, which is the same lazy shape `searchTools`/`docs()` already give the
     /// wrapped tools. Naming the topic here keeps the pointer and the lookup
     /// on one constant.
     static let sandboxGlobalsDocsTopic = "globals"
@@ -156,7 +156,7 @@ extension MultiTool {
         /**
          * The ambient globals every snippet already has, beyond `tools.*`.
          * They are installed in every runCode sandbox, so they never appear
-         * in a findAPIs result and nothing has to be discovered before
+         * in a searchTools result and nothing has to be discovered before
          * calling them. Await the four that return a promise; `notify()` and
          * `progress()` return nothing, so never await those.
          */

@@ -43,7 +43,7 @@ struct SandboxGlobalsTests {
         #expect(kinds == Array(repeating: "function", count: sandboxGlobalNames.count))
     }
 
-    @Test("the globals are not discoverable entries — help() and the findAPIs surface list none of them")
+    @Test("the globals are not discoverable entries — help() and the searchTools surface list none of them")
     func globalsAreNotDiscoverableEntries() async throws {
         let registry = try MultiTool.Builder().addTool(CitiesTool()).buildRegistry()
         let multiTool = MultiTool(registry: registry)

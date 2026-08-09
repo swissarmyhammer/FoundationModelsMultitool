@@ -679,7 +679,7 @@ public enum ToolAPIRenderer {
     /// (`(integer)`, numeric range, pattern, or item count); then
     /// `"(optional)"` for a non-required property, or `"(required)"` for a
     /// required one — explicit and symmetric, so a reader (including the
-    /// small local model that discovers tools via `findAPIs`/`help()`/
+    /// small local model that discovers tools via `searchTools`/`help()`/
     /// `docs(name)`) never has to infer required-ness from the *absence* of
     /// `"(optional)"`. `GenerationSchema` has no default-value concept (see
     /// `AppleEncoderParityTests`), so no `default …` clause is ever

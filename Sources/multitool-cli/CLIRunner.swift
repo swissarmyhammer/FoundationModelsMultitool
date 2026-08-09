@@ -22,7 +22,7 @@ private let cliErrorPrefix = "multitool-cli:"
 struct CLIArguments: Equatable {
     /// Whether to run in direct mode: only `multiTool`/`runCode` is registered with the session, no discovery.
     ///
-    /// When set, `findAPIsTool` is not registered with the session —
+    /// When set, `searchToolsTool` is not registered with the session —
     /// plan.md "Direct mode (skip discovery)".
     var direct = false
 
@@ -103,10 +103,10 @@ struct CLIRouterUnavailableError: Error, CustomStringConvertible {
 /// resolving a model profile via `Router`, wrapping the resolved `.standard`
 /// generation slot as a real `FoundationModels.LanguageModel`
 /// (`MLXLanguageModel`), and mounting whatever
-/// `MultiTool.Registry.makeSessionTools(librarian:)` vends — `findAPIs` then
+/// `MultiTool.Registry.makeSessionTools(librarian:)` vends — `searchTools` then
 /// `runCode`, or `runCode` alone under `--direct` — directly on a native
 /// `FoundationModels.LanguageModelSession`. Apple's own tool-calling loop decides when to
-/// call `findAPIs` vs `runCode` — this file drives no turn-parsing loop of
+/// call `searchTools` vs `runCode` — this file drives no turn-parsing loop of
 /// its own, unlike the retired `MultiToolAgent`-based demo this replaces.
 /// Factored out of `main.swift` as a plain, testable entry point:
 ///
@@ -133,12 +133,12 @@ enum CLIRunner {
         static let unavailable: Int32 = 69
     }
 
-    /// The `--direct` flag, for running in direct mode (only `multiTool`/`runCode` registered with the session, no `findAPIsTool`).
+    /// The `--direct` flag, for running in direct mode (only `multiTool`/`runCode` registered with the session, no `searchToolsTool`).
     static let directFlag = Flag(
         names: ["--direct"],
         descriptionLines: [
             "Run in direct mode: only the runCode tool is registered with the",
-            "session (no findAPIs tool); the snippet discovers tools via",
+            "session (no searchTools tool); the snippet discovers tools via",
             "help()/docs() instead.",
         ],
         apply: { $0.direct = true }
@@ -182,7 +182,7 @@ enum CLIRunner {
 
             Resolves a small demo model profile via FoundationModelsRouter, wires up a
             couple of fixture tools (getTrip, getWeather), and asks one question that
-            exercises the search-then-code loop (findAPIs, then a composing runCode).
+            exercises the search-then-code loop (searchTools, then a composing runCode).
             """
     }
 
@@ -205,8 +205,8 @@ enum CLIRunner {
         // (see `IntegrationGate.swift`'s pin history): the dense
         // Qwen3.6-27B drives the main session — under the suite's
         // outcome-based assertions, with the tool-use contract carried
-        // entirely by the findAPIs/runCode descriptions, it opens
-        // every scenario with findAPIs and follows through reliably where
+        // entirely by the searchTools/runCode descriptions, it opens
+        // every scenario with searchTools and follows through reliably where
         // the 3.3B-active MoE varied — while the 1.5B stays on `flash` for
         // the selection tier, where it is empirically the more accurate and
         // decisive grammar-constrained selector.
@@ -218,8 +218,8 @@ enum CLIRunner {
 
     /// The demo prompt that exercises the agent.
     ///
-    /// Triggering both findAPIs and runCode to compose an answer — plan.md
-    /// M9: "one prompt that triggers findAPIs then a composing runCode,"
+    /// Triggering both searchTools and runCode to compose an answer — plan.md
+    /// M9: "one prompt that triggers searchTools then a composing runCode,"
     /// mirroring the sample's own worked `getTrip` -> `getWeather` -> warmest
     /// example.
     static let demoPrompt = "Of the cities on my trip, which is warmest right now?"
@@ -274,7 +274,7 @@ enum CLIRunner {
     ///
     /// Parses `arguments`, and — unless `--help` was given or parsing
     /// failed — resolves `demoProfile`, constructs a native
-    /// `LanguageModelSession` over the tools the registry vends (`findAPIs`
+    /// `LanguageModelSession` over the tools the registry vends (`searchTools`
     /// then `runCode`, or `runCode` alone under `--direct`), calls `session.respond(to:)` once against
     /// `demoPrompt`, and writes the answer to `output`.
     ///
@@ -331,11 +331,11 @@ enum CLIRunner {
     ///
     /// - Parameters:
     ///   - direct: whether to run in direct mode — only `multiTool` is
-    ///     registered with the session, `findAPIsTool` is omitted.
+    ///     registered with the session, `searchToolsTool` is omitted.
     ///   - resolve: the profile-resolution step.
     ///   - output: where progress/answer lines are written.
     /// - Throws: `CLIRouterUnavailableError` if `resolve` throws; otherwise
-    ///   whatever building the tools, `findAPIsTool`'s own initializer, or
+    ///   whatever building the tools, `searchToolsTool`'s own initializer, or
     ///   `session.respond(to:)` throws.
     private static func runDemo(
         direct: Bool,
@@ -377,9 +377,9 @@ enum CLIRunner {
             }
 
             // The registry vends its own mounted tools, in the order the
-            // model reads them — `findAPIs` before `runCode`, and `runCode`
+            // model reads them — `searchTools` before `runCode`, and `runCode`
             // alone once `directMode()` above has taken discovery away. The
-            // `findAPIs` half's internal selection tier is backed by a
+            // `searchTools` half's internal selection tier is backed by a
             // separate, Router-resolved `profile.flash` session — the
             // registry-backed `SelectionTier`'s "librarian on flash" split —
             // independent of `mlxModel`/the main session below.
@@ -536,7 +536,7 @@ enum CLIRunner {
     /// Creates a temporary directory for Router transcript recordings.
     ///
     /// Returns the URL of a fresh, uniquely-named directory the `Router`
-    /// records `findAPIsTool`'s own selection-tier sessions under (the main
+    /// records `searchToolsTool`'s own selection-tier sessions under (the main
     /// `LanguageModelSession` `runDemo` builds directly over `mlxModel` is
     /// never Router-vended, so it is never recorded here).
     ///

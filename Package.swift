@@ -25,7 +25,7 @@ private let routerDependencyName = "FoundationModelsRouter"
 /// (`../FoundationModelsMetadataRegistry/Package.swift`'s own `main` is in
 /// sync with `origin/main`), so no registry-side change is needed here.
 /// It supplies `SearchableMetadata`/`MetadataSearcher` — the catalog-search
-/// surface `FindAPIsTool`'s registry-backed selection tier (`SelectionTier`,
+/// surface `SearchToolsTool`'s registry-backed selection tier (`SelectionTier`,
 /// generalizing this package's own former `Librarian`) is built over —
 /// linked by the library target, the unit test target, and the gated
 /// integration test target below.
@@ -155,7 +155,7 @@ let package = Package(
             path: "\(sourcesPath)\(packageName)"
         ),
         // M9: the sample CLI executable — plan.md "M9 — Sample CLI. A prompt
-        // that triggers findAPIs then a multi-tool runCode." Links
+        // that triggers searchTools then a multi-tool runCode." Links
         // `liveLoaderMLXProducts` + `hubProducts` (see their documentation
         // above) so its default, production model-resolution path can
         // construct a real `LiveModelLoader` — the same live-inference

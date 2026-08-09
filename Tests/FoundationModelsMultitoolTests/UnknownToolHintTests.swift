@@ -183,12 +183,12 @@ struct UnknownToolHintTests {
 
     // MARK: - A snippet that named nothing real is steered to discovery
 
-    /// Replaces `unknownNameWithNoCloseMatchSteersToFindAPIs`, which drove
+    /// Replaces `unknownNameWithNoCloseMatchSteersToSearchTools`, which drove
     /// this exact call against this exact catalog and asserted only that the
-    /// word `findAPIs` appeared somewhere. Its two expectations are both kept
-    /// below — `discoveryClosing` opens with `Call findAPIs`, so it subsumes
+    /// word `searchTools` appeared somewhere. Its two expectations are both kept
+    /// below — `discoveryClosing` opens with `Call searchTools`, so it subsumes
     /// the loose one — and the third is new.
-    @Test("a snippet whose every tools.* path is unknown is steered to findAPIs, not back to runCode")
+    @Test("a snippet whose every tools.* path is unknown is steered to searchTools, not back to runCode")
     func snippetNamingNothingRealIsSteeredToDiscovery() async throws {
         let registry = try MultiTool.Builder()
             .addTool(CitiesTool())
@@ -227,7 +227,7 @@ struct UnknownToolHintTests {
         #expect(!output.contains(Self.discoveryClosing))
     }
 
-    @Test("a single-tool snippet written without any findAPIs call still runs and returns its value")
+    @Test("a single-tool snippet written without any searchTools call still runs and returns its value")
     func singleToolSnippetWithoutPriorDiscoveryStillSucceeds() async throws {
         let registry = try MultiTool.Builder()
             .addTool(CitiesTool())
