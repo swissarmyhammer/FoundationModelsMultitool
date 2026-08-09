@@ -132,6 +132,28 @@ comments:
 
     Card stays in `review`. Loop stopped here rather than at the 3-round guardrail — a conflict is stopped on sight, not iterated against.
   timestamp: 2026-08-09T12:18:24.908159+00:00
+- actor: claude-code
+  id: 01kzk7c8j52ewretzywazz63hf
+  text: |-
+    ### review — sweep addendum (hint-text axis)
+
+    Supplements the Q2 evidence in the previous comment. An independent exhaustive sweep reached the same verdict — **zero remaining sites where a hand-written literal stands in for `ResultRenderer` output** — and additionally covered one axis the first sweep did not: the `UnknownToolHint` text that `render(_:hint:directive:)` splices in through its `hint:` parameter (`MultiTool.swift:555-557`). Recording the result so a later pass does not re-open it.
+
+    `UnknownToolHint` literals (`UnknownToolHint.swift:238-261`) ARE hand-copied in pre-existing tests:
+
+    - `Tests/FoundationModelsMultitoolTests/UnknownToolHintTests.swift:69`, `:87`, `:132`, `:152`, `:193`, `:216` — `output.contains("tools.<x> does not exist")`
+    - `Tests/FoundationModelsMultitoolTests/UnknownToolHintTests.swift:248`, `:375` — `!output.contains("does not exist")`
+    - `Tests/FoundationModelsMultitoolTests/SampleSnippetTests.swift:149` — `prompts[1].contains("does not exist")`
+    - `Tests/FoundationModelsMultitoolTests/SuspendedContextTests.swift:158` — `refused.contains("Too many runCode snippets are running at once")`, a copy of `MultiTool+Elevation.swift:144`'s `liveContextCapError`
+
+    **No finding is recorded for any of these, for three independent reasons.** First, the review skill's blanket exception forbids raising, recording, or relaying any finding whose subject is changing test code that already existed; every one of these files is pre-existing and untouched by `688dd0b`. Second, none is `ResultRenderer`'s own wording — the hint is owned by `UnknownToolHint` and the cap message by `MultiTool+Elevation`, both outside this card's subject. Third, and unlike the defect this card exists to remove, the positive assertions sit on real product output, so a reword fails them loudly instead of leaving them compiling and passing against text nothing emits. The two negative assertions (`UnknownToolHintTests.swift:248`, `:375`) would pass hollowly after a reword, but they are still pre-existing test code and still not `ResultRenderer` wording.
+
+    Two corrections to the record while it is in front of us. `HardeningTests.swift` lives only in the unit target at `Tests/FoundationModelsMultitoolTests/HardeningTests.swift`; there is no copy under `Tests/FoundationModelsMultitoolIntegrationTests/`. And `rg -n -F -- "call runCode again" Tests/` does return one hit, `MultiToolExecutionTests.swift:295`, but it asserts against the runCode **tool description** (`MultiTool.swift:361`, "and call runCode again immediately"), not renderer output — a different shipped string that merely shares a phrase with `closingLine`.
+
+    Also confirmed independently: `rg -n -F '\n\n' Tests/` returns no matches, so no test hand-builds the renderer's separator framing.
+
+    - next: unchanged — /implement ^w0rxeg7 to close the three findings at ResultRenderer.swift:118, :134, :141.
+  timestamp: 2026-08-09T12:18:49.541065+00:00
 position_column: review
 position_ordinal: '80'
 title: '[Multitool] ResultRenderer''s "The snippet failed" summary is hand-copied into the synthetic transcript fixture'
