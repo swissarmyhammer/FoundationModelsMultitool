@@ -299,15 +299,19 @@ struct ScenarioFailureModeTests {
                     toolName: "runCode",
                     segments: [
                         .text(
-                            // The shipped closing line is interpolated rather
-                            // than copied. This transcript stands in for what
-                            // `ResultRenderer` renders, and a copy of the
-                            // wording would go on compiling and passing after
-                            // the shipped line moved on, while no longer
-                            // standing in for any output the product emits.
+                            // Rendered, not copied. This is the text the
+                            // product emits for a repairable error, frame and
+                            // all, so a reword of the summary, of a separator
+                            // or of the closing line moves the fixture with
+                            // it. A copy would go on compiling and passing
+                            // while it stood in for output nothing produces.
                             Transcript.TextSegment(
-                                content: "The snippet failed: TypeError: tools.getTrip is not a "
-                                    + "function\n\n\(RepairDirective.repairSnippet.closingLine)"
+                                content: ResultRenderer.render(
+                                    InterpreterError(
+                                        kind: .exception,
+                                        message: "TypeError: tools.getTrip is not a function"
+                                    )
+                                )
                             )
                         )
                     ]

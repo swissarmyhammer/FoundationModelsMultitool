@@ -110,15 +110,11 @@ public enum RepairDirective: Sendable, Equatable {
     /// This is the only place the text is written. Both test targets read it
     /// here through `@testable import` instead of restating it, so rewording
     /// the line reaches every assertion that expects it and every synthetic
-    /// transcript that stands in for a rendered error. The claim stops at this
-    /// line: the surrounding render format is still restated in a test, where
-    /// `ScenarioFailureModeTests`'s synthetic segment hand-writes the
-    /// `.exception` summary and the `": "`/`"\n\n"` framing that
-    /// `render(_:hint:directive:)` builds around it. That is what
-    /// keeps `internal` the right access level: the text reaches the model
-    /// through ``ResultRenderer/render(_:hint:directive:)``, so no other
-    /// module needs to read it, and widening it to `public` would add a
-    /// second, cross-module contract for the same string.
+    /// transcript that stands in for a rendered error. `internal` is
+    /// therefore the right access level: the text reaches the model through
+    /// ``ResultRenderer/render(_:hint:directive:)``, so no other module needs
+    /// to read it, and widening it to `public` would add a second,
+    /// cross-module contract for the same string.
     var closingLine: String {
         switch self {
         case .repairSnippet:
@@ -126,6 +122,26 @@ public enum RepairDirective: Sendable, Equatable {
         case .discoverFunctions:
             "Call findAPIs to get the real function names and signatures for this task, "
                 + "then write the snippet against those paths."
+        }
+    }
+}
+
+extension InterpreterError.Kind {
+    /// The summary a repairable error opens with — which kind of failure the
+    /// underlying message describes.
+    ///
+    /// This is the only place the text is written, on the same terms as
+    /// ``RepairDirective/closingLine``. Both test targets read it here
+    /// through `@testable import` rather than restating it, so rewording a
+    /// summary reaches every assertion that expects it and every synthetic
+    /// transcript that stands in for a rendered error. `internal` is the
+    /// right access level for the same reason: the text reaches the model
+    /// through ``ResultRenderer/render(_:hint:directive:)``, so no other
+    /// module needs to read it.
+    var repairableErrorSummary: String {
+        switch self {
+        case .exception: "The snippet failed"
+        case .timeout: "The snippet timed out"
         }
     }
 }
@@ -196,13 +212,9 @@ public enum ResultRenderer {
         hint: String? = nil,
         directive: RepairDirective = .repairSnippet
     ) -> String {
-        let summary: String =
-            switch error.kind {
-            case .exception: "The snippet failed"
-            case .timeout: "The snippet timed out"
-            }
         let hintSection = hint.map { "\($0)\n\n" } ?? ""
-        return "\(summary): \(error.description)\n\n\(hintSection)\(directive.closingLine)"
+        return "\(error.kind.repairableErrorSummary): \(error.description)\n\n"
+            + "\(hintSection)\(directive.closingLine)"
     }
 
     // MARK: - Serialization

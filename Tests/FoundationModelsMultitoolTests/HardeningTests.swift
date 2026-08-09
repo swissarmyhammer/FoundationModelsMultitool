@@ -146,7 +146,7 @@ struct HardeningTests {
         let output = try await multiTool.call(arguments: RunCodeArguments(code: "while (true) {}"))
         let elapsed = start.duration(to: .now)
 
-        #expect(output.contains("timed out"))
+        #expect(output.contains(InterpreterError.Kind.timeout.repairableErrorSummary))
         // Comfortably above the 0.3s configured limit (watchdog scheduling
         // jitter) but far below the package's own default work clock —
         // proves the configured limit, not the default, was the one
@@ -180,7 +180,7 @@ struct HardeningTests {
         let output = try await multiTool.call(arguments: RunCodeArguments(code: "while (true) {}"))
         let elapsed = start.duration(to: .now)
 
-        #expect(output.contains("timed out"))
+        #expect(output.contains(InterpreterError.Kind.timeout.repairableErrorSummary))
         // Comfortably above the 0.3s configured limit (watchdog scheduling
         // jitter) but far below the interpreter's own stock limit — proves
         // the configured ceiling, not the injected interpreter's, was the one
