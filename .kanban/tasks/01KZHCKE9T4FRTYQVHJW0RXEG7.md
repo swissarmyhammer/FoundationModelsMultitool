@@ -94,6 +94,44 @@ comments:
 
     Caution for the next agent: `check sha` reports two phantom "no member 'repairableErrorSummary'" errors at `HardeningTests.swift:148`/`:182`. Stale-index artifacts — sourcekit-lsp is not installed here and both targets compile green. Do not chase them.
   timestamp: 2026-08-09T12:14:33.967285+00:00
+- actor: claude-code
+  id: 01kzk7b5vddbjfjb67v8e5p28v
+  text: |-
+    ### BLOCKER — conflict on findings :118 and :141, not resolved by me
+
+    Per the `/finish` scope rule, a true conflict is recorded on the task and left for a human. I am not resolving it, not editing the validator, and not closing the card.
+
+    **The findings.** Both ask that a `switch` over a known enum set whose arms differ only in string constants become a data table — `static let errorSummaries: [Kind: String] = [...]`, read as `Self.errorSummaries[self]`. The two sites are `RepairDirective.closingLine` (:118) and `InterpreterError.Kind.repairableErrorSummary` (:141). That list is complete and grep-provable: `grep -n "switch " ResultRenderer.swift` returns exactly `:119` and `:142`, and they are the only pure constant-mapping switches in `Sources/` (the one at `MultiTool+SandboxGlobals.swift:725` binds associated values and could not be a dictionary regardless).
+
+    **Why I did not make the change.** A dictionary subscript returns `String?`. Both enums — `InterpreterError.Kind` at `Interpreter.swift:201` and `RepairDirective` at `ResultRenderer.swift:100` — are `public`, neither is `CaseIterable`, neither has a raw value. So:
+
+    - **Today:** adding a third case to either public enum is a **compile error** at both sites until the new text is supplied. The switch has no `default:`, so the compiler enforces totality.
+    - **After the change:** adding a case compiles clean. `Self.errorSummaries[newCase]` returns `nil`, and the accessor must either force-unwrap (crash at render time) or fall back to a default (ship empty or placeholder repair text to the model).
+
+    The text in question is model-facing repair wording. Silent drift between the wording and what the product emits is the exact defect class this card was filed to remove. Converting to a dictionary would reintroduce that class through a different door, and it collides with the standing constraint that assertions and safety are never weakened — a retarget, never a relaxation.
+
+    **Why this is a rule conflict and not my preference.** In Swift, an exhaustive `switch` with expression-bodied arms IS the compiler-checked data table; there is no control flow in it to remove. The generic "data table over control flow" heuristic is right in languages without exhaustive enum matching. Note also what the findings section already records: `tool rule 'code-hygiene/dead-code-swift' is unavailable (tool missing: exited with exit status: 1); prompt rule 'dead-code' ran instead` — the language-aware rule did not run, and the generic fallback did.
+
+    **What a human needs to rule on.** Either (a) the rule should exempt exhaustive Swift enum switches whose arms are constant expressions, or (b) the conversion is wanted anyway and the loss of compile-time totality is acceptable — in which case say which fallback is wanted for the unreachable branch. I will implement whichever is chosen. I have not touched the validator.
+
+    **State.** Finding :134 is fixed and closed in `90603d7`, with the whole doc-comment class swept rather than the cited line. Findings :118 and :141 remain open, so the card stays in `review`. Ungated suite green, 309/24 + 49/8, on two consecutive runs.
+  timestamp: 2026-08-09T12:18:13.997046+00:00
+- actor: claude-code
+  id: 01kzk7bggc52d7msyzn1w4yhs8
+  text: |-
+    ### finish iteration 2 — stuck
+
+    - implement: changed — 1 file (Sources/FoundationModelsMultitool/Rendering/ResultRenderer.swift), doc comment only
+    - test: green — ungated `swift test` on two consecutive runs, each 309 tests / 24 suites + 49 tests / 8 suites, zero failures; flake ^9qtvkvg did not fire
+    - commit: 90603d7
+    - review: not run this iteration — two findings remain open by design, see the BLOCKER comment above
+
+    Closed: `:134`, and the whole doc-comment class with it. Every verifiable claim in the file was checked against a grep rather than re-read — `closingLine`'s "both test targets" claim (TRUE, 5 unit + 2 integration) and all four "only place the text is written" claims (TRUE, each literal appears exactly once across `Sources/` and `Tests/`) were confirmed and left alone.
+
+    Open: `:118` and `:141`, recorded as a **conflict** rather than worked. Converting either exhaustive `switch` to a `[Kind: String]` data table trades a compile error for a runtime `nil` on both `public` enums, which would let a future case ship empty or placeholder repair text to the model. That is the defect class this card exists to remove. A human rules; I have not edited the validator and have not closed the card.
+
+    Card stays in `review`. Loop stopped here rather than at the 3-round guardrail — a conflict is stopped on sight, not iterated against.
+  timestamp: 2026-08-09T12:18:24.908159+00:00
 position_column: review
 position_ordinal: '80'
 title: '[Multitool] ResultRenderer''s "The snippet failed" summary is hand-copied into the synthetic transcript fixture'
