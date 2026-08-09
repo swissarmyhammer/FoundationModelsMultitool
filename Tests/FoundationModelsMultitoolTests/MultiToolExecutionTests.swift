@@ -228,71 +228,42 @@ struct MultiToolExecutionTests {
             .split(whereSeparator: \.isWhitespace)
             .joined(separator: " ")
 
-        // The first-move stance — load-bearing, and only effective from a
-        // description the model reads upfront alongside every tool schema.
-        #expect(description.localizedCaseInsensitiveContains("call searchTools first"))
-        // The session mandate ("call searchTools at least once, with the user's own
-        // request") is asserted once, on searchTools' own description, which is in
-        // the prompt alongside this one. Restating it here was the duplication
-        // task 5qadve5 removed; runCode's share of the contract is the sentence
-        // below, which points the snippet at the paths searchTools returned.
-        // runCode is a general-purpose isolated runtime, and the searchTools prior is
-        // stated rather than left as a judgment the model makes before acting. This
-        // description is always in the prompt, and `sessionInstructions` no longer
-        // exists (task tkrdwb8), so the contract has to hold here on its own.
+        // runCode is a general-purpose isolated runtime. `sessionInstructions`
+        // no longer exists (task tkrdwb8), so the contract lives entirely in the
+        // two mounted descriptions, and task 5qadve5 split it between them: the
+        // mandate to search first is asserted once, on searchTools' own
+        // description, which is in the prompt alongside this one. runCode's
+        // share is the sentence pointing the snippet at what searchTools returned.
         #expect(description.contains("isolated JavaScript runtime"))
         #expect(description.contains("arithmetic, string work, dates, sorting"))
-        #expect(description.contains("rather than in your head"))
-        #expect(description.contains("Assume any user request needs this session's functions"))
         #expect(!description.localizedCaseInsensitiveContains("real-time"))
         // Persona-free, and refusal is never named — naming it would put it
         // back in the option set. An honest failure report replaces it.
         #expect(!description.localizedCaseInsensitiveContains("helpful assistant"))
         #expect(!description.localizedCaseInsensitiveContains("refus"))
-        // The numbered procedure comes before any rule.
-        #expect(description.contains("Writing the snippet:"))
-        // The searchTools-first prior comes before the snippet mechanics, so a reader
-        // meets "search first" before "here is how to write it".
-        let priorRange = try #require(description.range(of: "Assume any user request needs this session's functions"))
-        let mechanicsRange = try #require(description.range(of: "Writing the snippet:"))
-        #expect(priorRange.upperBound <= mechanicsRange.lowerBound)
-        // Provenance, stated positively so it cannot invert. An earlier draft shipped
-        // "State no fact ... that a tools.* call returned", which forbids exactly what
-        // it means to require.
-        #expect(description.contains("Every fact you state about the user's data comes from a"))
-        // In-sandbox discovery is named at step 1, not left as an aside:
-        // `help()`/`docs(name)` are synchronous inside the sandbox, so a
-        // snippet confirms the surface without a second round trip — which is
-        // where every recorded plan-and-stop happens.
-        // The anti-guessing trigger is checkable conversational state, never
-        // the model's own confidence.
-        #expect(description.contains("write the snippet against the paths searchTools returned"))
+        // No exemption clause survives: task 5qadve5 deleted the arithmetic
+        // carve-out, so nothing gives a reason to skip the search.
+        #expect(!description.localizedCaseInsensitiveContains("needs no functions"))
+        // The snippet runs against the paths searchTools returned, and the
+        // trigger is never the model's own confidence.
+        #expect(description.contains("the exact `tools.*` paths searchTools returned"))
         #expect(!description.localizedCaseInsensitiveContains("if you are unsure"))
-        // Read-and-destructure the declared return type.
-        #expect(description.localizedCaseInsensitiveContains("destructure"))
-        // JavaScript work over returned values is the feature; only
-        // fabricating a fact is closed off.
-        #expect(description.contains("arithmetic, string work, dates, sorting"))
+        // Every call is awaited, and only the returned value escapes the sandbox.
+        #expect(description.localizedCaseInsensitiveContains("await every call"))
+        #expect(description.contains("only that value comes back"))
         // Answer only from real returns — never own knowledge, never invented,
-        // and never an outcome no snippet returned. This sits directly under
-        // the procedure with its consequence attached: buried lower down, it
-        // was violated by runs reporting a booking as confirmed with nothing
-        // invoked.
-        #expect(description.localizedCaseInsensitiveContains("never answer"))
-        #expect(description.localizedCaseInsensitiveContains("never simulate or invent"))
+        // and never an outcome no snippet returned. Buried lower down, this was
+        // violated by runs reporting a booking confirmed with nothing invoked.
+        #expect(description.contains("Answer only from what the snippet returns"))
+        #expect(description.localizedCaseInsensitiveContains("never state a fact"))
         #expect(description.localizedCaseInsensitiveContains("never claim success"))
         // The fix-and-retry contract.
         #expect(description.contains("call runCode again"))
-        #expect(description.localizedCaseInsensitiveContains("never stop at an error"))
-        // The async-usage line (eventplan.md "Async JavaScript"): every
-        // `tools.*` call returns a promise.
-        #expect(description.localizedCaseInsensitiveContains("await each `tools.*` call"))
-        #expect(description.contains("Promise.all"))
-        // The ambient-globals pointer (eventplan.md "The sandbox globals"):
-        // the six globals carry no `searchTools` entry, so the description is
-        // the only place the model learns they exist — but it carries the
-        // pointer, not the contract, which `docs("globals")` hands back on
-        // demand (`SandboxGlobalsTests` pins what comes back).
+        // The ambient-globals pointer (eventplan.md "The sandbox globals"): the
+        // globals carry no searchTools entry, so this description is the only
+        // place the model learns they exist — and it carries the pointer, not
+        // the contract, which `docs("globals")` hands back on demand
+        // (`SandboxGlobalsTests` pins what comes back).
         #expect(description.contains("never appear in searchTools"))
         #expect(description.contains("docs(\"\(MultiTool.sandboxGlobalsDocsTopic)\")"))
     }

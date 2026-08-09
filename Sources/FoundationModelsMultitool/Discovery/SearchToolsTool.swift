@@ -86,49 +86,14 @@ public struct SearchToolsTool: Tool {
     /// Fixture-shaped example data (weather, trips) would hand a model the
     /// very value a gated scenario grades on, which passes with zero calls.
     public let description = """
-        This is how you use your tools. searchTools and runCode together reach every
-        function this session has, including the user's own data. The set of
-        functions is loaded dynamically and changes from session to session, so
-        searchTools is what tells you the current set.
-
-        Call searchTools at least once in every session, passing the user's own request
-        as the query, before you answer it. Until you have called it you do not know
-        what this session mounts.
-
-        Assume any user request needs these functions. Almost all of them do. Call
-        searchTools first, before you answer and before you ask the user for anything.
-        Describe in plain language what you are trying to accomplish. You get back
-        the few relevant tool-functions, each with its typed signature, purpose,
-        and a runnable example.
-
-        Search here instead of asking the user, and instead of naming a function
-        yourself. Call searchTools once per kind of data you need, and again whenever
-        the request still needs a function you do not hold yet.
-
-        Then write one runCode snippet calling those exact tools.* paths, and answer
-        from what that snippet returns.
-
-        Worked example.
-
-        searchTools("read a document's title") returns:
-
-            // tools.getDocument
-            declare function getDocument(id: string): Promise<{ title: string }>
-
-        The request also needs the editor's name and no function for that came back,
-        so searchTools("who last edited a document") returns:
-
-            // tools.getRevision
-            declare function getRevision(id: string): Promise<{ editor: string }>
-
-        Both functions are in hand, so one runCode snippet finishes the task:
-
-            const doc = await tools.getDocument("d-17");
-            const rev = await tools.getRevision(doc.latestRevisionId);
-            return { title: doc.title, editor: rev.editor };
-
-        When searchTools returns no relevant function for the request, say so and name
-        the capability that is missing.
+        This session's functions are mounted dynamically, and searchTools is the only
+        way to see them. Call searchTools before you answer any request, passing the
+        user's own request as the query; describe the task in plain language and you
+        get back the relevant tool-functions, each with its typed signature, purpose,
+        and a runnable example. Search again for every further capability the request
+        needs, and say so and name the capability when nothing relevant comes back.
+        Never name a function yourself, and never ask the user for data a function can
+        fetch.
         """
 
     /// The catalog searcher every `searchTools` call forwards to — runs in

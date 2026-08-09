@@ -133,80 +133,43 @@ struct SearchToolsToolTests {
         // description is serialized into the prompt on every turn, while a
         // session instruction is optional and a host may never pass one, so
         // every guarantee that instruction carried is asserted here instead.
-        #expect(description.contains("loaded dynamically")) // the set is not knowable in advance
-        // Provenance is stated positively. The negative form inverted once in
-        // review ("State no fact ... that a tools.* call returned"), which forbids
-        // exactly what it means to require.
-        // Provenance: the answer comes from the snippet's return, not from priors.
-        // The stronger per-fact wording lives on runCode's description, which is
-        // where a snippet is actually written.
-        #expect(description.contains("answer from what that snippet returns"))
-        #expect(description.localizedCaseInsensitiveContains("call searchTools first")) // searchTools-first stance
-        #expect(description.contains("instead of asking the user")) // search, don't ask
-        #expect(description.contains("once per kind of data")) // one search per kind
-        // Operational, not persona: no "helpful assistant" ritual — just
-        // clear information on how to call the tools.
-        #expect(!description.localizedCaseInsensitiveContains("helpful assistant"))
-        // Access is stated as a plain fact, with no never-refuse clause for
-        // the search rule to hang off — that subordination is the defect this
-        // wording replaces (task tkrdwb8).
-        #expect(description.contains("searchTools is what tells you the current set"))
-        #expect(!description.localizedCaseInsensitiveContains("refus"))
-        #expect(description.contains("name the capability that is missing"))
-        #expect(description.contains("runCode")) // the runCode handoff
-        // Honest miss: when nothing matches, say so rather than invent.
-        #expect(description.localizedCaseInsensitiveContains("say so"))
-        // The numbered procedure comes before any rule, and it is
-        // unconditional: nothing asks the model to judge whether it already
-        // has a tool before step 1. The retired "Never refuse ... instead,
-        // always call searchTools" phrasing scoped searching to the
-        // about-to-refuse reader and never reached the confident guesser,
-        // which is the failing population (task tkrdwb8).
-        // The prior is stated, not left as a classification the model performs
-        // before acting: "does this need the user's data?" is the same shape of
-        // pre-action judgment the retired "Never refuse ... instead, always call
-        // searchTools" phrasing let a confident model answer wrongly (task tkrdwb8).
-        #expect(description.contains("Call searchTools first"))
-        // Search precedes the snippet, in the text as well as in the workflow.
-        let searchRange = try #require(description.range(of: "searchTools first"))
-        let snippetRange = try #require(description.range(of: "Then write one runCode snippet"))
-        #expect(searchRange.upperBound <= snippetRange.lowerBound)
-        // A stated prior, not a classification the model performs before acting:
-        // "does this need the user's data?" is the same shape of pre-action judgment
-        // that the retired "instead" clause let a confident model answer wrongly.
-        #expect(description.contains("Almost all of them do"))
-        // The session rule is checkable conversational state — "have I called
-        // searchTools in this session yet?" — not the model's confidence. An
-        // "if you are unsure" trigger is one a confident model always passes,
-        // which is the defect this line of work has been chasing. It aims at the
-        // dominant recorded failure: a turn that ends with toolCalls=0, where
-        // three of the sample arm's seven failures sat (task 9zk44z6).
-        #expect(description.contains("Call searchTools at least once in every session"))
-        #expect(description.contains("passing the user's own request"))
-        #expect(description.contains("as the query"))
-        #expect(description.contains("you do not know what this session mounts"))
-        // searchTools is not one-shot. A request needing two kinds of data cannot be
-        // served by a single search, and a model that searched once, came up short,
-        // and narrated what it still needed is the recorded announce-then-stop.
-        #expect(description.contains("again whenever"))
-        #expect(description.contains("still needs a function you do not hold yet"))
-        // The anti-guessing trigger is checkable conversational state, never
-        // the model's own confidence — a confident model always passes an
-        // "if you are unsure" test, which is the failure being closed.
-        #expect(description.contains("instead of naming a function yourself"))
+        // The set is not knowable in advance, and searchTools is the only way in.
+        #expect(description.contains("mounted dynamically"))
+        #expect(description.contains("the only"))
+        #expect(description.contains("way to see them"))
+        // The session mandate lives here, once. It is unconditional and keyed to
+        // the user's own request, not to the model's confidence: an "if you are
+        // unsure" trigger is one a confident model always passes, which is the
+        // failure this line exists to close. It aims at the dominant recorded
+        // failure, a turn ending with toolCalls=0 (task 9zk44z6).
+        #expect(description.contains("Call searchTools before you answer any request"))
+        #expect(description.contains("passing the"))
+        #expect(description.contains("user's own request as the query"))
         #expect(!description.localizedCaseInsensitiveContains("if you are unsure"))
+        // What comes back is the teacher: typed signatures and a runnable example.
+        #expect(description.contains("typed signature"))
+        #expect(description.contains("runnable example"))
+        // searchTools is not one-shot. A request needing two kinds of data cannot
+        // be served by one search, and a model that searched once, came up short,
+        // and narrated what it still needed is the recorded announce-then-stop.
+        #expect(description.contains("Search again for every further capability"))
+        // Honest miss: when nothing matches, say so and name it rather than invent.
+        #expect(description.localizedCaseInsensitiveContains("say so"))
+        #expect(description.contains("name the capability"))
+        // Never guess a name, never push the work back to the user.
+        #expect(description.contains("Never name a function yourself"))
+        #expect(description.contains("never ask the user for data a function can fetch"))
+        // Operational, not persona, and refusal is never named — naming it would
+        // put it back in the option set. An honest failure report replaces it.
+        #expect(!description.localizedCaseInsensitiveContains("helpful assistant"))
+        #expect(!description.localizedCaseInsensitiveContains("refus"))
         #expect(!description.localizedCaseInsensitiveContains("real-time"))
         // No exemption clause: task 5qadve5 deleted the arithmetic carve-out, so
         // nothing in the surface gives a reason to skip the search.
         #expect(!description.localizedCaseInsensitiveContains("needs no functions"))
-        // A shown sequence, not only a stated rule — and the worked example
-        // shows the *second* search, so the iteration licence is demonstrated
-        // and not merely asserted.
-        #expect(description.contains("Worked example"))
-        // The worked example demonstrates the second search rather than only
-        // stating that iteration is allowed.
-        #expect(description.contains("no function for that came back"))
-        #expect(description.contains("who last edited a document"))
+        // The runCode handoff — one snippet over the exact returned paths — is
+        // asserted once, on runCode's own description, which is in the prompt
+        // alongside this one. Task 5qadve5 removed the restatement here.
     }
 
     @Test("the production registry+librarian initializer wires .auto mode over the registry's own surface entries")

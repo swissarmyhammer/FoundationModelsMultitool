@@ -319,47 +319,16 @@ public struct MultiTool: Tool {
     /// Fixture-shaped example data (weather, trips) would hand a model the
     /// very value a gated scenario grades on, which passes with zero calls.
     public let description = """
-        runCode is an isolated JavaScript runtime. It runs one snippet and returns
-        what that snippet returns.
-
-        Use it for any computation: arithmetic, string work, dates, sorting,
-        reshaping JSON. Work it out in the snippet rather than in your head.
-
-        It also exposes this session's API functions under `tools.*`.
-
-        Assume any user request needs this session's functions. Almost all of them
-        do. Call searchTools first to get the exact functions and their signatures,
-        then write the snippet against the paths searchTools returned.
-
-        Writing the snippet:
-
-        1. await each `tools.*` call. Every one returns a promise. Use `Promise.all`
-           to run independent calls in parallel.
-        2. Read each discovered function's declared return type and destructure it
-           accordingly.
-        3. Compose the calls with normal code — variables, loops, map/filter.
-        4. `return` the final value. Only that value comes back; intermediates stay
-           private.
-
-        Worked example:
-
-            const doc = await tools.getDocument("d-17");
-            const rev = await tools.getRevision(doc.latestRevisionId);
-            return { title: doc.title, editor: rev.editor };
-
-        Every fact you state about the user's data comes from a `tools.*` return
-        value — never answer data questions from your own knowledge, and never
-        simulate or invent data in a snippet.
-
-        When a snippet fails, the error comes back for you to repair: fix the snippet
-        and call runCode again immediately — never stop at an error to describe or
-        apologize for what you were going to do, and never claim success for a call a
-        snippet did not actually return.
-
-        Beyond `tools.*` a few ambient globals are always there and never appear in
-        searchTools — for asking the user something mid-snippet, reporting what is
-        happening, and following up on a long-running call. Run `docs("globals")` in a
-        snippet to read them.
+        runCode is an isolated JavaScript runtime that runs one snippet and returns what
+        that snippet returns — use it for any computation (arithmetic, string work,
+        dates, sorting, reshaping JSON) and for this session's functions, which it
+        exposes under `tools.*`. Write one snippet calling the exact `tools.*` paths
+        searchTools returned, await every call, and `return` the final value; only that
+        value comes back. Answer only from what the snippet returns: never state a fact
+        about the user's data that did not come from a `tools.*` return value, and never
+        claim success for a call the snippet did not actually return. When a snippet
+        fails, fix it and call runCode again immediately. Ambient globals never appear
+        in searchTools — run `docs("globals")` in a snippet to read them.
         """
 
     /// Where this tool logs its M10 diagnostics — one `runCode` call's
