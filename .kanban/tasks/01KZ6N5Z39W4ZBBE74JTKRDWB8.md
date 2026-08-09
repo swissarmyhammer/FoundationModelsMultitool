@@ -2640,6 +2640,18 @@ comments:
     - evidence: 9 files — `Sources/FoundationModelsMultitool/Discovery/FindAPIsTool.swift`, `Sources/FoundationModelsMultitool/MultiTool.swift`, `Sources/multitool-cli/CLIRunner.swift`, `Tests/FoundationModelsMultitoolTests/FindAPIsToolTests.swift`, `Tests/FoundationModelsMultitoolTests/MultiToolExecutionTests.swift`, `Tests/FoundationModelsMultitoolIntegrationTests/Support/IntegrationGate.swift`, `README.md`, `plan.md`. Ungated: 260/22 + 46/7 green.
     - next: `/review`; then the human's own gated measurement.
   timestamp: 2026-08-08T12:50:43.649836+00:00
+- actor: claude-code
+  id: 01kzkd0g9bee0k8s6hrwn5abcp
+  text: |-
+    ### SEQUENCING UPDATE (human-directed, 2026-08-09): new pre-measure card ^5qadve5
+
+    The human reviewed the current `sessionInstructions` against other code-mode implementations and ruled two changes, filed as card 01KZKD05QD4V3PMF4D65QADVE5 on this board:
+
+    1. **`findAPIs` is renamed `searchTools`** — industry convergence: Anthropic's code-execution post uses `search_tools`; Cloudflare Code Mode uses `codemode.search()`. Our pair reads `searchTools`/`runCode`.
+    2. **The prompt surface is cut hard** — sessionInstructions ≤ 3 sentences, descriptions ≤ ~4 each, the pure-arithmetic exception sentence deleted. The measured unconditional sequence survives; the typed signatures returned by search carry the teaching (where Cloudflare and Anthropic both put it).
+
+    **Step-4 re-measure now waits on THREE cards: ^5qadve5 here + the two Router cards (01KZFH9TT... envelope, 01KZFHJSB... seeding).** Re-measuring before the rename would measure a surface about to be discarded. Steps 1–2 of the RESOLUTION are already done (0981ar3 closed; collect-pattern text landed); step 3 (Router-path SearchThenCall) can proceed once prereq 6 is pushed.
+  timestamp: 2026-08-09T13:57:15.691565+00:00
 depends_on:
 - 01KZ6N4Q7K53WSTJ3M6E76ZK99
 - 01KZ6N545VYCB60H716AZ1XS92

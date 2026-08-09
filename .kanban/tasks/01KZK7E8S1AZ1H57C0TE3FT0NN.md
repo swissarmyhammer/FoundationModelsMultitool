@@ -1,8 +1,44 @@
 ---
 assignees:
 - claude-code
-position_column: todo
-position_ordinal: '8280'
+comments:
+- actor: claude-code
+  id: 01kzke71pr8bhw1zzcv4v8hb81
+  text: |-
+    ### finish iteration 1 — clean
+
+    - implement: changed — 9 files (4 `Sources/`, 5 `Tests/`)
+    - test: green — ungated `swift test` on 3 consecutive runs, each 309 tests / 24 suites + 49 tests / 8 suites
+    - commit: 9e73de8, then cc368cb
+    - review: clean — `review sha` on both commits 0 findings / 9 validators; `review file UnknownToolHint.swift` 0 findings; `review file UnknownToolHintTests.swift` 0 findings
+    - acceptance criteria: 4/4
+
+    **Three phrases now have one home each**, read by the shipped code and the tests: `UnknownToolHint.missingPathPhrase` (both hint branches plus `SampleSnippet`'s unknown-path feedback), `ResultRenderer.truncationMarker` (the truncation note), and `FindAPIsTool.writeSnippetInstruction` (`nextStepFooter`'s opening).
+
+    **The enumeration went well past the two sites this card named, because my first sweep searched the wrong thing.** Grepping `"does not exist` found nothing beyond the home — but six more copies sat mid-string as `output.contains("tools.getWeatherForecast does not exist")`. I searched the *shape* (a literal beginning with the phrase) rather than the *rule* (any test text embedding shipped wording). The reword control is what exposed it: the first attempt came back with 6 issues. That is [[close-lists-against-the-rule]] happening again, and the control caught what the grep did not.
+
+    Final tally, every one now reading a home:
+
+    | phrase | negative sites | positive sites |
+    |---|---|---|
+    | `missingPathPhrase` | 2 | 6 |
+    | `truncationMarker` | 5 | 8 |
+    | `writeSnippetInstruction` | 1 | 4 |
+
+    Zero hand-written copies remain anywhere in `Tests/`. The only occurrences left are two doc comments using the words as English prose about behaviour, which cannot go stale by compiling-and-passing — the same judgement review confirmed for `SandboxGlobalsTests.swift:658` on `^w0rxeg7`.
+
+    **Both controls run.** Rewording all three phrases at once leaves the suite green (309/24 + 49/8), so the tests follow the wording. Pointing `missingPathPhrase` at text the output does carry fails both negatives at `UnknownToolHintTests.swift:256` and `:383`, so they discriminate on content rather than passing vacuously.
+
+    **Criterion 2 in full.** Every other `!...contains(` in `Tests/` was enumerated and classified: the remainder name test data (paths, keys, fixture strings), read an already-homed constant such as `repairClosing`/`discoveryClosing`, or are `SampleSnippetTests.swift:106`, which guards a *removed* draft sentence against reintroduction — absent from `Sources/` by design and documented at `:100-103`.
+
+    **One self-inflicted defect, caught before review.** `truncationMarker`'s first doc comment claimed "both test targets read it here". `grep -rln truncationMarker Tests/` returns two files in one target; the integration target reads none of the three constants. I had pattern-matched the sentence off `RepairDirective.closingLine`, where it is true — the identical mistake `90603d7` fixed on this same class two cards ago. Fixed in `cc368cb`, and all three new doc comments were then checked against a grep rather than re-read, which also corrected `writeSnippetInstruction`'s claim that the test only negates against it (it reads it in both directions).
+
+    No shipped behaviour change: every rendered string is byte-identical.
+
+    Loop ran directly rather than through sub agents — the session is at its 200-agent cap.
+  timestamp: 2026-08-09T14:18:18.712477+00:00
+position_column: done
+position_ordinal: bb80
 title: '[Multitool] Negative assertions on hint wording pass hollowly after a reword'
 ---
 Found by the review sweep on `^w0rxeg7`, which deliberately raised no finding for it: the sites are pre-existing test code, which the review skill's blanket exception forbids raising findings against, and they are not `ResultRenderer` wording, so they fall outside that card. Carded here so the observation is not lost.
