@@ -423,6 +423,13 @@ public struct MultiTool: Tool {
     ///     whatever its own constructor received.
     ///   - limits: the size caps `ResultRenderer` enforces on this tool's
     ///     rendered output. Defaults to `configuration.resultLimits`.
+    ///   - searchTools: the mounted discovery tool a snippet reaches as
+    ///     `tools.searchTools`. Defaults to `nil`, which binds no such path —
+    ///     `Registry.makeSessionTools(librarian:sampleGenerator:)` passes the
+    ///     instance it mounts so both doors share one configuration.
+    ///   - depth: how many enclosing `tools.runCode` calls this run sits
+    ///     inside. Defaults to `0`, the depth of a run the model started;
+    ///     ``maxRunCodeDepth`` is where nesting stops.
     public init(
         registry: Registry,
         configuration: MultiToolConfiguration = .default,
@@ -936,11 +943,15 @@ public struct MultiTool: Tool {
     /// assignment instead leaves `tools.<path>` simply never set, so
     /// reading it evaluates to `undefined` like any other absent property.
     ///
-    /// - Parameter registry: the catalog + live tool instances to build
-    ///   glue for.
+    /// - Parameters:
+    ///   - registry: the catalog + live tool instances to build glue for.
+    ///   - bindsSearchTools: whether to bind ``searchToolsPath``. `false` when
+    ///     this registry mounts no discovery tool, so the path is absent
+    ///     rather than bound to a host function that was never installed.
     /// - Returns: the JS preamble, one `tools.*` assignment per entry with a
-    ///   live tool, preceded by `globalThis.tools = {};` and by the void
-    ///   re-binding of every name in `voidGlobalNames`.
+    ///   live tool, preceded by `globalThis.tools = {};`, by the void
+    ///   re-binding of every name in `voidGlobalNames`, and by the sibling
+    ///   paths this tool binds itself.
     private static func makePreamble(for registry: Registry, bindsSearchTools: Bool) -> String {
         // `globalThis.tools = {}` (not `var tools = {}`) so `tools` is a
         // genuine `globalThis` property — like `console`/`help`/`docs`,
