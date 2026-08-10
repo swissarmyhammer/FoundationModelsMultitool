@@ -4,6 +4,22 @@ import Testing
 import FoundationModels
 import FoundationModelsRouter
 
+/// How a run's seeding state reads on the RESULT line.
+///
+/// Three states, not two. An earlier version printed `ok` whenever no
+/// `discoveryPrimingFailed` event arrived — which is also true when seeding was
+/// never requested, so an unprimed run reported `priming=ok` and read as a
+/// primed one that worked. That is the exact confusion this field exists to
+/// prevent.
+///
+/// - Parameter turn: the streamed turn to describe.
+/// - Returns: `off` when no seeding was requested, `ok` when it ran, or
+///   `FAILED(reason)` when Router reported it downgraded.
+private func primingLabel(_ turn: StreamedTurn) -> String {
+    if let failure = turn.discoveryPrimingFailure { return "FAILED(\(failure))" }
+    return scenarioDiscoveryPriming == nil ? "off" : "ok"
+}
+
 /// Router's pre-discovery seeding opt-in for these scenarios — **off**.
 ///
 /// Seeding runs a real `searchTools` call host-side before the model's first
@@ -193,7 +209,7 @@ func runNativeIntegrationScenario(
                 + "returned=\(evidence.returnedPaths.sorted()) "
                 + "groundedIn=\(groundedIn.sorted()) "
                 + "searchToolsFirst=\(searchToolsFirst) "
-                + "priming=\(turn.discoveryPrimingFailure.map { "FAILED(\($0))" } ?? "ok") "
+                + "priming=\(primingLabel(turn)) "
                 + "reply=\"\(turn.answer.prefix(80))\""
         )
         // The same run's failure modes, counted. Emitted alongside the
@@ -316,7 +332,7 @@ func runElevationIntegrationScenario(
             "RESULT [\(name)] elapsed=\(elapsed)s toolCalls=\(turn.toolCallCount) "
                 + "toolOutputs=\(turn.toolOutputs.count) "
                 + "pendingEnvelopes=\(pendingEnvelopes.count) "
-                + "priming=\(turn.discoveryPrimingFailure.map { "FAILED(\($0))" } ?? "ok") "
+                + "priming=\(primingLabel(turn)) "
                 + "reply=\"\(turn.answer.prefix(120))\""
         )
     }
