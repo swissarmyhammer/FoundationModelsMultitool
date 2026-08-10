@@ -3,6 +3,24 @@ import Testing
 
 import FoundationModels
 import FoundationModelsRouter
+
+/// Router's pre-discovery seeding opt-in for these scenarios.
+///
+/// Names the mounted discovery tool and the single string property its
+/// arguments carry the query in, which is all `DiscoveryPriming` needs. Both
+/// are read from the shipped types rather than restated, so a rename moves
+/// this with it.
+///
+/// This is the product configuration under test, not harness tuning: seeding
+/// runs a *real* `searchTools` call host-side before the model's first token,
+/// so the turn it resumes already contains the call and the typed signatures
+/// it returned. The failure it targets is the one this suite keeps recording —
+/// a turn that ends having written no snippet at all, answering "I don't have
+/// access to real-time weather data" (tasks `tkrdwb8`, `bwk7knm`).
+let scenarioDiscoveryPriming = DiscoveryPriming(
+    tool: MultiTool.searchToolsPath,
+    queryProperty: MultiTool.searchToolsTaskField
+)
 @testable import FoundationModelsMultitool
 @testable import multitool_cli
 
@@ -268,7 +286,8 @@ func runElevationIntegrationScenario(
         // No instructions, for the same reason as the native runner above: mounting
         // the tools is the whole product surface.
         let session = fixture.profile.standard.makeSession(
-            tools: try makeScenarioSurface(over: makeTools(log), on: fixture).tools
+            tools: try makeScenarioSurface(over: makeTools(log), on: fixture).tools,
+            discoveryPriming: scenarioDiscoveryPriming
         )
 
         let start = Date()
@@ -291,6 +310,7 @@ func runElevationIntegrationScenario(
             "RESULT [\(name)] elapsed=\(elapsed)s toolCalls=\(turn.toolCallCount) "
                 + "toolOutputs=\(turn.toolOutputs.count) "
                 + "pendingEnvelopes=\(pendingEnvelopes.count) "
+                + "priming=\(turn.discoveryPrimingFailure.map { "FAILED(\($0))" } ?? "ok") "
                 + "reply=\"\(turn.answer.prefix(120))\""
         )
     }
@@ -307,6 +327,13 @@ private struct StreamedTurn {
 
     /// Each completed tool call's own output text, in completion order.
     var toolOutputs: [String] = []
+
+    /// Why Router's pre-discovery seeding did not run this turn, or `nil` when
+    /// it ran (or was never asked for).
+    ///
+    /// Reported alongside the run's diagnostics: a scored run whose priming
+    /// silently failed is not evidence about priming.
+    var discoveryPrimingFailure: String?
 }
 
 /// Drives one turn of a mounted session and harvests it.
@@ -326,6 +353,13 @@ private func streamTurn(of session: RoutedSession, prompt: String) async throws 
             turn.toolCallCount += 1
         case .toolStatus(_, .completed, let summary):
             turn.toolOutputs.append(summary ?? "")
+        case .discoveryPrimingFailed(let reason):
+            // Seeding is best-effort in Router: a failure downgrades the turn
+            // to an unprimed one rather than failing it. Silence here would
+            // read as "priming was on and did not help", so it is printed —
+            // a run whose priming never happened must not be scored as one
+            // that did.
+            turn.discoveryPrimingFailure = "\(reason)"
         case .toolStatus, .reasoningDelta, .compaction, .turnEnded:
             break
         }
@@ -388,10 +422,12 @@ private func withLiveRouterFixture(
     }
 }
 
+
 /// The model-facing tool surface one scenario drives, and the catalog
 /// behind it.
 private struct ScenarioSurface {
-    /// The tools to register with the session, in the mount order the
+    
+/// The tools to register with the session, in the mount order the
     /// registry itself vends.
     let tools: [any Tool]
 
