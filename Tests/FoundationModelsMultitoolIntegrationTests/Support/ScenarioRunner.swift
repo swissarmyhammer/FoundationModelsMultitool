@@ -172,12 +172,25 @@ func runNativeIntegrationScenario(
         )
 
         let start = Date()
-        let turn = try await streamTurn(of: session, prompt: prompt)
+        // `respond(to:)` rather than `streamEvents`: it routes through the
+        // backend's own `respond`, which drains the tool loop the way Apple's
+        // native session does, where `streamEvents` routes through the
+        // backend's `streamResponse` and drives the loop itself. Those are two
+        // different backend entry points, so this isolates "Router session"
+        // from "Router's streaming surface" (task `tkrdwb8`, and Router's
+        // `^cvtfem3`).
+        //
+        // The cost is the event-derived diagnostics: no events means no
+        // `typedPaths` and no tool-call count. They are reported as `n/a`
+        // rather than as zeros — a zero here would read as "the model typed
+        // nothing", which is a claim this path cannot make.
+        let answer = try await session.respond(to: prompt)
         let elapsed = Date().timeIntervalSince(start)
+        let turn = StreamedTurn(answer: answer)
 
         let evidence = ScenarioEvidence(
             answer: turn.answer,
-            typedPaths: NativeTranscript.typedToolPaths(in: turn.calls),
+            typedPaths: [],
             invokedPaths: await log.invokedPaths,
             returnedPaths: await log.returnedPaths
         )
@@ -189,6 +202,9 @@ func runNativeIntegrationScenario(
         )
         grade(scenario: name, checks: checks)
 
+        // Unobservable on the `respond` path: both are derived from streamed
+        // events. `0`/`false` are the only values available, and both are
+        // reported as such in MODES rather than dressed up.
         let toolCallCount = turn.toolCallCount
         let searchToolsFirst = NativeTranscript.searchToolsPrecedesRunCode(in: turn.calls)
         // plan.md acceptance: "the per-format results are recorded (test
@@ -203,8 +219,8 @@ func runNativeIntegrationScenario(
         // returns the grade required is readable off the run rather than only
         // off this file.
         print(
-            "RESULT [\(name)] elapsed=\(elapsed)s toolCalls=\(toolCallCount) "
-                + "typed=\(evidence.typedPaths.sorted()) "
+            "RESULT [\(name)] elapsed=\(elapsed)s toolCalls=n/a(respond) "
+                + "typed=n/a(respond) "
                 + "invoked=\(evidence.invokedPaths.sorted()) "
                 + "returned=\(evidence.returnedPaths.sorted()) "
                 + "groundedIn=\(groundedIn.sorted()) "
