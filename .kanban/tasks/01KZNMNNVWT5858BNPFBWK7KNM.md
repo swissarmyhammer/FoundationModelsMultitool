@@ -33,8 +33,8 @@ comments:
 
     **What this run does NOT establish:** that the compression on `^5qadve5` is safe, that the rename is safe, or that this change helps or hurts the score. It establishes exactly one thing — the invented-path/thrash signature is gone.
   timestamp: 2026-08-10T11:05:01.131365+00:00
-position_column: todo
-position_ordinal: '80'
+position_column: done
+position_ordinal: bd80
 title: '[Multitool] Accept tools.searchTools and tools.runCode inside a snippet — forgiving surface'
 ---
 HUMAN-DIRECTED (2026-08-10), from measured evidence. The gated discovery scenario failed 2/2 with this exact signature:

@@ -2673,6 +2673,134 @@ comments:
 
     Two stale items on this card, noticed while reading it: acceptance criterion 1 still shows `^0981ar3` unchecked though it is closed, and criterion 4 names `46 / 7` integration where current is `49 / 8`.
   timestamp: 2026-08-09T23:21:52.693966+00:00
+- actor: claude-code
+  id: 01kzns6mn6849wjg3eksys3019
+  text: |-
+    ### Prereq 6 (pre-discovery seeding) is satisfied. Step 3 is now the unblocked work.
+
+    Router's `origin/main` carries `Session/DiscoveryPriming.swift`. `swift package update FoundationModelsRouter` moved this package's resolution from `b5bf2ba` to `07d1b03`, so the capability is reachable here. `Package.resolved` is gitignored, so nothing pins it — the resolution floats to the branch head.
+
+    The API is exactly what RESOLUTION B described:
+
+    ```swift
+    DiscoveryPriming(tool: "searchTools", queryProperty: "task")
+    ```
+
+    Wired in `dafa73a` on the runner that vends a `RoutedSession`, reading both values from `MultiTool` rather than restating them. The bump also added `SessionEvent.discoveryPrimingFailed`, now captured and printed as `priming=ok` / `priming=FAILED(...)` — seeding is best-effort in Router, so a silent failure would let an unprimed run be scored as a primed one.
+
+    ### A mistake worth recording, because it is exactly what step 3 exists to fix
+
+    I enabled seeding and ran the gated suite expecting a priming measurement. **It measured nothing about priming.** `SearchThenCallTests` drives `runNativeIntegrationScenario`, which constructs a plain `LanguageModelSession` at `ScenarioRunner.swift:144` and never touches `RoutedSession` — so a Router session option cannot reach those four scenarios. Priming was inactive for all of them.
+
+    The absent `priming=` field in the RESULT lines is what surfaced it. Had I not added that field, a 1/4 would have been recorded as "seeding did not help".
+
+    This is step 3 restated from evidence: *"today SearchThenCall bypasses Router entirely, which contradicts that intent."* That step was blocked on prereq 6; it no longer is.
+
+    ### The 1/4 run, recorded for what it actually is
+
+    ```
+    MODES [singleCallWeather]         searchedFirst=0 thrash=1 invented=[] toolCalls=17  FAIL
+    MODES [composeChain]              searchedFirst=0 thrash=1 invented=[] toolCalls=16  FAIL
+    MODES [discoveryUnderDistractors] searchedFirst=1 thrash=0 invented=[] toolCalls=2   FAIL
+    MODES [repairFromTripProneTool]   searchedFirst=1 thrash=1 invented=[] toolCalls=6   PASS
+    ```
+
+    An **unprimed** native-path run at `dafa73a`: 1/4, against 2/4 and 3/4 and 2/4 on earlier unprimed runs. Two scenarios burned 16–17 tool calls and 287–322 seconds without invoking anything, which is worse than anything recorded before and may be the Router bump, the compression, or noise — one run cannot separate them.
+
+    `invented=[]` in all four, holding since `^bwk7knm`.
+
+    ### What step 3 needs
+
+    Move `SearchThenCallTests` onto `RoutedLLM.makeSession` + `RoutedSession.streamEvents`, as `ElevationTests`/`AsyncFanOutTests` already do, with `scenarioDiscoveryPriming` passed. Instructions stay exactly the exported surface — mounting the tools is the whole product. Then step 4's series measures something real.
+  timestamp: 2026-08-10T12:08:48.550581+00:00
+- actor: claude-code
+  id: 01kznta04sw9nj0m5ktw6vgs7z
+  text: |-
+    ### Step 3 done. First real measurement of pre-discovery seeding: 0/4 — it made things worse.
+
+    `7b3703b` moved the four scenarios onto `RoutedLLM.makeSession` + `RoutedSession.streamEvents` with `discoveryPriming` passed, and re-derived the evidence from `SessionEvent.toolCall` (no transcript on `RoutedSession`). Gated run at that commit:
+
+    ```
+    MODES [singleCallWeather]         searchedFirst=1 thrash=0 invented=[] toolCalls=4   FAIL   priming=ok
+    MODES [composeChain]              searchedFirst=1 thrash=1 invented=[] toolCalls=11  FAIL   priming=ok
+    MODES [discoveryUnderDistractors] searchedFirst=1 thrash=0 invented=[] toolCalls=4   FAIL   priming=ok
+    MODES [repairFromTripProneTool]   searchedFirst=1 thrash=1 invented=[] toolCalls=16  FAIL   priming=ok
+    ```
+
+    **Seeding definitely ran** — `priming=ok` on all four means no `discoveryPrimingFailed` event fired. This is the first run on this board that actually tests RESOLUTION B.
+
+    **0/4, against 1/4, 2/4, 3/4, 2/4 on unprimed runs.** `repairFromTripProneTool` had passed in *every* previously recorded run; it fails here.
+
+    **`typed=[] invoked=[] returned=[]` in all four.** Not one scenario wrote a runCode snippet. The replies are refusals or requests for data:
+
+    - *"I don't have access to your trip itinerary… Could you please provide the list of cities"*
+    - *"I am unable to confirm your booking with ID 42. There are no available tools or functions in this session that can interact with a booking system"*
+
+    That last one is the striking part: with a seeded discovery call already in its transcript, the model concludes there are **no tools at all**.
+
+    ### Two things this run establishes
+
+    **`searchedFirst` is now a dead metric on this path.** It reads 1 in all four because seeding *is* a search-first by construction. It can no longer distinguish a model that discovered from one that did not, so it should not be read as progress.
+
+    **RESOLUTION B's premise does not hold for this model.** The stated reasoning was that seeding "does eliminate [the failure class], because there is nothing left for the model to decide: the turn it resumes already contains the discovery call, the concrete typed signatures that call returned, and therefore the evidence that it *does* have access." Measured, the model resumes that turn and still says it has no access — and does so in the one scenario that used to work reliably.
+
+    ### What to look at next, in order
+
+    1. **Read the seeded entries.** Nothing here shows what the seeded `searchTools` call actually returned. If its output is empty, truncated, or shaped unlike a model-visible tool output, the model is being handed evidence of *absence*. `makeSession(recordingRoot:)` would capture it; that is the cheapest decisive diagnostic and it has not been run.
+    2. **Re-run to separate signal from noise.** One run, and this suite has produced 1/4–3/4 on identical code. 0/4 with a previously-perfect scenario failing is suggestive but not conclusive.
+    3. **A/B on the same commit.** `scenarioDiscoveryPriming` is one constant; flipping it to `nil` measures the Router path with and without seeding, holding everything else fixed. That isolates seeding from the rename, the compression, and the Router bump — none of which have been separated so far.
+
+    Not recommending a revert of `7b3703b`: running on the Router path is the recorded product intent regardless of what seeding does, and it is what makes the A/B possible.
+  timestamp: 2026-08-10T12:28:07.193631+00:00
+- actor: claude-code
+  id: 01kznw1g0jwj53npkyn2sd6qbn
+  text: |-
+    ### A/B complete. Seeding is not the variable — the Router path is.
+
+    Unprimed arm at `999c051`, same commit, same Router path, `scenarioDiscoveryPriming = nil`:
+
+    ```
+    MODES [singleCallWeather]         searchedFirst=0 thrash=1 toolCalls=13  FAIL
+    MODES [composeChain]              searchedFirst=1 thrash=1 toolCalls=16  FAIL
+    MODES [discoveryUnderDistractors] searchedFirst=0 thrash=0 toolCalls=0   FAIL  overRefusal=1
+    MODES [repairFromTripProneTool]   searchedFirst=1 thrash=1 toolCalls=39  FAIL
+    ```
+
+    **Both arms score 0/4.**
+
+    | arm | score |
+    |---|---|
+    | Router path, seeding ON | 0/4 |
+    | Router path, seeding OFF | 0/4 |
+    | native path (before step 3) | 1/4, 2/4, 3/4, 2/4 |
+
+    So seeding is not what collapsed the score. **Moving these scenarios onto the Router path is.** Two Router runs, both 0/4, against four native runs that never went below 1/4.
+
+    ### The likely cause, and it is in the runner's own documentation
+
+    `RoutedLLM.makeSession` "mounts every tool under `ElevationConfiguration.nativeSessionMount` — elevation on, stock clocks". That is why the elevating runner exists and why it asserts on pending envelopes. Step 3 moved four scenarios that are **not** elevation scenarios onto that mount, so every slow tool call can now elevate and hand back a pending envelope the model must then collect.
+
+    The evidence fits: `repairFromTripProneTool` took **882 seconds across 39 tool calls** and answered *"The system is experiencing delays, and I haven't been able to retrieve the confirmation details for booking ID 42"* — that is a model describing a pending envelope it never collected, not a model that cannot find a tool. On the native path the same scenario finished in 24–70 s with 2–6 calls and passed every time.
+
+    `searchedFirst` also discriminates again (0,1,0,1) now that seeding is off, confirming it reads 1-by-construction only on the primed arm.
+
+    ### Correction to my own instrumentation
+
+    The unprimed run printed `priming=ok` on all four. My label only checked for a `discoveryPrimingFailed` event, which is equally true when seeding was never requested — so the unprimed arm reported as a primed one that worked. Fixed in `f4f2112`: `off` / `ok` / `FAILED(reason)`. Caught by reading the arm's own output, not by a test. The A/B conclusion is unaffected — the constant was `nil` in the source for that run.
+
+    ### Also observed
+
+    The unprimed run ended in **signal 11** after the last scenario. Not diagnosed, and not obviously connected to the scenarios themselves; recorded so it is not mistaken for a new failure mode.
+
+    ### What this means for step 3 and step 4
+
+    Step 3 as written — "SearchThenCallTests runs on the Router path with pre-discovery priming ENABLED" — is now measured, and it costs 1–3 passes to buy a capability that measured 0/4. Two options for a human:
+
+    1. **Revert the four scenarios to the native path.** They test search-then-call, not elevation; elevation semantics are already covered by `ElevationTests` and `AsyncFanOutTests`, which own that mount. Step 4's re-measure would then have a working baseline again.
+    2. **Keep them on Router and treat pending-envelope collection as in scope**, which makes them harder scenarios than they were designed to be and needs the collect-pattern text (`^tkrdwb8` step 2, still not done) to land first.
+
+    I have not chosen. Both are defensible and the decision changes what step 4 measures.
+  timestamp: 2026-08-10T12:58:25.682796+00:00
 depends_on:
 - 01KZ6N4Q7K53WSTJ3M6E76ZK99
 - 01KZ6N545VYCB60H716AZ1XS92
