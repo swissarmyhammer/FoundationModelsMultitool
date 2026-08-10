@@ -136,7 +136,12 @@ let package = Package(
         )
     ],
     dependencies: [
-        swissArmyHammerPackage(name: routerDependencyName),
+        // TEMPORARY (human-directed 2026-08-10): Router by local path rather than
+        // by branch, so a Router fix can be tested here the moment it lands
+        // without waiting on a push + re-resolve. Restore
+        // `swissArmyHammerPackage(name: routerDependencyName)` before this
+        // package is consumed anywhere but this machine.
+        .package(path: "../\(routerDependencyName)"),
         swissArmyHammerPackage(name: metadataRegistryDependencyName),
         // Only the M9 CLI executable and the gated integration test target
         // below link products from these three — see their documentation

@@ -210,6 +210,7 @@ func runNativeIntegrationScenario(
                 + "groundedIn=\(groundedIn.sorted()) "
                 + "searchToolsFirst=\(searchToolsFirst) "
                 + "priming=\(primingLabel(turn)) "
+                + "failedCalls=\(turn.failedCalls.count)\(turn.failedCalls.isEmpty ? "" : " \(turn.failedCalls)") "
                 + "reply=\"\(turn.answer.prefix(80))\""
         )
         // The same run's failure modes, counted. Emitted alongside the
@@ -333,6 +334,7 @@ func runElevationIntegrationScenario(
                 + "toolOutputs=\(turn.toolOutputs.count) "
                 + "pendingEnvelopes=\(pendingEnvelopes.count) "
                 + "priming=\(primingLabel(turn)) "
+                + "failedCalls=\(turn.failedCalls.count)\(turn.failedCalls.isEmpty ? "" : " \(turn.failedCalls)") "
                 + "reply=\"\(turn.answer.prefix(120))\""
         )
     }
@@ -362,6 +364,12 @@ private struct StreamedTurn {
     ///
     /// `SessionEvent.toolStatus` carries the call's id, not its name.
     var callIndexByID: [String: Int] = [:]
+
+    /// Every tool call the session reported as failed, as `name: detail`.
+    ///
+    /// Kept because its absence hid a whole class of run: a turn whose calls
+    /// all failed produced the same diagnostics as a turn that made none.
+    var failedCalls: [String] = []
 
     /// Why Router's pre-discovery seeding did not run this turn, or `nil` when
     /// it ran (or was never asked for).
@@ -395,6 +403,13 @@ private func streamTurn(of session: RoutedSession, prompt: String) async throws 
             if let index = turn.callIndexByID[id] {
                 turn.calls[index].output = summary
             }
+        case .toolStatus(let id, .failed, let summary):
+            // A call the session could not complete. Previously invisible: the
+            // catch-all below swallowed it, so a run where every call failed
+            // looked identical to one where the model never called anything —
+            // and both read as "the model would not use its tools".
+            let name = turn.callIndexByID[id].map { turn.calls[$0].name } ?? "?"
+            turn.failedCalls.append("\(name): \(summary ?? "no detail")")
         case .discoveryPrimingFailed(let reason):
             // Seeding is best-effort in Router: a failure downgrades the turn
             // to an unprimed one rather than failing it. Silence here would
