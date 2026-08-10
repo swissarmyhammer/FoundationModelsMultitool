@@ -135,28 +135,29 @@ func runNativeIntegrationScenario(
         // scenario mounts record into it, so nothing another scenario did can
         // be read back below.
         let log = ScenarioCallLog()
-        let mlxModel = CLIRunner.makeMLXLanguageModel(for: fixture.profile.standard)
         let surface = try makeScenarioSurface(over: makeTools(log), on: fixture)
         // No instructions. Mounting the two tools is the whole product surface, so
         // the suite exercises exactly that: their descriptions carry the contract,
         // and a session instruction would be a harness-side assist a real host
         // never has to supply.
-        let session = LanguageModelSession(
-            model: mlxModel,
-            tools: surface.tools
+        //
+        // Vended through Router rather than as a bare `LanguageModelSession`
+        // (task `tkrdwb8` step 3). The configuration under test is "MultiTool
+        // mounted on a Router", and pre-discovery seeding is a Router session
+        // option, so a bare session cannot carry it: these scenarios ran
+        // unprimed for as long as they bypassed Router.
+        let session = fixture.profile.standard.makeSession(
+            tools: surface.tools,
+            discoveryPriming: scenarioDiscoveryPriming
         )
 
         let start = Date()
-        // Explicitly typed to pin the native FoundationModels API over
-        // `FoundationModelsRanker`'s shadowing `respond(to:) -> String`
-        // `AgentSession` extension.
-        let response: LanguageModelSession.Response<String> = try await session.respond(to: prompt)
+        let turn = try await streamTurn(of: session, prompt: prompt)
         let elapsed = Date().timeIntervalSince(start)
 
-        let transcript = session.transcript
         let evidence = ScenarioEvidence(
-            answer: response.content,
-            typedPaths: NativeTranscript.typedToolPaths(in: transcript),
+            answer: turn.answer,
+            typedPaths: NativeTranscript.typedToolPaths(in: turn.calls),
             invokedPaths: await log.invokedPaths,
             returnedPaths: await log.returnedPaths
         )
@@ -168,8 +169,8 @@ func runNativeIntegrationScenario(
         )
         grade(scenario: name, checks: checks)
 
-        let toolCallCount = NativeTranscript.toolCallCount(in: transcript)
-        let searchToolsFirst = NativeTranscript.searchToolsPrecedesRunCode(in: transcript)
+        let toolCallCount = turn.toolCallCount
+        let searchToolsFirst = NativeTranscript.searchToolsPrecedesRunCode(in: turn.calls)
         // plan.md acceptance: "the per-format results are recorded (test
         // attachment or log)" — the route details stay visible here as
         // diagnostics (see also `PrefixReuseTests` for the prefix-reuse
@@ -188,7 +189,8 @@ func runNativeIntegrationScenario(
                 + "returned=\(evidence.returnedPaths.sorted()) "
                 + "groundedIn=\(groundedIn.sorted()) "
                 + "searchToolsFirst=\(searchToolsFirst) "
-                + "reply=\"\(response.content.prefix(80))\""
+                + "priming=\(turn.discoveryPrimingFailure.map { "FAILED(\($0))" } ?? "ok") "
+                + "reply=\"\(turn.answer.prefix(80))\""
         )
         // The same run's failure modes, counted. Emitted alongside the
         // `SCENARIO` verdict, never instead of it: nothing below is
@@ -196,13 +198,13 @@ func runNativeIntegrationScenario(
         print(
             ScenarioFailureModes(
                 ScenarioObservation(
-                    reply: response.content,
+                    reply: turn.answer,
                     toolCallCount: toolCallCount,
                     typedPaths: evidence.typedPaths,
                     invokedPaths: evidence.invokedPaths,
                     catalogPaths: surface.catalogPaths,
                     searchToolsFirst: searchToolsFirst,
-                    returnedValues: NativeTranscript.returnedValues(in: transcript),
+                    returnedValues: NativeTranscript.returnedValues(in: turn.calls),
                     isValidAnswer: checks.contains { $0.name == validAnswerCheckName && $0.held }
                 )
             )
@@ -328,6 +330,19 @@ private struct StreamedTurn {
     /// Each completed tool call's own output text, in completion order.
     var toolOutputs: [String] = []
 
+    /// Every tool call the stream reported, in order, with its output attached
+    /// once it completed.
+    ///
+    /// `RoutedSession` publishes no transcript, so this is what the evidence
+    /// extractors read instead — see `NativeTranscript.StreamedCall`.
+    var calls: [NativeTranscript.StreamedCall] = []
+
+    /// Where each call's `id` sits in ``calls``, so a later status event can
+    /// attach its output to the call it belongs to.
+    ///
+    /// `SessionEvent.toolStatus` carries the call's id, not its name.
+    var callIndexByID: [String: Int] = [:]
+
     /// Why Router's pre-discovery seeding did not run this turn, or `nil` when
     /// it ran (or was never asked for).
     ///
@@ -349,10 +364,17 @@ private func streamTurn(of session: RoutedSession, prompt: String) async throws 
         switch event {
         case .textDelta(let fragment):
             turn.answer += fragment
-        case .toolCall:
+        case .toolCall(let id, let name, let argumentsJSON):
             turn.toolCallCount += 1
-        case .toolStatus(_, .completed, let summary):
+            turn.callIndexByID[id] = turn.calls.count
+            turn.calls.append(
+                NativeTranscript.StreamedCall(name: name, argumentsJSON: argumentsJSON, output: nil)
+            )
+        case .toolStatus(let id, .completed, let summary):
             turn.toolOutputs.append(summary ?? "")
+            if let index = turn.callIndexByID[id] {
+                turn.calls[index].output = summary
+            }
         case .discoveryPrimingFailed(let reason):
             // Seeding is best-effort in Router: a failure downgrades the turn
             // to an unprimed one rather than failing it. Silence here would
