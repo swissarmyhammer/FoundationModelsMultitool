@@ -1,0 +1,99 @@
+import Foundation
+import FoundationModels
+import FoundationModelsRouter
+import Testing
+import ULID
+
+@testable import FoundationModelsMultitool
+
+/// The MultiTool-to-Router boundary: a mounted tool must answer exactly as the
+/// unmounted one does.
+///
+/// The gated scenarios score 0/4 on Router's session and 1/4-3/4 on a plain
+/// `LanguageModelSession`, with the model reporting that it has no functions
+/// at all (task `tkrdwb8`). Router's per-session tool wiring was the first
+/// suspect, since it wraps every tool in `ElevatingTool` before the model sees
+/// it. These tests exist to keep that suspicion answered: the wrapper is
+/// transparent, so a future regression there is caught here rather than in a
+/// twenty-minute gated run.
+@Suite("Router session mount")
+struct RouterSessionMountTests {
+    /// A sink that drops every event.
+    ///
+    /// The mount requires one; these tests assert on returned output, not on
+    /// posted progress.
+    private struct DiscardingSink: OperationEventSink {
+        /// Drops `event`.
+        ///
+        /// - Parameter event: the event to discard.
+        func post(_ event: OperationEvent) async {}
+    }
+
+    @Test("searchTools returns the same text through Router's session mount as it does direct")
+    func searchToolsIsTransparentThroughTheMount() async throws {
+        let registry = try Self.registry()
+        let searchTools = try SearchToolsTool(registry: registry, librarian: nil)
+        let task = "the cities on the trip"
+
+        let direct = try await searchTools.call(arguments: SearchToolsArguments(task: task))
+        let mounted = try #require(
+            Self.sessionMounted(searchTools) as? any Tool<SearchToolsArguments, String>
+        )
+        let throughMount = try await mounted.call(arguments: SearchToolsArguments(task: task))
+
+        #expect(throughMount == direct)
+        #expect(!direct.isEmpty)
+    }
+
+    @Test("runCode returns the same value through Router's session mount as it does direct")
+    func runCodeIsTransparentThroughTheMount() async throws {
+        let registry = try Self.registry()
+        let runCode = MultiTool(registry: registry)
+        let snippet = "const r = await tools.getCities({}); return r.cities.length;"
+
+        let direct = try await runCode.call(arguments: RunCodeArguments(code: snippet))
+        let mounted = try #require(
+            Self.sessionMounted(runCode) as? any Tool<RunCodeArguments, String>
+        )
+        let throughMount = try await mounted.call(arguments: RunCodeArguments(code: snippet))
+
+        #expect(throughMount == direct)
+        #expect(direct == "3")
+    }
+
+    @Test("the mount leaves the model-facing name and description untouched")
+    func theMountPreservesTheModelFacingSurface() async throws {
+        let registry = try Self.registry()
+        let searchTools = try SearchToolsTool(registry: registry, librarian: nil)
+
+        let mounted = Self.sessionMounted(searchTools)
+
+        #expect(mounted.name == searchTools.name)
+        #expect(mounted.description == searchTools.description)
+    }
+
+    // MARK: - Fixtures
+
+    /// A registry carrying one real tool.
+    private static func registry() throws -> MultiTool.Registry {
+        try MultiTool.Builder().addTool(CitiesTool()).buildRegistry()
+    }
+
+    /// Wraps `tool` the way a Router session wraps every tool it mounts.
+    ///
+    /// `ElevationConfiguration.nativeSessionMount` is the one configuration
+    /// `RoutedModel.makeSession` applies, so this is the same composition the
+    /// gated scenarios run through.
+    ///
+    /// - Parameter tool: the tool to mount.
+    /// - Returns: the composed, model-facing tool.
+    private static func sessionMounted(_ tool: any Tool) -> any Tool {
+        ToolElevation.wrapping(
+            tool,
+            sessionID: ULID(),
+            mailbox: SessionMailbox(),
+            sink: DiscardingSink(),
+            configuration: .nativeSessionMount
+        )
+    }
+}
