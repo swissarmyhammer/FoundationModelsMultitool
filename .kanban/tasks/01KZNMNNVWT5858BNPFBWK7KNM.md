@@ -1,6 +1,38 @@
 ---
 assignees:
 - claude-code
+comments:
+- actor: claude-code
+  id: 01kznnhtyb1q1kd7wb0pgsaf05
+  text: |-
+    ### Gated re-run after the surface change — recorded whatever it says
+
+    Commit `0ead47a`. Pins clean before the run. One gated run, four scenarios.
+
+    ```
+    MODES [singleCallWeather]         inventedPath=0 searchedFirst=0 thrash=0 invented=[] toolCalls=1   FAIL
+    MODES [composeChain]              inventedPath=0 searchedFirst=1 thrash=0 invented=[] toolCalls=3   PASS
+    MODES [discoveryUnderDistractors] inventedPath=0 searchedFirst=0 thrash=0 invented=[] toolCalls=4   FAIL
+    MODES [repairFromTripProneTool]   inventedPath=0 searchedFirst=1 thrash=0 invented=[] toolCalls=2   PASS
+    ```
+
+    **The defect this card targeted is gone.** `invented=[searchTools]` appeared in the discovery scenario on 2 of 2 runs before this change, with `thrash=1` and 7–13 tool calls. It is now `invented=[]` and `thrash=0` in **all four** scenarios, and the call counts collapsed to 1–4. Nothing in this run wrote a `tools.*` path that does not exist.
+
+    **The pass rate did not improve.** 2/4 here, against 3/4 and 2/4 on the two pre-change runs with captured detail. On this evidence the surface fix removed a real failure mode without moving the score — a single run either way, and these scenarios are noisy enough that neither number should be leaned on.
+
+    **A different shape now dominates the failures**, and it is not the one this card addressed:
+
+    ```
+    [singleCallWeather]         typed=[] invoked=[] returned=[] toolCalls=1
+    [discoveryUnderDistractors] typed=[] invoked=[] returned=[] toolCalls=4
+    ```
+
+    Both answered with a plain refusal — *"I don't have access to real-time weather data"*, *"the available tools don't include a weather API"* — having written **no snippet at all**. Not an invented path, not a thrash: the model never reached `runCode`. `singleCallWeather` had passed 2/2 before this change, so its failing here is either noise or new; one run cannot tell which.
+
+    That is the `toolCalls=0`-family failure the board has been chasing all along, and the untried structural fix for it remains Router's pre-discovery seeding (`^tkrdwb8` prereq 6), which is still unpushed.
+
+    **What this run does NOT establish:** that the compression on `^5qadve5` is safe, that the rename is safe, or that this change helps or hurts the score. It establishes exactly one thing — the invented-path/thrash signature is gone.
+  timestamp: 2026-08-10T11:05:01.131365+00:00
 position_column: todo
 position_ordinal: '80'
 title: '[Multitool] Accept tools.searchTools and tools.runCode inside a snippet — forgiving surface'
@@ -37,18 +69,18 @@ This is a surface fix, not a prompt fix. Nothing here should teach the model to 
 
 ## Acceptance Criteria
 
-- [ ] A snippet calling `await tools.searchTools("...")` returns the same text the mounted `searchTools` tool returns for the same query — asserted against the tool's own output, not a copy of it
-- [ ] A snippet calling `await tools.runCode("return 1 + 1;")` returns the nested snippet's value
-- [ ] Nested `runCode` past the depth cap returns a repairable error naming the cap; prove it with a snippet that recurses unboundedly, and show it terminates
-- [ ] `searchTools` is no longer reported by `inventedPath` when a snippet calls `tools.searchTools`
-- [ ] Neither tool description grew
-- [ ] Ungated `swift test` green in both targets
-- [ ] Gated: the discovery scenario is re-run and its result recorded here with the `MODES` line, whatever it says
+- [x] A snippet calling `await tools.searchTools("...")` returns the same text the mounted `searchTools` tool returns for the same query — asserted against the tool's own output, not a copy of it
+- [x] A snippet calling `await tools.runCode("return 1 + 1;")` returns the nested snippet's value
+- [x] Nested `runCode` past the depth cap returns a repairable error naming the cap; prove it with a snippet that recurses unboundedly, and show it terminates
+- [x] `searchTools` is no longer reported by `inventedPath` when a snippet calls `tools.searchTools`
+- [x] Neither tool description grew
+- [x] Ungated `swift test` green in both targets
+- [x] Gated: the discovery scenario is re-run and its result recorded here with the `MODES` line, whatever it says
 
 ## Tests
 
-- [ ] Unit: `tools.searchTools` in a snippet, `tools.runCode` in a snippet, depth-cap rejection
-- [ ] Unit: a registry with no searchTools support (`directMode`) does not bind `tools.searchTools`
+- [x] Unit: `tools.searchTools` in a snippet, `tools.runCode` in a snippet, depth-cap rejection
+- [x] Unit: a registry with no searchTools support (`directMode`) does not bind `tools.searchTools`
 
 ## Why this matters beyond the one scenario
 
