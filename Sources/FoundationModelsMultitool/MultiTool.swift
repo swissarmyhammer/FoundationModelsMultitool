@@ -978,17 +978,12 @@ public struct MultiTool: Tool {
                 .map { "globalThis.\($0) = (function (send) { return function (detail) { send(detail); }; })(globalThis.\($0));" }
                 .joined(separator: " "),
         ]
-        // Moved into `tools.*` and then deleted from the global scope: the flat
-        // `__`-prefixed name is how the interpreter installs a host function,
-        // not part of the sandbox's surface. Leaving it bound would add a
-        // global the README's "Injected globals" list does not name, which
-        // `HardeningTests` enumerates and pins.
+        // Emitted before the registry's own entries, so a host that mounts a
+        // tool of the same name binds over ours rather than being shadowed.
         if bindsSearchTools {
-            lines.append("tools.\(searchToolsPath) = \(searchToolsHostName);")
-            lines.append("delete globalThis.\(searchToolsHostName);")
+            lines += siblingBindingLines(path: searchToolsPath, hostName: searchToolsHostName)
         }
-        lines.append("tools.\(runCodePath) = \(runCodeHostName);")
-        lines.append("delete globalThis.\(runCodeHostName);")
+        lines += siblingBindingLines(path: runCodePath, hostName: runCodeHostName)
         for (index, entry) in registry.surface.entries.enumerated() {
             guard registry.tools[entry.path] != nil else { continue }
             let hostName = hostFunctionName(at: index)
@@ -1032,6 +1027,26 @@ public struct MultiTool: Tool {
     ///
     /// `__`-prefixed for the same reason as ``searchToolsHostName``.
     static let runCodeHostName = "__runCode"
+
+    /// The preamble lines that move one sibling host function into its
+    /// `tools.*` path.
+    ///
+    /// The flat `__`-prefixed name is how the interpreter installs a host
+    /// function, not part of the sandbox's surface, so it is unbound once the
+    /// path holds it: leaving it would add a global the README's "Injected
+    /// globals" list does not name, which `HardeningTests` enumerates and pins.
+    ///
+    /// - Parameters:
+    ///   - path: the `tools.*` path a snippet calls.
+    ///   - hostName: the flat global the interpreter installed the function
+    ///     under.
+    /// - Returns: the assignment and the delete, in that order.
+    private static func siblingBindingLines(path: String, hostName: String) -> [String] {
+        [
+            "tools.\(path) = \(hostName);",
+            "delete globalThis.\(hostName);",
+        ]
+    }
 
     /// The `tools.*` paths this tool binds itself, beyond the registry's own
     /// entries.
