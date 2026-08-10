@@ -4,23 +4,27 @@ import Testing
 import FoundationModels
 import FoundationModelsRouter
 
-/// Router's pre-discovery seeding opt-in for these scenarios.
+/// Router's pre-discovery seeding opt-in for these scenarios — **off**.
 ///
-/// Names the mounted discovery tool and the single string property its
-/// arguments carry the query in, which is all `DiscoveryPriming` needs. Both
-/// are read from the shipped types rather than restated, so a rename moves
-/// this with it.
+/// Seeding runs a real `searchTools` call host-side before the model's first
+/// token, so the turn it resumes already holds the discovery call and the typed
+/// signatures it returned. RESOLUTION B (task `tkrdwb8`) predicted that would
+/// eliminate the turn-with-no-snippet failure, because nothing would be left
+/// for the model to decide.
 ///
-/// This is the product configuration under test, not harness tuning: seeding
-/// runs a *real* `searchTools` call host-side before the model's first token,
-/// so the turn it resumes already contains the call and the typed signatures
-/// it returned. The failure it targets is the one this suite keeps recording —
-/// a turn that ends having written no snippet at all, answering "I don't have
-/// access to real-time weather data" (tasks `tkrdwb8`, `bwk7knm`).
-let scenarioDiscoveryPriming = DiscoveryPriming(
-    tool: MultiTool.searchToolsPath,
-    queryProperty: MultiTool.searchToolsTaskField
-)
+/// Measured, it did the opposite. With seeding on, all four scenarios scored
+/// **0/4** and none of them wrote a snippet at all (`typed=[] invoked=[]
+/// returned=[]`), including `repairFromTripProneTool`, which had passed in
+/// every previously recorded run. Its reply was "There are no available tools
+/// or functions in this session that can interact with a booking system" —
+/// with the seeded discovery call sitting in its own transcript. Unprimed runs
+/// of the same suite score 1/4 to 3/4.
+///
+/// Kept as one named constant rather than deleted: this is the A/B switch, and
+/// the two arms differ by this line alone. Set it to
+/// `DiscoveryPriming(tool: MultiTool.searchToolsPath, queryProperty:
+/// MultiTool.searchToolsTaskField)` to measure the primed arm again.
+let scenarioDiscoveryPriming: DiscoveryPriming? = nil
 @testable import FoundationModelsMultitool
 @testable import multitool_cli
 
