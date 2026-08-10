@@ -148,15 +148,19 @@ extension MultiTool {
             librarian: RoutedLLM?,
             sampleGenerator: RoutedLLM? = nil
         ) throws -> [any Tool] {
-            let runCode = MultiTool(registry: self)
             guard supportsSearchTools else {
-                return [runCode]
+                return [MultiTool(registry: self)]
             }
             let searchTools = try SearchToolsTool(
                 registry: self,
                 librarian: librarian,
                 sampleGenerator: sampleGenerator
             )
+            // The same instance both ways in: mounted for the model to call
+            // directly, and bound as `tools.searchTools` for a snippet that
+            // reaches for it mid-run. One instance means one librarian and one
+            // sample generator, so the two doors cannot answer differently.
+            let runCode = MultiTool(registry: self, searchTools: searchTools)
             return [searchTools, runCode]
         }
     }
@@ -423,7 +427,9 @@ public struct MultiTool: Tool {
         registry: Registry,
         configuration: MultiToolConfiguration = .default,
         interpreter: (any Interpreter)? = nil,
-        limits: ResultRendererLimits? = nil
+        limits: ResultRendererLimits? = nil,
+        searchTools: (any Tool)? = nil,
+        depth: Int = 0
     ) {
         self.registry = registry
         self.configuration = configuration
@@ -436,9 +442,32 @@ public struct MultiTool: Tool {
         self.limits = limits ?? configuration.resultLimits
         self.hostFunctions = Self.makeHelpDocsHostFunctions(for: registry)
         self.liveTools = Self.makeLiveTools(for: registry)
-        self.preamble = Self.makePreamble(for: registry)
+        self.preamble = Self.makePreamble(for: registry, bindsSearchTools: searchTools != nil)
         self.hintSearcher = MetadataSearcher(items: registry.surface.entries, mode: .retrieval)
+        self.searchTools = searchTools
+        self.depth = depth
     }
+
+    /// The mounted discovery tool a snippet reaches as `tools.searchTools`, or
+    /// `nil` when this registry mounts none.
+    ///
+    /// The same instance the session mounts as its own tool, so a snippet and
+    /// the model's direct call share one librarian and one sample generator.
+    private let searchTools: (any Tool)?
+
+    /// How many enclosing `tools.runCode` calls this run sits inside.
+    ///
+    /// `0` for a run the model started. Each nested call runs at one deeper,
+    /// and ``maxRunCodeDepth`` is where nesting stops.
+    private let depth: Int
+
+    /// How deeply `tools.runCode` may nest before a call is refused.
+    ///
+    /// A snippet composing a nested run needs one level; a nested run that
+    /// itself composes needs two. Three leaves room for that and still bounds
+    /// a snippet that recurses without a base case, which would otherwise
+    /// spend the whole turn's time limit before returning anything.
+    static let maxRunCodeDepth = 3
 
     /// Runs `arguments.code` against `tools.*` and renders the outcome.
     ///
@@ -736,10 +765,150 @@ public struct MultiTool: Tool {
     /// - Returns: one `AsyncHostFunction` per live tool, in `liveTools`'
     ///   order.
     private func makeAsyncHostFunctions(binding: RunBinding?) -> [AsyncHostFunction] {
-        liveTools.map { liveTool in
+        var functions = liveTools.map { liveTool in
             AsyncHostFunction(name: liveTool.hostFunctionName) { arguments in
                 try await Self.invokeAsync(tool: liveTool.tool, arguments: arguments, binding: binding)
             }
+        }
+        if let searchTools {
+            functions.append(
+                AsyncHostFunction(name: Self.searchToolsHostName) { arguments in
+                    try await Self.invokeAsync(
+                        tool: searchTools,
+                        arguments: Self.widenedToObject(arguments, field: Self.searchToolsTaskField),
+                        binding: binding
+                    )
+                }
+            )
+        }
+        functions.append(makeNestedRunCodeHostFunction())
+        return functions
+    }
+
+    /// The error `tools.runCode` throws when a snippet nests past
+    /// ``maxRunCodeDepth``.
+    ///
+    /// `JSCInterpreter.install` turns a thrown Swift error into a JS exception
+    /// the renderer then hands back as a repairable error, so its text is
+    /// written as the repair instruction the model reads.
+    struct NestedRunCodeDepthExceeded: Error, CustomStringConvertible {
+        /// The nesting depth that was exceeded.
+        let limit: Int
+
+        /// The repair instruction handed back to the model.
+        var description: String {
+            "tools.runCode nests at most \(limit) deep, and this call is deeper. Write the "
+                + "remaining work inline in this snippet instead of nesting another runCode."
+        }
+    }
+
+    /// The field ``searchToolsPath`` reads its query from.
+    static let searchToolsTaskField = "task"
+
+    /// The field ``runCodePath`` reads its snippet from.
+    static let runCodeSnippetField = "code"
+
+    /// Wraps a bare scalar argument into the single-field object a `Tool`'s
+    /// `@Generable` arguments decode from.
+    ///
+    /// The generated signatures take an object, so `tools.name({ … })` is the
+    /// documented call. A model that reads `searchTools(task)` in prose writes
+    /// `tools.searchTools("…")` instead, which is the same intent — task
+    /// `bwk7knm` chose to accept it rather than correct it. An argument list
+    /// that is already an object, or is empty, is handed through unchanged.
+    ///
+    /// - Parameters:
+    ///   - arguments: the argument list the snippet called with.
+    ///   - field: the single field a bare scalar stands for.
+    /// - Returns: `arguments`, with a leading bare scalar wrapped in an object.
+    private static func widenedToObject(
+        _ arguments: [InterpreterValue], field: String
+    ) -> [InterpreterValue] {
+        guard let first = arguments.first else { return arguments }
+        switch first {
+        case .object:
+            return arguments
+        default:
+            return [.object([field: first])] + arguments.dropFirst()
+        }
+    }
+
+    /// Reads the snippet out of a `tools.runCode` argument list.
+    ///
+    /// Accepts the bare string a model writes first, and the object form the
+    /// generated signatures otherwise teach, under either `code` or `snippet`.
+    ///
+    /// - Parameter arguments: the argument list the snippet called with.
+    /// - Returns: the snippet source, or `nil` when no argument carries one.
+    private static func snippetArgument(_ arguments: [InterpreterValue]) -> String? {
+        switch arguments.first {
+        case .string(let snippet):
+            return snippet
+        case .object(let fields):
+            for key in [runCodeSnippetField, "snippet"] {
+                if case .string(let snippet)? = fields[key] { return snippet }
+            }
+            return nil
+        default:
+            return nil
+        }
+    }
+
+    /// The error `tools.runCode` throws when a nested run did not settle on a
+    /// plain value.
+    ///
+    /// Carries the nested run's own rendered text, so whatever it says — a
+    /// repairable error, a truncation note — reaches the snippet that asked
+    /// for it rather than being flattened into "something went wrong".
+    struct NestedRunCodeFailed: Error, CustomStringConvertible {
+        /// The nested run's rendered output.
+        let rendered: String
+
+        /// The nested output, handed to the snippet unchanged.
+        var description: String { rendered }
+    }
+
+    /// Builds the host function behind `tools.runCode` — one nested snippet
+    /// run, one level deeper than this one.
+    ///
+    /// Refuses past ``maxRunCodeDepth`` rather than recursing further, so a
+    /// snippet with no base case ends with a repairable error naming the
+    /// limit instead of spending the run's whole time budget.
+    ///
+    /// - Returns: the `tools.runCode` binding for this run's depth.
+    private func makeNestedRunCodeHostFunction() -> AsyncHostFunction {
+        let depth = depth
+        let nested = MultiTool(
+            registry: registry,
+            configuration: configuration,
+            limits: limits,
+            searchTools: searchTools,
+            depth: depth + 1
+        )
+        return AsyncHostFunction(name: Self.runCodeHostName) { arguments in
+            guard depth + 1 < Self.maxRunCodeDepth else {
+                throw NestedRunCodeDepthExceeded(limit: Self.maxRunCodeDepth)
+            }
+            guard let snippet = Self.snippetArgument(arguments) else {
+                throw ToolInvokerError(
+                    kind: .missingRequiredField,
+                    field: Self.runCodeSnippetField,
+                    message: "tools.runCode takes the JavaScript snippet to run — either as a string, "
+                        + "`tools.runCode(\"return 1;\")`, or as `tools.runCode({ code: \"return 1;\" })`."
+                )
+            }
+            let rendered = try await nested.call(arguments: RunCodeArguments(code: snippet))
+            // A nested run hands back a *value*, not the text an outer caller
+            // would read: `await tools.runCode("return 1 + 1;")` is 2, not
+            // "2". `call` renders, so decode the render back. Anything that is
+            // not a bare JSON value — a repairable error, or a render carrying
+            // a console section — cannot decode, and is thrown instead so the
+            // snippet sees a catchable exception carrying the nested run's own
+            // diagnostics rather than a string it has to parse.
+            guard let value = try? JSONDecoder().decode(InterpreterValue.self, from: Data(rendered.utf8)) else {
+                throw NestedRunCodeFailed(rendered: rendered)
+            }
+            return value
         }
     }
 
@@ -772,7 +941,7 @@ public struct MultiTool: Tool {
     /// - Returns: the JS preamble, one `tools.*` assignment per entry with a
     ///   live tool, preceded by `globalThis.tools = {};` and by the void
     ///   re-binding of every name in `voidGlobalNames`.
-    private static func makePreamble(for registry: Registry) -> String {
+    private static func makePreamble(for registry: Registry, bindsSearchTools: Bool) -> String {
         // `globalThis.tools = {}` (not `var tools = {}`) so `tools` is a
         // genuine `globalThis` property — like `console`/`help`/`docs`,
         // installed directly via `context.setObject` — rather than a
@@ -798,6 +967,17 @@ public struct MultiTool: Tool {
                 .map { "globalThis.\($0) = (function (send) { return function (detail) { send(detail); }; })(globalThis.\($0));" }
                 .joined(separator: " "),
         ]
+        // Moved into `tools.*` and then deleted from the global scope: the flat
+        // `__`-prefixed name is how the interpreter installs a host function,
+        // not part of the sandbox's surface. Leaving it bound would add a
+        // global the README's "Injected globals" list does not name, which
+        // `HardeningTests` enumerates and pins.
+        if bindsSearchTools {
+            lines.append("tools.\(searchToolsPath) = \(searchToolsHostName);")
+            lines.append("delete globalThis.\(searchToolsHostName);")
+        }
+        lines.append("tools.\(runCodePath) = \(runCodeHostName);")
+        lines.append("delete globalThis.\(runCodeHostName);")
         for (index, entry) in registry.surface.entries.enumerated() {
             guard registry.tools[entry.path] != nil else { continue }
             let hostName = hostFunctionName(at: index)
@@ -810,6 +990,45 @@ public struct MultiTool: Tool {
         }
         return lines.joined(separator: "\n")
     }
+
+    /// The `tools.*` path — and the host-function name behind it — a snippet
+    /// reaches the mounted discovery tool by.
+    ///
+    /// The model reached for this path unprompted and got an invented-path
+    /// error, burning a whole turn (task `bwk7knm`). It is a real binding now.
+    /// Named the same on both sides so the preamble reads as the identity it
+    /// is. Nothing reserves the name: a registry that mounts its own tool
+    /// called `searchTools` binds over this one, because the preamble emits
+    /// the siblings before the registry's own entries and a host's tools
+    /// should never be shadowed by ours.
+    static let searchToolsPath = "searchTools"
+
+    /// The flat global ``searchToolsPath``'s binding installs under.
+    ///
+    /// `__`-prefixed like every registry tool's `__tool<N>`, for the same
+    /// reason: the preamble moves it into `tools.*` and the flat name is not
+    /// part of the sandbox's documented global surface (`HardeningTests`
+    /// enumerates that set and pins it against README).
+    static let searchToolsHostName = "__searchTools"
+
+    /// The `tools.*` path — and the host-function name behind it — a snippet
+    /// reaches a nested `runCode` by.
+    ///
+    /// Recursion, bounded by ``maxRunCodeDepth``.
+    static let runCodePath = "runCode"
+
+    /// The flat global ``runCodePath``'s binding installs under.
+    ///
+    /// `__`-prefixed for the same reason as ``searchToolsHostName``.
+    static let runCodeHostName = "__runCode"
+
+    /// The `tools.*` paths this tool binds itself, beyond the registry's own
+    /// entries.
+    ///
+    /// `UnknownToolHint` unions these with the catalog before deciding a path
+    /// is invented: they are real bindings, so a snippet that calls one must
+    /// not be told it does not exist.
+    static let siblingToolPaths: Set<String> = [searchToolsPath, runCodePath]
 
     // MARK: - The async host-function bridge (eventplan.md "Async JavaScript")
 

@@ -1,0 +1,55 @@
+---
+assignees:
+- claude-code
+position_column: todo
+position_ordinal: '80'
+title: '[Multitool] Accept tools.searchTools and tools.runCode inside a snippet — forgiving surface'
+---
+HUMAN-DIRECTED (2026-08-10), from measured evidence. The gated discovery scenario failed 2/2 with this exact signature:
+
+```
+typed=["searchTools"]  invoked=[]  returned=[]
+invented=[searchTools]  thrash=1  toolCalls=7 … 13
+```
+
+The model wrote `tools.searchTools(...)` inside a runCode snippet. That path does not exist — `searchTools` is a separately mounted `Tool`, not a sandbox binding — so nothing was invoked, the turn burned 7–13 calls thrashing, and it ended by refusing: *"the available tools in this session are limited to text summarization, unit conversion, and currency conversion"*, i.e. it never reached the real tools at all.
+
+**The ruling: the model's guess was reasonable, so the surface should accept it.** *"let me the model call `tools.searchTools` in run code, as well as call it as a direct tool. even runCode should be allowed as a `tools.runCode` it's just recursion at work. let's make our tool usable by the model and forgiving."*
+
+This is a surface fix, not a prompt fix. Nothing here should teach the model to avoid a path; the path should work.
+
+## What
+
+1. **`tools.searchTools(task)` inside a snippet.** Bind it in the `tools.*` preamble (`MultiTool.makeToolsPreamble`, alongside the registry entries) so a snippet can search mid-run. It must forward to the *same* `SearchToolsTool` instance the session mounted, so the librarian and sample-generator configuration are identical whichever way the model reaches it — `Registry.makeSessionTools(librarian:sampleGenerator:)` already builds both from one registry and can hand the instance to `MultiTool`. Returns the same text the direct tool returns.
+
+2. **`tools.runCode(snippet)` inside a snippet.** Recursion, evaluated against the same registry and the same `tools.*` surface, returning what the nested snippet returned. Needs a **depth cap** — a nested call past the cap returns a repairable error naming the limit, never a hang or a stack overflow. Pick the cap, document why, and name it (no magic number).
+
+3. **Keep both reachable the direct way.** `searchTools` stays a mounted `Tool`; `runCode` stays the outer tool. This adds a second door, it does not move the first.
+
+4. **Say it once in the shipped surface**, per the compression already done on `^5qadve5`: the descriptions should not grow back. If the paths simply work, the model needs no sentence about them — prefer silence in the description and let `searchTools`' own returned signatures carry it if anything does.
+
+## Constraints
+
+- No prompt-side workaround. Do not add "searchTools is not a `tools.*` path" hint text; that is the opposite of this card.
+- `UnknownToolHint` must stop reporting `searchTools` as an invented path once it is real — check that the hint path and the `inventedPath` diagnostic both agree with the new surface.
+- Recursion must be bounded and observable: a nested `runCode` appears in the call log like any other call, so `thrash` and the call-count diagnostics stay meaningful.
+- No shipped behaviour change for snippets that do not use either path.
+
+## Acceptance Criteria
+
+- [ ] A snippet calling `await tools.searchTools("...")` returns the same text the mounted `searchTools` tool returns for the same query — asserted against the tool's own output, not a copy of it
+- [ ] A snippet calling `await tools.runCode("return 1 + 1;")` returns the nested snippet's value
+- [ ] Nested `runCode` past the depth cap returns a repairable error naming the cap; prove it with a snippet that recurses unboundedly, and show it terminates
+- [ ] `searchTools` is no longer reported by `inventedPath` when a snippet calls `tools.searchTools`
+- [ ] Neither tool description grew
+- [ ] Ungated `swift test` green in both targets
+- [ ] Gated: the discovery scenario is re-run and its result recorded here with the `MODES` line, whatever it says
+
+## Tests
+
+- [ ] Unit: `tools.searchTools` in a snippet, `tools.runCode` in a snippet, depth-cap rejection
+- [ ] Unit: a registry with no searchTools support (`directMode`) does not bind `tools.searchTools`
+
+## Why this matters beyond the one scenario
+
+The measured failure is not that the model is confused — it picked a path that reads exactly like what it should be. Every place this system has recovered, it recovered because the surface met the model where it was (in-band repair text, near-match hints). This is the same move at the API level rather than the prose level. #phase-1

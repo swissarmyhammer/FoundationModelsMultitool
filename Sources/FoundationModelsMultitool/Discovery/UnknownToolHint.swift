@@ -187,7 +187,12 @@ enum UnknownToolHint {
         surface: APISurface,
         searcher: MetadataSearcher<APISurface.Entry>
     ) async -> Resolution? {
-        let knownPaths = Set(surface.entries.map(\.path))
+        // The two sibling paths are real bindings the preamble installs, not
+        // catalog entries, so the surface alone does not know them. Without
+        // this a snippet that reaches for `tools.searchTools` — which the
+        // model does unprompted (task `bwk7knm`) — is told the path it just
+        // used successfully does not exist.
+        let knownPaths = Set(surface.entries.map(\.path)).union(MultiTool.siblingToolPaths)
         guard let failedPath = firstUnknownPath(in: message, knownPaths: knownPaths) else {
             return nil
         }

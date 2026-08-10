@@ -443,7 +443,13 @@ private func makeScenarioSurface(
             librarian: fixture.profile.flash,
             sampleGenerator: fixture.profile.standard
         ),
+        // Unioned with the sibling paths the sandbox binds itself, so a
+        // snippet calling `tools.searchTools` or `tools.runCode` is not
+        // graded as having invented a path it can really call (task
+        // `bwk7knm`). Read from `MultiTool`, never restated, so the
+        // diagnostic and the sandbox cannot disagree about what exists.
         catalogPaths: Set(registry.surface.entries.map(\.path))
+            .union(MultiTool.siblingToolPaths)
     )
 }
 
