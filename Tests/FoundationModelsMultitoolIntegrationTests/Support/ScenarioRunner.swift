@@ -172,25 +172,17 @@ func runNativeIntegrationScenario(
         )
 
         let start = Date()
-        // `respond(to:)` rather than `streamEvents`: it routes through the
-        // backend's own `respond`, which drains the tool loop the way Apple's
-        // native session does, where `streamEvents` routes through the
-        // backend's `streamResponse` and drives the loop itself. Those are two
-        // different backend entry points, so this isolates "Router session"
-        // from "Router's streaming surface" (task `tkrdwb8`, and Router's
-        // `^cvtfem3`).
-        //
-        // The cost is the event-derived diagnostics: no events means no
-        // `typedPaths` and no tool-call count. They are reported as `n/a`
-        // rather than as zeros — a zero here would read as "the model typed
-        // nothing", which is a claim this path cannot make.
-        let answer = try await session.respond(to: prompt)
+        // Streaming, drained to completion. This is the surface a real client
+        // uses (ACP and async clients stream; nothing ships on `respond`), and
+        // it is the surface Router's ^w8dzvee fix targets. Draining also
+        // restores the route diagnostics: `respond(to:)` returns only the final
+        // answer, so four of the seven failure modes were unobservable on it.
+        let turn = try await streamTurn(of: session, prompt: prompt)
         let elapsed = Date().timeIntervalSince(start)
-        let turn = StreamedTurn(answer: answer)
 
         let evidence = ScenarioEvidence(
             answer: turn.answer,
-            typedPaths: [],
+            typedPaths: NativeTranscript.typedToolPaths(in: turn.calls),
             invokedPaths: await log.invokedPaths,
             returnedPaths: await log.returnedPaths
         )
@@ -202,9 +194,6 @@ func runNativeIntegrationScenario(
         )
         grade(scenario: name, checks: checks)
 
-        // Unobservable on the `respond` path: both are derived from streamed
-        // events. `0`/`false` are the only values available, and both are
-        // reported as such in MODES rather than dressed up.
         let toolCallCount = turn.toolCallCount
         let searchToolsFirst = NativeTranscript.searchToolsPrecedesRunCode(in: turn.calls)
         // plan.md acceptance: "the per-format results are recorded (test
@@ -219,13 +208,14 @@ func runNativeIntegrationScenario(
         // returns the grade required is readable off the run rather than only
         // off this file.
         print(
-            "RESULT [\(name)] elapsed=\(elapsed)s toolCalls=n/a(respond) "
-                + "typed=n/a(respond) "
+            "RESULT [\(name)] elapsed=\(elapsed)s toolCalls=\(turn.toolCallCount) "
+                + "typed=\(evidence.typedPaths.sorted()) "
                 + "invoked=\(evidence.invokedPaths.sorted()) "
                 + "returned=\(evidence.returnedPaths.sorted()) "
                 + "groundedIn=\(groundedIn.sorted()) "
                 + "searchToolsFirst=\(searchToolsFirst) "
                 + "priming=\(primingLabel(turn)) "
+                + "textResets=\(turn.supersededAnswers.count) "
                 + "compactions=\(turn.compactions.count) tokens=\(turn.tokenUsage ?? "n/a") "
                 + "failedCalls=\(turn.failedCalls.count)\(turn.failedCalls.isEmpty ? "" : " \(turn.failedCalls)") "
                 + "reply=\"\(turn.answer.prefix(80))\""
@@ -242,9 +232,7 @@ func runNativeIntegrationScenario(
                     invokedPaths: evidence.invokedPaths,
                     catalogPaths: surface.catalogPaths,
                     searchToolsFirst: searchToolsFirst,
-                    // The `respond(to:)` path returns only the final answer, so
-                    // nothing about the route was observed on this run.
-                    routeObservable: false,
+                    routeObservable: true,
                     returnedValues: NativeTranscript.returnedValues(in: turn.calls),
                     isValidAnswer: checks.contains { $0.name == validAnswerCheckName && $0.held }
                 )
@@ -354,6 +342,7 @@ func runElevationIntegrationScenario(
                 + "toolOutputs=\(turn.toolOutputs.count) "
                 + "pendingEnvelopes=\(pendingEnvelopes.count) "
                 + "priming=\(primingLabel(turn)) "
+                + "textResets=\(turn.supersededAnswers.count) "
                 + "compactions=\(turn.compactions.count) tokens=\(turn.tokenUsage ?? "n/a") "
                 + "failedCalls=\(turn.failedCalls.count)\(turn.failedCalls.isEmpty ? "" : " \(turn.failedCalls)") "
                 + "reply=\"\(turn.answer.prefix(120))\""
@@ -385,6 +374,14 @@ private struct StreamedTurn {
     ///
     /// `SessionEvent.toolStatus` carries the call's id, not its name.
     var callIndexByID: [String: Int] = [:]
+
+    /// Each answer superseded by a `.textReset`, oldest first.
+    ///
+    /// Kept rather than dropped: a turn that restarted its answer is a turn
+    /// whose first pass is evidence — it is what the model said before it had
+    /// tool output — and a non-empty list is the direct signal that the tool
+    /// loop re-entered generation.
+    var supersededAnswers: [String] = []
 
     /// Every compaction the session performed during this turn.
     ///
@@ -424,6 +421,16 @@ private func streamTurn(of session: RoutedSession, prompt: String) async throws 
         switch event {
         case .textDelta(let fragment):
             turn.answer += fragment
+        case .textReset:
+            // Everything delivered so far is superseded, not retracted: the
+            // model produced a first pass, a tool ran, and generation resumed
+            // on a fresh answer. Router surfaces this rather than hiding it
+            // (^w8dzvee D2), and a consumer that ignores it accumulates
+            // "PRETOOL FINAL-ANSWER" where `respond(to:)` returns
+            // "FINAL-ANSWER". This suite grades the answer, so it keeps the
+            // current one; the superseded text stays in the transcript.
+            turn.supersededAnswers.append(turn.answer)
+            turn.answer = ""
         case .toolCall(let id, let name, let argumentsJSON):
             turn.toolCallCount += 1
             turn.callIndexByID[id] = turn.calls.count
