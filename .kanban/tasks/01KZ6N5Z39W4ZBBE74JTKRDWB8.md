@@ -2801,6 +2801,75 @@ comments:
 
     I have not chosen. Both are defensible and the decision changes what step 4 measures.
   timestamp: 2026-08-10T12:58:25.682796+00:00
+- actor: claude-code
+  id: 01kzp29k2g5vaag8gfpyzjbk8b
+  text: |-
+    ### Router path re-tested at dce5c5c. Still 0/4 — and three causes are now eliminated with evidence.
+
+    Router pushed; this package now depends on it **by local path** (`8c57d8a`, marked TEMPORARY in `Package.swift`) so a fix there is picked up with no push and no 27-minute re-resolve. Router source under test: `dce5c5c`. Seeding off.
+
+    ```
+    MODES [singleCallWeather]         toolCalls=4   failedCalls=0  invoked=[]  priming=off  FAIL
+    MODES [composeChain]              toolCalls=3   failedCalls=0  invoked=[]  priming=off  FAIL
+    MODES [discoveryUnderDistractors] toolCalls=19  failedCalls=0  invoked=[]  priming=off  FAIL
+    MODES [repairFromTripProneTool]   toolCalls=8   failedCalls=0  invoked=[]  priming=off  FAIL
+    ```
+
+    **`failedCalls=0` is the new datum**, from instrumentation added in `8c57d8a` — `.toolStatus(.failed)` was previously swallowed, so a turn whose every call failed looked identical to one that made none. It is neither: calls are issued, none fail, and the model still answers *"the system does not have a function available to look up or confirm bookings by ID"*.
+
+    ### Eliminated — recorded so nobody re-investigates
+
+    Verified with **no model in the loop** (`RouterSessionMountTests`, `b46b372`), driving `ToolElevation.wrapping(configuration: .nativeSessionMount)` — the one composition `RoutedModel.makeSession` applies:
+
+    - **The mount is transparent.** `searchTools` 593 bytes direct, 593 through the mount, byte-identical. `runCode` `"3"` both ways.
+    - **Model-facing surface untouched.** Same name and description; `ElevatingTool` forwards `parameters` and `includesSchemaInInstructions`.
+    - **Argument decoding intact.** Resolves to `ElevatingTool<SearchToolsArguments>` / `ElevatingTool<RunCodeArguments>` — the concrete type survives.
+    - **Elevation cannot fire here.** `waitSeconds` = 5 by default; none of the four fixtures sleeps. The only sleeping integration fixture is the deep-scan tool at 8 s, and it belongs to `ElevationTests`. **This retracts my earlier pending-envelope explanation for the 0/4 — it was wrong.**
+    - **Capping is off.** `sessionMounted` caps "only when `cappedToTokenLimit` is set"; the runner sets none.
+
+    ### What is left
+
+    The difference is in how the session drives the tool loop — `RoutedSession.streamEvents` versus `LanguageModelSession.respond(to:)` — not in the tools or their wiring. A model that calls `searchTools` and never sees its output would produce exactly this: calls issued, none failed, nothing learned, "no such function exists".
+
+    Not proven. It is a Router-side question, and it is now carded there.
+
+    ### Three TDD cards filed on Router's board
+
+    - `^cvtfem3` — **the decisive test.** Scripted model, one mounted tool returning a distinctive marker, drive through `streamEvents`, assert the marker reaches the final answer. Fails in under a second with no GPU if the hypothesis holds. Same claim asserted through `respond(to:)` so both surfaces are held to one contract.
+    - `^vhjhaey` — **parity harness.** Table-driven, six turn shapes, asserting answer text / call sequence / arguments / delivered outputs / turn count are equal across the two surfaces. Explicitly forbids event counts as a proxy for delivery, which is the blind spot that let this through.
+    - `^n59eb1k` — **rename "elevation"**, human-directed. Naming only, lower priority, and it names the cost: "elevation on" read as a privileged mount and drove the wrong hypothesis above.
+
+    Each card carries the eliminations, the reproduction command, and what to do if the hypothesis turns out wrong.
+
+    **No revert.** MultiTool on Router is the design; the four scenarios stay on the Router path.
+  timestamp: 2026-08-10T14:47:42.416424+00:00
+- actor: claude-code
+  id: 01kzp602pp526kj442mvj2ncxz
+  text: |-
+    ### BLOCKS EXIT: restore the Router branch dependency before this card closes
+
+    `Package.swift` currently declares Router by **local path**, not by branch:
+
+    ```swift
+    // TEMPORARY (human-directed 2026-08-10)
+    .package(path: "../\(routerDependencyName)"),
+    ```
+
+    It is a local dev-cycle aid for debugging the Router 0/4 — it lets a Router fix be tested here immediately instead of waiting on a push plus a 27-minute re-resolve. **It is not to ship.** Restore:
+
+    ```swift
+    swissArmyHammerPackage(name: routerDependencyName),
+    ```
+
+    Two reasons this cannot be left, beyond the obvious:
+
+    1. **It only builds on this machine.** Any other checkout resolves `../FoundationModelsRouter` to nothing.
+    2. **SwiftPM is already warning about it.** `MetadataRegistry` and `Ranker` pull Router by URL while this package pulls it by path, so every build now emits *"Conflicting identity for foundationmodelsrouter … both point to the same package identity"* — four times — and SwiftPM says *"This will be escalated to an error in future versions."*
+
+    `Package.resolved` is gitignored here, so nothing pins a Router revision either way; after restoring, the resolution floats to the branch head and a `swift package update` is needed to pick up whatever Router has landed.
+
+    Add to this card's exit checks: `grep -n 'path: "../' Package.swift` returns nothing.
+  timestamp: 2026-08-10T15:52:25.046115+00:00
 depends_on:
 - 01KZ6N4Q7K53WSTJ3M6E76ZK99
 - 01KZ6N545VYCB60H716AZ1XS92
@@ -2808,6 +2877,7 @@ depends_on:
 - 01KZ6NSZAGGYJ9Z3A2YWPQ0Q6D
 - 01KZBTW6RPCKT1BY8H3XX5ATMS
 - 01KZC8R1E0Z3J4PN8P8KB5CS2N
+- 01KZRKCHZ9NPM98DVZN0Q2JE6M
 position_column: doing
 position_ordinal: '8280'
 title: '[Both] Phase-1 exit: gated end-to-end elevation scenarios; tag consolidation-1-foundation'
@@ -2851,12 +2921,12 @@ Ordered work in THIS repo — execute in this order:
 - [x] Every router-first task done on Router's board
 - [x] OperationTool shim card and Shelltool bump card done on their boards
 - [x] Bisect Protocol executed: tables recorded, decision rule applied mechanically, third-branch park taken and superseded by the RESOLUTION
-- [ ] ^0981ar3 closed (registry-intersection grounding) BEFORE any re-measurement
-- [ ] runCode collect-pattern sentence added — shipped tool surface only
-- [ ] `SearchThenCallTests` runs on the Router path with pre-discovery priming, instructions = exported `sessionInstructions` only
-- [ ] `MULTITOOL_INTEGRATION=1 swift test` green with NO retry semantics, after prereqs 5+6; re-measure series recorded per step 4
+- [x] ^0981ar3 closed (registry-intersection grounding) BEFORE any re-measurement — it is in `done`; the box was simply never ticked
+- [x] ~~runCode collect-pattern sentence added~~ — **superseded 2026-08-11.** The collect pattern was `wait(completionToken, seconds)` inside a snippet, and it is being removed rather than documented: it asked the model to predict how long another party's work takes. Waiting is now a mounted `wait` tool (`^ddgjps6`), and `runCode` loses the concept entirely (`^cv98vff`). Measured reason: with `do not wait()` in its own description the model still wrote `return await wait(token, 60)` seven times, because a pending envelope instructed it to
+- [ ] `SearchThenCallTests` runs on the Router path, **streaming** (`streamEvents`, drained), with **no** session instructions. Two corrections to this criterion as written: pre-discovery priming is **off** — measured, it scored 0/4 with no scenario writing a snippet at all, so `scenarioDiscoveryPriming = nil` and the constant documents the A/B; and `sessionInstructions` **no longer exists**, so the whole contract is carried by the two mounted tool descriptions, which is the stronger property this criterion was reaching for
+- [ ] `MULTITOOL_INTEGRATION=1 swift test` green with NO retry semantics — **consumed from `^0q2je6m`**, which owns the gated green run and asserts the trace as well as the score. Do not re-measure here; read that card's recorded table
 - [ ] Harness purity verified: the gated suite feeds the model only the tool-exported contract; any surplus harness-side system text removed
-- [ ] Host contract documented: a doc comment (on `MultiTool` or alongside `FindAPIsTool.sessionInstructions`) states exactly what a host app must configure — the exported `sessionInstructions`, the two mounted tools, and the recommended Router options (pre-discovery priming; elevation mount) — and the gated suite passes using only that
+- [ ] Host contract documented: a doc comment states exactly what a host must configure, and the gated suite passes using only that. Rewritten 2026-08-11 — `FindAPIsTool` is now `SearchToolsTool`, `sessionInstructions` is gone, and pre-discovery priming is not recommended (it measured 0/4). What a host configures is: the tools `makeSessionTools(librarian:)` vends, mounted on a `RoutedSession`, driven by `streamEvents`. `CLIRunner.swift:390` is the reference host, and the harness must match it — it silently diverged by wiring a `sampleGenerator` the product never uses
 - [ ] `FM_ROUTER_INTEGRATION_TESTS=1 swift test` green in ../FoundationModelsRouter — waits on cross-board prereq 4; if still open when everything else is done, leave unchecked, note it, and report ready-except-Router
 - [x] Ungated `swift test` green in this repo, Router, and OperationTool
 - [ ] Ready-to-tag reported to the human — tagging/pushing `consolidation-1-foundation` across the three repos is RESERVED for the human; do not tag

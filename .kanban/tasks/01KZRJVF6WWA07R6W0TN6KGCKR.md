@@ -1,0 +1,40 @@
+---
+assignees:
+- claude-code
+depends_on:
+- 01KZRJNSJRB1RGKQDEBCV98VFF
+position_column: todo
+position_ordinal: '8580'
+title: respond must self-drain the run plane, and gated tests must prove it
+---
+The fifth task. Depends on `^cv98vff`, because the requirement only bites once `runCode` always backgrounds.
+
+> we also need to add some integration tests with `respond` -- self-draining blocking mode in router, and make sure `respond` provides that self draining behavior in router
+
+## Why this becomes load-bearing
+
+Once `runCode` **always** hands back a token, `respond(to:)` has to drain more than the generation. A turn's tool call no longer returns data — it returns a reference to work still running. So:
+
+- If `respond` awaits only the turn, it returns an answer written from **a token and nothing else**. That is precisely the failure already measured on the streaming surface: `invoked=[] returned=[]`, "I don't have access to real-time weather data".
+- "Blocks and drains" therefore has to mean **drains the run plane**: every run this turn parked is settled, and its result is in the model's context, before `respond` returns.
+
+Put plainly: on streaming, backgrounding is the feature. On `respond`, backgrounding must be **invisible** — same final answer, just slower. That is what makes `respond` still FoundationModels semantics rather than a degraded surface.
+
+## Two halves
+
+**Router's half.** Confirm `respond` actually self-drains, and fix it if not. It is not enough for the turn to end; the parked runs it spawned must settle and reach the model first. Router has the machinery — `SessionMailbox.sweep()`, the journal, and the text preamble — but the current design folds a settled run's outcome into *the next turn's prompt*, which for `respond` means the answer is written before the data arrives. File on Router with this card as the consumer requirement.
+
+**Our half.** Gated coverage that would fail if `respond` did not drain:
+
+- [ ] A `respond` run of a scenario whose `runCode` backgrounds still reaches the **grounded** answer — the fixture's own distinctive value, with `returnedPaths` showing the tool really returned
+- [ ] Answer parity, asserted by equality: the same scenario through `respond` and through a drained `streamEvents` produce the same final answer. This is the one job `respond` keeps in this suite
+- [ ] No pending run survives the call: after `respond` returns, the mailbox has nothing parked. A dangling token means the drain is incomplete even if the answer happened to be right
+- [ ] A `respond` turn needs **no `wait` call** to reach its answer. If the model has to call `wait` on this surface, the drain is not doing its job
+
+## Why the parity test is not enough on its own
+
+Two runs can agree on a wrong answer. Both surfaces refusing identically — "I don't have access" — satisfies equality while proving nothing, and that is not a hypothetical: it is what every recorded run of both surfaces did. So parity is asserted **alongside** groundedness, never instead of it.
+
+## Do not let this hide the streaming path
+
+`respond` draining everything makes it the easy surface to test, and a suite that drifts onto it stops observing the three rules entirely. The gated scenarios stay on streaming; `respond` coverage is added beside them, not in place of them. #eventplan

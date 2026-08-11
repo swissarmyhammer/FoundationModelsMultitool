@@ -172,11 +172,28 @@ func runNativeIntegrationScenario(
         )
 
         let start = Date()
-        // Streaming, drained to completion. This is the surface a real client
-        // uses (ACP and async clients stream; nothing ships on `respond`), and
-        // it is the surface Router's ^w8dzvee fix targets. Draining also
-        // restores the route diagnostics: `respond(to:)` returns only the final
-        // answer, so four of the seven failure modes were unobservable on it.
+        // Streaming, drained to completion — and this is not a preference.
+        //
+        // **On `respond(to:)` the design under test does not exist.** `respond`
+        // blocks and drains, so a backgrounded `runCode` is collected before the
+        // caller sees it, a `wait` call has nothing left to wait for, and a
+        // blocking `searchTools` is indistinguishable from a detaching one. A
+        // gated suite driven through `respond` would go green while observing
+        // none of the three rules it exists to check: searchTools blocks,
+        // runCode always backgrounds, wait joins on a token.
+        //
+        // `respond` keeps exactly one job in this suite — proving the final
+        // answer equals what a drained stream accumulates. Answer parity, and
+        // nothing else. Asserted beside groundedness, never instead of it: two
+        // surfaces can agree on a wrong answer, and both refusing identically
+        // ("I don't have access to real-time weather data") satisfies equality
+        // while proving nothing, which is what every recorded run of both
+        // surfaces did.
+        //
+        // Draining also restores the route diagnostics. While this runner used
+        // `respond`, four of the seven failure modes were unobservable and the
+        // MODES line printed `0` for each — reading as "clean" when it meant
+        // "not measured". That is what `routeObservable` exists to prevent.
         let turn = try await streamTurn(of: session, prompt: prompt)
         let elapsed = Date().timeIntervalSince(start)
 
@@ -619,39 +636,44 @@ private struct ScenarioSurface {
 /// and mount order is part of what a host receives: hand-building the array
 /// would let the suite measure an order the product does not recommend.
 ///
-/// `searchTools`'s sample-snippet generator runs on the **`.standard` slot** —
-/// the same model the scenario's own session uses — because the sample is code
-/// the model is told to run, so its quality matters more than its cost. This
-/// harness is therefore where the nested same-model call is measured, wall
-/// clock included.
+/// **No sample-snippet generator, because the product ships without one.**
+/// `makeSessionTools`'s `sampleGenerator:` defaults to `nil` and
+/// `CLIRunner.runDemo` passes only `librarian:` (`CLIRunner.swift:390`), so an
+/// arm that wires one measures a configuration no host runs.
 ///
-/// Two things that arm established, worth knowing before reading its numbers.
-/// A gated n=5 (task `9zk44z6`) graded 13/20, the same value as the arm
-/// without it, and the suite's wall clock roughly doubled with one run at
-/// 16m35s — every `searchTools` call spawns a nested generation, so a thrashing
-/// turn pays it repeatedly. And nothing here yet records whether a sample was
-/// returned or whether the model ran it, so an arm measures "the generator is
-/// wired" rather than "the sample was used"; a result cannot be attributed to
-/// the sample until that diagnostic exists.
+/// It was wired here, and removing it was not a preference. Each generated
+/// sample is a nested generation on the `.standard` slot with up to three
+/// attempts, so every `searchTools` call paid two large-model generations
+/// instead of one. Once discovery stopped detaching — it is a synchronous
+/// prerequisite and must never park — that cost stopped being hidden by a
+/// thrashing turn and became a hard failure: `DetachingToolError.timedOut(tool:
+/// "searchTools", timeoutSeconds: 120.0)`, the whole turn dead in its first
+/// call (task `h773bed`).
+///
+/// The arm was never worth its cost anyway. A gated n=5 (task `9zk44z6`) graded
+/// 13/20, the same value as the arm without it, while roughly doubling the
+/// suite's wall clock. And nothing recorded whether a sample was returned or
+/// whether the model ran one, so it measured "the generator is wired" rather
+/// than "the sample helped".
 ///
 /// - Parameters:
 ///   - tools: the scenario's fixed tool set.
 ///   - fixture: the resolved live fixture whose `.flash` slot backs the
-///     selection tier and whose `.standard` slot writes the sample snippet.
+///     selection tier.
 /// - Returns: the tools to register with the session, and the catalog paths
 ///   behind them.
 /// - Throws: whatever `MultiTool.Builder.buildRegistry()` or
-///   `MultiTool.Registry.makeSessionTools(librarian:sampleGenerator:)` throws.
+///   `MultiTool.Registry.makeSessionTools(librarian:)` throws.
 private func makeScenarioSurface(
     over tools: [any Tool],
     on fixture: LiveRouterFixture
 ) throws -> ScenarioSurface {
     let registry = try MultiTool.Builder().addTools(tools).buildRegistry()
     return ScenarioSurface(
-        tools: try registry.makeSessionTools(
-            librarian: fixture.profile.flash,
-            sampleGenerator: fixture.profile.standard
-        ),
+        // `librarian:` alone, exactly as `CLIRunner.runDemo` mounts it
+        // (`CLIRunner.swift:390`). No `sampleGenerator:` — it defaults to `nil`,
+        // so the product ships without one and this harness must too.
+        tools: try registry.makeSessionTools(librarian: fixture.profile.flash),
         // Unioned with the sibling paths the sandbox binds itself, so a
         // snippet calling `tools.searchTools` or `tools.runCode` is not
         // graded as having invented a path it can really call (task
