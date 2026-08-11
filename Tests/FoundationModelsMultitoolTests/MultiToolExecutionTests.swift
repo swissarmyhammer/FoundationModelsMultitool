@@ -237,6 +237,25 @@ struct MultiToolExecutionTests {
         #expect(description.contains("isolated JavaScript runtime"))
         #expect(description.contains("arithmetic, string work, dates, sorting"))
         #expect(!description.localizedCaseInsensitiveContains("real-time"))
+        // The dialect and its boundary, named. A gated run opened with `import
+        // requests` and Python comments, which the description permitted by
+        // saying only what the runtime *is*. The engine is named because a
+        // model already knows what JavaScriptCore implies — no module loader,
+        // none of node's, deno's or bun's APIs — so naming it carries the whole
+        // restriction in one word.
+        #expect(description.contains("JavaScriptCore, core JavaScript only"))
+        #expect(description.contains("`import` and `require` do not exist"))
+        #expect(description.contains("no node, deno or bun APIs"))
+        #expect(description.contains("every function you can call is under `tools.*`"))
+        // Coordination is awaiting, and `wait()` is forbidden by name. Naming a
+        // thing to forbid it normally puts it back in the option set — the
+        // reason refusal is never named below — but `wait()` is already in the
+        // option set from outside: a detaching host mount hands the model an
+        // envelope instructing exactly that call. A prohibition has to name
+        // what it overrides.
+        #expect(description.contains("Awaiting a call is the whole of how a snippet coordinates its work"))
+        #expect(description.contains("do not wait()"))
+        #expect(description.contains("never time a call or poll for one"))
         // Persona-free, and refusal is never named — naming it would put it
         // back in the option set. An honest failure report replaces it.
         #expect(!description.localizedCaseInsensitiveContains("helpful assistant"))

@@ -216,6 +216,7 @@ func runNativeIntegrationScenario(
                 + "searchToolsFirst=\(searchToolsFirst) "
                 + "priming=\(primingLabel(turn)) "
                 + "textResets=\(turn.supersededAnswers.count) "
+                + "progress=\(turn.progressEvents.count) "
                 + "compactions=\(turn.compactions.count) tokens=\(turn.tokenUsage ?? "n/a") "
                 + "failedCalls=\(turn.failedCalls.count)\(turn.failedCalls.isEmpty ? "" : " \(turn.failedCalls)") "
                 + "reply=\"\(turn.answer.prefix(80))\""
@@ -394,6 +395,19 @@ private struct StreamedTurn {
     /// The direct evidence for whether a turn is near its context ceiling.
     var tokenUsage: String?
 
+    /// Every progress report a still-running call made, as `name: detail`.
+    ///
+    /// The direct measure of the product goal: a slow tool must not go silent.
+    /// It reports that it is in process and keeps streaming events until it is
+    /// done, so a client can show a live view of work it did not have to poll
+    /// for. An empty list on a turn that took minutes is the failure this
+    /// records.
+    ///
+    /// Only the streaming surface can carry these. `respond(to:)` is
+    /// FoundationModels semantics — one await that blocks until the answer —
+    /// so a long tool makes it slower and never makes it chattier.
+    var progressEvents: [String] = []
+
     /// Every tool call the session reported as failed, as `name: detail`.
     ///
     /// Kept because its absence hid a whole class of run: a turn whose calls
@@ -406,6 +420,30 @@ private struct StreamedTurn {
     /// Reported alongside the run's diagnostics: a scored run whose priming
     /// silently failed is not evidence about priming.
     var discoveryPrimingFailure: String?
+}
+
+/// How many characters of one call's arguments or output the trace prints.
+///
+/// Large enough to hold a whole scenario snippet, because a truncated snippet
+/// hides the line that failed.
+private let scenarioTraceLimit = 600
+
+/// Puts one call's arguments or output on a single greppable line.
+///
+/// The `RESULT` line reports what a run *scored*. It cannot report why a run
+/// scored that: a turn that called `runCode` 19 times, failed no call, and
+/// still answered "I am unable to retrieve" prints `typed=[] invoked=[]
+/// returned=[]` and says nothing about what the snippets asked for or what came
+/// back. This is that missing evidence, so one gated run is enough to find the
+/// fault instead of only enough to confirm it.
+///
+/// - Parameter text: the arguments JSON or output text to show.
+/// - Returns: the text on one line, cut to ``scenarioTraceLimit``, with the cut
+///   marked so a short trace is never read as a complete one.
+private func traceExcerpt(_ text: String) -> String {
+    let flattened = text.split(whereSeparator: \.isNewline).joined(separator: " ⏎ ")
+    guard flattened.count > scenarioTraceLimit else { return flattened }
+    return "\(flattened.prefix(scenarioTraceLimit))…[+\(flattened.count - scenarioTraceLimit) more]"
 }
 
 /// Drives one turn of a mounted session and harvests it.
@@ -437,11 +475,25 @@ private func streamTurn(of session: RoutedSession, prompt: String) async throws 
             turn.calls.append(
                 NativeTranscript.StreamedCall(name: name, argumentsJSON: argumentsJSON, output: nil)
             )
+            print("CALL [\(turn.toolCallCount)] \(name) args=\(traceExcerpt(argumentsJSON))")
         case .toolStatus(let id, .completed, let summary):
             turn.toolOutputs.append(summary ?? "")
             if let index = turn.callIndexByID[id] {
                 turn.calls[index].output = summary
             }
+            let name = turn.callIndexByID[id].map { turn.calls[$0].name } ?? "?"
+            print("DONE \(name) out=\(traceExcerpt(summary ?? ""))")
+        case .toolStatus(let id, .running, let summary):
+            // A call reporting progress while it runs. Swallowed by the
+            // catch-all until now, which made two very different runs look
+            // identical: one where a slow call streamed progress the whole
+            // time, and one where it went silent and parked. The product
+            // expectation is the first — a fast call returns inline, a slow one
+            // reports "in process" and streams events until it is done — so a
+            // run that shows none is evidence, not an absence of evidence.
+            let name = turn.callIndexByID[id].map { turn.calls[$0].name } ?? "?"
+            turn.progressEvents.append("\(name): \(summary ?? "no detail")")
+            print("RUN  \(name) progress=\(traceExcerpt(summary ?? ""))")
         case .toolStatus(let id, .failed, let summary):
             // A call the session could not complete. Previously invisible: the
             // catch-all below swallowed it, so a run where every call failed

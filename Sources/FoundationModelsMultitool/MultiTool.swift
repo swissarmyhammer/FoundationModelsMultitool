@@ -326,13 +326,17 @@ public struct MultiTool: Tool {
         runCode is an isolated JavaScript runtime that runs one snippet and returns what
         that snippet returns — use it for any computation (arithmetic, string work,
         dates, sorting, reshaping JSON) and for this session's functions, which it
-        exposes under `tools.*`. Write one snippet calling the exact `tools.*` paths
-        searchTools returned, await every call, and `return` the final value; only that
-        value comes back. Answer only from what the snippet returns: never state a fact
-        about the user's data that did not come from a `tools.*` return value, and never
-        claim success for a call the snippet did not actually return. When a snippet
-        fails, fix it and call runCode again immediately. Ambient globals never appear
-        in searchTools — run `docs("globals")` in a snippet to read them.
+        exposes under `tools.*`. The runtime is JavaScriptCore, core JavaScript only:
+        `import` and `require` do not exist, there are no modules and no node, deno or
+        bun APIs, and every function you can call is under `tools.*`. Write one snippet
+        calling the exact `tools.*` paths searchTools returned, await every call, and
+        `return` the final value; only that value comes back. Awaiting a call is the
+        whole of how a snippet coordinates its work: do not wait(), and never time a
+        call or poll for one. Answer only from what the snippet returns: never
+        state a fact about the user's data that did not come from a `tools.*` return
+        value, and never claim success for a call the snippet did not actually return.
+        When a snippet fails, fix it and call runCode again immediately. Ambient globals
+        never appear in searchTools — run `docs("globals")` in a snippet to read them.
         """
 
     /// Where this tool logs its M10 diagnostics — one `runCode` call's
