@@ -44,10 +44,11 @@ cost to ignore them.
 
 ## The vocabulary and the host substrate are in Router
 
-`OperationEvent`, `OperationEventKind`, `OperationOutcome`,
-`OperationEventSink`, and `EventEmittingTool` move out of OperationTool into
-Router. The host owns the vocabulary. The host also owns the outbox, the
-mailbox, and the ambient `ToolContext`.
+`OperationEvent`, `OperationEventKind`, `OperationOutcome`, and
+`OperationEventSink` move out of OperationTool into Router. The host owns the
+vocabulary. The host also owns the outbox, the mailbox, and the ambient
+`ToolContext`. (`EventEmittingTool` moved too, and the propagation probe then
+deleted it — see "Phases".)
 
 MultiTool already has a hard dependency on Router. Its library target links the
 `FoundationModelsRouter` product today. Also, the selection tier of
@@ -139,14 +140,15 @@ is the only place where `.lost` appears outside an MCP transport drop.
 
 ## MultiTool is a host and an emitter
 
-At build time, MultiTool finds emitters in its registry with a conformance
-cast. It connects each emitter to its mailbox sink. This is the same wiring
-that Router does today, one level down.
+MultiTool wires no emitter protocol. The propagation probe deleted
+`EventEmittingTool` / `connecting(_:)` (see "Phases"): the ambient
+`ToolContext` is the one event route, and each tool posts through
+`ToolContext.current`. The invoker's binding selects the sink.
 
-MultiTool itself conforms to `EventEmittingTool`. Router finds it with the same
-cast and connects the outbox, without change. MultiTool's sink updates the
-mailbox first and then sends the event upstream. One connection point, two
-consumers, no new protocol.
+Router binds the context around native `respond()` with the session outbox as
+the sink. `ToolInvoker` binds it for each `tools.*` call with MultiTool's own
+sink. MultiTool's sink updates the mailbox first and then sends the event
+upstream. One binding point, two consumers, no protocol.
 
 If a parked call has no events of its own, the engine makes the events. This
 occurs where elevation is on: the native mount, and the outer `runCode` run.
@@ -211,10 +213,10 @@ Ambience has three effects:
    `EventEmittingContext` only requested. The text of the rule stays: capture
    the context one time, at operation start, into the object that continues
    after the call.
-3. **`connecting(_:)` is a candidate for removal.** The propagation probe of
-   phase 1 decides this (see "Phases"). If task locals arrive through Apple's
-   `respond()`, we delete the protocol. If they do not arrive, the protocol
-   stays as the fallback for the native path. Code mode never depends on it.
+3. **`connecting(_:)` is removed.** The phase-1 propagation probe decided
+   this (see "Phases"): task locals DO arrive through Apple's `respond()` —
+   observed on a real run, both on the MLX path and on the system model — so
+   we delete the protocol. Code mode never depended on it.
 
 ## Async JavaScript
 
@@ -734,18 +736,24 @@ question. When Apple's `LanguageModelSession.respond` calls a tool, does the
 task-local `ToolContext` arrive, or is it `nil`? One probe tool reads
 `ToolContext.current` inside `call(arguments:)`. The test binds the context
 around `respond()`. It runs one prompt on the MLX path and one on the system
-model. The two answers are both acceptable, and we decide the two branches now:
+model.
 
-- The context propagates → native tools get the ambient context free. We
-  delete `EventEmittingTool` / `connecting(_:)` in this phase.
-- The context does not propagate → native tools keep composition-time wiring.
-  That wiring must carry the *full* context: the sink and the mailbox.
-  `ElevatingTool` reads the mailbox from the ambient context, and elevation on
-  the native path would break without the full context. The protocol stays.
+**The probe ran on real hardware (Apple Silicon, macOS 27.0 build 26A5388g,
+MacOSX27.0.sdk, Swift 6.4, 2026-08-04), and the answer is: the context
+PROPAGATES on both paths.** On
+the MLX path (`MLXLanguageModel` over Qwen3.6-27B) and on
+`SystemLanguageModel.default` alike, `ToolContext.current` arrived non-`nil`
+inside `call(arguments:)` and carried exactly the `completionToken` the test
+bound. Apple's tool dispatch runs the tool inside the calling task's
+structured-concurrency tree. The probe is
+`PropagationProbeIntegrationTests` in Router's gated integration suite, and
+it pins this verdict as a hard assertion on each path. As a result, native
+tools get the ambient context free, and we delete `EventEmittingTool` /
+`connecting(_:)` in this phase.
 
-The two results have no effect on code mode. `ToolInvoker` binds the context
-itself, and no Apple code is in that path. The probe gates a file deletion. It
-never gates the phase.
+The result has no effect on code mode. `ToolInvoker` binds the context
+itself, and no Apple code is in that path. The probe gated a file deletion.
+It never gated the phase.
 
 Exit: Router imports no `Operations` (only the shim points the other way). The
 Router and MultiTool gated suites are green. The org-wide zero-imports check
