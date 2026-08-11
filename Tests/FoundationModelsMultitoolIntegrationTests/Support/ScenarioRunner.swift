@@ -242,6 +242,9 @@ func runNativeIntegrationScenario(
                     invokedPaths: evidence.invokedPaths,
                     catalogPaths: surface.catalogPaths,
                     searchToolsFirst: searchToolsFirst,
+                    // The `respond(to:)` path returns only the final answer, so
+                    // nothing about the route was observed on this run.
+                    routeObservable: false,
                     returnedValues: NativeTranscript.returnedValues(in: turn.calls),
                     isValidAnswer: checks.contains { $0.name == validAnswerCheckName && $0.held }
                 )

@@ -39,6 +39,17 @@ struct ScenarioObservation {
     /// Whether a `searchTools` call preceded the first `runCode` call.
     var searchToolsFirst: Bool
 
+    /// Whether this run could observe the turn's *route* at all — the ordered
+    /// tool calls, their typed paths, and their outputs.
+    ///
+    /// `false` on the `respond(to:)` path, which returns only the final answer:
+    /// no events, so no call order and no snippet text. Four of the seven
+    /// failure modes are derived purely from the route, and with nothing to
+    /// derive from they compute to `0` — indistinguishable from a measured
+    /// clean run. They print `n/a` instead. This is the same defect class as a
+    /// `priming=ok` printed when priming was never requested.
+    var routeObservable: Bool = true
+
     /// The scalar values the tools genuinely returned to the model this
     /// turn — see `NativeTranscript.returnedValues(in:)`.
     var returnedValues: Set<String>
@@ -104,6 +115,10 @@ struct ScenarioFailureModes {
     /// A `searchTools` call preceded the first `runCode` call.
     let searchedFirst: Bool
 
+    /// Whether the route-derived modes were measurable — see
+    /// ``ScenarioObservation/routeObservable``.
+    let routeObservable: Bool
+
     /// The turn made more calls than `scenarioThrashFactor` times the
     /// minimum the scenario needs.
     let didThrash: Bool
@@ -141,6 +156,7 @@ struct ScenarioFailureModes {
         // source can report it.
         inventedPaths = observation.typedPaths.subtracting(observation.catalogPaths).sorted()
         searchedFirst = observation.searchToolsFirst
+        routeObservable = observation.routeObservable
         didThrash = observation.toolCallCount > scenarioMinimumToolCalls * scenarioThrashFactor
         isGroundedButWrongForm =
             !observation.isValidAnswer
@@ -162,19 +178,29 @@ struct ScenarioFailureModes {
     /// - Parameter scenario: the scenario label.
     /// - Returns: the `MODES` line to print.
     func line(scenario: String) -> String {
-        let flags = [
+        // The reply-derived modes are measurable on every path; the
+        // route-derived four are not. Printing `0` for a mode this run could
+        // not observe reads as a measured clean result, which is how a
+        // `priming=ok` on an unprimed run misled a whole A/B.
+        let replyModes = [
             ("overRefusal", isOverRefusal),
             ("answeredWithoutCalling", answeredWithoutCalling),
             ("announceThenStop", didAnnounceThenStop),
+        ]
+        let routeModes = [
             ("inventedPath", !inventedPaths.isEmpty),
             ("searchedFirst", searchedFirst),
             ("thrash", didThrash),
             ("groundedButWrongForm", isGroundedButWrongForm),
         ]
-        .map { name, held in "\(name)=\(held ? 1 : 0)" }
-        .joined(separator: " ")
-        return "MODES [\(scenario)] \(flags) invented=[\(inventedPaths.joined(separator: ","))] "
-            + "toolCalls=\(toolCallCount)"
+        let flags = (replyModes.map { name, held in "\(name)=\(held ? 1 : 0)" }
+            + routeModes.map { name, held in
+                routeObservable ? "\(name)=\(held ? 1 : 0)" : "\(name)=n/a"
+            })
+            .joined(separator: " ")
+        let invented = routeObservable ? inventedPaths.joined(separator: ",") : "n/a"
+        return "MODES [\(scenario)] \(flags) invented=[\(invented)] "
+            + "toolCalls=\(routeObservable ? String(toolCallCount) : "n/a")"
     }
 
     /// The phrasings that count as denying access or capability.
