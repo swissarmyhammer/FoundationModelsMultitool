@@ -1,8 +1,8 @@
 ---
 assignees:
 - claude-code
-position_column: todo
-position_ordinal: '80'
+position_column: done
+position_ordinal: bf80
 title: 'runCode''s description forbids wait(): awaiting is the whole of how a snippet coordinates its work'
 ---
 ## Why
@@ -57,7 +57,27 @@ The model did exactly what it was told and got a pending envelope for a **differ
 - [x] `runCode`'s description says `do not wait()`, in the same sentence that states awaiting is the whole of how a snippet coordinates its work, and that nothing is ever timed or polled
 - [x] The description contract test pins that clause, so it cannot be dropped in a later edit of the description
 - [x] Ungated suite green: 320 tests / 26 suites, plus 49 / 8
-- [ ] `MULTITOOL_INTEGRATION=1 swift test --filter singleCallWeather` is re-run and it is recorded whether the model still writes a `wait(...)` snippet when handed a pending envelope. **This can legitimately still fail**: the envelope is a live instruction arriving mid-turn, and a description clause may not outweigh it. Record what happens rather than assuming the clause wins
+- [x] `MULTITOOL_INTEGRATION=1 swift test --filter singleCallWeather` re-run and recorded. **The clause lost.** See below
+
+## Measured — gated run, Router `81d5142`, 244s, 16 tool calls
+
+The model wrote `return await wait("01KZ…", 60)` **seven times** — calls 3, 4, 5, 7, 8, 11, 12 — with `do not wait()` in the description it had been given.
+
+```
+CALL [2] searchTools → {"pending":true,"completionToken":"01KZRC1MCBTFEC239ZPDG6SH9P","next":"… return await wait(\"01KZRC1MCBTFEC239ZPDG6SH9P\", 60) …"}
+CALL [3] runCode     args={"code": "return await wait(\"01KZRC1MCBTFEC239ZPDG6SH9P\", 60)"}
+DONE     runCode     → {"pending":true,"completionToken":"01KZRC20TEP1542R5R4A4CG0MZ", …}
+```
+
+This is the outcome the criterion was written to allow, and it is the right result to have measured rather than assumed. A standing clause read once at the start of a turn does not outweigh a live instruction that arrives mid-turn carrying a specific token to act on. The envelope is more specific, more recent, and names the exact next call; the description is general and earlier.
+
+**The lesson is about where a prohibition can live.** Wording on our side cannot win an argument with an instruction the host injects. That is not an argument for stronger wording — it is the evidence that this class of fix belongs at the source of the instruction. Router `^w8dzvee` D5 carries it: the envelope must stop prescribing a wall-clock wait.
+
+Nothing here should be re-tuned in response to this result. The clause is correct, tested, and stays — it stops being contradicted when the envelope changes.
+
+### Also observed, and reported to Router
+
+Every one of the 16 calls emitted `.toolStatus(.running, …)` with an **empty summary** (`progress=16`, and every traced line reads `progress=` with nothing after it). So the "in process" signal reaches a client, and carries no detail. Recorded on `^w8dzvee` beside the usage note.
 
 ### Not required to close this card
 

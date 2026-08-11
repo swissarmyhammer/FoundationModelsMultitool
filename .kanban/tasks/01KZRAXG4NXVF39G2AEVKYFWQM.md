@@ -1,8 +1,8 @@
 ---
 assignees:
 - claude-code
-position_column: todo
-position_ordinal: '8180'
+position_column: done
+position_ordinal: be80
 title: 'runCode must state its dialect: JavaScriptCore, no modules, and tools.* is the only way out'
 ---
 ## Why
@@ -38,4 +38,26 @@ The engine is named rather than merely described. A model already knows what Jav
 - [x] The engine is named: "The runtime is JavaScriptCore, core JavaScript only", followed by `import` and `require` do not exist, no modules, no node/deno/bun APIs, and every callable function is under `tools.*`
 - [x] The description contract test (`MultiToolExecutionTests.descriptionCarriesTheErrorRecoveryContract`) pins every new clause and passes. Correction to this card as first written: there is **no** word/sentence budget test on the description — that count was editorial discipline, not an enforced rule
 - [x] Ungated suite green with the new clauses: 320 tests / 26 suites, plus 49 / 8
-- [ ] `MULTITOOL_INTEGRATION=1 swift test --filter singleCallWeather` is re-run and the opening `CALL [1]` recorded, whatever it is. The claim is that the model stops reaching for modules; no unit test can show that. **Not blocked on Router**: this is measurable from the first call the model makes, which happens before any tool parks #eventplan
+- [x] `MULTITOOL_INTEGRATION=1 swift test --filter singleCallWeather` re-run, opening call recorded. **The clause worked.**
+
+## Measured — gated run, Router `81d5142`, 244s, 16 tool calls
+
+Before, the opening call was Python reaching for an HTTP module:
+
+```
+CALL [1] runCode args={"code": "import requests\nimport json\n\n# Get current weather for Austin, TX\napi_key = \"YOUR_API_KEY\"  # Placeholder — need to check if there's a built-in weather tool\n..."}
+```
+
+After, it is JavaScript against a real sandbox path:
+
+```
+CALL [1] runCode args={"code": "tools.searchTools(task=\"Get current weather for a specific city\")"}
+```
+
+`grep -cE 'import |require\(|api_key'` over the whole run: **0**. Not one module reach, in sixteen calls. `typed=["searchTools"]` — the snippet named a path that exists, so the sibling binding was used rather than an invented one.
+
+### Residual, honestly: the argument form is still Python
+
+`tools.searchTools(task="…")` is a keyword argument. JavaScript has none; the correct form is `tools.searchTools({task: "…"})`. So the *module* idiom is gone and the *calling* idiom is not.
+
+It did not surface as an error this run only because the call parked before it could fail, so this is unproven either way as a repairable error. Left unfixed here deliberately: the description already carries the call form in its worked example, and adding a second sentence about argument syntax is a guess about what the model reads. Fix it when a run shows the error text, not before. #eventplan
