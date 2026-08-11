@@ -209,6 +209,7 @@ func runNativeIntegrationScenario(
         // off this file.
         print(
             "RESULT [\(name)] elapsed=\(elapsed)s toolCalls=\(turn.toolCallCount) "
+                + "turn=\(turn.turnIdentity ?? "n/a") "
                 + "typed=\(evidence.typedPaths.sorted()) "
                 + "invoked=\(evidence.invokedPaths.sorted()) "
                 + "returned=\(evidence.returnedPaths.sorted()) "
@@ -395,6 +396,15 @@ private struct StreamedTurn {
     /// The direct evidence for whether a turn is near its context ceiling.
     var tokenUsage: String?
 
+    /// The turn frame this run's events belong to, as `turnId/promptId`.
+    ///
+    /// Router reports it once per turn (`^way106d`). `direct` in the prompt
+    /// half means the prompt was handed straight to `streamEvents(to:)` rather
+    /// than queued — only a queued prompt carries an id to correlate, so this
+    /// is the field a queued-prompt test reads to prove its prompt is the one
+    /// that ran.
+    var turnIdentity: String?
+
     /// Every progress report a still-running call made, as `name: detail`.
     ///
     /// The direct measure of the product goal: a slow tool must not go silent.
@@ -457,6 +467,13 @@ private func streamTurn(of session: RoutedSession, prompt: String) async throws 
     var turn = StreamedTurn()
     for try await event in await session.streamEvents(to: prompt) {
         switch event {
+        case .turnStarted(let start):
+            // The frame this turn's later events belong to (Router ^way106d).
+            // `promptId` is nil here by design: these scenarios hand the prompt
+            // straight to `streamEvents(to:)` rather than queueing it, and only
+            // a queued prompt has an id to correlate. A queued-prompt test is
+            // what reads that field.
+            turn.turnIdentity = "\(start.turnId)/\(start.promptId.map { "\($0)" } ?? "direct")"
         case .textDelta(let fragment):
             turn.answer += fragment
         case .textReset:

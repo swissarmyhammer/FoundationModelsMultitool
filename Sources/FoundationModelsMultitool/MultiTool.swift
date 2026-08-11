@@ -148,8 +148,11 @@ extension MultiTool {
             librarian: RoutedLLM?,
             sampleGenerator: RoutedLLM? = nil
         ) throws -> [any Tool] {
+            // `wait` is mounted in both modes: a direct-mode surface still
+            // detaches a slow `runCode`, so a model still needs a way to say
+            // "I cannot continue without that result" (task `h773bed`).
             guard supportsSearchTools else {
-                return [MultiTool(registry: self)]
+                return [MultiTool(registry: self), WaitTool()]
             }
             let searchTools = try SearchToolsTool(
                 registry: self,
@@ -161,7 +164,12 @@ extension MultiTool {
             // reaches for it mid-run. One instance means one librarian and one
             // sample generator, so the two doors cannot answer differently.
             let runCode = MultiTool(registry: self, searchTools: searchTools)
-            return [searchTools, runCode]
+            // Presented last, deliberately. A model reads "discover what
+            // exists", then "execute code", and only then "block until
+            // something finishes" — which is the rarest of the three and the
+            // one it should reach for only when the other two have left it
+            // waiting on a result.
+            return [searchTools, runCode, WaitTool()]
         }
     }
 }

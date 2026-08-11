@@ -1,3 +1,4 @@
+import Foundation
 import FoundationModels
 import FoundationModelsMetadataRegistry
 import FoundationModelsRouter
@@ -345,4 +346,48 @@ public struct SearchToolsTool: Tool {
         return "searchTools(\"\(task)\") wrote this snippet for that task:\n\n\(sample)\n\n"
             + "\(runSampleFooter)\n\n\(signaturesHeading)\n" + blocks
     }
+}
+
+// MARK: - Discovery does not detach (task h773bed)
+
+extension SearchToolsTool: DetachmentParameterProviding {
+    /// The per-call clocks a discovery call carries: a wait long enough that
+    /// discovery always finishes inline.
+    ///
+    /// **Discovery is a prerequisite read, so parking it is never useful.** A
+    /// model cannot write a snippet without knowing which `tools.*` paths
+    /// exist, so there is no concurrent work for a detached discovery call to
+    /// overlap with — nothing can proceed until it answers. Parking it turns a
+    /// blocking dependency into a dependency the model has to go and collect,
+    /// which is strictly worse than waiting for it.
+    ///
+    /// Measured, it was worse than that. With the selection tier on a 27B, a
+    /// discovery call takes longer than the mount's stock 5-second wait, so
+    /// every one of them parked; the model was then handed a pending envelope
+    /// and never obtained the catalog at all. Three gated runs ended
+    /// `invoked=[] returned=[]` with the model answering "I don't have access
+    /// to real-time weather data" (tasks `w8dzvee` D5, `h773bed`).
+    ///
+    /// The wait is stated here rather than left to the mount because the mount
+    /// cannot know this: `DetachConfiguration.waitSeconds` is one number for
+    /// every tool, and "how long may this call block" is a property of what the
+    /// call is for. `timeout` is left `nil` — the work clock is the searcher's
+    /// own business, and this tool imposes no ceiling on it.
+    ///
+    /// - Parameter arguments: the call's arguments, unread: every discovery
+    ///   call gets the same wait, because every one of them is a prerequisite.
+    /// - Returns: the wait clock, and no work clock.
+    public func detachmentClocks(
+        from arguments: GeneratedContent
+    ) -> (waitSeconds: TimeInterval?, timeout: TimeInterval?) {
+        (Self.inlineWaitSeconds, nil)
+    }
+
+    /// How long a discovery call may block before the mount would detach it.
+    ///
+    /// Long enough that a nested generation on a large selection model finishes
+    /// inline — a 27B discovery call has been measured in the tens of seconds —
+    /// and not unbounded, so a wedged searcher still eventually hands control
+    /// back rather than holding the turn open forever.
+    static let inlineWaitSeconds: TimeInterval = 300
 }

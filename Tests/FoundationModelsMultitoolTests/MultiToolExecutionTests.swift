@@ -319,7 +319,9 @@ struct MultiToolExecutionTests {
 
         let mounted = try registry.makeSessionTools(librarian: nil)
 
-        #expect(mounted.map(\.name) == ["searchTools", "runCode"])
+        // `wait` comes last: discover, then execute, then block only if a
+        // result is still outstanding (task `h773bed`).
+        #expect(mounted.map(\.name) == ["searchTools", "runCode", "wait"])
     }
 
     @Test("A direct-mode registry vends runCode alone — there is no searchTools to present")
@@ -331,7 +333,9 @@ struct MultiToolExecutionTests {
 
         let mounted = try registry.makeSessionTools(librarian: nil)
 
-        #expect(mounted.map(\.name) == ["runCode"])
+        // Direct mode drops discovery, not waiting: a slow `runCode` still
+        // detaches, so the model still needs a deliberate join.
+        #expect(mounted.map(\.name) == ["runCode", "wait"])
     }
 
     @Test("Both vended tools are backed by the registry they were vended from, not an empty one")
@@ -345,7 +349,10 @@ struct MultiToolExecutionTests {
         // The runCode half dispatches into the registry's real wrapped tool:
         // a `MultiTool` over an empty registry would render a repairable
         // error for `tools.getCities` instead of the itinerary.
-        let runCode = try #require(mounted.last as? MultiTool)
+        // Found by type, never by position: `wait` is mounted after `runCode`,
+        // and a positional read silently tested the wrong tool the moment the
+        // array grew.
+        let runCode = try #require(mounted.compactMap { $0 as? MultiTool }.first)
         let itinerary = try await runCode.call(
             arguments: RunCodeArguments(code: #"return (await tools.getCities()).cities.join("-");"#)
         )

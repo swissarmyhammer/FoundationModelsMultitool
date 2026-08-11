@@ -42,7 +42,10 @@ import FoundationModelsRouter
 /// The `state` discriminator every run-plane global stamps on the object it
 /// hands back, so a snippet branches on one field rather than on which keys
 /// happen to be present.
-private enum RunPlaneState {
+/// Internal rather than file-private since task `h773bed`: the `wait` **tool**
+/// reports a settled run with the same state names the sandbox globals do, and
+/// restating the strings there would let two spellings of "settled" drift.
+enum RunPlaneState {
     /// The run is registered with the mailbox and has not settled.
     static let parked = "parked"
 
@@ -445,7 +448,10 @@ extension MultiTool {
     ///   - terminal: the terminal event.
     ///   - state: the ``RunPlaneState`` this event is being reported under.
     /// - Returns: the object's fields.
-    private static func terminalEventFields(
+    /// Internal rather than file-private since task `h773bed`: the `wait`
+    /// **tool** reports a settled run through this same builder, so a run reads
+    /// identically however it was collected.
+    static func terminalEventFields(
         of terminal: OperationEvent,
         state: String
     ) -> [String: InterpreterValue] {
@@ -466,7 +472,9 @@ extension MultiTool {
     ///   - state: the ``RunPlaneState`` being reported.
     ///   - token: the completion token the call named.
     /// - Returns: the object's fields.
-    private static func tokenOnlyFields(state: String, token: String) -> [String: InterpreterValue] {
+    /// Internal rather than file-private since task `h773bed`: the `wait` **tool**
+    /// reports an unknown token and an elapsed bound through this same builder.
+    static func tokenOnlyFields(state: String, token: String) -> [String: InterpreterValue] {
         ["state": .string(state), "completionToken": .string(token)]
     }
 
