@@ -507,12 +507,13 @@ the shared engine. The `.stopped` outcome keeps its authoritative
 
 **Files** (`Capabilities/Files`) gets the six operations: read, write, edit,
 patch, glob, and grep. It also gets `PathGuard` root bounds, `Hashline`, the
-shape-inferred dispatch of `EditEngine`, `AtomicWriter`, `FileChangeJournal`,
-and the `DiagnosticsBridge`. The FoundationModelsCodeContext dependency comes
-with it. Live compiler diagnostics in each write result and edit result is the
-full point of the capability, per do-more-per-call. Corrective results (a
-payload that cannot resolve; a path outside the root) stay in-band. They are
-never thrown.
+shape-inferred dispatch of `EditEngine`, `AtomicWriter`, and
+`FileChangeJournal`. The capability does file operations only. We do not move
+the `DiagnosticsBridge` or `FileDiagnostics`, and we do not add the
+FoundationModelsCodeContext dependency: inline diagnostics make each write
+and each edit wait for an LSP settle window, and this is too slow (decision
+2026-08-11). Corrective results (a payload that cannot resolve; a path
+outside the root) stay in-band. They are never thrown.
 
 **MCP** (`Capabilities/MCP`) gets `MCPServer`, `StdioServerProcess`, the
 `SchemaConverter` / `GeneratedContentCodec` pair, `ToolContentRenderer` with
@@ -761,9 +762,10 @@ Shelltool — move to the MultiTool capability, and we archive the
 FoundationModelsShelltool repository.
 
 **Phase 3 — files. Tag: `consolidation-3-files`.** `Capabilities/Files` gets
-the six operations, `PathGuard`, `Hashline`, `EditEngine`, `AtomicWriter`,
-`FileChangeJournal`, and `DiagnosticsBridge`. It brings the
-FoundationModelsCodeContext dependency. Exit: ACPAgent and Skills move off
+the six operations, `PathGuard`, `Hashline`, `EditEngine`, `AtomicWriter`, and
+`FileChangeJournal`. It does not get `DiagnosticsBridge`, and it does not
+bring the FoundationModelsCodeContext dependency (decision 2026-08-11, see
+"Consolidation of the siblings"). Exit: ACPAgent and Skills move off
 FileTool, and we archive the FoundationModelsFileTool repository.
 
 **Phase 4 — mcp. Tag: `consolidation-4-mcp`.** `Capabilities/MCP` gets
