@@ -12,7 +12,7 @@ import ULID
 /// The gated scenarios score 0/4 on Router's session and 1/4-3/4 on a plain
 /// `LanguageModelSession`, with the model reporting that it has no functions
 /// at all (task `tkrdwb8`). Router's per-session tool wiring was the first
-/// suspect, since it wraps every tool in `ElevatingTool` before the model sees
+/// suspect, since it wraps every tool in `DetachingTool` before the model sees
 /// it. These tests exist to keep that suspicion answered: the wrapper is
 /// transparent, so a future regression there is caught here rather than in a
 /// twenty-minute gated run.
@@ -81,14 +81,14 @@ struct RouterSessionMountTests {
 
     /// Wraps `tool` the way a Router session wraps every tool it mounts.
     ///
-    /// `ElevationConfiguration.nativeSessionMount` is the one configuration
+    /// `DetachConfiguration.nativeSessionMount` is the one configuration
     /// `RoutedModel.makeSession` applies, so this is the same composition the
     /// gated scenarios run through.
     ///
     /// - Parameter tool: the tool to mount.
     /// - Returns: the composed, model-facing tool.
     private static func sessionMounted(_ tool: any Tool) -> any Tool {
-        ToolElevation.wrapping(
+        ToolDetachment.wrapping(
             tool,
             sessionID: ULID(),
             mailbox: SessionMailbox(),

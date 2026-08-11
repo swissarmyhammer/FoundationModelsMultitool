@@ -21,8 +21,8 @@ struct HardeningTests {
         // clock's: the two were both 5 seconds, so the interpreter's watchdog
         // killed a snippet at the instant its run elevated — see
         // `MultiToolConfiguration.executionTimeLimit`.
-        #expect(configuration.executionTimeLimit == ElevationConfiguration.defaultTimeoutSeconds)
-        #expect(configuration.executionTimeLimit > ElevationConfiguration.defaultWaitSeconds)
+        #expect(configuration.executionTimeLimit == DetachConfiguration.defaultTimeoutSeconds)
+        #expect(configuration.executionTimeLimit > DetachConfiguration.defaultWaitSeconds)
         #expect(configuration.liveContextLimit == MultiToolConfiguration.defaultLiveContextLimit)
         #expect(configuration.returnValueCharacterLimit == ResultRendererLimits.default.returnValueCharacterLimit)
         #expect(configuration.consoleCharacterLimit == ResultRendererLimits.default.consoleCharacterLimit)

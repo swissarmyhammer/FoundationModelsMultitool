@@ -58,7 +58,7 @@ enum SandboxNotice: Sendable {
 /// deliver through. Starting an independent `Task` per call would deliver, but
 /// out of order — a snippet loop's `progress("step 1")` could reach the sink
 /// after `progress("step 2")`. Each enqueue therefore chains onto the previous
-/// delivery's handle, exactly as `ElevatingTool`'s own funnel serializes its
+/// delivery's handle, exactly as `DetachingTool`'s own funnel serializes its
 /// upstream deliveries: the snippet keeps running (nothing blocks the JS
 /// thread), while the session observes the notices in the order the snippet
 /// made them.

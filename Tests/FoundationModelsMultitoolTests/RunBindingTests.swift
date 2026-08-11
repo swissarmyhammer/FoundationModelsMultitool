@@ -36,7 +36,7 @@ struct RunBindingTests {
         let sink = RecordingEventSink()
         let binding = RunBinding(
             context: makeOuterRunContext(mailbox: mailbox, sink: sink),
-            innerElevation: ElevationConfiguration(mode: .runToCompletion, waitSeconds: elapsedWaitSeconds)
+            innerElevation: DetachConfiguration(mode: .runToCompletion, waitSeconds: elapsedWaitSeconds)
         )
 
         let output = try await binding.invoke(slowTool, arguments: NoArguments(unused: nil))

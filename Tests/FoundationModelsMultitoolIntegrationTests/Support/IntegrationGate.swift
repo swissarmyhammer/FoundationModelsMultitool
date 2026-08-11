@@ -175,9 +175,20 @@ var multitoolIntegrationEnabled: Bool {
 /// MoE varies run to run (the 35B-A3B hovered at 3-4/4). At mxfp4 it is
 /// ~half the weight and memory bandwidth of the 27B-mxfp8 that also hit 4/4
 /// but took ~4x the wall time. `standard` therefore moves to the dense 27B.
+///
+/// `selection` uses the same dense 27B as `generation` (human-directed
+/// 2026-08-10). The selection tier answers *which* catalog entries a
+/// `searchTools` query wants, and it was the one slot still served by the old
+/// 1.5B — a model two capability generations below the one whose answers it
+/// feeds. Sharing one `ModelRef` across both slots also means one resident
+/// model rather than a swap between generation and selection on every search.
+///
+/// Neither reference carries an `@revision`, so both track their repository's
+/// default revision rather than a fixed commit — these are model *choices*,
+/// not version locks, whatever the surrounding prose calls them.
 private enum TinyModels {
     static let generation: ModelRef = "mlx-community/Qwen3.6-27B-mxfp4"
-    static let selection: ModelRef = "mlx-community/Qwen2.5-1.5B-Instruct-4bit"
+    static let selection: ModelRef = generation
     static let embedding: ModelRef = "mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ"
 }
 
@@ -193,7 +204,18 @@ let multitoolTinyProfile = ProfileDefinition(
     standard: [TinyModels.generation],
     flash: [TinyModels.selection],
     embedding: [TinyModels.embedding],
-    context: 8192
+    // `nil`, not a number: resolve the model's own context window rather than
+    // imposing one. The 8192 that stood here was sized for the *selection*
+    // tier's assembled prefix, and it was silently applied to the generation
+    // turn too — a turn that carries two tool descriptions, a verbose
+    // `searchTools` result, and a snippet. Qwen3.6-27B's real window is far
+    // larger, so the cap constrained nothing except us: a generation turn that
+    // outgrows it loses the very tool definitions and discovery output it is
+    // supposed to act on, which is exactly the "there are no available tools
+    // or functions in this session" reply this suite kept recording.
+    // `ProfileDefinition.defaultContext` remains the fallback if the lookup
+    // fails, so this cannot resolve to nothing.
+    context: nil
 )
 
 /// The one-at-a-time turnstile every gated scenario passes through before it

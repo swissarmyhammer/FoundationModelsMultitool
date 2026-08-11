@@ -172,7 +172,7 @@ extension MultiTool {
 /// The clocks are the envelope half of eventplan.md § "Consolidation of the
 /// siblings" — `waitSeconds` bounds how long the *caller* waits,
 /// ``timeout`` bounds how long the *work* runs — and reach the elevation
-/// engine through `MultiTool`'s `ElevationParameterProviding` conformance
+/// engine through `MultiTool`'s `DetachmentParameterProviding` conformance
 /// (see `MultiTool+Elevation.swift`). Both are optional: a call that supplies
 /// only `code` runs on the host's own defaults, exactly as every `runCode`
 /// call did before the clocks existed.

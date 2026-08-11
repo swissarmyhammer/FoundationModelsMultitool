@@ -372,7 +372,7 @@ public protocol Interpreter: Sendable {
     /// ceiling under a host that configured a different one — the exact
     /// mismatch this member exists to make impossible, and one that put a
     /// `JSCInterpreter()`'s stock limit within collision range of
-    /// `ElevationConfiguration.defaultWaitSeconds`. A conformer with no
+    /// `DetachConfiguration.defaultWaitSeconds`. A conformer with no
     /// wall-clock mechanism of its own has nothing to arm and returns
     /// `self`, and says so in its own documentation.
     ///

@@ -41,7 +41,7 @@ import FoundationModelsRouter
 /// ## What it does
 ///
 /// ``invoke(_:arguments:)`` mounts each inner call on the shared
-/// `ElevatingTool` engine with elevation **off** — eventplan.md "Elevation":
+/// `DetachingTool` engine with elevation **off** — eventplan.md "Elevation":
 /// "two mounts, one engine, two policies." Only the outer `runCode` call
 /// elevates; an inner call runs to completion, bounded by its `timeout`. The
 /// engine still owns correlation, events, and outcomes for inner calls: it
@@ -55,7 +55,7 @@ struct RunBinding: Sendable {
     /// `timeout` — the constraint boundary (eventplan.md "The constraint
     /// boundary, and the escape hatch"): a snippet never receives a pending
     /// envelope in place of a value it awaited.
-    static let innerCallMount = ElevationConfiguration(mode: .runToCompletion)
+    static let innerCallMount = DetachConfiguration(mode: .runToCompletion)
 
     /// The ambient context captured at the top of the enclosing `runCode`
     /// invocation — its session identity, mailbox, upstream sink, and the
@@ -66,7 +66,7 @@ struct RunBinding: Sendable {
     /// an elevation-off mode; the clocks are exposed so a caller (and this
     /// package's own tests) can bound an inner call differently without
     /// changing the policy.
-    let innerElevation: ElevationConfiguration
+    let innerElevation: DetachConfiguration
 
     /// The binding for the enclosing `runCode` invocation, or `nil` when no
     /// session bound an ambient context around it — a `MultiTool`
@@ -88,7 +88,7 @@ struct RunBinding: Sendable {
     ///     `runCode` invocation.
     ///   - innerElevation: the mount policy for inner `tools.*` calls.
     ///     Defaults to ``innerCallMount``.
-    init(context: ToolContext, innerElevation: ElevationConfiguration = RunBinding.innerCallMount) {
+    init(context: ToolContext, innerElevation: DetachConfiguration = RunBinding.innerCallMount) {
         self.context = context
         self.innerElevation = innerElevation
     }
@@ -96,8 +96,8 @@ struct RunBinding: Sendable {
     /// Runs one inner `tools.*` call through the shared elevation engine with
     /// elevation off.
     ///
-    /// `ToolElevation.wrapping(_:sessionID:mailbox:sink:configuration:)`
-    /// picks the decorator: `ElevatingTool` for a `String`-output tool,
+    /// `ToolDetachment.wrapping(_:sessionID:mailbox:sink:configuration:)`
+    /// picks the decorator: `DetachingTool` for a `String`-output tool,
     /// `ContextBindingTool` for any other output. Both mint the call its own
     /// `completionToken` and bind `ToolContext.$current` around it
     /// explicitly, so neither depends on what the calling task did or did not
@@ -115,10 +115,10 @@ struct RunBinding: Sendable {
     /// - Returns: the tool's `Output`, exactly as `tool.call(arguments:)`
     ///   produced it.
     /// - Throws: whatever the wrapped tool throws, unchanged; or
-    ///   `ElevatingToolError.timedOut(tool:timeoutSeconds:)` when the mount's
+    ///   `DetachingToolError.timedOut(tool:timeoutSeconds:)` when the mount's
     ///   per-call `timeout` ends the call.
     func invoke<T: Tool>(_ tool: T, arguments: T.Arguments) async throws -> T.Output {
-        let mounted = ToolElevation.wrapping(
+        let mounted = ToolDetachment.wrapping(
             tool,
             sessionID: context.sessionID,
             mailbox: context.mailbox,
@@ -127,7 +127,7 @@ struct RunBinding: Sendable {
         )
         guard let engine = mounted as? any Tool<T.Arguments, T.Output> else {
             // Unreachable: both decorators preserve `Arguments`/`Output`, and
-            // `ToolElevation.wrapping`'s own unreachable fallback returns the
+            // `ToolDetachment.wrapping`'s own unreachable fallback returns the
             // tool itself, which matches too. Kept as a graceful degradation
             // rather than a trap, matching this package's "throw/degrade,
             // never trap" posture — the call still happens, only without the

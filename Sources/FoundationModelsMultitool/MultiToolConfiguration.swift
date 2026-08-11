@@ -18,7 +18,7 @@ public struct MultiToolConfiguration: Sendable, Equatable {
     /// Wall-clock ceiling, in seconds, on a single `runCode` snippet's own
     /// work: both the default for the envelope's `timeout` and the hard cap
     /// that no envelope can raise (see
-    /// `MultiTool.elevationClocks(from:)`). Clamped to at least `0` at
+    /// `MultiTool.detachmentClocks(from:)`). Clamped to at least `0` at
     /// `init`.
     ///
     /// ## Why this is the work clock, and never the wait clock
@@ -30,10 +30,10 @@ public struct MultiToolConfiguration: Sendable, Equatable {
     /// `waitSeconds` — so this limit, which arms the watchdog of every
     /// sandbox `MultiTool.init` runs (`Interpreter.withTimeLimit(_:)`),
     /// must never be a second clock racing the first. It was: this default and
-    /// `ElevationConfiguration.defaultWaitSeconds` were both 5 seconds, so
+    /// `DetachConfiguration.defaultWaitSeconds` were both 5 seconds, so
     /// the watchdog force-terminated a snippet at the exact instant its run
     /// elevated. The default is now the engine's own stock work clock,
-    /// `ElevationConfiguration.defaultTimeoutSeconds`, taken from that one
+    /// `DetachConfiguration.defaultTimeoutSeconds`, taken from that one
     /// definition so the two can never drift apart again.
     ///
     /// The per-call `timeout` an envelope carries is enforced by the
@@ -102,7 +102,7 @@ public struct MultiToolConfiguration: Sendable, Equatable {
     /// - Parameters:
     ///   - executionTimeLimit: wall-clock ceiling, in seconds, on a single
     ///     `runCode` snippet's work. Defaults to
-    ///     `ElevationConfiguration.defaultTimeoutSeconds`, the elevation
+    ///     `DetachConfiguration.defaultTimeoutSeconds`, the elevation
     ///     engine's own stock work clock.
     ///   - liveContextLimit: how many `runCode` snippets may be live at once.
     ///     Defaults to ``defaultLiveContextLimit``.
@@ -113,7 +113,7 @@ public struct MultiToolConfiguration: Sendable, Equatable {
     ///     snippet's joined console output. Defaults to
     ///     `ResultRendererLimits.default.consoleCharacterLimit`.
     public init(
-        executionTimeLimit: TimeInterval = ElevationConfiguration.defaultTimeoutSeconds,
+        executionTimeLimit: TimeInterval = DetachConfiguration.defaultTimeoutSeconds,
         liveContextLimit: Int = MultiToolConfiguration.defaultLiveContextLimit,
         returnValueCharacterLimit: Int = ResultRendererLimits.default.returnValueCharacterLimit,
         consoleCharacterLimit: Int = ResultRendererLimits.default.consoleCharacterLimit

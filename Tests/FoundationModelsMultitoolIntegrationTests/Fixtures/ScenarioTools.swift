@@ -488,7 +488,7 @@ struct IntegrationDeepScanOutput {
 /// How long `IntegrationDeepScanTool` works before it reports.
 ///
 /// Chosen to sit between the two clocks Router's native session mount arms a
-/// `runCode` call with (`ElevationConfiguration.nativeSessionMount`): longer
+/// `runCode` call with (`DetachConfiguration.nativeSessionMount`): longer
 /// than its 5-second `defaultWaitSeconds`, so the outer `runCode` call that
 /// awaits this tool always outlives its wait window and elevates into a
 /// pending envelope; and far shorter than its 120-second

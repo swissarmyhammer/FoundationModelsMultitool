@@ -105,7 +105,7 @@ final class AmbientRecordingTool: Tool, Sendable {
 /// Builds the ambient `ToolContext` a Router session binds around one
 /// `runCode` call — the context `MultiTool` captures into its `RunBinding`.
 ///
-/// Stamped with `runCode`'s own tool name, exactly as `ElevatingTool` stamps a
+/// Stamped with `runCode`'s own tool name, exactly as `DetachingTool` stamps a
 /// wrapped tool's context, and given a freshly minted `completionToken` so a
 /// test can tell the outer run's correlation from every inner one.
 ///

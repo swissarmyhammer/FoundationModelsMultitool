@@ -6,9 +6,9 @@ import os
 // MARK: - The runCode envelope's two clocks (eventplan.md § "Elevation:
 // waitSeconds and the completion token")
 //
-// Router's native session mount wraps `runCode` in `ElevatingTool` like any
+// Router's native session mount wraps `runCode` in `DetachingTool` like any
 // other tool, and the engine reads each call's own clocks back out of the
-// opaque `GeneratedContent` through `ElevationParameterProviding`. This file is
+// opaque `GeneratedContent` through `DetachmentParameterProviding`. This file is
 // that reading — plus the cap on how many of the suspended JSC contexts
 // elevation creates may be alive at once.
 //
@@ -16,7 +16,7 @@ import os
 // Inner `tools.*` calls run on the same engine with elevation off (see
 // `RunBinding`), so no snippet ever branches on a pending envelope mid-code.
 
-extension MultiTool: ElevationParameterProviding {
+extension MultiTool: DetachmentParameterProviding {
     /// The per-call clocks this `runCode` envelope carries.
     ///
     /// `waitSeconds` crosses untouched — including `0`, which detaches the
@@ -51,7 +51,7 @@ extension MultiTool: ElevationParameterProviding {
     ///   from.
     /// - Returns: the call's wait clock, or `nil` when it supplies none; and
     ///   its bounded work clock.
-    public func elevationClocks(
+    public func detachmentClocks(
         from arguments: GeneratedContent
     ) -> (waitSeconds: TimeInterval?, timeout: TimeInterval?) {
         (

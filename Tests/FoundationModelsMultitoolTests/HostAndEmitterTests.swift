@@ -54,12 +54,12 @@ struct HostAndEmitterTests {
         let sink = RecordingEventSink()
         let sessionID = ULID()
         let mounted = try #require(
-            ToolElevation.wrapping(
+            ToolDetachment.wrapping(
                 MultiTool(registry: registry),
                 sessionID: sessionID,
                 mailbox: mailbox,
                 sink: sink,
-                configuration: ElevationConfiguration(mode: .elevating, waitSeconds: hostWaitSeconds)
+                configuration: DetachConfiguration(mode: .detaching, waitSeconds: hostWaitSeconds)
             ) as? any Tool<RunCodeArguments, String>
         )
 

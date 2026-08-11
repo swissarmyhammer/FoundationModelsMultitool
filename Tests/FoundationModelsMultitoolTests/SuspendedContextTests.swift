@@ -20,7 +20,7 @@ import Testing
 /// one down.
 ///
 /// Every test mounts `MultiTool` exactly as Router's native session does —
-/// `ToolElevation.wrapping` with an elevating configuration — so what is
+/// `ToolDetachment.wrapping` with an elevating configuration — so what is
 /// exercised is the real composition, not a stand-in for it.
 @Suite("SuspendedContext")
 struct SuspendedContextTests {
@@ -33,11 +33,11 @@ struct SuspendedContextTests {
         let clocks = Self.clocks(of: multiTool)
 
         // The regression this test exists for: `MultiToolConfiguration
-        // .executionTimeLimit` and `ElevationConfiguration.defaultWaitSeconds`
+        // .executionTimeLimit` and `DetachConfiguration.defaultWaitSeconds`
         // were both 5 seconds, so the JSC watchdog force-terminated the
         // suspended context at exactly the moment elevation parked it.
         let timeout = try #require(clocks.timeout)
-        #expect(timeout > ElevationConfiguration.defaultWaitSeconds)
+        #expect(timeout > DetachConfiguration.defaultWaitSeconds)
         #expect(timeout == MultiToolConfiguration.default.executionTimeLimit)
         // No `waitSeconds` in the envelope leaves the wait clock to the mount.
         #expect(clocks.waitSeconds == nil)
@@ -131,7 +131,7 @@ struct SuspendedContextTests {
 
         #expect(PendingRunEnvelope.isRendered(rendered))
         // Far below the mount's own generous wait window: only the envelope's
-        // own zero, read through `ElevationParameterProviding`, detaches here.
+        // own zero, read through `DetachmentParameterProviding`, detaches here.
         #expect(elapsed < Self.promptResponseBound)
 
         harness.latch.release()
@@ -281,7 +281,7 @@ struct SuspendedContextTests {
     /// - Returns: the harness.
     private static func makeHarness(
         configuration: MultiToolConfiguration = .default,
-        waitSeconds: TimeInterval = ElevationConfiguration.defaultWaitSeconds
+        waitSeconds: TimeInterval = DetachConfiguration.defaultWaitSeconds
     ) throws -> Harness {
         let latch = ToolReleaseLatch()
         let gated = GatedTool(latch: latch)
@@ -291,12 +291,12 @@ struct SuspendedContextTests {
         )
         let mailbox = SessionMailbox()
         let sink = RecordingEventSink()
-        let mounted = ToolElevation.wrapping(
+        let mounted = ToolDetachment.wrapping(
             multiTool,
             sessionID: ULID(),
             mailbox: mailbox,
             sink: sink,
-            configuration: ElevationConfiguration(mode: .elevating, waitSeconds: waitSeconds)
+            configuration: DetachConfiguration(mode: .detaching, waitSeconds: waitSeconds)
         )
         return Harness(
             gated: gated,
@@ -324,7 +324,7 @@ struct SuspendedContextTests {
         waitSeconds: TimeInterval? = nil,
         timeout: TimeInterval? = nil
     ) -> (waitSeconds: TimeInterval?, timeout: TimeInterval?) {
-        multiTool.elevationClocks(
+        multiTool.detachmentClocks(
             from: RunCodeArguments(code: "return 1;", waitSeconds: waitSeconds, timeout: timeout).generatedContent
         )
     }

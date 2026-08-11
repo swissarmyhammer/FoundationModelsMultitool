@@ -8,12 +8,12 @@ import Testing
 ///
 /// **Why this suite does not use `runNativeIntegrationScenario`.** That runner
 /// builds a bare `LanguageModelSession` over an `MLXLanguageModel`, which has
-/// no elevation mount at all — `ElevatingTool` is applied only by Router's own
+/// no elevation mount at all — `DetachingTool` is applied only by Router's own
 /// per-session tool wiring — so a pending envelope could never appear on that
 /// path. This scenario drives `runElevationIntegrationScenario` instead, which
 /// vends a real `RoutedSession` through `RoutedLLM.makeSession(instructions:
 /// tools:)` and therefore mounts `runCode` under
-/// `ElevationConfiguration.nativeSessionMount`. See `Support/
+/// `DetachConfiguration.nativeSessionMount`. See `Support/
 /// ScenarioRunner.swift` for both runners and what each asserts.
 ///
 /// Gated, serialized, and time-limited exactly like `SearchThenCallTests`:

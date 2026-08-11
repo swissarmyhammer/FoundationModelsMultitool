@@ -226,6 +226,7 @@ func runNativeIntegrationScenario(
                 + "groundedIn=\(groundedIn.sorted()) "
                 + "searchToolsFirst=\(searchToolsFirst) "
                 + "priming=\(primingLabel(turn)) "
+                + "compactions=\(turn.compactions.count) tokens=\(turn.tokenUsage ?? "n/a") "
                 + "failedCalls=\(turn.failedCalls.count)\(turn.failedCalls.isEmpty ? "" : " \(turn.failedCalls)") "
                 + "reply=\"\(turn.answer.prefix(80))\""
         )
@@ -256,13 +257,13 @@ func runNativeIntegrationScenario(
 ///
 /// **Why a second runner exists.** `runNativeIntegrationScenario` builds a
 /// bare `LanguageModelSession` over an `MLXLanguageModel`. That session has no
-/// elevation mount: `ElevatingTool` is applied only by Router's own
-/// per-session tool wiring (`ToolElevation.sessionMounted(tool:sessionID:
+/// elevation mount: `DetachingTool` is applied only by Router's own
+/// per-session tool wiring (`ToolDetachment.sessionMounted(tool:sessionID:
 /// mailbox:sink:cappedToTokenLimit:)`), so on that path a slow snippet simply
 /// blocks and a pending envelope can never appear. This runner vends a real
 /// `RoutedSession` through `RoutedLLM.makeSession(instructions:tools:)`
 /// instead, which mounts every tool under
-/// `ElevationConfiguration.nativeSessionMount` — elevation on, stock clocks —
+/// `DetachConfiguration.nativeSessionMount` — elevation on, stock clocks —
 /// and gives the snippet a live run plane (`status()`, `wait()`, `cancel()`)
 /// to collect a parked run through.
 ///
@@ -350,6 +351,7 @@ func runElevationIntegrationScenario(
                 + "toolOutputs=\(turn.toolOutputs.count) "
                 + "pendingEnvelopes=\(pendingEnvelopes.count) "
                 + "priming=\(primingLabel(turn)) "
+                + "compactions=\(turn.compactions.count) tokens=\(turn.tokenUsage ?? "n/a") "
                 + "failedCalls=\(turn.failedCalls.count)\(turn.failedCalls.isEmpty ? "" : " \(turn.failedCalls)") "
                 + "reply=\"\(turn.answer.prefix(120))\""
         )
@@ -380,6 +382,17 @@ private struct StreamedTurn {
     ///
     /// `SessionEvent.toolStatus` carries the call's id, not its name.
     var callIndexByID: [String: Int] = [:]
+
+    /// Every compaction the session performed during this turn.
+    ///
+    /// Non-empty means the turn was rewritten mid-flight; a scored run that
+    /// compacted is not measuring the same prompt the scenario set up.
+    var compactions: [String] = []
+
+    /// The turn's measured token usage, as the session reported it.
+    ///
+    /// The direct evidence for whether a turn is near its context ceiling.
+    var tokenUsage: String?
 
     /// Every tool call the session reported as failed, as `name: detail`.
     ///
@@ -433,7 +446,15 @@ private func streamTurn(of session: RoutedSession, prompt: String) async throws 
             // a run whose priming never happened must not be scored as one
             // that did.
             turn.discoveryPrimingFailure = "\(reason)"
-        case .toolStatus, .reasoningDelta, .compaction, .turnEnded:
+        case .compaction(let result):
+            // Swallowed until now, like `.toolStatus(.failed)` was. A turn that
+            // compacted mid-flight can lose the tool definitions and the
+            // discovery output it is meant to act on, which looks from the
+            // outside exactly like a model that will not use its tools.
+            turn.compactions.append("\(result)")
+        case .turnEnded(let usage):
+            turn.tokenUsage = "\(usage)"
+        case .toolStatus, .reasoningDelta:
             break
         }
     }
