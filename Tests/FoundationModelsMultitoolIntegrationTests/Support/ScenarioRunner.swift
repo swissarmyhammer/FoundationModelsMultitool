@@ -884,3 +884,119 @@ private func answerChecks(
 private func printSkipNote(_ name: String) {
     print("SKIP [\(name)]: Router's live-inference path is not wired up in this environment.")
 }
+
+/// Drives one scenario through **both** surfaces and holds `respond(to:)` to
+/// the rule that it must self-drain the run plane (task `^n6kgckr`).
+///
+/// Now that `runCode` always backgrounds (`^cv98vff`), a tool call no longer
+/// returns data on any surface — it returns a reference to work still running.
+/// On streaming that is the feature. On `respond` it must be **invisible**:
+/// the same final answer, just slower. A `respond` that returned while its own
+/// turn's runs were still parked would hand the model a token and nothing
+/// else, which is exactly the measured failure this whole plan exists to end
+/// (`invoked=[] returned=[]`, "I don't have access to real-time weather
+/// data").
+///
+/// Four things are asserted, and the first two must both hold or the run
+/// proves nothing:
+///
+/// 1. **Grounded.** The answer depends on what a fixture tool actually
+///    returned, read off the run's own call log rather than off the reply.
+/// 2. **Parity with a drained stream.** The same scenario through
+///    `streamEvents` reaches the same answer.
+/// 3. **Nothing left parked.** After `respond` returns, the session's run
+///    plane is empty. A dangling token means the drain is incomplete even if
+///    the answer happened to be right.
+/// 4. **No `wait` call.** If the model had to call `wait` to reach its answer,
+///    the drain is not doing its job — `wait` is the streaming surface's tool.
+///
+/// **Parity is asserted on substance, not on bytes.** The card behind this
+/// runner asks for equality of the two final answers. Two independent live
+/// generations are not byte-equal, so a literal `==` would be a sampling
+/// gate wearing an assertion's clothes: green or red by luck, and the first
+/// thing a later reader would "fix" by loosening it. What is compared instead
+/// is which accepted answers each reply contains — both surfaces must name the
+/// same fixture value, and neither may name a different one. Two runs that
+/// agree on a *wrong* answer still fail, because groundedness is asserted
+/// beside this and never instead of it.
+///
+/// - Parameters:
+///   - name: a short label identifying the scenario, used in the printed line.
+///   - makeTools: builds the scenario's fixed tool set around a call log.
+///   - prompt: the user request driving both surfaces.
+///   - answerContainsOneOf: candidate substrings, at least one of which a
+///     reply must contain (case-insensitively) to count as a valid answer.
+///   - groundedIn: the `tools.*` paths whose returned data the answer must
+///     depend on.
+/// - Throws: any error other than `GenerationError.notWiredForLiveInference`.
+func runRespondDrainScenario(
+    name: String,
+    tools makeTools: (ScenarioCallLog) -> [any Tool],
+    prompt: String,
+    answerContainsOneOf: [String],
+    groundedIn: Set<String>
+) async throws {
+    try await withLiveRouterFixture(name: name) { fixture in
+        // The blocking surface first, on its own session and its own log.
+        let respondLog = ScenarioCallLog()
+        let respondSession = fixture.profile.standard.makeSession(
+            tools: try makeScenarioSurface(over: makeTools(respondLog), on: fixture).tools,
+            discoveryPriming: scenarioDiscoveryPriming
+        )
+        let start = Date()
+        let respondAnswer = try await respondSession.respond(to: prompt)
+        let respondElapsed = Date().timeIntervalSince(start)
+
+        // Read immediately after the call returns: that is the instant the
+        // rule is about. A run settling a moment later is precisely the
+        // failure — the answer would already have been written without it.
+        let parkedAfterRespond = await respondLog.parkedRuns()
+        let respondGrounding = await respondLog.returnedPaths
+        let waitCalls = NativeTranscript.toolCallCount(
+            in: await respondSession.transcript, named: WaitTool().name
+        )
+
+        // The streaming surface second, drained to completion, on a session of
+        // its own so neither run can read back the other's transcript.
+        let streamLog = ScenarioCallLog()
+        let streamSession = fixture.profile.standard.makeSession(
+            tools: try makeScenarioSurface(over: makeTools(streamLog), on: fixture).tools,
+            discoveryPriming: scenarioDiscoveryPriming
+        )
+        let streamTurnResult = try await streamTurn(of: streamSession, prompt: prompt)
+        let streamGrounding = await streamLog.returnedPaths
+
+        let respondAccepted = accepted(answerContainsOneOf, in: respondAnswer)
+        let streamAccepted = accepted(answerContainsOneOf, in: streamTurnResult.answer)
+
+        print(
+            """
+            RESPOND-DRAIN \(name) elapsed=\(String(format: "%.1f", respondElapsed))s \
+            parked=\(parkedAfterRespond.count) waitCalls=\(waitCalls) \
+            groundedIn=\(respondGrounding.sorted()) accepted=\(respondAccepted.sorted())
+            RESPOND-DRAIN \(name) stream groundedIn=\(streamGrounding.sorted()) \
+            accepted=\(streamAccepted.sorted())
+            """
+        )
+
+        // 1. Grounded: the answer rests on data a tool really returned.
+        #expect(respondGrounding.isSuperset(of: groundedIn))
+        #expect(!respondAccepted.isEmpty)
+        // 2. Parity of substance with the drained stream.
+        #expect(respondAccepted == streamAccepted)
+        // 3. Nothing survives the call.
+        #expect(parkedAfterRespond.isEmpty)
+        // 4. The model never had to ask for its own result.
+        #expect(waitCalls == 0)
+    }
+}
+
+/// Which of `candidates` a reply contains, case-insensitively.
+///
+/// - Parameters:
+///   - candidates: the accepted answers for a scenario.
+///   - reply: the model's final answer.
+/// - Returns: the accepted answers present in `reply`.
+private func accepted(_ candidates: [String], in reply: String) -> Set<String> {
+    Set(candidates.filter { reply.localizedCaseInsensitiveContains($0) })
+}

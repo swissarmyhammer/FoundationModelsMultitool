@@ -1,3 +1,5 @@
+import FoundationModelsRouter
+
 /// One fixture tool invocation, as the tool itself recorded it while running.
 ///
 /// The unit `ScenarioCallLog` stores. The outcome is carried alongside the
@@ -60,6 +62,29 @@ actor ScenarioCallLog {
         Set(calls.lazy.filter { $0.outcome == .returned }.map(\.path))
     }
 
+    /// The ambient ``ToolContext`` the first recorded invocation ran under, or
+    /// `nil` when no fixture tool has been entered yet.
+    ///
+    /// Kept so a scenario can read the session's **run plane** after its turn
+    /// is over. A `ToolContext` is the only route to that plane (Router task
+    /// `^k0mecjp`), it exists only inside a tool call, and every context bound
+    /// during one session names that session's own plane — so the first one a
+    /// fixture tool saw is a usable handle to it afterwards.
+    ///
+    /// This is what makes "no run survives the call" assertable at all. It is
+    /// an observation of the product's own wiring, not a back door: the
+    /// capability it reads is the same public one `status()` and `wait` use.
+    private(set) var observedContext: ToolContext?
+
+    /// The runs still parked on the session this log's tools ran under.
+    ///
+    /// - Returns: every parked run, or an empty array when no fixture tool was
+    ///   ever entered — in which case a scenario has a bigger problem than the
+    ///   run plane, and its groundedness assertion will say so first.
+    func parkedRuns() async -> [ParkedRun] {
+        await observedContext?.parkedRuns() ?? []
+    }
+
     /// Runs one fixture tool's body and records the invocation it makes.
     ///
     /// Every fixture tool routes its `call(arguments:)` through here, so all
@@ -81,20 +106,33 @@ actor ScenarioCallLog {
         to path: String,
         _ body: () async throws -> Value
     ) async rethrows -> Value {
+        // Read here, inside the call, because that is the only place an ambient
+        // context exists — by the time a scenario asserts, every binding is
+        // gone and the handle recorded here is what is left of the session's
+        // run plane.
+        let ambient = ToolContext.current
         do {
             let value = try await body()
-            await append(ScenarioCall(path: path, outcome: .returned))
+            await append(ScenarioCall(path: path, outcome: .returned), observing: ambient)
             return value
         } catch {
-            await append(ScenarioCall(path: path, outcome: .threw))
+            await append(ScenarioCall(path: path, outcome: .threw), observing: ambient)
             throw error
         }
     }
 
-    /// Appends one recorded invocation.
+    /// Appends one recorded invocation, keeping the first ambient context seen.
     ///
-    /// - Parameter call: the invocation to record.
-    private func append(_ call: ScenarioCall) {
+    /// - Parameters:
+    ///   - call: the invocation to record.
+    ///   - ambient: the context that invocation ran under, if any. Only the
+    ///     first is kept: every later one names the same session's run plane,
+    ///     and the first is the one certain to exist by the time any scenario
+    ///     reads it.
+    private func append(_ call: ScenarioCall, observing ambient: ToolContext?) {
         calls.append(call)
+        if observedContext == nil {
+            observedContext = ambient
+        }
     }
 }

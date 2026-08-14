@@ -1,6 +1,49 @@
 ---
 assignees:
 - claude-code
+comments:
+- actor: claude-code
+  id: 01m0021vgq5hs6a9qw6bms6wm7
+  text: |-
+    ### Router's half: filed, with the evidence
+
+    `respond` does **not** self-drain today. Read in their tree, not assumed:
+
+    - `respond(to:maxTokens:)` (`Session/RoutedSessionActorGeneration.swift:18`) awaits generation only. Its own comment says it composes the prompt with "whatever the outbox drains for this turn" — the outbox, which is not the run plane. Nothing in that file touches the mailbox.
+    - `sweep()` is teardown driven by `close()`: it *cancels* parked runs and synthesizes their terminals. It is the opposite of draining them.
+
+    So this card's prediction was right, and it is now a defect rather than a design choice, because `^cv98vff` landed: a tool call no longer returns data on any surface.
+
+    Filed as **`^nmpejc5`** on Router's board — "respond(to:) must self-drain the run plane before it returns" — with the four consumer assertions, and with the hazard called out rather than deferred: a drain that feeds settled results back to the model invites another turn, which may park more runs, so the termination rule belongs in their design. Their session has it.
+
+    ### Our half: written, gated, and honest about what it will do today
+
+    `RespondDrainTests.swift` plus `runRespondDrainScenario(...)` in `ScenarioRunner.swift`. It runs the compose/chain scenario — two tools, so a drain that collected only the first shows up as a wrong answer rather than a lucky one — through `respond`, then the same scenario through a drained `streamEvents` on its own session.
+
+    **It is written to fail until Router's half lands, and its own doc comment says so**, so a red run reads as the requirement being observed rather than as a flake.
+
+    Making "nothing survives the call" observable needed one thing: a session's run plane is reachable only through a `ToolContext`, which exists only inside a tool call. `ScenarioCallLog` now keeps the first ambient context its fixture tools ran under, and reads `parkedRuns()` off it after the turn. That is the product's own public capability — the same one `status()` and `wait` use — not a back door.
+
+    ### One deliberate departure from this card, and why
+
+    The card asks for answer parity **by equality**. Two independent live generations are not byte-equal, so a literal `==` would be a sampling gate wearing an assertion's clothes: green or red by luck, and the first thing a later reader would "fix" by loosening. Parity is asserted on substance instead — which accepted answers each reply contains must match, so both surfaces name the same fixture value and neither names a different one.
+
+    The card's real worry is preserved exactly: parity is asserted **beside** groundedness, never instead of it, so two surfaces refusing identically still fails.
+
+    ### Acceptance criteria
+
+    - [x] The gated scenario exists, compiles, and is skipped with `MULTITOOL_INTEGRATION` unset (ungated suite green: 335 in 27, 49 in 8)
+    - [ ] A `respond` run whose `runCode` backgrounds still reaches the **grounded** answer
+    - [ ] Answer parity with a drained `streamEvents`
+    - [ ] No pending run survives the call
+    - [ ] A `respond` turn needs no `wait` call
+
+    The four gated criteria need two things that are not ours: real hardware, and Router's `^nmpejc5`. This card stays in review until both are in.
+
+    ### Kept, as this card asked
+
+    The streaming scenarios did not move. `SearchThenCallTests` and `ElevationTests` stay on `streamEvents`, and this suite sits beside them — `respond` draining everything is exactly what would make it the easy surface to drift onto.
+  timestamp: 2026-08-14T11:55:53.239969+00:00
 depends_on:
 - 01KZRJNSJRB1RGKQDEBCV98VFF
 position_column: todo
