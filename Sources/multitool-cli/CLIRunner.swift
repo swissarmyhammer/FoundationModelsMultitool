@@ -193,12 +193,6 @@ enum CLIRunner {
             """
     }
 
-    /// The working context size, in tokens, that ``demoProfile`` pins.
-    ///
-    /// The same figure the gated suite's `multitoolTinyProfile` pins
-    /// (`Tests/FoundationModelsMultitoolIntegrationTests/Support/IntegrationGate.swift`).
-    private static let demoContextTokens = 8192
-
     /// The profile used for the demo run.
     ///
     /// Deliberate use of tool-calling-capable models, matching the
@@ -208,15 +202,26 @@ enum CLIRunner {
     static let demoProfile = ProfileDefinition(
         name: "multitool-cli-demo",
         description: "Tool-calling-capable models for the multitool-cli sample.",
-        // One model on both generation slots, mirroring the gated suite's
-        // `multitoolTinyProfile` (see `IntegrationGate.swift`'s pin
-        // history): Muse Glimmer drives the main session and the selection
-        // tier alike. The router pools resident models by `(ModelRef,
-        // role)`, so naming the same reference twice loads the weights once.
+        // Two different models, mirroring the gated suite's
+        // `multitoolTinyProfile` (see `IntegrationGate.swift` for the full
+        // reasoning): Muse Glimmer drives the main session, and the selection
+        // tier `searchTools` runs on `flash` gets a model of its own.
+        //
+        // They must not be the same reference. One reference means one
+        // resident container, and `searchTools` generates from *inside* the
+        // outer turn's tool call — so the inner generation waits on a
+        // container the outer turn still holds, and the run deadlocks.
         standard: ["mlx-community/Muse-Glimmer-30B-4bit"],
-        flash: ["mlx-community/Muse-Glimmer-30B-4bit"],
+        flash: ["mlx-community/GLM-4-9B-0414-4bit"],
         embedding: ["mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ"],
-        context: demoContextTokens
+        // `nil`, not a number: resolve the model's own context window rather
+        // than imposing one, exactly as the gated suite's
+        // `multitoolTinyProfile` does. A pinned figure is always wrong on the
+        // wrong side — too small, and a generation turn loses the very tool
+        // definitions and discovery output it is supposed to act on.
+        // `ProfileDefinition.defaultContext` remains the fallback if the
+        // lookup fails, so this cannot resolve to nothing.
+        context: nil
     )
 
     /// The demo prompt that exercises the agent.

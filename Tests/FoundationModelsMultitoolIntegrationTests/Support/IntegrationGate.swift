@@ -206,12 +206,35 @@ var multitoolIntegrationEnabled: Bool {
 /// registry only because `Package.swift` links `MLXVLM` (see
 /// `liveLoaderMLXProducts`) and this file imports it below.
 ///
+/// **The selection tier moves off the generation model.** Sharing one
+/// `ModelRef` across both slots was deliberate when they were both Muse
+/// Glimmer — one resident model rather than a swap on every search — and it
+/// deadlocked. `searchTools` runs *inside* the outer turn's tool call and then
+/// asks its selection tier to generate; with one reference both slots resolve
+/// to one resident container, so the inner generation waits for a container
+/// the outer turn is still holding. Measured: a gated scenario sat 15 minutes
+/// at 0% CPU with every thread parked, the recorded transcript stopping at the
+/// selection fork.
+///
+/// So `selection` names `GLM-4-9B-0414-4bit`: a different model, hence a
+/// different container, hence no re-entrancy.
+///
+/// `gemma-4-12B-it-assistant-mxfp4` was the first choice and cannot be used
+/// yet: its config declares `model_type: "gemma4_unified_assistant"`, and the
+/// fork registers `gemma4_unified` without the `_assistant` suffix, so a run
+/// fails in 13 seconds with `.unsupportedModelType`. Filed on the fork's
+/// board; revisit this pin if that registration lands. It is **not** the small
+/// fast selector this card's history warns against — a 12B instruct model is
+/// the same class of capable selector the 27B was, and `discoveryUnderDistractors`
+/// remains the test that has to pass for any selection pin. It is also
+/// cheaper to hold beside a 30B than a second copy of the 30B would be.
+///
 /// Neither reference carries an `@revision`, so both track their repository's
 /// default revision rather than a fixed commit — these are model *choices*,
 /// not version locks, whatever the surrounding prose calls them.
 private enum TinyModels {
     static let generation: ModelRef = "mlx-community/Muse-Glimmer-30B-4bit"
-    static let selection: ModelRef = generation
+    static let selection: ModelRef = "mlx-community/GLM-4-9B-0414-4bit"
     static let embedding: ModelRef = "mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ"
 }
 
