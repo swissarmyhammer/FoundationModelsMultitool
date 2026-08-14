@@ -11,7 +11,8 @@ private let packageName = "FoundationModelsMultitool"
 private let cliTargetName = "multitool-cli"
 
 /// The git branch tracked by the `.package(url:branch:)` declaration for
-/// `metadataRegistryDependencyName` below.
+/// `metadataRegistryDependencyName` below, and the default for
+/// `swissArmyHammerPackage(name:branch:)`.
 private let mainBranch = "main"
 
 /// The name of the FoundationModelsRouter dependency package.
@@ -35,24 +36,21 @@ private let metadataRegistryDependencyName = "FoundationModelsMetadataRegistry"
 /// are fetched from here.
 private let swissArmyHammerPackageOrgURL = "git@github.com:swissarmyhammer/"
 
-/// Builds a `.package(url:branch:)` dependency on `mainBranch` for a package
-/// hosted under `swissArmyHammerPackageOrgURL`.
+/// Builds a `.package(url:branch:)` dependency for a package hosted under
+/// `swissArmyHammerPackageOrgURL`, tracking `branch` (`mainBranch` by default).
 ///
-/// This is used for `metadataRegistryDependencyName`, and for
+/// This is used for `metadataRegistryDependencyName` (the default branch),
+/// for `mlxPackage` (its published `stable` branch), and for
 /// `routerDependencyName` again once the temporary local-path declaration
 /// below is restored.
-private func swissArmyHammerPackage(name: String) -> Package.Dependency {
-    .package(url: "\(swissArmyHammerPackageOrgURL)\(name).git", branch: mainBranch)
+private func swissArmyHammerPackage(name: String, branch: String = mainBranch) -> Package.Dependency {
+    .package(url: "\(swissArmyHammerPackageOrgURL)\(name).git", branch: branch)
 }
 
 /// The MLX-backed model package `FoundationModelsRouter` itself depends on
 /// (`../FoundationModelsRouter/Package.swift`'s `mlxPackage`).
 ///
-/// Taken by path from the sibling checkout, the same way Router takes it:
-/// the fork has caught up to `ml-explore/mlx-swift-lm` upstream and the two
-/// packages move together, so both build against the one working copy
-/// beside them. SwiftPM resolves one package identity from one source, so
-/// this side must match Router's declaration or the graph fails to resolve.
+/// Taken by URL from its published `stable` branch — see `mlxStableBranch`.
 ///
 /// Only three of its products are declared directly here (not Router's own
 /// broader `mlxProducts` set): `MLXLMCommon`, whose
@@ -68,6 +66,20 @@ private func swissArmyHammerPackage(name: String) -> Package.Dependency {
 /// product set to build at all), so declaring these three directly for the
 /// targets below adds no new MLX/C++ compilation, only linking.
 private let mlxPackage = "mlx-swift-lm"
+
+/// The `mlxPackage` branch this package builds against.
+///
+/// `stable` rather than the sibling checkout this used to take by path. Both
+/// carry the same fork work — the local `catch-up-upstream` branch has merged
+/// `stable` — but a published branch is a *snapshot*, and a working copy is
+/// whatever another session happens to have saved. Building against a working
+/// copy is how this package spent a morning failing on someone else's
+/// half-finished edit (`^ev0zca7`).
+///
+/// `stable` also carries `ml-explore/mlx-swift-lm` upstream: the fork has
+/// caught up, so this is upstream plus the fork's own landed work rather than
+/// a divergent branch.
+private let mlxStableBranch = "stable"
 
 /// Base URL for packages published under the Hugging Face GitHub
 /// organization — `huggingFacePackage` and `transformersPackage` are both
@@ -161,7 +173,7 @@ let package = Package(
         // Only the M9 CLI executable and the gated integration test target
         // below link products from these three — see their documentation
         // above.
-        .package(path: "../\(mlxPackage)"),
+        swissArmyHammerPackage(name: mlxPackage, branch: mlxStableBranch),
         huggingFaceOrgPackage(name: huggingFacePackage, from: "0.9.0"),
         huggingFaceOrgPackage(name: transformersPackage, from: "1.3.0"),
     ],
