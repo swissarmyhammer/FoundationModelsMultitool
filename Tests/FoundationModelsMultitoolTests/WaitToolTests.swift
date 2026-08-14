@@ -12,37 +12,33 @@ import Testing
 /// gated suite's territory.
 @Suite("WaitTool")
 struct WaitToolTests {
-    // MARK: - The bound is a ceiling, not a suggestion
+    // MARK: - Two ways to return, and no third
 
-    @Test("a call naming no timeout waits within the host's own bound")
-    func absentTimeoutUsesTheHostBound() {
-        #expect(WaitTool.bounded(nil) == WaitTool.defaultTimeoutSeconds)
+    @Test("a call naming no timeout waits for the run to finish rather than giving up on its own schedule")
+    func absentTimeoutWaitsForTheRun() {
+        // `wait` returns when the token settles, or at a timeout the caller
+        // passed. A host-side cap would be a third way out, reporting
+        // deadlineElapsed for work that is still running and sending the model
+        // back around a loop it had already decided to stop for.
+        #expect(WaitTool.bounded(nil) == WaitTool.unboundedSeconds)
     }
 
-    @Test("a call naming a shorter timeout waits within that")
-    func shorterTimeoutIsHonoured() {
-        let shorter = WaitTool.defaultTimeoutSeconds / 2
-
-        #expect(WaitTool.bounded(shorter) == shorter)
+    @Test("a caller's timeout is honoured exactly as passed, short or long")
+    func aPassedTimeoutIsHonoured() {
+        // Nothing second-guesses the number: it is the bound the model chose
+        // when it decided to block.
+        #expect(WaitTool.bounded(30) == 30)
+        #expect(WaitTool.bounded(600) == 600)
+        #expect(WaitTool.bounded(6_000) == 6_000)
     }
 
-    @Test("a call naming a longer timeout is capped at the host's bound, however long it asks for")
-    func longerTimeoutIsCapped() {
-        // The model does not get to hold a turn open longer than the host
-        // allows, which is the whole reason the bound is applied here rather
-        // than passed through.
-        #expect(WaitTool.bounded(WaitTool.defaultTimeoutSeconds * 10) == WaitTool.defaultTimeoutSeconds)
-        #expect(WaitTool.bounded(.infinity) == WaitTool.defaultTimeoutSeconds)
-    }
-
-    @Test("a zero or negative timeout falls back to the host's bound rather than returning at once")
-    func nonPositiveTimeoutFallsBack() {
-        // A model that asked to wait has said it cannot proceed. Honouring `0`
-        // literally would return `deadlineElapsed` immediately and send it
-        // straight back around the same loop, which is the failure this tool
-        // exists to remove.
-        #expect(WaitTool.bounded(0) == WaitTool.defaultTimeoutSeconds)
-        #expect(WaitTool.bounded(-30) == WaitTool.defaultTimeoutSeconds)
+    @Test("a zero or negative timeout waits for the run rather than returning at once")
+    func nonPositiveTimeoutWaitsForTheRun() {
+        // A model that called `wait` has said it cannot proceed. Honouring `0`
+        // literally would return immediately with nothing, which is the failure
+        // this tool exists to remove.
+        #expect(WaitTool.bounded(0) == WaitTool.unboundedSeconds)
+        #expect(WaitTool.bounded(-30) == WaitTool.unboundedSeconds)
     }
 
     // MARK: - Nothing to wait for is reported, never trapped

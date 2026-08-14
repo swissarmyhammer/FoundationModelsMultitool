@@ -26,7 +26,7 @@ struct RouterSessionMountTests {
         /// Drops `event`.
         ///
         /// - Parameter event: the event to discard.
-        func post(_ event: OperationEvent) async {}
+        func post(event: OperationEvent) async {}
     }
 
     @Test("searchTools returns the same text through Router's session mount as it does direct")
@@ -89,7 +89,7 @@ struct RouterSessionMountTests {
     /// - Returns: the composed, model-facing tool.
     private static func sessionMounted(_ tool: any Tool) -> any Tool {
         ToolDetachment.wrapping(
-            tool,
+            tool: tool,
             sessionID: ULID(),
             mailbox: SessionMailbox(),
             sink: DiscardingSink(),

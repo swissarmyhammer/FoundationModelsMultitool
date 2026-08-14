@@ -348,46 +348,58 @@ public struct SearchToolsTool: Tool {
     }
 }
 
-// MARK: - Discovery does not detach (task h773bed)
+// MARK: - Discovery is synchronous (task h773bed)
 
 extension SearchToolsTool: DetachmentParameterProviding {
-    /// The per-call clocks a discovery call carries: a wait long enough that
-    /// discovery always finishes inline.
+    /// The per-call clocks a discovery call carries: neither of them a limit.
     ///
-    /// **Discovery is a prerequisite read, so parking it is never useful.** A
-    /// model cannot write a snippet without knowing which `tools.*` paths
-    /// exist, so there is no concurrent work for a detached discovery call to
-    /// overlap with — nothing can proceed until it answers. Parking it turns a
-    /// blocking dependency into a dependency the model has to go and collect,
-    /// which is strictly worse than waiting for it.
+    /// **Discovery is synchronous.** A model cannot write a snippet without
+    /// knowing which `tools.*` paths exist, so nothing can be done while a
+    /// discovery call is in flight — there is no concurrent work for a detached
+    /// one to overlap with. Parking it turns a blocking dependency into one the
+    /// model has to go and collect, which is strictly worse than waiting.
     ///
-    /// Measured, it was worse than that. With the selection tier on a 27B, a
-    /// discovery call takes longer than the mount's stock 5-second wait, so
-    /// every one of them parked; the model was then handed a pending envelope
-    /// and never obtained the catalog at all. Three gated runs ended
-    /// `invoked=[] returned=[]` with the model answering "I don't have access
-    /// to real-time weather data" (tasks `w8dzvee` D5, `h773bed`).
+    /// **And a timeout is not backgrounding.** The two clocks answer different
+    /// questions: `waitSeconds` asks when a call should become asynchronous, and
+    /// the answer here is never; `timeout` asks how long the work may run before
+    /// it is cancelled and reported as failed. For a prerequisite read the second
+    /// answer is also "no limit", because *slow is not broken*. A timeout would
+    /// report a failure for a search that is merely still working, and the model
+    /// would act on a lie: it would be told discovery failed when discovery is
+    /// running. Only a real error — the searcher throwing, the selection model
+    /// failing — should reach the model, and those already do, as errors.
     ///
-    /// The wait is stated here rather than left to the mount because the mount
-    /// cannot know this: `DetachConfiguration.waitSeconds` is one number for
-    /// every tool, and "how long may this call block" is a property of what the
-    /// call is for. `timeout` is left `nil` — the work clock is the searcher's
-    /// own business, and this tool imposes no ceiling on it.
+    /// Measured, both limits fired in turn. At the mount's stock 5-second wait
+    /// every discovery call parked, and the model never obtained the catalog:
+    /// three gated runs ended `invoked=[] returned=[]` answering "I don't have
+    /// access to real-time weather data". With the wait raised, the 120-second
+    /// work clock cancelled it instead —
+    /// `DetachingToolError.timedOut(tool: "searchTools", timeoutSeconds: 120.0)`,
+    /// the turn dead in its first call.
     ///
-    /// - Parameter arguments: the call's arguments, unread: every discovery
-    ///   call gets the same wait, because every one of them is a prerequisite.
-    /// - Returns: the wait clock, and no work clock.
+    /// **This is a workaround, not the declaration.** What this tool needs to say
+    /// is `DetachConfiguration.Mode.runToCompletion` with no timeout — the mode
+    /// Router already mounts for inner `tools.*` calls. `mode` is read from the
+    /// wrap-time configuration (`DetachingTool.swift:384`) and
+    /// `DetachmentParameterProviding` exposes only the two clocks, so a tool
+    /// cannot declare its own mode today. Two very large numbers express the
+    /// intent; a per-tool mode would state it. Filed on Router's `w8dzvee`.
+    ///
+    /// - Parameter arguments: the call's arguments, unread — every discovery call
+    ///   is a prerequisite, so every one gets the same answer.
+    /// - Returns: both clocks, set beyond any real search.
     public func detachmentClocks(
         from arguments: GeneratedContent
     ) -> (waitSeconds: TimeInterval?, timeout: TimeInterval?) {
-        (Self.inlineWaitSeconds, nil)
+        (Self.unlimitedSeconds, Self.unlimitedSeconds)
     }
 
-    /// How long a discovery call may block before the mount would detach it.
+    /// The value both of a discovery call's clocks are set to: a day.
     ///
-    /// Long enough that a nested generation on a large selection model finishes
-    /// inline — a 27B discovery call has been measured in the tens of seconds —
-    /// and not unbounded, so a wedged searcher still eventually hands control
-    /// back rather than holding the turn open forever.
-    static let inlineWaitSeconds: TimeInterval = 300
+    /// Not `.infinity`, which the mailbox clamps anyway
+    /// (`SessionMailbox.waitSecondsCeiling`), and not a tuned figure either —
+    /// this is the same ceiling Router itself treats as "no practical limit", so
+    /// nothing here invents a second notion of unbounded. Any real search
+    /// finishes or fails long before it.
+    static let unlimitedSeconds: TimeInterval = 86_400
 }

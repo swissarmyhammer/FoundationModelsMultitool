@@ -10,9 +10,8 @@ private let packageName = "FoundationModelsMultitool"
 /// The name of the M9 sample CLI executable target (and its Sources/ subdirectory).
 private let cliTargetName = "multitool-cli"
 
-/// The git branch tracked by the `.package(url:branch:)` declarations for
-/// `routerDependencyName` and `metadataRegistryDependencyName` below — both
-/// dependencies are wired to their respective `main` branches.
+/// The git branch tracked by the `.package(url:branch:)` declaration for
+/// `metadataRegistryDependencyName` below.
 private let mainBranch = "main"
 
 /// The name of the FoundationModelsRouter dependency package.
@@ -32,36 +31,42 @@ private let routerDependencyName = "FoundationModelsRouter"
 private let metadataRegistryDependencyName = "FoundationModelsMetadataRegistry"
 
 /// Base URL for packages published under the swissarmyhammer GitHub
-/// organization — `routerDependencyName`, `metadataRegistryDependencyName`,
-/// and `mlxPackage` are all fetched from here.
-private let swissArmyHammerOrgURL = "git@github.com:swissarmyhammer/"
+/// organization — `routerDependencyName` and `metadataRegistryDependencyName`
+/// are fetched from here.
+private let swissArmyHammerPackageOrgURL = "git@github.com:swissarmyhammer/"
 
-/// Builds a `.package(url:branch:)` dependency for a package hosted under
-/// `swissArmyHammerOrgURL`, tracking `branch` (`mainBranch` by default).
+/// Builds a `.package(url:branch:)` dependency on `mainBranch` for a package
+/// hosted under `swissArmyHammerPackageOrgURL`.
 ///
-/// This is used for `routerDependencyName` and `metadataRegistryDependencyName`
-/// (default `mainBranch`) and `mlxPackage` (its own fork branch), whose
-/// declarations would otherwise be near-verbatim copies differing only in the
-/// package name and tracked branch.
-private func swissArmyHammerPackage(name: String, branch: String = mainBranch) -> Package.Dependency {
-    .package(url: "\(swissArmyHammerOrgURL)\(name).git", branch: branch)
+/// This is used for `metadataRegistryDependencyName`, and for
+/// `routerDependencyName` again once the temporary local-path declaration
+/// below is restored.
+private func swissArmyHammerPackage(name: String) -> Package.Dependency {
+    .package(url: "\(swissArmyHammerPackageOrgURL)\(name).git", branch: mainBranch)
 }
 
 /// The MLX-backed model package `FoundationModelsRouter` itself depends on
 /// (`../FoundationModelsRouter/Package.swift`'s `mlxPackage`).
 ///
-/// Only two of its products are declared directly here (not Router's own
+/// Taken by path from the sibling checkout, the same way Router takes it:
+/// the fork has caught up to `ml-explore/mlx-swift-lm` upstream and the two
+/// packages move together, so both build against the one working copy
+/// beside them. SwiftPM resolves one package identity from one source, so
+/// this side must match Router's declaration or the graph fails to resolve.
+///
+/// Only three of its products are declared directly here (not Router's own
 /// broader `mlxProducts` set): `MLXLMCommon`, whose
 /// `Downloader`/`TokenizerLoader` protocols a live `LiveModelLoader` is
-/// constructed over, and `MLXHuggingFace`, whose
+/// constructed over; `MLXHuggingFace`, whose
 /// `#hubDownloader()`/`#huggingFaceTokenizerLoader()` macros adapt a real
 /// Hugging Face Hub client into those protocols — the same macros Router's
 /// own gated `…IntegrationTests` target uses, and the M9 `multitool-cli`
-/// executable's default (production) model-resolution path uses too. This
-/// is already part of this package's resolved dependency graph transitively
-/// (Router's own library target needs the *full* mlx-swift-lm product set
-/// to build at all), so declaring these two directly for the targets below
-/// adds no new MLX/C++ compilation, only linking.
+/// executable's default (production) model-resolution path uses too; and
+/// `MLXVLM`, for its model registry alone (see `liveLoaderMLXProducts`).
+/// This is already part of this package's resolved dependency graph
+/// transitively (Router's own library target needs the *full* mlx-swift-lm
+/// product set to build at all), so declaring these three directly for the
+/// targets below adds no new MLX/C++ compilation, only linking.
 private let mlxPackage = "mlx-swift-lm"
 
 /// Base URL for packages published under the Hugging Face GitHub
@@ -109,6 +114,16 @@ private let hubProducts: [Target.Dependency] = [
 private let liveLoaderMLXProducts: [Target.Dependency] = [
     .product(name: "MLXLMCommon", package: mlxPackage),
     .product(name: "MLXHuggingFace", package: mlxPackage),
+    // Linked for its model registry, not for vision, exactly as Router links
+    // it (`../FoundationModelsRouter/Package.swift`). `loadModelContainer`
+    // finds a factory through `MLXLMCommon`'s `ModelFactoryRegistry`, which
+    // resolves its built-in trampolines with `NSClassFromString`, so a
+    // factory reaches that registry only when its module is linked into the
+    // binary. Muse Glimmer (`muse_glimmer`) — the model both the CLI demo
+    // profile and the gated suite pin — is registered in `VLMModelFactory`
+    // alone, and without this the id throws `unsupportedModelType` after
+    // paying for the whole download.
+    .product(name: "MLXVLM", package: mlxPackage),
 ]
 
 /// The `Sources/` subdirectory prefix used by every source target's `path`
@@ -146,7 +161,7 @@ let package = Package(
         // Only the M9 CLI executable and the gated integration test target
         // below link products from these three — see their documentation
         // above.
-        swissArmyHammerPackage(name: mlxPackage, branch: "foundationmodels-fixes"),
+        .package(path: "../\(mlxPackage)"),
         huggingFaceOrgPackage(name: huggingFacePackage, from: "0.9.0"),
         huggingFaceOrgPackage(name: transformersPackage, from: "1.3.0"),
     ],

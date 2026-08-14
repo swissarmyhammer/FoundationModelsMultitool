@@ -510,14 +510,18 @@ private func streamTurn(of session: RoutedSession, prompt: String) async throws 
                 NativeTranscript.StreamedCall(name: name, argumentsJSON: argumentsJSON, output: nil)
             )
             print("CALL [\(turn.toolCallCount)] \(name) args=\(traceExcerpt(argumentsJSON))")
-        case .toolStatus(let id, .completed, let summary):
+        // `output` carries the call's full segments; this runner grades on
+        // the flattened `summary` alone, so it is bound away here.
+        case .toolStatus(let id, .completed, let summary, _):
             turn.toolOutputs.append(summary ?? "")
             if let index = turn.callIndexByID[id] {
                 turn.calls[index].output = summary
             }
             let name = turn.callIndexByID[id].map { turn.calls[$0].name } ?? "?"
             print("DONE \(name) out=\(traceExcerpt(summary ?? ""))")
-        case .toolStatus(let id, .running, let summary):
+        // `output` carries the call's full segments; this runner grades on
+        // the flattened `summary` alone, so it is bound away here.
+        case .toolStatus(let id, .running, let summary, _):
             // A call reporting progress while it runs. Swallowed by the
             // catch-all until now, which made two very different runs look
             // identical: one where a slow call streamed progress the whole
@@ -528,7 +532,9 @@ private func streamTurn(of session: RoutedSession, prompt: String) async throws 
             let name = turn.callIndexByID[id].map { turn.calls[$0].name } ?? "?"
             turn.progressEvents.append("\(name): \(summary ?? "no detail")")
             print("RUN  \(name) progress=\(traceExcerpt(summary ?? ""))")
-        case .toolStatus(let id, .failed, let summary):
+        // `output` carries the call's full segments; this runner grades on
+        // the flattened `summary` alone, so it is bound away here.
+        case .toolStatus(let id, .failed, let summary, _):
             // A call the session could not complete. Previously invisible: the
             // catch-all below swallowed it, so a run where every call failed
             // looked identical to one where the model never called anything —
@@ -550,7 +556,12 @@ private func streamTurn(of session: RoutedSession, prompt: String) async throws 
             turn.compactions.append("\(result)")
         case .turnEnded(let usage):
             turn.tokenUsage = "\(usage)"
-        case .toolStatus, .reasoningDelta:
+        case .toolStatus, .reasoningDelta, .toolInvocation, .entryRecorded:
+            // `.toolStatus` here is the residue of the three status cases
+            // handled above. `.toolInvocation` carries the open/close record
+            // of each call, and `.entryRecorded` announces a transcript entry;
+            // both restate what `.toolCall`/`.toolStatus` already gave this
+            // runner, which grades a scenario on its calls and its answer.
             break
         }
     }

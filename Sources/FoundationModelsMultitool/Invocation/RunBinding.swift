@@ -96,7 +96,7 @@ struct RunBinding: Sendable {
     /// Runs one inner `tools.*` call through the shared elevation engine with
     /// elevation off.
     ///
-    /// `ToolDetachment.wrapping(_:sessionID:mailbox:sink:configuration:)`
+    /// `ToolDetachment.wrapping(tool:inheriting:sink:configuration:)`
     /// picks the decorator: `DetachingTool` for a `String`-output tool,
     /// `ContextBindingTool` for any other output. Both mint the call its own
     /// `completionToken` and bind `ToolContext.$current` around it
@@ -119,9 +119,8 @@ struct RunBinding: Sendable {
     ///   per-call `timeout` ends the call.
     func invoke<T: Tool>(_ tool: T, arguments: T.Arguments) async throws -> T.Output {
         let mounted = ToolDetachment.wrapping(
-            tool,
-            sessionID: context.sessionID,
-            mailbox: context.mailbox,
+            tool: tool,
+            inheriting: context,
             sink: AmbientUpstreamSink(context: context),
             configuration: innerElevation
         )
@@ -157,7 +156,7 @@ struct AmbientUpstreamSink: OperationEventSink {
     /// The captured ambient context every event is forwarded through.
     let context: ToolContext
 
-    func post(_ event: OperationEvent) async {
+    func post(event: OperationEvent) async {
         await context.post(event)
     }
 }

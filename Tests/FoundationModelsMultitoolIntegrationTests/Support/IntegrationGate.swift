@@ -2,6 +2,13 @@ import Foundation
 import HuggingFace
 import MLXHuggingFace
 import MLXLMCommon
+// Load-bearing although this file names no `MLXVLM` symbol: keep it.
+// `TinyModels.generation` is registered in `VLMModelFactory` alone, and
+// `MLXLMCommon`'s `ModelFactoryRegistry` finds its trampolines with
+// `NSClassFromString` — a module the linker dropped is silently absent
+// from that list, and the id then throws `unsupportedModelType` after
+// paying for the whole download.
+import MLXVLM
 import Testing
 import Tokenizers
 
@@ -183,11 +190,27 @@ var multitoolIntegrationEnabled: Bool {
 /// feeds. Sharing one `ModelRef` across both slots also means one resident
 /// model rather than a swap between generation and selection on every search.
 ///
+/// **Muse Glimmer replaces the Qwen pair.** Both generation slots now name
+/// `Muse-Glimmer-30B-4bit`, the same model Router's own gated suite pins
+/// (`../FoundationModelsRouter/Tests/FoundationModelsRouterIntegrationTests/
+/// Support/RealModels.swift`), for a prompt-cache reason the 27B cannot
+/// meet: Qwen3.5/3.6 give their linear/GDN layers a `MambaCache`, which is
+/// not trimmable, and one non-trimmable entry stops prefix reuse for the
+/// whole cache list — so `PrefixReuseTests` had nothing left to measure.
+/// Muse Glimmer has no recurrent layers, so every entry in its cache list is
+/// trimmable, and its ATEM tool protocol carries a reuse rule written for
+/// tool continuations — which is what every scenario in this target is.
+/// It is a vision-language model driven text-only here, deliberately: its
+/// processor returns a pure-text input when no image is supplied. Being
+/// registered in `VLMModelFactory` alone, it reaches the runtime factory
+/// registry only because `Package.swift` links `MLXVLM` (see
+/// `liveLoaderMLXProducts`) and this file imports it below.
+///
 /// Neither reference carries an `@revision`, so both track their repository's
 /// default revision rather than a fixed commit — these are model *choices*,
 /// not version locks, whatever the surrounding prose calls them.
 private enum TinyModels {
-    static let generation: ModelRef = "mlx-community/Qwen3.6-27B-mxfp4"
+    static let generation: ModelRef = "mlx-community/Muse-Glimmer-30B-4bit"
     static let selection: ModelRef = generation
     static let embedding: ModelRef = "mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ"
 }
@@ -208,7 +231,7 @@ let multitoolTinyProfile = ProfileDefinition(
     // imposing one. The 8192 that stood here was sized for the *selection*
     // tier's assembled prefix, and it was silently applied to the generation
     // turn too — a turn that carries two tool descriptions, a verbose
-    // `searchTools` result, and a snippet. Qwen3.6-27B's real window is far
+    // `searchTools` result, and a snippet. Muse Glimmer's real window is far
     // larger, so the cap constrained nothing except us: a generation turn that
     // outgrows it loses the very tool definitions and discovery output it is
     // supposed to act on, which is exactly the "there are no available tools

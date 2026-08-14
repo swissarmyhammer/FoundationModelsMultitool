@@ -323,28 +323,28 @@ extension MultiTool {
         of argument: InterpreterValue?,
         binding: RunBinding?
     ) async throws -> InterpreterValue {
-        let mailbox = try sessionContext(from: binding).mailbox
+        let context = try sessionContext(from: binding)
         guard let token = try optionalCompletionToken(argument, usage: "status(completionToken)") else {
-            return .array(await mailbox.status().map { .object(parkedRunFields(of: $0)) })
+            return .array(await context.parkedRuns().map { .object(parkedRunFields(of: $0)) })
         }
-        return await lifecycle(of: token, in: mailbox)
+        return await lifecycle(of: token, in: context)
     }
 
     /// One run's lifecycle: parked, settled, or unknown.
     ///
     /// - Parameters:
     ///   - token: the run's completion token.
-    ///   - mailbox: the session's mailbox.
+    ///   - context: the session context the run plane is read through.
     /// - Returns: the lifecycle object.
-    private static func lifecycle(of token: String, in mailbox: SessionMailbox) async -> InterpreterValue {
-        if let parked = await mailbox.status().first(where: { $0.completionToken == token }) {
+    private static func lifecycle(of token: String, in context: ToolContext) async -> InterpreterValue {
+        if let parked = await context.parkedRuns().first(where: { $0.completionToken == token }) {
             return .object(parkedRunFields(of: parked))
         }
         // Not parked in the snapshot above, so the run either already settled
         // — the mailbox retains its terminal event — or the token names
         // nothing at all. A zero-second wait separates exactly those two
         // without suspending.
-        switch await mailbox.wait(completionToken: token, seconds: lifecycleProbeSeconds) {
+        switch await context.wait(completionToken: token, seconds: lifecycleProbeSeconds) {
         case .settled(let terminal):
             return .object(terminalEventFields(of: terminal, state: RunPlaneState.settled))
         case .unknownToken:
@@ -353,7 +353,7 @@ extension MultiTool {
             // The run parked between the snapshot and the probe. Re-read it,
             // so the reported row carries the same fields a parked run always
             // does rather than a partial one.
-            let parked = await mailbox.status().first { $0.completionToken == token }
+            let parked = await context.parkedRuns().first { $0.completionToken == token }
             guard let parked else {
                 return .object(tokenOnlyFields(state: RunPlaneState.unknownToken, token: token))
             }
@@ -378,12 +378,12 @@ extension MultiTool {
         _ arguments: [InterpreterValue],
         binding: RunBinding?
     ) async throws -> InterpreterValue {
-        let mailbox = try sessionContext(from: binding).mailbox
+        let context = try sessionContext(from: binding)
         let token = try completionToken(arguments.first, usage: "wait(completionToken, seconds)")
         guard case .number(let seconds)? = arguments.dropFirst().first else {
             throw SandboxGlobalError.missingWaitDeadline
         }
-        switch await mailbox.wait(completionToken: token, seconds: seconds) {
+        switch await context.wait(completionToken: token, seconds: seconds) {
         case .settled(let terminal):
             return .object(terminalEventFields(of: terminal, state: RunPlaneState.settled))
         case .deadlineElapsed:
@@ -407,9 +407,9 @@ extension MultiTool {
         of argument: InterpreterValue?,
         binding: RunBinding?
     ) async throws -> InterpreterValue {
-        let mailbox = try sessionContext(from: binding).mailbox
+        let context = try sessionContext(from: binding)
         let token = try completionToken(argument, usage: "cancel(completionToken)")
-        switch await mailbox.cancel(completionToken: token) {
+        switch await context.cancel(completionToken: token) {
         case .reported(let outcome):
             return .object([
                 "state": .string(RunPlaneState.reported),
@@ -430,7 +430,7 @@ extension MultiTool {
     ///
     /// - Parameter run: the mailbox's own snapshot row.
     /// - Returns: the object's fields.
-    private static func parkedRunFields(of run: SessionMailbox.RunStatus) -> [String: InterpreterValue] {
+    private static func parkedRunFields(of run: ParkedRun) -> [String: InterpreterValue] {
         [
             "state": .string(RunPlaneState.parked),
             "completionToken": .string(run.completionToken),

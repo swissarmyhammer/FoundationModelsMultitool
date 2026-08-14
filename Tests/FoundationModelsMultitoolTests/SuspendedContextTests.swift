@@ -80,7 +80,7 @@ struct SuspendedContextTests {
 
         // Alive: the mailbox still holds the parked run, and the promise the
         // snippet is awaiting has not been torn down under it.
-        let parked = await harness.mailbox.status()
+        let parked = await runPlane(over: harness.mailbox).parkedRuns()
         #expect(parked.contains { $0.completionToken == token })
         #expect(!harness.gated.wasCancelled)
 
@@ -102,10 +102,14 @@ struct SuspendedContextTests {
             arguments: RunCodeArguments(code: Self.gatedSnippet, waitSeconds: Self.shortWaitSeconds)
         )
 
-        #expect(PendingRunEnvelope.isRendered(rendered))
-        // The envelope came back while the inner fixture call was still
-        // running — the pending promise, not a finished one.
-        #expect(harness.gated.hasStarted)
+        #expect(PendingRunEnvelope.isRendered(text: rendered))
+        // The inner fixture call runs under the parked run — the pending
+        // promise, not a finished one. Awaited rather than read at the instant
+        // the envelope returned: that instant raced `shortWaitSeconds` against
+        // JSC start-up, which made a true statement about the product fail
+        // whenever the machine was loaded. The latch is still closed here, so
+        // the call starting at all is what the assertion was always after.
+        try await Self.waitUntil { harness.gated.hasStarted }
         #expect(!harness.gated.wasCancelled)
 
         let token = try Self.completionToken(of: rendered)
@@ -129,7 +133,7 @@ struct SuspendedContextTests {
         )
         let elapsed = start.duration(to: .now)
 
-        #expect(PendingRunEnvelope.isRendered(rendered))
+        #expect(PendingRunEnvelope.isRendered(text: rendered))
         // Far below the mount's own generous wait window: only the envelope's
         // own zero, read through `DetachmentParameterProviding`, detaches here.
         #expect(elapsed < Self.promptResponseBound)
@@ -189,7 +193,7 @@ struct SuspendedContextTests {
         // exists to — sampling it here is a race, not a check.
         try await Self.waitUntil { harness.gated.wasCancelled }
         #expect(!harness.latch.isReleased)
-        let parked = await harness.mailbox.status()
+        let parked = await runPlane(over: harness.mailbox).parkedRuns()
         #expect(parked.isEmpty)
     }
 
@@ -292,7 +296,7 @@ struct SuspendedContextTests {
         let mailbox = SessionMailbox()
         let sink = RecordingEventSink()
         let mounted = ToolDetachment.wrapping(
-            multiTool,
+            tool: multiTool,
             sessionID: ULID(),
             mailbox: mailbox,
             sink: sink,
@@ -346,7 +350,7 @@ struct SuspendedContextTests {
     private static func settledTerminal(
         of completionToken: String, in mailbox: SessionMailbox
     ) async throws -> OperationEvent {
-        let settlement = await mailbox.wait(
+        let settlement = await runPlane(over: mailbox).wait(
             completionToken: completionToken, seconds: scriptedRunSettlementSeconds
         )
         guard case .settled(let terminal) = settlement else {

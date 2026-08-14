@@ -44,7 +44,7 @@ actor RecordingEventSink: OperationEventSink {
     /// Every event posted to this sink, in arrival order.
     private(set) var events: [OperationEvent] = []
 
-    func post(_ event: OperationEvent) async {
+    func post(event: OperationEvent) async {
         events.append(event)
     }
 

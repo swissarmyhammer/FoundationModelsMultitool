@@ -55,7 +55,7 @@ struct HostAndEmitterTests {
         let sessionID = ULID()
         let mounted = try #require(
             ToolDetachment.wrapping(
-                MultiTool(registry: registry),
+                tool: MultiTool(registry: registry),
                 sessionID: sessionID,
                 mailbox: mailbox,
                 sink: sink,
@@ -69,13 +69,14 @@ struct HostAndEmitterTests {
 
         // The run parked with its snippet still inside the gated call, so the
         // recorder has not run yet and nothing of its own is on the sink.
-        #expect(PendingRunEnvelope.isRendered(rendered))
+        #expect(PendingRunEnvelope.isRendered(text: rendered))
         let beforeRelease = await sink.details(ofKind: .progress)
         #expect(!beforeRelease.contains(recorderProgressDetail))
 
         let token = try JSONDecoder().decode(PendingRunEnvelope.self, from: Data(rendered.utf8)).completionToken
         latch.release()
-        let settlement = await mailbox.wait(completionToken: token, seconds: scriptedRunSettlementSeconds)
+        let settlement = await runPlane(over: mailbox)
+            .wait(completionToken: token, seconds: scriptedRunSettlementSeconds)
         guard case .settled(let terminal) = settlement else {
             Issue.record("the elevated run never settled: \(settlement)")
             return

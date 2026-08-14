@@ -6,6 +6,13 @@ import HuggingFace
 import MLXFoundationModels
 import MLXHuggingFace
 import MLXLMCommon
+// Load-bearing although this file names no `MLXVLM` symbol: keep it.
+// `loadModelContainer` below selects a factory through `MLXLMCommon`'s
+// `ModelFactoryRegistry`, which finds its built-in trampolines with
+// `NSClassFromString`, so a factory whose module the linker dropped is
+// silently absent from that list. Muse Glimmer (`muse_glimmer`), the
+// model `demoProfile` pins, is registered only in `VLMModelFactory`.
+import MLXVLM
 import Tokenizers
 
 /// Prefix for all user-facing CLI error messages.
@@ -194,24 +201,20 @@ enum CLIRunner {
 
     /// The profile used for the demo run.
     ///
-    /// Deliberate use of tiny, tool-calling-capable models, matching the
+    /// Deliberate use of tool-calling-capable models, matching the
     /// gated integration suite's own `multitoolTinyProfile`
     /// (`Tests/FoundationModelsMultitoolIntegrationTests/Support/IntegrationGate.swift`)
     /// so a machine that already ran that suite shares the cached weights.
     static let demoProfile = ProfileDefinition(
         name: "multitool-cli-demo",
-        description: "Small tool-calling-capable models for the multitool-cli sample.",
-        // Split pins, mirroring the gated suite's `multitoolTinyProfile`
-        // (see `IntegrationGate.swift`'s pin history): the dense
-        // Qwen3.6-27B drives the main session — under the suite's
-        // outcome-based assertions, with the tool-use contract carried
-        // entirely by the searchTools/runCode descriptions, it opens
-        // every scenario with searchTools and follows through reliably where
-        // the 3.3B-active MoE varied — while the 1.5B stays on `flash` for
-        // the selection tier, where it is empirically the more accurate and
-        // decisive grammar-constrained selector.
-        standard: ["mlx-community/Qwen3.6-27B-mxfp4"],
-        flash: ["mlx-community/Qwen2.5-1.5B-Instruct-4bit"],
+        description: "Tool-calling-capable models for the multitool-cli sample.",
+        // One model on both generation slots, mirroring the gated suite's
+        // `multitoolTinyProfile` (see `IntegrationGate.swift`'s pin
+        // history): Muse Glimmer drives the main session and the selection
+        // tier alike. The router pools resident models by `(ModelRef,
+        // role)`, so naming the same reference twice loads the weights once.
+        standard: ["mlx-community/Muse-Glimmer-30B-4bit"],
+        flash: ["mlx-community/Muse-Glimmer-30B-4bit"],
         embedding: ["mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ"],
         context: demoContextTokens
     )

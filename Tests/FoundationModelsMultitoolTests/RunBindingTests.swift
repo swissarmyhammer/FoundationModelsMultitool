@@ -42,8 +42,8 @@ struct RunBindingTests {
         let output = try await binding.invoke(slowTool, arguments: NoArguments(unused: nil))
 
         #expect(output == "slow-result")
-        #expect(!PendingRunEnvelope.isRendered(output))
-        #expect(await mailbox.status().isEmpty)
+        #expect(!PendingRunEnvelope.isRendered(text: output))
+        #expect(await runPlane(over: mailbox).parkedRuns().isEmpty)
     }
 
     // MARK: - Parallel inner calls correlate independently

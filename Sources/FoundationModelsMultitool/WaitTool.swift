@@ -101,7 +101,7 @@ public struct WaitTool: Tool {
     /// - Throws: nothing. A session-less call and an unknown token are both
     ///   reported in band, because both are states a model can act on.
     public func call(arguments: WaitArguments) async throws -> String {
-        guard let mailbox = ToolContext.current?.mailbox else {
+        guard let context = ToolContext.current else {
             return Self.rendered(.object([
                 "state": .string(Self.noRunPlaneState),
                 "detail": .string(Self.noRunPlaneDetail),
@@ -110,10 +110,10 @@ public struct WaitTool: Tool {
         let bound = Self.bounded(arguments.timeout)
         if let token = arguments.completionToken {
             return Self.rendered(.object(
-                await Self.settlement(of: token, in: mailbox, within: bound)
+                await Self.settlement(of: token, in: context, within: bound)
             ))
         }
-        let pending = await mailbox.status().map(\.completionToken)
+        let pending = await context.parkedRuns().map(\.completionToken)
         guard !pending.isEmpty else {
             return Self.rendered(.object([
                 "state": .string(Self.nothingPendingState),
@@ -122,7 +122,7 @@ public struct WaitTool: Tool {
         }
         var reports: [InterpreterValue] = []
         for token in pending {
-            reports.append(.object(await Self.settlement(of: token, in: mailbox, within: bound)))
+            reports.append(.object(await Self.settlement(of: token, in: context, within: bound)))
         }
         return Self.rendered(.array(reports))
     }
@@ -134,15 +134,15 @@ public struct WaitTool: Tool {
     ///
     /// - Parameters:
     ///   - token: the run's completion token.
-    ///   - mailbox: the session's mailbox.
+    ///   - context: the session context the run plane is read through.
     ///   - seconds: the bound to wait within.
     /// - Returns: the report's fields.
     private static func settlement(
         of token: String,
-        in mailbox: SessionMailbox,
+        in context: ToolContext,
         within seconds: Double
     ) async -> [String: InterpreterValue] {
-        switch await mailbox.wait(completionToken: token, seconds: seconds) {
+        switch await context.wait(completionToken: token, seconds: seconds) {
         case .settled(let terminal):
             return MultiTool.terminalEventFields(of: terminal, state: RunPlaneState.settled)
         case .deadlineElapsed:
@@ -152,25 +152,32 @@ public struct WaitTool: Tool {
         }
     }
 
-    /// The host's own bound, used when the call names none.
+    /// The bound used when the call names none: no bound at all.
     ///
-    /// Generous rather than tight: this is the ceiling on one deliberate block,
-    /// and a model that asked to wait has said it cannot proceed without the
-    /// result. Reporting `deadlineElapsed` too eagerly would send it back around
-    /// a loop for no reason.
-    static let defaultTimeoutSeconds: Double = 120
+    /// **`wait` blocks until the token finishes, or until a timeout the caller
+    /// passed.** Those are the only two ways it returns, so a caller that passes
+    /// nothing gets the first one. A host-side cap here would be a third way —
+    /// the tool giving up on its own schedule — and it would report
+    /// `deadlineElapsed` for work that is still running, sending the model back
+    /// around a loop it had already decided to stop for.
+    ///
+    /// `ToolContext.waitSecondsCeiling`, not `.infinity`: the run plane clamps
+    /// every wait at that ceiling anyway, so naming it here is the same bound
+    /// the host already treats as unbounded rather than a second notion of it.
+    static let unboundedSeconds: TimeInterval = ToolContext.waitSecondsCeiling
 
-    /// Bounds a requested wait by the host's own ceiling.
+    /// The seconds to wait, given what the call asked for.
     ///
-    /// A negative or absent request becomes the ceiling; nothing above it
-    /// survives. So the model cannot hold a turn open longer than the host
-    /// allows, whatever it asks for.
+    /// The caller's timeout is honoured as passed — it is the bound the model
+    /// chose when it decided to block, and nothing here second-guesses it. Only
+    /// an absent or non-positive request falls back to waiting for the run to
+    /// finish.
     ///
     /// - Parameter requested: the seconds the call asked for, or `nil`.
     /// - Returns: the seconds to wait within.
     static func bounded(_ requested: Double?) -> Double {
-        guard let requested, requested > 0 else { return defaultTimeoutSeconds }
-        return min(requested, defaultTimeoutSeconds)
+        guard let requested, requested > 0 else { return unboundedSeconds }
+        return requested
     }
 
     /// The `state` a session-less call reports.

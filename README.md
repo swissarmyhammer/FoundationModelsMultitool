@@ -91,10 +91,11 @@ let response: LanguageModelSession.Response<String> =
 print(response.content)
 ```
 
-The demo pins deliberately small models: the natively tool-calling-trained
-`mlx-community/Qwen3-4B-Instruct-2507-4bit` on `standard` for the main
-session, and `mlx-community/Qwen2.5-1.5B-Instruct-4bit` on `flash` for
-`searchTools`'s selection tier (see `CLIRunner.demoProfile` for the rationale).
+The demo pins one natively tool-calling-trained model,
+`mlx-community/Muse-Glimmer-30B-4bit`, on both `standard` (the main session)
+and `flash` (`searchTools`'s selection tier); the router loads the weights
+once and both slots share them (see `CLIRunner.demoProfile` for the
+rationale).
 
 For a small, fixed tool set, skip discovery entirely — direct mode: build the
 registry with `.directMode()` and mount it the same way. A direct-mode

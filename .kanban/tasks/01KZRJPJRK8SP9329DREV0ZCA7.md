@@ -1,6 +1,51 @@
 ---
 assignees:
 - claude-code
+comments:
+- actor: claude-code
+  id: 01m000sy8zm3q8wfhhpn684df1
+  text: |-
+    ### Result: the tree builds and both ungated suites are green
+
+    `swift build` clean, zero warnings in this package's own sources. `swift test`, three consecutive runs, all green:
+
+    - `FoundationModelsMultitoolTests` — **327 tests in 27 suites**
+    - `FoundationModelsMultitoolIntegrationTests` (ungated part) — **49 tests in 8 suites**
+
+    `./.build/debug/multitool-cli --help` runs and exits 0, so linking `MLXVLM` did not disturb the executable's rpaths.
+
+    ### What it took, part 1: the dependency, not Router
+
+    The build did not fail on a half-finished Router edit in the end. It failed on the dependency graph: this package pinned `mlx-swift-lm` to the fork branch `foundationmodels-fixes` by URL, while Router had already moved to `.package(path: "../mlx-swift-lm")` (their `aa7f689`). One identity, two sources, so nothing resolved. `Package.swift` now takes the sibling checkout by path, the same way Router does.
+
+    ### What it took, part 2: four Router API changes
+
+    Each is named with the commit that made it, so the next breakage is diagnosed by comparison:
+
+    | Router commit | The change | Adapted here |
+    |---|---|---|
+    | `a8d6252` refactor(router)! | `ToolDetachment.wrapping(_:…)` first parameter labelled `tool:`; `OperationEventSink.post(_:)` became `post(event:)` | `RunBinding.swift`, and the three sinks in the test fixtures |
+    | `0410871` refactor(api)! | The whole `SessionMailbox` run plane went internal, `ToolContext.mailbox` with it | The subject of the new Router card `^k0mecjp` — see part 3 |
+    | `9c46dfa` feat(projection) | `SessionEvent.toolStatus` gained a fourth value, `output: [SegmentPayload]?` | `ScenarioRunner.swift`'s three status patterns bind it away; this runner grades on the flattened `summary` |
+    | `05af00a`/`87404c8` feat(projection) | New cases `.toolInvocation(_)` and `.entryRecorded(id:kind:)` | Added to `ScenarioRunner.swift`'s ignore branch, with a note on why they add nothing this runner grades |
+
+    ### What it took, part 3: a Router card, not a local patch
+
+    `0410871` left this package with no way to reach its own run plane — the `status()`/`wait()`/`cancel()` builtins and the `wait` tool are the product, and they read the plane. The fix belonged on Router's board, not here: card `^k0mecjp` there, which landed as `3aac832`. `ToolContext` now carries `parkedRuns()`, `wait(completionToken:seconds:)` and `cancel(completionToken:)`, plus public `waitSecondsCeiling`/`terminalDetailTailLimit`, and the vocabulary moved to `Hosting/RunPlane.swift` as `RunKind`/`ParkedRun`/`WaitOutcome`/`CancelOutcome`. `SessionMailbox` stays internal. The 13 sites in `MultiTool+SandboxGlobals.swift` and `WaitTool.swift` read the plane through the context now, and `WaitTool.unboundedSeconds` names `ToolContext.waitSecondsCeiling` instead of repeating its `86_400`.
+
+    ### The three uncommitted files: verified, not assumed
+
+    `SearchToolsTool.swift`, `WaitTool.swift` and `WaitToolTests.swift` were written while the build was broken and had never compiled. They compile now and their suites pass. (`ScenarioRunner.swift` was already committed; the card's fourth file no longer applies.)
+
+    ### Two things this card asked to be told about
+
+    - **The fixtures no longer park runs by hand.** `parkScriptedRun` used `mailbox.park`/`updateProgress`, which are Router's own wiring. It now mounts a genuinely slow tool on the detachment engine with a zero wait clock and reads the completion token out of the pending envelope — the way a real run parks. Two assertions changed with it, both toward the truth: a run's `op` is its tool's own name (the engine stamps it), so the tests assert `run.op` rather than the literal `"run shell"` the hand-parked row could invent.
+    - **`SuspendedContextTests.swift:108` was a flaky test, and it is now deterministic.** It read `harness.gated.hasStarted` at the instant the envelope returned, which raced `shortWaitSeconds` (0.2s) against JSC start-up — it passed on one full-suite run and failed on the next with nothing changed between them. It now awaits the same condition through the file's own `waitUntil`, while the latch is still closed. That proves the stronger claim the title always made.
+
+    ### Still open, and it grew
+
+    `grep -n 'path: "../' Package.swift` now returns **two** lines, not one: Router and `mlx-swift-lm`. Both are exit blockers on `^tkrdwb8`. The SwiftPM identity warning survives for `foundationmodelsrouter` alone (MetadataRegistry and Ranker pull it by URL); `mlx-swift-lm` no longer warns, because this package and Router are its only consumers and both take it by path.
+  timestamp: 2026-08-14T11:34:05.343209+00:00
 position_column: todo
 position_ordinal: '8280'
 title: Get the tree building again against Router
