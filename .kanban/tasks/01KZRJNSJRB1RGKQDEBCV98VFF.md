@@ -1,10 +1,56 @@
 ---
 assignees:
 - claude-code
+comments:
+- actor: claude-code
+  id: 01m0015pcc4e1wb1p0r1ac53bk
+  text: |-
+    ### Done. Ungated suite green: 327 tests in 27 suites, and 49 in 8.
+
+    ### The change
+
+    - `RunCodeArguments` carries `code` and nothing else. `waitSeconds` and `timeout` are gone, with their `@Guide` text — the concept is out of the schema, not set to zero.
+    - `MultiTool+Detachment.swift`: `detachmentClocks(from:)` answers a zero wait clock and `configuration.executionTimeLimit` as the work clock. It reads nothing from the arguments, so the answer cannot vary by call, by host, or by machine load. The two `…Property` name constants went with the reading.
+
+    ### The decision this card asked for: the conformance stays
+
+    `MultiTool` still conforms to `DetachmentParameterProviding` although nothing is read from the arguments. It has two jobs left, and both are answers this package must give rather than inherit:
+
+    1. forcing the wait clock to zero **against whatever the mount configured** — without it, a host that mounts with a five-second wait would get the old two-shape behaviour back;
+    2. holding the work clock at this package's own `executionTimeLimit` rather than the mount's default.
+
+    Dropping the conformance would hand both back to the mount. It is recorded in the code, on `detachmentClocks(from:)`.
+
+    ### The two behavioural failures, explained before their assertions changed
+
+    **`SuspendedContextTests.swift:108` — the test was wrong, not the code.** The card predicted its harness gate would not start once every call detached immediately, and that is exactly right: with a zero wait clock the envelope comes back *before* the interpreter has started the inner `tools.gated()` call, so reading `harness.gated.hasStarted` at that instant is false. The reading was already a race before this change — it timed a 0.2s wait clock against JSC start-up, and it passed one full-suite run and failed the next with nothing changed (fixed under `^ev0zca7`). It now awaits the condition through `waitUntil`, while the latch is still closed, which proves the claim the title makes: the inner call ran under the parked run. Immediate detachment makes that ordering the normal case rather than a rare one.
+
+    **`SuspendedContextTests.swift:179` — the code was right, and the test was reading the wrong place.** The cancelling snippet is itself mounted, so it backgrounds too: `harness.mounted.call` hands back *its* pending envelope, not the cancel result, and `cancelOutput.contains("\"state\":\"reported\"")` could never hold again. The cancel still happens — the second run performs it in the background — so the test now collects that second run's own terminal event from the run plane and asserts `reported` there. Only where the answer is read from changed. This is the rule applying to itself, and it is worth stating plainly: **a snippet that collects or cancels another run is a backgrounded run too.** The `wait` tool (`^ddgjps6`) is what makes that ergonomic for a model.
+
+    ### The five tests this card listed
+
+    | Test | Outcome |
+    |---|---|
+    | `RouterSessionMountTests.swift:60` transparency through the mount | Rewritten as the rule that replaced it: the mount returns a token where a direct call returns the value. Both halves in one test. |
+    | `SuspendedContextTests.swift:66` `waitSeconds` crosses untouched | Deleted with the property. |
+    | `SuspendedContextTests.swift:43` the stock wait clock is `nil` | Now: every call answers a zero wait clock, so there is no stock wait clock left to inherit. |
+    | `SuspendedContextTests.swift:108` | Behavioural — see above. |
+    | `SuspendedContextTests.swift:179` | Behavioural — see above. |
+
+    Also rewritten: the schema test (`runCode`'s schema exposes `code` alone, and carries neither `waitSeconds` nor `timeout`), and the per-call timeout clamp test, which had nothing left to clamp — the host ceiling is now the whole answer.
+
+    ### Acceptance criteria
+
+    - [x] A test asserts the rendered `runCode` schema carries no `waitSeconds` and no `timeout`
+    - [x] A test asserts `runCode` hands back a token rather than a value when mounted, and the same snippet returns its value when called directly
+    - [x] The host work ceiling still bounds a runaway snippet with no model-facing clock present: the watchdog coverage in `JSCInterpreter`/`Hardening` passes unchanged
+    - [x] Both behavioural failures are explained above, and each says whether the test or the code was wrong
+    - [x] Ungated suite green
+  timestamp: 2026-08-14T11:40:30.476738+00:00
 depends_on:
 - 01KZRJPJRK8SP9329DREV0ZCA7
-position_column: todo
-position_ordinal: '8180'
+position_column: done
+position_ordinal: c180
 title: 'runCode always backgrounds: remove waiting from its schema entirely'
 ---
 ## The three rules this belongs to

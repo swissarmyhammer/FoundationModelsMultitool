@@ -45,8 +45,8 @@ struct RouterSessionMountTests {
         #expect(!direct.isEmpty)
     }
 
-    @Test("runCode returns the same value through Router's session mount as it does direct")
-    func runCodeIsTransparentThroughTheMount() async throws {
+    @Test("the mount returns a token where a direct call returns the value")
+    func runCodeBackgroundsThroughTheMount() async throws {
         let registry = try Self.registry()
         let runCode = MultiTool(registry: registry)
         let snippet = "const r = await tools.getCities({}); return r.cities.length;"
@@ -57,7 +57,15 @@ struct RouterSessionMountTests {
         )
         let throughMount = try await mounted.call(arguments: RunCodeArguments(code: snippet))
 
-        #expect(throughMount == direct)
+        // Transparency through the mount can never hold again, and this is the
+        // rule that replaced it: mounted, `runCode` always backgrounds and
+        // always hands back a completion token, whatever the mount's own wait
+        // clock says (task ^cv98vff). It is the stronger claim — it defines the
+        // mount, where the old one only said the mount changed nothing.
+        #expect(PendingRunEnvelope.isRendered(text: throughMount))
+        #expect(throughMount != direct)
+        // Called directly, with no session and no run plane to park in, the
+        // same snippet still returns its own value. Both halves of one rule.
         #expect(direct == "3")
     }
 

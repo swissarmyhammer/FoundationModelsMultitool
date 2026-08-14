@@ -17,24 +17,29 @@ import os
 // `RunBinding`), so no snippet ever branches on a pending envelope mid-code.
 
 extension MultiTool: DetachmentParameterProviding {
-    /// The per-call clocks this `runCode` envelope carries.
+    /// The per-call clocks every `runCode` call carries.
     ///
-    /// `waitSeconds` crosses untouched — including `0`, which detaches the
-    /// call immediately — because the wait clock belongs to the caller, and a
-    /// call that supplies none leaves it to the mount (a `nil` here is the
-    /// engine's own "use the wrap-time configuration" signal).
+    /// **The wait clock is always zero, and no call can raise it.**
+    /// `DetachConfiguration.waitSeconds`' own documentation defines `0` as
+    /// detach-immediately, so answering zero here is what makes `runCode` the
+    /// backgrounder: it hands back a completion token every time, whatever the
+    /// mount's own wait clock says (task `^cv98vff`). The arguments are no
+    /// longer read for it — `RunCodeArguments` carries no clocks at all — so
+    /// the answer cannot vary by call, by host, or by machine load.
     ///
-    /// `timeout` is always answered, never left to the mount, and always
+    /// `timeout` is still answered, never left to the mount, and always
     /// bounded by `configuration.executionTimeLimit`: that limit is both this
     /// package's default work clock and its hard ceiling (see
     /// `MultiToolConfiguration.executionTimeLimit` for the full
-    /// reconciliation). Answering it here is what keeps the engine's clock at
-    /// or under the limit the watchdog of the sandbox `MultiTool.init` runs
-    /// is armed with, so the engine's own timeout is what a well-behaved
-    /// suspended context meets first. That holds for an interpreter injected
-    /// into `MultiTool.init` too: it is re-armed from the same ceiling this
-    /// bound comes from (`Interpreter.withTimeLimit(_:)`), so the two sides
-    /// cannot disagree.
+    /// reconciliation). A backgrounded snippet is exactly what needs a
+    /// ceiling, since nothing is blocking on it to notice that it ran away.
+    /// Answering it here is what keeps the engine's clock at or under the
+    /// limit the watchdog of the sandbox `MultiTool.init` runs is armed with,
+    /// so the engine's own timeout is what a well-behaved suspended context
+    /// meets first. That holds for an interpreter injected into
+    /// `MultiTool.init` too: it is re-armed from the same ceiling this bound
+    /// comes from (`Interpreter.withTimeLimit(_:)`), so the two sides cannot
+    /// disagree.
     ///
     /// It is a bound, not a promise of survival. The two clocks are not the
     /// same kind: the engine's timeout resets on every progress event, while
@@ -46,42 +51,27 @@ extension MultiTool: DetachmentParameterProviding {
     /// was armed with, and is force-terminated there. The absolute cap is the
     /// intended safety property, not a gap.
     ///
+    /// **The conformance stays, although nothing is read from the arguments.**
+    /// It has two jobs left, and both are answers this package must give
+    /// rather than inherit: forcing the wait clock to zero against whatever
+    /// the mount configured, and holding the work clock at this package's own
+    /// ceiling. Dropping it would put both back in the mount's hands.
+    ///
     /// - Parameter arguments: the call's arguments as opaque
-    ///   `GeneratedContent` — the same content `RunCodeArguments` was decoded
-    ///   from.
-    /// - Returns: the call's wait clock, or `nil` when it supplies none; and
-    ///   its bounded work clock.
+    ///   `GeneratedContent`. Unread: every `runCode` call gets the same two
+    ///   answers, because every one of them backgrounds.
+    /// - Returns: a zero wait clock, and this package's bounded work clock.
     public func detachmentClocks(
         from arguments: GeneratedContent
     ) -> (waitSeconds: TimeInterval?, timeout: TimeInterval?) {
-        (
-            try? arguments.value(TimeInterval.self, forProperty: RunCodeArguments.waitSecondsProperty),
-            bounded(timeout: try? arguments.value(TimeInterval.self, forProperty: RunCodeArguments.timeoutProperty))
-        )
+        (detachImmediatelySeconds, configuration.executionTimeLimit)
     }
 
-    /// Bounds one call's requested work clock by this tool's configured
-    /// ceiling.
+    /// The wait clock every `runCode` call reports: detach immediately.
     ///
-    /// - Parameter timeout: the `timeout` the envelope carried, or `nil` when
-    ///   it carried none.
-    /// - Returns: the requested value clamped to `0...executionTimeLimit`, or
-    ///   the ceiling itself when the envelope asked for nothing.
-    private func bounded(timeout: TimeInterval?) -> TimeInterval {
-        let ceiling = configuration.executionTimeLimit
-        guard let timeout else { return ceiling }
-        return min(max(0, timeout), ceiling)
-    }
-}
-
-extension RunCodeArguments {
-    /// The property name the wait clock is read back out of `GeneratedContent`
-    /// under — the encoded spelling of ``waitSeconds``.
-    static let waitSecondsProperty = "waitSeconds"
-
-    /// The property name the work clock is read back out of
-    /// `GeneratedContent` under — the encoded spelling of ``timeout``.
-    static let timeoutProperty = "timeout"
+    /// Named rather than written as a bare `0` at the one site that answers
+    /// it, because the value is the whole rule — see ``detachmentClocks(from:)``.
+    private var detachImmediatelySeconds: TimeInterval { 0 }
 }
 
 // MARK: - The cap on live contexts

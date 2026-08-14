@@ -174,16 +174,28 @@ extension MultiTool {
     }
 }
 
-/// The arguments `MultiTool`'s `runCode` call accepts: the JavaScript
-/// snippet to run against `tools.*`, and the two clocks that bound it.
+/// The arguments `MultiTool`'s `runCode` call accepts: the JavaScript snippet
+/// to run against `tools.*`, and nothing else.
 ///
-/// The clocks are the envelope half of eventplan.md § "Consolidation of the
-/// siblings" — `waitSeconds` bounds how long the *caller* waits,
-/// ``timeout`` bounds how long the *work* runs — and reach the elevation
-/// engine through `MultiTool`'s `DetachmentParameterProviding` conformance
-/// (see `MultiTool+Elevation.swift`). Both are optional: a call that supplies
-/// only `code` runs on the host's own defaults, exactly as every `runCode`
-/// call did before the clocks existed.
+/// **`runCode` always backgrounds.** It hands back a completion token every
+/// time, so waiting is not one of its options — the concept is out of this
+/// schema rather than set to zero. A model that needs the result calls `wait`;
+/// a model that does not lets the snippet run (eventplan.md § "Elevation",
+/// task `^cv98vff`).
+///
+/// A tool with two return shapes is unlearnable. Under "inline if it is fast,
+/// a token if it is slow" the same call sometimes yields a value and sometimes
+/// an envelope, decided by a race the model cannot observe, so it can never
+/// form a stable habit. One shape, every time, is a correctness property
+/// before it is a simplification — and it happens to be deterministic too: the
+/// same call behaves identically on a fast machine and a loaded one.
+///
+/// The clocks that used to stand here are gone with the choice they served.
+/// `waitSeconds` bounded a wait that no longer exists, and `timeout` let a
+/// model bound work it no longer blocks on; the host's own
+/// `MultiToolConfiguration.executionTimeLimit` remains the ceiling, and
+/// `MultiTool`'s `DetachmentParameterProviding` conformance still answers both
+/// clocks to the engine (see `MultiTool+Detachment.swift`).
 @Generable
 public struct RunCodeArguments {
     /// The JavaScript snippet to run against `tools.*`.
@@ -195,55 +207,16 @@ public struct RunCodeArguments {
     )
     public var code: String
 
-    /// How long this call may block before it elevates, in seconds, or `nil`
-    /// to leave the wait clock to the host's mount. `0` detaches immediately;
-    /// nothing resets this clock.
-    @Guide(
-        description: "Optional. How many seconds to wait for this snippet before it hands back a "
-            + "pending completion token and keeps running in the background; follow it up with "
-            + "status(), wait(), or cancel(). Nothing resets this clock, and 0 detaches at once. "
-            + "Omit it to use the host's own default."
-    )
-    public var waitSeconds: Double?
-
-    /// How long this snippet's own work may run, in seconds, or `nil` to
-    /// leave the work clock to the host's configuration. Progress resets this
-    /// per-call clock, and the host clamps it to its own ceiling.
-    ///
-    /// The ceiling itself is absolute. `MultiTool.init` arms the watchdog of
-    /// whatever sandbox it runs — the one it builds for itself and one a
-    /// caller injects as its `interpreter:`, alike — from
-    /// `configuration.executionTimeLimit`, and that watchdog measures from
-    /// sandbox creation and nothing resets it: not progress, and not parking
-    /// on `elicit()`. Progress therefore buys time only up to that ceiling,
-    /// never past it. The same ceiling clamps this per-call clock (see
-    /// `MultiToolConfiguration.executionTimeLimit`).
-    @Guide(
-        description: "Optional. How many seconds the snippet's own work may run before it is "
-            + "cancelled. Progress resets this clock, so a snippet that keeps reporting keeps "
-            + "running — but only up to the host's ceiling, which is absolute: it is measured "
-            + "from the moment the snippet starts, and nothing extends it. "
-            + "Omit it to use the host's own default; the host caps it at its configured ceiling."
-    )
-    public var timeout: Double?
-
-    /// Creates `runCode`'s arguments with the given snippet and clocks.
+    /// Creates `runCode`'s arguments with the given snippet.
     ///
     /// Explicit for the same reason as every other public `@Generable`
     /// type's initializer in this package (e.g. `ToolDescriptor.init`): a
     /// `public` struct's synthesized memberwise initializer is only
     /// `internal`-accessible.
     ///
-    /// - Parameters:
-    ///   - code: the JavaScript snippet to run.
-    ///   - waitSeconds: how long the call may block before it elevates, or
-    ///     `nil` to leave that to the host's mount.
-    ///   - timeout: how long the snippet's own work may run, or `nil` to
-    ///     leave that to the host's configuration.
-    public init(code: String, waitSeconds: Double? = nil, timeout: Double? = nil) {
+    /// - Parameter code: the JavaScript snippet to run.
+    public init(code: String) {
         self.code = code
-        self.waitSeconds = waitSeconds
-        self.timeout = timeout
     }
 }
 

@@ -15,26 +15,21 @@ import Testing
 struct MultiToolExecutionTests {
     // MARK: - The runCode envelope (eventplan.md § "The constraint boundary")
 
-    @Test("runCode's schema exposes code, waitSeconds and timeout, each with its own guidance")
-    func runCodeSchemaExposesBothClocks() throws {
+    @Test("runCode's schema exposes code alone — waiting is not one of its options")
+    func runCodeSchemaExposesCodeAlone() throws {
         let registry = try MultiTool.Builder().addTool(TempTool()).buildRegistry()
 
         let schema = try ToolAPIRenderer.jsonSchemaString(for: MultiTool(registry: registry).parameters)
 
-        for property in ["code", "waitSeconds", "timeout"] {
-            #expect(schema.contains(property))
-        }
-        // Each clock's own `@Guide` text, so the model reads what the two
-        // clocks mean rather than only their names.
-        #expect(schema.contains("hands back a pending completion token"))
-        #expect(schema.contains("Progress resets this clock"))
-        // The reset is bounded. The interpreter watchdog is armed from
-        // sandbox creation and nothing extends it, so the guidance must not
-        // leave a model believing progress buys unlimited time.
-        #expect(schema.contains("only up to the host's ceiling, which is absolute"))
+        #expect(schema.contains("code"))
+        // `runCode` always backgrounds, so the concept of waiting is out of the
+        // schema rather than set to zero (task ^cv98vff). A model cannot ask
+        // for a shape this tool does not have.
+        #expect(!schema.contains("waitSeconds"))
+        #expect(!schema.contains("timeout"))
     }
 
-    @Test("runCode arguments carrying only code still decode, leaving both clocks to their defaults")
+    @Test("runCode arguments carrying only code still decode")
     func runCodeArgumentsDecodeFromCodeAlone() async throws {
         let registry = try MultiTool.Builder().addTool(TempTool()).buildRegistry()
         let content = try ArgumentMarshaler.marshalArguments(.object(["code": .string("return 1 + 1;")]))
@@ -42,8 +37,6 @@ struct MultiToolExecutionTests {
         let arguments = try RunCodeArguments(content)
 
         #expect(arguments.code == "return 1 + 1;")
-        #expect(arguments.waitSeconds == nil)
-        #expect(arguments.timeout == nil)
         #expect(try await MultiTool(registry: registry).call(arguments: arguments) == "2")
     }
 

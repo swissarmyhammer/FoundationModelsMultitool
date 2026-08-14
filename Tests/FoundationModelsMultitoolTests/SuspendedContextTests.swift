@@ -26,8 +26,8 @@ import Testing
 struct SuspendedContextTests {
     // MARK: - Clocks
 
-    @Test("the stock work clock outlives the stock wait clock, so a run never meets the watchdog at the instant it elevates")
-    func stockWorkClockOutlivesStockWaitClock() throws {
+    @Test("the work clock outlives the mount's stock wait clock, so a run never meets the watchdog at the instant it elevates")
+    func workClockOutlivesTheMountsStockWaitClock() throws {
         let multiTool = MultiTool(registry: try Self.registry(exposing: GatedTool(latch: ToolReleaseLatch())))
 
         let clocks = Self.clocks(of: multiTool)
@@ -39,31 +39,33 @@ struct SuspendedContextTests {
         let timeout = try #require(clocks.timeout)
         #expect(timeout > DetachConfiguration.defaultWaitSeconds)
         #expect(timeout == MultiToolConfiguration.default.executionTimeLimit)
-        // No `waitSeconds` in the envelope leaves the wait clock to the mount.
-        #expect(clocks.waitSeconds == nil)
     }
 
-    @Test("the envelope's timeout is clamped to the configured ceiling, and an absent one defaults to it")
-    func perCallTimeoutIsBoundedByTheConfiguredCeiling() throws {
+    @Test("every runCode call answers a zero wait clock, so there is no stock wait clock left to inherit")
+    func everyCallAnswersAZeroWaitClock() throws {
+        let multiTool = MultiTool(registry: try Self.registry(exposing: GatedTool(latch: ToolReleaseLatch())))
+
+        // Not `nil` — which used to mean "leave it to the mount" — and not a
+        // value a call chose. `runCode` always backgrounds, so the answer is
+        // the same zero for every call, on every mount (task ^cv98vff).
+        #expect(Self.clocks(of: multiTool).waitSeconds == 0)
+    }
+
+    @Test("the work clock is the configured ceiling, and no call can raise or lower it")
+    func theWorkClockIsAlwaysTheConfiguredCeiling() throws {
         let ceiling: TimeInterval = 30
-        let underCeiling: TimeInterval = 5
         let multiTool = MultiTool(
             registry: try Self.registry(exposing: GatedTool(latch: ToolReleaseLatch())),
             configuration: MultiToolConfiguration(executionTimeLimit: ceiling)
         )
 
-        #expect(Self.clocks(of: multiTool, timeout: underCeiling).timeout == underCeiling)
-        #expect(Self.clocks(of: multiTool, timeout: ceiling * 2).timeout == ceiling)
-        #expect(Self.clocks(of: multiTool, timeout: -1).timeout == 0)
+        // The per-call `timeout` went out of the schema with `waitSeconds`, so
+        // there is nothing left to clamp: the host's ceiling is the whole
+        // answer. A backgrounded snippet is exactly what needs one, because
+        // nothing is blocking on it to notice that it ran away.
         #expect(Self.clocks(of: multiTool).timeout == ceiling)
-    }
-
-    @Test("waitSeconds crosses the envelope untouched, including the immediate-detach zero")
-    func waitSecondsCrossesTheEnvelopeUntouched() throws {
-        let multiTool = MultiTool(registry: try Self.registry(exposing: GatedTool(latch: ToolReleaseLatch())))
-
-        #expect(Self.clocks(of: multiTool, waitSeconds: 0).waitSeconds == 0)
-        #expect(Self.clocks(of: multiTool, waitSeconds: Self.shortWaitSeconds).waitSeconds == Self.shortWaitSeconds)
+        #expect(Self.clocks(of: MultiTool(registry: try Self.registry(exposing: GatedTool(latch: ToolReleaseLatch())))).timeout
+            == MultiToolConfiguration.default.executionTimeLimit)
     }
 
     // MARK: - The suspended context stays alive past waitSeconds
@@ -73,7 +75,7 @@ struct SuspendedContextTests {
         let harness = try Self.makeHarness()
 
         let rendered = try await harness.mounted.call(
-            arguments: RunCodeArguments(code: Self.gatedSnippet, waitSeconds: Self.shortWaitSeconds)
+            arguments: RunCodeArguments(code: Self.gatedSnippet)
         )
         let token = try Self.completionToken(of: rendered)
         try await Task.sleep(nanoseconds: Self.aliveWindowNanoseconds)
@@ -99,7 +101,7 @@ struct SuspendedContextTests {
         let harness = try Self.makeHarness()
 
         let rendered = try await harness.mounted.call(
-            arguments: RunCodeArguments(code: Self.gatedSnippet, waitSeconds: Self.shortWaitSeconds)
+            arguments: RunCodeArguments(code: Self.gatedSnippet)
         )
 
         #expect(PendingRunEnvelope.isRendered(text: rendered))
@@ -129,7 +131,7 @@ struct SuspendedContextTests {
 
         let start = ContinuousClock.now
         let rendered = try await harness.mounted.call(
-            arguments: RunCodeArguments(code: Self.gatedSnippet, waitSeconds: 0)
+            arguments: RunCodeArguments(code: Self.gatedSnippet)
         )
         let elapsed = start.duration(to: .now)
 
@@ -171,16 +173,25 @@ struct SuspendedContextTests {
     func cancellingASuspendedRunTearsDownItsContext() async throws {
         let harness = try Self.makeHarness()
         let rendered = try await harness.mounted.call(
-            arguments: RunCodeArguments(code: Self.gatedSnippet, waitSeconds: Self.shortWaitSeconds)
+            arguments: RunCodeArguments(code: Self.gatedSnippet)
         )
         let token = try Self.completionToken(of: rendered)
 
         // A second snippet, in the same session and through the same mounted
         // tool, cancels the first through the sandbox's own `cancel()` global.
-        let cancelOutput = try await harness.mounted.call(
+        //
+        // That second snippet backgrounds as well — every mounted `runCode`
+        // does now (task ^cv98vff) — so the call hands back its own token and
+        // its answer is collected from the run plane rather than read off the
+        // call. The cancel still happens on its own run; only where its result
+        // is read from changed.
+        let cancelRendered = try await harness.mounted.call(
             arguments: RunCodeArguments(code: "return await cancel(\"\(token)\");")
         )
-        #expect(cancelOutput.contains("\"state\":\"reported\""))
+        let cancelTerminal = try await Self.settledTerminal(
+            of: try Self.completionToken(of: cancelRendered), in: harness.mailbox
+        )
+        #expect(cancelTerminal.detail.contains("\"state\":\"reported\""))
 
         let start = ContinuousClock.now
         let terminal = try await Self.settledTerminal(of: token, in: harness.mailbox)
@@ -316,21 +327,12 @@ struct SuspendedContextTests {
     /// The round trip through `GeneratedContent` the elevation engine itself
     /// makes.
     ///
-    /// - Parameters:
-    ///   - multiTool: the tool reading the envelope.
-    ///   - waitSeconds: the envelope's own `waitSeconds`, or `nil` for a call
-    ///     that supplies none.
-    ///   - timeout: the envelope's own `timeout`, or `nil` for a call that
-    ///     supplies none.
+    /// - Parameter multiTool: the tool answering the clocks.
     /// - Returns: the clocks the elevation engine would use.
     private static func clocks(
-        of multiTool: MultiTool,
-        waitSeconds: TimeInterval? = nil,
-        timeout: TimeInterval? = nil
+        of multiTool: MultiTool
     ) -> (waitSeconds: TimeInterval?, timeout: TimeInterval?) {
-        multiTool.detachmentClocks(
-            from: RunCodeArguments(code: "return 1;", waitSeconds: waitSeconds, timeout: timeout).generatedContent
-        )
+        multiTool.detachmentClocks(from: RunCodeArguments(code: "return 1;").generatedContent)
     }
 
     /// The completion token of a rendered pending envelope.

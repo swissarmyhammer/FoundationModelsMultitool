@@ -46,8 +46,8 @@ comments:
 
     `grep -n 'path: "../' Package.swift` now returns **two** lines, not one: Router and `mlx-swift-lm`. Both are exit blockers on `^tkrdwb8`. The SwiftPM identity warning survives for `foundationmodelsrouter` alone (MetadataRegistry and Ranker pull it by URL); `mlx-swift-lm` no longer warns, because this package and Router are its only consumers and both take it by path.
   timestamp: 2026-08-14T11:34:05.343209+00:00
-position_column: todo
-position_ordinal: '8280'
+position_column: done
+position_ordinal: c080
 title: Get the tree building again against Router
 ---
 Nothing below can be measured until this is true, so it goes first.
