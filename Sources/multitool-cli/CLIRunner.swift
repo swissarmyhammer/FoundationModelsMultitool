@@ -208,9 +208,12 @@ enum CLIRunner {
         // tier `searchTools` runs on `flash` gets a model of its own.
         //
         // They must not be the same reference. One reference means one
-        // resident container, and `searchTools` generates from *inside* the
-        // outer turn's tool call — so the inner generation waits on a
-        // container the outer turn still holds, and the run deadlocks.
+        // resident container, and a gated scenario with both slots on one
+        // model hung for 15 minutes at 0% CPU. Why is not known: the
+        // container-lock explanation was disproved by the fork's own test
+        // (`mlx-swift-lm` `ca8e22f`), which shows a tool body may generate on
+        // the same container safely. See `IntegrationGate.swift` for the
+        // evidence and the open leads. This split is empirical.
         standard: ["mlx-community/Muse-Glimmer-30B-4bit"],
         flash: ["mlx-community/GLM-4-9B-0414-4bit"],
         embedding: ["mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ"],

@@ -209,12 +209,29 @@ var multitoolIntegrationEnabled: Bool {
 /// **The selection tier moves off the generation model.** Sharing one
 /// `ModelRef` across both slots was deliberate when they were both Muse
 /// Glimmer — one resident model rather than a swap on every search — and it
-/// deadlocked. `searchTools` runs *inside* the outer turn's tool call and then
-/// asks its selection tier to generate; with one reference both slots resolve
-/// to one resident container, so the inner generation waits for a container
-/// the outer turn is still holding. Measured: a gated scenario sat 15 minutes
-/// at 0% CPU with every thread parked, the recorded transcript stopping at the
-/// selection fork.
+/// hung. Measured: a gated scenario sat 15 minutes at 0% CPU with 18.8GB
+/// resident, 98% system memory free and zero swap, every thread parked and the
+/// MLX scheduler on a condition variable; the recorded transcript stops at the
+/// selection fork. Two different models do not hang.
+///
+/// **Why, is not known.** The first explanation — that one turn holds the
+/// `SerialAccessContainer` lock across its tool rounds, so a tool body that
+/// generates on the same container can never get in — was disproved. The fork
+/// wrote the decisive test (`mlx-swift-lm` `ca8e22f`,
+/// `ToolBodyContainerReentryTests`): a real container, a real session, and a
+/// real tool whose body generates on the same model, passing in 0.077s with a
+/// proven-non-vacuous guard. The SDK invokes a tool body *after* `respond`
+/// returns, not while it is suspended inside `perform`.
+///
+/// So this split is **empirical, not understood**: it removes the hang, and
+/// nothing here should be built on the lock story. The open leads, on
+/// `^m0brsjs`, are MLX-level rather than Swift-level — a wait inside MLX
+/// (which is what a scheduler on a condition variable looks like), the
+/// concurrent-MLX-work hazard from `ModelContainer.generate` releasing
+/// `context.read` mid-stream, and the guided/xgrammar path's shared per-model
+/// caches. The last fits best: the selection tier runs **under a grammar**,
+/// and that hazard also disappears the moment two slots name different
+/// models.
 ///
 /// So `selection` names `GLM-4-9B-0414-4bit`: a different model, hence a
 /// different container, hence no re-entrancy.
