@@ -1,6 +1,39 @@
 ---
 assignees:
 - claude-code
+comments:
+- actor: claude-code
+  id: 01m001cqs0m4y0ga3dyf8snajk
+  text: |-
+    ### The landed-but-unverified conformance is now verified, and covered
+
+    `SearchToolsTool: DetachmentParameterProviding` returning both clocks at `unlimitedSeconds` compiles and runs. It had never been either. Two unit tests now hold it in place — ungated suite green at 329 tests in 27 suites, and 49 in 8.
+
+    **`unlimitedSeconds` stopped being a literal.** It was `86_400` with a comment saying it was the same figure as Router's ceiling. It now *names* that ceiling — `ToolContext.waitSecondsCeiling`, public since Router's `^k0mecjp` — so the two cannot drift apart. `WaitTool.unboundedSeconds` took the same treatment.
+
+    ### The two tests, and why they are shaped this way
+
+    **"a slow discovery call returns its catalog inline, even mounted to detach immediately."** The card asks for this to be asserted against a deliberately slow searcher rather than by timing a real one. It goes one better: the slow searcher (a selection root that sleeps 300ms in `fork()`, so the call genuinely suspends) is mounted with `DetachConfiguration(mode: .detaching, waitSeconds: 0)` — the harshest mount there is, the very configuration under which `runCode` now always parks. A per-call answer overrides the wrap-time configuration, so discovery still blocks and the catalog comes back inline. "However long it takes" is a property of the clocks, not of a stopwatch, and this tests the property.
+
+    **"a searcher that fails surfaces its own error, never a timeout and never a token."** A selection root that throws, mounted the same way. The searcher's own `SelectionSearchFailure` reaches the caller. The two shapes that must never appear are a `DetachingToolError.timedOut` blaming the clock for a search that failed on its merits, and a completion token for a search that is already over. `MetadataSearcher` is on this card's side here: its `.selection` path throws rather than degrading silently.
+
+    ### Acceptance criteria
+
+    - [x] A discovery call never returns a pending envelope, however long it takes — asserted against a deliberately slow searcher, not by timing a real one
+    - [x] A searcher that throws surfaces as an error the model can read, and is not converted into a timeout or a pending token
+    - [ ] A gated run shows `searchTools` returning a catalog inline, with the model's next call naming a real `tools.*` path from it
+    - [ ] Whatever wall-clock discovery actually costs is **recorded** here
+
+    The last two need real hardware and a real model, so they belong to the same run as the capstone `^0q2je6m`. This card stays in review until that run reports them; nothing about it is "done pending a gate" that a unit test could have proved instead.
+
+    ### The model pin changed, and this card must know
+
+    This card says the selection tier stays on `mlx-community/Qwen3.6-27B-mxfp4`, and names the reason: the small old Qwen failed `discoveryUnderDistractors`, and a catalog that omits the tool a request needs is unrecoverable.
+
+    Under `^ev0zca7` both generation slots moved to `mlx-community/Muse-Glimmer-30B-4bit`, so the selection tier moved with them. **This is not the reversal the card warns about** — it is not a drop to a small fast model, and it was not made to improve the clock. It is a 30B agentic model taken for a prompt-cache reason: Qwen3.5/3.6 give their linear layers a non-trimmable `MambaCache`, and one non-trimmable entry stops prefix reuse for the whole cache list, which cost this suite its prompt caching entirely.
+
+    The card's rule still binds, and it binds to the new pin: **the gated run owes a passing `discoveryUnderDistractors`.** If Muse Glimmer cannot do distractor discovery, the pin is wrong whatever it does for caching, and that finding belongs here.
+  timestamp: 2026-08-14T11:44:21.280216+00:00
 depends_on:
 - 01KZRJPJRK8SP9329DREV0ZCA7
 position_column: todo

@@ -1,4 +1,6 @@
+import FoundationModels
 import FoundationModelsMetadataRegistry
+import FoundationModelsRouter
 import Testing
 import os
 
@@ -285,5 +287,121 @@ struct SearchToolsToolTests {
         let feedback = try await tool.call(arguments: SearchToolsArguments(task: "trip cities"))
 
         #expect(feedback.contains(SearchToolsTool.writeSnippetInstruction))
+    }
+
+    // MARK: - Discovery blocks until it is done (^bffrdpr)
+
+    @Test("a slow discovery call returns its catalog inline, even mounted to detach immediately")
+    func discoveryNeverReturnsAPendingEnvelope() async throws {
+        let surface = try MultiTool.Builder().addTool(CitiesTool()).build()
+        let root = SlowSelectionRootSession(
+            delay: .milliseconds(300), response: #"{"ids":["getCities"]}"#
+        )
+        let searcher = MetadataSearcher(
+            items: surface.entries,
+            mode: .auto,
+            selection: SelectionConfig(model: { _, _ in root }, capacityCharacterLimit: .max)
+        )
+        let tool = SearchToolsTool(searcher: searcher, limit: surface.entries.count)
+
+        // The harshest mount there is: detach immediately, the very
+        // configuration under which `runCode` always parks. The tool answers
+        // both of its own clocks at `unlimitedSeconds`, and a per-call answer
+        // overrides the wrap-time configuration, so discovery still blocks.
+        // Asserted against a mount rather than by timing a real search: "however
+        // long it takes" is a property of the clocks, not of a stopwatch.
+        let mounted = try #require(
+            ToolDetachment.wrapping(
+                tool: tool,
+                sessionID: ULID(),
+                mailbox: SessionMailbox(),
+                sink: RecordingEventSink(),
+                configuration: DetachConfiguration(mode: .detaching, waitSeconds: 0)
+            ) as? any Tool<SearchToolsArguments, String>
+        )
+
+        let feedback = try await mounted.call(arguments: SearchToolsArguments(task: "list the cities"))
+
+        #expect(!PendingRunEnvelope.isRendered(text: feedback))
+        #expect(feedback.contains("getCities"))
+    }
+
+    @Test("a searcher that fails surfaces its own error, never a timeout and never a token")
+    func aFailingSearcherSurfacesAsAnError() async throws {
+        let surface = try MultiTool.Builder().addTool(CitiesTool()).build()
+        let searcher = MetadataSearcher(
+            items: surface.entries,
+            mode: .auto,
+            selection: SelectionConfig(
+                model: { _, _ in FailingSelectionRootSession() }, capacityCharacterLimit: .max
+            )
+        )
+        let tool = SearchToolsTool(searcher: searcher, limit: surface.entries.count)
+        let mounted = try #require(
+            ToolDetachment.wrapping(
+                tool: tool,
+                sessionID: ULID(),
+                mailbox: SessionMailbox(),
+                sink: RecordingEventSink(),
+                configuration: DetachConfiguration(mode: .detaching, waitSeconds: 0)
+            ) as? any Tool<SearchToolsArguments, String>
+        )
+
+        // Slow is not broken, and broken is not slow: a real failure reaches the
+        // model as a failure. What must never happen is the other two shapes —
+        // a `DetachingToolError.timedOut` blaming the clock, or a completion
+        // token for a search that already failed.
+        await #expect(throws: SelectionSearchFailure.self) {
+            try await mounted.call(arguments: SearchToolsArguments(task: "list the cities"))
+        }
+    }
+}
+
+// MARK: - Selection roots that are slow, and that fail
+
+/// Thrown by ``FailingSelectionRootSession`` — a real searcher failure, the one
+/// thing that should reach the model from a discovery call.
+struct SelectionSearchFailure: Error, Equatable {}
+
+/// A selection root whose `fork()` takes its time before answering.
+///
+/// Slow, not broken: it returns a genuine selection in the end. The delay is
+/// what gives a detaching mount its chance to park the call, which is exactly
+/// what `searchTools` must not allow.
+final class SlowSelectionRootSession: AgentSession, Sendable {
+    /// How long `fork()` takes before it answers.
+    private let delay: Duration
+
+    /// The selection JSON the forked session returns.
+    private let response: String
+
+    /// Creates a slow selection root.
+    ///
+    /// - Parameters:
+    ///   - delay: how long `fork()` takes.
+    ///   - response: the selection JSON to answer with.
+    init(delay: Duration, response: String) {
+        self.delay = delay
+        self.response = response
+    }
+
+    func respond(to prompt: String) async throws -> String {
+        throw RootSessionRespondCalledDirectlyError()
+    }
+
+    func fork() async throws -> any AgentSession {
+        try await Task.sleep(for: delay)
+        return ScriptedAgentSession([response])
+    }
+}
+
+/// A selection root that fails outright.
+final class FailingSelectionRootSession: AgentSession, Sendable {
+    func respond(to prompt: String) async throws -> String {
+        throw SelectionSearchFailure()
+    }
+
+    func fork() async throws -> any AgentSession {
+        throw SelectionSearchFailure()
     }
 }

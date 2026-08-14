@@ -1,6 +1,45 @@
 ---
 assignees:
 - claude-code
+comments:
+- actor: claude-code
+  id: 01m001krkd9thabcq1ddxfnv7g
+  text: |-
+    ### The settlement path is covered now, and `wait` stopped being accidentally safe
+
+    Ungated suite green at 335 tests in 27 suites, and 49 in 8, two consecutive runs.
+
+    ### The gap this card named is closed
+
+    > What is *not* covered: the settlement path itself. Every existing test exercises the no-session and bound-arithmetic paths, because a real one needs a `SessionMailbox` with a parked run.
+
+    It needs one no longer as a special favour: `parkScriptedRun(in:)` parks a run through the real detachment engine (rewritten under `^ev0zca7`), so a unit test can hold a genuine parked run with no live inference. Six new tests use it.
+
+    **Two of them had to be rebuilt to prove what they claimed.** Both first passed in 0.001s, which was the tell: the settlement had already happened before the wait was issued, so `wait` was reading a retained terminal event rather than blocking on anything. A wait that returned at once asserts identically. They now hold the run open for a known 300ms/200ms after the wait is issued, and the blocking test asserts `elapsed >= heldOpen` — with no timeout passed, nothing but the settlement could have ended that wait, and it cannot have ended before the settlement it reports. That is an ordering proof rather than a timing tolerance.
+
+    ### `wait` no longer parks itself — the third way out is gone
+
+    This card called it out and filed the real fix on Router:
+
+    > `wait` is mounted `.detaching` like every other tool, so a `wait` call that blocks past 5s **parks itself** — the same regress as `^w8dzvee` D5, inside the tool built to replace it. It is only accidentally safe today.
+
+    `WaitTool` now conforms to `DetachmentParameterProviding` and answers both clocks at `unboundedSeconds`, the same workaround `SearchToolsTool` uses, and for the same reason: a per-call answer overrides the wrap-time configuration. The wait clock asks when this call should become asynchronous — never, since blocking is the entire call. The work clock asks how long it may run before being cancelled as failed — no limit, because the caller's `timeout` is the only bound in this design, and a host clock firing under it would report `deadlineElapsed` on the host's schedule rather than the caller's.
+
+    A test mounts `wait` with `waitSeconds: 0` — harsher than the five seconds that made it accidentally safe — lets the bound elapse, and asserts the report comes back inline and is never a pending envelope.
+
+    **This is still a workaround, and the card should keep saying so.** What the tool needs to declare is `DetachConfiguration.Mode.runToCompletion`, which is read from the wrap-time configuration and which `DetachmentParameterProviding` cannot express. Two large numbers state an intent a per-tool mode would declare. Filed on Router's `^w8dzvee`; unchanged by this card.
+
+    ### Acceptance criteria
+
+    - [x] Blocks until a parked run settles and returns its terminal `detail`, proven against a scripted mailbox with no live inference
+    - [x] A run that settles early returns early — the bound is not a floor (a 600-second bound, settled at once, returns at once)
+    - [x] A caller's timeout is honoured as passed, and a run still going at that bound reports `deadlineElapsed` rather than hanging or claiming failure — and the run is still parked afterwards, because still going is not failure
+    - [x] With no timeout passed, waits for the run rather than returning on a host schedule
+    - [x] Waiting with no token waits for **every** pending run; a session whose runs have all finished reports `nothingPending` with the detail that points at the answer already in hand
+    - [ ] **A gated run where the model backgrounds work, calls `wait`, and answers from what came back**
+
+    The last one is the criterion this card says the unit tests cannot substitute for, and it is right. It belongs to the capstone run `^0q2je6m`. This card stays in review until then.
+  timestamp: 2026-08-14T11:48:11.501275+00:00
 depends_on:
 - 01KZRJNSJRB1RGKQDEBCV98VFF
 position_column: todo

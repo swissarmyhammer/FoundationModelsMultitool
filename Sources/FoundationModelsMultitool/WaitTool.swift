@@ -70,6 +70,49 @@ public struct WaitArguments {
 /// ambient `ToolContext`; constructed and called outside any session it reports
 /// that there is nothing to wait for rather than trapping, which is the mode
 /// every unit suite in this package runs in.
+// MARK: - `wait` never parks itself
+
+extension WaitTool: DetachmentParameterProviding {
+    /// The per-call clocks a `wait` call carries: neither of them a limit.
+    ///
+    /// **There are two ways for `wait` to return, and this is what keeps a
+    /// third from existing.** It returns when the run settles, or when the
+    /// bound the caller passed elapses. Mounted like every other tool, on a
+    /// stock `.detaching` configuration, a `wait` call that blocks past the
+    /// mount's five seconds would *park itself* — handing the model a
+    /// completion token for its own wait, which is the exact regress this tool
+    /// was built to end (task `^2w9vbkm`, and `^w8dzvee` D5). It was only
+    /// accidentally safe before: safe while the runs it waited on happened to
+    /// settle inside the mount's window.
+    ///
+    /// Both clocks are answered at ``unboundedSeconds`` for the same reason
+    /// `SearchToolsTool` answers both of its own that way: a per-call answer
+    /// overrides the wrap-time configuration, and neither question has a
+    /// bounded answer here. The wait clock asks when this call should become
+    /// asynchronous — never, since blocking is the whole point of the call.
+    /// The work clock asks how long it may run before being cancelled and
+    /// reported failed — no limit, because the caller's own `timeout` is the
+    /// only bound in this design, and a host clock firing under it would
+    /// report `deadlineElapsed` on its own schedule rather than the caller's.
+    ///
+    /// This is a workaround, and it should be read as one: what the tool needs
+    /// to declare is `DetachConfiguration.Mode.runToCompletion`, which is read
+    /// from the wrap-time configuration and which
+    /// `DetachmentParameterProviding` cannot express. Filed on Router's
+    /// `^w8dzvee`. Two large numbers state the intent that a per-tool mode
+    /// would declare.
+    ///
+    /// - Parameter arguments: the call's arguments as opaque
+    ///   `GeneratedContent`. Unread: every `wait` call gets the same answers,
+    ///   because the rule is the tool's, not the call's.
+    /// - Returns: an unbounded wait clock and an unbounded work clock.
+    public func detachmentClocks(
+        from arguments: GeneratedContent
+    ) -> (waitSeconds: TimeInterval?, timeout: TimeInterval?) {
+        (Self.unboundedSeconds, Self.unboundedSeconds)
+    }
+}
+
 public struct WaitTool: Tool {
     /// This tool's `Tool`-protocol name, always `"wait"`.
     public let name = "wait"

@@ -1,4 +1,6 @@
 import Foundation
+import FoundationModels
+import FoundationModelsRouter
 import Testing
 
 @testable import FoundationModelsMultitool
@@ -6,10 +8,10 @@ import Testing
 /// Coverage for `WaitTool` — the mounted tool a model calls when it has decided
 /// to block until running work finishes (task `h773bed`).
 ///
-/// What is covered here is what needs no session: the bound arithmetic, and the
-/// two in-band reports a call makes when there is nothing to wait for. The
-/// settlement path needs a `SessionMailbox` with a parked run, which is the
-/// gated suite's territory.
+/// Three things are covered: the bound arithmetic, the two in-band reports a
+/// call makes when there is nothing to wait for, and — since a run can now be
+/// parked through the real detachment engine (`parkScriptedRun(in:)`) — the
+/// settlement path itself, with no live inference anywhere.
 @Suite("WaitTool")
 struct WaitToolTests {
     // MARK: - Two ways to return, and no third
@@ -101,5 +103,153 @@ struct WaitToolTests {
 
         #expect(arguments.completionToken == nil)
         #expect(arguments.timeout == nil)
+    }
+
+    // MARK: - The settlement path (^ddgjps6)
+
+    /// A `wait` call against a real run plane, bound to `mailbox`.
+    ///
+    /// - Parameters:
+    ///   - arguments: the call's arguments.
+    ///   - mailbox: the session mailbox whose run plane is read.
+    /// - Returns: the tool's rendered report.
+    private static func waitCall(
+        _ arguments: WaitArguments, against mailbox: SessionMailbox
+    ) async throws -> String {
+        try await ToolContext.$current.withValue(runPlane(over: mailbox)) {
+            try await WaitTool().call(arguments: arguments)
+        }
+    }
+
+    @Test("wait blocks until a parked run settles, and answers with its terminal detail")
+    func waitBlocksUntilTheRunSettles() async throws {
+        let mailbox = SessionMailbox()
+        let run = try await parkScriptedRun(in: mailbox, detail: "the-collected-result")
+        let heldOpen = Duration.milliseconds(300)
+
+        // The run is deliberately held open for a known time after the wait is
+        // issued, so the elapsed time below is what proves the call blocked.
+        // Without it, a wait that returned at once from the retained terminal
+        // event of an already-settled run would assert exactly the same way.
+        let settling = Task {
+            try await Task.sleep(for: heldOpen)
+            await settle(run, in: mailbox)
+        }
+        let start = ContinuousClock.now
+        let settled = try await Self.waitCall(
+            WaitArguments(completionToken: run.completionToken), against: mailbox
+        )
+        let elapsed = start.duration(to: .now)
+        try await settling.value
+
+        #expect(settled.contains(RunPlaneState.settled))
+        #expect(settled.contains("the-collected-result"))
+        // No timeout was passed, so nothing but the settlement could have ended
+        // this wait — and it could not have ended before the settlement it
+        // reports.
+        #expect(elapsed >= heldOpen)
+    }
+
+    @Test("a run that settles early returns early — the bound is not a floor")
+    func anEarlySettlementReturnsEarly() async throws {
+        let mailbox = SessionMailbox()
+        let run = try await parkScriptedRun(in: mailbox)
+        let generousBound: Double = 600
+
+        let start = ContinuousClock.now
+        async let report = Self.waitCall(
+            WaitArguments(completionToken: run.completionToken, timeout: generousBound), against: mailbox
+        )
+        await settle(run, in: mailbox)
+        _ = try await report
+        let elapsed = start.duration(to: .now)
+
+        // Ten minutes was the bound; the run settled at once. A bound that
+        // behaved as a floor would still be waiting.
+        #expect(elapsed < .seconds(30))
+    }
+
+    @Test("a run still going at the caller's bound reports deadlineElapsed, not failure")
+    func aRunStillGoingAtTheBoundReportsDeadlineElapsed() async throws {
+        let mailbox = SessionMailbox()
+        let run = try await parkScriptedRun(in: mailbox)
+
+        // Never settled: the gate stays closed for the whole test, so the bound
+        // is what ends the wait. Deterministic — nothing races the clock.
+        let report = try await Self.waitCall(
+            WaitArguments(completionToken: run.completionToken, timeout: 0.2), against: mailbox
+        )
+
+        #expect(report.contains(RunPlaneState.deadlineElapsed))
+        #expect(report.contains(run.completionToken))
+        // Still going is not failure, and the run is still there to collect.
+        #expect(await runPlane(over: mailbox).parkedRuns().map(\.completionToken) == [run.completionToken])
+    }
+
+    @Test("waiting with no token waits for every pending run")
+    func waitingWithNoTokenWaitsForEveryPendingRun() async throws {
+        let mailbox = SessionMailbox()
+        let first = try await parkScriptedRun(in: mailbox, tool: "first", detail: "first-result")
+        let second = try await parkScriptedRun(in: mailbox, tool: "second", detail: "second-result")
+
+        // Both runs are parked before the wait is issued, and both are held
+        // open past it, so the call snapshots two pending runs and blocks on
+        // each. Settling them from the calling task instead would let the wait
+        // start after they were already over, which proves nothing.
+        let settling = Task {
+            try await Task.sleep(for: .milliseconds(200))
+            await settle(first, in: mailbox)
+            await settle(second, in: mailbox)
+        }
+        let collected = try await Self.waitCall(WaitArguments(), against: mailbox)
+        try await settling.value
+        #expect(collected.contains("first-result"))
+        #expect(collected.contains("second-result"))
+    }
+
+    @Test("a session whose runs have all finished says so, and points at the answer")
+    func aSessionWithNothingPendingSaysSo() async throws {
+        let mailbox = SessionMailbox()
+        let run = try await parkScriptedRun(in: mailbox)
+        await settle(run, in: mailbox)
+
+        let report = try await Self.waitCall(WaitArguments(), against: mailbox)
+
+        // Not an error and not an empty wait: the runs are done, so the answer
+        // is already in hand and the report says that rather than inviting
+        // another wait.
+        #expect(report.contains(WaitTool.nothingPendingState))
+        #expect(report.contains(WaitTool.nothingPendingDetail))
+    }
+
+    // MARK: - wait never parks itself
+
+    @Test("a wait call blocking past the mount's wait clock still returns its report, never a token")
+    func waitNeverParksItself() async throws {
+        let mailbox = SessionMailbox()
+        let run = try await parkScriptedRun(in: mailbox)
+
+        // Mounted to detach immediately — harsher than the stock five seconds
+        // that made this tool only accidentally safe. The tool answers both of
+        // its own clocks at the ceiling, and a per-call answer overrides the
+        // mount, so the wait runs to its own conclusion.
+        let mounted = try #require(
+            ToolDetachment.wrapping(
+                tool: WaitTool(),
+                sessionID: ULID(),
+                mailbox: mailbox,
+                sink: RecordingEventSink(),
+                configuration: DetachConfiguration(mode: .detaching, waitSeconds: 0)
+            ) as? any Tool<WaitArguments, String>
+        )
+
+        let report = try await ToolContext.$current.withValue(runPlane(over: mailbox)) {
+            try await mounted.call(
+                arguments: WaitArguments(completionToken: run.completionToken, timeout: 0.2)
+            )
+        }
+
+        #expect(!PendingRunEnvelope.isRendered(text: report))
+        #expect(report.contains(RunPlaneState.deadlineElapsed))
     }
 }

@@ -394,12 +394,12 @@ extension SearchToolsTool: DetachmentParameterProviding {
         (Self.unlimitedSeconds, Self.unlimitedSeconds)
     }
 
-    /// The value both of a discovery call's clocks are set to: a day.
+    /// The value both of a discovery call's clocks are set to.
     ///
-    /// Not `.infinity`, which the mailbox clamps anyway
-    /// (`SessionMailbox.waitSecondsCeiling`), and not a tuned figure either —
-    /// this is the same ceiling Router itself treats as "no practical limit", so
-    /// nothing here invents a second notion of unbounded. Any real search
-    /// finishes or fails long before it.
-    static let unlimitedSeconds: TimeInterval = 86_400
+    /// Not `.infinity`, which the run plane clamps anyway, and not a tuned
+    /// figure either: it names `ToolContext.waitSecondsCeiling`, the ceiling
+    /// Router itself treats as "no practical limit", so nothing here invents a
+    /// second notion of unbounded and no literal can drift from it. Any real
+    /// search finishes or fails long before it.
+    static let unlimitedSeconds: TimeInterval = ToolContext.waitSecondsCeiling
 }
