@@ -921,9 +921,15 @@ private func printSkipNote(_ name: String) {
 /// Two consequences for a scenario written here. A prompt whose answer needs
 /// more than four continuation turns fails for a reason that is not a drain
 /// defect, so keep scenarios inside that budget. And a cancelled turn is never
-/// drained — whatever it parked stays parked — so a scenario that cancels
-/// mid-drain is measuring Router's known gap (`^h3efdrc` on their board),
-/// not this rule. Nothing here cancels.
+/// drained: whatever it parked stays parked, because ending a parked run is
+/// `close()`'s job rather than cancellation's. A cancelling scenario is
+/// therefore asserting about `close()`, not about this rule. Nothing here
+/// cancels.
+///
+/// A cancelling scenario *is* now possible, which it was not when this runner
+/// was written: Router closed `^h3efdrc`, so a `respond` parked inside its
+/// drain can be stopped by either route, and it returns the last turn's answer
+/// rather than throwing.
 ///
 /// **Parity is asserted on substance, not on bytes.** The card behind this
 /// runner asks for equality of the two final answers. Two independent live
