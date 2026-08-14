@@ -46,8 +46,8 @@ comments:
   timestamp: 2026-08-14T11:55:53.239969+00:00
 depends_on:
 - 01KZRJNSJRB1RGKQDEBCV98VFF
-position_column: todo
-position_ordinal: '8580'
+position_column: review
+position_ordinal: '8280'
 title: respond must self-drain the run plane, and gated tests must prove it
 ---
 The fifth task. Depends on `^cv98vff`, because the requirement only bites once `runCode` always backgrounds.

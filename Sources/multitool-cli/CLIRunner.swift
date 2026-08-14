@@ -452,7 +452,18 @@ enum CLIRunner {
         )
         return MLXLanguageModel(
             configuration: modelConfiguration,
-            capabilities: [.guidedGeneration, .toolCalling],
+            // `.reasoning` is not optional for this profile's model. Muse
+            // Glimmer always reasons, and a caller that does not declare the
+            // capability is asking `MLXLanguageModel` to suppress thinking —
+            // which it cannot do, so the call throws
+            // `LanguageModelError.unsupportedCapability` ("This model always
+            // reasons; .reasoning must be declared at MLXLanguageModel init to
+            // receive its output") *after* the whole model has loaded. The
+            // gated CLI smoke test caught exactly that. Declaring it also puts
+            // the tool path into its think-then-call phase rather than forcing
+            // thinking off, which is the behaviour an agentic model is trained
+            // for. Router's own `LiveModelLoader` declares the same three.
+            capabilities: [.guidedGeneration, .toolCalling, .reasoning],
             weightsLocation: Self.weightsLocation,
             load: { configuration, progressHandler in
                 try await loadModelContainer(

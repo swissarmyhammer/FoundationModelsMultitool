@@ -42,8 +42,8 @@ comments:
   timestamp: 2026-08-14T11:48:11.501275+00:00
 depends_on:
 - 01KZRJNSJRB1RGKQDEBCV98VFF
-position_column: todo
-position_ordinal: '8480'
+position_column: review
+position_ordinal: '8180'
 title: wait blocks on a backgrounded runCode token, until it finishes or the caller's timeout
 ---
 Depends on `^cv98vff`: there is nothing to wait *on* until `runCode` always hands back a token.
