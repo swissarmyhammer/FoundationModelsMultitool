@@ -910,6 +910,21 @@ private func printSkipNote(_ name: String) {
 /// 4. **No `wait` call.** If the model had to call `wait` to reach its answer,
 ///    the drain is not doing its job — `wait` is the streaming surface's tool.
 ///
+/// **Router's drain rule, which this scenario is written against.** `respond`
+/// runs its own turn, then snapshots **every** run parked on the session —
+/// not only the ones its own turn parked — waits for all of them to settle,
+/// and runs one more ordinary turn carrying their results. It repeats, so a
+/// run parked from inside a drained turn is drained too, bounded at four
+/// continuation turns (`RoutedSessionActor.parkedRunDrainRoundLimit`): one
+/// `respond` costs at most five model turns.
+///
+/// Two consequences for a scenario written here. A prompt whose answer needs
+/// more than four continuation turns fails for a reason that is not a drain
+/// defect, so keep scenarios inside that budget. And a cancelled turn is never
+/// drained — whatever it parked stays parked — so a scenario that cancels
+/// mid-drain is measuring Router's known gap (`^h3efdrc` on their board),
+/// not this rule. Nothing here cancels.
+///
 /// **Parity is asserted on substance, not on bytes.** The card behind this
 /// runner asks for equality of the two final answers. Two independent live
 /// generations are not byte-equal, so a literal `==` would be a sampling
