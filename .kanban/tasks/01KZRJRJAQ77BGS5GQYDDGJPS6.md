@@ -40,10 +40,58 @@ comments:
 
     The last one is the criterion this card says the unit tests cannot substitute for, and it is right. It belongs to the capstone run `^0q2je6m`. This card stays in review until then.
   timestamp: 2026-08-14T11:48:11.501275+00:00
+- actor: claude-code
+  id: 01m02xy8jprn6dtkwwcbxj7fwv
+  text: |-
+    ### The gated criterion is met, literally.
+
+    This card's last open item was the one it said the unit tests could not substitute for:
+
+    > **A gated run where the model backgrounds work, calls `wait`, and answers from what came back** — no wall-clock guess anywhere in the turn.
+
+    From `singleCallWeather` on real hardware:
+
+    ```
+    CALL [2] runCode  args={"code": "const weather = await tools.getWeather({ city: \"Austin\" });\nreturn weather;\n"}
+    DONE runCode      out={"pending":true,"completionToken":"01M00XZBHSJA96T8SJ0DKHRTFC","next":"..."}
+    CALL [3] wait     args={"completionToken": "01M00XZBHSJA96T8SJ0DKHRTFC"}
+    DONE wait         out={"completionToken":"01M00XZB...","detail":"{\"summary\":\"Sunny\",\"tempC\":31}","state":"settled","outcome":"succeeded"}
+    reply: "It's currently 31°C (about 88°F) and sunny in Austin right now."
+    ```
+
+    Background, token, `wait`, settled, answer — and the answer carries the fixture's own 31, which reached the model **only** through the collected run's `detail`. `groundedIn=["getWeather"]` confirms it from the call log rather than from the prose.
+
+    **And no wall-clock guess anywhere in the turn.** Look at call 3: the model passed a `completionToken` and no `timeout`. It did not predict a duration, which is precisely the failure this tool was built to end — the recorded `return await wait(token, 60)` written seven times without collecting anything (`^2w9vbkm`). Here it declared an intent to block and the host did the waiting.
+
+    The same shape appears in `ElevationTests`, independently:
+
+    ```
+    CALL [3] wait  -> {"detail":"41739","state":"settled","outcome":"succeeded"}
+    ```
+
+    `41739` is the deep-scan fixture's report code, unguessable, arriving through the collected run.
+
+    ### Where `wait` shows up that this card did not predict
+
+    `RespondDrainTests` measured `waitCalls` of 1 and 2 on the **blocking** surface. That is not this card's business but it is worth recording next to it: `runCode` backgrounds on every surface, and the pending envelope instructs the model to collect, so `wait` is not streaming-only in practice. It cost `^n6kgckr` an assertion.
+
+    ### Acceptance criteria
+
+    Every one now met — five by unit test, the last by gated run:
+
+    - [x] Blocks until a parked run settles and returns its terminal `detail`
+    - [x] A run that settles early returns early
+    - [x] A caller's timeout is honoured as passed; still-running reports `deadlineElapsed` and stays parked
+    - [x] With no timeout passed, waits for the run rather than a host schedule
+    - [x] No token waits for every pending run; nothing pending says so
+    - [x] **A gated run where the model backgrounds work, calls `wait`, and answers from what came back**
+
+    Done.
+  timestamp: 2026-08-15T14:41:44.534688+00:00
 depends_on:
 - 01KZRJNSJRB1RGKQDEBCV98VFF
-position_column: review
-position_ordinal: '8180'
+position_column: done
+position_ordinal: c380
 title: wait blocks on a backgrounded runCode token, until it finishes or the caller's timeout
 ---
 Depends on `^cv98vff`: there is nothing to wait *on* until `runCode` always hands back a token.

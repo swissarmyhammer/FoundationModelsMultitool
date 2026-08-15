@@ -1,13 +1,65 @@
 ---
 assignees:
 - claude-code
+comments:
+- actor: claude-code
+  id: 01m02y099wf5vg02p3wgqntddq
+  text: |-
+    ### The gated suite passes on streaming. Seven scenarios, all green.
+
+    Run on real hardware against Muse Glimmer (`standard`) and GLM-4-9B-0414-4bit (selection), one suite at a time, alone on the GPU.
+
+    | suite / scenario | verdict | elapsed |
+    |---|---|---|
+    | `singleCallWeather` | ✔ | 83.2s |
+    | `composeChain` | ✔ | 83.1s |
+    | `discoveryUnderDistractors` | ✔ | 71.7s |
+    | `repairFromTripProneTool` | ✔ | 40.8s |
+    | `ElevationTests` | ✔ | 59.4s |
+    | `AsyncFanOut` | ✔ | 57.0s |
+    | `PrefixReuse` | ✔ | first 2.66s / second 1.08s |
+    | `RespondDrain` | ✔ | 79-103s |
+
+    Every scenario: `searchToolsFirst=true`, `groundedIn` covering the tools the answer needed, `failedCalls=0`, `answeredWithoutCalling=0`, `overRefusal=0`, `inventedPath=0`, `invented=[]`.
+
+    ### The three rules, observed together in one turn
+
+    From `singleCallWeather`, verbatim:
+
+    ```
+    CALL [1] searchTools -> the catalog, INLINE (no pending envelope)
+    CALL [2] runCode     -> {"pending":true,"completionToken":"01M00XZBHSJA96T8SJ0DKHRTFC"}
+    CALL [3] wait        -> {"state":"settled","detail":"{\"summary\":\"Sunny\",\"tempC\":31}"}
+    CALL [4] runCode     -> pending envelope again
+    CALL [5] wait        -> settled
+    reply: "It's currently 31°C (about 88°F) and sunny in Austin right now."
+    ```
+
+    `searchTools` blocks, `runCode` always backgrounds, `wait` joins on the token — and the 31 reached the model only through the collected run. `ElevationTests` shows the same shape independently, collecting the unguessable report code `41739`.
+
+    ### What the run cost, and what it bought
+
+    `PrefixReuse` is the sharpest number: two consecutive selection searches in one session, **2.66s then 1.08s**. The fork inherits the prefix rather than re-prefilling — the prompt-cache property the Muse Glimmer move was made for, and the one Qwen's non-trimmable `MambaCache` had cost us entirely.
+
+    ### Three real defects this run found, none of which unit tests could have
+
+    1. **`.reasoning` was not declared** on the CLI path. Muse Glimmer always reasons and cannot be asked not to, so `MLXLanguageModel` threw `unsupportedCapability` *after* the whole 30B had loaded. Fixed in `b5b23d2`.
+    2. **One `ModelRef` on both slots hangs.** 15 minutes at 0% CPU, 18.8GB resident, 98% memory free, every thread parked. Two models do not hang. Workaround in `4c51abc`; cause still unknown and filed as `^m0brsjs` on `mlx-swift-lm`'s board — the first explanation (container lock spanning tool rounds) was disproved by their own test, and our code no longer claims it (`eec31f2`).
+    3. **Consumer-visible input token usage never crosses the framework boundary**, so `tokensIn: 0` was being printed as though it were a measurement. Found independently by Router from a different surface. Filed as `^z2996cp`; our diagnostic now says `in:unavailable` (`4bd7ca8`).
+
+    ### One honest limit on the `respond` half
+
+    `RespondDrainTests` passes, but it does **not** isolate Router's drain: the model collects its own backgrounded runs in-band because the envelope instructs it to, so the drain has nothing left to settle. Recorded on `^n6kgckr` and filed as `^xeqs138`. This capstone's own criterion is streaming, which is fully met — but nobody should read this run as proof the drain works.
+
+    Done.
+  timestamp: 2026-08-15T14:42:50.812270+00:00
 depends_on:
 - 01KZRJQF59Z8CQCW2VVBFFRDPR
 - 01KZRJNSJRB1RGKQDEBCV98VFF
 - 01KZRJRJAQ77BGS5GQYDDGJPS6
 - 01KZRJVF6WWA07R6W0TN6KGCKR
-position_column: todo
-position_ordinal: '8680'
+position_column: done
+position_ordinal: c580
 title: 'CAPSTONE: the gated integration suite passes on streaming, with search/run/wait working end to end'
 ---
 The card the other five are for. Nothing here is new work — it is the claim that the work *landed*, measured the only way it can be.

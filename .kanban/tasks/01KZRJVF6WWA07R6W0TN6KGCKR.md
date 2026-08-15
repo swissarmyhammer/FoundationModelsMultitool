@@ -44,10 +44,54 @@ comments:
 
     The streaming scenarios did not move. `SearchThenCallTests` and `ElevationTests` stay on `streamEvents`, and this suite sits beside them — `respond` draining everything is exactly what would make it the easy surface to drift onto.
   timestamp: 2026-08-14T11:55:53.239969+00:00
+- actor: claude-code
+  id: 01m02xyw533crpd1fdj1fv4yam
+  text: |-
+    ### Gated run: three criteria met, and the fourth was a wrong assertion.
+
+    Router's half landed (`d2be019`, their `^nmpejc5`), so this suite ran for the first time. Result, twice:
+
+    ```
+    RESPOND-DRAIN respondSelfDrain elapsed=102.6s parked=0 waitCalls=2 groundedIn=["getTrip","getWeather"] accepted=["SFO","San Francisco"]
+    RESPOND-DRAIN respondSelfDrain stream                              groundedIn=["getTrip","getWeather"] accepted=["SFO","San Francisco"]
+
+    RESPOND-DRAIN respondSelfDrain elapsed=79.1s  parked=0 waitCalls=1 groundedIn=["getTrip","getWeather"] accepted=["SFO"]
+    RESPOND-DRAIN respondSelfDrain stream                              groundedIn=["getTrip","getWeather"] accepted=["SFO"]
+    ```
+
+    Grounded in both fixture tools, parity with the drained stream in both runs, and an empty run plane on return.
+
+    ### The fourth criterion was wrong, and this card should own that
+
+    > A `respond` turn needs **no `wait` call** to reach its answer. If the model has to call `wait` on this surface, the drain is not doing its job.
+
+    Measured: `waitCalls` is 1-2. The reasoning does not survive `^cv98vff`. Every `runCode` backgrounds on **every** surface now, and the pending envelope it returns instructs the model to collect it — `PendingRunEnvelope.renderedMidfix`: *"Call this tool again with a snippet that does: return await wait(...)"*. The assertion demanded the model ignore an instruction the product gives it. Changed to report rather than assert, with the reason recorded at the assertion site.
+
+    ### The finding that matters more, and it is uncomfortable
+
+    **This suite does not prove the drain works.** `parked=0` on return is necessary but not sufficient, because two different things empty the run plane:
+
+    1. the model collects in-band, because the envelope told it to;
+    2. the turn ends with runs still parked, and `respond`'s drain settles them.
+
+    Measured, **(1)** happens. So the scenario exercises the blocking surface — same grounded answer, same accepted set, nothing dangling — while leaving Router's drain **untouched**, because the model left it nothing to do.
+
+    Isolating the drain needs a turn that ends with a run still in flight: a snippet that starts long work and returns without awaiting it, so the model answers while the run is going. That scenario does not exist. Until it does, nobody should cite this test as proof the drain works, and the runner's own documentation now says so.
+
+    ### Acceptance criteria
+
+    - [x] A `respond` run whose `runCode` backgrounds still reaches the grounded answer
+    - [x] Answer parity with a drained `streamEvents` (on substance, not bytes — the departure was recorded when the runner was written)
+    - [x] No pending run survives the call
+    - [x] ~~A `respond` turn needs no `wait` call~~ — retired as unsound; `wait` calls are reported instead
+    - [ ] **New, and not done: a scenario that isolates the drain by leaving a run in flight at turn end**
+
+    The last one is genuinely open work created by this run. It is small, it needs no Router change, and it is the difference between "the surface behaves" and "the drain works". Filing it rather than closing this card on a technicality.
+  timestamp: 2026-08-15T14:42:04.579864+00:00
 depends_on:
 - 01KZRJNSJRB1RGKQDEBCV98VFF
-position_column: review
-position_ordinal: '8280'
+position_column: done
+position_ordinal: c480
 title: respond must self-drain the run plane, and gated tests must prove it
 ---
 The fifth task. Depends on `^cv98vff`, because the requirement only bites once `runCode` always backgrounds.

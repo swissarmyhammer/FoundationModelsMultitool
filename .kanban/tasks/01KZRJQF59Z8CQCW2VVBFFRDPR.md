@@ -34,10 +34,67 @@ comments:
 
     The card's rule still binds, and it binds to the new pin: **the gated run owes a passing `discoveryUnderDistractors`.** If Muse Glimmer cannot do distractor discovery, the pin is wrong whatever it does for caching, and that finding belongs here.
   timestamp: 2026-08-14T11:44:21.280216+00:00
+- actor: claude-code
+  id: 01m02xxpf4qspnj5xcx1dt43k9
+  text: |-
+    ### Gated criteria met on real hardware. Muse Glimmer + GLM-4-9B.
+
+    Both remaining criteria are now answered by real runs.
+
+    **`searchTools` returns a catalog inline, and the model calls a real path from it.** From `singleCallWeather`'s trace:
+
+    ```
+    CALL [1] searchTools args={"task": "Get current temperature for Austin, Texas"}
+    DONE searchTools out=... // tools.getWeather ... declare function getWeather(args: { city: string }): Promise<{ tempC: number; summary: string }>
+    CALL [2] runCode args={"code": "const weather = await tools.getWeather({ city: \"Austin\" });..."}
+    ```
+
+    Inline — no pending envelope, on a surface where `runCode` two lines later gets one. That is the rule holding under the only condition that could disprove it.
+
+    **Wall-clock cost, recorded rather than tuned**, as this card demands. Whole-scenario elapsed, discovery included:
+
+    | scenario | elapsed |
+    |---|---|
+    | `singleCallWeather` | 83.2s |
+    | `composeChain` | 83.1s |
+    | `discoveryUnderDistractors` | 71.7s |
+    | `repairFromTripProneTool` | 40.8s |
+
+    And the sharpest measurement, from `PrefixReuseTests` — two consecutive selection-tier searches in one session:
+
+    ```
+    RESULT [prefixReuse] first=2.659s second=1.077s
+    ```
+
+    **The second search costs 41% of the first.** The fork inherits the prefix instead of re-prefilling. That is discovery's real marginal cost once a session is warm, and it is the property the whole Muse Glimmer move was made for.
+
+    ### The distractor gate, on the new pin
+
+    This card's standing rule: anyone changing the selection pin owes a passing `discoveryUnderDistractors`. The pin changed twice since the card was written — first to Muse Glimmer with `^ev0zca7`, then to `GLM-4-9B-0414-4bit` under `4c51abc` when sharing one model across both slots turned out to hang.
+
+    The debt is paid:
+
+    ```
+    ✔ discovery scenario still names the warmest trip city among the distractor tools (79.4s)
+    RESULT groundedIn=["getTrip", "getWeather"] searchToolsFirst=true
+    MODES inventedPath=0 invented=[] overRefusal=0 answeredWithoutCalling=0 thrash=0
+    ```
+
+    `invented=[]` is the one that matters: among the distractor tools it named no path that does not exist.
+
+    ### Acceptance criteria
+
+    - [x] A discovery call never returns a pending envelope, however long it takes
+    - [x] A searcher that throws surfaces as an error, not a timeout or a token
+    - [x] A gated run shows `searchTools` returning a catalog inline, with the model's next call naming a real `tools.*` path from it
+    - [x] The wall-clock cost is recorded here
+
+    Done.
+  timestamp: 2026-08-15T14:41:25.988372+00:00
 depends_on:
 - 01KZRJPJRK8SP9329DREV0ZCA7
-position_column: review
-position_ordinal: '80'
+position_column: done
+position_ordinal: c280
 title: searchTools blocks until done — no wait clock, no work clock, no limit
 ---
 Depends on `^ev0zca7` (get building), because it cannot be measured otherwise.
