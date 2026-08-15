@@ -26,8 +26,11 @@ import Testing
 /// model collects its own backgrounded runs in-band, because the pending
 /// envelope instructs it to, so the drain has nothing left to settle. Measured
 /// on real hardware, `waitCalls` is 1-2 per run and `parked` is 0 either way.
-/// See `runRespondDrainScenario`'s own documentation for what a
-/// drain-isolating scenario would need.
+///
+/// Isolating the drain is `ParkedRunDrainTests`' job, and that suite now exists
+/// (task `^xeqs138`): it holds its fixture open until the turn has ended, so the
+/// turn really does finish with the run parked, and it fails if the model
+/// collects in band. Cite that suite, never this one, for "the drain works".
 ///
 /// `.enabled(if: multitoolIntegrationEnabled)` like every other gated suite —
 /// with `MULTITOOL_INTEGRATION` unset the whole thing is skipped, so ungated

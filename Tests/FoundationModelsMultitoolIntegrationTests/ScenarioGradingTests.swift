@@ -93,6 +93,7 @@ struct ScenarioGradingTests {
         #expect(!IntegrationScenarioGrounding.warmestCity.isEmpty)
         #expect(!IntegrationScenarioGrounding.booking.isEmpty)
         #expect(!IntegrationScenarioGrounding.combinedStock.isEmpty)
+        #expect(!IntegrationScenarioGrounding.archiveRebuild.isEmpty)
     }
 
     // MARK: - Building the graded evidence

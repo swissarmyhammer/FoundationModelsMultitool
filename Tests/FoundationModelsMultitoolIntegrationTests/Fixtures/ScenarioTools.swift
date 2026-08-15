@@ -628,6 +628,97 @@ func integrationStockTools(log: ScenarioCallLog) -> [IntegrationStockTool] {
     }
 }
 
+// MARK: - Scenario 7: a run still in flight when the turn ends (task `^xeqs138`)
+
+/// `IntegrationArchiveRebuildTool`'s output.
+@Generable(description: "a completed archive rebuild's manifest code.")
+struct IntegrationArchiveRebuildOutput {
+    var manifestCode: Int
+}
+
+/// The manifest code `IntegrationArchiveRebuildTool` always reports.
+///
+/// A *code*, for `integrationDeepScanReportCode`'s reason: a model has no prior
+/// for the manifest code of a rebuild of the user's own archive, so the only way
+/// to it is to run the rebuild and collect the parked run. And a **different**
+/// code from the deep scan's, because the two scenarios are answered by two
+/// different fixtures: one graded value that satisfied both would let a reply
+/// about the wrong run pass.
+let integrationArchiveRebuildManifestCode = 58204
+
+/// The longest `IntegrationArchiveRebuildTool` stays open when nothing opens its
+/// gate.
+///
+/// Reached only when the model answers its pending envelope with a `wait` call,
+/// which deadlocks the gate: `wait` holds the turn until the run settles, the run
+/// cannot settle until the gate opens, and the gate opens on the turn ending. See
+/// `ScenarioTurnGate` for why the ceiling exists at all.
+///
+/// Well under the 120-second work clock every `runCode` call carries
+/// (`MultiTool.detachmentClocks(from:)` answers `configuration
+/// .executionTimeLimit`, and `RunBinding.innerCallMount` bounds the inner call at
+/// `DetachConfiguration.defaultTimeoutSeconds`), so the ceiling is always what a
+/// stuck run meets first. A run the work clock killed would settle `.timedOut`,
+/// and the scenario grading the terminal outcome would then report a timeout
+/// where the real fact is a model that chose to block.
+let integrationArchiveRebuildCeiling: Duration = .seconds(90)
+
+/// The deliberately open-ended tool the parked-run drain scenario drives: a
+/// snippet that awaits it cannot finish until the scenario says so, so the model
+/// answers its pending envelope while the `runCode` run is genuinely still in
+/// flight and `respond`'s own drain is the only thing left that can collect it.
+///
+/// The contrast with `IntegrationDeepScanTool` is the whole point. That fixture
+/// sleeps a fixed span, which makes "is the run still parked when the turn ends?"
+/// a race against a live model's decode speed. This one is held on a
+/// `ScenarioTurnGate` the scenario opens the instant it sees the turn end, so the
+/// answer is yes by construction.
+struct IntegrationArchiveRebuildTool: Tool {
+    /// The `tools.*` path this fixture mounts under.
+    ///
+    /// Declared at the type level for the same reason as
+    /// `IntegrationWeatherTool.path`: the parked-run drain scenario names it in
+    /// what its answer depends on.
+    static let path = "rebuildArchive"
+
+    let name = IntegrationArchiveRebuildTool.path
+    /// Says the rebuild runs in the background and takes a while, and stops
+    /// there. It deliberately does not tell the model to wait for the result:
+    /// whether the model blocks is exactly what the scenario measures, so a tool
+    /// description that answered the question would be grading itself.
+    let description = "Rebuilds the user's archive index and returns that rebuild's manifest code. "
+        + "The rebuild runs in the background and takes a while to finish."
+
+    /// The scenario run's call log every invocation of this tool records itself in.
+    let log: ScenarioCallLog
+
+    /// The gate this tool waits behind before it reports.
+    let gate: ScenarioTurnGate
+
+    /// The longest this tool stays open when nothing opens ``gate``.
+    ///
+    /// Defaults to `integrationArchiveRebuildCeiling`, which is what the gated
+    /// scenario runs with. Injectable so `ScenarioFixtureTests` can hold this
+    /// same tool behind a never-opened gate for milliseconds instead of a minute
+    /// and a half, and still watch it wait — without which "this tool waits on
+    /// its gate" would be a premise only a gated run could check, and deleting
+    /// the wait would leave an ordinary `swift test` green.
+    var ceiling: Duration = integrationArchiveRebuildCeiling
+
+    /// Holds the run open until the gate opens, then reports the manifest code.
+    ///
+    /// - Parameter arguments: unused — this tool takes nothing.
+    /// - Returns: the fixture manifest code.
+    /// - Throws: nothing of its own; the signature is `Tool`'s, and
+    ///   `recordCall(to:_:)` only rethrows what its body throws.
+    func call(arguments: IntegrationNoArguments) async throws -> IntegrationArchiveRebuildOutput {
+        await log.recordCall(to: name) {
+            await gate.waitUntilOpen(orAfter: ceiling)
+            return IntegrationArchiveRebuildOutput(manifestCode: integrationArchiveRebuildManifestCode)
+        }
+    }
+}
+
 // MARK: - What each scenario's answer has to be grounded in
 
 /// The `tools.*` returns each gated scenario's answer depends on — what
@@ -671,4 +762,10 @@ enum IntegrationScenarioGrounding {
     /// What the async fan-out scenario's answer depends on: both counters,
     /// since only their sum answers the question that scenario asks.
     static let combinedStock = integrationStockPaths
+
+    /// What the parked-run drain scenario's answer depends on: the rebuild's
+    /// own return. The manifest code exists nowhere else — not in the prompt,
+    /// not in a tool description — so an answer carrying it rests on this
+    /// return and on nothing the model could have supplied itself.
+    static let archiveRebuild: Set<String> = [IntegrationArchiveRebuildTool.path]
 }

@@ -62,7 +62,7 @@ actor ScenarioCallLog {
         Set(calls.lazy.filter { $0.outcome == .returned }.map(\.path))
     }
 
-    /// The ambient ``ToolContext`` the first recorded invocation ran under, or
+    /// The ambient ``ToolContext`` the first *entered* invocation ran under, or
     /// `nil` when no fixture tool has been entered yet.
     ///
     /// Kept so a scenario can read the session's **run plane** after its turn
@@ -74,6 +74,13 @@ actor ScenarioCallLog {
     /// This is what makes "no run survives the call" assertable at all. It is
     /// an observation of the product's own wiring, not a back door: the
     /// capability it reads is the same public one `status()` and `wait` use.
+    ///
+    /// Recorded when a call is *entered*, never when it completes, so the plane
+    /// is readable **while** a fixture tool is still working. The parked-run
+    /// drain scenario reads it at exactly that moment — the instant the model's
+    /// answer lands, with its slow fixture still held open — and recording the
+    /// handle on completion would have made that read report an empty plane and
+    /// grade a real parked run as none.
     private(set) var observedContext: ToolContext?
 
     /// The runs still parked on the session this log's tools ran under.
@@ -83,6 +90,27 @@ actor ScenarioCallLog {
     ///   run plane, and its groundedness assertion will say so first.
     func parkedRuns() async -> [ParkedRun] {
         await observedContext?.parkedRuns() ?? []
+    }
+
+    /// How one run of this log's session ended, read back off the run plane's
+    /// retained terminal event.
+    ///
+    /// Settled runs are retained by token (`SessionMailbox.settledTerminalEvents`),
+    /// so a run collected during a turn is still answerable for after that turn
+    /// — which is how a scenario tells a run the drain *settled* from a run
+    /// something *swept*: the terminal event carries the outcome its own work
+    /// reported.
+    ///
+    /// - Parameter completionToken: the run's completion token.
+    /// - Returns: `.settled` with the retained terminal event for a run that has
+    ///   ended, `.deadlineElapsed` for one still running, or `.unknownToken`
+    ///   when this log never saw a context to ask through.
+    func settlement(of completionToken: String) async -> WaitOutcome {
+        guard let observedContext else { return .unknownToken }
+        // Zero seconds: this asks what the plane already knows, and never waits.
+        // A still-running run answers `.deadlineElapsed` rather than holding the
+        // caller, which is the honest answer to "has it ended yet".
+        return await observedContext.wait(completionToken: completionToken, seconds: 0)
     }
 
     /// Runs one fixture tool's body and records the invocation it makes.
@@ -110,29 +138,37 @@ actor ScenarioCallLog {
         // context exists — by the time a scenario asserts, every binding is
         // gone and the handle recorded here is what is left of the session's
         // run plane.
-        let ambient = ToolContext.current
+        //
+        // Handed over before `body` runs, not after: see `observedContext` for
+        // the scenario that reads the plane while a fixture call is still open.
+        await observe(ToolContext.current)
         do {
             let value = try await body()
-            await append(ScenarioCall(path: path, outcome: .returned), observing: ambient)
+            await append(ScenarioCall(path: path, outcome: .returned))
             return value
         } catch {
-            await append(ScenarioCall(path: path, outcome: .threw), observing: ambient)
+            await append(ScenarioCall(path: path, outcome: .threw))
             throw error
         }
     }
 
-    /// Appends one recorded invocation, keeping the first ambient context seen.
+    /// Keeps the ambient context one entering invocation ran under, if this log
+    /// has not already kept one.
     ///
-    /// - Parameters:
-    ///   - call: the invocation to record.
-    ///   - ambient: the context that invocation ran under, if any. Only the
-    ///     first is kept: every later one names the same session's run plane,
-    ///     and the first is the one certain to exist by the time any scenario
-    ///     reads it.
-    private func append(_ call: ScenarioCall, observing ambient: ToolContext?) {
+    /// Only the first is kept: every later one names the same session's run
+    /// plane, and the first is the one certain to exist by the time any scenario
+    /// reads it.
+    ///
+    /// - Parameter ambient: the context that invocation ran under, if any.
+    private func observe(_ ambient: ToolContext?) {
+        guard observedContext == nil else { return }
+        observedContext = ambient
+    }
+
+    /// Appends one recorded invocation.
+    ///
+    /// - Parameter call: the invocation to record.
+    private func append(_ call: ScenarioCall) {
         calls.append(call)
-        if observedContext == nil {
-            observedContext = ambient
-        }
     }
 }

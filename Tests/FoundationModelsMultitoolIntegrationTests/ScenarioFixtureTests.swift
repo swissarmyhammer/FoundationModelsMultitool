@@ -314,6 +314,102 @@ struct ScenarioFixtureTests {
         )
     }
 
+    // MARK: - The fixture the parked-run drain scenario holds open
+
+    /// The ceiling the gate tests run with, in place of the gated scenario's
+    /// minute and a half.
+    ///
+    /// Long enough to be several of `ScenarioTurnGate.pollInterval`, so a waiter
+    /// that reaches it really did poll rather than fall straight through.
+    private static let testGateCeiling: Duration = .milliseconds(300)
+
+    /// The lower bound a waiter that ran out its ceiling must have taken.
+    ///
+    /// A lower bound, deliberately: a loaded machine can make a wait longer and
+    /// never shorter, so this cannot flake. Comfortably under
+    /// ``testGateCeiling`` so the poll loop's own granularity has room, and
+    /// comfortably over the near-zero a gate-ignoring fixture would take, which
+    /// is the difference the assertion is for.
+    private static let testGateWaitFloor: Duration = .milliseconds(100)
+
+    @Test("a waiter nothing opens the gate for is released by the ceiling, with the gate still shut")
+    func aNeverOpenedGateReleasesItsWaiterAtTheCeiling() async {
+        let gate = ScenarioTurnGate()
+
+        await gate.waitUntilOpen(orAfter: Self.testGateCeiling)
+
+        // Returned *and* still shut is the whole claim: the ceiling let go of
+        // the waiter, rather than an open doing it. Without this the gated
+        // scenario deadlocks whenever the model answers its envelope with a
+        // `wait` call — that call holds the turn, the turn end never arrives,
+        // and nothing else ever opens the gate.
+        #expect(await gate.isOpen == false)
+    }
+
+    @Test("an opened gate releases a waiter that was already waiting on it")
+    func anOpenReleasesAWaitingWaiter() async {
+        let gate = ScenarioTurnGate()
+
+        async let waited: Void = gate.waitUntilOpen(orAfter: Self.testGateCeiling)
+        await gate.open()
+        await waited
+
+        #expect(await gate.isOpen)
+    }
+
+    @Test("the archive-rebuild fixture reports its manifest code once its gate is open")
+    func theRebuildFixtureReportsItsManifestCodeOnceOpened() async throws {
+        let log = ScenarioCallLog()
+        let gate = ScenarioTurnGate()
+        await gate.open()
+
+        let rebuild = try await IntegrationArchiveRebuildTool(log: log, gate: gate)
+            .call(arguments: IntegrationNoArguments(unused: nil))
+
+        #expect(rebuild.manifestCode == integrationArchiveRebuildManifestCode)
+        #expect(await log.returnedPaths == [IntegrationArchiveRebuildTool.path])
+    }
+
+    @Test("the archive-rebuild fixture really waits on its gate rather than reporting straight away")
+    func theRebuildFixtureWaitsOnItsGate() async throws {
+        // The premise the whole scenario rests on. A fixture that stopped
+        // consulting its gate would still return the right manifest code, and
+        // every ungated assertion above would still pass — while the gated run
+        // silently went back to racing the model's decode speed.
+        let gate = ScenarioTurnGate()
+        let tool = IntegrationArchiveRebuildTool(
+            log: ScenarioCallLog(), gate: gate, ceiling: Self.testGateCeiling
+        )
+
+        let started = ContinuousClock.now
+        _ = try await tool.call(arguments: IntegrationNoArguments(unused: nil))
+        let waited = ContinuousClock.now - started
+
+        #expect(waited >= Self.testGateWaitFloor)
+        #expect(await gate.isOpen == false)
+    }
+
+    @Test("the parked-run drain scenario's manifest code answers no other scenario's question")
+    func theManifestCodeAnswersNoOtherScenarioQuestion() {
+        // The same rule `IntegrationScenarioAnswers` enforces between its own
+        // two answer sets, extended to the two code-shaped fixtures that came
+        // later. A manifest code that contained — or was contained by — the deep
+        // scan's report code would let a reply about the wrong run satisfy this
+        // scenario, and both are `answerContainsOneOf` substring matches.
+        let manifest = integerAnswers(for: integrationArchiveRebuildManifestCode)
+        let everyOtherAnswer = integerAnswers(for: integrationDeepScanReportCode)
+            + integerAnswers(for: integrationWarehouseStockUnits + integrationStoreStockUnits)
+            + IntegrationScenarioAnswers.singleCall
+            + IntegrationScenarioAnswers.warmestCity
+
+        for answer in manifest {
+            for other in everyOtherAnswer {
+                #expect(!answer.localizedCaseInsensitiveContains(other))
+                #expect(!other.localizedCaseInsensitiveContains(answer))
+            }
+        }
+    }
+
     /// Builds the transcript shape `NativeTranscript.typedToolPaths(in:)` scans: one recorded `runCode` call carrying a snippet.
     ///
     /// - Parameter code: the snippet the recorded call carries.

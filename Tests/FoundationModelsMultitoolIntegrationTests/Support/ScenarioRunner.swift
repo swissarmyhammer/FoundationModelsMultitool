@@ -945,10 +945,10 @@ private func printSkipNote(_ name: String) {
 /// streaming, nothing left parked — while leaving Router's drain itself
 /// unexercised, because the model left it nothing to do.
 ///
-/// Isolating the drain needs a turn that ends with something still parked: a
-/// snippet that starts long work and returns without awaiting it, so the model
-/// answers while the run is in flight. That scenario does not exist yet, and
-/// until it does, nobody should cite this test as proof the drain works.
+/// Isolating the drain needs a turn that ends with something still parked, so
+/// the model answers while the run is in flight. That scenario exists now —
+/// `runParkedRunDrainScenario`, task `^xeqs138` — and it is what to cite for
+/// "the drain works". This one still must not be cited for it.
 ///
 /// **Router's drain rule, which this scenario is written against.** `respond`
 /// runs its own turn, then snapshots **every** run parked on the session —
@@ -1069,6 +1069,319 @@ func runRespondDrainScenario(
 /// - Returns: the accepted answers present in `reply`.
 private func accepted(_ candidates: [String], in reply: String) -> Set<String> {
     Set(candidates.filter { reply.localizedCaseInsensitiveContains($0) })
+}
+
+// MARK: - The parked-run drain scenario
+
+/// Drives one scenario whose turn ends with a run **still in flight**, so
+/// Router's parked-run drain — and not the model's own in-band `wait` call — is
+/// what collects it (task `^xeqs138`).
+///
+/// **Why `runRespondDrainScenario` could not be extended into this.** That
+/// scenario runs one prompt through both surfaces and asserts they agree, and it
+/// passes without the drain ever doing anything: measured on real hardware the
+/// model collects its own backgrounded run in band, because the pending envelope
+/// tells it to (`PendingRunEnvelope.renderedMidfix`), so `respond`'s drain finds
+/// an empty run plane and settles nothing. `parked == 0` on return is the same
+/// value either way. This scenario asks the opposite question of a single
+/// surface, so it wants a different shape and a different assertion set.
+///
+/// **What makes the drain the only possible collector.** Two facts about the
+/// product, together:
+///
+/// - Every `runCode` call parks immediately —
+///   `MultiTool.detachmentClocks(from:)` answers a zero wait clock for every
+///   call (`^cv98vff`) — so a run is parked from the instant the model calls
+///   `runCode` until its snippet settles.
+/// - The **only** thing that can collect a parked run in band is the `wait`
+///   tool. A second `runCode` snippet reaching for the sandbox's own run-plane
+///   globals cannot: that call parks immediately too, so the model would have to
+///   wait on *its* token, without end.
+///
+/// So `waitCalls == 0` beside an answer carrying the fixture's own value is a
+/// complete proof that the drain collected the run. The value reaches the model
+/// only through a collected terminal event; the model collected nothing; and
+/// `RoutedSessionActor` runs a continuation turn only when its post-turn
+/// snapshot of the run plane was **not** empty — which is to say, only when the
+/// run was still parked after the model's answer existed.
+///
+/// **Why the fixture is gated rather than slow.** "The run is still parked when
+/// the turn ends" has to be true, not likely. A fixture that sleeps for a fixed
+/// span races a live model's decode speed, and losing that race fails silently
+/// in the wrong place: the run settles early, the drain's snapshot is empty, no
+/// continuation turn runs, and the reply simply lacks the value. The fixture is
+/// therefore held on a `ScenarioTurnGate` that this runner opens on the first
+/// `SessionEvent.turnEnded` it sees — so the run cannot leave the plane before
+/// the model's answer exists, and the run-plane snapshot taken at that same
+/// instant is the direct observation that it had not.
+///
+/// **Nothing here cancels.** A cancelled turn is never drained: whatever it
+/// parked stays parked, because ending a parked run is `close()`'s job. A
+/// cancelling scenario would therefore be asserting about `close()` instead.
+///
+/// **The bound this stays inside.** The drain runs at most
+/// `RoutedSessionActor.parkedRunDrainRoundLimit` continuation turns, and this
+/// scenario needs exactly one: the first turn starts the rebuild, the drained
+/// turn answers from it.
+///
+/// - Parameters:
+///   - name: a short label identifying the scenario, used in the printed lines.
+///   - makeTools: builds the scenario's fixed tool set around the run's own call
+///     log and the gate its slow fixture waits behind. A builder, for
+///     `runNativeIntegrationScenario`'s reason: exactly one log and one gate
+///     exist per run, and no call site can hand the tools a different pair than
+///     this runner reads back.
+///   - prompt: the user request driving the turn.
+///   - answerContainsOneOf: candidate substrings, at least one of which the
+///     final reply must contain (case-insensitively). Pick a value that reaches
+///     the model only through the collected run's terminal `detail`.
+///   - groundedIn: the `tools.*` paths whose returns the answer depends on — see
+///     `IntegrationScenarioGrounding`.
+/// - Throws: any error other than `GenerationError.notWiredForLiveInference`.
+func runParkedRunDrainScenario(
+    name: String,
+    tools makeTools: (ScenarioCallLog, ScenarioTurnGate) -> [any Tool],
+    prompt: String,
+    answerContainsOneOf: [String],
+    groundedIn: Set<String>
+) async throws {
+    try await withLiveRouterFixture(name: name) { fixture in
+        let log = ScenarioCallLog()
+        let gate = ScenarioTurnGate()
+        // No instructions, for the same reason as every other runner here:
+        // mounting the tools is the whole product surface.
+        let session = fixture.profile.standard.makeSession(
+            tools: try makeScenarioSurface(over: makeTools(log, gate), on: fixture).tools,
+            discoveryPriming: scenarioDiscoveryPriming
+        )
+
+        // Subscribed on this task, before the turn starts. A subscription opened
+        // from inside the child below could register after the turn had already
+        // ended, and the one event this whole scenario is built around would be
+        // gone — with the gate then left to its own ceiling.
+        let sessionEvents = await session.streamSessionEvents()
+        async let firstTurnParkedRuns = parkedRuns(
+            atFirstTurnEndIn: sessionEvents, reading: log, opening: gate
+        )
+
+        let start = Date()
+        let answer = try await session.respond(to: prompt)
+        let elapsed = Date().timeIntervalSince(start)
+
+        let parkedAtAnswer = await firstTurnParkedRuns
+        let evidence = ParkedRunDrainEvidence(
+            answer: answer,
+            parkedAtAnswer: parkedAtAnswer,
+            // Read the instant the call returns: that is what "nothing survives
+            // `respond`" is a statement about.
+            parkedAfterRespond: await log.parkedRuns(),
+            returnedPaths: await log.returnedPaths,
+            waitCalls: NativeTranscript.toolCallCount(
+                in: await session.transcript, named: WaitTool().name
+            ),
+            terminals: await terminalOutcomes(of: parkedAtAnswer, through: log)
+        )
+        grade(
+            scenario: name,
+            checks: parkedRunDrainChecks(
+                for: evidence, answerContainsOneOf: answerContainsOneOf, groundedIn: groundedIn
+            )
+        )
+
+        print(
+            "PARKED-DRAIN [\(name)] elapsed=\(String(format: "%.1f", elapsed))s "
+                + "parkedAtAnswer=\(evidence.parkedAtAnswer.map(\.tool)) "
+                + "parkedAfterRespond=\(evidence.parkedAfterRespond.map(\.tool)) "
+                + "waitCalls=\(evidence.waitCalls) "
+                + "terminals=\(outcomeLabels(evidence.terminals)) "
+                + "returned=\(evidence.returnedPaths.sorted()) "
+                + "groundedIn=\(groundedIn.sorted()) "
+                + "reply=\"\(answer.prefix(120))\""
+        )
+    }
+}
+
+/// Everything one parked-run drain scenario run produced that its verdict is
+/// graded on.
+///
+/// Collected into one value so `parkedRunDrainChecks(for:answerContainsOneOf:
+/// groundedIn:)` grades a record rather than six loose arguments, and so the
+/// printed line and the assertions read the same record.
+private struct ParkedRunDrainEvidence {
+    /// The model's final reply — the last drained turn's, when the drain ran one.
+    let answer: String
+
+    /// The runs parked at the instant the model's first turn ended.
+    let parkedAtAnswer: [ParkedRun]
+
+    /// The runs still parked when `respond(to:)` returned.
+    let parkedAfterRespond: [ParkedRun]
+
+    /// The `tools.*` paths a fixture tool handed a value back from.
+    let returnedPaths: Set<String>
+
+    /// How many `wait` calls the model made — the whole of the in-band
+    /// collection surface, so zero is what leaves the drain as the only
+    /// collector.
+    let waitCalls: Int
+
+    /// How each run of ``parkedAtAnswer`` ended, read back after the call
+    /// returned.
+    let terminals: [WaitOutcome]
+}
+
+/// Grades one parked-run drain run into the conditions its verdict is the
+/// conjunction of.
+///
+/// - Parameters:
+///   - evidence: what the run produced.
+///   - answerContainsOneOf: candidate substrings, at least one of which the
+///     reply must contain case-insensitively.
+///   - groundedIn: the `tools.*` paths whose returns the answer depends on.
+/// - Returns: every condition this run is graded on, in reporting order.
+private func parkedRunDrainChecks(
+    for evidence: ParkedRunDrainEvidence,
+    answerContainsOneOf: [String],
+    groundedIn: Set<String>
+) -> [ScenarioCheck] {
+    var checks = answerChecks(evidence.answer, containsOneOf: answerContainsOneOf, mustNotContain: [])
+    checks.append(
+        ScenarioCheck(
+            name: "parkedAtAnswer",
+            held: !evidence.parkedAtAnswer.isEmpty,
+            failureMessage:
+                "expected a run to be parked at the instant the model's answer landed, but the run "
+                + "plane was empty then — so the turn did not end with work in flight and there was "
+                + "nothing for the drain to collect"
+        )
+    )
+    checks.append(
+        ScenarioCheck(
+            name: "noInBandWait",
+            held: evidence.waitCalls == 0,
+            failureMessage:
+                "the model made \(evidence.waitCalls) `wait` call(s), which is the one way it can "
+                + "collect a parked run itself — so this run says nothing about whether the drain "
+                + "works"
+        )
+    )
+    checks.append(
+        ScenarioCheck(
+            name: groundedCheckName,
+            held: groundedIn.isSubset(of: evidence.returnedPaths),
+            failureMessage:
+                "expected the answer to be grounded in what \(groundedIn.sorted()) returned, but "
+                + "only \(evidence.returnedPaths.sorted()) returned"
+        )
+    )
+    checks.append(
+        ScenarioCheck(
+            name: "runPlaneEmpty",
+            held: evidence.parkedAfterRespond.isEmpty,
+            failureMessage:
+                "expected an empty run plane when respond returned, but "
+                + "\(evidence.parkedAfterRespond.map(\.tool)) were still parked"
+        )
+    )
+    checks.append(
+        ScenarioCheck(
+            name: "settledSucceeded",
+            held: allSucceeded(evidence.terminals),
+            failureMessage:
+                "expected every collected run to have succeeded — the drain waits for work to "
+                + "finish, it never sweeps — but the terminals were "
+                + "\(outcomeLabels(evidence.terminals))"
+        )
+    )
+    return checks
+}
+
+/// Snapshots the run plane at the end of the model's first turn, then opens the
+/// gate holding that turn's slow fixture.
+///
+/// The order is the whole point: the snapshot is taken while the run still
+/// cannot have settled, and only then is the fixture released. Reversing the two
+/// would race the snapshot against the run leaving the plane.
+///
+/// - Parameters:
+///   - events: the session's own event feed, subscribed before the turn started.
+///   - log: the run's call log, which holds the handle onto the run plane.
+///   - gate: the gate this opens once the turn has ended — and also on a feed
+///     that finished without one, so a session that ends early never leaves a
+///     fixture waiting out its whole ceiling.
+/// - Returns: the runs parked at that instant, or an empty array when no turn
+///   ended on this feed.
+private func parkedRuns(
+    atFirstTurnEndIn events: AsyncStream<SessionEvent>,
+    reading log: ScenarioCallLog,
+    opening gate: ScenarioTurnGate
+) async -> [ParkedRun] {
+    for await event in events {
+        guard case .turnEnded = event else { continue }
+        let parked = await log.parkedRuns()
+        await gate.open()
+        return parked
+    }
+    await gate.open()
+    return []
+}
+
+/// How each of `runs` ended, read back off the run plane's retained terminal
+/// events.
+///
+/// - Parameters:
+///   - runs: the runs to ask about.
+///   - log: the run's call log, which holds the handle onto the run plane.
+/// - Returns: one outcome per run, in the order `runs` gives them.
+private func terminalOutcomes(
+    of runs: [ParkedRun],
+    through log: ScenarioCallLog
+) async -> [WaitOutcome] {
+    var outcomes: [WaitOutcome] = []
+    for run in runs {
+        outcomes.append(await log.settlement(of: run.completionToken))
+    }
+    return outcomes
+}
+
+/// Whether every one of `terminals` reports a run that ran to completion and
+/// succeeded.
+///
+/// An empty list does **not** hold. A scenario reaches here with nothing to
+/// judge only when no run was parked when the answer landed, and grading that as
+/// "every run succeeded" would report a pass on a run plane nothing ever
+/// entered.
+///
+/// - Parameter terminals: the collected runs' outcomes.
+/// - Returns: whether all of them succeeded.
+private func allSucceeded(_ terminals: [WaitOutcome]) -> Bool {
+    guard !terminals.isEmpty else { return false }
+    return terminals.allSatisfy { outcome in
+        guard case .settled(let terminal) = outcome else { return false }
+        return terminal.outcome == .succeeded
+    }
+}
+
+/// Renders each collected run's outcome for the printed diagnostic line.
+///
+/// A run the plane still reports as running, and one it no longer knows, are
+/// named as themselves rather than folded into a missing outcome — the three
+/// describe different defects, and a reader chasing a failure needs to know
+/// which one happened.
+///
+/// - Parameter terminals: the collected runs' outcomes.
+/// - Returns: one label per outcome, in order.
+private func outcomeLabels(_ terminals: [WaitOutcome]) -> [String] {
+    terminals.map { outcome in
+        switch outcome {
+        case .settled(let terminal):
+            return terminal.outcome.map { "\($0)" } ?? "settledWithNoOutcome"
+        case .deadlineElapsed:
+            return "stillRunning"
+        case .unknownToken:
+            return "unknownToken"
+        }
+    }
 }
 
 /// Renders a turn's usage for a gated diagnostic line, without stating a
