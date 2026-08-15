@@ -1073,6 +1073,16 @@ private func accepted(_ candidates: [String], in reply: String) -> Set<String> {
 
 // MARK: - The parked-run drain scenario
 
+/// How many leading characters of the model's reply the `PARKED-DRAIN`
+/// diagnostic line prints.
+///
+/// The reply is a whole sentence or two of prose, and the line already carries
+/// six other fields, so it is truncated to keep one run to one readable line.
+/// 120 characters because the one thing a reader chases here is the manifest
+/// code, and a model that reports it puts it in the opening clause; the same
+/// bound is what the other gated runners' reply previews use.
+private let parkedRunDrainReplyPreviewCharacters = 120
+
 /// Drives one scenario whose turn ends with a run **still in flight**, so
 /// Router's parked-run drain — and not the model's own in-band `wait` call — is
 /// what collects it (task `^xeqs138`).
@@ -1196,7 +1206,7 @@ func runParkedRunDrainScenario(
                 + "terminals=\(outcomeLabels(evidence.terminals)) "
                 + "returned=\(evidence.returnedPaths.sorted()) "
                 + "groundedIn=\(groundedIn.sorted()) "
-                + "reply=\"\(answer.prefix(120))\""
+                + "reply=\"\(answer.prefix(parkedRunDrainReplyPreviewCharacters))\""
         )
     }
 }

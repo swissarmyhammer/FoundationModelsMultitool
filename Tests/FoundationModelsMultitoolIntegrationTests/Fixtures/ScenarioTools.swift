@@ -661,7 +661,21 @@ let integrationArchiveRebuildManifestCode = 58204
 /// stuck run meets first. A run the work clock killed would settle `.timedOut`,
 /// and the scenario grading the terminal outcome would then report a timeout
 /// where the real fact is a model that chose to block.
-let integrationArchiveRebuildCeiling: Duration = .seconds(90)
+let integrationArchiveRebuildCeiling: Duration = .seconds(integrationArchiveRebuildCeilingSeconds)
+
+/// ``integrationArchiveRebuildCeiling`` stated as a count of seconds.
+///
+/// 90 seconds sits between the two bounds that decide it. Above it is the
+/// 120-second work clock named in ``integrationArchiveRebuildCeiling``'s own
+/// documentation, which the ceiling has to come in under so that a stuck run
+/// meets the ceiling first and settles `.succeeded` rather than `.timedOut`.
+/// Below it is the wall clock of one live turn on a 30B model, which the ceiling
+/// has to stay above so that an ordinary slow turn never runs the fixture out.
+///
+/// A separate constant from ``integrationArchiveRebuildCeiling`` because
+/// `Duration` has no literal form: the number has to be named somewhere, and
+/// naming it here keeps the unit in the name beside the value.
+private let integrationArchiveRebuildCeilingSeconds = 90
 
 /// The deliberately open-ended tool the parked-run drain scenario drives: a
 /// snippet that awaits it cannot finish until the scenario says so, so the model

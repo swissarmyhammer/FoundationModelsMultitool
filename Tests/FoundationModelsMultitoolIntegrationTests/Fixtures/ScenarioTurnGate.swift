@@ -32,12 +32,21 @@ import Foundation
 /// An `actor` because the scenario opens the gate from its own task while the
 /// fixture tool reads it from the run's task.
 actor ScenarioTurnGate {
-    /// How long a waiter sleeps between reads of ``isOpen``.
+    /// ``pollInterval`` stated as a count of milliseconds.
     ///
-    /// Short enough that the wait it adds is lost in a live turn's own decode
-    /// time, long enough that a minutes-long wait is a few thousand actor hops
-    /// rather than a spin.
-    static let pollInterval: Duration = .milliseconds(50)
+    /// 50 ms is short enough that the wait it adds is lost in a live turn's own
+    /// decode time — a turn takes tens of seconds, so at worst one poll of
+    /// latency is under a thousandth of it — and long enough that a wait as long
+    /// as ``IntegrationArchiveRebuildTool``'s whole ceiling is a couple of
+    /// thousand actor hops rather than a spin.
+    ///
+    /// A separate constant from ``pollInterval`` because `Duration` has no
+    /// literal form: the number has to be named somewhere, and naming it here
+    /// keeps the unit in the name beside the value.
+    private static let pollIntervalMilliseconds = 50
+
+    /// How long a waiter sleeps between reads of ``isOpen``.
+    static let pollInterval: Duration = .milliseconds(pollIntervalMilliseconds)
 
     /// Whether the gate has been opened.
     private(set) var isOpen = false
