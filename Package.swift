@@ -39,10 +39,9 @@ private let swissArmyHammerPackageOrgURL = "git@github.com:swissarmyhammer/"
 /// Builds a `.package(url:branch:)` dependency for a package hosted under
 /// `swissArmyHammerPackageOrgURL`, tracking `branch` (`mainBranch` by default).
 ///
-/// This is used for `metadataRegistryDependencyName` (the default branch),
-/// for `mlxPackage` (its published `stable` branch), and for
-/// `routerDependencyName` again once the temporary local-path declaration
-/// below is restored.
+/// This is used for `routerDependencyName` and
+/// `metadataRegistryDependencyName` (the default branch), and for
+/// `mlxPackage` (its published `stable` branch).
 private func swissArmyHammerPackage(name: String, branch: String = mainBranch) -> Package.Dependency {
     .package(url: "\(swissArmyHammerPackageOrgURL)\(name).git", branch: branch)
 }
@@ -163,12 +162,7 @@ let package = Package(
         )
     ],
     dependencies: [
-        // TEMPORARY (human-directed 2026-08-10): Router by local path rather than
-        // by branch, so a Router fix can be tested here the moment it lands
-        // without waiting on a push + re-resolve. Restore
-        // `swissArmyHammerPackage(name: routerDependencyName)` before this
-        // package is consumed anywhere but this machine.
-        .package(path: "../\(routerDependencyName)"),
+        swissArmyHammerPackage(name: routerDependencyName),
         swissArmyHammerPackage(name: metadataRegistryDependencyName),
         // Only the M9 CLI executable and the gated integration test target
         // below link products from these three — see their documentation
