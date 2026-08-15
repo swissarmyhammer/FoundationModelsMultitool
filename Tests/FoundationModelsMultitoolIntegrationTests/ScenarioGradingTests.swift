@@ -2,9 +2,10 @@ import Testing
 
 @testable import FoundationModelsMultitool
 
-/// Ungated coverage for the verdict a gated scenario is graded on —
+/// Ungated coverage for the verdicts a gated scenario is graded on —
 /// `scenarioChecks(for:answerContainsOneOf:answerMustNotContain:groundedIn:)`
-/// in `Support/ScenarioRunner.swift`.
+/// and `inBandCollectionChecks(for:answerContainsOneOf:groundedIn:)` in
+/// `Support/ScenarioRunner.swift`.
 ///
 /// The grounding condition used to hold whenever *any* fixture call returned,
 /// which is a weaker question than the one a scenario asks. Recorded on task
@@ -96,7 +97,94 @@ struct ScenarioGradingTests {
         #expect(!IntegrationScenarioGrounding.archiveRebuild.isEmpty)
     }
 
+    // MARK: - The in-band collection canary's verdict
+
+    /// How many `wait` calls the recorded gated run made.
+    ///
+    /// Measured, not chosen: the `MULTITOOL_INTEGRATION` run of the canary's own
+    /// scenario reported `waitCalls=3` beside `parkedAtAnswer=[]`. The exact
+    /// count is not what the canary grades — any call at all is in-band
+    /// collection — but grading the recorded number keeps this test a rebuild of
+    /// a run that happened rather than of one imagined.
+    private static let recordedInBandWaitCalls = 3
+
+    @Test("the recorded run — the model collected its own parked run — passes every canary condition")
+    func theRecordedInBandRunPassesEveryCanaryCondition() {
+        // The gated run this canary was inverted from: the model called `wait`,
+        // collected its own run, and answered with the manifest code, leaving
+        // the run plane empty at the turn's end and at respond's return.
+        let checks = Self.canaryChecks(
+            for: InBandCollectionEvidence(
+                answer: Self.replyReportingTheManifestCode,
+                parkedAtAnswer: [],
+                parkedAfterRespond: [],
+                returnedPaths: IntegrationScenarioGrounding.archiveRebuild,
+                waitCalls: Self.recordedInBandWaitCalls
+            )
+        )
+
+        let failed = checks.filter { !$0.held }.map(\.name)
+        #expect(failed.isEmpty)
+    }
+
+    @Test("a turn that ended with a run still parked fails the canary, and fails it on the two conditions that say so")
+    func aRunLeftParkedAtTheAnswerFailsTheCanary() throws {
+        // The shape task `^xeqs138` was written to produce and Router's
+        // `^466d38p` says no host can reach: the model ignored the pending
+        // envelope's instruction to collect, so its turn ended with the rebuild
+        // still in flight. If a gated run ever reports this, the drain is
+        // reachable and that card's question is open again — so the canary has
+        // to fail on it, here where it can be checked without live inference.
+        let checks = Self.canaryChecks(
+            for: InBandCollectionEvidence(
+                answer: Self.replyReportingTheManifestCode,
+                parkedAtAnswer: [IntegrationArchiveRebuildTool.path],
+                parkedAfterRespond: [],
+                returnedPaths: IntegrationScenarioGrounding.archiveRebuild,
+                waitCalls: 0
+            )
+        )
+
+        let runPlaneEmptyAtAnswer = try Self.check(runPlaneEmptyAtAnswerCheckName, in: checks)
+        #expect(!runPlaneEmptyAtAnswer.held)
+        let inBandCollection = try Self.check(inBandCollectionCheckName, in: checks)
+        #expect(!inBandCollection.held)
+        // And it fails on those two alone: the reply is a valid, grounded
+        // answer, so a reader of the failure knows the drain — not the model's
+        // answer — is what changed.
+        let validAnswer = try Self.check(validAnswerCheckName, in: checks)
+        #expect(validAnswer.held)
+        let grounded = try Self.check(groundedCheckName, in: checks)
+        #expect(grounded.held)
+    }
+
     // MARK: - Building the graded evidence
+
+    /// Grades one canary record against the gated scenario's own answers and
+    /// declared grounding.
+    ///
+    /// The accepted answers and the grounding come from the fixtures, so this
+    /// grades the same contract the gated suite does rather than a copy of it.
+    ///
+    /// - Parameter evidence: the record to grade.
+    /// - Returns: every graded condition, in reporting order.
+    private static func canaryChecks(for evidence: InBandCollectionEvidence) -> [ScenarioCheck] {
+        inBandCollectionChecks(
+            for: evidence,
+            answerContainsOneOf: integerAnswers(for: integrationArchiveRebuildManifestCode),
+            groundedIn: IntegrationScenarioGrounding.archiveRebuild
+        )
+    }
+
+    /// The reply both canary records are graded on: an answer reporting the
+    /// rebuild's manifest code, in the recorded shape.
+    ///
+    /// Rebuilt from the fixture rather than quoted, for
+    /// ``replyNamingTheWarmestCity``'s reason: a pinned string would keep
+    /// passing after the fixture's code changed under it.
+    private static var replyReportingTheManifestCode: String {
+        "Rebuild is under way. Manifest code: \(integrationArchiveRebuildManifestCode)"
+    }
 
     /// Runs one snippet against the compose scenario's own two fixture tools.
     ///

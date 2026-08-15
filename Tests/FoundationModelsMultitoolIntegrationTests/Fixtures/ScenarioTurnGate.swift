@@ -3,24 +3,26 @@ import Foundation
 /// A one-way gate a slow fixture tool is held behind until the scenario driving
 /// it says the tool may finish.
 ///
-/// **Why a gated fixture rather than a long `Task.sleep`.** The parked-run drain
-/// scenario needs one fact to be true and not merely likely: the model's turn
-/// must end while its `runCode` run is *still parked*. A fixture that sleeps for
-/// a fixed span makes that a race between a sleep and a live 30B model's decode
-/// speed, and losing the race does not fail loudly — the run settles early, the
-/// run plane is empty when `respond`'s drain snapshots it, no continuation turn
-/// runs at all, and the scenario fails for a reason that looks nothing like the
-/// timing that caused it. A gate removes the race: the run cannot leave the run
-/// plane until the scenario has already seen the turn end.
+/// **Why a gated fixture rather than a long `Task.sleep`.** The in-band
+/// collection canary asks when the model's `runCode` run left the run plane
+/// relative to the end of its turn, and that has to be a fact rather than a
+/// coincidence. A fixture that sleeps for a fixed span makes it a race between a
+/// sleep and a live 30B model's decode speed, and losing the race does not fail
+/// loudly — it produces exactly the reading the canary exists to watch for,
+/// while meaning nothing. A gate removes the race: the run cannot leave the run
+/// plane early, because the fixture behind the gate is not free to return.
 ///
-/// **The ceiling is not a second timing assumption.** `waitUntilOpen(orAfter:)`
-/// gives up after a bound because there is one way the gate is never opened: a
-/// model that answers its pending envelope by calling `wait`. That call blocks
-/// the turn until the run settles, the run cannot settle until the turn ends,
-/// and the turn cannot end until the call returns. The ceiling breaks that
-/// deadlock so the scenario fails on its own `waitCalls == 0` assertion — the
-/// honest reading of what happened — instead of hanging until the suite's time
-/// limit kills it and says nothing.
+/// **The ceiling is what ends the wait on an ordinary run, not an exception.**
+/// `waitUntilOpen(orAfter:)` gives up after a bound because the gate is normally
+/// never opened in time: the model answers its pending envelope by calling
+/// `wait`, and that call blocks the turn until the run settles, the run cannot
+/// settle until the gate opens, and the gate opens on the turn ending. Router's
+/// `^466d38p` says every park carries the instruction that produces that `wait`,
+/// so this is the path a passing canary run takes. Without the ceiling the
+/// scenario would deadlock on every run and be killed by the suite's time limit
+/// having said nothing; with it, the fixture reports, the model collects, and the
+/// canary reads an empty plane at the turn's end — which is the observation it
+/// grades.
 ///
 /// **Polled rather than continuation-based.** A waiter parked on a
 /// `CheckedContinuation` and raced against a deadline needs the machinery

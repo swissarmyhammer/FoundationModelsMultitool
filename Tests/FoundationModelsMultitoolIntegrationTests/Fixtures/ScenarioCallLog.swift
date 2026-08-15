@@ -76,11 +76,12 @@ actor ScenarioCallLog {
     /// capability it reads is the same public one `status()` and `wait` use.
     ///
     /// Recorded when a call is *entered*, never when it completes, so the plane
-    /// is readable **while** a fixture tool is still working. The parked-run
-    /// drain scenario reads it at exactly that moment — the instant the model's
-    /// answer lands, with its slow fixture still held open — and recording the
-    /// handle on completion would have made that read report an empty plane and
-    /// grade a real parked run as none.
+    /// is readable **while** a fixture tool is still working. The in-band
+    /// collection canary reads it at the instant the model's first turn ends,
+    /// and the failure it exists to catch is exactly the case where a fixture
+    /// call is still open then: recording the handle on completion would make
+    /// that read report an empty plane and grade a real parked run as none —
+    /// which is the one reading the canary must never get wrong.
     private(set) var observedContext: ToolContext?
 
     /// The runs still parked on the session this log's tools ran under.
@@ -90,27 +91,6 @@ actor ScenarioCallLog {
     ///   run plane, and its groundedness assertion will say so first.
     func parkedRuns() async -> [ParkedRun] {
         await observedContext?.parkedRuns() ?? []
-    }
-
-    /// How one run of this log's session ended, read back off the run plane's
-    /// retained terminal event.
-    ///
-    /// Settled runs are retained by token (`SessionMailbox.settledTerminalEvents`),
-    /// so a run collected during a turn is still answerable for after that turn
-    /// — which is how a scenario tells a run the drain *settled* from a run
-    /// something *swept*: the terminal event carries the outcome its own work
-    /// reported.
-    ///
-    /// - Parameter completionToken: the run's completion token.
-    /// - Returns: `.settled` with the retained terminal event for a run that has
-    ///   ended, `.deadlineElapsed` for one still running, or `.unknownToken`
-    ///   when this log never saw a context to ask through.
-    func settlement(of completionToken: String) async -> WaitOutcome {
-        guard let observedContext else { return .unknownToken }
-        // Zero seconds: this asks what the plane already knows, and never waits.
-        // A still-running run answers `.deadlineElapsed` rather than holding the
-        // caller, which is the honest answer to "has it ended yet".
-        return await observedContext.wait(completionToken: completionToken, seconds: 0)
     }
 
     /// Runs one fixture tool's body and records the invocation it makes.

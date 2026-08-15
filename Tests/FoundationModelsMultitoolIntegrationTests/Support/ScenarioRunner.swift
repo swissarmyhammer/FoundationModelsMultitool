@@ -772,6 +772,14 @@ let validAnswerCheckName = "validAnswer"
 /// depends on.
 let groundedCheckName = "grounded"
 
+/// The label of the check that grades the model as having collected its own
+/// parked run in band, with a `wait` call of its own.
+let inBandCollectionCheckName = "inBandCollection"
+
+/// The label of the check that grades the run plane as empty at the instant the
+/// model's first turn ended.
+let runPlaneEmptyAtAnswerCheckName = "runPlaneEmptyAtAnswer"
+
 /// Everything one native scenario run produced that its verdict is graded on.
 ///
 /// Three signals, three different questions, deliberately kept apart: the typed
@@ -945,10 +953,14 @@ private func printSkipNote(_ name: String) {
 /// streaming, nothing left parked — while leaving Router's drain itself
 /// unexercised, because the model left it nothing to do.
 ///
-/// Isolating the drain needs a turn that ends with something still parked, so
-/// the model answers while the run is in flight. That scenario exists now —
-/// `runParkedRunDrainScenario`, task `^xeqs138` — and it is what to cite for
-/// "the drain works". This one still must not be cited for it.
+/// **No scenario here isolates the drain, and none can.** Isolating it needs a
+/// turn that ends with something still parked, and Router's `^466d38p` (their
+/// commit `b4c0282`) says no host can produce one: every park hands the model a
+/// `PendingRunEnvelope` telling it to collect the run with a `wait` call before
+/// it answers, and there is no park without that instruction. The scenario
+/// written to try — task `^xeqs138` — measured the opposite and was inverted
+/// into `runInBandCollectionCanaryScenario`, which now watches for the condition
+/// becoming reachable. Cite no suite in this target for "the drain works".
 ///
 /// **Router's drain rule, which this scenario is written against.** `respond`
 /// runs its own turn, then snapshots **every** run parked on the session —
@@ -1071,68 +1083,88 @@ private func accepted(_ candidates: [String], in reply: String) -> Set<String> {
     Set(candidates.filter { reply.localizedCaseInsensitiveContains($0) })
 }
 
-// MARK: - The parked-run drain scenario
+// MARK: - The in-band collection canary
 
-/// How many leading characters of the model's reply the `PARKED-DRAIN`
+/// How many leading characters of the model's reply the `IN-BAND-CANARY`
 /// diagnostic line prints.
 ///
 /// The reply is a whole sentence or two of prose, and the line already carries
-/// six other fields, so it is truncated to keep one run to one readable line.
+/// five other fields, so it is truncated to keep one run to one readable line.
 /// 120 characters because the one thing a reader chases here is the manifest
 /// code, and a model that reports it puts it in the opening clause; the same
 /// bound is what the other gated runners' reply previews use.
-private let parkedRunDrainReplyPreviewCharacters = 120
+private let inBandCollectionReplyPreviewCharacters = 120
 
-/// Drives one scenario whose turn ends with a run **still in flight**, so
-/// Router's parked-run drain — and not the model's own in-band `wait` call — is
-/// what collects it (task `^xeqs138`).
+/// Drives one scenario whose slow fixture is held open until the model's turn
+/// has ended, and holds the run to what a live model really does with it: it
+/// collects its own parked run in band, and the turn ends with the run plane
+/// already empty (task `^xeqs138`).
 ///
-/// **Why `runRespondDrainScenario` could not be extended into this.** That
-/// scenario runs one prompt through both surfaces and asserts they agree, and it
-/// passes without the drain ever doing anything: measured on real hardware the
-/// model collects its own backgrounded run in band, because the pending envelope
-/// tells it to (`PendingRunEnvelope.renderedMidfix`), so `respond`'s drain finds
-/// an empty run plane and settles nothing. `parked == 0` on return is the same
-/// value either way. This scenario asks the opposite question of a single
-/// surface, so it wants a different shape and a different assertion set.
+/// **This scenario is the inversion of the one it started as, and it is a
+/// canary.** It was written to end a turn with a run still in flight, so that
+/// Router's `respond` drain would be the only thing that could collect it. The
+/// gated run reported the opposite and reported it cleanly: `parkedAtAnswer=[]`
+/// beside `waitCalls=3`, with the manifest code in the reply, in 635 seconds.
+/// The model collected its own run and answered correctly.
 ///
-/// **What makes the drain the only possible collector.** Two facts about the
-/// product, together:
+/// Router then documented why no fixture could have changed that, in
+/// `RoutedSessionActorGeneration`'s "How often this drain enters its loop"
+/// comment (their commit `b4c0282`, card `^466d38p`): every park hands the model
+/// a `PendingRunEnvelope` whose text tells it to collect that run with a `wait`
+/// call before it answers; `DetachingTool` writes that text, and `ToolContext`
+/// publishes no park of its own — so **no host can park a run without the
+/// instruction**. A host whose tools always advise collection is every host, not
+/// an unusual one. The condition is not hard to reach from here; it is
+/// unreachable from anywhere, and the instruction sits upstream of anything a
+/// fixture controls. That doc lands after the `c11fe07` this target's
+/// `Package.resolved` pins, so a reader grepping the pinned checkout for it
+/// should read the commit rather than the working copy.
 ///
-/// - Every `runCode` call parks immediately —
-///   `MultiTool.detachmentClocks(from:)` answers a zero wait clock for every
-///   call (`^cv98vff`) — so a run is parked from the instant the model calls
-///   `runCode` until its snippet settles.
-/// - The **only** thing that can collect a parked run in band is the `wait`
-///   tool. A second `runCode` snippet reaching for the sandbox's own run-plane
-///   globals cannot: that call parks immediately too, so the model would have to
-///   wait on *its* token, without end.
+/// So the assertions were inverted rather than loosened. A gated test that can
+/// never pass is a liability: the next reader relaxes one condition until it
+/// goes green, and it then passes vacuously forever.
 ///
-/// So `waitCalls == 0` beside an answer carrying the fixture's own value is a
-/// complete proof that the drain collected the run. The value reaches the model
-/// only through a collected terminal event; the model collected nothing; and
-/// `RoutedSessionActor` runs a continuation turn only when its post-turn
-/// snapshot of the run plane was **not** empty — which is to say, only when the
-/// run was still parked after the model's answer existed.
+/// **What the canary is for.** If a gated run ever fails
+/// `runPlaneEmptyAtAnswer` — if a turn really does end with a run parked — then
+/// the drain has become reachable from this host, and task `^xeqs138`'s original
+/// question reopens with it: `respond`'s whole-plane snapshot, its continuation
+/// turn, and its bounded re-entry at
+/// `RoutedSessionActor.parkedRunDrainRoundLimit` would be running for real, and
+/// nothing in this target covers any of them. Read `inBandCollection` beside it:
+/// those two failing together is the drain-reachable reading, and it is the one
+/// to act on. Do not relax either of them.
 ///
-/// **Why the fixture is gated rather than slow.** "The run is still parked when
-/// the turn ends" has to be true, not likely. A fixture that sleeps for a fixed
-/// span races a live model's decode speed, and losing that race fails silently
-/// in the wrong place: the run settles early, the drain's snapshot is empty, no
-/// continuation turn runs, and the reply simply lacks the value. The fixture is
-/// therefore held on a `ScenarioTurnGate` that this runner opens on the first
-/// `SessionEvent.turnEnded` it sees — so the run cannot leave the plane before
-/// the model's answer exists, and the run-plane snapshot taken at that same
-/// instant is the direct observation that it had not.
+/// **Why the fixture is held on a gate rather than merely slow.** The gate is
+/// what makes the timing observable, and it still earns its place after the
+/// inversion. `ScenarioTurnGate` holds the rebuild until this runner sees the
+/// first `SessionEvent.turnEnded`, so a run plane that is empty at that instant
+/// cannot have emptied by luck — the fixture was never free to return early.
+/// What releases it in practice is the gate's own ceiling
+/// (`integrationArchiveRebuildCeiling`), and that release *is* the in-band path
+/// showing itself: the model's `wait` call held the turn open past the ceiling,
+/// the fixture reported, the run settled, and only then did the turn end. A
+/// fixture that slept a fixed span instead would make the same reading a race
+/// against a live model's decode speed, and a lost race would look exactly like
+/// the condition this canary watches for.
+///
+/// **Why the answer is graded too, rather than only the run plane.** Without it
+/// the canary would assert that nothing happened, which a scenario that called
+/// no tool at all would satisfy. The reply has to carry the rebuild's own
+/// manifest code, a value that reaches the model only through the collected
+/// run's terminal `detail` — it is in no prompt, no tool description and no
+/// envelope — so the run plane is empty *because the work was collected*, not
+/// because it never started.
+///
+/// **What this says about the drain: nothing.** The drain is not entered on a
+/// passing run — `settleParkedRuns` answers `false` on its first round and no
+/// continuation turn runs — so this suite must never be cited for what the loop
+/// does or for its re-entry bound. Router's own suite parks the runs it drains
+/// and covers that; it proves what the loop does, not how often a real model
+/// reaches it (`^466d38p`).
 ///
 /// **Nothing here cancels.** A cancelled turn is never drained: whatever it
 /// parked stays parked, because ending a parked run is `close()`'s job. A
 /// cancelling scenario would therefore be asserting about `close()` instead.
-///
-/// **The bound this stays inside.** The drain runs at most
-/// `RoutedSessionActor.parkedRunDrainRoundLimit` continuation turns, and this
-/// scenario needs exactly one: the first turn starts the rebuild, the drained
-/// turn answers from it.
 ///
 /// - Parameters:
 ///   - name: a short label identifying the scenario, used in the printed lines.
@@ -1148,7 +1180,7 @@ private let parkedRunDrainReplyPreviewCharacters = 120
 ///   - groundedIn: the `tools.*` paths whose returns the answer depends on — see
 ///     `IntegrationScenarioGrounding`.
 /// - Throws: any error other than `GenerationError.notWiredForLiveInference`.
-func runParkedRunDrainScenario(
+func runInBandCollectionCanaryScenario(
     name: String,
     tools makeTools: (ScenarioCallLog, ScenarioTurnGate) -> [any Tool],
     prompt: String,
@@ -1178,70 +1210,82 @@ func runParkedRunDrainScenario(
         let answer = try await session.respond(to: prompt)
         let elapsed = Date().timeIntervalSince(start)
 
-        let parkedAtAnswer = await firstTurnParkedRuns
-        let evidence = ParkedRunDrainEvidence(
+        let evidence = InBandCollectionEvidence(
             answer: answer,
-            parkedAtAnswer: parkedAtAnswer,
+            parkedAtAnswer: await firstTurnParkedRuns.map(\.tool),
             // Read the instant the call returns: that is what "nothing survives
             // `respond`" is a statement about.
-            parkedAfterRespond: await log.parkedRuns(),
+            parkedAfterRespond: await log.parkedRuns().map(\.tool),
             returnedPaths: await log.returnedPaths,
             waitCalls: NativeTranscript.toolCallCount(
                 in: await session.transcript, named: WaitTool().name
-            ),
-            terminals: await terminalOutcomes(of: parkedAtAnswer, through: log)
+            )
         )
         grade(
             scenario: name,
-            checks: parkedRunDrainChecks(
+            checks: inBandCollectionChecks(
                 for: evidence, answerContainsOneOf: answerContainsOneOf, groundedIn: groundedIn
             )
         )
 
         print(
-            "PARKED-DRAIN [\(name)] elapsed=\(String(format: "%.1f", elapsed))s "
-                + "parkedAtAnswer=\(evidence.parkedAtAnswer.map(\.tool)) "
-                + "parkedAfterRespond=\(evidence.parkedAfterRespond.map(\.tool)) "
+            "IN-BAND-CANARY [\(name)] elapsed=\(String(format: "%.1f", elapsed))s "
+                + "parkedAtAnswer=\(evidence.parkedAtAnswer) "
+                + "parkedAfterRespond=\(evidence.parkedAfterRespond) "
                 + "waitCalls=\(evidence.waitCalls) "
-                + "terminals=\(outcomeLabels(evidence.terminals)) "
                 + "returned=\(evidence.returnedPaths.sorted()) "
                 + "groundedIn=\(groundedIn.sorted()) "
-                + "reply=\"\(answer.prefix(parkedRunDrainReplyPreviewCharacters))\""
+                + "reply=\"\(answer.prefix(inBandCollectionReplyPreviewCharacters))\""
         )
     }
 }
 
-/// Everything one parked-run drain scenario run produced that its verdict is
+/// Everything one in-band collection canary run produced that its verdict is
 /// graded on.
 ///
-/// Collected into one value so `parkedRunDrainChecks(for:answerContainsOneOf:
-/// groundedIn:)` grades a record rather than six loose arguments, and so the
+/// Collected into one value so `inBandCollectionChecks(for:answerContainsOneOf:
+/// groundedIn:)` grades a record rather than five loose arguments, and so the
 /// printed line and the assertions read the same record.
-private struct ParkedRunDrainEvidence {
+///
+/// Built from plain values a test can write down, which is what lets
+/// `ScenarioGradingTests` grade the recorded gated run and its inverse without
+/// live inference — the canary's whole worth is in which conditions fire, and a
+/// rule only a 30GB model can exercise is a rule that rots.
+struct InBandCollectionEvidence {
     /// The model's final reply — the last drained turn's, when the drain ran one.
     let answer: String
 
-    /// The runs parked at the instant the model's first turn ended.
-    let parkedAtAnswer: [ParkedRun]
+    /// The tools owning the runs parked at the instant the model's first turn
+    /// ended.
+    ///
+    /// The owning tools' names rather than the `ParkedRun` rows themselves, for
+    /// the reason `ScenarioEvidence` carries paths: a `ParkedRun` is Router's
+    /// own type and its memberwise initializer is internal to that module, so a
+    /// record built from rows could be graded only by a live run. The name is
+    /// all the verdict and the diagnostic line ever read.
+    let parkedAtAnswer: [String]
 
-    /// The runs still parked when `respond(to:)` returned.
-    let parkedAfterRespond: [ParkedRun]
+    /// The tools owning the runs still parked when `respond(to:)` returned.
+    let parkedAfterRespond: [String]
 
     /// The `tools.*` paths a fixture tool handed a value back from.
     let returnedPaths: Set<String>
 
     /// How many `wait` calls the model made — the whole of the in-band
-    /// collection surface, so zero is what leaves the drain as the only
-    /// collector.
+    /// collection surface, so any call at all is the model collecting its own
+    /// run and none is something else having emptied the plane.
     let waitCalls: Int
-
-    /// How each run of ``parkedAtAnswer`` ended, read back after the call
-    /// returned.
-    let terminals: [WaitOutcome]
 }
 
-/// Grades one parked-run drain run into the conditions its verdict is the
-/// conjunction of.
+/// Grades one in-band collection canary run into the conditions its verdict is
+/// the conjunction of.
+///
+/// Two of them are the canary proper — `inBandCollection` and
+/// `runPlaneEmptyAtAnswer` — and their failure messages say what a failure
+/// means rather than only what was expected, because that reading is the whole
+/// reason the scenario is run. The other three keep the canary from asserting
+/// that nothing happened: the answer must be a valid one, grounded in the
+/// rebuild's own return, with an empty plane on the way out.
 ///
 /// - Parameters:
 ///   - evidence: what the run produced.
@@ -1249,32 +1293,12 @@ private struct ParkedRunDrainEvidence {
 ///     reply must contain case-insensitively.
 ///   - groundedIn: the `tools.*` paths whose returns the answer depends on.
 /// - Returns: every condition this run is graded on, in reporting order.
-private func parkedRunDrainChecks(
-    for evidence: ParkedRunDrainEvidence,
+func inBandCollectionChecks(
+    for evidence: InBandCollectionEvidence,
     answerContainsOneOf: [String],
     groundedIn: Set<String>
 ) -> [ScenarioCheck] {
     var checks = answerChecks(evidence.answer, containsOneOf: answerContainsOneOf, mustNotContain: [])
-    checks.append(
-        ScenarioCheck(
-            name: "parkedAtAnswer",
-            held: !evidence.parkedAtAnswer.isEmpty,
-            failureMessage:
-                "expected a run to be parked at the instant the model's answer landed, but the run "
-                + "plane was empty then — so the turn did not end with work in flight and there was "
-                + "nothing for the drain to collect"
-        )
-    )
-    checks.append(
-        ScenarioCheck(
-            name: "noInBandWait",
-            held: evidence.waitCalls == 0,
-            failureMessage:
-                "the model made \(evidence.waitCalls) `wait` call(s), which is the one way it can "
-                + "collect a parked run itself — so this run says nothing about whether the drain "
-                + "works"
-        )
-    )
     checks.append(
         ScenarioCheck(
             name: groundedCheckName,
@@ -1286,21 +1310,36 @@ private func parkedRunDrainChecks(
     )
     checks.append(
         ScenarioCheck(
-            name: "runPlaneEmpty",
-            held: evidence.parkedAfterRespond.isEmpty,
+            name: inBandCollectionCheckName,
+            held: evidence.waitCalls > 0,
             failureMessage:
-                "expected an empty run plane when respond returned, but "
-                + "\(evidence.parkedAfterRespond.map(\.tool)) were still parked"
+                "expected the model to collect its own parked run with a `wait` call — the only "
+                + "in-band collector, and the path every host's own tooling advises (Router's "
+                + "`^466d38p`) — but it made none. Read `runPlaneEmptyAtAnswer` beside this: if "
+                + "that failed too, the turn ended with work in flight and Router's drain is what "
+                + "collected it"
         )
     )
     checks.append(
         ScenarioCheck(
-            name: "settledSucceeded",
-            held: allSucceeded(evidence.terminals),
+            name: runPlaneEmptyAtAnswerCheckName,
+            held: evidence.parkedAtAnswer.isEmpty,
             failureMessage:
-                "expected every collected run to have succeeded — the drain waits for work to "
-                + "finish, it never sweeps — but the terminals were "
-                + "\(outcomeLabels(evidence.terminals))"
+                "expected an empty run plane at the instant the model's first turn ended, but "
+                + "\(evidence.parkedAtAnswer) were still parked — the turn ended with work in "
+                + "flight, so Router's respond drain, not the model, is what collected it. That is "
+                + "the condition `^466d38p` says no host can reach, so task `^xeqs138`'s question "
+                + "reopens: the drain is running for real and nothing in this target covers it. "
+                + "Do not relax this check to make the run green"
+        )
+    )
+    checks.append(
+        ScenarioCheck(
+            name: "runPlaneEmpty",
+            held: evidence.parkedAfterRespond.isEmpty,
+            failureMessage:
+                "expected an empty run plane when respond returned, but "
+                + "\(evidence.parkedAfterRespond) were still parked"
         )
     )
     return checks
@@ -1309,9 +1348,11 @@ private func parkedRunDrainChecks(
 /// Snapshots the run plane at the end of the model's first turn, then opens the
 /// gate holding that turn's slow fixture.
 ///
-/// The order is the whole point: the snapshot is taken while the run still
-/// cannot have settled, and only then is the fixture released. Reversing the two
-/// would race the snapshot against the run leaving the plane.
+/// The order is the whole point: the snapshot is taken before this runner
+/// releases anything, so nothing the runner itself did can have emptied the
+/// plane it is about to read. Reversing the two would race the open against the
+/// snapshot, and an empty plane the runner had emptied itself would be reported
+/// as the model having collected in band.
 ///
 /// - Parameters:
 ///   - events: the session's own event feed, subscribed before the turn started.
@@ -1334,64 +1375,6 @@ private func parkedRuns(
     }
     await gate.open()
     return []
-}
-
-/// How each of `runs` ended, read back off the run plane's retained terminal
-/// events.
-///
-/// - Parameters:
-///   - runs: the runs to ask about.
-///   - log: the run's call log, which holds the handle onto the run plane.
-/// - Returns: one outcome per run, in the order `runs` gives them.
-private func terminalOutcomes(
-    of runs: [ParkedRun],
-    through log: ScenarioCallLog
-) async -> [WaitOutcome] {
-    var outcomes: [WaitOutcome] = []
-    for run in runs {
-        outcomes.append(await log.settlement(of: run.completionToken))
-    }
-    return outcomes
-}
-
-/// Whether every one of `terminals` reports a run that ran to completion and
-/// succeeded.
-///
-/// An empty list does **not** hold. A scenario reaches here with nothing to
-/// judge only when no run was parked when the answer landed, and grading that as
-/// "every run succeeded" would report a pass on a run plane nothing ever
-/// entered.
-///
-/// - Parameter terminals: the collected runs' outcomes.
-/// - Returns: whether all of them succeeded.
-private func allSucceeded(_ terminals: [WaitOutcome]) -> Bool {
-    guard !terminals.isEmpty else { return false }
-    return terminals.allSatisfy { outcome in
-        guard case .settled(let terminal) = outcome else { return false }
-        return terminal.outcome == .succeeded
-    }
-}
-
-/// Renders each collected run's outcome for the printed diagnostic line.
-///
-/// A run the plane still reports as running, and one it no longer knows, are
-/// named as themselves rather than folded into a missing outcome — the three
-/// describe different defects, and a reader chasing a failure needs to know
-/// which one happened.
-///
-/// - Parameter terminals: the collected runs' outcomes.
-/// - Returns: one label per outcome, in order.
-private func outcomeLabels(_ terminals: [WaitOutcome]) -> [String] {
-    terminals.map { outcome in
-        switch outcome {
-        case .settled(let terminal):
-            return terminal.outcome.map { "\($0)" } ?? "settledWithNoOutcome"
-        case .deadlineElapsed:
-            return "stillRunning"
-        case .unknownToken:
-            return "unknownToken"
-        }
-    }
 }
 
 /// Renders a turn's usage for a gated diagnostic line, without stating a

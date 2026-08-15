@@ -27,10 +27,14 @@ import Testing
 /// envelope instructs it to, so the drain has nothing left to settle. Measured
 /// on real hardware, `waitCalls` is 1-2 per run and `parked` is 0 either way.
 ///
-/// Isolating the drain is `ParkedRunDrainTests`' job, and that suite now exists
-/// (task `^xeqs138`): it holds its fixture open until the turn has ended, so the
-/// turn really does finish with the run parked, and it fails if the model
-/// collects in band. Cite that suite, never this one, for "the drain works".
+/// **No suite in this target isolates the drain, and none can.** Isolating it
+/// needs a turn that ends with a run still parked, and Router's `^466d38p`
+/// (their commit `b4c0282`) says no host can produce one: every park hands the
+/// model a `PendingRunEnvelope` telling it to collect the run with a `wait` call
+/// first, and there is no park without that instruction. The suite written to
+/// try — task `^xeqs138` — measured the opposite on real hardware and was
+/// inverted into `InBandCollectionCanaryTests`, which now watches for the
+/// condition becoming reachable. Cite nothing here for "the drain works".
 ///
 /// `.enabled(if: multitoolIntegrationEnabled)` like every other gated suite —
 /// with `MULTITOOL_INTEGRATION` unset the whole thing is skipped, so ungated

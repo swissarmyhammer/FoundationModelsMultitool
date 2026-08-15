@@ -628,7 +628,7 @@ func integrationStockTools(log: ScenarioCallLog) -> [IntegrationStockTool] {
     }
 }
 
-// MARK: - Scenario 7: a run still in flight when the turn ends (task `^xeqs138`)
+// MARK: - Scenario 7: the in-band collection canary (task `^xeqs138`)
 
 /// `IntegrationArchiveRebuildTool`'s output.
 @Generable(description: "a completed archive rebuild's manifest code.")
@@ -649,18 +649,23 @@ let integrationArchiveRebuildManifestCode = 58204
 /// The longest `IntegrationArchiveRebuildTool` stays open when nothing opens its
 /// gate.
 ///
-/// Reached only when the model answers its pending envelope with a `wait` call,
-/// which deadlocks the gate: `wait` holds the turn until the run settles, the run
-/// cannot settle until the gate opens, and the gate opens on the turn ending. See
-/// `ScenarioTurnGate` for why the ceiling exists at all.
+/// **This is the ordinary release, not an escape hatch.** It is reached whenever
+/// the model answers its pending envelope with a `wait` call, which deadlocks the
+/// gate: `wait` holds the turn until the run settles, the run cannot settle until
+/// the gate opens, and the gate opens on the turn ending. Router's `^466d38p`
+/// says every park carries the instruction to make that `wait` call, and the
+/// gated run did exactly that — so this ceiling is what ends the rebuild on a
+/// passing canary run, and the wall clock of one such run is a minute and a half
+/// plus the turn's own decode time. See `ScenarioTurnGate` for why the ceiling
+/// exists at all.
 ///
 /// Well under the 120-second work clock every `runCode` call carries
 /// (`MultiTool.detachmentClocks(from:)` answers `configuration
 /// .executionTimeLimit`, and `RunBinding.innerCallMount` bounds the inner call at
 /// `DetachConfiguration.defaultTimeoutSeconds`), so the ceiling is always what a
-/// stuck run meets first. A run the work clock killed would settle `.timedOut`,
-/// and the scenario grading the terminal outcome would then report a timeout
-/// where the real fact is a model that chose to block.
+/// stuck run meets first. A run the work clock killed would settle `.timedOut`
+/// and hand the model an error instead of the manifest code, so the canary's
+/// grounded answer would fail on a timeout rather than on anything it grades.
 let integrationArchiveRebuildCeiling: Duration = .seconds(integrationArchiveRebuildCeilingSeconds)
 
 /// ``integrationArchiveRebuildCeiling`` stated as a count of seconds.
@@ -677,28 +682,29 @@ let integrationArchiveRebuildCeiling: Duration = .seconds(integrationArchiveRebu
 /// naming it here keeps the unit in the name beside the value.
 private let integrationArchiveRebuildCeilingSeconds = 90
 
-/// The deliberately open-ended tool the parked-run drain scenario drives: a
-/// snippet that awaits it cannot finish until the scenario says so, so the model
-/// answers its pending envelope while the `runCode` run is genuinely still in
-/// flight and `respond`'s own drain is the only thing left that can collect it.
+/// The deliberately open-ended tool the in-band collection canary drives: a
+/// snippet that awaits it cannot finish until the canary's gate opens or the
+/// gate's ceiling runs out, so nothing about *when* the run leaves the run plane
+/// is left to a live model's decode speed.
 ///
 /// The contrast with `IntegrationDeepScanTool` is the whole point. That fixture
-/// sleeps a fixed span, which makes "is the run still parked when the turn ends?"
-/// a race against a live model's decode speed. This one is held on a
-/// `ScenarioTurnGate` the scenario opens the instant it sees the turn end, so the
-/// answer is yes by construction.
+/// sleeps a fixed span, so whether a run is still parked when the turn ends is a
+/// race. This one is held on a `ScenarioTurnGate` the canary opens the instant it
+/// sees the turn end, so an empty run plane at that instant is a fact about the
+/// model's own behaviour rather than about how fast it happened to decode: the
+/// fixture was never free to return early.
 struct IntegrationArchiveRebuildTool: Tool {
     /// The `tools.*` path this fixture mounts under.
     ///
     /// Declared at the type level for the same reason as
-    /// `IntegrationWeatherTool.path`: the parked-run drain scenario names it in
+    /// `IntegrationWeatherTool.path`: the in-band collection canary names it in
     /// what its answer depends on.
     static let path = "rebuildArchive"
 
     let name = IntegrationArchiveRebuildTool.path
     /// Says the rebuild runs in the background and takes a while, and stops
     /// there. It deliberately does not tell the model to wait for the result:
-    /// whether the model blocks is exactly what the scenario measures, so a tool
+    /// whether the model blocks is exactly what the canary measures, so a tool
     /// description that answered the question would be grading itself.
     let description = "Rebuilds the user's archive index and returns that rebuild's manifest code. "
         + "The rebuild runs in the background and takes a while to finish."
@@ -777,9 +783,11 @@ enum IntegrationScenarioGrounding {
     /// since only their sum answers the question that scenario asks.
     static let combinedStock = integrationStockPaths
 
-    /// What the parked-run drain scenario's answer depends on: the rebuild's
+    /// What the in-band collection canary's answer depends on: the rebuild's
     /// own return. The manifest code exists nowhere else — not in the prompt,
-    /// not in a tool description — so an answer carrying it rests on this
-    /// return and on nothing the model could have supplied itself.
+    /// not in a tool description, not in the pending envelope — so an answer
+    /// carrying it rests on this return and on nothing the model could have
+    /// supplied itself. That is what keeps the canary from passing on a run
+    /// where nothing happened.
     static let archiveRebuild: Set<String> = [IntegrationArchiveRebuildTool.path]
 }

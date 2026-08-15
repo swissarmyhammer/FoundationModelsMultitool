@@ -314,7 +314,7 @@ struct ScenarioFixtureTests {
         )
     }
 
-    // MARK: - The fixture the parked-run drain scenario holds open
+    // MARK: - The fixture the in-band collection canary holds open
 
     /// The ceiling the gate tests run with, in place of the gated scenario's
     /// minute and a half.
@@ -340,9 +340,11 @@ struct ScenarioFixtureTests {
 
         // Returned *and* still shut is the whole claim: the ceiling let go of
         // the waiter, rather than an open doing it. Without this the gated
-        // scenario deadlocks whenever the model answers its envelope with a
-        // `wait` call — that call holds the turn, the turn end never arrives,
-        // and nothing else ever opens the gate.
+        // canary deadlocks on every run, because the model answers its envelope
+        // with a `wait` call — that call holds the turn, the turn end never
+        // arrives, and nothing else ever opens the gate. Router's `^466d38p`
+        // says the envelope always carries that instruction, so this release is
+        // the ordinary path and not a corner.
         #expect(await gate.isOpen == false)
     }
 
@@ -389,7 +391,7 @@ struct ScenarioFixtureTests {
         #expect(await gate.isOpen == false)
     }
 
-    @Test("the parked-run drain scenario's manifest code answers no other scenario's question")
+    @Test("the in-band collection canary's manifest code answers no other scenario's question")
     func theManifestCodeAnswersNoOtherScenarioQuestion() {
         // The same rule `IntegrationScenarioAnswers` enforces between its own
         // two answer sets, extended to the two code-shaped fixtures that came
