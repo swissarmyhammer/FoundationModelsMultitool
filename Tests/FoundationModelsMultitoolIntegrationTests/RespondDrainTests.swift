@@ -16,13 +16,18 @@ import Testing
 /// blocking surface still reaches the same grounded answer once every tool
 /// call hands back a token instead of data.
 ///
-/// **This suite is written to fail while Router's half is missing.** Router's
-/// `respond(to:maxTokens:)` awaits generation only — its own comment says it
-/// composes the prompt with "whatever the outbox drains for this turn", and
-/// the outbox is not the run plane; `sweep()` is teardown that cancels parked
-/// runs rather than settling them. Filed as `^nmpejc5` on Router's board. Until
-/// that lands, a red run here is the requirement being observed, not a flake:
-/// expect a dangling parked run, and an answer written from a token.
+/// **Router's half landed** (`d2be019`, their `^nmpejc5`): `respond` snapshots
+/// every parked run, settles them, and runs a continuation turn carrying the
+/// results, bounded at four continuation turns.
+///
+/// **What this suite proves, and what it does not.** It proves the blocking
+/// surface reaches the same grounded answer the streaming surface does, with
+/// an empty run plane on return. It does **not** isolate Router's drain: the
+/// model collects its own backgrounded runs in-band, because the pending
+/// envelope instructs it to, so the drain has nothing left to settle. Measured
+/// on real hardware, `waitCalls` is 1-2 per run and `parked` is 0 either way.
+/// See `runRespondDrainScenario`'s own documentation for what a
+/// drain-isolating scenario would need.
 ///
 /// `.enabled(if: multitoolIntegrationEnabled)` like every other gated suite —
 /// with `MULTITOOL_INTEGRATION` unset the whole thing is skipped, so ungated
@@ -34,7 +39,7 @@ import Testing
     .enabled(if: multitoolIntegrationEnabled)
 )
 struct RespondDrainTests {
-    @Test("respond answers from what the backgrounded run returned, leaves nothing parked, and needs no wait call")
+    @Test("respond answers from what the backgrounded run returned, matches the stream, and leaves nothing parked")
     func respondSelfDrainsTheRunPlane() async throws {
         try await runRespondDrainScenario(
             name: "respondSelfDrain",

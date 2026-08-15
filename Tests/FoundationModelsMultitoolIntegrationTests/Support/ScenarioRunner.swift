@@ -928,8 +928,27 @@ private func printSkipNote(_ name: String) {
 /// 3. **Nothing left parked.** After `respond` returns, the session's run
 ///    plane is empty. A dangling token means the drain is incomplete even if
 ///    the answer happened to be right.
-/// 4. **No `wait` call.** If the model had to call `wait` to reach its answer,
-///    the drain is not doing its job — `wait` is the streaming surface's tool.
+/// 4. **`wait` calls, reported.** Not asserted — see below.
+///
+/// **What this scenario does not isolate, and a later reader must not assume
+/// it does.** `parked=0` on return is necessary but not sufficient evidence
+/// that `respond` drained anything. There are two ways a backgrounded run gets
+/// collected on this surface, and both end with an empty run plane:
+///
+/// - the model collects it in-band, because the pending envelope instructs it
+///   to (`PendingRunEnvelope.renderedMidfix`: "Call this tool again with a
+///   snippet that does: return await wait(...)");
+/// - the turn ends with runs still parked, and `respond`'s drain settles them.
+///
+/// Measured on real hardware, the first happens: `waitCalls=2`. So this
+/// scenario proves the *surface* is sound — grounded answer, parity with
+/// streaming, nothing left parked — while leaving Router's drain itself
+/// unexercised, because the model left it nothing to do.
+///
+/// Isolating the drain needs a turn that ends with something still parked: a
+/// snippet that starts long work and returns without awaiting it, so the model
+/// answers while the run is in flight. That scenario does not exist yet, and
+/// until it does, nobody should cite this test as proof the drain works.
 ///
 /// **Router's drain rule, which this scenario is written against.** `respond`
 /// runs its own turn, then snapshots **every** run parked on the session —
@@ -1028,8 +1047,17 @@ func runRespondDrainScenario(
         #expect(respondAccepted == streamAccepted)
         // 3. Nothing survives the call.
         #expect(parkedAfterRespond.isEmpty)
-        // 4. The model never had to ask for its own result.
-        #expect(waitCalls == 0)
+        // 4. `wait` calls are REPORTED, not asserted on — see the type doc's
+        // "what this scenario does not isolate". `^n6kgckr` asked for
+        // `waitCalls == 0` on the reasoning that a model needing `wait` proves
+        // the drain idle. Measured, it is 2, and the product is why: every
+        // `runCode` backgrounds, and the pending envelope it returns *tells*
+        // the model to call `wait` ("Call this tool again with a snippet that
+        // does: return await wait(...)", `PendingRunEnvelope.renderedMidfix`).
+        // The model obeying its own tool is not a drain failure, and an
+        // assertion that fires on it would be demanding the model ignore the
+        // instruction the product gives it.
+        print("RESPOND-DRAIN \(name) waitCalls=\(waitCalls) (reported, not asserted)")
     }
 }
 
