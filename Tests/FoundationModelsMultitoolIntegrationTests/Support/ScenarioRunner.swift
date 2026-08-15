@@ -408,9 +408,29 @@ private struct StreamedTurn {
     /// compacted is not measuring the same prompt the scenario set up.
     var compactions: [String] = []
 
-    /// The turn's measured token usage, as the session reported it.
+    /// The turn's token usage, as the session reported it — **output only**.
     ///
-    /// The direct evidence for whether a turn is near its context ceiling.
+    /// The input half is not a measurement and must not be read as one. The
+    /// fork's `MLXLanguageModel.emitUsage` hands usage to a test-only
+    /// `generationObserver` task local and deliberately never calls
+    /// `channel.send`, so the whole usage event stops before the framework:
+    /// an SDK symbol drift (`Response.Action.updateUsage` declares a
+    /// `metadata:` parameter the shipping dylib does not export) made the send
+    /// fatal, and it was removed rather than crash every `respond()`. Filed as
+    /// `^z2996cp` on `mlx-swift-lm`'s board; it predates Muse Glimmer and is
+    /// not reasoning-specific.
+    ///
+    /// The output count survives because the framework counts the tokens it
+    /// receives. The input count only the fork can know, and it never crosses
+    /// the boundary — so it arrives as `0`, which reads exactly like a real
+    /// measurement of an empty prompt. `contextFill` is suspect for the same
+    /// reason if it derives from the input count. Two consumers observed this
+    /// independently: `FoundationModelsRouter`'s
+    /// `LanguageModelSessionBackendTests` off a completed turn, and this
+    /// runner off the stream.
+    ///
+    /// Rendered by ``usageForDisplay`` rather than printed raw, so a gated
+    /// diagnostic never states a number nobody measured.
     var tokenUsage: String?
 
     /// The turn frame this run's events belong to, as `turnId/promptId`.
@@ -555,7 +575,8 @@ private func streamTurn(of session: RoutedSession, prompt: String) async throws 
             // outside exactly like a model that will not use its tools.
             turn.compactions.append("\(result)")
         case .turnEnded(let usage):
-            turn.tokenUsage = "\(usage)"
+            // Output only, and the input half relabelled — see `tokenUsage`.
+            turn.tokenUsage = usageForDisplay(usage)
         case .toolStatus, .reasoningDelta, .toolInvocation, .entryRecorded:
             // `.toolStatus` here is the residue of the three status cases
             // handled above. `.toolInvocation` carries the open/close record
@@ -1020,4 +1041,20 @@ func runRespondDrainScenario(
 /// - Returns: the accepted answers present in `reply`.
 private func accepted(_ candidates: [String], in reply: String) -> Set<String> {
     Set(candidates.filter { reply.localizedCaseInsensitiveContains($0) })
+}
+
+/// Renders a turn's usage for a gated diagnostic line, without stating a
+/// number nobody measured.
+///
+/// The output count is real. The input count never reaches the framework
+/// (`^z2996cp` on `mlx-swift-lm`'s board), so it is reported as `unavailable`
+/// rather than as the `0` it arrives as — a printed zero reads as a
+/// measurement of an empty prompt, and a reader chasing a failure would spend
+/// time on it. `contextFill` is carried through with the same caveat, since it
+/// may derive from the missing input count.
+///
+/// - Parameter usage: the usage the turn reported.
+/// - Returns: the display string for the `tokens=` field.
+private func usageForDisplay(_ usage: TokenUsage) -> String {
+    "out:\(usage.tokensOut) in:unavailable(^z2996cp) contextFill:\(usage.contextFill)?"
 }
