@@ -277,6 +277,41 @@ var multitoolIntegrationEnabled: Bool {
 ///
 /// `discoveryUnderDistractors` remains the test any selection pin has to pass.
 ///
+/// **Qwen3.8-27B-mxfp4 measured against Muse, 2026-08-16.** One full
+/// serialized gated run each, same Router `8db8094`, same fixtures. Both
+/// answered every scenario validly and grounded, so the outcome grading does
+/// not separate them. The route diagnostics do:
+///
+///   scenario                    Muse calls/thrash   Qwen calls/thrash
+///   singleCallWeather                  3 / 0               3 / 0
+///   fanOutOverTwoStockTools            3 / 0               4 / 0
+///   composeChain                       4 / 0               6 / 1
+///   discoveryUnderDistractors          4 / 0               6 / 1
+///   repairFromTripProneTool            3 / 0               8 / 1
+///
+/// Both are clean on over-refusal, answering without calling,
+/// announce-then-stop, invented paths and wrong-form answers, and both open
+/// every scenario with `searchTools`. But `thrash` fires above twice the
+/// two-call floor — the budget for one repair cycle — and Qwen exceeds it on
+/// three scenarios of five while Muse exceeds it on none. On the repair
+/// scenario Qwen spent 8 calls against Muse's 3.
+///
+/// Qwen is the faster of the two per scenario: elevation 39.8s against
+/// 64-70s, CLI smoke 51.3s against 61-63s, the nested-generation probe 16.4s
+/// against 26-28s, search-then-call 265.6s against 283-299s. Respond
+/// self-drain went the other way, 211.7s against 146-169s. Whole-run totals
+/// (1863.9s Qwen, 1604s Muse) are not comparable as printed: Qwen's first
+/// suite paid 785.4s to bring cold weights off disk, where Muse's had been
+/// warmed by repeated runs.
+///
+/// **Two things this comparison does not establish.** It is one run each, and
+/// Muse's own numbers moved run to run. And `PrefixReuseTests` passing on
+/// Qwen3.8 needs explaining rather than banking: the pin moved to Muse
+/// because Qwen3.5/3.6 gave their linear/GDN layers a non-trimmable
+/// `MambaCache`, which left that suite nothing to measure. Either the
+/// architecture changed or the suite is not measuring what this file claims.
+/// Settle that before treating the prefix-reuse result as a reason to stay.
+///
 /// Neither reference carries an `@revision`, so both track their repository's
 /// default revision rather than a fixed commit — these are model *choices*,
 /// not version locks, whatever the surrounding prose calls them.
