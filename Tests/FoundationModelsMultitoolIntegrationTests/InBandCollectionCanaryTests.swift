@@ -55,6 +55,14 @@ import Testing
 /// run plane directly, so it proves what that loop does and not how often a real
 /// model reaches it (`^466d38p`). Cite no suite here for "the drain works".
 ///
+/// **The rebuild fixture is fast, and must stay fast.** Nothing this suite
+/// asserts is a statement about how long anything took: `runCode` parks every
+/// call whatever the tool does, and that park is what produces the envelope,
+/// the `wait` call and the empty plane alike. A slow fixture buys no reading
+/// here and once cost this suite its verdict outright —
+/// `IntegrationArchiveRebuildTool` records what happened. Do not put a wait
+/// back into it to make the timing "observable".
+///
 /// `.enabled(if: multitoolIntegrationEnabled)` like every other gated suite —
 /// with `MULTITOOL_INTEGRATION` unset the whole thing is skipped, so ungated
 /// `swift test` stays green with zero downloads and zero live inference. The
@@ -63,7 +71,18 @@ import Testing
 @Suite(
     "Gated in-band collection canary (the model collects its own parked run)",
     .serialized,
-    .timeLimit(.minutes(30)),
+    // Three minutes, not the thirty every other gated suite states. Its peers
+    // finish in 40-90 seconds — `repairFromTripProneTool` 40.8s,
+    // `AsyncFanOut` 57.0s, `ElevationTests` 59.4s, `singleCallWeather` 83.2s —
+    // and this scenario is one tool call plus one collect, so it belongs in
+    // that band. A generous limit here bought nothing and cost 30 minutes:
+    // when the fixture was still gated the suite deadlocked, and the deadlock
+    // reported as a bare "Time limit was exceeded" half an hour later, having
+    // graded nothing. A limit near the expected runtime turns that same
+    // failure into a two-minute answer. If this suite ever legitimately needs
+    // longer, the reason is worth finding rather than the ceiling worth
+    // raising.
+    .timeLimit(.minutes(3)),
     .enabled(if: multitoolIntegrationEnabled)
 )
 struct InBandCollectionCanaryTests {
@@ -71,7 +90,7 @@ struct InBandCollectionCanaryTests {
     func theModelCollectsItsOwnParkedRun() async throws {
         try await runInBandCollectionCanaryScenario(
             name: "inBandCollection",
-            tools: { log, gate in [IntegrationArchiveRebuildTool(log: log, gate: gate)] },
+            tools: { log in [IntegrationArchiveRebuildTool(log: log)] },
             // Asks for the manifest code, so the answer needs the run's result;
             // and says plainly not to block for it, so the model is being asked
             // *not* to spend a `wait` call. Both halves are still load-bearing

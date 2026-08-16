@@ -214,8 +214,8 @@ enum CLIRunner {
         // (`mlx-swift-lm` `ca8e22f`), which shows a tool body may generate on
         // the same container safely. See `IntegrationGate.swift` for the
         // evidence and the open leads. This split is empirical.
-        standard: ["mlx-community/Muse-Glimmer-30B-4bit"],
-        flash: ["mlx-community/GLM-4-9B-0414-4bit"],
+        standard: ["mlx-community/Muse-Glimmer-30B-mxfp4"],
+        flash: ["mlx-community/Muse-Glimmer-30B-mxfp4"],
         embedding: ["mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ"],
         // `nil`, not a number: resolve the model's own context window rather
         // than imposing one, exactly as the gated suite's

@@ -191,7 +191,7 @@ var multitoolIntegrationEnabled: Bool {
 /// model rather than a swap between generation and selection on every search.
 ///
 /// **Muse Glimmer replaces the Qwen pair.** Both generation slots now name
-/// `Muse-Glimmer-30B-4bit`, the same model Router's own gated suite pins
+/// `Muse-Glimmer-30B-mxfp4`, the same model Router's own gated suite pins
 /// (`../FoundationModelsRouter/Tests/FoundationModelsRouterIntegrationTests/
 /// Support/RealModels.swift`), for a prompt-cache reason the 27B cannot
 /// meet: Qwen3.5/3.6 give their linear/GDN layers a `MambaCache`, which is
@@ -250,8 +250,8 @@ var multitoolIntegrationEnabled: Bool {
 /// default revision rather than a fixed commit — these are model *choices*,
 /// not version locks, whatever the surrounding prose calls them.
 private enum TinyModels {
-    static let generation: ModelRef = "mlx-community/Muse-Glimmer-30B-4bit"
-    static let selection: ModelRef = "mlx-community/GLM-4-9B-0414-4bit"
+    static let generation: ModelRef = "mlx-community/Muse-Glimmer-30B-mxfp4"
+    static let selection: ModelRef = generation
     static let embedding: ModelRef = "mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ"
 }
 

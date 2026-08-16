@@ -646,53 +646,32 @@ struct IntegrationArchiveRebuildOutput {
 /// about the wrong run pass.
 let integrationArchiveRebuildManifestCode = 58204
 
-/// The longest `IntegrationArchiveRebuildTool` stays open when nothing opens its
-/// gate.
+/// The tool the in-band collection canary drives: it reports the manifest code
+/// at once, and the canary's whole reading still holds.
 ///
-/// **This is the ordinary release, not an escape hatch.** It is reached whenever
-/// the model answers its pending envelope with a `wait` call, which deadlocks the
-/// gate: `wait` holds the turn until the run settles, the run cannot settle until
-/// the gate opens, and the gate opens on the turn ending. Router's `^466d38p`
-/// says every park carries the instruction to make that `wait` call, and the
-/// gated run did exactly that — so this ceiling is what ends the rebuild on a
-/// passing canary run, and the wall clock of one such run is a minute and a half
-/// plus the turn's own decode time. See `ScenarioTurnGate` for why the ceiling
-/// exists at all.
+/// **Why it does not have to be slow, which is not obvious.** The canary asks
+/// whether the model collected its own backgrounded run, and a backgrounded run
+/// is not something a slow tool produces. `MultiTool.detachmentClocks(from:)`
+/// answers a zero wait clock for every call, so *every* `runCode` parks the
+/// instant it is made, whatever the snippet awaits. The park is what hands the
+/// model a `PendingRunEnvelope`, and the envelope's text is what makes it spend
+/// a `wait` call (Router's `^466d38p`). So the graded shape — park, then
+/// collect in band — is produced by the product, and a fixture that returns
+/// immediately produces it just as surely as one that stalls.
 ///
-/// Well under the 120-second work clock every `runCode` call carries
-/// (`MultiTool.detachmentClocks(from:)` answers `configuration
-/// .executionTimeLimit`, and `RunBinding.innerCallMount` bounds the inner call at
-/// `DetachConfiguration.defaultTimeoutSeconds`), so the ceiling is always what a
-/// stuck run meets first. A run the work clock killed would settle `.timedOut`
-/// and hand the model an error instead of the manifest code, so the canary's
-/// grounded answer would fail on a timeout rather than on anything it grades.
-let integrationArchiveRebuildCeiling: Duration = .seconds(integrationArchiveRebuildCeilingSeconds)
-
-/// ``integrationArchiveRebuildCeiling`` stated as a count of seconds.
+/// The contrast with `IntegrationDeepScanTool` is the contrast in what the two
+/// scenarios ask. That fixture is slow so that the outer `runCode` outlives the
+/// mount's wait window, which is the elevation scenario's own subject. Nothing
+/// here rests on how long anything takes.
 ///
-/// 90 seconds sits between the two bounds that decide it. Above it is the
-/// 120-second work clock named in ``integrationArchiveRebuildCeiling``'s own
-/// documentation, which the ceiling has to come in under so that a stuck run
-/// meets the ceiling first and settles `.succeeded` rather than `.timedOut`.
-/// Below it is the wall clock of one live turn on a 30B model, which the ceiling
-/// has to stay above so that an ordinary slow turn never runs the fixture out.
-///
-/// A separate constant from ``integrationArchiveRebuildCeiling`` because
-/// `Duration` has no literal form: the number has to be named somewhere, and
-/// naming it here keeps the unit in the name beside the value.
-private let integrationArchiveRebuildCeilingSeconds = 90
-
-/// The deliberately open-ended tool the in-band collection canary drives: a
-/// snippet that awaits it cannot finish until the canary's gate opens or the
-/// gate's ceiling runs out, so nothing about *when* the run leaves the run plane
-/// is left to a live model's decode speed.
-///
-/// The contrast with `IntegrationDeepScanTool` is the whole point. That fixture
-/// sleeps a fixed span, so whether a run is still parked when the turn ends is a
-/// race. This one is held on a `ScenarioTurnGate` the canary opens the instant it
-/// sees the turn end, so an empty run plane at that instant is a fact about the
-/// model's own behaviour rather than about how fast it happened to decode: the
-/// fixture was never free to return early.
+/// **An earlier version was held on a gate, and that cost the canary its
+/// verdict.** The gate was built for the scenario this canary was inverted
+/// from, which needed the run to survive the end of the turn. On the canary the
+/// gate could only deadlock: the model's `wait` call holds the turn open, the
+/// turn end is what would open the gate, so the fixture always ran out its
+/// 90-second ceiling instead — about 200 seconds for one collect cycle, and the
+/// cycle count is the model's choice, so the run had no bound it could meet. It
+/// was killed by the suite's own time limit having graded nothing.
 struct IntegrationArchiveRebuildTool: Tool {
     /// The `tools.*` path this fixture mounts under.
     ///
@@ -702,30 +681,22 @@ struct IntegrationArchiveRebuildTool: Tool {
     static let path = "rebuildArchive"
 
     let name = IntegrationArchiveRebuildTool.path
-    /// Says the rebuild runs in the background and takes a while, and stops
-    /// there. It deliberately does not tell the model to wait for the result:
-    /// whether the model blocks is exactly what the canary measures, so a tool
-    /// description that answered the question would be grading itself.
+    /// Says the rebuild runs in the background, and stops there. It deliberately
+    /// does not tell the model to wait for the result: whether the model blocks
+    /// is exactly what the canary measures, so a tool description that answered
+    /// the question would be grading itself.
+    ///
+    /// "In the background" is true of the call however fast this tool is —
+    /// `runCode` parks every call, so the model is handed a token rather than a
+    /// value either way. What the description no longer claims is that the
+    /// rebuild takes a while, which stopped being true when the gate came off.
     let description = "Rebuilds the user's archive index and returns that rebuild's manifest code. "
-        + "The rebuild runs in the background and takes a while to finish."
+        + "The rebuild runs in the background."
 
     /// The scenario run's call log every invocation of this tool records itself in.
     let log: ScenarioCallLog
 
-    /// The gate this tool waits behind before it reports.
-    let gate: ScenarioTurnGate
-
-    /// The longest this tool stays open when nothing opens ``gate``.
-    ///
-    /// Defaults to `integrationArchiveRebuildCeiling`, which is what the gated
-    /// scenario runs with. Injectable so `ScenarioFixtureTests` can hold this
-    /// same tool behind a never-opened gate for milliseconds instead of a minute
-    /// and a half, and still watch it wait — without which "this tool waits on
-    /// its gate" would be a premise only a gated run could check, and deleting
-    /// the wait would leave an ordinary `swift test` green.
-    var ceiling: Duration = integrationArchiveRebuildCeiling
-
-    /// Holds the run open until the gate opens, then reports the manifest code.
+    /// Reports the manifest code.
     ///
     /// - Parameter arguments: unused — this tool takes nothing.
     /// - Returns: the fixture manifest code.
@@ -733,8 +704,7 @@ struct IntegrationArchiveRebuildTool: Tool {
     ///   `recordCall(to:_:)` only rethrows what its body throws.
     func call(arguments: IntegrationNoArguments) async throws -> IntegrationArchiveRebuildOutput {
         await log.recordCall(to: name) {
-            await gate.waitUntilOpen(orAfter: ceiling)
-            return IntegrationArchiveRebuildOutput(manifestCode: integrationArchiveRebuildManifestCode)
+            IntegrationArchiveRebuildOutput(manifestCode: integrationArchiveRebuildManifestCode)
         }
     }
 }

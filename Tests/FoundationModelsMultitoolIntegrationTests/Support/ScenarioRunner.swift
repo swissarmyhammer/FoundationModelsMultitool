@@ -1134,18 +1134,13 @@ private let inBandCollectionReplyPreviewCharacters = 120
 /// those two failing together is the drain-reachable reading, and it is the one
 /// to act on. Do not relax either of them.
 ///
-/// **Why the fixture is held on a gate rather than merely slow.** The gate is
-/// what makes the timing observable, and it still earns its place after the
-/// inversion. `ScenarioTurnGate` holds the rebuild until this runner sees the
-/// first `SessionEvent.turnEnded`, so a run plane that is empty at that instant
-/// cannot have emptied by luck — the fixture was never free to return early.
-/// What releases it in practice is the gate's own ceiling
-/// (`integrationArchiveRebuildCeiling`), and that release *is* the in-band path
-/// showing itself: the model's `wait` call held the turn open past the ceiling,
-/// the fixture reported, the run settled, and only then did the turn end. A
-/// fixture that slept a fixed span instead would make the same reading a race
-/// against a live model's decode speed, and a lost race would look exactly like
-/// the condition this canary watches for.
+/// **Why an empty plane means something although the fixture is fast.** It is
+/// not read alone. `inBandCollection` is graded beside it, and `wait` is the
+/// only in-band collector — so a `wait` call, an empty plane and an answer
+/// carrying the manifest code together say the model collected its own run.
+/// None of the three is a statement about how long anything took, so a fixture
+/// that stalled would strengthen none of them. What one cost this scenario when
+/// it did stall is recorded on `IntegrationArchiveRebuildTool`.
 ///
 /// **Why the answer is graded too, rather than only the run plane.** Without it
 /// the canary would assert that nothing happened, which a scenario that called
@@ -1169,10 +1164,9 @@ private let inBandCollectionReplyPreviewCharacters = 120
 /// - Parameters:
 ///   - name: a short label identifying the scenario, used in the printed lines.
 ///   - makeTools: builds the scenario's fixed tool set around the run's own call
-///     log and the gate its slow fixture waits behind. A builder, for
-///     `runNativeIntegrationScenario`'s reason: exactly one log and one gate
-///     exist per run, and no call site can hand the tools a different pair than
-///     this runner reads back.
+///     log. A builder, for `runNativeIntegrationScenario`'s reason: exactly one
+///     log exists per run, and no call site can hand the tools a different one
+///     than this runner reads back.
 ///   - prompt: the user request driving the turn.
 ///   - answerContainsOneOf: candidate substrings, at least one of which the
 ///     final reply must contain (case-insensitively). Pick a value that reaches
@@ -1182,29 +1176,27 @@ private let inBandCollectionReplyPreviewCharacters = 120
 /// - Throws: any error other than `GenerationError.notWiredForLiveInference`.
 func runInBandCollectionCanaryScenario(
     name: String,
-    tools makeTools: (ScenarioCallLog, ScenarioTurnGate) -> [any Tool],
+    tools makeTools: (ScenarioCallLog) -> [any Tool],
     prompt: String,
     answerContainsOneOf: [String],
     groundedIn: Set<String>
 ) async throws {
     try await withLiveRouterFixture(name: name) { fixture in
         let log = ScenarioCallLog()
-        let gate = ScenarioTurnGate()
         // No instructions, for the same reason as every other runner here:
         // mounting the tools is the whole product surface.
         let session = fixture.profile.standard.makeSession(
-            tools: try makeScenarioSurface(over: makeTools(log, gate), on: fixture).tools,
+            tools: try makeScenarioSurface(over: makeTools(log), on: fixture).tools,
             discoveryPriming: scenarioDiscoveryPriming
         )
 
         // Subscribed on this task, before the turn starts. A subscription opened
         // from inside the child below could register after the turn had already
         // ended, and the one event this whole scenario is built around would be
-        // gone — with the gate then left to its own ceiling.
+        // gone — leaving `runPlaneEmptyAtAnswer` graded on an empty snapshot
+        // nobody took.
         let sessionEvents = await session.streamSessionEvents()
-        async let firstTurnParkedRuns = parkedRuns(
-            atFirstTurnEndIn: sessionEvents, reading: log, opening: gate
-        )
+        async let firstTurnParkedRuns = parkedRuns(atFirstTurnEndIn: sessionEvents, reading: log)
 
         let start = Date()
         let answer = try await session.respond(to: prompt)
@@ -1345,35 +1337,29 @@ func inBandCollectionChecks(
     return checks
 }
 
-/// Snapshots the run plane at the end of the model's first turn, then opens the
-/// gate holding that turn's slow fixture.
+/// Snapshots the run plane at the end of the model's first turn.
 ///
-/// The order is the whole point: the snapshot is taken before this runner
-/// releases anything, so nothing the runner itself did can have emptied the
-/// plane it is about to read. Reversing the two would race the open against the
-/// snapshot, and an empty plane the runner had emptied itself would be reported
-/// as the model having collected in band.
+/// The first turn, not the last: `respond(to:)` runs a continuation turn for
+/// every round its drain takes, and the canary's question is about the turn
+/// that carried the model's own answer. Reading a later one would grade a plane
+/// the drain had already emptied.
+///
+/// Nothing here releases anything, so nothing the runner itself did can have
+/// emptied the plane it reads.
 ///
 /// - Parameters:
 ///   - events: the session's own event feed, subscribed before the turn started.
 ///   - log: the run's call log, which holds the handle onto the run plane.
-///   - gate: the gate this opens once the turn has ended — and also on a feed
-///     that finished without one, so a session that ends early never leaves a
-///     fixture waiting out its whole ceiling.
 /// - Returns: the runs parked at that instant, or an empty array when no turn
 ///   ended on this feed.
 private func parkedRuns(
     atFirstTurnEndIn events: AsyncStream<SessionEvent>,
-    reading log: ScenarioCallLog,
-    opening gate: ScenarioTurnGate
+    reading log: ScenarioCallLog
 ) async -> [ParkedRun] {
     for await event in events {
         guard case .turnEnded = event else { continue }
-        let parked = await log.parkedRuns()
-        await gate.open()
-        return parked
+        return await log.parkedRuns()
     }
-    await gate.open()
     return []
 }
 
