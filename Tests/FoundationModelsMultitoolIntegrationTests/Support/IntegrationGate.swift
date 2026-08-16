@@ -304,13 +304,36 @@ var multitoolIntegrationEnabled: Bool {
 /// suite paid 785.4s to bring cold weights off disk, where Muse's had been
 /// warmed by repeated runs.
 ///
-/// **Two things this comparison does not establish.** It is one run each, and
-/// Muse's own numbers moved run to run. And `PrefixReuseTests` passing on
-/// Qwen3.8 needs explaining rather than banking: the pin moved to Muse
-/// because Qwen3.5/3.6 gave their linear/GDN layers a non-trimmable
-/// `MambaCache`, which left that suite nothing to measure. Either the
-/// architecture changed or the suite is not measuring what this file claims.
-/// Settle that before treating the prefix-reuse result as a reason to stay.
+/// **This comparison is one run each**, and Muse's own numbers moved run to
+/// run, so nothing here is a reliability claim.
+///
+/// **And `PrefixReuseTests` passing on Qwen3.8 is not evidence of prefix
+/// reuse.** That was worth checking rather than banking, and the check came
+/// back against the suite: its assertion is `secondElapsed <= firstElapsed`,
+/// which a cold first call satisfies on warm-up alone, with no reuse
+/// anywhere. Measured, both models pass and neither passes decisively —
+/// Muse `first=7.75s second=3.31s`, Qwen3.8 `first=5.81s second=3.58s`.
+/// A second call that skipped a real prefill and one that merely followed a
+/// warmed model produce the same verdict here.
+///
+/// The rigorous instrument is in the fork, not here: `mlx-swift-lm`'s
+/// `f85fc50` measures two-round reuse on real weights through
+/// `MLXLMCommon.ChatSession` alone, and its verdict on Qwen3.6 was NO on two
+/// independent counts. Round 2's render was not a prefix extension of round
+/// 1's — they shared 4,703 of 4,705 tokens and still did not extend, because
+/// round 1 ends with a `<think>` priming block exactly where round 2 writes
+/// the assistant reply — and round 2 fed all 4,748 rendered tokens, skipped
+/// none, and spent 11.59s on prefill against a cold control's 11.60s.
+///
+/// So the `MambaCache` story this file tells is real but incomplete: a
+/// non-trimmable cache is the second of two causes, and the chat template is
+/// the first. That matters because upstream has since added prompt-cache
+/// work, and the fork's own assertions are written to be inverted "when
+/// upstream starts caching" — but a template that does not extend defeats
+/// reuse whatever the cache does.
+///
+/// Do not cite `PrefixReuseTests` for "prefix reuse works" on any model. It
+/// pins that the second call is not slower, which is all it can see.
 ///
 /// Neither reference carries an `@revision`, so both track their repository's
 /// default revision rather than a fixed commit — these are model *choices*,
