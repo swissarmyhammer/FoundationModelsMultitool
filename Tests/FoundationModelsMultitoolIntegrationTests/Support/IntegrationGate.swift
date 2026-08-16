@@ -24,6 +24,38 @@ import FoundationModelsRouter
 let multitoolIntegrationEnvVar = "MULTITOOL_INTEGRATION"
 
 /// Whether the gated real-model suite is enabled for this run.
+///
+/// **Run this suite with `--no-parallel`.** The command is
+/// `MULTITOOL_INTEGRATION=1 swift test --no-parallel`, and the flag is not a
+/// preference.
+///
+/// The reason is not GPU contention — ``LiveProfileTurnstile`` below already
+/// admits one live profile at a time, across suite boundaries. The reason is
+/// **what the clock counts**. Swift Testing runs suites concurrently by default
+/// and starts a test's `.timeLimit` when the test starts; every scenario takes
+/// the turnstile from *inside* its own test body, by way of
+/// `LiveRouterFixture.resolve()`. So a suite's reported duration is its own
+/// work plus however long it queued behind the other suites, and its time limit
+/// is spent on both.
+///
+/// Measured on 2026-08-16, the same commit both ways:
+///
+///   suite                        parallel   --no-parallel
+///   Gated async fan-out             443.5s          71.4s
+///   Gated elevation-in-code-mode    371.2s          64.2s
+///   Gated search-then-call (x4)     661.0s         283.1s
+///   Selection tier prefix-reuse      85.6s          16.5s
+///   Gated nested-generation probe   >180s(*)        28.1s
+///
+/// (*) exceeded its three-minute limit and was recorded as a failure.
+///
+/// Read those columns as queue time removed, not as work made faster: whole-run
+/// wall time was 661s parallel against 852s serial, so the actual generation
+/// cost barely moved. What moves is attribution. Under parallel suites a tight
+/// limit fires on queueing rather than on the scenario, the failure reads
+/// exactly like a hang, and it lands on whichever suite holds the tightest
+/// ceiling rather than on whichever scenario is slow. Two suites failed that
+/// way before the flag was tried, and both pass with it.
 var multitoolIntegrationEnabled: Bool {
     ProcessInfo.processInfo.environment[multitoolIntegrationEnvVar] != nil
 }
@@ -206,45 +238,43 @@ var multitoolIntegrationEnabled: Bool {
 /// registry only because `Package.swift` links `MLXVLM` (see
 /// `liveLoaderMLXProducts`) and this file imports it below.
 ///
-/// **The selection tier moves off the generation model.** Sharing one
-/// `ModelRef` across both slots was deliberate when they were both Muse
-/// Glimmer — one resident model rather than a swap on every search — and it
-/// hung. Measured: a gated scenario sat 15 minutes at 0% CPU with 18.8GB
-/// resident, 98% system memory free and zero swap, every thread parked and the
-/// MLX scheduler on a condition variable; the recorded transcript stops at the
-/// selection fork. Two different models do not hang.
+/// **One model in both slots, and the hang that argued against it is fixed.**
+/// Sharing one `ModelRef` is what the human asked for and what the code below
+/// does: one resident model rather than a swap between generation and selection
+/// on every search.
 ///
-/// **Why, is not known.** The first explanation — that one turn holds the
-/// `SerialAccessContainer` lock across its tool rounds, so a tool body that
-/// generates on the same container can never get in — was disproved. The fork
-/// wrote the decisive test (`mlx-swift-lm` `ca8e22f`,
-/// `ToolBodyContainerReentryTests`): a real container, a real session, and a
-/// real tool whose body generates on the same model, passing in 0.077s with a
-/// proven-non-vacuous guard. The SDK invokes a tool body *after* `respond`
-/// returns, not while it is suspended inside `perform`.
+/// It did hang, and for a while nobody knew why. A gated scenario sat 15
+/// minutes at 0% CPU with 18.8GB resident, 98% of system memory free and zero
+/// swap, every thread parked and the MLX scheduler on a condition variable,
+/// with the recorded transcript stopping at the selection fork. That bought a
+/// temporary split onto two models, and a run of wrong explanations.
 ///
-/// So this split is **empirical, not understood**: it removes the hang, and
-/// nothing here should be built on the lock story. The open leads, on
-/// `^m0brsjs`, are MLX-level rather than Swift-level — a wait inside MLX
-/// (which is what a scheduler on a condition variable looks like), the
-/// concurrent-MLX-work hazard from `ModelContainer.generate` releasing
-/// `context.read` mid-stream, and the guided/xgrammar path's shared per-model
-/// caches. The last fits best: the selection tier runs **under a grammar**,
-/// and that hazard also disappears the moment two slots name different
-/// models.
+/// **The cause was Router's `generationGate`, and it is now understood, fixed
+/// and covered.** A resident container carries one `AsyncSemaphore(value: 1)`.
+/// `beginTurn()` takes its single permit and holds it for the whole turn,
+/// tool rounds included. `searchTools` generates from *inside* a tool call on
+/// that same container, so it waited for a permit only the turn's end could
+/// free, and the turn could not end until the tool returned. Sampled directly
+/// with `@testable import FoundationModelsRouter`: `permits=0 waiters=1` for
+/// the life of the run, across 33 samples.
 ///
-/// So `selection` names `GLM-4-9B-0414-4bit`: a different model, hence a
-/// different container, hence no re-entrancy.
+/// Router fixed it on their `^1zt7vyg` by lending the permit to a nested turn
+/// on another session rather than releasing it, so the count stays exact.
+/// Verified from here: `NestedGenerationProbeTests` — which holds no grammar
+/// anywhere, and so isolates the gate and nothing else — parked 165.4s and
+/// 166.5s before the fix and returns in about 28s after it. Seven gated suites
+/// that had all deadlocked went green in the same run.
 ///
-/// `gemma-4-12B-it-assistant-mxfp4` was the first choice and cannot be used
-/// yet: its config declares `model_type: "gemma4_unified_assistant"`, and the
-/// fork registers `gemma4_unified` without the `_assistant` suffix, so a run
-/// fails in 13 seconds with `.unsupportedModelType`. Filed on the fork's
-/// board; revisit this pin if that registration lands. It is **not** the small
-/// fast selector this card's history warns against — a 12B instruct model is
-/// the same class of capable selector the 27B was, and `discoveryUnderDistractors`
-/// remains the test that has to pass for any selection pin. It is also
-/// cheaper to hold beside a 30B than a second copy of the 30B would be.
+/// **Two earlier explanations were wrong, and are recorded so they are not
+/// tried again.** The first blamed a `SerialAccessContainer` lock held across
+/// tool rounds; the fork refuted it with `ToolBodyContainerReentryTests`
+/// (`mlx-swift-lm` `ca8e22f`), a real container, session and tool body
+/// generating on the same model, passing in 0.077s against a proven-non-vacuous
+/// guard. The second blamed the guided/xgrammar path's shared per-model caches,
+/// on the reasoning that the selection tier runs under a grammar; the probe
+/// carries no grammar at all and hung identically, which ended that one.
+///
+/// `discoveryUnderDistractors` remains the test any selection pin has to pass.
 ///
 /// Neither reference carries an `@revision`, so both track their repository's
 /// default revision rather than a fixed commit — these are model *choices*,

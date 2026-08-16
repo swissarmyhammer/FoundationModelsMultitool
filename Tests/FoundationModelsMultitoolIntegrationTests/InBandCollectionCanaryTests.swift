@@ -71,18 +71,41 @@ import Testing
 @Suite(
     "Gated in-band collection canary (the model collects its own parked run)",
     .serialized,
-    // Three minutes, not the thirty every other gated suite states. Its peers
-    // finish in 40-90 seconds — `repairFromTripProneTool` 40.8s,
-    // `AsyncFanOut` 57.0s, `ElevationTests` 59.4s, `singleCallWeather` 83.2s —
-    // and this scenario is one tool call plus one collect, so it belongs in
-    // that band. A generous limit here bought nothing and cost 30 minutes:
-    // when the fixture was still gated the suite deadlocked, and the deadlock
-    // reported as a bare "Time limit was exceeded" half an hour later, having
-    // graded nothing. A limit near the expected runtime turns that same
-    // failure into a two-minute answer. If this suite ever legitimately needs
-    // longer, the reason is worth finding rather than the ceiling worth
-    // raising.
-    .timeLimit(.minutes(3)),
+    // Fifteen minutes, set from measurement rather than from the peer band.
+    //
+    // This limit read three minutes, on the reasoning that peers finish in
+    // 40-90 seconds and this scenario is one tool call plus one collect, so it
+    // belongs with them. That reasoning was wrong, and its own closing line —
+    // "if this suite ever legitimately needs longer, the reason is worth
+    // finding rather than the ceiling worth raising" — is what found it.
+    //
+    // The reason is that this scenario costs an order of magnitude more model
+    // generation than its peers, and costs a different amount every run.
+    // Measured on 2026-08-16 against `Muse-Glimmer-30B-mxfp4`, one run per row,
+    // read off the session's own recorded `response` entries:
+    //
+    //   limit   outcome            tokensOut   ms       collected by
+    //   180s    cut off             1,733      175,126  (never reached)
+    //   600s    cut off             8,379      595,581  a second runCode
+    //   1200s   PASSED, grounded      ~4,000    316,700  wait, one call
+    //
+    // Two facts set the ceiling. The model generates at roughly 10-14 tokens a
+    // second here, so a turn's cost is its token count and nothing else; and
+    // the token count swings by more than four times across runs, because the
+    // model chooses its own collection path. Given a park, it sometimes spends
+    // a `wait` call and sometimes re-runs `runCode` and does the work twice.
+    // Both reach the right manifest code. Only one of them is cheap.
+    //
+    // So the honest ceiling is above the worst run observed, not near the best:
+    // 600 seconds was measured insufficient, 317 was a pass, and a limit
+    // between them would report "time limit" on a scenario that works. Fifteen
+    // minutes clears the worst observed run with room and still fails a genuine
+    // hang in a quarter of the thirty minutes the peers allow.
+    //
+    // The peers keep their own tighter expectations; nothing here licenses
+    // raising theirs. Any suite that starts needing more than its measured cost
+    // has the same question to answer that this one did.
+    .timeLimit(.minutes(15)),
     .enabled(if: multitoolIntegrationEnabled)
 )
 struct InBandCollectionCanaryTests {

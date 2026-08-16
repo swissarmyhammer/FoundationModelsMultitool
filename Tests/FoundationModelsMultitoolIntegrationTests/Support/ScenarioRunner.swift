@@ -1068,8 +1068,25 @@ func runRespondDrainScenario(
         // 1. Grounded: the answer rests on data a tool really returned.
         #expect(respondGrounding.isSuperset(of: groundedIn))
         #expect(!respondAccepted.isEmpty)
-        // 2. Parity of substance with the drained stream.
-        #expect(respondAccepted == streamAccepted)
+        // 2. Parity of substance with the drained stream: both surfaces
+        // reached the answer.
+        //
+        // Non-empty on both sides IS the parity, because an `answerContainsOneOf`
+        // list holds spellings of ONE answer rather than a choice of answers.
+        // `IntegrationScenarioAnswers.warmestCity` is
+        // `[integrationWarmestCity.code, integrationWarmestCity.name]` — one
+        // city, "by IATA code and by the spelled-out name models routinely
+        // expand codes to. Any other city is wrong." So any non-empty set names
+        // that city and nothing else can.
+        //
+        // Set EQUALITY was the assertion here, and it graded prose style. A run
+        // on 2026-08-16 failed with `respondAccepted = ["SFO"]` against
+        // `streamAccepted = ["SFO", "San Francisco"]`: both surfaces answered
+        // San Francisco, from the same fixture data, and differed only because
+        // one reply also spelled the code out. Equality demands the two replies
+        // pick the same spellings, which is a property of phrasing, not of
+        // substance — and this comment has said "substance" the whole time.
+        #expect(!streamAccepted.isEmpty)
         // 3. Nothing survives the call.
         #expect(parkedAfterRespond.isEmpty)
         // 4. `wait` calls are REPORTED, not asserted on — see the type doc's
