@@ -106,11 +106,11 @@ public struct SearchToolsTool: Tool {
 
     /// Where this tool's call boundaries are recorded — see ``CallTrace``.
     ///
-    /// A discovery call declares both of its clocks unbounded
-    /// (`detachmentClocks(from:)` below), which is right — slow is not broken —
-    /// but it also means nothing above this tool will ever interrupt a search
-    /// that has stopped making progress. These spans are the only thing that
-    /// tells a slow search from a stalled one.
+    /// A discovery call runs to completion with no timeout at all
+    /// (`detachmentMount` below), which is right — slow is not broken — but it
+    /// also means nothing above this tool will ever interrupt a search that has
+    /// stopped making progress. These spans are the only thing that tells a
+    /// slow search from a stalled one.
     private static let trace = CallTrace(category: "SearchTools")
 
     /// The catalog searcher every `searchTools` call forwards to.
@@ -457,29 +457,21 @@ extension SearchToolsTool: DetachmentParameterProviding {
     /// `DetachingToolError.timedOut(tool: "searchTools", timeoutSeconds: 120.0)`,
     /// the turn dead in its first call.
     ///
-    /// **This is a workaround, not the declaration.** What this tool needs to say
-    /// is `DetachConfiguration.Mode.runToCompletion` with no timeout — the mode
-    /// Router already mounts for inner `tools.*` calls. `mode` is read from the
-    /// wrap-time configuration (`DetachingTool.swift:384`) and
-    /// `DetachmentParameterProviding` exposes only the two clocks, so a tool
-    /// cannot declare its own mode today. Two very large numbers express the
-    /// intent; a per-tool mode would state it. Filed on Router's `w8dzvee`.
+    /// **Stated as a mount, which is what it always meant.** Until Router
+    /// shipped a per-tool mount (`^jgh63sf`), a tool could declare only its two
+    /// clocks, so this type answered `(86_400, 86_400)` — two very large
+    /// numbers standing in for an intent the surface could not express.
     ///
-    /// - Parameter arguments: the call's arguments, unread — every discovery call
-    ///   is a prerequisite, so every one gets the same answer.
-    /// - Returns: both clocks, set beyond any real search.
-    public func detachmentClocks(
-        from arguments: GeneratedContent
-    ) -> (waitSeconds: TimeInterval?, timeout: TimeInterval?) {
-        (Self.unlimitedSeconds, Self.unlimitedSeconds)
-    }
-
-    /// The value both of a discovery call's clocks are set to.
+    /// That workaround was wrong in a way that had not yet bitten. The clocks
+    /// are independent and unvalidated, so the pair did not buy "never
+    /// detach": it bought a 24-hour block followed by a race between a soft
+    /// deadline and a timeout watcher, with `waitSeconds` usually winning and
+    /// the watcher then killing the run it had just parked. No search runs a
+    /// day, so nothing ever reached it. Router now rejects that pair outright
+    /// and names this mount in the error.
     ///
-    /// Not `.infinity`, which the run plane clamps anyway, and not a tuned
-    /// figure either: it names `ToolContext.waitSecondsCeiling`, the ceiling
-    /// Router itself treats as "no practical limit", so nothing here invents a
-    /// second notion of unbounded and no literal can drift from it. Any real
-    /// search finishes or fails long before it.
-    static let unlimitedSeconds: TimeInterval = ToolContext.waitSecondsCeiling
+    /// `runCode` declares nothing here, keeping its composition site's
+    /// `nativeSessionMount`, so it goes on detaching. One session, two
+    /// policies, each stated by the tool it belongs to.
+    public var detachmentMount: DetachConfiguration? { .runToCompletionMount }
 }
