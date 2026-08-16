@@ -37,7 +37,7 @@ struct ScenarioObservation {
     var catalogPaths: Set<String>
 
     /// Whether a `searchTools` call preceded the first `runCode` call.
-    var searchToolsFirst: Bool
+    var searchedToolsFirst: Bool
 
     /// Whether this run could observe the turn's *route* at all — the ordered
     /// tool calls, their typed paths, and their outputs.
@@ -113,7 +113,7 @@ struct ScenarioFailureModes {
     let inventedPaths: [String]
 
     /// A `searchTools` call preceded the first `runCode` call.
-    let searchedFirst: Bool
+    let searchedToolsFirst: Bool
 
     /// Whether the route-derived modes were measurable — see
     /// ``ScenarioObservation/routeObservable``.
@@ -155,7 +155,7 @@ struct ScenarioFailureModes {
         // reaches a tool, so no recorder can ever see it and only the snippet
         // source can report it.
         inventedPaths = observation.typedPaths.subtracting(observation.catalogPaths).sorted()
-        searchedFirst = observation.searchToolsFirst
+        searchedToolsFirst = observation.searchedToolsFirst
         routeObservable = observation.routeObservable
         didThrash = observation.toolCallCount > scenarioMinimumToolCalls * scenarioThrashFactor
         isGroundedButWrongForm =
@@ -189,7 +189,7 @@ struct ScenarioFailureModes {
         ]
         let routeModes = [
             ("inventedPath", !inventedPaths.isEmpty),
-            ("searchedFirst", searchedFirst),
+            ("searchedToolsFirst", searchedToolsFirst),
             ("thrash", didThrash),
             ("groundedButWrongForm", isGroundedButWrongForm),
         ]

@@ -25,7 +25,7 @@ struct ScenarioFailureModeTests {
             typedPaths: ["getTrip", "getWeather"],
             invokedPaths: ["getTrip", "getWeather"],
             catalogPaths: ["getTrip", "getWeather"],
-            searchToolsFirst: true,
+            searchedToolsFirst: true,
             returnedValues: ["SFO", "San Francisco", "34"],
             isValidAnswer: true
         )
@@ -41,7 +41,7 @@ struct ScenarioFailureModeTests {
         #expect(modes.inventedPaths.isEmpty)
         #expect(!modes.didThrash)
         #expect(!modes.isGroundedButWrongForm)
-        #expect(modes.searchedFirst)
+        #expect(modes.searchedToolsFirst)
     }
 
     // MARK: - Over-refusal
@@ -259,7 +259,7 @@ struct ScenarioFailureModeTests {
 
         #expect(
             line == "MODES [composeChain] overRefusal=0 answeredWithoutCalling=0 "
-                + "announceThenStop=0 inventedPath=1 searchedFirst=1 thrash=1 "
+                + "announceThenStop=0 inventedPath=1 searchedToolsFirst=1 thrash=1 "
                 + "groundedButWrongForm=0 invented=[trips.getTrip] toolCalls=9"
         )
     }

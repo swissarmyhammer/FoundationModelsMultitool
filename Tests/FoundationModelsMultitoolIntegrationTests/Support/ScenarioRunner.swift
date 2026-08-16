@@ -217,7 +217,7 @@ func runNativeIntegrationScenario(
         grade(scenario: name, checks: checks)
 
         let toolCallCount = turn.toolCallCount
-        let searchToolsFirst = NativeTranscript.searchToolsPrecedesRunCode(in: turn.calls)
+        let searchedToolsFirst = NativeTranscript.searchToolsPrecedesRunCode(in: turn.calls)
         // plan.md acceptance: "the per-format results are recorded (test
         // attachment or log)" — the route details stay visible here as
         // diagnostics (see also `PrefixReuseTests` for the prefix-reuse
@@ -236,7 +236,7 @@ func runNativeIntegrationScenario(
                 + "invoked=\(evidence.invokedPaths.sorted()) "
                 + "returned=\(evidence.returnedPaths.sorted()) "
                 + "groundedIn=\(groundedIn.sorted()) "
-                + "searchToolsFirst=\(searchToolsFirst) "
+                + "searchedToolsFirst=\(searchedToolsFirst) "
                 + "priming=\(primingLabel(turn)) "
                 + "textResets=\(turn.supersededAnswers.count) "
                 + "progress=\(turn.progressEvents.count) "
@@ -255,7 +255,7 @@ func runNativeIntegrationScenario(
                     typedPaths: evidence.typedPaths,
                     invokedPaths: evidence.invokedPaths,
                     catalogPaths: surface.catalogPaths,
-                    searchToolsFirst: searchToolsFirst,
+                    searchedToolsFirst: searchedToolsFirst,
                     routeObservable: true,
                     returnedValues: NativeTranscript.returnedValues(in: turn.calls),
                     isValidAnswer: checks.contains { $0.name == validAnswerCheckName && $0.held }
