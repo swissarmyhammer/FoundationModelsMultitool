@@ -326,6 +326,24 @@ public struct MultiTool: Tool {
     /// reached for (see `logImaginedTool(_:)`).
     private static let logger = Logger(subsystem: "FoundationModelsMultitool", category: "MultiTool")
 
+    /// Where this tool's call boundaries are recorded — see ``CallTrace``.
+    ///
+    /// Separate from ``logger`` above, and deliberately so: that one records
+    /// what a run *decided* — which snippet ran, which `tools.*` name was
+    /// imagined — on this package's diagnostic subsystem, and this one records
+    /// only where control is, on its own. A hang is read by looking for an
+    /// entry with no exit, and interleaving decisions into that stream is what
+    /// makes the missing line hard to see.
+    private static let trace = CallTrace(category: "MultiTool")
+
+    /// What ``trace`` prints for a `runCode` call made outside any session.
+    ///
+    /// A `MultiTool` constructed and called directly has no ambient
+    /// `ToolContext`, so it has no completion token to correlate against. That
+    /// is a legitimate mode — every unit suite in this package runs in it —
+    /// and it reads as an explicit absence rather than a blank.
+    private static let noAmbientToken = CallTrace.absent
+
     /// The catalog + live tool instances this `runCode` dispatches into.
     private let registry: Registry
 
@@ -489,6 +507,25 @@ public struct MultiTool: Tool {
     ///   through `JSCInterpreter`, kept as a defensive passthrough for any
     ///   other `Interpreter` conformer).
     public func call(arguments: RunCodeArguments) async throws -> String {
+        try await Self.trace.span(
+            "MultiTool.call",
+            detail: "depth=\(depth) completionToken=\(ToolContext.current?.completionToken ?? Self.noAmbientToken)"
+        ) {
+            try await runSnippet(arguments: arguments)
+        }
+    }
+
+    /// Runs one `runCode` call, inside the span ``call(arguments:)`` opened.
+    ///
+    /// Split out so the span wraps the *whole* call, `liveContexts` claim
+    /// included: a call refused at the cap, or one blocked before it ever
+    /// reaches the sandbox, has to be as visible as one that reaches the
+    /// interpreter.
+    ///
+    /// - Parameter arguments: the snippet to run, and the clocks bounding it.
+    /// - Returns: what ``call(arguments:)`` returns.
+    /// - Throws: what ``call(arguments:)`` throws.
+    private func runSnippet(arguments: RunCodeArguments) async throws -> String {
         try Task.checkCancellation()
         guard liveContexts.claim(upTo: configuration.liveContextLimit) else {
             return ResultRenderer.render(Self.liveContextCapError(limit: configuration.liveContextLimit))

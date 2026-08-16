@@ -104,6 +104,15 @@ public struct SearchToolsTool: Tool {
         fetch.
         """
 
+    /// Where this tool's call boundaries are recorded — see ``CallTrace``.
+    ///
+    /// A discovery call declares both of its clocks unbounded
+    /// (`detachmentClocks(from:)` below), which is right — slow is not broken —
+    /// but it also means nothing above this tool will ever interrupt a search
+    /// that has stopped making progress. These spans are the only thing that
+    /// tells a slow search from a stalled one.
+    private static let trace = CallTrace(category: "SearchTools")
+
     /// The catalog searcher every `searchTools` call forwards to.
     ///
     /// Runs in `.auto` mode (plan.md §7): retrieval-only when no selection tier
@@ -205,12 +214,36 @@ public struct SearchToolsTool: Tool {
     ) throws {
         let selection: SelectionConfig? = librarian.map { librarian in
             SelectionConfig(model: { instructions, grammar in
-                RoutedAgentSession(session: librarian.makeGuidedSession(grammar: grammar, instructions: instructions))
+                // Traced, and traced *here*, because both ends of this
+                // factory are opaque from outside. The call itself is
+                // synchronous but not cheap — a grammar-constrained session
+                // compiles its grammar — and everything the tier then does
+                // with the session it returns happens behind the
+                // `AgentSession` seam. See `TracedAgentSession`.
+                Self.trace.span(
+                    "SearchToolsTool.makeSelectionSession",
+                    detail: "instructionCharacters=\(instructions.count)"
+                ) {
+                    TracedAgentSession(
+                        wrapped: RoutedAgentSession(
+                            session: librarian.makeGuidedSession(grammar: grammar, instructions: instructions)
+                        ),
+                        role: TracedAgentSession.selectionRole
+                    )
+                }
             })
         }
         let sample: SampleSnippetConfig? = sampleGenerator.map { generator in
             SampleSnippetConfig(makeSession: { instructions in
-                RoutedAgentSession(session: generator.makeSession(instructions: instructions))
+                Self.trace.span(
+                    "SearchToolsTool.makeSampleSession",
+                    detail: "instructionCharacters=\(instructions.count)"
+                ) {
+                    TracedAgentSession(
+                        wrapped: RoutedAgentSession(session: generator.makeSession(instructions: instructions)),
+                        role: TracedAgentSession.sampleSnippetRole
+                    )
+                }
             })
         }
         self.init(
@@ -231,10 +264,28 @@ public struct SearchToolsTool: Tool {
     /// - Throws: whatever `searcher.search(intent:limit:)` throws. Sample
     ///   generation never throws out of here: a failure in it yields no
     ///   sample, and discovery answers with the signatures alone.
+    ///
+    /// Three spans, because this call has two independent model-backed steps
+    /// and formatting is neither: the search (which drives the selection tier)
+    /// and the sample generation (which drives a generation session) can each
+    /// stall on their own, and one span over the whole call could not say
+    /// which.
     public func call(arguments: SearchToolsArguments) async throws -> String {
-        let matches = try await searcher.search(intent: arguments.task, limit: limit)
-        let snippet = await generateSample(forTask: arguments.task, over: matches.map(\.item))
-        return Self.format(task: arguments.task, matches: matches, sample: snippet)
+        try await Self.trace.span("SearchToolsTool.call", detail: "task=\(arguments.task)") {
+            let matches = try await Self.trace.span(
+                "SearchToolsTool.search",
+                detail: "limit=\(limit)"
+            ) {
+                try await searcher.search(intent: arguments.task, limit: limit)
+            }
+            let snippet = await Self.trace.span(
+                "SearchToolsTool.generateSample",
+                detail: "matches=\(matches.count)"
+            ) {
+                await generateSample(forTask: arguments.task, over: matches.map(\.item))
+            }
+            return Self.format(task: arguments.task, matches: matches, sample: snippet)
+        }
     }
 
     /// Generates and validates the runnable sample for one call.

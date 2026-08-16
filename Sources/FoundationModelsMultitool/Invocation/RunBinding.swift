@@ -57,6 +57,16 @@ struct RunBinding: Sendable {
     /// envelope in place of a value it awaited.
     static let innerCallMount = DetachConfiguration(mode: .runToCompletion)
 
+    /// Where each inner `tools.*` dispatch is recorded — see ``CallTrace``.
+    ///
+    /// This is the one place an inner call is visible as itself. Below it the
+    /// call is inside the shared engine, and above it the call is inside a JSC
+    /// promise the interpreter is pumping — so a snippet whose `await` never
+    /// settles looks, from either side, like a snippet that has not finished.
+    /// One `tools.*` call under `Promise.all` that never comes back is
+    /// otherwise indistinguishable from all of them being slow.
+    static let trace = CallTrace(category: "RunBinding")
+
     /// The ambient context captured at the top of the enclosing `runCode`
     /// invocation — its session identity, mailbox, upstream sink, and the
     /// outer run's `completionToken`.
@@ -118,22 +128,27 @@ struct RunBinding: Sendable {
     ///   `DetachingToolError.timedOut(tool:timeoutSeconds:)` when the mount's
     ///   per-call `timeout` ends the call.
     func invoke<T: Tool>(_ tool: T, arguments: T.Arguments) async throws -> T.Output {
-        let mounted = ToolDetachment.wrapping(
-            tool: tool,
-            inheriting: context,
-            sink: AmbientUpstreamSink(context: context),
-            configuration: innerElevation
-        )
-        guard let engine = mounted as? any Tool<T.Arguments, T.Output> else {
-            // Unreachable: both decorators preserve `Arguments`/`Output`, and
-            // `ToolDetachment.wrapping`'s own unreachable fallback returns the
-            // tool itself, which matches too. Kept as a graceful degradation
-            // rather than a trap, matching this package's "throw/degrade,
-            // never trap" posture — the call still happens, only without the
-            // engine's correlation.
-            return try await tool.call(arguments: arguments)
+        try await Self.trace.span(
+            "RunBinding.invoke",
+            detail: "tool=\(tool.name) outerToken=\(context.completionToken)"
+        ) {
+            let mounted = ToolDetachment.wrapping(
+                tool: tool,
+                inheriting: context,
+                sink: AmbientUpstreamSink(context: context),
+                configuration: innerElevation
+            )
+            guard let engine = mounted as? any Tool<T.Arguments, T.Output> else {
+                // Unreachable: both decorators preserve `Arguments`/`Output`, and
+                // `ToolDetachment.wrapping`'s own unreachable fallback returns the
+                // tool itself, which matches too. Kept as a graceful degradation
+                // rather than a trap, matching this package's "throw/degrade,
+                // never trap" posture — the call still happens, only without the
+                // engine's correlation.
+                return try await tool.call(arguments: arguments)
+            }
+            return try await engine.call(arguments: arguments)
         }
-        return try await engine.call(arguments: arguments)
     }
 }
 

@@ -135,6 +135,15 @@ public struct WaitTool: Tool {
     /// Creates the tool.
     public init() {}
 
+    /// Where this tool's call boundaries are recorded — see ``CallTrace``.
+    ///
+    /// A `wait` call is *designed* to block, and it declares both of its own
+    /// clocks unbounded, so blocking forever and working correctly look
+    /// identical from every angle except this one. The entry line names the
+    /// token it is waiting on, which is what turns "the turn stopped" into
+    /// "the turn is waiting on this run."
+    private static let trace = CallTrace(category: "Wait")
+
     /// Waits for the named run, or for every pending run, and reports what
     /// each one returned.
     ///
@@ -144,30 +153,36 @@ public struct WaitTool: Tool {
     /// - Throws: nothing. A session-less call and an unknown token are both
     ///   reported in band, because both are states a model can act on.
     public func call(arguments: WaitArguments) async throws -> String {
-        guard let context = ToolContext.current else {
-            return Self.rendered(.object([
-                "state": .string(Self.noRunPlaneState),
-                "detail": .string(Self.noRunPlaneDetail),
-            ]))
+        await Self.trace.span(
+            "WaitTool.call",
+            detail: "completionToken=\(arguments.completionToken ?? CallTrace.absent) "
+                + "timeout=\(arguments.timeout.map { "\($0)" } ?? CallTrace.absent)"
+        ) {
+            guard let context = ToolContext.current else {
+                return Self.rendered(.object([
+                    "state": .string(Self.noRunPlaneState),
+                    "detail": .string(Self.noRunPlaneDetail),
+                ]))
+            }
+            let bound = Self.bounded(arguments.timeout)
+            if let token = arguments.completionToken {
+                return Self.rendered(.object(
+                    await Self.settlement(of: token, in: context, within: bound)
+                ))
+            }
+            let pending = await context.parkedRuns().map(\.completionToken)
+            guard !pending.isEmpty else {
+                return Self.rendered(.object([
+                    "state": .string(Self.nothingPendingState),
+                    "detail": .string(Self.nothingPendingDetail),
+                ]))
+            }
+            var reports: [InterpreterValue] = []
+            for token in pending {
+                reports.append(.object(await Self.settlement(of: token, in: context, within: bound)))
+            }
+            return Self.rendered(.array(reports))
         }
-        let bound = Self.bounded(arguments.timeout)
-        if let token = arguments.completionToken {
-            return Self.rendered(.object(
-                await Self.settlement(of: token, in: context, within: bound)
-            ))
-        }
-        let pending = await context.parkedRuns().map(\.completionToken)
-        guard !pending.isEmpty else {
-            return Self.rendered(.object([
-                "state": .string(Self.nothingPendingState),
-                "detail": .string(Self.nothingPendingDetail),
-            ]))
-        }
-        var reports: [InterpreterValue] = []
-        for token in pending {
-            reports.append(.object(await Self.settlement(of: token, in: context, within: bound)))
-        }
-        return Self.rendered(.array(reports))
     }
 
     /// One run's settlement, reported in the same shape the run plane reports.
