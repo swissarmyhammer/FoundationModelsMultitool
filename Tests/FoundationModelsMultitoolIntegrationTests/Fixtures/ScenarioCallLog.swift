@@ -52,10 +52,30 @@ actor ScenarioCallLog {
     /// as well as call membership.
     private(set) var calls: [ScenarioCall] = []
 
-    /// The distinct `tools.*` paths a fixture tool actually entered, however each call then ended.
+    /// The distinct `tools.*` paths a fixture tool entered *and finished*,
+    /// however each call then ended.
+    ///
+    /// Read off ``calls``, which is appended to when a call completes — so a
+    /// call still running, or one that will never finish, is in neither this
+    /// set nor ``returnedPaths``. Every scenario that reads this grades a run
+    /// after its turn is over, where the distinction cannot arise; a scenario
+    /// that has to tell "never called" from "called and never came back" reads
+    /// ``enteredPaths`` instead.
     var invokedPaths: Set<String> {
         Set(calls.map(\.path))
     }
+
+    /// The distinct `tools.*` paths a fixture tool entered, recorded on the way
+    /// in and never removed.
+    ///
+    /// The companion to ``invokedPaths``, and the difference between them is
+    /// exactly one case: a call that entered and did not come back. That case
+    /// is not hypothetical. The gated run of `runNestedGenerationProbe` on
+    /// 2026-08-16 sat 165 seconds inside one tool call whose nested `respond`
+    /// was parked on Router's generation gate, and `invokedPaths` reported the
+    /// empty set for it — the same reading a model that never called the tool
+    /// produces, and the opposite conclusion.
+    private(set) var enteredPaths: Set<String> = []
 
     /// The distinct `tools.*` paths whose call handed a value back rather than throwing.
     var returnedPaths: Set<String> {
@@ -122,6 +142,10 @@ actor ScenarioCallLog {
         // Handed over before `body` runs, not after: see `observedContext` for
         // the scenario that reads the plane while a fixture call is still open.
         await observe(ToolContext.current)
+        // Recorded here for the same reason, and `enteredPaths` names the run
+        // that proved it necessary: a call that never comes back is invisible
+        // to every record written on the way out.
+        await enter(path)
         do {
             let value = try await body()
             await append(ScenarioCall(path: path, outcome: .returned))
@@ -143,6 +167,13 @@ actor ScenarioCallLog {
     private func observe(_ ambient: ToolContext?) {
         guard observedContext == nil else { return }
         observedContext = ambient
+    }
+
+    /// Records that one invocation has been entered.
+    ///
+    /// - Parameter path: the `tools.*` path being invoked.
+    private func enter(_ path: String) {
+        enteredPaths.insert(path)
     }
 
     /// Appends one recorded invocation.

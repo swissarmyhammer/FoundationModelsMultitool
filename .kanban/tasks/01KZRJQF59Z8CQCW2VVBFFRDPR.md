@@ -91,6 +91,34 @@ comments:
 
     Done.
   timestamp: 2026-08-15T14:41:25.988372+00:00
+- actor: claude-code
+  id: 01m05b634gv2f5g4d6e1fs3j1n
+  text: |-
+    ### Reopening a correction: this card's implementation does not do what the card says
+
+    `FoundationModelsRouter` found this while we were diagnosing a deadlock, and verified it in their source. Recording it here because this card is closed and its implementation is wrong.
+
+    **What we shipped.** `SearchToolsTool.detachmentClocks` answers `(unlimitedSeconds, unlimitedSeconds)` — 86,400 for both — intending this card's rule: *"blocks until done. No wait clock, no work clock, no limit. Only a real error reaches the model."*
+
+    **What that actually does.** `waitSeconds >= timeout` is not implemented as "never detach" anywhere. The two clocks are independent timers started concurrently that never consult each other. `DetachConfiguration.init` takes both with no validation and no relational check, and the stock design assumes the *opposite* relation — its own documentation says the 120s timeout is "deliberately much longer than" the 5s wait "so at stock settings the soft deadline always wins". We inverted that, and no code defends the inversion.
+
+    So the call blocks in band for a full 24 hours, and then the two clocks race:
+
+    - `waitSeconds` arms with fewer scheduling hops, so it usually fires first — the call detaches, and the timeout watcher immediately kills the run it just parked, handing the model a pending token for a **dead run**;
+    - if the race lands the other way, `DetachingToolError.timedOut` is thrown in band.
+
+    Both are reachable and which one you get is timing. Neither is what this card asked for.
+
+    **Why it has never bitten.** No discovery call runs for 24 hours, so the race is unreachable in practice. The values achieve the intent by accident, not by construction — and there is no test anywhere for `waitSeconds == timeout` or `waitSeconds > timeout`; the only clamp coverage is the lower end.
+
+    **Why the right fix is not available yet.** This card already recorded it: what the tool needs to declare is `DetachConfiguration.Mode.runToCompletion`, and `mode` is read from the wrap-time configuration while `DetachmentParameterProviding` exposes only the two clocks — so no tool can declare its own mode. Router is filing that as a genuine run-to-completion mode for a tool that must not park.
+
+    And there is no better pair of numbers to pick meanwhile. `timeout < waitSeconds` makes the timeout fire first, which produces exactly the failure this card forbids — "error out on a real error, not timeout in searching tools." Neither ordering expresses the intent. The mode is genuinely required.
+
+    **Action taken now:** the doc comment on `unlimitedSeconds` is corrected to state what the values really do, rather than implying a guarantee the mechanism does not provide. The values themselves stay, because they are the closest reachable approximation and changing them would trade an unreachable race for a reachable defect.
+
+    **Not done, and deliberately:** no test is added for the 24-hour race. A test that waits a day is not a test, and simulating it would assert the behaviour we are trying to get rid of rather than the behaviour we want. When Router's run-to-completion mode lands, the test that belongs here is "a discovery call never detaches, whatever the mount configures" — and that one is cheap and real.
+  timestamp: 2026-08-16T13:11:41.456719+00:00
 depends_on:
 - 01KZRJPJRK8SP9329DREV0ZCA7
 position_column: done

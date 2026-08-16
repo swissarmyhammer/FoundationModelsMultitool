@@ -2,7 +2,12 @@ import Foundation
 import Testing
 
 import FoundationModels
-import FoundationModelsRouter
+// `@testable` for one reason, and only the nested-generation probe needs it:
+// `RoutedModel.generationGate` and `AsyncSemaphore`'s `availablePermits` /
+// `waiterCount` are `internal`, and they are the direct reading of the deadlock
+// `runNestedGenerationProbe` exists to name. Router's package is not edited to
+// expose them.
+@testable import FoundationModelsRouter
 
 /// How a run's seeding state reads on the RESULT line.
 ///
@@ -780,6 +785,14 @@ let inBandCollectionCheckName = "inBandCollection"
 /// model's first turn ended.
 let runPlaneEmptyAtAnswerCheckName = "runPlaneEmptyAtAnswer"
 
+/// The label of the check that grades the nested-generation probe's tool as
+/// having been entered at all.
+let nestedCallEnteredCheckName = "nestedCallEntered"
+
+/// The label of the check that grades the nested, ungrammared generation as
+/// having come back.
+let nestedGenerationReturnedCheckName = "nestedGenerationReturned"
+
 /// Everything one native scenario run produced that its verdict is graded on.
 ///
 /// Three signals, three different questions, deliberately kept apart: the typed
@@ -1377,4 +1390,214 @@ private func parkedRuns(
 /// - Returns: the display string for the `tokens=` field.
 private func usageForDisplay(_ usage: TokenUsage) -> String {
     "out:\(usage.tokensOut) in:unavailable(^z2996cp) contextFill:\(usage.contextFill)?"
+}
+
+// MARK: - The nested-generation probe
+
+/// How often the shared generation gate is sampled while the probe's turn runs.
+///
+/// Frequent enough that even a run killed at the suite's three-minute limit
+/// leaves dozens of readings, and cheap enough to be free: one sample is two
+/// lock-guarded integer reads.
+private let generationGateSampleInterval: Duration = .seconds(5)
+
+/// How many leading characters of the model's reply the `NESTED-GENERATION`
+/// diagnostic line prints.
+///
+/// More than the canary's `inBandCollectionReplyPreviewCharacters`, on purpose
+/// and not by drift. That line carries six fields and a reader chases one
+/// number in the opening clause; this line carries three, and the reply is the
+/// only prose a completed probe run leaves — how the model described a nested
+/// call that came back is worth reading whole.
+private let nestedGenerationReplyPreviewCharacters = 200
+
+/// Prints the shared generation gate's own state, once every
+/// ``generationGateSampleInterval``, until this task is cancelled.
+///
+/// This is Router's own check for the deadlock the probe is built to name. At
+/// the hang the gate must read zero permits and exactly one waiter: the outer
+/// turn holding the permit `beginTurn()` took, and the nested `respond` parked
+/// on `generationGate.wait()`. Nothing else produces that pair.
+///
+/// Sampled while the turn is in flight rather than read afterwards, because a
+/// deadlocked run has no afterwards. `AsyncSemaphore.wait()` is a bare
+/// `withCheckedContinuation` with no cancellation handler, so a parked caller
+/// cannot be unwound and no later line of this suite's own code ever runs. The
+/// last printed reading is what a killed run leaves behind, which is why this
+/// prints rather than asserts.
+///
+/// - Parameter slot: the resolved slot whose resident container owns the gate.
+private func sampleGenerationGate(on slot: RoutedLLM) async {
+    while !Task.isCancelled {
+        let gate = slot.generationGate
+        print("GATE permits=\(gate.availablePermits) waiters=\(gate.waiterCount)")
+        try? await Task.sleep(for: generationGateSampleInterval)
+    }
+}
+
+/// Everything one nested-generation probe run produced that its verdict is
+/// graded on.
+///
+/// Both fields are read off the run's own `ScenarioCallLog`, and they are two
+/// different questions. `enteredPaths` says the probe measured anything at all
+/// — a model that never called the tool leaves a run with nothing in it, and
+/// that must fail rather than pass vacuously. `returnedPaths` says the nested
+/// call *came back*, which is the whole subject.
+///
+/// Plain values a test can write down, for `InBandCollectionEvidence`'s reason:
+/// the grading rule is then exercised without live inference.
+struct NestedGenerationEvidence {
+    /// The model's final reply.
+    let answer: String
+
+    /// The `tools.*` paths a fixture tool entered, recorded on the way in —
+    /// `ScenarioCallLog.enteredPaths`, never `invokedPaths`.
+    let enteredPaths: Set<String>
+
+    /// The `tools.*` paths a fixture tool handed a value back from.
+    let returnedPaths: Set<String>
+}
+
+/// Grades one nested-generation probe run into the conditions its verdict is
+/// the conjunction of.
+///
+/// - Parameter evidence: what the run produced.
+/// - Returns: every condition this run is graded on, in reporting order.
+func nestedGenerationChecks(for evidence: NestedGenerationEvidence) -> [ScenarioCheck] {
+    let path = IntegrationNestedGenerationTool.path
+    return [
+        ScenarioCheck(
+            name: nestedCallEnteredCheckName,
+            held: evidence.enteredPaths.contains(path),
+            failureMessage:
+                "expected the model to call `\(path)`, the one tool mounted, but it called nothing "
+                + "— so this run measured neither a hang nor a return, and says nothing about "
+                + "either explanation. Read the CALL lines: a run with none is a prompt problem, "
+                + "not a verdict"
+        ),
+        ScenarioCheck(
+            name: nestedGenerationReturnedCheckName,
+            held: evidence.returnedPaths.contains(path),
+            failureMessage:
+                "`\(path)` was entered and handed no value back, so its nested ungrammared "
+                + "`respond` did not come back. Read the `GATE` lines to say which way: "
+                + "`permits=0 waiters=1` held to the end is the generation-gate deadlock — the "
+                + "outer turn holding the permit `beginTurn()` took, the nested `respond` parked "
+                + "on `generationGate.wait()` — and it is what the first gated run of this probe "
+                + "measured. Any other gate reading means the call threw instead, which is a "
+                + "third thing and belongs to neither explanation"
+        ),
+    ]
+}
+
+/// Runs the nested-generation probe: one turn whose single mounted tool
+/// generates, without any grammar, on the very model that turn is running on.
+///
+/// **The question.** A gated scenario hangs for ever — 0% CPU, ~19GB resident,
+/// every thread parked on a condition variable — when both profile slots name
+/// one `ModelRef`, because `searchTools` generates from inside the outer turn's
+/// tool call. Two explanations fit, and only one of them needs a grammar:
+///
+/// - MLX's grammar-constrained decode deadlocks, its xgrammar path keeping
+///   shared per-model caches; or
+/// - Router's `RoutedModel.generationGate` — an `AsyncSemaphore(value: 1)` per
+///   resident container — is taken by `beginTurn()` and held for the whole
+///   turn, tool calls included, so a nested `respond` on that container parks
+///   on `generationGate.wait()` and can never be admitted: the permit comes
+///   back only from `endTurn()`, which waits on the tool call, which waits on
+///   the nested `respond`.
+///
+/// This run carries no grammar anywhere. A hang here belongs to the gate and
+/// nothing about MLX is implicated; a return here leaves the grammar as the
+/// thing that matters. That is the whole design, and it is why nothing else may
+/// be mounted.
+///
+/// **`searchTools` is deliberately absent.** The tool list is
+/// `[IntegrationNestedGenerationTool]` and not what
+/// `MultiTool.Registry.makeSessionTools(librarian:)` vends, so no discovery
+/// call, no selection tier and no `MetadataSearcher` is in the picture — every
+/// one of them generates under a grammar, and any of them present would put the
+/// grammar back into the run this exists to hold it out of.
+///
+/// **What a hang looks like from outside.** The turn stops making progress, so
+/// the suite's own `.timeLimit` is what ends it. The evidence is the `GATE`
+/// lines this prints throughout, and the `CallTrace` span the fixture opens:
+/// `log show --predicate 'subsystem == "com.swissarmyhammer.multitool" AND
+/// category == "NestedGenerationProbe"'` shows `enter nestedRespond` with no
+/// matching `exit` for as long as the run lasts.
+///
+/// **What the first run measured, on 2026-08-16.** It hung, with both slots
+/// pinned to `mlx-community/Muse-Glimmer-30B-4bit`:
+///
+/// ```
+/// GATE permits=1 waiters=0        <- before the turn
+/// GATE permits=0 waiters=0        <- beginTurn() took the permit
+/// GATE permits=0 waiters=1        <- and held to the end of the run
+/// ...
+/// ✘ Time limit was exceeded: 180.000 seconds
+/// NESTED-GENERATION [nestedGeneration] elapsed=174.9s entered=[] returned=[] reply=""
+/// ```
+///
+/// beside, in the unified log:
+///
+/// ```
+/// 08:15:49.698 enter nestedRespond #1 checkModelReadiness
+/// 08:18:34.135 exit  nestedRespond #1 threw CancellationError()
+/// ```
+///
+/// 165 seconds inside one nested `respond` with no grammar anywhere in the run,
+/// and the exit arrives only once the harness cancels the outer turn — which is
+/// the mechanism itself: the permit comes back from `endTurn()`, and cancelling
+/// the turn is what let the parked waiter through. **Router's generation gate is
+/// the deadlock, and MLX's grammar path is not needed to explain it.**
+///
+/// The `entered=[]` on that line is not the model declining to call the tool.
+/// `ScenarioCallLog` recorded a call only on the way out at the time, so a call
+/// that never came back was invisible; `enteredPaths` was added for this, and a
+/// rerun of the same hang reads `entered=[checkModelReadiness] returned=[]`.
+///
+/// - Parameters:
+///   - name: a short label identifying the run, used in the printed lines.
+///   - prompt: the user request driving the turn.
+/// - Throws: any error other than `GenerationError.notWiredForLiveInference`.
+func runNestedGenerationProbe(name: String, prompt: String) async throws {
+    try await withLiveRouterFixture(name: name) { fixture in
+        let log = ScenarioCallLog()
+        let slot = fixture.profile.standard
+        // One tool, mounted directly rather than through the registry. See this
+        // runner's own documentation for why `searchTools` must not be here.
+        //
+        // No instructions either, matching every other runner in this file: the
+        // tool's own description is the whole surface a host gives a model.
+        let session = slot.makeSession(tools: [IntegrationNestedGenerationTool(slot: slot, log: log)])
+
+        let start = Date()
+        let turn = try await withThrowingTaskGroup(of: Void.self, returning: StreamedTurn.self) { group in
+            group.addTask { await sampleGenerationGate(on: slot) }
+            // Cancelled on every exit path, so the sampler cannot outlive the
+            // turn it is sampling — including the path where the turn throws.
+            defer { group.cancelAll() }
+            return try await streamTurn(of: session, prompt: prompt)
+        }
+        let elapsed = Date().timeIntervalSince(start)
+
+        let evidence = NestedGenerationEvidence(
+            answer: turn.answer,
+            // `enteredPaths`, never `invokedPaths`: the log records a call in
+            // `invokedPaths` on the way *out*, so a call parked for ever is
+            // absent from it — the same reading a model that never called the
+            // tool produces. Measured: the first gated run of this probe
+            // reported `entered=[]` for a call that had been open 165 seconds.
+            enteredPaths: await log.enteredPaths,
+            returnedPaths: await log.returnedPaths
+        )
+        grade(scenario: name, checks: nestedGenerationChecks(for: evidence))
+
+        print(
+            "NESTED-GENERATION [\(name)] elapsed=\(String(format: "%.1f", elapsed))s "
+                + "entered=\(evidence.enteredPaths.sorted()) "
+                + "returned=\(evidence.returnedPaths.sorted()) "
+                + "reply=\"\(turn.answer.prefix(nestedGenerationReplyPreviewCharacters))\""
+        )
+    }
 }

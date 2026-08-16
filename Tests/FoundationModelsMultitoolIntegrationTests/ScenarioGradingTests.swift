@@ -4,8 +4,8 @@ import Testing
 
 /// Ungated coverage for the verdicts a gated scenario is graded on —
 /// `scenarioChecks(for:answerContainsOneOf:answerMustNotContain:groundedIn:)`
-/// and `inBandCollectionChecks(for:answerContainsOneOf:groundedIn:)` in
-/// `Support/ScenarioRunner.swift`.
+/// `inBandCollectionChecks(for:answerContainsOneOf:groundedIn:)` and
+/// `nestedGenerationChecks(for:)` in `Support/ScenarioRunner.swift`.
 ///
 /// The grounding condition used to hold whenever *any* fixture call returned,
 /// which is a weaker question than the one a scenario asks. Recorded on task
@@ -158,6 +158,63 @@ struct ScenarioGradingTests {
         #expect(grounded.held)
     }
 
+    // MARK: - The nested-generation probe's verdict
+
+    @Test("a nested ungrammared generation that came back passes the probe")
+    func aNestedGenerationThatReturnedPassesTheProbe() {
+        // The completing reading: the tool was entered and handed its readiness
+        // token back, so the nested `respond` came back and the grammar is what
+        // separates this run from the hang.
+        let checks = nestedGenerationChecks(
+            for: NestedGenerationEvidence(
+                answer: Self.replyReportingTheReadinessToken,
+                enteredPaths: [IntegrationNestedGenerationTool.path],
+                returnedPaths: [IntegrationNestedGenerationTool.path]
+            )
+        )
+
+        let failed = checks.filter { !$0.held }.map(\.name)
+        #expect(failed.isEmpty)
+    }
+
+    @Test("a run whose only tool was never called fails the probe rather than passing vacuously")
+    func aRunThatCalledNothingFailsTheProbe() throws {
+        // The shape that must never read as a verdict: the model answered
+        // without calling the one tool mounted, so nothing generated inside a
+        // tool call and the run separates neither explanation. A probe that
+        // passed here would report "no deadlock" for a run that never tried.
+        let checks = nestedGenerationChecks(
+            for: NestedGenerationEvidence(
+                answer: Self.replyReportingTheReadinessToken,
+                enteredPaths: [],
+                returnedPaths: []
+            )
+        )
+
+        let entered = try Self.check(nestedCallEnteredCheckName, in: checks)
+        #expect(!entered.held)
+    }
+
+    @Test("a nested generation that threw fails the probe on the return, not on the entry")
+    func aNestedGenerationThatThrewFailsOnTheReturn() throws {
+        // The third outcome, which is neither reading: the call was entered and
+        // its nested `respond` threw. Graded apart from the two above so a
+        // reader of a red run knows an error from a deadlock — a deadlock never
+        // reaches this grading at all.
+        let checks = nestedGenerationChecks(
+            for: NestedGenerationEvidence(
+                answer: "",
+                enteredPaths: [IntegrationNestedGenerationTool.path],
+                returnedPaths: []
+            )
+        )
+
+        let entered = try Self.check(nestedCallEnteredCheckName, in: checks)
+        #expect(entered.held)
+        let returned = try Self.check(nestedGenerationReturnedCheckName, in: checks)
+        #expect(!returned.held)
+    }
+
     // MARK: - Building the graded evidence
 
     /// Grades one canary record against the gated scenario's own answers and
@@ -184,6 +241,17 @@ struct ScenarioGradingTests {
     /// passing after the fixture's code changed under it.
     private static var replyReportingTheManifestCode: String {
         "Rebuild is under way. Manifest code: \(integrationArchiveRebuildManifestCode)"
+    }
+
+    /// The reply the nested-generation probe's records are graded on: an answer
+    /// reporting the readiness token.
+    ///
+    /// Rebuilt from the fixture rather than quoted, for
+    /// ``replyNamingTheWarmestCity``'s reason. The probe's verdict never reads
+    /// the reply — it grades the call log — so this is here to keep each record
+    /// a whole run rather than to be asserted on.
+    private static var replyReportingTheReadinessToken: String {
+        "Your model is responsive. Readiness token: \(integrationNestedGenerationToken)"
     }
 
     /// Runs one snippet against the compose scenario's own two fixture tools.
