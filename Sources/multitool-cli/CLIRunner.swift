@@ -110,8 +110,8 @@ struct CLIRouterUnavailableError: Error, CustomStringConvertible {
 /// resolving a model profile via `Router`, wrapping the resolved `.standard`
 /// generation slot as a real `FoundationModels.LanguageModel`
 /// (`MLXLanguageModel`), and mounting whatever
-/// `MultiTool.Registry.makeSessionTools(librarian:)` vends — `searchTools` then
-/// `runCode`, or `runCode` alone under `--direct` — directly on a native
+/// `MultiTool.Registry.makeSessionTools(librarian:)` vends — `searchTools`,
+/// `runCode`, `wait`, or `runCode` and `wait` under `--direct` — directly on a native
 /// `FoundationModels.LanguageModelSession`. Apple's own tool-calling loop decides when to
 /// call `searchTools` vs `runCode` — this file drives no turn-parsing loop of
 /// its own, unlike the retired `MultiToolAgent`-based demo this replaces.
@@ -202,18 +202,26 @@ enum CLIRunner {
     static let demoProfile = ProfileDefinition(
         name: "multitool-cli-demo",
         description: "Tool-calling-capable models for the multitool-cli sample.",
-        // Two different models, mirroring the gated suite's
-        // `multitoolTinyProfile` (see `IntegrationGate.swift` for the full
-        // reasoning): Muse Glimmer drives the main session, and the selection
-        // tier `searchTools` runs on `flash` gets a model of its own.
+        // One model in both slots, mirroring the gated suite's
+        // `multitoolTinyProfile` (see `IntegrationGate.swift`): Muse Glimmer
+        // drives the main session, and the selection tier `searchTools` runs
+        // on `flash` is the same model.
         //
-        // They must not be the same reference. One reference means one
-        // resident container, and a gated scenario with both slots on one
-        // model hung for 15 minutes at 0% CPU. Why is not known: the
-        // container-lock explanation was disproved by the fork's own test
-        // (`mlx-swift-lm` `ca8e22f`), which shows a tool body may generate on
-        // the same container safely. See `IntegrationGate.swift` for the
-        // evidence and the open leads. This split is empirical.
+        // One reference means one resident container, and that is a known
+        // deadlock today — not an unexplained one. A container carries a
+        // single `generationGate`, `beginTurn()` takes its one permit and
+        // holds it for the whole turn including tool rounds, so a
+        // `searchTools` call made from inside a turn waits for a permit only
+        // that turn's end can free. Measured at `permits=0 waiters=1` for the
+        // life of the run. It is Router's defect, tracked on their `^1zt7vyg`,
+        // and this package's regression test for it is
+        // `NestedGenerationProbeTests`.
+        //
+        // The earlier split onto two models was a workaround for this, written
+        // when the cause was still unknown and wrongly blamed on a container
+        // lock in `mlx-swift-lm` — an explanation that repository's own test
+        // (`ca8e22f`) refuted by generating from a tool body on one container
+        // safely.
         standard: ["mlx-community/Muse-Glimmer-30B-mxfp4"],
         flash: ["mlx-community/Muse-Glimmer-30B-mxfp4"],
         embedding: ["mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ"],
@@ -285,9 +293,17 @@ enum CLIRunner {
     ///
     /// Parses `arguments`, and — unless `--help` was given or parsing
     /// failed — resolves `demoProfile`, constructs a native
-    /// `LanguageModelSession` over the tools the registry vends (`searchTools`
-    /// then `runCode`, or `runCode` alone under `--direct`), calls `session.respond(to:)` once against
-    /// `demoPrompt`, and writes the answer to `output`.
+    /// `LanguageModelSession` over the tools the registry vends (`searchTools`,
+    /// `runCode`, `wait` — or `runCode` and `wait` alone under `--direct`),
+    /// calls `session.respond(to:)` once against `demoPrompt`, and writes the
+    /// answer to `output`.
+    ///
+    /// **This is a bare `LanguageModelSession`, not the `RoutedSession` the
+    /// host contract names** (`MultiTool.Registry.makeSessionTools`). On a bare
+    /// session the mounted tools cannot detach, so a slow `runCode` blocks
+    /// rather than answering with a pending envelope and `wait` has nothing to
+    /// join. The demo reads correctly because its fixtures are fast. Recorded
+    /// as a divergence on task `^tkrdwb8`.
     ///
     /// - Parameters:
     ///   - arguments: the raw arguments (excluding the executable name).
@@ -388,12 +404,15 @@ enum CLIRunner {
             }
 
             // The registry vends its own mounted tools, in the order the
-            // model reads them — `searchTools` before `runCode`, and `runCode`
-            // alone once `directMode()` above has taken discovery away. The
-            // `searchTools` half's internal selection tier is backed by a
-            // separate, Router-resolved `profile.flash` session — the
-            // registry-backed `SelectionTier`'s "librarian on flash" split —
-            // independent of `mlxModel`/the main session below.
+            // model reads them — `searchTools`, then `runCode`, then `wait`,
+            // with discovery dropped once `directMode()` above has taken it
+            // away. The `searchTools` half's internal selection tier is backed
+            // by a Router-resolved `profile.flash` session — the
+            // registry-backed `SelectionTier`'s "librarian on flash" split.
+            //
+            // `flash` and `standard` name the same model here (`demoProfile`),
+            // so that tier and the main session below share one resident
+            // container. See `demoProfile` for what that costs.
             //
             // Explicitly typed for the same reason the local was before:
             // disambiguation against `MLXLMCommon.Tool`, also in scope via
@@ -401,7 +420,7 @@ enum CLIRunner {
             let tools: [any FoundationModels.Tool] = try registry.makeSessionTools(librarian: profile.flash)
 
             let mlxModel = Self.makeMLXLanguageModel(for: profile.standard)
-            // No instructions. Mounting the two tools is the whole host
+            // No instructions. Mounting the vended tools is the whole host
             // contract — their descriptions carry the entire behavioral
             // contract, and a session instruction a real host may never pass
             // must not be load-bearing (see

@@ -98,16 +98,17 @@ extension MultiTool {
             !isDirectMode
         }
 
-        /// Builds the tools a host mounts on its `LanguageModelSession`, in
-        /// the order the model reads them.
+        /// Builds the tools a host mounts on its session, in the order the
+        /// model reads them.
         ///
-        /// `searchTools` comes first, `runCode` second. A session's tool list is
-        /// read as a whole before the model picks its opening move, so the
-        /// list is itself the first statement of what a turn looks like here:
-        /// discover what exists, then execute against what came back.
+        /// `searchTools` comes first, `runCode` second, `wait` last. A
+        /// session's tool list is read as a whole before the model picks its
+        /// opening move, so the list is itself the first statement of what a
+        /// turn looks like here: discover what exists, execute against what
+        /// came back, and block only when a result has not arrived yet.
         /// Presenting `runCode` first states the opposite — that execution is
         /// the primary affordance and discovery an aside — which is the
-        /// reverse of what both tool descriptions ask for.
+        /// reverse of what the tool descriptions ask for.
         ///
         /// That order is vended rather than only documented because a host
         /// assembling the array by hand has to get it right every time and
@@ -116,13 +117,27 @@ extension MultiTool {
         /// re-derives from `isDirectMode` what `supportsSearchTools` already
         /// knows.
         ///
-        /// This is the whole host contract. A host builds a registry and
-        /// mounts what this returns — nothing else. In particular it passes
-        /// **no session instructions**: the two tool descriptions carry the
+        /// This is the whole host contract. A host builds a registry, mounts
+        /// what this returns on a `RoutedSession`, and drives that session by
+        /// draining `streamEvents(to:)` — nothing else. In particular it passes
+        /// **no session instructions**: the mounted tool descriptions carry the
         /// entire behavioral contract, and they do so because a `Tool`
         /// conformance's description is serialized into the prompt on every
         /// turn while a session instruction is optional and a host may not
         /// pass one at all.
+        ///
+        /// The session type is part of the contract, not a detail. A
+        /// `RoutedSession` is what mounts each tool under
+        /// `DetachConfiguration.nativeSessionMount`, so a slow `runCode`
+        /// detaches and answers with a pending envelope the model collects
+        /// with `wait`. Mounted on a bare `FoundationModels
+        /// .LanguageModelSession` the same tools cannot detach at all: the
+        /// snippet simply blocks, no envelope is ever written, and `wait` has
+        /// nothing to join. The gated suite drives exactly this contract —
+        /// `Tests/FoundationModelsMultitoolIntegrationTests/Support/
+        /// ScenarioRunner.swift` builds every scenario session as
+        /// `profile.standard.makeSession(tools:discoveryPriming:)` with no
+        /// instructions, then drains `streamEvents`.
         ///
         /// The order here is deliberately not `affordances`'s. That property
         /// names which operations a registry surfaces, for a caller or a test
@@ -139,8 +154,9 @@ extension MultiTool {
         ///     alone exactly as it always has. Pass the **main** generation
         ///     slot: the sample is code the model is told to run, so its
         ///     quality matters more than its cost. Unused in direct mode.
-        /// - Returns: `searchTools` followed by `runCode`, or `runCode` alone in
-        ///   direct mode.
+        /// - Returns: `searchTools`, `runCode`, `wait` — or `runCode` and
+        ///   `wait` in direct mode, which takes discovery away but not
+        ///   detachment.
         /// - Throws: whatever
         ///   `SearchToolsTool.init(registry:librarian:limit:sampleGenerator:)`
         ///   throws.

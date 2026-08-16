@@ -2870,6 +2870,36 @@ comments:
 
     Add to this card's exit checks: `grep -n 'path: "../' Package.swift` returns nothing.
   timestamp: 2026-08-10T15:52:25.046115+00:00
+- actor: claude-code
+  id: 01m05kyg39zj2pd28qqactssg4
+  text: |-
+    ### Two criteria closed without a gated run; a third is half done and one new divergence is found
+
+    Worked the unblocked half of this card on 2026-08-16 while Router's `^1zt7vyg` gate fix is still open. Ungated `swift test` green after the changes: 340 tests in 28 suites, and 59 tests in 11 suites.
+
+    **Closed — `SearchThenCallTests` on the Router path, streaming, no instructions.** This is a code-state question, not a measurement question, so no gated run was needed. `runNativeIntegrationScenario` builds its session as `fixture.profile.standard.makeSession(tools:discoveryPriming:)` (`ScenarioRunner.swift:174`), which is a `RoutedSession`, and `streamTurn(of:prompt:)` drains `streamEvents(to:)` (`ScenarioRunner.swift:510`). `scenarioDiscoveryPriming` is `nil` (`ScenarioRunner.swift:48`).
+
+    **Closed — harness purity.** `rg 'instructions:'` over `Tests/FoundationModelsMultitoolIntegrationTests/` returns nothing. All six `makeSession` call sites pass `tools:` and `discoveryPriming:` only. The model gets the mounted tool descriptions and the scenario prompt, nothing else.
+
+    **Half done — host contract documented.** The documentation half is now correct; the "gated suite passes using only that" half waits on `^1zt7vyg`. What was wrong and is now fixed:
+
+    - `MultiTool.Registry.makeSessionTools` returns **three** tools — `searchTools`, `runCode`, `WaitTool()` — and two in direct mode. Its doc comment described two and one, its `- Returns:` line named two, and its host-contract paragraph said "the two tool descriptions carry the entire behavioral contract". `wait` was mounted by `^ddgjps6` and the prose never followed.
+    - The host-contract paragraph did not name the session type. It now states that a host mounts on a `RoutedSession` and drives it by draining `streamEvents(to:)`, and says why the session type is part of the contract rather than a detail: `RoutedSession` mounts each tool under `DetachConfiguration.nativeSessionMount`, so a slow `runCode` detaches and answers with a pending envelope. It cites `ScenarioRunner.swift` as the suite that drives exactly that contract.
+    - `CLIRunner`'s own three stale copies of the two-tool claim are corrected (file header, `run(...)`, and the `runDemo` mount comment).
+
+    **New divergence, recorded not fixed.** The criterion says `CLIRunner` is the reference host and the harness must match it. It is the reference host that does not match:
+
+        CLIRunner.swift:428   let session = LanguageModelSession(model: mlxModel, tools: tools)
+        CLIRunner.swift:438   let response: ... = try await session.respond(to: demoPrompt)
+
+    That is a bare `FoundationModels.LanguageModelSession` driven by `respond(to:)`, not a `RoutedSession` driven by `streamEvents`. On the bare path the mounted tools cannot detach at all — `ScenarioRunner.swift:277` states the same thing from the other side: "on that path a slow snippet simply blocks and a pending envelope can never appear". So the shipped reference host cannot exercise detachment, `wait` has nothing to join, and `CLISmokeTests` grades a configuration the contract does not describe. The demo reads correctly only because its fixtures are fast.
+
+    Not fixed here for one reason: changing the CLI's session type is verified by `CLISmokeTests`, which is gated, and every gated suite deadlocks under the current one-model pin. It is documented at the call site so the next reader is not misled, and it should be fixed and verified in the same pass as the re-measurement.
+
+    **Also corrected — a stale comment that contradicted the code.** `demoProfile` carried "They must not be the same reference ... Why is not known", written directly above two identical `Muse-Glimmer-30B-mxfp4` references. Both halves were wrong: the slots are the same reference now, and the cause is known and measured (`generationGate`, `permits=0 waiters=1`). Rewritten to state the mechanism, name Router's `^1zt7vyg`, and name `NestedGenerationProbeTests` as this package's regression test.
+
+    **Still blocked on Router `^1zt7vyg`:** the gated `MULTITOOL_INTEGRATION` run, the step-4 re-measurement table, Router's own `FM_ROUTER_INTEGRATION_TESTS` run, and the ready-to-tag report.
+  timestamp: 2026-08-16T15:44:49.769238+00:00
 depends_on:
 - 01KZ6N4Q7K53WSTJ3M6E76ZK99
 - 01KZ6N545VYCB60H716AZ1XS92
@@ -2923,9 +2953,9 @@ Ordered work in THIS repo — execute in this order:
 - [x] Bisect Protocol executed: tables recorded, decision rule applied mechanically, third-branch park taken and superseded by the RESOLUTION
 - [x] ^0981ar3 closed (registry-intersection grounding) BEFORE any re-measurement — it is in `done`; the box was simply never ticked
 - [x] ~~runCode collect-pattern sentence added~~ — **superseded 2026-08-11.** The collect pattern was `wait(completionToken, seconds)` inside a snippet, and it is being removed rather than documented: it asked the model to predict how long another party's work takes. Waiting is now a mounted `wait` tool (`^ddgjps6`), and `runCode` loses the concept entirely (`^cv98vff`). Measured reason: with `do not wait()` in its own description the model still wrote `return await wait(token, 60)` seven times, because a pending envelope instructed it to
-- [ ] `SearchThenCallTests` runs on the Router path, **streaming** (`streamEvents`, drained), with **no** session instructions. Two corrections to this criterion as written: pre-discovery priming is **off** — measured, it scored 0/4 with no scenario writing a snippet at all, so `scenarioDiscoveryPriming = nil` and the constant documents the A/B; and `sessionInstructions` **no longer exists**, so the whole contract is carried by the two mounted tool descriptions, which is the stronger property this criterion was reaching for
+- [x] `SearchThenCallTests` runs on the Router path, **streaming** (`streamEvents`, drained), with **no** session instructions. Two corrections to this criterion as written: pre-discovery priming is **off** — measured, it scored 0/4 with no scenario writing a snippet at all, so `scenarioDiscoveryPriming = nil` and the constant documents the A/B; and `sessionInstructions` **no longer exists**, so the whole contract is carried by the two mounted tool descriptions, which is the stronger property this criterion was reaching for
 - [ ] `MULTITOOL_INTEGRATION=1 swift test` green with NO retry semantics — **consumed from `^0q2je6m`**, which owns the gated green run and asserts the trace as well as the score. Do not re-measure here; read that card's recorded table
-- [ ] Harness purity verified: the gated suite feeds the model only the tool-exported contract; any surplus harness-side system text removed
+- [x] Harness purity verified: the gated suite feeds the model only the tool-exported contract; any surplus harness-side system text removed. Checked 2026-08-16 by grep: no `instructions:` argument exists anywhere in `Tests/FoundationModelsMultitoolIntegrationTests/`, and every one of the six `makeSession` call sites passes `tools:` and `discoveryPriming:` alone, with `scenarioDiscoveryPriming = nil`
 - [ ] Host contract documented: a doc comment states exactly what a host must configure, and the gated suite passes using only that. Rewritten 2026-08-11 — `FindAPIsTool` is now `SearchToolsTool`, `sessionInstructions` is gone, and pre-discovery priming is not recommended (it measured 0/4). What a host configures is: the tools `makeSessionTools(librarian:)` vends, mounted on a `RoutedSession`, driven by `streamEvents`. `CLIRunner.swift:390` is the reference host, and the harness must match it — it silently diverged by wiring a `sampleGenerator` the product never uses
 - [ ] `FM_ROUTER_INTEGRATION_TESTS=1 swift test` green in ../FoundationModelsRouter — waits on cross-board prereq 4; if still open when everything else is done, leave unchecked, note it, and report ready-except-Router
 - [x] Ungated `swift test` green in this repo, Router, and OperationTool
