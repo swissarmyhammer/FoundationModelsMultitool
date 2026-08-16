@@ -13,13 +13,12 @@ The model writes a snippet that calls a tool, throws the return value away, and 
 
 The 900-second run made five `runCode` calls:
 
-    #1 completed: "Archive rebuild is now under way. I will send you the exact
-                   manifest code as soon as the rebuild completes."
-    #2 completed: The snippet failed: Can't find variable: global (line 8)
-    #3 completed: "Archive rebuild is now under way. I will send you the exact
-                   manifest code as soon as the rebuild completes."
-    #4 completed: same sentence
-    #5 completed: same sentence
+    call 1  completed: "Archive rebuild is now under way. I will send you the
+                        exact manifest code as soon as the rebuild completes."
+    call 2  completed: The snippet failed: Can't find variable: global (line 8)
+    call 3  completed: the same sentence as call 1
+    call 4  completed: the same sentence as call 1
+    call 5  completed: the same sentence as call 1
     response: ms=895803  tokensIn=27747  tokensOut=9752
 
 A passing run of the same scenario makes one `runCode` call, gets `detail: 58204`, and spends 4,501 output tokens. The loop costs more than twice that and reaches nothing.
@@ -47,7 +46,7 @@ Whatever ships must be measured, not argued. The scenario reproduces it in rough
 
 ## What is deliberately not done
 
-Not fixed by loosening the canary. Its time limit went 3 → 15 → 8 minutes across this investigation, and the 900-second run is what proved a bigger ceiling only buys a longer loop. The suite is expected red until this is fixed, which is the canary reporting a real defect rather than a test needing a nudge.
+Not fixed by loosening the canary. Its time limit went 3 to 15 to 8 minutes across this investigation, and the 900-second run is what proved a bigger ceiling only buys a longer loop. The suite is expected red until this is fixed, which is the canary reporting a real defect rather than a test needing a nudge.
 
 ## Acceptance Criteria
 

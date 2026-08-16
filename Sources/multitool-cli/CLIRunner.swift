@@ -10,8 +10,11 @@ import MLXLMCommon
 // `loadModelContainer` below selects a factory through `MLXLMCommon`'s
 // `ModelFactoryRegistry`, which finds its built-in trampolines with
 // `NSClassFromString`, so a factory whose module the linker dropped is
-// silently absent from that list. Muse Glimmer (`muse_glimmer`), the
-// model `demoProfile` pins, is registered only in `VLMModelFactory`.
+// silently absent from that list. Whether the model `generationModel`
+// names needs it is not a thing to check and drop: Muse Glimmer
+// (`muse_glimmer`) was registered in `VLMModelFactory` alone, and dropping
+// this import cost a full download before `.unsupportedModelType` was
+// thrown. Keeping it makes both factories reachable whatever the pin is.
 import MLXVLM
 import Tokenizers
 
@@ -193,19 +196,46 @@ enum CLIRunner {
             """
     }
 
-    /// The profile used for the demo run.
+    /// The generation model both slots resolve — **the single place a
+    /// generation model is named in this package.**
     ///
-    /// Deliberate use of tool-calling-capable models, matching the
-    /// gated integration suite's own `multitoolTinyProfile`
-    /// (`Tests/FoundationModelsMultitoolIntegrationTests/Support/IntegrationGate.swift`)
-    /// so a machine that already ran that suite shares the cached weights.
+    /// `demoProfile` below puts it in `standard` and in `flash`, and the gated
+    /// integration suite's `multitoolTinyProfile` *is* `demoProfile`
+    /// (`Tests/FoundationModelsMultitoolIntegrationTests/Support/IntegrationGate.swift`),
+    /// so changing this one line moves the CLI and every gated scenario
+    /// together. That matters more than it sounds: the suite exists to measure
+    /// what a host actually runs, and while the two lists were written out
+    /// separately they were free to disagree — the CLI and the suite each named
+    /// their own models, and nothing failed when they drifted.
+    ///
+    /// `IntegrationGate.swift` carries the measurement history behind every
+    /// model that has held this slot, because that history is a record of gated
+    /// runs. This is where the choice lives; that is where the evidence lives.
+    ///
+    /// No `@revision`: this tracks the repository's default revision, so it is
+    /// a model *choice* rather than a version lock.
+    static let generationModel: ModelRef = "mlx-community/Qwen3.8-27B-mxfp4"
+
+    /// The embedding model, unchanged across every generation-model swap and
+    /// shared with Router's own gated suite so the weights are already cached.
+    static let embeddingModel: ModelRef = "mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ"
+
+    /// The profile used for the demo run, and by the gated integration suite.
+    ///
+    /// Deliberate use of tool-calling-capable models. The gated suite resolves
+    /// this exact value rather than a parallel definition of its own — see
+    /// `generationModel` above for why.
     static let demoProfile = ProfileDefinition(
         name: "multitool-cli-demo",
         description: "Tool-calling-capable models for the multitool-cli sample.",
-        // One model in both slots, mirroring the gated suite's
-        // `multitoolTinyProfile` (see `IntegrationGate.swift`): Muse Glimmer
-        // drives the main session, and the selection tier `searchTools` runs
-        // on `flash` is the same model.
+        // **This is the one place any model is named.** The gated suite does
+        // not keep its own pin: `multitoolTinyProfile` is this value
+        // (`IntegrationGate.swift`), so the suite measures the models the CLI
+        // ships and a swap here moves both. Two lists drifted apart once and
+        // the suite spent its runs grading a configuration no host had.
+        //
+        // One model in both slots: it drives the main session, and the
+        // selection tier `searchTools` runs on `flash` is the same model.
         //
         // One reference means one resident container, and that is a known
         // deadlock today — not an unexplained one. A container carries a
@@ -222,9 +252,9 @@ enum CLIRunner {
         // lock in `mlx-swift-lm` — an explanation that repository's own test
         // (`ca8e22f`) refuted by generating from a tool body on one container
         // safely.
-        standard: ["mlx-community/Muse-Glimmer-30B-mxfp4"],
-        flash: ["mlx-community/Muse-Glimmer-30B-mxfp4"],
-        embedding: ["mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ"],
+        standard: [generationModel],
+        flash: [generationModel],
+        embedding: [embeddingModel],
         // `nil`, not a number: resolve the model's own context window rather
         // than imposing one, exactly as the gated suite's
         // `multitoolTinyProfile` does. A pinned figure is always wrong on the
@@ -479,9 +509,10 @@ enum CLIRunner {
         )
         return MLXLanguageModel(
             configuration: modelConfiguration,
-            // `.reasoning` is not optional for this profile's model. Muse
-            // Glimmer always reasons, and a caller that does not declare the
-            // capability is asking `MLXLanguageModel` to suppress thinking —
+            // `.reasoning` is not optional for a model that always reasons,
+            // which every model pinned here so far has been. A caller that
+            // does not declare the capability is asking `MLXLanguageModel` to
+            // suppress thinking —
             // which it cannot do, so the call throws
             // `LanguageModelError.unsupportedCapability` ("This model always
             // reasons; .reasoning must be declared at MLXLanguageModel init to

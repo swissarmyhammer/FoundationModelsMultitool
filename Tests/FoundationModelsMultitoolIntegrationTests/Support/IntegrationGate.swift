@@ -3,16 +3,17 @@ import HuggingFace
 import MLXHuggingFace
 import MLXLMCommon
 // Load-bearing although this file names no `MLXVLM` symbol: keep it.
-// `TinyModels.generation` is registered in `VLMModelFactory` alone, and
-// `MLXLMCommon`'s `ModelFactoryRegistry` finds its trampolines with
-// `NSClassFromString` — a module the linker dropped is silently absent
-// from that list, and the id then throws `unsupportedModelType` after
-// paying for the whole download.
+// The pinned generation model may be registered in `VLMModelFactory`
+// alone, and `MLXLMCommon`'s `ModelFactoryRegistry` finds its trampolines
+// with `NSClassFromString` — a module the linker dropped is silently
+// absent from that list, and the id then throws `unsupportedModelType`
+// after paying for the whole download.
 import MLXVLM
 import Testing
 import Tokenizers
 
 import FoundationModelsRouter
+@testable import multitool_cli
 
 /// The opt-in environment variable enabling this gated, real-model suite —
 /// plan.md M6.5: "opt-in via env var (e.g. MULTITOOL_INTEGRATION=1)". Unset
@@ -70,7 +71,7 @@ var multitoolIntegrationEnabled: Bool {
 ///
 /// `generation` deliberately does *not* reuse Router's own gated suite's
 /// pinned `SmolLM-135M-Instruct-4bit` (`IntegrationTests.swift`'s
-/// `TinyModels`): empirically, on this suite's live-hardware run
+/// own `TinyModels`): empirically, on this suite's live-hardware run
 /// (`exbtj1n`'s gated pass), that 135M model could not reliably follow even
 /// the single-tool `ACTION:`/`TASK:`/`CODE:` convention — its `tolerantParse`
 /// turns degenerated into unrelated hallucinated prose (and, in one repair
@@ -279,37 +280,21 @@ var multitoolIntegrationEnabled: Bool {
 /// Neither reference carries an `@revision`, so both track their repository's
 /// default revision rather than a fixed commit — these are model *choices*,
 /// not version locks, whatever the surrounding prose calls them.
-private enum TinyModels {
-    static let generation: ModelRef = "mlx-community/Muse-Glimmer-30B-mxfp4"
-    static let selection: ModelRef = generation
-    static let embedding: ModelRef = "mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ"
-}
 
-/// The tiny co-fitting profile this suite resolves once per test — mirrors
-/// Router's own `tinyProfile`. `context` is sized to comfortably fit this
-/// suite's largest rendered prompt — the ~20-distractor discovery scenario's
-/// assembled selection prefix plus its guided id-enum grammar's completion —
-/// with headroom to spare; the co-fitting trio's combined KV footprint is
-/// negligible next to the hardware this gated suite requires.
-let multitoolTinyProfile = ProfileDefinition(
-    name: "multitool-integration-tiny",
-    description: "Deliberately tiny, tool-calling-capable models for the gated M6.5 integration suite.",
-    standard: [TinyModels.generation],
-    flash: [TinyModels.selection],
-    embedding: [TinyModels.embedding],
-    // `nil`, not a number: resolve the model's own context window rather than
-    // imposing one. The 8192 that stood here was sized for the *selection*
-    // tier's assembled prefix, and it was silently applied to the generation
-    // turn too — a turn that carries two tool descriptions, a verbose
-    // `searchTools` result, and a snippet. Muse Glimmer's real window is far
-    // larger, so the cap constrained nothing except us: a generation turn that
-    // outgrows it loses the very tool definitions and discovery output it is
-    // supposed to act on, which is exactly the "there are no available tools
-    // or functions in this session" reply this suite kept recording.
-    // `ProfileDefinition.defaultContext` remains the fallback if the lookup
-    // fails, so this cannot resolve to nothing.
-    context: nil
-)
+/// The profile this suite resolves once per test.
+///
+/// **`CLIRunner.demoProfile` itself — this suite keeps no pin of its own.**
+/// The models, the slot layout and the `nil` context all come from the value
+/// the CLI ships, so a gated run measures the configuration a host really
+/// gets and a model swap is one edit in one file
+/// (`CLIRunner.generationModel`).
+///
+/// It was two definitions until 2026-08-16, and nothing held them together:
+/// the CLI named its models and this file named its own, so the suite was
+/// free to grade a configuration no host had. The measurement history for
+/// every model that has held the slot stays here, above, because it is a
+/// record of *this suite's* runs; only the choice moved.
+let multitoolTinyProfile = CLIRunner.demoProfile
 
 /// The one-at-a-time turnstile every gated scenario passes through before it
 /// puts a live profile on the GPU.

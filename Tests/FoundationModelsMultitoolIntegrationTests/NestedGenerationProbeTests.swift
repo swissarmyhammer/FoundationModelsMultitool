@@ -6,7 +6,7 @@ import Testing
 /// resident, 98% of system memory free, zero swap, every thread parked and the
 /// MLX scheduler on a condition variable — when both slots of
 /// `multitoolTinyProfile` name one `ModelRef`, because `searchTools` generates
-/// from inside the outer turn's tool call. `TinyModels` records the measurement
+/// from inside the outer turn's tool call. `multitoolTinyProfile` records the measurement
 /// and records that splitting the two pins removes it; what it does not record
 /// is *why*, and it says so.
 ///
