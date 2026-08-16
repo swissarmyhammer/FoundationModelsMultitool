@@ -214,7 +214,7 @@ enum CLIRunner {
     ///
     /// No `@revision`: this tracks the repository's default revision, so it is
     /// a model *choice* rather than a version lock.
-    static let generationModel: ModelRef = "mlx-community/Qwen3.8-27B-mxfp4"
+    static let generationModel: ModelRef = "mlx-community/Qwen3.8-27B-MTP-mxfp4"
 
     /// The embedding model, unchanged across every generation-model swap and
     /// shared with Router's own gated suite so the weights are already cached.
