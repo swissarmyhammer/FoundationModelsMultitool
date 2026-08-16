@@ -1,0 +1,1 @@
+{"id":"01M05WE149SNZGVXN18QJBHZ6S","timestamp":"2026-08-16T18:13:07.337679Z","op":"create","item_id":"01M05WE149FVP42PDSBTJC8PSB","forward_patch":"--- original\n+++ modified\n@@ -0,0 +1,2 @@\n+color: 1d76db\n+tag_name: '2'\n","reverse_patch":"--- original\n+++ modified\n@@ -1,2 +0,0 @@\n-color: 1d76db\n-tag_name: '2'\n","transaction_id":null}

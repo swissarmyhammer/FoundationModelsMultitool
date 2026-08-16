@@ -71,7 +71,8 @@ import Testing
 @Suite(
     "Gated in-band collection canary (the model collects its own parked run)",
     .serialized,
-    // Fifteen minutes, set from measurement rather than from the peer band.
+    // Eight minutes, set from measurement — and from one measurement that
+    // refuted the previous answer, so read the whole table before changing it.
     //
     // This limit read three minutes, on the reasoning that peers finish in
     // 40-90 seconds and this scenario is one tool call plus one collect, so it
@@ -89,23 +90,36 @@ import Testing
     //   600s    cut off             8,379      595,581  a second runCode
     //   1200s   PASSED, grounded      ~4,000    316,700  wait, one call
     //
-    // Two facts set the ceiling. The model generates at roughly 10-14 tokens a
-    // second here, so a turn's cost is its token count and nothing else; and
-    // the token count swings by more than four times across runs, because the
-    // model chooses its own collection path. Given a park, it sometimes spends
-    // a `wait` call and sometimes re-runs `runCode` and does the work twice.
-    // Both reach the right manifest code. Only one of them is cheap.
+    // A fourth run then refuted the "it just needs more room" reading, and a
+    // ceiling of fifteen minutes with it:
     //
-    // So the honest ceiling is above the worst run observed, not near the best:
-    // 600 seconds was measured insufficient, 317 was a pass, and a limit
-    // between them would report "time limit" on a scenario that works. Fifteen
-    // minutes clears the worst observed run with room and still fails a genuine
-    // hang in a quarter of the thirty minutes the peers allow.
+    //   900s    cut off             9,752      895,803  nothing — it looped
+    //
+    // That run made FIVE `runCode` calls. Four returned the same sentence,
+    // "Archive rebuild is now under way. I will send you the exact manifest
+    // code as soon as the rebuild completes."; the fifth died on `Can't find
+    // variable: global`. The model wrote a snippet that fires `rebuildArchive`,
+    // discards its return, and answers with a prose promise — and then wrote it
+    // again. Every one of those snippets was graded `outcome: "succeeded"`,
+    // because returning a string is a successful snippet. Nothing in band told
+    // it that it had promised a value instead of reading one, so it had no
+    // reason to write a different snippet the next time.
+    //
+    // That is the real failure and it is not a clock. Raising the ceiling only
+    // buys a longer loop: one pass in four attempts, at 180s, 600s, 900s and
+    // 1200s ceilings. So the limit goes back down. Eight minutes sits well
+    // above the one measured pass (316.7s, `waitCalls=1`, grounded) and reports
+    // a runaway in half the time fifteen would.
+    //
+    // Until the snippet-returns-a-promise defect is fixed in the shipped
+    // surface, this suite is expected to be red more often than green, and that
+    // is the canary doing its job rather than a limit needing another nudge.
+    // Do not raise this again to make a run go green — the loop is the thing to
+    // fix, and it is filed as its own card.
     //
     // The peers keep their own tighter expectations; nothing here licenses
-    // raising theirs. Any suite that starts needing more than its measured cost
-    // has the same question to answer that this one did.
-    .timeLimit(.minutes(15)),
+    // raising theirs.
+    .timeLimit(.minutes(8)),
     .enabled(if: multitoolIntegrationEnabled)
 )
 struct InBandCollectionCanaryTests {
