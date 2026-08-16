@@ -212,6 +212,35 @@ public struct SearchToolsTool: Tool {
         limit: Int? = nil,
         sampleGenerator: RoutedLLM? = nil
     ) throws {
+        // **The selection session must come from `librarian`, a handle other
+        // than the one whose turn is calling this tool. That is a correctness
+        // requirement, not a cost preference.**
+        //
+        // `searchTools` is invoked from inside a turn's tool body. A Router
+        // session holds its own `turnLock` for the whole turn, tool rounds
+        // included, and both `RoutedSession.fork(workingDirectory:)` and the
+        // `transcript` getter take `await turnLock.wait()` on that same lock.
+        // So a selection tier that forked *the session it is running inside*
+        // would park until the turn ended, and the turn cannot end until this
+        // tool returns. That is a permanent hang, and it is the exact shape of
+        // Router's `^d2ptrk1`.
+        //
+        // What keeps this package clear of it is only that `librarian` is a
+        // different handle — `profile.flash`, with a `turnLock` of its own —
+        // so nothing here ever waits on the caller's lock. Measured: the
+        // `SearchToolsTool.makeSelectionSession` and `AgentSession.fork` spans
+        // both enter and exit inside a millisecond.
+        //
+        // **Router's generation-permit loan does not cover this.** That fix
+        // (`^1zt7vyg`) lends a `generationGate` permit to a nested turn and
+        // deliberately leaves `turnLock` alone, because `turnLock` is the
+        // correctness gate — their card states that as a constraint on its own
+        // fix. So forking the in-turn session would deadlock immediately, loan
+        // or no loan, and no upstream change is going to soften it.
+        //
+        // Reusing the caller's session here looks like the natural
+        // simplification — one session, one transcript, no second handle to
+        // thread. It is the one change this factory must never take.
         let selection: SelectionConfig? = librarian.map { librarian in
             SelectionConfig(model: { instructions, grammar in
                 // Traced, and traced *here*, because both ends of this
