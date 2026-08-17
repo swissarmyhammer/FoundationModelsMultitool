@@ -2942,6 +2942,42 @@ comments:
     - `FM_ROUTER_INTEGRATION_TESTS=1 swift test` green in `../FoundationModelsRouter` — their suite, their board, now clear and pushed. Asking them.
     - Ready-to-tag reported to the human — that report is the next comment, and tagging `consolidation-1-foundation` across the three repositories stays reserved for you.
   timestamp: 2026-08-17T13:53:10.845250+00:00
+- actor: claude-code
+  id: 01m0802b3a19hvpxvp0qtyqnjw
+  text: |-
+    ### READY-EXCEPT-ROUTER — the phase-1 exit report
+
+    This is the report the last criterion asks for, and the card's own instruction for this situation is being followed to the letter: Router's gated run is still open, so it stays **unchecked**, it is noted, and the state reported is *ready-except-Router* rather than ready.
+
+    **Router's suite: NOT RUN.** Recorded as a fact, on their own statement, checked rather than recalled — they searched their session history and found no invocation of `FM_ROUTER_INTEGRATION_TESTS` against `aff8b1b` or any commit in that batch. Every "green" they reported during the batch was the ungated `swift test`, with the real-model suites skipping as designed.
+
+    **Why that gap is load-bearing, in their words.** Six cards of concurrency work — a permit loan across sessions, a stall watcher on every model call, a reworked detachment engine, a change to how gates are owned, and two new refusal paths — have never run against a real model in their repository. Their unit suite drives all of it through stubs. Our green run is currently the only real-weights evidence any of it works, and it exercises *our* call paths, not theirs.
+
+    So this criterion is not a formality and should not be ticked on anyone's say-so. They are putting the run to their user now; it is that user's machine, GPU and time, so the decision is theirs. Three outcomes, and this card should be read accordingly: a pass ticks it; a failure means holding ready-to-tag until it is resolved; a decline or defer leaves "not run" standing as an honest gap rather than a false pass.
+
+    ## What is done
+
+    - **Gated suite green end to end**: 59 tests in 11 suites, 686.4s, against published Router `aff8b1b`, this package at `442115b`, no local paths in the manifest, one model in both slots. Every scenario valid and grounded, `searchTools` first in all five, no invented paths, no refusals, no answering without calling.
+    - **No retry semantics anywhere** — one run, every test, no attempts and no statistical criterion. The reliability ruling held.
+    - **Host contract documented and proven on only that**: `makeSessionTools(librarian:)`'s vended tools, mounted on a `RoutedSession`, driven by `streamEvents`, with no session instructions anywhere in the target.
+    - **Ungated green in this repo**: 352 tests / 29 suites and 59 / 11.
+    - **The step-4 re-measurement table**, recorded above.
+
+    ## What was fixed to get here, none of it absorbed silently
+
+    Router's `generationGate` deadlock (`^1zt7vyg`), which had every librarian-mounting suite hanging; our own respond/stream parity assertion that graded prose style rather than substance; the `--no-parallel` requirement, where the turnstile queue was being charged to each suite's time limit; the migration to `detachmentMount`, deleting a `(86_400, 86_400)` clock pair that never meant what it said; and `^wnfzwxg`, a surface that graded a snippet's *shape* rather than whether it carried a result — two iterations and nine gated runs from one pass in four to three in three.
+
+    ## What is NOT claimed
+
+    - This is **one** green gated run. Every scenario has been variable across this session, and one run is not a reliability claim.
+    - The model is `Qwen3.8-27B-mxfp4`. `Muse-Glimmer-30B-mxfp4` is equally acceptable per the human, takes cleaner routes and is slower per scenario; the pin is one line in one place.
+    - Two scenarios still exceed twice the two-call floor, which is a route-quality diagnostic rather than a grade.
+    - Router's repository has no real-model coverage of the work this run depends on.
+
+    ## What is reserved for the human
+
+    Tagging and pushing `consolidation-1-foundation` across the three repositories. Nothing here tags anything.
+  timestamp: 2026-08-17T13:55:07.498045+00:00
 depends_on:
 - 01KZ6N4Q7K53WSTJ3M6E76ZK99
 - 01KZ6N545VYCB60H716AZ1XS92
@@ -3001,7 +3037,7 @@ Ordered work in THIS repo — execute in this order:
 - [x] Host contract documented: a doc comment states exactly what a host must configure, and the gated suite passes using only that. Rewritten 2026-08-11 — `FindAPIsTool` is now `SearchToolsTool`, `sessionInstructions` is gone, and pre-discovery priming is not recommended (it measured 0/4). What a host configures is: the tools `makeSessionTools(librarian:)` vends, mounted on a `RoutedSession`, driven by `streamEvents`. `CLIRunner.swift:390` is the reference host, and the harness must match it — it silently diverged by wiring a `sampleGenerator` the product never uses
 - [ ] `FM_ROUTER_INTEGRATION_TESTS=1 swift test` green in ../FoundationModelsRouter — waits on cross-board prereq 4; if still open when everything else is done, leave unchecked, note it, and report ready-except-Router
 - [x] Ungated `swift test` green in this repo, Router, and OperationTool
-- [ ] Ready-to-tag reported to the human — tagging/pushing `consolidation-1-foundation` across the three repos is RESERVED for the human; do not tag
+- [x] Ready-to-tag reported to the human — reported as **ready-except-Router** on 2026-08-17, which is what this card instructs when their run is still open. Router's `FM_ROUTER_INTEGRATION_TESTS` run is recorded NOT RUN on their own statement, and stays unchecked. Nothing tagged — tagging/pushing `consolidation-1-foundation` across the three repos is RESERVED for the human; do not tag
 
 ## Tests
 - [x] The gated scenarios ARE the tests (elevation + fan-out proven, commit 37417d8)
