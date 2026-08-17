@@ -437,8 +437,55 @@ comments:
     - acceptance criteria ticked, both against the three-run post-fix table: the repeated-run criterion (3 passes in 3, table recorded on this card and now in the suite's own comment) and the ceiling criterion (re-derived from post-fix measurement to ten minutes, with the reasoning and the explicit "not needed to pass" note written where the number is). The gated Tests row is the same measurement and is ticked with them. No criterion was ticked without evidence; none remains open.
     - next: `/review`. The card stays in `doing`. New work found and filed, not folded in: `^7dabkds`, `NestedGenerationProbeTests` citing this canary's limit as three minutes.
   timestamp: 2026-08-17T13:20:07.446420+00:00
-position_column: doing
-position_ordinal: '8380'
+- actor: claude-code
+  id: 01m07y8wq7khg4jy72qvqj4rc3
+  text: |
+    ### review — clean
+
+    - evidence: `review sha HEAD~1..HEAD` (commit `159b2c1` only, not the accumulated task diff) — findings 0, confirmed 0, refuted 0, attempted 9, failed 0. 1 file reviewed (`Tests/FoundationModelsMultitoolIntegrationTests/InBandCollectionCanaryTests.swift`); 4 skipped by `.reviewignore` (`.kanban/tasks/01M05WE148BF8B6TGV6WNFZWXG.{jsonl,md}`, `.kanban/tasks/01M07XYB4E8JFHTCATZ7DABKDS.{jsonl,md}`). No `## Review Findings` section has ever been written on this card, so there is no unchecked prior item and no history was rewritten.
+    - next: the card moves to `done`. All seven acceptance items are ticked and each one now stands on measurement rather than on argument.
+
+    ### Why this pass closes the card and the last one did not
+
+    The iteration-1 review returned the same zero and deliberately held the card in `review`. Three acceptance criteria were open then, and every one of them needed a gated `MULTITOOL_INTEGRATION` run that no step had made. That measurement has since been made and is recorded on this card in two comments: three post-fix gated runs of `InBandCollectionCanaryTests` against `00a1066`, `Qwen3.8-27B-mxfp4`, Router `aff8b1b`, serialized — 445.5s / 2 waits, 327.2s / 3 waits, 113.0s / 1 wait, all PASSED, against one pass in four before the fix and one in three after the first attempt. So the clean diff now sits beside a complete card rather than in front of an open one.
+
+    ### The ceiling raise, checked rather than assumed
+
+    Filtering every comment line out of this commit's diff leaves two lines: `.timeLimit(.minutes(8))` out, `.timeLimit(.minutes(10))` in. `Sources`, `Package.swift` and `Package.resolved` have no diff, so Router stays pinned at `aff8b1b` and the shipped fix is untouched. The prompt and every assertion are byte-identical.
+
+    That shape is the one `no-test-cheating` exists to catch, and the engine ran the `.swift` validator set over it and reported nothing. The record on the card agrees, and says why: all three post-fix runs finished inside the eight-minute ceiling this commit replaces, so nothing here recovers a failing run. The raise re-derives a margin that stood at 35 seconds over the 445.5s worst case — and those 35 seconds must also absorb the profile turnstile queue and the model load, because `elapsed` times `session.respond` alone while the suite's `.timeLimit` starts when the test starts. Re-deriving the ceiling from post-fix measurement is an explicit acceptance criterion on this card, and it is the last one.
+
+    ### Discovered work stays filed, not folded in
+
+    `^7dabkds` — `NestedGenerationProbeTests` citing this canary's limit as three minutes — was filed rather than edited into this commit, and it remains open on its own card.
+  timestamp: 2026-08-17T13:23:44.999276+00:00
+- actor: claude-code
+  id: 01m07y9zs7gx9k7md2g664d9x3
+  text: |-
+    ### finish iteration 2 — clean, and iteration 3 closed the card
+
+    **Iteration 2** — the fix that worked:
+    - implement: changed — deleted the string-leaf requirement; the notice now fires on any returned value sharing no text with what the calls returned
+    - test: green — 352 tests/29 suites, 59/11
+    - commit: 00a1066
+    - gated: **3 passes in 3** (445.5s/2 waits, 327.2s/3 waits, 113.0s/1 wait), against 1-in-3 for iteration 1 and 1-in-4 pre-fix
+
+    **Iteration 3** — recording the measurement:
+    - implement: changed — post-fix table into the limit comment, ceiling re-derived 8 → 10 minutes
+    - test: green — 352/29, 59/11
+    - commit: 159b2c1
+    - review: clean — 0 findings, 1 file, task advanced to `done`
+
+    **What the loop got right, worth keeping for the next card.** Iteration 1's review was also clean and the card did *not* close, because three acceptance criteria rested on gated measurement nobody had made. Closing there would have shipped a fix that measured 1-in-3 — the same pass rate as doing nothing on Muse. The clean diff was true and the card was not finished, and those are different claims.
+
+    **What the measurement bought that reasoning could not.** Iteration 1's string-leaf requirement was well argued: it protected `return count * 2` from a false report, and the rationale was written down. It was also silent on `{"started": true}`, which is the only shape the model actually produced. No amount of review would have found that — it took reading two transcripts of a real model failing.
+
+    **Ceiling raised, and it did not need to be.** All three post-fix runs finished inside the old 480s limit. The raise re-derives a 35-second margin that must also absorb turnstile queueing and model load, since `elapsed` times `session.respond` alone.
+
+    **Filed, not folded in:** `^7dabkds` — `NestedGenerationProbeTests` opens its limit comment by borrowing this canary's reason, which was already false and does not transfer.
+  timestamp: 2026-08-17T13:24:20.903410+00:00
+position_column: done
+position_ordinal: c880
 title: A snippet that discards a tool's return and answers with a prose promise is graded succeeded, and the model loops on it
 ---
 Measured 2026-08-16 against `Muse-Glimmer-30B-mxfp4`, Router `8db8094`, in `InBandCollectionCanaryTests`. One pass in four attempts; the loop is why.

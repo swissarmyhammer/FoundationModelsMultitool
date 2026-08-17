@@ -54,7 +54,8 @@ import Testing
 /// for the layer it named: whatever admits a nested generation on a held
 /// container has to keep admitting it, and a change that puts the deadlock back
 /// fails here, in three minutes, with a reading rather than a mystery. It
-/// **fails today**, and that is honest — it will pass when the gate is fixed.
+/// **passes today**: Router's `^1zt7vyg` lends the permit to the nested turn
+/// instead of holding it, and this probe has come back on every run since.
 ///
 /// `.enabled(if: multitoolIntegrationEnabled)` like every other gated suite —
 /// with `MULTITOOL_INTEGRATION` unset the whole thing is skipped, so ungated
@@ -64,13 +65,32 @@ import Testing
 @Suite(
     "Gated nested-generation probe (an unguided generation inside a tool call)",
     .serialized,
-    // Three minutes, the in-band collection canary's limit and for its reason:
-    // this is one tool call plus one short nested turn, so a live run belongs
-    // in the same 40-90 second band its peers finish in. The failure this suite
-    // exists to catch is a deadlock, and a deadlock is reported by the limit
-    // being reached — so the limit has to sit near the expected runtime. A
-    // generous ceiling would turn a two-minute answer into a half-hour wait
-    // that graded nothing, which is what it already cost that canary once.
+    // Three minutes, derived from this suite's own runs. No peer suite's
+    // ceiling is cited here, and no peer suite's ceiling is evidence for this
+    // one.
+    //
+    // THE LIMIT IS THE DETECTOR. The failure this suite exists to catch is a
+    // deadlock, and a deadlock is reported by the limit being reached rather
+    // than by any assertion this file makes. So the ceiling has to stay close
+    // above the expected runtime. A generous one reports the same park, but
+    // only after half an hour spent grading nothing.
+    //
+    // A HEALTHY RUN IS SHORT BY CONSTRUCTION. It is one tool call plus one
+    // nested turn, and `integrationNestedGenerationTokenLimit` caps that nested
+    // turn small enough to hold a live nested call to seconds. That constant
+    // carries the argument, and states it where it is set.
+    //
+    // WHAT THIS PROBE HAS RECORDED. Parked, it ran 165.4s and 166.5s, and each
+    // of those unwound only when this limit cancelled the outer turn. Returned,
+    // since Router's `^1zt7vyg` landed, it has run 14.1s, 14.8s, 16.4s, 25.8s
+    // and 28.1s. So 180 seconds stands more than six times above the slowest
+    // run that came back, and a run that reaches this limit is parked rather
+    // than slow. The margin also has to cover the turnstile queue and the
+    // profile load, because the limit starts when the test starts rather than
+    // when generation does (`IntegrationGate`).
+    //
+    // Nothing here raises a ceiling. Three minutes is what caught the deadlock,
+    // and the runs above are why it stays three minutes.
     .timeLimit(.minutes(3)),
     .enabled(if: multitoolIntegrationEnabled)
 )
