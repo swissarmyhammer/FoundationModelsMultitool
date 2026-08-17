@@ -2978,6 +2978,38 @@ comments:
 
     Tagging and pushing `consolidation-1-foundation` across the three repositories. Nothing here tags anything.
   timestamp: 2026-08-17T13:55:07.498045+00:00
+- actor: claude-code
+  id: 01m0851r3m6wtfr40dfq9kbjh1
+  text: |-
+    ### Router's gated run: RUN, FAILED — and it earned its place on this card
+
+    The criterion asked for green. It is not green, so it stays **unchecked**. Recording "run, failed" — not "not run", and not a pass.
+
+        FM_ROUTER_INTEGRATION_TESTS=1 swift test    at aff8b1b, one run, no retry
+        3443s wall clock, exit 1
+
+        FoundationModelsRouterTests  (stub)              966 tests / 91 suites   passed
+        IntegrationTests             (gated, real model)  27 tests / 11 suites   FAILED, 10 issues
+        Evals                        (gated, real model)  24 tests /  5 suites   FAILED,  5 issues
+
+    The environment ran it properly. This is a test result, not a missing GPU or a failed download.
+
+    **None of it is attributable to the six cards this package's green run depends on**, and the attribution is by diff rather than judgement. In `7e0c7c5..aff8b1b`, `Compaction/`, `Recording/`, `Resolution/`, `Package.swift` and `Package.resolved` are untouched. The one `Router.swift` change (`^fmet68k`) moves two semaphores into one value and alters no call count. The one compaction-file change (`^d2ptrk1`) makes `beginTurn()` throw, and no refusal was raised anywhere in the run.
+
+    The failures trace to commits **older** than that batch — chiefly their swap to `Muse-Glimmer-30B-4bit`, which always writes a `<think>` block, and the `.reasoning` capability that followed. That adds a `.reasoning` transcript entry after `.response`, breaking six tests written when a turn was exactly `.prompt` + `.response`; and the same swap put one model in two slots, so their loader runs twice where a test still expects three. Filed on their board as `^wnj3ka3`.
+
+    **The run found a real defect that 966 green unit tests structurally could not.** Compaction folds, calls the summarizer, and stores an **empty summary** — 19 of 19 eval seeds, with `folded=true` and `summarizerCalls=1`, printing `summary=` and nothing after. The cause is arithmetic: `Summarization.swift` computes its ceiling as `max(128, ceil(2000 * 0.25))` = 500 tokens, while their own `GatedRealModelBudget.swift` had **already measured** that 512 makes this model's response empty and 4096 works, because the reasoning block consumes the budget before any answer begins. A stub summarizer returns text at any ceiling, which is why the unit suite never saw it. Filed as `^bgxtdk3`.
+
+    That is the same class as our `^wnfzwxg`, from the other side: a surface reporting success on **shape** rather than content. `folded=true, summarizerCalls=1` is true and useless, exactly as "returning a string is a successful snippet" was.
+
+    **Does it reach this package? No, and that is checked rather than assumed.** Router compacts only when a budget is set. We set none — `rg 'budget'` over `Sources/` and `Tests/` returns nothing, and our profile passes `context: nil`. Our own runner reports compaction events, and every recorded turn of the green run printed `compactions=0`, six for six. So the empty-summary defect is real, is theirs, and cannot affect a host that never triggers a fold.
+
+    **What they could not settle, recorded rather than guessed:** two evals hit a 1200-second limit and their aggregate assertions are computed over an incomplete sample set. No earlier duration exists to compare against, so whether they regressed or always ran near the bound is unknown. Unattributed.
+
+    **The state of this criterion is therefore: run, failed, failures owned and tracked on two cards over there, and the batch this package depends on explicitly cleared by diff.** Whether that is enough to tag is the human's call, and this card does not characterise it for them beyond the facts above.
+
+    Worth stating plainly, because it is the argument for having insisted: the gate did its job on its first run. It caught a silent, shipped defect that a year of green unit runs would not have.
+  timestamp: 2026-08-17T15:22:10.932402+00:00
 depends_on:
 - 01KZ6N4Q7K53WSTJ3M6E76ZK99
 - 01KZ6N545VYCB60H716AZ1XS92
