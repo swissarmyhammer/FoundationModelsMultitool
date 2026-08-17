@@ -71,8 +71,12 @@ import Testing
 @Suite(
     "Gated in-band collection canary (the model collects its own parked run)",
     .serialized,
-    // Eight minutes, set from measurement — and from one measurement that
-    // refuted the previous answer, so read the whole table before changing it.
+    // Ten minutes, re-derived on 2026-08-17 from post-fix measurement. Two
+    // eras of runs sit below and both are load-bearing: the first measured a
+    // defect and is where eight minutes came from, the second measured the fix
+    // and is why the number moved. Read both before changing it.
+    //
+    // BEFORE THE FIX, and why no ceiling helped.
     //
     // This limit read three minutes, on the reasoning that peers finish in
     // 40-90 seconds and this scenario is one tool call plus one collect, so it
@@ -105,36 +109,60 @@ import Testing
     // it that it had promised a value instead of reading one, so it had no
     // reason to write a different snippet the next time.
     //
-    // That is the real failure and it is not a clock. Raising the ceiling only
-    // buys a longer loop: one pass in four attempts, at 180s, 600s, 900s and
-    // 1200s ceilings. So the limit goes back down. Eight minutes sits well
-    // above the one measured pass (316.7s, `waitCalls=1`, grounded) and reports
-    // a runaway in half the time fifteen would.
+    // That is the real failure and it was never a clock. Raising the ceiling
+    // only bought a longer loop: one pass in four attempts, at 180s, 600s, 900s
+    // and 1200s ceilings. Eight minutes was derived from exactly that — set
+    // above the one measured pass (316.7s, `waitCalls=1`, grounded) and
+    // reporting a runaway in half the time fifteen minutes would.
     //
-    // Task `wnfzwxg` has shipped two passes at the snippet-returns-a-promise
-    // defect, and only the second has yet to be measured. The first told a
-    // snippet that returned a *sentence* carrying nothing its `tools.*` calls
-    // returned exactly that, and added a directive to the settled `wait`
-    // report. Three gated runs then scored one pass in three:
+    // AFTER THE FIX, which is where ten minutes comes from.
+    //
+    // Task `^wnfzwxg` shipped the in-band notice that names the failure above:
+    // a snippet that calls `tools.*` and returns a value carrying nothing those
+    // calls returned is told exactly that, in the result it reads next. Its
+    // first attempt asked for a string leaf before it would report, so it
+    // stayed silent on `return { started: true }` — the discard as an object
+    // rather than as prose, which is the shape the model actually writes — and
+    // scored one pass in three:
     //
     //   313.5s  PASSED   waitCalls=3   answered with the manifest code
     //   471.2s  FAILED   waitCalls=2   answered "now under way"
     //   480.6s  FAILED                 time limit exceeded
     //
-    // Both recorded runs opened with `return { started: true }` — the discard,
-    // as an object rather than as prose. The notice asked for a string leaf
-    // before it would report, so it stayed silent on precisely that shape. The
-    // second pass drops that requirement: the notice now closes any run whose
-    // returned value shares no text with what its calls returned, and states
-    // the fact rather than accusing the snippet of narrating.
+    // Dropping the string-leaf requirement is what worked. The notice now
+    // closes any run whose returned value shares no text with what its calls
+    // returned, and states that fact rather than accusing the snippet of
+    // narrating. Three runs of that build, commit `00a1066`, against
+    // `Qwen3.8-27B-mxfp4` and Router `aff8b1b`, each run on its own:
     //
-    // This number has NOT been re-derived against either pass — every row above
-    // was measured against unfixed behaviour, so eight minutes stands until a
-    // post-fix table replaces it. Do not raise it to make a run go green.
+    //   run   outcome   elapsed   waitCalls
+    //   1     PASSED    445.5s    2
+    //   2     PASSED    327.2s    3
+    //   3     PASSED    113.0s    1
     //
-    // The peers keep their own tighter expectations; nothing here licenses
-    // raising theirs.
-    .timeLimit(.minutes(8)),
+    // Three passes in three, against one in four before the fix and one in
+    // three after the first attempt at it. The times fell as far as the pass
+    // rate rose, which is the mechanism working rather than luck: a model told
+    // at once that its snippet carried nothing stops writing further snippets
+    // to find out.
+    //
+    // TEN MINUTES WAS NOT NEEDED TO PASS. All three runs above finished inside
+    // the eight-minute ceiling this replaces, so nothing here recovers a
+    // failing run, and the standing rule — never raise a ceiling to make a run
+    // green — is intact. What the measurement changed is the margin. 480s
+    // stands 35 seconds above the worst of the three at 445.5s, and those 35
+    // seconds have to cover more than generation: `elapsed` above times
+    // `respond` alone, while the limit starts when the test starts and is spent
+    // on the turnstile queue and the profile load ahead of it as well
+    // (`IntegrationGate`). A margin that thin fails the suite for queueing
+    // rather than for a defect — the exact misattribution that file records,
+    // and the one `--no-parallel` exists to keep out of the reading.
+    //
+    // Ten minutes clears the worst observed run by about a third, and still
+    // reports a genuine runaway at ten minutes where the peer suites would take
+    // thirty. Those peers finish in 40-90 seconds and keep their own tighter
+    // expectations of themselves; nothing here licenses raising their ceilings.
+    .timeLimit(.minutes(10)),
     .enabled(if: multitoolIntegrationEnabled)
 )
 struct InBandCollectionCanaryTests {

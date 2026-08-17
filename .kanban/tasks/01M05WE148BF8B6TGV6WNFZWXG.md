@@ -333,6 +333,110 @@ comments:
     - constraints checked against the diff: `Package.swift` and `Package.resolved` have no diff, so Router stays pinned at `aff8b1b`. `InBandCollectionCanaryTests`' diff is comment-only — filtering every comment line out of its diff leaves nothing, so the prompt, the assertions and the eight-minute limit are byte-identical. Nothing landed in a scenario prompt. No retry gate and no statistical criterion was added.
     - next: the same three acceptance criteria stay open, and all three need gated `MULTITOOL_INTEGRATION` runs this step was directed not to make — the repeated-run table, the re-derived ceiling, and the gated row. The canary's limit comment now carries the 1-pass-in-3 table from iteration 1 and says plainly that eight minutes has been re-derived against neither pass.
   timestamp: 2026-08-17T12:52:46.603975+00:00
+- actor: claude-code
+  id: 01m07xhqwbk7n3szpfm47vhcbh
+  text: |-
+    ### Iteration 2 measured: 3 passes in 3, and the times collapsed
+
+    Three gated runs of `InBandCollectionCanaryTests` against `00a1066`, `Qwen3.8-27B-mxfp4`, Router `aff8b1b`, serialized, one run per shell command:
+
+        run   outcome   elapsed   waitCalls   reply
+        1     PASSED    445.5s    2           "Your archive index rebuild is under way,
+                                               and it's already come back with its result: …"
+        2     PASSED    327.2s    3           "Your archive index rebuild is done.
+                                               The manifest code is **58204**."
+        3     PASSED    113.0s    1           "The archive index rebuild is complete.
+                                               Its exact manifest code is **58204**."
+
+    Set beside everything measured before it:
+
+        build                          runs   passes
+        pre-fix, Muse                    4      1
+        pre-fix, Qwen                    2      0
+        iteration 1 (string-leaf rule)   3      1
+        iteration 2 (shared-text rule)   3      3
+
+    **Deleting the string-leaf requirement is what did it.** Iteration 1's detector was silent on `{"started": true}`, which is the shape the model actually produces; iteration 2 reports on any returned value sharing no text with what the calls returned. Every run since carries the manifest code in its answer.
+
+    **The elapsed times fell as much as the pass rate rose.** 113.0s, 327.2s and 445.5s, against a pre-fix set that ran 313.5s, 471.2s and 480.6s and mostly failed. Run 3 spent one `wait` call and finished in under two minutes — the cheapest this scenario has ever been. That is consistent with the mechanism: a model told immediately that its snippet carried nothing stops writing further snippets to find out.
+
+    **One caution against reading too much into three runs.** This scenario has been variable throughout — Muse passed it once in four, and iteration 1 passed once in three. Three consecutive passes is the best evidence this card has ever had and it is still three runs. What makes it more than a lucky streak is that the mechanism is understood and the failure it removes was observed directly in two transcripts, not inferred.
+
+    **The ceiling now needs re-deriving, and the data says it is too tight.** Eight minutes is 480s; the worst post-fix run took 445.5s, leaving 35 seconds of headroom. That number was set against the broken behaviour and is now the wrong shape — not too generous, too close. Ten minutes clears the worst observed run by about a third while still failing a genuine runaway in a quarter of the peers' thirty. That is the last open acceptance criterion and it is a re-derivation from post-fix measurement, not a nudge to make a run green: every one of these three runs already passed inside the current limit.
+  timestamp: 2026-08-17T13:11:06.379392+00:00
+- actor: claude-code
+  id: 01m07xky6xe3c2q37ywww4nadx
+  text: |
+    ### Iteration 3 picked up — scope is the canary's limit comment and its ceiling, nothing else
+
+    Read the card and all thirteen comments, newest first. The measurement this iteration records is already in the comment above: three post-fix gated runs against `00a1066` — 445.5s / 2 waits, 327.2s / 3 waits, 113.0s / 1 wait, all PASSED.
+
+    Working tree checked before touching anything: `git status` shows only this card's own `.kanban/tasks/…{jsonl,md}` modified, and `HEAD` is `00a1066` — the same commit the three runs were measured against. So the comment I am about to write describes the build that is actually checked out.
+
+    Two edits, both in `Tests/FoundationModelsMultitoolIntegrationTests/InBandCollectionCanaryTests.swift`, both inside the `@Suite` limit comment:
+
+    1. Replace the stale closing text. Its rows were all measured against broken behaviour and the comment says so in its own words ("This number has NOT been re-derived against either pass"). The post-fix table goes in beside them, so a reader sees both eras and why the number moved.
+    2. Re-derive `.timeLimit(.minutes(8))` to ten minutes, with the reasoning written where the number is, including the explicit note that the change was NOT needed to make anything pass.
+
+    Out of scope and untouched, as directed: the scenario prompt, every assertion, `Package.swift` (Router stays pinned at `aff8b1b`), and `ToolReturnLedger` / `ResultRenderer` / `WaitTool` — that fix is measured and settled. No gated `MULTITOOL_INTEGRATION` run is made from this step.
+  timestamp: 2026-08-17T13:12:18.397644+00:00
+- actor: claude-code
+  id: 01m07y1ycv1m1pk0822py5qbxg
+  text: |
+    ### What landed: both eras in one comment, and ten minutes derived from the second
+
+    The canary's limit comment now carries three tables instead of one era's worth, and the reader meets them in the order the investigation found them.
+
+    **The pre-fix rows stay, framed as what they are.** BEFORE THE FIX keeps the 180s / 600s / 1200s table, the 900s row that refuted "it just needs more room", and the five-`runCode` narration loop. Eight minutes is no longer presented as the standing answer but as what was derived from those rows — "set above the one measured pass (316.7s, `waitCalls=1`, grounded) and reporting a runaway in half the time fifteen minutes would". Nothing there was deleted, because it is the evidence that a ceiling was never the fix.
+
+    **AFTER THE FIX carries the two post-fix tables.** The first attempt's one-pass-in-three rows, with the reason it missed — the string-leaf requirement kept the notice silent on `return { started: true }` — and then the three runs of `00a1066`:
+
+        run   outcome   elapsed   waitCalls
+        1     PASSED    445.5s    2
+        2     PASSED    327.2s    3
+        3     PASSED    113.0s    1
+
+    stated as three in three against one in four before the fix and one in three after the first attempt.
+
+    ### The re-derivation, and one thing found while writing it
+
+    The comment says TEN MINUTES WAS NOT NEEDED TO PASS in those words, and says why in the next sentence: all three runs finished inside the eight-minute ceiling being replaced, so nothing here recovers a failing run and the standing rule against raising a ceiling to make a run green is intact. What moved is the margin — 480s stands 35 seconds above the worst of the three at 445.5s.
+
+    **Reading `ScenarioRunner` and `IntegrationGate` while writing that made those 35 seconds worse than they look, and the comment now records it.** The `elapsed` in every row is timed around `session.respond` alone — `runInBandCollectionCanaryScenario` takes `Date()` immediately before the call and again after. The suite's `.timeLimit`, by `IntegrationGate`'s own documentation, starts when the *test* starts, and the scenario takes the profile turnstile from inside its own test body. So the ceiling also has to cover the turnstile queue and the profile load that precede `respond`, none of which is in the 445.5s. A 35-second margin is therefore consumed by queueing rather than by the scenario — which is exactly the misattribution `IntegrationGate` records and `--no-parallel` exists to keep out of the reading. That is a stronger argument for the re-derivation than headroom alone, and it is repo-grounded rather than asserted.
+
+    Ten minutes clears the worst observed run by about a third and still reports a runaway at ten minutes where the peer suites take thirty.
+
+    ### One arithmetic correction against the brief
+
+    The direction said ten minutes "still fails a genuine runaway in a quarter of the peers' thirty minutes". Ten is a third of thirty, not a quarter, so the comment says a third and also states both raw numbers so no fraction has to be trusted. The intent — reports far sooner than the peers — is unchanged.
+
+    ### Rules checked before writing, and one checked rather than guessed
+
+    Dumped the validator set for `.swift` first. Two rules can bear on this edit:
+
+    - **`no-test-cheating` item 3** names "a timeout raised instead of fixing the root cause". The root cause was fixed and measured before this edit, and the comment states in its own text that the raise was not needed to pass — which is what the rule requires rather than something it forbids.
+    - **`magic-numbers-swift`** supersedes the prompt rule for Swift and reports by *position*, so a call argument is reportable; `10` is outside its `allowed_numbers: [0, 1, -1, 100]`, and a Swift Testing `@Suite` struct is not in its `test_parent_classes: ["QuickSpec", "XCTestCase"]`, so the test carve-out does not reach it.
+
+    Rather than guess, I ran `swiftlint` with exactly that rule and exactly those options over this file and two peer suites. **Zero violations** — the rule does not report a literal in a macro attribute argument, so `.minutes(10)` is clean and no `swiftlint:disable` line and no invented constant is warranted. `.minutes(8)`, `.minutes(3)` and the peers' `.minutes(30)` are all equally clean, so nothing was left half-closed either.
+
+    `no-commented-code` is satisfied: the block is prose and plain-text tables, with no run of five or more lines that reads as Swift statements.
+
+    ### Discovered work, filed rather than folded in
+
+    `NestedGenerationProbeTests` opens its own limit comment with "Three minutes, the in-band collection canary's limit and for its reason". That claim is already false — this canary went 3 to 15 to 8 before today — and this change widens the gap. It is not a number to update, because the borrowed reason no longer transfers: the probe's limit is a deadlock detector and must sit near its expected runtime, while this canary is graded on the content of an answer and its ceiling is headroom. Filed as `^7dabkds` rather than edited here, since the brief scoped this card to one file.
+
+    ### Constraints, checked against the diff
+
+    Filtering every comment line out of the canary's diff leaves exactly two lines, the limit literal in and out. The prompt and all assertions are byte-identical. `Sources`, `Package.swift` and `Package.resolved` have no diff at all, so Router stays pinned at `aff8b1b` and `ToolReturnLedger`, `ResultRenderer` and `WaitTool` are untouched. No gated `MULTITOOL_INTEGRATION` run was made from this step.
+  timestamp: 2026-08-17T13:19:57.339820+00:00
+- actor: claude-code
+  id: 01m07y288pdyfvh9mghsdzsnj8
+  text: |
+    ### implement — changed
+    - evidence: `swift test` — 352 tests / 29 suites and 59 tests / 11 suites, all passing, zero errors and no warning from this package (the one `missing creator for mutated node` warning is the mlx-swift dependency's build graph, present on the pre-edit baseline run too). 1 file — `Tests/FoundationModelsMultitoolIntegrationTests/InBandCollectionCanaryTests.swift`. Filtering comment lines out of its diff leaves two lines: `.timeLimit(.minutes(8))` out, `.timeLimit(.minutes(10))` in. `Sources`, `Package.swift` and `Package.resolved` have no diff.
+    - acceptance criteria ticked, both against the three-run post-fix table: the repeated-run criterion (3 passes in 3, table recorded on this card and now in the suite's own comment) and the ceiling criterion (re-derived from post-fix measurement to ten minutes, with the reasoning and the explicit "not needed to pass" note written where the number is). The gated Tests row is the same measurement and is ticked with them. No criterion was ticked without evidence; none remains open.
+    - next: `/review`. The card stays in `doing`. New work found and filed, not folded in: `^7dabkds`, `NestedGenerationProbeTests` citing this canary's limit as three minutes.
+  timestamp: 2026-08-17T13:20:07.446420+00:00
 position_column: doing
 position_ordinal: '8380'
 title: A snippet that discards a tool's return and answers with a prose promise is graded succeeded, and the model loops on it
@@ -384,11 +488,11 @@ Not fixed by loosening the canary. Its time limit went 3 to 15 to 8 minutes acro
 
 - [x] The failure class is named in a shipped, tool-owned surface — a description, a `@Guide`, or a returned result — with the reasoning recorded beside it
 - [x] A snippet that calls a tool and returns a value derived from none of its calls is distinguishable from one that reports a real result, and the model is told which it produced
-- [ ] `InBandCollectionCanaryTests` passes on repeated gated runs rather than one in four; record the per-run table
-- [ ] The 8-minute ceiling is re-derived from the post-fix measurement, up or down, rather than left at a number set against the broken behaviour
+- [x] `InBandCollectionCanaryTests` passes on repeated gated runs rather than one in four; record the per-run table
+- [x] The 8-minute ceiling is re-derived from the post-fix measurement, up or down, rather than left at a number set against the broken behaviour
 - [x] Nothing lands in test scaffolding or in a scenario prompt
 
 ## Tests
 
-- [ ] Repeated gated `MULTITOOL_INTEGRATION=1 swift test --no-parallel --filter InBandCollection` runs, per-run table recorded here
+- [x] Repeated gated `MULTITOOL_INTEGRATION=1 swift test --no-parallel --filter InBandCollection` runs, per-run table recorded here
 - [x] An ungated test covers whatever detection or teaching the fix introduces
