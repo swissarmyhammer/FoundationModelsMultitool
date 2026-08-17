@@ -280,7 +280,14 @@ struct ScenarioFixtureTests {
             )
         )
 
-        #expect(output == "\(integrationWarehouseStockUnits + integrationStoreStockUnits)")
+        // A total reduced from the two counts shares no text with either of
+        // them, so the run closes with `ToolReturnLedger`'s notice as well —
+        // the fan-out snippet is a real instance of the shape that detector
+        // reports on, and a gated model writing this snippet reads the same
+        // sentence. The whole output is compared, and the notice is read from
+        // its one source rather than restated (task `wnfzwxg`).
+        let total = integrationWarehouseStockUnits + integrationStoreStockUnits
+        #expect(output == "\(total)\n\n\(ToolReturnLedger.uncarriedReturnNotice)")
         #expect(await log.calls.count == counters.count)
         #expect(await log.invokedPaths == Set(counters.map(\.name)))
         #expect(await log.returnedPaths == Set(counters.map(\.name)))

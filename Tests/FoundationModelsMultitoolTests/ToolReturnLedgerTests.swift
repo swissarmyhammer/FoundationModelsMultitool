@@ -35,7 +35,7 @@ struct ToolReturnLedgerTests {
         return try await MultiTool(registry: registry).call(arguments: RunCodeArguments(code: code))
     }
 
-    // MARK: - A snippet that promised instead of read
+    // MARK: - Every snippet whose result carries none of what it read
 
     @Test("a snippet that fires a tool, discards its return and answers in prose is told what it produced")
     func aSnippetThatNarratesIsToldItCarriedNothing() async throws {
@@ -50,6 +50,21 @@ struct ToolReturnLedgerTests {
             """)
 
         #expect(output.contains(ToolReturnLedger.uncarriedReturnNotice))
+    }
+
+    @Test("a snippet that fires a tool and answers with a status flag is told what it produced")
+    func aSnippetThatAnswersWithAStatusFlagIsToldItCarriedNothing() async throws {
+        // The shape three gated runs actually produced (task `wnfzwxg`): the
+        // call happens, the value is thrown away, and a hand-written status
+        // object goes back in its place. It holds no sentence at all, which is
+        // why the first rule — which asked for a string leaf before it would
+        // report — stayed silent on the one shape the model writes.
+        let output = try await Self.run("""
+            await tools.getIssueCount({ repo: 'demo' });
+            return { started: true };
+            """)
+
+        #expect(output.hasSuffix(ToolReturnLedger.uncarriedReturnNotice))
     }
 
     @Test("the notice is the last thing the model reads, after the value and after any console output")
@@ -67,7 +82,35 @@ struct ToolReturnLedgerTests {
         #expect(output.contains("looked the repository up"))
     }
 
-    // MARK: - Every snippet that really reported is left alone
+    @Test("a snippet that fires a tool and returns nothing at all is told what it produced")
+    func aSnippetThatReturnedNothingIsToldItCarriedNothing() async throws {
+        // The limit case of the same fact, and the least arguable one: a value
+        // that holds no scalar holds none of what the call returned.
+        let output = try await Self.run("await tools.getIssueCount({ repo: 'demo' });")
+
+        #expect(output.hasSuffix(ToolReturnLedger.uncarriedReturnNotice))
+    }
+
+    @Test("a snippet that computed its answer out of what it read is told the same fact, and asked to check it")
+    func aComputedValueIsToldTheSameFact() async throws {
+        // Doubling the count carries no text from the call, so the fact the
+        // notice states holds here word for word. Nothing structural separates
+        // this value from `return { started: true }` above — both share nothing
+        // with what the call returned, and only intent tells them apart, which
+        // the ledger cannot see. So the notice fires, and the conditional in
+        // its action clause is what a snippet that computed deliberately reads
+        // and moves past.
+        //
+        // The first rule bought silence here, and paid for it by staying silent
+        // on the failing shape as well: three gated runs, one pass (task
+        // `wnfzwxg`). This is that trade taken the other way, and this test is
+        // where it is recorded.
+        let output = try await Self.run("return (await tools.getIssueCount({ repo: 'demo' })).count * 2;")
+
+        #expect(output == "84\n\n\(ToolReturnLedger.uncarriedReturnNotice)")
+    }
+
+    // MARK: - Every snippet that carried the value is left alone
 
     @Test("a snippet that returns the value its tool call gave it gets the value alone")
     func aSnippetThatReportsGetsNoNotice() async throws {
@@ -89,16 +132,6 @@ struct ToolReturnLedgerTests {
             """)
 
         #expect(output == "\"Open issues: 42\"")
-    }
-
-    @Test("a snippet that computed its answer, with no text in it at all, gets the value alone")
-    func aComputedValueGetsNoNotice() async throws {
-        // Doubling the count carries no text from the call, and it is not the
-        // failure either: the narration this notice reports is a sentence, and
-        // this value holds no sentence to mistake for one.
-        let output = try await Self.run("return (await tools.getIssueCount({ repo: 'demo' })).count * 2;")
-
-        #expect(output == "84")
     }
 
     @Test("a snippet that called no tool at all gets the value alone, whatever it returned")

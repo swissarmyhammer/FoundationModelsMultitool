@@ -26,9 +26,25 @@ import os
 /// text any recorded call returned appears anywhere in the value the snippet
 /// handed back. Where the comparison cannot be made — nothing recorded, or more
 /// values than ``maximumRecordedValues`` on either side — the ledger says
-/// nothing rather than reporting on a comparison it did not make, because a
-/// notice on a snippet that did report would be a false claim and would send a
-/// model that answered correctly around for another turn.
+/// nothing rather than reporting on a comparison it did not make.
+///
+/// **The rule reports a fact, not an intent, and that is a correction.** The
+/// first rule asked for a *string leaf* in the returned value before it would
+/// report, so that `return count * 2` — a number computed out of what the
+/// snippet read — could never be told it had narrated. Three gated runs then
+/// measured what the models actually write, and every one of them opened the
+/// same way: fire the call, discard the return, `return { started: true }`.
+/// That object holds no string, so the one shape the failure takes was the one
+/// shape the rule stayed silent on (task `wnfzwxg`).
+///
+/// `{ started: true }` and `count * 2` are the same value to any structural
+/// reader: both share nothing with what the calls returned, and only intent
+/// separates them. Intent is not observable here, so the notice stops claiming
+/// it. It states the fact both cases satisfy — these calls returned values this
+/// result does not carry — and hands the model the one question it can answer
+/// for itself: are those the values the answer needs? Firing on `count * 2`
+/// then costs a sentence the model dismisses, where staying silent on
+/// `{ started: true }` cost the whole class.
 ///
 /// A reference type guarded by `OSAllocatedUnfairLock`, rather than an `actor`,
 /// for `MultiTool.LiveContextCounter`'s reason: every operation is a
@@ -56,6 +72,13 @@ final class ToolReturnLedger: Sendable {
     /// puts last for the same reason — it is what the model reads immediately
     /// before deciding what to do next.
     ///
+    /// The action is the one clause held under a condition, and the condition
+    /// is what keeps the notice honest on a snippet that computed its answer
+    /// deliberately. "Are these the values the answer needs" is a question the
+    /// model can settle from its own turn and this ledger cannot settle at all,
+    /// so it is asked rather than assumed. Everything before it is stated
+    /// flat, because everything before it was measured.
+    ///
     /// This is the only place the text is written, on `RepairDirective
     /// .closingLine`'s terms: `FoundationModelsMultitoolTests` reads it here
     /// through `@testable import` rather than restating it, so a reword reaches
@@ -64,8 +87,9 @@ final class ToolReturnLedger: Sendable {
     /// go on satisfying after the reword.
     static let uncarriedReturnNotice = """
         This snippet called tools.* and returned a value carrying nothing those calls returned. \
-        Only the returned value reaches you, and a sentence about a result is not the result. \
-        Call runCode again and return the values those calls gave you.
+        Only the value a snippet returns reaches you, so those call results are not in front of you, \
+        and a status flag or a sentence about a result is not the result. \
+        If the answer needs them, call runCode again and return them.
         """
 
     /// Every scalar value the `tools.*` calls of this invocation returned.
@@ -90,21 +114,23 @@ final class ToolReturnLedger: Sendable {
     /// closes with the value alone.
     ///
     /// - Parameter returnValue: the value the snippet returned.
-    /// - Returns: ``uncarriedReturnNotice`` when this run called `tools.*`,
-    ///   returned text, and that text carries nothing any of those calls
-    ///   returned; `nil` in every other case, including every case the ledger
-    ///   cannot judge.
+    /// - Returns: ``uncarriedReturnNotice`` when this run recorded at least one
+    ///   `tools.*` return and the snippet's own value carries no text any of
+    ///   those returns held; `nil` in every other case, including every case
+    ///   the ledger cannot judge.
     func notice(forReturnValue returnValue: InterpreterValue) -> String? {
         let calls = recorded.withLock { $0 }
-        guard calls.canBeCompared else { return nil }
+        // Nothing recorded means no value the snippet could have carried, so
+        // there is no fact to report.
+        guard calls.canAnchorComparison else { return nil }
 
         var returned = ScalarValues()
         returned.collect(from: returnValue)
-        // Only a returned *sentence* is the failure this reports. A snippet
-        // that computed a number or a flag out of what it read produced no
-        // narration to mistake for one, and saying otherwise would be a
-        // finding about arithmetic.
-        guard returned.canBeCompared, returned.holdsText else { return nil }
+        // The returned side is judged however little it holds. A snippet that
+        // returned nothing, or a status flag, carries no less than one that
+        // returned a promise, and asking it for a string leaf first is what
+        // made this notice silent on the shape the models actually write.
+        guard !returned.isOverBound else { return nil }
         guard !returned.shareAnyText(with: calls) else { return nil }
         return Self.uncarriedReturnNotice
     }
@@ -123,18 +149,17 @@ private struct ScalarValues {
     /// carries that name, and reporting otherwise would be a false claim.
     private(set) var values: Set<String> = []
 
-    /// Whether any collected scalar was a non-empty string.
-    ///
-    /// The recording side never reads this; the returned side needs it,
-    /// because a value holding no text holds no sentence.
-    private(set) var holdsText = false
-
     /// Whether more scalars were reached than the bound admits.
     private(set) var isOverBound = false
 
-    /// Whether this side can take part in a comparison at all: something was
-    /// collected, and the bound was not crossed.
-    var canBeCompared: Bool { !isOverBound && !values.isEmpty }
+    /// Whether this side holds enough to read the other side against:
+    /// something was collected, and the bound was not crossed.
+    ///
+    /// Asked of the recorded `tools.*` returns only. The snippet's own return
+    /// value is judged however empty it is — an empty value carries nothing,
+    /// which is the fact the notice states — so it is asked ``isOverBound``
+    /// instead.
+    var canAnchorComparison: Bool { !isOverBound && !values.isEmpty }
 
     /// Collects every scalar inside `value`, walking arrays and object values.
     ///
@@ -147,13 +172,11 @@ private struct ScalarValues {
         guard !isOverBound else { return }
         switch value {
         case .null:
-            // A null carries nothing, so it is neither recorded nor counted
-            // as text.
+            // A null carries nothing, so nothing is recorded for it.
             break
         case .bool, .number:
             insert(ResultRenderer.serialize(value))
         case .string(let text):
-            if !text.isEmpty { holdsText = true }
             insert(text)
         case .array(let elements):
             for element in elements { collect(from: element) }

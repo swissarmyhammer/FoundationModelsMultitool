@@ -66,7 +66,13 @@ struct RouterSessionMountTests {
         #expect(throughMount != direct)
         // Called directly, with no session and no run plane to park in, the
         // same snippet still returns its own value. Both halves of one rule.
-        #expect(direct == "3")
+        //
+        // A city count derived from the names the call returned shares no text
+        // with them, so the run also closes with `ToolReturnLedger`'s notice —
+        // the detector reporting the fact it reports, not noise this test
+        // should assert around. The whole output is compared, and the notice is
+        // read from its one source, so a reword reaches here too.
+        #expect(direct == "3\n\n\(ToolReturnLedger.uncarriedReturnNotice)")
     }
 
     @Test("the mount leaves the model-facing name and description untouched")

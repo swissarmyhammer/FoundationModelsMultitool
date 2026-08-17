@@ -727,11 +727,17 @@ serialize the return with a **size cap + truncation note** (so a fat tool result
 can't flood the model), append capped console output, and on failure render the
 JS/validation exception as a repairable error.
 
-One in-band notice closes a successful render, and only when the run earned it:
-a snippet that called `tools.*` and returned a value carrying nothing those
-calls returned is told so, because that snippet and one that reports a real
-result are otherwise indistinguishable from the model's side (task `wnfzwxg`,
-`ToolReturnLedger`).
+One in-band notice closes a successful render: a snippet that called `tools.*`
+and returned a value carrying nothing those calls returned is told so, because
+that snippet and one that reports a real result are otherwise indistinguishable
+from the model's side (task `wnfzwxg`, `ToolReturnLedger`).
+
+The notice states a fact and does not claim an intent. A snippet that discarded
+a tool's return and answered `{ started: true }` and one that computed a total
+out of what it read are the same value to any structural reader — neither
+carries what the calls returned, and only intent separates them. So the notice
+reports the shared fact and asks the model the one question it can answer, and
+the run that summarized deliberately reads a sentence and moves on.
 
 ## Components
 

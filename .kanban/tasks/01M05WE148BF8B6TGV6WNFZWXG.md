@@ -212,6 +212,127 @@ comments:
     - evidence: `swift test` — 350 tests / 29 suites and 59 tests / 11 suites, all passing, zero warnings from this package. 9 files — new `Sources/FoundationModelsMultitool/Invocation/ToolReturnLedger.swift`, new `Tests/FoundationModelsMultitoolTests/ToolReturnLedgerTests.swift`, edited `Sources/FoundationModelsMultitool/MultiTool.swift`, `Sources/FoundationModelsMultitool/Rendering/ResultRenderer.swift`, `Sources/FoundationModelsMultitool/WaitTool.swift`, `Tests/FoundationModelsMultitoolTests/MultiToolExecutionTests.swift`, `Tests/FoundationModelsMultitoolTests/WaitToolTests.swift`, `Tests/FoundationModelsMultitoolIntegrationTests/Support/NativeTranscript.swift`, `Tests/FoundationModelsMultitoolIntegrationTests/InBandCollectionCanaryTests.swift`, `plan.md`.
     - next: two acceptance criteria stay open and neither can be closed from here, because both need gated `MULTITOOL_INTEGRATION=1` runs this step was directed not to make — the repeated-run table for `InBandCollectionCanaryTests`, and the re-derivation of its eight-minute ceiling against post-fix measurement. The ceiling is untouched and its comment now says plainly that it stands on pre-fix rows. Everything the fix itself needs is in the diff and covered ungated.
   timestamp: 2026-08-17T11:54:12.170503+00:00
+- actor: claude-code
+  id: 01m07tfr664rkppt41aseqhp7v
+  text: |
+    ### review — clean
+
+    - evidence: `review sha HEAD~1..HEAD` (checkpoint `0a9171f` only, not the accumulated task diff) — findings 0, confirmed 0, refuted 0, attempted 9, failed 0. 9 files reviewed; 2 skipped by `.reviewignore` (`.kanban/tasks/01M05WE148BF8B6TGV6WNFZWXG.{jsonl,md}`). No prior `## Review Findings` section exists on this card, so nothing was appended and no history was rewritten.
+    - next: the card stays in `review`. It did NOT advance to `done`, and that is deliberate. Three acceptance items are still open and every one of them needs a gated `MULTITOOL_INTEGRATION` run that this pass was directed not to make — the repeated-run table for `InBandCollectionCanaryTests`, the re-derivation of the eight-minute ceiling against post-fix measurement, and the gated test row. A clean diff is a statement about the change, not a statement that the card is complete. The orchestrator runs the gated suite and closes the card on that evidence.
+
+    ### The three binding constraints, checked against the diff
+
+    The engine judges the changed lines. These are rulings it does not hold, so they were confirmed separately:
+
+    - **The fix is in the shipped, tool-owned surface.** `Sources/FoundationModelsMultitool/Invocation/ToolReturnLedger.swift` (new), `Sources/FoundationModelsMultitool/MultiTool.swift`, `Sources/FoundationModelsMultitool/Rendering/ResultRenderer.swift`, `Sources/FoundationModelsMultitool/WaitTool.swift`. No scenario prompt carries any part of it.
+    - **`InBandCollectionCanaryTests` is untouched where it must be.** Its diff is twelve lines and every one of them is a comment. The prompt, the assertions and the eight-minute limit are byte-identical. The replaced comment claimed the defect was unfixed and the suite expected red; the new text says the fix landed, says the ceiling has NOT been re-derived, and says eight minutes stands until a post-fix table replaces it. That is the card's own open criterion written where the next reader will meet it, not a raised ceiling.
+    - **`Package.swift` has no diff in this commit.** Router stays pinned at `aff8b1b`.
+
+    ### What was not reported, and why
+
+    The open gated criteria are not review findings and were not recorded as such. They are unmet acceptance criteria awaiting measurement, which is a different thing from a defect in the change.
+  timestamp: 2026-08-17T12:17:35.430948+00:00
+- actor: claude-code
+  id: 01m07tgybf4g8hp25zpj4jkab6
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 10 files, new `ToolReturnLedger` + `ResultRenderer` notice + `WaitTool` settled directive
+    - test: green — `swift test`, 350 tests/29 suites and 59 tests/11 suites, 0 warnings, 0 errors
+    - commit: 0a9171f
+    - review: clean — `review sha HEAD~1..HEAD`, 0 findings, 9 files attempted, 0 failed
+    - next: NOT moved to `done`. Three acceptance criteria remain open and all three need gated `MULTITOOL_INTEGRATION` measurement that no step has yet made: the repeated-run table, the re-derived 8-minute ceiling, and the gated row. The review verdict is a statement about the change, not about the card. The orchestrator is running the gated canary now; the card closes on that evidence or reports what it finds.
+
+    **The fix has never been observed working against a real model.** Every run recorded on this card so far was against the broken behaviour. Until a gated run shows the notice or the `wait` directive changing what the model answers, this is a plausible fix with clean unit coverage and nothing more.
+  timestamp: 2026-08-17T12:18:14.511961+00:00
+- actor: claude-code
+  id: 01m07vwhpzfn923asbqvpvc3kp
+  text: |-
+    ### Gated measurement of the fix: 1 pass in 3, and the notice never fires on the real shape
+
+    Three post-fix gated runs, `Qwen3.8-27B-mxfp4`, Router `aff8b1b`, serialized, one run per shell command:
+
+        run   outcome   elapsed   waitCalls   reply
+        1     PASSED    313.5s    3           "The archive index rebuild is complete.
+                                               Its manifest code is **58204**."
+        2     FAILED    471.2s    2           "Your archive index rebuild is now **under
+                                               way** — it's running in the background,
+                                               and I'm not blocking on it."
+        3     FAILED    480.6s    —           time limit exceeded
+
+    **The fix is not sufficient.** One pass in three is not a fix under this repository's reliability ruling, which says every gated run passes and forbids statistical criteria. The card stays open.
+
+    **What the transcripts show, which is more useful than the tally.** Both recorded runs open the same way:
+
+        run 1   snippet 1 → {"started":true}
+                snippet 2 → {"manifestCode":58204}          model recovered unaided
+        run 2   snippet 1 → {"started":true}
+                snippet 2 → {"completionToken":"…","detail":"{\"started\":true}",…}
+
+    The first snippet in **both** runs fires `rebuildArchive` and returns `{"started": true}` — the discard this card is about, in object form rather than prose. Run 1 passed because the model then wrote a second snippet that did return the tool's value. Run 2 failed because its second snippet waited on the first token and got `{"started":true}` back, so the manifest code never reached it.
+
+    **So the notice never fired on the failing case, by construction.** `ToolReturnLedger`'s rule requires a **string leaf** in the returned value before it will report. `{"started": true}` has none, so the snippet that actually discards the tool's return is exactly the snippet the detector stays silent on.
+
+    That requirement was a deliberate, documented choice — "a computed number carries no sentence to mistake for a promise", protecting `return count * 2` from a false report. The choice is defensible and it is also what makes the fix miss. `{"started": true}` and `count * 2` are structurally identical to the detector: both share nothing with what the tools returned. Only intent separates them, and the ledger cannot see intent.
+
+    **The `wait` directive works and is not the gap.** It appears in both transcripts and was obeyed — in run 2 it faithfully delivered `{"started":true}`, which is the right behaviour on the wrong value. Fixing the answer-level surface cannot help when the value in hand is already wrong.
+
+    **For the next iteration**, the question to settle is how to report a discarded return without a string leaf to key on, given that the honest discriminator between `{"started": true}` and `count * 2` is not available structurally. One direction worth weighing: make the notice a neutral statement of fact rather than an accusation — "these calls returned values your result does not carry" — so that firing on `count * 2` costs a sentence of noise instead of a false claim, and the real case stops being invisible. That trade was made the other way round on the first pass, and the measurement is the argument for revisiting it.
+
+    The 8-minute ceiling stays where it is: two of these three runs finished inside it, and run 3's overrun is the pre-existing runaway rather than anything the fix introduced.
+  timestamp: 2026-08-17T12:42:03.359123+00:00
+- actor: claude-code
+  id: 01m07wfv9yksac61bw8f16c14k
+  text: |
+    ### Iteration 2: the string-leaf requirement is gone, and the notice now states a fact instead of claiming an intent
+
+    **The direction the card suggested is the one taken.** The notice no longer accuses a snippet of narrating. It states what the ledger can actually check, and holds its one instruction under a condition the model can settle and the ledger cannot:
+
+    > This snippet called tools.* and returned a value carrying nothing those calls returned. Only the value a snippet returns reaches you, so those call results are not in front of you, and a status flag or a sentence about a result is not the result. If the answer needs them, call runCode again and return them.
+
+    **The rule, in full.** The notice fires when the run recorded at least one `tools.*` return, the returned side did not cross `maximumRecordedValues`, and no text on either side appears anywhere in the other (case-insensitive, containment both ways). Two gates from the first rule are gone:
+
+    - `holdsText` — the string-leaf requirement — is deleted outright, along with the field that carried it. This is what made the detector silent on `{ started: true }`.
+    - The returned side no longer has to be non-empty. A snippet that calls a tool and returns nothing carries nothing, which is the fact the notice states, so it is judged rather than excused. `canBeCompared` split into `canAnchorComparison`, asked of the recorded calls only.
+
+    Everything else stands unchanged: the bound and its silence past it, containment with no minimum length, object keys not collected, `depth == 0` only, a throwing call recording nothing.
+
+    ### Why "literal from the snippet source" was weighed and rejected
+
+    There is one structural discriminator that would separate `{ started: true }` from `count * 2` without guessing at intent: a returned scalar that is a **constant of the snippet's own text** was not derived from any call, where `84` is nowhere in `return count * 2`. `MultiTool.runSnippet` holds the source, so it is reachable.
+
+    It was rejected. It needs a JavaScript tokenizer to be right — a substring scan reads `2` out of `count * 2` and `58204` out of a comment — and every case it misreads it misreads into silence. Iteration 1 failed for exactly that reason: a narrowing gate that looked defensible on paper turned out to cover none of the shapes the model writes. A second narrowing gate, unmeasured, would buy the same risk again. The rule that ships has no escapes: every value that carries nothing is reported.
+
+    ### What firing on `count * 2` actually costs, measured in this repository
+
+    Two existing tests in the ungated suite are real instances, and both are worth naming because they say how often this fires in practice:
+
+    - `RouterSessionMountTests.runCodeBackgroundsThroughTheMount` — `return r.cities.length`, a count derived from names.
+    - `ScenarioFixtureTests.concurrentCallsThroughOneSnippetAreAllRecorded` — `Promise.all` fan-out reduced to a total. This is the async fan-out scenario's own natural snippet, so a gated model writing it reads the notice too.
+
+    Both now close with the notice. Each assertion compares the **whole** output and reads the notice from `ToolReturnLedger.uncarriedReturnNotice`, so neither was weakened and a reword reaches both.
+
+    ### One consequence found while checking the blast radius, and it is not a gating one
+
+    `NativeTranscript.returnedValues(in:)` contributes only from `runCode` outputs that parse as JSON, and the appended notice stops an output parsing. Widening the rule therefore drops computed-summary outputs from that set as well. Traced to its callers: `returnedValues` feeds `ScenarioFailureModes.isGroundedButWrongForm` and nothing else — a diagnostic label, never a pass/fail assertion — so no gated grade moves. Recorded in that function's own documentation, where the next reader meets it.
+
+    ### The `wait` directive was left alone, as directed, and there is a tension worth knowing about
+
+    `WaitTool`'s settled report is untouched. But its `next` field ("The detail above is the result you waited for. Answer with it now.") is read *after* the detail, and on a parked run the detail now carries the notice inside it. So at collection the model reads "this result carries nothing those calls returned" and then "answer with it now". The two do not agree.
+
+    Not resolved here, because the card ruled the `wait` directive out of scope and rewording it is not a change to make without measurement. Noted so the next gated run is read with it in mind: if a run collects, reads both, and still answers with `{ started: true }`, that ordering is the first thing to suspect rather than the ledger.
+
+    ### What is still unproven
+
+    The same thing as after iteration 1, and it is worth repeating plainly: **this fix has never been observed working against a real model.** The ungated suite proves the notice fires on the exact shape three gated runs produced, and stays silent on every snippet that carried its value. It proves nothing about what a model does when it reads it.
+  timestamp: 2026-08-17T12:52:35.774468+00:00
+- actor: claude-code
+  id: 01m07wg5wbsk695k0n35bwyan0
+  text: |
+    ### implement — changed
+    - evidence: `swift test` — 352 tests / 29 suites and 59 tests / 11 suites, all passing, zero warnings from this package (350/29 before; the two added tests are the `{ started: true }` shape and the empty-return shape). 7 source and test files — `Sources/FoundationModelsMultitool/Invocation/ToolReturnLedger.swift`, `Tests/FoundationModelsMultitoolTests/ToolReturnLedgerTests.swift`, `Tests/FoundationModelsMultitoolTests/RouterSessionMountTests.swift`, `Tests/FoundationModelsMultitoolIntegrationTests/ScenarioFixtureTests.swift`, `Tests/FoundationModelsMultitoolIntegrationTests/Support/NativeTranscript.swift`, `Tests/FoundationModelsMultitoolIntegrationTests/InBandCollectionCanaryTests.swift`, `plan.md`.
+    - constraints checked against the diff: `Package.swift` and `Package.resolved` have no diff, so Router stays pinned at `aff8b1b`. `InBandCollectionCanaryTests`' diff is comment-only — filtering every comment line out of its diff leaves nothing, so the prompt, the assertions and the eight-minute limit are byte-identical. Nothing landed in a scenario prompt. No retry gate and no statistical criterion was added.
+    - next: the same three acceptance criteria stay open, and all three need gated `MULTITOOL_INTEGRATION` runs this step was directed not to make — the repeated-run table, the re-derived ceiling, and the gated row. The canary's limit comment now carries the 1-pass-in-3 table from iteration 1 and says plainly that eight minutes has been re-derived against neither pass.
+  timestamp: 2026-08-17T12:52:46.603975+00:00
 position_column: doing
 position_ordinal: '8380'
 title: A snippet that discards a tool's return and answers with a prose promise is graded succeeded, and the model loops on it

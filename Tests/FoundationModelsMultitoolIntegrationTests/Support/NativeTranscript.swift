@@ -120,11 +120,19 @@ enum NativeTranscript {
     /// does not parse contributes nothing rather than contributing noise:
     /// that covers a repairable error, an appended `Console output:` section,
     /// a truncation note, and `ToolReturnLedger`'s uncarried-return notice,
-    /// none of which is data the tools produced. The last of those is the
-    /// case where a snippet returned a sentence rather than what it read, so
-    /// the values it contributes nothing about are values it never carried.
+    /// none of which is data the tools produced.
     /// A `searchTools` output is skipped outright — it is the catalog the model
     /// was shown, not an answer it was given.
+    ///
+    /// The notice case drops more than it once did, and deliberately. Since
+    /// task `wnfzwxg`'s second pass the notice closes any run whose returned
+    /// value shares no text with what its calls returned — a computed total as
+    /// well as a narration — so a snippet that summarized what it read now
+    /// contributes nothing here either. That costs a diagnostic and no
+    /// assertion: `returnedValues` feeds `isGroundedButWrongForm` alone, which
+    /// labels a run rather than grading it, and every value it stops
+    /// contributing is by construction a value the reply could not have quoted
+    /// from that output.
     ///
     /// Booleans are skipped: JSON `true` bridges to the same numeric type as
     /// `1`, and a reply containing "1" is no evidence that anything came
