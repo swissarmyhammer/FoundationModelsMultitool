@@ -85,32 +85,27 @@ extension WaitTool: DetachmentParameterProviding {
     /// accidentally safe before: safe while the runs it waited on happened to
     /// settle inside the mount's window.
     ///
-    /// Both clocks are answered at ``unboundedSeconds`` for the same reason
-    /// `SearchToolsTool` answers both of its own that way: a per-call answer
-    /// overrides the wrap-time configuration, and neither question has a
+    /// The mount is `runToCompletionMount`, for the same reason
+    /// `SearchToolsTool` takes it: neither of the two clock questions has a
     /// bounded answer here. The wait clock asks when this call should become
-    /// asynchronous — never, since blocking is the whole point of the call.
+    /// asynchronous — never, since blocking is the whole point of a `wait`.
     /// The work clock asks how long it may run before being cancelled and
     /// reported failed — no limit, because the caller's own `timeout` is the
     /// only bound in this design, and a host clock firing under it would
     /// report `deadlineElapsed` on its own schedule rather than the caller's.
     ///
-    /// This is a workaround, and it should be read as one: what the tool needs
-    /// to declare is `DetachConfiguration.Mode.runToCompletion`, which is read
-    /// from the wrap-time configuration and which
-    /// `DetachmentParameterProviding` cannot express. Filed on Router's
-    /// `^w8dzvee`. Two large numbers state the intent that a per-tool mode
-    /// would declare.
+    /// This replaces a `(86_400, 86_400)` clock pair that stated the intent
+    /// without being able to declare it, back when
+    /// `DetachmentParameterProviding` exposed clocks alone. Router's
+    /// `^jgh63sf` both added the mount and made that pair a hard error, whose
+    /// text names this replacement: "a tool that must never park is mounted on
+    /// `DetachConfiguration.runToCompletionMount`, which carries no clock at
+    /// all, rather than on two clocks set to the same number."
     ///
-    /// - Parameter arguments: the call's arguments as opaque
-    ///   `GeneratedContent`. Unread: every `wait` call gets the same answers,
-    ///   because the rule is the tool's, not the call's.
-    /// - Returns: an unbounded wait clock and an unbounded work clock.
-    public func detachmentClocks(
-        from arguments: GeneratedContent
-    ) -> (waitSeconds: TimeInterval?, timeout: TimeInterval?) {
-        (Self.unboundedSeconds, Self.unboundedSeconds)
-    }
+    /// A `wait` that parked would be self-defeating in a way worth stating
+    /// plainly: the model calls it to collect a token, and a parking `wait`
+    /// would answer with a second token to collect.
+    public var detachmentMount: DetachConfiguration? { .runToCompletionMount }
 }
 
 public struct WaitTool: Tool {
@@ -219,10 +214,11 @@ public struct WaitTool: Tool {
     /// `deadlineElapsed` for work that is still running, sending the model back
     /// around a loop it had already decided to stop for.
     ///
-    /// `ToolContext.waitSecondsCeiling`, not `.infinity`: the run plane clamps
-    /// every wait at that ceiling anyway, so naming it here is the same bound
-    /// the host already treats as unbounded rather than a second notion of it.
-    static let unboundedSeconds: TimeInterval = ToolContext.waitSecondsCeiling
+    /// `ToolContext.deadlineSecondsCeiling`, not `.infinity`: the run plane
+    /// clamps every seconds-valued deadline at that ceiling anyway, so naming
+    /// it here is the same bound the host already treats as unbounded rather
+    /// than a second notion of it.
+    static let unboundedSeconds: TimeInterval = ToolContext.deadlineSecondsCeiling
 
     /// The seconds to wait, given what the call asked for.
     ///

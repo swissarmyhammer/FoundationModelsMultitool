@@ -509,6 +509,26 @@ private func streamTurn(of session: RoutedSession, prompt: String) async throws 
     var turn = StreamedTurn()
     for try await event in await session.streamEvents(to: prompt) {
         switch event {
+        case .generationStalled(let stall):
+            // Router reports a stall rather than imposing a timeout
+            // (`^z6xcmnh`): a signal a host may act on, never a cancellation.
+            // Printed and not asserted, deliberately — a stall is "no token has
+            // moved for a while", which on a real model under a hard scenario
+            // is ordinary, and a suite that failed on it would be re-imposing
+            // the timeout Router declined to impose.
+            //
+            // It is worth printing because it separates two of the three states
+            // a long run can be in — still working, and stuck. It does NOT
+            // separate either from the third, a model generating steadily and
+            // achieving nothing, which is the shape `^wnfzwxg` records: every
+            // token moves, so no stall is ever reported. If a scenario runs
+            // long and this line is absent, that is the reading.
+            print(
+                """
+                STALL withoutProgress=\(stall.timeWithoutProgress) \
+                inFlight=\(stall.timeInFlight) visibility=\(stall.visibility)
+                """
+            )
         case .turnStarted(let start):
             // The frame this turn's later events belong to (Router ^way106d).
             // `promptId` is nil here by design: these scenarios hand the prompt
