@@ -39,8 +39,30 @@ comments:
     - evidence: 1 file — /Users/wballard/github/swissarmyhammer/FoundationModelsMultitool/Tests/FoundationModelsMultitoolIntegrationTests/NestedGenerationProbeTests.swift; `swift test` exit 0, 352 tests in 29 suites and 59 tests in 11 suites, zero failures, no source warning (the one `warning:` in the log is SwiftPM's pre-existing `missing creator for mutated node` for `mlx-swift_Cmlx.bundle`)
     - next: `/review`
   timestamp: 2026-08-17T13:37:05.624361+00:00
-position_column: doing
-position_ordinal: '8380'
+- actor: claude-code
+  id: 01m07z5n8r9kb72e183ctkxghc
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit 442115b) — 0 findings, 0 confirmed, 0 refuted; 9 validator passes attempted, 0 failed. 1 file reviewed: Tests/FoundationModelsMultitoolIntegrationTests/NestedGenerationProbeTests.swift. 4 .kanban files excluded by .reviewignore.
+    - next: task moved to done. No gated MULTITOOL_INTEGRATION run was made; the change is comment-only.
+  timestamp: 2026-08-17T13:39:27.640052+00:00
+- actor: claude-code
+  id: 01m07z6dx9r33kq05hm4kzpytc
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 1 file, limit comment rewritten to derive from the probe's own runs; `.minutes(3)` unchanged
+    - test: green — `swift test`, 352 tests/29 suites and 59 tests/11 suites
+    - commit: 442115b
+    - review: clean — `review sha HEAD~1..HEAD`, 0 findings, 9 validator passes, 0 failed; task advanced to `done`
+
+    Closed in one iteration. The fix was not the number — it was that the reason had been borrowed from a suite measuring something else. The probe's limit *is* its deadlock detector, since nothing in the file asserts a deadlock and reaching the ceiling is how one gets reported; the canary's limit is headroom on a content-graded answer. They shared a number and nothing else, and the number turned out to be right on its own evidence: 180s is more than six times the slowest healthy run.
+
+    The implementer also found and corrected a stale claim in the same doc comment — "It fails today ... it will pass when the gate is fixed" — which had been true when written and was falsified by Router's `^1zt7vyg` landing.
+
+    It checked whether any other suite borrows a peer's reasoning and found none: the five 30-minute suites carry no comment on their limit, and `InBandCollectionCanaryTests` derives its ten minutes from its own runs.
+  timestamp: 2026-08-17T13:39:52.873647+00:00
+position_column: done
+position_ordinal: c980
 title: NestedGenerationProbeTests cites the in-band canary's limit as three minutes, and it has not been three for two changes
 ---
 Found while re-deriving the canary's ceiling under `^wnfzwxg`. Not caused by that change, but that change widens the gap, so it is recorded rather than fixed in passing.

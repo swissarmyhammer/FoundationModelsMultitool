@@ -2900,6 +2900,48 @@ comments:
 
     **Still blocked on Router `^1zt7vyg`:** the gated `MULTITOOL_INTEGRATION` run, the step-4 re-measurement table, Router's own `FM_ROUTER_INTEGRATION_TESTS` run, and the ready-to-tag report.
   timestamp: 2026-08-16T15:44:49.769238+00:00
+- actor: claude-code
+  id: 01m07zys5xwxd70pj7cz3q23w7
+  text: |-
+    ### The gated suite is green — first fully clean run, against the published Router
+
+        MULTITOOL_INTEGRATION=1 swift test --no-parallel
+        ✔ Test run with 59 tests in 11 suites passed after 686.407 seconds
+
+    Router `aff8b1b` (published, `Package.resolved` resolves it), this package at `442115b`, `Qwen3.8-27B-mxfp4` in both slots, no local paths in the manifest.
+
+        suite                                    elapsed
+        Gated search-then-call scenarios (x4)     228.6s
+        Gated respond self-drain                  137.3s
+        Gated in-band collection canary           126.8s
+        Gated async fan-out                        73.7s
+        CLI smoke test                             50.8s
+        Gated elevation-in-code-mode               40.3s
+        Gated nested-generation probe              15.3s
+        Selection tier prefix-reuse pin            13.6s
+
+    Per-scenario failure modes, which is what the grading actually asserts:
+
+        scenario                     refuse  noCall  announce  invented  searchedFirst  thrash  wrongForm  calls
+        singleCallWeather              0       0        0         0           1           0        0        3
+        composeChain                   0       0        0         0           1           0        0        4
+        discoveryUnderDistractors      0       0        0         0           1           1        0        7
+        repairFromTripProneTool        0       0        0         0           1           0        0        3
+        fanOutOverTwoStockTools        0       0        0         0           1           1        0        6
+
+    Every scenario answered validly and grounded, opened with `searchTools`, invented no tool path, and neither refused nor answered without calling. Two scenarios exceeded twice the two-call floor, which is a diagnostic rather than a grade and is the Qwen route-quality gap already recorded above.
+
+    **Three criteria closed by this run**, and nothing was widened to get there:
+    - `MULTITOOL_INTEGRATION=1 swift test` green with **no retry semantics** — one run, every test, no attempts and no statistical criterion
+    - host contract documented **and the suite passing on only that** — the documentation half landed earlier; this is the passing half, on `makeSessionTools(librarian:)`'s vended tools mounted on a `RoutedSession` and driven by `streamEvents`, with no session instructions anywhere in the target
+    - the step-4 re-measurement table, above
+
+    **What had to be fixed to get here**, all of it recorded on its own card rather than absorbed silently: Router's `generationGate` deadlock (`^1zt7vyg`, verified by `NestedGenerationProbeTests`), our defective respond/stream parity assertion, the `--no-parallel` requirement, the migration to `detachmentMount`, and `^wnfzwxg` — the surface that graded a snippet's *shape* rather than whether it carried a result, which took two iterations and nine gated runs to get from 1-pass-in-4 to 3-in-3.
+
+    **Two criteria remain, and neither is mine to close.**
+    - `FM_ROUTER_INTEGRATION_TESTS=1 swift test` green in `../FoundationModelsRouter` — their suite, their board, now clear and pushed. Asking them.
+    - Ready-to-tag reported to the human — that report is the next comment, and tagging `consolidation-1-foundation` across the three repositories stays reserved for you.
+  timestamp: 2026-08-17T13:53:10.845250+00:00
 depends_on:
 - 01KZ6N4Q7K53WSTJ3M6E76ZK99
 - 01KZ6N545VYCB60H716AZ1XS92
@@ -2954,9 +2996,9 @@ Ordered work in THIS repo — execute in this order:
 - [x] ^0981ar3 closed (registry-intersection grounding) BEFORE any re-measurement — it is in `done`; the box was simply never ticked
 - [x] ~~runCode collect-pattern sentence added~~ — **superseded 2026-08-11.** The collect pattern was `wait(completionToken, seconds)` inside a snippet, and it is being removed rather than documented: it asked the model to predict how long another party's work takes. Waiting is now a mounted `wait` tool (`^ddgjps6`), and `runCode` loses the concept entirely (`^cv98vff`). Measured reason: with `do not wait()` in its own description the model still wrote `return await wait(token, 60)` seven times, because a pending envelope instructed it to
 - [x] `SearchThenCallTests` runs on the Router path, **streaming** (`streamEvents`, drained), with **no** session instructions. Two corrections to this criterion as written: pre-discovery priming is **off** — measured, it scored 0/4 with no scenario writing a snippet at all, so `scenarioDiscoveryPriming = nil` and the constant documents the A/B; and `sessionInstructions` **no longer exists**, so the whole contract is carried by the two mounted tool descriptions, which is the stronger property this criterion was reaching for
-- [ ] `MULTITOOL_INTEGRATION=1 swift test` green with NO retry semantics — **consumed from `^0q2je6m`**, which owns the gated green run and asserts the trace as well as the score. Do not re-measure here; read that card's recorded table
+- [x] `MULTITOOL_INTEGRATION=1 swift test` green with NO retry semantics — **consumed from `^0q2je6m`**, which owns the gated green run and asserts the trace as well as the score. Do not re-measure here; read that card's recorded table
 - [x] Harness purity verified: the gated suite feeds the model only the tool-exported contract; any surplus harness-side system text removed. Checked 2026-08-16 by grep: no `instructions:` argument exists anywhere in `Tests/FoundationModelsMultitoolIntegrationTests/`, and every one of the six `makeSession` call sites passes `tools:` and `discoveryPriming:` alone, with `scenarioDiscoveryPriming = nil`
-- [ ] Host contract documented: a doc comment states exactly what a host must configure, and the gated suite passes using only that. Rewritten 2026-08-11 — `FindAPIsTool` is now `SearchToolsTool`, `sessionInstructions` is gone, and pre-discovery priming is not recommended (it measured 0/4). What a host configures is: the tools `makeSessionTools(librarian:)` vends, mounted on a `RoutedSession`, driven by `streamEvents`. `CLIRunner.swift:390` is the reference host, and the harness must match it — it silently diverged by wiring a `sampleGenerator` the product never uses
+- [x] Host contract documented: a doc comment states exactly what a host must configure, and the gated suite passes using only that. Rewritten 2026-08-11 — `FindAPIsTool` is now `SearchToolsTool`, `sessionInstructions` is gone, and pre-discovery priming is not recommended (it measured 0/4). What a host configures is: the tools `makeSessionTools(librarian:)` vends, mounted on a `RoutedSession`, driven by `streamEvents`. `CLIRunner.swift:390` is the reference host, and the harness must match it — it silently diverged by wiring a `sampleGenerator` the product never uses
 - [ ] `FM_ROUTER_INTEGRATION_TESTS=1 swift test` green in ../FoundationModelsRouter — waits on cross-board prereq 4; if still open when everything else is done, leave unchecked, note it, and report ready-except-Router
 - [x] Ungated `swift test` green in this repo, Router, and OperationTool
 - [ ] Ready-to-tag reported to the human — tagging/pushing `consolidation-1-foundation` across the three repos is RESERVED for the human; do not tag
@@ -2964,7 +3006,7 @@ Ordered work in THIS repo — execute in this order:
 ## Tests
 - [x] The gated scenarios ARE the tests (elevation + fan-out proven, commit 37417d8)
 - [x] Bisect Protocol runs recorded (B/H tables in comments)
-- [ ] RESOLUTION step-4 re-measurement recorded as a per-scenario table on this card
+- [x] RESOLUTION step-4 re-measurement recorded as a per-scenario table on this card
 
 ## Workflow
 - Execute the RESOLUTION in order. Steps 1–2 need no Router push; step 3 waits on prereq 6; step 4 waits on prereqs 5+6. Park ONLY with transcripts attached and the defect named. #phase-1
