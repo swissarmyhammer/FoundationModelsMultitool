@@ -134,7 +134,12 @@ struct MultiToolExecutionTests {
                 return "done";
                 """)
         )
-        #expect(output == "\"done\"")
+        // This snippet fires both calls and answers with a status word, so it
+        // carries nothing either call returned and the run closes with
+        // `ToolReturnLedger`'s notice. That is the notice reporting correctly
+        // rather than noise — the whole output is asserted, not a loosened
+        // comparison, so a reword of the notice reaches this test too.
+        #expect(output == "\"done\"\n\n\(ToolReturnLedger.uncarriedReturnNotice)")
 
         let windowA = try #require(toolA.window)
         let windowB = try #require(toolB.window)
@@ -170,7 +175,12 @@ struct MultiToolExecutionTests {
             arguments: RunCodeArguments(code: "tools.delayed(); return \"done\";")
         )
 
-        #expect(output == "\"done\"")
+        // The floating call is the point of this test, and it is also exactly
+        // the shape `ToolReturnLedger` reports: a call fired, its value never
+        // read, and a status word answered in its place. So the run closes with
+        // that notice, and the whole output is asserted rather than a loosened
+        // comparison.
+        #expect(output == "\"done\"\n\n\(ToolReturnLedger.uncarriedReturnNotice)")
         #expect(delayedTool.ranOnMainThread != nil)
     }
 

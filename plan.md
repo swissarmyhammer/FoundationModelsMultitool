@@ -727,6 +727,12 @@ serialize the return with a **size cap + truncation note** (so a fat tool result
 can't flood the model), append capped console output, and on failure render the
 JS/validation exception as a repairable error.
 
+One in-band notice closes a successful render, and only when the run earned it:
+a snippet that called `tools.*` and returned a value carrying nothing those
+calls returned is told so, because that snippet and one that reports a real
+result are otherwise indistinguishable from the model's side (task `wnfzwxg`,
+`ToolReturnLedger`).
+
 ## Components
 
 ⭐ marks the value-add (touches FoundationModels types or the interpreter core).

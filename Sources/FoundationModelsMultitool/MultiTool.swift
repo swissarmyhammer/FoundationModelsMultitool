@@ -558,11 +558,16 @@ public struct MultiTool: Tool {
         // inherited one. `nil` when this run has no session — both globals
         // are then silent no-ops.
         let notices = binding.map { SandboxNoticeOutbox(context: $0.context) }
+        // One ledger per invocation, for the same reason as the notice chain
+        // above: it records what *this* run's `tools.*` calls returned, and
+        // `call(arguments:)` reads it back once the snippet has finished (see
+        // ``ToolReturnLedger``).
+        let ledger = ToolReturnLedger()
         let code = "\(preamble)\n\(arguments.code)"
         let outcome = await Self.runCapturingOutcome(
             code: code,
             installing: hostFunctions + Self.makeNoticeHostFunctions(outbox: notices),
-            installingAsync: makeAsyncHostFunctions(binding: binding)
+            installingAsync: makeAsyncHostFunctions(binding: binding, recordingInto: ledger)
                 + Self.makeRunPlaneHostFunctions(binding: binding),
             using: interpreter
         )
@@ -574,7 +579,11 @@ public struct MultiTool: Tool {
         await notices?.flush()
         switch outcome {
         case .success(let result):
-            return ResultRenderer.render(result, limits: limits)
+            return ResultRenderer.render(
+                result,
+                limits: limits,
+                notice: uncarriedReturnNotice(from: ledger, for: result.returnValue)
+            )
         case .failure(let interpreterError as InterpreterError):
             let resolution = await UnknownToolHint.hint(
                 message: interpreterError.message,
@@ -597,6 +606,27 @@ public struct MultiTool: Tool {
         case .failure(let error):
             throw error
         }
+    }
+
+    /// The in-band notice this run's rendered result closes with, or `nil`
+    /// when it closes with the value alone.
+    ///
+    /// Only a run the model started carries one. A nested `tools.runCode`
+    /// result is read by a *snippet* — `makeNestedRunCodeHostFunction` decodes
+    /// the rendered text back into a value — so a sentence appended there
+    /// would reach JavaScript rather than the model, where the teaching has no
+    /// reader and the decode has one more thing to fail on.
+    ///
+    /// - Parameters:
+    ///   - ledger: this invocation's record of what its `tools.*` calls
+    ///     returned.
+    ///   - returnValue: the value the snippet returned.
+    /// - Returns: the notice, or `nil`.
+    private func uncarriedReturnNotice(
+        from ledger: ToolReturnLedger, for returnValue: InterpreterValue
+    ) -> String? {
+        guard depth == 0 else { return nil }
+        return ledger.notice(forReturnValue: returnValue)
     }
 
     // MARK: - Off-cooperative-thread dispatch
@@ -805,11 +835,22 @@ public struct MultiTool: Tool {
     /// belongs to has to be a captured value rather than an inherited one
     /// (see `RunBinding`).
     ///
-    /// - Parameter binding: this `runCode` invocation's captured session
-    ///   binding, or `nil` when it has none.
+    /// Every binding is wrapped so `ledger` sees what it returned, which is
+    /// what lets `call(arguments:)` tell a snippet that reported a value from
+    /// one that promised it (see ``ToolReturnLedger``). The wrap is applied to
+    /// the whole list at once rather than at each construction site, so no
+    /// binding added later can be left out of the record by omission.
+    ///
+    /// - Parameters:
+    ///   - binding: this `runCode` invocation's captured session binding, or
+    ///     `nil` when it has none.
+    ///   - ledger: this invocation's record of what its `tools.*` calls
+    ///     returned.
     /// - Returns: one `AsyncHostFunction` per live tool, in `liveTools`'
     ///   order.
-    private func makeAsyncHostFunctions(binding: RunBinding?) -> [AsyncHostFunction] {
+    private func makeAsyncHostFunctions(
+        binding: RunBinding?, recordingInto ledger: ToolReturnLedger
+    ) -> [AsyncHostFunction] {
         var functions = liveTools.map { liveTool in
             AsyncHostFunction(name: liveTool.hostFunctionName) { arguments in
                 try await Self.invokeAsync(tool: liveTool.tool, arguments: arguments, binding: binding)
@@ -827,7 +868,23 @@ public struct MultiTool: Tool {
             )
         }
         functions.append(makeNestedRunCodeHostFunction())
-        return functions
+        return functions.map { Self.recording($0, into: ledger) }
+    }
+
+    /// Wraps one `tools.*` binding so this run's ledger sees the value it
+    /// handed back.
+    ///
+    /// - Parameters:
+    ///   - function: the binding to wrap.
+    ///   - ledger: the record to write to.
+    /// - Returns: the same binding, under the same name, recording as it
+    ///   returns.
+    private static func recording(
+        _ function: AsyncHostFunction, into ledger: ToolReturnLedger
+    ) -> AsyncHostFunction {
+        AsyncHostFunction(name: function.name) { arguments in
+            try await ledger.recording { try await function.call(arguments) }
+        }
     }
 
     /// The error `tools.runCode` throws when a snippet nests past

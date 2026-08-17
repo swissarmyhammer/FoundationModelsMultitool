@@ -188,23 +188,35 @@ public enum ResultRenderer {
     ///   - result: the snippet's return value and captured console lines.
     ///   - limits: the size caps to enforce. Defaults to
     ///     `ResultRendererLimits.default`.
+    ///   - notice: an in-band notice about the run itself — see
+    ///     ``ToolReturnLedger/uncarriedReturnNotice`` — appended last, after
+    ///     the value and after any console section. Defaults to `nil`, which
+    ///     renders the value alone.
     /// - Returns: the serialized (possibly truncated) return value, followed
     ///   by a `Console output:` section when `result.consoleLines` is
-    ///   non-empty. Contains no error scaffolding.
-    public static func render(_ result: InterpreterResult, limits: ResultRendererLimits = .default) -> String {
+    ///   non-empty, followed by `notice` when there is one. Contains no error
+    ///   scaffolding.
+    public static func render(
+        _ result: InterpreterResult,
+        limits: ResultRendererLimits = .default,
+        notice: String? = nil
+    ) -> String {
         let returnValueText = capped(
             serialize(result.returnValue),
             limit: limits.returnValueCharacterLimit,
             label: "return value"
         )
-        guard !result.consoleLines.isEmpty else { return returnValueText }
+        // Last, for `RepairDirective.closingLine`'s reason: what to do next is
+        // what the model reads immediately before deciding what to do next.
+        let noticeSection = notice.map { "\n\n\($0)" } ?? ""
+        guard !result.consoleLines.isEmpty else { return returnValueText + noticeSection }
 
         let consoleText = capped(
             result.consoleLines.joined(separator: "\n"),
             limit: limits.consoleCharacterLimit,
             label: "console output"
         )
-        return "\(returnValueText)\n\nConsole output:\n\(consoleText)"
+        return "\(returnValueText)\n\nConsole output:\n\(consoleText)\(noticeSection)"
     }
 
     /// Renders a thrown `InterpreterError` as a repairable error: what kind
@@ -245,7 +257,12 @@ public enum ResultRenderer {
     ///   `.number` to `null` rather than throwing), so this fallback is
     ///   defensive, never a trap.
     ///
-    private static func serialize(_ value: InterpreterValue) -> String {
+    /// `internal` rather than `private`, since task `wnfzwxg`: `ToolReturnLedger`
+    /// reads a scalar's text through this same function, so the text it
+    /// compares against and the text the model reads cannot be spelled two
+    /// ways. No other module needs it, so `public` would add a second
+    /// cross-module name for one serialization.
+    static func serialize(_ value: InterpreterValue) -> String {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         guard

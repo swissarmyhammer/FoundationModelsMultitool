@@ -186,6 +186,40 @@ struct WaitToolTests {
         #expect(await runPlane(over: mailbox).parkedRuns().map(\.completionToken) == [run.completionToken])
     }
 
+    @Test("a settled run is told to answer with the detail this call just delivered")
+    func aSettledRunCarriesTheAnswerDirective() async throws {
+        // The answer-level half of task `wnfzwxg`. A model that collected the
+        // value and then replied that it would arrive later did everything
+        // mechanical right: it spent the wait, the run settled, the plane was
+        // empty. Nothing in band told it that a promise is not a report, and
+        // this is the moment it had the value in hand.
+        let mailbox = SessionMailbox()
+        let run = try await parkScriptedRun(in: mailbox, detail: "the-collected-result")
+        await settle(run, in: mailbox)
+
+        let settled = try await Self.waitCall(
+            WaitArguments(completionToken: run.completionToken), against: mailbox
+        )
+
+        #expect(settled.contains("the-collected-result"))
+        #expect(settled.contains(WaitTool.settledResultDirective))
+    }
+
+    @Test("a run still going carries no answer directive, because it delivered no result")
+    func aDeadlineThatElapsedCarriesNoAnswerDirective() async throws {
+        // The directive names a `detail` this report carries. A report that
+        // carries none would be telling the model to answer with nothing.
+        let mailbox = SessionMailbox()
+        let run = try await parkScriptedRun(in: mailbox)
+
+        let report = try await Self.waitCall(
+            WaitArguments(completionToken: run.completionToken, timeout: 0.2), against: mailbox
+        )
+
+        #expect(report.contains(RunPlaneState.deadlineElapsed))
+        #expect(!report.contains(WaitTool.settledResultDirective))
+    }
+
     @Test("waiting with no token waits for every pending run")
     func waitingWithNoTokenWaitsForEveryPendingRun() async throws {
         let mailbox = SessionMailbox()

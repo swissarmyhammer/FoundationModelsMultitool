@@ -118,8 +118,11 @@ enum NativeTranscript {
     /// that parses is exactly the data a snippet returned, and its leaf
     /// scalars are that data with no heuristic in between. An output that
     /// does not parse contributes nothing rather than contributing noise:
-    /// that covers a repairable error, an appended `Console output:` section
-    /// and a truncation note, none of which is data the tools produced.
+    /// that covers a repairable error, an appended `Console output:` section,
+    /// a truncation note, and `ToolReturnLedger`'s uncarried-return notice,
+    /// none of which is data the tools produced. The last of those is the
+    /// case where a snippet returned a sentence rather than what it read, so
+    /// the values it contributes nothing about are values it never carried.
     /// A `searchTools` output is skipped outright — it is the catalog the model
     /// was shown, not an answer it was given.
     ///

@@ -197,13 +197,46 @@ public struct WaitTool: Tool {
     ) async -> [String: InterpreterValue] {
         switch await context.wait(completionToken: token, seconds: seconds) {
         case .settled(let terminal):
-            return MultiTool.terminalEventFields(of: terminal, state: RunPlaneState.settled)
+            var fields = MultiTool.terminalEventFields(of: terminal, state: RunPlaneState.settled)
+            fields[settledResultDirectiveField] = .string(settledResultDirective)
+            return fields
         case .deadlineElapsed:
             return MultiTool.tokenOnlyFields(state: RunPlaneState.deadlineElapsed, token: token)
         case .unknownToken:
             return MultiTool.tokenOnlyFields(state: RunPlaneState.unknownToken, token: token)
         }
     }
+
+    /// The field a settled report carries ``settledResultDirective`` under.
+    ///
+    /// Added here rather than in `MultiTool.terminalEventFields(of:state:)`,
+    /// which the sandbox globals share: a snippet reading `status()` or
+    /// `wait()` mid-run is not about to answer anyone, so the directive would
+    /// be text inside JavaScript with no reader. This tool's report is read by
+    /// the model itself.
+    static let settledResultDirectiveField = "next"
+
+    /// What a settled report tells the model to do with the `detail` beside
+    /// it.
+    ///
+    /// **Why the settled case, and why only it.** The two reports this tool
+    /// makes when there is nothing to collect already say what to do next —
+    /// ``noRunPlaneDetail`` and ``nothingPendingDetail`` each point at the
+    /// values already in hand. The settled report was the one that delivered a
+    /// result and said nothing about it, and that is the moment a recorded run
+    /// collected the manifest code it had asked for and then answered "as soon
+    /// as the manifest code comes back to me, I'll give it to you" — three
+    /// `wait` calls spent, the run plane empty, and the value in hand (task
+    /// `wnfzwxg`). A report that carries no result carries no directive
+    /// either, because telling a model to answer with nothing is worse than
+    /// silence.
+    ///
+    /// This is the only place the text is written, on `RepairDirective
+    /// .closingLine`'s terms: the test target reads it here through
+    /// `@testable import` rather than restating it, so a reword reaches the
+    /// expectation that it is present and the one that it is absent alike.
+    static let settledResultDirective = "The detail above is the result you waited for. Answer with it "
+        + "now. Never reply that it will arrive later."
 
     /// The bound used when the call names none: no bound at all.
     ///

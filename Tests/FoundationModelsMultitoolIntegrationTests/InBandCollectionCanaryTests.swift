@@ -111,11 +111,13 @@ import Testing
     // above the one measured pass (316.7s, `waitCalls=1`, grounded) and reports
     // a runaway in half the time fifteen would.
     //
-    // Until the snippet-returns-a-promise defect is fixed in the shipped
-    // surface, this suite is expected to be red more often than green, and that
-    // is the canary doing its job rather than a limit needing another nudge.
-    // Do not raise this again to make a run go green — the loop is the thing to
-    // fix, and it is filed as its own card.
+    // The snippet-returns-a-promise defect is now fixed in the shipped surface
+    // (task `wnfzwxg`): a snippet that called `tools.*` and returned a value
+    // carrying nothing those calls returned is told so in band, and a settled
+    // `wait` report says to answer with the detail it just delivered. This
+    // number has NOT been re-derived against that fix — every row above was
+    // measured against the broken behaviour, so eight minutes stands until a
+    // post-fix table replaces it. Do not raise it to make a run go green.
     //
     // The peers keep their own tighter expectations; nothing here licenses
     // raising theirs.
