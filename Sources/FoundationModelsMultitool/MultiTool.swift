@@ -70,12 +70,15 @@ extension MultiTool {
         }
 
         /// Returns a copy of this registry in **direct mode** — plan.md
-        /// "Direct mode (skip discovery)": only `runCode` is surfaced to
-        /// the session; a snippet is expected to introspect the surface
-        /// itself via `help()`/`docs()` (M7) rather than a `searchTools` round
-        /// trip. The executable surface itself (`surface`/`tools`) is
-        /// unchanged — only the affordance metadata (`isDirectMode`,
-        /// `affordances`, `supportsSearchTools`) flips.
+        /// "Direct mode (skip discovery)": `runCode` and `wait` are surfaced to
+        /// the session and `searchTools` is not; a snippet is expected to
+        /// introspect the surface itself via `help()`/`docs()` (M7) rather than
+        /// a `searchTools` round trip. Direct mode takes discovery away and
+        /// nothing else — `wait` stays, because a slow `runCode` still detaches
+        /// and the model still needs a deliberate join. The executable surface
+        /// itself (`surface`/`tools`) is unchanged — only the affordance
+        /// metadata (`isDirectMode`, `affordances`, `supportsSearchTools`)
+        /// flips.
         ///
         /// - Returns: a copy of this registry with `isDirectMode` set to
         ///   `true`.
@@ -84,12 +87,23 @@ extension MultiTool {
         }
 
         /// The session-facing operations this registry surfaces —
-        /// `["runCode"]` in direct mode, `["runCode", "searchTools"]`
-        /// otherwise. Plain, checkable metadata for a caller (or a test) to
-        /// read without having to separately know `isDirectMode`'s exact
-        /// semantics.
+        /// `["runCode", "wait"]` in direct mode, `["runCode", "searchTools",
+        /// "wait"]` otherwise. Plain, checkable metadata for a caller (or a
+        /// test) to read without having to separately know `isDirectMode`'s
+        /// exact semantics.
+        ///
+        /// **`wait` appears in both arms because `makeSessionTools(librarian:)`
+        /// mounts it in both.** It named only `runCode` and `searchTools` until
+        /// 2026-08-18, which made this property disagree with the array a host
+        /// actually receives, in every mode: direct mode takes discovery away
+        /// and nothing else. A caller reading this to learn what the model can
+        /// call was told two thirds of the answer.
+        ///
+        /// The order is not the mount order, and this property is not the place
+        /// to learn one — see `makeSessionTools(librarian:)`, which says so and
+        /// owns it.
         public var affordances: [String] {
-            isDirectMode ? ["runCode"] : ["runCode", "searchTools"]
+            isDirectMode ? ["runCode", "wait"] : ["runCode", "searchTools", "wait"]
         }
 
         /// Whether this registry surfaces `searchTools` discovery — `false` in

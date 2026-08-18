@@ -290,9 +290,9 @@ struct MultiToolExecutionTests {
         #expect(description.contains("docs(\"\(MultiTool.sandboxGlobalsDocsTopic)\")"))
     }
 
-    // MARK: - directMode(): a runCode-only surface
+    // MARK: - directMode(): a surface with discovery taken away
 
-    @Test("registry.directMode() reports no searchTools affordance; a plain registry reports both")
+    @Test("registry.directMode() drops the searchTools affordance and keeps wait; a plain registry reports all three")
     func directModeReportsRunCodeOnlySurface() throws {
         let registry = try MultiTool.Builder()
             .addTool(CitiesTool())
@@ -300,13 +300,15 @@ struct MultiToolExecutionTests {
 
         #expect(registry.isDirectMode == false)
         #expect(registry.supportsSearchTools == true)
-        #expect(registry.affordances == ["runCode", "searchTools"])
+        // `wait` in both arms, because `makeSessionTools(librarian:)` mounts it
+        // in both — direct mode takes discovery away, never detachment.
+        #expect(registry.affordances == ["runCode", "searchTools", "wait"])
 
         let direct = registry.directMode()
 
         #expect(direct.isDirectMode == true)
         #expect(direct.supportsSearchTools == false)
-        #expect(direct.affordances == ["runCode"])
+        #expect(direct.affordances == ["runCode", "wait"])
         // `directMode()` only flips the affordance metadata — the executable
         // surface itself (and its rendered catalog) is unchanged.
         #expect(direct.surface.entries.map(\.path) == registry.surface.entries.map(\.path))
@@ -327,7 +329,7 @@ struct MultiToolExecutionTests {
         #expect(mounted.map(\.name) == ["searchTools", "runCode", "wait"])
     }
 
-    @Test("A direct-mode registry vends runCode alone — there is no searchTools to present")
+    @Test("A direct-mode registry vends runCode and wait — there is no searchTools to present")
     func directModeSessionToolsOmitSearchTools() throws {
         let registry = try MultiTool.Builder()
             .addTool(CitiesTool())

@@ -88,7 +88,8 @@ It scales badly along three axes that a *code* surface fixes for free:
 
 1. **Schema bloat.** N tool schemas in the instructions cost tokens, latency, and
    selection accuracy on *every* turn, whatever the window. The MultiTool puts
-   **zero** tool schemas in the main session — only `runCode` + `searchTools` — and
+   **zero** tool schemas in the main session — only `searchTools`, `runCode` and
+   `wait`, the three the registry vends — and
    keeps the derived API surface out in the interpreter and the discovery tier,
    so the cost is paid once, not per turn.
 2. **Chaining overhead.** With one-tool-per-turn calling, every intermediate result
