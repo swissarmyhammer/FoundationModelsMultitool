@@ -3062,6 +3062,40 @@ comments:
 
     They cut a 28-minute one-bit test to 4 seconds by dropping an 18 GB model for a cached 1B and folding once instead of driving a session, and observed that three of their open defects existed only because the measurement could not measure. That is exactly `^ck74mtg` here — the nested-generation probe asking a plumbing question with a 17 GB model. Worth doing before the next gated verification, not after.
   timestamp: 2026-08-18T19:58:47.886225+00:00
+- actor: claude-code
+  id: 01m0bg22w7snxrf9jpm7tmes2n
+  text: |-
+    ## What is actually left, checked rather than inferred (2026-08-18)
+
+    ### The header's prerequisite list is stale — all three are done
+
+    Read from Router's own board (`../FoundationModelsRouter/.kanban/tasks/*.md`, `position_column`):
+
+        01KZDA7Q3M8RV2T5W9XCE4HB6N  metallib test bootstrap        done
+        01KZFH9TT6QNRQ8DPBRYWC0Q4F  pending envelope teaches collect   done
+        01KZFHJSB0R7DXMZZD2S4405WC  pre-discovery seeding          done
+
+    So prereqs 4, 5 and 6 are all closed on their board while this card's header still marks each `[OPEN]`. Two of them also landed differently from how this card anticipated, which the ticked criteria already record: RESOLUTION A's envelope fix was superseded here by `wait` becoming a mounted tool (`^ddgjps6`/`^cv98vff`), and RESOLUTION B's pre-discovery seeding **shipped on their side but is deliberately not used here** — it measured 0/4 with no scenario writing a snippet at all, so `scenarioDiscoveryPriming = nil`. "Done on their board, and switched off here on measurement" is the accurate state, not "open".
+
+    ### One box is open, and it is one thing: their gated suite runs green
+
+    Not the metallib card, which is done. Literally `FM_ROUTER_INTEGRATION_TESTS=1 swift test` completing green, which their session states has not happened at any point today.
+
+    **One of their failures is impossible to pass rather than a real defect, and the cause is one layer below Router.** `Tests/FoundationModelsRouterIntegrationTests/LanguageModelSessionBackendTests.swift:583` asserts `turn2Usage.input.cachedTokenCount > 0`. Against the `mlx-swift-lm` pin both repos build on, `Libraries/MLXFoundationModels/MLXLanguageModel.swift` constructs `Usage` with a literal `cachedTokenCount: 0` at **all five** sites (`:1428, :1654, :1744, :1793, :2003`). No input can make that assertion hold.
+
+    But the number is not missing — it is discarded. `Libraries/MLXLMCommon/ChatSession.swift:181` computes a real `cachedTokenCount` and uses it. So the FoundationModels conformer drops a figure the layer beneath it already has. That changes the fix from "prompt caching does not work" to "propagate an existing value through the conformer", it belongs in the fork rather than in Router, and once it lands the assertion becomes meaningful instead of unsatisfiable.
+
+    Their other two: the compaction eval died on its own 1800s limit at 0 of 7 seeds, and before that measured 7 of 7 with `factRetention` failing. The first is the shape their own 28-minutes-to-4-seconds result already solved once.
+
+    ### Two things gate this card, and only one is technical
+
+    1. **Router's gated suite green.** Theirs. Nothing in this repo moves it.
+    2. **The human tags.** This card reserves tagging and pushing `consolidation-1-foundation` across the three repos for the human — "do not tag". So even with Router green, this card cannot be driven to done from here.
+
+    ### This card is already at its designed terminal state short of Router
+
+    Its own instruction for exactly this situation is "if still open when everything else is done, leave unchecked, note it, and report ready-except-Router". That was done on 2026-08-17 and stands. Every other box is ticked, every unblocked card on this board is closed, and the full gated suite here is green at 907.0s.
+  timestamp: 2026-08-18T22:32:19.591797+00:00
 depends_on:
 - 01KZ6N4Q7K53WSTJ3M6E76ZK99
 - 01KZ6N545VYCB60H716AZ1XS92
