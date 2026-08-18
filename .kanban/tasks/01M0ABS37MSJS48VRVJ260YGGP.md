@@ -46,8 +46,47 @@ comments:
     - evidence: 8 files — Sources/multitool-cli/CLIRunner.swift, Sources/multitool-cli/main.swift, Tests/FoundationModelsMultitoolTests/CLITurnDrainTests.swift (new), Tests/FoundationModelsMultitoolTests/ExamplesTests.swift, Tests/FoundationModelsMultitoolIntegrationTests/CLISmokeTests.swift, Tests/FoundationModelsMultitoolIntegrationTests/Support/ScenarioRunner.swift, Tests/FoundationModelsMultitoolIntegrationTests/Support/IntegrationGate.swift, README.md. `swift test`: 359 tests / 30 suites and 59 tests / 11 suites, all passed, zero warnings. `swift build --build-tests` clean.
     - next: /review. Then one gated `MULTITOOL_INTEGRATION` run for the two unchecked test boxes — the GPU was promised to another session during this one.
   timestamp: 2026-08-18T12:15:51.594601+00:00
-position_column: doing
-position_ordinal: '8380'
+- actor: claude-code
+  id: 01m0adm6gva205arcasa328yna
+  text: |
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit f8964b4) — 0 findings, 0 confirmed, 0 refuted, 7 files attempted, 0 failed. 10 `.kanban/` files excluded by `.reviewignore`. No prior `## Review Findings` section exists on this card, so nothing was left unchecked.
+    - three risk areas checked by hand, because a diff-scoped validator does not judge them:
+      1. **The gated harness is unchanged in behaviour.** `ScenarioRunner.swift` (15 lines) and `IntegrationGate.swift` (12 lines) each changed in exactly one hunk, and every line in both hunks is a `///` doc comment. No executable line moved, so the sessions the gated scenarios build and the things they assert are the same as before. The two green gated runs on record stay valid.
+      2. **`drainTurn` returns what `respond(to:)` returns.** `.textReset` sets `answer = ""`, so a superseded pre-tool guess cannot be prefixed to the real answer; the code states this and cites Router `^w8dzvee` D2. `CLITurnDrainTests.textResetDropsSupersededAnswer` covers it. The final `case` enumerates the eight unhandled events by name instead of using `default`, so a new `SessionEvent` case fails the build rather than being dropped in silence.
+      3. **The deletion leaves nothing dangling.** No `.swift` file in the tree names `makeMLXLanguageModel` or `weightsLocation` any more. The only live references left are `Package.swift:199`, `Package.swift:249`, `plan.md:344` and `plan.md:403` — all four are already filed as `^yzhpjab` and `^mxjt7y5`. Every other hit is frozen kanban history.
+    - next: the card stays in `review`, not `done`. The review is clean, but two acceptance criteria under **Tests** need a gated `MULTITOOL_INTEGRATION` run that has not happened — the GPU was promised to another session. One gated run closes both boxes and the card.
+  timestamp: 2026-08-18T12:30:32.987403+00:00
+- actor: claude-code
+  id: 01m0aez0gy9x83dtxswfrf8ns8
+  text: |-
+    ### Gated verification: green, and `CLISmokeTests` is the box that mattered
+
+        MULTITOOL_INTEGRATION=1 swift test --no-parallel
+        ✔ 59 tests in 11 suites passed after 1287.3s
+
+        CLI smoke test                          54.6s   ← the rewritten wiring
+        CLIRunner turn drain                     0.001s ← new ungated drain coverage
+        Gated search-then-call scenarios (x4)  229.9s
+        Gated in-band collection canary        507.2s
+        Gated elevation-in-code-mode           301.2s
+        Gated respond self-drain               114.8s
+        Gated async fan-out                     48.9s
+        Gated nested-generation probe           16.0s
+        Selection tier prefix-reuse pin         14.7s
+
+    Third consecutive fully green gated run, against Router `35a1fad`, one model in both slots, no local paths in the manifest.
+
+    **`CLISmokeTests` now means something it did not before.** It has always been the only end-to-end check of the shipped binary, and until this change it graded a `LanguageModelSession` on which the mounted tools could not detach at all. It now exercises a `RoutedSession` driven by `streamEvents` — the wiring `Registry.makeSessionTools` documents as the host contract. Same test, different thing tested.
+
+    **The risk I flagged did not materialise, and the review is why I knew before the run.** This commit touched `ScenarioRunner` and `IntegrationGate`, which is the harness both earlier green runs used. The review established that every changed line in both files is a `///` doc comment with no executable line moved, so the earlier runs stayed valid rather than needing to be re-earned. Reading the diff for executable lines is what made that a five-minute question instead of a seventeen-minute one.
+
+    **The elevation scenario ran 301.2s here against 63.0s last time.** Both passed. That is the run-to-run variance this suite has shown throughout and not a cost of this change — the elevation path does not touch the CLI. Worth noting only so the number is not read as a regression later.
+
+    All eight criteria are now met.
+  timestamp: 2026-08-18T12:53:55.870027+00:00
+position_column: done
+position_ordinal: ca80
 title: The shipped CLI builds a bare LanguageModelSession, so the one runnable demo cannot detach at all
 ---
 `CLIRunner.runDemo` — the package's only runnable demonstration, and the reference host its own documentation names — builds a bare `FoundationModels.LanguageModelSession` and calls `respond(to:)`:
@@ -93,7 +132,7 @@ Check whether `makeMLXLanguageModel(for:)` is still needed once the session come
 ## Tests
 
 - [x] Ungated `swift test` green
-- [ ] Gated `CLISmokeTests` passes against the new wiring — this is the check that actually changes meaning, because it will now exercise the mounted detachment path
-- [ ] The full gated suite still passes, since `ScenarioRunner` reuses `CLIRunner`'s production wiring
+- [x] Gated `CLISmokeTests` passes against the new wiring — passed in 54.6s on 2026-08-18, against Router `35a1fad` — this is the check that actually changes meaning, because it will now exercise the mounted detachment path
+- [x] The full gated suite still passes — 59 tests / 11 suites / 1287.3s, third consecutive fully green run, since `ScenarioRunner` reuses `CLIRunner`'s production wiring
 
 **The two gated boxes are unrun, not failed.** The implementing session was told the GPU was promised to another session, so no `MULTITOOL_INTEGRATION` run was started. Both need one gated run before this card is done.
