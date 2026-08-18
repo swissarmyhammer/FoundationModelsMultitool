@@ -21,6 +21,13 @@ comments:
     - evidence: `swift test` green — 359 tests in 30 suites, 59 tests in 11 suites. README.md, Tests/FoundationModelsMultitoolIntegrationTests/Support/IntegrationGate.swift, Tests/FoundationModelsMultitoolIntegrationTests/Fixtures/ScenarioTools.swift
     - next: review
   timestamp: 2026-08-18T14:51:40.052189+00:00
+- actor: claude-code
+  id: 01m0apc8qb8yfvk5jf9dphsw1p
+  text: |
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit `8668d90`). Both README claims this card owns verify true. `CLIRunner.generationModel` (`Sources/multitool-cli/CLIRunner.swift:221`) is the single site in `Sources/` that names a generation model, and `demoProfile` (`:259-260`) puts that one reference on both `standard` and `flash`, so the "one resident model" sentence holds. The README's link resolves to that file. The claim that the gated suite resolves the same profile rather than keeping a pin of its own is true: `Tests/FoundationModelsMultitoolIntegrationTests/Support/IntegrationGate.swift:396` is `let multitoolTinyProfile = CLIRunner.demoProfile`, and it is what `router.resolve(profile:reporting:)` takes at `:504`. Every remaining `mlx-community/` string in `Tests/` sits in a doc comment recording measurement history, not in a pin. No executable line moved.
+    - next: this card carries no findings. Its column was left unchanged — only `^yzhpjab` was scoped for column movement this pass.
+  timestamp: 2026-08-18T15:03:30.283804+00:00
 position_column: doing
 position_ordinal: '8480'
 title: README names a model the CLI does not pin

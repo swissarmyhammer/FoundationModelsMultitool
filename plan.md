@@ -22,10 +22,11 @@ says they are retired:
   vends the session.
 - **`findAPIs` / `FindAPIsTool`** was the discovery tool's name while this plan
   was written. It ships as **`searchTools` / `SearchToolsTool`**, unchanged in
-  substance, and the design sections below now use the shipped name. Three
+  substance, and the design sections below now use the shipped name. Four
   places keep the old spelling on purpose, because each is a record of what
   was written at the time rather than a description of what runs: the retired
-  `MultiToolAgent` pseudocode and its turn formats, the **Milestones** list
+  `MultiToolAgent` pseudocode and its turn formats, the retired
+  **`MultiToolAgent`** entry under **Components**, the **Milestones** list
   (with its own as-built note), and **Findings (research)**. `FindAPITool` and
   `FoundAPIs` appear in the M6 milestone alone and never shipped under any
   name.
@@ -876,7 +877,7 @@ the run that summarized deliberately reads a sentence and moves on.
 - [ ] **M8 — (deferred) MCP tools.** Out of v1 scope. MCP-backed `Tool`s are
   ordinary `Tool`s, so `addTool`/`addGroup` already cover them; any bulk "import a
   whole server" ergonomics are future work.
-- [ ] **M9 — Sample CLI.** A prompt that triggers `searchTools` then a multi-tool
+- [ ] **M9 — Sample CLI.** A prompt that triggers `findAPIs` then a multi-tool
   `runCode`.
 - [ ] **M10 — Hardening.** Limits tuned; async-bridge policy; cancellation; logging;
   written security model (a snippet reaches *only* the wrapped tools).
