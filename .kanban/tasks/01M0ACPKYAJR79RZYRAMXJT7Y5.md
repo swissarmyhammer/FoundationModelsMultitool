@@ -52,8 +52,8 @@ comments:
 
     Ungated `swift test` green (59 tests / 11 suites) — the change is documentation only.
   timestamp: 2026-08-18T19:48:24.545784+00:00
-position_column: doing
-position_ordinal: '8680'
+position_column: done
+position_ordinal: cd80
 title: plan.md M9 still teaches the bare LanguageModelSession wiring the host contract does not name
 ---
 `^260yggp` moved the shipped CLI onto the host contract — vended tools mounted on a `RoutedSession`, one turn drained through `streamEvents(to:)` — and updated `README.md`, which the card named. `plan.md` was not in that card's scope and still teaches the retired wiring:

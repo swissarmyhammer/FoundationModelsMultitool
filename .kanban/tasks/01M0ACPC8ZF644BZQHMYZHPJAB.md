@@ -74,8 +74,8 @@ comments:
 
     `MLXVLM` is untouched. Its comment stays because its reason is real, and the manifest doc comment above now says so: three products are declared directly, all three in `liveLoaderMLXProducts`, and `MLXFoundationModels` is deliberately absent with the verification named.
   timestamp: 2026-08-18T19:48:20.774854+00:00
-position_column: doing
-position_ordinal: '8580'
+position_column: done
+position_ordinal: cc80
 title: Package.swift comments name CLIRunner.makeMLXLanguageModel(for:), which no longer exists
 ---
 `^260yggp` moved `CLIRunner.runDemo` onto a `RoutedSession` and deleted `CLIRunner.makeMLXLanguageModel(for:)`, whose only caller it was. `Package.swift` was under an explicit "do not edit" constraint on that card, so two of its comments still name the deleted symbol:
