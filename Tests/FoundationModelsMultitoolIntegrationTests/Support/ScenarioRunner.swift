@@ -50,14 +50,13 @@ let scenarioDiscoveryPriming: DiscoveryPriming? = nil
 @testable import multitool_cli
 
 /// Runs one gated scenario end to end against a freshly-resolved live
-/// profile, using the *native* `LanguageModelSession`-driven design — no
-/// `MultiToolAgent`, no `TurnFormat`, no hand-rolled turn parsing. Builds a
-/// real `MLXLanguageModel` over the resolved `.standard` slot via
-/// `CLIRunner.makeMLXLanguageModel(for:)` (the exact production wiring
-/// `multitool-cli` itself uses — never a reimplementation of it), registers
-/// `multiTool` and `searchToolsTool` (the latter backed by the resolved
-/// `.flash` slot, mirroring the "librarian on flash" split) directly with a
-/// `LanguageModelSession`, and lets Apple's own native tool-calling loop
+/// profile, using the session-driven design — no `MultiToolAgent`, no
+/// `TurnFormat`, no hand-rolled turn parsing. Mounts what the registry vends
+/// on a `RoutedSession` the resolved `.standard` slot vends
+/// (`makeSession(tools:discoveryPriming:)`) — the exact wiring
+/// `CLIRunner.runDemo` ships, never a reimplementation of it — with
+/// `searchToolsTool` backed by the resolved `.flash` slot, mirroring the
+/// "librarian on flash" split, and lets the session's own tool-calling loop
 /// decide when to call each.
 ///
 /// **Outcome over path.** A scenario passes when the model produces a

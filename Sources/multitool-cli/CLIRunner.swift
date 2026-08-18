@@ -2,20 +2,21 @@ import Foundation
 import FoundationModels
 import FoundationModelsMultitool
 import FoundationModelsRouter
+// `HuggingFace`, `MLXLMCommon` and `Tokenizers` are named by nothing in this
+// file, and all three are load-bearing: the
+// `#hubDownloader()`/`#huggingFaceTokenizerLoader()` macros below expand into
+// `HubClient`, `MLXLMCommon.Downloader`/`MLXLMCommon.TokenizerLoader` and
+// `Tokenizers` code at this call site, and the expansion resolves against the
+// imports of the file it lands in. Dropping any of the three fails the build
+// inside the expansion.
+//
+// Model *loading* itself is Router's, so every other MLX module that load
+// needs — `MLXVLM` among them, whose `VLMModelFactory` alone registers some
+// pinned models — is imported by Router's own `LiveModelLoader` rather than
+// here; `Package.swift` links them into this executable.
 import HuggingFace
-import MLXFoundationModels
 import MLXHuggingFace
 import MLXLMCommon
-// Load-bearing although this file names no `MLXVLM` symbol: keep it.
-// `loadModelContainer` below selects a factory through `MLXLMCommon`'s
-// `ModelFactoryRegistry`, which finds its built-in trampolines with
-// `NSClassFromString`, so a factory whose module the linker dropped is
-// silently absent from that list. Whether the model `generationModel`
-// names needs it is not a thing to check and drop: Muse Glimmer
-// (`muse_glimmer`) was registered in `VLMModelFactory` alone, and dropping
-// this import cost a full download before `.unsupportedModelType` was
-// thrown. Keeping it makes both factories reachable whatever the pin is.
-import MLXVLM
 import Tokenizers
 
 /// Prefix for all user-facing CLI error messages.
@@ -109,15 +110,15 @@ struct CLIRouterUnavailableError: Error, CustomStringConvertible {
 
 /// A runnable demonstration of the FoundationModelsMultitool pipeline.
 ///
-/// The canonical Router + `LanguageModelSession` + `MultiTool` example:
-/// resolving a model profile via `Router`, wrapping the resolved `.standard`
-/// generation slot as a real `FoundationModels.LanguageModel`
-/// (`MLXLanguageModel`), and mounting whatever
-/// `MultiTool.Registry.makeSessionTools(librarian:)` vends — `searchTools`,
-/// `runCode`, `wait`, or `runCode` and `wait` under `--direct` — directly on a native
-/// `FoundationModels.LanguageModelSession`. Apple's own tool-calling loop decides when to
-/// call `searchTools` vs `runCode` — this file drives no turn-parsing loop of
-/// its own, unlike the retired `MultiToolAgent`-based demo this replaces.
+/// The canonical Router + `RoutedSession` + `MultiTool` example, and the host
+/// contract `MultiTool.Registry.makeSessionTools(librarian:)` states, run
+/// end to end: resolving a model profile via `Router`, mounting whatever that
+/// call vends — `searchTools`, `runCode`, `wait`, or `runCode` and `wait`
+/// under `--direct` — on a `RoutedSession` the resolved `.standard` slot
+/// vends, and driving one turn by draining `streamEvents(to:)`. The session's
+/// own tool-calling loop decides when to call `searchTools` vs `runCode` —
+/// this file drives no turn-parsing loop of its own, unlike the retired
+/// `MultiToolAgent`-based demo this replaces.
 /// Factored out of `main.swift` as a plain, testable entry point:
 ///
 /// - Argument parsing and the Router-unavailable degrade path are
@@ -322,18 +323,11 @@ enum CLIRunner {
     /// Runs the complete demo pipeline end-to-end.
     ///
     /// Parses `arguments`, and — unless `--help` was given or parsing
-    /// failed — resolves `demoProfile`, constructs a native
-    /// `LanguageModelSession` over the tools the registry vends (`searchTools`,
-    /// `runCode`, `wait` — or `runCode` and `wait` alone under `--direct`),
-    /// calls `session.respond(to:)` once against `demoPrompt`, and writes the
-    /// answer to `output`.
-    ///
-    /// **This is a bare `LanguageModelSession`, not the `RoutedSession` the
-    /// host contract names** (`MultiTool.Registry.makeSessionTools`). On a bare
-    /// session the mounted tools cannot detach, so a slow `runCode` blocks
-    /// rather than answering with a pending envelope and `wait` has nothing to
-    /// join. The demo reads correctly because its fixtures are fast. Recorded
-    /// as a divergence on task `^tkrdwb8`.
+    /// failed — resolves `demoProfile`, mounts the tools the registry vends
+    /// (`searchTools`, `runCode`, `wait` — or `runCode` and `wait` alone under
+    /// `--direct`) on a `RoutedSession` the resolved profile vends, drives one
+    /// turn against `demoPrompt` by draining `streamEvents(to:)`, and writes
+    /// the answer to `output`.
     ///
     /// - Parameters:
     ///   - arguments: the raw arguments (excluding the executable name).
@@ -380,8 +374,8 @@ enum CLIRunner {
 
     // MARK: - The demo run
 
-    /// Resolves a profile, builds the tool-equipped session, and prints the
-    /// model's answer.
+    /// Resolves a profile, mounts the vended tools on a `RoutedSession`, and
+    /// prints the model's answer.
     ///
     /// Factored out of `run(...)` as its resolve-through-print body, so
     /// `run(...)` only has to decide which exit code an error maps to.
@@ -393,7 +387,7 @@ enum CLIRunner {
     ///   - output: where progress/answer lines are written.
     /// - Throws: `CLIRouterUnavailableError` if `resolve` throws; otherwise
     ///   whatever building the tools, `searchToolsTool`'s own initializer, or
-    ///   `session.respond(to:)` throws.
+    ///   the turn's own event stream throws.
     private static func runDemo(
         direct: Bool,
         resolve: ProfileResolver,
@@ -444,31 +438,51 @@ enum CLIRunner {
             // so that tier and the main session below share one resident
             // container. See `demoProfile` for what that costs.
             //
-            // Explicitly typed for the same reason the local was before:
-            // disambiguation against `MLXLMCommon.Tool`, also in scope via
-            // `MLXFoundationModels`/`MLXLMCommon`.
+            // Explicitly typed, so the element type a host mounts is stated
+            // where a reader meets it rather than inferred from a call in
+            // another module.
             let tools: [any FoundationModels.Tool] = try registry.makeSessionTools(librarian: profile.flash)
 
-            let mlxModel = Self.makeMLXLanguageModel(for: profile.standard)
+            // Vended by the resolved profile, because the session type is part
+            // of the host contract and not a detail (see
+            // `Registry.makeSessionTools(librarian:)`). A `RoutedSession`
+            // mounts each vended tool under
+            // `DetachConfiguration.nativeSessionMount`, which is what lets a
+            // slow `runCode` park and answer with a pending envelope the model
+            // then collects with the mounted `wait` tool. Mounted on a bare
+            // `FoundationModels.LanguageModelSession` the same tools cannot
+            // detach at all: the snippet simply blocks, no envelope is ever
+            // written, and `wait` has nothing to join.
+            //
+            // **No run of this demo will show a detachment.** `DemoTripTool`
+            // and `DemoWeatherTool` answer instantly, so every snippet here
+            // finishes inline and no pending envelope is ever written. The
+            // wiring carries the design; the fixtures only keep the demo quick.
+            // A deliberately slow tool proves the park-and-collect path in the
+            // gated elevation scenario
+            // (`Tests/FoundationModelsMultitoolIntegrationTests`).
+            //
             // No instructions. Mounting the vended tools is the whole host
             // contract — their descriptions carry the entire behavioral
             // contract, and a session instruction a real host may never pass
             // must not be load-bearing (see
             // `Registry.makeSessionTools(librarian:)`).
-            let session = LanguageModelSession(
-                model: mlxModel,
-                tools: tools
+            let session = profile.standard.makeSession(tools: tools)
+
+            // Drained, never `respond(to:)`. `RoutedSession.respond(to:)`
+            // self-drains the run plane (Router `^nmpejc5`), so it would answer
+            // this prompt just as well — but `streamEvents(to:)` is the surface
+            // the host contract names, the surface every gated scenario drives,
+            // and the only one on which a tool still working can report that it
+            // is working. A demo that took the shorter call would leave out
+            // half of what a host has to write.
+            let answer = try await Self.drainTurn(
+                await session.streamEvents(to: demoPrompt),
+                output: output
             )
 
-            // Explicitly typed: `FoundationModelsRanker` (pulled in
-            // transitively by the metadata registry) adds a shadowing
-            // `LanguageModelSession.respond(to:) -> String` extension for its
-            // `AgentSession` conformance; the annotation pins this call to
-            // the native FoundationModels API.
-            let response: LanguageModelSession.Response<String> = try await session.respond(to: demoPrompt)
-
             output("")
-            output("Answer: \(response.content)")
+            output("Answer: \(answer)")
             await profile.release()
         } catch {
             await profile.release()
@@ -476,94 +490,104 @@ enum CLIRunner {
         }
     }
 
-    /// Wraps a resolved Router generation slot as a real `FoundationModels.LanguageModel`, so a native `LanguageModelSession` can be built directly over it.
+    // MARK: - Driving the turn
+
+    /// What a reported line says in place of a detail the event did not carry.
     ///
-    /// Builds a fresh, lightweight `MLXLanguageModel` value over the same
-    /// model id `routedLLM` already resolved and loaded. `MLXLanguageModel`
-    /// loads and caches its `ModelContainer` in a process-global cache keyed
-    /// by model id (see its own documentation) — a second value constructed
-    /// over the same id reuses the already-resident weights the Router
-    /// loaded rather than re-resolving or re-downloading anything. This
-    /// declares `.toolCalling` alongside `.guidedGeneration` — which
-    /// Router's own internal model does not, since Router's generation
-    /// surface never exposes native tool-calling — so a session built over
-    /// it can register real `Tool` conformers and drive Apple's own native
-    /// tool-calling loop.
+    /// Router leaves `SessionEvent.toolStatus`' `summary` `nil` for a status it
+    /// has no text for, and a line that ended at its own colon would read as
+    /// truncated output rather than as a tool that said nothing.
+    private static let missingDetail = "no detail"
+
+    /// Drains one turn's event stream, reporting each tool call while the turn
+    /// runs, and returns the turn's answer.
     ///
-    /// Not `private`: the gated integration test target's own scenario suite
-    /// (`Tests/FoundationModelsMultitoolIntegrationTests/Support/
-    /// ScenarioRunner.swift`) reuses this exact production wiring via
-    /// `@testable import` to build its own `LanguageModelSession`s, rather
-    /// than reimplementing it — extracted as its own factory so the gated
-    /// integration test target can drive this exact production wiring (the
-    /// same rationale the retired `MultiToolAgent`'s searcher factory
-    /// followed).
+    /// This is the host half of the contract
+    /// `MultiTool.Registry.makeSessionTools(librarian:)` states: a session that
+    /// carries the mounted tools is driven by draining `streamEvents(to:)`.
+    /// Every line written here is one a `respond(to:)` caller never sees — a
+    /// call that parks or takes its time reports itself while it is still
+    /// working, where `respond(to:)` is a single await that returns only once
+    /// the answer is whole.
     ///
-    /// - Parameter routedLLM: the resolved Router generation slot to wrap —
-    ///   typically `profile.standard`.
-    /// - Returns: an `MLXLanguageModel` over the same resident model.
-    static func makeMLXLanguageModel(for routedLLM: RoutedLLM) -> MLXLanguageModel {
-        let modelConfiguration = ModelConfiguration(
-            id: routedLLM.chosen.repo,
-            revision: routedLLM.chosen.revision ?? "main"
-        )
-        return MLXLanguageModel(
-            configuration: modelConfiguration,
-            // `.reasoning` is not optional for a model that always reasons,
-            // which every model pinned here so far has been. A caller that
-            // does not declare the capability is asking `MLXLanguageModel` to
-            // suppress thinking —
-            // which it cannot do, so the call throws
-            // `LanguageModelError.unsupportedCapability` ("This model always
-            // reasons; .reasoning must be declared at MLXLanguageModel init to
-            // receive its output") *after* the whole model has loaded. The
-            // gated CLI smoke test caught exactly that. Declaring it also puts
-            // the tool path into its think-then-call phase rather than forcing
-            // thinking off, which is the behaviour an agentic model is trained
-            // for. Router's own `LiveModelLoader` declares the same three.
-            capabilities: [.guidedGeneration, .toolCalling, .reasoning],
-            weightsLocation: Self.weightsLocation,
-            load: { configuration, progressHandler in
-                try await loadModelContainer(
-                    from: #hubDownloader(),
-                    using: #huggingFaceTokenizerLoader(),
-                    configuration: configuration,
-                    progressHandler: progressHandler
+    /// Not `private`:
+    /// `Tests/FoundationModelsMultitoolTests/CLITurnDrainTests.swift` drives it
+    /// over a scripted stream, so the drain is covered with no model, no Router
+    /// and no network.
+    ///
+    /// - Parameters:
+    ///   - events: the turn's event stream — `RoutedSession.streamEvents(to:)`
+    ///     in production.
+    ///   - output: where each reported line is written.
+    /// - Returns: the turn's answer — every text fragment produced after the
+    ///   last `.textReset`, which is the string `respond(to:)` returns for the
+    ///   same turn.
+    /// - Throws: whatever the stream throws.
+    static func drainTurn(
+        _ events: AsyncThrowingStream<SessionEvent, Error>,
+        output: @escaping @Sendable (String) -> Void
+    ) async throws -> String {
+        var answer = ""
+        // A call's tool name arrives once, on its own `.toolCall`. Every later
+        // event about that call carries the call's id alone, so the name is
+        // kept here to report the call's progress under it.
+        var toolNamesByCallID: [String: String] = [:]
+        for try await event in events {
+            switch event {
+            case .textDelta(let fragment):
+                answer += fragment
+            case .textReset:
+                // The model abandoned the answer it was writing and began
+                // another, which is what a tool-using turn does. Clearing here
+                // is what makes this drain return the same string
+                // `respond(to:)` returns for the turn (Router `^w8dzvee` D2);
+                // a consumer that keeps the superseded text prints the model's
+                // pre-tool guess in front of the real answer.
+                answer = ""
+            case .toolCall(let id, let name, _):
+                toolNamesByCallID[id] = name
+                output("Calling \(name)")
+            case .toolStatus(let id, .running, let summary, _):
+                output(
+                    "\(Self.toolName(of: id, in: toolNamesByCallID)) in process: \(summary ?? Self.missingDetail)"
                 )
+            case .toolStatus(let id, .completed, _, _):
+                output("\(Self.toolName(of: id, in: toolNamesByCallID)) done")
+            case .toolStatus(let id, .failed, let summary, _):
+                output(
+                    "\(Self.toolName(of: id, in: toolNamesByCallID)) failed: \(summary ?? Self.missingDetail)"
+                )
+            case .generationStalled(let stall):
+                // Router reports a stall instead of imposing a timeout: no
+                // token has moved for a while, which a long turn on a real
+                // model does. Printed and never acted on — a demo that stayed
+                // silent here reads as stuck while it is working.
+                output("\(stall)")
+            case .toolStatus, .turnStarted, .reasoningDelta, .toolInvocation, .entryRecorded,
+                .compaction, .discoveryPrimingFailed, .turnEnded:
+                // `.toolStatus` here is the residue of the three statuses
+                // handled above. The rest are the correlation frame, reasoning
+                // fragments, the live invocation records, transcript-entry ids,
+                // compaction reports, seeding reports and token usage: real
+                // signal for a host that keeps a view of the session, and none
+                // of it part of what this demo prints.
+                break
             }
-        )
+        }
+        return answer
     }
 
-    /// Resolves a model id to its on-disk weights directory.
+    /// The name of the tool a call id belongs to, for a line reporting on that
+    /// call.
     ///
-    /// For `MLXLanguageModel`'s availability checks (`modelExistsOnDisk()`,
-    /// `freeDiskSpaceBytes`) — never consulted by the load path itself,
-    /// which always goes through `ModelCache`/`load` (see
-    /// `makeMLXLanguageModel(for:)`). Following `MLXLanguageModel`'s own
-    /// doc-comment example, this resolves
-    /// against the same `HubCache` the injected `#hubDownloader()` downloads
-    /// into, so the availability checks see the weights the Router already
-    /// downloaded — the same cache directory `LiveModelLoader`'s default
-    /// `weightsLocation` stub deliberately does *not* resolve into (it
-    /// exists purely so `LoadedLLMContainer.availability` isn't Router's
-    /// concern), but does matter here since this instance's `.toolCalling`
-    /// capability makes it plausible a caller could check `.availability` on
-    /// it directly.
-    ///
-    /// - Parameter id: the model id (`ModelConfiguration.name`) to resolve.
-    /// - Returns: the resolved snapshot directory if the model is cached
-    ///   under a known revision; otherwise the repository's cache directory
-    ///   (present once any download has started) or, failing that, the
-    ///   cache root itself.
-    private static func weightsLocation(for id: String) -> URL {
-        let cache = HubCache.default
-        guard let repo = Repo.ID(rawValue: id) else { return cache.cacheDirectory }
-        if let commit = cache.resolveRevision(repo: repo, kind: .model, ref: "main"),
-            let snapshot = try? cache.snapshotPath(repo: repo, kind: .model, commitHash: commit)
-        {
-            return snapshot
-        }
-        return cache.repoDirectory(repo: repo, kind: .model)
+    /// - Parameters:
+    ///   - callID: the call's id, as `SessionEvent.toolStatus` carries it.
+    ///   - namesByCallID: the names this turn's `.toolCall` events announced.
+    /// - Returns: the tool's name, or the call id itself when no `.toolCall`
+    ///   announced that call — an id a reader can still correlate against the
+    ///   recorded transcript, where a placeholder word could not be.
+    private static func toolName(of callID: String, in namesByCallID: [String: String]) -> String {
+        namesByCallID[callID] ?? callID
     }
 
     // MARK: - Console progress
@@ -608,9 +632,9 @@ enum CLIRunner {
     /// Creates a temporary directory for Router transcript recordings.
     ///
     /// Returns the URL of a fresh, uniquely-named directory the `Router`
-    /// records `searchToolsTool`'s own selection-tier sessions under (the main
-    /// `LanguageModelSession` `runDemo` builds directly over `mlxModel` is
-    /// never Router-vended, so it is never recorded here).
+    /// records every session it vends under — `searchToolsTool`'s own
+    /// selection-tier sessions, and the demo's main turn, which is a
+    /// `RoutedSession` too.
     ///
     /// - Returns: the created directory's URL.
     private static func makeTempRecordingsDir() -> URL {

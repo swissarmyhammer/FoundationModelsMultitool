@@ -9,20 +9,28 @@ intermediate result through the model's context, the model writes a snippet
 that composes several tools with real control flow and returns only the
 answer.
 
-## Usage: register on a native `LanguageModelSession`
+## Usage: mount the vended tools on a `RoutedSession`
 
 `MultiTool` and `SearchToolsTool` are ordinary `FoundationModels.Tool`
-conformers, so the primary integration is Apple's own native tool-calling
-loop: register both directly on a `LanguageModelSession`, and the session
-decides when to call `searchTools` (discovery) and `runCode` (execution). This
-example mirrors the runnable demo in `Sources/multitool-cli`
+conformers, and the host contract is one sentence: build a registry, mount what
+`makeSessionTools(librarian:)` vends on a `RoutedSession`, and drive that
+session by draining `streamEvents(to:)`. The session's own tool-calling loop
+decides when to call `searchTools` (discovery) and `runCode` (execution).
+
+The session type is part of the contract, not a detail. A `RoutedSession`
+mounts each vended tool under `DetachConfiguration.nativeSessionMount`, so a
+slow `runCode` parks and answers with a pending envelope the model collects
+with the mounted `wait` tool. Mounted on a bare
+`FoundationModels.LanguageModelSession` the same tools cannot detach at all:
+the snippet blocks, no envelope is written, and `wait` has nothing to join.
+
+This example mirrors the runnable demo in `Sources/multitool-cli`
 (`CLIRunner.runDemo`), which drives exactly this wiring end to end:
 
 ```swift
 import FoundationModels
 import FoundationModelsMultitool
 import FoundationModelsRouter
-import MLXFoundationModels
 
 // Any existing `Tool` conformer drops in unchanged.
 @Generable
@@ -63,32 +71,43 @@ let registry = try MultiTool.Builder()
 //    first step, verbatim.
 let profile = try await router.resolve(profile: demoProfile, reporting: progress)
 
-// 3. Wrap the resolved `.standard` slot as a real `FoundationModels
-//    .LanguageModel` declaring `.toolCalling` — an `MLXLanguageModel`, built
-//    exactly as `CLIRunner.makeMLXLanguageModel(for:)` does — and mount what
-//    the registry vends. Apple's own tool-calling loop drives the searchTools →
-//    runCode handoff; there is no hand-rolled agent loop.
+// 3. Mount what the registry vends on a `RoutedSession` the resolved
+//    `.standard` slot vends. The session drives the searchTools → runCode
+//    handoff itself; there is no hand-rolled agent loop.
 //
-//    `makeSessionTools(librarian:)` builds both tools and orders them:
-//    `searchTools` first, then `runCode`, so the model reads "discover what
-//    exists" before "execute code". `searchTools`'s internal selection tier
-//    runs on the same resolved profile's cheaper/faster `flash` slot,
-//    through Router-backed sessions (fork-per-call prefix reuse). A
-//    `directMode()` registry vends `runCode` alone.
+//    `makeSessionTools(librarian:)` builds the tools and orders them:
+//    `searchTools` first, then `runCode`, then `wait`, so the model reads
+//    "discover what exists" before "execute code", and "block until a result
+//    arrives" only after both. `searchTools`'s internal selection tier runs on
+//    the same resolved profile's cheaper/faster `flash` slot, through
+//    Router-backed sessions (fork-per-call prefix reuse). A `directMode()`
+//    registry vends `runCode` and `wait` alone.
 //
-//    No `instructions:`. Mounting the two tools is the whole integration —
+//    No `instructions:`. Mounting the vended tools is the whole integration —
 //    their descriptions carry the entire behavioral contract, because a
 //    `Tool` description is in the prompt on every turn while a session
 //    instruction is optional.
-let mlxModel = makeMLXLanguageModel(for: profile.standard)
-let session = LanguageModelSession(
-    model: mlxModel,
+let session = profile.standard.makeSession(
     tools: try registry.makeSessionTools(librarian: profile.flash)
 )
 
-let response: LanguageModelSession.Response<String> =
-    try await session.respond(to: "Of the cities on my trip, which is warmest right now?")
-print(response.content)
+// 4. Drive one turn by draining the event stream. `respond(to:)` self-drains
+//    the run plane and returns the same answer, but the stream is the only
+//    surface that reports a tool while that tool is still working — which is
+//    what a parked `runCode` does. `CLIRunner.drainTurn(_:output:)` is this
+//    loop in full, including the tool-status events left out here.
+var answer = ""
+let prompt = "Of the cities on my trip, which is warmest right now?"
+for try await event in await session.streamEvents(to: prompt) {
+    switch event {
+    case .textDelta(let fragment): answer += fragment
+    // A tool ran and the model restarted its answer: drop what it said before.
+    case .textReset: answer = ""
+    case .toolCall(_, let name, _): print("Calling \(name)")
+    default: break
+    }
+}
+print(answer)
 ```
 
 The demo pins one natively tool-calling-trained model,
@@ -99,8 +118,9 @@ rationale).
 
 For a small, fixed tool set, skip discovery entirely — direct mode: build the
 registry with `.directMode()` and mount it the same way. A direct-mode
-registry vends `runCode` alone, and snippets introspect the surface via
-`help()`/`docs(name)` instead (the demo's `--direct` flag).
+registry vends `runCode` and `wait` alone — direct mode takes discovery away,
+never detachment — and snippets introspect the surface via `help()`/`docs(name)`
+instead (the demo's `--direct` flag).
 
 The living-documentation suite,
 [`Tests/FoundationModelsMultitoolTests/ExamplesTests.swift`](Tests/FoundationModelsMultitoolTests/ExamplesTests.swift),
@@ -172,5 +192,5 @@ Add it as a dependency in `Package.swift`:
 Full design and milestone-by-milestone rationale live in [`plan.md`](plan.md).
 Sandbox guarantees and escape hatches are documented in
 [`docs/SECURITY.md`](docs/SECURITY.md). A runnable end-to-end demo (model
-resolution, a native tool-calling `LanguageModelSession`, tool composition)
+resolution, a tool-carrying `RoutedSession`, a drained turn, tool composition)
 lives in `Sources/multitool-cli`.

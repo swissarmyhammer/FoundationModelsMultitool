@@ -23,10 +23,10 @@ import Testing
 /// `MULTITOOL_INTEGRATION` gate — via `ScriptedLanguageModel` below, the
 /// **only** non-production code in this file. It is a minimal, from-scratch
 /// conformer of `FoundationModels.LanguageModel`/`LanguageModelExecutor` —
-/// the same third-party-model extension point `MLXLanguageModel`
-/// (`multitool-cli`'s own production wiring, see `CLIRunner
-/// .makeMLXLanguageModel(for:)`) uses — standing in for a real model so
-/// these examples need neither MLX weights nor Apple Intelligence. Every
+/// the same third-party-model extension point `MLXLanguageModel` uses, the
+/// one a `RoutedSession` runs a resolved Router slot over — standing in for a
+/// real model so these examples need neither MLX weights nor Apple
+/// Intelligence. Every
 /// line *after* a `ScriptedLanguageModel` is constructed is real usage: a
 /// genuine `LanguageModelSession` drives its own native multi-turn
 /// tool-calling loop, actually invoking the real `MultiTool`/`SearchToolsTool`

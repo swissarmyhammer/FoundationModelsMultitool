@@ -409,12 +409,12 @@ actor LiveProfileTurnstile {
 
 /// One resolved, live `Router` + `LanguageModelProfile` pair, together with
 /// the recording root its sessions write their JSONL transcript under —
-/// everything a gated scenario needs to build a native `MLXLanguageModel` +
-/// `LanguageModelSession` over `profile.standard` (via `CLIRunner
-/// .makeMLXLanguageModel(for:)`, `searchToolsTool`'s own selection tier over
-/// `profile.flash`, and then read back the selection tier's own recorded
-/// trace (`NativeTranscript.selections(in:slot:)`) — the main session itself
-/// is never Router-vended, so it is never recorded here.
+/// everything a gated scenario needs to vend a `RoutedSession` over
+/// `profile.standard` (the wiring `CLIRunner.runDemo` ships), to back
+/// `searchToolsTool`'s own selection tier with `profile.flash`, and then to
+/// read back the selection tier's own recorded trace
+/// (`NativeTranscript.selections(in:slot:)`). Both sessions are Router-vended,
+/// so both are recorded here.
 struct LiveRouterFixture {
     /// The router that resolved `profile` — its `id` roots the recording
     /// tree `transcriptEvents()` reads back.

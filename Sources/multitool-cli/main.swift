@@ -1,10 +1,9 @@
 // multitool-cli
 //
 // A runnable demonstration of the whole FoundationModelsMultitool pipeline:
-// Router profile resolution -> wrapping the resolved model as a real
-// FoundationModels.LanguageModel (MLXLanguageModel) -> a native
-// LanguageModelSession registering multiTool and (unless --direct)
-// searchToolsTool, driven by Apple's own tool-calling loop for one demo prompt.
+// Router profile resolution -> a RoutedSession over the resolved .standard
+// slot, carrying multiTool, wait and (unless --direct) searchToolsTool ->
+// one demo prompt, driven by draining the session's event stream.
 // All the actual logic lives in `CLIRunner` (`CLIRunner.swift`) so it's
 // directly unit-testable; this file is just the process entry point.
 //

@@ -4,19 +4,22 @@ import os
 
 @testable import multitool_cli
 
-/// The gated live smoke test for the canonical Router + `LanguageModelSession`
-/// + `MultiTool` example: it invokes the `CLIRunner` entry function under the
+/// The gated live smoke test for the canonical Router + `RoutedSession` +
+/// `MultiTool` example: it invokes the `CLIRunner` entry function under the
 /// env var and asserts a non-empty final answer.
 ///
 /// Runs `CLIRunner.run(...)` end to end with its default (production)
-/// resolver — a real Router resolve against `CLIRunner.demoProfile`, a
-/// native `LanguageModelSession` built directly over `multiTool` and
-/// `searchToolsTool`, and Apple's own tool-calling loop deciding when to call
-/// each — and asserts on the emitted output lines rather than a human
-/// reading console output. Unlike the retired `MultiToolAgent`-based demo
-/// this replaces, there is no hand-rolled turn trace to assert on: `runDemo`
-/// prints only the final answer, so this only asserts that it is present and
-/// non-empty. A deeper, scenario-level port of this suite (prefix reuse,
+/// resolver — a real Router resolve against `CLIRunner.demoProfile`, the
+/// vended tools mounted on a `RoutedSession` over `profile.standard`, and one
+/// turn drained through `streamEvents(to:)` — and asserts on the emitted
+/// output lines rather than a human reading console output. This is the
+/// shipped host contract, so the run exercises the mounted detachment path
+/// rather than a bare session that cannot detach. Unlike the retired
+/// `MultiToolAgent`-based demo this replaces, there is no hand-rolled turn
+/// trace to assert on: `runDemo` prints the tool calls it made and the final
+/// answer, so this only asserts that the answer is present and non-empty.
+///
+/// A deeper, scenario-level port of this suite (prefix reuse,
 /// selection accuracy, multi-tool-call composition) is the dedicated
 /// gated-suite migration task's job — see that task for the broader port.
 /// `.enabled(if: multitoolIntegrationEnabled)` gates the whole suite behind
