@@ -106,11 +106,13 @@ var multitoolIntegrationEnabled: Bool {
 /// RepoMetadata.swift`) now falls back to `text_config` when the top level
 /// lacks those fields (mirroring HF transformers' `get_text_config()`
 /// semantics, including hybrid `layer_types` KV-cache accounting), and its
-/// live loader's `maxTokens` is no longer a hardcoded 1024-token cap —
-/// `LiveModelLoader`'s `defaultMaxTokens` is now 8192, matching this
-/// profile's own `context`. With both upstream fixes in place, `Qwen3.5-2B-
-/// mxfp4` *does* now resolve and load successfully — the `text_config`
-/// sizing fix is confirmed working end to end (`standard`/`flash` both
+/// live loader's `maxTokens` is no longer a hardcoded 1024-token cap — the
+/// file-private `defaultMaxTokens` in `LiveModelLoader.swift`, which
+/// `MLXFoundationModelsSessionBackend` applies whenever a caller supplies
+/// none of its own, is now 8192, matching this profile's own `context`.
+/// With both upstream fixes in place, `Qwen3.5-2B-mxfp4` *does* now resolve
+/// and load successfully — the `text_config` sizing fix is confirmed
+/// working end to end (`standard`/`flash` both
 /// co-fit at ~2.1GB). But three full gated-suite runs against it showed a
 /// clear, consistent *capability* regression versus `Qwen2.5-1.5B-
 /// Instruct-4bit`: `SearchThenCallTests` failed almost every scenario/format
@@ -333,16 +335,19 @@ var multitoolIntegrationEnabled: Bool {
 /// against the shipped build rather than assumed. `TranscriptEvent` meters
 /// `tokensIn`, `tokensOut` and `ms` and nothing else — no skipped-token
 /// count, no cache-hit count, no prefill time. `tokensIn` is the whole
-/// rendered prompt of the turn (Router subtracts two
-/// `usage.input.totalTokenCount` snapshots), so it reads the same whether a
-/// prefix was reused or re-prefilled. The one figure that would answer the
-/// question, `usage.input.cachedTokenCount`, is dropped by
-/// `LiveModelLoader.usageTokenCounts()` and is the literal `0` at every
-/// emission site of the pinned `mlx-swift-lm`, whose FoundationModels
-/// executor carries no prompt cache at all. So the suite was renamed to
-/// `SelectionForkPerCallTests` and narrowed to what it can hold: the
-/// selection tier's cached-root, `fork()`-per-call contract, read off the
-/// recording, plus the timing comparison stated as a timing comparison.
+/// rendered prompt of the turn: Router subtracts two cumulative
+/// `usage.input.totalTokenCount` snapshots, and that delta is the turn's own
+/// whole render only because every fork on this path is a fresh session
+/// starting at zero. Either way it reads the same whether a prefix was
+/// reused or re-prefilled. The one figure that would answer the question,
+/// `usage.input.cachedTokenCount`, is dropped by Router's live conformer,
+/// `MLXFoundationModelsSessionBackend.usageTokenCounts()`, and is the
+/// literal `0` at every emission site of the pinned `mlx-swift-lm`, whose
+/// FoundationModels executor carries no prompt cache at all. So the suite
+/// was renamed to `SelectionForkPerCallTests` and narrowed to what it can
+/// hold: the selection tier's cached-root, `fork()`-per-call contract, read
+/// off the recording, plus the timing comparison stated as a timing
+/// comparison.
 ///
 /// The rigorous instrument is in the fork, not here: `mlx-swift-lm`'s
 /// `f85fc50` measures two-round reuse on real weights through

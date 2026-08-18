@@ -12,8 +12,8 @@ import FoundationModelsRouter
 //
 // Model *loading* itself is Router's, so every other MLX module that load
 // needs — `MLXVLM` among them, whose `VLMModelFactory` alone registers some
-// pinned models — is imported by Router's own `LiveModelLoader` rather than
-// here; `Package.swift` links them into this executable.
+// pinned models — is imported by Router's own `LiveModelLoader.swift` rather
+// than here; `Package.swift` links them into this executable.
 import HuggingFace
 import MLXHuggingFace
 import MLXLMCommon

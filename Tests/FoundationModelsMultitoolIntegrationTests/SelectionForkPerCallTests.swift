@@ -44,18 +44,21 @@ private let selectionCallCount = 2
 /// - `TranscriptEvent` meters `tokensIn`, `tokensOut` and `ms`, and nothing
 ///   else. It carries no skipped-token count, no cache-hit count and no
 ///   prefill time.
-/// - `tokensIn` is the whole rendered prompt of the turn — Router subtracts
-///   two `LanguageModelSessionBackend.usageTokenCounts()` snapshots, which
-///   read `usage.input.totalTokenCount`, and that total counts the render
+/// - `tokensIn` is the whole rendered prompt of the turn. Router stamps it
+///   as the delta of two `LanguageModelSessionBackend.usageTokenCounts()`
+///   snapshots. Those snapshots are cumulative over the session, so the
+///   delta is that turn's own whole render only because every fork here is
+///   a fresh session that starts at zero. What the snapshots read is
+///   `usage.input.totalTokenCount`, and that total counts the render
 ///   whether or not a cached prefix was skipped.
 /// - The one figure that would answer the question,
-///   `usage.input.cachedTokenCount`, never arrives here.
-///   `LiveModelLoader.usageTokenCounts()` reads only the two
-///   `totalTokenCount`s and drops it; and in the pinned `mlx-swift-lm` the
-///   FoundationModels executor carries no prompt cache at all, so
-///   `cachedTokenCount` is the literal `0` at every emission site. On this
-///   build nothing is ever skipped, so there is nothing for a count to
-///   report.
+///   `usage.input.cachedTokenCount`, never arrives here. Router's live
+///   conformer, `MLXFoundationModelsSessionBackend.usageTokenCounts()`,
+///   reads only the two `totalTokenCount`s and drops it; and in the pinned
+///   `mlx-swift-lm` the FoundationModels executor carries no prompt cache
+///   at all, so `cachedTokenCount` is the literal `0` at every emission
+///   site. On this build nothing is ever skipped, so there is nothing for
+///   a count to report.
 ///
 /// A live run bears that out and then goes one worse. Both selection turns
 /// recorded exactly `tokensIn=1144`, although their two intents tokenize two
@@ -65,7 +68,7 @@ private let selectionCallCount = 2
 /// asserted on by nothing.
 ///
 /// The `fork()` itself does not carry a prefilled cache on this path either:
-/// `LiveModelLoader.makeFork(tools:)` builds a brand-new
+/// `MLXFoundationModelsSessionBackend.makeFork(tools:)` builds a brand-new
 /// `LanguageModelSession` seeded from the parent's *transcript*. What the
 /// child inherits is history, not a KV cache.
 ///
