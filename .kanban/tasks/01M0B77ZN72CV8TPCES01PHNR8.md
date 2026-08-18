@@ -1,8 +1,33 @@
 ---
 assignees:
 - claude-code
-position_column: todo
-position_ordinal: '8780'
+comments:
+- actor: claude-code
+  id: 01m0b8va0wy3jbznrtr0f3wybv
+  text: |-
+    ## Done — `wait` added to both arms, and the class closed rather than the instance
+
+    **The decision.** Added `wait`, not narrowed the doc. `wait` is a mounted tool the model calls exactly as it calls `runCode` and `searchTools`, `makeSessionTools(librarian:)` mounts it on both paths with a comment saying so, and `README.md` already states the contract that way — direct mode takes discovery away, never detachment. Reading `affordances` as "operations a *snippet author* chooses between" would have needed the doc rewritten against three other places that already agree with each other.
+
+        affordances   ["runCode", "searchTools"]  ->  ["runCode", "searchTools", "wait"]
+        (direct)      ["runCode"]                 ->  ["runCode", "wait"]
+
+    The order stays as it was, with `wait` appended; the declaration says explicitly that this property is not a mount order and points at `makeSessionTools(librarian:)`, which owns one.
+
+    **The class, not just the site.** Auditing every place that describes what direct mode vends turned up four more instances of the same forgetting, all fixed in the one commit:
+
+    - `MultiTool.swift` — `directMode()`'s own doc said "only `runCode` is surfaced to the session".
+    - `MultiToolExecutionTests` — the MARK read "directMode(): a runCode-only surface".
+    - `MultiToolExecutionTests` — a test named "…a plain registry reports both", now three.
+    - `MultiToolExecutionTests` — a test named "vends runCode alone" whose own assertion one line below already read `["runCode", "wait"]`.
+    - `plan.md:91` — the schema-bloat argument said the main session carries "only `runCode` + `searchTools`", which is three schemas, not two. This one is in a design section, so the banner's rule says correct it rather than keep it.
+
+    **Tests.** Both `MultiToolExecutionTests` assertions state the chosen contract, with a comment giving the reason at the assertion. Ungated `swift test` green: 359 tests / 30 suites, and 59 / 11. `review sha HEAD~1..HEAD` — 0 findings.
+
+    No gated run: this is a pure metadata property with no live-inference path, and `makeSessionTools(librarian:)` — the thing the gated suites actually drive — is unchanged.
+  timestamp: 2026-08-18T20:26:17.500613+00:00
+position_column: done
+position_ordinal: d180
 title: Registry.affordances omits `wait`, which is mounted in both modes
 ---
 `Registry.affordances` (`Sources/FoundationModelsMultitool/MultiTool.swift:91`) reports `["runCode"]` in direct mode and `["runCode", "searchTools"]` otherwise. `makeSessionTools(librarian:)` in the same type mounts `WaitTool()` on both paths — `[MultiTool(registry: self), WaitTool()]` at `:171` and `[searchTools, runCode, WaitTool()]` at `:188`, with the comment at `:167` stating the intent outright: "`wait` is mounted in both modes".
