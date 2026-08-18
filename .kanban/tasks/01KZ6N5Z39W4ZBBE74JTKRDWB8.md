@@ -3039,6 +3039,29 @@ comments:
 
     **Router's criterion is still unchecked.** Their gated suite has not been re-run since the fixes; `^bgxtdk3` and `^y0mhcdq` both carry it in their own criteria, so their loop cannot close either without it. Our green run says their fixes do not break a consumer. It does not say their suite passes.
   timestamp: 2026-08-18T11:35:26.581315+00:00
+- actor: claude-code
+  id: 01m0b78z2efgrjezz6g923a2ax
+  text: |-
+    ## The last box stays open — Router says its gated suite is not green
+
+    Asked the Router session directly today. Their answer, verbatim in substance:
+
+    - **`FM_ROUTER_INTEGRATION_TESTS=1 swift test` has not run to completion at any point today.** The last gated compaction eval measured 0 of 7 seeds and died on its own 1800 s limit; the run before that measured 7 of 7 with `factRetention` failing.
+    - Their ungated `swift test` **is** green — 1071 tests, one pre-existing `withKnownIssue` in `BoundedWait`, at their local tip `94ca5e9`.
+    - What is green is a **new 4-second smoke suite behind its own gate**, `FM_ROUTER_COMPACTION_SMOKE` — two tests, one real 1B model, one fold. They said plainly it is not the suite this box names and must not be read as a substitute.
+
+    So this box is not closable today, and closing it on the smoke suite would be closing it on a different suite.
+
+    ## Do not bump the Router pin yet
+
+    `origin/main` is `523689b`; we pin `35a1fad` on branch `main`. Their three commits — `d82c33e`, `6fc9bb1`, `94ca5e9` — are still local and unpushed, and they added a second reason to wait: a verification pass found **three claims in `94ca5e9` false**, including one in its own commit message. The code is sound (the growth cap clamps every path, the cut cannot empty a non-empty summary, `Compactor` untouched); what is wrong is what it says about itself — it claims behaviour is unchanged above 625 estimated tokens when the real crossover is 1998, and in the 624-1997 band the new cut keeps up to 3.2x more. `/review` never completed on that commit either. They asked us not to bump on their message and said they will tell us when it is pushed and reviewed.
+
+    `cachedTokenCount > 0` at their `LanguageModelSessionBackendTests.swift:602` is confirmed still open on their side, and is part of why the gated answer is what it is.
+
+    ## Their advice, which lands on a card we already hold
+
+    They cut a 28-minute one-bit test to 4 seconds by dropping an 18 GB model for a cached 1B and folding once instead of driving a session, and observed that three of their open defects existed only because the measurement could not measure. That is exactly `^ck74mtg` here — the nested-generation probe asking a plumbing question with a 17 GB model. Worth doing before the next gated verification, not after.
+  timestamp: 2026-08-18T19:58:47.886225+00:00
 depends_on:
 - 01KZ6N4Q7K53WSTJ3M6E76ZK99
 - 01KZ6N545VYCB60H716AZ1XS92

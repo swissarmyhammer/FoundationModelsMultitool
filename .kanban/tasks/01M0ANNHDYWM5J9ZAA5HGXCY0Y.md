@@ -1,8 +1,35 @@
 ---
 assignees:
 - claude-code
-position_column: todo
-position_ordinal: '8680'
+comments:
+- actor: claude-code
+  id: 01m0b78bqk8smhawfntahe6d4q
+  text: |-
+    ## Done, and one review finding class was refuted rather than obeyed
+
+    Three sites corrected — `CLIArguments.direct`'s doc, `directFlag`'s doc and its `descriptionLines`, and `runDemo`'s `direct` parameter doc. Verified by running the shipped binary:
+
+        $ swift run multitool-cli --help
+          --direct     Run in direct mode: the registry vends runCode and wait alone,
+                       with no searchTools tool; the snippet discovers tools via
+                       help()/docs() instead.
+
+    The premise checked against the code, not just against `README.md`: `makeSessionTools(librarian:)` returns `[MultiTool(registry: self), WaitTool()]` in direct mode (`MultiTool.swift:171`) and `[searchTools, runCode, WaitTool()]` otherwise (`:188`).
+
+    Ungated `swift test` green, 59 tests / 11 suites. No executable line moved.
+
+    ### The `swift/naming-clarity` findings were validator errors
+
+    The first review pass raised two, both asking to write `searchToolsTool` where the code says `searchTools` — one in a doc sentence, one **inside `--help` output**. Both are wrong: `searchTools` is the `Tool`-protocol name (`SearchToolsTool.swift:65`, `public let name = "searchTools"`), which is what the model calls and what a CLI user reads. `SearchToolsTool` is the Swift type. Complying would have put a Swift type name into text a user cannot see or type.
+
+    The rule graded declared Swift names and carried no scope statement, so it reached into prose and string literals. Fixed in `~/.validators/swift/rules/naming-clarity.md` with a scope bullet — matching the guard its sibling `doc-parameter-naming` already carries — and re-ran the same review: **0 findings**. The rule now refutes what it previously raised.
+
+    ### One real defect found on the way, filed separately
+
+    `Registry.affordances` omits `wait` in both modes while `makeSessionTools` mounts it in both — the same class as this card, one layer down, in a public value rather than a comment. Filed as `^01phnr8`; not fixed here because it moves a public value and two unit-test assertions with it.
+  timestamp: 2026-08-18T19:58:28.083168+00:00
+position_column: done
+position_ordinal: cf80
 title: multitool-cli says direct mode registers only runCode; it also vends wait
 ---
 Direct mode takes discovery away and nothing else: `Registry.makeSessionTools(librarian:)` mounts `wait` in both modes, and `README.md` says so ("A direct-mode registry vends `runCode` and `wait` alone — direct mode takes discovery away, never detachment"). Three places in `Sources/multitool-cli/CLIRunner.swift` still say only `runCode` is registered:
