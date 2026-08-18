@@ -157,8 +157,39 @@ comments:
     - no gated run: a doc comment cannot be graded by a twenty-minute `MULTITOOL_INTEGRATION` run. The gated numbers already on this card stand.
     - next: ready for `/review`
   timestamp: 2026-08-18T13:51:03.348222+00:00
-position_column: doing
-position_ordinal: '8380'
+- actor: claude-code
+  id: 01m0ajhc6f6j2c05sxar5ee9md
+  text: |
+    ### review — clean
+
+    - evidence: `review sha HEAD~1..HEAD` (`06af28c`) — 0 findings, 0 confirmed, 0 refuted; 7 validator passes attempted, 0 failed, 3 files reviewed (2 `.kanban/` files excluded by `.reviewignore`). All 3 prior `## Review Findings (2026-08-18 08:41)` items are checked.
+    - The 3 flagged sites now name the owning class: `IntegrationGate.swift` and `SelectionForkPerCallTests.swift` (two sites) say `MLXFoundationModelsSessionBackend`, the class at `LiveModelLoader.swift:237`, whose `usageTokenCounts()` is at `:648` and `makeFork(tools:)` at `:573` — both inside `237..668`.
+    - The sweep found two more instances of the same cause and both new statements are true. `IntegrationGate.swift:110`: `defaultMaxTokens` is `private let defaultMaxTokens = 8192` at file scope, `LiveModelLoader.swift:42`, and `MLXFoundationModelsSessionBackend` applies it as `maxTokens ?? defaultMaxTokens` on the respond path (`:342`, in `private func respond` at `:336`) and the stream path (`:414`, in `streamResponseFragments` at `:409`). `CLIRunner.swift:15`: `import MLXVLM` is at `LiveModelLoader.swift:16` and is Router's only one; a Swift import is file-scoped, so the file is the correct referent.
+    - The sites left alone do mean the struct (`public struct LiveModelLoader` at `:759`). `CLIRunner.swift:400` and `IntegrationGate.swift:488` construct it; `IntegrationGate.swift:463` says "over a real, live `LiveModelLoader`" of that construction. `Package.swift` carries six such mentions, not five — `:56`, `:102`, `:115`, `:123`, `:187`, `:238` — and every one speaks of what a live loader needs or of constructing a real one. All six are correct as the struct, so the extra mention is not a finding.
+    - The added refinement matches the protocol contract. `LanguageModelSessionBackend.usageTokenCounts()` declares at `LanguageModelSessionBackend.swift:195` "The counts are the backend's running totals since the session began, not a per-turn delta", and returns "The backend's cumulative `(input, output)` token counts so far" (`:200`).
+    - No executable line moved. Every added and removed line across `Sources/` and `Tests/` is a `//` or `///` line.
+    - The card's "Resolved" prose was corrected too — it now reads `MLXFoundationModelsSessionBackend.usageTokenCounts()` and states the class is not the `LiveModelLoader` struct further down the same file.
+    - next: none — task moved to `done`.
+  timestamp: 2026-08-18T13:56:23.375806+00:00
+- actor: claude-code
+  id: 01m0ajjd5wnj60hswhkvdsjazg
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — 3 files; the wrong owner corrected at the 3 flagged sites plus 2 more the sweep found
+    - test: green — `swift test` 359 tests/30 suites and 59 tests/11 suites, zero failures. No gated run: this iteration moved no executable line, and no `MULTITOOL_INTEGRATION` run can grade a comment
+    - commit: 06af28c
+    - review: clean — 0 findings, 7 validator passes, 0 failed; all 3 prior findings checked; task advanced to `done`
+
+    **The sweep is what made this one iteration instead of three.** The review flagged three lines. Reading every `LiveModelLoader` mention outside `.build` against the same question found two more of the identical cause — `defaultMaxTokens` attributed to the struct rather than to file scope, and an `MLXVLM` import attributed to the struct rather than to the file that a Swift import is actually scoped to. Neither was flagged. Both would have been found later, one at a time, by whoever next tried to follow the prose to the code.
+
+    **The verification cut both ways, which is the part worth keeping.** It confirmed the sites deliberately left alone really do mean the struct — `CLIRunner.swift:400`, `IntegrationGate.swift:463` and `:488`, and every `Package.swift` mention. A mention wrongly left alone would have been as much a defect as one wrongly changed, and only checking both directions can tell them apart. It also corrected my own count: `Package.swift` carries six mentions, not the five I stated in the brief. All six are right as the struct.
+
+    **One claim got stronger rather than merely surviving.** The suite argues `tokensIn` cannot see prefix reuse because it counts the whole rendered prompt. `LanguageModelSessionBackend` declares those counts as "running totals since the session began, not a per-turn delta" — so the stamped figure equals the turn's own whole render only because every fork here starts a fresh session at zero. That step was implicit before and is now written down. Without it the argument was correct by accident.
+
+    Both cards the user asked for are now closed: `^260yggp` and this one.
+  timestamp: 2026-08-18T13:56:57.148129+00:00
+position_column: done
+position_ordinal: cb80
 title: PrefixReuseTests pins nothing — its assertion is satisfied by model warm-up alone
 ---
 `PrefixReuseTests` is named a pin and asserts one thing:
