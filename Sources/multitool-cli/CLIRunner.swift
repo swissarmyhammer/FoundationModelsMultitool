@@ -33,7 +33,7 @@ private let cliErrorPrefix = "multitool-cli:"
 
 /// The command-line flags `CLIRunner.parse(_:)` recognizes.
 struct CLIArguments: Equatable {
-    /// Whether to run in direct mode: only `multiTool`/`runCode` is registered with the session, no discovery.
+    /// Whether to run in direct mode: `runCode` and `wait` are registered with the session, `searchTools` is not.
     ///
     /// When set, `searchToolsTool` is not registered with the session —
     /// plan.md "Direct mode (skip discovery)".
@@ -147,12 +147,12 @@ enum CLIRunner {
         static let unavailable: Int32 = 69
     }
 
-    /// The `--direct` flag, for running in direct mode (only `multiTool`/`runCode` registered with the session, no `searchToolsTool`).
+    /// The `--direct` flag, for running in direct mode (`runCode` and `wait` registered with the session, no `searchToolsTool`).
     static let directFlag = Flag(
         names: ["--direct"],
         descriptionLines: [
-            "Run in direct mode: only the runCode tool is registered with the",
-            "session (no searchTools tool); the snippet discovers tools via",
+            "Run in direct mode: the registry vends runCode and wait alone,",
+            "with no searchTools tool; the snippet discovers tools via",
             "help()/docs() instead.",
         ],
         apply: { $0.direct = true }
@@ -384,8 +384,9 @@ enum CLIRunner {
     /// `run(...)` only has to decide which exit code an error maps to.
     ///
     /// - Parameters:
-    ///   - direct: whether to run in direct mode — only `multiTool` is
-    ///     registered with the session, `searchToolsTool` is omitted.
+    ///   - direct: whether to run in direct mode — the registry vends
+    ///     `runCode` and `wait`, and `searchToolsTool` is omitted. Direct
+    ///     mode takes discovery away, never detachment.
     ///   - resolve: the profile-resolution step.
     ///   - output: where progress/answer lines are written.
     /// - Throws: `CLIRouterUnavailableError` if `resolve` throws; otherwise
