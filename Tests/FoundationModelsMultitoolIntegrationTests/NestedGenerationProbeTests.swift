@@ -53,9 +53,21 @@ import Testing
 /// **Why it stays now the question is answered.** This is the regression test
 /// for the layer it named: whatever admits a nested generation on a held
 /// container has to keep admitting it, and a change that puts the deadlock back
-/// fails here, in three minutes, with a reading rather than a mystery. It
+/// fails here, in a minute, with a reading rather than a mystery. It
 /// **passes today**: Router's `^1zt7vyg` lends the permit to the nested turn
 /// instead of holding it, and this probe has come back on every run since.
+///
+/// **This suite grades plumbing, not capability, and that is why it resolves a
+/// small model.** Every assertion here is about whether a nested generation on
+/// a held container comes back. Nothing is asserted about the quality, the
+/// grounding or even the content of what the model says — the reply is printed
+/// and graded by nothing. So the model's whole job is to emit tokens and call
+/// the one tool mounted, which any tool-calling model does, and the 17GB
+/// generation pin was buying load time rather than an answer. It therefore
+/// resolves `plumbingProbeProfile`; `plumbingProbeModel` carries the rule and
+/// names the suites that must **not** follow it, every one of which asserts a
+/// valid, fixture-grounded answer and so is making a capability claim a small
+/// model would fail for reasons that say nothing about this package.
 ///
 /// `.enabled(if: multitoolIntegrationEnabled)` like every other gated suite —
 /// with `MULTITOOL_INTEGRATION` unset the whole thing is skipped, so ungated
@@ -65,9 +77,9 @@ import Testing
 @Suite(
     "Gated nested-generation probe (an unguided generation inside a tool call)",
     .serialized,
-    // Three minutes, derived from this suite's own runs. No peer suite's
-    // ceiling is cited here, and no peer suite's ceiling is evidence for this
-    // one.
+    // One minute, derived from this suite's own runs on the model it now
+    // resolves. No peer suite's ceiling is cited here, and no peer suite's
+    // ceiling is evidence for this one.
     //
     // THE LIMIT IS THE DETECTOR. The failure this suite exists to catch is a
     // deadlock, and a deadlock is reported by the limit being reached rather
@@ -81,17 +93,28 @@ import Testing
     // carries the argument, and states it where it is set.
     //
     // WHAT THIS PROBE HAS RECORDED. Parked, it ran 165.4s and 166.5s, and each
-    // of those unwound only when this limit cancelled the outer turn. Returned,
-    // since Router's `^1zt7vyg` landed, it has run 14.1s, 14.8s, 16.4s, 25.8s
-    // and 28.1s. So 180 seconds stands more than six times above the slowest
-    // run that came back, and a run that reaches this limit is parked rather
-    // than slow. The margin also has to cover the turnstile queue and the
-    // profile load, because the limit starts when the test starts rather than
-    // when generation does (`IntegrationGate`).
+    // of those unwound only when this limit cancelled the outer turn. Returned
+    // on the 17GB generation pin, since Router's `^1zt7vyg` landed, it ran
+    // 14.1s, 14.8s, 16.4s, 25.8s and 28.1s, and the ceiling was three minutes.
     //
-    // Nothing here raises a ceiling. Three minutes is what caught the deadlock,
-    // and the runs above are why it stays three minutes.
-    .timeLimit(.minutes(3)),
+    // THE MODEL CHANGED, SO THE CEILING DID. This probe now resolves
+    // `plumbingProbeProfile` (see `plumbingProbeModel` for the rule that let
+    // it), and most of what it used to spend was 17GB of weights coming off
+    // disk rather than the question being answered. Measured over three
+    // consecutive runs on 2026-08-18: **12.0s, 9.2s and 8.6s**, whole-test,
+    // profile resolution included. Sixty seconds therefore stands five times
+    // above the slowest of them — the same order of margin three minutes gave
+    // the old readings — and a run that reaches it is parked rather than slow.
+    //
+    // The margin still has to cover the turnstile queue and the profile load,
+    // because the limit starts when the test starts rather than when generation
+    // does (`IntegrationGate`). Those three readings were taken under
+    // `--no-parallel`, which that same gate already requires and states why.
+    //
+    // Nothing here raises a ceiling. This lowers one, on measurement, and the
+    // detector is sharper for it: a park is now reported in a minute instead of
+    // three.
+    .timeLimit(.minutes(1)),
     .enabled(if: multitoolIntegrationEnabled)
 )
 struct NestedGenerationProbeTests {

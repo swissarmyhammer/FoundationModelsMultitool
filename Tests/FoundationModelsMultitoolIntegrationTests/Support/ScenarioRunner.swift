@@ -654,11 +654,12 @@ func integerAnswers(for value: Int) -> [String] {
 ///   `GenerationError.notWiredForLiveInference`.
 private func withLiveRouterFixture(
     name: String,
+    profile definition: ProfileDefinition = multitoolTinyProfile,
     _ body: (LiveRouterFixture) async throws -> Void
 ) async throws {
     let fixture: LiveRouterFixture
     do {
-        fixture = try await LiveRouterFixture.resolve()
+        fixture = try await LiveRouterFixture.resolve(definition)
     } catch GenerationError.notWiredForLiveInference {
         printSkipNote(name)
         return
@@ -1605,7 +1606,14 @@ func nestedGenerationChecks(for evidence: NestedGenerationEvidence) -> [Scenario
 ///   - prompt: the user request driving the turn.
 /// - Throws: any error other than `GenerationError.notWiredForLiveInference`.
 func runNestedGenerationProbe(name: String, prompt: String) async throws {
-    try await withLiveRouterFixture(name: name) { fixture in
+    // `plumbingProbeProfile`, not the shipped pin every other runner in this
+    // file resolves. This probe grades **plumbing**: whether a nested
+    // generation on a held container comes back. The answer belongs to
+    // Router's `generationGate` and is the same whatever model is resident, so
+    // the 17GB generation pin bought nothing here but load time — most of this
+    // probe's runtime was weights coming off disk. See `plumbingProbeModel`
+    // for the rule, and for why no other suite in this target may take it.
+    try await withLiveRouterFixture(name: name, profile: plumbingProbeProfile) { fixture in
         let log = ScenarioCallLog()
         let slot = fixture.profile.standard
         // One tool, mounted directly rather than through the registry. See this

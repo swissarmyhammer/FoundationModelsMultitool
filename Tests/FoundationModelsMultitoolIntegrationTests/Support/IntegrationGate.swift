@@ -395,6 +395,59 @@ var multitoolIntegrationEnabled: Bool {
 /// record of *this suite's* runs; only the choice moved.
 let multitoolTinyProfile = CLIRunner.demoProfile
 
+/// The model the plumbing probes resolve — **not a second generation pin, and
+/// never a stand-in for `CLIRunner.generationModel`.**
+///
+/// `CLIRunner.generationModel` remains the single place this package names the
+/// model a *host* runs, and every suite that grades an answer resolves it
+/// through `multitoolTinyProfile` above. This constant is a different kind of
+/// thing: it names a model for the suites that grade **plumbing**, where the
+/// model's only job is to emit tokens and call the one tool mounted, and where
+/// nothing about the verdict depends on how well it answers.
+///
+/// **The test that decides which constant a suite takes is plumbing versus
+/// intelligence.** A suite asserting that a valid, fixture-grounded answer came
+/// back is making a capability claim, and a small model would fail it for
+/// reasons that say nothing about this package —
+/// `SearchThenCallTests`, `ElevationTests`, `AsyncFanOutTests`,
+/// `RespondDrainTests` and `InBandCollectionCanaryTests` are all of that kind,
+/// and `^wnfzwxg` turned on exactly which model produced which answer.
+/// `SelectionForkPerCallTests` is excluded for a third reason: cache behaviour
+/// is architecture-specific, so a different model there measures a different
+/// thing. None of them may take this constant.
+///
+/// `NestedGenerationProbeTests` is the one suite that passes the test today. It
+/// asks whether a nested generation on a held container comes back — a question
+/// about Router's `generationGate`, answered identically by any model that gets
+/// as far as calling the tool.
+///
+/// Qwen3-1.7B rather than a smaller model of another family: the shipped pin is
+/// Qwen3.8, so this exercises the same chat/tool template shape the product
+/// does, which is the part of the path a probe should not vary by accident.
+///
+/// No `@revision`, exactly as `CLIRunner.generationModel` carries none — a model
+/// choice, not a version lock.
+let plumbingProbeModel: ModelRef = "mlx-community/Qwen3-1.7B-4bit"
+
+/// The profile the plumbing probes resolve, built over `plumbingProbeModel`.
+///
+/// Same shape as `multitoolTinyProfile` — one model in both generation slots,
+/// the shared embedding model, `nil` context so the model's own window is
+/// resolved — so the only difference between a probe run and a scenario run is
+/// the weights, and a reading cannot be blamed on a different profile layout.
+///
+/// The embedding model is `CLIRunner.embeddingModel` unchanged: it is already
+/// resident from every other gated run on this machine, so naming it here costs
+/// nothing and naming a second one would cost a download for no reading.
+let plumbingProbeProfile = ProfileDefinition(
+    name: "multitool-plumbing-probe",
+    description: "A small model for the gated probes that grade plumbing rather than capability.",
+    standard: [plumbingProbeModel],
+    flash: [plumbingProbeModel],
+    embedding: [CLIRunner.embeddingModel],
+    context: nil
+)
+
 /// The one-at-a-time turnstile every gated scenario passes through before it
 /// puts a live profile on the GPU.
 ///
@@ -465,8 +518,8 @@ struct LiveRouterFixture {
     /// The durable transcripts root passed to `Router.init(recordingsDir:)`.
     private let recordingsDir: URL
 
-    /// Resolves `multitoolTinyProfile` over a real, live `LiveModelLoader` —
-    /// the `#hubDownloader()`/`#huggingFaceTokenizerLoader()` macros build a
+    /// Resolves a profile over a real, live `LiveModelLoader` — the
+    /// `#hubDownloader()`/`#huggingFaceTokenizerLoader()` macros build a
     /// real Hugging Face Hub client + tokenizer loader, mirroring Router's
     /// own gated `IntegrationTests.endToEnd()`.
     ///
@@ -475,13 +528,20 @@ struct LiveRouterFixture {
     /// ``tearDown()`` gives it back. A resolution that throws gives it back
     /// itself, since its caller is left with no fixture to tear down.
     ///
+    /// - Parameter definition: the profile to resolve. Defaults to
+    ///   `multitoolTinyProfile`, the configuration a host really gets, which is
+    ///   what every suite grading an *answer* must resolve. A probe grading
+    ///   plumbing passes `plumbingProbeProfile` instead — see that constant for
+    ///   which suites may, and why the rest may not.
     /// - Returns: the resolved fixture.
     /// - Throws: whatever `Router.resolve(profile:reporting:)` throws — including
     ///   `GenerationError.notWiredForLiveInference` if the live decode path
     ///   isn't wired up in this environment (plan.md M6.5's typed skip
     ///   reason).
     @MainActor
-    static func resolve() async throws -> LiveRouterFixture {
+    static func resolve(
+        _ definition: ProfileDefinition = multitoolTinyProfile
+    ) async throws -> LiveRouterFixture {
         // `swift test`'s binary layout defeats mlx-swift's default metallib
         // lookup (see `MetalLibraryTestBootstrap`'s documentation) — must run
         // before any live model resolution touches the GPU device.
@@ -501,7 +561,7 @@ struct LiveRouterFixture {
                 loader: loader
             )
             let progress = ResolutionProgress()
-            let profile = try await router.resolve(profile: multitoolTinyProfile, reporting: progress)
+            let profile = try await router.resolve(profile: definition, reporting: progress)
             return LiveRouterFixture(router: router, profile: profile, recordingsDir: recordingsDir)
         } catch {
             await LiveProfileTurnstile.shared.leave()
