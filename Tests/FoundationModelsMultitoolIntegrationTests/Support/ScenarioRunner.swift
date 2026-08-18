@@ -219,8 +219,9 @@ func runNativeIntegrationScenario(
         let searchedToolsFirst = NativeTranscript.searchToolsPrecedesRunCode(in: turn.calls)
         // plan.md acceptance: "the per-format results are recorded (test
         // attachment or log)" — the route details stay visible here as
-        // diagnostics (see also `PrefixReuseTests` for the prefix-reuse
-        // measurement's own recorded evidence), they just no longer gate.
+        // diagnostics (see also `SelectionForkPerCallTests`, which reads the
+        // selection tier's own recorded fork trace the same way), they just no
+        // longer gate.
         //
         // All three path signals are printed, not just the graded one: a run
         // where `typed` names paths `invoked` does not is precisely the shape

@@ -45,7 +45,7 @@ let multitoolIntegrationEnvVar = "MULTITOOL_INTEGRATION"
 ///   Gated async fan-out             443.5s          71.4s
 ///   Gated elevation-in-code-mode    371.2s          64.2s
 ///   Gated search-then-call (x4)     661.0s         283.1s
-///   Selection tier prefix-reuse      85.6s          16.5s
+///   Selection tier fork()-per-call   85.6s          16.5s
 ///   Gated nested-generation probe   >180s(*)        28.1s
 ///
 /// (*) exceeded its three-minute limit and was recorded as a failure.
@@ -140,7 +140,9 @@ var multitoolIntegrationEnabled: Bool {
 /// rather than an architecture-family mismatch. Confirmed: it resolves and
 /// loads cleanly (~5.9GB of `*.safetensors`, both shards). Three full gated
 /// runs gave a genuinely mixed picture rather than a clean win or a clean
-/// regression: `PrefixReuseTests` passed all 3 real attempts and
+/// regression: the suite now called `SelectionForkPerCallTests` passed all 3
+/// real attempts — which, then as now, graded no prefix reuse; see the
+/// paragraph on it far below — and
 /// `CLISmokeTests` passed 2 of 3 (the third run's failure — and that run's
 /// blanket "no *.safetensors weight files in the repo tree" sizing error
 /// across every non-embedding resolution — was a one-off, non-reproducing
@@ -229,10 +231,21 @@ var multitoolIntegrationEnabled: Bool {
 /// Support/RealModels.swift`), for a prompt-cache reason the 27B cannot
 /// meet: Qwen3.5/3.6 give their linear/GDN layers a `MambaCache`, which is
 /// not trimmable, and one non-trimmable entry stops prefix reuse for the
-/// whole cache list — so `PrefixReuseTests` had nothing left to measure.
-/// Muse Glimmer has no recurrent layers, so every entry in its cache list is
-/// trimmable, and its ATEM tool protocol carries a reuse rule written for
-/// tool continuations — which is what every scenario in this target is.
+/// whole cache list. Muse Glimmer has no recurrent layers, so every entry in
+/// its cache list is trimmable, and its ATEM tool protocol carries a reuse
+/// rule written for tool continuations — which is what every scenario in
+/// this target is.
+///
+/// **No suite in this target ever graded that swap, and this paragraph no
+/// longer says one did.** It used to close by saying the `MambaCache` left
+/// `PrefixReuseTests` "nothing left to measure", which reads as a model
+/// choice resting on a measurement made here. That suite could not measure
+/// prefix reuse either way, on either model — its successor,
+/// `SelectionForkPerCallTests`, records in its own documentation exactly
+/// what it cannot see and why. The cache-shape argument rests on the two
+/// architectures and on `mlx-swift-lm`'s `f85fc50`, and never rested on
+/// anything this target measured.
+///
 /// It is a vision-language model driven text-only here, deliberately: its
 /// processor returns a pure-text input when no image is supplied. Being
 /// registered in `VLMModelFactory` alone, it reaches the runtime factory
@@ -307,14 +320,29 @@ var multitoolIntegrationEnabled: Bool {
 /// **This comparison is one run each**, and Muse's own numbers moved run to
 /// run, so nothing here is a reliability claim.
 ///
-/// **And `PrefixReuseTests` passing on Qwen3.8 is not evidence of prefix
-/// reuse.** That was worth checking rather than banking, and the check came
-/// back against the suite: its assertion is `secondElapsed <= firstElapsed`,
-/// which a cold first call satisfies on warm-up alone, with no reuse
-/// anywhere. Measured, both models pass and neither passes decisively —
+/// **And the old `PrefixReuseTests` passing on Qwen3.8 was not evidence of
+/// prefix reuse.** That was worth checking rather than banking, and the check
+/// came back against the suite: its assertion was `secondElapsed <=
+/// firstElapsed`, which a cold first call satisfies on warm-up alone, with no
+/// reuse anywhere. Measured, both models pass and neither passes decisively —
 /// Muse `first=7.75s second=3.31s`, Qwen3.8 `first=5.81s second=3.58s`.
 /// A second call that skipped a real prefill and one that merely followed a
 /// warmed model produce the same verdict here.
+///
+/// The recorded entries could not rescue it either, and that was checked
+/// against the shipped build rather than assumed. `TranscriptEvent` meters
+/// `tokensIn`, `tokensOut` and `ms` and nothing else — no skipped-token
+/// count, no cache-hit count, no prefill time. `tokensIn` is the whole
+/// rendered prompt of the turn (Router subtracts two
+/// `usage.input.totalTokenCount` snapshots), so it reads the same whether a
+/// prefix was reused or re-prefilled. The one figure that would answer the
+/// question, `usage.input.cachedTokenCount`, is dropped by
+/// `LiveModelLoader.usageTokenCounts()` and is the literal `0` at every
+/// emission site of the pinned `mlx-swift-lm`, whose FoundationModels
+/// executor carries no prompt cache at all. So the suite was renamed to
+/// `SelectionForkPerCallTests` and narrowed to what it can hold: the
+/// selection tier's cached-root, `fork()`-per-call contract, read off the
+/// recording, plus the timing comparison stated as a timing comparison.
 ///
 /// The rigorous instrument is in the fork, not here: `mlx-swift-lm`'s
 /// `f85fc50` measures two-round reuse on real weights through
@@ -332,8 +360,11 @@ var multitoolIntegrationEnabled: Bool {
 /// upstream starts caching" — but a template that does not extend defeats
 /// reuse whatever the cache does.
 ///
-/// Do not cite `PrefixReuseTests` for "prefix reuse works" on any model. It
-/// pins that the second call is not slower, which is all it can see.
+/// No suite in this target can be cited for "prefix reuse works" on any
+/// model, and `SelectionForkPerCallTests` least of all — it holds the
+/// `fork()`-per-call mechanism and the fact that the second call is not
+/// slower, which is all it can see. Cite `mlx-swift-lm`'s `f85fc50`, or
+/// measure it again there.
 ///
 /// Neither reference carries an `@revision`, so both track their repository's
 /// default revision rather than a fixed commit — these are model *choices*,

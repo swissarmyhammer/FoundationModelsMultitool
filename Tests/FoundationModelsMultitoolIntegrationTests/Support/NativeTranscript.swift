@@ -300,8 +300,10 @@ enum NativeTranscript {
     /// Decodes `searchToolsTool`'s selection-tier `Selection` results from its own recorded transcript.
     ///
     /// `searchToolsTool`'s internal selection tier remains Router-backed (task
-    /// `4aveepp`'s decision, kept specifically to preserve `PrefixReuseTests`'
-    /// fork()-based prefix-reuse property) — every selection call is still a
+    /// `4aveepp`'s decision, kept specifically to preserve the tier's
+    /// cached-root, `fork()`-per-call property, which
+    /// `SelectionForkPerCallTests` reads off this same recording) — every
+    /// selection call is still a
     /// real, recorded Router session, independent of the *main*
     /// `LanguageModelSession` above (which wraps a bare `MLXLanguageModel`,
     /// never Router-vended, so it is never recorded here). Redeclared here

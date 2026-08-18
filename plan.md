@@ -1032,7 +1032,11 @@ a supported subject.)*
   **Both since resolved on real hardware:** the Router's live path landed (the
   gated suite and `multitool-cli` run live models), and prefix reuse is driven
   explicitly via fork-per-call — the shipped `SelectionConfig` contract (see
-  **Discovery**; the gated `PrefixReuseTests` pins it).
+  **Discovery**; the gated `SelectionForkPerCallTests` holds the fork-per-call
+  contract itself, read off the recording). Read "prefix reuse is driven" as
+  the mechanism being engaged, never as reuse being measured: no suite in this
+  repository can see whether a prefill was skipped, and that suite's own
+  documentation states why.
 
 ## Prior art
 
