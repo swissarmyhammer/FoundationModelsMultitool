@@ -97,8 +97,9 @@ that one tool's own `call(arguments:)`.
 
 Turn budgeting is no longer this package's to bound: the retired hand-rolled
 ReAct loop's `maxAgentTurns`/`maxRepairTurns` knobs were removed with it, and
-Apple's native `LanguageModelSession` tool-calling loop — the shipped main
-loop — owns how many `searchTools`/`runCode` turns a request may take.
+the session's own native tool-calling loop — the shipped main loop, running
+inside the `RoutedSession` a host mounts the vended tools on — owns how many
+`searchTools`/`runCode` turns a request may take.
 
 ## What is NOT guaranteed
 
@@ -111,15 +112,16 @@ loop — owns how many `searchTools`/`runCode` turns a request may take.
   and return a precise, repairable error on a mismatch, but that is
   validation *after the fact*, not a generation-time guarantee.
 - **Escape hatch**, when the hard argument guarantee matters for one tool:
-  register that tool directly with the session. The shipped main loop is
-  already `FoundationModels`'s own native tool-calling — a
-  `LanguageModelSession(tools:)` over a Router-resolved model wrapped as an
-  `MLXLanguageModel` (`Sources/multitool-cli/CLIRunner.swift`) — and every
-  tool registered directly with the session gets schema-constrained
-  argument generation as a basic property of native tool-calling itself. So
-  a tool not meant for JS-snippet composition is simply registered as its
-  own separate `Tool` alongside `multiTool` and `searchToolsTool`, rather than
-  routed through `MultiTool`'s registry at all.
+  mount that tool on the session alongside the vended ones. The shipped main
+  loop is already `FoundationModels`'s own native tool-calling — the
+  `RoutedSession` that `profile.standard.makeSession(tools:)` vends runs it
+  over the Router-resolved model (`Sources/multitool-cli/CLIRunner.swift`
+  drives exactly that) — and every tool mounted on the session gets
+  schema-constrained argument generation as a basic property of native
+  tool-calling itself. So a tool not meant for JS-snippet composition is
+  simply mounted as its own separate `Tool` alongside `multiTool` and
+  `searchToolsTool`, rather than routed through `MultiTool`'s registry at
+  all.
 - **A wrapped tool's own behavior is out of scope.** The sandbox bounds what
   a *snippet* can reach; it says nothing about what a wrapped `Tool`'s own
   `call(arguments:)` implementation does once invoked (e.g. a tool that

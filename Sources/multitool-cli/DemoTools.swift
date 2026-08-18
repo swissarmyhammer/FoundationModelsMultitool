@@ -24,7 +24,8 @@ struct DemoTripOutput {
 /// A fixed-fixture itinerary lookup, the sample's first demo tool.
 ///
 /// One of the two demo tools `CLIRunner` wraps into the sample's `MultiTool`
-/// registry, driven by a native `LanguageModelSession`. Chosen together with
+/// registry, driven by the `RoutedSession` the resolved profile vends. Chosen
+/// together with
 /// `DemoWeatherTool` to trigger the compose/chain behavior plan.md's own usage
 /// example walks through: `getTrip` -> `getWeather` per city -> pick the
 /// warmest.

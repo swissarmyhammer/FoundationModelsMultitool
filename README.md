@@ -110,11 +110,18 @@ for try await event in await session.streamEvents(to: prompt) {
 print(answer)
 ```
 
-The demo pins one natively tool-calling-trained model,
-`mlx-community/Muse-Glimmer-30B-4bit`, on both `standard` (the main session)
-and `flash` (`searchTools`'s selection tier); the router loads the weights
-once and both slots share them (see `CLIRunner.demoProfile` for the
-rationale).
+The demo pins one natively tool-calling-trained model on both `standard` (the
+main session) and `flash` (`searchTools`'s selection tier). This README names
+no model, because the package names one in exactly one place —
+`CLIRunner.generationModel` in
+[`Sources/multitool-cli/CLIRunner.swift`](Sources/multitool-cli/CLIRunner.swift).
+The gated suite resolves that same profile rather than keeping a pin of its
+own, so a swap there moves the demo and every graded scenario together, and
+the measurement history behind each model that has held the slot lives beside
+the suite in `Tests/FoundationModelsMultitoolIntegrationTests/Support/IntegrationGate.swift`.
+One reference in both slots means one resident model rather than a swap
+between generation and selection on every search; see `CLIRunner.demoProfile`
+for what that costs and for the Router gate that used to deadlock it.
 
 For a small, fixed tool set, skip discovery entirely — direct mode: build the
 registry with `.directMode()` and mount it the same way. A direct-mode
@@ -189,7 +196,9 @@ Add it as a dependency in `Package.swift`:
 
 ## Documentation
 
-Full design and milestone-by-milestone rationale live in [`plan.md`](plan.md).
+Full design and milestone-by-milestone rationale live in [`plan.md`](plan.md),
+which is a historical record: read its own "Status of this document" note
+first, because this README and the source are what state the shipped contract.
 Sandbox guarantees and escape hatches are documented in
 [`docs/SECURITY.md`](docs/SECURITY.md). A runnable end-to-end demo (model
 resolution, a tool-carrying `RoutedSession`, a drained turn, tool composition)

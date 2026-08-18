@@ -737,9 +737,10 @@ let integrationNestedGenerationPrompt = "Say hello."
 
 /// How many tokens the nested generation is allowed.
 ///
-/// Small on purpose, and load-bearing for the probe's verdict. Muse Glimmer
-/// reasons before it answers and cannot be asked not to, so an uncapped nested
-/// turn could run for minutes — and a suite whose own limit is three minutes
+/// Small on purpose, and load-bearing for the probe's verdict. A model that
+/// reasons before it answers — Muse Glimmer, which held the slot when this
+/// was measured, cannot be asked not to — can spend minutes on an uncapped
+/// nested turn, and a suite whose own limit is three minutes
 /// would then report a slow call and a deadlocked call identically. A cap this
 /// tight makes a live nested turn a matter of seconds, so the limit can only be
 /// reached by a call that is not running at all.

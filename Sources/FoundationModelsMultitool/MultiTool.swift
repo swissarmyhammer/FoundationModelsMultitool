@@ -239,10 +239,11 @@ public struct RunCodeArguments {
 /// plan.md Component 1 ⭐ — the `runCode` `Tool`: the execution half of the
 /// MultiTool idea, "a single `Tool`... that wraps other, in-process `Tool`s
 /// and exposes them to the model as a callable code API." Conforms to
-/// `FoundationModels.Tool`, so it registers directly on a native
-/// `LanguageModelSession(tools: try registry.makeSessionTools(librarian:))`
-/// and Apple's own tool-calling loop decides when to call it (the
-/// hand-rolled `MultiToolAgent` ReAct loop that used to drive it is
+/// `FoundationModels.Tool`, so it mounts directly on the session a resolved
+/// Router slot vends —
+/// `profile.standard.makeSession(tools: try registry.makeSessionTools(librarian:))`
+/// — and that session's own native tool-calling loop decides when to call it
+/// (the hand-rolled `MultiToolAgent` ReAct loop that used to drive it is
 /// retired). Mount through `Registry.makeSessionTools(librarian:)` rather
 /// than assembling the array by hand: it puts `searchTools` ahead of `runCode`,
 /// which is the order this package's whole search-then-call premise depends

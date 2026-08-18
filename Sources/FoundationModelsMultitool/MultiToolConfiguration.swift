@@ -11,9 +11,10 @@ import FoundationModelsRouter
 /// the numbers `MultiTool` hands it.
 ///
 /// The retired `MultiToolAgent` ReAct loop's own knobs (`maxAgentTurns`/
-/// `maxRepairTurns`) were removed alongside it: on the current
-/// `LanguageModelSession`-driven design, Apple's native tool-calling loop
-/// owns turn budgeting, so only the `runCode`-sandbox limits remain.
+/// `maxRepairTurns`) were removed alongside it: on the current design a host
+/// mounts the vended tools on a `RoutedSession`, and that session's own
+/// native tool-calling loop owns turn budgeting, so only the
+/// `runCode`-sandbox limits remain.
 public struct MultiToolConfiguration: Sendable, Equatable {
     /// Wall-clock ceiling, in seconds, on a single `runCode` snippet's own
     /// work: both the default for the envelope's `timeout` and the hard cap

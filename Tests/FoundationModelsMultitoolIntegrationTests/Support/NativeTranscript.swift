@@ -8,11 +8,17 @@ import FoundationModelsRouter
 /// replacement for the retired `TranscriptAnalyzer`'s `AgentStep`-based
 /// assertions, which only ever applied to `MultiToolAgent`'s hand-rolled
 /// ReAct-loop transcript format (its own `ACTION:`/`TASK:`/`CODE:` or guided
-/// JSON turn convention). A `LanguageModelSession`'s own transcript already
-/// carries everything the gated scenario suite needs natively (`.toolCalls`
-/// entries recording every tool invocation, in order) — there is no
-/// turn-parsing step at all here, just reading the transcript Apple's own
-/// native tool-calling loop already built.
+/// JSON turn convention). A native tool-calling transcript already carries
+/// everything a gated scenario needs (`.toolCalls` entries recording every
+/// tool invocation, in order) — there is no turn-parsing step at all here,
+/// just reading what the native tool-calling loop already built.
+///
+/// Two readers, one set of questions. A `FoundationModels.Transcript` is what
+/// the `Transcript`-taking helpers read. The shipped scenarios run on a
+/// `RoutedSession`, which publishes no transcript, so they read the same
+/// evidence off the turn's event stream through the `StreamedCall`-taking
+/// twins below. Each pair answers the identical question from whichever
+/// record its caller holds.
 ///
 /// Deliberately self-contained, with no dependency on `TranscriptAnalyzer
 /// .swift`/`AgentStep` (retired alongside `MultiToolAgent` — see the
@@ -303,10 +309,11 @@ enum NativeTranscript {
     /// `4aveepp`'s decision, kept specifically to preserve the tier's
     /// cached-root, `fork()`-per-call property, which
     /// `SelectionForkPerCallTests` reads off this same recording) — every
-    /// selection call is still a
-    /// real, recorded Router session, independent of the *main*
-    /// `LanguageModelSession` above (which wraps a bare `MLXLanguageModel`,
-    /// never Router-vended, so it is never recorded here). Redeclared here
+    /// selection call is a real, recorded Router session on the `.flash`
+    /// slot. The main turn is Router-vended too and therefore recorded as
+    /// well, on `.standard`, which is exactly why `slot` is a parameter: it
+    /// is what separates the selection tier's responses from the turn that
+    /// called it. Redeclared here
     /// (rather than reusing the retired `TranscriptAnalyzer
     /// .selections(in:slot:)`) so this file has no dependency on
     /// `TranscriptAnalyzer.swift`.

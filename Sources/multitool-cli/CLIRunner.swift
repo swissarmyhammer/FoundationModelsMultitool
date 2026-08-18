@@ -11,9 +11,11 @@ import FoundationModelsRouter
 // inside the expansion.
 //
 // Model *loading* itself is Router's, so every other MLX module that load
-// needs — `MLXVLM` among them, whose `VLMModelFactory` alone registers some
-// pinned models — is imported by Router's own `LiveModelLoader.swift` rather
-// than here; `Package.swift` links them into this executable.
+// needs — `MLXVLM` among them, whose `VLMModelFactory` is the only registry
+// some checkpoints appear in — is imported by Router's own
+// `LiveModelLoader.swift` rather than here; `Package.swift` links them into
+// this executable, and records there why that link outlives the pin that
+// first needed it.
 import HuggingFace
 import MLXHuggingFace
 import MLXLMCommon
@@ -124,8 +126,9 @@ struct CLIRouterUnavailableError: Error, CustomStringConvertible {
 /// - Argument parsing and the Router-unavailable degrade path are
 ///   unit-tested here with **no model at all**
 ///   (`Tests/FoundationModelsMultitoolTests/CLIArgumentTests.swift`).
-/// - The full live run — resolving a real profile, constructing the native
-///   session, and printing the model's answer — is exercised end to end by
+/// - The full live run — resolving a real profile, mounting the vended tools
+///   on the `RoutedSession` that profile vends, draining the turn, and
+///   printing the model's answer — is exercised end to end by
 ///   the gated `CLISmokeTests`
 ///   (`Tests/FoundationModelsMultitoolIntegrationTests/CLISmokeTests.swift`).
 enum CLIRunner {

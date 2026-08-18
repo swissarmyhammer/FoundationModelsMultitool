@@ -6,15 +6,14 @@ import Testing
 /// and the model collects the parked run through the run-plane globals and
 /// still answers.
 ///
-/// **Why this suite does not use `runNativeIntegrationScenario`.** That runner
-/// builds a bare `LanguageModelSession` over an `MLXLanguageModel`, which has
-/// no elevation mount at all — `DetachingTool` is applied only by Router's own
-/// per-session tool wiring — so a pending envelope could never appear on that
-/// path. This scenario drives `runElevationIntegrationScenario` instead, which
-/// vends a real `RoutedSession` through `RoutedLLM.makeSession(instructions:
-/// tools:)` and therefore mounts `runCode` under
-/// `DetachConfiguration.nativeSessionMount`. See `Support/
-/// ScenarioRunner.swift` for both runners and what each asserts.
+/// **Why this suite does not use `runNativeIntegrationScenario`.** Not the
+/// session: both runners build the same `RoutedSession` from
+/// `profile.standard.makeSession(tools:discoveryPriming:)`, so both mount
+/// `runCode` under `DetachConfiguration.nativeSessionMount`. It is the
+/// assertion. `runElevationIntegrationScenario` also requires that a pending
+/// envelope really appeared on the way to the answer, which is the whole
+/// claim of this suite and which the native runner does not check. See
+/// `Support/ScenarioRunner.swift` for both runners and what each asserts.
 ///
 /// Gated, serialized, and time-limited exactly like `SearchThenCallTests`:
 /// with `MULTITOOL_INTEGRATION` unset the whole suite is skipped, so ungated

@@ -5,8 +5,8 @@ import FoundationModelsRouter
 
 /// The arguments a `searchTools` call carries.
 ///
-/// The plain-language goal a `LanguageModelSession`'s native tool-calling loop
-/// passes when it decides to call `searchTools`.
+/// The plain-language goal the session's own native tool-calling loop passes
+/// when it decides to call `searchTools`.
 @Generable
 public struct SearchToolsArguments: Sendable {
     /// The plain-language goal to search the catalog for.
@@ -33,9 +33,10 @@ public struct SearchToolsArguments: Sendable {
 ///
 /// plan.md Component 8 (Discovery): `searchTools` as its own real
 /// `FoundationModels.Tool` conformer, independently constructible and
-/// registerable directly alongside `MultiTool` in a native
-/// `LanguageModelSession(tools: try registry.makeSessionTools(librarian:))`,
-/// fully decoupled from the retired `MultiToolAgent` hand-rolled ReAct loop
+/// mountable directly alongside `MultiTool` on the session a resolved Router
+/// slot vends —
+/// `profile.standard.makeSession(tools: try registry.makeSessionTools(librarian:))`
+/// — fully decoupled from the retired `MultiToolAgent` hand-rolled ReAct loop
 /// and its turn machinery. That vending call is how a host should mount the
 /// pair — it presents this tool *before* `runCode`, so the model reads
 /// "discover what exists" before "execute code" when it picks its opening

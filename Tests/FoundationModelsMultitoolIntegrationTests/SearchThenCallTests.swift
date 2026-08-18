@@ -3,8 +3,9 @@ import Testing
 @testable import FoundationModelsMultitool
 
 /// The gated real-model suite: the four sample MultiTools scenarios,
-/// retargeted at a native `LanguageModelSession` driven over the tools
-/// `MultiTool.Registry.makeSessionTools(librarian:)` vends — "this is where
+/// retargeted at the shipped host contract — the tools
+/// `MultiTool.Registry.makeSessionTools(librarian:)` vends, mounted on a
+/// `RoutedSession` and driven by draining `streamEvents(to:)` — "this is where
 /// the plan's empirical search-then-call behavior is proven against real
 /// hardware."
 ///
@@ -32,9 +33,10 @@ import Testing
 /// **Native design.** Ported off `MultiToolAgent`'s hand-rolled ReAct loop
 /// (`TurnFormat`/`AgentStep`, retired alongside it — see the `7840f24` kanban
 /// task): every scenario drives `runNativeIntegrationScenario` (`Support/
-/// ScenarioRunner.swift`), which builds a real `MLXLanguageModel` +
-/// `LanguageModelSession` and lets Apple's own native tool-calling loop
-/// decide when to call `searchTools` vs `runCode`. There is no turn-format
+/// ScenarioRunner.swift`), which mounts the vended tools on the
+/// `RoutedSession` a resolved profile slot vends and lets that session's own
+/// native tool-calling loop decide when to call `searchTools` vs `runCode`,
+/// reading the turn off `streamEvents(to:)`. There is no turn-format
 /// matrix anymore — `.tolerantParse`/`.guided` were `MultiToolAgent`-specific
 /// prompted-text conventions with no equivalent in native tool-calling — so
 /// each scenario runs once, not twice.

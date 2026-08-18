@@ -63,8 +63,9 @@ var multitoolIntegrationEnabled: Bool {
 
 /// The deliberately small, tool-calling-capable `mlx-community` models this
 /// suite resolves — plan.md M6.5: "small tool-calling-capable instruct
-/// models." The suite drives Apple's own native tool-calling loop through a
-/// real `LanguageModelSession` (the retired `MultiToolAgent`'s prompted-text
+/// models." The suite drives the shipped host contract — the vended tools
+/// mounted on a `RoutedSession`, whose own native tool-calling loop runs the
+/// turn (the retired `MultiToolAgent`'s prompted-text
 /// `ACTION:`/`TASK:`/`CODE:` convention is gone), so the pinned `standard`
 /// model must be genuinely trained for native function calling, not merely
 /// instruction-following.
@@ -227,7 +228,7 @@ var multitoolIntegrationEnabled: Bool {
 /// feeds. Sharing one `ModelRef` across both slots also means one resident
 /// model rather than a swap between generation and selection on every search.
 ///
-/// **Muse Glimmer replaces the Qwen pair.** Both generation slots now name
+/// **Muse Glimmer replaced the Qwen pair.** Both generation slots took
 /// `Muse-Glimmer-30B-mxfp4`, the same model Router's own gated suite pins
 /// (`../FoundationModelsRouter/Tests/FoundationModelsRouterIntegrationTests/
 /// Support/RealModels.swift`), for a prompt-cache reason the 27B cannot
@@ -248,11 +249,13 @@ var multitoolIntegrationEnabled: Bool {
 /// architectures and on `mlx-swift-lm`'s `f85fc50`, and never rested on
 /// anything this target measured.
 ///
-/// It is a vision-language model driven text-only here, deliberately: its
-/// processor returns a pure-text input when no image is supplied. Being
-/// registered in `VLMModelFactory` alone, it reaches the runtime factory
-/// registry only because `Package.swift` links `MLXVLM` (see
-/// `liveLoaderMLXProducts`) and this file imports it below.
+/// Muse Glimmer is a vision-language model, and was driven text-only here
+/// deliberately: its processor returns a pure-text input when no image is
+/// supplied. Being registered in `VLMModelFactory` alone, it reached the
+/// runtime factory registry only because `Package.swift` links `MLXVLM` (see
+/// `liveLoaderMLXProducts`) and this file imports it above. That link and
+/// that import are still here, and still needed, for any pin with the same
+/// property.
 ///
 /// **One model in both slots, and the hang that argued against it is fixed.**
 /// Sharing one `ModelRef` is what the human asked for and what the code below
@@ -320,7 +323,9 @@ var multitoolIntegrationEnabled: Bool {
 /// warmed by repeated runs.
 ///
 /// **This comparison is one run each**, and Muse's own numbers moved run to
-/// run, so nothing here is a reliability claim.
+/// run, so nothing here is a reliability claim. Which of the two holds the
+/// slot is stated in one place only, `CLIRunner.generationModel`; everything
+/// above is the evidence behind that choice, never a second pin.
 ///
 /// **And the old `PrefixReuseTests` passing on Qwen3.8 was not evidence of
 /// prefix reuse.** That was worth checking rather than banking, and the check

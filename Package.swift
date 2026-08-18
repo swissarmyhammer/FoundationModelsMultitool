@@ -51,18 +51,20 @@ private func swissArmyHammerPackage(name: String, branch: String = mainBranch) -
 ///
 /// Taken by URL from its published `stable` branch — see `mlxStableBranch`.
 ///
-/// Only three of its products are declared directly here (not Router's own
+/// Only four of its products are declared directly here (not Router's own
 /// broader `mlxProducts` set): `MLXLMCommon`, whose
 /// `Downloader`/`TokenizerLoader` protocols a live `LiveModelLoader` is
 /// constructed over; `MLXHuggingFace`, whose
 /// `#hubDownloader()`/`#huggingFaceTokenizerLoader()` macros adapt a real
 /// Hugging Face Hub client into those protocols — the same macros Router's
 /// own gated `…IntegrationTests` target uses, and the M9 `multitool-cli`
-/// executable's default (production) model-resolution path uses too; and
-/// `MLXVLM`, for its model registry alone (see `liveLoaderMLXProducts`).
+/// executable's default (production) model-resolution path uses too;
+/// `MLXVLM`, for its model registry alone (see `liveLoaderMLXProducts`); and
+/// `MLXFoundationModels`, the module `LiveModelLoader` itself is written
+/// over, declared per target below rather than in `liveLoaderMLXProducts`.
 /// This is already part of this package's resolved dependency graph
 /// transitively (Router's own library target needs the *full* mlx-swift-lm
-/// product set to build at all), so declaring these three directly for the
+/// product set to build at all), so declaring these four directly for the
 /// targets below adds no new MLX/C++ compilation, only linking.
 private let mlxPackage = "mlx-swift-lm"
 
@@ -130,10 +132,15 @@ private let liveLoaderMLXProducts: [Target.Dependency] = [
     // finds a factory through `MLXLMCommon`'s `ModelFactoryRegistry`, which
     // resolves its built-in trampolines with `NSClassFromString`, so a
     // factory reaches that registry only when its module is linked into the
-    // binary. Muse Glimmer (`muse_glimmer`) — the model both the CLI demo
-    // profile and the gated suite pin — is registered in `VLMModelFactory`
-    // alone, and without this the id throws `unsupportedModelType` after
-    // paying for the whole download.
+    // binary. Without this link a checkpoint registered in `VLMModelFactory`
+    // alone throws `unsupportedModelType` after paying for the whole
+    // download. Which checkpoint is pinned is not this manifest's to state:
+    // `CLIRunner.generationModel` is the single place this package names a
+    // generation model, and the pin it names today carries `model_type:
+    // qwen3_5`, which both `LLMModelFactory` and `VLMModelFactory` register.
+    // So this link is what keeps a swap to a VLM-only checkpoint resolving —
+    // Muse Glimmer (`muse_glimmer`), which held the slot before, is one —
+    // rather than what the shipped pin needs today.
     .product(name: "MLXVLM", package: mlxPackage),
 ]
 
@@ -193,10 +200,20 @@ let package = Package(
             dependencies: [
                 .target(name: packageName),
                 .product(name: routerDependencyName, package: routerDependencyName),
-                // Needed to wrap a resolved Router generation slot as a real
-                // `FoundationModels.LanguageModel` (`MLXLanguageModel`), so
-                // the CLI can build a native `LanguageModelSession` directly
-                // over it — see `CLIRunner.makeMLXLanguageModel(for:)`.
+                // The module that turns a resolved Router generation slot
+                // into a `FoundationModels.LanguageModel` (`MLXLanguageModel`)
+                // and runs a turn over it. This target names no symbol of
+                // it: the CLI builds no model and no session of its own, it
+                // mounts the vended tools on the `RoutedSession` that
+                // `profile.standard.makeSession(tools:)` returns and drains
+                // `streamEvents(to:)`. What this target does construct is
+                // Router's `LiveModelLoader`, and that loader is written over
+                // `MLXLanguageModel`
+                // (`../FoundationModelsRouter/Sources/FoundationModelsRouter/
+                // Resolution/LiveModelLoader.swift`), so the module is named
+                // here alongside `liveLoaderMLXProducts` — the live-inference
+                // set this target links, stated by this target rather than
+                // inherited from Router's own target list.
                 .product(name: "MLXFoundationModels", package: mlxPackage),
             ] + liveLoaderMLXProducts + hubProducts,
             path: "\(sourcesPath)\(cliTargetName)"
@@ -244,13 +261,16 @@ let package = Package(
                 .target(name: cliTargetName),
                 .product(name: routerDependencyName, package: routerDependencyName),
                 .product(name: metadataRegistryDependencyName, package: metadataRegistryDependencyName),
-                // Needed to construct `MLXLanguageModel`/`LanguageModelSession`
-                // directly, the same way `multitool-cli` itself does (via
-                // `CLIRunner.makeMLXLanguageModel(for:)`) — the gated scenarios
-                // in this target drive a real, native
-                // `LanguageModelSession` over the tools
-                // `MultiTool.Registry.makeSessionTools(librarian:)` vends, not
-                // `MultiToolAgent`'s retired hand-rolled loop.
+                // Declared for the same reason as on `multitool-cli` above,
+                // and it is the same live-inference wiring: this target
+                // constructs Router's `LiveModelLoader`, which is written
+                // over `MLXLanguageModel`. No test here names a symbol of
+                // this module either — every gated scenario runs the shipped
+                // host contract, mounting what
+                // `MultiTool.Registry.makeSessionTools(librarian:)` vends on
+                // a `RoutedSession` and draining `streamEvents(to:)`, and it
+                // resolves `CLIRunner.demoProfile` rather than a pin of its
+                // own.
                 .product(name: "MLXFoundationModels", package: mlxPackage),
             ] + liveLoaderMLXProducts + hubProducts,
             path: "\(testsPath)\(packageName)IntegrationTests"

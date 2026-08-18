@@ -270,17 +270,24 @@ func runNativeIntegrationScenario(
 /// the scenario's `runCode` calls really can elevate — eventplan.md §
 /// "Elevation: waitSeconds and the completion token".
 ///
-/// **Why a second runner exists.** `runNativeIntegrationScenario` builds a
-/// bare `LanguageModelSession` over an `MLXLanguageModel`. That session has no
-/// elevation mount: `DetachingTool` is applied only by Router's own
+/// **Why a second runner exists — and it is not the session.** Both runners
+/// build the same thing: `fixture.profile.standard.makeSession(tools:
+/// discoveryPriming:)`, a real `RoutedSession`, which mounts every tool under
+/// `DetachConfiguration.nativeSessionMount` — elevation on, stock clocks — and
+/// gives the snippet a live run plane (`status()`, `wait()`, `cancel()`) to
+/// collect a parked run through. What differs is what each one grades.
+/// `runNativeIntegrationScenario` grades a valid, fixture-grounded answer and
+/// reports route diagnostics; this runner grades a valid answer **and** that a
+/// pending envelope really appeared, which is the one mechanism it exists to
+/// prove.
+///
+/// It used to be the session. Until `f8964b4` the native runner built a bare
+/// `LanguageModelSession` over an `MLXLanguageModel`, which carries no
+/// elevation mount at all — `DetachingTool` is applied only by Router's own
 /// per-session tool wiring (`ToolDetachment.sessionMounted(tool:sessionID:
-/// mailbox:sink:cappedToTokenLimit:)`), so on that path a slow snippet simply
-/// blocks and a pending envelope can never appear. This runner vends a real
-/// `RoutedSession` through `RoutedLLM.makeSession(instructions:tools:)`
-/// instead, which mounts every tool under
-/// `DetachConfiguration.nativeSessionMount` — elevation on, stock clocks —
-/// and gives the snippet a live run plane (`status()`, `wait()`, `cancel()`)
-/// to collect a parked run through.
+/// mailbox:sink:cappedToTokenLimit:)`) — so on that path a slow snippet simply
+/// blocked and a pending envelope could never appear. That is history, not the
+/// reason this runner is still here.
 ///
 /// **One turn, not two.** Splitting the scenario into a "start it" turn and a
 /// "collect it" turn was tried on real hardware and is worse in both halves: a

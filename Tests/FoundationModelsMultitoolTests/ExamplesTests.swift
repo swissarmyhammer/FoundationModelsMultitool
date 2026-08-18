@@ -14,10 +14,20 @@ import Testing
 /// `Tests/FoundationModelsRouterTests/ExamplesTests.swift` and
 /// `FoundationModelsMetadataRegistry`'s `ExamplesSmokeTests.swift`. Read
 /// these first to learn the call patterns: author a catalog with
-/// `MultiTool.Builder`, register `MultiTool` (and, for discovery,
-/// `SearchToolsTool`) directly on a native `FoundationModels
-/// .LanguageModelSession`, and let Apple's own tool-calling loop drive the
-/// searchTools → runCode handoff.
+/// `MultiTool.Builder`, mount `MultiTool` (and, for discovery,
+/// `SearchToolsTool`) on a session, and let that session's own native
+/// tool-calling loop drive the searchTools → runCode handoff.
+///
+/// The session here is a bare `FoundationModels.LanguageModelSession`,
+/// because that is what runs offline over the stub model below. **The shipped
+/// host contract mounts the vended tools on a `RoutedSession`
+/// instead** — `profile.standard.makeSession(tools: try registry
+/// .makeSessionTools(librarian:))`, drained through `streamEvents(to:)` — and
+/// only that session mounts a tool under
+/// `DetachConfiguration.nativeSessionMount`, which is what lets a slow
+/// `runCode` park. `README.md` and `Sources/multitool-cli/CLIRunner.swift`
+/// state the contract; these examples show the catalog and call shapes it
+/// carries.
 ///
 /// Every example here runs fully offline — no live model, no network, no
 /// `MULTITOOL_INTEGRATION` gate — via `ScriptedLanguageModel` below, the
@@ -48,8 +58,10 @@ struct ExamplesTests {
 
     /// An offline stand-in for a real model, conforming to `FoundationModels
     /// .LanguageModel`/`LanguageModelExecutor` — the same pluggable-model
-    /// seam `MLXLanguageModel` fills in production (see
-    /// `Sources/multitool-cli/CLIRunner.swift`). `LanguageModelSession`
+    /// seam `MLXLanguageModel` fills in production, where Router's
+    /// `LiveModelLoader` builds it and a `RoutedSession` runs the turn over
+    /// it (`Sources/multitool-cli/CLIRunner.swift` is the host half).
+    /// `LanguageModelSession`
     /// drives its own real native multi-turn tool-calling loop against this
     /// stub exactly as it would against a real model: it calls
     /// `nextTurn(transcript)` once per round, and — for a `.callTool`
