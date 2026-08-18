@@ -3010,6 +3010,35 @@ comments:
 
     Worth stating plainly, because it is the argument for having insisted: the gate did its job on its first run. It caught a silent, shipped defect that a year of green unit runs would not have.
   timestamp: 2026-08-17T15:22:10.932402+00:00
+- actor: claude-code
+  id: 01m0aaf9knezr6q7s8sns25985
+  text: |-
+    ### Re-verified against Router's fixed tree — green again at 35a1fad
+
+    Router's `^bgxtdk3` fix (`bbba644`, breaking) and the eight commits after it are published. Resolved onto them and re-ran everything from the consumer side.
+
+        swift test                                        352/29 and 59/11 green
+        MULTITOOL_INTEGRATION=1 swift test --no-parallel   59 tests / 11 suites, 1030.9s
+
+        Gated search-then-call scenarios (x4)   215.8s
+        Gated in-band collection canary         484.6s
+        Gated respond self-drain                107.2s
+        Gated async fan-out                      93.7s
+        Gated elevation-in-code-mode             63.0s
+        CLI smoke test                           36.8s
+        Gated nested-generation probe            15.1s
+        Selection tier prefix-reuse pin          14.7s
+
+    Failure modes clean across all five scenarios — no refusals, no answering without calling, no announce-then-stop, no invented paths, `searchTools` first every time. Two scenarios thrashed, which is the recorded Qwen route-quality gap.
+
+    **Second consecutive fully green gated run, on a newer Router than the first.** Their `fix(compaction)!` is breaking and costs this package nothing, checked rather than assumed: we set no budget, so no fold is ever triggered.
+
+    **The ceiling re-derivation earned itself two runs later.** The canary took **484.6s** here — above the 480-second limit this suite carried until `159b2c1`. That commit stated plainly that raising to ten minutes "was not needed to pass", which was true of the three runs behind it and false of this one. Without the margin, this run would have reported a time limit instead of a pass, and the honest reason for the raise — that 35 seconds of headroom also had to absorb turnstile queueing and model load — is exactly what happened.
+
+    **Note on what "pin" means here.** `Package.swift` tracks Router's `main` **branch**, not a revision, and `Package.resolved` is untracked in this repository. So there is no tracked diff recording this move, and a fresh resolve follows their `main` wherever it goes. That is worth knowing when reading any "verified at <sha>" claim on this card: the sha names what was resolved at the time of the run, not something the repository pins.
+
+    **Router's criterion is still unchecked.** Their gated suite has not been re-run since the fixes; `^bgxtdk3` and `^y0mhcdq` both carry it in their own criteria, so their loop cannot close either without it. Our green run says their fixes do not break a consumer. It does not say their suite passes.
+  timestamp: 2026-08-18T11:35:26.581315+00:00
 depends_on:
 - 01KZ6N4Q7K53WSTJ3M6E76ZK99
 - 01KZ6N545VYCB60H716AZ1XS92
