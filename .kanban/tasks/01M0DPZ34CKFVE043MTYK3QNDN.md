@@ -92,8 +92,24 @@ comments:
     - evidence: 2 files — Tests/FoundationModelsMultitoolTests/RepositoryFile.swift (guard + RepositoryFileError), Tests/FoundationModelsMultitoolTests/RepositoryFileTests.swift (new, 2 tests, red-first). Root swift test: 364 tests in 32 suites, 0 failures, 0 skipped.
     - next: /review; after the next push, record the CI run id that shows the job order.
   timestamp: 2026-08-19T19:36:31.299697+00:00
-position_column: doing
-position_ordinal: '8380'
+- actor: claude-code
+  id: 01m0drjhjj0q7wck953wvy178v
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit b0917c5, the path-traversal guard and its tests) — 0 findings; counts: findings 0, confirmed 0, refuted 0. All items in the two prior "## Review Findings" sections have a check.
+    - next: push the branch, then record the CI run id for the open acceptance item (the run-order proof). That item is not a review finding and did not block this gate. Task moved to done.
+  timestamp: 2026-08-19T19:39:36.402693+00:00
+- actor: claude-code
+  id: 01m0drk3n5052bjqdcdp6qf72f
+  text: |-
+    ### finish iteration 3 — clean
+    - implement: changed — RepositoryFile guard (RepositoryFileError) + RepositoryFileTests, red-first
+    - test: green — root swift test 364/32, 0 skipped; IntegrationTests --build-tests clean
+    - commit: b0917c5
+    - review: clean — 0 findings; task moved to done. The CI run-order box waits for the push.
+  timestamp: 2026-08-19T19:39:54.917861+00:00
+position_column: done
+position_ordinal: d880
 title: 'CI: run the integration job only after the unit job passes'
 ---
 Observed on CI run `32285751680` (push `dad8ba8`, 2026-08-19): the job "Integration (real models, real GPU)" started at 18:09:39 and held the runner for more than an hour, while the job "Unit tests" stayed queued behind it. Both jobs in `.github/workflows/ci.yml` target the same `[self-hosted, macOS]` label, and no `needs:` edge orders them — so GitHub assigns the runner in arbitrary order, and the ~70-minute job can run first. The fast fail signal then comes last. This is the opposite of fail-fast.
