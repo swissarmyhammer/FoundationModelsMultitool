@@ -524,8 +524,8 @@ public struct MultiTool: Tool {
     ///
     /// A call that would push this tool past `configuration
     /// .liveContextLimit` never reaches the sandbox at all: it renders the
-    /// same repairable error text instead, naming the cap and the run-plane
-    /// globals that collect a parked snippet (see ``LiveContextCounter``).
+    /// same repairable error text instead, naming the cap and the three
+    /// globals that collect a background run (see ``LiveContextCounter``).
     ///
     /// - Parameter arguments: the snippet to run, and the clocks bounding it.
     /// - Returns: the rendered `runCode` result — the snippet's return
@@ -583,7 +583,7 @@ public struct MultiTool: Tool {
             code: code,
             installing: hostFunctions + Self.makeNoticeHostFunctions(outbox: notices),
             installingAsync: makeAsyncHostFunctions(binding: binding, recordingInto: ledger)
-                + Self.makeRunPlaneHostFunctions(binding: binding),
+                + Self.makeBackgroundRunHostFunctions(binding: binding),
             using: interpreter
         )
         // "They enqueue and continue; the bridge flushes them" — the flush,

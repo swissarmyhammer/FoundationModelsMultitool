@@ -46,7 +46,7 @@ public struct MultiToolConfiguration: Sendable, Equatable {
     /// this one the looser of the two forever. The engine's clock resets on
     /// progress. This one does not: it arms the `WatchdogState` of whatever
     /// sandbox `MultiTool.init` runs, which measures from sandbox creation,
-    /// and neither progress nor parking on `elicit()` moves that reference
+    /// and neither progress nor suspending on `elicit()` moves that reference
     /// point (`runStart` is a `let`; `rearm()` re-arms the poll interval, not
     /// the deadline). So a snippet that keeps resetting the engine's clock is
     /// force-terminated here instead, at this ceiling. That is deliberate —
@@ -70,7 +70,7 @@ public struct MultiToolConfiguration: Sendable, Equatable {
     /// is the cap on suspended JSC contexts (eventplan.md § "The constraint
     /// boundary, and the escape hatch"). Each one holds a real JS context and
     /// the thread its run occupies, so they are bounded rather than allowed
-    /// to pile up: a model that has parked this many snippets has lost track
+    /// to pile up: a model that has backgrounded this many snippets has lost track
     /// of them, and is told to collect one — `status()`, `wait()`,
     /// `cancel()` — instead of starting another.
     public let liveContextLimit: Int

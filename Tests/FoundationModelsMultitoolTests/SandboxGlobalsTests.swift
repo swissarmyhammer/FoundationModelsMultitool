@@ -9,12 +9,12 @@ import Testing
 /// them — the run verbs, the elicitation, and the two notice calls.
 private let sandboxGlobalNames = ["status", "wait", "cancel", "elicit", "notify", "progress"]
 
-/// A `wait()` deadline long enough that a settled run always resolves inside
-/// it — never used to bound a run that is expected to stay parked.
+/// A `wait()` deadline long enough that a finished run always resolves inside
+/// it — never used to bound a run that is expected to keep running.
 private let generousWaitSeconds = 10
 
 /// A `wait()` deadline already elapsed by the time the call reaches the
-/// mailbox, so a still-parked run reports `deadlineElapsed` without the test
+/// mailbox, so a still-running run reports `timeout` without the test
 /// sleeping.
 private let elapsedWaitSeconds = 0
 
@@ -23,8 +23,8 @@ private let elapsedWaitSeconds = 0
 /// that goes into Swift effects returns a promise… these calls are
 /// synchronous: `help()` and `docs()`… and `notify()` / `progress()`").
 ///
-/// Every run-plane assertion drives a real `SessionMailbox` — a real parked
-/// run, a real settlement, a real elicitation reply — under an ambient
+/// Every background-run assertion drives a real `SessionMailbox` — a real
+/// background run, a real settlement, a real elicitation reply — under an ambient
 /// `ToolContext` the test owns, so what is exercised is the actual Router
 /// surface rather than a stand-in for it.
 @Suite("Sandbox globals")
@@ -129,10 +129,10 @@ struct SandboxGlobalsTests {
         }
     }
 
-    @Test("the globals page declares the exact fields a parked run really reports")
-    func theGlobalsPageMatchesTheParkedRunItDocuments() async throws {
+    @Test("the globals page declares the exact fields a running background run really reports")
+    func theGlobalsPageMatchesTheBackgroundRunItDocuments() async throws {
         let mailbox = SessionMailbox()
-        _ = try await parkScriptedRun(in: mailbox, progress: "step one")
+        _ = try await startScriptedRun(in: mailbox, progress: "step one")
         let context = makeOuterRunContext(mailbox: mailbox, sink: RecordingEventSink())
 
         let output = try await runSnippet(
@@ -141,7 +141,7 @@ struct SandboxGlobalsTests {
         )
 
         let observed = try decode([String].self, from: output)
-        let documented = try #require(declaredFields(of: "ParkedRun", in: MultiTool.sandboxGlobalsPage))
+        let documented = try #require(declaredFields(of: "BackgroundRun", in: MultiTool.sandboxGlobalsPage))
         #expect(documented == observed)
     }
 
@@ -161,12 +161,53 @@ struct SandboxGlobalsTests {
         #expect(documented == observed)
     }
 
+    // MARK: - The two discriminators
+
+    @Test("state and result never appear on one object — state is the run, result is the call")
+    func stateAndResultNeverAppearOnOneObject() async throws {
+        let mailbox = SessionMailbox()
+        let running = try await startScriptedRun(in: mailbox, tool: "slow")
+        let finished = try await startScriptedRun(in: mailbox, tool: "quick")
+        await settle(finished, in: mailbox)
+        let context = makeOuterRunContext(mailbox: mailbox, sink: RecordingEventSink())
+
+        let output = try await runSnippet(
+            """
+            const shapes = [
+                await status("\(running.completionToken)"),
+                await status("\(finished.completionToken)"),
+                await status("no-such-token"),
+                await wait("\(running.completionToken)", \(elapsedWaitSeconds)),
+                await wait("no-such-token", \(elapsedWaitSeconds)),
+                await cancel("\(finished.completionToken)"),
+                await cancel("no-such-token"),
+                await cancel("\(running.completionToken)"),
+            ];
+            return shapes.map(shape => ["state" in shape, "result" in shape]);
+            """,
+            under: context
+        )
+
+        #expect(
+            try decode([[Bool]].self, from: output) == [
+                [true, false],   // status() on a run that is going
+                [true, false],   // status() on a run that finished
+                [false, true],   // status() on a handle naming no run
+                [false, true],   // wait() that ran out its bound
+                [false, true],   // wait() on a handle naming no run
+                [true, false],   // cancel() that arrived too late
+                [false, true],   // cancel() on a handle naming no run
+                [false, true],   // cancel() the canceler answered
+            ]
+        )
+    }
+
     // MARK: - status()
 
-    @Test("status() with no argument lists each parked run's token, op, and latest progress")
-    func statusWithNoArgumentListsEveryParkedRun() async throws {
+    @Test("status() with no argument lists each running run's token, op, and latest progress")
+    func statusWithNoArgumentListsEveryRunningRun() async throws {
         let mailbox = SessionMailbox()
-        let run = try await parkScriptedRun(in: mailbox, progress: "downloading")
+        let run = try await startScriptedRun(in: mailbox, progress: "downloading")
         let context = makeOuterRunContext(mailbox: mailbox, sink: RecordingEventSink())
 
         let output = try await runSnippet(
@@ -177,10 +218,10 @@ struct SandboxGlobalsTests {
         #expect(try decode([[String?]].self, from: output) == [[run.completionToken, run.op, "downloading"]])
     }
 
-    @Test("status(completionToken) reports a parked run's lifecycle")
-    func statusWithATokenReportsAParkedRun() async throws {
+    @Test("status(completionToken) reports a running run as running")
+    func statusWithATokenReportsARunningRun() async throws {
         let mailbox = SessionMailbox()
-        let run = try await parkScriptedRun(in: mailbox, progress: "step one")
+        let run = try await startScriptedRun(in: mailbox, progress: "step one")
         let context = makeOuterRunContext(mailbox: mailbox, sink: RecordingEventSink())
 
         let output = try await runSnippet(
@@ -193,15 +234,15 @@ struct SandboxGlobalsTests {
 
         #expect(
             try decode([String?].self, from: output) == [
-                "parked", run.completionToken, run.op, "swiftTask", "step one",
+                "running", run.completionToken, run.op, "swiftTask", "step one",
             ]
         )
     }
 
-    @Test("status(completionToken) reports a settled run's terminal outcome")
-    func statusWithATokenReportsASettledRun() async throws {
+    @Test("status(completionToken) reports a finished run as complete, with its terminal outcome")
+    func statusWithATokenReportsAFinishedRun() async throws {
         let mailbox = SessionMailbox()
-        let run = try await parkScriptedRun(in: mailbox)
+        let run = try await startScriptedRun(in: mailbox)
         await settle(run, in: mailbox)
         let context = makeOuterRunContext(mailbox: mailbox, sink: RecordingEventSink())
 
@@ -215,7 +256,29 @@ struct SandboxGlobalsTests {
 
         #expect(
             try decode([String?].self, from: output) == [
-                "settled", run.completionToken, "scripted-terminal-detail", "succeeded",
+                "complete", run.completionToken, "scripted-terminal-detail", "succeeded",
+            ]
+        )
+    }
+
+    @Test("status(completionToken) reports a run that failed as error, and outcome says why")
+    func statusWithATokenReportsAFailedRun() async throws {
+        let mailbox = SessionMailbox()
+        let run = try await startScriptedRun(in: mailbox, failing: true)
+        await settle(run, in: mailbox)
+        let context = makeOuterRunContext(mailbox: mailbox, sink: RecordingEventSink())
+
+        let output = try await runSnippet(
+            """
+            const row = await status("\(run.completionToken)");
+            return [row.state, row.completionToken, row.outcome];
+            """,
+            under: context
+        )
+
+        #expect(
+            try decode([String?].self, from: output) == [
+                "error", run.completionToken, OperationOutcome.failed.rawValue,
             ]
         )
     }
@@ -227,12 +290,12 @@ struct SandboxGlobalsTests {
         let output = try await runSnippet(
             """
             const row = await status("no-such-token");
-            return [row.state, row.completionToken];
+            return [row.result, row.completionToken];
             """,
             under: context
         )
 
-        #expect(try decode([String].self, from: output) == ["unknownToken", "no-such-token"])
+        #expect(try decode([String].self, from: output) == ["unknown", "no-such-token"])
     }
 
     // MARK: - wait()
@@ -240,30 +303,30 @@ struct SandboxGlobalsTests {
     @Test("wait() returns the terminal event's detail and the run's identifier")
     func waitReturnsTheTerminalEventDetailAndIdentifier() async throws {
         let mailbox = SessionMailbox()
-        let run = try await parkScriptedRun(in: mailbox)
+        let run = try await startScriptedRun(in: mailbox)
         let context = makeOuterRunContext(mailbox: mailbox, sink: RecordingEventSink())
         await settle(run, in: mailbox)
 
         let output = try await runSnippet(
             """
-            const settled = await wait("\(run.completionToken)", \(generousWaitSeconds));
-            return [settled.state, settled.completionToken, settled.detail, settled.outcome];
+            const finished = await wait("\(run.completionToken)", \(generousWaitSeconds));
+            return [finished.state, finished.completionToken, finished.detail, finished.outcome];
             """,
             under: context
         )
 
         #expect(
             try decode([String?].self, from: output) == [
-                "settled", run.completionToken, "scripted-terminal-detail", "succeeded",
+                "complete", run.completionToken, "scripted-terminal-detail", "succeeded",
             ]
         )
     }
 
-    @Test("wait()'s detail is the run plane's bounded output tail, never a capability's full store")
-    func waitDetailIsBoundedToTheRunPlaneTail() async throws {
+    @Test("wait()'s detail is the mailbox's bounded output tail, never a capability's full store")
+    func waitDetailIsBoundedToTheTerminalTail() async throws {
         let overlongDetail = String(repeating: "d", count: ToolContext.terminalDetailTailLimit + 500)
         let mailbox = SessionMailbox()
-        let run = try await parkScriptedRun(in: mailbox, detail: overlongDetail)
+        let run = try await startScriptedRun(in: mailbox, detail: overlongDetail)
         let context = makeOuterRunContext(mailbox: mailbox, sink: RecordingEventSink())
         await settle(run, in: mailbox)
 
@@ -275,22 +338,22 @@ struct SandboxGlobalsTests {
         #expect(try decode(Int.self, from: output) == ToolContext.terminalDetailTailLimit)
     }
 
-    @Test("wait() reports an elapsed deadline while the run stays parked")
-    func waitReportsAnElapsedDeadline() async throws {
+    @Test("wait() reports a timeout while the run keeps running")
+    func waitReportsATimeout() async throws {
         let mailbox = SessionMailbox()
-        let run = try await parkScriptedRun(in: mailbox)
+        let run = try await startScriptedRun(in: mailbox)
         let context = makeOuterRunContext(mailbox: mailbox, sink: RecordingEventSink())
 
         let output = try await runSnippet(
             """
             const outcome = await wait("\(run.completionToken)", \(elapsedWaitSeconds));
-            return [outcome.state, outcome.completionToken];
+            return [outcome.result, outcome.completionToken];
             """,
             under: context
         )
 
-        #expect(try decode([String].self, from: output) == ["deadlineElapsed", run.completionToken])
-        #expect(await runPlane(over: mailbox).parkedRuns().map(\.completionToken) == [run.completionToken])
+        #expect(try decode([String].self, from: output) == ["timeout", run.completionToken])
+        #expect(await backgroundRuns(over: mailbox).parkedRuns().map(\.completionToken) == [run.completionToken])
     }
 
     @Test("wait() reports an unknown token as a safe no-op, never a throw")
@@ -300,12 +363,12 @@ struct SandboxGlobalsTests {
         let output = try await runSnippet(
             """
             const outcome = await wait("no-such-token", \(elapsedWaitSeconds));
-            return [outcome.state, outcome.completionToken];
+            return [outcome.result, outcome.completionToken];
             """,
             under: context
         )
 
-        #expect(try decode([String].self, from: output) == ["unknownToken", "no-such-token"])
+        #expect(try decode([String].self, from: output) == ["unknown", "no-such-token"])
     }
 
     @Test("wait() called without a seconds deadline rejects with a repairable error naming the shape")
@@ -334,28 +397,28 @@ struct SandboxGlobalsTests {
     @Test("cancel() returns the canceler's honest outcome, verbatim")
     func cancelReturnsTheHonestOutcome() async throws {
         let mailbox = SessionMailbox()
-        let run = try await parkScriptedRun(in: mailbox)
+        let run = try await startScriptedRun(in: mailbox)
         let context = makeOuterRunContext(mailbox: mailbox, sink: RecordingEventSink())
 
         let output = try await runSnippet(
             """
             const outcome = await cancel("\(run.completionToken)");
-            return [outcome.state, outcome.completionToken, outcome.outcome];
+            return [outcome.result, outcome.completionToken, outcome.outcome];
             """,
             under: context
         )
 
         #expect(
             try decode([String].self, from: output) == [
-                "reported", run.completionToken, scriptedRunCancelOutcome.rawValue,
+                "cancelled", run.completionToken, scriptedRunCancelOutcome.rawValue,
             ]
         )
     }
 
     @Test("cancel() on a run that already finished reports the retained terminal event, not an unknown token")
-    func cancelOnASettledRunReportsItsTerminalEvent() async throws {
+    func cancelOnAFinishedRunReportsItsTerminalEvent() async throws {
         let mailbox = SessionMailbox()
-        let run = try await parkScriptedRun(in: mailbox)
+        let run = try await startScriptedRun(in: mailbox)
         await settle(run, in: mailbox)
         let context = makeOuterRunContext(mailbox: mailbox, sink: RecordingEventSink())
 
@@ -369,7 +432,7 @@ struct SandboxGlobalsTests {
 
         #expect(
             try decode([String?].self, from: output) == [
-                "alreadySettled", run.completionToken, "scripted-terminal-detail", "succeeded",
+                "complete", run.completionToken, "scripted-terminal-detail", "succeeded",
             ]
         )
     }
@@ -381,17 +444,17 @@ struct SandboxGlobalsTests {
         let output = try await runSnippet(
             """
             const outcome = await cancel("no-such-token");
-            return [outcome.state, outcome.completionToken];
+            return [outcome.result, outcome.completionToken];
             """,
             under: context
         )
 
-        #expect(try decode([String].self, from: output) == ["unknownToken", "no-such-token"])
+        #expect(try decode([String].self, from: output) == ["unknown", "no-such-token"])
     }
 
     // MARK: - elicit()
 
-    @Test("elicit(\"question\") parks the snippet and resumes with the accepted answer")
+    @Test("elicit(\"question\") suspends the snippet and resumes with the accepted answer")
     func elicitStringShorthandRoundTripsAnAcceptedAnswer() async throws {
         let mailbox = SessionMailbox()
         let sink = ScriptedElicitationSink(
@@ -572,10 +635,10 @@ struct SandboxGlobalsTests {
         )
     }
 
-    // MARK: - No ambient context: the run plane is absent, not broken
+    // MARK: - No ambient context: there is no session, which is not a fault
 
-    @Test("each run-plane global rejects with a named, repairable error when the run has no session context")
-    func runPlaneGlobalsRejectWithoutASessionContext() async throws {
+    @Test("each run global rejects with a named, repairable error when the run has no session context")
+    func runGlobalsRejectWithoutASessionContext() async throws {
         let output = try await runSnippet(
             """
             const calls = [
@@ -601,7 +664,7 @@ struct SandboxGlobalsTests {
         #expect(messages.count == 4)
         for (name, message) in zip(["status", "wait", "cancel", "elicit"], messages) {
             #expect(message.hasPrefix("\(name): "))
-            #expect(message.contains("no session context — this run has no run plane"))
+            #expect(message.contains(SandboxGlobalError.noSession.description))
         }
     }
 
@@ -633,7 +696,7 @@ struct SandboxGlobalsTests {
 /// - Parameters:
 ///   - code: the snippet to run.
 ///   - context: the ambient session context to bind around the call, or `nil`
-///     to run with no run plane at all.
+///     to run with no session at all.
 /// - Returns: the rendered `runCode` result.
 /// - Throws: whatever `MultiTool.call(arguments:)` itself throws.
 private func runSnippet(_ code: String, under context: ToolContext? = nil) async throws -> String {

@@ -19,8 +19,8 @@ decides when to call `searchTools` (discovery) and `runCode` (execution).
 
 The session type is part of the contract, not a detail. A `RoutedSession`
 mounts each vended tool under `DetachConfiguration.nativeSessionMount`, so a
-slow `runCode` parks and answers with a pending envelope the model collects
-with the mounted `wait` tool. Mounted on a bare
+slow `runCode` goes to the background and answers with a pending envelope the
+model collects with the mounted `wait` tool. Mounted on a bare
 `FoundationModels.LanguageModelSession` the same tools cannot detach at all:
 the snippet blocks, no envelope is written, and `wait` has nothing to join.
 
@@ -92,9 +92,9 @@ let session = profile.standard.makeSession(
 )
 
 // 4. Drive one turn by draining the event stream. `respond(to:)` self-drains
-//    the run plane and returns the same answer, but the stream is the only
-//    surface that reports a tool while that tool is still working — which is
-//    what a parked `runCode` does. `CLIRunner.drainTurn(_:output:)` is this
+//    the background runs and returns the same answer, but the stream is the
+//    only surface that reports a tool while that tool is still working — which
+//    is what a backgrounded `runCode` does. `CLIRunner.drainTurn(_:output:)` is this
 //    loop in full, including the tool-status events left out here.
 var answer = ""
 let prompt = "Of the cities on my trip, which is warmest right now?"
@@ -177,10 +177,12 @@ a fresh `runCode` sandbox can reach:
 - `notify`
 - `progress`
 
-`status`, `wait`, `cancel`, and `elicit` are the ambient run-plane globals: a
-snippet awaits each of them, exactly as it awaits a `tools.*` call. Outside a
-session — a `MultiTool` called directly, with no run plane — each rejects with
-a named, repairable error rather than failing silently. `notify` and `progress`
+`status`, `wait`, `cancel`, and `elicit` are the ambient background-run
+globals: a snippet awaits each of them, exactly as it awaits a `tools.*` call.
+A run report carries `state` — `running`, `complete`, or `error` — and a call
+that has no run to report carries `result` instead. Outside a session — a
+`MultiTool` called directly, with no session to reach — each rejects with a
+named, repairable error rather than failing silently. `notify` and `progress`
 are synchronous and return nothing; outside a session they are no-ops.
 
 See [the full security model](docs/SECURITY.md) for what each one guarantees

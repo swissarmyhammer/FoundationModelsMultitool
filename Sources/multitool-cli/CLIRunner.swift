@@ -452,7 +452,7 @@ enum CLIRunner {
             // `Registry.makeSessionTools(librarian:)`). A `RoutedSession`
             // mounts each vended tool under
             // `DetachConfiguration.nativeSessionMount`, which is what lets a
-            // slow `runCode` park and answer with a pending envelope the model
+            // slow `runCode` go to the background and answer with a pending envelope the model
             // then collects with the mounted `wait` tool. Mounted on a bare
             // `FoundationModels.LanguageModelSession` the same tools cannot
             // detach at all: the snippet simply blocks, no envelope is ever
@@ -462,7 +462,7 @@ enum CLIRunner {
             // and `DemoWeatherTool` answer instantly, so every snippet here
             // finishes inline and no pending envelope is ever written. The
             // wiring carries the design; the fixtures only keep the demo quick.
-            // A deliberately slow tool proves the park-and-collect path in the
+            // A deliberately slow tool proves the background-and-collect path in the
             // gated elevation scenario
             // (`Tests/FoundationModelsMultitoolIntegrationTests`).
             //
@@ -474,7 +474,7 @@ enum CLIRunner {
             let session = profile.standard.makeSession(tools: tools)
 
             // Drained, never `respond(to:)`. `RoutedSession.respond(to:)`
-            // self-drains the run plane (Router `^nmpejc5`), so it would answer
+            // self-drains the background runs (Router `^nmpejc5`), so it would answer
             // this prompt just as well — but `streamEvents(to:)` is the surface
             // the host contract names, the surface every gated scenario drives,
             // and the only one on which a tool still working can report that it
@@ -510,7 +510,7 @@ enum CLIRunner {
     /// `MultiTool.Registry.makeSessionTools(librarian:)` states: a session that
     /// carries the mounted tools is driven by draining `streamEvents(to:)`.
     /// Every line written here is one a `respond(to:)` caller never sees — a
-    /// call that parks or takes its time reports itself while it is still
+    /// call that goes to the background or takes its time reports itself while it is still
     /// working, where `respond(to:)` is a single await that returns only once
     /// the answer is whole.
     ///

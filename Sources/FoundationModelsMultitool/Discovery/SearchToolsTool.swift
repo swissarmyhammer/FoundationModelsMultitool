@@ -222,7 +222,7 @@ public struct SearchToolsTool: Tool {
         // included, and both `RoutedSession.fork(workingDirectory:)` and the
         // `transcript` getter take `await turnLock.wait()` on that same lock.
         // So a selection tier that forked *the session it is running inside*
-        // would park until the turn ended, and the turn cannot end until this
+        // would block until the turn ended, and the turn cannot end until this
         // tool returns. That is a permanent hang, and it is the exact shape of
         // Router's `^d2ptrk1`.
         //
@@ -437,7 +437,7 @@ extension SearchToolsTool: DetachmentParameterProviding {
     /// **Discovery is synchronous.** A model cannot write a snippet without
     /// knowing which `tools.*` paths exist, so nothing can be done while a
     /// discovery call is in flight — there is no concurrent work for a detached
-    /// one to overlap with. Parking it turns a blocking dependency into one the
+    /// one to overlap with. Backgrounding it turns a blocking dependency into one the
     /// model has to go and collect, which is strictly worse than waiting.
     ///
     /// **And a timeout is not backgrounding.** The two clocks answer different
@@ -451,7 +451,7 @@ extension SearchToolsTool: DetachmentParameterProviding {
     /// failing — should reach the model, and those already do, as errors.
     ///
     /// Measured, both limits fired in turn. At the mount's stock 5-second wait
-    /// every discovery call parked, and the model never obtained the catalog:
+    /// every discovery call was backgrounded, and the model never obtained the catalog:
     /// three gated runs ended `invoked=[] returned=[]` answering "I don't have
     /// access to real-time weather data". With the wait raised, the 120-second
     /// work clock cancelled it instead —
@@ -467,7 +467,7 @@ extension SearchToolsTool: DetachmentParameterProviding {
     /// are independent and unvalidated, so the pair did not buy "never
     /// detach": it bought a 24-hour block followed by a race between a soft
     /// deadline and a timeout watcher, with `waitSeconds` usually winning and
-    /// the watcher then killing the run it had just parked. No search runs a
+    /// the watcher then killing the run it had just backgrounded. No search runs a
     /// day, so nothing ever reached it. Router now rejects that pair outright
     /// and names this mount in the error.
     ///

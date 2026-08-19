@@ -8,12 +8,12 @@ import FoundationModelsRouter
 // mechanism `help()`/`docs()` use, and built by the same
 // `makeHelpDocsHostFunctions`-style factories:
 //
-// - `status()`, `wait()`, `cancel()` — the run plane. Envelopes and outcomes
-//   only, read from the session's own `SessionMailbox`; never a capability's
-//   bulk output.
-// - `elicit()` — a question for the user in the middle of a snippet, parked
-//   through `ToolContext.elicit` exactly as a wrapped tool's own elicitation
-//   is.
+// - `status()`, `wait()`, `cancel()` — the session's background runs.
+//   Envelopes and outcomes only, read from the session's own `SessionMailbox`;
+//   never a capability's bulk output.
+// - `elicit()` — a question for the user in the middle of a snippet, suspending
+//   the snippet through `ToolContext.elicit` exactly as a wrapped tool's own
+//   elicitation is.
 // - `notify()`, `progress()` — enqueue-and-continue notices (see
 //   `SandboxNoticeOutbox`).
 //
@@ -33,44 +33,95 @@ import FoundationModelsRouter
 //
 // **No ambient context is a supported mode, not an error.** A `MultiTool`
 // constructed and called directly — outside any session, which is how every
-// unit suite in this package runs — has no run plane at all. The four
-// promise-returning globals then reject with ``SandboxGlobalError/noRunPlane``,
+// unit suite in this package runs — has no session to read at all. The four
+// promise-returning globals then reject with ``SandboxGlobalError/noSession``,
 // a named, model-repairable rejection, and `notify()`/`progress()` are silent
 // no-ops (consistent with a nil-context `ToolContext.post`). None of the six
 // traps.
 
-/// The `state` discriminator every run-plane global stamps on the object it
-/// hands back, so a snippet branches on one field rather than on which keys
-/// happen to be present.
+/// What one background run is doing — the `state` a run report stamps, and the
+/// only question that field ever answers.
+///
+/// **One field, one question.** These three values describe the *work*. How a
+/// `wait` or a `cancel` call of your own went is a different question with a
+/// different answer, and it is reported under `result` instead (see
+/// ``CallResult``). No object carries both fields, so a snippet still branches
+/// on a single field — it just can no longer mistake "the run failed" for "my
+/// own call gave up".
+///
 /// Internal rather than file-private since task `h773bed`: the `wait` **tool**
-/// reports a settled run with the same state names the sandbox globals do, and
-/// restating the strings there would let two spellings of "settled" drift.
-enum RunPlaneState {
-    /// The run is registered with the mailbox and has not settled.
-    static let parked = "parked"
+/// reports a finished run with the same state names the sandbox globals do, and
+/// restating the strings there would let two spellings of "complete" drift.
+enum RunState {
+    /// The run is registered with the mailbox and has not finished.
+    static let running = "running"
 
-    /// The run finished; the object carries its terminal event.
-    static let settled = "settled"
+    /// The run finished and delivered its result; the object carries its
+    /// terminal event.
+    static let complete = "complete"
 
-    /// A `wait()` deadline expired with the run still parked.
-    static let deadlineElapsed = "deadlineElapsed"
+    /// The run finished without delivering a usable result; the object carries
+    /// its terminal event, whose `outcome` says exactly why.
+    ///
+    /// A state of its own, which it was not before this vocabulary landed: a
+    /// failed run used to report the same word a successful one did and hide
+    /// the failure in `outcome`, so a snippet had to read two fields to learn
+    /// its work had failed.
+    static let error = "error"
 
-    /// The mailbox knows no run — parked or settled — under this token.
-    static let unknownToken = "unknownToken"
+    /// The state a finished run reports, read off the outcome its own emitter
+    /// reported.
+    ///
+    /// Derived here rather than passed in, so no call site can stamp a state
+    /// the terminal event does not support. `OperationOutcome` draws
+    /// distinctions this pair cannot carry — `failed`, `timedOut`, `stopped`,
+    /// `cancelled`, `lost` — and every one of them still travels verbatim in
+    /// the report's own `outcome` field. Only the coarse question, did this run
+    /// deliver a result you can use, is answered here.
+    ///
+    /// An emitter that reported no outcome at all gets ``complete``: silence is
+    /// not evidence of failure, and calling it an error would be a claim
+    /// nothing made.
+    ///
+    /// - Parameter outcome: the terminal event's outcome, or `nil` when its
+    ///   emitter reported none.
+    /// - Returns: ``complete`` or ``error``.
+    static func finished(reporting outcome: OperationOutcome?) -> String {
+        guard let outcome, outcome != .succeeded else { return complete }
+        return error
+    }
+}
 
-    /// A `cancel()` reached the run's canceler, which reported an outcome.
-    static let reported = "reported"
+/// How one call against a background run went — the `result` field, and the
+/// only question *it* ever answers.
+///
+/// Every value here is about the caller's own call rather than about the work:
+/// a bound that ran out, a handle naming nothing, a cancellation the run's own
+/// canceler answered. An object that has a run to describe carries ``RunState``
+/// under `state` instead, and never both.
+///
+/// Internal for the same reason ``RunState`` is: the `wait` **tool** restates
+/// these values, and a second spelling of "timeout" would drift.
+enum CallResult {
+    /// The bound the caller passed ran out. The run is still going and nothing
+    /// has failed — asking again collects it.
+    static let timeout = "timeout"
 
-    /// A `cancel()` arrived after the run had already finished.
-    static let alreadySettled = "alreadySettled"
+    /// This session has no run under that handle, going or finished. A safe,
+    /// reportable no-op, never a throw.
+    static let unknown = "unknown"
+
+    /// A `cancel()` reached the run's canceler, which reported an outcome —
+    /// verbatim, never a guess.
+    static let cancelled = "cancelled"
 }
 
 /// The deadline a lifecycle lookup gives the mailbox: none at all.
 ///
 /// `SessionMailbox.wait(completionToken:seconds:)` resolves immediately for a
-/// settled or unknown token and reports `deadlineElapsed` for a parked one, so
-/// a zero-second wait is the mailbox's own lifecycle probe — it never suspends
-/// the calling snippet.
+/// finished or unknown token and reports its deadline elapsed for a run that is
+/// still going, so a zero-second wait is the mailbox's own lifecycle probe — it
+/// never suspends the calling snippet.
 private let lifecycleProbeSeconds: Double = 0
 
 /// The usage sentence every malformed `elicit()` call is repaired with —
@@ -141,18 +192,19 @@ extension MultiTool {
     }
 
     /// The page's preface: what the ambient globals are, the one rule saying
-    /// which of them a snippet awaits, and the object shapes the run plane
-    /// and `elicit()` hand back.
+    /// which of them a snippet awaits, the two discriminator fields, and the
+    /// object shapes the run verbs and `elicit()` hand back.
     ///
-    /// Every `state` value is spliced from ``RunPlaneState`` rather than
-    /// retyped, so the documented discriminator and the one the globals
-    /// really stamp cannot drift apart.
+    /// Every `state` value is spliced from ``RunState`` and every `result`
+    /// value from ``CallResult``, rather than retyped, so the documented
+    /// discriminators and the ones the globals really stamp cannot drift
+    /// apart.
     ///
     /// Kept tight on purpose: the whole page has to fit inside `runCode`'s
     /// own return cap (``ResultRendererLimits/returnValueCharacterLimit``),
     /// or the snippet that asked for it reads a truncated contract. Facts a
     /// snippet already learns at the moment it needs them — chiefly the
-    /// no-run-plane rejection, which ``SandboxGlobalError/noRunPlane``
+    /// no-session rejection, which ``SandboxGlobalError/noSession``
     /// states in full — belong there rather than here.
     private static let sandboxGlobalsPreface = """
         // globals
@@ -162,17 +214,22 @@ extension MultiTool {
          * in a searchTools result and nothing has to be discovered before
          * calling them. Await the four that return a promise; `notify()` and
          * `progress()` return nothing, so never await those.
+         *
+         * Two fields tell the shapes apart, and an object carries one or the
+         * other, never both: `state` says what a run is doing — "error" means
+         * it finished without a usable result and `outcome` says why — and
+         * `result` says how your own call went.
          */
-        declare type ParkedRun = { state: "\(RunPlaneState.parked)"; completionToken: string; tool: string; op: string; kind: string; latestProgress: string | null };
-        declare type SettledRun = { state: "\(RunPlaneState.settled)" | "\(RunPlaneState.alreadySettled)"; completionToken: string; tool: string; op: string; detail: string; outcome: string | null };
-        declare type UnresolvedRun = { state: "\(RunPlaneState.deadlineElapsed)" | "\(RunPlaneState.unknownToken)"; completionToken: string };
-        declare type CancelReport = { state: "\(RunPlaneState.reported)"; completionToken: string; outcome: string };
+        declare type BackgroundRun = { state: "\(RunState.running)"; completionToken: string; tool: string; op: string; kind: string; latestProgress: string | null };
+        declare type FinishedRun = { state: "\(RunState.complete)" | "\(RunState.error)"; completionToken: string; tool: string; op: string; detail: string; outcome: string | null };
+        declare type NoResult = { result: "\(CallResult.timeout)" | "\(CallResult.unknown)"; completionToken: string };
+        declare type Cancelled = { result: "\(CallResult.cancelled)"; completionToken: string; outcome: string };
         declare type ElicitationAnswer = { action: string; content: object | null };
         """
 
     /// Every ambient global's `docs(name)` entry, in the order the preface
-    /// introduces them — the run plane, the elicitation, then the two notice
-    /// calls.
+    /// introduces them — the three run verbs, the elicitation, then the two
+    /// notice calls.
     ///
     /// No `@param` trailers, unlike ``APISurface/Entry/block``: a wrapped
     /// tool's `args` fields carry meaning only its author's `@Guide` prose
@@ -186,12 +243,12 @@ extension MultiTool {
                 // status
                 /**
                  * Reports what this session's long-running calls are doing. With no argument it
-                 * lists every run still parked; with a completion token — the token a
+                 * lists every run still going; with a completion token — the token a
                  * long-running call handed back — it reports that one run.
-                 * @returns Promise<ParkedRun[] | ParkedRun | SettledRun | UnresolvedRun> — read `state` to tell the shapes apart.
-                 * @example const parked = await status();
+                 * @returns Promise<BackgroundRun[] | BackgroundRun | FinishedRun | NoResult>
+                 * @example const going = await status();
                  */
-                declare function status(completionToken?: string): Promise<ParkedRun[] | ParkedRun | SettledRun | UnresolvedRun>;
+                declare function status(completionToken?: string): Promise<BackgroundRun[] | BackgroundRun | FinishedRun | NoResult>;
                 """
         ),
         SandboxGlobalDoc(
@@ -201,12 +258,12 @@ extension MultiTool {
                 /**
                  * Waits up to `seconds` for one long-running call to finish, then reports its
                  * terminal event — the run's identifier and its bounded output tail, never a
-                 * tool's whole output. A deadline that passes with the run still parked reports
-                 * `\(RunPlaneState.deadlineElapsed)` rather than failing.
-                 * @returns Promise<SettledRun | UnresolvedRun> — read `state` to tell them apart.
-                 * @example const settled = await wait(token, 30);
+                 * tool's whole output. A deadline that passes with the run still going reports
+                 * `\(CallResult.timeout)` rather than failing.
+                 * @returns Promise<FinishedRun | NoResult>
+                 * @example const finished = await wait(token, 30);
                  */
-                declare function wait(completionToken: string, seconds: number): Promise<SettledRun | UnresolvedRun>;
+                declare function wait(completionToken: string, seconds: number): Promise<FinishedRun | NoResult>;
                 """
         ),
         SandboxGlobalDoc(
@@ -217,10 +274,10 @@ extension MultiTool {
                  * Asks one long-running call to stop, and reports the outcome its own canceler
                  * reported — verbatim, never a guess. A run that already finished reports its
                  * retained terminal event instead.
-                 * @returns Promise<CancelReport | SettledRun | UnresolvedRun> — read `state` to tell them apart.
+                 * @returns Promise<Cancelled | FinishedRun | NoResult>
                  * @example const stopped = await cancel(token);
                  */
-                declare function cancel(completionToken: string): Promise<CancelReport | SettledRun | UnresolvedRun>;
+                declare function cancel(completionToken: string): Promise<Cancelled | FinishedRun | NoResult>;
                 """
         ),
         SandboxGlobalDoc(
@@ -265,7 +322,7 @@ extension MultiTool {
         ),
     ]
 
-    // MARK: - The run plane: status(), wait(), cancel(), and elicit()
+    // MARK: - The background runs: status(), wait(), cancel(), and elicit()
 
     /// Builds the four promise-returning ambient globals for one `runCode`
     /// invocation.
@@ -277,10 +334,10 @@ extension MultiTool {
     ///
     /// - Parameter binding: this `runCode` invocation's captured session
     ///   binding, or `nil` when it has none — in which case every one of the
-    ///   four rejects with ``SandboxGlobalError/noRunPlane``.
+    ///   four rejects with ``SandboxGlobalError/noSession``.
     /// - Returns: four async host functions, named `"status"`, `"wait"`,
     ///   `"cancel"`, and `"elicit"`.
-    static func makeRunPlaneHostFunctions(binding: RunBinding?) -> [AsyncHostFunction] {
+    static func makeBackgroundRunHostFunctions(binding: RunBinding?) -> [AsyncHostFunction] {
         [
             AsyncHostFunction(name: "status") { arguments in
                 try await reportStatus(of: arguments.first, binding: binding)
@@ -297,26 +354,26 @@ extension MultiTool {
         ]
     }
 
-    /// The captured session context the run plane reads, or a repairable
+    /// The captured session context the run globals read, or a repairable
     /// rejection when this invocation has none.
     ///
     /// - Parameter binding: the invocation's captured binding.
     /// - Returns: the session context.
-    /// - Throws: ``SandboxGlobalError/noRunPlane`` when `binding` is `nil`.
+    /// - Throws: ``SandboxGlobalError/noSession`` when `binding` is `nil`.
     private static func sessionContext(from binding: RunBinding?) throws -> ToolContext {
-        guard let binding else { throw SandboxGlobalError.noRunPlane }
+        guard let binding else { throw SandboxGlobalError.noSession }
         return binding.context
     }
 
-    /// `status()`'s implementation: with no argument, every pending run in the
-    /// session's mailbox; with a completion token, that one run's lifecycle.
+    /// `status()`'s implementation: with no argument, every run the session's
+    /// mailbox still has going; with a completion token, that one run's report.
     ///
     /// - Parameters:
     ///   - argument: the call's first argument — a completion-token string,
-    ///     or absent/`null` to list every pending run.
+    ///     or absent/`null` to list every run still going.
     ///   - binding: the invocation's captured session binding.
-    /// - Returns: an array of parked-run rows, or one lifecycle object.
-    /// - Throws: ``SandboxGlobalError/noRunPlane`` when the run has no session
+    /// - Returns: an array of background-run rows, or one run's report.
+    /// - Throws: ``SandboxGlobalError/noSession`` when the run has no session
     ///   context; ``SandboxGlobalError/malformedCompletionToken(usage:)`` when
     ///   the argument is present but is not a string.
     private static func reportStatus(
@@ -325,39 +382,39 @@ extension MultiTool {
     ) async throws -> InterpreterValue {
         let context = try sessionContext(from: binding)
         guard let token = try optionalCompletionToken(argument, usage: "status(completionToken)") else {
-            return .array(await context.parkedRuns().map { .object(parkedRunFields(of: $0)) })
+            return .array(await context.parkedRuns().map { .object(backgroundRunFields(of: $0)) })
         }
-        return await lifecycle(of: token, in: context)
+        return await report(of: token, in: context)
     }
 
-    /// One run's lifecycle: parked, settled, or unknown.
+    /// One run's report: going, finished, or no run under that handle.
     ///
     /// - Parameters:
     ///   - token: the run's completion token.
-    ///   - context: the session context the run plane is read through.
-    /// - Returns: the lifecycle object.
-    private static func lifecycle(of token: String, in context: ToolContext) async -> InterpreterValue {
-        if let parked = await context.parkedRuns().first(where: { $0.completionToken == token }) {
-            return .object(parkedRunFields(of: parked))
+    ///   - context: the session context the run is read through.
+    /// - Returns: the run's report, or the call outcome when there is no run.
+    private static func report(of token: String, in context: ToolContext) async -> InterpreterValue {
+        if let going = await context.parkedRuns().first(where: { $0.completionToken == token }) {
+            return .object(backgroundRunFields(of: going))
         }
-        // Not parked in the snapshot above, so the run either already settled
+        // Absent from the snapshot above, so the run either already finished
         // — the mailbox retains its terminal event — or the token names
         // nothing at all. A zero-second wait separates exactly those two
         // without suspending.
         switch await context.wait(completionToken: token, seconds: lifecycleProbeSeconds) {
         case .settled(let terminal):
-            return .object(terminalEventFields(of: terminal, state: RunPlaneState.settled))
+            return .object(terminalEventFields(of: terminal))
         case .unknownToken:
-            return .object(tokenOnlyFields(state: RunPlaneState.unknownToken, token: token))
+            return .object(tokenOnlyFields(result: CallResult.unknown, token: token))
         case .deadlineElapsed:
-            // The run parked between the snapshot and the probe. Re-read it,
-            // so the reported row carries the same fields a parked run always
-            // does rather than a partial one.
-            let parked = await context.parkedRuns().first { $0.completionToken == token }
-            guard let parked else {
-                return .object(tokenOnlyFields(state: RunPlaneState.unknownToken, token: token))
+            // The run registered between the snapshot and the probe. Re-read
+            // it, so the reported row carries the same fields a running run
+            // always does rather than a partial one.
+            let going = await context.parkedRuns().first { $0.completionToken == token }
+            guard let going else {
+                return .object(tokenOnlyFields(result: CallResult.unknown, token: token))
             }
-            return .object(parkedRunFields(of: parked))
+            return .object(backgroundRunFields(of: going))
         }
     }
 
@@ -369,8 +426,9 @@ extension MultiTool {
     ///   - arguments: the call's arguments: a completion-token string and a
     ///     number of seconds.
     ///   - binding: the invocation's captured session binding.
-    /// - Returns: the settled, deadline-elapsed, or unknown-token object.
-    /// - Throws: ``SandboxGlobalError/noRunPlane`` when the run has no session
+    /// - Returns: the finished run's report, or the call outcome when the
+    ///   bound ran out or the handle names no run.
+    /// - Throws: ``SandboxGlobalError/noSession`` when the run has no session
     ///   context; ``SandboxGlobalError/malformedCompletionToken(usage:)`` or
     ///   ``SandboxGlobalError/missingWaitDeadline`` when an argument is
     ///   missing or of the wrong kind.
@@ -385,11 +443,11 @@ extension MultiTool {
         }
         switch await context.wait(completionToken: token, seconds: seconds) {
         case .settled(let terminal):
-            return .object(terminalEventFields(of: terminal, state: RunPlaneState.settled))
+            return .object(terminalEventFields(of: terminal))
         case .deadlineElapsed:
-            return .object(tokenOnlyFields(state: RunPlaneState.deadlineElapsed, token: token))
+            return .object(tokenOnlyFields(result: CallResult.timeout, token: token))
         case .unknownToken:
-            return .object(tokenOnlyFields(state: RunPlaneState.unknownToken, token: token))
+            return .object(tokenOnlyFields(result: CallResult.unknown, token: token))
         }
     }
 
@@ -399,8 +457,9 @@ extension MultiTool {
     /// - Parameters:
     ///   - argument: the call's first argument: a completion-token string.
     ///   - binding: the invocation's captured session binding.
-    /// - Returns: the reported, already-settled, or unknown-token object.
-    /// - Throws: ``SandboxGlobalError/noRunPlane`` when the run has no session
+    /// - Returns: the cancellation's own outcome, the retained report of a run
+    ///   that had already finished, or the unknown-handle outcome.
+    /// - Throws: ``SandboxGlobalError/noSession`` when the run has no session
     ///   context; ``SandboxGlobalError/malformedCompletionToken(usage:)`` when
     ///   the argument is not a string.
     private static func requestCancellation(
@@ -412,27 +471,32 @@ extension MultiTool {
         switch await context.cancel(completionToken: token) {
         case .reported(let outcome):
             return .object([
-                "state": .string(RunPlaneState.reported),
+                "result": .string(CallResult.cancelled),
                 "completionToken": .string(token),
                 "outcome": .string(outcome.rawValue),
             ])
         case .alreadySettled(let terminal):
-            return .object(terminalEventFields(of: terminal, state: RunPlaneState.alreadySettled))
+            return .object(terminalEventFields(of: terminal))
         case .unknownToken:
-            return .object(tokenOnlyFields(state: RunPlaneState.unknownToken, token: token))
+            return .object(tokenOnlyFields(result: CallResult.unknown, token: token))
         }
     }
 
-    // MARK: - Run-plane rendering
+    // MARK: - Rendering one run report
 
-    /// The JS-visible fields of one parked run — the row `status()` lists and
-    /// the object `status(completionToken)` reports for a run still in flight.
+    /// The JS-visible fields of one run that is still going — the row
+    /// `status()` lists, and the object `status(completionToken)` reports for a
+    /// run still in flight.
+    ///
+    /// The `ParkedRun` in the signature is Router's own type for the row and
+    /// is spelled as Router spells it; this package's word for what the row
+    /// describes is a background run.
     ///
     /// - Parameter run: the mailbox's own snapshot row.
     /// - Returns: the object's fields.
-    private static func parkedRunFields(of run: ParkedRun) -> [String: InterpreterValue] {
+    private static func backgroundRunFields(of run: ParkedRun) -> [String: InterpreterValue] {
         [
-            "state": .string(RunPlaneState.parked),
+            "state": .string(RunState.running),
             "completionToken": .string(run.completionToken),
             "tool": .string(run.tool),
             "op": .string(run.op),
@@ -442,21 +506,22 @@ extension MultiTool {
     }
 
     /// The JS-visible fields of a run's terminal event — its identifier, the
-    /// bounded output tail the mailbox already capped, and its honest outcome.
+    /// bounded output tail the mailbox already capped, its ``RunState``, and
+    /// its honest outcome.
     ///
-    /// - Parameters:
-    ///   - terminal: the terminal event.
-    ///   - state: the ``RunPlaneState`` this event is being reported under.
-    /// - Returns: the object's fields.
+    /// The state is derived from the event rather than passed in, so no call
+    /// site can label a run that failed complete, and a finished run reads
+    /// identically however it was collected — through `status()`, through
+    /// `wait()`, or as the retained event a late `cancel()` reports.
+    ///
     /// Internal rather than file-private since task `h773bed`: the `wait`
-    /// **tool** reports a settled run through this same builder, so a run reads
-    /// identically however it was collected.
-    static func terminalEventFields(
-        of terminal: OperationEvent,
-        state: String
-    ) -> [String: InterpreterValue] {
+    /// **tool** reports a finished run through this same builder.
+    ///
+    /// - Parameter terminal: the terminal event.
+    /// - Returns: the object's fields.
+    static func terminalEventFields(of terminal: OperationEvent) -> [String: InterpreterValue] {
         [
-            "state": .string(state),
+            "state": .string(RunState.finished(reporting: terminal.outcome)),
             "completionToken": .string(terminal.correlationID),
             "tool": .string(terminal.tool),
             "op": .string(terminal.op),
@@ -465,17 +530,23 @@ extension MultiTool {
         ]
     }
 
-    /// The JS-visible fields of an outcome that carries nothing but the token
-    /// it was asked about — an unknown token, or an elapsed deadline.
+    /// The JS-visible fields of a call outcome that carries nothing but the
+    /// token it was asked about — a handle naming no run, or a bound that ran
+    /// out.
+    ///
+    /// Stamped under `result` rather than `state`: there is no run to describe,
+    /// so the object says how the call itself went.
+    ///
+    /// Internal rather than file-private since task `h773bed`: the `wait`
+    /// **tool** reports an unknown handle and an elapsed bound through this
+    /// same builder.
     ///
     /// - Parameters:
-    ///   - state: the ``RunPlaneState`` being reported.
+    ///   - result: the ``CallResult`` being reported.
     ///   - token: the completion token the call named.
     /// - Returns: the object's fields.
-    /// Internal rather than file-private since task `h773bed`: the `wait` **tool**
-    /// reports an unknown token and an elapsed bound through this same builder.
-    static func tokenOnlyFields(state: String, token: String) -> [String: InterpreterValue] {
-        ["state": .string(state), "completionToken": .string(token)]
+    static func tokenOnlyFields(result: String, token: String) -> [String: InterpreterValue] {
+        ["result": .string(result), "completionToken": .string(token)]
     }
 
     /// Reads a required completion-token argument.
@@ -509,9 +580,9 @@ extension MultiTool {
 
     // MARK: - elicit()
 
-    /// `elicit()`'s implementation: parks the snippet on the session's mailbox
-    /// through `ToolContext.elicit` — the same elevation path every other
-    /// elicitor takes — and resumes with the user's answer.
+    /// `elicit()`'s implementation: suspends the snippet on the session's
+    /// mailbox through `ToolContext.elicit` — the same elevation path every
+    /// other elicitor takes — and resumes with the user's answer.
     ///
     /// - Parameters:
     ///   - argument: the call's first argument: a question string, or a
@@ -520,7 +591,7 @@ extension MultiTool {
     /// - Returns: the answer, as `{ action, content }` — `content` is `null`
     ///   for a decline or a cancel, so a snippet can read `action` and
     ///   `content` without either being absent.
-    /// - Throws: ``SandboxGlobalError/noRunPlane`` when the run has no session
+    /// - Throws: ``SandboxGlobalError/noSession`` when the run has no session
     ///   context; ``SandboxGlobalError/malformedElicitationRequest`` or
     ///   ``SandboxGlobalError/undecodableElicitationRequest(reason:)`` when the
     ///   argument is not a request this boundary accepts.
@@ -543,7 +614,7 @@ extension MultiTool {
     /// subset every other elicitor does — a snippet cannot widen it.
     ///
     /// The `elicitationId` is minted here, never taken from the snippet: it is
-    /// the key the mailbox parks the continuation under, and a snippet-chosen
+    /// the key the mailbox holds the continuation under, and a snippet-chosen
     /// id could collide with a pending one.
     ///
     /// - Parameter argument: the call's first argument.
@@ -707,7 +778,7 @@ enum SandboxGlobalError: Error, Equatable, CustomStringConvertible {
     /// The enclosing `runCode` invocation captured no ambient `ToolContext`,
     /// so there is no session mailbox to read and no user to ask — a
     /// `MultiTool` constructed and called directly, outside any session.
-    case noRunPlane
+    case noSession
 
     /// A completion-token argument was missing or was not a string.
     case malformedCompletionToken(usage: String)
@@ -731,13 +802,13 @@ enum SandboxGlobalError: Error, Equatable, CustomStringConvertible {
     /// rather than as a diagnosis for a human reader.
     var description: String {
         switch self {
-        case .noRunPlane:
-            return "no session context — this run has no run plane. status(), wait(), cancel(), and "
-                + "elicit() reach the session that issued this run, and this one has none. Drop them "
-                + "and return the value from the tool calls you already made."
+        case .noSession:
+            return "no session context. status(), wait(), cancel(), and elicit() reach the session "
+                + "that issued this run, and this one has none. Drop them and return the value from "
+                + "the tool calls you already made."
         case .malformedCompletionToken(let usage):
             return "\(usage) needs a completion-token string — the token a long-running call handed "
-                + "back. Call status() with no argument to list every pending run's token."
+                + "back. Call status() with no argument to list the token of every run still going."
         case .missingWaitDeadline:
             return "wait(completionToken, seconds) needs a number of seconds to wait, "
                 + "e.g. await wait(token, 30)."

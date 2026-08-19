@@ -66,24 +66,24 @@ public struct WaitArguments {
 /// `RoutedSession.respond(to:)` instead, which drains everything — that is
 /// FoundationModels semantics and needs no tool.
 ///
-/// **No session, no run plane.** Like the sandbox globals, this reads the
-/// ambient `ToolContext`; constructed and called outside any session it reports
-/// that there is nothing to wait for rather than trapping, which is the mode
-/// every unit suite in this package runs in.
-// MARK: - `wait` never parks itself
+/// **No session, nothing to wait for.** Like the sandbox globals, this reads
+/// the ambient `ToolContext`; constructed and called outside any session it
+/// reports that there is nothing to wait for rather than trapping, which is the
+/// mode every unit suite in this package runs in.
+// MARK: - `wait` never backgrounds itself
 
 extension WaitTool: DetachmentParameterProviding {
     /// The per-call clocks a `wait` call carries: neither of them a limit.
     ///
     /// **There are two ways for `wait` to return, and this is what keeps a
-    /// third from existing.** It returns when the run settles, or when the
+    /// third from existing.** It returns when the run finishes, or when the
     /// bound the caller passed elapses. Mounted like every other tool, on a
     /// stock `.detaching` configuration, a `wait` call that blocks past the
-    /// mount's five seconds would *park itself* — handing the model a
+    /// mount's five seconds would *background itself* — handing the model a
     /// completion token for its own wait, which is the exact regress this tool
     /// was built to end (task `^2w9vbkm`, and `^w8dzvee` D5). It was only
     /// accidentally safe before: safe while the runs it waited on happened to
-    /// settle inside the mount's window.
+    /// finish inside the mount's window.
     ///
     /// The mount is `runToCompletionMount`, for the same reason
     /// `SearchToolsTool` takes it: neither of the two clock questions has a
@@ -92,7 +92,7 @@ extension WaitTool: DetachmentParameterProviding {
     /// The work clock asks how long it may run before being cancelled and
     /// reported failed — no limit, because the caller's own `timeout` is the
     /// only bound in this design, and a host clock firing under it would
-    /// report `deadlineElapsed` on its own schedule rather than the caller's.
+    /// report a timeout on its own schedule rather than the caller's.
     ///
     /// This replaces a `(86_400, 86_400)` clock pair that stated the intent
     /// without being able to declare it, back when
@@ -102,9 +102,9 @@ extension WaitTool: DetachmentParameterProviding {
     /// `DetachConfiguration.runToCompletionMount`, which carries no clock at
     /// all, rather than on two clocks set to the same number."
     ///
-    /// A `wait` that parked would be self-defeating in a way worth stating
-    /// plainly: the model calls it to collect a token, and a parking `wait`
-    /// would answer with a second token to collect.
+    /// A `wait` that backgrounded itself would be self-defeating in a way
+    /// worth stating plainly: the model calls it to collect a token, and a
+    /// backgrounding `wait` would answer with a second token to collect.
     public var detachmentMount: DetachConfiguration? { .runToCompletionMount }
 }
 
@@ -121,10 +121,11 @@ public struct WaitTool: Tool {
         wait blocks until long-running calls finish, and hands back what they returned. Call it only
         when you cannot continue without a result you have not been given yet. With no arguments it
         waits for every call this session still has running; with a completionToken it waits for that
-        one. Each finished call comes back with its `detail` — that is the result, and it is what to
-        answer from. A call still running when the bound passes comes back as
-        `\(RunPlaneState.deadlineElapsed)`, which means it is still going and nothing has failed: call
-        wait again if you still need it.
+        one. Each finished call comes back with a `state` — `\(RunState.complete)` when it delivered
+        its result and `\(RunState.error)` when it did not — and a `detail`, which is the result and
+        is what to answer from. A call still running when the bound passes comes back with a `result`
+        of `\(CallResult.timeout)`, which means it is still going and nothing has failed: call wait
+        again if you still need it.
         """
 
     /// Creates the tool.
@@ -155,8 +156,8 @@ public struct WaitTool: Tool {
         ) {
             guard let context = ToolContext.current else {
                 return Self.rendered(.object([
-                    "state": .string(Self.noRunPlaneState),
-                    "detail": .string(Self.noRunPlaneDetail),
+                    "result": .string(Self.noSessionResult),
+                    "detail": .string(Self.noSessionDetail),
                 ]))
             }
             let bound = Self.bounded(arguments.timeout)
@@ -168,7 +169,7 @@ public struct WaitTool: Tool {
             let pending = await context.parkedRuns().map(\.completionToken)
             guard !pending.isEmpty else {
                 return Self.rendered(.object([
-                    "state": .string(Self.nothingPendingState),
+                    "result": .string(Self.nothingPendingResult),
                     "detail": .string(Self.nothingPendingDetail),
                 ]))
             }
@@ -180,14 +181,14 @@ public struct WaitTool: Tool {
         }
     }
 
-    /// One run's settlement, reported in the same shape the run plane reports.
+    /// One run's report, in the same shape the sandbox globals report.
     ///
     /// Routed through `MultiTool`'s own builders rather than a second set, so a
-    /// settled run reads identically however it was collected.
+    /// finished run reads identically however it was collected.
     ///
     /// - Parameters:
     ///   - token: the run's completion token.
-    ///   - context: the session context the run plane is read through.
+    ///   - context: the session context the run is read through.
     ///   - seconds: the bound to wait within.
     /// - Returns: the report's fields.
     private static func settlement(
@@ -197,45 +198,46 @@ public struct WaitTool: Tool {
     ) async -> [String: InterpreterValue] {
         switch await context.wait(completionToken: token, seconds: seconds) {
         case .settled(let terminal):
-            var fields = MultiTool.terminalEventFields(of: terminal, state: RunPlaneState.settled)
-            fields[settledResultDirectiveField] = .string(settledResultDirective)
+            var fields = MultiTool.terminalEventFields(of: terminal)
+            fields[finishedRunDirectiveField] = .string(finishedRunDirective)
             return fields
         case .deadlineElapsed:
-            return MultiTool.tokenOnlyFields(state: RunPlaneState.deadlineElapsed, token: token)
+            return MultiTool.tokenOnlyFields(result: CallResult.timeout, token: token)
         case .unknownToken:
-            return MultiTool.tokenOnlyFields(state: RunPlaneState.unknownToken, token: token)
+            return MultiTool.tokenOnlyFields(result: CallResult.unknown, token: token)
         }
     }
 
-    /// The field a settled report carries ``settledResultDirective`` under.
+    /// The field a finished run's report carries ``finishedRunDirective``
+    /// under.
     ///
-    /// Added here rather than in `MultiTool.terminalEventFields(of:state:)`,
+    /// Added here rather than in `MultiTool.terminalEventFields(of:)`,
     /// which the sandbox globals share: a snippet reading `status()` or
     /// `wait()` mid-run is not about to answer anyone, so the directive would
     /// be text inside JavaScript with no reader. This tool's report is read by
     /// the model itself.
-    static let settledResultDirectiveField = "next"
+    static let finishedRunDirectiveField = "next"
 
-    /// What a settled report tells the model to do with the `detail` beside
-    /// it.
+    /// What a finished run's report tells the model to do with the `detail`
+    /// beside it.
     ///
-    /// **Why the settled case, and why only it.** The two reports this tool
+    /// **Why the finished case, and why only it.** The two reports this tool
     /// makes when there is nothing to collect already say what to do next —
-    /// ``noRunPlaneDetail`` and ``nothingPendingDetail`` each point at the
-    /// values already in hand. The settled report was the one that delivered a
-    /// result and said nothing about it, and that is the moment a recorded run
-    /// collected the manifest code it had asked for and then answered "as soon
-    /// as the manifest code comes back to me, I'll give it to you" — three
-    /// `wait` calls spent, the run plane empty, and the value in hand (task
-    /// `wnfzwxg`). A report that carries no result carries no directive
-    /// either, because telling a model to answer with nothing is worse than
-    /// silence.
+    /// ``noSessionDetail`` and ``nothingPendingDetail`` each point at the
+    /// values already in hand. The finished run's report was the one that
+    /// delivered a result and said nothing about it, and that is the moment a
+    /// recorded run collected the manifest code it had asked for and then
+    /// answered "as soon as the manifest code comes back to me, I'll give it to
+    /// you" — three `wait` calls spent, nothing left going, and the value in
+    /// hand (task `wnfzwxg`). A report that carries no result carries no
+    /// directive either, because telling a model to answer with nothing is
+    /// worse than silence.
     ///
     /// This is the only place the text is written, on `RepairDirective
     /// .closingLine`'s terms: the test target reads it here through
     /// `@testable import` rather than restating it, so a reword reaches the
     /// expectation that it is present and the one that it is absent alike.
-    static let settledResultDirective = "The detail above is the result you waited for. Answer with it "
+    static let finishedRunDirective = "The detail above is the result you waited for. Answer with it "
         + "now. Never reply that it will arrive later."
 
     /// The bound used when the call names none: no bound at all.
@@ -243,14 +245,14 @@ public struct WaitTool: Tool {
     /// **`wait` blocks until the token finishes, or until a timeout the caller
     /// passed.** Those are the only two ways it returns, so a caller that passes
     /// nothing gets the first one. A host-side cap here would be a third way —
-    /// the tool giving up on its own schedule — and it would report
-    /// `deadlineElapsed` for work that is still running, sending the model back
-    /// around a loop it had already decided to stop for.
+    /// the tool giving up on its own schedule — and it would report a timeout
+    /// for work that is still running, sending the model back around a loop it
+    /// had already decided to stop for.
     ///
-    /// `ToolContext.deadlineSecondsCeiling`, not `.infinity`: the run plane
-    /// clamps every seconds-valued deadline at that ceiling anyway, so naming
-    /// it here is the same bound the host already treats as unbounded rather
-    /// than a second notion of it.
+    /// `ToolContext.deadlineSecondsCeiling`, not `.infinity`: the host clamps
+    /// every seconds-valued deadline at that ceiling anyway, so naming it here
+    /// is the same bound it already treats as unbounded rather than a second
+    /// notion of it.
     static let unboundedSeconds: TimeInterval = ToolContext.deadlineSecondsCeiling
 
     /// The seconds to wait, given what the call asked for.
@@ -267,15 +269,15 @@ public struct WaitTool: Tool {
         return requested
     }
 
-    /// The `state` a session-less call reports.
-    static let noRunPlaneState = "noRunPlane"
+    /// The `result` a session-less call reports.
+    static let noSessionResult = "noSession"
 
     /// What a session-less call says, phrased as something to do next.
-    static let noRunPlaneDetail = "This run has no session, so there is nothing running to wait for. "
+    static let noSessionDetail = "This run has no session, so there is nothing running to wait for. "
         + "Answer from the values your tool calls already returned."
 
-    /// The `state` reported when the session has no pending run at all.
-    static let nothingPendingState = "nothingPending"
+    /// The `result` reported when the session has no run still going.
+    static let nothingPendingResult = "nothingPending"
 
     /// What a call with nothing to wait for says, phrased as something to do
     /// next.

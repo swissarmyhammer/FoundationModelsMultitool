@@ -46,7 +46,7 @@ extension MultiTool: DetachmentParameterProviding {
     /// the watchdog measures from sandbox creation and nothing resets it
     /// (`WatchdogState.runStart` is a `let`; `rearm()` re-arms the poll
     /// interval, not the deadline). A snippet that keeps resetting the
-    /// engine's clock — by reporting progress, or by parking on `elicit()` —
+    /// engine's clock — by reporting progress, or by suspending on `elicit()` —
     /// therefore still meets the configured ceiling its sandbox's watchdog
     /// was armed with, and is force-terminated there. The absolute cap is the
     /// intended safety property, not a gap.
@@ -122,9 +122,9 @@ extension MultiTool {
     /// cap reports.
     ///
     /// Phrased as repair instructions, like every other error this package
-    /// hands a model: it names the cap it hit and the three run-plane globals
-    /// that collect a parked snippet, because collecting one is exactly what
-    /// makes room for this call.
+    /// hands a model: it names the cap it hit and the three globals that
+    /// collect a background run, because collecting one is exactly what makes
+    /// room for this call.
     ///
     /// - Parameter limit: the configured cap the call would have exceeded.
     /// - Returns: the error `ResultRenderer` renders as the call's output.

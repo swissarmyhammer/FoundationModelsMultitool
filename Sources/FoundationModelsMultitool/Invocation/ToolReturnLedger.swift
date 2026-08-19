@@ -12,7 +12,7 @@ import os
 /// model. Two models, given the same prompt and the same surface, both took
 /// that first step, and neither had anything in band to contradict it: one
 /// wrote the same narrating snippet four more times, the other went looking
-/// through the ambient-globals documentation and the run plane (task
+/// through the ambient-globals documentation and the background runs (task
 /// `wnfzwxg`). The loop shape is a model behaviour; the silence is this
 /// package's, and this is where it ends.
 ///

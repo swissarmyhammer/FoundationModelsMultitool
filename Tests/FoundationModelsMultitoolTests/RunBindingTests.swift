@@ -43,7 +43,7 @@ struct RunBindingTests {
 
         #expect(output == "slow-result")
         #expect(!PendingRunEnvelope.isRendered(text: output))
-        #expect(await runPlane(over: mailbox).parkedRuns().isEmpty)
+        #expect(await backgroundRuns(over: mailbox).parkedRuns().isEmpty)
     }
 
     // MARK: - Parallel inner calls correlate independently

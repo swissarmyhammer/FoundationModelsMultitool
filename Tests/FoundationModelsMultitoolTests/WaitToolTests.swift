@@ -10,8 +10,8 @@ import Testing
 ///
 /// Three things are covered: the bound arithmetic, the two in-band reports a
 /// call makes when there is nothing to wait for, and — since a run can now be
-/// parked through the real detachment engine (`parkScriptedRun(in:)`) — the
-/// settlement path itself, with no live inference anywhere.
+/// backgrounded through the real detachment engine (`startScriptedRun(in:)`) —
+/// the settlement path itself, with no live inference anywhere.
 @Suite("WaitTool")
 struct WaitToolTests {
     // MARK: - Two ways to return, and no third
@@ -19,9 +19,9 @@ struct WaitToolTests {
     @Test("a call naming no timeout waits for the run to finish rather than giving up on its own schedule")
     func absentTimeoutWaitsForTheRun() {
         // `wait` returns when the token settles, or at a timeout the caller
-        // passed. A host-side cap would be a third way out, reporting
-        // deadlineElapsed for work that is still running and sending the model
-        // back around a loop it had already decided to stop for.
+        // passed. A host-side cap would be a third way out, reporting a
+        // timeout for work that is still running and sending the model back
+        // around a loop it had already decided to stop for.
         #expect(WaitTool.bounded(nil) == WaitTool.unboundedSeconds)
     }
 
@@ -52,7 +52,7 @@ struct WaitToolTests {
         // rather than a trap or an empty answer.
         let output = try await WaitTool().call(arguments: WaitArguments())
 
-        #expect(output.contains(WaitTool.noRunPlaneState))
+        #expect(output.contains(WaitTool.noSessionResult))
         // Phrased as the next move, not as a diagnosis: the model is told to
         // answer from what it already has.
         #expect(output.contains("nothing running to wait for"))
@@ -65,7 +65,7 @@ struct WaitToolTests {
             arguments: WaitArguments(completionToken: "01ARZ3NDEKTSV4RRFFQ69G5FAV", timeout: 30)
         )
 
-        #expect(named.contains(WaitTool.noRunPlaneState))
+        #expect(named.contains(WaitTool.noSessionResult))
     }
 
     // MARK: - The model-facing surface
@@ -85,7 +85,7 @@ struct WaitToolTests {
         #expect(description.contains("`detail`"))
         // A still-running call is not a failure, and the description says so —
         // otherwise a model reads the bound elapsing as an error and gives up.
-        #expect(description.contains(RunPlaneState.deadlineElapsed))
+        #expect(description.contains(CallResult.timeout))
         #expect(description.contains("nothing has failed"))
         // No worked example carrying a duration. The whole defect this tool
         // replaces was a model copying `wait(token, 60)` out of an instruction,
@@ -116,15 +116,15 @@ struct WaitToolTests {
     private static func waitCall(
         _ arguments: WaitArguments, against mailbox: SessionMailbox
     ) async throws -> String {
-        try await ToolContext.$current.withValue(runPlane(over: mailbox)) {
+        try await ToolContext.$current.withValue(backgroundRuns(over: mailbox)) {
             try await WaitTool().call(arguments: arguments)
         }
     }
 
-    @Test("wait blocks until a parked run settles, and answers with its terminal detail")
+    @Test("wait blocks until a background run finishes, and answers with its terminal detail")
     func waitBlocksUntilTheRunSettles() async throws {
         let mailbox = SessionMailbox()
-        let run = try await parkScriptedRun(in: mailbox, detail: "the-collected-result")
+        let run = try await startScriptedRun(in: mailbox, detail: "the-collected-result")
         let heldOpen = Duration.milliseconds(300)
 
         // The run is deliberately held open for a known time after the wait is
@@ -136,14 +136,14 @@ struct WaitToolTests {
             await settle(run, in: mailbox)
         }
         let start = ContinuousClock.now
-        let settled = try await Self.waitCall(
+        let finished = try await Self.waitCall(
             WaitArguments(completionToken: run.completionToken), against: mailbox
         )
         let elapsed = start.duration(to: .now)
         try await settling.value
 
-        #expect(settled.contains(RunPlaneState.settled))
-        #expect(settled.contains("the-collected-result"))
+        #expect(finished.contains(RunState.complete))
+        #expect(finished.contains("the-collected-result"))
         // No timeout was passed, so nothing but the settlement could have ended
         // this wait — and it could not have ended before the settlement it
         // reports.
@@ -153,7 +153,7 @@ struct WaitToolTests {
     @Test("a run that settles early returns early — the bound is not a floor")
     func anEarlySettlementReturnsEarly() async throws {
         let mailbox = SessionMailbox()
-        let run = try await parkScriptedRun(in: mailbox)
+        let run = try await startScriptedRun(in: mailbox)
         let generousBound: Double = 600
 
         let start = ContinuousClock.now
@@ -169,10 +169,10 @@ struct WaitToolTests {
         #expect(elapsed < .seconds(30))
     }
 
-    @Test("a run still going at the caller's bound reports deadlineElapsed, not failure")
-    func aRunStillGoingAtTheBoundReportsDeadlineElapsed() async throws {
+    @Test("a run still going at the caller's bound reports a timeout, not failure")
+    func aRunStillGoingAtTheBoundReportsATimeout() async throws {
         let mailbox = SessionMailbox()
-        let run = try await parkScriptedRun(in: mailbox)
+        let run = try await startScriptedRun(in: mailbox)
 
         // Never settled: the gate stays closed for the whole test, so the bound
         // is what ends the wait. Deterministic — nothing races the clock.
@@ -180,29 +180,29 @@ struct WaitToolTests {
             WaitArguments(completionToken: run.completionToken, timeout: 0.2), against: mailbox
         )
 
-        #expect(report.contains(RunPlaneState.deadlineElapsed))
+        #expect(report.contains(CallResult.timeout))
         #expect(report.contains(run.completionToken))
         // Still going is not failure, and the run is still there to collect.
-        #expect(await runPlane(over: mailbox).parkedRuns().map(\.completionToken) == [run.completionToken])
+        #expect(await backgroundRuns(over: mailbox).parkedRuns().map(\.completionToken) == [run.completionToken])
     }
 
-    @Test("a settled run is told to answer with the detail this call just delivered")
-    func aSettledRunCarriesTheAnswerDirective() async throws {
+    @Test("a finished run is told to answer with the detail this call just delivered")
+    func aFinishedRunCarriesTheAnswerDirective() async throws {
         // The answer-level half of task `wnfzwxg`. A model that collected the
         // value and then replied that it would arrive later did everything
-        // mechanical right: it spent the wait, the run settled, the plane was
-        // empty. Nothing in band told it that a promise is not a report, and
-        // this is the moment it had the value in hand.
+        // mechanical right: it spent the wait, the run finished, nothing was
+        // left going. Nothing in band told it that a promise is not a report,
+        // and this is the moment it had the value in hand.
         let mailbox = SessionMailbox()
-        let run = try await parkScriptedRun(in: mailbox, detail: "the-collected-result")
+        let run = try await startScriptedRun(in: mailbox, detail: "the-collected-result")
         await settle(run, in: mailbox)
 
-        let settled = try await Self.waitCall(
+        let finished = try await Self.waitCall(
             WaitArguments(completionToken: run.completionToken), against: mailbox
         )
 
-        #expect(settled.contains("the-collected-result"))
-        #expect(settled.contains(WaitTool.settledResultDirective))
+        #expect(finished.contains("the-collected-result"))
+        #expect(finished.contains(WaitTool.finishedRunDirective))
     }
 
     @Test("a run still going carries no answer directive, because it delivered no result")
@@ -210,23 +210,23 @@ struct WaitToolTests {
         // The directive names a `detail` this report carries. A report that
         // carries none would be telling the model to answer with nothing.
         let mailbox = SessionMailbox()
-        let run = try await parkScriptedRun(in: mailbox)
+        let run = try await startScriptedRun(in: mailbox)
 
         let report = try await Self.waitCall(
             WaitArguments(completionToken: run.completionToken, timeout: 0.2), against: mailbox
         )
 
-        #expect(report.contains(RunPlaneState.deadlineElapsed))
-        #expect(!report.contains(WaitTool.settledResultDirective))
+        #expect(report.contains(CallResult.timeout))
+        #expect(!report.contains(WaitTool.finishedRunDirective))
     }
 
     @Test("waiting with no token waits for every pending run")
     func waitingWithNoTokenWaitsForEveryPendingRun() async throws {
         let mailbox = SessionMailbox()
-        let first = try await parkScriptedRun(in: mailbox, tool: "first", detail: "first-result")
-        let second = try await parkScriptedRun(in: mailbox, tool: "second", detail: "second-result")
+        let first = try await startScriptedRun(in: mailbox, tool: "first", detail: "first-result")
+        let second = try await startScriptedRun(in: mailbox, tool: "second", detail: "second-result")
 
-        // Both runs are parked before the wait is issued, and both are held
+        // Both runs are going before the wait is issued, and both are held
         // open past it, so the call snapshots two pending runs and blocks on
         // each. Settling them from the calling task instead would let the wait
         // start after they were already over, which proves nothing.
@@ -244,7 +244,7 @@ struct WaitToolTests {
     @Test("a session whose runs have all finished says so, and points at the answer")
     func aSessionWithNothingPendingSaysSo() async throws {
         let mailbox = SessionMailbox()
-        let run = try await parkScriptedRun(in: mailbox)
+        let run = try await startScriptedRun(in: mailbox)
         await settle(run, in: mailbox)
 
         let report = try await Self.waitCall(WaitArguments(), against: mailbox)
@@ -252,16 +252,16 @@ struct WaitToolTests {
         // Not an error and not an empty wait: the runs are done, so the answer
         // is already in hand and the report says that rather than inviting
         // another wait.
-        #expect(report.contains(WaitTool.nothingPendingState))
+        #expect(report.contains(WaitTool.nothingPendingResult))
         #expect(report.contains(WaitTool.nothingPendingDetail))
     }
 
-    // MARK: - wait never parks itself
+    // MARK: - wait never backgrounds itself
 
     @Test("a wait call blocking past the mount's wait clock still returns its report, never a token")
-    func waitNeverParksItself() async throws {
+    func waitNeverBackgroundsItself() async throws {
         let mailbox = SessionMailbox()
-        let run = try await parkScriptedRun(in: mailbox)
+        let run = try await startScriptedRun(in: mailbox)
 
         // Mounted to detach immediately — harsher than the stock five seconds
         // that made this tool only accidentally safe. The tool answers both of
@@ -277,13 +277,13 @@ struct WaitToolTests {
             ) as? any Tool<WaitArguments, String>
         )
 
-        let report = try await ToolContext.$current.withValue(runPlane(over: mailbox)) {
+        let report = try await ToolContext.$current.withValue(backgroundRuns(over: mailbox)) {
             try await mounted.call(
                 arguments: WaitArguments(completionToken: run.completionToken, timeout: 0.2)
             )
         }
 
         #expect(!PendingRunEnvelope.isRendered(text: report))
-        #expect(report.contains(RunPlaneState.deadlineElapsed))
+        #expect(report.contains(CallResult.timeout))
     }
 }

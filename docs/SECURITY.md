@@ -41,11 +41,11 @@ this `runCode` call — its own `SessionMailbox` and its own upstream event
 sink, never another session's. Each is bounded by what that surface itself
 allows:
 
-- `status()`, `wait()`, and `cancel()` are the **run plane**, which carries
+- `status()`, `wait()`, and `cancel()` are the **background runs**, which carry
   envelopes and outcomes only. `wait()` resolves to a run's terminal event —
   a bounded output tail (`SessionMailbox.terminalDetailTailLimit`) plus the
   run's identifier — never a capability's full store, and `status()` reports
-  a parked run's token, op, kind, and latest progress, never its output. An
+  a running run's token, op, kind, and latest progress, never its output. An
   unknown completion token is a reportable no-op, not a throw: one snippet
   cannot probe another session's tokens, because the mailbox it reaches is
   its own session's.
@@ -58,7 +58,7 @@ allows:
   outbox and return nothing. They cannot read anything back.
 
 Outside a session — a `MultiTool` constructed and called directly, with no
-ambient context — there is no run plane to reach: `status()`, `wait()`,
+ambient context — there is no session to reach: `status()`, `wait()`,
 `cancel()`, and `elicit()` reject with a named, repairable error, and
 `notify()`/`progress()` are silent no-ops. None of the six traps.
 
@@ -82,7 +82,7 @@ that one tool's own `call(arguments:)`.
   with its own. A `JSCInterpreter` run directly, outside any `MultiTool`,
   terminates at the limit its constructor received
   (`JSCInterpreter(timeLimit:)`). The ceiling is absolute: it is measured from
-  sandbox creation, and neither reporting progress nor parking on `elicit()`
+  sandbox creation, and neither reporting progress nor suspending on `elicit()`
   moves that reference point, so no snippet can hold a context open
   indefinitely.
 - **Cancellation** — cancelling the Swift `Task` running

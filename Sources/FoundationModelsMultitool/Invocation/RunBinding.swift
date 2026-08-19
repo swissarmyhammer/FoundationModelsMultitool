@@ -161,7 +161,7 @@ struct RunBinding: Sendable {
 /// it re-stamps what it forwards with its own identity. So an inner run's
 /// events reach the session's outbox on the **outer** `runCode` run's
 /// correlation — which is the operation the session actually issued — while
-/// the inner run's own `completionToken` stays on the run plane: the engine's
+/// the inner run's own `completionToken` stays with the background runs: the engine's
 /// funnel addresses the session mailbox by it, and the inner tool reads it
 /// from its own `ToolContext.current`.
 ///

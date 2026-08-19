@@ -82,7 +82,7 @@ struct SuspendedContextTests {
 
         // Alive: the mailbox still holds the parked run, and the promise the
         // snippet is awaiting has not been torn down under it.
-        let parked = await runPlane(over: harness.mailbox).parkedRuns()
+        let parked = await backgroundRuns(over: harness.mailbox).parkedRuns()
         #expect(parked.contains { $0.completionToken == token })
         #expect(!harness.gated.wasCancelled)
 
@@ -191,7 +191,7 @@ struct SuspendedContextTests {
         let cancelTerminal = try await Self.settledTerminal(
             of: try Self.completionToken(of: cancelRendered), in: harness.mailbox
         )
-        #expect(cancelTerminal.detail.contains("\"state\":\"reported\""))
+        #expect(cancelTerminal.detail.contains("\"result\":\"cancelled\""))
 
         let start = ContinuousClock.now
         let terminal = try await Self.settledTerminal(of: token, in: harness.mailbox)
@@ -204,7 +204,7 @@ struct SuspendedContextTests {
         // exists to — sampling it here is a race, not a check.
         try await Self.waitUntil { harness.gated.wasCancelled }
         #expect(!harness.latch.isReleased)
-        let parked = await runPlane(over: harness.mailbox).parkedRuns()
+        let parked = await backgroundRuns(over: harness.mailbox).parkedRuns()
         #expect(parked.isEmpty)
     }
 
@@ -352,7 +352,7 @@ struct SuspendedContextTests {
     private static func settledTerminal(
         of completionToken: String, in mailbox: SessionMailbox
     ) async throws -> OperationEvent {
-        let settlement = await runPlane(over: mailbox).wait(
+        let settlement = await backgroundRuns(over: mailbox).wait(
             completionToken: completionToken, seconds: scriptedRunSettlementSeconds
         )
         guard case .settled(let terminal) = settlement else {

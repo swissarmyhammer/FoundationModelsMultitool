@@ -75,7 +75,7 @@ struct HostAndEmitterTests {
 
         let token = try JSONDecoder().decode(PendingRunEnvelope.self, from: Data(rendered.utf8)).completionToken
         latch.release()
-        let settlement = await runPlane(over: mailbox)
+        let settlement = await backgroundRuns(over: mailbox)
             .wait(completionToken: token, seconds: scriptedRunSettlementSeconds)
         guard case .settled(let terminal) = settlement else {
             Issue.record("the elevated run never settled: \(settlement)")
