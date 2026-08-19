@@ -61,6 +61,14 @@ jobs:
   integration:
     name: Integration (real models, real GPU)
     runs-on: [self-hosted, macOS]
+    # Both jobs use the one runner label [self-hosted, macOS], and GitHub
+    # assigns the runner in an arbitrary order when no edge orders the jobs.
+    # On run 32285751680 this job started first and held the runner for more
+    # than an hour while the unit job stayed queued. This edge makes the unit
+    # job run first, so a compile error or a unit failure reports in minutes
+    # and no long integration run starts on a broken tree.
+    # `CIWorkflowTests` pins this edge from the unit suite.
+    needs: unit
     steps:
       - uses: actions/checkout@v4
 
