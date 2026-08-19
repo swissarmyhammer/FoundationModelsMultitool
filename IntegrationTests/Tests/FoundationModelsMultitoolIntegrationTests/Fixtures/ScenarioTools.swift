@@ -1,3 +1,4 @@
+import Foundation
 import FoundationModels
 import FoundationModelsRouter
 
@@ -831,6 +832,95 @@ struct IntegrationNestedGenerationTool: Tool {
     }
 }
 
+// MARK: - Scenario 9: the delayed echo (background-run mechanism, task `^nhxj8hx`)
+
+/// `IntegrationDelayedEchoTool`'s arguments.
+@Generable
+struct IntegrationDelayedEchoArguments {
+    @Guide(description: "the value to echo back.")
+    var value: String
+}
+
+/// `IntegrationDelayedEchoTool`'s output.
+@Generable(description: "the echoed value.")
+struct IntegrationDelayedEchoOutput {
+    var value: String
+}
+
+/// How long `IntegrationDelayedEchoTool` holds its value before it settles.
+///
+/// A few seconds, and the few seconds are the point. The rebuild fixture
+/// returns at once, so its background run is complete before the model can
+/// make a `wait` call, and `wait` never has to wait — the deferred path went
+/// untested (task `^nhxj8hx`). This delay keeps the run in the `running`
+/// state past the instant the snippet's own collect starts, so `wait` must
+/// block and be woken by the settlement.
+///
+/// Four seconds and not the deep scan's eight: `runCode` backgrounds every
+/// call at once (`MultiTool.detachmentClocks(from:)` answers a zero wait
+/// clock), so no wait window has to be outlived here. The delay only has to
+/// be clearly nonzero, and every extra second is wall clock the mechanism
+/// test pays on each run. It stays far under
+/// `MultiToolConfiguration.executionTimeLimit`, the sandbox work clock, so a
+/// snippet that awaits the echo in line still completes.
+let integrationDelayedEchoDelay: Duration = .seconds(4)
+
+/// How many characters `integrationDelayedEchoNonce()` returns.
+///
+/// Twelve hex characters carry 48 random bits: enough that no two runs
+/// collide and no model states the value from its priors, and short enough
+/// that a reply quotes it verbatim rather than reformatting it.
+let integrationDelayedEchoNonceLength = 12
+
+/// Makes one fresh nonce for a delayed-echo run.
+///
+/// Fresh per run, never a fixture constant, on the card's rule
+/// (task `^nhxj8hx`): a constant would sit in this repo where a model could
+/// have seen it, and two runs could satisfy each other's answers. A value
+/// minted at run time can reach the reply only through this run.
+///
+/// - Returns: `integrationDelayedEchoNonceLength` hex characters drawn from a
+///   fresh UUID.
+func integrationDelayedEchoNonce() -> String {
+    String(UUID().uuidString.filter(\.isHexDigit).prefix(integrationDelayedEchoNonceLength))
+}
+
+/// The tool the background-run mechanism test drives: it takes a value,
+/// hands the caller a handle at once, and settles with that value
+/// `integrationDelayedEchoDelay` later.
+///
+/// The description says the result settles in the background, and stops
+/// there. It does not tell the model to collect: the pending envelope on the
+/// handle carries that instruction, and it must stay the only source of it —
+/// the same rule `IntegrationArchiveRebuildTool`'s description follows.
+struct IntegrationDelayedEchoTool: Tool {
+    /// The `tools.*` path this fixture mounts under.
+    ///
+    /// Declared at the type level for the same reason as
+    /// `IntegrationWeatherTool.path`: the mechanism test names it in its
+    /// prompt and in what its answer depends on.
+    static let path = "echoAfterDelay"
+
+    let name = IntegrationDelayedEchoTool.path
+    let description = "Returns the exact value you pass it. "
+        + "The result settles in the background a few seconds after the call."
+
+    /// The scenario run's call log every invocation of this tool records itself in.
+    let log: ScenarioCallLog
+
+    /// Waits `integrationDelayedEchoDelay`, then reports the value back.
+    ///
+    /// - Parameter arguments: the value to echo.
+    /// - Returns: that exact value.
+    /// - Throws: a `CancellationError` if the run is cancelled mid-delay.
+    func call(arguments: IntegrationDelayedEchoArguments) async throws -> IntegrationDelayedEchoOutput {
+        try await log.recordCall(to: name) {
+            try await Task.sleep(for: integrationDelayedEchoDelay)
+            return IntegrationDelayedEchoOutput(value: arguments.value)
+        }
+    }
+}
+
 // MARK: - What each scenario's answer has to be grounded in
 
 /// The `tools.*` returns each gated scenario's answer depends on — what
@@ -882,4 +972,11 @@ enum IntegrationScenarioGrounding {
     /// supplied itself. That is what keeps the canary from passing on a run
     /// where nothing happened.
     static let archiveRebuild: Set<String> = [IntegrationArchiveRebuildTool.path]
+
+    /// What the delayed-echo mechanism test's answer depends on: the echo's
+    /// own return. The nonce is in the prompt — the model has to pass it —
+    /// so the reply alone cannot prove the round trip. This path proves the
+    /// echo really handed the value back, and the in-band collection check
+    /// proves the model collected the run that carried it.
+    static let delayedEcho: Set<String> = [IntegrationDelayedEchoTool.path]
 }

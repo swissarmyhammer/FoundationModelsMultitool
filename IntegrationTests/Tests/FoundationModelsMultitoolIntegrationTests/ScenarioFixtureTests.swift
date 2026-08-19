@@ -359,6 +359,45 @@ struct ScenarioFixtureTests {
         }
     }
 
+    // MARK: - The fixture the delayed-echo mechanism test drives (task `^nhxj8hx`)
+
+    @Test("the delayed echo returns its exact input, and only after its delay")
+    func theDelayedEchoReturnsItsExactInputAfterItsDelay() async throws {
+        // The premise the mechanism test rests on: the value settles a few
+        // seconds after the call starts. A tool that returns at once makes
+        // `wait` return at once, and the deferred path stays untested — the
+        // hole the immediate rebuild fixture left open (task `^nhxj8hx`).
+        let log = ScenarioCallLog()
+        let nonce = integrationDelayedEchoNonce()
+        let clock = ContinuousClock()
+
+        let start = clock.now
+        let echoed = try await IntegrationDelayedEchoTool(log: log)
+            .call(arguments: IntegrationDelayedEchoArguments(value: nonce))
+        let elapsed = clock.now - start
+
+        #expect(echoed.value == nonce)
+        #expect(elapsed >= integrationDelayedEchoDelay)
+        #expect(await log.returnedPaths == [IntegrationDelayedEchoTool.path])
+    }
+
+    @Test("each delayed-echo nonce is fresh, and no two are equal")
+    func eachDelayedEchoNonceIsFresh() {
+        // A fixture constant would sit in this repo, where a model could have
+        // seen it. A fresh nonce per run keeps the valid-answer check honest:
+        // the reply carries the value only when the value went through the
+        // collected run or through the prompt, and the grounded and
+        // in-band-collection checks close the prompt-only path.
+        let first = integrationDelayedEchoNonce()
+        let second = integrationDelayedEchoNonce()
+
+        let firstIsAllHexDigits = first.allSatisfy(\.isHexDigit)
+
+        #expect(first != second)
+        #expect(first.count == integrationDelayedEchoNonceLength)
+        #expect(firstIsAllHexDigits)
+    }
+
     /// Builds the transcript shape `NativeTranscript.typedToolPaths(in:)` scans: one recorded `runCode` call carrying a snippet.
     ///
     /// - Parameter code: the snippet the recorded call carries.

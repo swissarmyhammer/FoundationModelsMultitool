@@ -725,15 +725,25 @@ private struct ScenarioSurface {
 ///   - tools: the scenario's fixed tool set.
 ///   - fixture: the resolved live fixture whose `.flash` slot backs the
 ///     selection tier.
+///   - direct: when `true`, apply `registry.directMode()` before the mount,
+///     exactly as `CLIRunner.runDemo` does under its `--direct` flag. A
+///     direct-mode registry vends `runCode` and `wait` and no `searchTools`,
+///     so the scenario pays for no discovery. The `librarian:` argument stays
+///     the same in both modes, because the CLI passes it in both modes and
+///     this harness must mount what the CLI mounts.
 /// - Returns: the tools to register with the session, and the catalog paths
 ///   behind them.
 /// - Throws: whatever `MultiTool.Builder.buildRegistry()` or
 ///   `MultiTool.Registry.makeSessionTools(librarian:)` throws.
 private func makeScenarioSurface(
     over tools: [any Tool],
-    on fixture: LiveRouterFixture
+    on fixture: LiveRouterFixture,
+    direct: Bool = false
 ) throws -> ScenarioSurface {
-    let registry = try MultiTool.Builder().addTools(tools).buildRegistry()
+    var registry = try MultiTool.Builder().addTools(tools).buildRegistry()
+    if direct {
+        registry = registry.directMode()
+    }
     return ScenarioSurface(
         // `librarian:` alone, exactly as `CLIRunner.runDemo` mounts it
         // (`CLIRunner.swift:390`). No `sampleGenerator:` — it defaults to `nil`,
@@ -1167,10 +1177,16 @@ private func accepted(_ candidates: [String], in reply: String) -> Set<String> {
 /// bound is what the other gated runners' reply previews use.
 private let inBandCollectionReplyPreviewCharacters = 120
 
-/// Drives one scenario whose slow fixture is held open until the model's turn
-/// has ended, and holds the run to what a live model really does with it: it
-/// collects its own background run in band, and the turn ends with nothing
-/// still running (task `^xeqs138`).
+/// Drives one in-band collection scenario end to end, and holds the run to
+/// what a live model really does with it: it collects its own background run
+/// in band, and the turn ends with nothing still running (task `^xeqs138`).
+///
+/// Two shapes run through this one runner (task `^nhxj8hx`). The mechanism
+/// shape mounts a direct-mode surface, drives the delayed echo by name, and
+/// grades a nonce's round trip through a genuinely deferred settlement. The
+/// teaching shape keeps the discovery surface and the "do not block" prompt,
+/// and grades the instruction the handle carries against that prompt. Both
+/// grade the same five conditions, through `inBandCollectionChecks`.
 ///
 /// **This scenario is the inversion of the one it started as, and it is a
 /// canary.** It was written to end a turn with a run still in flight, so that
@@ -1244,24 +1260,33 @@ private let inBandCollectionReplyPreviewCharacters = 120
 ///     than this runner reads back.
 ///   - prompt: the user request driving the turn.
 ///   - answerContainsOneOf: candidate substrings, at least one of which the
-///     final reply must contain (case-insensitively). Pick a value that reaches
-///     the model only through the collected run's terminal `detail`.
+///     final reply must contain (case-insensitively). Pick a value the reply
+///     cannot carry unless the run really happened: the teaching shape uses a
+///     value that reaches the model only through the collected run's terminal
+///     `detail`, and the mechanism shape uses a fresh nonce whose round trip
+///     the grounded and in-band-collection checks pin to the collected run.
 ///   - groundedIn: the `tools.*` paths whose returns the answer depends on — see
 ///     `IntegrationScenarioGrounding`.
+///   - direct: when `true`, mount the surface in direct mode — `runCode` and
+///     `wait`, no `searchTools` — so the scenario pays for no discovery. The
+///     mechanism shape passes `true`; the teaching shape keeps the default,
+///     the discovery surface its recorded evidence was measured on. See
+///     `makeScenarioSurface(over:on:direct:)`.
 /// - Throws: any error other than `GenerationError.notWiredForLiveInference`.
 func runInBandCollectionCanaryScenario(
     name: String,
     tools makeTools: (ScenarioCallLog) -> [any Tool],
     prompt: String,
     answerContainsOneOf: [String],
-    groundedIn: Set<String>
+    groundedIn: Set<String>,
+    direct: Bool = false
 ) async throws {
     try await withLiveRouterFixture(name: name) { fixture in
         let log = ScenarioCallLog()
         // No instructions, for the same reason as every other runner here:
         // mounting the tools is the whole product surface.
         let session = fixture.profile.standard.makeSession(
-            tools: try makeScenarioSurface(over: makeTools(log), on: fixture).tools,
+            tools: try makeScenarioSurface(over: makeTools(log), on: fixture, direct: direct).tools,
             discoveryPriming: scenarioDiscoveryPriming
         )
 
