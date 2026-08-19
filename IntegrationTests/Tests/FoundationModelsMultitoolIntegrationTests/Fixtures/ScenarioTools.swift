@@ -834,6 +834,13 @@ struct IntegrationNestedGenerationTool: Tool {
 
 // MARK: - Scenario 9: the delayed echo (background-run mechanism, task `^nhxj8hx`)
 
+/// The count of seconds in `integrationDelayedEchoDelay`.
+///
+/// This declaration names the number directly, so no call site passes a raw
+/// literal — `integrationDelayedEchoDelay` turns it into a `Duration`. The
+/// reasons for the value stand on that constant.
+let integrationDelayedEchoDelaySeconds = 4
+
 /// `IntegrationDelayedEchoTool`'s arguments.
 @Generable
 struct IntegrationDelayedEchoArguments {
@@ -863,7 +870,7 @@ struct IntegrationDelayedEchoOutput {
 /// test pays on each run. It stays far under
 /// `MultiToolConfiguration.executionTimeLimit`, the sandbox work clock, so a
 /// snippet that awaits the echo in line still completes.
-let integrationDelayedEchoDelay: Duration = .seconds(4)
+let integrationDelayedEchoDelay: Duration = .seconds(integrationDelayedEchoDelaySeconds)
 
 /// How many characters `integrationDelayedEchoNonce()` returns.
 ///

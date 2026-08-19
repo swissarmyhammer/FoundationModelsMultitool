@@ -31,8 +31,24 @@ comments:
     - evidence: 8 files — Tests/FoundationModelsMultitoolTests/{HostAndEmitterTests,SuspendedContextTests,WaitToolTests,HardeningTests,SearchToolsToolTests,RunBindingTests,ExamplesTests,RouterSessionMountTests}.swift; root `swift test`: 361 tests in 30 suites, all passed, 0 failed, 0 skipped, 0 warnings
     - next: review
   timestamp: 2026-08-19T18:28:02.109486+00:00
-position_column: doing
-position_ordinal: '8380'
+- actor: claude-code
+  id: 01m0dmqv2adw8m4mzcjn18gy8j
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (commit f281347) — 0 findings, 0 confirmed, 0 refuted; 8 files reviewed; 2 kanban files not reviewed (.reviewignore)
+    - next: none. The task moved to done.
+  timestamp: 2026-08-19T18:32:35.658859+00:00
+- actor: claude-code
+  id: 01m0dmr7rq0383egysk9awn03k
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 8 files in Tests/FoundationModelsMultitoolTests/ renamed to the background-run vocabulary
+    - test: green — root swift test 361/30, 0 skipped; IntegrationTests --build-tests clean
+    - commit: f281347
+    - review: clean — 0 findings; task moved to done
+  timestamp: 2026-08-19T18:32:48.663233+00:00
+position_column: done
+position_ordinal: d680
 title: Move the ungated unit-test target onto the background-run vocabulary
 ---
 Task `^820xc9z` moved `Sources/` off "parked" and "run plane". Task `^v6hfhdv` moved `Tests/FoundationModelsMultitoolIntegrationTests/` onto the same words. `Tests/FoundationModelsMultitoolTests/` is the remainder, and it was out of scope for both by measurement rather than by oversight.
