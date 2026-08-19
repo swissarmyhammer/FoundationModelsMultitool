@@ -1,0 +1,1 @@
+{"id":"01M0DQN995VM844KZF3A36N5MF","timestamp":"2026-08-19T19:23:37.637188Z","op":"create","item_id":"01M0DQN995MNXHPX775AS8AA80","forward_patch":"--- original\n+++ modified\n@@ -0,0 +1,2 @@\n+color: 006b75\n+tag_name: filePath\n","reverse_patch":"--- original\n+++ modified\n@@ -1,2 +0,0 @@\n-color: 006b75\n-tag_name: filePath\n","transaction_id":null}

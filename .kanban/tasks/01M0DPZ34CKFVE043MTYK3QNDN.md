@@ -21,6 +21,46 @@ comments:
     - evidence: 2 files — Tests/FoundationModelsMultitoolTests/CIWorkflowTests.swift (new), .github/workflows/ci.yml (needs: unit + reason comment). Test failed before the workflow edit, passed after it. Full swift test: 362 tests in 31 suites, 0 failures, 0 skipped.
     - next: /review; after the next push, record the CI run id that shows the job order.
   timestamp: 2026-08-19T19:17:33.337687+00:00
+- actor: claude-code
+  id: 01m0dqneg8yt2vppkfx99mkww9
+  text: |-
+    ### review — findings
+    - evidence: 1 finding — Tests/FoundationModelsMultitoolTests/CIWorkflowTests.swift:38 (reuse/reuse). Engine run: review sha HEAD~1..HEAD (commit 0ceda07). Counts: 1 finding, 1 confirmed, 0 refuted.
+    - note: The open acceptance checkbox for the CI-run-order proof needs a push. It is not a review finding. It does not block the review gate.
+    - next: Make one shared test utility that reads a repository file from a relative path. Use it in CIWorkflowTests and HardeningTests. Then check the finding box and run the review again.
+  timestamp: 2026-08-19T19:23:42.984068+00:00
+- actor: claude-code
+  id: 01m0dqp0pgx026ve70mmtwfbcp
+  text: |-
+    ### finish iteration 1 — findings
+    - implement: changed — CIWorkflowTests.swift (new, TDD red-first) + needs: unit in ci.yml
+    - test: green — root swift test 362/31, 0 skipped; IntegrationTests --build-tests clean
+    - commit: 0ceda07
+    - review: findings — Tests/FoundationModelsMultitoolTests/CIWorkflowTests.swift:38 (extract shared repo-file reader used by HardeningTests too)
+  timestamp: 2026-08-19T19:24:01.616556+00:00
+- actor: claude-code
+  id: 01m0dqx1rye9gjvgxgqc05acn7
+  text: |-
+    Correction of the review finding (reuse/reuse, CIWorkflowTests.swift:38).
+
+    1. New file Tests/FoundationModelsMultitoolTests/RepositoryFile.swift: an internal enum with one function, RepositoryFile.read(relativePath:). It reads one repository file as UTF-8 text. Its doc comment tells that #filePath resolves relative to the file that contains the literal, so the three deletingLastPathComponent() steps go from the helper's own location to the repository root. The helper is internal, so each test file in the target can call it.
+    2. CIWorkflowTests.workflowLines() now calls RepositoryFile.read(relativePath: ".github/workflows/ci.yml") and only splits the text into lines. The removed code was the four-step URL navigation.
+    3. HardeningTests.readmeInjectedGlobals() now calls RepositoryFile.read(relativePath: "README.md"). The removed code was the same four-step URL navigation. No assertion changed in either test.
+    4. Audit of the other #filePath sites in the unit-test target: ToolAPIRendererTests.swift:281 and BuilderSurfaceTests.swift:22. Each uses one deletingLastPathComponent() step to find the Goldens/ directory that is adjacent to the test file. They do not go to the repository root, and they read test-owned golden files, not repository files. The cause is different, so RepositoryFile.read does not apply to them, and I did not change them.
+    5. Proof: root "swift test" ran two times. Each run: 362 tests in 31 suites, all passed, zero failures, zero skipped. The build shows one warning, "missing creator for mutated node" on .build/.../mlx-swift_Cmlx.bundle. I stashed this diff and built again: the same warning shows on the unchanged tree. So the warning comes from earlier .build state (the metallib copy of a gated integration run mutated the Cmlx bundle), not from this change.
+    6. The finding's box is now checked. The one open acceptance box (CI run order proof) still waits for a push; it is not a review finding.
+
+    ### implement — changed
+    - evidence: 3 files — Tests/FoundationModelsMultitoolTests/RepositoryFile.swift (new), Tests/FoundationModelsMultitoolTests/CIWorkflowTests.swift, Tests/FoundationModelsMultitoolTests/HardeningTests.swift. Root swift test: 362 tests in 31 suites, 0 failures, 0 skipped, two consecutive green runs.
+    - next: /review; after the next push, record the CI run id that shows the job order.
+  timestamp: 2026-08-19T19:27:52.094500+00:00
+- actor: claude-code
+  id: 01m0dqz0yf3wq01eqdba7ajeba
+  text: |-
+    ### test — green
+    - evidence: `swift test` — 362 tests, 31 suites, 0 failed, 0 skipped, exit 0. `swift build --package-path IntegrationTests --build-tests` — Build complete, exit 0 (only the documented third-party `missing creator for mutated node` mlx bundle warning present).
+    - next: ready for review.
+  timestamp: 2026-08-19T19:28:56.783631+00:00
 position_column: doing
 position_ordinal: '8380'
 title: 'CI: run the integration job only after the unit job passes'
@@ -51,3 +91,12 @@ Separate context, not this card's work: the red on run `32203706380` is the old 
 ## Workflow
 
 - Use `/tdd` — write the failing workflow-pinning test first, then edit the workflow to make it pass.
+
+## Review Findings (2026-08-19 14:20)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 2 file(s) reviewed, 4 not reviewed.
+
+> 4 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 4 file(s)
+
+- [x] `Tests/FoundationModelsMultitoolTests/CIWorkflowTests.swift:38` `reuse/reuse` — workflowLines() reimplements file-reading boilerplate that already exists in HardeningTests.readmeInjectedGlobals(). Both navigate from up three levels to the repo root, then read a specific file. A shared utility parameterized by the relative path would eliminate this duplication. Extract a shared test utility like `private static func readRepositoryFile(relativePath: String) throws -> String` that both CIWorkflowTests and HardeningTests can call, rather than duplicating the URL navigation boilerplate.

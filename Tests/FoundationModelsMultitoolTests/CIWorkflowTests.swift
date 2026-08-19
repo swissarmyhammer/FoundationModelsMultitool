@@ -29,19 +29,13 @@ struct CIWorkflowTests {
     /// top-level key, so it ends the current job block.
     private static let jobKeyIndentation = "    "
 
-    /// Reads `.github/workflows/ci.yml` from the repository root, found
-    /// relative to this file through `#filePath` — the same shape
-    /// `HardeningTests.readmeInjectedGlobals()` uses for `README.md`.
+    /// Reads `.github/workflows/ci.yml` from the repository root through
+    /// `RepositoryFile.read(relativePath:)`.
     ///
     /// - Returns: each line of the workflow file.
     /// - Throws: an error when the file cannot be read.
     private static func workflowLines() throws -> [Substring] {
-        let workflowURL = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent(".github/workflows/ci.yml")
-        let text = try String(contentsOf: workflowURL, encoding: .utf8)
+        let text = try RepositoryFile.read(relativePath: ".github/workflows/ci.yml")
         return text.split(separator: "\n", omittingEmptySubsequences: false)
     }
 

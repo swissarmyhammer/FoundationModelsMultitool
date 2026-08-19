@@ -357,12 +357,7 @@ struct HardeningTests {
     /// - Returns: every documented injected-global name.
     /// - Throws: `HardeningTestsError` if the section can't be found.
     private static func readmeInjectedGlobals() throws -> Set<String> {
-        let readmeURL = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent("README.md")
-        let text = try String(contentsOf: readmeURL, encoding: .utf8)
+        let text = try RepositoryFile.read(relativePath: "README.md")
 
         let heading = "### Injected globals"
         guard let headingRange = text.range(of: heading) else {
