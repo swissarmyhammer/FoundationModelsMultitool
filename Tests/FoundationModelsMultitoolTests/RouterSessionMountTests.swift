@@ -64,8 +64,8 @@ struct RouterSessionMountTests {
         // mount, where the old one only said the mount changed nothing.
         #expect(PendingRunEnvelope.isRendered(text: throughMount))
         #expect(throughMount != direct)
-        // Called directly, with no session and no run plane to park in, the
-        // same snippet still returns its own value. Both halves of one rule.
+        // Called directly, with no session and no background runs to post into,
+        // the same snippet still returns its own value. Both halves of one rule.
         //
         // A city count derived from the names the call returned shares no text
         // with them, so the run also closes with `ToolReturnLedger`'s notice —

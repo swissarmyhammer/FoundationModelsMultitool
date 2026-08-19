@@ -25,7 +25,7 @@ import Testing
 /// .makeSessionTools(librarian:))`, drained through `streamEvents(to:)` — and
 /// only that session mounts a tool under
 /// `DetachConfiguration.nativeSessionMount`, which is what lets a slow
-/// `runCode` park. `README.md` and `Sources/MultitoolCLI/CLIRunner.swift`
+/// `runCode` background. `README.md` and `Sources/MultitoolCLI/CLIRunner.swift`
 /// state the contract; these examples show the catalog and call shapes it
 /// carries.
 ///

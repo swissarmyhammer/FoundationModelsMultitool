@@ -29,7 +29,7 @@ private let elapsedWaitSeconds: TimeInterval = 0.01
 struct RunBindingTests {
     // MARK: - The code-mode mount: elevation off
 
-    @Test("an inner call slower than waitSeconds still returns its real value, and never parks")
+    @Test("an inner call slower than waitSeconds still returns its real value, and never backgrounds")
     func slowInnerCallReturnsItsRealValueWithoutElevating() async throws {
         let slowTool = WindowRecordingTool(name: "slow", delayNanoseconds: innerCallDelayNanoseconds)
         let mailbox = SessionMailbox()

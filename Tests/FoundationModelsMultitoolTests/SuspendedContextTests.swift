@@ -35,7 +35,7 @@ struct SuspendedContextTests {
         // The regression this test exists for: `MultiToolConfiguration
         // .executionTimeLimit` and `DetachConfiguration.defaultWaitSeconds`
         // were both 5 seconds, so the JSC watchdog force-terminated the
-        // suspended context at exactly the moment elevation parked it.
+        // suspended context at exactly the moment elevation backgrounded it.
         let timeout = try #require(clocks.timeout)
         #expect(timeout > DetachConfiguration.defaultWaitSeconds)
         #expect(timeout == MultiToolConfiguration.default.executionTimeLimit)
@@ -80,10 +80,10 @@ struct SuspendedContextTests {
         let token = try Self.completionToken(of: rendered)
         try await Task.sleep(nanoseconds: Self.aliveWindowNanoseconds)
 
-        // Alive: the mailbox still holds the parked run, and the promise the
-        // snippet is awaiting has not been torn down under it.
-        let parked = await backgroundRuns(over: harness.mailbox).parkedRuns()
-        #expect(parked.contains { $0.completionToken == token })
+        // Alive: the mailbox still holds the background run, and the promise
+        // the snippet is awaiting has not been torn down under it.
+        let backgrounded = await backgroundRuns(over: harness.mailbox).parkedRuns()
+        #expect(backgrounded.contains { $0.completionToken == token })
         #expect(!harness.gated.wasCancelled)
 
         // Resumable: releasing the inner call still produces the snippet's own
@@ -105,7 +105,7 @@ struct SuspendedContextTests {
         )
 
         #expect(PendingRunEnvelope.isRendered(text: rendered))
-        // The inner fixture call runs under the parked run — the pending
+        // The inner fixture call runs under the background run — the pending
         // promise, not a finished one. Awaited rather than read at the instant
         // the envelope returned: that instant raced `shortWaitSeconds` against
         // JSC start-up, which made a true statement about the product fail
@@ -182,7 +182,7 @@ struct SuspendedContextTests {
         //
         // That second snippet backgrounds as well — every mounted `runCode`
         // does now (task ^cv98vff) — so the call hands back its own token and
-        // its answer is collected from the run plane rather than read off the
+        // its answer is collected from the background run rather than read off the
         // call. The cancel still happens on its own run; only where its result
         // is read from changed.
         let cancelRendered = try await harness.mounted.call(
@@ -204,8 +204,8 @@ struct SuspendedContextTests {
         // exists to — sampling it here is a race, not a check.
         try await Self.waitUntil { harness.gated.wasCancelled }
         #expect(!harness.latch.isReleased)
-        let parked = await backgroundRuns(over: harness.mailbox).parkedRuns()
-        #expect(parked.isEmpty)
+        let backgrounded = await backgroundRuns(over: harness.mailbox).parkedRuns()
+        #expect(backgrounded.isEmpty)
     }
 
     // MARK: - Fixtures
@@ -257,8 +257,8 @@ struct SuspendedContextTests {
 
     /// One `runCode` tool mounted the way Router's native session mounts it.
     ///
-    /// Carries the gated tool its snippets call, and the session plane its runs
-    /// park and post on.
+    /// Carries the gated tool its snippets call, and the session mailbox its
+    /// runs background and post on.
     private struct Harness {
         /// The gated tool `gatedSnippet` calls.
         let gated: GatedTool
@@ -269,7 +269,7 @@ struct SuspendedContextTests {
         /// `MultiTool` wrapped in the elevation engine.
         let mounted: any Tool<RunCodeArguments, String>
 
-        /// The session mailbox elevated runs park in.
+        /// The session mailbox elevated runs background into.
         let mailbox: SessionMailbox
 
         /// The session's upstream sink.
@@ -338,16 +338,16 @@ struct SuspendedContextTests {
     /// The completion token of a rendered pending envelope.
     ///
     /// - Parameter rendered: the tool output an elevated call handed back.
-    /// - Returns: the parked run's completion token.
+    /// - Returns: the background run's completion token.
     private static func completionToken(of rendered: String) throws -> String {
         try JSONDecoder().decode(PendingRunEnvelope.self, from: Data(rendered.utf8)).completionToken
     }
 
-    /// Awaits a parked run's settlement through the mailbox.
+    /// Awaits a background run's settlement through the mailbox.
     ///
     /// - Parameters:
-    ///   - completionToken: the parked run's token.
-    ///   - mailbox: the session mailbox the run parked in.
+    ///   - completionToken: the background run's token.
+    ///   - mailbox: the session mailbox the run backgrounded into.
     /// - Returns: the run's terminal event.
     private static func settledTerminal(
         of completionToken: String, in mailbox: SessionMailbox

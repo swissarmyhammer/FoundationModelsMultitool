@@ -8,7 +8,7 @@ import Testing
 /// The wait window the elevating mount here detaches at.
 ///
 /// Short enough that the gated inner call is still in flight when the outer
-/// `runCode` run parks, which is the state the test is about.
+/// `runCode` run backgrounds, which is the state the test is about.
 private let hostWaitSeconds: TimeInterval = 0.2
 
 /// The progress detail `AmbientRecordingTool(name: "recorder")` posts.
@@ -67,7 +67,7 @@ struct HostAndEmitterTests {
             arguments: RunCodeArguments(code: "await tools.gated(); return await tools.recorder();")
         )
 
-        // The run parked with its snippet still inside the gated call, so the
+        // The run backgrounded with its snippet still inside the gated call, so the
         // recorder has not run yet and nothing of its own is on the sink.
         #expect(PendingRunEnvelope.isRendered(text: rendered))
         let beforeRelease = await sink.details(ofKind: .progress)

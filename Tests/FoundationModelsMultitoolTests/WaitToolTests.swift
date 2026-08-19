@@ -48,7 +48,7 @@ struct WaitToolTests {
     @Test("a call with no ambient session reports that there is nothing running, and says what to do instead")
     func aSessionlessCallReportsInBand() async throws {
         // The mode every unit suite in this package runs in: no session, so no
-        // mailbox and no run plane. This must be a report the model can act on
+        // mailbox and no background runs. This must be a report the model can act on
         // rather than a trap or an empty answer.
         let output = try await WaitTool().call(arguments: WaitArguments())
 
@@ -107,11 +107,11 @@ struct WaitToolTests {
 
     // MARK: - The settlement path (^ddgjps6)
 
-    /// A `wait` call against a real run plane, bound to `mailbox`.
+    /// A `wait` call against real background runs, bound to `mailbox`.
     ///
     /// - Parameters:
     ///   - arguments: the call's arguments.
-    ///   - mailbox: the session mailbox whose run plane is read.
+    ///   - mailbox: the session mailbox whose background runs are read.
     /// - Returns: the tool's rendered report.
     private static func waitCall(
         _ arguments: WaitArguments, against mailbox: SessionMailbox

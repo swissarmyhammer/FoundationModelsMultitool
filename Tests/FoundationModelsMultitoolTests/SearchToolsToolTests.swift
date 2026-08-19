@@ -305,7 +305,7 @@ struct SearchToolsToolTests {
         let tool = SearchToolsTool(searcher: searcher, limit: surface.entries.count)
 
         // The harshest mount there is: detach immediately, the very
-        // configuration under which `runCode` always parks. The tool answers
+        // configuration under which `runCode` always backgrounds. The tool answers
         // both of its own clocks at `unlimitedSeconds`, and a per-call answer
         // overrides the wrap-time configuration, so discovery still blocks.
         // Asserted against a mount rather than by timing a real search: "however
@@ -366,7 +366,7 @@ struct SelectionSearchFailure: Error, Equatable {}
 /// A selection root whose `fork()` takes its time before answering.
 ///
 /// Slow, not broken: it returns a genuine selection in the end. The delay is
-/// what gives a detaching mount its chance to park the call, which is exactly
+/// what gives a detaching mount its chance to background the call, which is exactly
 /// what `searchTools` must not allow.
 final class SlowSelectionRootSession: AgentSession, Sendable {
     /// How long `fork()` takes before it answers.
