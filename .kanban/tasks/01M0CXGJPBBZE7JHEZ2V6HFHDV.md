@@ -64,8 +64,69 @@ comments:
     - evidence: `swift build --build-tests` — Build complete, 0 compiler warnings/errors (only a SwiftPM build-planning note about the third-party mlx-swift resource bundle, not this repo's code). `swift test` — FoundationModelsMultitoolTests: 361 tests / 30 suites passed; FoundationModelsMultitoolIntegrationTests: 59 tests / 11 suites passed (gated tests skip correctly, MULTITOOL_INTEGRATION unset).
     - next: gated suite run is a separate step, not run here.
   timestamp: 2026-08-19T12:38:42.616607+00:00
-position_column: doing
-position_ordinal: '8380'
+- actor: claude-code
+  id: 01m0d0hf404za1x5wbcnnhy4d1
+  text: |-
+    ### commit — changed
+    - evidence: f0cdc3e test(integration): rename gated harness to background-run vocabulary
+    - next: gated run (orchestrator's step), then /review
+  timestamp: 2026-08-19T12:39:35.296030+00:00
+- actor: claude-code
+  id: 01m0d0tmvadeyjrw085y01pp0e
+  text: |
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (f0cdc3e) — 0 findings, 0 confirmed, 0 refuted, 7 files attempted, 0 failed. The 4 skipped files are `.kanban/`, excluded by `.reviewignore`.
+    - boundaries checked against the card's "What must NOT change", each one verified and each one held:
+      - Router symbols keep Router's spelling and are only called: `ParkedRun`, `ToolContext.parkedRuns()`, `RoutedSessionActor.parkedRunDrainRoundLimit`, `settleParkedRuns`. No `typealias` in the target, so no symbol is aliased to hide the word. `ScenarioCallLog.backgroundRuns()` returns `[ParkedRun]` and its doc comment names `ToolContext.parkedRuns()` as Router's own spelling, so the wrapper points at the Router name instead of covering it.
+      - Genuine suspension keeps "parked". `Support/IntegrationGate.swift` and `NestedGenerationProbeTests.swift` are untouched by this commit. Every removed "park" in the diff is the backgrounded-run sense.
+      - The `PARKED-DRAIN [parkedRunDrain] …` block is intact, not half-renamed, and the comment beside it states the choice: it quotes one gated run verbatim, it carries a `terminals=` field the runner no longer prints, rewriting it would report words no run ever said, and the reader is told the runner prints `IN-BAND-CANARY … backgroundRunsAtAnswer= backgroundRunsAfterRespond=` today.
+      - The old names are gone from the integration target. The only `runPlaneEmpty` / `parkedAtAnswer` / `parkedAfterRespond` text left in the target is inside that verbatim block. No assertion, failure message, or doc comment names an old check name.
+      - `Sources/` is untouched by f0cdc3e. That was `^820xc9z`.
+      - Prose moved with the identifiers: "run plane" -> "background runs", "run-plane globals" -> "background-run globals", a run that parks -> a run that backgrounds.
+    - the two deliberate decisions, both confirmed on their merits:
+      - `"runPlaneEmpty"` -> `"noBackgroundRunsAfterRespond"` rather than a bare `"noBackgroundRuns"`. Correct. It pairs with `noBackgroundRunsAtAnswer`, and the two names now say which instant each grades. A bare name would grade one of two instants and say neither.
+      - The `.toolStatus(.running)` comment in `streamTurn`, "went silent and parked" -> "went silent while it ran". Correct. The event is `.running`, so the call is running and not suspended, and the sentence keeps the contrast it was written for: a slow call that streams progress against one that reports nothing while it runs.
+    - next: the gated run. This card is left in `review` and not advanced, for one reason only, and it is not a finding: the second Tests item — one gated run green, with the new check names read back out of the transcript — is still open, and every prior step record names it as the orchestrator's step. Run the gated suite, check that item, then re-review to close.
+  timestamp: 2026-08-19T12:44:36.074942+00:00
+- actor: claude-code
+  id: 01m0d0vpcjwfpqfyv9rk58mnsy
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 7 files in the integration target; `runPlaneEmptyAtAnswer` -> `noBackgroundRunsAtAnswer`, `runPlaneEmpty` -> `noBackgroundRunsAfterRespond`, evidence fields and `ScenarioCallLog.parkedRuns()` -> `backgroundRuns()`
+    - test: green — `swift test`, 361/30 and 59/11, zero failures, zero warnings
+    - commit: f0cdc3e
+    - review: clean — `review sha HEAD~1..HEAD`, 0 findings across 7 files; every "must NOT change" boundary checked by hand and held
+    - **held in review, correctly.** The card's second Tests item wants a gated run with the new check names read back out of the transcript, and that evidence does not exist yet. Running it now as the orchestrator's step; re-review to close after.
+
+    The implement pass also flagged one place worth recording: the `.toolStatus(.running)` comment in `streamTurn` was the single spot where "parked" described work that was *running rather than suspended* — a call that streamed no progress. It now reads "went silent while it ran", which is the distinction this whole card exists to make.
+  timestamp: 2026-08-19T12:45:10.418272+00:00
+- actor: claude-code
+  id: 01m0d1pz756m9anc1c4hspfgs8
+  text: |-
+    ### finish iteration 2 — green
+    - gated: **green** — `MULTITOOL_INTEGRATION=1 swift test --no-parallel` at `f0cdc3e`, **59 tests / 11 suites / 844.6s**, every scenario PASS
+
+    The card's second Tests item asked for the new check names read back out of the transcript. They are:
+
+        SCENARIO [inBandCollection] result=PASS validAnswer=pass grounded=pass inBandCollection=pass
+                                    noBackgroundRunsAtAnswer=pass noBackgroundRunsAfterRespond=pass
+
+        IN-BAND-CANARY [inBandCollection] elapsed=190.3s backgroundRunsAtAnswer=[] backgroundRunsAfterRespond=[]
+                                          waitCalls=3 returned=["rebuildArchive"] groundedIn=["rebuildArchive"]
+                                          reply="Done. Your archive index rebuild is complete, and its manifest code is **58204**."
+
+        RESPOND-DRAIN respondSelfDrain elapsed=85.5s backgroundRuns=0 waitCalls=1
+
+        ✔ Suite "Gated in-band collection canary (the model collects its own background run)"
+
+    So the graded check names, the evidence fields, the `RESPOND-DRAIN` counter and the suite title all read in the new vocabulary in a real run, which is the only place they were ever going to be read from. Nothing still prints "parked" or "run plane" for work that is running.
+
+    `waitCalls=3` again — the same count the ungated `ScenarioGradingTests` pins as the recorded value, so the rename moved no behaviour.
+
+    Whole run 844.6s against 689.4s for the previous green run. That is run-to-run spread on a shared machine, not a regression: the in-band canary alone took 190.3s here against 114.7s before, and nothing in this commit touches execution — only names.
+  timestamp: 2026-08-19T13:00:04.197607+00:00
+position_column: review
+position_ordinal: '80'
 title: Move the gated-scenario harness onto the background-run vocabulary
 ---
 Task `^820xc9z` moved this package's shipped surface off "parked" and "run plane". Its measured scope was `Sources/`, and its acceptance criteria were all about model-facing strings and the doc comments beside them. The gated integration harness was left alone on purpose, and this card is what "on purpose" means — not a gap nobody noticed.
@@ -89,12 +150,12 @@ Nothing in the harness asserts on the wire values, so `^820xc9z` did not break i
 
 ## Acceptance Criteria
 
-- [ ] No check name, evidence field, or test name in the integration target calls running work "parked" or names a "run plane"
-- [ ] Every Router symbol is still spelled as Router spells it
-- [ ] The `PARKED-DRAIN` mirror is either intact or moved whole, and the choice is stated in a comment
-- [ ] Genuine-suspension prose is untouched
+- [x] No check name, evidence field, or test name in the integration target calls running work "parked" or names a "run plane"
+- [x] Every Router symbol is still spelled as Router spells it
+- [x] The `PARKED-DRAIN` mirror is either intact or moved whole, and the choice is stated in a comment
+- [x] Genuine-suspension prose is untouched
 
 ## Tests
 
-- [ ] Ungated `swift test` green, both targets
-- [ ] One gated run green, with the new check names read back out of the transcript
+- [x] Ungated `swift test` green, both targets
+- [x] One gated run green, with the new check names read back out of the transcript
