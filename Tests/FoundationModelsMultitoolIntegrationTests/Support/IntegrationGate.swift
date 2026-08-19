@@ -562,6 +562,31 @@ struct LiveRouterFixture {
             )
             let progress = ResolutionProgress()
             let profile = try await router.resolve(profile: definition, reporting: progress)
+            // What this run actually resolved, printed because a gated run's
+            // whole purpose is to measure the configuration a host really gets
+            // — and until now the only time any of it reached the log was when
+            // resolution *failed* and `ResolutionFailure.description` rendered
+            // it. A green run said nothing, so the context rung a profile
+            // settled on and the footprint it was charged were invisible
+            // exactly when they were true.
+            //
+            // The context is read off `standard` alone deliberately: Router
+            // documents `SlotResolution.contextTokens` as profile-wide — "one
+            // profile-wide parameter, not a per-slot one" — so a second reading
+            // would be the same number wearing a different label.
+            //
+            // Both generation slots are printed because this profile names one
+            // model in both, and the sum of their charges is the thing Router's
+            // `^8hs4wrw` fix changed: `flash` naming an already-reserved
+            // reference must cost its own session's KV cache and no second copy
+            // of the weights.
+            print(
+                "RESOLVED [\(definition.name)] context=\(profile.standard.resolution.contextTokens) tokens"
+                    + " standard=\(profile.standard.chosen.stringValue)"
+                    + " footprint=\(profile.standard.footprintBytes)B charged=\(Self.chargedBytes(of: profile.standard))"
+                    + " | flash=\(profile.flash.chosen.stringValue)"
+                    + " footprint=\(profile.flash.footprintBytes)B charged=\(Self.chargedBytes(of: profile.flash))"
+            )
             return LiveRouterFixture(router: router, profile: profile, recordingsDir: recordingsDir)
         } catch {
             await LiveProfileTurnstile.shared.leave()
@@ -586,6 +611,34 @@ struct LiveRouterFixture {
     /// - Throws: if a transcript file can't be read or decoded.
     func transcriptEvents() throws -> [TranscriptEvent] {
         try MergedTranscript.merged(under: recordingsDir.appendingPathComponent(router.id.description))
+    }
+
+    /// What the shared budget was actually charged for a resolved slot, as
+    /// distinct from what that slot's candidate *weighs*.
+    ///
+    /// The two differ exactly when a reference is named by more than one slot,
+    /// which is this package's shipped shape: `footprintBytes` is "the chosen
+    /// candidate's `× 1.2` footprint estimate, as used at the joint-fit
+    /// comparison" and reads the same for both generation slots, while
+    /// `chargedBytes` is what that slot took out of the budget. Router's
+    /// `^8hs4wrw` made the second slot's charge its own session's KV cache
+    /// rather than a second copy of the weights, so `chargedBytes` is the
+    /// figure that moves and `footprintBytes` is the figure that does not.
+    /// Printing only the footprint would show a number the fix never touches.
+    ///
+    /// - Parameter model: the resolved slot to read.
+    /// - Returns: the charge in bytes, or `"n/a"` when the resolution recorded
+    ///   no charge for the chosen candidate — a shape change on Router's side
+    ///   rather than something to assert on, so it is reported rather than
+    ///   forced.
+    private static func chargedBytes(of model: RoutedLLM) -> String {
+        guard
+            let report = model.resolution.considered.first(where: { $0.ref == model.chosen }),
+            let charged = report.chargedBytes
+        else {
+            return "n/a"
+        }
+        return "\(charged)B"
     }
 
     /// Creates a unique temporary directory.
