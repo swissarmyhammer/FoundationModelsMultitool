@@ -361,7 +361,7 @@ func runElevationIntegrationScenario(
         var checks = answerChecks(turn.answer, containsOneOf: answerContainsOneOf, mustNotContain: [])
         checks.append(
             ScenarioCheck(
-                name: "pendingEnvelope",
+                name: pendingEnvelopeCheckName,
                 held: !pendingEnvelopes.isEmpty,
                 failureMessage:
                     "expected at least one runCode call to elevate and return a pending envelope, but the tool outputs were \(turn.toolOutputs)"
@@ -802,9 +802,17 @@ private func grade(scenario name: String, checks: [ScenarioCheck]) {
 /// one.
 let validAnswerCheckName = "validAnswer"
 
+/// The label of the check that grades the reply as carrying none of the
+/// phrasings that invalidate it, even when a required substring matched.
+let answerNotInvalidatedCheckName = "answerNotInvalidated"
+
 /// The label of the check that grades the answer as grounded in the returns it
 /// depends on.
 let groundedCheckName = "grounded"
+
+/// The label of the check that grades an elevated `runCode` call as having
+/// handed a pending envelope back.
+let pendingEnvelopeCheckName = "pendingEnvelope"
 
 /// The label of the check that grades the model as having collected its own
 /// background run in band, with a `wait` call of its own.
@@ -813,6 +821,10 @@ let inBandCollectionCheckName = "inBandCollection"
 /// The label of the check that grades no background run as still running at the
 /// instant the model's first turn ended.
 let noBackgroundRunsAtAnswerCheckName = "noBackgroundRunsAtAnswer"
+
+/// The label of the check that grades no background run as still running at the
+/// instant `respond(to:)` returned.
+let noBackgroundRunsAfterRespondCheckName = "noBackgroundRunsAfterRespond"
 
 /// The label of the check that grades the nested-generation probe's tool as
 /// having been entered at all.
@@ -939,7 +951,7 @@ private func answerChecks(
     if !mustNotContain.isEmpty {
         checks.append(
             ScenarioCheck(
-                name: "answerNotInvalidated",
+                name: answerNotInvalidatedCheckName,
                 held: invalidating.isEmpty,
                 failureMessage: "the answer contains \(invalidating), which invalidates it: \"\(answer)\""
             )
@@ -1372,7 +1384,8 @@ func inBandCollectionChecks(
             failureMessage:
                 "expected the model to collect its own background run with a `wait` call — the "
                 + "only in-band collector, and the path every host's own tooling advises (Router's "
-                + "`^466d38p`) — but it made none. Read `noBackgroundRunsAtAnswer` beside this: if "
+                + "`^466d38p`) — but it made none. Read `\(noBackgroundRunsAtAnswerCheckName)` "
+                + "beside this: if "
                 + "that failed too, the turn ended with work in flight and Router's drain is what "
                 + "collected it"
         )
@@ -1393,7 +1406,7 @@ func inBandCollectionChecks(
     )
     checks.append(
         ScenarioCheck(
-            name: "noBackgroundRunsAfterRespond",
+            name: noBackgroundRunsAfterRespondCheckName,
             held: evidence.backgroundRunsAfterRespond.isEmpty,
             failureMessage:
                 "expected no background run when respond returned, but "

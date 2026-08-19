@@ -125,8 +125,72 @@ comments:
 
     Whole run 844.6s against 689.4s for the previous green run. That is run-to-run spread on a shared machine, not a regression: the in-band canary alone took 190.3s here against 114.7s before, and nothing in this commit touches execution — only names.
   timestamp: 2026-08-19T13:00:04.197607+00:00
-position_column: review
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m0d1z989hbkmfjczycg8nfrk
+  text: |
+    ### review — findings
+    - evidence: 1 finding, 1 confirmed, 0 refuted — `review sha f0cdc3e~1..f0cdc3e`, 7 files attempted, 0 failed, 4 `.kanban/` files excluded by `.reviewignore`. Tests/FoundationModelsMultitoolIntegrationTests/Support/ScenarioRunner.swift:1396
+    - gated evidence: accepted. The card's second Tests item is now closed by the "finish iteration 2 — green" record: `MULTITOOL_INTEGRATION=1 swift test --no-parallel` at f0cdc3e, 59 tests / 11 suites / 844.6s, every scenario PASS, and the new names read back out of the transcript — `noBackgroundRunsAtAnswer=pass noBackgroundRunsAfterRespond=pass`, `backgroundRunsAtAnswer=[] backgroundRunsAfterRespond=[]`, `RESPOND-DRAIN respondSelfDrain … backgroundRuns=0`. All 6 acceptance and Tests boxes are ticked.
+    - why this pass is not clean: the same range now returns one confirmed finding that the previous pass did not raise. `"noBackgroundRunsAfterRespond"` is written as a string literal at the grading site, while the three check names beside it in the same function come from named constants. The rename introduced this line, so it is inside the reviewed diff.
+    - scope of the fix: the finding names one line. Remove the cause from the whole file — every check name the runner grades must come from a named constant, so audit each grading site in ScenarioRunner.swift, not line 1396 alone.
+    - next: /implement to close the finding, then re-review. The card stays in `review`. No gated re-run is needed for a constant extraction that changes no wire value, but the ungated `swift test` must be green again before the re-review.
+  timestamp: 2026-08-19T13:04:36.617058+00:00
+- actor: claude-code
+  id: 01m0d23j6za9569m5x7bgerxaq
+  text: |-
+    Picked the card back up in `doing` for the one open finding.
+
+    Audit of the whole file, not the one line. `ScenarioRunner.swift` builds a `ScenarioCheck` at 9 sites. Six take their `name:` from a file-scope constant in the block that starts at `validAnswerCheckName`. Three write the name as a string literal at the grading site:
+
+    - `name: "pendingEnvelope"` in `runElevationIntegrationScenario`
+    - `name: "answerNotInvalidated"` in `answerChecks(_:containsOneOf:mustNotContain:)`
+    - `name: "noBackgroundRunsAfterRespond"` in the in-band canary grading function — the line the finding names
+
+    So the finding names one instance of three. The other two are older than the rename; the rule the finding states — every check name the runner grades comes from a named constant declared with its siblings — does not exempt them, so all three go.
+
+    Cross-file check before touching anything: no file outside `ScenarioRunner.swift` spells any of the three names. `ScenarioGradingTests.swift` reads checks back by constant only (`validAnswerCheckName`, `groundedCheckName`, `inBandCollectionCheckName`, `noBackgroundRunsAtAnswerCheckName`, `nestedCallEnteredCheckName`, `nestedGenerationReturnedCheckName`), and `ScenarioRunner.swift` itself matches `$0.name == validAnswerCheckName` when it fills `isValidAnswer`. No string value changes, so no transcript field and no graded outcome moves.
+  timestamp: 2026-08-19T13:06:56.863579+00:00
+- actor: claude-code
+  id: 01m0d2s8ehrj8qfnxe1n9psmgs
+  text: |-
+    Finding closed, and closed against the whole file rather than the one line.
+
+    Three constants added to the sibling block, each with a doc comment in the block's own voice ("The label of the check that grades …"):
+
+    - `answerNotInvalidatedCheckName` = `"answerNotInvalidated"`, beside `validAnswerCheckName` — both come out of `answerChecks`.
+    - `pendingEnvelopeCheckName` = `"pendingEnvelope"`, for the elevation runner.
+    - `noBackgroundRunsAfterRespondCheckName` = `"noBackgroundRunsAfterRespond"`, beside `noBackgroundRunsAtAnswerCheckName` — the pair now reads as a pair.
+
+    All nine `ScenarioCheck` sites in the file now take `name:` from a constant. No string value changed, so no `SCENARIO` line, no transcript field and no graded outcome moves — which is why the gated run at `f0cdc3e` still stands.
+
+    One more copy of the same defect, found by the audit and removed with it: the `inBandCollection` failure message spelled `noBackgroundRunsAtAnswer` as literal text inside the message, so the constant's value was restated at a site the constant did not reach. It now interpolates `\(noBackgroundRunsAtAnswerCheckName)`. The rendered message is byte-identical; only the source stops holding a second copy.
+
+    Not changed, and each for a reason that is a fact rather than a preference:
+
+    - Doc comments and `//` comments that name a check (`inBandCollection`, `noBackgroundRunsAtAnswer`) in prose. A comment cannot interpolate, so there is no form of those lines that reads the constant. They are documentation about the check, not the value the runner grades.
+    - Router symbols: `ParkedRun`, `ToolContext.parkedRuns()`, `RoutedSessionActor.parkedRunDrainRoundLimit`, `settleParkedRuns` — untouched by this diff.
+    - The `PARKED-DRAIN [parkedRunDrain] …` quoted block and its explaining comment — untouched.
+    - Genuine-suspension prose — untouched.
+    - `Sources/` — untouched.
+
+    Verification: `swift build --build-tests` complete, no compiler warnings or errors (the one `warning:` line is SwiftPM's build-planning note about the third-party mlx-swift resource bundle, the same note every prior run on this card recorded). `swift test` — 361 tests / 30 suites and 59 tests / 11 suites, all passed, exit 0.
+  timestamp: 2026-08-19T13:18:47.761171+00:00
+- actor: claude-code
+  id: 01m0d2sewv9tqs1egjw6wd2nrv
+  text: |-
+    ### implement — changed
+    - evidence: 1 file — Tests/FoundationModelsMultitoolIntegrationTests/Support/ScenarioRunner.swift. `swift build --build-tests` complete, zero warnings from this repo's code; `swift test` — 361 tests / 30 suites and 59 tests / 11 suites, zero failures.
+    - next: /review. The gated suite was not re-run, and does not need to be: no string value changed, so no wire value and no graded outcome moved, and the gated green at f0cdc3e stands.
+  timestamp: 2026-08-19T13:18:54.363090+00:00
+- actor: claude-code
+  id: 01m0d2vjfa8rqzgtjx5fxdnz4z
+  text: |-
+    ### test — green
+    - evidence: `swift build --build-tests` — build complete; only the expected third-party mlx-swift resource-bundle build-planning note. `swift test` — 361 tests in 30 suites passed (3.938s); 59 tests in 11 suites passed (0.013s). 0 failures, 0 warnings from this repo's own code, 0 skipped.
+    - next: none — ungated suite is clean.
+  timestamp: 2026-08-19T13:20:03.562157+00:00
+position_column: doing
+position_ordinal: '8380'
 title: Move the gated-scenario harness onto the background-run vocabulary
 ---
 Task `^820xc9z` moved this package's shipped surface off "parked" and "run plane". Its measured scope was `Sources/`, and its acceptance criteria were all about model-facing strings and the doc comments beside them. The gated integration harness was left alone on purpose, and this card is what "on purpose" means — not a gap nobody noticed.
@@ -159,3 +223,12 @@ Nothing in the harness asserts on the wire values, so `^820xc9z` did not break i
 
 - [x] Ungated `swift test` green, both targets
 - [x] One gated run green, with the new check names read back out of the transcript
+
+## Review Findings (2026-08-19 08:00)
+
+> Scope: `review sha f0cdc3e~1..f0cdc3e` — reviewed the diffs only — lines this change added or modified. 7 file(s) reviewed, 4 not reviewed.
+
+> 4 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 4 file(s)
+
+- [x] `Tests/FoundationModelsMultitoolIntegrationTests/Support/ScenarioRunner.swift:1396` `completeness/invariant-propagation` — Check name is hardcoded as a string literal, violating the established pattern where all check names in this module use named constants. Lines 1360, 1369, and 1382 in the same function all reference check names through constants (e.g., `noBackgroundRunsAtAnswerCheckName`), but line 1396 hardcodes the string `"noBackgroundRunsAfterRespond"` directly. Add a constant definition after line 815: `let noBackgroundRunsAfterRespondCheckName = "noBackgroundRunsAfterRespond"`, then update line 1396 to use it: `name: noBackgroundRunsAfterRespondCheckName,`.
