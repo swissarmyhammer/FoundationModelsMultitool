@@ -1,10 +1,10 @@
 import Testing
 
 /// The gated elevation-in-code-mode scenario — eventplan.md's phase-1 exit
-/// proof that the two planes really do meet on real hardware: a snippet whose
+/// proof that the two surfaces really do meet on real hardware: a snippet whose
 /// work outlives the mount's wait clock hands the model a pending envelope,
-/// and the model collects the parked run through the run-plane globals and
-/// still answers.
+/// and the model collects the background run through the background-run globals
+/// and still answers.
 ///
 /// **Why this suite does not use `runNativeIntegrationScenario`.** Not the
 /// session: both runners build the same `RoutedSession` from

@@ -85,31 +85,35 @@ actor ScenarioCallLog {
     /// The ambient ``ToolContext`` the first *entered* invocation ran under, or
     /// `nil` when no fixture tool has been entered yet.
     ///
-    /// Kept so a scenario can read the session's **run plane** after its turn
-    /// is over. A `ToolContext` is the only route to that plane (Router task
+    /// Kept so a scenario can read the session's **background runs** after its
+    /// turn is over. A `ToolContext` is the only route to them (Router task
     /// `^k0mecjp`), it exists only inside a tool call, and every context bound
-    /// during one session names that session's own plane — so the first one a
-    /// fixture tool saw is a usable handle to it afterwards.
+    /// during one session names that session's own runs — so the first one a
+    /// fixture tool saw is a usable handle to them afterwards.
     ///
     /// This is what makes "no run survives the call" assertable at all. It is
     /// an observation of the product's own wiring, not a back door: the
     /// capability it reads is the same public one `status()` and `wait` use.
     ///
-    /// Recorded when a call is *entered*, never when it completes, so the plane
-    /// is readable **while** a fixture tool is still working. The in-band
-    /// collection canary reads it at the instant the model's first turn ends,
+    /// Recorded when a call is *entered*, never when it completes, so the runs
+    /// are readable **while** a fixture tool is still working. The in-band
+    /// collection canary reads them at the instant the model's first turn ends,
     /// and the failure it exists to catch is exactly the case where a fixture
     /// call is still open then: recording the handle on completion would make
-    /// that read report an empty plane and grade a real parked run as none —
-    /// which is the one reading the canary must never get wrong.
+    /// that read report nothing running and grade a real background run as
+    /// none — which is the one reading the canary must never get wrong.
     private(set) var observedContext: ToolContext?
 
-    /// The runs still parked on the session this log's tools ran under.
+    /// The runs still going on the session this log's tools ran under.
     ///
-    /// - Returns: every parked run, or an empty array when no fixture tool was
-    ///   ever entered — in which case a scenario has a bigger problem than the
-    ///   run plane, and its groundedness assertion will say so first.
-    func parkedRuns() async -> [ParkedRun] {
+    /// `ToolContext.parkedRuns()` behind it is Router's own spelling for the
+    /// same rows; this package's word for what a row describes is a background
+    /// run.
+    ///
+    /// - Returns: every background run, or an empty array when no fixture tool
+    ///   was ever entered — in which case a scenario has a bigger problem than
+    ///   its background runs, and its groundedness assertion will say so first.
+    func backgroundRuns() async -> [ParkedRun] {
         await observedContext?.parkedRuns() ?? []
     }
 
@@ -137,10 +141,10 @@ actor ScenarioCallLog {
         // Read here, inside the call, because that is the only place an ambient
         // context exists — by the time a scenario asserts, every binding is
         // gone and the handle recorded here is what is left of the session's
-        // run plane.
+        // background runs.
         //
         // Handed over before `body` runs, not after: see `observedContext` for
-        // the scenario that reads the plane while a fixture call is still open.
+        // the scenario that reads them while a fixture call is still open.
         await observe(ToolContext.current)
         // Recorded here for the same reason, and `enteredPaths` names the run
         // that proved it necessary: a call that never comes back is invisible
@@ -159,9 +163,9 @@ actor ScenarioCallLog {
     /// Keeps the ambient context one entering invocation ran under, if this log
     /// has not already kept one.
     ///
-    /// Only the first is kept: every later one names the same session's run
-    /// plane, and the first is the one certain to exist by the time any scenario
-    /// reads it.
+    /// Only the first is kept: every later one names the same session's
+    /// background runs, and the first is the one certain to exist by the time
+    /// any scenario reads it.
     ///
     /// - Parameter ambient: the context that invocation ran under, if any.
     private func observe(_ ambient: ToolContext?) {

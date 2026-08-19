@@ -3,8 +3,8 @@ import Testing
 
 @testable import FoundationModelsMultitool
 
-/// The gated proof that `respond(to:)` self-drains the run plane (task
-/// `^n6kgckr`).
+/// The gated proof that `respond(to:)` self-drains its own background runs
+/// (task `^n6kgckr`).
 ///
 /// **Why this suite exists beside the streaming ones, never in place of them.**
 /// `respond` drains, so a suite that drifted onto it would stop observing the
@@ -17,24 +17,26 @@ import Testing
 /// call hands back a token instead of data.
 ///
 /// **Router's half landed** (`d2be019`, their `^nmpejc5`): `respond` snapshots
-/// every parked run, settles them, and runs a continuation turn carrying the
-/// results, bounded at four continuation turns.
+/// every run still going, settles them, and runs a continuation turn carrying
+/// the results, bounded at four continuation turns.
 ///
 /// **What this suite proves, and what it does not.** It proves the blocking
-/// surface reaches the same grounded answer the streaming surface does, with
-/// an empty run plane on return. It does **not** isolate Router's drain: the
+/// surface reaches the same grounded answer the streaming surface does, with no
+/// background run left on return. It does **not** isolate Router's drain: the
 /// model collects its own backgrounded runs in-band, because the pending
 /// envelope instructs it to, so the drain has nothing left to settle. Measured
-/// on real hardware, `waitCalls` is 1-2 per run and `parked` is 0 either way.
+/// on real hardware, `waitCalls` is 1-2 per run and `backgroundRuns` is 0
+/// either way.
 ///
 /// **No suite in this target isolates the drain, and none can.** Isolating it
-/// needs a turn that ends with a run still parked, and Router's `^466d38p`
-/// (their commit `b4c0282`) says no host can produce one: every park hands the
-/// model a `PendingRunEnvelope` telling it to collect the run with a `wait` call
-/// first, and there is no park without that instruction. The suite written to
-/// try — task `^xeqs138` — measured the opposite on real hardware and was
-/// inverted into `InBandCollectionCanaryTests`, which now watches for the
-/// condition becoming reachable. Cite nothing here for "the drain works".
+/// needs a turn that ends with a run still going, and Router's `^466d38p`
+/// (their commit `b4c0282`) says no host can produce one: every background run
+/// hands the model a `PendingRunEnvelope` telling it to collect that run with a
+/// `wait` call first, and there is no background run without that instruction.
+/// The suite written to try — task `^xeqs138` — measured the opposite on real
+/// hardware and was inverted into `InBandCollectionCanaryTests`, which now
+/// watches for the condition becoming reachable. Cite nothing here for "the
+/// drain works".
 ///
 /// `.enabled(if: multitoolIntegrationEnabled)` like every other gated suite —
 /// with `MULTITOOL_INTEGRATION` unset the whole thing is skipped, so ungated
@@ -46,8 +48,8 @@ import Testing
     .enabled(if: multitoolIntegrationEnabled)
 )
 struct RespondDrainTests {
-    @Test("respond answers from what the backgrounded run returned, matches the stream, and leaves nothing parked")
-    func respondSelfDrainsTheRunPlane() async throws {
+    @Test("respond answers from what the backgrounded run returned, matches the stream, and leaves nothing running")
+    func respondSelfDrainsItsBackgroundRuns() async throws {
         try await runRespondDrainScenario(
             name: "respondSelfDrain",
             // The compose/chain pair, deliberately: the answer needs two tools,

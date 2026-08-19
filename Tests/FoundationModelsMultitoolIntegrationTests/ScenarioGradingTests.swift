@@ -102,22 +102,22 @@ struct ScenarioGradingTests {
     /// How many `wait` calls the recorded gated run made.
     ///
     /// Measured, not chosen: the `MULTITOOL_INTEGRATION` run of the canary's own
-    /// scenario reported `waitCalls=3` beside `parkedAtAnswer=[]`. The exact
-    /// count is not what the canary grades — any call at all is in-band
-    /// collection — but grading the recorded number keeps this test a rebuild of
-    /// a run that happened rather than of one imagined.
+    /// scenario reported `waitCalls=3` with no background run still going at the
+    /// answer. The exact count is not what the canary grades — any call at all
+    /// is in-band collection — but grading the recorded number keeps this test a
+    /// rebuild of a run that happened rather than of one imagined.
     private static let recordedInBandWaitCalls = 3
 
-    @Test("the recorded run — the model collected its own parked run — passes every canary condition")
+    @Test("the recorded run — the model collected its own background run — passes every canary condition")
     func theRecordedInBandRunPassesEveryCanaryCondition() {
         // The gated run this canary was inverted from: the model called `wait`,
-        // collected its own run, and answered with the manifest code, leaving
-        // the run plane empty at the turn's end and at respond's return.
+        // collected its own run, and answered with the manifest code, leaving no
+        // background run at the turn's end and none at respond's return.
         let checks = Self.canaryChecks(
             for: InBandCollectionEvidence(
                 answer: Self.replyReportingTheManifestCode,
-                parkedAtAnswer: [],
-                parkedAfterRespond: [],
+                backgroundRunsAtAnswer: [],
+                backgroundRunsAfterRespond: [],
                 returnedPaths: IntegrationScenarioGrounding.archiveRebuild,
                 waitCalls: Self.recordedInBandWaitCalls
             )
@@ -127,8 +127,8 @@ struct ScenarioGradingTests {
         #expect(failed.isEmpty)
     }
 
-    @Test("a turn that ended with a run still parked fails the canary, and fails it on the two conditions that say so")
-    func aRunLeftParkedAtTheAnswerFailsTheCanary() throws {
+    @Test("a turn that ended with a run still going fails the canary, and fails it on the two conditions that say so")
+    func aRunStillRunningAtTheAnswerFailsTheCanary() throws {
         // The shape task `^xeqs138` was written to produce and Router's
         // `^466d38p` says no host can reach: the model ignored the pending
         // envelope's instruction to collect, so its turn ended with the rebuild
@@ -138,15 +138,15 @@ struct ScenarioGradingTests {
         let checks = Self.canaryChecks(
             for: InBandCollectionEvidence(
                 answer: Self.replyReportingTheManifestCode,
-                parkedAtAnswer: [IntegrationArchiveRebuildTool.path],
-                parkedAfterRespond: [],
+                backgroundRunsAtAnswer: [IntegrationArchiveRebuildTool.path],
+                backgroundRunsAfterRespond: [],
                 returnedPaths: IntegrationScenarioGrounding.archiveRebuild,
                 waitCalls: 0
             )
         )
 
-        let runPlaneEmptyAtAnswer = try Self.check(runPlaneEmptyAtAnswerCheckName, in: checks)
-        #expect(!runPlaneEmptyAtAnswer.held)
+        let noBackgroundRunsAtAnswer = try Self.check(noBackgroundRunsAtAnswerCheckName, in: checks)
+        #expect(!noBackgroundRunsAtAnswer.held)
         let inBandCollection = try Self.check(inBandCollectionCheckName, in: checks)
         #expect(!inBandCollection.held)
         // And it fails on those two alone: the reply is a valid, grounded

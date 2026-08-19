@@ -497,7 +497,7 @@ struct IntegrationDeepScanOutput {
 /// pending envelope; and far shorter than its 120-second
 /// `defaultTimeoutSeconds` (and than `MultiToolConfiguration
 /// .executionTimeLimit`, the sandbox watchdog's absolute ceiling), so the
-/// parked run settles on its own while the model is still composing the
+/// background run settles on its own while the model is still composing the
 /// follow-up that collects it.
 let integrationDeepScanDuration: Duration = .seconds(8)
 
@@ -509,14 +509,14 @@ let integrationDeepScanDuration: Duration = .seconds(8)
 /// scan — a count of an unspecified thing is a question a model is happy to
 /// make up. It has no such prior for the report code of a scan of the user's
 /// own archive: that is a value it plainly cannot know, so the only way to it
-/// is to run the scan and collect the parked run — which is the whole point of
-/// the scenario.
+/// is to run the scan and collect the background run — which is the whole point
+/// of the scenario.
 let integrationDeepScanReportCode = 41739
 
 /// The deliberately slow tool the elevation scenario drives: a snippet that
 /// awaits it cannot finish inside the mount's wait window, so the outer
 /// `runCode` call hands the model a pending envelope and keeps running in the
-/// background. Recovering the answer then requires the run-plane globals
+/// background. Recovering the answer then requires the background-run globals
 /// (`status()`, `wait(completionToken, seconds)`) the sandbox installs — which
 /// is exactly the round trip eventplan.md's phase 1 has to prove end to end.
 struct IntegrationDeepScanTool: Tool {
@@ -643,7 +643,7 @@ struct IntegrationArchiveRebuildOutput {
 ///
 /// A *code*, for `integrationDeepScanReportCode`'s reason: a model has no prior
 /// for the manifest code of a rebuild of the user's own archive, so the only way
-/// to it is to run the rebuild and collect the parked run. And a **different**
+/// to it is to run the rebuild and collect the background run. And a **different**
 /// code from the deep scan's, because the two scenarios are answered by two
 /// different fixtures: one graded value that satisfied both would let a reply
 /// about the wrong run pass.
@@ -655,12 +655,12 @@ let integrationArchiveRebuildManifestCode = 58204
 /// **Why it does not have to be slow, which is not obvious.** The canary asks
 /// whether the model collected its own backgrounded run, and a backgrounded run
 /// is not something a slow tool produces. `MultiTool.detachmentClocks(from:)`
-/// answers a zero wait clock for every call, so *every* `runCode` parks the
-/// instant it is made, whatever the snippet awaits. The park is what hands the
-/// model a `PendingRunEnvelope`, and the envelope's text is what makes it spend
-/// a `wait` call (Router's `^466d38p`). So the graded shape — park, then
-/// collect in band — is produced by the product, and a fixture that returns
-/// immediately produces it just as surely as one that stalls.
+/// answers a zero wait clock for every call, so *every* `runCode` backgrounds
+/// the instant it is made, whatever the snippet awaits. The backgrounding is
+/// what hands the model a `PendingRunEnvelope`, and the envelope's text is what
+/// makes it spend a `wait` call (Router's `^466d38p`). So the graded shape —
+/// background, then collect in band — is produced by the product, and a fixture
+/// that returns immediately produces it just as surely as one that stalls.
 ///
 /// The contrast with `IntegrationDeepScanTool` is the contrast in what the two
 /// scenarios ask. That fixture is slow so that the outer `runCode` outlives the
@@ -690,8 +690,8 @@ struct IntegrationArchiveRebuildTool: Tool {
     /// the question would be grading itself.
     ///
     /// "In the background" is true of the call however fast this tool is —
-    /// `runCode` parks every call, so the model is handed a token rather than a
-    /// value either way. What the description no longer claims is that the
+    /// `runCode` backgrounds every call, so the model is handed a token rather
+    /// than a value either way. What the description no longer claims is that the
     /// rebuild takes a while, which stopped being true when the gate came off.
     let description = "Rebuilds the user's archive index and returns that rebuild's manifest code. "
         + "The rebuild runs in the background."
