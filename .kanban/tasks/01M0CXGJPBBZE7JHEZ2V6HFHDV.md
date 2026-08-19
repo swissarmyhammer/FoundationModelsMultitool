@@ -189,8 +189,39 @@ comments:
     - evidence: `swift build --build-tests` — build complete; only the expected third-party mlx-swift resource-bundle build-planning note. `swift test` — 361 tests in 30 suites passed (3.938s); 59 tests in 11 suites passed (0.013s). 0 failures, 0 warnings from this repo's own code, 0 skipped.
     - next: none — ungated suite is clean.
   timestamp: 2026-08-19T13:20:03.562157+00:00
-position_column: doing
-position_ordinal: '8380'
+- actor: claude-code
+  id: 01m0d2wqevsbtd07qt52zbk6n8
+  text: |-
+    ### commit — changed
+    - evidence: cac332c fix(integration): source check names from constants, not literals
+    - next: none
+  timestamp: 2026-08-19T13:20:41.435002+00:00
+- actor: claude-code
+  id: 01m0d3219wqhmk8xc1e7bcz1me
+  text: |
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (cac332c) — 0 findings, 0 confirmed, 0 refuted; 7 validators attempted, 0 failed. 1 file reviewed (`Tests/FoundationModelsMultitoolIntegrationTests/Support/ScenarioRunner.swift`); 2 `.kanban/` files excluded by `.reviewignore`. Prior finding `completeness/invariant-propagation` at `Support/ScenarioRunner.swift:1396` is checked and fixed at the cause: all 10 `ScenarioCheck` construction sites now source `name:` from a file-scope constant, and no literal is left at any site. No string value changed — `"answerNotInvalidated"`, `"pendingEnvelope"`, and `"noBackgroundRunsAfterRespond"` keep their exact text, and the `inBandCollection` failure message renders byte-identical after the interpolation of `noBackgroundRunsAtAnswerCheckName`. The three new constants carry doc comments in the block's own voice. The exclusion of prose comments is sound, because a comment cannot interpolate. Router symbols, the `PARKED-DRAIN` block, genuine-suspension prose, and `Sources/` are untouched. The gated run at `f0cdc3e` (59 tests / 11 suites / 844.6s) still stands, because no wire value and no graded outcome changed.
+    - next: none — task moved to done
+  timestamp: 2026-08-19T13:23:35.356741+00:00
+- actor: claude-code
+  id: 01m0d32y481kpk1j510a92b7qx
+  text: |-
+    ### finish iteration 3 — clean
+    - implement: changed — 1 file; the finding fixed at its cause, not its line
+    - test: green — `swift test`, 361/30 and 59/11, zero failures, zero warnings
+    - commit: cac332c
+    - review: clean — `review sha HEAD~1..HEAD`, 0 findings; task advanced to done
+
+    The finding named one literal at `ScenarioRunner.swift:1396`. Closing it against the whole file turned up **four** instances of the same cause: three `ScenarioCheck` construction sites writing a literal `name:` (`answerNotInvalidated`, `pendingEnvelope`, `noBackgroundRunsAfterRespond`), plus the `inBandCollection` failure message spelling `noBackgroundRunsAtAnswer` as literal text where the constant did not reach. All ten construction sites in the file now source `name:` from a named constant.
+
+    **No string value changed**, which is what let the gated run at `f0cdc3e` stand rather than needing a repeat: the strings the model and the transcript reader see are byte-identical, only their source moved. The reviewer confirmed that byte-for-byte, including the one concatenated fragment that had to be split to interpolate.
+
+    Doc comments that name a check in prose were deliberately left alone — Swift comments cannot interpolate, so those lines document the check rather than carry the graded value.
+
+    Card closes 6/6 with its finding checked.
+  timestamp: 2026-08-19T13:24:04.872042+00:00
+position_column: done
+position_ordinal: d480
 title: Move the gated-scenario harness onto the background-run vocabulary
 ---
 Task `^820xc9z` moved this package's shipped surface off "parked" and "run plane". Its measured scope was `Sources/`, and its acceptance criteria were all about model-facing strings and the doc comments beside them. The gated integration harness was left alone on purpose, and this card is what "on purpose" means — not a gap nobody noticed.
