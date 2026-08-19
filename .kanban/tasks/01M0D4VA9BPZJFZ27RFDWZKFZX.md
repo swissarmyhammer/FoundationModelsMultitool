@@ -80,8 +80,54 @@ comments:
     - One warning line appears on both runs: SwiftPM's `missing creator for mutated node` for `mlx-swift_Cmlx.bundle`. This is a build-system message about a third-party dependency's resource bundle, not a compiler warning about this repo's code — it is already on record on task ^akpzysf as reproducing even on a no-op build that compiles zero sources.
     - next: mark the run-evidence checkbox and the description checkbox for the real-model run with per-suite times.
   timestamp: 2026-08-19T16:16:34.495011+00:00
+- actor: claude-code
+  id: 01m0ddhezydfqwd16vsftk8wdh
+  text: |-
+    ### review — findings
+    - evidence: `review sha HEAD~1..HEAD` (commit 32d82b2). counts: 1 finding, 1 confirmed, 0 refuted. Item: IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/CLISmokeTests.swift:30 — the @Suite for CLISmokeTests does not have the .serialized and .timeLimit traits that all other integration suites have.
+    - note: the engine gave 60 tool-rule notices from code-hygiene rules (function-length-swift, magic-numbers-swift, missing-docs-swift). The rules looked for files at the pre-move paths (Sources/multitool-cli/, Tests/FoundationModelsMultitoolIntegrationTests/) and did not read them. These are notices, not findings.
+    - next: apply the finding, then run `/review ^dwzkfzx` again. The task stays in review.
+  timestamp: 2026-08-19T16:26:46.654961+00:00
+- actor: claude-code
+  id: 01m0ddj09g8ym8ek4aj0szrkv6
+  text: |-
+    ### finish iteration 1 — findings
+    - implement: changed — nested IntegrationTests package, MultitoolCLI library, repo-local CI, docs
+    - test: green — root swift test 361/30; IntegrationTests 59/11 in 950.159s, 0 skipped, no env var
+    - commit: 32d82b2
+    - review: findings — IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/CLISmokeTests.swift:30 (missing .serialized and .timeLimit suite traits)
+  timestamp: 2026-08-19T16:27:04.368268+00:00
+- actor: claude-code
+  id: 01m0ddnnhq1d7x02d7nvahr0j2
+  text: |-
+    Applied the review finding on `CLISmokeTests.swift`. The `@Suite` attribute is now `@Suite("CLI smoke test", .serialized, .timeLimit(.minutes(30)))` — the same trait set as the other live suites in this target.
+
+    Audit of the full target for the same omission: the target has 11 suites. Seven live suites have `.serialized` and a `.timeLimit` (30 minutes as the usual value; `NestedGenerationProbeTests` uses 1 minute and `InBandCollectionCanaryTests` uses 10 minutes, and each records its reason). The three suites with no traits — `ScenarioFailureModeTests`, `ScenarioGradingTests`, `ScenarioFixtureTests` — run no live model and do not take the turnstile, so the cause of the finding does not apply to them. `CLISmokeTests` was the only live suite without the traits. No other change is necessary.
+
+    Build proof: `swift build --package-path IntegrationTests --build-tests` completed with exit code 0. The one warning line, `missing creator for mutated node` for `mlx-swift_Cmlx.bundle`, is the known build-system message that task ^akpzysf records; it occurs on a no-op build also and is not related to this change. The integration suite was not run, per instruction.
+
+    ### implement — changed
+    - evidence: 1 file — IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/CLISmokeTests.swift; `swift build --package-path IntegrationTests --build-tests` exit 0
+    - next: run `/review ^dwzkfzx` again
+  timestamp: 2026-08-19T16:29:04.439257+00:00
+- actor: claude-code
+  id: 01m0ddr26mq4z8vvehp7ybwpr3
+  text: |-
+    ### test — green
+    - evidence: `swift test` — Test run with 361 tests in 30 suites passed after 4.693 seconds. 0 failures, 0 skipped. Only the documented `mlx-swift_Cmlx.bundle` build-system message appeared (tracked on ^akpzysf), not counted as a warning against this repo.
+    - evidence: `swift build --package-path IntegrationTests --build-tests` — Build complete! (2.09 sec). Same documented `mlx-swift_Cmlx.bundle` message, no other warnings.
+    - confirmed the only source diff since the last green run is the `CLISmokeTests.swift` `@Suite` line gaining `.serialized, .timeLimit(.minutes(30))`.
+    - did not rerun the real-model integration suite; prior run evidence stands on this card.
+    - next: proceed to review/commit.
+  timestamp: 2026-08-19T16:30:22.932138+00:00
 position_column: doing
 position_ordinal: '8380'
 title: Replace the MULTITOOL_INTEGRATION env-var gate with a separate integration test package, and run it in CI
 ---
 Human-directed 2026-08-19: \"get rid of this env var gated run nonsense and make specific integration test targets, making sure those are in CI… swift test should run all unit tests, integration tests should be able to run as a separate target, and in CI — you can do this with test filters or test packages, but env vars are not 'the way'.\"\n\n## What is wrong with the gate today\n\nEvery integration suite is `.enabled(if: multitoolIntegrationEnabled)`, which reads `MULTITOOL_INTEGRATION` from the environment. Consequences:\n\n- `swift test` reports **59 tests in 11 suites passed** whether or not a single one ran. A green run that measured nothing is indistinguishable from a green run that measured everything.\n- Whether the real-model suite runs is a property of the shell, not of the command. Nothing in the invocation says which of the two just happened.\n- CI inherits it: the shared workflow is parameterised on `integration-gate-env` and runs the bundle by hand under `xcrun xctest`.\n\n## Why filters alone do not satisfy it\n\n`swift test --filter` and `--skip` both take a `<test-target>` regex, so separate *runs* are easy. But SwiftPM has no manifest-level way to hold a target out of the default run, so a bare `swift test` would still run the real-model suite — 12 to 15 minutes locally, 70 on the runner. \"swift test should run all unit tests\" is then only true if every person and every script remembers a flag. This package's standing rule is to make a failure class structurally impossible rather than rely on remembering.\n\n## The shape\n\nA nested package owning the integration tests:\n\n    Package.swift                      root: library, multitool-cli, unit tests\n    IntegrationTests/Package.swift     depends on the root package by path\n\nThen `swift test` at the root runs unit tests and nothing else, because the root manifest has no integration target. `swift test --package-path IntegrationTests` runs the real-model suite. Neither reads an environment variable, and the command says which one you asked for.\n\n## What it requires first\n\nBoth test targets do `@testable import multitool_cli`, and **cross-package `@testable` on an executable target is not possible**. `Sources/multitool-cli/` is three files — `CLIRunner.swift`, `DemoTools.swift`, `main.swift`.\n\nSo the CLI logic moves to a library target (`CLIRunner`, `DemoTools`), leaving `main.swift` as the executable that calls it. The members the integration package reads become `public`: `CLIRunner.run(arguments:resolve:output:)`, `ExitCode`, `demoProfile`, `generationModel`, `embeddingModel`. The unit target keeps using them from inside the same package.\n\n## The one thing this loses, and how CI covers it\n\nToday `Package.swift` deliberately keeps the integration target building under a plain `swift build --build-tests` — the manifest says so — so a broken integration test breaks the ordinary build. A nested package ends that coupling: the root build would no longer compile those tests, and they could rot unnoticed between real-model runs.\n\nCI must therefore build the integration package on **every** run, even when it does not execute the suite. A build of the integration package is cheap; only the run is expensive. Do not drop this — it is the whole reason the coupling existed.\n\n## CI\n\n`.github/workflows/ci.yml` currently delegates to `swissarmyhammer/workflows/.github/workflows/swift-ci.yaml@main`, whose integration job is built entirely around `integration-gate-env` and drives the xctest bundle by hand. That is a third repo. Go repo-local so this package owns its own CI, and leave the shared workflow alone rather than pushing an env-var-shaped change into it.\n\nTwo jobs:\n\n- **unit** — `swift build --build-tests`, `swift test`, plus `swift build --package-path IntegrationTests --build-tests` for the compile coupling above.\n- **integration** — `swift test --package-path IntegrationTests`.\n\nThe metallib copy the shared workflow performs (`MetalLibraryTestBootstrap`'s reason) still has to happen for the integration job. Carry it across; do not assume it is unnecessary because the new job looks different.\n\n## Do not\n\n- Do not leave `multitoolIntegrationEnabled`, `multitoolIntegrationEnvVar` or any `.enabled(if:)` gate behind. A gate that still reads the environment is the thing being removed.\n- Do not edit `swissarmyhammer/workflows`. It serves Router and the metadata registry too.\n- Do not change what any scenario asserts. This is a packaging change; the graded behaviour must be identical.\n\n## Acceptance Criteria\n\n- [ ] `swift test` at the root runs the unit tests and no real-model test, and its reported count reflects only what ran\n- [ ] `swift test --package-path IntegrationTests` runs the real-model suite with no environment variable set\n- [ ] No `MULTITOOL_INTEGRATION` reference survives anywhere in the repo, including docs and CI\n- [ ] The CLI logic is a library target; `main.swift` is a thin entry point; both test targets reach it without `@testable` across a package boundary\n- [ ] CI is repo-local, builds the integration package on every run, and runs the real-model suite in its own job\n- [ ] `README.md` and `plan.md` state the two commands, and no longer teach the env var\n\n## Tests\n\n- [ ] Root `swift test` green, with a count that is unit tests alone\n- [x] `swift test --package-path IntegrationTests` green — 11 suites, every scenario PASS, per-suite times recorded here\n- [ ] A green CI run on both jobs, with the run id recorded here\n
+
+## Review Findings (2026-08-19 11:18)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 58 file(s) reviewed, 4 not reviewed.
+
+- [x] `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/CLISmokeTests.swift:30` `completeness/invariant-propagation` — @Suite decorator is missing .serialized and .timeLimit attributes present in all other integration test suites, despite documentation stating this suite behaves "like every other suite in this target". Add .serialized and .timeLimit to CLISmokeTests: `@Suite("CLI smoke test", .serialized, .timeLimit(.minutes(30)))`.

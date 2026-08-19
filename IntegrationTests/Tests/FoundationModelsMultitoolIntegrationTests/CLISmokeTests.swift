@@ -27,7 +27,7 @@ import MultitoolCLI
 /// box or in normal CI. It runs under
 /// `swift test --package-path IntegrationTests --no-parallel`, like every other
 /// suite in this target.
-@Suite("CLI smoke test")
+@Suite("CLI smoke test", .serialized, .timeLimit(.minutes(30)))
 struct CLISmokeTests {
     @Test("the live demo succeeds and prints a non-empty final answer")
     func demoProducesNonEmptyAnswer() async {
