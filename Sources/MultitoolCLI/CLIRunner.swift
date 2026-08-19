@@ -14,8 +14,9 @@ import FoundationModelsRouter
 // needs — `MLXVLM` among them, whose `VLMModelFactory` is the only registry
 // some checkpoints appear in — is imported by Router's own
 // `LiveModelLoader.swift` rather than here; `Package.swift` links them into
-// this executable, and records there why that link outlives the pin that
-// first needed it.
+// this library, and records there why that link outlives the pin that first
+// needed it. The `multitool-cli` executable links this library, so the same
+// modules reach the shipped binary through it.
 import HuggingFace
 import MLXHuggingFace
 import MLXLMCommon
@@ -129,22 +130,30 @@ struct CLIRouterUnavailableError: Error, CustomStringConvertible {
 /// - The full live run — resolving a real profile, mounting the vended tools
 ///   on the `RoutedSession` that profile vends, draining the turn, and
 ///   printing the model's answer — is exercised end to end by
-///   the gated `CLISmokeTests`
-///   (`Tests/FoundationModelsMultitoolIntegrationTests/CLISmokeTests.swift`).
-enum CLIRunner {
+///   `CLISmokeTests`
+///   (`IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/CLISmokeTests.swift`),
+///   in the nested integration package.
+///
+/// This type carries the only `public` surface of the `MultitoolCLI` library.
+/// `main.swift` in the `multitool-cli` executable calls `run(arguments:)` and
+/// nothing else, and the nested integration package reads `demoProfile`,
+/// `embeddingModel`, `run(arguments:resolve:output:)` and `ExitCode`. Every
+/// other declaration of this library stays `internal`, where the unit test
+/// target reaches it with `@testable import MultitoolCLI`.
+public enum CLIRunner {
     /// Process exit codes this runner returns.
     ///
     /// The BSD `sysexits.h` convention for the two documented failure
     /// modes; `0` for success.
-    enum ExitCode {
+    public enum ExitCode {
         /// Exit code indicating successful completion (or that `--help` was requested).
-        static let success: Int32 = 0
+        public static let success: Int32 = 0
         /// Bad arguments; the same value as `sysexits.h`'s `EX_USAGE` (64).
-        static let usageError: Int32 = 64
+        public static let usageError: Int32 = 64
         /// Exit code when the Router's live path cannot be resolved.
         ///
         /// The same value as `sysexits.h`'s `EX_UNAVAILABLE` (69).
-        static let unavailable: Int32 = 69
+        public static let unavailable: Int32 = 69
     }
 
     /// The `--direct` flag, for running in direct mode (`runCode` and `wait` registered with the session, no `searchToolsTool`).
@@ -203,18 +212,24 @@ enum CLIRunner {
     /// The generation model both slots resolve — **the single place a
     /// generation model is named in this package.**
     ///
-    /// `demoProfile` below puts it in `standard` and in `flash`, and the gated
+    /// `demoProfile` below puts it in `standard` and in `flash`, and the
     /// integration suite's `multitoolTinyProfile` *is* `demoProfile`
-    /// (`Tests/FoundationModelsMultitoolIntegrationTests/Support/IntegrationGate.swift`),
-    /// so changing this one line moves the CLI and every gated scenario
+    /// (`IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Support/LiveRouterFixture.swift`),
+    /// so changing this one line moves the CLI and every graded scenario
     /// together. That matters more than it sounds: the suite exists to measure
     /// what a host actually runs, and while the two lists were written out
     /// separately they were free to disagree — the CLI and the suite each named
     /// their own models, and nothing failed when they drifted.
     ///
-    /// `IntegrationGate.swift` carries the measurement history behind every
-    /// model that has held this slot, because that history is a record of gated
-    /// runs. This is where the choice lives; that is where the evidence lives.
+    /// `LiveRouterFixture.swift` carries the measurement history behind every
+    /// model that has held this slot, because that history is a record of
+    /// real-model runs. This is where the choice lives; that is where the
+    /// evidence lives.
+    ///
+    /// Deliberately `internal`, not `public`: the integration package reads
+    /// `demoProfile` and `embeddingModel` and never this constant, so keeping
+    /// it out of the library's public surface holds the model choice inside the
+    /// one module that makes it.
     ///
     /// No `@revision`: this tracks the repository's default revision, so it is
     /// a model *choice* rather than a version lock.
@@ -222,19 +237,19 @@ enum CLIRunner {
 
     /// The embedding model, unchanged across every generation-model swap and
     /// shared with Router's own gated suite so the weights are already cached.
-    static let embeddingModel: ModelRef = "mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ"
+    public static let embeddingModel: ModelRef = "mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ"
 
-    /// The profile used for the demo run, and by the gated integration suite.
+    /// The profile used for the demo run, and by the integration suite.
     ///
-    /// Deliberate use of tool-calling-capable models. The gated suite resolves
-    /// this exact value rather than a parallel definition of its own — see
-    /// `generationModel` above for why.
-    static let demoProfile = ProfileDefinition(
+    /// Deliberate use of tool-calling-capable models. The integration suite
+    /// resolves this exact value rather than a parallel definition of its
+    /// own — see `generationModel` above for why.
+    public static let demoProfile = ProfileDefinition(
         name: "multitool-cli-demo",
         description: "Tool-calling-capable models for the multitool-cli sample.",
-        // **This is the one place any model is named.** The gated suite does
-        // not keep its own pin: `multitoolTinyProfile` is this value
-        // (`IntegrationGate.swift`), so the suite measures the models the CLI
+        // **This is the one place any model is named.** The integration suite
+        // does not keep its own pin: `multitoolTinyProfile` is this value
+        // (`LiveRouterFixture.swift`), so the suite measures the models the CLI
         // ships and a swap here moves both. Two lists drifted apart once and
         // the suite spent its runs grading a configuration no host had.
         //
@@ -260,7 +275,7 @@ enum CLIRunner {
         flash: [generationModel],
         embedding: [embeddingModel],
         // `nil`, not a number: resolve the model's own context window rather
-        // than imposing one, exactly as the gated suite's
+        // than imposing one, exactly as the integration suite's
         // `multitoolTinyProfile` does. A pinned figure is always wrong on the
         // wrong side — too small, and a generation turn loses the very tool
         // definitions and discovery output it is supposed to act on.
@@ -290,7 +305,7 @@ enum CLIRunner {
     ///   - progress: the UI/console-bindable progress to report through.
     /// - Returns: the resolved language model profile.
     /// - Throws: any error the resolution process encounters.
-    typealias ProfileResolver = @Sendable (
+    public typealias ProfileResolver = @Sendable (
         _ router: Router,
         _ definition: ProfileDefinition,
         _ progress: ResolutionProgress
@@ -299,7 +314,11 @@ enum CLIRunner {
     /// The default profile resolution implementation.
     ///
     /// `router.resolve(profile:reporting:)`, unchanged — see `ProfileResolver`.
-    static let defaultResolve: ProfileResolver = { router, definition, progress in
+    ///
+    /// `public` because it is the default value of `run(arguments:resolve:output:)`'s
+    /// `resolve` parameter, and a caller outside this module writes that
+    /// default whenever it omits the argument.
+    public static let defaultResolve: ProfileResolver = { router, definition, progress in
         try await router.resolve(profile: definition, reporting: progress)
     }
 
@@ -344,7 +363,7 @@ enum CLIRunner {
     ///   `--help`, `ExitCode.usageError` for an argument error, or
     ///   `ExitCode.unavailable` if the Router path couldn't be resolved (or
     ///   the demo otherwise failed after resolution).
-    static func run(
+    public static func run(
         arguments: [String],
         resolve: @escaping ProfileResolver = defaultResolve,
         output: @escaping @Sendable (String) -> Void = { print($0) }
@@ -417,7 +436,7 @@ enum CLIRunner {
         // `profile.release()` is async, so it can't run in a synchronous
         // `defer`; explicitly release on every exit path instead — success
         // or thrown error alike — mirroring
-        // `Tests/FoundationModelsMultitoolIntegrationTests/Support/ScenarioRunner.swift`'s
+        // `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Support/ScenarioRunner.swift`'s
         // own `LiveRouterFixture.tearDown()` calls, rather than an
         // unstructured, un-awaited cleanup `Task` that `main.swift`'s
         // immediate `exit(_:)` after `run(...)` returns would likely never
@@ -463,8 +482,8 @@ enum CLIRunner {
             // finishes inline and no pending envelope is ever written. The
             // wiring carries the design; the fixtures only keep the demo quick.
             // A deliberately slow tool proves the background-and-collect path in the
-            // gated elevation scenario
-            // (`Tests/FoundationModelsMultitoolIntegrationTests`).
+            // elevation scenario
+            // (`IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests`).
             //
             // No instructions. Mounting the vended tools is the whole host
             // contract — their descriptions carry the entire behavioral
@@ -476,7 +495,7 @@ enum CLIRunner {
             // Drained, never `respond(to:)`. `RoutedSession.respond(to:)`
             // self-drains the background runs (Router `^nmpejc5`), so it would answer
             // this prompt just as well — but `streamEvents(to:)` is the surface
-            // the host contract names, the surface every gated scenario drives,
+            // the host contract names, the surface every integration scenario drives,
             // and the only one on which a tool still working can report that it
             // is working. A demo that took the shorter call would leave out
             // half of what a host has to write.

@@ -2,11 +2,11 @@ import Foundation
 import Testing
 import os
 
-@testable import multitool_cli
+import MultitoolCLI
 
 /// The gated live smoke test for the canonical Router + `RoutedSession` +
-/// `MultiTool` example: it invokes the `CLIRunner` entry function under the
-/// env var and asserts a non-empty final answer.
+/// `MultiTool` example: it invokes the `CLIRunner` entry function against a
+/// real model and asserts a non-empty final answer.
 ///
 /// Runs `CLIRunner.run(...)` end to end with its default (production)
 /// resolver — a real Router resolve against `CLIRunner.demoProfile`, the
@@ -22,10 +22,12 @@ import os
 /// A deeper, scenario-level port of this suite (prefix reuse,
 /// selection accuracy, multi-tool-call composition) is the dedicated
 /// gated-suite migration task's job — see that task for the broader port.
-/// `.enabled(if: multitoolIntegrationEnabled)` gates the whole suite behind
-/// `MULTITOOL_INTEGRATION`, so it never fires on a network/GPU-less box or in
-/// normal CI, mirroring every other gated suite in this target.
-@Suite("CLI smoke test", .enabled(if: multitoolIntegrationEnabled))
+/// The whole suite sits in the nested `IntegrationTests` package, which the
+/// root manifest declares no target for, so it never fires on a network/GPU-less
+/// box or in normal CI. It runs under
+/// `swift test --package-path IntegrationTests --no-parallel`, like every other
+/// suite in this target.
+@Suite("CLI smoke test")
 struct CLISmokeTests {
     @Test("the live demo succeeds and prints a non-empty final answer")
     func demoProducesNonEmptyAnswer() async {

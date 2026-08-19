@@ -74,11 +74,13 @@ import Testing
 /// `IntegrationArchiveRebuildTool` records what happened. Do not put a wait
 /// back into it to make the timing "observable".
 ///
-/// `.enabled(if: multitoolIntegrationEnabled)` like every other gated suite —
-/// with `MULTITOOL_INTEGRATION` unset the whole thing is skipped, so ungated
-/// `swift test` stays green with zero downloads and zero live inference. The
-/// grading rule itself is covered ungated, on the recorded run above and on its
-/// inverse, in `ScenarioGradingTests`.
+/// Like every other suite here, this one belongs to the nested
+/// `IntegrationTests` package; the root manifest declares no target for it, so
+/// the root `swift test` stays green with zero downloads and zero live
+/// inference, and the command that reaches this suite is
+/// `swift test --package-path IntegrationTests --no-parallel`. The
+/// grading rule itself is covered without a live model, on the recorded run
+/// above and on its inverse, in `ScenarioGradingTests`.
 @Suite(
     "Gated in-band collection canary (the model collects its own background run)",
     .serialized,
@@ -165,7 +167,7 @@ import Testing
     // seconds have to cover more than generation: `elapsed` above times
     // `respond` alone, while the limit starts when the test starts and is spent
     // on the turnstile queue and the profile load ahead of it as well
-    // (`IntegrationGate`). A margin that thin fails the suite for queueing
+    // (`LiveRouterFixture`). A margin that thin fails the suite for queueing
     // rather than for a defect — the exact misattribution that file records,
     // and the one `--no-parallel` exists to keep out of the reading.
     //
@@ -173,8 +175,7 @@ import Testing
     // reports a genuine runaway at ten minutes where the peer suites would take
     // thirty. Those peers finish in 40-90 seconds and keep their own tighter
     // expectations of themselves; nothing here licenses raising their ceilings.
-    .timeLimit(.minutes(10)),
-    .enabled(if: multitoolIntegrationEnabled)
+    .timeLimit(.minutes(10))
 )
 struct InBandCollectionCanaryTests {
     @Test("the model collects its own background run, and the turn ends with nothing still running")

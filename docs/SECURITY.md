@@ -115,7 +115,7 @@ inside the `RoutedSession` a host mounts the vended tools on — owns how many
   mount that tool on the session alongside the vended ones. The shipped main
   loop is already `FoundationModels`'s own native tool-calling — the
   `RoutedSession` that `profile.standard.makeSession(tools:)` vends runs it
-  over the Router-resolved model (`Sources/multitool-cli/CLIRunner.swift`
+  over the Router-resolved model (`Sources/MultitoolCLI/CLIRunner.swift`
   drives exactly that) — and every tool mounted on the session gets
   schema-constrained argument generation as a basic property of native
   tool-calling itself. So a tool not meant for JS-snippet composition is

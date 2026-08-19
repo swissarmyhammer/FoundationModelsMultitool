@@ -14,14 +14,16 @@ import Testing
 /// that the reply carries the two fixtures' *combined* total, which is only
 /// reachable by genuinely reading both.
 ///
-/// Gated, serialized, and time-limited exactly like `SearchThenCallTests`:
-/// with `MULTITOOL_INTEGRATION` unset the whole suite is skipped, so ungated
-/// `swift test` stays green with zero downloads and zero live inference.
+/// Serialized and time-limited exactly like `SearchThenCallTests`, and, like
+/// every suite here, it lives in the nested `IntegrationTests` package: the
+/// root `swift test` never sees it, because the root manifest declares no such
+/// target, so the root suite stays green with zero downloads and zero live
+/// inference. This suite runs under
+/// `swift test --package-path IntegrationTests --no-parallel`.
 @Suite(
     "Gated async fan-out scenario (phase-1 exit)",
     .serialized,
-    .timeLimit(.minutes(30)),
-    .enabled(if: multitoolIntegrationEnabled)
+    .timeLimit(.minutes(30))
 )
 struct AsyncFanOutTests {
     /// The total the two stock fixtures combine to — derived from the fixtures

@@ -10,10 +10,10 @@ import FoundationModels
 /// those fixtures — that exactly one trip city is warmest, that the trip tool
 /// forces a snippet to navigate to `.cities`, that `getWeather` refuses an
 /// argument it cannot resolve to one city, that no single reply can answer
-/// both scenario questions. All four scenarios run only under
-/// `MULTITOOL_INTEGRATION`, so until this suite existed a fixture edit could
-/// break any of those premises and leave an ordinary `swift test` green while
-/// the gated assertions quietly stopped meaning what they say.
+/// both scenario questions. All four scenarios run only against a real model
+/// on capable hardware, so until this suite existed a fixture edit could
+/// break any of those premises and leave every check anyone could actually run
+/// green while those assertions quietly stopped meaning what they say.
 ///
 /// The same holds for the fixtures' own call log: the gated runners grade on
 /// what `ScenarioCallLog` recorded, so its recording rules are exercised here

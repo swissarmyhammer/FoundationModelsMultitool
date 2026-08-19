@@ -240,7 +240,7 @@ struct MultiToolExecutionTests {
         #expect(description.contains("isolated JavaScript runtime"))
         #expect(description.contains("arithmetic, string work, dates, sorting"))
         #expect(!description.localizedCaseInsensitiveContains("real-time"))
-        // The dialect and its boundary, named. A gated run opened with `import
+        // The dialect and its boundary, named. A real-model run opened with `import
         // requests` and Python comments, which the description permitted by
         // saying only what the runtime *is*. The engine is named because a
         // model already knows what JavaScriptCore implies — no module loader,

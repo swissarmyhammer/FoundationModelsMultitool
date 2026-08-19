@@ -54,7 +54,7 @@ struct ToolReturnLedgerTests {
 
     @Test("a snippet that fires a tool and answers with a status flag is told what it produced")
     func aSnippetThatAnswersWithAStatusFlagIsToldItCarriedNothing() async throws {
-        // The shape three gated runs actually produced (task `wnfzwxg`): the
+        // The shape three real-model runs actually produced (task `wnfzwxg`): the
         // call happens, the value is thrown away, and a hand-written status
         // object goes back in its place. It holds no sentence at all, which is
         // why the first rule — which asked for a string leaf before it would
@@ -102,7 +102,7 @@ struct ToolReturnLedgerTests {
         // and moves past.
         //
         // The first rule bought silence here, and paid for it by staying silent
-        // on the failing shape as well: three gated runs, one pass (task
+        // on the failing shape as well: three real-model runs, one pass (task
         // `wnfzwxg`). This is that trade taken the other way, and this test is
         // where it is recorded.
         let output = try await Self.run("return (await tools.getIssueCount({ repo: 'demo' })).count * 2;")

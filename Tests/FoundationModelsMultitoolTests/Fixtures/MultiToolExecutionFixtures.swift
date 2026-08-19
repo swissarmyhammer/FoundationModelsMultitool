@@ -106,7 +106,7 @@ struct IssueCountTool: Tool {
 /// values instead of one near-identical `Tool` type per name.
 ///
 /// Exists for the ranking tests in `UnknownToolHintTests`, which reproduce
-/// catalogs recorded from real gated runs: what those tests grade is which
+/// catalogs recorded from real-model runs: what those tests grade is which
 /// entry the did-you-mean hint ranks highest for an invented name, so the
 /// only fixture state that matters is the name and the description the
 /// ranker reads. `call` is never reached — a snippet naming an entry that

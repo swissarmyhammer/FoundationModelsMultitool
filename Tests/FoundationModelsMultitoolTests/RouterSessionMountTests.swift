@@ -9,13 +9,13 @@ import ULID
 /// The MultiTool-to-Router boundary: a mounted tool must answer exactly as the
 /// unmounted one does.
 ///
-/// The gated scenarios score 0/4 on Router's session and 1/4-3/4 on a plain
+/// The integration scenarios score 0/4 on Router's session and 1/4-3/4 on a plain
 /// `LanguageModelSession`, with the model reporting that it has no functions
 /// at all (task `tkrdwb8`). Router's per-session tool wiring was the first
 /// suspect, since it wraps every tool in `DetachingTool` before the model sees
 /// it. These tests exist to keep that suspicion answered: the wrapper is
 /// transparent, so a future regression there is caught here rather than in a
-/// twenty-minute gated run.
+/// twenty-minute integration run.
 @Suite("Router session mount")
 struct RouterSessionMountTests {
     /// A sink that drops every event.
@@ -97,7 +97,7 @@ struct RouterSessionMountTests {
     ///
     /// `DetachConfiguration.nativeSessionMount` is the one configuration
     /// `RoutedModel.makeSession` applies, so this is the same composition the
-    /// gated scenarios run through.
+    /// integration scenarios run through.
     ///
     /// - Parameter tool: the tool to mount.
     /// - Returns: the composed, model-facing tool.

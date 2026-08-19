@@ -147,9 +147,9 @@ extension MultiTool {
         /// with `wait`. Mounted on a bare `FoundationModels
         /// .LanguageModelSession` the same tools cannot detach at all: the
         /// snippet simply blocks, no envelope is ever written, and `wait` has
-        /// nothing to join. The gated suite drives exactly this contract —
-        /// `Tests/FoundationModelsMultitoolIntegrationTests/Support/
-        /// ScenarioRunner.swift` builds every scenario session as
+        /// nothing to join. The integration suite drives exactly this contract —
+        /// `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/
+        /// Support/ScenarioRunner.swift` builds every scenario session as
         /// `profile.standard.makeSession(tools:discoveryPriming:)` with no
         /// instructions, then drains `streamEvents`.
         ///
@@ -333,7 +333,7 @@ public struct MultiTool: Tool {
     ///
     /// The worked example uses `getDocument`/`getRevision` deliberately.
     /// Fixture-shaped example data (weather, trips) would hand a model the
-    /// very value a gated scenario grades on, which passes with zero calls.
+    /// very value an integration scenario grades on, which passes with zero calls.
     public let description = """
         runCode is an isolated JavaScript runtime that runs one snippet and returns what
         that snippet returns — use it for any computation (arithmetic, string work,

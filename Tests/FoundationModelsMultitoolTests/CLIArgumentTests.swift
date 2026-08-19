@@ -3,15 +3,15 @@ import os
 
 import FoundationModelsRouter
 
-@testable import multitool_cli
+@testable import MultitoolCLI
 
 /// M9 coverage for `CLIRunner`: argument parsing and the Router-unavailable
 /// degrade path, both exercised with **no model at all** — plan.md M9's
-/// ungated acceptance criteria ("Argument parsing... is unit-tested without
+/// model-free acceptance criteria ("Argument parsing... is unit-tested without
 /// a model" / "Router-unavailable path... unit-tested via an injected
 /// failing resolver"). The full live run (a real Router resolve, the agent
-/// loop, the searchTools-then-runCode trace) is exercised separately by the
-/// gated `CLISmokeTests`.
+/// loop, the searchTools-then-runCode trace) is exercised separately by
+/// `CLISmokeTests`, in the nested `IntegrationTests` package.
 @Suite("CLIRunner")
 struct CLIArgumentTests {
     // MARK: - Argument parsing

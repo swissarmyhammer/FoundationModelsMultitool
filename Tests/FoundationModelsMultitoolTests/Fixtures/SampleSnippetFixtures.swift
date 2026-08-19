@@ -9,9 +9,9 @@ import FoundationModels
 // through untouched (a mock standing for `T` satisfies a parameter declared
 // `T`).
 //
-// No fixture value here is a value a gated scenario grades on. The gate never
-// shows the model a mock's value, and these tools return fixed placeholder
-// data so a test can tell one call from another.
+// No fixture value here is a value an integration scenario grades on. The
+// dry-run gate never shows the model a mock's value, and these tools return
+// fixed placeholder data so a test can tell one call from another.
 
 /// `ForecastTool`'s arguments — one required `city`, one optional
 /// enum-constrained `days`.

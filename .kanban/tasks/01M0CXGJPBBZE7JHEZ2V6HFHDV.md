@@ -220,6 +220,25 @@ comments:
 
     Card closes 6/6 with its finding checked.
   timestamp: 2026-08-19T13:24:04.872042+00:00
+- actor: claude-code
+  id: 01m0d3bcc5yv73rzac9ve7k2an
+  text: |-
+    Two verifications after the edit, and one correction to an earlier comment.
+
+    **Correction.** My audit comment said `ScenarioRunner.swift` builds a `ScenarioCheck` at nine sites, six of them from a constant. The count off the parsed argument list is **ten** sites, **seven** of which already read a constant and **three** of which held a literal. The three literals are the ones the earlier comment named, so the fix is unchanged; only my count was wrong.
+
+    **1. No inline check-name literal is left anywhere in the file.** `grep -n 'name: "'` over the whole file returns nothing. All ten `name:` arguments now read a constant:
+
+        pendingEnvelopeCheckName            groundedCheckName (×2)
+        validAnswerCheckName                inBandCollectionCheckName
+        answerNotInvalidatedCheckName       noBackgroundRunsAtAnswerCheckName
+        noBackgroundRunsAfterRespondCheckName
+        nestedCallEnteredCheckName          nestedGenerationReturnedCheckName
+
+    **2. Every check-name string value is byte-identical to `HEAD`.** The nine distinct spellings and their occurrence counts match exactly across the two revisions, `"grounded"` at two occurrences included. This matters because a graded check name is a diagnostic id: a one-character drift would break the transcripts a reader grades a gated run from, and would silently weaken every assertion keyed on the name. Nothing drifted, which is why the gated green at `f0cdc3e` still stands and no gated re-run is owed.
+
+    One reading considered and left alone, recorded so the next agent does not re-open it: a rule about giving distinct domain identifiers distinct types could be read as asking for a `CheckName` wrapper in place of `String`. That is a type change with a real blast radius — `ScenarioCheck.name`, `grade(scenario:checks:)`, and `ScenarioGradingTests.check(_:in:)` all take `String` today — and this card scopes to constant extraction with no value and no behaviour change. If a reviewer wants the wrapper, it belongs on its own card.
+  timestamp: 2026-08-19T13:28:41.605232+00:00
 position_column: done
 position_ordinal: d480
 title: Move the gated-scenario harness onto the background-run vocabulary

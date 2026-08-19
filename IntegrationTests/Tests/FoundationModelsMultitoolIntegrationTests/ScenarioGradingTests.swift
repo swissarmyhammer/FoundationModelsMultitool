@@ -21,11 +21,13 @@ import Testing
 /// Both runs drive the real `MultiTool` a host mounts, so the log they are
 /// graded on is written by the same `call(arguments:)` path a gated run takes.
 ///
-/// Ungated on purpose, and for the same reason `ScenarioFixtureTests` is: the
-/// grade itself only ever runs under `MULTITOOL_INTEGRATION`, so a grading rule
-/// nobody can check from an ordinary `swift test` is a rule that rots — and this
-/// one rotted unnoticed while the arms recorded on task `tkrdwb8` were measured
-/// against it.
+/// Model-free on purpose, and for the same reason `ScenarioFixtureTests` is:
+/// the grade itself only ever runs against a real model on capable hardware, so
+/// a grading rule nobody can check without weights and a GPU is a rule that
+/// rots — and this one rotted unnoticed while the arms recorded on task
+/// `tkrdwb8` were measured against it. This suite rebuilds those runs from the
+/// fixtures, so it answers on any box that runs
+/// `swift test --package-path IntegrationTests`.
 @Suite("Gated-scenario grading")
 struct ScenarioGradingTests {
     // MARK: - The recorded false pass
@@ -101,7 +103,7 @@ struct ScenarioGradingTests {
 
     /// How many `wait` calls the recorded gated run made.
     ///
-    /// Measured, not chosen: the `MULTITOOL_INTEGRATION` run of the canary's own
+    /// Measured, not chosen: a real-model run of the canary's own
     /// scenario reported `waitCalls=3` with no background run still going at the
     /// answer. The exact count is not what the canary grades — any call at all
     /// is in-band collection — but grading the recorded number keeps this test a

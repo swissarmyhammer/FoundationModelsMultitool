@@ -93,7 +93,7 @@ public struct SearchToolsTool: Tool {
     ///
     /// The worked example uses `getDocument`/`getRevision` deliberately.
     /// Fixture-shaped example data (weather, trips) would hand a model the
-    /// very value a gated scenario grades on, which passes with zero calls.
+    /// very value an integration scenario grades on, which passes with zero calls.
     public let description = """
         This session's functions are mounted dynamically, and searchTools is the only
         way to see them. Call searchTools before you answer any request, passing the
@@ -452,7 +452,7 @@ extension SearchToolsTool: DetachmentParameterProviding {
     ///
     /// Measured, both limits fired in turn. At the mount's stock 5-second wait
     /// every discovery call was backgrounded, and the model never obtained the catalog:
-    /// three gated runs ended `invoked=[] returned=[]` answering "I don't have
+    /// three real-model runs ended `invoked=[] returned=[]` answering "I don't have
     /// access to real-time weather data". With the wait raised, the 120-second
     /// work clock cancelled it instead —
     /// `DetachingToolError.timedOut(tool: "searchTools", timeoutSeconds: 120.0)`,

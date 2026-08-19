@@ -15,14 +15,15 @@ import Testing
 /// claim of this suite and which the native runner does not check. See
 /// `Support/ScenarioRunner.swift` for both runners and what each asserts.
 ///
-/// Gated, serialized, and time-limited exactly like `SearchThenCallTests`:
-/// with `MULTITOOL_INTEGRATION` unset the whole suite is skipped, so ungated
-/// `swift test` stays green with zero downloads and zero live inference.
+/// Serialized and time-limited exactly like `SearchThenCallTests`. It is
+/// unreachable from the root `swift test`, which declares no target for this
+/// nested `IntegrationTests` package, so the root suite downloads nothing and
+/// runs no live inference; the command that does run this suite is
+/// `swift test --package-path IntegrationTests --no-parallel`.
 @Suite(
     "Gated elevation-in-code-mode scenario (phase-1 exit)",
     .serialized,
-    .timeLimit(.minutes(30)),
-    .enabled(if: multitoolIntegrationEnabled)
+    .timeLimit(.minutes(30))
 )
 struct ElevationTests {
     @Test("an elevating snippet hands back a pending envelope and the model still answers the deep scan's report code")

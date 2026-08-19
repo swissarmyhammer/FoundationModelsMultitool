@@ -69,11 +69,12 @@ import Testing
 /// valid, fixture-grounded answer and so is making a capability claim a small
 /// model would fail for reasons that say nothing about this package.
 ///
-/// `.enabled(if: multitoolIntegrationEnabled)` like every other gated suite —
-/// with `MULTITOOL_INTEGRATION` unset the whole thing is skipped, so ungated
-/// `swift test` stays green with zero downloads and zero live inference. The
-/// grading rule itself is covered ungated, on both readings, in
-/// `ScenarioGradingTests`.
+/// Like every suite here it lives in the nested `IntegrationTests` package,
+/// which the root manifest declares no target for, so the root `swift test`
+/// never sees it and stays green with zero downloads and zero live inference;
+/// `swift test --package-path IntegrationTests --no-parallel` is what runs it.
+/// The grading rule itself is covered without a live model, on both readings,
+/// in `ScenarioGradingTests`.
 @Suite(
     "Gated nested-generation probe (an unguided generation inside a tool call)",
     .serialized,
@@ -108,14 +109,13 @@ import Testing
     //
     // The margin still has to cover the turnstile queue and the profile load,
     // because the limit starts when the test starts rather than when generation
-    // does (`IntegrationGate`). Those three readings were taken under
-    // `--no-parallel`, which that same gate already requires and states why.
+    // does (`LiveRouterFixture`). Those three readings were taken under
+    // `--no-parallel`, which that same file already requires and states why.
     //
     // Nothing here raises a ceiling. This lowers one, on measurement, and the
     // detector is sharper for it: a park is now reported in a minute instead of
     // three.
-    .timeLimit(.minutes(1)),
-    .enabled(if: multitoolIntegrationEnabled)
+    .timeLimit(.minutes(1))
 )
 struct NestedGenerationProbeTests {
     @Test("a tool body generating on the outer turn's own model, with no grammar anywhere, comes back")

@@ -11,8 +11,8 @@ The host contract, in one sentence, so no passage below can send a reader the
 wrong way: build a registry, mount what
 `MultiTool.Registry.makeSessionTools(librarian:)` vends on the `RoutedSession`
 that `profile.standard.makeSession(tools:)` returns, and drive one turn by
-draining `streamEvents(to:)`. `Sources/multitool-cli/CLIRunner.swift` does
-exactly that, and every gated scenario drives the same wiring.
+draining `streamEvents(to:)`. `Sources/MultitoolCLI/CLIRunner.swift` does
+exactly that, and every integration scenario drives the same wiring.
 
 Two names below no longer exist in the code, and are kept only where the text
 says they are retired:
@@ -363,8 +363,9 @@ surface is:
   T.Type) -> T`** — constrained *and decoded* into a `@Generable` type.
 - **Live inference is gated.** Until the Router's own milestone 7, the live MLX
   decode path throws `GenerationError.notWiredForLiveInference`; the unit suite
-  runs against stub containers. So *our* real-model tests are likewise gated (see
-  **Integration tests**), and depend on the Router's live path landing.
+  runs against stub containers. So *our* real-model tests are held out of the
+  default test run — in a package of their own (see **Integration tests**) — and
+  depend on the Router's live path landing.
 
 ### The main loop is Apple's native tool-calling (history: the hand-rolled loop)
 
@@ -380,7 +381,7 @@ loaded. A host never builds that by hand. It calls
 .makeSessionTools(librarian: profile.flash))`** — `searchTools` presented
 before `runCode`, then `wait` — and drives one turn by draining
 `streamEvents(to:)`; this package drives no turn loop of its own. The
-production wiring is `Sources/multitool-cli/CLIRunner.swift` (`runDemo`, which
+production wiring is `Sources/MultitoolCLI/CLIRunner.swift` (`runDemo`, which
 passes no session instructions at all); the offline call-pattern reference is
 `Tests/FoundationModelsMultitoolTests/ExamplesTests.swift`. The session type is
 part of the contract rather than a detail: only a `RoutedSession` mounts a tool
@@ -412,8 +413,8 @@ It had two turn formats, both Router-native — **guided turns** (a `@Generable`
 union of `{ findAPIs(task) | runCode(code) | final(text) }` via
 `respond(to:generating:)`, parseable by construction) and a **prompted
 ReAct-style convention with a tolerant parse** plus bounded repair turns — and
-both were green in unit tests. On real hardware, neither held up: the gated
-integration suite (documented on archived task `exbtj1n`) showed the
+both were green in unit tests. On real hardware, neither held up: the
+real-model integration suite (documented on archived task `exbtj1n`) showed the
 hand-rolled loop was **unreliable regardless of model size** — under guided
 turns the model intermittently left the `kind`-matching field blank (xgrammar
 cannot express a conditionally-required field), under tolerant parse it
@@ -590,7 +591,7 @@ ResultRenderer ─► ToolOutput ─► back to the model (the session's own too
 These two `description`s *are* the prompt that makes the model search-then-code —
 fixed strings, not per-tool, handed to the vended session the same way any
 tool's description is. They are the *whole* prompt: the shipped session — and
-the gated integration suite alike — passes no session-level instructions,
+the real-model integration suite alike — passes no session-level instructions,
 because a `Tool` description is serialized into the prompt on every turn while
 a session instruction is optional and a host may never pass one. Each clause
 targets an empirically observed small-model failure mode. This is the search
@@ -713,7 +714,7 @@ surface those and lint for completeness (M2):
 ```
 
 > **Naming (2026-08-07, task `tkrdwb8`).** The `verbNoun` rule above is a human
-> ruling, made after a gated `discoveryUnderDistractors` run showed the model
+> ruling, made after a real-model `discoveryUnderDistractors` run showed the model
 > emitting `getTrip`/`getWeather` against fixtures named `tripCities`/`weather`:
 > ten of the twelve mounted tools were `verbNoun`, so the model was inferring the
 > convention correctly and the two fixtures were the outliers. Every worked
@@ -722,10 +723,10 @@ surface those and lint for completeness (M2):
 > The same pass corrected the worked `getTrip`'s **return shape**, which this
 > document had shown as `getTrip(): string[]` in every walkthrough. No tool in
 > this repo produces that shape, and none did before the rename either: the
-> gated fixture returns a whole trip object (`IntegrationTripOutput` — `cities`
+> integration fixture returns a whole trip object (`IntegrationTripOutput` — `cities`
 > plus dates, traveler and confirmation code), and the shipped CLI demo returns
 > an object too (`DemoTripOutput`, whose one field is `cities`). The divergence
-> was the document's, not one gated outlier's, so the examples above now
+> was the document's, not one recorded run's, so the examples above now
 > navigate to `.cities` the way a real itinerary API forces. What was wrong was
 > the shape claimed for these two tools, not the renderer's range: a bare
 > `string[]` return is a shape `ToolAPIRenderer` does emit. It requires an
@@ -838,7 +839,7 @@ the run that summarized deliberately reads a sentence and moves on.
 > tool-calling (see **Router integration**); M6's `Librarian`/`FoundAPIs`
 > shapes landed as `FoundationModelsMetadataRegistry`'s
 > `MetadataSearcher`/`SelectionTier` with ids-only guided output (see
-> **Discovery**); M6.5's gated suite now drives the shipped host contract
+> **Discovery**); M6.5's real-model suite now drives the shipped host contract
 > (`ScenarioRunner`, grading each run's answer and grounding), not an agent
 > loop.
 
@@ -870,8 +871,8 @@ the run that summarized deliberately reads a sentence and moves on.
   confirm the MLX backend reuses the instruction-prefix KV cache across `findAPIs`
   calls, using `RoutedSession.fork()` (KV `copy()`) if a plain reused session does
   not.
-- [ ] **M6.5 — Integration tests on a small real tool-calling model.** Gated,
-  opt-in real-model suite that runs a few sample MultiTools end to end and asserts
+- [ ] **M6.5 — Integration tests on a small real tool-calling model.** A separate
+  real-model package that runs a few sample MultiTools end to end and asserts
   the agent **searches then calls** correctly (see **Integration tests**). Depends
   on the Router's live inference path (its milestone 7); until then it is skipped.
 - [ ] **M7 — In-JS `help()` / `docs()`.**
@@ -891,12 +892,13 @@ the run that summarized deliberately reads a sentence and moves on.
 - **Marshaler + `ToolInvoker`** (M3): round-trips; existential opening over a mock
   `Tool` that records the marshaled `GeneratedContent`; validation pass/fail.
 - **`ResultRenderer`** (M5): caps, truncation, exception → error.
-- **E2E** (M4/M6/M9): gated/optional, needs the model (Router) on real hardware.
+- **E2E** (M4/M6/M9): a package of its own, needs the model (Router) on real
+  hardware.
 
 ### Integration tests — sample MultiTools on a small real tool-calling model (M6.5)
 
 > **As-built note.** This strategy predates the agent-loop retirement (see
-> **Router integration**): the shipped gated suite drives the host contract via
+> **Router integration**): the shipped integration suite drives the host contract via
 > `ScenarioRunner` — vended tools on a `RoutedSession`, one turn drained
 > through `streamEvents(to:)` — and grades each run on its answer and on what
 > that answer is grounded in, not on the deleted
@@ -909,15 +911,33 @@ against a fused surface — can only be proven against a real model doing real
 tool-calling. This suite does exactly that, and is the plan's answer to "does the
 search-then-code loop actually work?"
 
-- **Shape it on the Router's own gated suite.** Router ships a separate
+- **A separate package, selected by the package path.** Router ships a separate
   `…IntegrationTests` target that downloads *deliberately tiny* real models and runs
-  them end to end behind an opt-in env var (so it never fires on a network/GPU-less
-  box, and never in normal CI). We mirror that: a `FoundationModelsMultitoolIntegrationTests`
-  target, opt-in via env var, resolving a `ProfileDefinition` of small
-  tool-calling-capable models (e.g. a few-hundred-MB-to-low-GB instruct model whose
-  `flash` slot can also drive the librarian). It depends on the Router's live
+  them end to end. This package goes one step further and puts its own
+  `FoundationModelsMultitoolIntegrationTests` target in a **nested package**,
+  `IntegrationTests/`, which depends on the root package by path. The two
+  commands are then:
+
+      swift test                                                  # unit tests
+      swift test --package-path IntegrationTests --no-parallel    # this suite
+
+  The root `swift test` runs the unit tests and nothing else, because the root
+  manifest declares no integration target for it to find — a structural split
+  rather than a remembered flag, and nothing reads the environment to decide
+  which suite runs. `--no-parallel` is required: Swift Testing starts a test's
+  `.timeLimit` when the test starts, while every scenario queues for the one
+  resident live profile, so a parallel run spends the limit on queue time.
+
+  The suite resolves a `ProfileDefinition` of tool-calling-capable models —
+  `CLIRunner.demoProfile`, the value the shipped CLI uses, so a graded run
+  measures the configuration a host really gets. It depends on the Router's live
   inference path (its milestone 7); until that lands the suite `throws`/skips on
   `GenerationError.notWiredForLiveInference`.
+
+  CI runs both in jobs of their own, and its unit job also builds this package's
+  tests on every trigger — `swift build --package-path IntegrationTests
+  --build-tests` — so a broken integration test is caught by an ordinary push
+  rather than by the next expensive run.
 - **A few representative sample MultiTools**, each a small fixed tool set that
   forces the behavior we care about:
   1. **single-call** — one obvious tool (`getWeather`); asserts the model finds it and
@@ -1083,9 +1103,9 @@ a supported subject.)*
   KV cache, or whether we must drive reuse explicitly via `fork()`/`SessionKVCache.copy()`
   (Finding #6). Both are confirmable only against the built Router + real hardware.
   **Both since resolved on real hardware:** the Router's live path landed (the
-  gated suite and `multitool-cli` run live models), and prefix reuse is driven
+  integration suite and `multitool-cli` run live models), and prefix reuse is driven
   explicitly via fork-per-call — the shipped `SelectionConfig` contract (see
-  **Discovery**; the gated `SelectionForkPerCallTests` holds the fork-per-call
+  **Discovery**; the integration suite's `SelectionForkPerCallTests` holds the fork-per-call
   contract itself, read off the recording). Read "prefix reuse is driven" as
   the mechanism being engaged, never as reuse being measured: no suite in this
   repository can see whether a prefill was skipped, and that suite's own
@@ -1119,8 +1139,10 @@ a supported subject.)*
   main session and the selection tier here, and its `RoutedSession` (+ `fork()` KV
   copy) and typed guided generation are the primitives the retired
   `MultiToolAgent` built on and `SearchToolsTool`'s selection tier still builds on.
-  Its own gated `IntegrationTests` target (tiny real models, opt-in env var) is
-  the template for ours.
+  Its own gated `IntegrationTests` target (tiny real models, opt-in env var) was
+  the template for ours; this package has since moved its real-model suite into
+  a nested package of its own, selected by `--package-path IntegrationTests`
+  rather than by an environment variable.
 
 ## References
 

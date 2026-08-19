@@ -7,7 +7,22 @@ import PackageDescription
 /// The name of this Swift package.
 private let packageName = "FoundationModelsMultitool"
 
+/// The name of the M9 sample CLI library target (and its Sources/ subdirectory).
+///
+/// The CLI's whole implementation — `CLIRunner`, `DemoTools` — is a library
+/// rather than part of the executable, for one structural reason: a package
+/// cannot depend on another package's *executable* target at all, and the
+/// nested integration package (`IntegrationTests/Package.swift`) has to reach
+/// `CLIRunner.demoProfile`, `CLIRunner.embeddingModel`,
+/// `CLIRunner.run(arguments:resolve:output:)` and `CLIRunner.ExitCode`. Those
+/// four are the library's whole `public` surface; everything else stays
+/// `internal`, where `"\(packageName)Tests"` reaches it with `@testable`.
+private let cliLibraryTargetName = "MultitoolCLI"
+
 /// The name of the M9 sample CLI executable target (and its Sources/ subdirectory).
+///
+/// `main.swift` alone — it calls `CLIRunner.run(arguments:)` from
+/// `cliLibraryTargetName` and holds no logic of its own.
 private let cliTargetName = "multitool-cli"
 
 /// The git branch tracked by the `.package(url:branch:)` declaration for
@@ -27,8 +42,8 @@ private let routerDependencyName = "FoundationModelsRouter"
 /// It supplies `SearchableMetadata`/`MetadataSearcher` — the catalog-search
 /// surface `SearchToolsTool`'s registry-backed selection tier (`SelectionTier`,
 /// generalizing this package's own former `Librarian`) is built over —
-/// linked by the library target, the unit test target, and the gated
-/// integration test target below.
+/// linked by the library target and the unit test target below, and by the
+/// integration test target of the nested package.
 private let metadataRegistryDependencyName = "FoundationModelsMetadataRegistry"
 
 /// Base URL for packages published under the swissarmyhammer GitHub
@@ -57,8 +72,8 @@ private func swissArmyHammerPackage(name: String, branch: String = mainBranch) -
 /// `LiveModelLoader` is constructed over; `MLXHuggingFace`, whose
 /// `#hubDownloader()`/`#huggingFaceTokenizerLoader()` macros adapt a real
 /// Hugging Face Hub client into those protocols — the same macros Router's
-/// own gated `…IntegrationTests` target uses, and the M9 `multitool-cli`
-/// executable's default (production) model-resolution path uses too; and
+/// own gated `…IntegrationTests` target uses, and the M9 `MultitoolCLI`
+/// library's default (production) model-resolution path uses too; and
 /// `MLXVLM`, for its model registry alone (see `liveLoaderMLXProducts`).
 ///
 /// `MLXFoundationModels` — the module `LiveModelLoader` is written over — is
@@ -66,9 +81,9 @@ private func swissArmyHammerPackage(name: String, branch: String = mainBranch) -
 /// it reaches every target below through the `FoundationModelsRouter` product,
 /// and no target here names a symbol of it: this package builds no model and
 /// no session of its own. Dropping it was verified against the case that
-/// would break a wrong drop — `MULTITOOL_INTEGRATION=1 swift test
-/// --no-parallel --filter CLISmoke`, which resolves and loads a real model —
-/// as well as `swift build --build-tests` and the ungated `swift test`.
+/// would break a wrong drop — a real-model run of `CLISmokeTests`, which
+/// resolves and loads a real model — as well as `swift build --build-tests`
+/// and `swift test`.
 ///
 /// This package's resolved dependency graph already carries all of
 /// mlx-swift-lm transitively (Router's own library target needs the *full*
@@ -109,8 +124,8 @@ private func huggingFaceOrgPackage(name: String, from version: Version) -> Packa
 /// Hugging Face Hub client and tokenizer packages.
 ///
 /// These packages are needed by every target below that constructs a real,
-/// live `LiveModelLoader` through the `MLXHuggingFace` macros (the gated
-/// integration test target, and the M9 `multitool-cli` executable). This
+/// live `LiveModelLoader` through the `MLXHuggingFace` macros (the M9
+/// `MultitoolCLI` library, and through it the executable). This
 /// mirrors `../FoundationModelsRouter/Package.swift`'s own `hubProducts`
 /// (same package identities and version floors as Router's own gated
 /// suite, so a machine that already ran Router's gated suite shares the
@@ -118,13 +133,11 @@ private func huggingFaceOrgPackage(name: String, from version: Version) -> Packa
 private let huggingFacePackage = "swift-huggingface"
 
 /// The Swift Transformers tokenizer package, paired with
-/// `huggingFacePackage` above — linked by the gated integration test target
-/// and the M9 `multitool-cli` executable.
+/// `huggingFacePackage` above — linked by the M9 `MultitoolCLI` library.
 private let transformersPackage = "swift-transformers"
 
 /// The Hub client + tokenizer products a live `LiveModelLoader` needs (via
-/// the `MLXHuggingFace` macros) — linked by the gated integration test
-/// target and the M9 `multitool-cli` executable.
+/// the `MLXHuggingFace` macros) — linked by the M9 `MultitoolCLI` library.
 private let hubProducts: [Target.Dependency] = [
     .product(name: "HuggingFace", package: huggingFacePackage),
     .product(name: "Tokenizers", package: transformersPackage),
@@ -164,6 +177,15 @@ private let testsPath = "Tests/"
 ///
 /// Integration of the FoundationModelsRouter package alongside the system
 /// FoundationModels and JavaScriptCore frameworks.
+///
+/// **This manifest declares no integration test target, and that is the whole
+/// unit/integration split.** The real-model suite is its own package,
+/// `IntegrationTests/Package.swift`, which depends on this one by path. So
+/// `swift test` here runs the unit tests and nothing else — not because a
+/// person remembered a flag, and not because an environment variable was left
+/// unset, but because SwiftPM cannot see a target this manifest does not
+/// declare. The real-model suite runs under
+/// `swift test --package-path IntegrationTests --no-parallel`.
 let package = Package(
     name: packageName,
     // Commit to macOS 27 / FoundationModels v2; no pre-27 fallback.
@@ -174,14 +196,19 @@ let package = Package(
         .library(
             name: packageName,
             targets: [packageName]
-        )
+        ),
+        // Consumed by `IntegrationTests/Package.swift`, which cannot depend on
+        // the `cliTargetName` executable — see `cliLibraryTargetName`.
+        .library(
+            name: cliLibraryTargetName,
+            targets: [cliLibraryTargetName]
+        ),
     ],
     dependencies: [
         swissArmyHammerPackage(name: routerDependencyName),
         swissArmyHammerPackage(name: metadataRegistryDependencyName),
-        // Only the M9 CLI executable and the gated integration test target
-        // below link products from these three — see their documentation
-        // above.
+        // Only the M9 `cliLibraryTargetName` library below links products from
+        // these three — see their documentation above.
         swissArmyHammerPackage(name: mlxPackage, branch: mlxStableBranch),
         huggingFaceOrgPackage(name: huggingFacePackage, from: "0.9.0"),
         huggingFaceOrgPackage(name: transformersPackage, from: "1.3.0"),
@@ -195,20 +222,29 @@ let package = Package(
             ],
             path: "\(sourcesPath)\(packageName)"
         ),
-        // M9: the sample CLI executable — plan.md "M9 — Sample CLI. A prompt
-        // that triggers searchTools then a multi-tool runCode." Links
+        // M9: the sample CLI's whole implementation — plan.md "M9 — Sample CLI.
+        // A prompt that triggers searchTools then a multi-tool runCode." Links
         // `liveLoaderMLXProducts` + `hubProducts` (see their documentation
         // above) so its default, production model-resolution path can
-        // construct a real `LiveModelLoader` — the same live-inference
-        // wiring the gated `…IntegrationTests` target below uses — making
-        // this a genuinely runnable demo, not just a stub, when run outside
-        // this package's own gated-off sandbox.
-        .executableTarget(
-            name: cliTargetName,
+        // construct a real `LiveModelLoader` — the same live-inference wiring
+        // the nested integration package drives — making this a genuinely
+        // runnable demo rather than a stub.
+        .target(
+            name: cliLibraryTargetName,
             dependencies: [
                 .target(name: packageName),
                 .product(name: routerDependencyName, package: routerDependencyName),
             ] + liveLoaderMLXProducts + hubProducts,
+            path: "\(sourcesPath)\(cliLibraryTargetName)"
+        ),
+        // The process entry point: `main.swift` and nothing else. It links the
+        // library above, so every product that library declares reaches this
+        // binary transitively — `MLXVLM`'s runtime factory registry included.
+        .executableTarget(
+            name: cliTargetName,
+            dependencies: [
+                .target(name: cliLibraryTargetName)
+            ],
             path: "\(sourcesPath)\(cliTargetName)"
             // No custom linker settings needed: the rpath workaround that
             // used to live here existed only because the retired
@@ -224,7 +260,7 @@ let package = Package(
             name: "\(packageName)Tests",
             dependencies: [
                 .target(name: packageName),
-                .target(name: cliTargetName),
+                .target(name: cliLibraryTargetName),
                 .product(name: routerDependencyName, package: routerDependencyName),
                 .product(name: metadataRegistryDependencyName, package: metadataRegistryDependencyName),
             ],
@@ -236,26 +272,6 @@ let package = Package(
                 // SwiftPM doesn't warn about an unhandled source-tree file.
                 .copy("Goldens")
             ]
-        ),
-        // M6.5a: the gated, opt-in real-model suite — plan.md M6.5 +
-        // Testing strategy "Integration tests", modeled on Router's own
-        // gated `…IntegrationTests` target
-        // (`../FoundationModelsRouter/Package.swift`). Every test is
-        // `.enabled(if:)` the `MULTITOOL_INTEGRATION` env var, so it never
-        // fires on a network/GPU-less box or in normal CI — but it still
-        // *builds* under plain `swift build`/`swift test`, so it links the
-        // live-inference wiring (`liveLoaderMLXProducts` + `hubProducts`)
-        // needed to construct a real `LiveModelLoader` the same way Router's
-        // own gated suite does.
-        .testTarget(
-            name: "\(packageName)IntegrationTests",
-            dependencies: [
-                .target(name: packageName),
-                .target(name: cliTargetName),
-                .product(name: routerDependencyName, package: routerDependencyName),
-                .product(name: metadataRegistryDependencyName, package: metadataRegistryDependencyName),
-            ] + liveLoaderMLXProducts + hubProducts,
-            path: "\(testsPath)\(packageName)IntegrationTests"
         ),
     ]
 )

@@ -6,7 +6,7 @@ import Testing
 /// The two `tools.*` paths `MultiTool` binds itself, beyond the registry's
 /// own entries.
 ///
-/// A gated discovery run wrote `tools.searchTools(...)` in a snippet, got an
+/// A real-model discovery run wrote `tools.searchTools(...)` in a snippet, got an
 /// invented-path error, and spent the whole turn thrashing (task `bwk7knm`).
 /// The guess was reasonable, so the surface accepts it: both siblings are real
 /// bindings, reachable the same way every catalog tool is.

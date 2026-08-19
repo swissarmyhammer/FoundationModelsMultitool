@@ -33,7 +33,7 @@ import FoundationModelsMetadataRegistry
 ///    threshold to reach that would admit genuine noise everywhere else;
 ///    ranking by what an entry is *for* reaches it directly.
 ///
-///    The evidence originally recorded here was a real gated run guessing
+///    The evidence originally recorded here was a real-model run guessing
 ///    `getTrip` against a `tripCities` fixture. The human ruling of
 ///    2026-08-07 (task `tkrdwb8`) reclassified that run: ten of the twelve
 ///    tools mounted alongside it were verbNoun, so the model was inferring

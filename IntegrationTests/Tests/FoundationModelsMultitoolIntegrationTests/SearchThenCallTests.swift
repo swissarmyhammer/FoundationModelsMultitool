@@ -41,10 +41,12 @@ import Testing
 /// prompted-text conventions with no equivalent in native tool-calling — so
 /// each scenario runs once, not twice.
 ///
-/// Every test is `.enabled(if: multitoolIntegrationEnabled)`: unset
-/// `MULTITOOL_INTEGRATION`, the whole suite is skipped — zero downloads,
-/// zero live inference — so `swift test` stays green on a network/GPU-less
-/// box (the default posture of this environment). `.serialized` mirrors
+/// This suite lives in the nested `IntegrationTests` package, and the root
+/// manifest declares no target for it, so the root `swift test` never sees it —
+/// zero downloads, zero live inference — and stays green on a network/GPU-less
+/// box (the default posture of this environment). The command that runs this
+/// suite is `swift test --package-path IntegrationTests --no-parallel`.
+/// `.serialized` mirrors
 /// Router's own gated suite: only one profile is resident at a time per
 /// `Router`, and real weight loading is heavy enough that running the four
 /// scenarios one at a time, under a generous `.timeLimit`, is the sane
@@ -52,8 +54,7 @@ import Testing
 @Suite(
     "Gated search-then-call scenarios (M6.5a)",
     .serialized,
-    .timeLimit(.minutes(30)),
-    .enabled(if: multitoolIntegrationEnabled)
+    .timeLimit(.minutes(30))
 )
 struct SearchThenCallTests {
     // MARK: - Scenario 1: single-call `getWeather`

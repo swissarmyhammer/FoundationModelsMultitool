@@ -13,53 +13,7 @@ import Testing
 import Tokenizers
 
 import FoundationModelsRouter
-@testable import multitool_cli
-
-/// The opt-in environment variable enabling this gated, real-model suite —
-/// plan.md M6.5: "opt-in via env var (e.g. MULTITOOL_INTEGRATION=1)". Unset
-/// (the default, and on any network/GPU-less/CI box), the whole suite is
-/// skipped, so `swift test` stays green with zero downloads. Mirrors
-/// Router's own gate
-/// (`../FoundationModelsRouter/Tests/FoundationModelsRouterIntegrationTests/IntegrationTests.swift`'s
-/// `FM_ROUTER_INTEGRATION_TESTS`).
-let multitoolIntegrationEnvVar = "MULTITOOL_INTEGRATION"
-
-/// Whether the gated real-model suite is enabled for this run.
-///
-/// **Run this suite with `--no-parallel`.** The command is
-/// `MULTITOOL_INTEGRATION=1 swift test --no-parallel`, and the flag is not a
-/// preference.
-///
-/// The reason is not GPU contention — ``LiveProfileTurnstile`` below already
-/// admits one live profile at a time, across suite boundaries. The reason is
-/// **what the clock counts**. Swift Testing runs suites concurrently by default
-/// and starts a test's `.timeLimit` when the test starts; every scenario takes
-/// the turnstile from *inside* its own test body, by way of
-/// `LiveRouterFixture.resolve()`. So a suite's reported duration is its own
-/// work plus however long it queued behind the other suites, and its time limit
-/// is spent on both.
-///
-/// Measured on 2026-08-16, the same commit both ways:
-///
-///   suite                        parallel   --no-parallel
-///   Gated async fan-out             443.5s          71.4s
-///   Gated elevation-in-code-mode    371.2s          64.2s
-///   Gated search-then-call (x4)     661.0s         283.1s
-///   Selection tier fork()-per-call   85.6s          16.5s
-///   Gated nested-generation probe   >180s(*)        28.1s
-///
-/// (*) exceeded its three-minute limit and was recorded as a failure.
-///
-/// Read those columns as queue time removed, not as work made faster: whole-run
-/// wall time was 661s parallel against 852s serial, so the actual generation
-/// cost barely moved. What moves is attribution. Under parallel suites a tight
-/// limit fires on queueing rather than on the scenario, the failure reads
-/// exactly like a hang, and it lands on whichever suite holds the tightest
-/// ceiling rather than on whichever scenario is slow. Two suites failed that
-/// way before the flag was tried, and both pass with it.
-var multitoolIntegrationEnabled: Bool {
-    ProcessInfo.processInfo.environment[multitoolIntegrationEnvVar] != nil
-}
+import MultitoolCLI
 
 /// The deliberately small, tool-calling-capable `mlx-community` models this
 /// suite resolves — plan.md M6.5: "small tool-calling-capable instruct
@@ -73,7 +27,7 @@ var multitoolIntegrationEnabled: Bool {
 /// `generation` deliberately does *not* reuse Router's own gated suite's
 /// pinned `SmolLM-135M-Instruct-4bit` (`IntegrationTests.swift`'s
 /// own `TinyModels`): empirically, on this suite's live-hardware run
-/// (`exbtj1n`'s gated pass), that 135M model could not reliably follow even
+/// (`exbtj1n`'s real-model pass), that 135M model could not reliably follow even
 /// the single-tool `ACTION:`/`TASK:`/`CODE:` convention — its `tolerantParse`
 /// turns degenerated into unrelated hallucinated prose (and, in one repair
 /// scenario, thousands of repeated `0` characters) rather than ever emitting
@@ -114,7 +68,7 @@ var multitoolIntegrationEnabled: Bool {
 /// With both upstream fixes in place, `Qwen3.5-2B-mxfp4` *does* now resolve
 /// and load successfully — the `text_config` sizing fix is confirmed
 /// working end to end (`standard`/`flash` both
-/// co-fit at ~2.1GB). But three full gated-suite runs against it showed a
+/// co-fit at ~2.1GB). But three full integration-suite runs against it showed a
 /// clear, consistent *capability* regression versus `Qwen2.5-1.5B-
 /// Instruct-4bit`: `SearchThenCallTests` failed almost every scenario/format
 /// combination in all three runs (`.incompleteOutput`, `maxTurnsExceeded`,
@@ -141,7 +95,7 @@ var multitoolIntegrationEnabled: Bool {
 /// same now-fixed Router sizing path), but a meaningfully larger backbone,
 /// on the theory that the 2B's failures were a raw-capability shortfall
 /// rather than an architecture-family mismatch. Confirmed: it resolves and
-/// loads cleanly (~5.9GB of `*.safetensors`, both shards). Three full gated
+/// loads cleanly (~5.9GB of `*.safetensors`, both shards). Three full real-model
 /// runs gave a genuinely mixed picture rather than a clean win or a clean
 /// regression: the suite now called `SelectionForkPerCallTests` passed all 3
 /// real attempts — which, then as now, graded no prefix reuse; see the
@@ -262,7 +216,7 @@ var multitoolIntegrationEnabled: Bool {
 /// does: one resident model rather than a swap between generation and selection
 /// on every search.
 ///
-/// It did hang, and for a while nobody knew why. A gated scenario sat 15
+/// It did hang, and for a while nobody knew why. An integration scenario sat 15
 /// minutes at 0% CPU with 18.8GB resident, 98% of system memory free and zero
 /// swap, every thread parked and the MLX scheduler on a condition variable,
 /// with the recorded transcript stopping at the selection fork. That bought a
@@ -281,7 +235,7 @@ var multitoolIntegrationEnabled: Bool {
 /// on another session rather than releasing it, so the count stays exact.
 /// Verified from here: `NestedGenerationProbeTests` — which holds no grammar
 /// anywhere, and so isolates the gate and nothing else — parked 165.4s and
-/// 166.5s before the fix and returns in about 28s after it. Seven gated suites
+/// 166.5s before the fix and returns in about 28s after it. Seven integration suites
 /// that had all deadlocked went green in the same run.
 ///
 /// **Two earlier explanations were wrong, and are recorded so they are not
@@ -296,7 +250,7 @@ var multitoolIntegrationEnabled: Bool {
 /// `discoveryUnderDistractors` remains the test any selection pin has to pass.
 ///
 /// **Qwen3.8-27B-mxfp4 measured against Muse, 2026-08-16.** One full
-/// serialized gated run each, same Router `8db8094`, same fixtures. Both
+/// serialized real-model run each, same Router `8db8094`, same fixtures. Both
 /// answered every scenario validly and grounded, so the outcome grading does
 /// not separate them. The route diagnostics do:
 ///
@@ -384,7 +338,7 @@ var multitoolIntegrationEnabled: Bool {
 ///
 /// **`CLIRunner.demoProfile` itself — this suite keeps no pin of its own.**
 /// The models, the slot layout and the `nil` context all come from the value
-/// the CLI ships, so a gated run measures the configuration a host really
+/// the CLI ships, so a real-model run measures the configuration a host really
 /// gets and a model swap is one edit in one file
 /// (`CLIRunner.generationModel`).
 ///
@@ -437,7 +391,7 @@ let plumbingProbeModel: ModelRef = "mlx-community/Qwen3-1.7B-4bit"
 /// the weights, and a reading cannot be blamed on a different profile layout.
 ///
 /// The embedding model is `CLIRunner.embeddingModel` unchanged: it is already
-/// resident from every other gated run on this machine, so naming it here costs
+/// resident from every other real-model run on this machine, so naming it here costs
 /// nothing and naming a second one would cost a download for no reading.
 let plumbingProbeProfile = ProfileDefinition(
     name: "multitool-plumbing-probe",
@@ -448,11 +402,11 @@ let plumbingProbeProfile = ProfileDefinition(
     context: nil
 )
 
-/// The one-at-a-time turnstile every gated scenario passes through before it
+/// The one-at-a-time turnstile every integration scenario passes through before it
 /// puts a live profile on the GPU.
 ///
 /// Swift Testing runs *suites* in parallel; `.serialized` only orders the tests
-/// **inside** one suite. With five gated suites in this target, five live
+/// **inside** one suite. With five integration suites in this target, five live
 /// profiles would otherwise resolve and generate at once, and measured on real
 /// hardware that is not merely slow — it is wrong. In a five-at-once run every
 /// scenario degraded together: `searchTools` stopped preceding `runCode` in all of
@@ -470,6 +424,38 @@ let plumbingProbeProfile = ProfileDefinition(
 /// A counting semaphore of one, written as an actor: both operations are
 /// decisions on the actor's own state, and a waiter parks on a continuation
 /// rather than blocking a thread.
+///
+/// **Run this suite with `--no-parallel`.** The command is
+/// `swift test --package-path IntegrationTests --no-parallel`, and the flag is
+/// not a preference.
+///
+/// The reason is not GPU contention — this turnstile already
+/// admits one live profile at a time, across suite boundaries. The reason is
+/// **what the clock counts**. Swift Testing runs suites concurrently by default
+/// and starts a test's `.timeLimit` when the test starts; every scenario takes
+/// the turnstile from *inside* its own test body, by way of
+/// `LiveRouterFixture.resolve()`. So a suite's reported duration is its own
+/// work plus however long it queued behind the other suites, and its time limit
+/// is spent on both.
+///
+/// Measured on 2026-08-16, the same commit both ways:
+///
+///   suite                        parallel   --no-parallel
+///   Gated async fan-out             443.5s          71.4s
+///   Gated elevation-in-code-mode    371.2s          64.2s
+///   Gated search-then-call (x4)     661.0s         283.1s
+///   Selection tier fork()-per-call   85.6s          16.5s
+///   Gated nested-generation probe   >180s(*)        28.1s
+///
+/// (*) exceeded its three-minute limit and was recorded as a failure.
+///
+/// Read those columns as queue time removed, not as work made faster: whole-run
+/// wall time was 661s parallel against 852s serial, so the actual generation
+/// cost barely moved. What moves is attribution. Under parallel suites a tight
+/// limit fires on queueing rather than on the scenario, the failure reads
+/// exactly like a hang, and it lands on whichever suite holds the tightest
+/// ceiling rather than on whichever scenario is slow. Two suites failed that
+/// way before the flag was tried, and both pass with it.
 actor LiveProfileTurnstile {
     /// The one turnstile the whole target shares.
     static let shared = LiveProfileTurnstile()
@@ -503,7 +489,7 @@ actor LiveProfileTurnstile {
 
 /// One resolved, live `Router` + `LanguageModelProfile` pair, together with
 /// the recording root its sessions write their JSONL transcript under —
-/// everything a gated scenario needs to vend a `RoutedSession` over
+/// everything an integration scenario needs to vend a `RoutedSession` over
 /// `profile.standard` (the wiring `CLIRunner.runDemo` ships), to back
 /// `searchToolsTool`'s own selection tier with `profile.flash`, and then to
 /// read back the selection tier's own recorded trace
@@ -524,7 +510,7 @@ struct LiveRouterFixture {
     /// own gated `IntegrationTests.endToEnd()`.
     ///
     /// Takes ``LiveProfileTurnstile/shared`` before resolving anything, so at
-    /// most one gated scenario in the target has a profile resident at a time;
+    /// most one integration scenario in the target has a profile resident at a time;
     /// ``tearDown()`` gives it back. A resolution that throws gives it back
     /// itself, since its caller is left with no fixture to tear down.
     ///
@@ -562,7 +548,7 @@ struct LiveRouterFixture {
             )
             let progress = ResolutionProgress()
             let profile = try await router.resolve(profile: definition, reporting: progress)
-            // What this run actually resolved, printed because a gated run's
+            // What this run actually resolved, printed because a real-model run's
             // whole purpose is to measure the configuration a host really gets
             // — and until now the only time any of it reached the log was when
             // resolution *failed* and `ResolutionFailure.description` rendered

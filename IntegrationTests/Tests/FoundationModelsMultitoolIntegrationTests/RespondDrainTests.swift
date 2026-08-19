@@ -38,14 +38,15 @@ import Testing
 /// watches for the condition becoming reachable. Cite nothing here for "the
 /// drain works".
 ///
-/// `.enabled(if: multitoolIntegrationEnabled)` like every other gated suite —
-/// with `MULTITOOL_INTEGRATION` unset the whole thing is skipped, so ungated
-/// `swift test` stays green with zero downloads and zero live inference.
+/// Packaged like every other suite here: it belongs to the nested
+/// `IntegrationTests` package, for which the root manifest declares no target,
+/// so an ordinary `swift test` cannot reach it and stays green with zero
+/// downloads and zero live inference. Run it with
+/// `swift test --package-path IntegrationTests --no-parallel`.
 @Suite(
     "Gated respond self-drain (phase-1 exit)",
     .serialized,
-    .timeLimit(.minutes(30)),
-    .enabled(if: multitoolIntegrationEnabled)
+    .timeLimit(.minutes(30))
 )
 struct RespondDrainTests {
     @Test("respond answers from what the backgrounded run returned, matches the stream, and leaves nothing running")

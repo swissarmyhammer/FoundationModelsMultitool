@@ -31,7 +31,7 @@ import os
 /// **The rule reports a fact, not an intent, and that is a correction.** The
 /// first rule asked for a *string leaf* in the returned value before it would
 /// report, so that `return count * 2` — a number computed out of what the
-/// snippet read — could never be told it had narrated. Three gated runs then
+/// snippet read — could never be told it had narrated. Three real-model runs then
 /// measured what the models actually write, and every one of them opened the
 /// same way: fire the call, discard the return, `return { started: true }`.
 /// That object holds no string, so the one shape the failure takes was the one

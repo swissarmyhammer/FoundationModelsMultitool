@@ -24,8 +24,9 @@
 // <Target>`, two directory levels away from `<Target>.xctest/Contents/
 // Resources/mlx-swift_Cmlx.bundle/...` -- every probe misses, and the first
 // GPU-device MLXArray eval aborts the whole test process with "Failed to
-// load the default metallib". This is exactly what this package's own gated
-// scenarios hit under `MULTITOOL_INTEGRATION=1 swift test`: the first live
+// load the default metallib". This is exactly what this package's own
+// integration scenarios hit under
+// `swift test --package-path IntegrationTests --no-parallel`: the first live
 // `MLXLanguageModel`/Router generation call touches the GPU device.
 //
 // This bootstrap closes the gap at its source: it locates the resource

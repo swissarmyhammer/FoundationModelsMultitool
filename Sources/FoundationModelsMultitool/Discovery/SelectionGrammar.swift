@@ -37,7 +37,7 @@ func idEnumGrammar(ids: [String]) throws -> Grammar {
                 // it the compiled grammar permits an unbounded-length array
                 // of repeated enum members (observed as a deterministic
                 // ~6150-token, ~190s runaway on the off-topic second
-                // `searchTools` call of the gated suite now named
+                // `searchTools` call of the integration suite now named
                 // `SelectionForkPerCallTests`). Mirrors the same fix in the
                 // registry's own `SelectionTier.idEnumGrammar(ids:)`.
                 "maxItems": ids.count,

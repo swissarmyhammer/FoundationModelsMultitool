@@ -47,7 +47,6 @@ private func primingLabel(_ turn: StreamedTurn) -> String {
 /// MultiTool.searchToolsTaskField)` to measure the primed arm again.
 let scenarioDiscoveryPriming: DiscoveryPriming? = nil
 @testable import FoundationModelsMultitool
-@testable import multitool_cli
 
 /// Runs one gated scenario end to end against a freshly-resolved live
 /// profile, using the session-driven design — no `MultiToolAgent`, no
@@ -118,8 +117,8 @@ let scenarioDiscoveryPriming: DiscoveryPriming? = nil
 /// *without recording any issue* — Swift Testing reports a test with no
 /// recorded issues as passed, so the suite stays green rather than failing
 /// when live inference isn't wired up in this environment. Any other error
-/// propagates as an ordinary test failure — real signal once a caller has
-/// opted in via `MULTITOOL_INTEGRATION` on capable hardware.
+/// propagates as an ordinary test failure — real signal once a caller runs
+/// this nested `IntegrationTests` package on capable hardware.
 ///
 /// - Parameters:
 ///   - name: a short label identifying the scenario, used only in the

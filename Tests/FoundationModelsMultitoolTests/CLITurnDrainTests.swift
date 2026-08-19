@@ -3,7 +3,7 @@ import os
 
 import FoundationModelsRouter
 
-@testable import multitool_cli
+@testable import MultitoolCLI
 
 /// Coverage for `CLIRunner.drainTurn(_:output:)` — the streaming drain the CLI
 /// demo runs its one turn through — exercised with **no model at all**, by
@@ -12,8 +12,8 @@ import FoundationModelsRouter
 /// The drain is what makes the demo the host contract's reference host: a
 /// `RoutedSession` is driven by `streamEvents(to:)`, so a tool that is still
 /// working reports itself while it works instead of going silent. That
-/// property is asserted here, ungated, because the demo's own fixtures answer
-/// instantly and no live run will ever show it.
+/// property is asserted here, in the unit suite, because the demo's own
+/// fixtures answer instantly and no live run will ever show it.
 @Suite("CLIRunner turn drain")
 struct CLITurnDrainTests {
     @Test("the answer is every text fragment, in production order")

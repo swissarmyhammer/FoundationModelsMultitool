@@ -25,12 +25,12 @@ import Testing
 /// .makeSessionTools(librarian:))`, drained through `streamEvents(to:)` — and
 /// only that session mounts a tool under
 /// `DetachConfiguration.nativeSessionMount`, which is what lets a slow
-/// `runCode` park. `README.md` and `Sources/multitool-cli/CLIRunner.swift`
+/// `runCode` park. `README.md` and `Sources/MultitoolCLI/CLIRunner.swift`
 /// state the contract; these examples show the catalog and call shapes it
 /// carries.
 ///
 /// Every example here runs fully offline — no live model, no network, no
-/// `MULTITOOL_INTEGRATION` gate — via `ScriptedLanguageModel` below, the
+/// real-model package — via `ScriptedLanguageModel` below, the
 /// **only** non-production code in this file. It is a minimal, from-scratch
 /// conformer of `FoundationModels.LanguageModel`/`LanguageModelExecutor` —
 /// the same third-party-model extension point `MLXLanguageModel` uses, the
@@ -60,7 +60,7 @@ struct ExamplesTests {
     /// .LanguageModel`/`LanguageModelExecutor` — the same pluggable-model
     /// seam `MLXLanguageModel` fills in production, where Router's
     /// `LiveModelLoader` builds it and a `RoutedSession` runs the turn over
-    /// it (`Sources/multitool-cli/CLIRunner.swift` is the host half).
+    /// it (`Sources/MultitoolCLI/CLIRunner.swift` is the host half).
     /// `LanguageModelSession`
     /// drives its own real native multi-turn tool-calling loop against this
     /// stub exactly as it would against a real model: it calls

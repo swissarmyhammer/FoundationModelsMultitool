@@ -91,14 +91,15 @@ private let selectionCallCount = 2
 /// row off one cached root. That is worth holding whatever becomes of the
 /// reuse claim.
 ///
-/// Gated the same way as `SearchThenCallTests`: `.enabled(if:
-/// multitoolIntegrationEnabled)`, skipping cleanly (no recorded issue) when
-/// the live Router path throws `GenerationError.notWiredForLiveInference`.
+/// Packaged the same way as `SearchThenCallTests`: it sits in the nested
+/// `IntegrationTests` package, out of reach of the root `swift test`, and runs
+/// under `swift test --package-path IntegrationTests --no-parallel`. It skips
+/// cleanly (no recorded issue) when the live Router path throws
+/// `GenerationError.notWiredForLiveInference`.
 @Suite(
     "Gated selection tier fork()-per-call trace (prefix reuse itself unmeasured)",
     .serialized,
-    .timeLimit(.minutes(30)),
-    .enabled(if: multitoolIntegrationEnabled)
+    .timeLimit(.minutes(30))
 )
 struct SelectionForkPerCallTests {
     @Test(
