@@ -61,6 +61,37 @@ comments:
     - evidence: `swift test` — 362 tests, 31 suites, 0 failed, 0 skipped, exit 0. `swift build --package-path IntegrationTests --build-tests` — Build complete, exit 0 (only the documented third-party `missing creator for mutated node` mlx bundle warning present).
     - next: ready for review.
   timestamp: 2026-08-19T19:28:56.783631+00:00
+- actor: claude-code
+  id: 01m0dr56tav6xqf2cp57fecc4h
+  text: |-
+    ### review — findings
+    - evidence: review sha HEAD~1..HEAD (commit 390e725) — 1 confirmed finding: Tests/FoundationModelsMultitoolTests/RepositoryFile.swift:25 code-security/injection
+    - next: correct the finding in the new "## Review Findings (2026-08-19 14:29)" section, then run the review again. The task stays in review.
+  timestamp: 2026-08-19T19:32:19.402209+00:00
+- actor: claude-code
+  id: 01m0dr5n7e4wt435p000ntjzwk
+  text: |-
+    ### finish iteration 2 — findings
+    - implement: changed — RepositoryFile.swift (new shared helper), CIWorkflowTests and HardeningTests call it
+    - test: green — root swift test 362/31, 0 skipped; IntegrationTests --build-tests clean
+    - commit: 390e725
+    - review: findings — Tests/FoundationModelsMultitoolTests/RepositoryFile.swift:25 (validate relativePath against traversal)
+  timestamp: 2026-08-19T19:32:34.158105+00:00
+- actor: claude-code
+  id: 01m0drcwt3q6bf37xhy3x2zmvm
+  text: |-
+    Correction of the review finding (code-security/injection, RepositoryFile.swift:25), in TDD order.
+
+    1. RED: new file Tests/FoundationModelsMultitoolTests/RepositoryFileTests.swift with two tests. Each test asserts that RepositoryFile.read(relativePath:) throws RepositoryFileError — one for "../outside", one for "/etc/hosts". The tests assert the helper's own error type, not any error, because a bad path already throws a Cocoa "no such file" error today. Ran "swift test --filter RepositoryFileTests" before the guard: 2 tests, 2 failures, each with the expected message — a Cocoa error came instead of RepositoryFileError. The failure output also showed the traversal: the ".." path resolved to a location outside the repository root.
+    2. GREEN: added to RepositoryFile.swift (a) the enum RepositoryFileError with one case, pathEscapesRepository(String), with a description; (b) a guard at the top of read(relativePath:) that rejects a path that contains ".." or that starts with "/", with a one-sentence comment that states why: such a path can point to a file outside the repository. The Throws doc line now names the error. Ran the filtered tests again: 2 tests, passed.
+    3. Full root "swift test": 364 tests in 32 suites, all passed, zero failures, zero skipped. A search of the full run output found no "fail", "skip", "warning", "known issue", or "missing creator" line.
+    4. The finding's box is now checked. The one open acceptance box (CI run order proof) still waits for a push; it is not a review finding.
+    5. Side note: the description's spelling of the filePath literal lost its hash prefix in this update, so the kanban tag parser cannot read it as a tag.
+
+    ### implement — changed
+    - evidence: 2 files — Tests/FoundationModelsMultitoolTests/RepositoryFile.swift (guard + RepositoryFileError), Tests/FoundationModelsMultitoolTests/RepositoryFileTests.swift (new, 2 tests, red-first). Root swift test: 364 tests in 32 suites, 0 failures, 0 skipped.
+    - next: /review; after the next push, record the CI run id that shows the job order.
+  timestamp: 2026-08-19T19:36:31.299697+00:00
 position_column: doing
 position_ordinal: '8380'
 title: 'CI: run the integration job only after the unit job passes'
@@ -74,7 +105,7 @@ Separate context, not this card's work: the red on run `32203706380` is the old 
 - Edit `.github/workflows/ci.yml`: add `needs: unit` to the `integration` job. Effect: the integration job starts only after the unit job succeeds, so a compile error or a unit failure reports in minutes and no 70-minute run starts on a broken tree.
 - Keep every existing step of both jobs unchanged — the clean steps, the integration-package build in the unit job (the compile coupling), the metallib copy, and `--no-parallel`.
 - Add a comment above `needs:` that states the reason: one runner label, fail-fast order, run `32285751680` as the measurement.
-- Add `Tests/FoundationModelsMultitoolTests/CIWorkflowTests.swift`: a unit test that reads `.github/workflows/ci.yml` off disk via `#filePath` (the same shape `HardeningTests.readmeInjectedGlobals()` uses at `HardeningTests.swift:360`) and asserts the `integration:` job declares `needs: unit`. This pins the shipped configuration so a later edit cannot drop the edge without a red unit test.
+- Add `Tests/FoundationModelsMultitoolTests/CIWorkflowTests.swift`: a unit test that reads `.github/workflows/ci.yml` off disk via the filePath literal (the same shape `HardeningTests.readmeInjectedGlobals()` uses at `HardeningTests.swift:360`) and asserts the `integration:` job declares `needs: unit`. This pins the shipped configuration so a later edit cannot drop the edge without a red unit test.
 
 ## Acceptance Criteria
 
@@ -100,3 +131,12 @@ Separate context, not this card's work: the red on run `32203706380` is the old 
 > - `.kanban/ (from .reviewignore)` — 4 file(s)
 
 - [x] `Tests/FoundationModelsMultitoolTests/CIWorkflowTests.swift:38` `reuse/reuse` — workflowLines() reimplements file-reading boilerplate that already exists in HardeningTests.readmeInjectedGlobals(). Both navigate from up three levels to the repo root, then read a specific file. A shared utility parameterized by the relative path would eliminate this duplication. Extract a shared test utility like `private static func readRepositoryFile(relativePath: String) throws -> String` that both CIWorkflowTests and HardeningTests can call, rather than duplicating the URL navigation boilerplate.
+
+## Review Findings (2026-08-19 14:29)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 3 file(s) reviewed, 4 not reviewed.
+
+> 4 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 4 file(s)
+
+- [x] `Tests/FoundationModelsMultitoolTests/RepositoryFile.swift:25` `code-security/injection` — Path traversal vulnerability: `relativePath` parameter is passed to `appendingPathComponent()` without validation, allowing `..` sequences or absolute paths to escape the repository directory. Validate `relativePath` to reject path traversal patterns. Example: `guard !relativePath.contains("..") && !relativePath.hasPrefix("/") else { throw ... }` before line 25.
