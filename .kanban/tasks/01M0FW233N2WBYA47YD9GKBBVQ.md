@@ -58,8 +58,38 @@ comments:
     - No test failed. No test was skipped. No code change was needed.
     - next: ready for review.
   timestamp: 2026-08-20T17:02:10.914723+00:00
-position_column: doing
-position_ordinal: '8380'
+- actor: claude-code
+  id: 01m0g1zynk1c7m25sck80v8q9s
+  text: |-
+    ### commit — changed
+    - evidence: 76c7890b736d89d83fef2f14b34a34b645ce3f84 ci: upload integration recordings as a CI artifact. Files: .github/workflows/ci.yml, Tests/FoundationModelsMultitoolTests/CIWorkflowTests.swift, .kanban/tasks/01M0FW233N2WBYA47YD9GKBBVQ.jsonl, .kanban/tasks/01M0FW233N2WBYA47YD9GKBBVQ.md
+    - next: none. Do not push. The next agent pushes.
+  timestamp: 2026-08-20T17:02:41.843669+00:00
+- actor: claude-code
+  id: 01m0g254cdt28a2xta6vew4ren
+  text: |-
+    ### review — clean
+    - scope: `review sha HEAD~1..HEAD` (commit 76c7890, this iteration only). The engine read the diffs of 2 files. It did not read 2 `.kanban/` files, because a `.reviewignore` rule excludes them.
+    - evidence: 0 new, all prior checked. Counts: findings 0, confirmed 0, refuted 0, attempted 7, failed 0.
+    - note: the sibling change in `swissarmyhammer/workflows` (commit `283418a`) is not in this delta on purpose. The engine did not report it as missing.
+    - next: the card moves to `done`. One acceptance box stays open on purpose: a CI integration run must show the uploaded artifact, and the run id must be written here. The orchestrator does this step after it pushes.
+
+    step: review
+    outcome: clean
+    evidence: 0 new, all prior checked
+    task: ^9gkbbvq
+  timestamp: 2026-08-20T17:05:31.533784+00:00
+- actor: claude-code
+  id: 01m0g25pvjc12psg4qnq2y9cvy
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — part 1 (sibling) and part 2 (this repository). Part 1 went to its own agent, which works only in swissarmyhammer/workflows: the shared swift-ci.yaml has the optional input `integration-artifacts-path` (type string, default "") and an `actions/upload-artifact@v4` step with `if: always() && inputs.integration-artifacts-path != ''` and `if-no-files-found: ignore` as the last step of the integration job. Verified with actionlint (0 findings) and a YAML parse; the diff removes no line, so a caller that does not pass the input keeps its old behavior. Pushed as 283418a (611cd23..283418a main). Part 2, test-first in this repository: `.github/workflows/ci.yml` passes `integration-artifacts-path: IntegrationTests/.build/recordings`, and CIWorkflowTests pins that line (RED first, then GREEN).
+    - test: green — root swift test 368/368 in 32 suites; IntegrationTests build clean; ungated integration tests 53/53. The only warning is the known `missing creator for mutated node` message for the third-party mlx-swift Cmlx bundle.
+    - commit: 76c7890
+    - review: clean — review sha HEAD~1..HEAD, 0 findings, 7 validators. Task moved to done.
+  timestamp: 2026-08-20T17:05:50.450382+00:00
+position_column: done
+position_ordinal: db80
 title: Upload the integration recordings as a CI artifact
 ---
 The integration harness now writes each Router recordings directory under `IntegrationTests/.build/recordings/` (card `^hht0009`, `LiveRouterFixture.recordingsRoot`, held by `RecordingsLocationTests`). The `RESOLVED` log line prints the directory of each resolution. CI does not upload the directory yet, so a CI hang still leaves no transcript a person can read after the run.
