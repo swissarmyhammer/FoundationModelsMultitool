@@ -181,8 +181,36 @@ comments:
     - evidence: recordings dir listing (10 dirs, one empty: FD3305DF, made 10:30:11, 0 files); `git status --porcelain` — 5 known files only; `swift test --package-path IntegrationTests --no-parallel --filter NestedGenerationProbeTests` — 1/1 pass, 8.277s
     - next: none from test; the in-scope change for ^hht0009 is verified green
   timestamp: 2026-08-20T15:52:26.255225+00:00
-position_column: doing
-position_ordinal: '8380'
+- actor: claude-code
+  id: 01m0fy10r48kvx9bqh1dmnntnp
+  text: |-
+    ### commit — changed
+    - evidence: cfda34b — 6 files. Changed: .kanban/tasks/01M0FHKR68K2NA1P5EDHHT0009.jsonl, .kanban/tasks/01M0FHKR68K2NA1P5EDHHT0009.md, IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Support/LiveRouterFixture.swift. New: .kanban/tasks/01M0FW233N2WBYA47YD9GKBBVQ.jsonl, .kanban/tasks/01M0FW233N2WBYA47YD9GKBBVQ.md, IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/RecordingsLocationTests.swift. Not pushed.
+    - next: user to push and start CI run.
+  timestamp: 2026-08-20T15:53:22.436941+00:00
+- actor: claude-code
+  id: 01m0fy69h57362s3hs4s34b0fm
+  text: |-
+    ### review — clean
+    - evidence: 0 new findings, all prior findings checked. Scope: review sha HEAD~1..HEAD (cfda34b). The engine examined 2 files: IntegrationTests/Tests/FMMultitoolIntegrationTests/RecordingsLocationTests.swift and IntegrationTests/Tests/FMMultitoolIntegrationTests/Support/LiveRouterFixture.swift. 4 kanban files were out of scope by the .reviewignore rule. No prior Review Findings section is on this card.
+    - next: the task moved to done. The CI-run test checkbox stays open by intent — the orchestrator or the user starts the CI run. Follow-up card ^9gkbbvq holds the CI artifact-upload work.
+
+    step: review
+    outcome: clean
+    evidence: 0 new, all prior checked
+    task: ^hht0009
+  timestamp: 2026-08-20T15:56:15.269926+00:00
+- actor: claude-code
+  id: 01m0fy7btambfr45gnrjqkw50a
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — 2 files. The one authorized gated run passed in 643.687s (scenario 639.3s, 24 tool calls, correct reply 41739). The Router transcript of the run closed the forensic gap: a healthy run makes its first fragments in ~20s, so the CI zero-fragment stall is abnormal from the first second. Structural fix for "hang with zero forensics": recordings root moved to IntegrationTests/.build/recordings (new RecordingsLocationTests, 3 tests, RED then GREEN) and each RESOLVED line prints its recordings path. Follow-up ^9gkbbvq carries the CI artifact-upload wiring. The CI hang cause stays unpinned; it does not reproduce locally.
+    - test: green — root swift test 367/367; IntegrationTests build clean; ungated integration tests 53/53; one authorized scoped run NestedGenerationProbeTests 1/1 (8.277s). Incident on record: an accidental full gated run (the MULTITOOL_INTEGRATION variable gates nothing; only --filter selects suites) showed 1 unnamed issue; its output was lost, the recordings show one empty directory (FD3305DF) as the only lead, and the suspect suite passed clean on the scoped re-run.
+    - commit: cfda34b
+    - review: clean — review sha HEAD~1..HEAD, 0 findings, 7 validators. Task moved to done.
+  timestamp: 2026-08-20T15:56:50.378472+00:00
+position_column: done
+position_ordinal: da80
 title: 'ElevationTests hangs on CI: 30 minutes, zero tool calls, empty reply'
 ---
 CI run `32294279325` (push `563a483`, 2026-08-19): the suite \"Gated elevation-in-code-mode scenario (phase-1 exit)\" failed its `.timeLimit` — `Time limit was exceeded: 1800.000 seconds` at `ElevationTests.swift:29`, plus two `check.held` failures at `ScenarioRunner.swift:805`. The scenario record shows a hang, not a slow pass: `RESULT [elevationInCodeMode] elapsed=1793.2s toolCalls=0 toolOutputs=0 pendingEnvelopes=0 reply=\"\"`. The model produced nothing for 30 minutes. The same suite passed on this dev box in 51.79s (card `^dwzkfzx`, 2026-08-19), and every other suite in the same CI run passed — 62 tests in 11 suites, 3 issues, all from this one scenario. The reworked in-band collection canary passed on CI in the same run.
