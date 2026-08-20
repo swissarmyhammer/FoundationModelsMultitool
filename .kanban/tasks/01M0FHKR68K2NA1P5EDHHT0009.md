@@ -86,6 +86,101 @@ comments:
     - evidence: no files changed this pass (the `ElevationTests.swift` rename from the prior pass stands). Retracted the refuted `^1zt7vyg` hypothesis with evidence (`git merge-base --is-ancestor 8db8094 0f4b274e4f228343cdfb99b016be3cc054f8f934` → true in the local `FoundationModelsRouter` checkout, confirming the fix predates the CI-pinned revision; and the `toolCalls=0` mismatch against `^1zt7vyg`'s in-flight-nested-call precondition). Followed the coordinator's four directions: confirmed via `RoutedSessionActorTurnExecution.swift`/`GenerationStall.swift` that the stall window starts at model-call dispatch (so the call was dispatched, not stuck in tool-surface/registry setup, and cold-load time is excluded from the 1793s figure); confirmed `LiveRouterFixture.resolve()` never caches a profile across suites/tests; compared `.timeLimit`/tool-surface-shape/prompt-length against `AsyncFanOutTests` and `InBandCollectionCanaryTests` and found no declared-complexity difference that explains a zero-fragment stall, including applying `^nhxj8hx`'s own ceiling re-derivation method to this suite's local baseline (predicts ~5.4 min CI-adjusted, well under the existing 1800s limit). No forensic transcript survives from the CI run (ephemeral temp dir, not uploaded as an artifact) to inspect the literal dispatched request. Root cause remains unpinned; card now reads "still investigating, ^1zt7vyg ruled out" rather than carrying a refuted hypothesis as the answer.
     - next: leaving in `doing` for review. No further avenue for pinning the cause without either a CI transcript-upload change (forward-looking, separate from this card) or a live reproduction, both out of reach this pass.
   timestamp: 2026-08-20T14:44:19.828729+00:00
+- actor: claude-code
+  id: 01m0ft70fhdwdtkpv7zg0d6ys8
+  text: |-
+    ### finish iteration 1 — stuck
+    - implement: changed — ElevationTests.swift suite renamed off "Gated" (acceptance criterion 3 met). Investigated the zero-activity hang from CI run 32294279325. First hypothesis (Router's ^1zt7vyg nested-generation-gate deadlock) was checked against evidence and REFUTED: `git merge-base --is-ancestor 8db8094 0f4b274` returns true, so the fix is already in our pinned Router revision; and the symptom (toolCalls=0) does not match that mechanism's precondition (an in-flight tool call). Ruled out tool-surface/registry setup and cold model load as the hang site (Router's stall clock starts at model-call dispatch, after those finish). No complexity difference from neighboring suites explains a zero-fragment stall. Root cause not found.
+    - test: green — root swift test 367/32, 0 skipped; IntegrationTests --build-tests clean
+    - commit: ecc4548
+    - review: not run — the task's real acceptance criteria (cause named, structural fix applied) are not met. Advancing to review/done would close the task while the defect remains open. Leaving in doing and reporting to the user as stuck, per Scope: "A finding shows one example of a cause... Two conditions only release you from a finding... a true conflict." This is the analogous case for an unmet acceptance criterion rather than a review finding — the honest state is incomplete, not closed.
+  timestamp: 2026-08-20T14:46:44.465192+00:00
+- actor: claude-code
+  id: 01m0fw42ds1wk2mp7n6psg3s3j
+  text: |-
+    ## Finish iteration 2: the authorized gated run, the transcript read, and the forensics fix
+
+    ### The one authorized gated run — PASS
+
+    `git status` before the run showed only the two `.kanban` files for this card. No other session changed the tree. Then one run, alone in its own shell command: `MULTITOOL_INTEGRATION=1 swift test --package-path IntegrationTests --no-parallel --filter Elevation`.
+
+    Result: PASS. "Test run with 1 test in 1 suite passed after 643.687 seconds" (shell wall time 654s). Scenario record: `RESULT [elevationInCodeMode] elapsed=639.3s toolCalls=24 toolOutputs=24 pendingEnvelopes=18 priming=off tokens=out:5394 contextFill:0.43 failedCalls=0` with the correct reply (report code 41739, graded PASS on validAnswer and pendingEnvelope).
+
+    ### What the transcript shows (the forensic gap from the last comment is closed)
+
+    The recordings directory for the run: `$TMPDIR/FMMultitoolIntegration-E3A03AEE-.../01M0FTS1TG8AD429B2A6ZFDDPZ/01M0FTS5ZDHFTTDVQGEGHE4VJD/transcript.jsonl` (371KB, 137 entries; a second small transcript holds the selection tier). Facts read from it:
+
+    1. **The literal dispatched prompt** is exactly the scenario sentence: "Start the deep scan of my archive, wait for it to finish, and tell me the exact report code it returns." The `instructions` entry carries the searchTools-first tool contract. Nothing unusual is in the dispatched request.
+    2. **A healthy run generates immediately.** The first tool output lands at dt=20.4s after session creation — first-turn generation, the `searchTools` call, and the first `runCode` dispatch all fit inside ~20s. So the CI hang's `STALL ... fragments(observed: 0)` from the first 30s check onward is abnormal from the first second. It is not a slow warmup.
+    3. **Transcript write timing matters for the hang case.** Only `toolOutput` events stream in real time. The full entry dump (instructions, prompt, responses, reasoning, toolCalls) flushes at session close — every such entry carries the same end-of-run timestamp. In the CI hang the `RESULT` line printed at 1793s, so the session closed and the transcript WAS written. It was only lost because the directory was ephemeral. Preserving the directory therefore captures the hung turn's full record, including the dispatched prompt.
+
+    ### New evidence on run-time spread (record, not a limit change)
+
+    This healthy pass took 639.3s locally — 12.3x the 51.79s baseline `^dwzkfzx` recorded for the same scenario on the same box. The extra time is real work: the model wrapped `wait` inside `runCode`, which elevated again, and it spent ~20 calls unwrapping nested pending envelopes before it re-ran the deep scan and answered. So the scenario's local run time is heavy-tailed: 51.79s best case, 639.3s on an envelope-unwrap spiral, both PASS. Apply the `^nhxj8hx` CI factor (~6.21) to 639.3s and a legitimately heavy CI run projects to ~66 minutes — above the 1800s ceiling. This does NOT explain the CI hang (that run produced zero fragments, a different shape), but it shows the ~5.4-minute CI prediction in the earlier comment rested on the best-case baseline. If the ceiling ever needs re-derivation, use `^nhxj8hx`'s method with this spread. No limit was changed this pass.
+
+    ### Structural work landed (TDD, RED then GREEN)
+
+    The cause stays out of reach locally (the suite passes here), so per direction this pass fixed the failure class "hang with zero forensics":
+
+    - `RecordingsLocationTests.swift` (new, ungated, no model): 3 tests that hold the recordings root to `IntegrationTests/.build/recordings`, prove the package manifest sits two levels up, prove the root is not under the temporary directory, and prove `makeRecordingsDir()` creates under the root. Watched them fail first (compile errors on the missing members), then pass (0.004s).
+    - `LiveRouterFixture.swift`: `recordingsRoot` (derived from `#filePath`), `makeRecordingsDir()`, and a shared `makeUniqueDirectory(under:)` behind both it and `makeTempDir()` (cache dirs stay temporary). `resolve()` now writes recordings under the workspace root, and the `RESOLVED` line prints ` recordings=<path>` so a log reader can pair each scenario with its transcript directory. `.build/` is already git-ignored.
+
+    Verified: filtered `RecordingsLocation` run green; root `swift test` green (367 tests, 32 suites); the gated Elevation run above already exercised the full fixture path end to end BEFORE this change (the change landed after the gated run, and the ungated tests plus the target build verify it — the next scheduled gated run exercises it live).
+
+    ### CI upload half — routed, not done here
+
+    The upload step must live in the shared `swissarmyhammer/workflows` `swift-ci.yaml` (a caller cannot add steps to a reusable workflow, and no artifact input exists there today — verified by reading the workflow's whole input list). That is a sibling repository this card must not edit, and it has no kanban board to file on. Follow-up card `^9gkbbvq` on this board carries both halves: the sibling input+upload step (to be routed by the orchestrator/user), and this repo's `ci.yml`+`CIWorkflowTests` wiring once the input exists.
+  timestamp: 2026-08-20T15:20:05.305351+00:00
+- actor: claude-code
+  id: 01m0fw4mf9eb9mevdd03mppv07
+  text: |-
+    ### implement — changed
+    - evidence: 2 files — IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/RecordingsLocationTests.swift (new, 3 ungated tests, watched RED then GREEN), IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Support/LiveRouterFixture.swift (recordingsRoot under IntegrationTests/.build/recordings, makeRecordingsDir(), shared makeUniqueDirectory(under:), RESOLVED line prints recordings=<path>). Gated run: `MULTITOOL_INTEGRATION=1 swift test --package-path IntegrationTests --no-parallel --filter Elevation` PASS in 643.687s (scenario elapsed=639.3s, toolCalls=24, correct reply 41739) — first Tests checkbox now checked. Read the run's full Router transcript (371KB): dispatched prompt is the literal scenario sentence; a healthy run produces its first tool output 20.4s after session creation, so the CI zero-fragment stall is abnormal from the first second; the transcript body flushes at session close, so a preserved directory captures a hung turn's record. Root `swift test` green (367/32). Filtered RecordingsLocation run green. Follow-up card ^9gkbbvq filed for the CI artifact-upload wiring (needs the sibling workflows repo). Cause of the CI hang still not pinned — not reproducible locally.
+    - next: leave in doing for review. Orchestrator/user routes the sibling half of ^9gkbbvq and schedules the next CI run.
+  timestamp: 2026-08-20T15:20:23.785327+00:00
+- actor: claude-code
+  id: 01m0fxsbhta0bsajbgjzpnjw1g
+  text: |
+    ### test — stuck
+
+    Good results, in scope:
+    - Root suite: `swift test`. Result: 367 tests, 32 suites, all pass. No warnings. No skips.
+    - Integration build: `swift build --package-path IntegrationTests --build-tests`. Result: exit code 0. One warning line shows: `missing creator for mutated node` for `mlx-swift_Cmlx.bundle`. This warning is old. It comes from a third-party package. It is not about our code. Past task cards (^akpzysf, ^dwzkfzx, ^jjyqe1a) show this same warning on a no-op build.
+    - Ungated integration tests, correct method: `swift test --package-path IntegrationTests --filter "ScenarioFailureModeTests|ScenarioGradingTests|ScenarioFixtureTests|RecordingsLocationTests"`. Result: 53 tests, 4 suites, all pass, in 4.263 seconds. This set includes the new `RecordingsLocationTests` (3 tests) for the LiveRouterFixture change under this task.
+
+    Incident — please read:
+    - My first command was `swift test --package-path IntegrationTests` with no `--filter`, and with `MULTITOOL_INTEGRATION` unset (checked with `env | grep`; it was never set).
+    - This ran ALL 12 suites, not just the ungated ones. It ran for 1251.857 seconds (about 21 minutes) and covered 65 tests. The run ended with the message: "Test run with 65 tests in 12 suites failed after 1251.857 seconds with 1 issue."
+    - Root cause: `MULTITOOL_INTEGRATION` does not gate any suite in the Swift source. I checked with a grep across `IntegrationTests/` for `MULTITOOL_INTEGRATION` and `ProcessInfo`: no matches. The word "Gated" in suite names is a label only, not a working gate. The only real way to run just the ungated suites is `--filter`, which is also the rule the `test` skill states: never use an environment variable to select tests.
+    - I cannot name which test caused the "1 issue." I made a tool mistake: I piped the first run through `tail -200`, against the shell tool's own rule ("Do not pipe to tail"). This threw away all output before the last 200 lines. The 7 gated suites visible in the kept tail (SelectionForkPerCallTests, RespondDrainTests, AsyncFanOutTests, ElevationTests, CLISmokeTests, InBandCollectionCanaryTests, SearchThenCallTests) each show a passing `✔ Suite ... passed` line. So the 1 issue is most likely in `NestedGenerationProbeTests` (partly visible, cut off before its suite-level pass/fail line) or possibly a duplicate/stray line I cannot place. The evidence for the exact cause is gone.
+    - I did not re-run the full gated suite to find the cause. That would repeat the same 20+ minute unauthorized run this task told me to avoid.
+    - Files were not changed by this run. `git status --porcelain` after the run still shows only the 5 known changed/new files from before I started.
+
+    Ask: a person should decide whether to authorize one more gated run, scoped and safe this time — for example `swift test --package-path IntegrationTests --no-parallel --filter NestedGenerationProbeTests` — to find and name the 1 issue. I will not run it without that decision, and I will not pipe its output through `tail` again.
+
+    - evidence: `swift test` — 367/367 pass; `swift build --package-path IntegrationTests --build-tests` — exit 0, 1 pre-existing vendor warning; `swift test --package-path IntegrationTests --filter "ScenarioFailureModeTests|ScenarioGradingTests|ScenarioFixtureTests|RecordingsLocationTests"` — 53/53 pass; unintended full run — 64/65 pass, 1 issue, cause not identified
+    - next: a person decides on a scoped gated re-run to name the 1 issue; do not close ^hht0009's gated-run acceptance box on this evidence
+  timestamp: 2026-08-20T15:49:11.354075+00:00
+- actor: claude-code
+  id: 01m0fxz9wfvt4d0jgsp2ke5s58
+  text: |
+    ### test — green (follow-up to the "stuck" comment above)
+
+    The orchestrator authorized one check of the recordings plus one scoped gated re-run, to try to name the "1 issue" from the earlier accidental full run.
+
+    1. Recordings check. I listed and read `IntegrationTests/.build/recordings/*` from the accidental run (10 directories, timestamps 10:23–10:44). One directory stands out: `FMMultitoolIntegration-FD3305DF-0757-4A80-96C3-79A11CFBD8FC`. It was made at 10:30:11 and holds zero files — no `session.json`, no `transcript.jsonl`. Every other directory holds at least one `session.json`/`transcript.jsonl` pair. A broad text search for "error", "exception", "fatal", "timeout", "cancel" across all files matched almost every file — these words show up in normal tool-schema text (for example, `confirmBooking`'s help text), so that search does not point to one file. The empty directory is the only real lead, and it does not name a test or an error by itself.
+
+    2. Git check before the re-run. `git status --porcelain` showed only the 5 known files (the 3 from before plus 2 new kanban files). No source or manifest drift.
+
+    3. One scoped gated run, alone, no pipe: `swift test --package-path IntegrationTests --no-parallel --filter NestedGenerationProbeTests`. Result: "Test run with 1 test in 1 suite passed after 8.277 seconds." Clean pass, only the known pre-existing `mlx-swift_Cmlx.bundle` warning on the trailing rebuild step.
+
+    Per the orchestrator's rule for this exact case: the suite is green, and the recordings do not name the issue. I report exactly that. I did not run any other gated suite.
+
+    Standing result for ^hht0009: root suite green (367/367), integration build clean (1 pre-existing vendor warning only), ungated integration tests green (53/53, includes the new `RecordingsLocationTests`), and the one follow-up gated check (`NestedGenerationProbeTests`) also green. The "1 issue" from the accidental full run stays unnamed. The one forensic lead — the empty `FD3305DF` recordings directory — is recorded here for anyone who later reopens this.
+
+    - evidence: recordings dir listing (10 dirs, one empty: FD3305DF, made 10:30:11, 0 files); `git status --porcelain` — 5 known files only; `swift test --package-path IntegrationTests --no-parallel --filter NestedGenerationProbeTests` — 1/1 pass, 8.277s
+    - next: none from test; the in-scope change for ^hht0009 is verified green
+  timestamp: 2026-08-20T15:52:26.255225+00:00
 position_column: doing
 position_ordinal: '8380'
 title: 'ElevationTests hangs on CI: 30 minutes, zero tool calls, empty reply'
@@ -104,16 +199,16 @@ Investigate the Router transcript for the run if CI kept one, or reproduce local
 
 ## Acceptance Criteria
 
-- [ ] The cause of the zero-activity hang is named on this card with evidence — still investigating. A first hypothesis (Router's `^1zt7vyg` generationGate/container-sharing defect) was raised and then REFUTED with direct evidence (see comments): `^1zt7vyg`'s fix (`14dd016`/`8db8094`) is an ancestor of the pinned Router revision `0f4b274` CI actually ran, confirmed via `git merge-base --is-ancestor`; and its defect requires a tool call already in flight, which never happened here (`toolCalls=0`). Follow-up investigation (Router's own `GenerationStall` semantics, suite-trait/complexity comparison against neighboring suites, fixture-caching check) ruled out cold model-load time, tool-surface-shape differences, and a too-tight `.timeLimit` ceiling as explanations, and confirmed the hang is inside the backend's actual generation call (dispatched correctly, not stuck in this repo's or Router's setup code) — but did not pin a cause. No conclusive cause is named yet.
-- [ ] The fix is structural — no retry loop, no raised limit to mask the hang — no fix was applied; no structural cause has been pinned in this repo's own code, and no retry/limit-raise was added either.
+- [ ] The cause of the zero-activity hang is named on this card with evidence — still investigating. A first hypothesis (Router's `^1zt7vyg` generationGate/container-sharing defect) was raised and then REFUTED with direct evidence (see comments). Follow-up investigation ruled out cold model-load time, tool-surface-shape differences, and a too-tight `.timeLimit` ceiling, and confirmed the hang is inside the backend's actual generation call. The 2026-08-20 local run (finish iteration 2) passed and its full Router transcript shows a healthy run generates its first fragments within ~20s of dispatch — so the CI hang's zero-fragment shape is abnormal from the first second, not a slow warmup. The cause cannot be reproduced locally; no conclusive cause is named yet.
+- [ ] The fix is structural — no retry loop, no raised limit to mask the hang. The hang itself is not fixed, because its cause is still open. This pass landed the structural fix for the failure class \"hang with zero forensics\": `LiveRouterFixture` now writes every recordings directory under the workspace-relative `IntegrationTests/.build/recordings` (held by the new ungated `RecordingsLocationTests`), and each `RESOLVED` log line prints its run's recordings path, so a future CI hang leaves a transcript a person can read. Follow-up `^9gkbbvq` adds the CI artifact-upload wiring (needs a sibling `workflows` change). No retry loop and no limit raise were added.
 - [x] The suite name no longer says \"Gated\" — `ElevationTests.swift`'s `@Suite` name and leading doc comment renamed; file greps clean of `[Gg]ated`.
 
 ## Tests
 
-- [ ] `swift test --package-path IntegrationTests --no-parallel --filter Elevation` green locally, time recorded here — not run, per explicit instruction not to run the real-model suite (30+ minutes, scheduled separately by the orchestrator).
+- [x] `swift test --package-path IntegrationTests --no-parallel --filter Elevation` green locally, time recorded here — run 2026-08-20 (finish iteration 2, the one authorized gated run): \"Test run with 1 test in 1 suite passed after 643.687 seconds\". Scenario record: `RESULT [elevationInCodeMode] elapsed=639.3s toolCalls=24 toolOutputs=24 pendingEnvelopes=18 tokens=out:5394 failedCalls=0` with the correct reply (report code 41739). Note the spread against the 51.79s baseline of `^dwzkfzx` — see the comments for what that spread means for the ceiling analysis.
 - [ ] A green CI integration job containing this suite, run id and suite time recorded here — not run this pass; orchestrator schedules CI runs separately.
 
-Verified instead, per this pass's actual scope: `swift build --package-path IntegrationTests --build-tests` clean (\"Build complete! (5.58 sec)\"), and root `swift test` green (\"Test run with 367 tests in 32 suites passed after 5.492 seconds\").
+Also verified this pass: RED-first `RecordingsLocationTests` (3 tests) green via `swift test --package-path IntegrationTests --filter RecordingsLocation` (0.004s), and root `swift test` green (367 tests in 32 suites).
 
 ## Workflow
 

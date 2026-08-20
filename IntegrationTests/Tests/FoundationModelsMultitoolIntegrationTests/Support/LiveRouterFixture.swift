@@ -502,6 +502,12 @@ struct LiveRouterFixture {
     /// The resolved, resident profile — release via `tearDown()`.
     let profile: LanguageModelProfile
     /// The durable transcripts root passed to `Router.init(recordingsDir:)`.
+    /// Stands under ``recordingsRoot`` — inside the workspace, never under the
+    /// ephemeral temporary directory — so the recorded run survives the
+    /// process for a CI artifact-upload step or a local investigation to
+    /// read. Card `^hht0009` is the reason: a 30-minute zero-activity CI hang
+    /// left no transcript to read, because the recordings lived in a
+    /// temporary directory no CI step uploads.
     private let recordingsDir: URL
 
     /// Resolves a profile over a real, live `LiveModelLoader` — the
@@ -535,7 +541,7 @@ struct LiveRouterFixture {
         await LiveProfileTurnstile.shared.enter()
         do {
             let cacheDir = Self.makeTempDir()
-            let recordingsDir = Self.makeTempDir()
+            let recordingsDir = Self.makeRecordingsDir()
             let loader = LiveModelLoader(
                 downloader: #hubDownloader(),
                 tokenizerLoader: #huggingFaceTokenizerLoader()
@@ -572,6 +578,13 @@ struct LiveRouterFixture {
                     + " footprint=\(profile.standard.footprintBytes)B charged=\(Self.chargedBytes(of: profile.standard))"
                     + " | flash=\(profile.flash.chosen.stringValue)"
                     + " footprint=\(profile.flash.footprintBytes)B charged=\(Self.chargedBytes(of: profile.flash))"
+                    // The recordings directory of THIS resolution, printed so a
+                    // log reader — a person over a CI log above all — can pair
+                    // each scenario with the transcript directory that recorded
+                    // it. Several fixtures resolve per run, so without this
+                    // line the uploaded recordings are a pile of UUID-named
+                    // directories with no map back to the scenarios.
+                    + " recordings=\(recordingsDir.path)"
             )
             return LiveRouterFixture(router: router, profile: profile, recordingsDir: recordingsDir)
         } catch {
@@ -627,10 +640,56 @@ struct LiveRouterFixture {
         return "\(charged)B"
     }
 
-    /// Creates a unique temporary directory.
+    /// The durable root every fixture's recordings directory stands under:
+    /// `<IntegrationTests package>/.build/recordings`, derived from this
+    /// file's own compile-time path. `#filePath` is valid at run time because
+    /// this package builds and tests on the same machine, locally and in CI
+    /// alike.
+    ///
+    /// Inside the workspace on purpose (card `^hht0009`): a recordings root
+    /// under `FileManager.default.temporaryDirectory` does not survive a CI
+    /// runner and is subject to the platform's temporary-directory sweep, so
+    /// a hung run left no transcript to read. Under `.build/` the tree is
+    /// already git-ignored (the root `.gitignore` ignores `.build/`), a CI
+    /// artifact-upload step can name `IntegrationTests/.build/recordings`
+    /// directly, and `swift package clean`/`.build` removal is the deliberate
+    /// way to clear old runs. `RecordingsLocationTests` holds this location.
+    static var recordingsRoot: URL {
+        URL(fileURLWithPath: #filePath)     // …/Support/LiveRouterFixture.swift
+            .deletingLastPathComponent()    // …/Support
+            .deletingLastPathComponent()    // …/FoundationModelsMultitoolIntegrationTests
+            .deletingLastPathComponent()    // …/Tests
+            .deletingLastPathComponent()    // …/IntegrationTests
+            .appendingPathComponent(".build", isDirectory: true)
+            .appendingPathComponent("recordings", isDirectory: true)
+    }
+
+    /// The name prefix of every directory this fixture creates — one spelling
+    /// for the temporary cache directories and the durable recordings
+    /// directories alike, so a directory listing reads as one family.
+    private static let fixtureDirectoryPrefix = "FMMultitoolIntegration-"
+
+    /// Creates a unique temporary directory, for state that must NOT outlive
+    /// the run — the Router cache directory.
     private static func makeTempDir() -> URL {
-        let dir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("FMMultitoolIntegration-\(UUID().uuidString)", isDirectory: true)
+        makeUniqueDirectory(under: FileManager.default.temporaryDirectory)
+    }
+
+    /// Creates a unique recordings directory under ``recordingsRoot``, for
+    /// the one output that must outlive the run: the recorded transcripts a
+    /// hang investigation reads.
+    static func makeRecordingsDir() -> URL {
+        makeUniqueDirectory(under: recordingsRoot)
+    }
+
+    /// Creates one uniquely named directory under `parent`, creating `parent`
+    /// itself when it is not there yet.
+    ///
+    /// - Parameter parent: the directory the new directory stands in.
+    /// - Returns: the created directory.
+    private static func makeUniqueDirectory(under parent: URL) -> URL {
+        let dir = parent
+            .appendingPathComponent("\(fixtureDirectoryPrefix)\(UUID().uuidString)", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
     }
