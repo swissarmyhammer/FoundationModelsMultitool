@@ -7,7 +7,8 @@ import Testing
 /// `swissarmyhammer/workflows/.github/workflows/swift-ci.yaml` workflow and
 /// must pass the inputs that keep the real-model suite safe: the nested
 /// package path `IntegrationTests`, the serial `integration-no-parallel`
-/// flag, and a metallib glob. The shared workflow orders the integration
+/// flag, a metallib glob, and the artifacts path that keeps the recorded
+/// transcripts of a run. The shared workflow orders the integration
 /// job after the unit job with its own `needs: test` edge, so this suite
 /// pins the delegation and its inputs, not the edge.
 @Suite("CI workflow")
@@ -67,6 +68,20 @@ struct CIWorkflowTests {
             """
             The shared call in .github/workflows/ci.yml must pass a \
             non-empty integration-metallib-glob.
+            """
+        )
+    }
+
+    @Test("the shared call names the integration artifacts path")
+    func sharedCallNamesIntegrationArtifactsPath() throws {
+        let namesArtifactsPath = try Self.workflowContainsLine(
+            "integration-artifacts-path: IntegrationTests/.build/recordings"
+        )
+        #expect(
+            namesArtifactsPath,
+            """
+            The shared call in .github/workflows/ci.yml must pass \
+            "integration-artifacts-path: IntegrationTests/.build/recordings".
             """
         )
     }

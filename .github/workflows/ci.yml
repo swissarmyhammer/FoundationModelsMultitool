@@ -56,3 +56,13 @@ jobs:
       # the run. `MetalLibraryTestBootstrap` closes the same gap in-process
       # and skips when the file is already there, so the two never fight.
       integration-metallib-glob: "*Cmlx*/default.metallib"
+
+      # Keep the transcripts of the run. The integration suite writes each
+      # Router recordings directory under `IntegrationTests/.build/recordings`
+      # (`LiveRouterFixture.recordingsRoot`, held by `RecordingsLocationTests`),
+      # and the `RESOLVED` log line prints the directory of each resolution.
+      # Workflows commit 283418a added this input, and the shared workflow
+      # uploads the path with `if: always()`. Thus a run that fails, stops on a
+      # time limit, or is cancelled also keeps the files. Without the upload, a
+      # CI hang leaves no transcript that a person can read.
+      integration-artifacts-path: IntegrationTests/.build/recordings
