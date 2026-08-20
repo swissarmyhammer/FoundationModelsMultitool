@@ -21,8 +21,24 @@ comments:
     - evidence: 2 files — .github/workflows/ci.yml, Tests/FoundationModelsMultitoolTests/CIWorkflowTests.swift. Red first: 4 of 4 rewritten tests failed against the old repo-local ci.yml. Green: `swift test --filter CIWorkflowTests` 4 of 4 pass; root `swift test` 367 tests in 32 suites, zero failures, zero skipped; `swift build --package-path IntegrationTests --build-tests` clean.
     - next: push to main, record the green run id and the job times on the card, then check the two open acceptance boxes.
   timestamp: 2026-08-20T13:32:00.298693+00:00
-position_column: doing
-position_ordinal: '8380'
+- actor: claude-code
+  id: 01m0fpc10fbk13xp7fya701ysp
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit c67385b) — 0 findings. The engine examined `.github/workflows/ci.yml` and `Tests/FoundationModelsMultitoolTests/CIWorkflowTests.swift`. An ignore rule excluded 6 `.kanban/` files.
+    - next: push the commit and record the green CI run id and job times on this card. The two open acceptance boxes wait for that run and do not block the review gate.
+  timestamp: 2026-08-20T13:39:34.543454+00:00
+- actor: claude-code
+  id: 01m0fpcmf8vn5qfjwqbqgtfjm0
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — ci.yml delegates to shared swift-ci (0580114 interface); CIWorkflowTests re-pinned, red-first
+    - test: green — root swift test 367/32, 0 skipped; IntegrationTests --build-tests clean
+    - commit: c67385b
+    - review: clean — 0 findings; task moved to done. The green-CI boxes wait on the push.
+  timestamp: 2026-08-20T13:39:54.472122+00:00
+position_column: done
+position_ordinal: d980
 title: Call the shared swift-ci.yaml for unit and integration, replacing the repo-local jobs
 ---
 Will's directive 2026-08-21: every repo uses the shared CI (swissarmyhammer/workflows swift-ci.yaml) for a unified approach. This repo went repo-local on `^dwzkfzx` because the shared workflow then had no way to run a nested integration package. The workflows session is adding an `integration-package-path` input now (requested 2026-08-21); this card converts our ci.yml once that lands.
