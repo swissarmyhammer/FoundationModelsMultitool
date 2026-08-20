@@ -108,6 +108,14 @@ comments:
     - commit: b0917c5
     - review: clean — 0 findings; task moved to done. The CI run-order box waits for the push.
   timestamp: 2026-08-19T19:39:54.917861+00:00
+- actor: claude-code
+  id: 01m0drkv72h95x29s0htrnfp3c
+  text: 'CI run 32294279325 started on push 563a483. The new order works: only "Unit tests" is in progress, and the integration job waits on the needs edge. When the run completes, record its job times here and check the last acceptance box.'
+  timestamp: 2026-08-19T19:40:19.042887+00:00
+- actor: claude-code
+  id: 01m0fhkcxjzmt5hwbq1h44c1wz
+  text: 'CI run 32294279325 proves the order: the unit job completed at 19:43:03Z and the integration job started at 19:43:05Z — two seconds later, only after unit success. The run-order acceptance box is checked. The run''s integration job failed for an unrelated cause (ElevationTests time limit, filed separately).'
+  timestamp: 2026-08-20T12:16:13.234182+00:00
 position_column: done
 position_ordinal: d880
 title: 'CI: run the integration job only after the unit job passes'
@@ -128,7 +136,7 @@ Separate context, not this card's work: the red on run `32203706380` is the old 
 - [x] The `integration` job in `.github/workflows/ci.yml` declares `needs: unit`
 - [x] All existing steps of both jobs are unchanged
 - [x] `CIWorkflowTests` fails when `needs: unit` is removed, and passes with it present
-- [ ] On the next CI run, the integration job starts only after the unit job completes (recorded here with the run id, from `gh run view <id> --json jobs`)
+- [x] On the next CI run, the integration job starts only after the unit job completes — run `32294279325`: unit completed 19:43:03Z, integration started 19:43:05Z (`gh run view 32294279325 --json jobs`)
 
 ## Tests
 

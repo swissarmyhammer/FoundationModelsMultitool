@@ -1,17 +1,28 @@
 name: CI
 
-# Repo-local, and deliberately so.
+# Delegates to the shared swift-ci workflow.
 #
-# This workflow used to call `swissarmyhammer/workflows/.github/workflows/swift-ci.yaml@main`
-# and pass it an `integration-gate-env` variable name. That shared workflow also
-# serves FoundationModelsRouter and the metadata registry, and its integration
-# job is built around an environment-variable gate this package no longer has —
-# so the split lives here rather than being pushed into a third repository.
+# This workflow was repo-local while the shared swift-ci could not run a
+# nested integration package. Workflows commit 0580114 added the
+# `integration-package-path` input, so the shared workflow now gives the
+# same guarantees the repo-local jobs gave:
 #
-# The unit/integration split is structural. The root `Package.swift` declares no
-# integration target at all: the real-model suite is its own package under
-# `IntegrationTests/`, so `swift test` at the root cannot reach it. Nothing below
-# sets an environment variable to select a suite, and nothing may start doing so.
+# - The unit job builds the nested package on every run. The root build does
+#   not compile a nested package, so this coupling keeps a broken
+#   integration test visible between the runs that execute it.
+# - The integration job builds the nested package, copies the mlx metallib
+#   beside each `.xctest` bundle, and runs
+#   `swift test --package-path IntegrationTests`.
+# - The integration job declares `needs: test`, so a unit failure reports in
+#   minutes and no long integration run starts on a broken tree.
+#
+# `CIWorkflowTests` pins this call and its inputs.
+#
+# The unit/integration split is structural. The root `Package.swift` declares
+# no integration target: the real-model suite is its own package under
+# `IntegrationTests/`, so `swift test` at the root cannot reach it. No input
+# below sets an environment variable to select a suite, and none may start
+# doing so.
 
 on:
   push:
@@ -24,89 +35,24 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  unit:
-    name: Unit tests
-    runs-on: [self-hosted, macOS]
-    steps:
-      - uses: actions/checkout@v4
+  ci:
+    uses: swissarmyhammer/workflows/.github/workflows/swift-ci.yaml@main
+    with:
+      # The real-model suite is a nested package. This input makes the unit
+      # job build it on every run and makes the integration job run it.
+      integration-package-path: IntegrationTests
 
-      - name: Toolchain versions
-        run: |
-          sw_vers
-          swift --version
+      # `--no-parallel` is not a preference. Swift Testing starts a test's
+      # `.timeLimit` when the test starts, and every scenario queues behind
+      # `LiveProfileTurnstile` for the one resident live profile — so a
+      # parallel run spends the limit on queue time and a queued suite fails
+      # in the same way as a hang. `LiveRouterFixture.swift` carries the
+      # measurements.
+      integration-no-parallel: true
 
-      - name: Clean build directories
-        run: rm -rf .build IntegrationTests/.build
-
-      - name: Build (incl. tests)
-        run: swift build --build-tests
-
-      - name: Run unit tests
-        run: swift test
-
-      # The compile coupling the nested package would otherwise lose.
-      #
-      # While the real-model suite was a target of the root manifest, a broken
-      # integration test broke a plain `swift build --build-tests`, so it could
-      # never rot unnoticed between the runs that actually execute it. A package
-      # of its own ends that: the root build does not compile these files at all.
-      #
-      # This step restores it, and it runs on EVERY trigger — a build of the
-      # integration package is cheap, and only the run is expensive. Do not drop
-      # it and do not make it conditional. `IntegrationTests/Package.swift`
-      # records the same requirement from the manifest side.
-      - name: Build the integration package's tests
-        run: swift build --package-path IntegrationTests --build-tests
-
-  integration:
-    name: Integration (real models, real GPU)
-    runs-on: [self-hosted, macOS]
-    # Both jobs use the one runner label [self-hosted, macOS], and GitHub
-    # assigns the runner in an arbitrary order when no edge orders the jobs.
-    # On run 32285751680 this job started first and held the runner for more
-    # than an hour while the unit job stayed queued. This edge makes the unit
-    # job run first, so a compile error or a unit failure reports in minutes
-    # and no long integration run starts on a broken tree.
-    # `CIWorkflowTests` pins this edge from the unit suite.
-    needs: unit
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Toolchain versions
-        run: |
-          sw_vers
-          swift --version
-
-      - name: Clean build directory
-        run: rm -rf IntegrationTests/.build
-
-      - name: Build the integration tests
-        run: swift build --package-path IntegrationTests --build-tests
-
-      # mlx-swift's Metal backend probes `<binary-dir>/mlx.metallib` first, where
-      # `<binary-dir>` is the directory of the running Mach-O — for a test bundle,
-      # `<Target>.xctest/Contents/MacOS/`. SwiftPM puts the compiled shader library
-      # two directory levels away, inside `mlx-swift_Cmlx.bundle`, so every probe
-      # misses and the first GPU-device eval aborts the whole test process with
-      # "Failed to load the default metallib". `MetalLibraryTestBootstrap` closes
-      # that gap in-process, and this step makes the same placement from the
-      # outside so the run does not rest on the bootstrap alone. The bootstrap
-      # skips when the file is already there, so the two never fight.
-      - name: Colocate the mlx metallib with the test binary
-        run: |
-          set -eu
-          xctest="$(find IntegrationTests/.build -name '*.xctest' -type d -print -quit)"
-          echo "xctest: ${xctest:?no .xctest bundle was built}"
-          metallib="$(find IntegrationTests/.build -path '*Cmlx*/default.metallib' -print -quit)"
-          echo "metallib: ${metallib:?no mlx-swift_Cmlx default.metallib was built}"
-          cp "$metallib" "$xctest/Contents/MacOS/mlx.metallib"
-
-      # `--no-parallel` is not a preference. Swift Testing runs suites
-      # concurrently and starts a test's `.timeLimit` when the test starts, while
-      # every scenario queues behind `LiveProfileTurnstile` for the one resident
-      # live profile — so a parallel run spends the limit on queue time and a
-      # queued suite fails in the same way as a hang. Two suites failed exactly
-      # that way before the flag was measured; `LiveRouterFixture.swift` carries
-      # the numbers.
-      - name: Run the integration suite
-        run: swift test --package-path IntegrationTests --no-parallel
+      # mlx-swift's Metal backend probes `<binary-dir>/mlx.metallib`, and
+      # SwiftPM puts the compiled shader library elsewhere. The shared
+      # workflow copies the matched file beside each `.xctest` bundle before
+      # the run. `MetalLibraryTestBootstrap` closes the same gap in-process
+      # and skips when the file is already there, so the two never fight.
+      integration-metallib-glob: "*Cmlx*/default.metallib"

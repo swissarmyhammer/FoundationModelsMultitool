@@ -1,33 +1,75 @@
 import Foundation
 import Testing
 
-/// Pins the shipped CI workflow to a fail-fast job order.
+/// Pins the shipped CI workflow to the shared swift-ci call.
 ///
-/// Both jobs in `.github/workflows/ci.yml` use the one runner label
-/// `[self-hosted, macOS]`. When no `needs:` edge orders the jobs, GitHub
-/// assigns the runner in an arbitrary order, so the long integration job
-/// can run first while the fast unit signal waits. CI run `32285751680`
-/// measured that order. This suite makes sure the `integration` job
-/// declares `needs: unit`, so a later edit cannot remove the edge
-/// without a red unit test.
+/// `.github/workflows/ci.yml` must delegate to the shared
+/// `swissarmyhammer/workflows/.github/workflows/swift-ci.yaml` workflow and
+/// must pass the inputs that keep the real-model suite safe: the nested
+/// package path `IntegrationTests`, the serial `integration-no-parallel`
+/// flag, and a metallib glob. The shared workflow orders the integration
+/// job after the unit job with its own `needs: test` edge, so this suite
+/// pins the delegation and its inputs, not the edge.
 @Suite("CI workflow")
 struct CIWorkflowTests {
-    @Test("the integration job declares needs: unit")
-    func integrationJobDeclaresNeedsUnit() throws {
-        let block = try Self.jobBlock(named: "integration")
-        let declaresNeedsUnit = block.contains { line in
-            line.trimmingCharacters(in: .whitespaces) == "needs: unit"
-        }
+    @Test("the workflow calls the shared swift-ci workflow")
+    func workflowCallsSharedSwiftCI() throws {
+        let callsSharedWorkflow = try Self.workflowContainsLine(
+            "uses: swissarmyhammer/workflows/.github/workflows/swift-ci.yaml@main"
+        )
         #expect(
-            declaresNeedsUnit,
-            "The integration job in .github/workflows/ci.yml must declare \"needs: unit\"."
+            callsSharedWorkflow,
+            """
+            .github/workflows/ci.yml must call \
+            swissarmyhammer/workflows/.github/workflows/swift-ci.yaml@main.
+            """
         )
     }
 
-    /// The indentation of a job's own keys (`runs-on:`, `needs:`, `steps:`).
-    /// A content line with less indentation opens the next job or the next
-    /// top-level key, so it ends the current job block.
-    private static let jobKeyIndentation = "    "
+    @Test("the shared call names the nested integration package")
+    func sharedCallNamesNestedIntegrationPackage() throws {
+        let namesNestedPackage = try Self.workflowContainsLine(
+            "integration-package-path: IntegrationTests"
+        )
+        #expect(
+            namesNestedPackage,
+            """
+            The shared call in .github/workflows/ci.yml must pass \
+            "integration-package-path: IntegrationTests".
+            """
+        )
+    }
+
+    @Test("the shared call sets integration-no-parallel")
+    func sharedCallSetsIntegrationNoParallel() throws {
+        let setsNoParallel = try Self.workflowContainsLine(
+            "integration-no-parallel: true"
+        )
+        #expect(
+            setsNoParallel,
+            """
+            The shared call in .github/workflows/ci.yml must pass \
+            "integration-no-parallel: true".
+            """
+        )
+    }
+
+    @Test("the shared call passes a metallib glob")
+    func sharedCallPassesMetallibGlob() throws {
+        let inputKey = "integration-metallib-glob:"
+        let globValue = try Self.workflowLines()
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .first { $0.hasPrefix(inputKey) }?
+            .dropFirst(inputKey.count)
+            .trimmingCharacters(in: .whitespaces)
+        #expect(
+            globValue?.isEmpty == false,
+            """
+            The shared call in .github/workflows/ci.yml must pass a \
+            non-empty integration-metallib-glob.
+            """
+        )
+    }
 
     /// Reads `.github/workflows/ci.yml` from the repository root through
     /// `RepositoryFile.read(relativePath:)`.
@@ -39,40 +81,16 @@ struct CIWorkflowTests {
         return text.split(separator: "\n", omittingEmptySubsequences: false)
     }
 
-    /// Collects the lines of one job block: the lines under the job's own
-    /// key, up to the next content line that stands outside the job.
+    /// Tells whether the workflow holds a line whose trimmed content equals
+    /// the expected text.
     ///
-    /// - Parameter name: the job key, for example `"integration"`.
-    /// - Returns: every line inside that job's block.
-    /// - Throws: `CIWorkflowTestsError` when the workflow holds no job with
-    ///   that name.
-    private static func jobBlock(named name: String) throws -> [Substring] {
-        let lines = try Self.workflowLines()
-        let jobKey = "  \(name):"
-        guard let jobKeyIndex = lines.firstIndex(of: Substring(jobKey)) else {
-            throw CIWorkflowTestsError(message: "ci.yml has no job named \"\(name)\".")
+    /// - Parameter expected: the line content to search for, without
+    ///   indentation.
+    /// - Returns: `true` when a line matches.
+    /// - Throws: an error when the workflow file cannot be read.
+    private static func workflowContainsLine(_ expected: String) throws -> Bool {
+        try workflowLines().contains { line in
+            line.trimmingCharacters(in: .whitespaces) == expected
         }
-
-        var block: [Substring] = []
-        for line in lines[lines.index(after: jobKeyIndex)...] {
-            if Self.endsJobBlock(line) { break }
-            block.append(line)
-        }
-        return block
     }
-
-    /// Tells whether a line ends a job block. A blank line and a comment
-    /// line continue the block. A content line with less indentation than a
-    /// job key ends it.
-    private static func endsJobBlock(_ line: Substring) -> Bool {
-        let trimmed = line.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty, !trimmed.hasPrefix("#") else { return false }
-        return !line.hasPrefix(Self.jobKeyIndentation)
-    }
-}
-
-/// A parse failure reading `.github/workflows/ci.yml`.
-private struct CIWorkflowTestsError: Error, CustomStringConvertible {
-    let message: String
-    var description: String { message }
 }
