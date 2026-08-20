@@ -209,6 +209,33 @@ comments:
     - commit: cfda34b
     - review: clean — review sha HEAD~1..HEAD, 0 findings, 7 validators. Task moved to done.
   timestamp: 2026-08-20T15:56:50.378472+00:00
+- actor: claude-code
+  id: 01m0grjb1q7h8ndzjhb5mtd38t
+  text: |-
+    ## CI evidence: the suite passed, but with 14.3 seconds of margin
+
+    Run `32429272930` is not this evidence — that run is for a later commit and is still in progress. The evidence is run **`32392350928`** (push `950ad13`, 2026-08-20), job `96504690907` "Integration (opt-in, real dependencies)". Both jobs of the run concluded `success`. The full integration job: "Test run with 65 tests in 12 suites passed after 7339.049 seconds."
+
+    The suite of this card passed:
+
+    ```
+    ✔ Suite "Elevation-in-code-mode scenario (phase-1 exit)" passed after 1785.670 seconds.
+    RESULT [elevationInCodeMode] elapsed=1777.7025229930878s toolCalls=23 toolOutputs=23
+      pendingEnvelopes=21 priming=off textResets=0 compactions=0 tokens=out:1916 failedCalls=0
+      reply="The deep scan of your archive is complete. It returned the report code: **41739**."
+    ```
+
+    The renamed suite name shows in the log, which confirms the rename shipped. The new `Recordings location` suite also ran on CI and passed (3 tests). The `RESOLVED` line now prints its recordings path, which confirms the recordings change is live on the runner:
+    `recordings=/Users/service/actions-runner/_work/FoundationModelsMultitool/FoundationModelsMultitool/IntegrationTests/.build/recordings/FMMultitoolIntegration-447904FD-...`
+
+    ## What this changes, and what it does not
+
+    **It does not explain the stall.** This run made 23 tool calls. The failed run of `32294279325` made zero, and its `STALL withoutProgress=` value increased without a reset to 1763.4s, which a tool call would have reset. The two shapes stay different, so the stall of this card stays unexplained. The rule-out record on this card stays correct.
+
+    **It shows a second, separate defect.** The suite passed at 1785.670 seconds against its `.timeLimit` of 1800 seconds. The margin is **14.33 seconds, which is 0.8 percent**. A healthy CI run of this suite now consumes almost all of its budget, so the suite will fail again on a run that is a little slower, and that failure will look like the failure of this card without being it. The measured times of this scenario are 51.79s (`^dwzkfzx`, local), 643.687s (this card, local), and 1785.670s (CI) — a spread of more than 30 times, which no CI slowdown factor alone explains.
+
+    The card `^nhxj8hx` holds the method to derive a ceiling from measurements. That work is not this card, and this card must not raise the limit to hide the stall. New card **`^4qcf1v9`** carries it.
+  timestamp: 2026-08-20T23:37:13.015454+00:00
 position_column: done
 position_ordinal: da80
 title: 'ElevationTests hangs on CI: 30 minutes, zero tool calls, empty reply'
