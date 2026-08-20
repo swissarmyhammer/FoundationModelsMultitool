@@ -1,6 +1,6 @@
 import Testing
 
-/// The gated elevation-in-code-mode scenario — eventplan.md's phase-1 exit
+/// The elevation-in-code-mode scenario — eventplan.md's phase-1 exit
 /// proof that the two surfaces really do meet on real hardware: a snippet whose
 /// work outlives the mount's wait clock hands the model a pending envelope,
 /// and the model collects the background run through the background-run globals
@@ -21,7 +21,7 @@ import Testing
 /// runs no live inference; the command that does run this suite is
 /// `swift test --package-path IntegrationTests --no-parallel`.
 @Suite(
-    "Gated elevation-in-code-mode scenario (phase-1 exit)",
+    "Elevation-in-code-mode scenario (phase-1 exit)",
     .serialized,
     .timeLimit(.minutes(30))
 )
