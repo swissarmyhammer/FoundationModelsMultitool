@@ -1,6 +1,42 @@
 ---
 assignees:
 - claude-code
+comments:
+- actor: claude-code
+  id: 01m0h19st8es66kb2pvta9akqh
+  text: |-
+    ## The healthy run time is already under 5 minutes — the live-lock is the whole overrun
+
+    `LiveRouterFixture.swift` records measurements of this same scenario made before the chain appeared: **39.8s on Qwen3.8** (`:271-273`) and **64.2s under `--no-parallel`** (`:443-450`, against 371.2s when suites ran in parallel). So the scenario's healthy cost is about one minute, not thirty.
+
+    That settles the design question. No smaller model and no scripted backend is necessary to get under five minutes. Removing the regress is sufficient, and every measured number above is evidence for it.
+
+    ## Where the mechanism half is already covered, with no model
+
+    The suite grades two checks, and only one of them needs weights.
+
+    - `pendingEnvelope` — already held in milliseconds by `Tests/FoundationModelsMultitoolTests/RouterSessionMountTests.swift:49-66`, which composes the identical `.nativeSessionMount` at `:104-112` and asserts `PendingRunEnvelope.isRendered`. Its own doc calls this "the same composition the integration scenarios run through".
+    - The full background-run lifecycle — elevate, envelope, release, collect the terminal detail — is held by `Tests/FoundationModelsMultitoolTests/HostAndEmitterTests.swift:45`, again with no model.
+    - `validAnswer` — needs a real model. Nothing else can show that a model reaches for the background-run globals on its own.
+
+    ## Options considered, and why the first one wins
+
+    **A. Break the live-lock; keep the suite as it is.** Returns the scenario to its measured ~40–64s. Keeps the capability claim intact. This is the recommendation.
+
+    **B. Small model plus `direct: true`.** `plumbingProbeProfile` (Qwen3-1.7B) exists, and `direct:` drops `searchTools` and its nested selection generation. But `LiveRouterFixture.swift:362-371` names this suite as a capability claim that may not take the probe model, and that prohibition is sound: a 1.7B model may not compose the collect-then-answer turn at all, so a green run would prove less than it appears to.
+
+    **C. Scripted `ModelLoader` / `LoadedLLMContainer` / `LanguageModelSessionBackend` triple.** Every protocol is public, Router wraps tools with `.nativeSessionMount` before the backend sees them, and the stub is roughly 50 lines. It runs in seconds and keeps the real mount, the real `MultiTool` and the real fixture. **Rejected for this suite**: it proves the plumbing carries an envelope, not that a model collects one. `ScenarioRunner.swift:1025-1028` already forbids citing any suite here for "the drain works", and `LiveRouterFixture.swift:196-204` records a claim this codebase had to retract once. Whatever holds the capability claim must run a real model.
+
+    ## Hardening, separate from the fix
+
+    `NestedGenerationProbeTests` is the pattern: its 1-minute ceiling was derived from its own measured runs of 12.0s, 9.2s and 8.6s, not inherited from the 30-minute boilerplate. Once the regress is gone, derive this suite's ceiling the same way. A ceiling near five minutes makes the next live-lock fail in five minutes instead of thirty, and stops a slow run from being indistinguishable from a stuck one.
+
+    ## Constraint on any replacement
+
+    Do not add an environment flag. `IntegrationTests/Package.swift:26-47` makes the gate structural on purpose — the root manifest never names this package — and records that the environment-variable predecessor "made a green run that measured nothing indistinguishable from a green run that measured everything". Nothing here reads the environment, and nothing may start.
+
+    If the split of option C is taken later for the mechanism half, its documentation must state which of the two claims it holds.
+  timestamp: 2026-08-21T02:09:50.408875+00:00
 position_column: todo
 position_ordinal: '80'
 title: 'wait() inside runCode live-locks: each round mints a new token, so the model chases the chain'
