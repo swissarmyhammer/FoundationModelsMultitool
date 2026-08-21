@@ -3,38 +3,53 @@ assignees:
 - claude-code
 position_column: todo
 position_ordinal: '80'
-title: ElevationTests passes CI with 14 seconds of margin against its 30-minute limit
+title: 'wait() inside runCode live-locks: each round mints a new token, so the model chases the chain'
 ---
-CI run `32392350928` (push `950ad13`, 2026-08-20), job `96504690907`: the suite "Elevation-in-code-mode scenario (phase-1 exit)" **passed**, and its time was `1785.670 seconds` against its declared `.timeLimit(.minutes(30))` of 1800 seconds. The margin is 14.33 seconds, which is 0.8 percent of the budget.
+CI run `32392350928`, job `96504690907`: the elevation suite passed at `1785.670 seconds` against its 1800-second `.timeLimit` — a margin of 14.33 seconds. The transcript shows the cause, and it is a live-lock in the product, not a slow machine.
 
-The scenario itself recorded `RESULT [elevationInCodeMode] elapsed=1777.7s toolCalls=23 toolOutputs=23 pendingEnvelopes=21 tokens=out:1916 failedCalls=0` with the correct answer, so the run was healthy. It was only slow.
+## The live-lock
 
-## Why this is a defect
+```
+CALL [2]  runCode  {"code": "const r = await tools.runDeepScan({});\nreturn r;"}
+DONE      runCode  {"pending":true,"completionToken":"01M0G1M9M7C4XBMD8PCBB243Y4", ...}
+CALL [3]  runCode  {"code": "return await wait(\"01M0G1M9M7C4XBMD8PCBB243Y4\", 60);"}
+DONE      runCode  {"pending":true,"completionToken":"01M0G1NH3KBK0RGPVRK268MA8W", ...}
+CALL [4]  runCode  {"code": "return await wait(\"01M0G1NH3KBK0RGPVRK268MA8W\", 60);"}
+DONE      runCode  {"pending":true,"completionToken":"01M0G1PT7F4YV8SJ6MZQ2VRBCY", ...}
+... calls 5 through 22, each waiting on the token the call before it minted ...
+CALL [23] wait     {"completionToken": "01M0G1M9M7C4XBMD8PCBB243Y4", "timeout": 120}
+DONE      wait     {"detail":"{\"reportCode\":41739}", ...}
+```
 
-A suite that consumes 99.2 percent of its ceiling on a healthy run fails on the next run that is a little slower. Worse, that failure prints `Time limit was exceeded: 1800.000 seconds` at `ElevationTests.swift:29` — the same line and the same message as the unexplained zero-activity stall of card `^hht0009`. The two causes then become impossible to tell apart from the CI log alone, and `^hht0009` is still open on its cause.
+A `wait` inside `runCode` suspends, so that `runCode` call elevates in its own turn and returns a pending envelope whose `completionToken` names **that `runCode` call**, not the run being waited for. The model reads the newest token and waits on it. The next round does the same. Each round costs 60 seconds of wait plus one generation on a 27B model.
 
-## The measurements, which do not agree
+Call 23 broke the chain only because the model used the top-level `wait` **tool** with the **original** token from call 2, and that returned the answer at once.
+
+The fixture's own delay is 8 seconds (`integrationDeepScanDuration`, `IntegrationTests/.../Fixtures/ScenarioTools.swift:503`). About 1700 of the 1777 seconds bought nothing.
+
+## This explains the run-time spread
 
 | Where | Time | Tool calls | Card |
 |---|---|---|---|
-| Dev box | 51.79s | not recorded | `^dwzkfzx`, 2026-08-19 |
-| Dev box | 643.687s | 24 | `^hht0009`, 2026-08-20 |
-| CI | 1785.670s | 23 | this card, 2026-08-20 |
+| Dev box | 51.79s | not recorded | `^dwzkfzx` |
+| Dev box | 643.687s | 24 | `^hht0009` |
+| CI | 1785.670s | 23 | this card |
 
-The spread between the two dev-box runs alone is more than 12 times, on the same machine and the same scenario. No CI slowdown factor explains that, so a ceiling derived only from a CI-slowdown multiple is not trustworthy for this suite.
+These are not three machine speeds. They are three different counts of chain iterations before the model escaped. A 12-times spread on one machine has no other explanation.
 
 ## What
 
-1. Find why the same scenario takes 51.79s on one run and 1785.670s on another. Read the Router transcripts — the recordings now survive under `IntegrationTests/.build/recordings`, and card `^9gkbbvq` made CI upload them as the `integration-artifacts` artifact, so a CI transcript is available from any run after `76c7890`. Compare a fast transcript against a slow one: tokens generated, tool rounds, retries, context growth, and time per round.
-2. Remove the cause of the variance where it is in this repository's code or fixtures. If the cause is in Router or in the backend, name it with evidence and route a card to that repository — do not edit a sibling package here.
-3. Only then re-derive the ceiling by the method of card `^nhxj8hx`, from real measurements with a stated margin. Do not raise the limit before step 1, because a raised limit hides both this variance and the stall of `^hht0009`.
+1. **Break the regress in the product, in the tool's own contract.** A pending envelope returned by a `runCode` call that is itself blocked in `wait` must lead the model back to the run it is waiting for, not to a fresh handle for the wrapper. Candidates, to be judged against the shipped tool descriptions and the envelope's own `next` text: return the original `completionToken` on an envelope that wraps only a `wait`; or make the envelope's `next` name the token to wait on. The teaching belongs in the shipped tool description and the envelope text, never in test scaffolding.
+2. **Add an ungated regression test that holds the fix**, with no model. The seams exist: `Tests/FoundationModelsMultitoolTests/RouterSessionMountTests.swift:104-112` composes the identical `.nativeSessionMount`, and `Fixtures/SandboxGlobalsFixtures.swift:218-261` (`startScriptedRun`) builds a background run with `waitSeconds: 0`. A test that calls `wait` inside `runCode` on a pending token and asserts the envelope leads back to the original run runs in milliseconds.
+3. **Re-derive the `.timeLimit` by the method of `^nhxj8hx`** once the live-lock is gone, from real measurements with a stated margin. Do not raise the limit before step 1 — a raised limit hides the live-lock.
 
 ## Acceptance Criteria
 
-- [ ] The cause of the 30-times run-time spread is named on this card with evidence from at least one fast and one slow transcript.
-- [ ] The cause is removed, or routed to the repository that owns it with the evidence recorded here.
-- [ ] The `.timeLimit` of the suite is re-derived by the method of `^nhxj8hx`, with the measurements and the margin written here. No retry loop.
-- [ ] A CI run shows the suite passing with a margin that the derivation states.
+- [ ] The regress is broken in the product, and the change is in a shipped tool description, envelope text, or mount behavior — not in test scaffolding.
+- [ ] An ungated, model-free regression test holds the fix and fails without it.
+- [ ] The elevation scenario completes in a bounded number of tool rounds; the count before and after is recorded here.
+- [ ] The suite `.timeLimit` is re-derived from measurements, with the margin stated. No retry loop.
+- [ ] A CI run shows the suite green with the derived margin; run id recorded here.
 
 ## Tests
 
@@ -43,6 +58,6 @@ The spread between the two dev-box runs alone is more than 12 times, on the same
 
 ## Related
 
-- `^hht0009` — the unexplained zero-activity stall of the same suite. Different shape: zero tool calls and no fragment for 1763s. Keep the two apart.
-- `^9gkbbvq` — made CI keep the recordings, which gives this card its evidence.
+- `^hht0009` — the run that failed at 1793.2s. Its "zero-activity hang" reading rested on the `STALL withoutProgress=` lines, and that reading is refuted: in the passing run above the same value climbs to 1765.7s with no reset while 23 tool calls succeed, because it measures time since the last streamed **text** fragment and a tool-calling turn streams no text. Whether that run was this same live-lock without an escape is open; `toolCalls=0` on its `RESULT` line is the only remaining evidence.
+- `^9gkbbvq` — made CI keep the recordings, which is how a future run gets a transcript like the one above.
 - `^nhxj8hx` — holds the ceiling-derivation method.

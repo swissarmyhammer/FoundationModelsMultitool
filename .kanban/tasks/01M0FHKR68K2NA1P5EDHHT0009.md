@@ -212,29 +212,50 @@ comments:
 - actor: claude-code
   id: 01m0grjb1q7h8ndzjhb5mtd38t
   text: |-
-    ## CI evidence: the suite passed, but with 14.3 seconds of margin
+    ## CI evidence: the suite passed — and it refutes the premise of this card
 
-    Run `32429272930` is not this evidence — that run is for a later commit and is still in progress. The evidence is run **`32392350928`** (push `950ad13`, 2026-08-20), job `96504690907` "Integration (opt-in, real dependencies)". Both jobs of the run concluded `success`. The full integration job: "Test run with 65 tests in 12 suites passed after 7339.049 seconds."
-
-    The suite of this card passed:
+    The evidence is run **`32392350928`** (push `950ad13`, 2026-08-20), job `96504690907`. Both jobs concluded `success`. The integration job: "Test run with 65 tests in 12 suites passed after 7339.049 seconds."
 
     ```
     ✔ Suite "Elevation-in-code-mode scenario (phase-1 exit)" passed after 1785.670 seconds.
-    RESULT [elevationInCodeMode] elapsed=1777.7025229930878s toolCalls=23 toolOutputs=23
-      pendingEnvelopes=21 priming=off textResets=0 compactions=0 tokens=out:1916 failedCalls=0
+    RESULT [elevationInCodeMode] elapsed=1777.7s toolCalls=23 toolOutputs=23 pendingEnvelopes=21
+      priming=off textResets=0 compactions=0 tokens=out:1916 failedCalls=0
       reply="The deep scan of your archive is complete. It returned the report code: **41739**."
     ```
 
-    The renamed suite name shows in the log, which confirms the rename shipped. The new `Recordings location` suite also ran on CI and passed (3 tests). The `RESOLVED` line now prints its recordings path, which confirms the recordings change is live on the runner:
-    `recordings=/Users/service/actions-runner/_work/FoundationModelsMultitool/FoundationModelsMultitool/IntegrationTests/.build/recordings/FMMultitoolIntegration-447904FD-...`
+    The renamed suite name shows in the log. The new `Recordings location` suite ran on CI and passed. The `RESOLVED` line prints its recordings path on the runner, so the recordings change is live.
 
-    ## What this changes, and what it does not
+    ## Correction: my earlier reading of the STALL lines was wrong
 
-    **It does not explain the stall.** This run made 23 tool calls. The failed run of `32294279325` made zero, and its `STALL withoutProgress=` value increased without a reset to 1763.4s, which a tool call would have reset. The two shapes stay different, so the stall of this card stays unexplained. The rule-out record on this card stays correct.
+    An earlier version of this comment said the failed run's `STALL withoutProgress=` value climbed without a reset "which a tool call would have reset". **That is false, and this passing run proves it false.** In this run the value climbs monotonically 30.2s, 60.4s, 91.4s ... 1765.7s with no reset at any point — while the run makes 23 successful tool calls and answers correctly.
 
-    **It shows a second, separate defect.** The suite passed at 1785.670 seconds against its `.timeLimit` of 1800 seconds. The margin is **14.33 seconds, which is 0.8 percent**. A healthy CI run of this suite now consumes almost all of its budget, so the suite will fail again on a run that is a little slower, and that failure will look like the failure of this card without being it. The measured times of this scenario are 51.79s (`^dwzkfzx`, local), 643.687s (this card, local), and 1785.670s (CI) — a spread of more than 30 times, which no CI slowdown factor alone explains.
+    The reason is in the metric itself: the value reports `visibility=fragments(observed: 0)`. It measures the time since the last streamed **text** fragment. A turn that spends its time in tool rounds emits tool calls, not text, so `fragments(observed: 0)` and a climbing `withoutProgress` are the normal shape of a long tool-calling turn. They are not evidence of a stall.
 
-    The card `^nhxj8hx` holds the method to derive a ceiling from measurements. That work is not this card, and this card must not raise the limit to hide the stall. New card **`^4qcf1v9`** carries it.
+    That removes the main pillar of this card. The only remaining evidence of a true stall in run `32294279325` is `toolCalls=0` on its `RESULT` line. That one line is now the whole case, and it was printed after the time limit cancelled the turn.
+
+    ## The real cause of the 1777 seconds
+
+    The transcript shows a live-lock, not slowness. Calls 3 to 22 are twenty consecutive `runCode` calls, each one `return await wait("<token>", 60);`, and **each returns a pending envelope carrying a new token**:
+
+    ```
+    CALL [2]  runCode  {"code": "const r = await tools.runDeepScan({});\nreturn r;"}
+    DONE      runCode  {"pending":true,"completionToken":"01M0G1M9M7C4XBMD8PCBB243Y4", ...}
+    CALL [3]  runCode  {"code": "return await wait(\"01M0G1M9M7C4XBMD8PCBB243Y4\", 60);"}
+    DONE      runCode  {"pending":true,"completionToken":"01M0G1NH3KBK0RGPVRK268MA8W", ...}
+    CALL [4]  runCode  {"code": "return await wait(\"01M0G1NH3KBK0RGPVRK268MA8W\", 60);"}
+    DONE      runCode  {"pending":true,"completionToken":"01M0G1PT7F4YV8SJ6MZQ2VRBCY", ...}
+    ... eighteen more, each on the token the previous one minted ...
+    CALL [23] wait     {"completionToken": "01M0G1M9M7C4XBMD8PCBB243Y4", "timeout": 120}
+    DONE      wait     {"detail":"{\"reportCode\":41739}", ...}
+    ```
+
+    A `wait` inside `runCode` blocks, so that `runCode` call elevates in its turn and mints a token for **itself**. The model then waits on the new token instead of the original. Each round costs 60 seconds of wait plus one generation on a 27B model. The chain broke only at call 23, when the model used the top-level `wait` tool on the **original** token from call 2 and got the answer at once.
+
+    The fixture's own delay is 8 seconds (`integrationDeepScanDuration`, `Fixtures/ScenarioTools.swift:503`). So roughly 1700 of the 1777 seconds were spent in a loop that made no progress toward the answer.
+
+    This also explains the run-time spread that looked inexplicable — 51.79s, 643.687s, 1785.670s. Those are not three machine speeds. They are three different numbers of chain iterations before the model escaped.
+
+    Card `^4qcf1v9` carries the live-lock and the ceiling. This card's own remaining question — whether run `32294279325` was this same live-lock that never escaped, or a genuine stall — now rests on `toolCalls=0` alone.
   timestamp: 2026-08-20T23:37:13.015454+00:00
 position_column: done
 position_ordinal: da80
