@@ -37,8 +37,69 @@ comments:
 
     If the split of option C is taken later for the mechanism half, its documentation must state which of the two claims it holds.
   timestamp: 2026-08-21T02:09:50.408875+00:00
-position_column: todo
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m0jb1ch9sk6wapfxrdr8jkzk
+  text: |-
+    ## implement — research, measurement, and the blocker
+
+    Picked up. Tree was clean at the start (`git status` showed nothing). No sibling-session edits in this tree.
+
+    ### Discovery 1 — the premise in "The live-lock" is partly wrong
+
+    The card says the `runCode` call elevates *because* the `wait` inside it suspends. That is not the cause. Since `^cv98vff`, `MultiTool.detachmentClocks(from:)` (`Sources/FoundationModelsMultitool/MultiTool+Detachment.swift`) answers a zero wait clock on every call. The mount detaches each `runCode` call at once, before the snippet runs. A snippet that waits on a run that already finished gets a fresh token too.
+
+    Measured with no model. A temporary test mounted `MultiTool` under `.nativeSessionMount` with one `startScriptedRun` background run (the seams the card names). The test file was deleted after the run; it was scaffolding, not a fix.
+
+    - Settled T0, snippet `return await wait("T0", 60);`: fresh envelope in 42 µs, token != T0. The wrapper's terminal `detail` is the T0 report (`state: complete`, `detail: deep-scan-report`).
+    - Running T0, same snippet: fresh envelope in 112 µs. A second hop on the wrapper token minted a third token. Each hop nests the report one level deeper.
+    - The `wait` tool on the original token answered at once with the result and the "Answer with it now" directive.
+
+    So the chain has two causes, and both are necessary: (a) `runCode` always backgrounds (Multitool, by decision `^cv98vff`), and (b) the envelope's `next` text prescribes a `runCode` snippet: `Call this tool again with a snippet that does: return await wait("<token>", 60)`. The model obeys (b). Each round costs one generation on the 27B model (1777 s / 21 rounds is about 85 s a round). Call 23 escaped with the `wait` tool.
+
+    ### Discovery 2 — the `next` text is Router's, and Router's `isRendered` pins it byte for byte
+
+    The text lives in `PendingRunEnvelope.renderedMidfix`/`renderedSuffix` in Router's `Sources/FoundationModelsRouter/Hosting/DetachingTool.swift`. `DetachingTool.call` returns `envelope.rendered` and the wrapped tool never runs before that return. `ToolContext` publishes no `park`, so Multitool cannot mint the token or write the envelope itself. `TokenCappingTool` passes the envelope through by exact byte shape (`isRendered`). Router's own card `01M03NR0CQ8MX1SV2NQ466D38P` (done) already records: the collect instruction is Router behaviour on every host.
+
+    The text also names Router's `WaitOutcome` states ("settled", "deadline_elapsed"). Multitool's `wait()` global and `wait` tool report `state: complete|error` and `result: timeout|unknown`. The model never sees the named states. The `wait` tool's own doc records the same chain from before the tool existed (`^2w9vbkm`, `^h773bed`: "return await wait(token, 60) seven times without ever collecting anything"). The tool replaced the snippet-level wait, but the text that prescribes the snippet-level wait was not changed.
+
+    ### What was tried and rejected in this package
+
+    - `MultiTool.description` already says "do not wait()". The transcript shows the in-band `next` text wins over the upfront description. A stronger sentence changes nothing structural.
+    - Removing or rewording the sandbox `wait()` global: the envelope still prescribes a snippet, so the model still chains; the wrapper would only fail faster.
+    - Answering a non-zero wait clock for a "collect-only" snippet: needs a classification of the snippet text before it runs, and brings back "returns if it was fast", which `^cv98vff` rejected on the user's word.
+    - Declaring `.runToCompletionMount` and backgrounding in `MultiTool` itself: `SessionMailbox.park` is internal to Router; not reachable.
+
+    Conclusion: no change inside this package breaks the chain while the envelope's `next` text prescribes a `runCode` snippet. The fix is Router's text (or a Router hook that lets the wrapped tool supply the collect sentence). Candidate 1 on this card ("return the original completionToken on an envelope that wraps only a wait") needs the same Router change.
+
+    ### Action taken
+
+    Filed Router card `01M0JAZMKZ5GJ8RTFA0RX6F25M` on `../FoundationModelsRouter/.kanban` (copied per the cross-board procedure; the local copy is deleted). It names the text, the call sites, the measurements, and two designs (A: change the fixed text to name the `wait` tool with the same completionToken; B: `DetachmentParameterProviding` supplies the collect sentence and `isRendered` recognizes prefix + token + a `next` field). Nothing in the Router tree was edited. I could not message the Router session: no agent listing tool is available in this run.
+
+    ### What stays open on this card
+
+    - Acceptance 1 and 2 wait for the Router change. After it lands: bump the Router pin, add the model-free regression test here that the new text can hold (the mounted `runCode` envelope leads to the `wait` tool with the same token), then re-run the elevation scenario and record the round count.
+    - Acceptance 3, 4, 5 and the CI test line need a CI run after that, and stay unchecked.
+    - No `.timeLimit` change was made. No environment flag was added.
+  timestamp: 2026-08-21T14:19:14.857833+00:00
+- actor: claude-code
+  id: 01m0jb1tbd7p759kgr5v1c7c2y
+  text: |-
+    ### implement — stuck
+    - evidence: 0 source files changed in this package. Temporary probe `Tests/FoundationModelsMultitoolTests/ZZLiveLockProbeTests.swift` ran under `swift test --filter LiveLockProbe` (2 tests, 2 passed, then deleted; measurements in the comment above). Router card `01M0JAZMKZ5GJ8RTFA0RX6F25M` filed on `../FoundationModelsRouter/.kanban/tasks/`. `git status` here shows only this card's kanban files and the kanban trash of the copied card.
+    - next: Router changes the envelope `next` text (or hands the wrapped tool the collect sentence). Then, here: bump the Router pin, add the model-free regression test that holds the new text, re-run the elevation scenario, record the round count, re-derive the `.timeLimit` from measurements, and record the CI run id. The blocker is in a sibling package; a person decides whether Router does the work or whether `^cv98vff`'s "always backgrounds" rule is re-opened instead.
+  timestamp: 2026-08-21T14:19:29.005501+00:00
+- actor: claude-code
+  id: 01m0jb2xa0w2nwdzcpj8ermrmj
+  text: |-
+    ### finish iteration 1 — stuck
+    - implement: stuck — 0 source files changed. The envelope `next` text that prescribes the `runCode` snippet is Router's (`PendingRunEnvelope.renderedMidfix`/`renderedSuffix`, `DetachingTool.swift`), pinned byte for byte by `isRendered`. This package cannot write it. Router card `01M0JAZMKZ5GJ8RTFA0RX6F25M` filed on `../FoundationModelsRouter/.kanban/tasks/`.
+    - test: not run (no change)
+    - commit: not run (no change)
+    - review: not run (no change)
+    - next: a person decides — Router changes the envelope text (then bump the pin here, add the regression test, re-measure, re-derive the ceiling), or re-open `^cv98vff` "always backgrounds".
+  timestamp: 2026-08-21T14:20:04.800229+00:00
+position_column: doing
+position_ordinal: '8380'
 title: 'wait() inside runCode live-locks: each round mints a new token, so the model chases the chain'
 ---
 CI run `32392350928`, job `96504690907`: the elevation suite passed at `1785.670 seconds` against its 1800-second `.timeLimit` — a margin of 14.33 seconds. The transcript shows the cause, and it is a live-lock in the product, not a slow machine.
