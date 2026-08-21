@@ -188,6 +188,80 @@ comments:
     - evidence: `swift test` (root package only, IntegrationTests not run) — 369 tests, 32 suites, 0 failures, 0 skipped. One build-system warning present: `missing creator for mutated node: (.../mlx-swift_Cmlx.bundle/Contents/MacOS)`. This warning comes from the mlx-swift dependency's bundle target, not from this package's own source code, so it is out of scope for this fix. No files changed. No commit made.
     - next: none. The suite is clean.
   timestamp: 2026-08-21T18:01:13.324067+00:00
+- actor: claude-code
+  id: 01m0jr074hg3s1gvkfjd8cfbr1
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit `6bc6f77`), 5 files reviewed, 0 findings (attempted 7, confirmed 0, refuted 0). Files: `IntegrationTests/.../Support/ScenarioRunner.swift`, `Sources/FoundationModelsMultitool/MultiTool+Detachment.swift`, `Sources/FoundationModelsMultitool/MultiTool.swift`, `Tests/.../MultiToolExecutionTests.swift`, `Tests/.../RouterSessionMountTests.swift`.
+    - next: the card moved to `done` on the clean review. Acceptance criteria 3 to 5 and the CI test box are not checked. They need a gated or CI run that the orchestrator schedules. Their absence is not a finding in this delta.
+  timestamp: 2026-08-21T18:05:48.049953+00:00
+- actor: claude-code
+  id: 01m0jr1809ykszefyygvy4kn0h
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — 5 files (MultiTool+Detachment.swift, MultiTool.swift, RouterSessionMountTests.swift, MultiToolExecutionTests.swift, ScenarioRunner.swift comments); `swift package update` Router 37f1339, mlx 41e9f41
+    - test: green — swift test, 369 tests / 32 suites, 0 failures
+    - commit: 6bc6f77
+    - review: clean — 0 findings; task moved to done by the review engine
+    - note: acceptance criteria 3, 4, 5 and the CI test line stay unchecked. The orchestrator moves the card back to doing for iteration 3: one local gated run of the elevation suite to record the round count and re-derive the `.timeLimit`. Criterion 5 and the CI line need a push, which the user makes.
+  timestamp: 2026-08-21T18:06:21.705064+00:00
+- actor: claude-code
+  id: 01m0jrhf9hr3jxvh7k9srrg51k
+  text: |-
+    ### implement, iteration 3 — the re-measurement and the ceiling
+
+    Tree at start: `git status` showed only `.kanban/` files dirty.
+
+    ### Discovery: the IntegrationTests package had the old Router
+
+    The nested `IntegrationTests` package keeps its own `Package.resolved` and its own `.build/checkouts`. Iteration 2 ran `swift package update` at the root only. The first gated run of this iteration therefore built against Router `f1dd39e`, which has no `detachmentCollectInstruction`. The envelope text in that run was the old Router sentence (`Call this tool again with a snippet that does: return await wait(...)`, with the states `settled` and `deadline_elapsed`). The model escaped in one round on its own (3 tool calls, 60.788 s scenario, 67.053 s suite). That run is evidence of a healthy-shape run, not of the fix. Transcript: `IntegrationTests/.build/recordings/FMMultitoolIntegration-87869C4E-03ED-4405-A209-32F696179DE1`.
+
+    Fix for the measurement: `swift package update` in `IntegrationTests/`. Router now `37f1339` (7 `detachmentCollectInstruction` matches in its `DetachingTool.swift`), mlx `41e9f41`. `swift build --package-path IntegrationTests --build-tests` green. `Package.resolved` is not tracked, so nothing to commit for this.
+
+    Note for CI: CI resolves the nested package fresh, so it gets Router `main` at `37f1339` or later on its own.
+
+    ### The re-measurement, with the fix in place
+
+    Command: `cd IntegrationTests && swift test --no-parallel --filter ElevationTests`, one run.
+
+    - Suite wall time: 53.701 s. Scenario elapsed: 48.532 s.
+    - Tool calls: 3 — `searchTools`, `runCode`, `wait`. One pending envelope. One collect round.
+    - The envelope `next` is this package's sentence: `Do not answer yet, and do not guess the result. Call the wait tool with completionToken "01M0JRCWQJXNC6M3P8VZT0D64V" to collect it. ...`
+    - The model called the top-level `wait` tool with the original token (`01M0JRCWQJXNC6M3P8VZT0D64V`), no `runCode` snippet, no token chase. The `wait` report: `state: complete`, `detail: {"reportCode":41739}`. The answer carried 41739.
+    - Transcript: `IntegrationTests/.build/recordings/FMMultitoolIntegration-3D8F8B2C-C0B7-4E82-BC35-C9BCC171E81C/01M0JRBTFX9EVSAAND3MK1F1JT/01M0JRBZBTYNHYC3A2Q58VPZZQ/transcript.jsonl` (19 lines, 3 `toolCalls` entries).
+
+    Round count, before and after:
+    - Before: 23 tool calls / 1785.670 s in CI (21 rounds of chase); 24 tool calls / 643.687 s on the dev box.
+    - After: 3 tool calls / 53.701 s on the dev box, one collect round.
+
+    ### The ceiling, by the method of `^nhxj8hx`
+
+    Healthy dev-box measurements of this suite (no chain): 39.8 s (Qwen3.8, 2026-08-16), 64.2 s (`--no-parallel`, 2026-08-16), 51.79 s (`^dwzkfzx`, 2026-08-19), 67.053 s (2026-08-21, old Router text, one-round escape), 53.701 s (2026-08-21, fix in place). Worst healthy: 67.053 s.
+
+    1. CI/dev ratio from `^nhxj8hx`: 6.21 (3614 s / 581.7 s over the same ten suites).
+    2. Project the worst healthy run onto the CI runner: 67.053 s x 6.21 ≈ 416 s.
+    3. Apply the same one-third margin: 416 s x 4/3 ≈ 555 s. Round up to whole minutes: 10 minutes (600 s).
+
+    Margin: 600 s stands 44 percent above the projected worst healthy CI run (416 s) and 8.9 times above the worst healthy dev-box run (67.053 s). Both chain runs (643.687 s dev, 1785.670 s CI) exceed it, so a chain is reported in ten minutes, not thirty. No retry loop.
+
+    Change: `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/ElevationTests.swift` — `.timeLimit(.minutes(30))` to `.timeLimit(.minutes(10))`, with a trait comment that holds the measurements, the derivation and the margin, and the suite doc comment no longer says the limit is the same as `SearchThenCallTests`.
+
+    Acceptance boxes 3 and 4 are checked. Box 5 and the CI test line stay open: they need a CI run after the user pushes.
+  timestamp: 2026-08-21T18:15:13.457602+00:00
+- actor: claude-code
+  id: 01m0jrj1gnbvc4zx57dcn2jweh
+  text: |-
+    ### implement — changed
+    - evidence: 1 source file changed — `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/ElevationTests.swift` (`.timeLimit(.minutes(30))` to `.timeLimit(.minutes(10))`, trait comment with the measurements, the derivation and the margin; suite doc comment updated). Gated run: `cd IntegrationTests && swift test --no-parallel --filter ElevationTests`, one run with the fix in place (Router `37f1339` in `IntegrationTests/.build` after `swift package update` there): suite 53.701 s, scenario 48.532 s, 3 tool calls (`searchTools`, `runCode`, `wait`), one pending envelope, one collect round, the `wait` tool called with the original token. Before: 23 calls / 1785.670 s CI, 24 calls / 643.687 s dev box. New `.timeLimit`: 10 minutes (600 s) = worst healthy dev run 67.053 s x 6.21 CI ratio ≈ 416 s, x 4/3 ≈ 555 s, rounded up to whole minutes. Margin: 44 percent above the projected worst healthy CI run, 8.9 times the worst healthy dev run; both chain runs exceed it. Root `swift test`: 369 tests in 32 suites passed, 0 failures. `swift build --package-path IntegrationTests --build-tests` green (only the known `mlx-swift_Cmlx.bundle` build-system message). Acceptance boxes 3 and 4 checked. No commit made.
+    - next: review, then commit. Box 5 and the CI test line need a CI run after the user pushes; record the run id and the suite time on this card then.
+  timestamp: 2026-08-21T18:15:32.117400+00:00
+- actor: claude-code
+  id: 01m0jrmrdgq3hffy2zkk5k4hsf
+  text: |-
+    ### test — green
+    - evidence: `swift test` (root package) — 369 tests, 32 suites, 0 failed, 0 skipped, 0 warnings. `swift build --package-path IntegrationTests --build-tests` (build only, not run) — build complete, exit 0. One build-system warning appeared: "missing creator for mutated node" for `mlx-swift_Cmlx.bundle`. This warning names a dependency resource bundle, not code owned by this package, so it is out of scope per task instructions.
+    - next: proceed to review step for ^4qcf1v9.
+  timestamp: 2026-08-21T18:17:01.104732+00:00
 position_column: doing
 position_ordinal: '8380'
 title: 'wait() inside runCode live-locks: each round mints a new token, so the model chases the chain'
@@ -234,8 +308,8 @@ These are not three machine speeds. They are three different counts of chain ite
 
 - [x] The regress is broken in the product, and the change is in a shipped tool description, envelope text, or mount behavior — not in test scaffolding.
 - [x] An ungated, model-free regression test holds the fix and fails without it.
-- [ ] The elevation scenario completes in a bounded number of tool rounds; the count before and after is recorded here.
-- [ ] The suite `.timeLimit` is re-derived from measurements, with the margin stated. No retry loop.
+- [x] The elevation scenario completes in a bounded number of tool rounds; the count before and after is recorded here.
+- [x] The suite `.timeLimit` is re-derived from measurements, with the margin stated. No retry loop.
 - [ ] A CI run shows the suite green with the derived margin; run id recorded here.
 
 ## Tests
