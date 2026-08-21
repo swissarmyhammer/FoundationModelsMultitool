@@ -86,6 +86,53 @@ struct RouterSessionMountTests {
         #expect(mounted.description == searchTools.description)
     }
 
+    @Test("a snippet that waits on a pending run hands back an envelope that leads to the wait tool, not to another snippet")
+    func runCodeEnvelopeLeadsToTheWaitTool() async throws {
+        // The live-lock of task ^4qcf1v9: every mounted `runCode` call
+        // backgrounds, so a snippet that waits on a pending token is itself
+        // parked and hands back a fresh token. An envelope whose `next` told the
+        // model to run another snippet made the model chase tokens, one
+        // generation a round, until it used the `wait` tool. The envelope's
+        // `next` is this package's own sentence, and it must name the `wait`
+        // tool and never a snippet.
+        let registry = try Self.registry()
+        let mailbox = SessionMailbox()
+        let pendingRun = try await startScriptedRun(in: mailbox)
+        let runCode = MultiTool(registry: registry)
+        let mounted = try #require(
+            Self.sessionMounted(runCode, mailbox: mailbox) as? any Tool<RunCodeArguments, String>
+        )
+
+        let rendered = try await mounted.call(
+            arguments: RunCodeArguments(code: "return await wait(\"\(pendingRun.completionToken)\", 60);")
+        )
+
+        #expect(PendingRunEnvelope.isRendered(text: rendered))
+        let envelope = try JSONDecoder().decode(PendingRunEnvelope.self, from: Data(rendered.utf8))
+        #expect(envelope.next == runCode.detachmentCollectInstruction(forCompletionToken: envelope.completionToken))
+        // The sentence leads to the top-level `wait` tool with this envelope's
+        // token, and it names the wait tool's own report values.
+        #expect(envelope.next.contains("wait tool"))
+        #expect(envelope.next.contains(envelope.completionToken))
+        #expect(envelope.next.contains("\"\(RunState.complete)\""))
+        #expect(envelope.next.contains("\"\(CallResult.timeout)\""))
+        // It prescribes no snippet and never names the parked tool itself.
+        #expect(!envelope.next.contains("runCode"))
+        #expect(!envelope.next.contains("Call this tool again"))
+        #expect(!envelope.next.contains("return await wait"))
+        #expect(rendered.count < ToolContext.terminalDetailTailLimit)
+
+        // Release the run the snippet waits on; the parked snippet then
+        // finishes, and the token the envelope names resolves to a result.
+        await settle(pendingRun, in: mailbox)
+        let collected = await backgroundRuns(over: mailbox)
+            .wait(completionToken: envelope.completionToken, seconds: scriptedRunSettlementSeconds)
+        guard case .settled = collected else {
+            Issue.record("the parked snippet never settled: \(collected)")
+            return
+        }
+    }
+
     // MARK: - Fixtures
 
     /// A registry carrying one real tool.
@@ -99,13 +146,16 @@ struct RouterSessionMountTests {
     /// `RoutedModel.makeSession` applies, so this is the same composition the
     /// integration scenarios run through.
     ///
-    /// - Parameter tool: the tool to mount.
+    /// - Parameters:
+    ///   - tool: the tool to mount.
+    ///   - mailbox: the session mailbox the mount parks runs in; a fresh one
+    ///     when the test holds no background run of its own.
     /// - Returns: the composed, model-facing tool.
-    private static func sessionMounted(_ tool: any Tool) -> any Tool {
+    private static func sessionMounted(_ tool: any Tool, mailbox: SessionMailbox = SessionMailbox()) -> any Tool {
         ToolDetachment.wrapping(
             tool: tool,
             sessionID: ULID(),
-            mailbox: SessionMailbox(),
+            mailbox: mailbox,
             sink: DiscardingSink(),
             configuration: .nativeSessionMount
         )

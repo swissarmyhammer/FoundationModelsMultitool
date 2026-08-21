@@ -253,12 +253,15 @@ struct MultiToolExecutionTests {
         // Coordination is awaiting, and `wait()` is forbidden by name. Naming a
         // thing to forbid it normally puts it back in the option set — the
         // reason refusal is never named below — but `wait()` is already in the
-        // option set from outside: a detaching host mount hands the model an
-        // envelope instructing exactly that call. A prohibition has to name
-        // what it overrides.
+        // option set from outside: `docs("globals")` documents the sandbox
+        // global, so a prohibition has to name what it overrides. The collect
+        // step a pending envelope leads to is the `wait` tool, and the
+        // description says so in the same words as the envelope (task
+        // ^4qcf1v9), so the two texts cannot pull the model two ways.
         #expect(description.contains("Awaiting a call is the whole of how a snippet coordinates its work"))
         #expect(description.contains("do not wait()"))
         #expect(description.contains("never time a call or poll for one"))
+        #expect(description.contains("call the wait tool with that completionToken"))
         // Persona-free, and refusal is never named — naming it would put it
         // back in the option set. An honest failure report replaces it.
         #expect(!description.localizedCaseInsensitiveContains("helpful assistant"))

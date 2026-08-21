@@ -98,6 +98,96 @@ comments:
     - review: not run (no change)
     - next: a person decides — Router changes the envelope text (then bump the pin here, add the regression test, re-measure, re-derive the ceiling), or re-open `^cv98vff` "always backgrounds".
   timestamp: 2026-08-21T14:20:04.800229+00:00
+- actor: claude-code
+  id: 01m0jbyp2aqf7mp9rq01jqy9k3
+  text: |-
+    ### Router acknowledged the card — 2026-08-21
+    Router session `foundationmodelsrouter-0d` confirmed card `01M0JAZMKZ5GJ8RTFA0RX6F25M` is on its board in `todo` (not yet tracked in git, not started). The Router user has not queued it. This card stays blocked on it. No fact is requested from this side.
+  timestamp: 2026-08-21T14:35:14.890480+00:00
+- actor: claude-code
+  id: 01m0jdx02a5byyjk8excw3q565
+  text: |-
+    ### Router card ^rx6f25m done — 2026-08-21
+    Router commit `7f22018` on Router `main`, local only, not pushed. Do not bump the pin here until it is on origin.
+
+    What Router changed (design B):
+    - `DetachmentParameterProviding` has `detachmentCollectInstruction(forCompletionToken:) -> String` with a blanket default. The wrapped tool owns the collect sentence. `runCode` can conform and state its own, for example: `Call the wait tool with completionToken "<T>". When its state is "complete", answer from its detail. When its result is "timeout", call wait again with the same completionToken.`
+    - `PendingRunEnvelope` now carries `next`; `init(completionToken:next:)` and `defaultCollectInstruction(forCompletionToken:)`. Default text, verbatim: `This run is still going. Do not answer yet, and never invent or guess its result. Call the wait tool with completionToken "<T>" to collect the result. If the run is not finished yet, call wait again with the same completionToken.` It names no state values and no snippet.
+    - `isRendered(text:)` recognizes prefix + ULID token + `","next":"` + escaped sentence + `"}` by decode-and-re-render; `TokenCappingTool` passes every rendered envelope (tested at a cap of 1 token).
+    - Tests: `Tests/FoundationModelsRouterTests/DetachingToolTests.swift`, `CollectSentenceTool` fixture; root `swift test` 1032 + 77 green; review clean.
+
+    Next, when `7f22018` is on origin:
+    1. Bump the Router pin in `Package.swift`.
+    2. Decide if `runCode` conforms `detachmentCollectInstruction(forCompletionToken:)` with its own sentence, or uses the default.
+    3. Add the model-free regression test (`.nativeSessionMount` + `startScriptedRun`) that asserts the envelope `next` names the `wait` tool and the original token, and no `runCode` snippet.
+    4. Re-measure the elevation scenario round count; re-derive `.timeLimit` by the `^nhxj8hx` method; record the CI run id.
+    If the re-measure still chases tokens, file it on the Router board with the transcript.
+  timestamp: 2026-08-21T15:09:16.746022+00:00
+- actor: claude-code
+  id: 01m0jp98gzjsdt1rz6vwhafvx3
+  text: |-
+    ### Unblocked — 2026-08-21
+    Router `main` on origin is `37f1339` (`bf05359..37f1339`), and it contains `7f22018`. The user also reports that mlx `stable` is updated. Both are branch dependencies in `Package.swift`, so the pin bump is a `swift package update` that refreshes `Package.resolved`. The finish loop resumes at iteration 2.
+  timestamp: 2026-08-21T17:35:47.231139+00:00
+- actor: claude-code
+  id: 01m0jqdtqc6yn1b5jdvrs2fqs0
+  text: |-
+    ### implement, iteration 2 — research and the decision
+
+    Tree: `git status` showed only `.kanban/` files dirty. `swift package update` resolved Router `main` at `37f1339` and mlx `stable` at `41e9f41`. `Package.resolved` is not tracked (`.gitignore`), so the pin bump is the refresh itself. `swift build --build-tests` is green after the refresh; no mlx or Router API change broke this package.
+
+    Router API at `37f1339` (`.build/checkouts/FoundationModelsRouter/Sources/FoundationModelsRouter/Hosting/DetachingTool.swift`):
+    - `DetachmentParameterProviding.detachmentCollectInstruction(forCompletionToken:) -> String`, with a blanket default that returns `PendingRunEnvelope.defaultCollectInstruction(forCompletionToken:)`.
+    - `PendingRunEnvelope` carries `next`; `init(completionToken:next:)`; `isRendered(text:)` accepts any `next` sentence by decode-and-re-render.
+    - The default sentence names the `wait` tool and the same token, and no state value and no snippet.
+    - Router's `CollectSentenceTool` test fixture shows the usage: conform, return the sentence from `detachmentCollectInstruction(forCompletionToken:)`, and assert `envelope.next` against it.
+
+    Decision: `runCode` conforms with its own sentence. This package ships the `wait` tool and owns its report fields (`state`, `detail`, `result`), so the sentence can tell the model the exact read to make, spliced from `RunState` and `CallResult` so the names cannot drift. It also makes the regression test here hold a sentence this package controls, not Router's default wording. The sentence names the `wait` tool and the token, never `runCode`, and never a snippet.
+
+    Text that conflicts with the envelope:
+    - `MultiTool.description` says "do not wait()". That sentence is about the sandbox global inside a snippet and stays. It gets a second directive: when `runCode` returns a pending envelope, call the `wait` tool with that completionToken. The test comment in `MultiToolExecutionTests.swift` that records "a detaching host mount hands the model an envelope instructing exactly that call" is stale and is updated.
+    - No `sessionInstructions` exists any more (task `tkrdwb8`); the contract is the two mounted descriptions.
+    - `IntegrationTests/.../Support/ScenarioRunner.swift` has two doc comments that quote the old `renderedMidfix` text. Comments only; updated for accuracy, no gated run.
+
+    Test plan (RED first): `RouterSessionMountTests` gets one test that composes `.nativeSessionMount` over `MultiTool` on a mailbox that holds one `startScriptedRun` background run, runs `return await wait("<token>", 60);`, and asserts the envelope `next` names the wait tool, carries the envelope's token, names `"complete"` and `"timeout"`, and contains no `runCode`, no `Call this tool again`, no `return await wait`.
+  timestamp: 2026-08-21T17:55:45.516794+00:00
+- actor: claude-code
+  id: 01m0jqmjjxz6r3m0x56wgvg11p
+  text: |-
+    ### implement, iteration 2 — what landed
+
+    Product:
+    - `Sources/FoundationModelsMultitool/MultiTool+Detachment.swift`: `MultiTool` now conforms `detachmentCollectInstruction(forCompletionToken:)`. The sentence, with the state names spliced from `RunState` and `CallResult`: `Do not answer yet, and do not guess the result. Call the wait tool with completionToken "<T>" to collect it. When the report shows state "complete" or "error", answer from its detail. When the report shows result "timeout", call the wait tool again with the same completionToken.` It names the `wait` tool and the envelope's own token. It never names `runCode` and never prescribes a snippet.
+    - `Sources/FoundationModelsMultitool/MultiTool.swift`: `MultiTool.description` now reads `do not wait() inside a snippet, and never time a call or poll for one. When runCode returns a pending envelope with a completionToken, call the wait tool with that completionToken to collect the result.` The description and the envelope name the same step in the same words.
+    - `IntegrationTests/.../Support/ScenarioRunner.swift`: two doc comments that quoted the old `renderedMidfix` text now quote the new sentence. Comments only; the gated package was not built or run.
+
+    Test:
+    - `Tests/FoundationModelsMultitoolTests/RouterSessionMountTests.swift`: new test `runCodeEnvelopeLeadsToTheWaitTool`. It composes `.nativeSessionMount` over `MultiTool` on a mailbox with one `startScriptedRun` background run, runs `return await wait("<token>", 60);`, and asserts: the call returns a rendered envelope; `next` equals the tool's own sentence; `next` contains `wait tool`, the envelope's completionToken, `"complete"` and `"timeout"`; `next` contains no `runCode`, no `Call this tool again`, no `return await wait`; the envelope is under `ToolContext.terminalDetailTailLimit`; and after the scripted run settles, the `wait` on the envelope's token settles. The `sessionMounted` helper takes a `mailbox:` parameter with a fresh default, so the other three tests are unchanged.
+    - `Tests/FoundationModelsMultitoolTests/MultiToolExecutionTests.swift`: the description test asserts the new sentence (`call the wait tool with that completionToken`) and its stale comment about the envelope is updated.
+
+    RED and GREEN:
+    - Before the conformance and the description change: `swift test --filter 'RouterSessionMountTests|MultiToolExecutionTests'` failed with 3 issues — the new test on the two state-name assertions (the envelope carried Router's default sentence), the description test on the new sentence.
+    - Against the old Router sentence: with a temporary line that replaced the decoded envelope by one whose `next` was `Call this tool again with a snippet that does: return await wait("<T>", 60)`, the same test failed with 6 issues (`wait tool`, `"complete"`, `"timeout"`, `!Call this tool again`, `!return await wait`, and the equality). The temporary line was removed.
+    - After the change: the two suites pass (19 tests), and root `swift test` passes: 369 tests in 32 suites, 0 failures. The one warning in the build log is SwiftPM's `missing creator for mutated node` on the mlx `Cmlx.bundle`, which was present before this change (same line in the first `swift build --build-tests` after the refresh) and comes from the dependency, not from this package.
+
+    Not done here, by instruction: acceptance criteria 3, 4 and 5 and the CI test line need a gated or CI run that the orchestrator schedules. The suite `.timeLimit` is unchanged. No commit was made.
+
+    Observation, not changed: `MultiTool.liveContextCapError(limit:)` still names the sandbox globals `wait(completionToken, seconds)` as the collect step. It is an in-band error, not a description or envelope, and it is out of this card's scope.
+  timestamp: 2026-08-21T17:59:26.557705+00:00
+- actor: claude-code
+  id: 01m0jqmvxmscxk5bayc0ds72tm
+  text: |-
+    ### implement — changed
+    - evidence: 5 source/test files changed — Sources/FoundationModelsMultitool/MultiTool+Detachment.swift, Sources/FoundationModelsMultitool/MultiTool.swift, Tests/FoundationModelsMultitoolTests/RouterSessionMountTests.swift, Tests/FoundationModelsMultitoolTests/MultiToolExecutionTests.swift, IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Support/ScenarioRunner.swift (comments). `swift package update`: Router main at 37f1339, mlx stable at 41e9f41. `swift test`: 369 tests in 32 suites passed, 0 failures. RED seen first on the new test (3 issues before the change, 6 against the old Router sentence). Acceptance 1 and 2 and "Root swift test green" checked; acceptance 3, 4, 5 and the CI test line stay unchecked.
+    - next: the orchestrator schedules the gated/CI run for the round count, the `.timeLimit` re-derivation (`^nhxj8hx` method) and the CI run id; then review and commit. Task stays in `doing`.
+  timestamp: 2026-08-21T17:59:36.116332+00:00
+- actor: claude-code
+  id: 01m0jqqtvc2ec6hnq4fbdwh0bh
+  text: |-
+    ### test — green
+    - evidence: `swift test` (root package only, IntegrationTests not run) — 369 tests, 32 suites, 0 failures, 0 skipped. One build-system warning present: `missing creator for mutated node: (.../mlx-swift_Cmlx.bundle/Contents/MacOS)`. This warning comes from the mlx-swift dependency's bundle target, not from this package's own source code, so it is out of scope for this fix. No files changed. No commit made.
+    - next: none. The suite is clean.
+  timestamp: 2026-08-21T18:01:13.324067+00:00
 position_column: doing
 position_ordinal: '8380'
 title: 'wait() inside runCode live-locks: each round mints a new token, so the model chases the chain'
@@ -142,15 +232,15 @@ These are not three machine speeds. They are three different counts of chain ite
 
 ## Acceptance Criteria
 
-- [ ] The regress is broken in the product, and the change is in a shipped tool description, envelope text, or mount behavior — not in test scaffolding.
-- [ ] An ungated, model-free regression test holds the fix and fails without it.
+- [x] The regress is broken in the product, and the change is in a shipped tool description, envelope text, or mount behavior — not in test scaffolding.
+- [x] An ungated, model-free regression test holds the fix and fails without it.
 - [ ] The elevation scenario completes in a bounded number of tool rounds; the count before and after is recorded here.
 - [ ] The suite `.timeLimit` is re-derived from measurements, with the margin stated. No retry loop.
 - [ ] A CI run shows the suite green with the derived margin; run id recorded here.
 
 ## Tests
 
-- [ ] Root `swift test` green.
+- [x] Root `swift test` green.
 - [ ] One CI integration run with the suite green, run id and suite time recorded here.
 
 ## Related

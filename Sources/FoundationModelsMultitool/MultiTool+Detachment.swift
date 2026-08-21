@@ -9,14 +9,44 @@ import os
 // Router's native session mount wraps `runCode` in `DetachingTool` like any
 // other tool, and the engine reads each call's own clocks back out of the
 // opaque `GeneratedContent` through `DetachmentParameterProviding`. This file is
-// that reading — plus the cap on how many of the suspended JSC contexts
-// elevation creates may be alive at once.
+// that reading, the collect sentence the pending envelope carries — plus the
+// cap on how many of the suspended JSC contexts elevation creates may be alive
+// at once.
 //
 // There is exactly one elevation point per snippet: the outer `runCode` call.
 // Inner `tools.*` calls run on the same engine with elevation off (see
 // `RunBinding`), so no snippet ever branches on a pending envelope mid-code.
 
 extension MultiTool: DetachmentParameterProviding {
+    /// The `next` sentence of the pending envelope a parked `runCode` call
+    /// hands the model: call the `wait` tool with this envelope's token.
+    ///
+    /// This package ships the `wait` tool and owns its report, so the
+    /// sentence states the exact read — `state` `complete` or `error` means
+    /// answer from `detail`; `result` `timeout` means call `wait` again with
+    /// the same token — with every value spliced from ``RunState`` and
+    /// ``CallResult`` so the names cannot drift from what `wait` reports.
+    ///
+    /// It never names `runCode` and never prescribes a snippet. Every mounted
+    /// `runCode` call backgrounds (``detachmentClocks(from:)``), so a snippet
+    /// that waits on a pending token is itself parked and hands back a fresh
+    /// token. A sentence that told the model to run another snippet made it
+    /// chase tokens one generation a round until it reached for the `wait`
+    /// tool on its own (task `^4qcf1v9`: 21 rounds and about 1700 seconds
+    /// for an eight-second run). The `wait` tool on this token returns the
+    /// parked snippet's result at once.
+    ///
+    /// - Parameter completionToken: the parked `runCode` call's token.
+    /// - Returns: the collect directive, as plain prose.
+    public func detachmentCollectInstruction(forCompletionToken completionToken: String) -> String {
+        "Do not answer yet, and do not guess the result. "
+            + "Call the wait tool with completionToken \"\(completionToken)\" to collect it. "
+            + "When the report shows state \"\(RunState.complete)\" or \"\(RunState.error)\", "
+            + "answer from its detail. "
+            + "When the report shows result \"\(CallResult.timeout)\", "
+            + "call the wait tool again with the same completionToken."
+    }
+
     /// The per-call clocks every `runCode` call carries.
     ///
     /// **The wait clock is always zero, and no call can raise it.**
@@ -52,10 +82,12 @@ extension MultiTool: DetachmentParameterProviding {
     /// intended safety property, not a gap.
     ///
     /// **The conformance stays, although nothing is read from the arguments.**
-    /// It has two jobs left, and both are answers this package must give
+    /// It has three jobs, and all of them are answers this package must give
     /// rather than inherit: forcing the wait clock to zero against whatever
-    /// the mount configured, and holding the work clock at this package's own
-    /// ceiling. Dropping it would put both back in the mount's hands.
+    /// the mount configured, holding the work clock at this package's own
+    /// ceiling, and stating the collect sentence
+    /// (``detachmentCollectInstruction(forCompletionToken:)``). Dropping it
+    /// would put all three back in the mount's hands.
     ///
     /// - Parameter arguments: the call's arguments as opaque
     ///   `GeneratedContent`. Unread: every `runCode` call gets the same two

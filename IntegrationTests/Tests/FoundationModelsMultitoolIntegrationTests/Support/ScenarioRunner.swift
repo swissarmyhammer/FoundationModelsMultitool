@@ -1008,8 +1008,8 @@ private func printSkipNote(_ name: String) {
 /// left:
 ///
 /// - the model collects it in-band, because the pending envelope instructs it
-///   to (`PendingRunEnvelope.renderedMidfix`: "Call this tool again with a
-///   snippet that does: return await wait(...)");
+///   to (its `next` sentence, `MultiTool.detachmentCollectInstruction(forCompletionToken:)`:
+///   "Call the wait tool with completionToken ...");
 /// - the turn ends with runs still going, and `respond`'s drain settles them.
 ///
 /// Measured on real hardware, the first happens: `waitCalls=2`. So this
@@ -1146,8 +1146,8 @@ func runRespondDrainScenario(
         // `waitCalls == 0` on the reasoning that a model needing `wait` proves
         // the drain idle. Measured, it is 2, and the product is why: every
         // `runCode` backgrounds, and the pending envelope it returns *tells*
-        // the model to call `wait` ("Call this tool again with a snippet that
-        // does: return await wait(...)", `PendingRunEnvelope.renderedMidfix`).
+        // the model to call `wait` ("Call the wait tool with completionToken
+        // ...", `MultiTool.detachmentCollectInstruction(forCompletionToken:)`).
         // The model obeying its own tool is not a drain failure, and an
         // assertion that fires on it would be demanding the model ignore the
         // instruction the product gives it.

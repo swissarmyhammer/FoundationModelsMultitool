@@ -343,8 +343,10 @@ public struct MultiTool: Tool {
         bun APIs, and every function you can call is under `tools.*`. Write one snippet
         calling the exact `tools.*` paths searchTools returned, await every call, and
         `return` the final value; only that value comes back. Awaiting a call is the
-        whole of how a snippet coordinates its work: do not wait(), and never time a
-        call or poll for one. Answer only from what the snippet returns: never
+        whole of how a snippet coordinates its work: do not wait() inside a snippet, and
+        never time a call or poll for one. When runCode returns a pending envelope with a
+        completionToken, call the wait tool with that completionToken to collect the
+        result. Answer only from what the snippet returns: never
         state a fact about the user's data that did not come from a `tools.*` return
         value, and never claim success for a call the snippet did not actually return.
         When a snippet fails, fix it and call runCode again immediately. Ambient globals
