@@ -3188,9 +3188,9 @@ CROSS-BOARD PREREQUISITES:
 1. [DONE] router-first batch on ../FoundationModelsRouter's board (Router main f3bd00c pushed).
 2. [DONE] OperationTool shim card on ../FoundationModelsOperationTool's board.
 3. [DONE] Shelltool platform-bump card on ../FoundationModelsShelltool's board.
-4. [OPEN] Router metallib bootstrap card 01KZDA7Q3M8RV2T5W9XCE4HB6N on ../FoundationModelsRouter's board — fixed locally at Router 159aada per 2026-08-07 run report; stays OPEN until pushed and Router's gated suite question is settled on Router's board. Does NOT block work in THIS repo.
-5. [OPEN] Router pending-envelope card 01KZFH9TT6QNRQ8DPBRYWC0Q4F on ../FoundationModelsRouter's board — root-cause fix for elevationInCodeMode (RESOLUTION A). Must be COMMITTED AND PUSHED on Router main before step 4 re-measure (this package pins Router by branch).
-6. [OPEN] Router pre-discovery seeding card 01KZFHJSB0R7DXMZZD2S4405WC on ../FoundationModelsRouter's board — structural fix for the first-turn failure class (RESOLUTION B). Same push requirement as 5. Blocks steps 3–4 only; steps 1–2 proceed now.
+4. [DONE 2026-08-22] Router metallib bootstrap card 01KZDA7Q3M8RV2T5W9XCE4HB6N on ../FoundationModelsRouter's board — card is in `done`, and the fix `159aada` is on `origin/main`. Original note kept below for the record — fixed locally at Router 159aada per 2026-08-07 run report; stays OPEN until pushed and Router's gated suite question is settled on Router's board. Does NOT block work in THIS repo.
+5. [DONE 2026-08-22] Router pending-envelope card 01KZFH9TT6QNRQ8DPBRYWC0Q4F on ../FoundationModelsRouter's board — card is in `done`. Original note kept below for the record — root-cause fix for elevationInCodeMode (RESOLUTION A). Must be COMMITTED AND PUSHED on Router main before step 4 re-measure (this package pins Router by branch).
+6. [DONE 2026-08-22] Router pre-discovery seeding card 01KZFHJSB0R7DXMZZD2S4405WC on ../FoundationModelsRouter's board — card is in `done`. Measured here at 0/4, so priming ships off (`scenarioDiscoveryPriming = nil`); see the SearchThenCall acceptance line. Original note kept below for the record — structural fix for the first-turn failure class (RESOLUTION B). Same push requirement as 5. Blocks steps 3–4 only; steps 1–2 proceed now.
 
 Repos: this repo + ../FoundationModelsRouter + ../FoundationModelsOperationTool. Basis: eventplan.md §"Phases" phase 1 exit criteria.
 
