@@ -2,9 +2,10 @@ import FoundationModels
 
 /// A failure raised by `MultiTool.Builder.build()`.
 ///
-/// Never raised by `addTool`/`addTools`/`addGroup`, which only ever record
-/// what was added — every validation (group-name legality, name
-/// collisions, and each tool's own completeness contract via
+/// Never raised by `addTool`/`addTools`/`addGroup`/`register`/
+/// `withCapability`, which only ever record what was added — every
+/// validation (group-name and noun legality, name collisions, and each
+/// tool's own completeness contract via
 /// `ToolAPIRenderer`) happens once, at `build()`. That's why plan.md's
 /// fluent chain needs `try` only on the final call:
 /// `try MultiTool.Builder().addTool(...)....addGroup(...).build()`.
@@ -20,8 +21,10 @@ public struct MultiToolBuilderError: Error, Sendable, Equatable, CustomStringCon
         /// for those.
         case duplicateName
 
-        /// A group name passed to `addGroup(named:_:)` isn't a legal
-        /// TypeScript identifier. Schema/user-derived text is never
+        /// A group name passed to `addGroup(named:_:)` — or a noun passed
+        /// to `register(noun:tool:)`, which is the same segment under the
+        /// other name — isn't a legal TypeScript identifier.
+        /// Schema/user-derived text is never
         /// spliced into a generated `tools.<group>.<name>` namespace
         /// without this check — the same posture `ToolAPIRenderer` takes
         /// toward a tool's own `name`.
@@ -73,11 +76,12 @@ extension MultiTool {
     ///     .addTool(thirdPartyToolFromSomePackage)
     ///     .addTools(myToolArray)
     ///     .addGroup(named: "github", githubTools)  // many Tools under one namespace
+    ///     .withCapability(FilesCapability())       // one noun, its own Tools
     ///     .build()                                 // rendered APISurface; still model-agnostic
     /// ```
     ///
-    /// A `final class` (not a `struct`): `addTool`/`addTools`/`addGroup`
-    /// mutate this builder's queued-tool list in place and return `self`
+    /// A `final class` (not a `struct`): every registration method
+    /// mutates this builder's queued-tool list in place and returns `self`
     /// so the fluent chain above type-checks with no intermediate `var
     /// builder = ...` — a `struct`'s `mutating` methods can't be called
     /// directly on the un-named temporary `MultiTool.Builder()` returns,
@@ -87,7 +91,9 @@ extension MultiTool {
         /// One tool queued for rendering — standalone (destined for a
         /// flat `tools.<name>` entry) or belonging to a named group
         /// (destined for `tools.<group>.<name>`) — recorded in the exact
-        /// order `addTool`/`addTools`/`addGroup` was called.
+        /// order the registration methods were called. A noun and a group
+        /// are the same segment, so `register(noun:tool:)` and
+        /// `addGroup(named:_:)` both queue `.grouped`.
         /// `ToolAPIRenderer` never runs until `build()`.
         private enum PendingTool {
             case standalone(any Tool)
@@ -129,7 +135,54 @@ extension MultiTool {
         /// - Returns: `self`, for fluent chaining.
         @discardableResult
         public func addTools(_ tools: [any Tool]) -> Self {
-            enqueue(tools, as: PendingTool.standalone)
+            enqueue(tools) { addTool($0) }
+        }
+
+        /// Queues `tool` under the namespace `noun`, destined to render at
+        /// `tools.<noun>.<tool.name>` — the registration primitive of
+        /// eventplan.md § "Registration of capabilities: noun/verb".
+        ///
+        /// The method supplies the noun, and nothing else. The tool supplies
+        /// the verb, because `Tool.name` is the verb. Thus a `Tool` conformer
+        /// that exists needs no change to register: the two segments of the
+        /// path come from the two sides of this one call.
+        ///
+        /// `addGroup(named:_:)` and `withCapability(_:)` both come through
+        /// here, so all three registrations make the same
+        /// `tools.<noun>.<verb>` entry and obey the same validation at
+        /// `buildRegistry()`.
+        ///
+        /// - Parameters:
+        ///   - noun: the namespace `tool` renders under. Must be a legal
+        ///     TypeScript identifier; examined at `buildRegistry()`, and not
+        ///     here — see this type's documentation for why no registration
+        ///     method throws.
+        ///   - tool: the tool to add under `noun`.
+        /// - Returns: `self`, for fluent chaining.
+        @discardableResult
+        public func register(noun: String, tool: any Tool) -> Self {
+            pending.append(.grouped(group: noun, tool: tool))
+            return self
+        }
+
+        /// Queues every tool of `capability` under that capability's own
+        /// noun, in order — eventplan.md's "`Builder.withCapability(_:)`
+        /// fills in the noun one time".
+        ///
+        /// A capability is only a noun plus its tools, so this method is only
+        /// `register(noun:tool:)` called one time for each tool. Built-in
+        /// capabilities and user capabilities come through the same door.
+        ///
+        /// A second capability with the same noun and the same verb is a
+        /// failure at `buildRegistry()`. Two capabilities with the same noun
+        /// and different verbs merge into that one namespace, exactly as two
+        /// `addGroup(named:_:)` calls with the same group do.
+        ///
+        /// - Parameter capability: the capability to register.
+        /// - Returns: `self`, for fluent chaining.
+        @discardableResult
+        public func withCapability(_ capability: any Capability) -> Self {
+            enqueue(capability.tools) { register(noun: capability.noun, tool: $0) }
         }
 
         /// Queues every tool in `tools` under the named `group`, destined
@@ -138,6 +191,10 @@ extension MultiTool {
         /// `addGroup(named:_:)` more than once with the same `group`
         /// merges every call's tools into that one namespace, in the order
         /// added.
+        ///
+        /// The group is the noun, so this method registers through
+        /// `register(noun:tool:)`. A group and a capability make the same
+        /// entry, and one queue holds both.
         ///
         /// - Parameters:
         ///   - group: the namespace every tool in `tools` renders under.
@@ -148,23 +205,27 @@ extension MultiTool {
         /// - Returns: `self`, for fluent chaining.
         @discardableResult
         public func addGroup(named group: String, _ tools: [any Tool]) -> Self {
-            enqueue(tools) { PendingTool.grouped(group: group, tool: $0) }
+            enqueue(tools) { register(noun: group, tool: $0) }
         }
 
-        /// Appends every tool in `tools` to `pending`, each wrapped by
-        /// `makePending` into the `PendingTool` variant to queue it as —
-        /// the shared iterate-wrap-append loop `addTools(_:)` and
-        /// `addGroup(named:_:)` both need, differing only in which variant
-        /// they construct.
+        /// Queues every tool in `tools`, in order, through the single-tool
+        /// registration method `add` names — the shared iterate-and-queue
+        /// loop that `addTools(_:)`, `addGroup(named:_:)` and
+        /// `withCapability(_:)` all need.
+        ///
+        /// Each caller passes its own primitive: `addTool(_:)` for a flat
+        /// entry, `register(noun:tool:)` for a `tools.<noun>.<verb>` entry.
+        /// Thus one method queues one tool, and this loop holds the only
+        /// copy of the fluent tail.
         ///
         /// - Parameters:
         ///   - tools: the tools to add.
-        ///   - makePending: builds the `PendingTool` to queue for one tool.
+        ///   - add: queues one tool.
         /// - Returns: `self`, for fluent chaining.
         @discardableResult
-        private func enqueue(_ tools: [any Tool], as makePending: (any Tool) -> PendingTool) -> Self {
+        private func enqueue(_ tools: [any Tool], by add: (any Tool) -> Void) -> Self {
             for tool in tools {
-                pending.append(makePending(tool))
+                add(tool)
             }
             return self
         }
