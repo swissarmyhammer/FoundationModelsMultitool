@@ -165,6 +165,30 @@ private let liveLoaderMLXProducts: [Target.Dependency] = [
     .product(name: "MLXVLM", package: mlxPackage),
 ]
 
+/// The child-process package the shell capability spawns commands with.
+///
+/// `ShellRunner` and `SandboxPreflight` import its `Subprocess` module: one
+/// starts a command and reads its output, the other starts the sandbox canary.
+/// The package stands under the `swiftlang` organization — the former
+/// `apple/swift-subprocess` path answers 404.
+private let subprocessPackage = "swift-subprocess"
+
+/// The YAML package the shell capability reads its configuration with.
+///
+/// `ShellPolicy` imports its `Yams` module for the stacked policy files, and
+/// `ShellDecisionStore` imports it for the remembered decisions.
+private let yamsPackage = "Yams"
+
+/// The products of `subprocessPackage` and `yamsPackage`, linked by the library
+/// target and the unit test target below.
+///
+/// The shell capability is the one consumer of both. `hubProducts` and
+/// `liveLoaderMLXProducts` above group their own products the same way.
+private let shellProducts: [Target.Dependency] = [
+    .product(name: "Subprocess", package: subprocessPackage),
+    .product(name: "Yams", package: yamsPackage),
+]
+
 /// The `Sources/` subdirectory prefix used by every source target's `path`
 /// below.
 private let sourcesPath = "Sources/"
@@ -212,14 +236,26 @@ let package = Package(
         swissArmyHammerPackage(name: mlxPackage, branch: mlxStableBranch),
         huggingFaceOrgPackage(name: huggingFacePackage, from: "0.9.0"),
         huggingFaceOrgPackage(name: transformersPackage, from: "1.3.0"),
+        // The two packages of `shellProducts`. Each one stands under an
+        // organization of its own, so neither helper above fits them.
+        //
+        // Each version is an EXACT pin, and each pin is the pin
+        // `../FoundationModelsShelltool/Package.swift` states today. The shell
+        // capability moves from that package into this one, so the two must
+        // resolve the same versions: a pre-release carries no compatible-range
+        // promise, and a floor would let one package move alone.
+        .package(url: "https://github.com/swiftlang/\(subprocessPackage).git", exact: "1.0.0-beta.1"),
+        .package(url: "https://github.com/jpsim/\(yamsPackage).git", exact: "6.2.2"),
     ],
     targets: [
+        // Links `shellProducts` for the shell capability this library takes
+        // over from `../FoundationModelsShelltool`.
         .target(
             name: packageName,
             dependencies: [
                 .product(name: routerDependencyName, package: routerDependencyName),
                 .product(name: metadataRegistryDependencyName, package: metadataRegistryDependencyName),
-            ],
+            ] + shellProducts,
             path: "\(sourcesPath)\(packageName)"
         ),
         // M9: the sample CLI's whole implementation — plan.md "M9 — Sample CLI.
@@ -256,6 +292,9 @@ let package = Package(
             // launches with SwiftPM's default rpaths — verified by running
             // the built binary directly.
         ),
+        // `shellProducts` again: `DependencyReachTests` imports `Subprocess`
+        // and `Yams` directly, and this target declares each product it
+        // imports, as it does for the two products above.
         .testTarget(
             name: "\(packageName)Tests",
             dependencies: [
@@ -263,7 +302,7 @@ let package = Package(
                 .target(name: cliLibraryTargetName),
                 .product(name: routerDependencyName, package: routerDependencyName),
                 .product(name: metadataRegistryDependencyName, package: metadataRegistryDependencyName),
-            ],
+            ] + shellProducts,
             path: "\(testsPath)\(packageName)Tests",
             resources: [
                 // Golden files pinning `ToolAPIRenderer`'s rendered surface
