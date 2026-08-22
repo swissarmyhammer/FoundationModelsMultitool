@@ -3096,6 +3096,34 @@ comments:
 
     Its own instruction for exactly this situation is "if still open when everything else is done, leave unchecked, note it, and report ready-except-Router". That was done on 2026-08-17 and stands. Every other box is ticked, every unblocked card on this board is closed, and the full gated suite here is green at 907.0s.
   timestamp: 2026-08-18T22:32:19.591797+00:00
+- actor: claude-code
+  id: 01m0mms3zgmqtt4pbc886qbw61
+  text: |-
+    ### The gated suite is green in CI on current main — 2026-08-22
+
+    Fresh evidence for the "`MULTITOOL_INTEGRATION=1 swift test` green with NO retry semantics" criterion, which until now was consumed from `^0q2je6m`'s dev-box table.
+
+    CI run `32516508312` on `f46add1` (job `96880026081`, the opt-in integration job): `Test run with 65 tests in 12 suites passed after 3601.360 seconds`. Every suite passed, and no suite has a retry loop:
+
+    | Suite | Time |
+    |---|---|
+    | Gated search-then-call scenarios (M6.5a) | 752.907 s |
+    | Gated in-band collection canary | 1521.917 s |
+    | Gated respond self-drain (phase-1 exit) | 559.586 s |
+    | CLI smoke test | 329.692 s |
+    | Gated async fan-out scenario (phase-1 exit) | 215.756 s |
+    | Elevation-in-code-mode scenario (phase-1 exit) | 158.320 s |
+    | Gated selection tier fork()-per-call trace | 51.390 s |
+    | Gated nested-generation probe | 7.570 s |
+    | Gated-scenario fixture premises | 4.181 s |
+    | Gated-scenario grading | 0.033 s |
+    | Scenario failure modes | 0.001 s |
+    | Recordings location | 0.001 s |
+
+    The elevation scenario ran at 3 tool calls and one collect round (`^4qcf1v9`, now closed), so the token chase that cost 1785.670 s in run `32392350928` is gone.
+
+    This is the phase-1 configuration under test: MultiTool mounted on a `RoutedSession`, driven by `streamEvents`, with `priming=off` and no session instructions. Nothing in this repo is open.
+  timestamp: 2026-08-22T11:47:58.576812+00:00
 depends_on:
 - 01KZ6N4Q7K53WSTJ3M6E76ZK99
 - 01KZ6N545VYCB60H716AZ1XS92
