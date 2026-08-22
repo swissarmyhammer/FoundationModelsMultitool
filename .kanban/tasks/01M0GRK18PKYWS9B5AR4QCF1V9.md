@@ -279,6 +279,27 @@ comments:
     - review: clean — 0 findings; task in done
     - open: acceptance criterion 5 and the CI test line. They need one CI integration run after the user pushes `6bc6f77..71d1ffc`. Record the run id and the suite time here when it is green. The ceiling is 600 s; the projected worst healthy CI run is about 416 s.
   timestamp: 2026-08-21T18:21:42.534818+00:00
+- actor: claude-code
+  id: 01m0jvazg138pqja0w0678z68d
+  text: |-
+    ### Pushed — 2026-08-21
+    `068aed2..f46add1` pushed to `origin/main`. CI run `32516508312` started on `f46add1` at 19:03:33Z: https://github.com/swissarmyhammer/FoundationModelsMultitool/actions/runs/32516508312. Acceptance criterion 5 and the CI test line close when this run is green; record the ElevationTests suite time here then. Ceiling is 600 s; projected worst healthy CI time is about 416 s.
+  timestamp: 2026-08-21T19:04:06.401552+00:00
+- actor: claude-code
+  id: 01m0mmqsbzw58ahxnyt1fg5sxd
+  text: |-
+    ### CI green — 2026-08-21, card closed
+
+    Run `32516508312` on `f46add1` completed at 20:11:14Z with conclusion `success`. Both jobs passed:
+    - `ci / Build & test` — 19:03:35Z to 19:06:36Z.
+    - `ci / Integration (opt-in, real dependencies)`, job `96880026081` — 19:09:37Z to 20:11:13Z. `Test run with 65 tests in 12 suites passed after 3601.360 seconds`.
+
+    The elevation suite: `Suite "Elevation-in-code-mode scenario (phase-1 exit)" passed after 158.320 seconds` against the 600 s ceiling. That is a 3.8x margin, and it is 74 percent under the 416 s projection, so the derivation is conservative in the right direction.
+
+    The fix held on the CI runner, not only on the dev box. The `RESULT` line reads `elapsed=150.648s toolCalls=3 toolOutputs=3 pendingEnvelopes=1 priming=off failedCalls=0`, and the answer carried the report code 41739. Three tool calls, one collect round — the same shape as the dev-box run (3 calls / 53.701 s), against 23 calls / 1785.670 s in the chain run `32392350928`. No token chase in CI.
+
+    Acceptance criterion 5 and the CI test line are checked. The card is closed.
+  timestamp: 2026-08-22T11:47:14.943001+00:00
 position_column: done
 position_ordinal: dc80
 title: 'wait() inside runCode live-locks: each round mints a new token, so the model chases the chain'
@@ -327,12 +348,12 @@ These are not three machine speeds. They are three different counts of chain ite
 - [x] An ungated, model-free regression test holds the fix and fails without it.
 - [x] The elevation scenario completes in a bounded number of tool rounds; the count before and after is recorded here.
 - [x] The suite `.timeLimit` is re-derived from measurements, with the margin stated. No retry loop.
-- [ ] A CI run shows the suite green with the derived margin; run id recorded here.
+- [x] A CI run shows the suite green with the derived margin; run id recorded here. Run `32516508312` on `f46add1`, 2026-08-21: the suite passed in **158.320 s** against the 600 s ceiling — 3.8x margin.
 
 ## Tests
 
 - [x] Root `swift test` green.
-- [ ] One CI integration run with the suite green, run id and suite time recorded here.
+- [x] One CI integration run with the suite green, run id and suite time recorded here. Run `32516508312`, job `96880026081`: `Suite "Elevation-in-code-mode scenario (phase-1 exit)" passed after 158.320 seconds`. The whole gated job passed: 65 tests in 12 suites, 3601.360 s.
 
 ## Related
 
