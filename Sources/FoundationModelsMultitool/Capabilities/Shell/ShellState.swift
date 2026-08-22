@@ -181,7 +181,12 @@ actor ShellState {
     private static let fieldsAfterSessionID = 3
 
     /// The `\n` byte the stored log splits on.
-    private static let newlineByte = UInt8(ascii: "\n")
+    ///
+    /// `OutputBuffer` reads the same byte: it cuts an over-cap chunk at a line
+    /// boundary, and it finds the lines of a chunk that are complete. Thus the
+    /// byte that ends a line is stated one time, as `splitLogLines` is written
+    /// one time.
+    static let newlineByte = UInt8(ascii: "\n")
 
     // MARK: - Initialization
 
