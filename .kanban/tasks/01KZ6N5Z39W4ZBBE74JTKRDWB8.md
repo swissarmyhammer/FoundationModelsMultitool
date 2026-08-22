@@ -3124,6 +3124,54 @@ comments:
 
     This is the phase-1 configuration under test: MultiTool mounted on a `RoutedSession`, driven by `streamEvents`, with `priming=off` and no session instructions. Nothing in this repo is open.
   timestamp: 2026-08-22T11:47:58.576812+00:00
+- actor: claude-code
+  id: 01m0mnmra02q5hvaaqmkh44fcb
+  text: |-
+    ### Router gated-suite check — box stays open
+
+    Facts checked, with sources.
+
+    **1. The three prerequisite cards are done.**
+    Checked with `grep -n "^position_column:"` on Router's board, `../FoundationModelsRouter/.kanban/tasks/`:
+    - `01KZDA7Q3M8RV2T5W9XCE4HB6N` (metallib bootstrap) — column `done`.
+    - `01KZFH9TT6QNRQ8DPBRYWC0Q4F` (pending envelope) — column `done`.
+    - `01KZFHJSB0R7DXMZZD2S4405WC` (pre-discovery seeding) — column `done`.
+    The metallib fix commit `159aada` IS an ancestor of `origin/main` (`git merge-base --is-ancestor` confirms it). It is pushed.
+
+    **2. The command named in this box no longer works.**
+    Router commit `1db2b56` (2026-08-19, `refactor(tests)!: select real-model tests by CI target, not by 16 env vars`) removed all 16 `FM_ROUTER_*` environment variables. The command `rg 'FM_ROUTER_'` finds no match in the Router tree today. The commit message states: "All 16 `private let ...EnvVar` constants, their `!= nil` lookups and their `.enabled(if:)` traits are gone."
+    Router's root `Package.swift` has no integration target. The real-model suites moved to a nested package, `IntegrationTests/`. `.github/workflows/ci.yml` (current HEAD) states this directly: "`swift test` at the root cannot reach them, and `swift test --package-path IntegrationTests` runs them."
+    So `FM_ROUTER_INTEGRATION_TESTS=1 swift test`, run today, would set an environment variable Router no longer reads, and run only the root package, which does not hold the gated suites. It would NOT run the gated suite this box asks about.
+
+    **3. The working command's full-package run DID go green today, but the commit is not pushed and the tree is mid-edit.**
+    The current full command is `swift test --package-path IntegrationTests` (no filter — a package run executes every target in the nested package, both the real-model integration target and the real-model eval target).
+    Evidence: the run table in `IntegrationTests/Tests/FoundationModelsRouterIntegrationTests/Support/GatedSuiteSerialGate.swift` (doc comment above `integrationTestBudgetMinutes`), and Router kanban card `01M0KRDG9JTR84YX63XPA5Q5DT`. Quote from that card: "whole target, run 8: 57.5 s. Whole target, run 9: 58.2 s. ... Each run was `swift test --package-path IntegrationTests`, exit 0, 29 measured tests." Both runs are dated 2026-08-22, at commit `b56bc39`.
+    `b56bc39` IS the current HEAD of Router `main` (`git log --oneline -1`).
+    But `git status -sb` in the Router tree reads `## main...origin/main [ahead 8]`. `origin/main` HEAD is `6d7b178`. So `b56bc39` — the commit the green run was recorded against — sits 8 commits ahead of `origin/main`. It is NOT pushed.
+    The Router working tree also has live, uncommitted changes right now: `IntegrationTests/Tests/FoundationModelsRouterIntegrationTests/PropagationProbeIntegrationTests.swift` plus two kanban task files. This matches an open, in-progress card on Router's board, `01M0KX5YKKB00PARCQBS49YA8P` (column `doing`), which is measuring the same suite's slowest test. The tree is not at rest.
+
+    **Conclusion — named gap, not (A).**
+    The box asks for `FM_ROUTER_INTEGRATION_TESTS=1 swift test` green, with a commit and a date. That exact command is dead in Router as of 2026-08-19. Its working replacement, a full `swift test --package-path IntegrationTests` run, did go green twice today at commit `b56bc39` — this is a full-suite run, not a single-scenario run, so it is stronger than case (B) as such. But that commit is unpushed, and the tree is under active, uncommitted edit by a live session right now. The box's own fact — a settled, pushed, green full run — is not established. Leaving the box unchecked, as the card instructs when this stays open after everything else is done. Reporting ready-except-Router.
+  timestamp: 2026-08-22T12:03:04.128246+00:00
+- actor: claude-code
+  id: 01m0mnqqcz0q9066zk86aksc6x
+  text: |-
+    ### finish iteration 9 — no-change (the last box waits on Router's push, and its command name was stale)
+    - implement: no-change — 0 source files changed. `git diff` over `Sources/`, `Tests/` and `IntegrationTests/` is empty. Two records were written: the Router-evidence comment above, and a correction appended to the one open acceptance line.
+    - test: not run — no source file changed. The gated evidence is fresher than any local run: CI run `32516508312` on `f46add1` passed 65 tests in 12 suites in 3601.360 s, and the ungated `Build & test` job passed on the same commit.
+    - commit: see the commit that carries this entry — kanban records only.
+    - review: not run — no source file changed.
+
+    **What this iteration established.** The last box named a command that no longer exists. Router commit `1db2b56` (2026-08-19) removed the `FM_ROUTER_*` environment variables, so `FM_ROUTER_INTEGRATION_TESTS=1 swift test` now runs only Router's root hermetic package. Router moved its real-model tests into a nested package, the same structural gate this repo uses, and the live command is `swift test --package-path IntegrationTests`.
+
+    Cross-board prereq 4 has cleared. All three Router prerequisite cards are `done` — metallib `01KZDA7Q3M8RV2T5W9XCE4HB6N` (fix `159aada`, on `origin/main`), pending envelope `01KZFH9TT6QNRQ8DPBRYWC0Q4F`, pre-discovery seeding `01KZFHJSB0R7DXMZZD2S4405WC`. So the stated blocker is gone.
+
+    **What is left is a push, not a suite.** Router recorded the live command green twice on 2026-08-22 at `b56bc39`, as one whole-package run, in `GatedSuiteSerialGate.swift` and card `01M0KRDG9JTR84YX63XPA5Q5DT`. But `b56bc39` is 8 commits ahead of `origin/main`, and the Router tree carries live edits from card `01M0KX5YKKB00PARCQBS49YA8P` in `doing`. The tag `consolidation-1-foundation` goes on a pushed commit in all three repos, so a green suite on an unpushed commit does not close this box.
+
+    The box stays unchecked, which is what this card instructs for this case. I asked the Router session for a push date and for the commit they want tagged. I ran nothing in the Router tree.
+
+    - next: a person decides. Either Router pushes and this box closes on the pushed commit, or the human accepts the substance (Router's gated suite green at `b56bc39`) and tags. Nothing in this repo is open, and no work here can move this box.
+  timestamp: 2026-08-22T12:04:41.503766+00:00
 depends_on:
 - 01KZ6N4Q7K53WSTJ3M6E76ZK99
 - 01KZ6N545VYCB60H716AZ1XS92
@@ -3181,7 +3229,7 @@ Ordered work in THIS repo — execute in this order:
 - [x] `MULTITOOL_INTEGRATION=1 swift test` green with NO retry semantics — **consumed from `^0q2je6m`**, which owns the gated green run and asserts the trace as well as the score. Do not re-measure here; read that card's recorded table
 - [x] Harness purity verified: the gated suite feeds the model only the tool-exported contract; any surplus harness-side system text removed. Checked 2026-08-16 by grep: no `instructions:` argument exists anywhere in `Tests/FoundationModelsMultitoolIntegrationTests/`, and every one of the six `makeSession` call sites passes `tools:` and `discoveryPriming:` alone, with `scenarioDiscoveryPriming = nil`
 - [x] Host contract documented: a doc comment states exactly what a host must configure, and the gated suite passes using only that. Rewritten 2026-08-11 — `FindAPIsTool` is now `SearchToolsTool`, `sessionInstructions` is gone, and pre-discovery priming is not recommended (it measured 0/4). What a host configures is: the tools `makeSessionTools(librarian:)` vends, mounted on a `RoutedSession`, driven by `streamEvents`. `CLIRunner.swift:390` is the reference host, and the harness must match it — it silently diverged by wiring a `sampleGenerator` the product never uses
-- [ ] `FM_ROUTER_INTEGRATION_TESTS=1 swift test` green in ../FoundationModelsRouter — waits on cross-board prereq 4; if still open when everything else is done, leave unchecked, note it, and report ready-except-Router
+- [ ] `FM_ROUTER_INTEGRATION_TESTS=1 swift test` green in ../FoundationModelsRouter — waits on cross-board prereq 4; if still open when everything else is done, leave unchecked, note it, and report ready-except-Router. **Two corrections to this criterion as written, both found 2026-08-22.** First, the command is dead: Router commit `1db2b56` (2026-08-19) removed the `FM_ROUTER_*` environment variables, so this line now names a command that runs only Router's root hermetic package. The live command is `swift test --package-path IntegrationTests`, because Router moved its real-model tests into a nested package — the same structural gate this repo uses. Second, prereq 4 has cleared: all three Router prerequisite cards are `done`, and the metallib fix `159aada` is on `origin/main`. What is left is neither the command nor the prereq. Router recorded the live command green twice on 2026-08-22 at `b56bc39`, but `b56bc39` is 8 commits ahead of `origin/main` and the Router tree carries live edits from an open card. A tag goes on a pushed commit, so this box waits on Router's push, not on Router's suite
 - [x] Ungated `swift test` green in this repo, Router, and OperationTool
 - [x] Ready-to-tag reported to the human — reported as **ready-except-Router** on 2026-08-17, which is what this card instructs when their run is still open. Router's `FM_ROUTER_INTEGRATION_TESTS` run is recorded NOT RUN on their own statement, and stays unchecked. Nothing tagged — tagging/pushing `consolidation-1-foundation` across the three repos is RESERVED for the human; do not tag
 
