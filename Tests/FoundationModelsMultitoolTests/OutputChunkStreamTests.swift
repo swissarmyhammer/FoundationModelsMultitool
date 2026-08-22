@@ -98,7 +98,7 @@ struct OutputChunkStreamTests {
     ///   - stream: The stream to select.
     /// - Returns: The joined bytes.
     private func joinedBytes(
-        _ events: [ShellOutputEvent], commandID: String, stream: ShellOutputStream
+        _ events: [ShellOutputEvent], commandID: String, from stream: ShellOutputStream
     ) -> [UInt8] {
         events.reduce(into: [UInt8]()) { joined, event in
             guard event.commandID == commandID,
@@ -139,10 +139,10 @@ struct OutputChunkStreamTests {
         let collector = collect(stream)
 
         stream.send(
-            commandID: Self.firstToken, stream: .stdout, bytes: Array("out".utf8),
+            commandID: Self.firstToken, from: .stdout, bytes: Array("out".utf8),
             maxSize: Self.spaciousCaptureCapBytes)
         stream.send(
-            commandID: Self.firstToken, stream: .stderr, bytes: Array("err".utf8),
+            commandID: Self.firstToken, from: .stderr, bytes: Array("err".utf8),
             maxSize: Self.spaciousCaptureCapBytes)
         stream.complete(commandID: Self.firstToken)
         stream.finish()
@@ -179,7 +179,7 @@ struct OutputChunkStreamTests {
                 group.addTask {
                     for index in 0..<Self.concurrentChunkCount {
                         stream.send(
-                            commandID: token, stream: .stdout,
+                            commandID: token, from: .stdout,
                             bytes: Self.chunk(index: index, commandID: token),
                             maxSize: Self.spaciousCaptureCapBytes)
                     }
@@ -194,7 +194,7 @@ struct OutputChunkStreamTests {
             let expected = (0..<Self.concurrentChunkCount).flatMap {
                 Self.chunk(index: $0, commandID: token)
             }
-            #expect(joinedBytes(events, commandID: token, stream: .stdout) == expected)
+            #expect(joinedBytes(events, commandID: token, from: .stdout) == expected)
             #expect(events.filter { $0.commandID == token && $0.kind == .completed }.count == 1)
         }
     }
@@ -210,7 +210,7 @@ struct OutputChunkStreamTests {
 
         for index in 0..<Self.concurrentChunkCount {
             stream.send(
-                commandID: Self.firstToken, stream: .stdout,
+                commandID: Self.firstToken, from: .stdout,
                 bytes: Self.chunk(index: index, commandID: Self.firstToken),
                 maxSize: Self.spaciousCaptureCapBytes)
         }
@@ -250,13 +250,13 @@ struct OutputChunkStreamTests {
         let stream = ShellOutputChunkStream(maxPendingBytes: firstChunk.count)
 
         stream.send(
-            commandID: Self.firstToken, stream: .stdout, bytes: firstChunk,
+            commandID: Self.firstToken, from: .stdout, bytes: firstChunk,
             maxSize: Self.spaciousCaptureCapBytes)
         stream.send(
-            commandID: Self.firstToken, stream: .stdout, bytes: secondChunk,
+            commandID: Self.firstToken, from: .stdout, bytes: secondChunk,
             maxSize: Self.spaciousCaptureCapBytes)
         stream.send(
-            commandID: Self.firstToken, stream: .stdout, bytes: thirdChunk,
+            commandID: Self.firstToken, from: .stdout, bytes: thirdChunk,
             maxSize: Self.spaciousCaptureCapBytes)
         stream.complete(commandID: Self.firstToken)
         stream.finish()
@@ -286,10 +286,10 @@ struct OutputChunkStreamTests {
         let stream = ShellOutputChunkStream(maxPendingBytes: firstChunk.count)
 
         stream.send(
-            commandID: Self.firstToken, stream: .stdout, bytes: firstChunk,
+            commandID: Self.firstToken, from: .stdout, bytes: firstChunk,
             maxSize: Self.spaciousCaptureCapBytes)
         stream.send(
-            commandID: Self.firstToken, stream: .stdout, bytes: droppedChunk,
+            commandID: Self.firstToken, from: .stdout, bytes: droppedChunk,
             maxSize: Self.spaciousCaptureCapBytes)
 
         var iterator = stream.makeAsyncIterator()
@@ -297,7 +297,7 @@ struct OutputChunkStreamTests {
         #expect(first?.kind == .output(stream: .stdout, bytes: firstChunk))
 
         stream.send(
-            commandID: Self.firstToken, stream: .stdout, bytes: laterChunk,
+            commandID: Self.firstToken, from: .stdout, bytes: laterChunk,
             maxSize: Self.spaciousCaptureCapBytes)
         stream.complete(commandID: Self.firstToken)
         stream.finish()
@@ -328,16 +328,16 @@ struct OutputChunkStreamTests {
         let stream = ShellOutputChunkStream(maxPendingBytes: firstChunk.count)
 
         stream.send(
-            commandID: Self.firstToken, stream: .stdout, bytes: firstChunk,
+            commandID: Self.firstToken, from: .stdout, bytes: firstChunk,
             maxSize: Self.spaciousCaptureCapBytes)
         stream.send(
-            commandID: Self.firstToken, stream: .stdout, bytes: firstStdoutDropped,
+            commandID: Self.firstToken, from: .stdout, bytes: firstStdoutDropped,
             maxSize: Self.spaciousCaptureCapBytes)
         stream.send(
-            commandID: Self.firstToken, stream: .stderr, bytes: firstStderrDropped,
+            commandID: Self.firstToken, from: .stderr, bytes: firstStderrDropped,
             maxSize: Self.spaciousCaptureCapBytes)
         stream.send(
-            commandID: Self.secondToken, stream: .stdout, bytes: secondStdoutDropped,
+            commandID: Self.secondToken, from: .stdout, bytes: secondStdoutDropped,
             maxSize: Self.spaciousCaptureCapBytes)
         stream.complete(commandID: Self.firstToken)
         stream.complete(commandID: Self.secondToken)
@@ -370,7 +370,7 @@ struct OutputChunkStreamTests {
 
         for _ in 0..<Self.overflowChunkCount {
             stream.send(
-                commandID: Self.firstToken, stream: .stdout, bytes: chunkBytes,
+                commandID: Self.firstToken, from: .stdout, bytes: chunkBytes,
                 maxSize: Self.spaciousCaptureCapBytes)
         }
         stream.complete(commandID: Self.firstToken)
@@ -411,7 +411,7 @@ struct OutputChunkStreamTests {
 
         // And each later call of the producer must do nothing at all.
         stream.send(
-            commandID: Self.firstToken, stream: .stdout, bytes: [1, 2, 3, 4],
+            commandID: Self.firstToken, from: .stdout, bytes: [1, 2, 3, 4],
             maxSize: Self.spaciousCaptureCapBytes)
         stream.complete(commandID: Self.firstToken)
         #expect(stream.isFinished)
@@ -425,11 +425,11 @@ struct OutputChunkStreamTests {
         let beforeFinish: [UInt8] = [1]
 
         stream.send(
-            commandID: Self.firstToken, stream: .stdout, bytes: beforeFinish,
+            commandID: Self.firstToken, from: .stdout, bytes: beforeFinish,
             maxSize: Self.spaciousCaptureCapBytes)
         stream.finish()
         stream.send(
-            commandID: Self.firstToken, stream: .stdout, bytes: [2],
+            commandID: Self.firstToken, from: .stdout, bytes: [2],
             maxSize: Self.spaciousCaptureCapBytes)
         stream.complete(commandID: Self.firstToken)
 
@@ -455,10 +455,10 @@ struct OutputChunkStreamTests {
         let errBytes = Array("oops\n".utf8)
 
         stream.send(
-            commandID: Self.firstToken, stream: .stdout, bytes: outBytes,
+            commandID: Self.firstToken, from: .stdout, bytes: outBytes,
             maxSize: Self.spaciousCaptureCapBytes)
         stream.send(
-            commandID: Self.firstToken, stream: .stderr, bytes: errBytes,
+            commandID: Self.firstToken, from: .stderr, bytes: errBytes,
             maxSize: Self.spaciousCaptureCapBytes)
 
         let snapshot = stream.snapshot(for: Self.firstToken)
@@ -476,7 +476,7 @@ struct OutputChunkStreamTests {
         let stream = ShellOutputChunkStream()
 
         stream.send(
-            commandID: Self.firstToken, stream: .stdout, bytes: bytes,
+            commandID: Self.firstToken, from: .stdout, bytes: bytes,
             maxSize: Self.spaciousCaptureCapBytes)
 
         let snapshot = stream.snapshot(for: Self.firstToken)
@@ -498,16 +498,16 @@ struct OutputChunkStreamTests {
         let stream = ShellOutputChunkStream(maxPendingBytes: firstChunk.count)
 
         stream.send(
-            commandID: Self.firstToken, stream: .stdout, bytes: firstChunk,
+            commandID: Self.firstToken, from: .stdout, bytes: firstChunk,
             maxSize: Self.spaciousCaptureCapBytes)
         stream.send(
-            commandID: Self.firstToken, stream: .stdout, bytes: droppedChunk,
+            commandID: Self.firstToken, from: .stdout, bytes: droppedChunk,
             maxSize: Self.spaciousCaptureCapBytes)
         stream.complete(commandID: Self.firstToken)
         stream.finish()
 
         let events = await collect(stream).value
-        #expect(joinedBytes(events, commandID: Self.firstToken, stream: .stdout) == firstChunk)
+        #expect(joinedBytes(events, commandID: Self.firstToken, from: .stdout) == firstChunk)
 
         let snapshot = stream.snapshot(for: Self.firstToken)
         #expect(snapshot?.stdout.bytes == firstChunk + droppedChunk)
@@ -524,10 +524,10 @@ struct OutputChunkStreamTests {
         let stream = ShellOutputChunkStream()
 
         stream.send(
-            commandID: Self.firstToken, stream: .stdout, bytes: fillingChunk,
+            commandID: Self.firstToken, from: .stdout, bytes: fillingChunk,
             maxSize: Self.tightCaptureCapBytes)
         stream.send(
-            commandID: Self.firstToken, stream: .stdout, bytes: refusedChunk,
+            commandID: Self.firstToken, from: .stdout, bytes: refusedChunk,
             maxSize: Self.tightCaptureCapBytes)
 
         let snapshot = stream.snapshot(for: Self.firstToken)
@@ -543,7 +543,7 @@ struct OutputChunkStreamTests {
         let stream = ShellOutputChunkStream()
 
         stream.send(
-            commandID: Self.firstToken, stream: .stdout, bytes: [1],
+            commandID: Self.firstToken, from: .stdout, bytes: [1],
             maxSize: Self.spaciousCaptureCapBytes)
 
         #expect(stream.snapshot(for: Self.unknownToken) == nil)

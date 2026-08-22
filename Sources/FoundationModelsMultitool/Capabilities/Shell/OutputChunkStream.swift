@@ -322,17 +322,17 @@ public final class ShellOutputChunkStream: AsyncSequence, Sendable {
         state.withLock { pending in
             guard let buffer = pending.rawBuffers[commandID] else { return nil }
             return ShellOutputSnapshot(
-                stdout: Self.projectRawOutput(buffer.rawStdout),
-                stderr: Self.projectRawOutput(buffer.rawStderr))
+                stdout: Self.rawOutput(from: buffer.rawStdout),
+                stderr: Self.rawOutput(from: buffer.rawStderr))
         }
     }
 
-    /// Puts an internal `OutputBuffer.RawOutput` into the public
-    /// `ShellRawOutput`, field for field.
+    /// The public `ShellRawOutput` form of an internal
+    /// `OutputBuffer.RawOutput`, field for field.
     ///
     /// - Parameter raw: The internal record to convert.
     /// - Returns: The public form of that record.
-    private static func projectRawOutput(_ raw: OutputBuffer.RawOutput) -> ShellRawOutput {
+    private static func rawOutput(from raw: OutputBuffer.RawOutput) -> ShellRawOutput {
         ShellRawOutput(
             bytes: raw.bytes, binaryDetected: raw.binaryDetected,
             truncated: raw.truncated, storedByteCount: raw.storedByteCount)
@@ -400,7 +400,7 @@ public final class ShellOutputChunkStream: AsyncSequence, Sendable {
     ///     the first time it sees this run, and each later call uses the store
     ///     it already made. There is no default: the runner owns that cap, and
     ///     a default here would make a second home for it.
-    func send(commandID: String, stream: ShellOutputStream, bytes: [UInt8], maxSize: Int) {
+    func send(commandID: String, from stream: ShellOutputStream, bytes: [UInt8], maxSize: Int) {
         guard !bytes.isEmpty else { return }
         let key = GapKey(commandID: commandID, stream: stream)
         let events = state.withLock { pending -> [ShellOutputEvent] in
@@ -422,7 +422,7 @@ public final class ShellOutputChunkStream: AsyncSequence, Sendable {
                 return []
             }
             pending.byteCount += bytes.count
-            return Self.owedGap(for: key, draining: &pending.droppedBytes)
+            return Self.takeOwedGap(for: key, from: &pending.droppedBytes)
                 + [ShellOutputEvent(commandID: commandID, kind: .output(stream: stream, bytes: bytes))]
         }
         deliver(events)
@@ -439,9 +439,9 @@ public final class ShellOutputChunkStream: AsyncSequence, Sendable {
             guard !pending.isFinished else { return [] }
             var owed: [ShellOutputEvent] = []
             for stream in ShellOutputStream.allCases {
-                owed += Self.owedGap(
+                owed += Self.takeOwedGap(
                     for: GapKey(commandID: commandID, stream: stream),
-                    draining: &pending.droppedBytes)
+                    from: &pending.droppedBytes)
             }
             return owed + [ShellOutputEvent(commandID: commandID, kind: .completed)]
         }
@@ -515,17 +515,18 @@ public final class ShellOutputChunkStream: AsyncSequence, Sendable {
     private let continuation: AsyncStream<ShellOutputEvent>.Continuation
     private let state = Mutex(PendingState())
 
-    /// The gap event that `key` owes, and which this call clears.
+    /// Takes the gap event that `key` owes out of the drop counters.
     ///
-    /// It is empty when nothing went away for that pair of a run and a stream
-    /// since its last delivered event.
+    /// The call removes the counter it reports, thus the same bytes are never
+    /// reported two times. The result is empty when nothing went away for that
+    /// pair of a run and a stream since its last delivered event.
     ///
     /// - Parameters:
     ///   - key: The pair of a run and a stream to report on.
     ///   - dropped: The drop counters to take the entry out of.
     /// - Returns: The one gap event that is owed, or an empty array.
-    private static func owedGap(
-        for key: GapKey, draining dropped: inout [GapKey: Int]
+    private static func takeOwedGap(
+        for key: GapKey, from dropped: inout [GapKey: Int]
     ) -> [ShellOutputEvent] {
         guard let byteCount = dropped.removeValue(forKey: key) else { return [] }
         return [
