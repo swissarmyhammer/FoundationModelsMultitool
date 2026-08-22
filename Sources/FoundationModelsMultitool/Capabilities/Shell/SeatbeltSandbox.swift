@@ -16,6 +16,27 @@
 
 import Foundation
 
+/// The `realpath(3)` of `path`, or `path` as it is when it cannot resolve —
+/// most often because it does not exist yet.
+///
+/// **The one resolver of this module, and the one each caller must use** to
+/// answer the path precondition of `CommandSandbox`. Seatbelt matches the path
+/// of the vnode that the kernel resolved, and `realpath(3)` gives that path.
+/// The resolver of Foundation runs the other way for this purpose:
+/// `URL(fileURLWithPath: "/private/tmp").resolvingSymlinksInPath().path` gives
+/// back `/tmp`, which is the form Seatbelt cannot match. Thus a second copy of
+/// this step can name a different path than the confinement enforces, and
+/// nothing reports the disagreement. There is one copy, and a test calls it as
+/// the sandbox does.
+///
+/// - Parameter path: The path to resolve.
+/// - Returns: The resolved path, or `path` unchanged.
+func resolvedPath(_ path: String) -> String {
+    guard let resolved = realpath(path, nil) else { return path }
+    defer { free(resolved) }
+    return String(cString: resolved)
+}
+
 /// A `CommandSandbox` that bounds each write and each delete to a fixed set of
 /// root directories, with a macOS Seatbelt profile that
 /// `/usr/bin/sandbox-exec` applies.
@@ -40,11 +61,9 @@ import Foundation
 /// precondition on `CommandSandbox` states. Seatbelt matches the path of the
 /// vnode that the kernel resolved, and its `subpath` match resolves no symbolic
 /// link, thus a grant for `/tmp/x` never matches a kernel that sees
-/// `/private/tmp/x`. Nothing here resolves a path a second time, and that is on
-/// purpose: the resolver of Foundation runs the other way for this purpose —
-/// `URL(fileURLWithPath: "/private/tmp").resolvingSymlinksInPath().path` gives
-/// back `/tmp`, which is the form Seatbelt cannot match. Resolution belongs to
-/// the caller, one time, before the path arrives here.
+/// `/private/tmp/x`. `wrap` resolves no path a second time, and that is on
+/// purpose: resolution belongs to the caller, one time, with `resolvedPath`,
+/// before the path arrives here.
 ///
 /// **A host that is itself in the App Sandbox cannot get more confinement, and
 /// that fails closed.** To put Seatbelt inside an App Sandbox does not work in
@@ -96,7 +115,7 @@ public struct SeatbeltSandbox: CommandSandbox {
 
         /// Makes a write confinement.
         ///
-        /// Each entry of each list goes through `realpath(3)` here, because
+        /// Each entry of each list goes through `resolvedPath` here, because
         /// Seatbelt matches the path the kernel resolved, and because
         /// containment compares a working directory against these roots.
         /// Without that step a host that configures `/tmp/repo` — a symbolic
@@ -118,19 +137,8 @@ public struct SeatbeltSandbox: CommandSandbox {
             let roots =
                 writableRoots.isEmpty
                 ? [FileManager.default.currentDirectoryPath] : writableRoots
-            self.writableRoots = roots.map(Self.resolved)
-            self.extraWritePaths = extraWritePaths.map(Self.resolved)
-        }
-
-        /// The `realpath(3)` of `path`, or `path` as it is when it cannot
-        /// resolve — most often because it does not exist yet.
-        ///
-        /// - Parameter path: The path to resolve.
-        /// - Returns: The resolved path, or `path` unchanged.
-        private static func resolved(_ path: String) -> String {
-            guard let resolved = realpath(path, nil) else { return path }
-            defer { free(resolved) }
-            return String(cString: resolved)
+            self.writableRoots = roots.map(resolvedPath)
+            self.extraWritePaths = extraWritePaths.map(resolvedPath)
         }
     }
 

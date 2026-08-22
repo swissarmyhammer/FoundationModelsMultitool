@@ -80,6 +80,18 @@ struct SeatbeltSandboxTests {
     /// ask for, and the one that must be refused.
     private static let fileSystemRoot = "/"
 
+    /// A directory that each macOS host reaches through a symbolic link: `/tmp`
+    /// points at `/private/tmp`.
+    private static let symbolicLinkedTemporary = "/tmp"
+
+    /// The path the kernel resolves `symbolicLinkedTemporary` to, and thus the
+    /// one form Seatbelt matches.
+    private static let resolvedTemporary = "/private/tmp"
+
+    /// A path that no host has, thus a test shows what the resolver gives back
+    /// for a path it cannot resolve.
+    private static let absentPath = "/private/tmp/no-such-directory/no-such-file"
+
     /// A path value that tries to close the S-expression of the profile and to
     /// add rules of its own.
     private static let hostilePath = "/private/tmp/evil\") (allow default) (\""
@@ -198,26 +210,61 @@ struct SeatbeltSandboxTests {
         return try String(#require(lines.first))
     }
 
-    /// Makes a temporary directory that this test owns, with each symbolic
-    /// link resolved by `realpath(3)`.
+    /// Makes a temporary directory that this test owns, in the form Seatbelt
+    /// can match.
     ///
-    /// `TestScratch` resolves with `URL.resolvingSymlinksInPath()`, and that
-    /// resolver runs the OTHER way for this purpose: it gives back
-    /// `/var/folders/…`, and `/var` is itself a symbolic link to
-    /// `/private/var`. Seatbelt matches the path the kernel resolved, thus the
-    /// precondition on `CommandSandbox` asks for the `realpath(3)` form. A
-    /// test gives that form, exactly as a real caller does. Measured: a
-    /// working directory in the `/var/folders/…` form is refused as outside
-    /// the roots, because `Options` resolves each root with `realpath(3)`.
+    /// It goes through `resolvedPath`, which is the same function that
+    /// `SeatbeltSandbox.Options` puts each configured path through. Thus this
+    /// test cannot disagree with the confinement it tests.
+    ///
+    /// The step is necessary because `TestScratch` resolves with
+    /// `URL.resolvingSymlinksInPath()`, and that resolver runs the OTHER way
+    /// for this purpose: it gives back `/var/folders/…`, and `/var` is itself
+    /// a symbolic link to `/private/var`. Measured: a working directory in the
+    /// `/var/folders/…` form is refused as outside the roots.
     ///
     /// - Parameter prefix: A short name that states the role of the directory.
     /// - Returns: The new directory, in the form Seatbelt can match.
-    /// - Throws: When the directory does not make.
+    /// - Throws: What `TestScratch.makeDirectory` throws.
     private func makeResolvedDirectory(prefix: String) throws -> String {
-        let made = try scratch.makeDirectory(prefix: prefix).path
-        guard let resolved = realpath(made, nil) else { return made }
-        defer { free(resolved) }
-        return String(cString: resolved)
+        resolvedPath(try scratch.makeDirectory(prefix: prefix).path)
+    }
+
+    // MARK: - The shared path resolver
+
+    @Test("the shared resolver gives the form Seatbelt matches")
+    func theSharedResolverGivesTheFormSeatbeltMatches() {
+        // Seatbelt matches the path the kernel resolved. Each test that makes
+        // a path for the sandbox goes through this one function, thus a test
+        // cannot name a path that the confinement does not grant.
+        #expect(resolvedPath(Self.symbolicLinkedTemporary) == Self.resolvedTemporary)
+    }
+
+    @Test("the resolver of Foundation gives the form Seatbelt cannot match")
+    func theResolverOfFoundationGivesTheFormSeatbeltCannotMatch() {
+        // The two resolvers give two different paths for one directory, and
+        // this one runs the OTHER way. It is pinned because the whole reason
+        // for a single shared resolver rests on it.
+        #expect(
+            URL(fileURLWithPath: Self.resolvedTemporary).resolvingSymlinksInPath().path
+                == Self.symbolicLinkedTemporary)
+    }
+
+    @Test("a path the resolver cannot resolve stays as it is")
+    func aPathTheResolverCannotResolveStaysAsItIs() {
+        // A path that does not exist yet is still a grant the host asked for.
+        // To drop it would quietly make the confinement smaller.
+        #expect(resolvedPath(Self.absentPath) == Self.absentPath)
+    }
+
+    @Test("each configured path goes through the shared resolver")
+    func eachConfiguredPathGoesThroughTheSharedResolver() {
+        let options = SeatbeltSandbox.Options(
+            writableRoots: [Self.symbolicLinkedTemporary],
+            extraWritePaths: [Self.symbolicLinkedTemporary])
+
+        #expect(options.writableRoots == [resolvedPath(Self.symbolicLinkedTemporary)])
+        #expect(options.extraWritePaths == [resolvedPath(Self.symbolicLinkedTemporary)])
     }
 
     // MARK: - The profile text
