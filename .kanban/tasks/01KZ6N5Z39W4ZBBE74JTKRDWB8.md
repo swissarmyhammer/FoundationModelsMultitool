@@ -3210,6 +3210,34 @@ comments:
 
     **One observation passed back to Router, not a blocker here.** The 2.6x spread between 76.3 s and 28.9 s is two runs of the same code, and that signature is exactly what `^4qcf1v9` taught this repo to distrust: a 12x spread on one machine was not machine speed, it was a live-lock, and the spread was the only symptom visible before the transcript was read. The plain hypothesis is that `82c9aec` pinned argmax for the probe's turn but the fork test's generation is still sampled, so the spread is decode variance rather than a chase. That is cheap for Router to confirm, and it decides whether `^g1s1efb` is a budget question or a determinism question. It does not change this card.
   timestamp: 2026-08-22T12:34:58.245160+00:00
+- actor: claude-code
+  id: 01m0mz1e2zgt31tsrhnpmdtejr
+  text: |-
+    ### finish iteration 10 — done. Phase 1 is tagged (2026-08-22)
+
+    - implement: changed — kanban records only. The last acceptance box closed, and the ready-to-tag line now records the tag.
+    - test: not run — no source file changed in this repo since `f46add1`, and CI run `32516508312` is green on that commit (65 gated tests in 12 suites, plus the ungated job).
+    - commit: `ac37cd7`, pushed to `origin/main`.
+    - review: not run — no source file changed.
+
+    **The last box closed on evidence, not on report.** Router's user pushed. `git log --oneline -1 origin/main` in Router answers `8a9ed7c`, and `git status -sb` there reads `## main...origin/main` with no ahead or behind count. The gated command `swift test --package-path IntegrationTests` is green on that commit across two whole-target runs, both exit 0 — 29 tests in 14 suites, plus 2 tests in 2 suites — with root `swift test` green at 1032 and 83 tests. No test of either run reaches half its budget; the nearest is `makeFork() seeds the child's transcript from the parent's` at 46.9 s and 51.8 s against 120 s.
+
+    **Tagged, on the human's instruction.** `consolidation-1-foundation`, an annotated tag, placed and pushed on each repo's `origin/main` head:
+
+    | Repo | Commit |
+    |---|---|
+    | FoundationModelsMultitool | `ac37cd7` |
+    | FoundationModelsRouter | `8a9ed7c` |
+    | FoundationModelsOperationTool | `8396f3d` |
+
+    Each tag message names the other two commits and its own repo's gated evidence. Verified on the remotes with `git ls-remote --tags origin consolidation-1-foundation`, which answers a tag object in all three.
+
+    **Why `8a9ed7c` and not `82c9aec`.** Router recommended against `82c9aec` while it was the pushed head, because it carried a 118.7-second measurement at 99 percent of a two-minute budget, and a budget cancellation on GPU work aborts the whole process on a Metal assertion. `^s49ya8p` removed that, and `^g1s1efb` then removed the fork test's 2.6x spread. `8a9ed7c` carries both. The tag never went on a commit either side knew to be superseded.
+
+    **The `^g1s1efb` question resolved on the boring side.** The 2.6x spread was decode variance, not a chase: the fork test loaded without `samplingMode`, so its generation sampled. With greedy pinned at load time the turn measured 13.157 s then 13.126 s, and the suite's token prints are identical byte for byte across runs. No live-lock. The `^4qcf1v9` shape did not repeat. The correction worth keeping is that this suite needed the LOAD-time pin, not the `GenerationOptions` pin `^s49ya8p` used — same cause, two repairs, because only `MLXFoundationModelsSessionBackend` reads what the container stored.
+
+    - next: none. Every acceptance box is checked, all four boards are clear, and phase 1 is closed.
+  timestamp: 2026-08-22T14:47:16.831336+00:00
 depends_on:
 - 01KZ6N4Q7K53WSTJ3M6E76ZK99
 - 01KZ6N545VYCB60H716AZ1XS92
@@ -3218,8 +3246,8 @@ depends_on:
 - 01KZBTW6RPCKT1BY8H3XX5ATMS
 - 01KZC8R1E0Z3J4PN8P8KB5CS2N
 - 01KZRKCHZ9NPM98DVZN0Q2JE6M
-position_column: doing
-position_ordinal: '8280'
+position_column: done
+position_ordinal: dd80
 title: '[Both] Phase-1 exit: gated end-to-end elevation scenarios; tag consolidation-1-foundation'
 ---
 CROSS-BOARD PREREQUISITES:
@@ -3269,7 +3297,7 @@ Ordered work in THIS repo — execute in this order:
 - [x] Host contract documented: a doc comment states exactly what a host must configure, and the gated suite passes using only that. Rewritten 2026-08-11 — `FindAPIsTool` is now `SearchToolsTool`, `sessionInstructions` is gone, and pre-discovery priming is not recommended (it measured 0/4). What a host configures is: the tools `makeSessionTools(librarian:)` vends, mounted on a `RoutedSession`, driven by `streamEvents`. `CLIRunner.swift:390` is the reference host, and the harness must match it — it silently diverged by wiring a `sampleGenerator` the product never uses
 - [x] **CLOSED 2026-08-22 at Router `8a9ed7c`, pushed.** The live command `swift test --package-path IntegrationTests` is green on Router `origin/main`: two whole-target runs, both exit 0, 29 tests in 14 suites plus 2 tests in 2 suites, and root `swift test` at 1032 and 83 tests with zero failures and zero warnings. Verified from this side by `git log --oneline -1 origin/main` and `git status -sb` reading `## main...origin/main` with no ahead or behind count. No test of either run reaches half its budget; the nearest, `makeFork() seeds the child's transcript from the parent's`, measured 46.9 s and 51.8 s against 120 s. Original text follows. ~~`FM_ROUTER_INTEGRATION_TESTS=1 swift test` green in ../FoundationModelsRouter~~ — waits on cross-board prereq 4; if still open when everything else is done, leave unchecked, note it, and report ready-except-Router. **Two corrections to this criterion as written, both found 2026-08-22.** First, the command is dead: Router commit `1db2b56` (2026-08-19) removed the `FM_ROUTER_*` environment variables, so this line now names a command that runs only Router's root hermetic package. The live command is `swift test --package-path IntegrationTests`, because Router moved its real-model tests into a nested package — the same structural gate this repo uses. Second, prereq 4 has cleared: all three Router prerequisite cards are `done`, and the metallib fix `159aada` is on `origin/main`. What is left is neither the command nor the prereq. Router recorded the live command green twice on 2026-08-22 at `b56bc39`, but `b56bc39` is 8 commits ahead of `origin/main` and the Router tree carries live edits from an open card. A tag goes on a pushed commit, so this box waits on Router's push, not on Router's suite. **Router's own statement, 2026-08-22:** they confirm all of the above, they record themselves as ready-except-push, and they recommend AGAINST tagging `b56bc39`. Their card `^s49ya8p` must land first, because `b56bc39` holds a 118.7-second measurement that `^s49ya8p` removes — at 99 percent of a two-minute budget, a tag on `b56bc39` pins a suite one slow run away from a budget cancellation, and a cancellation on GPU work aborts the whole process on a Metal assertion. So this box now waits on two events in order: `^s49ya8p` lands, then Router pushes. **Event one is done, 2026-08-22:** `^s49ya8p` landed as Router commit `82c9aec`, which pins argmax decoding in the propagation probe's `GenerationOptions` and moves the MLX path onto `mlx-community/Qwen3-4B-4bit`. The 118.7-second measurement that made a tag on `b56bc39` unsafe is now 7.2 s and 8.7 s across two whole-target runs, both green (29 tests in 14 suites, plus 2 in 2), root `swift test` green, review clean at 0 findings. **Only the push remains.** Router `main` is 9 ahead of `origin/main`, and the push date is their user's call and is still not stated. The tag target is `82c9aec`, or whatever is on Router `main` when their user pushes
 - [x] Ungated `swift test` green in this repo, Router, and OperationTool
-- [x] Ready-to-tag reported to the human — reported as **ready-except-Router** on 2026-08-17, which is what this card instructs when their run is still open. Router's `FM_ROUTER_INTEGRATION_TESTS` run is recorded NOT RUN on their own statement, and stays unchecked. Nothing tagged — tagging/pushing `consolidation-1-foundation` across the three repos is RESERVED for the human; do not tag
+- [x] Ready-to-tag reported to the human — reported as **ready-except-Router** on 2026-08-17, which is what this card instructs when their run is still open. Router's `FM_ROUTER_INTEGRATION_TESTS` run is recorded NOT RUN on their own statement, and stays unchecked. **TAGGED 2026-08-22 on the human's instruction ("router is being pushed, wait 90 seconds and then finish"), after they pushed Router themselves.** `consolidation-1-foundation` is an annotated tag, placed and pushed on all three repos, each on that repo's `origin/main` head: FoundationModelsMultitool `ac37cd7`, FoundationModelsRouter `8a9ed7c`, FoundationModelsOperationTool `8396f3d`. Each tag message names the other two commits and the gated evidence for its own repo. Verified on the remotes by `git ls-remote --tags origin consolidation-1-foundation`, which answers a tag object in all three. Before this instruction the reservation below held, and it was honoured — nothing was tagged while the box was open. ~~Nothing tagged — tagging/pushing `consolidation-1-foundation` across the three repos is RESERVED for the human; do not tag~~
 
 ## Tests
 - [x] The gated scenarios ARE the tests (elevation + fan-out proven, commit 37417d8)
