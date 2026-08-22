@@ -70,10 +70,13 @@ struct OutputBuffer: Sendable {
 
     /// The number of bytes of a chunk that the binary scan reads.
     ///
+    /// The value is 8 KiB, and it is written as one number. Do not write it as
+    /// a calculation: a calculation makes two numbers that have no name.
+    ///
     /// A null byte after this many bytes does not mark the capture binary. A
     /// test of the buffer reads this value, thus the test states the window one
     /// time and not two times.
-    static let binaryDetectionSampleBytes = 8 * 1024
+    static let binaryDetectionSampleBytes = 8_192
 
     /// The marker line that `finish()` writes after a truncation.
     private static let truncationMarker = "[Output truncated - exceeded size limit]"
