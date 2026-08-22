@@ -210,8 +210,7 @@ actor ShellState {
     ///
     /// - Throws: When neither `<cwd>/.shell` nor the fallback prepares.
     init() throws {
-        let workingDirectory = URL(
-            fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)
+        let workingDirectory = ShellDotfolder.currentDirectory()
         try self.init(preferredDirectory: workingDirectory.appendingPathComponent(".shell"))
     }
 
@@ -267,6 +266,21 @@ actor ShellState {
         processes[commandID]
     }
 
+    /// The index of the command with `commandID`, or `nil` when no command
+    /// started under that token.
+    ///
+    /// This is the one home of the match of a token against a record. Each
+    /// other method reaches a record through it: `commandIndex` throws on the
+    /// `nil`, the two methods that finalize a command read the `nil` as a
+    /// no-operation, and `record` maps the index to the record. Thus one
+    /// predicate answers each lookup, and the four sites cannot drift apart.
+    ///
+    /// - Parameter commandID: The completion token of the run.
+    /// - Returns: The index of the record inside `commands`, or `nil`.
+    private func indexOfCommand(commandID: String) -> Int? {
+        commands.firstIndex { $0.id == commandID }
+    }
+
     /// The index of the command with `commandID`, which throws
     /// `unknownCommand` when no command started under that token.
     ///
@@ -278,7 +292,7 @@ actor ShellState {
     /// - Throws: `ShellStateError.unknownCommand` for a token no command
     ///   started under.
     private func commandIndex(commandID: String) throws -> Int {
-        guard let index = commands.firstIndex(where: { $0.id == commandID }) else {
+        guard let index = indexOfCommand(commandID: commandID) else {
             throw ShellStateError.unknownCommand(commandID)
         }
         return index
@@ -334,7 +348,7 @@ actor ShellState {
         commandID: String, status: CommandStatus = .completed, exitCode: Int? = nil
     ) {
         processes[commandID] = nil
-        guard let index = commands.firstIndex(where: { $0.id == commandID }) else { return }
+        guard let index = indexOfCommand(commandID: commandID) else { return }
         commands[index].status = status
         commands[index].exitCode = exitCode
         commands[index].completedAt = ContinuousClock().now
@@ -355,7 +369,7 @@ actor ShellState {
     ///   - status: The status the command ends in.
     ///   - exitCode: The exit code, or `nil` when the command has none.
     func completeIfRunning(commandID: String, status: CommandStatus, exitCode: Int?) {
-        guard let index = commands.firstIndex(where: { $0.id == commandID }),
+        guard let index = indexOfCommand(commandID: commandID),
             commands[index].status == .running
         else { return }
         completeCommand(commandID: commandID, status: status, exitCode: exitCode)
@@ -377,7 +391,7 @@ actor ShellState {
     /// - Parameter commandID: The completion token of the run.
     /// - Returns: The record, or `nil`.
     func record(commandID: String) -> CommandRecord? {
-        commands.first { $0.id == commandID }
+        indexOfCommand(commandID: commandID).map { commands[$0] }
     }
 
     // MARK: - History questions

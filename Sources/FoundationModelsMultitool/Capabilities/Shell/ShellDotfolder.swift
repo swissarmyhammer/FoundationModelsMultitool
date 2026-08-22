@@ -73,9 +73,10 @@ enum ShellDotfolder {
     ///     the override works and it depends on no real state of the process.
     /// - Returns: `$XDG_CONFIG_HOME/shell/<fileName>` when that variable holds
     ///   an absolute path, and `~/.config/shell/<fileName>` in each other case.
+    ///   The user layer is always there, thus the answer is never absent.
     static func userURL(
         fileName: String, environment: [String: String] = ProcessInfo.processInfo.environment
-    ) -> URL? {
+    ) -> URL {
         userLayerRoot(environment: environment).appendingPathComponent(fileName)
     }
 
@@ -90,6 +91,17 @@ enum ShellDotfolder {
             gitRoot
             .appendingPathComponent(".\(name)", isDirectory: true)
             .appendingPathComponent(fileName)
+    }
+
+    /// The working directory of the process, as a directory URL.
+    ///
+    /// The one home of that expression. The walk to the git root starts here,
+    /// and `ShellState` roots its `<cwd>/.shell` store here, thus the two read
+    /// the working directory the same way.
+    ///
+    /// - Returns: The working directory.
+    static func currentDirectory() -> URL {
+        URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)
     }
 
     /// The name of the environment variable the XDG Base Directory
@@ -123,13 +135,6 @@ enum ShellDotfolder {
         return FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(homeConfigFolder, isDirectory: true)
             .appendingPathComponent(name, isDirectory: true)
-    }
-
-    /// The working directory of the process, as a directory URL.
-    ///
-    /// - Returns: The working directory.
-    private static func currentDirectory() -> URL {
-        URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)
     }
 
     /// The root of the nearest git working tree, found by a walk up from the

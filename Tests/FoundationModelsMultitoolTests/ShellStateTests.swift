@@ -41,6 +41,11 @@ struct ShellStateTests {
     /// The result cap the `grep` limit test gives.
     private static let grepResultCap = 5
 
+    /// The line numbers of the two matching lines that the line-number test
+    /// writes. Its output holds three lines, the first of which does not match,
+    /// and the store counts the lines of one command from 1.
+    private static let matchingLineNumbers = [2, 3]
+
     /// The number of lines the default-range test writes.
     private static let sequenceLineCount = 5
 
@@ -305,6 +310,27 @@ struct ShellStateTests {
         #expect(result.total == 1)
         #expect(result.results.map(\.commandID) == [wanted])
         #expect(result.results.map(\.text) == ["shared_word here"])
+    }
+
+    /// Each `grep` result carries the number of the line it matched inside the
+    /// command. The model reads that number and asks `getLines` for the
+    /// neighborhood of the match, thus a wrong number sends it to the wrong
+    /// lines. The number comes from field 3 of the stored line, thus a parse
+    /// that reads another field, or that counts from 0, answers differently
+    /// here.
+    @Test("grep reports the line number of each match")
+    func grepReportsTheLineNumberOfEachMatch() async throws {
+        let state = try makeState()
+        let token = SessionMailbox.makeCompletionToken()
+
+        await state.startCommand("numbered", commandID: token)
+        // The first line does not match, thus the two matches are the second
+        // line and the third.
+        try await state.appendLines(
+            commandID: token, stdout: ["quiet line", "found it here", "found it again"])
+
+        let result = try await state.grep(pattern: "found")
+        #expect(result.results.map(\.lineNumber) == Self.matchingLineNumbers)
     }
 
     @Test("An invalid regular expression surfaces a recoverable error")

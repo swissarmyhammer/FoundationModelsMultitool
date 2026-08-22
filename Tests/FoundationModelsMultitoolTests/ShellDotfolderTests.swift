@@ -45,11 +45,10 @@ struct ShellDotfolderTests {
     }
 
     @Test("An absolute XDG_CONFIG_HOME gives the root of the user layer")
-    func absoluteConfigHomeGivesTheUserLayerRoot() throws {
-        let url = try #require(
-            ShellDotfolder.userURL(
-                fileName: ShellDotfolder.configFileName,
-                environment: [Self.configHomeVariable: Self.absoluteConfigHome]))
+    func absoluteConfigHomeGivesTheUserLayerRoot() {
+        let url = ShellDotfolder.userURL(
+            fileName: ShellDotfolder.configFileName,
+            environment: [Self.configHomeVariable: Self.absoluteConfigHome])
 
         let expected = URL(fileURLWithPath: Self.absoluteConfigHome, isDirectory: true)
             .appendingPathComponent(ShellDotfolder.name, isDirectory: true)
@@ -58,23 +57,33 @@ struct ShellDotfolderTests {
     }
 
     @Test("A relative XDG_CONFIG_HOME falls back to the home directory")
-    func relativeConfigHomeFallsBackToTheHomeDirectory() throws {
+    func relativeConfigHomeFallsBackToTheHomeDirectory() {
         // The XDG specification states an absolute path. A relative value is
         // thus invalid, and the default takes its place.
-        let url = try #require(
-            ShellDotfolder.userURL(
-                fileName: ShellDotfolder.decisionsFileName,
-                environment: [Self.configHomeVariable: Self.relativeConfigHome]))
+        let url = ShellDotfolder.userURL(
+            fileName: ShellDotfolder.decisionsFileName,
+            environment: [Self.configHomeVariable: Self.relativeConfigHome])
 
         #expect(url.path == homeFallbackURL(fileName: ShellDotfolder.decisionsFileName).path)
     }
 
     @Test("An environment with no XDG_CONFIG_HOME falls back to the home directory")
-    func absentConfigHomeFallsBackToTheHomeDirectory() throws {
-        let url = try #require(
-            ShellDotfolder.userURL(fileName: ShellDotfolder.configFileName, environment: [:]))
+    func absentConfigHomeFallsBackToTheHomeDirectory() {
+        let url = ShellDotfolder.userURL(
+            fileName: ShellDotfolder.configFileName, environment: [:])
 
         #expect(url.path == homeFallbackURL(fileName: ShellDotfolder.configFileName).path)
+    }
+
+    /// The working directory is what the walk to the git root starts from, and
+    /// what `ShellState` roots its `<cwd>/.shell` store at. Thus it must answer
+    /// with the directory of the process, as a directory URL.
+    @Test("currentDirectory answers with the working directory of the process")
+    func currentDirectoryAnswersWithTheWorkingDirectoryOfTheProcess() {
+        let directory = ShellDotfolder.currentDirectory()
+
+        #expect(directory.path == FileManager.default.currentDirectoryPath)
+        #expect(directory.hasDirectoryPath)
     }
 
     @Test("The project layer stands in the .shell folder of the git root")
