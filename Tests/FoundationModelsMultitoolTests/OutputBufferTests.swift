@@ -609,7 +609,9 @@ struct OutputBufferTests {
         var buffer = OutputBuffer(maxSize: Self.tightCapBytes)
         let first = Self.bytes("aaaaa\n")
         buffer.appendStdout(first)
-        buffer.extractRawStdout()
+        // The drain is what this test examines, and not the bytes it gives
+        // back. `_ =` states that, and it keeps the build free of a warning.
+        _ = buffer.extractRawStdout()
         #expect(buffer.currentSize == 0)
         // The drain of the resident bytes must not make room under the cap.
         #expect(buffer.storedByteCount == first.count)
