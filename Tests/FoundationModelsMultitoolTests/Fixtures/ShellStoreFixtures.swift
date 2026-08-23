@@ -70,3 +70,30 @@ final class TestScratch: Sendable {
         return resolved
     }
 }
+
+/// Keeps each advisory warning that a shell store sent, so a test can examine
+/// them.
+///
+/// The store reports a decisions file that it cannot read or cannot parse
+/// through a warning sink, and not through an error. A test that gives this
+/// object as the sink can thus assert that the store spoke.
+///
+/// A reference type, and `Sendable`, because swift-testing runs the tests of
+/// one suite in parallel and thus makes the suite type `Sendable`.
+final class WarningRecorder: Sendable {
+
+    /// Each warning, in the order the store sent it.
+    private let recorded = Mutex<[String]>([])
+
+    /// Keeps one warning.
+    ///
+    /// - Parameter message: The warning text.
+    func record(_ message: String) {
+        recorded.withLock { $0.append(message) }
+    }
+
+    /// Each warning that the store sent up to now.
+    var messages: [String] {
+        recorded.withLock { $0 }
+    }
+}
