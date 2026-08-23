@@ -156,11 +156,13 @@
 // but a decisions file that does not read would drop a `reject_always` and thus
 // fail *open*.
 //
-// For the same reason the store decodes each entry on its own, and not the file
-// as a whole. One value that it does not know must not cancel the
-// `reject_always` on the line beside it. Thus the store sets an unknown entry
+// For the same reason the store reads each entry on its own, and not the file
+// as a whole. One entry that it does not know must not cancel the
+// `reject_always` on the line beside it. This holds for a value of **any**
+// shape: text that names no answer, a value that is a mapping, a value that is
+// a sequence, and a key that is not text. Thus the store sets an unknown entry
 // aside, warns about that entry, and writes it out again unchanged at the next
-// save.
+// save. `ShellDecisionFile` states the rule and holds the code that keeps it.
 //
 // ## Two writers at one time, and what the store truly promises
 //
@@ -251,80 +253,198 @@ import Foundation
 import Synchronization
 import Yams
 
+/// Why the `decisions.yaml` of a layer does not read **at all**.
+///
+/// Each case here is about the shape of the whole file. A fault in one entry
+/// is never one of these: an entry that this code does not understand goes to
+/// `ShellDecisionFile.unrecognized` and leaves each entry beside it whole. To
+/// mix the two would drop a `reject_always` for a mistake on a different line,
+/// which is a fail-open.
+enum ShellDecisionFileError: Error, Equatable {
+    /// The text is not YAML.
+    case notYAML
+    /// The document at the top of the file is not a mapping, thus it can hold
+    /// no `decisions:` key.
+    case rootIsNotAMapping
+    /// The `decisions:` key is there, but it is not a mapping, thus it can
+    /// hold no entry at all.
+    case decisionsIsNotAMapping
+}
+
 /// The shape on disk of the `decisions.yaml` of one layer.
 ///
-/// The decode runs **for each entry**, and not for the file as a whole. A value
-/// that the current code does not know — a hand-written `allow_once`, which is
-/// a real kind of answer but not a remembered one — lands in `unrecognized`
-/// instead of failing the whole file. Anything else would let one typing
-/// mistake cancel a `reject_always` on the line above it, which is a fail-open
-/// on the entry that matters most.
+/// The read runs **for each entry**, and not for the file as a whole. An entry
+/// that the current code does not understand lands in `unrecognized` instead
+/// of failing the whole file. There are two kinds of such an entry, and both
+/// take the same road:
 ///
-/// The next write carries each `unrecognized` entry back out. Thus a rewrite
-/// never destroys text that the user typed without a sound, and the warning
-/// about it keeps coming until they correct it. One level up, `remember`
-/// applies the same promise to a file that does not parse **at all**: it
-/// refuses the write instead of replacing the file with one entry.
-struct ShellDecisionFile: Sendable, Equatable {
-    /// Match key to remembered answer, for each value that this code
+///   * a value that is text but names no `Decision` — a hand-written
+///     `allow_once`, which is a real kind of answer but not a remembered one;
+///   * a value that is not text at all — a mapping or a sequence, which is
+///     what a person makes when they indent one line too far.
+///
+/// Anything else would let one typing mistake cancel a `reject_always` on the
+/// line above it, which is a fail-open on the entry that matters most.
+///
+/// **The round trip: a write keeps the entry.** `unrecognized` holds the key
+/// node and the value node exactly as the file gives them, whatever their
+/// shape, and `yamlText()` puts them back node for node. Thus a rewrite never
+/// destroys the text that the user typed, and the warning about that entry
+/// keeps coming until they correct it. The store does not refuse the write for
+/// such an entry, because a file whose entries all read as unknown is a
+/// readable file that holds no answer, and to refuse would stop the user from
+/// recording any answer in that layer. One level up, `remember` does refuse
+/// for a file that does not read **at all** — a `ShellDecisionFileError` —
+/// because there the store knows nothing to put back.
+///
+/// This type is not `Sendable`: it holds `Yams.Node` values, and Yams does not
+/// declare that conformance. Nothing needs it — the store reads a file, uses
+/// it, and drops it, all inside one call.
+struct ShellDecisionFile: Equatable {
+    /// One entry of `decisions:` that this code does not understand, exactly
+    /// as the file holds it.
+    ///
+    /// It keeps nodes, and not text, because a value can be a mapping or a
+    /// sequence, and a YAML key does not have to be text either. To keep the
+    /// node is what lets the next write put the entry back unchanged.
+    struct UnknownEntry: Equatable {
+        /// The key of the entry, as the file holds it.
+        var key: Node
+        /// The value of the entry, as the file holds it.
+        var value: Node
+
+        /// The key of the entry, as a message names it.
+        var keyDescription: String { Self.describe(key) }
+
+        /// The value of the entry, as a message names it.
+        var valueDescription: String { Self.describe(value) }
+
+        /// The match key of the entry, or `nil` when the key is not text.
+        ///
+        /// A key that is not text can match no command, thus the store only
+        /// carries it back out.
+        var matchKey: String? { key.scalar?.string }
+
+        /// Renders a node for a warning message, on one line.
+        ///
+        /// A scalar renders as quoted text. A node of another shape renders as
+        /// the YAML that stands in the file, with each line break replaced by
+        /// a space, thus one warning stays one line.
+        ///
+        /// - Parameter node: The node to render.
+        /// - Returns: The text for the message.
+        private static func describe(_ node: Node) -> String {
+            if let text = node.scalar?.string { return text.debugDescription }
+            guard let yaml = try? Yams.serialize(node: node) else { return "(unreadable)" }
+            return
+                yaml
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .split(whereSeparator: \.isNewline)
+                .joined(separator: " ")
+                .debugDescription
+        }
+    }
+
+    /// Match key to remembered answer, for each entry that this code
     /// understands.
     var decisions: [String: ShellDecisionStore.Decision]
-    /// Match key to raw value, for each value that it does not understand.
-    var unrecognized: [String: String]
+    /// Each entry that this code does not understand, in the order of the
+    /// file.
+    var unrecognized: [UnknownEntry]
 
     /// Makes a record of one file.
     ///
     /// - Parameters:
     ///   - decisions: Match key to remembered answer.
-    ///   - unrecognized: Match key to raw value, for each value outside
-    ///     `Decision`.
+    ///   - unrecognized: Each entry whose value is outside `Decision`.
     init(
         decisions: [String: ShellDecisionStore.Decision],
-        unrecognized: [String: String] = [:]
+        unrecognized: [UnknownEntry] = []
     ) {
         self.decisions = decisions
         self.unrecognized = unrecognized
     }
 }
 
-extension ShellDecisionFile: Codable {
-    /// The coding keys of the one mapping of the file.
-    enum CodingKeys: String, CodingKey {
-        case decisions
-    }
+extension ShellDecisionFile {
+    /// The name of the one mapping at the top of the file.
+    static let decisionsKey = "decisions"
 
-    /// Decodes a record of one file. It reads an absent `decisions:` key as
-    /// empty, and it sorts each entry by whether the value of that entry names
-    /// a known `Decision`.
+    /// Reads the record of one layer from the text of its file.
     ///
-    /// - Parameter decoder: The decoder to read from.
-    /// - Throws: When the YAML is not a mapping, or when `decisions:` is there
-    ///   but is not a map of strings to strings.
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        let raw =
-            try container.decodeIfPresent([String: String].self, forKey: .decisions) ?? [:]
-        decisions = [:]
-        unrecognized = [:]
-        for (key, value) in raw {
-            if let decision = ShellDecisionStore.Decision(rawValue: value) {
-                decisions[key] = decision
-            } else {
-                unrecognized[key] = value
-            }
+    /// It walks the `decisions:` mapping **one entry at a time**. An entry
+    /// whose key or value is not what this code expects goes to
+    /// `unrecognized`, and nothing about that entry can stop another entry
+    /// from reading. Only a fault in the shape of the whole file throws.
+    ///
+    /// Do not replace this walk with a decode of the mapping as one
+    /// collection. `String` is a scalar type to Yams, thus a decode of
+    /// `[String: String]` throws on the first value that is not a scalar and
+    /// takes every entry down with it — the `reject_always` beside it as well.
+    ///
+    /// A document that holds nothing — an empty file, or only comments —
+    /// reads as no entries, and not as a fault.
+    ///
+    /// - Parameter text: The contents of the file.
+    /// - Throws: `ShellDecisionFileError` when the text is not YAML, or when
+    ///   the shape of the file leaves no place for an entry at all.
+    init(yaml text: String) throws {
+        let document: Node?
+        do {
+            document = try Yams.compose(yaml: text)
+        } catch {
+            throw ShellDecisionFileError.notYAML
         }
+        guard let document else {
+            self.init(decisions: [:])
+            return
+        }
+        guard let root = document.mapping else {
+            throw ShellDecisionFileError.rootIsNotAMapping
+        }
+        guard let entriesNode = root[Self.decisionsKey] else {
+            self.init(decisions: [:])
+            return
+        }
+        guard let entries = entriesNode.mapping else {
+            throw ShellDecisionFileError.decisionsIsNotAMapping
+        }
+
+        var known: [String: ShellDecisionStore.Decision] = [:]
+        var unknown: [UnknownEntry] = []
+        for (key, value) in entries {
+            guard
+                let matchKey = key.scalar?.string,
+                let rawValue = value.scalar?.string,
+                let decision = ShellDecisionStore.Decision(rawValue: rawValue)
+            else {
+                unknown.append(UnknownEntry(key: key, value: value))
+                continue
+            }
+            known[matchKey] = decision
+        }
+        self.init(decisions: known, unrecognized: unknown)
     }
 
-    /// Encodes both halves back into the one `decisions:` mapping. Thus a value
-    /// that this code could not read comes through the round trip unchanged.
+    /// Writes this record back as the text of the file.
     ///
-    /// - Parameter encoder: The encoder to write to.
-    /// - Throws: When the encode fails.
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(
-            decisions.mapValues(\.rawValue).merging(unrecognized) { current, _ in current },
-            forKey: .decisions)
+    /// Both halves go into the one `decisions:` mapping. An entry that this
+    /// code did not understand goes out exactly as it came in, node for node.
+    /// Thus a value of any shape comes through the round trip whole.
+    ///
+    /// The known answers go out in the order of their key, thus two writes of
+    /// the same set of answers give the same bytes. The entries that this code
+    /// does not understand follow, in the order that the file gave them.
+    ///
+    /// - Returns: The YAML to write to the layer file.
+    /// - Throws: When the emit fails.
+    func yamlText() throws -> String {
+        var pairs: [(Node, Node)] =
+            decisions
+            .sorted { $0.key < $1.key }
+            .map { (Node($0.key), Node($0.value.rawValue)) }
+        pairs += unrecognized.map { ($0.key, $0.value) }
+        return try Yams.serialize(node: Node([(Node(Self.decisionsKey), Node(pairs))]))
     }
 }
 
@@ -508,8 +628,10 @@ public final class ShellDecisionStore: Sendable {
                 throw ShellPolicyError.unreadableDecisionsFile(url)
             }
             file.decisions[key] = decision
-            file.unrecognized[key] = nil
-            try YAMLEncoder().encode(file).write(to: url, atomically: true, encoding: .utf8)
+            // The user answered for this command. Their answer replaces
+            // whatever stood beside that key, of any shape.
+            file.unrecognized.removeAll { $0.matchKey == key }
+            try file.yamlText().write(to: url, atomically: true, encoding: .utf8)
         }
     }
 
@@ -768,13 +890,13 @@ public final class ShellDecisionStore: Sendable {
             return nil
         }
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return empty }
-        guard let file = try? YAMLDecoder().decode(ShellDecisionFile.self, from: text) else {
+        guard let file = try? ShellDecisionFile(yaml: text) else {
             warn("remembered decisions at \(url.path) could not be parsed; ignoring them")
             return nil
         }
-        for (key, value) in file.unrecognized {
+        for entry in file.unrecognized {
             warn(
-                "remembered decision \(value.debugDescription) for \(key.debugDescription) in "
+                "remembered decision \(entry.valueDescription) for \(entry.keyDescription) in "
                     + "\(url.path) is not a recognized answer; ignoring that entry")
         }
         return file

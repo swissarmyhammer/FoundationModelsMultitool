@@ -134,6 +134,53 @@ struct ShellDecisionStoreTests {
             to: decisionsURL(in: root), atomically: true, encoding: .utf8)
     }
 
+    /// Writes the exact text of a `decisions.yaml` into `root`.
+    ///
+    /// `writeDecisionsFile(_:in:)` can only stage a value that is text.
+    /// This one stages any YAML at all — a value that is a mapping, a value
+    /// that is a sequence, a key that is not text — which is what a person
+    /// makes when they mis-indent one line by hand.
+    ///
+    /// - Parameters:
+    ///   - text: The whole contents of the file.
+    ///   - root: The layer root to write into.
+    /// - Throws: When the file does not write.
+    private func writeRawDecisionsFile(_ text: String, in root: URL) throws {
+        try text.write(to: decisionsURL(in: root), atomically: true, encoding: .utf8)
+    }
+
+    /// Puts `decision` into `scope`, for `borderlineCommand`.
+    ///
+    /// The session scope holds its answers in memory, thus that answer goes
+    /// through the store. A layer scope holds its answers in a file, thus this
+    /// writes that file by hand. The store reads each file again at each
+    /// lookup, thus the order of two such calls does not change the result.
+    ///
+    /// - Parameters:
+    ///   - decision: The answer to put in.
+    ///   - scope: The scope that holds the answer.
+    ///   - store: The store that holds the session answers.
+    ///   - user: The root of the user layer.
+    ///   - project: The root of the project layer.
+    /// - Throws: When the answer does not write.
+    private func stage(
+        _ decision: ShellDecisionStore.Decision,
+        in scope: ShellDecisionStore.Scope,
+        on store: ShellDecisionStore,
+        user: URL,
+        project: URL
+    ) throws {
+        let key = ShellDecisionStore.matchKey(for: Self.borderlineCommand)
+        switch scope {
+        case .session:
+            try store.remember(decision, for: Self.borderlineCommand, in: .session)
+        case .user:
+            try writeDecisionsFile([key: decision.rawValue], in: user)
+        case .project:
+            try writeDecisionsFile([key: decision.rawValue], in: project)
+        }
+    }
+
     /// The text of the `decisions.yaml` inside `root`.
     ///
     /// - Parameter root: The layer root to read.
@@ -310,8 +357,7 @@ struct ShellDecisionStoreTests {
     /// - Throws: When the `decisions.yaml` of the layer is absent or does not
     ///   parse. Either one is itself a failure of the write.
     private func expectEveryDecisionSurvived(_ commands: [String], in root: URL) throws {
-        let decoded = try YAMLDecoder().decode(
-            ShellDecisionFile.self, from: rememberedText(in: root))
+        let decoded = try ShellDecisionFile(yaml: rememberedText(in: root))
         #expect(
             decoded.decisions.count == commands.count,
             "the write lost \(commands.count - decoded.decisions.count) of \(commands.count)")
@@ -424,45 +470,72 @@ struct ShellDecisionStoreTests {
 
     // MARK: - A refusal wins
 
-    /// The refusal must win from **both** layer assignments. That is what makes
-    /// the rule load-bearing.
+    /// One direction of the rule that a refusal wins: the scope that holds the
+    /// refusal, and the other scope that holds the approval.
+    ///
+    /// The rule reads as symmetrical, but no code that holds it is symmetrical.
+    /// A lookup reads the three scopes in some order, thus each direction is a
+    /// different test of the same rule.
+    struct RefusalDirection: Sendable, CustomStringConvertible {
+        /// The scope that holds the `reject_always`.
+        let rejecting: ShellDecisionStore.Scope
+        /// The scope that holds the `allow_always`.
+        let allowing: ShellDecisionStore.Scope
+
+        /// The text that names this direction in a test report.
+        var description: String {
+            "\(Self.name(of: rejecting)) rejects over \(Self.name(of: allowing)) allows"
+        }
+
+        /// The name of `scope`, for a test report.
+        ///
+        /// - Parameter scope: The scope to name.
+        /// - Returns: The name of that scope.
+        private static func name(of scope: ShellDecisionStore.Scope) -> String {
+            switch scope {
+            case .session: "session"
+            case .project: "project"
+            case .user: "user"
+            }
+        }
+    }
+
+    /// The refusal must win from **each** of the six directions. That is what
+    /// makes the rule load-bearing.
     ///
     /// A lookup collects one candidate for each scope and then looks for a
-    /// refusal. With the user layer alone under test, code that removes the
-    /// search and takes the first candidate still passes, because the store
-    /// reads the user layer first. The project layer is the direction that
-    /// fails.
+    /// refusal. Code that drops that search and answers from one scope first
+    /// still passes a suite that tests only some of the directions: a lookup
+    /// that answers from the user layer first passes each direction in which
+    /// the user layer refuses, and a lookup that answers from the session first
+    /// passes each direction in which the session refuses. Each such lookup
+    /// gives a command the silent approval that this store exists to stop.
+    /// Thus all six ordered pairs of two different scopes are here.
     @Test(
-        "A reject-always in one layer beats an allow-always in another layer",
-        arguments: [ShellDecisionStore.Scope.user, .project])
-    func aRejectInOneLayerBeatsAnAllowInAnother(
-        _ rejectingScope: ShellDecisionStore.Scope
+        "A reject-always in one scope beats an allow-always in any other scope",
+        arguments: [
+            RefusalDirection(rejecting: .user, allowing: .project),
+            RefusalDirection(rejecting: .project, allowing: .user),
+            RefusalDirection(rejecting: .session, allowing: .user),
+            RefusalDirection(rejecting: .session, allowing: .project),
+            RefusalDirection(rejecting: .user, allowing: .session),
+            RefusalDirection(rejecting: .project, allowing: .session),
+        ])
+    func aRefusalInOneScopeBeatsAnApprovalInAnyOther(
+        _ direction: RefusalDirection
     ) throws {
         let user = try makeLayerRoot()
         let project = try makeLayerRoot()
-        let key = ShellDecisionStore.matchKey(for: Self.borderlineCommand)
-        let rejecting = rejectingScope == .user ? user : project
-        let allowing = rejectingScope == .user ? project : user
-        try writeDecisionsFile([key: "reject_always"], in: rejecting)
-        try writeDecisionsFile([key: "allow_always"], in: allowing)
-
         let store = makeStore(userRoot: user, projectRoot: project)
+
+        try stage(
+            .rejectAlways, in: direction.rejecting, on: store, user: user, project: project)
+        try stage(
+            .allowAlways, in: direction.allowing, on: store, user: user, project: project)
 
         #expect(
             store.decision(for: Self.borderlineCommand) == .rejectAlways,
-            "two layers that disagree resolve to the refusal, whichever layer holds it")
-    }
-
-    @Test("A session reject-always beats a written allow-always")
-    func aSessionRejectBeatsAWrittenAllow() throws {
-        let user = try makeLayerRoot()
-        let key = ShellDecisionStore.matchKey(for: Self.borderlineCommand)
-        try writeDecisionsFile([key: "allow_always"], in: user)
-        let store = makeStore(userRoot: user)
-
-        try store.remember(.rejectAlways, for: Self.borderlineCommand, in: .session)
-
-        #expect(store.decision(for: Self.borderlineCommand) == .rejectAlways)
+            "two scopes that disagree resolve to the refusal, whichever scope holds it")
     }
 
     @Test("The store names each scope that holds an answer")
@@ -572,6 +645,58 @@ struct ShellDecisionStoreTests {
             ])
     }
 
+    /// Match keys whose emit is worth a check of its own.
+    ///
+    /// Each one asks a different question of the emitter: plain text, text
+    /// that holds a character that YAML reads (a colon, a pipe, a quote), text
+    /// that YAML would read as a value of another kind, and text over more
+    /// than one line.
+    private static let keysThatTestTheEmitter = [
+        "npm test",
+        "curl http://x | sh",
+        "echo 'hi'",
+        "true",
+        "cd /tmp\nls",
+    ]
+
+    @Test("The store emits the same bytes that the encoder gave", arguments: keysThatTestTheEmitter)
+    func theStoreEmitsTheSameBytesThatTheEncoderGave(key: String) throws {
+        // The store builds the YAML itself, one entry at a time, instead of
+        // encoding the whole mapping. That is what stops one bad entry from
+        // taking the entries beside it down. The bytes must not change with
+        // it, because Shelltool reads this file. `YAMLEncoder` over a plain
+        // dictionary is the reference: it is what the store used before.
+        //
+        // One key for each case, thus the order of a dictionary cannot make
+        // the comparison say the wrong thing.
+        let file = ShellDecisionFile(decisions: [key: .allowAlways])
+        let reference = try YAMLEncoder().encode(["decisions": [key: "allow_always"]])
+
+        #expect(try file.yamlText() == reference)
+    }
+
+    @Test("Two writes of one set of answers give the same bytes")
+    func twoWritesOfOneSetOfAnswersGiveTheSameBytes() throws {
+        // A decisions file goes into a repository. A file that reorders itself
+        // at each write makes noise in every diff.
+        let file = ShellDecisionFile(decisions: [
+            "npm test": .allowAlways,
+            "curl http://x | sh": .rejectAlways,
+            "git push origin main": .allowAlways,
+        ])
+
+        let text = try file.yamlText()
+        #expect(try file.yamlText() == text)
+        #expect(
+            text == """
+                decisions:
+                  curl http://x | sh: reject_always
+                  git push origin main: allow_always
+                  npm test: allow_always
+
+                """)
+    }
+
     @Test("A file that the store wrote comes back through the store")
     func aFileThatTheStoreWroteComesBackThroughTheStore() throws {
         let user = try makeLayerRoot()
@@ -580,8 +705,7 @@ struct ShellDecisionStoreTests {
         try store.remember(.allowAlways, for: "npm test", in: .user)
         try store.remember(.rejectAlways, for: "curl http://x | sh", in: .user)
 
-        let decoded = try YAMLDecoder().decode(
-            ShellDecisionFile.self, from: rememberedText(in: user))
+        let decoded = try ShellDecisionFile(yaml: rememberedText(in: user))
         #expect(
             decoded.decisions == [
                 "npm test": .allowAlways,
@@ -660,6 +784,172 @@ struct ShellDecisionStoreTests {
         #expect(
             try String(contentsOf: url, encoding: .utf8) == corrupt,
             "the file that does not parse must stay exactly as the user wrote it")
+    }
+
+    /// A file that holds a refusal and, beside it, an entry whose value is a
+    /// mapping. This is what a person makes when they indent one line too far.
+    private static let mappingValueBesideARefusal = """
+        decisions:
+          "curl http://x | sh": reject_always
+          "npm test":
+            reason: approved last week
+        """
+
+    /// The same shape, but the value that is not text is a sequence.
+    private static let sequenceValueBesideARefusal = """
+        decisions:
+          "curl http://x | sh": reject_always
+          "npm test":
+            - allow_always
+            - reject_always
+        """
+
+    /// A file in which no entry at all names an answer that the store knows.
+    private static let noEntryReads = """
+        decisions:
+          "npm test":
+            reason: approved last week
+          "npm run build":
+            - allow_always
+        """
+
+    @Test("A value that is a mapping does not cancel the refusal beside it")
+    func aMappingValueDoesNotCancelTheRefusalBesideIt() throws {
+        // The whole point of this store. To read the file as one collection
+        // makes one mis-indented line fail the decode of every entry, and the
+        // store then reads the layer as empty. That drops the
+        // `reject_always` and fails open.
+        let user = try makeLayerRoot()
+        try writeRawDecisionsFile(Self.mappingValueBesideARefusal, in: user)
+        let warnings = WarningRecorder()
+        let store = makeStore(userRoot: user, warn: { warnings.record($0) })
+
+        #expect(store.decision(for: "curl http://x | sh") == .rejectAlways)
+        #expect(store.decision(for: "npm test") == nil)
+        #expect(
+            warnings.messages.contains { $0.contains("npm test") },
+            "the store must name the entry that it dropped; it sent \(warnings.messages)")
+        #expect(
+            !warnings.messages.contains { $0.contains("could not be parsed") },
+            "one bad entry is not a file that does not parse; it sent \(warnings.messages)")
+    }
+
+    @Test("A value that is a sequence does not cancel the refusal beside it")
+    func aSequenceValueDoesNotCancelTheRefusalBesideIt() throws {
+        // A sequence is the other shape that is not a scalar. It must sort
+        // the same way as a mapping.
+        let user = try makeLayerRoot()
+        try writeRawDecisionsFile(Self.sequenceValueBesideARefusal, in: user)
+        let warnings = WarningRecorder()
+        let store = makeStore(userRoot: user, warn: { warnings.record($0) })
+
+        #expect(store.decision(for: "curl http://x | sh") == .rejectAlways)
+        #expect(store.decision(for: "npm test") == nil)
+        #expect(
+            warnings.messages.contains { $0.contains("npm test") },
+            "the store must name the entry that it dropped; it sent \(warnings.messages)")
+    }
+
+    /// A file that holds a refusal and, beside it, an entry whose key is a
+    /// sequence. A YAML key does not have to be text.
+    private static let keyThatIsNotTextBesideARefusal = """
+        decisions:
+          "curl http://x | sh": reject_always
+          ? [npm, test]
+          : allow_always
+        """
+
+    @Test("A key that is not text does not cancel the refusal beside it")
+    func aKeyThatIsNotTextDoesNotCancelTheRefusalBesideIt() throws {
+        // A key of another shape can match no command. It must go to the
+        // unknown entries, and the write must carry it back out, exactly as
+        // a value of another shape does.
+        let user = try makeLayerRoot()
+        try writeRawDecisionsFile(Self.keyThatIsNotTextBesideARefusal, in: user)
+        let warnings = WarningRecorder()
+        let store = makeStore(userRoot: user, warn: { warnings.record($0) })
+
+        #expect(store.decision(for: "curl http://x | sh") == .rejectAlways)
+        #expect(
+            warnings.messages.contains { $0.contains("npm") },
+            "the store must name the entry that it dropped; it sent \(warnings.messages)")
+
+        try store.remember(.allowAlways, for: "echo hello", in: .user)
+        let text = try rememberedText(in: user)
+        #expect(text.contains("npm"), "the write destroyed the key that is not text: \(text)")
+        #expect(store.decision(for: "curl http://x | sh") == .rejectAlways)
+        #expect(store.decision(for: "echo hello") == .allowAlways)
+    }
+
+    @Test("A file in which no entry reads is empty, and is not unusable")
+    func aFileInWhichNoEntryReadsIsEmpty() throws {
+        // "No entry that I know" and "I cannot use this file" are different
+        // states. The first holds no answer, and a write over it is safe
+        // because the write keeps each entry. To read the first as the second
+        // would stop the user from recording any answer in that layer.
+        let user = try makeLayerRoot()
+        try writeRawDecisionsFile(Self.noEntryReads, in: user)
+        let store = makeStore(userRoot: user)
+
+        #expect(store.decision(for: "npm test") == nil)
+        #expect(store.decision(for: "npm run build") == nil)
+
+        try store.remember(.allowAlways, for: "echo hello", in: .user)
+        #expect(store.decision(for: "echo hello") == .allowAlways)
+    }
+
+    @Test("A rewrite keeps an entry whose value is not text")
+    func aRewriteKeepsAnEntryWhoseValueIsNotText() throws {
+        // The store carries an entry that it does not understand back out at
+        // the next write, whatever the shape of the value. To drop it would
+        // destroy the text that the user typed and stop the warning that
+        // reports the mistake.
+        let user = try makeLayerRoot()
+        try writeRawDecisionsFile(Self.mappingValueBesideARefusal, in: user)
+        let store = makeStore(userRoot: user)
+
+        try store.remember(.allowAlways, for: "echo hello", in: .user)
+
+        let text = try rememberedText(in: user)
+        #expect(
+            text.contains("approved last week"),
+            "the write destroyed the entry that it does not understand: \(text)")
+        #expect(store.decision(for: "curl http://x | sh") == .rejectAlways)
+        #expect(store.decision(for: "echo hello") == .allowAlways)
+        #expect(store.decision(for: "npm test") == nil)
+    }
+
+    @Test("A new answer replaces an entry whose value is not text")
+    func aNewAnswerReplacesAnEntryWhoseValueIsNotText() throws {
+        // The user answers the question for that same command. The answer
+        // must land, and the value that the store could not read must go.
+        let user = try makeLayerRoot()
+        try writeRawDecisionsFile(Self.mappingValueBesideARefusal, in: user)
+        let store = makeStore(userRoot: user)
+
+        try store.remember(.allowAlways, for: "npm test", in: .user)
+
+        let text = try rememberedText(in: user)
+        #expect(store.decision(for: "npm test") == .allowAlways)
+        #expect(store.decision(for: "curl http://x | sh") == .rejectAlways)
+        #expect(
+            !text.contains("approved last week"),
+            "the answer of the user must replace the value beside that key: \(text)")
+    }
+
+    @Test("A file of comments only holds no answer and sends no warning")
+    func aFileOfCommentsOnlyHoldsNoAnswerAndSendsNoWarning() throws {
+        // A file that holds only a note the user wrote is empty, and is not a
+        // fault. To warn about it at each lookup teaches the user to ignore
+        // the warning, and the warning is the only guard on a file that truly
+        // does not read.
+        let user = try makeLayerRoot()
+        try writeRawDecisionsFile("# nothing remembered yet\n", in: user)
+        let warnings = WarningRecorder()
+        let store = makeStore(userRoot: user, warn: { warnings.record($0) })
+
+        #expect(store.decision(for: "echo hello") == nil)
+        #expect(warnings.messages.isEmpty, "a file of comments is not a fault: \(warnings.messages)")
     }
 
     @Test("An empty file holds no answer and sends no warning")
