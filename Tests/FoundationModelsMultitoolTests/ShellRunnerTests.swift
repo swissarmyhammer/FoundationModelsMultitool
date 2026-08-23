@@ -225,19 +225,6 @@ struct ShellRunnerTests {
         return try await state.getLines(commandID: commandID)
     }
 
-    /// `path` with each symbolic link component followed, through `realpath(3)`
-    /// — the form the path precondition of `CommandSandbox` asks for, stated
-    /// here from the contract and not taken from the code under test.
-    ///
-    /// - Parameter path: The path to resolve.
-    /// - Returns: The resolved path, with no trailing separator.
-    /// - Throws: When `realpath(3)` cannot resolve the path.
-    private func resolvedByRealpath(_ path: String) throws -> String {
-        let resolved = try #require(realpath(path, nil), "realpath(3) could not resolve \(path)")
-        defer { free(resolved) }
-        return String(cString: resolved)
-    }
-
     // MARK: - The kill of a process group takes down the whole tree
 
     /// The load-bearing test: a `sh -c 'sleep N & sleep N'` tree that the
@@ -683,7 +670,11 @@ struct ShellRunnerTests {
             .init(command: "echo hi", completionToken: token, workingDirectory: "/tmp"))
 
         let call = try #require(sandbox.calls.first)
-        let resolvedTemporary = try resolvedByRealpath(NSTemporaryDirectory())
+        // The expected form goes through `resolvedPath`, the one resolver of the
+        // module and the one the runner itself calls. A second copy of that step
+        // here could name a path the confinement does not enforce, and nothing
+        // would report the disagreement.
+        let resolvedTemporary = resolvedPath(NSTemporaryDirectory())
         #expect(call.shellPath == "/bin/sh")
         #expect(call.shellArguments == ["-c", "echo hi"])
         #expect(call.workingDirectory == "/private/tmp")
@@ -774,13 +765,13 @@ struct ShellRunnerTests {
     /// to `/private/tmp` on macOS, and a grant for the unresolved form denies
     /// silently.
     @Test("the resolved sandbox directories follow symbolic links")
-    func resolvedSandboxDirectoriesResolvesSymlinks() throws {
+    func resolvedSandboxDirectoriesResolvesSymlinks() {
         let token = SessionMailbox.makeCompletionToken()
         let directories = ShellRunner.resolvedSandboxDirectories(
             request: .init(
                 command: "echo hi", completionToken: token, workingDirectory: "/tmp"))
 
-        let resolvedTemporary = try resolvedByRealpath(NSTemporaryDirectory())
+        let resolvedTemporary = resolvedPath(NSTemporaryDirectory())
         #expect(directories.work == "/private/tmp")
         #expect(directories.tmp == resolvedTemporary)
         #expect(
@@ -805,12 +796,12 @@ struct ShellRunnerTests {
     /// input that can carry a symbolic link. What this case pins is the contract
     /// at the boundary.
     @Test("the resolved sandbox directories fall back to the current directory")
-    func resolvedSandboxDirectoriesFallsBackToCurrentDirectory() throws {
+    func resolvedSandboxDirectoriesFallsBackToCurrentDirectory() {
         let token = SessionMailbox.makeCompletionToken()
         let directories = ShellRunner.resolvedSandboxDirectories(
             request: .init(command: "echo hi", completionToken: token))
 
-        let resolvedCurrent = try resolvedByRealpath(FileManager.default.currentDirectoryPath)
+        let resolvedCurrent = resolvedPath(FileManager.default.currentDirectoryPath)
         #expect(directories.work == resolvedCurrent)
         #expect(!directories.work.hasSuffix("/"))
     }

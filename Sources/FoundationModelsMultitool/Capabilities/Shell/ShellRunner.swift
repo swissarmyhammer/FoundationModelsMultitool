@@ -413,34 +413,32 @@ struct ShellRunner {
     /// - Returns: The resolved working directory and temporary directory.
     static func resolvedSandboxDirectories(request: Request) -> (work: String, tmp: String) {
         (
-            work: resolvedPath(request.workingDirectory ?? FileManager.default.currentDirectoryPath),
-            tmp: resolvedPath(NSTemporaryDirectory())
+            work: resolvedDirectory(
+                request.workingDirectory ?? FileManager.default.currentDirectoryPath),
+            tmp: resolvedDirectory(NSTemporaryDirectory())
         )
     }
 
-    /// `path` with each symbolic link component followed and any trailing
-    /// separator removed.
+    /// `path` with any trailing separator removed and each symbolic link
+    /// component followed.
     ///
-    /// `realpath(3)`, and not `URL.resolvingSymlinksInPath()`: the resolver of
-    /// Foundation runs the wrong direction for exactly the paths that matter
-    /// here — it writes `/private/tmp` back to `/tmp`, and
-    /// `/private/var/folders/…` back to `/var/folders/…`, the forms that are not
-    /// resolved and that Seatbelt cannot match. `realpath(3)` is a fixed point
-    /// on both: `/tmp` and `/private/tmp` each resolve to `/private/tmp`.
+    /// The resolution itself is `resolvedPath`, the one resolver of this module.
+    /// There is no second copy of that step here, on purpose: a copy can name a
+    /// different path than the confinement enforces, and nothing reports the
+    /// disagreement. What this member adds is the trailing separator, which
+    /// `NSTemporaryDirectory()` carries and which a Seatbelt grant must not.
     ///
-    /// A path that is not there has nothing to resolve, thus `realpath(3)` fails
-    /// and the input comes back as it came in, with the trailing separator still
-    /// removed. That widens nothing in silence: the value goes on to a sandbox
-    /// that either refuses it or grants exactly what it names, and the spawn of
-    /// a working directory that is not there fails by itself.
+    /// A path that is not there has nothing to resolve, thus the input comes
+    /// back as it came in, with the trailing separator still removed. That
+    /// widens nothing in silence: the value goes on to a sandbox that either
+    /// refuses it or grants exactly what it names, and the spawn of a working
+    /// directory that is not there fails by itself.
     ///
     /// - Parameter path: The path to resolve.
     /// - Returns: The resolved path, or `path` itself when it does not resolve.
-    private static func resolvedPath(_ path: String) -> String {
+    private static func resolvedDirectory(_ path: String) -> String {
         let trimmed = path.count > 1 && path.hasSuffix("/") ? String(path.dropLast()) : path
-        guard let resolved = realpath(trimmed, nil) else { return trimmed }
-        defer { free(resolved) }
-        return String(cString: resolved)
+        return resolvedPath(trimmed)
     }
 
     /// The platform options that put the child in its own process group, thus

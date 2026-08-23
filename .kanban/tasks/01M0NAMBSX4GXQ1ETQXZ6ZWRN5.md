@@ -99,6 +99,82 @@ comments:
       Tests/FoundationModelsMultitoolTests/ShellHistoryOpsTests.swift.
     - next: `/review`
   timestamp: 2026-08-23T23:08:18.567351+00:00
+- actor: claude-code
+  id: 01m0repq99747fhr8j72p8zheh
+  text: |-
+    ### review — findings
+    - evidence: 1 finding (1 confirmed, 1 refuted, 14 attempted) — Tests/FoundationModelsMultitoolTests/ShellRunnerTests.swift:235
+    - scope: review sha HEAD~1..HEAD (4ee9907)
+    - next: correct the reuse finding in ShellRunnerTests.swift, then review again.
+  timestamp: 2026-08-23T23:18:46.313627+00:00
+- actor: claude-code
+  id: 01m0req9fh0vmkkk7fn9z9ysbv
+  text: |-
+    ### finish iteration 1 — findings
+    - implement: changed — 3 files (Capabilities/Shell/GetLines.swift, Capabilities/Shell/GrepHistory.swift, Tests/ShellHistoryOpsTests.swift)
+    - test: green — swift test, 587 passed in 46 suites, 0 failed, 0 skipped
+    - commit: 4ee9907 feat(shell): add tools.shell.getLines and tools.shell.grepHistory verbs
+    - review: findings — Tests/FoundationModelsMultitoolTests/ShellRunnerTests.swift:235
+  timestamp: 2026-08-23T23:19:04.945120+00:00
+- actor: claude-code
+  id: 01m0rf0zvsx3h9b91k9x2q6max
+  text: |
+    Corrected the reuse finding on `ShellRunnerTests.swift`.
+
+    The finding, word for word:
+
+    > `Tests/FoundationModelsMultitoolTests/ShellRunnerTests.swift:235` `reuse/reuse`
+    > — The function `resolvedByRealpath` reimplements path resolution with realpath
+    > that already exists in production code; it should reuse the existing
+    > implementation rather than duplicate it. Call the existing `resolvedPath`
+    > function from SeatbeltSandbox instead of reimplementing it. If the test
+    > requires isolation from production code, that constraint should be documented
+    > in a comment explaining why duplication is necessary.
+
+    `resolvedByRealpath` is gone. Each of its three call sites now calls
+    `resolvedPath`, the module resolver in `SeatbeltSandbox.swift`. Its doc comment
+    names it "**The one resolver of this module, and the one each caller must
+    use**", thus no comment about a necessary duplication belongs here: there is no
+    isolation constraint, and the earlier claim that the test "states the contract
+    and does not take it from the code under test" was the wrong reading.
+
+    **A second copy of the same cause stood in production, and the correction is
+    not complete without it.** `ShellRunner` carried its own
+    `private static func resolvedPath`, which SHADOWED the module resolver: a plain
+    `resolvedPath(...)` inside that type silently meant the copy. To leave it would
+    make this fix worthless — the test would then compare against one resolver while
+    the code under test used another, which is exactly the disagreement the doc
+    comment of the module resolver warns about. `ShellRunner.swift` came in with the
+    same commit the review read (4ee9907), thus the "do not edit a counterpart
+    outside the change" rule of the duplication validator does not apply: the copy
+    IS the changed side.
+
+    The copy becomes `resolvedDirectory(_:)`. It keeps the one thing it truly added
+    — the trailing separator that `NSTemporaryDirectory()` carries and that a
+    Seatbelt grant must not — and it hands the resolution to `resolvedPath`. The
+    rename also removes the shadow, thus a bare `resolvedPath` inside `ShellRunner`
+    now means the one resolver.
+
+    Behavior is unchanged. `realpath(3)` already drops a trailing separator on a
+    path it resolves, thus `resolvedPath(NSTemporaryDirectory())` and the old
+    `resolvedByRealpath(NSTemporaryDirectory())` name the same string. The two tests
+    that only read paths no longer throw, thus `throws` came off
+    `resolvedSandboxDirectoriesResolvesSymlinks` and
+    `resolvedSandboxDirectoriesFallsBackToCurrentDirectory`.
+
+    Left alone on purpose: `runsInRequestedWorkingDirectory` compares the output of
+    `/bin/pwd` through `URL.resolvingSymlinksInPath()` on BOTH sides. That is
+    Foundation's own API used to normalize two observed paths for one comparison,
+    and not a copy of a production resolver, thus it is not this cause and a change
+    there would be an unrelated refactor.
+  timestamp: 2026-08-23T23:24:22.777168+00:00
+- actor: claude-code
+  id: 01m0rf15tyxqk0qrzh6t26x3me
+  text: |
+    ### implement — changed
+    - evidence: 2 files — Sources/FoundationModelsMultitool/Capabilities/Shell/ShellRunner.swift, Tests/FoundationModelsMultitoolTests/ShellRunnerTests.swift. 1 open review finding closed, 0 open now. `swift build` clean. `swift test --filter ShellRunnerTests` → 26 tests, 1 suite, passed. `swift test` → 587 tests, 46 suites, passed, 0 failed, 0 skipped, 0 warnings.
+    - next: `/review`
+  timestamp: 2026-08-23T23:24:28.894521+00:00
 depends_on:
 - 01M0NAG6762NCNAAMETXX64PZV
 - 01M0NAES1VVY3ETEXTCSFH0V2P
@@ -152,3 +228,12 @@ plane. They are not run-plane surfaces.
 
 ## Workflow
 - Use `/tdd` — write failing tests first, then implement to make them pass. #phase-2 #eventplan
+
+## Review Findings (2026-08-23 18:11)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 7 file(s) reviewed, 42 not reviewed.
+
+> 42 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 42 file(s)
+
+- [x] `Tests/FoundationModelsMultitoolTests/ShellRunnerTests.swift:235` `reuse/reuse` — The function `resolvedByRealpath` reimplements path resolution with realpath that already exists in production code; it should reuse the existing implementation rather than duplicate it. Call the existing `resolvedPath` function from SeatbeltSandbox instead of reimplementing it. If the test requires isolation from production code, that constraint should be documented in a comment explaining why duplication is necessary.
