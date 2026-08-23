@@ -175,6 +175,119 @@ comments:
     - evidence: 2 files — Sources/FoundationModelsMultitool/Capabilities/Shell/ShellRunner.swift, Tests/FoundationModelsMultitoolTests/ShellRunnerTests.swift. 1 open review finding closed, 0 open now. `swift build` clean. `swift test --filter ShellRunnerTests` → 26 tests, 1 suite, passed. `swift test` → 587 tests, 46 suites, passed, 0 failed, 0 skipped, 0 warnings.
     - next: `/review`
   timestamp: 2026-08-23T23:24:28.894521+00:00
+- actor: claude-code
+  id: 01m0rff4s87za5x7c0znqndwfs
+  text: |-
+    ### review — findings
+    - evidence: 2 findings (2 confirmed, 2 refuted, 7 attempted) — Sources/FoundationModelsMultitool/Capabilities/Shell/ShellRunner.swift:439, Tests/FoundationModelsMultitoolTests/ShellRunnerTests.swift:677
+    - scope: review sha HEAD~1..HEAD
+    - next: correct both findings, then run the review again.
+  timestamp: 2026-08-23T23:32:06.568137+00:00
+- actor: claude-code
+  id: 01m0rffqkdsm2pcv6bpf8x1yfw
+  text: |-
+    ### finish iteration 2 — findings
+    - implement: changed — 2 files (Capabilities/Shell/ShellRunner.swift, Tests/ShellRunnerTests.swift); the iteration 1 finding is closed
+    - test: green — swift test, 587 passed in 46 suites, 0 failed, 0 skipped
+    - commit: 30f4e15 refactor(shell): dedupe realpath resolver between ShellRunner and its tests
+    - review: findings — Sources/FoundationModelsMultitool/Capabilities/Shell/ShellRunner.swift:439, Tests/FoundationModelsMultitoolTests/ShellRunnerTests.swift:677
+  timestamp: 2026-08-23T23:32:25.837323+00:00
+- actor: claude-code
+  id: 01m0rfz1h5wxdn2g3bzvrd4jbe
+  text: |
+    Corrected the two findings of the 18:26 review. Both are one cause, thus one
+    fix: the runner had a directory resolver that no caller outside it could name.
+
+    **Finding 1**, word for word:
+
+    > `Sources/FoundationModelsMultitool/Capabilities/Shell/ShellRunner.swift:439`
+    > `swift/idioms` — Unnamed parameters are only appropriate for value-preserving
+    > conversions. `resolvedDirectory` applies semantic transformations (resolving
+    > symlinks, removing trailing separators), not pure value preservation, so the
+    > parameter should have an explicit label. Change the function signature to
+    > `private static func resolvedDirectory(path: String) -> String` and update the
+    > calls at lines 416–418 to include the parameter label:
+    > `resolvedDirectory(path: ...)`. This makes it explicit that this is a semantic
+    > transformation, not a pure conversion.
+
+    **Finding 2**, word for word:
+
+    > `Tests/FoundationModelsMultitoolTests/ShellRunnerTests.swift:677`
+    > `completeness/invariant-propagation` — Test calls
+    > `resolvedPath(NSTemporaryDirectory())` without removing the trailing
+    > separator, but the runner applies the same resolver through
+    > `resolvedDirectory()` which removes trailing separators before calling
+    > `resolvedPath()`. The comment at ShellRunner.swift:428-429 states 'What this
+    > member adds is the trailing separator, which `NSTemporaryDirectory()` carries
+    > and which a Seatbelt grant must not' — indicating this preprocessing is
+    > essential, not optional. Apply the same preprocessing as `resolvedDirectory()`
+    > before calling `resolvedPath()`: trim the trailing slash from paths before
+    > resolution to match the runner's behavior.
+
+    ### What changed
+
+    `resolvedDirectory(_:)` is now `resolvedDirectory(path:)`, and it is `internal`
+    rather than `private`. The two calls in `resolvedSandboxDirectories` carry the
+    label. The doc comment states why the label stands: the member follows symbolic
+    links and removes a trailing separator, thus the value that comes back can name
+    a different path than the value that went in, which is not a value-preserving
+    conversion.
+
+    The test file now names that one member at each of its three sites — lines 677,
+    774 and 804 of the reviewed file. `ShellRunnerTests.swift` calls `resolvedPath`
+    nowhere any more.
+
+    ### Why the test calls the member instead of spelling the trim again
+
+    Finding 2 asks the test to "apply the same preprocessing as
+    `resolvedDirectory()`". Two readings answer those words. To spell the trim in
+    the test would write a second copy of the step the finding names — which is the
+    `reuse/reuse` finding of the 18:11 review over again, one size smaller. To call
+    `ShellRunner.resolvedDirectory(path:)` applies the same preprocessing because it
+    IS the same code. The second reading answers both findings at once, thus it is
+    the one taken, and the doc comment now states the rule for the next caller:
+    **this member is the one DIRECTORY resolver of the runner, and each caller must
+    use it — a test included.**
+
+    ### The whole-file sweep of finding 1
+
+    `ShellRunner.swift` holds four other functions with an unlabeled first
+    parameter: `run(_ request:)`, `drain(_ sequence:, from:, into:)`,
+    `consume(_ stream:, commandID:)`, `flush(_ chunk:, into:, commandID:)` and
+    `append(_ lines:, from:, commandID:)`. None is the cause the finding names.
+    Each one is an imperative verb with its direct object, which the `fluent-usage`
+    rule of the swift validator states as the correct form in those words —
+    "DO (effectful): `x.sort()`, `x.append(y)`" and "`x.insert(y, at: z)`". The
+    cause is an unlabeled input to a CONVERSION that does not preserve the value,
+    and `resolvedDirectory` was the one such member of the file.
+
+    `resolvedPath(_:)` in `SeatbeltSandbox.swift` is a conversion of that shape, and
+    it keeps its unlabeled parameter: that file is not in this change, and the
+    duplication validator states that a counterpart outside the change is a separate
+    piece of work. Recorded here so the next reader does not read the silence as an
+    oversight.
+
+    ### TDD, and the invariant that had no test
+
+    RED first. The new test
+    `resolvedDirectoryDropsTheTrailingSeparatorOfAnAbsentPath` did not compile:
+    `'resolvedDirectory' is inaccessible due to 'private' protection level` and
+    `extraneous argument label 'path:'`. GREEN after the signature changed.
+
+    That test also closes a real gap. `realpath(3)` drops a trailing separator of a
+    path that IS there, thus every case of this suite stayed green with the trim
+    taken out — the invariant the finding calls "essential, not optional" was
+    untested. A path no file system holds is the one input that tells the two apart.
+    Proven by mutation: with the body cut to `return resolvedPath(path)` the test
+    fails; with the trim back it passes.
+  timestamp: 2026-08-23T23:40:47.525946+00:00
+- actor: claude-code
+  id: 01m0rfz8r0ycnhxf34w7jba863
+  text: |
+    ### implement — changed
+    - evidence: 2 files — Sources/FoundationModelsMultitool/Capabilities/Shell/ShellRunner.swift, Tests/FoundationModelsMultitoolTests/ShellRunnerTests.swift. 2 open review findings closed, 0 open now. `swift test --filter ShellRunnerTests` → 27 tests, 1 suite, passed. `swift test` → 588 tests, 46 suites, passed, 0 failed, 0 skipped, 0 warnings.
+    - next: `/review`
+  timestamp: 2026-08-23T23:40:54.912654+00:00
 depends_on:
 - 01M0NAG6762NCNAAMETXX64PZV
 - 01M0NAES1VVY3ETEXTCSFH0V2P
@@ -237,3 +350,13 @@ plane. They are not run-plane surfaces.
 > - `.kanban/ (from .reviewignore)` — 42 file(s)
 
 - [x] `Tests/FoundationModelsMultitoolTests/ShellRunnerTests.swift:235` `reuse/reuse` — The function `resolvedByRealpath` reimplements path resolution with realpath that already exists in production code; it should reuse the existing implementation rather than duplicate it. Call the existing `resolvedPath` function from SeatbeltSandbox instead of reimplementing it. If the test requires isolation from production code, that constraint should be documented in a comment explaining why duplication is necessary.
+
+## Review Findings (2026-08-23 18:26)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 2 file(s) reviewed, 2 not reviewed.
+
+> 2 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 2 file(s)
+
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Shell/ShellRunner.swift:439` `swift/idioms` — Unnamed parameters are only appropriate for value-preserving conversions. `resolvedDirectory` applies semantic transformations (resolving symlinks, removing trailing separators), not pure value preservation, so the parameter should have an explicit label. Change the function signature to `private static func resolvedDirectory(path: String) -> String` and update the calls at lines 416–418 to include the parameter label: `resolvedDirectory(path: ...)`. This makes it explicit that this is a semantic transformation, not a pure conversion.
+- [x] `Tests/FoundationModelsMultitoolTests/ShellRunnerTests.swift:677` `completeness/invariant-propagation` — Test calls `resolvedPath(NSTemporaryDirectory())` without removing the trailing separator, but the runner applies the same resolver through `resolvedDirectory()` which removes trailing separators before calling `resolvedPath()`. The comment at ShellRunner.swift:428-429 states 'What this member adds is the trailing separator, which `NSTemporaryDirectory()` carries and which a Seatbelt grant must not' — indicating this preprocessing is essential, not optional. Apply the same preprocessing as `resolvedDirectory()` before calling `resolvedPath()`: trim the trailing slash from paths before resolution to match the runner's behavior.

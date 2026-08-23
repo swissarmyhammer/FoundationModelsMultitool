@@ -102,6 +102,14 @@ struct ShellRunnerTests {
     /// proves a limit fired that nobody asked for.
     private static let unlimitedSleepLowerBound = Duration.milliseconds(900)
 
+    /// A directory path no file system holds, thus `realpath(3)` resolves
+    /// nothing of it and the resolver gives the input back.
+    private static let absentDirectory = "/nonexistent-shellrunner-tests-directory"
+
+    /// The same absent path carrying the trailing separator that
+    /// `NSTemporaryDirectory()` carries and that a Seatbelt grant must not.
+    private static let absentDirectoryWithSeparator = absentDirectory + "/"
+
     /// A `ShellRunner` over a `ShellState` that a new temporary directory roots.
     ///
     /// `scratch` owns that directory from the moment it exists, thus a throw
@@ -670,11 +678,14 @@ struct ShellRunnerTests {
             .init(command: "echo hi", completionToken: token, workingDirectory: "/tmp"))
 
         let call = try #require(sandbox.calls.first)
-        // The expected form goes through `resolvedPath`, the one resolver of the
-        // module and the one the runner itself calls. A second copy of that step
-        // here could name a path the confinement does not enforce, and nothing
+        // The expected form goes through `ShellRunner.resolvedDirectory(path:)`,
+        // the one directory resolver and the one the runner itself calls. It
+        // carries BOTH steps — the trailing separator that
+        // `NSTemporaryDirectory()` holds comes off, then `resolvedPath` follows
+        // each symbolic link — thus a test that reached past it to `resolvedPath`
+        // alone would state a path the runner never hands over, and nothing
         // would report the disagreement.
-        let resolvedTemporary = resolvedPath(NSTemporaryDirectory())
+        let resolvedTemporary = ShellRunner.resolvedDirectory(path: NSTemporaryDirectory())
         #expect(call.shellPath == "/bin/sh")
         #expect(call.shellArguments == ["-c", "echo hi"])
         #expect(call.workingDirectory == "/private/tmp")
@@ -771,7 +782,10 @@ struct ShellRunnerTests {
             request: .init(
                 command: "echo hi", completionToken: token, workingDirectory: "/tmp"))
 
-        let resolvedTemporary = resolvedPath(NSTemporaryDirectory())
+        // The one directory resolver again, and never `resolvedPath` alone: the
+        // trim of the trailing separator belongs to that step, thus a test that
+        // skipped it would state a `$TMPDIR` the runner never hands over.
+        let resolvedTemporary = ShellRunner.resolvedDirectory(path: NSTemporaryDirectory())
         #expect(directories.work == "/private/tmp")
         #expect(directories.tmp == resolvedTemporary)
         #expect(
@@ -801,9 +815,24 @@ struct ShellRunnerTests {
         let directories = ShellRunner.resolvedSandboxDirectories(
             request: .init(command: "echo hi", completionToken: token))
 
-        let resolvedCurrent = resolvedPath(FileManager.default.currentDirectoryPath)
+        let resolvedCurrent = ShellRunner.resolvedDirectory(
+            path: FileManager.default.currentDirectoryPath)
         #expect(directories.work == resolvedCurrent)
         #expect(!directories.work.hasSuffix("/"))
+    }
+
+    /// The trailing separator comes off even when the path resolves to nothing.
+    ///
+    /// `realpath(3)` drops a trailing separator of a path that IS there, thus
+    /// every other case of this suite stays green with the trim taken out. A
+    /// path that is not there is the one input that tells the two apart: the
+    /// resolver gives the input back, and a Seatbelt grant must not carry the
+    /// separator.
+    @Test("the resolved directory drops a trailing separator it cannot resolve")
+    func resolvedDirectoryDropsTheTrailingSeparatorOfAnAbsentPath() {
+        let resolved = ShellRunner.resolvedDirectory(path: Self.absentDirectoryWithSeparator)
+
+        #expect(resolved == Self.absentDirectory)
     }
 }
 

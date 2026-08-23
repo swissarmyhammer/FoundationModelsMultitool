@@ -414,8 +414,8 @@ struct ShellRunner {
     static func resolvedSandboxDirectories(request: Request) -> (work: String, tmp: String) {
         (
             work: resolvedDirectory(
-                request.workingDirectory ?? FileManager.default.currentDirectoryPath),
-            tmp: resolvedDirectory(NSTemporaryDirectory())
+                path: request.workingDirectory ?? FileManager.default.currentDirectoryPath),
+            tmp: resolvedDirectory(path: NSTemporaryDirectory())
         )
     }
 
@@ -434,9 +434,23 @@ struct ShellRunner {
     /// refuses it or grants exactly what it names, and the spawn of a working
     /// directory that is not there fails by itself.
     ///
+    /// **This member is the one DIRECTORY resolver of the runner, and each
+    /// caller must use it — a test included.** The two steps travel together:
+    /// a caller that reaches past it to `resolvedPath` alone keeps a trailing
+    /// separator the grant must not carry, and a caller that spells the trim
+    /// again writes a second copy that can drift. It is `internal` rather than
+    /// `private` for that reason, exactly as `resolvedSandboxDirectories` is
+    /// `static`: a test states the contract by naming this member, and never by
+    /// rebuilding it.
+    ///
+    /// The parameter carries a label because this is a semantic transformation
+    /// and not a value-preserving conversion: it follows symbolic links and it
+    /// removes a trailing separator, thus the value that comes back can name a
+    /// different path than the value that went in.
+    ///
     /// - Parameter path: The path to resolve.
     /// - Returns: The resolved path, or `path` itself when it does not resolve.
-    private static func resolvedDirectory(_ path: String) -> String {
+    static func resolvedDirectory(path: String) -> String {
         let trimmed = path.count > 1 && path.hasSuffix("/") ? String(path.dropLast()) : path
         return resolvedPath(trimmed)
     }
