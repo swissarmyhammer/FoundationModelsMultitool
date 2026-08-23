@@ -800,6 +800,15 @@ public final class ShellDecisionStore: Sendable {
     /// The answer is also a snapshot: it does not catch a path that something
     /// re-points between this call and the write.
     ///
+    /// **This resolver is `URL.resolvingSymlinksInPath()` and not
+    /// `resolvedPath`, and the two do not disagree.** The question here is
+    /// whether two spellings name ONE FILE on this host, and either resolver
+    /// answers that. The question `resolvedPath` answers is the path Seatbelt
+    /// matches, which needs the `/private` prefix that
+    /// `URL.resolvingSymlinksInPath()` takes off — see the path precondition on
+    /// `CommandSandbox`. No path of this file ever becomes a sandbox grant, thus
+    /// that precondition does not reach here.
+    ///
     /// - Parameter url: The decisions file of a layer, or `nil` for no layer.
     /// - Returns: The resolved, standard path, or `nil` when there is no layer.
     private static func storageIdentity(of url: URL?) -> String? {

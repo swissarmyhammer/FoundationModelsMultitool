@@ -1,8 +1,31 @@
 ---
 assignees:
 - claude-code
-position_column: todo
-position_ordinal: '9080'
+comments:
+- actor: claude-code
+  id: 01m0rgsz79zrab6d9wr1kgw5rp
+  text: |-
+    Research. The path resolver moved since this card was written: `ShellRunner.resolvedDirectory(path:)` now trims a trailing separator and then calls `resolvedPath`, the ONE module resolver declared in `SeatbeltSandbox.swift`. `resolvedPath` is `realpath(3)`, and its own doc comment already states the contract correctly. So the disagreement the card names is only between `CommandSandbox` and the rest of the module, and `CommandSandbox` is the file that was wrong.
+
+    Each mention of the resolver in `Sources/FoundationModelsMultitool/Capabilities/Shell/` was read:
+    - `SeatbeltSandbox.resolvedPath` — already correct; states the Foundation resolver runs the other way. No change needed.
+    - `SeatbeltSandbox` type doc, `Options.init`, `path(_:isInside:)` — each names `realpath(3)` or `resolvedPath`. Agree already.
+    - `ShellRunner.resolvedSandboxDirectories` and `resolvedDirectory(path:)` — each names `resolvedPath`. Agree already.
+    - `ShellDecisionStore.storageIdentity(of:)` and `lockURL(forDecisionsAt:)` — these DO use `URL.resolvingSymlinksInPath()`, and that is correct there: the question is file IDENTITY, not the path Seatbelt matches, and no path of that file becomes a sandbox grant. The two uses read as a contradiction with "the one resolver of this module", so `storageIdentity(of:)` now says in one paragraph why the sandbox precondition does not reach it. `lockURL` already points the reader at `storageIdentity(of:)`.
+
+    TDD record. The new test was watched RED: `resolvedPath` was temporarily swapped for `URL(fileURLWithPath: path).resolvingSymlinksInPath().path` — the exact defect the card describes — and the new test failed, both halves flipping (the Foundation form granted, the `realpath(3)` form refused), beside `the shared resolver gives the form Seatbelt matches`. The resolver was restored and both went green. The test is therefore not vacuous: it fails when the wrong resolver is in use.
+
+    The test uses the fixed `/tmp` ↔ `/private/tmp` pair rather than a `$TMPDIR` scratch directory. Two suite tests already pin that pair as a host invariant, so the new test rests on constants the suite holds rather than on a fresh host assumption; a scratch directory under `$TMPDIR` would make the test red on a host where the two forms happen to agree.
+  timestamp: 2026-08-23T23:55:29.897498+00:00
+- actor: claude-code
+  id: 01m0rgtswfaz8v6s6yb72w7kk4
+  text: |-
+    ### implement — changed
+    - evidence: 3 files — Sources/FoundationModelsMultitool/Capabilities/Shell/CommandSandbox.swift, Sources/FoundationModelsMultitool/Capabilities/Shell/ShellDecisionStore.swift, Tests/FoundationModelsMultitoolTests/SeatbeltSandboxTests.swift. 5 of 5 acceptance and test items checked. `swift test --filter SeatbeltSandbox` → 22 tests, 1 suite, passed. `swift test` → 589 tests, 46 suites, passed, 0 failed, 0 skipped. `swift build --build-tests` → no new warning. `SeatbeltSandbox.swift` is byte-for-byte unchanged; the temporary resolver swap for the RED step was reverted.
+    - next: `/review`
+  timestamp: 2026-08-23T23:55:57.199956+00:00
+position_column: doing
+position_ordinal: '8380'
 title: Correct the path-resolution contract on CommandSandbox
 ---
 ## What
@@ -31,15 +54,15 @@ files disagree, and the contract stands on `CommandSandbox`.
 
 ## Acceptance Criteria
 
-- [ ] The precondition on `CommandSandbox` names `realpath(3)` alone.
-- [ ] It states why `URL.resolvingSymlinksInPath()` does NOT answer the
+- [x] The precondition on `CommandSandbox` names `realpath(3)` alone.
+- [x] It states why `URL.resolvingSymlinksInPath()` does NOT answer the
       precondition, with the measured examples above.
-- [ ] Each other mention of the resolver in
+- [x] Each other mention of the resolver in
       `Sources/FoundationModelsMultitool/Capabilities/Shell/` agrees.
 
 ## Tests
 
-- [ ] A test shows that a path which only `URL.resolvingSymlinksInPath()`
+- [x] A test shows that a path which only `URL.resolvingSymlinksInPath()`
       resolved is refused, and that the `realpath(3)` form of the same
       directory is granted.
-- [ ] `swift test` passes with no new failure and no new warning. #eventplan #phase-2
+- [x] `swift test` passes with no new failure and no new warning. #eventplan #phase-2

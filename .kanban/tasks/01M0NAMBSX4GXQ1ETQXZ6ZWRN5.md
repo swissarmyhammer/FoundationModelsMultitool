@@ -288,11 +288,27 @@ comments:
     - evidence: 2 files — Sources/FoundationModelsMultitool/Capabilities/Shell/ShellRunner.swift, Tests/FoundationModelsMultitoolTests/ShellRunnerTests.swift. 2 open review findings closed, 0 open now. `swift test --filter ShellRunnerTests` → 27 tests, 1 suite, passed. `swift test` → 588 tests, 46 suites, passed, 0 failed, 0 skipped, 0 warnings.
     - next: `/review`
   timestamp: 2026-08-23T23:40:54.912654+00:00
+- actor: claude-code
+  id: 01m0rg7r1syzd4ma0k7816z8xe
+  text: |-
+    ### review — clean
+    - evidence: 0 findings from `review sha HEAD~1..HEAD` (commit 771ff34); 7 validators attempted, 0 failed. All 3 prior findings are checked.
+    - next: task moved to done.
+  timestamp: 2026-08-23T23:45:32.729700+00:00
+- actor: claude-code
+  id: 01m0rg89q1mvk9aybv6mkpdntz
+  text: |-
+    ### finish iteration 3 — clean
+    - implement: changed — 2 files (Capabilities/Shell/ShellRunner.swift, Tests/ShellRunnerTests.swift); the 2 findings of iteration 2 are closed
+    - test: green — swift test, 588 passed in 46 suites, 0 failed, 0 skipped
+    - commit: 771ff34 refactor(shell): label ShellRunner.resolvedDirectory path arg, keep it internal
+    - review: clean — zero findings; the task is in done
+  timestamp: 2026-08-23T23:45:50.817774+00:00
 depends_on:
 - 01M0NAG6762NCNAAMETXX64PZV
 - 01M0NAES1VVY3ETEXTCSFH0V2P
-position_column: doing
-position_ordinal: '8380'
+position_column: done
+position_ordinal: e580
 title: Add the tools.shell.getLines and tools.shell.grepHistory verbs
 ---
 ## What

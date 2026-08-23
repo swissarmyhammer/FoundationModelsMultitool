@@ -267,6 +267,39 @@ struct SeatbeltSandboxTests {
         #expect(options.extraWritePaths == [resolvedPath(Self.symbolicLinkedTemporary)])
     }
 
+    @Test("only the realpath(3) form of one directory is granted, and never the Foundation form")
+    func onlyTheRealpathFormOfOneDirectoryIsGranted() throws {
+        // One directory, two spellings. `SeatbeltSandbox.Options` resolves each
+        // root with `realpath(3)`, thus the grant names the resolved form. A
+        // working directory that `URL.resolvingSymlinksInPath()` produced names
+        // the other spelling, which is the form the confinement cannot match,
+        // and it is refused as outside the roots. That is the whole reason the
+        // precondition on `CommandSandbox` names `realpath(3)` alone.
+        let foundationForm = URL(fileURLWithPath: Self.resolvedTemporary)
+            .resolvingSymlinksInPath().path
+        let realpathForm = resolvedPath(Self.symbolicLinkedTemporary)
+        let roots = [realpathForm]
+        let sandbox = SeatbeltSandbox(options: .init(writableRoots: roots))
+
+        #expect(
+            throws: SeatbeltSandboxError.workingDirectoryOutsideRoots(
+                path: foundationForm, roots: roots)
+        ) {
+            try invocation(
+                from: sandbox,
+                workingDirectory: foundationForm,
+                temporaryDirectory: Self.temporaryDirectory)
+        }
+
+        let granted = try invocation(
+            from: sandbox,
+            workingDirectory: realpathForm,
+            temporaryDirectory: Self.temporaryDirectory)
+
+        #expect(granted.executable == Self.wrapperExecutable)
+        #expect(granted.arguments.contains("ROOT0=\(realpathForm)"))
+    }
+
     // MARK: - The profile text
 
     @Test("the profile of one fixed configuration is exactly this text")

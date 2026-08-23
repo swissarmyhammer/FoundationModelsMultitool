@@ -80,8 +80,10 @@ public struct SandboxedInvocation: Sendable, Equatable {
 /// stays in the one place that already owns it.
 ///
 /// **Precondition on each path: each directory a caller gives to `wrap` must
-/// already have each symbolic link resolved.** A caller puts each path through
-/// `realpath(3)` or `URL.resolvingSymlinksInPath()` BEFORE it calls `wrap`.
+/// already have each symbolic link resolved, and `realpath(3)` is the one call
+/// that resolves it.** A caller puts each path through that call BEFORE it
+/// calls `wrap`. Inside this module a caller reaches it through `resolvedPath`,
+/// the one resolver; a caller outside this module calls `realpath(3)` itself.
 /// This protocol resolves no path, and an implementation can use each path as
 /// it came in. The requirement is not a matter of style: Seatbelt matches the
 /// path of the vnode that the kernel resolved, and its subpath match resolves
@@ -92,6 +94,22 @@ public struct SandboxedInvocation: Sendable, Equatable {
 /// behaves the same way. A path that is not resolved thus makes a sandbox that
 /// quietly grants less than it appears to grant, and the contract stands here,
 /// on the abstraction, thus each implementation agrees.
+///
+/// **`URL.resolvingSymlinksInPath()` does NOT answer this precondition.** On
+/// macOS it runs the OTHER way for this purpose: it takes the `/private` prefix
+/// OFF, thus it gives back exactly the form Seatbelt cannot match. Measured on
+/// Darwin 27.0.0:
+///
+/// - `URL(fileURLWithPath: "/private/tmp").resolvingSymlinksInPath().path`
+///   gives `/tmp`, while `realpath("/tmp")` gives `/private/tmp`.
+/// - A directory below `$TMPDIR` stays in the `/var/folders/…` form, and `/var`
+///   is itself a symbolic link to `/private/var`. A working directory in that
+///   form is REFUSED as outside the roots, because a root that `realpath(3)`
+///   resolved names `/private/var/folders/…`.
+///
+/// A caller that reaches for the resolver of Foundation thus fails the
+/// precondition while it appears to meet it, and nothing reports the
+/// disagreement.
 public protocol CommandSandbox: Sendable {
 
     /// Proves that this sandbox can confine a command with these directories,
