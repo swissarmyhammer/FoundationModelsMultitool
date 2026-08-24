@@ -497,15 +497,35 @@ We remove the MCP follow-up pseudo-tools (`get_result`, `list_calls`,
 / `wait()` / `cancel()` builtins replace them.
 
 **Shell** (`Capabilities/Shell`) gets `ShellRunner`, `OutputBuffer`, the
-`.shell` dotfolder with the history of each session, the `grep history` /
-`get lines` operations, and `ShellPolicy`. The three policy outcomes stay:
-allow, deny, ask. But the ask outcome changes its meaning. Today it refuses,
-because the tool cannot speak to a human.
+`.shell` dotfolder with the history of each session, and the `grep history` /
+`get lines` operations. It gets no permission layer.
 
-With elicitation always available, ask goes through `ToolContext.elicit`, and
-the remembered-"always" store works as designed. Detach supervision moves to
-the shared engine. The `.stopped` outcome keeps its authoritative
-`killpg(SIGKILL)` semantics.
+**Decision of 2026-08-24: the seatbelt sandbox is the only gate on a command.**
+The capability asks no permission question, and it keeps no remembered answer.
+There is no policy layer, and there is no store of "allow always" and "reject
+always" answers.
+
+The reason is the shape of the deleted design, and not the work it cost. A
+denylist over command text is bypassable. The `matchKey` header of the deleted
+store spent 50 lines on this one problem — quoting starts again inside `$( )`,
+and `$'…'` reads `\'` — and a lexer that is a little wrong grants what nobody
+granted. The sandbox is a kernel boundary, and it does not care how a command
+is spelled.
+
+The limit, stated plainly: the sandbox bounds writing and deleting. Reads are
+free and the network is open, thus exfiltration is not bounded. To change
+either one is a change to the profile.
+
+The command-length check and the environment-value check live in the
+`tools.shell.execute` verb, and not in a permission layer.
+
+`elicit()` and the MCP elicitation passthrough do not change. They are a
+general capability: a tool asks the human a question of its own, and it reads
+the answer. They are not the permission system, and the two are easy to
+confuse. Thus this paragraph says so.
+
+Detach supervision moves to the shared engine. The `.stopped` outcome keeps its
+authoritative `killpg(SIGKILL)` semantics.
 
 **Files** (`Capabilities/Files`) gets the six operations: read, write, edit,
 patch, glob, and grep. It also gets `PathGuard` root bounds, `Hashline`, the
@@ -760,12 +780,15 @@ Router and MultiTool gated suites are green. The org-wide zero-imports check
 is the exit of phase 5, not of this phase.
 
 **Phase 2 — shell. Tag: `consolidation-2-shell`.** `Capabilities/Shell` gets
-`ShellRunner`, `OutputBuffer`, the `.shell` dotfolder, the history operations,
-and `ShellPolicy` with ask routed through `ToolContext.elicit`. Detach
-supervision moves to the shared engine. We delete `RunSupervisor` and the race
-logic of the shell `ProcessRegistry`, and the engine replaces them. Shell is
-the reference emitter. Its detached commands prove the elevation path end to
-end. Exit: ACPAgent, Extras, and Skills — the three org consumers of
+`ShellRunner`, `OutputBuffer`, the `.shell` dotfolder, and the history
+operations. It gets no permission layer: the seatbelt sandbox is the only gate
+(decision 2026-08-24, see "Consolidation of the siblings"). The dotfolder holds
+the history of each session and `config.yaml`, which is where the write roots
+of the sandbox are meant to come from; no reader of that file exists yet.
+Detach supervision moves to the shared engine. We delete `RunSupervisor` and
+the race logic of the shell `ProcessRegistry`, and the engine replaces them.
+Shell is the reference emitter. Its detached commands prove the elevation path
+end to end. Exit: ACPAgent, Extras, and Skills — the three org consumers of
 Shelltool — move to the MultiTool capability, and we archive the
 FoundationModelsShelltool repository.
 

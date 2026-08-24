@@ -74,10 +74,27 @@ comments:
     - evidence: 2 source files — `Sources/FoundationModelsMultitool/Capabilities/Shell/ShellDotfolder.swift` (header rewritten, 3 members deleted, `configFileName` kept with its reason), `Tests/FoundationModelsMultitoolTests/ShellDotfolderTests.swift` (lock sidecar test and its `expectedLockFileMode` constant removed, two tests moved off `decisionsFileName`). `swift test` 553 passed / 0 failed / 0 warnings. periphery 0 findings for `ShellDotfolder`.
     - next: `/review`
   timestamp: 2026-08-24T13:12:12.462473+00:00
+- actor: claude-code
+  id: 01m0symqtswb7kytps63pxxd88
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (bde42e6) — 0 findings, 0 confirmed, 0 refuted, 7 attempted, 0 failed. 2 files reviewed; 6 `.kanban/` files excluded by `.reviewignore`.
+    - next: task moved to done. No prior Review Findings section, and each checklist item is marked.
+  timestamp: 2026-08-24T13:16:32.985005+00:00
+- actor: claude-code
+  id: 01m0synabw36dbz0fhtz7cq9m6
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 2 files (Capabilities/Shell/ShellDotfolder.swift, Tests/ShellDotfolderTests.swift). decisionsFileName, lockFileSuffix and lockFileMode deleted; configFileName kept with the written reason that it is where the sandbox write roots are meant to come from. Yams was not re-added.
+    - test: green — swift test, 553 passed in 45 suites, 0 failed, 0 skipped. The fall from 554 is the deleted lock sidecar test. LSP diagnostics on the working changes give 0 errors and 0 warnings.
+    - commit: bde42e6 refactor(shell): retire unused ShellDotfolder members
+    - review: clean — zero findings; the task is in done
+    - follow-up filed: ^jyddp2n — userURL and projectURL also have no caller in Sources/, and they are the stated reason configFileName was kept, thus the two are bound together.
+  timestamp: 2026-08-24T13:16:51.964890+00:00
 depends_on:
 - 01M0SVAZ3WJH2BQFJSA6E4X8NW
-position_column: doing
-position_ordinal: '8380'
+position_column: done
+position_ordinal: ea80
 title: Retire the ShellDotfolder members that only the permission system used
 ---
 ## What
