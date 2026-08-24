@@ -113,6 +113,28 @@ comments:
     - gap: the `"execute shell"` journal op test. Blocked on Router `ToolContext.init(stamping:)`; Router card ^8y20bwd carries the fix, ^fs7ywtg is stuck on the same wall.
     - next: a human decides whether ^zpdk266 waits on ^8y20bwd or goes to review with that one test item deferred to it.
   timestamp: 2026-08-24T21:47:57.172083+00:00
+- actor: claude-code
+  id: 01m0tw24bmkshnzhrth88kpnmw
+  text: |-
+    ### finish iteration 1 — stuck
+
+    12 of the 13 items landed and the tree is green. The one gap is external and already tracked.
+
+    - implement: stuck — 3 files. Capabilities/Shell/ShellCapability.swift (new): `public struct ShellCapability: Capability`, noun `"shell"`, the three verbs over one shared `ShellState`, one throwing initializer taking the store directory, the sandbox and the output chunk stream. NO policy parameter — the card was stale there, and that sentence is corrected. Surface/MultiToolBuilder.swift: `withShell(...)`, the one registration method that throws, plus a corrected `MultiToolBuilderError` header. Tests/ShellCapabilityTests.swift (new, 9 tests).
+    - test: green — swift test, 586 passed in 47 suites, 0 failed, 0 new warnings, over five consecutive runs. `--filter ShellPermissionRemoval` passes, thus no deleted policy name came back.
+    - commit: 3c0ec31 feat(shell): add ShellCapability and Builder.withShell()
+    - review: not run.
+
+    **The gap.** The `"execute shell"` journal op test did not land and cannot land from this package. Router's `ToolContext.init(stamping:)` is the one stamping site and writes the wrapped tool's own `name` into both `tool` and `op`. Its own doc comment states the gap: *"phase 1 stamps the wrapped tool's `name` here too, until noun/verb registration supplies the canonical `\"verb noun\"` string."*
+
+    The implementer wrote no test for it, and the reasoning is right: one asserting `"execute shell"` would be a failing test rather than a proof, and one asserting `"execute"` would lock in the state the card wants moved.
+
+    Router card `^8y20bwd` — "Let a registration site give a tool its journal op" — carries the fix. `^fs7ywtg` is stuck on the same wall.
+
+    **The decision a person owns:** hold this card until `^8y20bwd` lands, or send it to `/review` with that one test item moved onto `^8y20bwd`. The card is NOT forced to done either way.
+
+    **New work found:** `^7kydt76` — a `ShellOutputChunkStream` handed to the capability never receives a chunk, because `Execute.report(of:in:)` replaces `runner.outputChunkStream` with a private stream for each run. The parameter is wired as this card asked; the repair belongs to that card.
+  timestamp: 2026-08-24T21:50:40.500379+00:00
 depends_on:
 - 01M0NAKY7B8H1Z0J2VCBWV86SY
 - 01M0NAMBSX4GXQ1ETQXZ6ZWRN5

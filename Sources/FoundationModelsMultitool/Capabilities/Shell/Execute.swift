@@ -336,11 +336,20 @@ extension Execute {
     /// with the report of the run.
     ///
     /// The live view of the output is the reason this verb has progress to
-    /// post at all: `ShellRunner` tees each raw chunk into the stream it is
-    /// given, before the line buffer sees it, and one task here drains that
-    /// stream and posts what it reads. The stream is ended after the run rather
-    /// than by the drain, so the drain cannot outlive the run and a run with no
-    /// output still ends its own pump.
+    /// post at all: `ShellRunner` tees each raw chunk into the streams it is
+    /// given, before the line buffer sees it, and one task here drains the
+    /// stream this call made and posts what it reads. The stream is ended after
+    /// the run rather than by the drain, so the drain cannot outlive the run and
+    /// a run with no output still ends its own pump.
+    ///
+    /// The stream goes into `ShellRunner.callerOutputChunkStream`, which stands
+    /// BESIDE the stream a host configured, and never in place of it. Two
+    /// reasons make this verb's stream its own rather than the host's. A
+    /// `ShellOutputChunkStream` hands each event to ONE consumer, so a drain of
+    /// the host's stream would take the host's chunks away from it. And this
+    /// drain ends with `finish()`, which ends a stream for good — the host
+    /// keeps its stream across every run of the capability, so this call has no
+    /// business ending it.
     ///
     /// - Parameters:
     ///   - request: The command to run.
@@ -352,7 +361,7 @@ extension Execute {
     ) async throws -> String {
         let stream = ShellOutputChunkStream()
         var running = runner
-        running.outputChunkStream = stream
+        running.callerOutputChunkStream = stream
         let pump = Task { await Self.reportOutput(of: stream, to: context) }
 
         do {

@@ -124,6 +124,71 @@ struct ShellExecuteTests {
         Execute(runner: ShellRunner(state: state, registry: ProcessRegistry()))
     }
 
+    /// The `execute` verb of a whole capability that a host gave `stream` to,
+    /// over a store this test owns.
+    ///
+    /// It goes through `ShellCapability` rather than through `Execute` alone,
+    /// because what these tests examine is the path from the argument a host
+    /// passes to the chunks that host reads, and the capability is the first
+    /// step of it.
+    ///
+    /// The registry of the runner is replaced with a private one. The
+    /// capability takes `ProcessRegistry.global`, and an ordinary test must not
+    /// touch the process-wide instance — see the doc comment of that property.
+    /// Nothing else of the configured runner is touched, thus the store, the
+    /// live view and the confinement stay the ones the capability built.
+    ///
+    /// - Parameter stream: The live view the host subscribes to.
+    /// - Returns: The verb of that capability.
+    /// - Throws: When the directory, the store or the capability does not
+    ///   prepare, or when the capability holds no `execute` verb.
+    private func makeVerb(teeing stream: ShellOutputChunkStream) throws -> Execute {
+        let directory = try scratch.makeDirectory(prefix: Self.testDirectoryNamePrefix)
+        let capability = try ShellCapability(
+            storeDirectory: directory.appendingPathComponent(Self.shellStoreDirectoryName),
+            outputChunkStream: stream)
+        let configured = try #require(capability.tools.compactMap { $0 as? Execute }.first)
+        var runner = configured.runner
+        runner.registry = ProcessRegistry()
+        return Execute(runner: runner)
+    }
+
+    /// Every event a host stream holds, read back after the run that fed it
+    /// ended.
+    ///
+    /// The stream is finished first and drained afterward, which is the order
+    /// that makes the read terminate: a stream nobody finished gives no end to
+    /// a `for await` loop. `AsyncStream` hands out each event it already holds
+    /// before it reports the end, thus finishing first takes nothing away.
+    ///
+    /// - Parameter stream: The live view the host subscribed to.
+    /// - Returns: The events it holds, in delivery order.
+    private static func events(of stream: ShellOutputChunkStream) async -> [ShellOutputEvent] {
+        stream.finish()
+        var events: [ShellOutputEvent] = []
+        for await event in stream {
+            events.append(event)
+        }
+        return events
+    }
+
+    /// The standard output of the run under `commandID`, joined out of the
+    /// chunks a host stream delivered and decoded as UTF-8.
+    ///
+    /// - Parameters:
+    ///   - events: The events the host stream held.
+    ///   - commandID: The completion token of the run to read.
+    /// - Returns: What that run wrote to its standard output.
+    private static func stdoutText(in events: [ShellOutputEvent], of commandID: String) -> String {
+        let bytes = events.flatMap { event -> [UInt8] in
+            guard event.commandID == commandID,
+                case .output(.stdout, let chunk) = event.kind
+            else { return [] }
+            return chunk
+        }
+        return String(decoding: bytes, as: UTF8.self)
+    }
+
     /// The report one rendered answer carries, read back as a JSON object.
     ///
     /// The verb answers `String`, because only a `String`-output tool reaches
@@ -347,6 +412,59 @@ struct ShellExecuteTests {
         #expect(
             events[terminalIndex].detail.contains(context.completionToken),
             "the terminal detail carries no run identifier: \(events[terminalIndex].detail)")
+    }
+
+    // MARK: - The live view of a subscribed host
+
+    /// A host that hands a `ShellOutputChunkStream` to `ShellCapability` reads
+    /// what a run wrote, and reads the terminal marker of that run.
+    ///
+    /// The verb makes a live view of its own for each run, which it drains to
+    /// post the `progress` events. That private view stands BESIDE the one the
+    /// host configured, and never in place of it.
+    @Test("a stream handed to the capability receives the chunks of a run and its marker")
+    func aHostStreamReceivesTheChunksOfARunAndItsMarker() async throws {
+        let stream = ShellOutputChunkStream()
+        let verb = try makeVerb(teeing: stream)
+        let context = makeOuterRunContext(mailbox: SessionMailbox(), sink: RecordingEventSink())
+        let token = context.completionToken
+
+        _ = try await Self.call(
+            verb, ExecuteArguments(command: "echo \(Self.inlineMarker)"), under: context)
+
+        let events = await Self.events(of: stream)
+        let written = Self.stdoutText(in: events, of: token)
+        #expect(written.contains(Self.inlineMarker), "the host stream carried: \(written)")
+        #expect(
+            events.contains { $0.commandID == token && $0.kind == .completed },
+            "the host stream carried no terminal marker: \(events)")
+    }
+
+    /// The `progress` events of a run stand as they are with no host stream:
+    /// one for each chunk the child wrote, naming the stream it came from.
+    ///
+    /// The command writes one line with one `echo`, which is one write of one
+    /// chunk, thus the run posts exactly one `progress` event and the whole
+    /// list can be stated. `reportOutput` trims the line ending, which is why
+    /// no `\n` stands in the expected text.
+    @Test("the progress events of a run with a host stream are the ones it posts today")
+    func theProgressEventsStandAsTheyDoWithNoHostStream() async throws {
+        let stream = ShellOutputChunkStream()
+        let verb = try makeVerb(teeing: stream)
+        let sink = RecordingEventSink()
+        let context = makeOuterRunContext(mailbox: SessionMailbox(), sink: sink)
+
+        _ = try await Self.call(
+            verb, ExecuteArguments(command: "echo \(Self.inlineMarker)"), under: context)
+
+        let progress = await sink.details(ofKind: .progress)
+        #expect(progress == ["stdout: \(Self.inlineMarker)"], "progress was: \(progress)")
+        let kinds = await sink.events.map(\.kind)
+        #expect(
+            kinds.filter { $0 == .completed }.count == Self.terminalEventCount,
+            "kinds were: \(kinds)")
+
+        stream.finish()
     }
 
     // MARK: - The detached run

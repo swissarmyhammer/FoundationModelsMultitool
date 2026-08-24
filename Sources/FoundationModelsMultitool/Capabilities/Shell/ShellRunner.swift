@@ -44,14 +44,20 @@
 // out of arrival order. One sequential consumer has no such race: it alone
 // touches the buffer, and it alone calls `appendLines`, one call at a time.
 //
-// That same consumer is where the live view of a subscribed host is teed
-// (`outputChunkStream`): each chunk that the consumer takes off the queue goes
-// to `ShellOutputChunkStream` raw, before the line buffer sees it, and the one
+// That same consumer is where each live view of the output is teed: each chunk
+// that the consumer takes off the queue goes to every `ShellOutputChunkStream`
+// of `outputChunkStreams` raw, before the line buffer sees it, and the one
 // terminal marker of the run goes out from the `defer` of `run` — after the task
 // group of the output ended, thus the marker can never pass a chunk, and on each
 // exit path, thus it goes out exactly one time for each run. To offer a chunk
 // never blocks (see the backpressure policy of that type), thus the tee cannot
 // slow the consumer down and a host cannot starve it.
+//
+// There are TWO such views, and a run tees into both: the one a host configured
+// on the runner (`outputChunkStream`), which outlives every run, and the one the
+// caller of a single run drains for itself (`callerOutputChunkStream`). They are
+// separate objects because that type hands each event to ONE consumer, so a
+// caller that read the host's view would take the host's events away from it.
 
 import Foundation
 import FoundationModelsExtras
@@ -112,6 +118,35 @@ struct ShellRunner {
     /// for the backpressure policy, which never blocks and reports a gap, and
     /// which thus makes a slow host harmless to the child.
     var outputChunkStream: ShellOutputChunkStream?
+
+    /// A second live view of the output, private to the CALLER of one run,
+    /// which that caller drains for itself, or `nil` — the default — for a run
+    /// whose caller watches nothing.
+    ///
+    /// It stands BESIDE ``outputChunkStream`` and never in place of it: a run
+    /// tees each chunk into both, and it delivers the terminal marker to both.
+    /// Two views rather than one shared view, because
+    /// `ShellOutputChunkStream` hands each event to ONE consumer — a caller
+    /// that read the host's view would take the host's events away from it.
+    ///
+    /// The lifetimes differ, which is the other half of the reason. A host
+    /// keeps its view across every run of the capability, and a caller ends its
+    /// own view with `finish()` when its run is over. `Execute` is that caller:
+    /// it drains this view to post one `progress` event for each chunk. See
+    /// `Execute.report(of:in:)`.
+    var callerOutputChunkStream: ShellOutputChunkStream?
+
+    /// Each live view one run of this runner tees into: the one a host
+    /// configured, and the one the caller of this run drains.
+    ///
+    /// The two tee points — the chunk in `consume` and the terminal marker in
+    /// `run` — each read this one list, thus neither can reach a view the other
+    /// misses. A run with no view at all answers an empty list, and both tee
+    /// points then do nothing, exactly as they did before a caller could pass
+    /// one.
+    private var outputChunkStreams: [ShellOutputChunkStream] {
+        [outputChunkStream, callerOutputChunkStream].compactMap { $0 }
+    }
 
     /// The confinement each command of this runner spawns under, or `nil` — the
     /// default — to start the shell directly, with no confinement.
@@ -325,7 +360,11 @@ struct ShellRunner {
     func run(_ request: Request) async throws -> Outcome {
         let commandID = request.completionToken
         await state.startCommand(request.command, commandID: commandID)
-        defer { outputChunkStream?.complete(commandID: commandID) }
+        defer {
+            for live in outputChunkStreams {
+                live.complete(commandID: commandID)
+            }
+        }
 
         do {
             // Built INSIDE the `do`, and not above it, because `sandbox.wrap`
@@ -715,13 +754,17 @@ struct ShellRunner {
     /// the part lines it still holds, and the marker of the truncation or the
     /// placeholder of the binary content.
     ///
-    /// This is also the point of the tee for the live view of a subscribed host:
-    /// each chunk goes to `outputChunkStream` BEFORE the line buffer sees it,
-    /// because the live view exists to be prompt and to offer a chunk never
-    /// blocks. The bytes go on untouched: no `OutputBuffer` stands on that path,
-    /// thus no cap of `maxOutputSize`, no marker of truncation and no
-    /// placeholder of binary content reach it. Those belong to the stored log,
-    /// and not to a stream that keeps the bytes exactly as they came.
+    /// This is also the point of the tee for each live view of the output: a
+    /// chunk goes to every stream of `outputChunkStreams` BEFORE the line
+    /// buffer sees it, because a live view exists to be prompt and to offer a
+    /// chunk never blocks. The bytes go on untouched: no `OutputBuffer` stands
+    /// on that path, thus no cap of `maxOutputSize`, no marker of truncation
+    /// and no placeholder of binary content reach it. Those belong to the
+    /// stored log, and not to a stream that keeps the bytes exactly as they
+    /// came.
+    ///
+    /// The list is read one time, above the loop, thus each chunk of one run
+    /// reaches the same views and a read of the list costs nothing per chunk.
     ///
     /// - Parameters:
     ///   - stream: The shared queue of chunks.
@@ -729,10 +772,13 @@ struct ShellRunner {
     /// - Throws: What `state.appendLines` throws.
     private func consume(_ stream: AsyncStream<StreamChunk>, commandID: String) async throws {
         var buffer = OutputBuffer(maxSize: maxOutputSize)
+        let liveViews = outputChunkStreams
         for await chunk in stream {
-            outputChunkStream?.send(
-                commandID: commandID, from: chunk.stream, bytes: chunk.bytes,
-                maxSize: maxOutputSize)
+            for live in liveViews {
+                live.send(
+                    commandID: commandID, from: chunk.stream, bytes: chunk.bytes,
+                    maxSize: maxOutputSize)
+            }
             try await flush(chunk, into: &buffer, commandID: commandID)
         }
 
