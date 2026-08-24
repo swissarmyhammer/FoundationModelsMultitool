@@ -20,9 +20,17 @@
 // deadline race, and there is no supervisor.
 //
 // The canceler holds NO pid of its own. It reads the process group of the run
-// from `ShellState.runningProcess(commandID:)` at the moment it runs. The store
+// from `ShellState.pidToCancel(commandID:)` at the moment it runs. The store
 // is the one home of that pid, thus the canceler can never signal a process
-// group that the store already gave up.
+// group that the store already gave up. A cancel can also arrive before that
+// pid exists at all — a `wait: false` call can detach with an empty block
+// window, see `Execute.detachmentClocks(from:)` — and `pidToCancel` answers
+// that case by SUSPENDING instead of answering with a pid it does not have
+// yet: it waits for `ShellState.registerProcess(commandID:pid:)` to give one,
+// or for the run's own finalize to report there will never be one. Thus the
+// canceler itself never returns until the process is dead or certainly never
+// existed, and a cancel that outraces the spawn cannot leave the child to run
+// unwatched.
 //
 // The record of the output is incremental, and it is not one write at the end.
 // The two readers of the streams (standard output, standard error) each put
@@ -219,24 +227,37 @@ struct ShellRunner {
     ///
     /// This is the closure that `SessionMailbox.park(kind:)` takes beside the
     /// run body. It holds NO pid of its own. It reads the process group from
-    /// `ShellState.runningProcess(commandID:)` at the moment it runs, thus the
+    /// `ShellState.pidToCancel(commandID:)` at the moment it runs, thus the
     /// store stays the one home of that pid and a stale pid cannot reach a
     /// process group that the store already gave up.
     ///
+    /// `pidToCancel` can also find no pid yet, when this cancel outraces the
+    /// spawn of its own child — a `wait: false` call can detach with an empty
+    /// block window, see `Execute.detachmentClocks(from:)`, so a cancel can
+    /// reach this closure before `ShellRunner.run`'s spawn closure ever calls
+    /// `registerProcess`. Rather than give up, `pidToCancel` SUSPENDS this
+    /// closure until either that registration gives it a pid to kill, or the
+    /// run's own finalize reports there will never be one (a spawn that
+    /// throws, above all). This closure therefore never returns having merely
+    /// hoped a process died — it waits until it is certain.
+    ///
     /// The order of the two steps is load bearing:
     ///
-    /// 1. Read the pid. `completeCommand` drops the entry of the process group
-    ///    as it finalizes a record, thus a read after the write finds nothing.
-    /// 2. Write `.killed` with `completeIfRunning`, which is one hop of the
-    ///    actor. The body still runs at this point, thus this write wins, and
-    ///    the finalize of the body then finds a record that no longer runs and
-    ///    does nothing.
-    /// 3. Send `killpg(SIGKILL)`.
+    /// 1. Await the pid — see the paragraph above. `completeCommand` drops the
+    ///    entry of the process group as it finalizes a record, thus reading it
+    ///    only after writing `.killed` would risk finding nothing that a kill
+    ///    already sent had not yet reached.
+    /// 2. Send `killpg(SIGKILL)`, when step 1 found a pid to send it to.
+    /// 3. Write `.killed` with `completeIfRunning`, which is one hop of the
+    ///    actor. A run whose body is still going, and that reaches its own
+    ///    finalize afterward, finds a record this write already moved past
+    ///    `.running` and does nothing.
     ///
     /// The outcome is `.stopped`, and it is never `.cancelled`: `killpg` on the
-    /// own process group of the child is authoritative, thus the work is
-    /// certainly dead. The shared vocabulary keeps `.cancelled` for advisory
-    /// cancellation, where the work can go on.
+    /// own process group of the child is authoritative, and this closure does
+    /// not return until it has sent it or learned there was never a process to
+    /// send it to, thus the work is certainly dead. The shared vocabulary
+    /// keeps `.cancelled` for advisory cancellation, where the work can go on.
     ///
     /// A token that no command started under, and a run that already ended, each
     /// make a canceler that signals nothing and still reports `.stopped`.
@@ -246,12 +267,12 @@ struct ShellRunner {
     func canceler(completionToken: String) -> @Sendable () async -> OperationOutcome {
         let state = state
         return {
-            let pid = await state.runningProcess(commandID: completionToken)
-            await state.completeIfRunning(
-                commandID: completionToken, status: .killed, exitCode: Self.absentExitCode)
+            let pid = await state.pidToCancel(commandID: completionToken)
             if let pid {
                 _ = killpg(pid, SIGKILL)
             }
+            await state.completeIfRunning(
+                commandID: completionToken, status: .killed, exitCode: Self.absentExitCode)
             return .stopped
         }
     }

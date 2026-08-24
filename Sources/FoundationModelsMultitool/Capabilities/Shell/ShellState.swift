@@ -163,6 +163,48 @@ actor ShellState {
     /// pid of the leader of its process group.
     private var processes: [String: pid_t] = [:]
 
+    /// Continuations of a `pidToCancel(commandID:)` call that arrived before
+    /// this store had a pid to give it, keyed by completion token.
+    ///
+    /// A `wait: false` call can detach before its child is even spawned —
+    /// the block window can be zero, see `Execute.detachmentClocks(from:)` —
+    /// so a cancel can reach `pidToCancel` before `registerProcess` ever
+    /// runs. Rather than answer `nil` and leave the process to run
+    /// unwatched, `pidToCancel` SUSPENDS, and this dictionary is where it
+    /// parks the continuation that resumes it. `registerProcess(commandID:pid:)`
+    /// resumes it with the pid the moment the child registers, and
+    /// `completeCommand(commandID:status:exitCode:)` resumes it with `nil`
+    /// on every exit path that ends the command without ever registering
+    /// one — a spawn that throws before it, above all — so a cancel this
+    /// store can never satisfy is never left waiting forever. Both
+    /// resumptions are one hop of this actor, with no `await` between the
+    /// check that finds no pid and the continuation that waits for one, so
+    /// no third call can land in the gap and leave a continuation orphaned.
+    ///
+    /// A list, not a single continuation, because more than one caller can
+    /// cancel the same token before it resolves; each one gets the same
+    /// answer.
+    private var pidWaiters: [String: [CheckedContinuation<pid_t?, Never>]] = [:]
+
+    /// Resumes every continuation `pidWaiters` holds for `commandID` with
+    /// `result`, and forgets them.
+    ///
+    /// The one place either resumption path — `registerProcess` with a pid,
+    /// `completeCommand` with `nil` — actually settles a waiter, so the two
+    /// callers cannot drift into resuming a continuation twice or leaving one
+    /// unresumed.
+    ///
+    /// - Parameters:
+    ///   - commandID: The completion token whose waiters to resume.
+    ///   - result: The pid to resume them with, or `nil` when none will ever
+    ///     come.
+    private func resolvePidWaiters(commandID: String, with result: pid_t?) {
+        guard let waiters = pidWaiters.removeValue(forKey: commandID) else { return }
+        for continuation in waiters {
+            continuation.resume(returning: result)
+        }
+    }
+
     /// The one field separator of a stored log line, whose framing is
     /// `{sessionID}:{commandID}:{lineNumber}:{text}`.
     ///
@@ -247,28 +289,54 @@ actor ShellState {
             ))
     }
 
-    /// Registers the pid of the process-group leader of a command that runs.
+    /// Registers the pid of the process-group leader of a command that runs,
+    /// and resumes any `pidToCancel(commandID:)` call already waiting on it.
     ///
     /// - Parameters:
     ///   - commandID: The completion token of the run.
     ///   - pid: The pid of the leader of the process group of the child.
     func registerProcess(commandID: String, pid: pid_t) {
         processes[commandID] = pid
+        resolvePidWaiters(commandID: commandID, with: pid)
     }
 
     /// The pid of the process-group leader of a command that runs, or `nil`
     /// when the store holds no process for that token.
     ///
-    /// The canceler of a run reads it, and so does the sweep at the end of a
-    /// session: each one signals the process group, and each one must read the
-    /// group from the store instead of holding a pid of its own. A command that
-    /// ended holds no entry, thus a signal never reaches a process group that
-    /// the store no longer owns.
+    /// A plain, non-suspending read: it never waits, thus it is safe for a
+    /// caller that only wants to observe now. The canceler of a run takes
+    /// `pidToCancel(commandID:)` instead, because a cancel must also close
+    /// the race against a spawn that has not registered a pid yet — see the
+    /// doc comment of `pidWaiters`. A command that ended holds no entry, thus
+    /// a read here after that never reports a pid the store no longer owns.
     ///
     /// - Parameter commandID: The completion token of the run.
     /// - Returns: The pid of the leader of the process group, or `nil`.
     func runningProcess(commandID: String) -> pid_t? {
         processes[commandID]
+    }
+
+    /// The pid to send a cancel's `killpg` to, waiting for it when no process
+    /// has registered yet.
+    ///
+    /// This SUSPENDS rather than answering `nil` on a miss, because a `nil`
+    /// here would leave the caller — the canceler — with nothing to kill, and
+    /// the process group would run unwatched once it did spawn. The wait
+    /// always ends: `registerProcess(commandID:pid:)` resumes it with the pid
+    /// the moment the child registers, and `completeCommand(commandID:status:exitCode:)`
+    /// resumes it with `nil` on every exit path that ends the command with no
+    /// pid ever registered — a spawn that throws, above all. See the doc
+    /// comment of `pidWaiters` for why the check and the wait are one
+    /// uninterrupted hop of this actor.
+    ///
+    /// - Parameter commandID: The completion token of the run to cancel.
+    /// - Returns: The pid to kill, or `nil` when the command ended (or never
+    ///   started) with no process to kill.
+    func pidToCancel(commandID: String) async -> pid_t? {
+        if let pid = processes[commandID] { return pid }
+        return await withCheckedContinuation { continuation in
+            pidWaiters[commandID, default: []].append(continuation)
+        }
     }
 
     /// The index of the command with `commandID`, or `nil` when no command
@@ -353,6 +421,13 @@ actor ShellState {
         commandID: String, status: CommandStatus = .completed, exitCode: Int? = nil
     ) {
         processes[commandID] = nil
+        // A `pidToCancel(commandID:)` call already suspended for this token —
+        // a cancel that outraced this same spawn, most often — has nobody
+        // left to answer it once this command ends, on this or any other
+        // exit path, without ever registering a pid. Resume it with `nil`
+        // here, on the same exit path that already drops the pid, so that
+        // waiter is never left suspended forever.
+        resolvePidWaiters(commandID: commandID, with: nil)
         guard let index = indexOfCommand(commandID: commandID) else { return }
         commands[index].status = status
         commands[index].exitCode = exitCode

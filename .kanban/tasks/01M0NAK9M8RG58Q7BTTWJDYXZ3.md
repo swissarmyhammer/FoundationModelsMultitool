@@ -132,11 +132,50 @@ comments:
       comes from the build graph of the `mlx-swift` dependency, and it is not new.
     - next: `/review`.
   timestamp: 2026-08-24T14:34:12.753359+00:00
+- actor: claude-code
+  id: 01m0t3t8y26x1m38hqbk5a54g8
+  text: |-
+    ### review — clean
+
+    - evidence: `review sha HEAD~1..HEAD` — 0 findings, 0 confirmed, 0 refuted. The
+      commit holds 4 `.kanban/` files only, and `.reviewignore` excludes all 4, thus
+      the engine had no code line to judge. The engine reports this as a clean
+      review, and not as an empty scope or a failed run.
+    - criteria: I checked each of the 6 acceptance criteria and each of the 7 test
+      items against the tree, because the substance of this card landed in earlier
+      commits. All hold:
+      `Sources/FoundationModelsMultitool/Capabilities/Shell/ShellRunner.swift` holds
+      one entry point `run(_ request: Request) async throws -> Outcome`, and no
+      `wait:` and no `events:` parameter; `RunSupervisor` has zero matches in
+      `Sources/`; `ProcessRegistry.swift` holds a `Mutex<Set<pid_t>>` table and the
+      `atexit` sweep, and no race logic; `canceler(completionToken:)` returns
+      `@Sendable () async -> OperationOutcome`, sends `killpg(pid, SIGKILL)` and
+      returns `.stopped`; the run body calls `startCommand`, `registerProcess`,
+      `appendLines` and `completeIfRunning` under the completion token;
+      `import Operations` has zero matches in `Sources/`. Both canceler tests exist
+      in `Tests/FoundationModelsMultitoolTests/ShellRunnerTests.swift` —
+      `cancelerStopsALongCommandAndReportsStopped` and
+      `cancelerKillsTheWholeProcessGroupAndNotTheLeaderAlone`.
+    - prior findings: none. The description holds no earlier `## Review Findings`
+      section, and all 12 checkboxes are marked.
+    - next: the card moves to `done`. It unblocks `01M0NAKY7B8H1Z0J2VCBWV86SY`.
+  timestamp: 2026-08-24T14:46:57.218491+00:00
+- actor: claude-code
+  id: 01m0t3tsyc849vp8per789h81b
+  text: |-
+    ### finish iteration 1 — clean
+    This iteration was a verification pass. The card sat in `doing` from 2026-08-23 with a research comment and no step record, but the code had landed through later commits. Every acceptance criterion and every test item was checked against the tree and all hold. No source file and no test file needed an edit.
+
+    - implement: changed — 1 file, the card itself (12 checkboxes checked; the stale `## What` note corrected — Router DOES hold `RunKind.process`, and `park` takes the canceler signature the card names)
+    - test: green — swift test, 562 passed in 46 suites, 0 failed, 0 skipped. Both canceler tests pass and leave no stray child: `cancelerStopsALongCommandAndReportsStopped` and `cancelerKillsTheWholeProcessGroupAndNotTheLeaderAlone`.
+    - commit: 88f2574 chore(kanban): checkoff verified acceptance criteria for ShellRunner port
+    - review: clean — zero findings; the task is in done. It unblocks ^bwv86sy.
+  timestamp: 2026-08-24T14:47:14.636037+00:00
 depends_on:
 - 01M0NAGFZW81T7W42D3WT1T8MC
 - 01M0NAHA4F1WVK2JY5C3QHRKEY
-position_column: doing
-position_ordinal: '8280'
+position_column: done
+position_ordinal: ed80
 title: Port ShellRunner as a run body and a canceler, and delete the local race
 ---
 ## What
