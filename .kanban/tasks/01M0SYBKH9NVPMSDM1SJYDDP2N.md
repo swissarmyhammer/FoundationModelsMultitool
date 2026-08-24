@@ -72,8 +72,24 @@ comments:
     - evidence: 1 file — /Users/wballard/github/swissarmyhammer/FoundationModelsMultitool/Sources/FoundationModelsMultitool/Capabilities/Shell/ShellDotfolder.swift (+19 lines, doc comments only). `swift test`: 562 tests in 46 suites passed. `periphery`: 0 findings for that file.
     - next: /review
   timestamp: 2026-08-24T14:09:39.761832+00:00
-position_column: doing
-position_ordinal: '8380'
+- actor: claude-code
+  id: 01m0t20jd0na83hgp939mmkky9
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit ebb038a) — 0 findings, 0 confirmed, 0 refuted, 7 validator passes attempted, 0 failed. No prior review findings section, and every acceptance item is checked.
+    - next: task moved to `done`.
+  timestamp: 2026-08-24T14:15:26.368809+00:00
+- actor: claude-code
+  id: 01m0t21392g421g1pke93nxptr
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 1 file (Capabilities/Shell/ShellDotfolder.swift, +19 lines, doc comments only). Option 1 taken: both resolvers kept with a written reason. Deleting them would collapse the type to a wrapper over currentDirectoryPath and reverse the ^5325spr decision.
+    - test: green — swift test, 562 passed in 46 suites, 0 failed, 0 skipped. Periphery gives 0 findings for the file.
+    - commit: ebb038a docs(shell): keep ShellDotfolder.userURL and projectURL with written reasons
+    - review: clean — zero findings; the task is in done
+  timestamp: 2026-08-24T14:15:43.650575+00:00
+position_column: done
+position_ordinal: ec80
 title: Decide the fate of ShellDotfolder.userURL and projectURL, which no Sources file calls
 ---
 ## What

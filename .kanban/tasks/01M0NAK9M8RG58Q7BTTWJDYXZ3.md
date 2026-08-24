@@ -51,6 +51,87 @@ comments:
     `ShellStateTests` names every literal as a `private static let`); no dead symbol;
     no duplicated block; documentation on each item.
   timestamp: 2026-08-23T20:51:03.407257+00:00
+- actor: claude-code
+  id: 01m0t32nxtg6j59kp1vz5zfx7r
+  text: |-
+    ### Verification of the whole card
+
+    The card sat in `doing` with a research comment and no step record, but the work
+    already landed in the tree through later commits. I checked each acceptance
+    criterion and each test item against the real code. All of them hold. I wrote no
+    new code.
+
+    **The six acceptance criteria:**
+
+    1. `ShellRunner.swift` is in `Capabilities/Shell/`. The only entry point is
+       `run(_ request: Request) async throws -> Outcome`. The header of the file
+       states that the runner holds no race, no detach and no supervision. A grep of
+       the file for `wait:` and `events:` finds nothing.
+    2. `RunSupervisor` — zero matches in `Sources/`.
+    3. `ProcessRegistry.swift` holds a `Mutex<Set<pid_t>>` table and the `atexit`
+       backstop, and it holds no race logic. It is a lock and not an actor, because
+       the `atexit` closure can await nothing.
+    4. `canceler(completionToken:) -> @Sendable () async -> OperationOutcome` reads
+       the pid with `runningProcess(commandID:)`, writes `.killed` with
+       `completeIfRunning`, sends `killpg(pid, SIGKILL)`, and returns `.stopped`.
+       The canceler holds no pid of its own, thus the store stays the one home of
+       that pid.
+    5. The run body calls `startCommand`, `registerProcess`, `appendLines` and
+       `completeIfRunning`, each one under the completion token, and it drains
+       through `OutputBuffer`.
+    6. `import Operations` — zero matches in `Sources/`.
+
+    **The two test cases the parent could not confirm both exist**, and neither one
+    needed new work:
+
+    - `cancelerStopsALongCommandAndReportsStopped` starts a long `sleep`, runs the
+      canceler, expects `.stopped`, polls `pgrep -f` until the count is 0, and then
+      expects the record status `.killed`.
+    - `cancelerKillsTheWholeProcessGroupAndNotTheLeaderAlone` starts
+      `sleep N & sleep N`, waits for both members, runs the canceler, and expects
+      zero survivors.
+
+    **One difference from the card text, which is safe.** The card says `sleep 30`.
+    The tests sleep for a random marker of 100_000 to 999_999 seconds instead. The
+    marker makes the `pgrep -f` pattern unique to one test, thus a parallel suite
+    cannot count a `sleep` that it does not own. The command is longer than 30
+    seconds, thus it satisfies "a long command" more strictly, not less.
+
+    **The stale note in `## What` is now corrected.** I verified the claim of the
+    research comment myself:
+    - `RunKind.process` is at `Hosting/RunPlane.swift` of the Router checkout, and
+      its doc comment states that the run plane holds the canceler closure and never
+      calls `killpg` itself.
+    - `park(tool:op:kind:completionToken:settling:canceler:)` is at
+      `Hosting/SessionMailbox.swift`, and `canceler` has the type
+      `@escaping @Sendable () async -> OperationOutcome`.
+
+    Thus nothing on the Router board blocks this card. I edited no file of the Router
+    package.
+
+    **The one warning of the full run is not new and it is not ours.** It reads
+    `missing creator for mutated node: (… mlx-swift_Cmlx.bundle/Contents/MacOS)`. It
+    comes from the build graph of the `mlx-swift` dependency, and not from a source
+    file of this package.
+  timestamp: 2026-08-24T14:34:04.090289+00:00
+- actor: claude-code
+  id: 01m0t32ychfjmm1b0xeyhb3gnw
+  text: |-
+    ### implement — changed
+
+    - evidence: 1 file changed — the card description itself. I checked the 12
+      checkboxes of `## Acceptance Criteria` and `## Tests`, because each one holds
+      in the tree, and I corrected the stale note in `## What` that said Router has
+      no `RunKind.process`. No source file and no test file needed an edit: the two
+      canceler tests the card asks for already exist
+      (`cancelerStopsALongCommandAndReportsStopped`,
+      `cancelerKillsTheWholeProcessGroupAndNotTheLeaderAlone`).
+    - tests: `swift test --filter ShellRunner` — 27 tests, 1 suite, passed.
+      `swift test --filter ShellProcessRegistry` — 4 tests, 1 suite, passed.
+      `swift test` — 562 tests, 46 suites, passed. Zero failures. The one warning
+      comes from the build graph of the `mlx-swift` dependency, and it is not new.
+    - next: `/review`.
+  timestamp: 2026-08-24T14:34:12.753359+00:00
 depends_on:
 - 01M0NAGFZW81T7W42D3WT1T8MC
 - 01M0NAHA4F1WVK2JY5C3QHRKEY
@@ -83,40 +164,43 @@ supervision. The `DetachingTool` engine in Router owns all three now.
 - The run body writes into `ShellState` and `OutputBuffer` under the run's
   completion token.
 
-Note: `SessionMailbox.park(kind:)` needs `RunKind.process`, which Router does
-not have yet. `RunPlane.swift` names it as the phase 2 seam. A card is filed on
-the FoundationModelsRouter board. Do not edit the Router package from this
-repository.
+Note: `SessionMailbox.park(kind:)` needs `RunKind.process`, and Router HAS it.
+The checkout holds `RunKind.process` in `Hosting/RunPlane.swift`, and
+`park(tool:op:kind:completionToken:settling:canceler:)` in
+`Hosting/SessionMailbox.swift`, whose `canceler` parameter has the type
+`@escaping @Sendable () async -> OperationOutcome` — exactly the signature this
+card names. Thus no card on the FoundationModelsRouter board blocks this one.
+Do not edit the Router package from this repository.
 
 ## Acceptance Criteria
 
-- [ ] `ShellRunner` is in
+- [x] `ShellRunner` is in
       `Sources/FoundationModelsMultitool/Capabilities/Shell/`, and it has no
       `wait:` parameter and no deadline race.
-- [ ] `RunSupervisor` does not exist in this repository.
-- [ ] `ProcessRegistry` holds the child process groups, and it keeps the
+- [x] `RunSupervisor` does not exist in this repository.
+- [x] `ProcessRegistry` holds the child process groups, and it keeps the
       `atexit` backstop. It has no race logic.
-- [ ] The canceler sends `killpg(SIGKILL)` and returns
+- [x] The canceler sends `killpg(SIGKILL)` and returns
       `OperationOutcome.stopped`.
-- [ ] The run body records into `ShellState` and `OutputBuffer` under the
+- [x] The run body records into `ShellState` and `OutputBuffer` under the
       completion token.
-- [ ] No file in `Capabilities/Shell/` imports `Operations`.
+- [x] No file in `Capabilities/Shell/` imports `Operations`.
 
 ## Tests
 
-- [ ] New `Tests/FoundationModelsMultitoolTests/ShellRunnerTests.swift`, ported
+- [x] New `Tests/FoundationModelsMultitoolTests/ShellRunnerTests.swift`, ported
       from
       `../FoundationModelsShelltool/Tests/ShellToolTests/ShellRunnerTests.swift`,
       with every deadline-race test removed.
-- [ ] New `Tests/FoundationModelsMultitoolTests/ShellProcessRegistryTests.swift`,
+- [x] New `Tests/FoundationModelsMultitoolTests/ShellProcessRegistryTests.swift`,
       ported from `ProcessRegistryTests.swift`.
-- [ ] A test starts a long command (`sleep 30`), runs the canceler, and asserts
+- [x] A test starts a long command (`sleep 30`), runs the canceler, and asserts
       the returned outcome is `.stopped` and the child process is gone.
-- [ ] A test asserts the child's whole process group dies, not the leader
+- [x] A test asserts the child's whole process group dies, not the leader
       alone.
-- [ ] `swift test --filter ShellRunner` and `swift test --filter ShellProcessRegistry`
+- [x] `swift test --filter ShellRunner` and `swift test --filter ShellProcessRegistry`
       pass.
-- [ ] `swift test` passes with no new failure and no new warning.
+- [x] `swift test` passes with no new failure and no new warning.
 
 ## Workflow
 - Use `/tdd` — write failing tests first, then implement to make them pass. #phase-2 #eventplan
