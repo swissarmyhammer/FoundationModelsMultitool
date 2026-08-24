@@ -46,9 +46,23 @@ enum ShellDotfolder {
     /// The `.yaml` extension states the intended format. It is not a format
     /// this package can read right now: no YAML parser is a dependency of it.
     /// The reader and the parser land together.
+    ///
+    /// This name and the two resolvers stand or fall together. No file of
+    /// `Sources/` calls `userURL(fileName:environment:)` or
+    /// `projectURL(fileName:)` either, and each of the three is kept for this
+    /// one reason: the reader that gives this file a body is the caller of all
+    /// three. A change that deletes one of the three must read the reason on
+    /// the other two again.
     static let configFileName = "config.yaml"
 
     /// The user-layer path of `fileName`.
+    ///
+    /// **No file of `Sources/` calls this yet, and it is kept on purpose.** It
+    /// is the user half of the pair that finds `configFileName`, thus the
+    /// reason written on that constant is the reason this resolver stands: the
+    /// reader of the shell configuration file is the caller that lands, and it
+    /// has to find the file in each of the two layers. `ShellDotfolderTests`
+    /// holds the XDG lookup correct until then.
     ///
     /// - Parameters:
     ///   - fileName: The file to locate inside the user layer root.
@@ -66,6 +80,11 @@ enum ShellDotfolder {
     }
 
     /// The project-layer path of `fileName`.
+    ///
+    /// **No file of `Sources/` calls this yet, and it is kept on purpose.** It
+    /// is the project half of that same pair, thus the reason written on
+    /// `configFileName` carries it too. `ShellDotfolderTests` holds the walk to
+    /// the git root correct until then.
     ///
     /// - Parameter fileName: The file to locate inside the project layer root.
     /// - Returns: `{git_root}/.shell/<fileName>`, or `nil` when the working

@@ -50,12 +50,28 @@ comments:
     - evidence: 4 files — Tests/FoundationModelsMultitoolTests/ShellPermissionRemovalTests.swift (new), Tests/FoundationModelsMultitoolTests/RepositoryFile.swift, Tests/FoundationModelsMultitoolTests/RepositoryFileTests.swift, eventplan.md. `swift test --filter ShellPermissionRemoval`: 4 tests, 4 passed. `swift test --filter RepositoryFile`: 7 tests, 7 passed. `swift test`: 562 tests in 46 suites, 0 failures, 0 warnings.
     - next: /review
   timestamp: 2026-08-24T13:56:12.247645+00:00
+- actor: claude-code
+  id: 01m0t17hbt7pfjsd1206rmwvd8
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit 7d43a06) — 0 findings, 0 confirmed, 0 refuted, 7 attempted. 3 files reviewed, 4 skipped by the `.reviewignore` rule for `.kanban/`.
+    - next: task moved to `done`.
+  timestamp: 2026-08-24T14:01:46.106874+00:00
+- actor: claude-code
+  id: 01m0t181zewn4r3qq33mm2nbkp
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 4 files (Tests/ShellPermissionRemovalTests.swift new, Tests/RepositoryFile.swift, Tests/RepositoryFileTests.swift, eventplan.md). RepositoryFile gained `root` and `swiftFiles(inRelativeDirectory:)`; the guard bans ShellPolicy, ShellDecisionStore, ShellPolicyError and decisions.yaml over Sources/, Tests/, eventplan.md and Package.swift. config.yaml is deliberately not banned, and the suite doc says why. TDD order held — the guard failed at eventplan.md:501 and :764 before the prose changed.
+    - test: green — swift test, 562 passed in 46 suites, 0 failed, 0 skipped. The rise from 553 in 45 is the new guard suite plus the RepositoryFile cases.
+    - commit: 7d43a06 docs(eventplan): record the sandbox-only shell decision and guard it
+    - review: clean — zero findings; the task is in done
+  timestamp: 2026-08-24T14:02:03.118003+00:00
 depends_on:
 - 01M0SVAZ3WJH2BQFJSA6E4X8NW
 - 01M0SVC2NKA2DA58M3E98ZGZYQ
 - 01M0SVY1BGMH3DKQHY05325SPR
-position_column: doing
-position_ordinal: '8380'
+position_column: done
+position_ordinal: eb80
 title: Record the sandbox-only decision in eventplan.md and guard it with a test
 ---
 ## What
