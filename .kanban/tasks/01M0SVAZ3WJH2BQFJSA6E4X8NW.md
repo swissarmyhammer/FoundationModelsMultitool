@@ -76,8 +76,24 @@ comments:
       `grep -r "WarningRecorder" Sources Tests` — nothing.
     - next: `/review`
   timestamp: 2026-08-24T12:40:06.518906+00:00
-position_column: doing
-position_ordinal: '8380'
+- actor: claude-code
+  id: 01m0swy4ep08n19wc1a91s40wz
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (3695633) — 0 findings, 0 confirmed, 0 refuted, 7 attempted. 6 files reviewed. The Swift hygiene rules declined 9 items because the files they name are deleted by this change; that is the intent of the change, thus no finding.
+    - next: none. Task moved to `done`.
+  timestamp: 2026-08-24T12:46:43.670365+00:00
+- actor: claude-code
+  id: 01m0swyv2zy663b0w6ayb957p8
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 6 files, 25 insertions and 2449 deletions. Deleted ShellDecisionStore.swift, ShellPolicyError.swift, ShellDecisionStoreTests.swift; edited Package.swift, DependencyReachTests.swift, Fixtures/ShellStoreFixtures.swift. The Yams dependency is removed entirely.
+    - test: green — swift test, 554 passed in 45 suites, 0 failed, 0 skipped. The fall from 595 in 46 is the deleted suite plus the Yams reach test.
+    - commit: 3695633 refactor(shell): delete ShellDecisionStore and remembered-answer machinery
+    - review: clean — zero findings; the task is in done
+  timestamp: 2026-08-24T12:47:06.847483+00:00
+position_column: done
+position_ordinal: e880
 title: Delete ShellDecisionStore and the remembered-answer machinery
 ---
 ## What

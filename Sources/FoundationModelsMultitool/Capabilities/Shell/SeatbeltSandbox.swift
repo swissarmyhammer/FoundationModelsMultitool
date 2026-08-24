@@ -4,10 +4,20 @@
 // shell.
 //
 // The goal is narrow on purpose: bound where a command writes or deletes, thus
-// the shell capability cannot break things. Nothing more. Each read is free,
-// the network is always open, and WHETHER a command runs at all stays the
-// decision of `ShellPolicy`. This layer bounds only what a command that already
-// went through the policy can do.
+// the shell capability cannot break things. Nothing more.
+//
+// This layer is the ONLY gate. No layer above it examines the command text, and
+// no layer above it refuses a command before it runs. Thus what the profile
+// does not bound, nothing bounds:
+//
+// - Each read is free, everywhere.
+// - The network is fully open.
+//
+// Read those two together, because a reader must not think this sandbox covers
+// more than it does: a command can read each file the user can read, and it can
+// send that file anywhere. Destruction is bounded. Reading and exfiltration are
+// not. To change either one, change the profile — `profile(for:)` below — and
+// no other place.
 //
 // Each shape decision below was measured against real `sandbox-exec` runs on
 // Darwin 27.0.0 (2026-08-02). The reason for each one stands on the declaration
@@ -217,7 +227,9 @@ public struct SeatbeltSandbox: CommandSandbox {
     /// `(subpath (param "…"))` grant for each write target.
     ///
     /// Each read is free and the network is always open. The one thing this
-    /// profile bounds is writing and deleting.
+    /// profile bounds is writing and deleting. These rules are the whole gate,
+    /// thus this is the place to change what a command can read, and the place
+    /// to change what a command can reach on the network.
     ///
     /// The rule set is small, and no line of it is arbitrary. Each one carries
     /// its load, and each one was proved by running the profile:
@@ -243,9 +255,11 @@ public struct SeatbeltSandbox: CommandSandbox {
     ///   and the file stays; `rm` inside a granted root succeeds. No rule
     ///   about unlinking is necessary.
     /// - `(allow network*)` and `(allow system-socket)` are unconditional:
-    ///   `curl` to a public host gives 200 inside the sandbox. To bound which
-    ///   commands can run at all — network tools included — stays with
-    ///   `ShellPolicy`.
+    ///   `curl` to a public host gives 200 inside the sandbox. Beside the free
+    ///   reads above, that is what a reader must weigh: a command can read each
+    ///   file the user can read, and it can send that file anywhere. Nothing
+    ///   above this profile bounds either half. Destruction is bounded, and
+    ///   reading and exfiltration are not.
     ///
     /// - Parameter options: The write confinement to render.
     /// - Returns: The profile source to give to `sandbox-exec -p`.
@@ -284,12 +298,12 @@ public struct SeatbeltSandbox: CommandSandbox {
     ///
     /// 1. `workingDirectory` must sit inside at least one configured root.
     ///    That closes a real hole, and it does not merely say the grant again:
-    ///    the value comes from a parameter that the MODEL writes, and the
-    ///    policy only looks in it for `"../"`. If the working directory of one
-    ///    call could add grants, a model that chose `/` would give itself the
-    ///    whole file system. Thus the check proves that the directory of the
-    ///    call sits inside the root set that is already configured, and it
-    ///    never adds it. The granted set is exactly `options.writableRoots`.
+    ///    the value comes from a parameter that the MODEL writes, and no layer
+    ///    above this one examines it. If the working directory of one call
+    ///    could add grants, a model that chose `/` would give itself the whole
+    ///    file system. Thus the check proves that the directory of the call
+    ///    sits inside the root set that is already configured, and it never
+    ///    adds it. The granted set is exactly `options.writableRoots`.
     /// 2. `executablePath` must be a file that can run.
     ///
     /// - Parameters:

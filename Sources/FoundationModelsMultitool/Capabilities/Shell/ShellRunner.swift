@@ -285,10 +285,10 @@ struct ShellRunner {
     /// can never pass a chunk.
     ///
     /// The limit on the length of the command and the limit on the length of an
-    /// environment value are **not** examined again here. They belong to
-    /// `ShellPolicy`, which the caller runs before this call. The runner takes
-    /// input that is already examined, and the one cap it owns itself is
-    /// `maxOutputSize`.
+    /// environment value are **not** examined again here. They belong to the
+    /// `tools.shell.execute` verb, which examines each request before this
+    /// call. The runner takes input that is already examined, and the one cap
+    /// it owns itself is `maxOutputSize`.
     ///
     /// - Parameter request: The command to run.
     /// - Returns: The status and the exit code of the run.
