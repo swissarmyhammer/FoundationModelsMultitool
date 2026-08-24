@@ -1,3 +1,4 @@
+import Foundation
 import FoundationModels
 
 /// A failure raised by `MultiTool.Builder.build()`.
@@ -9,6 +10,11 @@ import FoundationModels
 /// `ToolAPIRenderer`) happens once, at `build()`. That's why plan.md's
 /// fluent chain needs `try` only on the final call:
 /// `try MultiTool.Builder().addTool(...)....addGroup(...).build()`.
+///
+/// `withShell(storeDirectory:sandbox:outputChunkStream:)` is the one
+/// registration method that throws, and it never throws THIS error: it
+/// prepares the store of the shell on disk, which is resource acquisition
+/// rather than validation. The single leading `try` of the chain covers it.
 public struct MultiToolBuilderError: Error, Sendable, Equatable, CustomStringConvertible {
     /// What kind of build-time failure this was.
     public enum Kind: Sendable, Equatable {
@@ -245,6 +251,56 @@ extension MultiTool {
                 )
             )
             return self
+        }
+
+        /// Queues the three verbs of the shell capability under the noun
+        /// `shell` — eventplan.md § "Registration of capabilities: noun/verb":
+        /// "`withShell()` is a short form of
+        /// `withCapability(ShellCapability(...))`."
+        ///
+        /// That is the whole of what this method is. It builds a
+        /// `ShellCapability` from the three arguments and hands it to
+        /// `withCapability(_:)`, so `tools.shell.execute`,
+        /// `tools.shell.getLines` and `tools.shell.grepHistory` render exactly
+        /// as any other capability's verbs do, and the noun is owned exactly
+        /// as any other capability's noun is.
+        ///
+        /// **The shell is OFF by default.** eventplan.md § "The capability
+        /// contract": "The modules are opt-in ... They are off by default."
+        /// A builder that never calls this renders no `tools.shell` namespace
+        /// at all.
+        ///
+        /// **This is the one registration method that throws**, and what it
+        /// throws is never a `MultiToolBuilderError`. The store of the shell
+        /// prepares a directory on disk, which is resource acquisition rather
+        /// than validation — see
+        /// `ShellCapability.init(storeDirectory:sandbox:outputChunkStream:)`.
+        /// Every rule `MultiToolBuilderError` reports, this method included,
+        /// is still examined one time at `buildRegistry()`.
+        ///
+        /// - Parameters:
+        ///   - storeDirectory: the directory each run's history and captured
+        ///     output are written into. Defaults to `<cwd>/.shell`.
+        ///   - sandbox: the confinement each command spawns under. Defaults to
+        ///     no confinement at all.
+        ///   - outputChunkStream: the live view of the output a subscribed host
+        ///     reads. Defaults to teeing nothing.
+        /// - Returns: `self`, for fluent chaining.
+        /// - Throws: what
+        ///   `ShellCapability.init(storeDirectory:sandbox:outputChunkStream:)`
+        ///   throws when the store cannot prepare.
+        @discardableResult
+        public func withShell(
+            storeDirectory: URL? = nil,
+            sandbox: (any CommandSandbox)? = nil,
+            outputChunkStream: ShellOutputChunkStream? = nil
+        ) throws -> Self {
+            let capability = try ShellCapability(
+                storeDirectory: storeDirectory,
+                sandbox: sandbox,
+                outputChunkStream: outputChunkStream
+            )
+            return withCapability(capability)
         }
 
         /// Queues every tool in `tools` under the named `group`, destined

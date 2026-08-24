@@ -51,10 +51,33 @@ comments:
     - evidence: 2 files — Sources/FoundationModelsMultitool/Capabilities/Shell/Execute.swift, Tests/FoundationModelsMultitoolTests/ShellExecuteTests.swift (347 insertions, 9 deletions). `swift test`: 577 tests in 46 suites, 0 failures, 0 compiler warnings. 7 of 7 acceptance criteria and 6 of 6 test items checked.
     - next: /review
   timestamp: 2026-08-24T21:24:42.548756+00:00
+- actor: claude-code
+  id: 01m0ttyvfqmabc0yw02j8aa721
+  text: |
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (ed69210) — 0 findings, 0 confirmed, 0 refuted, 7 validators attempted, 0 failed. 2 files reviewed (`Execute.swift`, `ShellExecuteTests.swift`); 6 `.kanban/` files excluded by `.reviewignore`.
+    - verified: every check on the validation path reads the UTF-8 bytes, and no path measures or scans by Character. Command length `arguments.command.utf8.count` (Execute.swift:268); value length `value.utf8.count` (Execute.swift:680); NUL `value.utf8.contains` (Execute.swift:682); CR and LF `value.utf8.contains` (Execute.swift:684-685); reported length `value.utf8.count` (Execute.swift:635). The byte test for the line break is necessary, not only a measure: Swift reads a CR LF pair as one grapheme cluster that equals neither `"\r"` nor `"\n"`, thus a Character search passes the pair. A byte scan for 0x00, 0x0A and 0x0D also gives no false result, because a UTF-8 lead byte and a continuation byte are always 0x80 or more.
+    - next: no open finding. Task moved to done.
+  timestamp: 2026-08-24T21:31:24.535163+00:00
+- actor: claude-code
+  id: 01m0ttzmhyyepfjj8sbwsbyz4k
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 2 files (Capabilities/Shell/Execute.swift, Tests/ShellExecuteTests.swift), 347 insertions and 9 deletions. Both caps ported at the sibling's numbers, and all three environment-value checks, not the length alone. Six new test cases, written first and watched fail.
+    - test: green — swift test run twice, 577 passed in 46 suites, 0 failed, 0 skipped. No stray process after either run.
+    - commit: ed69210 feat(shell): validate command and environment byte limits in execute verb
+    - review: clean — zero findings; the task is in done.
+
+    **A defect in the sibling that this port does not carry.** Every check reads `value.utf8` rather than the Characters. That is not only the byte-measurement requirement of the card: Swift reads a CR LF pair as ONE extended grapheme cluster that equals neither `"\r"` nor `"\n"`, thus the sibling's `value.contains("\n") || value.contains("\r")` passes a value holding `\r\n` — the exact injection the check exists to stop. A test pins that pair.
+
+    The reviewer verified the claim against the code and added the reason the byte scan gives no false result: every UTF-8 lead byte and continuation byte is 0x80 or more, thus bytes 0x00, 0x0A and 0x0D can only be those ASCII scalars themselves.
+
+    `../FoundationModelsShelltool` still carries the broken Character-based check. That is worth a card on the Shelltool board.
+  timestamp: 2026-08-24T21:31:50.206121+00:00
 depends_on:
 - 01M0NAKY7B8H1Z0J2VCBWV86SY
-position_column: doing
-position_ordinal: '8180'
+position_column: done
+position_ordinal: f080
 title: Validate the command and environment in the tools.shell.execute verb
 ---
 ## What

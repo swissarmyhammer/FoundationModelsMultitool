@@ -1,11 +1,123 @@
 ---
 assignees:
 - claude-code
+comments:
+- actor: claude-code
+  id: 01m0tvebxq2q4vmxxffrn5d3c3
+  text: |-
+    ### Research
+
+    **The card was stale on the policy parameter.** By the decision of 2026-08-24 the
+    shell has no permission layer. `ShellPolicy`, `ShellPolicyError`,
+    `ShellDecisionStore` and `decisions.yaml` are deleted, and
+    `ShellPermissionRemovalTests` fails if any of those four names comes back in
+    `Sources/`, `Tests/`, `eventplan.md` or `Package.swift`. The `## What` bullet is
+    corrected: the initializer takes the store directory, the sandbox and the output
+    chunk stream, and no policy.
+
+    **The real signatures the capability composes.**
+
+    - `Execute` has exactly one initializer, `init(runner: ShellRunner)`. It reaches
+      the store, the sandbox and the output chunk stream only through the runner.
+    - `GetLines.init(state: ShellState)` and `GrepHistory.init(state: ShellState)`.
+    - `ShellRunner` is a struct with `let state: ShellState` and the `var` members
+      `maxOutputSize`, `registry`, `outputChunkStream` and `sandbox`.
+    - `ShellState.init(preferredDirectory: URL?) throws` and `ShellState() throws`.
+      Both THROW, so `ShellCapability.init` throws and `Builder.withShell()` throws
+      with it. That is resource acquisition, not validation, so it does not break
+      the rule that no registration method raises `MultiToolBuilderError`.
+    - `ShellOutputChunkStream` and `CommandSandbox` are both `public`, so a `public
+      ShellCapability` exposes no lower-access type.
+
+    **`findAPIs` ships as `searchTools` / `SearchToolsTool`** (plan.md § "Names that
+    moved"). A test drives it with `SearchToolsTool(searcher:limit:)` over a
+    `MetadataSearcher`, and the formatted answer carries each entry's verbatim
+    `block` plus `Example: <entry.qualifiedExample>`.
+
+    **`help()` and `docs(name)`** are host functions inside the sandbox, built from
+    `registry.surface.entries` alone: `help()` answers the paths, `docs(name)`
+    answers that entry's `block`. A test drives them through
+    `MultiTool(registry:).call(arguments: RunCodeArguments(code: "return help();"))`.
+
+    **The `"execute shell"` journal op cannot be reached from this package.**
+    Router's `ToolContext.init(stamping:)` is the one stamping site, and it writes
+    the wrapped tool's own `name` into BOTH `tool` and `op`:
+
+        let stamp = tool.name.isEmpty ? String(describing: type(of: tool)) : tool.name
+        self.init(..., tool: stamp, op: stamp, ...)
+
+    Its own doc comment states the gap: *"phase 1 stamps the wrapped tool's `name`
+    here too, until noun/verb registration supplies the canonical `"verb noun"`
+    string."* `OperationDefinition` / `opString`, which `OperationEvent.op` names,
+    does not exist in either package. So a shell run's op is `"execute"` today, and
+    `"execute shell"` needs the noun to travel from `Capability.noun` into the
+    `ToolContext` Router mints — a change in the dependency, which Router card
+    ^8y20bwd carries. ^fs7ywtg is stuck on the same wall.
+
+    **Discovery, not asked for by this card.** `Execute.report(of:in:)` builds a
+    FRESH `ShellOutputChunkStream` for each run and assigns it over
+    `running.outputChunkStream`, so a stream a host supplies to the capability never
+    receives a chunk. The card asks for the parameter, so it is wired; the gap is
+    recorded as its own task rather than repaired here.
+  timestamp: 2026-08-24T21:39:52.887864+00:00
+- actor: claude-code
+  id: 01m0tvx4vmjjq7dan6wjdr3xk7
+  text: |-
+    ### Implementation landed
+
+    `ShellCapability` is a `public struct` holding `noun = "shell"` and the three
+    verbs, built in one throwing initializer over one `ShellState`:
+
+        public init(
+            storeDirectory: URL? = nil,
+            sandbox: (any CommandSandbox)? = nil,
+            outputChunkStream: ShellOutputChunkStream? = nil
+        ) throws
+
+    One store reaches the run-plane verb through `ShellRunner` and reaches the two
+    content-plane verbs directly, so the three answer for the same session. A test
+    holds that with `===` on the actor.
+
+    `MultiTool.Builder.withShell(storeDirectory:sandbox:outputChunkStream:)` builds
+    that capability and hands it to `withCapability(_:)`. It is the one registration
+    method that throws, and it never throws a `MultiToolBuilderError`; the header
+    doc of that type now says so, because its old sentence — "the fluent chain needs
+    `try` only on the final call" — was no longer the whole truth.
+
+    **`MultiTool.description` gets NO new sentence.** The card asked for one "only if
+    the shell capability needs it", and it does not: the three verbs are ordinary
+    `tools.shell.*` entries that `searchTools`, `help()` and `docs()` all render,
+    which is exactly what the globals sentence exists to say is NOT true of the
+    ambient globals. Three tests hold that — `searchTools` finds each verb with its
+    runnable example, `help()` names all three paths, and `docs(name)` hands back
+    each verb's own block.
+
+    **The one card item that did not land: the `"execute shell"` journal op test.**
+    It cannot pass from this package, for the reason in the research comment above:
+    Router's `ToolContext.init(stamping:)` writes the wrapped tool's `name` into
+    `op`, so the op of a shell run is `"execute"`. No edit inside
+    `FoundationModelsMultitool` can change that — the noun must travel into the
+    `ToolContext` Router mints. Router card ^8y20bwd carries the fix. No test was
+    written for it, because a test that asserted `"execute shell"` today would be a
+    failing test rather than a proof, and one that asserted `"execute"` would lock
+    in the state this card wants moved.
+
+    Discovered along the way and filed as its own card, ^7kydt76: a
+    `ShellOutputChunkStream` handed to the capability never receives a chunk,
+    because `Execute.report(of:in:)` replaces `runner.outputChunkStream` with a
+    private stream for each run. The parameter is wired as the card asked; the repair
+    belongs to that card.
+
+    ### implement — stuck
+    - evidence: 3 files — `Sources/FoundationModelsMultitool/Capabilities/Shell/ShellCapability.swift` (new), `Sources/FoundationModelsMultitool/Surface/MultiToolBuilder.swift` (`withShell` plus the corrected `MultiToolBuilderError` header), `Tests/FoundationModelsMultitoolTests/ShellCapabilityTests.swift` (new, 9 tests). `swift test --filter ShellCapability`: 9 passed. `swift test`: 586 tests in 47 suites passed, 0 failures, 0 new warnings, over five consecutive runs. `swift test --filter ShellPermissionRemoval`: 4 passed.
+    - gap: the `"execute shell"` journal op test. Blocked on Router `ToolContext.init(stamping:)`; Router card ^8y20bwd carries the fix, ^fs7ywtg is stuck on the same wall.
+    - next: a human decides whether ^zpdk266 waits on ^8y20bwd or goes to review with that one test item deferred to it.
+  timestamp: 2026-08-24T21:47:57.172083+00:00
 depends_on:
 - 01M0NAKY7B8H1Z0J2VCBWV86SY
 - 01M0NAMBSX4GXQ1ETQXZ6ZWRN5
-position_column: todo
-position_ordinal: 8d80
+position_column: doing
+position_ordinal: '8180'
 title: Add ShellCapability and Builder.withShell()
 ---
 ## What
@@ -19,8 +131,11 @@ off by default. eventplan.md § "Registration of capabilities: noun/verb":
   - `public struct ShellCapability: Capability`.
   - `noun` is `"shell"`.
   - `tools` is exactly `[Execute(...), GetLines(...), GrepHistory(...)]`.
-  - The initializer takes the store directory, the policy, the sandbox, and the
-    output chunk stream. Each has a default.
+  - The initializer takes the store directory, the sandbox, and the output
+    chunk stream. Each has a default. **There is no policy parameter.** By the
+    decision of 2026-08-24 the shell has no permission layer: `ShellPolicy` is
+    deleted, and `ShellPermissionRemovalTests` fails if that name comes back
+    anywhere in `Sources/` or `Tests/`.
 - Add `public func withShell(...) -> Self` to
   `Sources/FoundationModelsMultitool/Surface/MultiToolBuilder.swift`. It calls
   `withCapability(ShellCapability(...))`.
@@ -34,27 +149,35 @@ off by default. eventplan.md § "Registration of capabilities: noun/verb":
 
 ## Acceptance Criteria
 
-- [ ] `ShellCapability.noun` is `"shell"`, and `tools` holds exactly three
+- [x] `ShellCapability.noun` is `"shell"`, and `tools` holds exactly three
       tools.
-- [ ] `Builder().withShell().buildRegistry()` renders exactly
+- [x] `Builder().withShell().buildRegistry()` renders exactly
       `shell.execute`, `shell.getLines`, and `shell.grepHistory`.
-- [ ] A builder with no `withShell()` renders no entry whose path starts with
+- [x] A builder with no `withShell()` renders no entry whose path starts with
       `shell.`.
-- [ ] The surface has no `listProcesses` entry and no `killProcess` entry.
-- [ ] `findAPIs` finds the three shell entries, each with its sample snippet.
-- [ ] `help()` and `docs()` render the three entries.
+- [x] The surface has no `listProcesses` entry and no `killProcess` entry.
+- [x] `findAPIs` finds the three shell entries, each with its sample snippet.
+- [x] `help()` and `docs()` render the three entries.
 
 ## Tests
 
-- [ ] New `Tests/FoundationModelsMultitoolTests/ShellCapabilityTests.swift`.
-- [ ] A test asserts the three rendered paths, and asserts the set has exactly
+- [x] New `Tests/FoundationModelsMultitoolTests/ShellCapabilityTests.swift`.
+- [x] A test asserts the three rendered paths, and asserts the set has exactly
       three members.
-- [ ] A test asserts a builder with no `withShell()` renders no `shell.` entry.
-- [ ] A test asserts `findAPIs` returns each shell entry with a runnable sample
+- [x] A test asserts a builder with no `withShell()` renders no `shell.` entry.
+- [x] A test asserts `findAPIs` returns each shell entry with a runnable sample
       snippet.
 - [ ] A test asserts the journal `op` of an execute run is `"execute shell"`.
-- [ ] `swift test --filter ShellCapability` passes.
-- [ ] `swift test` passes with no new failure and no new warning.
+      **BLOCKED on Router.** `ToolContext.init(stamping:)` is the one stamping
+      site and it writes the wrapped tool's own `name` into both `tool` and
+      `op`, so a shell run's op is `"execute"` today. Its own doc comment says
+      so: *"phase 1 stamps the wrapped tool's `name` here too, until noun/verb
+      registration supplies the canonical `"verb noun"` string."* The noun must
+      travel from `Capability.noun` into the `ToolContext` Router mints, which
+      is a change in the dependency. Router card ^8y20bwd carries that fix, and
+      ^fs7ywtg is stuck on the same wall.
+- [x] `swift test --filter ShellCapability` passes.
+- [x] `swift test` passes with no new failure and no new warning.
 
 ## Workflow
 - Use `/tdd` — write failing tests first, then implement to make them pass. #phase-2 #eventplan
