@@ -54,6 +54,7 @@
 // slow the consumer down and a host cannot starve it.
 
 import Foundation
+import FoundationModelsExtras
 import FoundationModelsRouter
 import Subprocess
 import Synchronization
@@ -90,10 +91,15 @@ struct ShellRunner {
     /// The registry of process groups that each spawned child goes into for the
     /// length of its run, and that the teardown of the run takes it out of.
     ///
+    /// The type is the SHARED `ProcessRegistry` of `FoundationModelsExtras`,
+    /// and this package holds no copy of it. Thus every consumer of the family
+    /// in one host process registers into one table, and one `atexit` sweep
+    /// stands behind all of them.
+    ///
     /// It takes `ProcessRegistry.global` by default, thus a production run
-    /// stands behind the `atexit` sweep of that registry. A test that must read
-    /// or sweep the state of a registry gives a private `ProcessRegistry()` —
-    /// see the doc comment of `ProcessRegistry.global` for the reason.
+    /// stands behind that sweep. A test that must read or sweep the state of a
+    /// registry gives a private `ProcessRegistry()` — see the doc comment of
+    /// `ProcessRegistry.global` for the reason.
     var registry: ProcessRegistry = .global
 
     /// The live view of the output that each command of this runner tees its raw

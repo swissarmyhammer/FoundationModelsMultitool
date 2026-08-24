@@ -381,10 +381,26 @@ comments:
     - the whole file was swept for the same cause, not the named line alone; every other declaration has a caller, and the comment above lists them.
     - next: `/review`. The card stays in `doing`.
   timestamp: 2026-08-24T19:48:03.883495+00:00
+- actor: claude-code
+  id: 01m0tnd8rvkzw1kzk140hnqa60
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit 033d386) — 0 findings, 0 confirmed, 0 refuted, 7 attempted; the one prior finding of 2026-08-24 14:36 is checked.
+    - next: task moved to `done`.
+  timestamp: 2026-08-24T19:54:25.435064+00:00
+- actor: claude-code
+  id: 01m0tne2ckx5cfxcdxedz6t9nn
+  text: |-
+    ### finish iteration 3 — clean
+    - implement: changed — 1 file (Capabilities/Shell/Execute.swift). `init(state:)` removed and the `init(runner:)` doc comment restated. The implementer checked which initializer must survive before deleting: `ShellCapability` (^zpdk266) will write `Execute(runner: ShellRunner(state:sandbox:outputChunkStream:))`, because Execute reaches the sandbox and the chunk stream only through the runner. The rest of the file was swept for the same cause; every other declaration has a reference.
+    - test: green — swift test run twice, 572 passed in 47 suites, 0 failed, 0 skipped. No stray process after either run, checked at once and again after 5 seconds.
+    - commit: 033d386 refactor(shell): remove unused init(state:) from Execute
+    - review: clean — zero findings; the task is in done. It unblocks ^xgnygf8 and ^zpdk266.
+  timestamp: 2026-08-24T19:54:51.667178+00:00
 depends_on:
 - 01M0NAK9M8RG58Q7BTTWJDYXZ3
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ee80
 title: Add the tools.shell.execute verb
 ---
 ## What

@@ -681,7 +681,7 @@ struct Execute: Tool {
     /// is why it takes one rather than a bare store: the confinement, the
     /// process-group registry and the live view of the output all stand on it.
     /// A host gives the capability its sandbox this way, and a test gives it a
-    /// private `ProcessRegistry` the same way.
+    /// runner whose process registry is private the same way.
     ///
     /// - Parameter runner: The runner each command of this verb spawns through.
     init(runner: ShellRunner) {

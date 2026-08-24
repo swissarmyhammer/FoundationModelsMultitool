@@ -1,6 +1,47 @@
 ---
-position_column: todo
-position_ordinal: '9480'
+comments:
+- actor: claude-code
+  id: 01m0tnq79bd9bma7ekqvp88h95
+  text: |-
+    Research done. Facts found before the edit:
+
+    - Precondition met. `FoundationModelsExtras` `origin/main` holds `Sources/FoundationModelsExtras/ProcessRegistry.swift` at commit `090e38a`, and `public final class ProcessRegistry: Sendable` carries `public init()`, `public func register(_:)`, `public func deregister(_:)`, `public var registeredPids`, `public func sweep(_:)` and `public static var global`. The shapes of `register` and `deregister` are the same as the local copy, thus the two call sites in `ShellRunner.run` do not change.
+    - The local copy is used by more files than the card names. `ProcessRegistry()` also stands in three test files beside the registry tests: `ShellRunnerTests.swift`, `ShellExecuteTests.swift` and `ShellHistoryOpsTests.swift`. Each takes `@testable import FoundationModelsMultitool` only, thus each needs `import FoundationModelsExtras` after the type moves out of this package. This is an import line, and no assertion changes.
+    - `Sources/.../Capabilities/Shell/Execute.swift` also names `ProcessRegistry`, in one doc comment. The acceptance criterion says `rg -l "ProcessRegistry" Sources` must name `ShellRunner.swift` ONLY, thus that sentence must stop naming the type.
+    - `Interpreter/JSCInterpreter.swift` does not hold the text `ProcessRegistry`, thus it never enters that grep. It is not touched.
+    - Extras declares tools 6.2 and macOS 27; this package declares tools 6.1 and macOS 27. Extras brings Stencil and Yams as its own pinned dependencies.
+    - `FoundationModelsRouter` declares no `ProcessRegistry`, thus the import adds no ambiguity at the one use site.
+  timestamp: 2026-08-24T19:59:51.595670+00:00
+- actor: claude-code
+  id: 01m0tpwqrzem6aktxthttgc164
+  text: |-
+    Implementation landed. What happened, and the two things the next agent should know:
+
+    1. `swift package resolve` took 10 seconds, and not the 28 minutes an earlier session met. No SwiftPM lock stood under `.build`. Extras resolved at `main (c713295)`, which carries `090e38a`.
+
+    2. The nested integration package needed a LOCAL pin refresh, and this is not a defect of the repository. `swift build --package-path IntegrationTests --build-tests` first failed with `type 'RunKind' has no member 'process'` at `Execute.swift:161` — a line this card never touched. The cause: `IntegrationTests/Package.resolved` is git-ignored, and on this machine it pinned `FoundationModelsRouter` at `37f1339`, while the root package resolves `226ff41`. The older Router carries no `RunKind.process`, thus the same build breaks at HEAD with or without this card. `swift package update --package-path IntegrationTests FoundationModelsRouter` moved that pin to `226ff41`, and the build then completed. Nothing of the repository changed: both `Package.resolved` files stand under `.gitignore:17`, and CI resolves each run from nothing.
+
+    The integration suite ran with `--no-parallel`. The card names `swift test --package-path IntegrationTests`, and `IntegrationTests/Package.swift` states that the flag is mandatory rather than a preference: each scenario queues behind `LiveProfileTurnstile` for the one resident live profile, thus a parallel run spends each test's time limit on queue time and a queued suite fails the way a hang fails. The run is the card's run plus that flag.
+
+    Test counts, which prove the deletion: the run before this card measured 572 tests in 47 suites, and the run after it measures 568 tests in 46 suites — exactly the 4 tests and the 1 suite of `ShellProcessRegistryTests`.
+  timestamp: 2026-08-24T20:20:20.895775+00:00
+- actor: claude-code
+  id: 01m0tpx1d1xbwfxtp5g502nv41
+  text: |-
+    ### implement — changed
+    - evidence: 8 files — Package.swift (+extrasDependencyName, dependency, product on the library target and the test target); DELETED Sources/FoundationModelsMultitool/Capabilities/Shell/ProcessRegistry.swift; DELETED Tests/FoundationModelsMultitoolTests/ShellProcessRegistryTests.swift; Sources/.../Shell/ShellRunner.swift (+import FoundationModelsExtras, registry doc corrected); Sources/.../Shell/Execute.swift (one doc sentence no longer names the type); Tests/.../ShellRunnerTests.swift, ShellExecuteTests.swift, ShellHistoryOpsTests.swift (+import FoundationModelsExtras, no assertion changed). Verified: `rg -l "ProcessRegistry" Sources` names ShellRunner.swift alone and not JSCInterpreter.swift; `swift package resolve` 10s; `swift build` clean; `swift test` 568 tests in 46 suites, 0 failures, and no `ShellProcessRegistryTests`; `swift test --filter ShellRunnerTests` 27 tests pass, the group-kill test and the register/deregister test among them; `swift build --package-path IntegrationTests --build-tests` clean; `swift test --package-path IntegrationTests --no-parallel` 65 tests in 12 suites pass in 12m22s.
+    - next: /review
+  timestamp: 2026-08-24T20:20:30.753690+00:00
+- actor: claude-code
+  id: 01m0tq117e603e2bn5c02j6427
+  text: |-
+    ### test — green
+    - evidence: `swift test` (run 1): 568 tests, 46 suites, all pass. `swift test` (run 2): 568 tests, 46 suites, all pass. No stray `sleep` process after either run (checked with `ps aux`). `swift test --filter ShellRunnerTests`: 27 tests, 1 suite, all pass, including "the group kill at the time limit leaves no survivor in the process tree" and "an echo round trip captures one line and exits zero".
+    - note: one `warning:` line appears in build output ("missing creator for mutated node" for the vendored `mlx-swift_Cmlx.bundle`). It is a SwiftPM/llbuild build-system diagnostic about the third-party `mlx-swift` dependency's resource bundle, not a warning in this package's own Swift source. No compiler warnings from any file in `Sources/` or `Tests/`.
+    - next: ready for review.
+  timestamp: 2026-08-24T20:22:41.646155+00:00
+position_column: doing
+position_ordinal: '80'
 title: Use the shared ProcessRegistry from FoundationModelsExtras; delete the local copy
 ---
 ## What

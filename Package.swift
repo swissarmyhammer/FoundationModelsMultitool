@@ -46,17 +46,29 @@ private let routerDependencyName = "FoundationModelsRouter"
 /// integration test target of the nested package.
 private let metadataRegistryDependencyName = "FoundationModelsMetadataRegistry"
 
+/// The name of the FoundationModelsExtras dependency package.
+///
+/// It is wired as a remote dependency (`main` branch) the same way
+/// `routerDependencyName` is. It carries the family's shared
+/// `ProcessRegistry` — the table of live process-group leaders, and the
+/// `atexit` sweep behind `ProcessRegistry.global` — which the shell
+/// capability's `ShellRunner` registers each spawned child into. This package
+/// held a copy of that type before; the copy is gone, thus every consumer in
+/// the host process now shares one registry and one sweep. The library target
+/// and the unit test target below both link the product.
+private let extrasDependencyName = "FoundationModelsExtras"
+
 /// Base URL for packages published under the swissarmyhammer GitHub
-/// organization — `routerDependencyName` and `metadataRegistryDependencyName`
-/// are fetched from here.
+/// organization — `routerDependencyName`, `metadataRegistryDependencyName`
+/// and `extrasDependencyName` are fetched from here.
 private let swissArmyHammerPackageOrgURL = "git@github.com:swissarmyhammer/"
 
 /// Builds a `.package(url:branch:)` dependency for a package hosted under
 /// `swissArmyHammerPackageOrgURL`, tracking `branch` (`mainBranch` by default).
 ///
-/// This is used for `routerDependencyName` and
-/// `metadataRegistryDependencyName` (the default branch), and for
-/// `mlxPackage` (its published `stable` branch).
+/// This is used for `routerDependencyName`,
+/// `metadataRegistryDependencyName` and `extrasDependencyName` (the default
+/// branch), and for `mlxPackage` (its published `stable` branch).
 private func swissArmyHammerPackage(name: String, branch: String = mainBranch) -> Package.Dependency {
     .package(url: "\(swissArmyHammerPackageOrgURL)\(name).git", branch: branch)
 }
@@ -224,6 +236,7 @@ let package = Package(
     dependencies: [
         swissArmyHammerPackage(name: routerDependencyName),
         swissArmyHammerPackage(name: metadataRegistryDependencyName),
+        swissArmyHammerPackage(name: extrasDependencyName),
         // Only the M9 `cliLibraryTargetName` library below links products from
         // these three — see their documentation above.
         swissArmyHammerPackage(name: mlxPackage, branch: mlxStableBranch),
@@ -247,6 +260,7 @@ let package = Package(
             dependencies: [
                 .product(name: routerDependencyName, package: routerDependencyName),
                 .product(name: metadataRegistryDependencyName, package: metadataRegistryDependencyName),
+                .product(name: extrasDependencyName, package: extrasDependencyName),
             ] + shellProducts,
             path: "\(sourcesPath)\(packageName)"
         ),
@@ -294,6 +308,7 @@ let package = Package(
                 .target(name: cliLibraryTargetName),
                 .product(name: routerDependencyName, package: routerDependencyName),
                 .product(name: metadataRegistryDependencyName, package: metadataRegistryDependencyName),
+                .product(name: extrasDependencyName, package: extrasDependencyName),
             ] + shellProducts,
             path: "\(testsPath)\(packageName)Tests",
             resources: [
