@@ -38,10 +38,26 @@ comments:
     - evidence: 2 files — /Users/wballard/github/swissarmyhammer/FoundationModelsMultitool/Sources/FoundationModelsMultitool/Capabilities/Shell/SeatbeltSandbox.swift, /Users/wballard/github/swissarmyhammer/FoundationModelsMultitool/Sources/FoundationModelsMultitool/Capabilities/Shell/ShellRunner.swift (32 insertions, 18 deletions, comments only); swift test 554 tests / 45 suites pass
     - next: /review
   timestamp: 2026-08-24T12:54:44.065102+00:00
+- actor: claude-code
+  id: 01m0sxqxtte5t3h1gp1g4xqpb6
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit abe193d) — 0 findings, 0 confirmed, 0 refuted, 7 validator passes attempted, 0 failed. 2 files reviewed; 4 `.kanban/` files excluded by `.reviewignore`.
+    - next: task moved to `done`.
+  timestamp: 2026-08-24T13:00:48.858296+00:00
+- actor: claude-code
+  id: 01m0sxrnq2eqphpyp1b1nsn274
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 2 files (Capabilities/Shell/SeatbeltSandbox.swift, Capabilities/Shell/ShellRunner.swift), 32 insertions and 18 deletions, comments only. A fourth doc site the card did not name carried the same cause and was fixed: the `wrap` doc said the policy looks in the working directory value for `../`.
+    - test: green — swift test run twice, 554 passed in 45 suites, 0 failed, 0 skipped. The byte-for-byte profile guard `theProfileOfAFixedConfigurationIsExact` passed both runs, thus the sandbox behavior is unchanged.
+    - commit: abe193d docs(shell): remove ShellPolicy references from sandbox and runner docs
+    - review: clean — zero findings; the task is in done
+  timestamp: 2026-08-24T13:01:13.314075+00:00
 depends_on:
 - 01M0SVAZ3WJH2BQFJSA6E4X8NW
-position_column: doing
-position_ordinal: '8380'
+position_column: done
+position_ordinal: e980
 title: Remove the ShellPolicy references from the sandbox and runner docs
 ---
 ## What

@@ -1,11 +1,8 @@
 // `ShellDotfolder` — where the files of each layer of the `shell` dotfolder
 // stand.
 //
-// The policy has two artifacts on disk, and the two must agree about the
-// layers or the whole model breaks: `config.yaml`, which holds the stacked
-// rules the policy reads, and `decisions.yaml`, which holds the remembered
-// "allow always" and "reject always" answers the decision store reads and
-// writes. Both stand in the same two roots:
+// The dotfolder is where the configuration of the shell capability stands, and
+// it stands in two roots:
 //
 //   * user    — `$XDG_CONFIG_HOME/shell/`, or `~/.config/shell/`
 //   * project — `{git_root}/.shell/`
@@ -16,9 +13,10 @@
 // enough to own here, thus this package needs no package whose real work is to
 // compose several dotfolders, of which one only applies.
 //
-// To resolve both file names from the same two roots, one time and in one
-// place, is what keeps a decision from ever going to a layer that the rules did
-// not come from.
+// One type resolves both roots, thus each reader of the dotfolder sees the
+// same two layers and the same working directory. `ShellState` roots its
+// `<cwd>/.shell` store on the `currentDirectory()` of this type for that
+// reason.
 
 import Foundation
 
@@ -34,34 +32,21 @@ enum ShellDotfolder {
     /// for the project layer.
     static let name = "shell"
 
-    /// The file of stacked rules inside each layer root.
+    /// The configuration file of the shell capability inside each layer root.
+    ///
+    /// **Nothing reads this file yet, and the name is kept on purpose.** The
+    /// write confinement of `SeatbeltSandbox.Options` — `writableRoots` and
+    /// `extraWritePaths` — is stated there as configuration the host supplies,
+    /// and code is the only host that supplies it today. A file the two
+    /// resolvers of this type find is where that configuration is meant to
+    /// come from, and this constant is the one name they resolve. So the
+    /// answer to "where do the write roots come from" is this file, and the
+    /// name stands until a reader gives it a body.
+    ///
+    /// The `.yaml` extension states the intended format. It is not a format
+    /// this package can read right now: no YAML parser is a dependency of it.
+    /// The reader and the parser land together.
     static let configFileName = "config.yaml"
-
-    /// The file of remembered decisions inside each layer root. It stands
-    /// beside `configFileName`, thus the rules of a layer and the answers of
-    /// that layer travel together.
-    static let decisionsFileName = "decisions.yaml"
-
-    /// The suffix that gives the name of the sidecar a writer locks with
-    /// `flock` while it rewrites a file.
-    ///
-    /// A sidecar, and not the file itself, because the rewrite is an atomic
-    /// replace: it renames a new file over the old one, thus a lock on the old
-    /// inode would guard nothing after the rename.
-    static let lockFileSuffix = ".lock"
-
-    /// The permissions a lock sidecar takes when it is not already there:
-    /// writable by the owner, readable by each user. This is the mode an editor
-    /// or `touch` leaves beside the file it guards.
-    ///
-    /// Named here, and not written at the `open` call, because a test that
-    /// stands in for a second process must take the lock on the same terms the
-    /// store does, and two copies of the mode are free to drift apart.
-    ///
-    /// Nothing reads or writes the contents of the sidecar — a caller only
-    /// locks it — thus the mode governs who may take the lock, which is already
-    /// the set of users able to rewrite the file it guards.
-    static let lockFileMode: mode_t = 0o644
 
     /// The user-layer path of `fileName`.
     ///

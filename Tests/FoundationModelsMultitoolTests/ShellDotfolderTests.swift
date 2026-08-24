@@ -29,9 +29,6 @@ struct ShellDotfolderTests {
     /// fallback root of the XDG specification.
     private static let homeConfigFolder = ".config"
 
-    /// The permissions a lock sidecar takes when it is not already there.
-    private static let expectedLockFileMode: mode_t = 0o644
-
     /// The user-layer URL of `fileName` when no valid `XDG_CONFIG_HOME` stands
     /// in the environment.
     ///
@@ -61,10 +58,10 @@ struct ShellDotfolderTests {
         // The XDG specification states an absolute path. A relative value is
         // thus invalid, and the default takes its place.
         let url = ShellDotfolder.userURL(
-            fileName: ShellDotfolder.decisionsFileName,
+            fileName: ShellDotfolder.configFileName,
             environment: [Self.configHomeVariable: Self.relativeConfigHome])
 
-        #expect(url.path == homeFallbackURL(fileName: ShellDotfolder.decisionsFileName).path)
+        #expect(url.path == homeFallbackURL(fileName: ShellDotfolder.configFileName).path)
     }
 
     @Test("An environment with no XDG_CONFIG_HOME falls back to the home directory")
@@ -90,25 +87,14 @@ struct ShellDotfolderTests {
     func projectLayerStandsInTheGitRootDotfolder() throws {
         // `swift test` runs with the package root as the working directory, and
         // that root is inside a git working tree. Thus the walk finds a root.
-        let url = try #require(ShellDotfolder.projectURL(fileName: ShellDotfolder.decisionsFileName))
+        let url = try #require(ShellDotfolder.projectURL(fileName: ShellDotfolder.configFileName))
 
-        #expect(url.lastPathComponent == ShellDotfolder.decisionsFileName)
+        #expect(url.lastPathComponent == ShellDotfolder.configFileName)
 
         let layerRoot = url.deletingLastPathComponent()
         #expect(layerRoot.lastPathComponent == ".\(ShellDotfolder.name)")
 
         let gitRoot = layerRoot.deletingLastPathComponent()
         #expect(FileManager.default.fileExists(atPath: gitRoot.appendingPathComponent(".git").path))
-    }
-
-    @Test("Each layer file has its lock sidecar beside it")
-    func lockSidecarStandsBesideTheFileItGuards() {
-        // The two files of a layer travel together, and each one has a sidecar
-        // that a writer locks while it rewrites the file.
-        #expect(ShellDotfolder.configFileName + ShellDotfolder.lockFileSuffix == "config.yaml.lock")
-        #expect(
-            ShellDotfolder.decisionsFileName + ShellDotfolder.lockFileSuffix
-                == "decisions.yaml.lock")
-        #expect(ShellDotfolder.lockFileMode == Self.expectedLockFileMode)
     }
 }
