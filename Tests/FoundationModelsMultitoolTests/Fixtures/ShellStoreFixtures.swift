@@ -1,11 +1,12 @@
 import Foundation
 import Synchronization
 
-// MARK: - Shell store fixtures
+// MARK: - Shell scratch fixtures
 //
-// The shell store writes to disk. Thus each test of the store needs a
-// directory of its own, and each directory must go away when that test ends.
-// `TestScratch` owns those directories.
+// The shell capability writes to disk — an output buffer, a history file, the
+// working directory a command runs in, the subpaths a sandbox grants. Thus
+// each test that drives one needs a directory of its own, and each directory
+// must go away when that test ends. `TestScratch` owns those directories.
 
 /// The temporary directories of one test, removed when that test ends.
 ///
@@ -57,8 +58,8 @@ final class TestScratch: Sendable {
     ///   Thus a leaked directory is traceable to the suite that made it, and is
     ///   not anonymous in `$TMPDIR`.
     /// - Returns: The new directory, with each symbolic link resolved. The
-    ///   resolved form is what a test compares with, because the store resolves
-    ///   the paths it writes.
+    ///   resolved form is what a test compares with, because the shell
+    ///   capability resolves the paths it takes.
     /// - Throws: When the directory does not create.
     func makeDirectory(prefix: String) throws -> URL {
         let candidate = FileManager.default.temporaryDirectory
@@ -68,32 +69,5 @@ final class TestScratch: Sendable {
         let resolved = candidate.resolvingSymlinksInPath()
         ownedPaths.withLock { $0.append(resolved.path) }
         return resolved
-    }
-}
-
-/// Keeps each advisory warning that a shell store sent, so a test can examine
-/// them.
-///
-/// The store reports a decisions file that it cannot read or cannot parse
-/// through a warning sink, and not through an error. A test that gives this
-/// object as the sink can thus assert that the store spoke.
-///
-/// A reference type, and `Sendable`, because swift-testing runs the tests of
-/// one suite in parallel and thus makes the suite type `Sendable`.
-final class WarningRecorder: Sendable {
-
-    /// Each warning, in the order the store sent it.
-    private let recorded = Mutex<[String]>([])
-
-    /// Keeps one warning.
-    ///
-    /// - Parameter message: The warning text.
-    func record(_ message: String) {
-        recorded.withLock { $0.append(message) }
-    }
-
-    /// Each warning that the store sent up to now.
-    var messages: [String] {
-        recorded.withLock { $0 }
     }
 }

@@ -173,20 +173,13 @@ private let liveLoaderMLXProducts: [Target.Dependency] = [
 /// `apple/swift-subprocess` path answers 404.
 private let subprocessPackage = "swift-subprocess"
 
-/// The YAML package the shell capability reads its configuration with.
+/// The products of `subprocessPackage`, linked by the library target and the
+/// unit test target below.
 ///
-/// `ShellPolicy` imports its `Yams` module for the stacked policy files, and
-/// `ShellDecisionStore` imports it for the remembered decisions.
-private let yamsPackage = "Yams"
-
-/// The products of `subprocessPackage` and `yamsPackage`, linked by the library
-/// target and the unit test target below.
-///
-/// The shell capability is the one consumer of both. `hubProducts` and
+/// The shell capability is the one consumer. `hubProducts` and
 /// `liveLoaderMLXProducts` above group their own products the same way.
 private let shellProducts: [Target.Dependency] = [
-    .product(name: "Subprocess", package: subprocessPackage),
-    .product(name: "Yams", package: yamsPackage),
+    .product(name: "Subprocess", package: subprocessPackage)
 ]
 
 /// The `Sources/` subdirectory prefix used by every source target's `path`
@@ -236,16 +229,15 @@ let package = Package(
         swissArmyHammerPackage(name: mlxPackage, branch: mlxStableBranch),
         huggingFaceOrgPackage(name: huggingFacePackage, from: "0.9.0"),
         huggingFaceOrgPackage(name: transformersPackage, from: "1.3.0"),
-        // The two packages of `shellProducts`. Each one stands under an
-        // organization of its own, so neither helper above fits them.
+        // The package of `shellProducts`. It stands under an organization of
+        // its own, so neither helper above fits it.
         //
-        // Each version is an EXACT pin, and each pin is the pin
+        // The version is an EXACT pin, and it is the pin
         // `../FoundationModelsShelltool/Package.swift` states today. The shell
         // capability moves from that package into this one, so the two must
-        // resolve the same versions: a pre-release carries no compatible-range
+        // resolve the same version: a pre-release carries no compatible-range
         // promise, and a floor would let one package move alone.
         .package(url: "https://github.com/swiftlang/\(subprocessPackage).git", exact: "1.0.0-beta.1"),
-        .package(url: "https://github.com/jpsim/\(yamsPackage).git", exact: "6.2.2"),
     ],
     targets: [
         // Links `shellProducts` for the shell capability this library takes
@@ -293,8 +285,8 @@ let package = Package(
             // the built binary directly.
         ),
         // `shellProducts` again: `DependencyReachTests` imports `Subprocess`
-        // and `Yams` directly, and this target declares each product it
-        // imports, as it does for the two products above.
+        // directly, and this target declares each product it imports, as it
+        // does for the two products above.
         .testTarget(
             name: "\(packageName)Tests",
             dependencies: [

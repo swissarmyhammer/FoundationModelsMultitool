@@ -1,8 +1,21 @@
 ---
 assignees:
 - claude-code
-depends_on:
-- 01M0NAHMQY32H781N3BJ5MRN00
+comments:
+- actor: claude-code
+  id: 01m0svdnx9xt0qdtjkjgbqqe17
+  text: |-
+    ### Cancelled by decision 2026-08-24 — there is no decisions file to pin
+
+    This card ported `decisionsFileSitsBesideTheConfigInEveryDefaultLayer`, which
+    pins `decisions.yaml` beside the `config.yaml` of each layer. The decision store
+    is deleted (`^6e4x8nw`) and no `decisions.yaml` exists in any layer, thus there
+    is nothing to pin.
+
+    The `.shell` dotfolder and `ShellDotfolder` are unaffected. They hold the
+    history of each session, which stays.
+  timestamp: 2026-08-24T12:20:15.913992+00:00
+depends_on: []
 position_column: todo
 position_ordinal: '9180'
 title: Pin the default decisions file beside the config of each layer

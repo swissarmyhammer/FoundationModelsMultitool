@@ -14,8 +14,26 @@ comments:
       - `^dkhwgwr` (route ask through elicit) now depends on this card.
     - next: `^desmgsm` runs first. Then this card.
   timestamp: 2026-08-22T23:50:51.162998+00:00
-depends_on:
-- 01M0NAJ1KNMZS1NVDA6DESMGSM
+- actor: claude-code
+  id: 01m0svdaj5gct0hpkz9g8scvrm
+  text: |-
+    ### Cancelled by decision 2026-08-24 — the shell has no policy layer
+
+    The seatbelt sandbox is the only gate. There is no allow, no deny, and no ask.
+
+    The reason: a denylist over command text is bypassable, and the `matchKey`
+    header of the deleted decision store already argued this at length — quoting
+    starts again inside `$( )`, and a lexer that is a little wrong grants what
+    nobody granted. The sandbox is a kernel boundary and does not care how a command
+    is spelled.
+
+    Two consequences are carried by new cards, because this card owned them:
+    - The command-length and environment-value-length caps move to `ShellRunner`
+      (`^xgnygf8`). `ShellRunner.swift:289` deferred them here, thus they would
+      otherwise be unowned.
+    - `SeatbeltSandbox` docs stop deferring to this type (`^98zgzyq`).
+  timestamp: 2026-08-24T12:20:04.293171+00:00
+depends_on: []
 position_column: doing
 position_ordinal: '80'
 title: Port ShellPolicy, the allow, deny, and ask decision

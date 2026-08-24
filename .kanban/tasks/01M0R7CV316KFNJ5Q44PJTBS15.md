@@ -44,8 +44,24 @@ comments:
     - evidence: 5 files — Sources/FoundationModelsMultitool/Surface/MultiToolBuilder.swift, Sources/FoundationModelsMultitool/Surface/Capability.swift, Tests/FoundationModelsMultitoolTests/CapabilityRegistrationTests.swift, Tests/FoundationModelsMultitoolTests/BuilderSurfaceTests.swift, Tests/FoundationModelsMultitoolTests/Fixtures/CapabilityRegistrationFixtures.swift. `swift test`: 595 tests in 46 suites, 0 failures, 0 compiler warnings. Every acceptance criterion and every listed test of the card is in the diff.
     - next: /review
   timestamp: 2026-08-24T00:12:45.134996+00:00
-position_column: doing
-position_ordinal: '8380'
+- actor: claude-code
+  id: 01m0rj4tc1kz2d4wbs2akpkp63
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit 2b1880e) — 0 findings, 0 confirmed, 0 refuted, 7 attempted, 0 failed. 5 files reviewed; 4 `.kanban/` files excluded by `.reviewignore`.
+    - next: task moved to `done`. No prior `## Review Findings` section to carry.
+  timestamp: 2026-08-24T00:18:53.953012+00:00
+- actor: claude-code
+  id: 01m0rj5hnchvm2w2h1r2h1v795
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 5 files (Surface/MultiToolBuilder.swift, Surface/Capability.swift, Tests/CapabilityRegistrationTests.swift, Tests/BuilderSurfaceTests.swift, Tests/Fixtures/CapabilityRegistrationFixtures.swift)
+    - test: green — swift test, 595 passed in 46 suites, 0 failed, 0 skipped
+    - commit: 2b1880e feat(surface): make withCapability(_:) claim ownership of its noun
+    - review: clean — zero findings; the task is in done
+  timestamp: 2026-08-24T00:19:17.804030+00:00
+position_column: done
+position_ordinal: e780
 title: Make withCapability(_:) claim ownership of its noun
 ---
 ## What

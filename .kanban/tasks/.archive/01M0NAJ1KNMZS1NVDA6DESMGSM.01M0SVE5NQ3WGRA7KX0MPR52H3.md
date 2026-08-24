@@ -722,6 +722,24 @@ comments:
 
     **Also open, and not this card's fault:** `../FoundationModelsShelltool/Sources/ShellTool/ShellDecisionStore.swift` still carries the ORIGINAL fail-open. Both packages read the same layer files. A card is filed on that board.
   timestamp: 2026-08-23T01:13:38.838578+00:00
+- actor: claude-code
+  id: 01m0svd5tzergwd7mbfy4jhpc9
+  text: |-
+    ### Cancelled by decision 2026-08-24 — the shell has no ask-permission semantics
+
+    The seatbelt sandbox is the only gate on what a shell command may do. No
+    question is ever asked, thus a store of remembered answers has no reason to
+    exist. The stuck A-versus-B YAML question is void with it.
+
+    Replaced by `^6e4x8nw` (delete the store and the remembered-answer machinery).
+    The reason and the limit of this posture go into `eventplan.md` under
+    `^pqe3khv`.
+
+    Archived, not deleted: the review history here — the fail-open decode, the
+    merge-key regressions, the duplicate-key corruption — is the record of why a
+    hand-built YAML reader was the wrong path, and the sibling
+    `FoundationModelsShelltool` still carries the original fail-open.
+  timestamp: 2026-08-24T12:19:59.455936+00:00
 depends_on:
 - 01M0NAF9VBHGY2DFNM5PFA3DER
 position_column: doing

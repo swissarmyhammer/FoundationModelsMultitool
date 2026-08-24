@@ -3,7 +3,6 @@ assignees:
 - claude-code
 depends_on:
 - 01M0NAK9M8RG58Q7BTTWJDYXZ3
-- 01M0NAJMVWH870YH735DKHWGWR
 position_column: todo
 position_ordinal: 8b80
 title: Add the tools.shell.execute verb

@@ -1,8 +1,23 @@
 ---
 assignees:
 - claude-code
-depends_on:
-- 01M0NAHMQY32H781N3BJ5MRN00
+comments:
+- actor: claude-code
+  id: 01m0svdj7d3b3bxb42tth57065
+  text: |-
+    ### Cancelled by decision 2026-08-24 — there is no ask outcome to route
+
+    The shell capability asks no permission question, thus nothing routes into
+    `ToolContext.elicit` from the policy path. `ShellPolicy` itself is cancelled
+    (`^j5mrn00`).
+
+    `elicit()` and the MCP elicitation passthrough are NOT cancelled and are not
+    touched. They are the general capability for a question in the middle of a run —
+    `await elicit("Which repository should I target?")` — and the MCP spec envelope
+    with `accept` / `decline` / `cancel` and URL mode. Only the shell permission use
+    of them goes away.
+  timestamp: 2026-08-24T12:20:12.141413+00:00
+depends_on: []
 position_column: todo
 position_ordinal: '8980'
 title: Route the ask policy outcome through ToolContext.elicit
