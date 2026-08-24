@@ -293,6 +293,94 @@ comments:
     - Also ran `ShellRunnerTests`, `ShellStateTests`, `ShellExecuteTests` in isolation (69 tests, 3 suites) — all green, including `cancelerStopsALongCommandAndReportsStopped`, `cancelerKillsTheWholeProcessGroupAndNotTheLeaderAlone`, and `completeIfRunningLeavesAnAlreadyStoppedCommandUntouched`, which cover the ordering this fix touches.
     - next: none. The suite is clean and no stray process remains after any run.
   timestamp: 2026-08-24T19:34:52.873408+00:00
+- actor: claude-code
+  id: 01m0tmndzvcbnxxfdcjyd0r9a4
+  text: |-
+    ### review — findings
+    - evidence: 1 finding (1 confirmed, 0 refuted, 7 validators attempted) — Sources/FoundationModelsMultitool/Capabilities/Shell/Execute.swift:682
+    - scope: review sha HEAD~1..HEAD (commit f4e06d6)
+    - next: remove the unused `init(state:)`, then re-run review
+  timestamp: 2026-08-24T19:41:24.347448+00:00
+- actor: claude-code
+  id: 01m0tmpd60wa8h9bkpcngn9n72
+  text: |-
+    ### finish iteration 2 — findings
+
+    The blocker of iteration 1 is gone. Router shipped the seam as commit `8260def`, and `swift package update FoundationModelsRouter` moved the checkout of this package to `226ff41`, thus `DetachmentParameterProviding` now carries `detachmentRunKind` and `detachmentCanceler(forCompletionToken:)`.
+
+    - implement: changed — 2 new files (Capabilities/Shell/Execute.swift, Tests/ShellExecuteTests.swift). `Execute` conforms to `DetachmentParameterProviding`, declares `.process`, and gives the `killpg` canceler of `ShellRunner`. No code names `SessionMailbox.park`. 8/8 acceptance criteria and 8/8 test items green.
+    - test: green — swift test, 572 passed in 47 suites, 0 failed, 0 skipped. **The test step found a real defect, and not flakiness.** A cancel that arrived before the child registered its pid sent no signal and still reported `.stopped`, thus the process leaked. Two files were fixed (Capabilities/Shell/ShellState.swift, Capabilities/Shell/ShellRunner.swift): the canceler now waits for the pid, or for the run to end with no pid, before it reports. Proved with a 200-run stress probe, which was then removed, and 10 clean full runs with no stray process.
+    - commit: f4e06d6 feat(shell): add the tools.shell.execute verb
+    - review: findings — Sources/FoundationModelsMultitool/Capabilities/Shell/Execute.swift:682
+
+    The open finding, word for word: `code-hygiene/dead-code-swift` — function.constructor `init(state:)` is unused.
+
+    The reviewer notes the concurrency fix was inside the reviewed diff and all 7 validators ran over it with 0 findings.
+
+    Also filed this iteration: `^fs7ywtg` — the journal `op` is `"execute"` and not `"execute shell"`, because Router stamps `op` from `tool.name` and a verb does not know its own noun. That derivation belongs at the registration site.
+  timestamp: 2026-08-24T19:41:56.288077+00:00
+- actor: claude-code
+  id: 01m0tn1b9y600x4m27k4k1zp9z
+  text: |
+    ### The finding is answered, and which initializer survives
+
+    The finding, word for word:
+    `Sources/FoundationModelsMultitool/Capabilities/Shell/Execute.swift:682`
+    `code-hygiene/dead-code-swift` — function.constructor `init(state:)` is unused.
+
+    **`init(state:)` is genuinely unreachable, and it is the one that goes.** Before
+    deleting it I asked which initializer a caller that SHOULD exist will need. Two
+    readings answered the same way:
+
+    - Nothing names it today. A grep for `Execute(`, `Execute(state:` and
+      `.init(state:` over the whole repository answers one call site:
+      `ShellExecuteTests.makeVerb(over:)`, which writes
+      `Execute(runner: ShellRunner(state: state, registry: ProcessRegistry()))`.
+      Periphery indexes the test target and counts a test as a caller, so a test
+      calling `init(state:)` would have kept it alive. None does.
+    - **`ShellCapability` (`^zpdk266`, not yet built) needs `init(runner:)`, and
+      `init(state:)` cannot serve it.** That card states its initializer "takes the
+      store directory, the ... sandbox, and the output chunk stream". `Execute`
+      reaches a sandbox and an output chunk stream only through `ShellRunner` —
+      they are `ShellRunner.sandbox` and `ShellRunner.outputChunkStream`, and
+      `ShellRunner` has the synthesized memberwise initializer, so the capability
+      writes `Execute(runner: ShellRunner(state:sandbox:outputChunkStream:))`.
+      `init(state:)` builds a runner with NO confinement, which is the one thing
+      that capability exists to supply. Keeping it and dropping the other would
+      make the capability unbuildable.
+
+    So the survivor is `init(runner:)`, and it is now the one initializer of the
+    type. Its doc comment said "This is the initializer a host uses ...", which read
+    against the sibling that is gone; it now states why the type takes a runner
+    rather than a bare store, and names both callers.
+
+    `Execute` differs from `GetLines` and `GrepHistory` here, and the difference is
+    real rather than an oversight: those two take `init(state:)` because a reader
+    needs the store and nothing else, and this verb SPAWNS, so it needs the whole
+    runner.
+
+    **The sweep over the rest of the file found nothing more.** Each remaining
+    declaration has a reference: the four `private static let` constants and every
+    `private` helper are called in-file; `reportFields`, `noSessionCorrection`,
+    `blankCommandCorrection`, `parsedEnvironment`, `EnvironmentParse` and
+    `correction(for:)` are called from `call(arguments:)` or `report(of:in:)`; the
+    five `DetachmentParameterProviding` members are protocol requirements Router
+    reads; `ExecuteArguments` and its five fields are decoded by
+    `detachmentClocks(from:)` and by the tests. Periphery reads the whole package
+    index, so its one finding over this file at HEAD is the whole set.
+
+    `elicit()` was never named in this file, and no permission name came back:
+    `ShellPermissionRemoval` is green over all four of its tests.
+  timestamp: 2026-08-24T19:47:54.814549+00:00
+- actor: claude-code
+  id: 01m0tn1m5bbfraqfhnfpj8gvyy
+  text: |
+    ### implement — changed
+    - evidence: 1 file — `Sources/FoundationModelsMultitool/Capabilities/Shell/Execute.swift`. `init(state:)` deleted, and the doc comment of the surviving `init(runner:)` restated so it no longer reads against a sibling that is gone. `git status` over `Sources`, `Tests`, `eventplan.md` and `Package.swift` shows that one file and nothing else. `swift build --build-tests`: no compiler warning. `swift test --filter ShellExecute`: 10 tests, 1 suite, passed. `swift test`: 572 tests in 47 suites, passed, 0 failed, 0 skipped. `swift test --filter ShellPermissionRemoval`: 4 tests, passed.
+    - the one open finding is now `- [x]`: `Sources/FoundationModelsMultitool/Capabilities/Shell/Execute.swift:682` `code-hygiene/dead-code-swift` — function.constructor `init(state:)` is unused.
+    - the whole file was swept for the same cause, not the named line alone; every other declaration has a caller, and the comment above lists them.
+    - next: `/review`. The card stays in `doing`.
+  timestamp: 2026-08-24T19:48:03.883495+00:00
 depends_on:
 - 01M0NAK9M8RG58Q7BTTWJDYXZ3
 position_column: doing
@@ -428,3 +516,12 @@ registration".
 
 ## Workflow
 - Use `/tdd` — write failing tests first, then implement to make them pass. #phase-2 #eventplan
+
+## Review Findings (2026-08-24 14:36)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 4 file(s) reviewed, 8 not reviewed.
+
+> 8 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 8 file(s)
+
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Shell/Execute.swift:682` `code-hygiene/dead-code-swift` — function.constructor `init(state:)` is unused.

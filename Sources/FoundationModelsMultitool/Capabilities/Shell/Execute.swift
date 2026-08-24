@@ -675,19 +675,13 @@ struct Execute: Tool {
     /// the process-group registry and the confinement of the capability.
     let runner: ShellRunner
 
-    /// Makes the verb over one store, with the default registry and no
-    /// confinement.
-    ///
-    /// - Parameter state: The history and output store of the shell capability.
-    init(state: ShellState) {
-        self.runner = ShellRunner(state: state)
-    }
-
     /// Makes the verb over one runner.
     ///
-    /// This is the initializer a host uses to give the capability its
-    /// confinement, and the one a test uses to give it a private
-    /// `ProcessRegistry`.
+    /// The runner is the whole of what this verb is configured with, and that
+    /// is why it takes one rather than a bare store: the confinement, the
+    /// process-group registry and the live view of the output all stand on it.
+    /// A host gives the capability its sandbox this way, and a test gives it a
+    /// private `ProcessRegistry` the same way.
     ///
     /// - Parameter runner: The runner each command of this verb spawns through.
     init(runner: ShellRunner) {
