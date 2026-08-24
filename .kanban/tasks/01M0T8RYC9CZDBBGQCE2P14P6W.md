@@ -40,8 +40,35 @@ comments:
     - note: one `warning:` line appears in build output ("missing creator for mutated node" for the vendored `mlx-swift_Cmlx.bundle`). It is a SwiftPM/llbuild build-system diagnostic about the third-party `mlx-swift` dependency's resource bundle, not a warning in this package's own Swift source. No compiler warnings from any file in `Sources/` or `Tests/`.
     - next: ready for review.
   timestamp: 2026-08-24T20:22:41.646155+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m0tsemgr6q86ydekmzwwkm4v
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit 15b4530) — 0 findings, 0 confirmed, 0 refuted, 7 attempted, 0 failed. Zero findings. All 12 acceptance and test boxes verified against the tree and checked. `swift build` succeeded; `swift test` 568 tests in 46 suites passed with no `ShellProcessRegistryTests`; `swift test --package-path IntegrationTests --no-parallel` 65 tests in 12 suites passed.
+    - next: moved to done. No open findings.
+  timestamp: 2026-08-24T21:05:04.536224+00:00
+- actor: claude-code
+  id: 01m0tsfw6nwpjsfhty50pr03ee
+  text: |-
+    ### finish iteration 1 — clean
+
+    The cross-repo precondition was verified before the work started: `y418mzx` on the FoundationModelsExtras board is done, `ProcessRegistry` is `public final class`, and the commit is pushed to `origin/main`.
+
+    - implement: changed — 8 files. Deleted Capabilities/Shell/ProcessRegistry.swift and Tests/ShellProcessRegistryTests.swift; Package.swift gained the extrasDependencyName constant and the product on the library and unit test targets; ShellRunner.swift, Execute.swift and three test files updated. Interpreter/JSCInterpreter.swift untouched.
+    - test: green — swift test run twice, 568 passed in 46 suites, 0 failed, 0 skipped. The fall from 572 in 47 is the 4 deleted registry tests and their suite. No stray process after either run. `swift test --filter ShellRunnerTests` gives 27 passed, both named regression tests among them.
+    - commit: 15b4530 refactor(shell): use shared ProcessRegistry from FoundationModelsExtras
+    - review: clean — zero findings; all 12 checkboxes verified and checked; the task is in done.
+
+    **Two notes worth keeping.**
+
+    The integration suite needs `--no-parallel`. `IntegrationTests/Package.swift:43` states the flag "is not a preference", and CI sets `integration-no-parallel: true`. A run without it fails the way a hang fails.
+
+    The gated live-model scenarios are stochastic. Three integration runs were needed. Run 1 (wrongly parallel) failed the nested-generation probe on its time limit; run 2 failed `delayedEchoMechanism` because the model declined to call the tool; run 3 was fully green at 65 tests in 12 suites. Each failing scenario passed on a run where the other failed, thus both were grading flakes and not a regression. The registry-sensitive mechanism checks — `inBandCollection`, `noBackgroundRunsAtAnswer`, `noBackgroundRunsAfterRespond` — passed in all three runs, which is the evidence that the shared registry and its one `atexit` sweep did not change the register, deregister and reap path.
+
+    One local, git-ignored fix was needed: `IntegrationTests/Package.resolved` pinned Router at `37f1339` while the root resolves `226ff41`, thus that build broke at HEAD with or without this card. `swift package update --package-path IntegrationTests FoundationModelsRouter` moved the pin. No repository file changed.
+  timestamp: 2026-08-24T21:05:45.173430+00:00
+position_column: done
+position_ordinal: ef80
 title: Use the shared ProcessRegistry from FoundationModelsExtras; delete the local copy
 ---
 ## What
@@ -108,22 +135,22 @@ sentence that says this package holds its own copy of the registry.
 
 ## Acceptance Criteria
 
-- [ ] `Sources/FoundationModelsMultitool/Capabilities/Shell/ProcessRegistry.swift`
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Shell/ProcessRegistry.swift`
       does not exist.
-- [ ] `Tests/FoundationModelsMultitoolTests/ShellProcessRegistryTests.swift`
+- [x] `Tests/FoundationModelsMultitoolTests/ShellProcessRegistryTests.swift`
       does not exist.
-- [ ] `Package.swift` has an `extrasDependencyName` constant, adds the package
+- [x] `Package.swift` has an `extrasDependencyName` constant, adds the package
       through `swissArmyHammerPackage(name:)`, and gives the product to the
       library target and the test target.
-- [ ] `ShellRunner.swift` has `import FoundationModelsExtras`.
-- [ ] `rg -l "ProcessRegistry" Sources` names `ShellRunner.swift` only, and does
+- [x] `ShellRunner.swift` has `import FoundationModelsExtras`.
+- [x] `rg -l "ProcessRegistry" Sources` names `ShellRunner.swift` only, and does
       not name `JSCInterpreter.swift`.
-- [ ] No comment in `Capabilities/Shell` says this package holds its own copy
+- [x] No comment in `Capabilities/Shell` says this package holds its own copy
       of the registry.
 
 ## Tests
 
-- [ ] `Tests/FoundationModelsMultitoolTests/ShellRunnerTests.swift` (926 lines)
+- [x] `Tests/FoundationModelsMultitoolTests/ShellRunnerTests.swift` (926 lines)
       is the regression test for this task. It spawns real processes and counts
       them in the process tree. Two of its tests exercise the registry path
       directly: "the group kill at the time limit leaves no survivor in the
@@ -131,13 +158,13 @@ sentence that says this package holds its own copy of the registry.
       Every test must pass with no change to its assertions. That proves the
       shared registry behaves the same in the register, deregister, and reap
       path.
-- [ ] Do not port the deleted registry tests into this package. They live in
+- [x] Do not port the deleted registry tests into this package. They live in
       `FoundationModelsExtras` with the type.
-- [ ] Run `swift package resolve` first, so the new dependency resolves.
-- [ ] Run `swift build`. It must succeed.
-- [ ] Run `swift test`. Every remaining test must pass, and the output must not
+- [x] Run `swift package resolve` first, so the new dependency resolves.
+- [x] Run `swift build`. It must succeed.
+- [x] Run `swift test`. Every remaining test must pass, and the output must not
       name `ShellProcessRegistryTests`.
-- [ ] Run `swift test --package-path IntegrationTests` as well. A root
+- [x] Run `swift test --package-path IntegrationTests` as well. A root
       `swift test` cannot reach that nested package, and CI runs it through the
       `integration-package-path: IntegrationTests` input to the shared
       `swift-ci` workflow. Its tests cover model scenarios, not the shell
@@ -150,3 +177,38 @@ sentence that says this package holds its own copy of the registry.
   cannot build until that type is `public` on `main`.
 - `/tdd` does not apply. This task adds no behavior. It removes a duplicate.
   `ShellRunnerTests` is the existing test that must stay green.
+
+## Review Verification (2026-08-24 15:23)
+
+Reviewer confirmed all 12 boxes against the tree at commit `15b4530`:
+
+- `ProcessRegistry.swift` and `ShellProcessRegistryTests.swift` are both gone
+  from the commit (154 and 153 deletions).
+- `Package.swift:59` declares `extrasDependencyName`; line 239 adds
+  `swissArmyHammerPackage(name: extrasDependencyName)`; lines 263 and 311 give
+  the product to the library target and the test target.
+- `ShellRunner.swift:57` has `import FoundationModelsExtras`.
+- `rg -l "ProcessRegistry" Sources` names `ShellRunner.swift` only.
+  `JSCInterpreter.swift:977` keeps `registry.register(resolve:reject:name:)`
+  on its own unrelated type and the commit does not touch that file.
+- `ShellRunner.swift:94` now states the type is the SHARED registry and that
+  this package holds no copy. `Execute.swift:684` no longer says a test gives a
+  private `ProcessRegistry`. The remaining "behavioral port" headers in
+  `Execute.swift`, `GetLines.swift` and `GrepHistory.swift` describe those verb
+  files against the sibling operation files; none claims a registry copy.
+- The three surviving Shell test files each gained one import line and no
+  assertion changed.
+- `swift package resolve` exit 0. `swift build` succeeded.
+- `swift test`: 568 tests in 46 suites passed. Zero occurrences of
+  `ShellProcessRegistryTests`. Both named registry-path tests passed — "an echo
+  round trip captures one line and exits zero" and "the group kill at the time
+  limit leaves no survivor in the process tree".
+- `swift test --package-path IntegrationTests --no-parallel`: 65 tests in 12
+  suites passed, every scenario PASS. The suite requires `--no-parallel`
+  (`IntegrationTests/Package.swift:43`, and CI sets
+  `integration-no-parallel: true`). Two earlier runs each went red on a
+  different gated live-model grading scenario, and each of those scenarios
+  passed on the other run, so both were stochastic model-behavior flakes. The
+  registry-sensitive mechanism checks `inBandCollection`,
+  `noBackgroundRunsAtAnswer` and `noBackgroundRunsAfterRespond` passed in every
+  run.

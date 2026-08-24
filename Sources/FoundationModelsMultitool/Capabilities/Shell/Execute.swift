@@ -48,13 +48,19 @@
 // `wait` render theirs, thus the model reads one format for all of them.
 //
 // A request the verb cannot make stays IN BAND, as a `correction`. It is never
-// thrown: a blank command, an environment that is not a JSON object of strings,
-// and a confinement the sandbox refuses are each a mistake the model corrects
-// inside the turn, and a thrown error would end the turn instead.
+// thrown: a blank command, a command over the length cap, an environment that
+// is not a JSON object of strings, an environment value the verb refuses, and a
+// confinement the sandbox refuses are each a mistake the model corrects inside
+// the turn, and a thrown error would end the turn instead.
 //
-// Out of scope here: the limit on the length of a command and the limit on the
-// length of an environment value. `ShellRunner.run(_:)` states that those
-// belong to this verb, and they arrive with the card that depends on this one.
+// **The cap on the length of a command and the cap on the length of an
+// environment value stand HERE.** `ShellRunner.run(_:)` states that they belong
+// to this verb and that the runner takes input this verb already examined. Each
+// is measured in UTF-8 BYTES rather than in characters, because what the caps
+// stand in front of is `E2BIG` from `posix_spawn`, and the kernel counts the
+// bytes of the argv and envp block. UTF-8 text runs up to four times longer in
+// bytes than in grapheme clusters, so a count of characters would let a command
+// through that the spawn then refuses.
 
 import Foundation
 import FoundationModels
@@ -259,12 +265,21 @@ extension Execute {
             return Self.corrected(Self.blankCommandCorrection)
         }
 
+        let commandByteCount = arguments.command.utf8.count
+        if commandByteCount > Self.maximumCommandLengthBytes {
+            return Self.corrected(Self.commandTooLongCorrection(measuring: commandByteCount))
+        }
+
         let environment: [String: String]
         switch Self.parsedEnvironment(arguments.environment) {
         case .parsed(let parsed):
             environment = parsed
         case .invalid(let message):
             return Self.corrected(message)
+        }
+
+        if let refusal = Self.environmentRefusal(in: environment) {
+            return Self.corrected(refusal)
         }
 
         let request = ShellRunner.Request(
@@ -563,6 +578,141 @@ extension Execute {
     static let blankCommandCorrection =
         "The command is empty, thus there is nothing to run. Give the command line to run."
 
+    /// The longest command line this verb passes on, in UTF-8 BYTES: 256 KiB.
+    ///
+    /// The number is the one the sibling shell tool's settings defaults state
+    /// for the length of a command. The MEASURE is not: the sibling counted
+    /// grapheme clusters, and this verb counts bytes, because the cap stands
+    /// in front of `E2BIG` from `posix_spawn` and the kernel counts the bytes
+    /// of the argv block. One emoji is one cluster and four bytes, so a count
+    /// of characters passes a command four times over the real limit.
+    static let maximumCommandLengthBytes = 262_144
+
+    /// The longest environment value this verb passes on, in UTF-8 BYTES.
+    ///
+    /// The number the sibling states, measured the same way and for the same
+    /// reason as ``maximumCommandLengthBytes``: `envp` shares the block the
+    /// kernel caps.
+    static let maximumEnvironmentValueLengthBytes = 1024
+
+    /// The byte a null is. No environment value may hold one.
+    private static let nullByte = UInt8(ascii: "\0")
+
+    /// The byte a line feed is. No environment value may hold one.
+    private static let lineFeedByte = UInt8(ascii: "\n")
+
+    /// The byte a carriage return is. No environment value may hold one.
+    private static let carriageReturnByte = UInt8(ascii: "\r")
+
+    /// What a command over ``maximumCommandLengthBytes`` says to the model.
+    ///
+    /// The message names the check, the cap and the measured length, because
+    /// a model that reads "too long" alone cannot tell how much to cut.
+    ///
+    /// - Parameter byteCount: How many UTF-8 bytes the command measures.
+    /// - Returns: The correction.
+    static func commandTooLongCorrection(measuring byteCount: Int) -> String {
+        "The command is \(byteCount) UTF-8 bytes, over the limit of \(maximumCommandLengthBytes) "
+            + "bytes on the length of one command. Nothing was run. Write the long part to a file "
+            + "and run that file instead."
+    }
+
+    /// The correction that names the one environment value this verb refuses,
+    /// or `nil` when every value can go to the child.
+    ///
+    /// The entries are read in the order of their names, thus a map holding
+    /// more than one bad value names the same one on every call. A dictionary
+    /// carries no order of its own, and a message that moved from call to call
+    /// would make one mistake read as several.
+    ///
+    /// - Parameter environment: The extra environment the call asked for.
+    /// - Returns: The correction, or `nil` to run the command.
+    static func environmentRefusal(in environment: [String: String]) -> String? {
+        for name in environment.keys.sorted() {
+            guard let value = environment[name],
+                let defect = EnvironmentValueDefect.allCases.first(where: { $0.stands(in: value) })
+            else { continue }
+            return defect.correction(forValueNamed: name, measuring: value.utf8.count)
+        }
+        return nil
+    }
+
+    /// One way an environment value cannot go to a child process.
+    ///
+    /// The three checks the sibling's policy made on a value, ported whole and
+    /// kept as data rather than as a chain of `if` statements: they differ in
+    /// what they look for and in what the message calls them, and in nothing
+    /// else. ``allCases`` is read in declaration order, which is the order the
+    /// sibling examined them in.
+    ///
+    /// The null case and the line-break case are the injection-relevant two,
+    /// and neither is decoration. `execve` takes each entry as one
+    /// NUL-terminated C string, so a null inside a value silently truncates it
+    /// and everything after the null goes away. A carriage return or a line
+    /// feed inside a value ends the line of every reader that takes the
+    /// environment back as text, so one value can write what reads as a second
+    /// variable.
+    enum EnvironmentValueDefect: Sendable, Equatable, CaseIterable {
+
+        /// The value runs past ``Execute/maximumEnvironmentValueLengthBytes``.
+        case overLength
+
+        /// The value holds a null byte.
+        case embeddedNull
+
+        /// The value holds a carriage return or a line feed.
+        case embeddedLineBreak
+
+        /// Whether `value` carries this defect.
+        ///
+        /// Each test reads the UTF-8 bytes and never the characters. The
+        /// length is a byte count for the reason the cap states, and the line
+        /// break is a byte test because Swift reads a CR LF PAIR as ONE
+        /// grapheme cluster, which equals neither `"\r"` nor `"\n"` — a search
+        /// for either Character therefore passes a value holding that pair,
+        /// which is exactly the value this check exists to stop.
+        ///
+        /// - Parameter value: The environment value to examine.
+        /// - Returns: `true` when the value carries this defect.
+        func stands(in value: String) -> Bool {
+            switch self {
+            case .overLength:
+                return value.utf8.count > Execute.maximumEnvironmentValueLengthBytes
+            case .embeddedNull:
+                return value.utf8.contains(Execute.nullByte)
+            case .embeddedLineBreak:
+                return value.utf8.contains(Execute.lineFeedByte)
+                    || value.utf8.contains(Execute.carriageReturnByte)
+            }
+        }
+
+        /// What this defect says to the model.
+        ///
+        /// One shape for all three cases, thus each message names the check
+        /// that failed, the cap, and the measured length in bytes, and the
+        /// model reads one sentence pattern however the value went wrong.
+        ///
+        /// - Parameters:
+        ///   - name: The name of the environment variable.
+        ///   - byteCount: How many UTF-8 bytes its value measures.
+        /// - Returns: The correction.
+        func correction(forValueNamed name: String, measuring byteCount: Int) -> String {
+            "The environment value for \(name) \(summary). A value must hold no null byte, no "
+                + "carriage return and no line feed, and must be within "
+                + "\(Execute.maximumEnvironmentValueLengthBytes) UTF-8 bytes; this one measures "
+                + "\(byteCount) bytes. Nothing was run."
+        }
+
+        /// What the correction calls this defect.
+        private var summary: String {
+            switch self {
+            case .overLength: return "is over the cap on the length of an environment value"
+            case .embeddedNull: return "holds a null byte"
+            case .embeddedLineBreak: return "holds a carriage return or a line feed"
+            }
+        }
+    }
+
     /// The parsed extra environment, or the correction that says why the text
     /// is not one.
     ///
@@ -666,9 +816,11 @@ struct Execute: Tool {
         it. Give timeout to bound the command, workingDirectory to run it somewhere else, and \
         environment as a JSON object of string values to add variables. Pass wait false to start a \
         long command in the background and get its completion token back at once, then collect it \
-        with the wait tool. A command that is empty, an environment that is not a JSON object of \
-        strings, and a command the sandbox cannot confine each come back as a correction rather \
-        than as an error — read it, correct the call, and ask again.
+        with the wait tool. A command that is empty or longer than 262144 UTF-8 bytes, an \
+        environment that is not a JSON object of strings, an environment value longer than 1024 \
+        UTF-8 bytes or holding a null byte, a carriage return or a line feed, and a command the \
+        sandbox cannot confine each come back as a correction rather than as an error — read it, \
+        correct the call, and ask again.
         """
 
     /// The runner this verb spawns each command through, which holds the store,

@@ -76,6 +76,30 @@ struct ShellExecuteTests {
     /// on exactly one — see `RunEventFunnel`, which drops a second.
     private static let terminalEventCount = 1
 
+    /// The cap on the length of one command, in UTF-8 bytes, as the sibling
+    /// shell tool's settings defaults state it: 256 KiB.
+    ///
+    /// Written out here rather than read off ``Execute``, thus a port that
+    /// carried the wrong number fails in this file rather than at a command
+    /// the kernel refuses.
+    private static let portedCommandLengthCap = 262_144
+
+    /// The cap on the length of one environment value, in UTF-8 bytes, from
+    /// the same defaults.
+    private static let portedEnvironmentValueLengthCap = 1024
+
+    /// The name of the environment variable the environment cases set.
+    private static let environmentVariableName = "SAH_PROBE"
+
+    /// One character that is four UTF-8 bytes, thus a command written out of
+    /// it measures four times as many bytes as it holds characters.
+    private static let fourByteCharacter = "😀"
+
+    /// How many of ``fourByteCharacter`` the multi-byte command holds: half
+    /// the byte cap, thus that command stands far under the cap in characters
+    /// and at twice the cap in bytes.
+    private static let multiByteCommandCharacterCount = Execute.maximumCommandLengthBytes / 2
+
     // MARK: - The ground of one test
 
     /// Makes a store in a temporary directory this test owns.
@@ -173,6 +197,55 @@ struct ShellExecuteTests {
 
     /// The failure ``parkedRun(in:)`` throws when no run parks.
     private struct ParkedRunAbsent: Error {}
+
+    /// A command of exactly `byteCount` UTF-8 bytes that writes
+    /// ``inlineMarker``.
+    ///
+    /// The padding stands behind a `#`, thus the shell reads it as a comment
+    /// and the command runs however long it is.
+    ///
+    /// - Parameter byteCount: How many UTF-8 bytes the command must measure.
+    ///   It stands at or over the length of the part that does the writing.
+    /// - Returns: The command line.
+    private static func command(ofByteCount byteCount: Int) -> String {
+        let head = "echo \(inlineMarker) #"
+        return head + String(repeating: "a", count: byteCount - head.utf8.count)
+    }
+
+    /// One extra environment entry, as the JSON text the argument takes.
+    ///
+    /// - Parameter valueLiteral: The value of ``environmentVariableName``,
+    ///   spelled the way JSON spells it.
+    /// - Returns: The `environment` argument.
+    private static func environmentJSON(valueLiteral: String) -> String {
+        "{\"\(environmentVariableName)\":\"\(valueLiteral)\"}"
+    }
+
+    /// Calls the verb with one extra environment entry and answers the
+    /// correction it gave back.
+    ///
+    /// Each environment case differs in the value alone, thus each of them
+    /// calls this and reads the message.
+    ///
+    /// - Parameter valueLiteral: The value of ``environmentVariableName``,
+    ///   spelled the way JSON spells it.
+    /// - Returns: The corrective message.
+    /// - Throws: When the store or the answer is not what the case needs.
+    private func refusal(forEnvironmentValueLiteral valueLiteral: String) async throws -> String {
+        let state = try makeState()
+        let verb = makeVerb(over: state)
+        let context = makeOuterRunContext(mailbox: SessionMailbox(), sink: RecordingEventSink())
+
+        let output = try await Self.call(
+            verb,
+            ExecuteArguments(
+                command: "echo \(Self.inlineMarker)",
+                environment: Self.environmentJSON(valueLiteral: valueLiteral)),
+            under: context)
+
+        #expect(await state.listCommands().isEmpty)
+        return try #require(try Self.report(output)["correction"] as? String)
+    }
 
     // MARK: - The rendered surface
 
@@ -390,5 +463,118 @@ struct ShellExecuteTests {
 
         #expect(try Self.report(output)["correction"] as? String != nil, "answer was: \(output)")
         #expect(await state.listCommands().isEmpty)
+    }
+
+    // MARK: - The caps that stand in front of E2BIG
+
+    /// The caps are the sibling's own numbers, thus a port that carried the
+    /// wrong one fails here rather than at a command the kernel refuses.
+    @Test("the command cap and the environment-value cap are the ported numbers")
+    func theCapsAreThePortedNumbers() {
+        #expect(Execute.maximumCommandLengthBytes == Self.portedCommandLengthCap)
+        #expect(Execute.maximumEnvironmentValueLengthBytes == Self.portedEnvironmentValueLengthCap)
+    }
+
+    @Test("a command of exactly the cap runs")
+    func aCommandOfExactlyTheCapRuns() async throws {
+        let state = try makeState()
+        let verb = makeVerb(over: state)
+        let context = makeOuterRunContext(mailbox: SessionMailbox(), sink: RecordingEventSink())
+
+        let output = try await Self.call(
+            verb,
+            ExecuteArguments(command: Self.command(ofByteCount: Execute.maximumCommandLengthBytes)),
+            under: context)
+        let report = try Self.report(output)
+
+        #expect(report["status"] as? String == CommandStatus.completed.rawValue)
+        let lines = try #require(report["output"] as? [String])
+        #expect(lines.contains { $0.contains(Self.inlineMarker) }, "output was: \(lines)")
+    }
+
+    @Test("a command one byte over the cap answers with a correction and runs nothing")
+    func aCommandOneByteOverTheCapAnswersWithACorrection() async throws {
+        let state = try makeState()
+        let verb = makeVerb(over: state)
+        let context = makeOuterRunContext(mailbox: SessionMailbox(), sink: RecordingEventSink())
+        let byteCount = Execute.maximumCommandLengthBytes + 1
+
+        let output = try await Self.call(
+            verb, ExecuteArguments(command: Self.command(ofByteCount: byteCount)), under: context)
+
+        let message = try #require(try Self.report(output)["correction"] as? String)
+        #expect(
+            message.contains("\(Execute.maximumCommandLengthBytes)"), "message was: \(message)")
+        #expect(message.contains("\(byteCount)"), "message was: \(message)")
+        #expect(await state.listCommands().isEmpty)
+    }
+
+    /// The cap counts UTF-8 BYTES and never characters, because `E2BIG` from
+    /// `posix_spawn` counts the bytes of the argv block. This is the command a
+    /// count of grapheme clusters lets through.
+    @Test("a command under the cap in characters and over it in bytes answers with a correction")
+    func aMultiByteCommandOverTheByteCapAnswersWithACorrection() async throws {
+        let state = try makeState()
+        let verb = makeVerb(over: state)
+        let context = makeOuterRunContext(mailbox: SessionMailbox(), sink: RecordingEventSink())
+        let command = String(
+            repeating: Self.fourByteCharacter, count: Self.multiByteCommandCharacterCount)
+
+        #expect(command.count < Execute.maximumCommandLengthBytes)
+        #expect(command.utf8.count > Execute.maximumCommandLengthBytes)
+
+        let output = try await Self.call(verb, ExecuteArguments(command: command), under: context)
+
+        #expect(try Self.report(output)["correction"] as? String != nil, "answer was: \(output)")
+        #expect(await state.listCommands().isEmpty)
+    }
+
+    @Test("an environment value over the cap answers with a correction")
+    func anEnvironmentValueOverTheCapAnswersWithACorrection() async throws {
+        let byteCount = Execute.maximumEnvironmentValueLengthBytes + 1
+
+        let message = try await refusal(
+            forEnvironmentValueLiteral: String(repeating: "a", count: byteCount))
+
+        #expect(
+            message.contains("\(Execute.maximumEnvironmentValueLengthBytes)"),
+            "message was: \(message)")
+        #expect(message.contains("\(byteCount)"), "message was: \(message)")
+    }
+
+    /// A null byte inside a value truncates it at the `execve` boundary, where
+    /// each entry is a NUL-terminated C string.
+    @Test("an environment value holding a null byte answers with a correction")
+    func anEnvironmentValueHoldingANullByteAnswersWithACorrection() async throws {
+        let message = try await refusal(forEnvironmentValueLiteral: "a\\u0000b")
+
+        #expect(message.contains("holds a null byte"), "message was: \(message)")
+    }
+
+    @Test("an environment value holding a line feed answers with a correction")
+    func anEnvironmentValueHoldingALineFeedAnswersWithACorrection() async throws {
+        let message = try await refusal(forEnvironmentValueLiteral: "a\\nb")
+
+        #expect(
+            message.contains("holds a carriage return or a line feed"), "message was: \(message)")
+    }
+
+    @Test("an environment value holding a carriage return answers with a correction")
+    func anEnvironmentValueHoldingACarriageReturnAnswersWithACorrection() async throws {
+        let message = try await refusal(forEnvironmentValueLiteral: "a\\rb")
+
+        #expect(
+            message.contains("holds a carriage return or a line feed"), "message was: \(message)")
+    }
+
+    /// Swift reads a CR LF pair as ONE grapheme cluster, which equals neither
+    /// `"\r"` nor `"\n"`, so a search for either Character passes this value
+    /// through. The check reads the UTF-8 bytes for that reason.
+    @Test("an environment value holding a CR LF pair answers with a correction")
+    func anEnvironmentValueHoldingACarriageReturnLineFeedPairAnswersWithACorrection() async throws {
+        let message = try await refusal(forEnvironmentValueLiteral: "a\\r\\nb")
+
+        #expect(
+            message.contains("holds a carriage return or a line feed"), "message was: \(message)")
     }
 }
