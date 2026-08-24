@@ -36,9 +36,14 @@ public protocol Capability: Sendable {
     ///
     /// The noun must be a legal TypeScript identifier. `MultiTool.Builder`
     /// examines it at `buildRegistry()`, and not at registration — see
-    /// `MultiToolBuilderError` for why no registration method throws. Two
-    /// capabilities that give the same noun and the same verb are also a
+    /// `MultiToolBuilderError` for why no registration method throws.
+    ///
+    /// The capability OWNS this noun. `MultiTool.Builder.withCapability(_:)`
+    /// claims the whole `tools.<noun>` namespace, so a second registration
+    /// under it — another capability, an `addGroup(named:_:)` call, a
+    /// `register(noun:tool:)` call, or a standalone tool of that name — is a
     /// failure at `buildRegistry()`, and not a silent failure at dispatch.
+    /// The verbs need not collide: eventplan.md states "Nouns are unique."
     var noun: String { get }
 
     /// The tools of this capability, in the order they render.

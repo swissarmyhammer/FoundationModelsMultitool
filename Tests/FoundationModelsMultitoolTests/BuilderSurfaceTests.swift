@@ -57,6 +57,20 @@ struct BuilderSurfaceTests {
         #expect(surface.source.contains("declare function createIssue("))
     }
 
+    @Test("two addGroup(named:) calls with one group name merge their tools into that one namespace")
+    func addGroupMergesEveryCallOfOneGroupName() throws {
+        // A group is a merge, and a capability is a claim. `withCapability(_:)`
+        // owns its noun and rejects a second registration under it; a group
+        // name stays open, so the two calls below make one namespace.
+        let surface = try MultiTool.Builder()
+            .addGroup(named: "github", [GithubCreateIssueTool()])
+            .addGroup(named: "github", [GithubSearchTool()])
+            .build()
+
+        #expect(surface.entries.map(\.path) == ["github.createIssue", "github.search"])
+        #expect(surface.entries.allSatisfy { $0.group == "github" })
+    }
+
     @Test("two tools in different groups may share the same bare name — duplicates across groups are fine")
     func duplicateNameAcrossDifferentGroupsIsFine() throws {
         let surface = try MultiTool.Builder()

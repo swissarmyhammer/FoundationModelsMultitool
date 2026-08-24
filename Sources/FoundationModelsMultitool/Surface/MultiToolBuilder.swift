@@ -29,6 +29,26 @@ public struct MultiToolBuilderError: Error, Sendable, Equatable, CustomStringCon
         /// without this check — the same posture `ToolAPIRenderer` takes
         /// toward a tool's own `name`.
         case illegalGroupName
+
+        /// A noun a capability owns was registered a second time —
+        /// eventplan.md § "Registration of capabilities: noun/verb": "Nouns
+        /// are unique. Registration rejects a duplicate noun. An MCP server
+        /// with the name `files`, against the files capability, fails loudly
+        /// at `buildRegistry()`."
+        ///
+        /// `withCapability(_:)` claims the whole `tools.<noun>` namespace, so
+        /// three shapes raise this: a second capability that claims the same
+        /// noun, a tool that `addGroup(named:_:)` or `register(noun:tool:)`
+        /// puts under that noun, and a standalone tool whose flat
+        /// `tools.<name>` entry wears the noun.
+        ///
+        /// Distinct from `duplicateName`, which reports two tools that would
+        /// render at one path. This case reports ownership, so it is raised
+        /// even when every path differs: `tools.demo.first` and
+        /// `tools.demo.second` collide nowhere, and a second owner of `demo`
+        /// is the failure all the same. A group name claims nothing — two
+        /// `addGroup(named:_:)` calls with one name still merge.
+        case duplicateNoun
     }
 
     /// What kind of failure this was.
@@ -103,6 +123,34 @@ extension MultiTool {
         /// Every tool queued so far, in add order.
         private var pending: [PendingTool] = []
 
+        /// One capability's claim on one noun, recorded by
+        /// `withCapability(_:)` — the fact that tells an entry the capability
+        /// itself queued from an entry another registration put under the
+        /// same noun.
+        ///
+        /// `withCapability(_:)`, `addGroup(named:_:)` and
+        /// `register(noun:tool:)` all queue the same `.grouped` item, so the
+        /// queue alone cannot say who registered what. The claim answers that
+        /// with the half-open range of queue positions the capability's own
+        /// tools fill, and it names the claimant so the failure can too.
+        private struct CapabilityClaim {
+            /// The noun this capability owns.
+            let noun: String
+
+            /// The name of the capability's own type. A capability holds a
+            /// noun and its tools and nothing else, so its type is the only
+            /// identity an error message can give it.
+            let claimant: String
+
+            /// The half-open range of `pending` positions holding this
+            /// capability's own tools. `withCapability(_:)` queues them
+            /// together, so one range covers all of them.
+            let toolPositions: Range<Int>
+        }
+
+        /// Every claim a capability has made so far, in claim order.
+        private var capabilityClaims: [CapabilityClaim] = []
+
         /// Creates an empty builder.
         public init() {}
 
@@ -173,16 +221,30 @@ extension MultiTool {
         /// `register(noun:tool:)` called one time for each tool. Built-in
         /// capabilities and user capabilities come through the same door.
         ///
-        /// A second capability with the same noun and the same verb is a
-        /// failure at `buildRegistry()`. Two capabilities with the same noun
-        /// and different verbs merge into that one namespace, exactly as two
-        /// `addGroup(named:_:)` calls with the same group do.
+        /// The method also CLAIMS the noun for that capability, which is
+        /// where it parts from `addGroup(named:_:)`. A group name is a merge:
+        /// two calls with one name put their tools in one namespace. A noun
+        /// is owned: the capability holds the whole `tools.<noun>` namespace,
+        /// and a second registration under it — another capability, an
+        /// `addGroup(named:_:)` call, a `register(noun:tool:)` call, or a
+        /// standalone tool of that name — is a `.duplicateNoun` failure at
+        /// `buildRegistry()`, however the verbs fall. eventplan.md §
+        /// "Registration of capabilities: noun/verb": "Nouns are unique."
         ///
         /// - Parameter capability: the capability to register.
         /// - Returns: `self`, for fluent chaining.
         @discardableResult
         public func withCapability(_ capability: any Capability) -> Self {
+            let firstPosition = pending.count
             enqueue(capability.tools) { register(noun: capability.noun, tool: $0) }
+            capabilityClaims.append(
+                CapabilityClaim(
+                    noun: capability.noun,
+                    claimant: String(describing: type(of: capability)),
+                    toolPositions: firstPosition..<pending.count
+                )
+            )
+            return self
         }
 
         /// Queues every tool in `tools` under the named `group`, destined
@@ -260,6 +322,14 @@ extension MultiTool {
         /// their fully-qualified paths (`tools.<groupA>.<name>` vs.
         /// `tools.<groupB>.<name>`) never collide.
         ///
+        /// Validates one rule more, per eventplan.md § "Registration of
+        /// capabilities: noun/verb": a noun `withCapability(_:)` claims is
+        /// owned whole, so nothing else may register under it. The check runs
+        /// after the rule above, so a real path collision keeps its
+        /// `.duplicateName` report and the ownership rule answers what is
+        /// left. A group name claims nothing, so two `addGroup(named:_:)`
+        /// calls with one name still merge.
+        ///
         /// - Returns: the rendered catalog paired with its live tool
         ///   instances, in `.directMode() == false` (both `runCode` and
         ///   `searchTools` surfaced).
@@ -269,8 +339,10 @@ extension MultiTool {
         ///   rendered — plan.md's completeness contract: "`Builder.build()`
         ///   fails loudly if a tool can't be fully rendered rather than
         ///   emit a lossy stub." `MultiToolBuilderError` if a group name
-        ///   isn't a legal TypeScript identifier, or if two tools would
-        ///   collide at the same top-level snippet call path.
+        ///   isn't a legal TypeScript identifier, if two tools would
+        ///   collide at the same top-level snippet call path, or if anything
+        ///   other than the owning capability registers under a noun
+        ///   `withCapability(_:)` claimed.
         public func buildRegistry() throws -> MultiTool.Registry {
             var entries: [APISurface.Entry] = []
             var toolsByPath: [String: any Tool] = [:]
@@ -325,6 +397,8 @@ extension MultiTool {
                 }
             }
 
+            try validateNounOwnership(standaloneNames: standaloneNames)
+
             if let collision = standaloneNames.intersection(groupNames).first {
                 throw MultiToolBuilderError(
                     kind: .duplicateName,
@@ -336,6 +410,77 @@ extension MultiTool {
             }
 
             return MultiTool.Registry(surface: APISurface(entries: entries), tools: toolsByPath)
+        }
+
+        /// Answers which capability owns each claimed noun.
+        ///
+        /// - Returns: the owning claim of each noun a capability claims.
+        /// - Throws: `MultiToolBuilderError` of kind `.duplicateNoun`, naming
+        ///   the noun and both capabilities, when one noun holds two claims.
+        private func capabilityOwnersByNoun() throws -> [String: CapabilityClaim] {
+            var owners: [String: CapabilityClaim] = [:]
+            for claim in capabilityClaims {
+                guard let standing = owners[claim.noun] else {
+                    owners[claim.noun] = claim
+                    continue
+                }
+                throw MultiToolBuilderError(
+                    kind: .duplicateNoun,
+                    name: claim.noun,
+                    message: "Noun \"\(claim.noun)\" is claimed by two capabilities, "
+                        + "\(standing.claimant) and \(claim.claimant); a capability owns its "
+                        + "whole tools.\(claim.noun) namespace, so a second capability can't "
+                        + "claim it. Give one of the two a noun of its own."
+                )
+            }
+            return owners
+        }
+
+        /// Holds each capability to the whole noun it claims — eventplan.md §
+        /// "Registration of capabilities: noun/verb": "Nouns are unique.
+        /// Registration rejects a duplicate noun."
+        ///
+        /// Runs after the render loop above, so two tools that would render at
+        /// one path are still reported as the `.duplicateName` collision they
+        /// are. What is left for this method is the ownership rule, which
+        /// holds even where every path differs.
+        ///
+        /// - Parameter standaloneNames: the rendered name of every standalone
+        ///   tool of this builder, which the render loop above collected.
+        /// - Throws: `MultiToolBuilderError` of kind `.duplicateNoun` when two
+        ///   capabilities claim one noun, when a registration no capability
+        ///   made lands under a claimed noun, or when a standalone tool wears
+        ///   a claimed noun as its own flat name.
+        private func validateNounOwnership(standaloneNames: Set<String>) throws {
+            let owners = try capabilityOwnersByNoun()
+
+            for (position, item) in pending.enumerated() {
+                guard case .grouped(let noun, let tool) = item,
+                    let owner = owners[noun],
+                    !owner.toolPositions.contains(position)
+                else { continue }
+                throw MultiToolBuilderError(
+                    kind: .duplicateNoun,
+                    name: noun,
+                    message: "Noun \"\(noun)\" is owned by the capability \(owner.claimant), and "
+                        + "the tool \"\(tool.name)\" was registered under it by "
+                        + "addGroup(named:_:) or register(noun:tool:); a capability owns its "
+                        + "whole tools.\(noun) namespace. Register that tool under a noun of "
+                        + "its own, or put it in the capability's own tools."
+                )
+            }
+
+            for claim in capabilityClaims where standaloneNames.contains(claim.noun) {
+                throw MultiToolBuilderError(
+                    kind: .duplicateNoun,
+                    name: claim.noun,
+                    message: "Noun \"\(claim.noun)\" is owned by the capability "
+                        + "\(claim.claimant), and a standalone tool of that name renders flat at "
+                        + "tools.\(claim.noun); the one path would be ambiguous between a "
+                        + "function and the namespace of the capability. Rename the standalone "
+                        + "tool, or give the capability a noun of its own."
+                )
+            }
         }
     }
 }

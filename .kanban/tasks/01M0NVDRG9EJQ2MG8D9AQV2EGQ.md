@@ -24,8 +24,24 @@ comments:
     - evidence: 3 files — Sources/FoundationModelsMultitool/Capabilities/Shell/CommandSandbox.swift, Sources/FoundationModelsMultitool/Capabilities/Shell/ShellDecisionStore.swift, Tests/FoundationModelsMultitoolTests/SeatbeltSandboxTests.swift. 5 of 5 acceptance and test items checked. `swift test --filter SeatbeltSandbox` → 22 tests, 1 suite, passed. `swift test` → 589 tests, 46 suites, passed, 0 failed, 0 skipped. `swift build --build-tests` → no new warning. `SeatbeltSandbox.swift` is byte-for-byte unchanged; the temporary resolver swap for the RED step was reverted.
     - next: `/review`
   timestamp: 2026-08-23T23:55:57.199956+00:00
-position_column: doing
-position_ordinal: '8380'
+- actor: claude-code
+  id: 01m0rh3m7d83sx59p5jcgvz24c
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit efcfaed) — 0 findings, 0 confirmed, 0 refuted, 7 attempted, 0 failed. 3 files reviewed; 4 `.kanban/` files excluded by `.reviewignore`.
+    - next: task moved to `done`.
+  timestamp: 2026-08-24T00:00:46.317655+00:00
+- actor: claude-code
+  id: 01m0rh46zyrtra5dnfw9cvvw4p
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 3 files (Capabilities/Shell/CommandSandbox.swift, Capabilities/Shell/ShellDecisionStore.swift, Tests/SeatbeltSandboxTests.swift)
+    - test: green — swift test, 589 passed in 46 suites, 0 failed, 0 skipped
+    - commit: efcfaed fix(shell): name realpath(3) alone as the CommandSandbox path resolver
+    - review: clean — zero findings; the task is in done
+  timestamp: 2026-08-24T00:01:05.534381+00:00
+position_column: done
+position_ordinal: e680
 title: Correct the path-resolution contract on CommandSandbox
 ---
 ## What
