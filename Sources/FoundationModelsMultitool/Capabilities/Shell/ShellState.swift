@@ -104,7 +104,11 @@ struct LogLine: Equatable, Sendable {
 }
 
 /// One matching line that `grep` gives back.
-struct GrepResult: Equatable, Sendable {
+///
+/// Named with the capability prefix because the files capability's
+/// `tools.files.grep` verb owns the bare `GrepResult` name for its own flat
+/// result, the way each verb names its result `<Verb>Result`.
+struct ShellGrepMatch: Equatable, Sendable {
     /// The completion token of the command the line belongs to.
     let commandID: String
     /// The line number inside the command, counted from 1.
@@ -117,7 +121,7 @@ struct GrepResult: Equatable, Sendable {
 /// count of the matches.
 struct GrepResults: Sendable {
     /// The matches, capped at the limit the caller gave.
-    let results: [GrepResult]
+    let results: [ShellGrepMatch]
     /// The number of matches the scan found, which the limit does not change.
     let total: Int
 }
@@ -548,7 +552,7 @@ actor ShellState {
         }
 
         let sessionPrefix = "\(sessionID)\(Self.fieldSeparator)"
-        var results: [GrepResult] = []
+        var results: [ShellGrepMatch] = []
         var total = 0
         for line in try readLogLines() {
             guard
@@ -605,7 +609,7 @@ actor ShellState {
     }
 
     /// Parses one `{sessionID}:{commandID}:{lineNumber}:{text}` log line into a
-    /// `GrepResult`.
+    /// `ShellGrepMatch`.
     ///
     /// It refuses a line of another session, a line that the optional
     /// command-id filter excludes, and a line whose fields do not parse.
@@ -619,7 +623,7 @@ actor ShellState {
     ///   the answer.
     private static func parseLogLine(
         _ line: String, sessionPrefix: String, commandIDFilter: String?
-    ) -> GrepResult? {
+    ) -> ShellGrepMatch? {
         guard line.hasPrefix(sessionPrefix) else { return nil }
         let rest = line.dropFirst(sessionPrefix.count)
         let parts = rest.split(
@@ -635,7 +639,7 @@ actor ShellState {
         // The same as Rust `grep`'s `str::trim_end()`: drop the trailing
         // whitespace of the matched line. (`getLines` keeps it, on purpose.)
         while let last = text.last, last.isWhitespace { text = text.dropLast() }
-        return GrepResult(commandID: commandID, lineNumber: lineNumber, text: String(text))
+        return ShellGrepMatch(commandID: commandID, lineNumber: lineNumber, text: String(text))
     }
 
     // MARK: - The store directory

@@ -75,13 +75,30 @@ comments:
     - note: one run showed a single transient failure in "eventplan.md names no part of the deleted permission design" (file read raced with a concurrent process). The suite was re-run twice more, both fully clean, and the same test passed in isolation. Treated as environmental, not a code defect.
     - next: ready for commit.
   timestamp: 2026-08-25T22:38:19.624341+00:00
+- actor: claude-code
+  id: 01m0xhfk2axtdevyhb64fchpj0
+  text: |-
+    ### review — clean
+    - evidence: review sha d054d63~1..d054d63, backend local — counts: 0 findings, 0 confirmed, 0 refuted, 7 attempted, 0 failed. All 3 prior findings are checked.
+    - next: none. The task moved to done.
+  timestamp: 2026-08-25T22:43:30.506444+00:00
+- actor: claude-code
+  id: 01m0xhg2375ks03sbqa2s1ppmh
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — named size constants in Write.swift, read-back coverage through the Read verb in FilesWriteTests.swift
+    - test: green — swift test, 908 tests in 67 suites, 0 failed (one transient eventplan.md read clash noted, reproduced clean twice)
+    - commit: d054d63 (iteration 1: 9ae854c)
+    - review: clean — review sha d054d63~1..d054d63, 0 findings, all 3 prior items checked
+    - task landed in done
+  timestamp: 2026-08-25T22:43:45.895564+00:00
 depends_on:
 - 01M0WWPWHFXSDJKH2GYZCR6QZ8
 - 01M0WWNWDG0SPX34065AZ7JW8H
 - 01M0WWQYXE8CCDSKQRPD3PX093
 - 01M0WXACC6Q0PY1QKZ6Y2TH7J4
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ff8380
 title: Make the tools.files.write verb from WriteFile, without diagnostics
 ---
 ## What

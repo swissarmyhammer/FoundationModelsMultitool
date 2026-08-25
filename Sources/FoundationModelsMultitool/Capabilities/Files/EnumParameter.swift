@@ -2,11 +2,10 @@
 // parameter.
 //
 // A behavioral port of `../FoundationModelsFileTool/Sources/FileTool/
-// EnumParameter.swift`, unchanged in behavior. The consuming verbs — the
-// read verb's `format` (^d3px093) and the grep verb's `outputMode` and
-// `type` (^2j06zb7) — are not in this package yet, thus until those land
-// the caller is the `CorrectiveVocabularyTests` suite, which pins the
-// rendered messages byte for byte.
+// EnumParameter.swift`, unchanged in behavior. The consuming verbs are the
+// read verb's `format` and the grep verb's `outputMode` and `type`, and
+// the `CorrectiveVocabularyTests` suite pins the rendered messages byte
+// for byte.
 
 import Foundation
 
