@@ -98,10 +98,29 @@ comments:
     - evidence: 6 files — Tests/FoundationModelsMultitoolTests/Fixtures/PollFixtures.swift (new, holds `TestPoll`), Fixtures/ShellRunPlaneFixtures.swift, ShellSessionSweepTests.swift, SuspendedContextTests.swift, ShellRunnerTests.swift, ShellHistoryOpsTests.swift. All 4 review findings are now checked. `swift test --filter ShellSessionSweep`: 4 tests in 1 suite passed, 0 failures. `swift test`: 599 tests in 49 suites passed, 0 failures — the baseline held. `swift build --build-tests` carries exactly 1 warning, the pre-existing out-of-scope `missing creator for mutated node: .../mlx-swift_Cmlx.bundle/Contents/MacOS`. swiftlint `no_magic_numbers` over the 6 files: 0 violations; over the HEAD copies of the two flagged files: the 2 flagged lines. `Sources/` is unchanged.
     - next: /review
   timestamp: 2026-08-25T14:29:49.026408+00:00
+- actor: claude-code
+  id: 01m0wngjza6a3eyhgcq0atfxgp
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (800adc0) — 0 findings, 0 confirmed, 0 refuted, 7 attempted, 0 failed; 6 files reviewed, 2 skipped by `.reviewignore`. All 4 findings of the pass on 2026-08-25 09:14 are corrected: the two `code-hygiene/magic-numbers-swift` literals moved into `TestPoll.intervalMilliseconds` and `TestPoll.deadlineSeconds` (swiftlint 0.65.0, `only_rules: [no_magic_numbers]`, reports 0 violations over the six files); the two `reuse/reuse` duplicates are gone, because `Tests/FoundationModelsMultitoolTests/Fixtures/PollFixtures.swift` now holds the one `TestPoll` of the target and `waitUntil(_:before:_:)` calls `holds(before:_:)`, thus one loop. No local `pollInterval` and no local `waitUntil` is left in `ShellSessionSweepTests`, `SuspendedContextTests`, `ShellRunnerTests` or `ShellHistoryOpsTests`.
+    - next: card moved to `done`.
+  timestamp: 2026-08-25T14:34:43.050818+00:00
+- actor: claude-code
+  id: 01m0wnh9c7wq778jj9j9mzw638
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — 6 test files. All four findings of iteration 1 corrected, each cause removed from the whole file and not only the named line.
+      - The two `magic-numbers-swift` findings: the cause is a numeric literal standing as a CALL ARGUMENT. swiftlint's `no_magic_numbers` exempts a literal that a declaration names directly, which is why `parkedRunSleepSeconds = 60` never reported while `Duration.milliseconds(25)` did. Each number is now named first, then used to build its `Duration`.
+      - The two `reuse/reuse` findings: there is now one poll for the whole test target in the new `Tests/FoundationModelsMultitoolTests/Fixtures/PollFixtures.swift`. `TestPoll` holds the interval, the deadline, `holds(before:_:)` and `waitUntil(_:before:_:)`, and `waitUntil` calls `holds`, so there is one loop and not two. Every duplicate constant and duplicate `waitUntil` is gone from `ShellRunPlaneFixtures`, `ShellSessionSweepTests`, `SuspendedContextTests`, `ShellRunnerTests` and `ShellHistoryOpsTests`.
+      - The sweep proof was not weakened. The process-group reading is still a poll of `killpg(pgid, 0)` to `ESRCH` under the same 10-second bound, and still `#expect(gone, …)` for each group rather than a throw, so both groups are reported and the reap-and-no-orphan proof holds.
+    - test: green — `swift test --filter ShellSessionSweep` 4 of 4 passed; full `swift test` 599 tests in 49 suites passed, 0 failures. Baseline held. swiftlint `no_magic_numbers` reports 0 violations over the six files.
+    - commit: 800adc0 — test(shell): share one poll helper and name each duration (^1hq8xny)
+    - review: clean — `review sha HEAD~1..HEAD`, 0 findings over 6 files, 7 validator passes attempted. The reviewer confirmed each prior finding is fixed in the code and not only marked, and ran swiftlint itself to check. Card landed in done.
+  timestamp: 2026-08-25T14:35:05.991898+00:00
 depends_on:
 - 01M0NAMWPXE0GJ7SGW6ZPDK266
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: f480
 title: Kill shell process groups in the session-end sweep
 ---
 ## What

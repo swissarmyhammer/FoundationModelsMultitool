@@ -195,11 +195,30 @@ comments:
     - card: the last unchecked item of the description is now `[x]`, and its BLOCKED note is replaced by where the test stands. All 13 items are checked.
     - next: `/review`. The card stays in `doing`.
   timestamp: 2026-08-25T13:41:03.964887+00:00
+- actor: claude-code
+  id: 01m0wjqp99amcmad0h281b4rg8
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit 72a21f4) — 0 findings, 0 confirmed, 1 refuted, 7 attempted, 0 failed. 1 source file reviewed (Tests/FoundationModelsMultitoolTests/RegisteredJournalOpTests.swift); 4 `.kanban/` files excluded by `.reviewignore`. No prior `## Review Findings` section on the card; all 13 checklist items are checked.
+    - next: card moved to `done`.
+  timestamp: 2026-08-25T13:46:10.089470+00:00
+- actor: claude-code
+  id: 01m0wjrczyx37jbpafypdyzmr5
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — 1 file, `Tests/FoundationModelsMultitoolTests/RegisteredJournalOpTests.swift`. The card's last item, the `"execute shell"` journal-op test, was blocked on Router ^8y20bwd and its consumer ^fs7ywtg. Both landed, so the item was written and checked off. No production file changed: the mechanism already produced the right op once the registration-site derivation landed.
+    - The test is `anAwaitedShellRunCarriesThePair`, with a private `JournalOpProbeSandbox`. It reads `ToolContext.current?.op` from inside `Execute`'s own call, which is the one field both `ParkedRun.op` and `ToolInvocationRecord.op` are built from, and passes the invocation through unchanged so the command really runs. The other readings cannot answer for an awaited run: the surface entry is a declaration and not a run, `ParkedRun.op` answers only for a run that parks, and the snippet journal answers the OUTER op because `ToolContext.post(_:)` re-stamps forwarded events.
+    - test: green — swift test 595 tests in 48 suites passed, 0 failures. That is up exactly one from 594. `--filter ShellCapability` 10 passed; `--filter RegisteredJournalOp` 7 passed. The implementer ran the full suite green four times, so no separate test step was run.
+    - commit: 72a21f4 — test(shell): assert an execute run carries the op "execute shell" (^zpdk266)
+    - review: clean — `review sha HEAD~1..HEAD`, 0 findings, 1 candidate refuted, 7 validator pairs attempted; card landed in done
+
+    All 13 of 13 checklist items are now checked.
+  timestamp: 2026-08-25T13:46:33.342215+00:00
 depends_on:
 - 01M0NAKY7B8H1Z0J2VCBWV86SY
 - 01M0NAMBSX4GXQ1ETQXZ6ZWRN5
-position_column: doing
-position_ordinal: '8180'
+position_column: done
+position_ordinal: f380
 title: Add ShellCapability and Builder.withShell()
 ---
 ## What

@@ -73,8 +73,26 @@ comments:
     - evidence: 3 files — Sources/FoundationModelsMultitool/Capabilities/Shell/ShellRunner.swift, Sources/FoundationModelsMultitool/Capabilities/Shell/Execute.swift, Tests/FoundationModelsMultitoolTests/ShellExecuteTests.swift. `swift test`: 588 tests in 47 suites passed, 0 failures, 0 warnings from the package.
     - next: /review
   timestamp: 2026-08-24T22:32:36.166439+00:00
-position_column: doing
-position_ordinal: '8280'
+- actor: claude-code
+  id: 01m0tyrer91t82qbdmgxd8zjm8
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit 58cf703) — 0 findings, 0 confirmed, 0 refuted, 7 validator attempts, 0 failed, 0 skipped. Reviewed Execute.swift, ShellRunner.swift, ShellExecuteTests.swift; 4 `.kanban/` files excluded by `.reviewignore`.
+    - next: task moved to `done`. No findings section appended.
+  timestamp: 2026-08-24T22:37:49.193293+00:00
+- actor: claude-code
+  id: 01m0tys89wh1e5t8n8ed246y2s
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 3 files (Capabilities/Shell/ShellRunner.swift, Capabilities/Shell/Execute.swift, Tests/ShellExecuteTests.swift). `ShellRunner` gained `callerOutputChunkStream` beside the host `outputChunkStream`, with a private computed `outputChunkStreams` that both tee points read. `Execute` changed one line. TDD held: the chunk test first failed with `events == []`, the defect word for word.
+    - test: green — swift test run twice, 588 passed in 47 suites, 0 failed, 0 skipped. No stray process after either run.
+    - commit: 58cf703 fix(shell): give host-supplied output stream its own tee point
+    - review: clean — zero findings; the task is in done.
+
+    **Why the substitution existed, and why the fix keeps both reasons.** The implementer verified each before acting: the verb calls `finish()` on its own view at the end of a run, and a host stream outlives every run, thus `finish()` must not reach it. And `ShellOutputChunkStream` documents one consumer — *"Two loops that read at the same time divide the events between them"* — thus the verb must not drain the host's stream, or it would steal the host's chunks. Draining the configured stream was refused for that reason, and the tee is the shape that holds both constraints.
+  timestamp: 2026-08-24T22:38:15.356752+00:00
+position_column: done
+position_ordinal: f180
 title: A host-supplied ShellOutputChunkStream never receives a chunk
 ---
 ## What

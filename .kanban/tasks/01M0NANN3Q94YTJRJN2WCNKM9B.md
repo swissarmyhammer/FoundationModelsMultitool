@@ -299,10 +299,31 @@ comments:
         removed, and the FoundationModelsRouter package was not touched.
     - next: `/review`
   timestamp: 2026-08-25T15:46:02.320653+00:00
+- actor: claude-code
+  id: 01m0wstz4mnhc0phyt0y7wrp9p
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (ffa79df) — 0 findings, 7 validators attempted, 0 failed, 0 skipped. All 10 findings of the first pass are corrected in `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Support/ShellElevationRunner.swift`: five `Duration.seconds(...)` literals now name their number first, and nine top-level constants are now `private` (the seven check names plus `shellElevationCommand` and `shellElevationPrompt`). `runShellElevationScenario(name:)` stays `internal` for `ShellElevationTests.swift`. Card moved to `done`.
+    - next: none. This is the last card of the phase-2 shell work.
+  timestamp: 2026-08-25T15:50:17.492775+00:00
+- actor: claude-code
+  id: 01m0wsvwnw6zp7tn797jyq4863
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — 1 file, `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Support/ShellElevationRunner.swift`. All ten findings of iteration 1 corrected, each cause removed from the whole file and not only the named lines.
+      - The five `magic-numbers-swift` findings: each literal stood as a call argument of `Duration.seconds(...)`. Each number is now named at a declaration and the `Duration` is built from that name — `shellRunArrivalDeadlineSeconds` 480, `shellRunParkDeadlineSeconds` 90, `shellRunOutputDeadlineSeconds` 30, `killedProcessGroupDeadlineSeconds` 30, `journaledTerminalDeadlineSeconds` 30. That matches the pattern `IntegrationPoll` and `TestPoll` already use. swiftlint `no_magic_numbers` over the file: 5 violations before, 0 after.
+      - The five `swift/access-control` findings: nine top-level constants now carry `private`, not five — the seven check names plus `shellElevationCommand` and `shellElevationPrompt`, which carry the same cause. `runShellElevationScenario(name:)` stays `internal`, because `ShellElevationTests.swift` calls it.
+      - The test was not weakened. The seven graded conditions and how each is read are unchanged: the `CommandSandbox.preflight` seam stands, the `childProcessGone` poll of `killpg(group, 0)` to `ESRCH` stands, and no assertion reads the mailbox's retained outcome.
+    - test: green — `swift build --package-path IntegrationTests --build-tests` clean; gated filtered run 1 test in 1 suite passed with 7 of 7 checks PASS in 50.176s; root `swift test` 599 tests in 49 suites, 0 failures.
+    - commit: ffa79df — test(shell): name each duration and close the file's constants (^wcnkm9b)
+    - review: clean — `review sha HEAD~1..HEAD`, 0 findings, 7 validators attempted, 0 failed. The reviewer checked the ten prior findings against the diff rather than against their checkmarks and confirmed each is genuinely corrected. Card landed in done.
+
+    All 14 of 14 items are checked, and this closes the phase-2 shell work.
+  timestamp: 2026-08-25T15:50:47.740132+00:00
 depends_on:
 - 01M0NAN7P3RFWAR33JF1HQ8XNY
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: f580
 title: 'Gated integration test: a detached shell command through the elevation path'
 ---
 ## What
