@@ -135,6 +135,66 @@ comments:
 
     **New work found:** `^7kydt76` — a `ShellOutputChunkStream` handed to the capability never receives a chunk, because `Execute.report(of:in:)` replaces `runner.outputChunkStream` with a private stream for each run. The parameter is wired as this card asked; the repair belongs to that card.
   timestamp: 2026-08-24T21:50:40.500379+00:00
+- actor: claude-code
+  id: 01m0wj9s99fjp1m8a78zp77ec6
+  text: |
+    ### The last item landed: the `"execute shell"` journal op test
+
+    **The block is gone.** Router f31f453 carries the seam
+    `ToolContext.init(stamping:op:)`, where the stamp is `op: declared ?? stamp`.
+    Multitool ^fs7ywtg (commit 14de9ce) carries the consumer side: the registration
+    site derives the `"verb noun"` string and hands it down through
+    `ToolInvoker.invoke(_:content:binding:journalOp:)` and
+    `RunBinding.invoke(_:arguments:journalOp:)` into
+    `ToolDetachment.wrapping(..., op:)`. So the mechanism already gives
+    `"execute shell"`, and this step is the test alone. No code changed.
+
+    **Where the test stands, and why there.**
+    `Tests/FoundationModelsMultitoolTests/RegisteredJournalOpTests.swift`, beside
+    the other six journal-op tests. That file already holds the helpers this test
+    needs (`makeShellRegistry(in:)`, `run(_:over:under:)`, `makeOuterRunContext`),
+    thus the test adds no second copy of them. Its suite header names the two
+    readings a registered run makes observable, and the new test is the second one
+    made on the SHELL: *"the `op` a called verb reads out of its own
+    `ToolContext.current`"*.
+
+    **What it reads, and why the other readings do not answer.**
+
+    - The rendered `APISurface.Entry.journalOp` is a declaration, not a run.
+    - `ParkedRun.op` answers only for a run that PARKS, which the existing detached
+      test covers. An awaited `execute` call settles inside the call, thus it
+      stands on no plane a test can read afterwards.
+    - The event journal of the snippet answers the OUTER op: `ToolContext.post(_:)`
+      re-stamps every event it forwards. Router's own doc comment says a test that
+      looked for the declared op there asserts the wrong plane.
+
+    So the test reads the run's own `ToolContext`. `Execute` asks its sandbox to
+    `preflight` from INSIDE the call, before it spawns, thus a probe
+    `CommandSandbox` reports `ToolContext.current?.op` for that run. The probe
+    gives the shell invocation back unchanged, thus the command really starts and
+    the verb keeps its production shape.
+
+    **The red step, on behaviour that already worked.** The test cannot fail for a
+    missing feature, so the proof that it is not vacuous is a mutation: the first
+    run asserted the pre-seam value `"execute"`. It failed with
+    `stampedOp → "execute shell"`, which shows the probe reads the live stamp and
+    that the `#require` on "the run consulted its sandbox" holds. The expectation
+    then moved to the pair, and it passed.
+
+    **Discovery.** The probe sandbox is the only seam inside a real `execute` run
+    that a test can stand on. Nothing else the verb touches is injectable AND runs
+    under the run's own ambient context.
+  timestamp: 2026-08-25T13:38:34.409690+00:00
+- actor: claude-code
+  id: 01m0wjebawqt40gjqeyac8wq8d
+  text: |
+    ### implement — changed
+    - evidence: 1 file — `Tests/FoundationModelsMultitoolTests/RegisteredJournalOpTests.swift`. It adds the test `anAwaitedShellRunCarriesThePair`, the probe fixture `JournalOpProbeSandbox`, the `inlineCommand` constant, and a `sandbox:` parameter with a default on the private helper `makeShellRegistry(in:sandbox:)`, thus no second copy of the store setup. NO production file changed: the mechanism of ^fs7ywtg and Router f31f453 already gives `"execute shell"`.
+    - red: the first run asserted the pre-seam `"execute"` and failed with `stampedOp → "execute shell"`, thus the probe reads the live stamp and the test can fail. The expectation then moved to the pair.
+    - green: `swift test --filter RegisteredJournalOp`: 7 tests passed. `swift test --filter ShellCapability`: 10 tests in 2 suites passed. `swift test`: 595 tests in 48 suites passed, 0 failures, over four runs. The count was 594 before, thus exactly one test was added. The one warning is the pre-existing SwiftPM `missing creator for mutated node` from the vendored mlx-swift, which is out of scope.
+    - card: the last unchecked item of the description is now `[x]`, and its BLOCKED note is replaced by where the test stands. All 13 items are checked.
+    - next: `/review`. The card stays in `doing`.
+  timestamp: 2026-08-25T13:41:03.964887+00:00
 depends_on:
 - 01M0NAKY7B8H1Z0J2VCBWV86SY
 - 01M0NAMBSX4GXQ1ETQXZ6ZWRN5
@@ -189,15 +249,15 @@ off by default. eventplan.md § "Registration of capabilities: noun/verb":
 - [x] A test asserts a builder with no `withShell()` renders no `shell.` entry.
 - [x] A test asserts `findAPIs` returns each shell entry with a runnable sample
       snippet.
-- [ ] A test asserts the journal `op` of an execute run is `"execute shell"`.
-      **BLOCKED on Router.** `ToolContext.init(stamping:)` is the one stamping
-      site and it writes the wrapped tool's own `name` into both `tool` and
-      `op`, so a shell run's op is `"execute"` today. Its own doc comment says
-      so: *"phase 1 stamps the wrapped tool's `name` here too, until noun/verb
-      registration supplies the canonical `"verb noun"` string."* The noun must
-      travel from `Capability.noun` into the `ToolContext` Router mints, which
-      is a change in the dependency. Router card ^8y20bwd carries that fix, and
-      ^fs7ywtg is stuck on the same wall.
+- [x] A test asserts the journal `op` of an execute run is `"execute shell"`.
+      **The block is gone.** Router f31f453 carries the seam
+      `ToolContext.init(stamping:op:)`, and ^fs7ywtg (commit 14de9ce) carries
+      the registration site that derives the pair. The test is
+      `anAwaitedShellRunCarriesThePair` in
+      `Tests/FoundationModelsMultitoolTests/RegisteredJournalOpTests.swift`,
+      where the other journal-op tests stand. It runs an awaited
+      `tools.shell.execute` through `withShell()` and reads the run's own
+      stamp. No code changed: the mechanism already gives `"execute shell"`.
 - [x] `swift test --filter ShellCapability` passes.
 - [x] `swift test` passes with no new failure and no new warning.
 

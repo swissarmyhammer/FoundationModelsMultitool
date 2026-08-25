@@ -395,8 +395,30 @@ comments:
     - The only `warning:` line in any run is `missing creator for mutated node: (.../mlx-swift_Cmlx.bundle/Contents/MacOS)`, from SwiftPM's build planning for the vendored mlx-swift dependency's resource bundle. It reproduces on a clean rebuild with no source changes, is not a compiler diagnostic on project source, and is documented pre-existing in prior task records (e.g. task 01M0TJJ4N164FTCV916FS7YWTG). It is untouched by this card.
     - next: proceed to review.
   timestamp: 2026-08-25T13:20:45.372993+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m0whhe0sp38xbvg96qaywg19
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit 14de9ce) — 0 findings, 0 confirmed, 0 refuted; 7 files reviewed, 2 `.kanban/` files excluded by `.reviewignore`. No prior `## Review Findings` section on the card.
+    - next: card moved to `done`.
+  timestamp: 2026-08-25T13:25:16.441239+00:00
+- actor: claude-code
+  id: 01m0whj79vfgjrxqjpegf747q2
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — 7 files (APISurface.swift, MultiTool.swift, ToolInvoker.swift, RunBinding.swift, CallTrace.swift, RegisteredJournalOpTests.swift new with 6 tests, RunBindingFixtures.swift)
+    - environment repair: the Router dependency moved from 226ff41 to f31f453 to get the `op: String? = nil` seam. Three obstacles were cleared first:
+      - The bare caches in `.build/repositories/` did not hold f31f453, so `swift package resolve` hung. A direct `git fetch` in each bare cache fixed it.
+      - A recursive sourcekit `index-build` nest under `.build/checkouts/FoundationModelsRouter` kept re-creating the directory as fast as it was deleted. The indexer processes were stopped, then the tree was removed. This took about 20 minutes.
+      - A repair command masked `git clone`'s exit status behind a pipe, so a broken `&&` chain ran `git remote set-url origin` against this repository. The origin remote was repaired to git@github.com:swissarmyhammer/FoundationModelsMultitool.git and verified. Nothing was pushed; no tracked file changed.
+    - test: green — swift build clean; swift test 594 tests in 48 suites passed, 0 failures, 0 skipped; `swift build --package-path IntegrationTests --build-tests` clean. Re-verified against Router f31f453, not against the old pin.
+    - commit: 14de9ce — feat(hosting): let a registration site give a tool its journal op (^fs7ywtg)
+    - review: clean — `review sha HEAD~1..HEAD`, 0 findings across 7 files; card landed in done
+
+    Fact worth keeping: `Package.resolved` is NOT tracked in this repository, and both packages declare `branch: "main"`. A clean CI checkout therefore resolves the Router revision that carries the seam. There was never a pin to repair — only stale local checkouts.
+  timestamp: 2026-08-25T13:25:42.331412+00:00
+position_column: done
+position_ordinal: f280
 title: Derive the "verb noun" journal op at registration
 ---
 ## What

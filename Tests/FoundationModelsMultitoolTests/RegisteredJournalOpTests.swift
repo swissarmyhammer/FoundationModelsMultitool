@@ -1,6 +1,7 @@
 import Foundation
 import FoundationModels
 import FoundationModelsRouter
+import Synchronization
 import Testing
 
 @testable import FoundationModelsMultitool
@@ -61,6 +62,15 @@ struct RegisteredJournalOpTests {
     /// certainly still stands on the run plane while the test reads it, and the
     /// test ends it before it returns.
     private static let detachedRunSleepSeconds = 30
+
+    /// The command of the awaited run. A shell builtin that ends at once, thus
+    /// that run settles inside the call it was made from and it never reaches
+    /// the block window of the verb.
+    ///
+    /// It reaches no system outside the shell the capability spawns itself,
+    /// exactly as the `sleep` of the run-plane test above does, thus this stays
+    /// a unit test of the wiring rather than an integration test of a service.
+    private static let inlineCommand = "true"
 
     // MARK: - The one pair, read off the rendered surface
 
@@ -158,20 +168,54 @@ struct RegisteredJournalOpTests {
         _ = await context.cancel(completionToken: going.completionToken)
     }
 
+    // MARK: - The stamp the shell verb itself reads
+
+    /// The second reading of the pair, made on the ORDINARY run: a
+    /// `tools.shell.execute` call that waits for its command settles inside the
+    /// call, thus it stands on no plane a test can read afterwards. What it
+    /// does read is its own `ToolContext`, and `Execute` asks its sandbox to
+    /// preflight from inside that call — so a probe sandbox reports the stamp
+    /// the registration site put on the run, which is the one field
+    /// `ParkedRun.op` and `ToolInvocationRecord.op` are both built from.
+    @Test("an awaited tools.shell.execute run carries the journal op \"execute shell\"")
+    func anAwaitedShellRunCarriesThePair() async throws {
+        let sandbox = JournalOpProbeSandbox()
+        let registry = try Self.makeShellRegistry(in: scratch, sandbox: sandbox)
+        let context = makeOuterRunContext(mailbox: SessionMailbox(), sink: RecordingEventSink())
+
+        try await Self.run(
+            """
+            return await tools.\(Self.shellNoun).\(Self.executeVerb)({ \
+            command: "\(Self.inlineCommand)" });
+            """,
+            over: registry,
+            under: context)
+
+        let stampedOp = try #require(
+            sandbox.observedOps.first, "the run never consulted its sandbox")
+        #expect(stampedOp == "\(Self.executeVerb) \(Self.shellNoun)")
+    }
+
     // MARK: - The ground of one test
 
     /// Builds a registry holding the whole shell capability over a store in a
     /// temporary directory the caller owns.
     ///
-    /// - Parameter scratch: The owner of the temporary directory the store
-    ///   prepares in.
+    /// - Parameters:
+    ///   - scratch: The owner of the temporary directory the store prepares in.
+    ///   - sandbox: The confinement each command of the capability spawns
+    ///     under. The default, `nil`, confines nothing.
     /// - Returns: The rendered catalog paired with the live verbs of the shell.
-    /// - Throws: What `makeDirectory(prefix:)`, `withShell(storeDirectory:)` or
-    ///   `buildRegistry()` throws.
-    private static func makeShellRegistry(in scratch: TestScratch) throws -> MultiTool.Registry {
+    /// - Throws: What `makeDirectory(prefix:)`,
+    ///   `withShell(storeDirectory:sandbox:)` or `buildRegistry()` throws.
+    private static func makeShellRegistry(
+        in scratch: TestScratch, sandbox: (any CommandSandbox)? = nil
+    ) throws -> MultiTool.Registry {
         let directory = try scratch.makeDirectory(prefix: testDirectoryNamePrefix)
         return try MultiTool.Builder()
-            .withShell(storeDirectory: directory.appendingPathComponent(shellStoreDirectoryName))
+            .withShell(
+                storeDirectory: directory.appendingPathComponent(shellStoreDirectoryName),
+                sandbox: sandbox)
             .buildRegistry()
     }
 
@@ -190,5 +234,63 @@ struct RegisteredJournalOpTests {
         _ = try await ToolContext.$current.withValue(context) {
             try await multiTool.call(arguments: RunCodeArguments(code: code))
         }
+    }
+}
+
+/// A `CommandSandbox` that records the journal `op` of each run that consults
+/// it, and that confines nothing.
+///
+/// The seam is the one place inside a real `execute` run that a test can stand:
+/// `Execute` asks its sandbox to `preflight` before it spawns, from inside its
+/// own call, thus `ToolContext.current` there is the context the registration
+/// site stamped for THAT run. No other probe is needed, and the verb keeps its
+/// production shape.
+///
+/// `wrap` gives the shell invocation back exactly as it came in, thus the
+/// command of the run starts as it starts with no sandbox at all and the probe
+/// changes only what is observed.
+///
+/// A reference type, thus the test reads what the copy of the runner the verb
+/// holds observed. A runner is a value, and it is copied. It is a locked class
+/// rather than an actor because `wrap` is a SYNCHRONOUS requirement of
+/// `CommandSandbox`, which an actor answers only from outside its own
+/// isolation — the same shape `RecordingSandbox` takes, for the same reason.
+private final class JournalOpProbeSandbox: CommandSandbox {
+
+    /// The stamp of each run that consulted this sandbox, in call order — `nil`
+    /// for a call that ran under no ambient context at all.
+    private let observed = Mutex<[String?]>([])
+
+    /// The stamp of each run that consulted this sandbox, in call order.
+    var observedOps: [String?] {
+        observed.withLock { $0 }
+    }
+
+    /// Records the journal op of the run, and proves nothing about the
+    /// confinement.
+    ///
+    /// - Parameters:
+    ///   - workingDirectory: Not read — nothing is proved.
+    ///   - temporaryDirectory: Not read — nothing is proved.
+    func preflight(workingDirectory: String, temporaryDirectory: String) async {
+        let stampedOp = ToolContext.current?.op
+        observed.withLock { $0.append(stampedOp) }
+    }
+
+    /// Gives back `shellPath` and `shellArguments` unchanged.
+    ///
+    /// - Parameters:
+    ///   - shellPath: The absolute path of the shell to run.
+    ///   - shellArguments: The arguments of that shell.
+    ///   - workingDirectory: Not read — no confinement is applied.
+    ///   - temporaryDirectory: Not read — no confinement is applied.
+    /// - Returns: The shell invocation as it came in.
+    func wrap(
+        shellPath: String,
+        shellArguments: [String],
+        workingDirectory: String,
+        temporaryDirectory: String
+    ) -> SandboxedInvocation {
+        SandboxedInvocation(executable: shellPath, arguments: shellArguments)
     }
 }
