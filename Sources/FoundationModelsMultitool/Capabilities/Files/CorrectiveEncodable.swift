@@ -3,10 +3,10 @@
 // A behavioral port of `../FoundationModelsFileTool/Sources/FileTool/
 // CorrectiveEncodable.swift`, unchanged in behavior. The sibling declares
 // the protocol `public`; this package keeps it internal, the same way
-// `PathGuard` and `FileChangeSet` beside it do. The conforming glob and
-// grep outputs are not in this package yet — the glob (^4cmvjqh) and grep
-// (^2j06zb7) tasks bring them — thus until those land the conformer is the
-// wire-shape fixture in `CorrectiveVocabularyTests`.
+// `PathGuard` and `FileChangeSet` beside it do. The conformers are
+// `GlobOutput` (landed with the glob task, ^4cmvjqh) and the wire-shape
+// fixture in `CorrectiveVocabularyTests`; the grep output arrives with the
+// grep task (^2j06zb7).
 //
 // eventplan.md § "Consolidation of the siblings": a corrective result stays
 // in band, never thrown, and it encodes as a single `corrective` field.

@@ -26,23 +26,6 @@ import Testing
         return (root, "a.txt", "sub/b.txt")
     }
 
-    /// Runs `git` with the given arguments inside a directory.
-    ///
-    /// - Parameters:
-    ///   - arguments: the git arguments to run.
-    ///   - directory: git's working directory.
-    private static func runGit(_ arguments: [String], in directory: URL) throws {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = ["git"] + arguments
-        process.currentDirectoryURL = directory
-        process.standardOutput = Pipe()
-        process.standardError = Pipe()
-        try process.run()
-        process.waitUntilExit()
-        #expect(process.terminationStatus == 0)
-    }
-
     // MARK: Relative paths
 
     /// The relative path is the remainder under the root, joined with `/`.
@@ -100,7 +83,7 @@ import Testing
     /// thus a file under it never appears among the candidates.
     @Test func collectFilesHonorsGitIgnoreInsideARepository() throws {
         let (root, rootFile, _) = try Self.makeTree()
-        try Self.runGit(["init", "--quiet"], in: root)
+        try TestSupport.runGit(["init", "--quiet"], in: root)
         try "build/\n".write(to: root.appendingPathComponent(".gitignore"), atomically: true, encoding: .utf8)
         let ignored = root.appendingPathComponent("build", isDirectory: true)
         try FileManager.default.createDirectory(at: ignored, withIntermediateDirectories: true)

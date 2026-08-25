@@ -2,11 +2,10 @@
 // the files capability.
 //
 // A behavioral port of `../FoundationModelsFileTool/Sources/FileTool/
-// FileWalker.swift`, unchanged in behavior. The sibling's `GlobEngine` and
-// `GrepEngine` consumers are not in this package yet — the glob (^4cmvjqh)
-// and grep (^2j06zb7) tasks bring them — thus until those land the callers
-// are `FileChangeJournal` (through `canonicalDirectory`) and the
-// `FileWalkerTests` suite.
+// FileWalker.swift`, unchanged in behavior. The callers are `GlobEngine`
+// (landed with the glob task, ^4cmvjqh), `FileChangeJournal` (through
+// `canonicalDirectory`), and the `FileWalkerTests` suite; the sibling's
+// `GrepEngine` consumer arrives with the grep task (^2j06zb7).
 //
 // eventplan.md § "Consolidation of the siblings": the glob and grep verbs
 // resolve, bound, and enumerate a search root the same way, thus the steps

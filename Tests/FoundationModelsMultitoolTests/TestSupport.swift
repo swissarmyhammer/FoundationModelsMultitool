@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import Testing
 
 @testable import FoundationModelsMultitool
 
@@ -34,8 +35,6 @@ enum TestSupport {
     /// - Parameter name: a human-readable prefix, typically the name of the
     ///   calling suite, prepended to the unique directory name.
     /// - Returns: the URL of the freshly created temporary directory.
-    // The ported file suites of the later phase-3 tasks call this helper.
-    // periphery:ignore
     static func makeTemporaryDirectory(named name: String) -> URL {
         let base = FileManager.default.temporaryDirectory
             .appendingPathComponent("\(name)-\(UUID().uuidString)", isDirectory: true)
@@ -54,8 +53,6 @@ enum TestSupport {
     ///
     /// - Parameter url: an existing directory URL.
     /// - Returns: the canonicalized URL, or `url` when it cannot be resolved.
-    // The ported suites of tasks ^bhgtf8t and ^7r99xf5 call this helper.
-    // periphery:ignore
     static func canonicalDirectory(_ url: URL) -> URL {
         var buffer = [CChar](repeating: 0, count: Int(PATH_MAX))
         return url.path.withCString { path in
@@ -104,8 +101,6 @@ enum TestSupport {
     /// - Parameter path: the absolute path to inspect.
     /// - Returns: the permission bits, or `nil` when the attributes are
     ///   unreadable.
-    // The ported suites of tasks ^p238zzp, ^v5xap97, and ^az7jw8h call this helper.
-    // periphery:ignore
     static func permissionBits(_ path: String) -> Int? {
         try? FileManager.default.attributesOfItem(atPath: path)[.posixPermissions] as? Int
     }
@@ -129,6 +124,27 @@ enum TestSupport {
     @discardableResult
     static func setImmutable(_ path: String, to immutable: Bool) -> Bool {
         chflags(path, immutable ? UInt32(UF_IMMUTABLE) : 0) == 0
+    }
+
+    /// Run a `git` subcommand in a directory, and fail the test on a nonzero exit.
+    ///
+    /// The git-aware suites prepare a repository fixture the same way, thus
+    /// the launch, the drain, and the exit check live here one time and no
+    /// suite carries a near-identical copy.
+    ///
+    /// - Parameters:
+    ///   - arguments: the `git` subcommand and its arguments.
+    ///   - directory: git's working directory.
+    static func runGit(_ arguments: [String], in directory: URL) throws {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.arguments = ["git"] + arguments
+        process.currentDirectoryURL = directory
+        process.standardOutput = Pipe()
+        process.standardError = Pipe()
+        try process.run()
+        process.waitUntilExit()
+        #expect(process.terminationStatus == 0, "git \(arguments.joined(separator: " ")) failed")
     }
 
     /// The names of directory entries whose name marks them as a leftover
