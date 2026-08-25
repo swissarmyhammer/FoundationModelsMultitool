@@ -55,14 +55,31 @@ comments:
     - evidence: swift test — 966 tests in 69 suites passed, 0 failed, 0 skipped; swift build --build-tests clean except the known pre-existing mlx-swift "missing creator for mutated node" warning (not chased)
     - next: none
   timestamp: 2026-08-25T23:36:54.353261+00:00
+- actor: claude-code
+  id: 01m0xmsjtw5k4kxyy0q7wth1ry
+  text: |-
+    ### review — clean
+    - evidence: review sha bb24798~1..bb24798 — 0 findings, 0 confirmed, 0 refuted, 7 attempted, 0 failed. 2 files reviewed, 4 files excluded by .reviewignore (.kanban/).
+    - next: none. Task moved to done.
+  timestamp: 2026-08-25T23:41:23.676670+00:00
+- actor: claude-code
+  id: 01m0xmt1g9v44zamqfn5r553zf
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — Edit.swift (tools.files.edit, no diagnostics), FilesEditTests.swift (29 tests)
+    - test: green — swift test, 966 tests in 69 suites, 0 failed
+    - commit: bb24798
+    - review: clean — review sha bb24798~1..bb24798, 0 findings
+    - task landed in done
+  timestamp: 2026-08-25T23:41:38.697984+00:00
 depends_on:
 - 01M0WWQAT9YQ2XN087287TZKDP
 - 01M0WWP2KJHX313ZFGC80EVN62
 - 01M0WWQYXE8CCDSKQRPD3PX093
 - 01M0WWR5S34QZDKV15KP238ZZP
 - 01M0WXACC6Q0PY1QKZ6Y2TH7J4
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ff8580
 title: Make the tools.files.edit verb from EditFile, without diagnostics
 ---
 ## What

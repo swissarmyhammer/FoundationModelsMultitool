@@ -349,4 +349,27 @@ enum EditOutcomeProjection {
         }
         return name.rawValue
     }
+
+    // MARK: Wire text
+
+    /// Encodes one wire value to its JSON text with sorted keys.
+    ///
+    /// The one place a wire value becomes result text, shared by the `edit`
+    /// verb (its per-pair ``EditOutcome``s) and the `patch` verb (its
+    /// per-file results and its unresolved ``EditOutcome``), so the two
+    /// verbs' JSON never drifts. The keys are sorted for deterministic
+    /// output, the same convention ``ResultRenderer/serialize(_:)`` uses for
+    /// its own `Encodable` input.
+    ///
+    /// - Parameter value: the wire value to encode.
+    /// - Returns: the JSON text, or the literal `"null"` in the
+    ///   unreachable-in-practice case that encoding fails — the wire types
+    ///   hold only strings and integers, which are always JSON-safe, so this
+    ///   fallback is defensive, never a trap.
+    static func encodedText(_ value: some Encodable) -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        guard let data = try? encoder.encode(value) else { return "null" }
+        return String(decoding: data, as: UTF8.self)
+    }
 }

@@ -9,8 +9,8 @@
 // The engine keeps the corrective posture: a hunk that cannot apply comes
 // back in-band as a `Result` failure, never thrown. Writes are atomic
 // through `AtomicWriter`, and each path is bounded through `PathGuard`. The
-// patch verb (card ^vb4dvzp) consumes the outcomes; until that card lands,
-// the ported suite (`PatchEngineTests`) is the one caller.
+// patch verb (`Patch`, card ^vb4dvzp) consumes the outcomes, beside the
+// ported suite (`PatchEngineTests`).
 
 import Foundation
 

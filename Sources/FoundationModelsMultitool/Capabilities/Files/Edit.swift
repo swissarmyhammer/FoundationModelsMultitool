@@ -185,21 +185,15 @@ extension Edit {
     /// Encodes one wire outcome to its JSON text with sorted keys.
     ///
     /// ``EditOutcomeProjection`` maps each ``EditEngine/Resolution`` to its
-    /// `Encodable` wire type, and this is the one place that wire value
-    /// becomes the result's text. The keys are sorted for deterministic
-    /// output, the same convention ``ResultRenderer/serialize(_:)`` uses
-    /// for its own `Encodable` input.
+    /// `Encodable` wire type, and
+    /// ``EditOutcomeProjection/encodedText(_:)`` — the encoder this verb
+    /// shares with the patch verb — turns that wire value into the result's
+    /// text.
     ///
     /// - Parameter outcome: the wire outcome to encode.
-    /// - Returns: the JSON text, or the literal `"null"` in the
-    ///   unreachable-in-practice case that encoding fails — an
-    ///   ``EditOutcome`` holds only strings and integers, which are always
-    ///   JSON-safe, so this fallback is defensive, never a trap.
+    /// - Returns: the JSON text.
     private static func encodedOutcome(_ outcome: EditOutcome) -> String {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys]
-        guard let data = try? encoder.encode(outcome) else { return "null" }
-        return String(decoding: data, as: UTF8.self)
+        EditOutcomeProjection.encodedText(outcome)
     }
 
     // MARK: Execution
