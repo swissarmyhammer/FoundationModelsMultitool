@@ -10,7 +10,8 @@ import Testing
 /// the staged multi-file commit, permission preservation, cleanup on a failed
 /// stage, and the encoding and line-ending hooks the `edit file` operation
 /// consumes. The operation-level behaviors arrive with the write verb of task
-/// ^p238zzp and the ``EditEngine`` of task ^87tzkdp.
+/// ^p238zzp and the edit verb of task ^v5xap97, which commits
+/// ``EditEngine``'s content through this writer.
 @Suite struct AtomicWriterTests {
     // MARK: Mode and byte constants
 

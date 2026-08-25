@@ -7,10 +7,9 @@
 // `PathGuard`, and `PathCorrective` beside it do.
 //
 // This is the pure matching layer under `EditEngine`: it resolves a
-// bare-string `find` to a concrete byte span in the original content. The
-// edit-engine card (^87tzkdp) brings `EditEngine`, which consumes this
-// layer; until that card lands, the golden suite (`EditMatchTests`) is the
-// one caller.
+// bare-string `find` to a concrete byte span in the original content.
+// `EditEngine` (card ^87tzkdp) consumes this layer as its recovery-ladder
+// rung, and the golden suite (`EditMatchTests`) pins it.
 //
 // Rungs 1, 2, 4, and 5 are an algorithm-exact port of the Rust
 // `swissarmyhammer-edit-match` crate; their rungs, thresholds, and outcomes
@@ -293,9 +292,9 @@ enum EditMatch {
     /// - Returns: the ascending byte offsets of each non-overlapping occurrence;
     ///   empty when `needle` is empty or longer than `haystack`.
     ///
-    /// Kept visible to the module (not `private`) because the edit-engine card
-    /// (^87tzkdp) makes `EditEngine`'s literal search share this one
-    /// byte-search implementation rather than duplicating the scan loop.
+    /// Kept visible to the module (not `private`) because `EditEngine`'s
+    /// literal search (card ^87tzkdp) shares this one byte-search
+    /// implementation rather than duplicating the scan loop.
     static func byteOffsets(of needle: [UInt8], in haystack: [UInt8]) -> [Int] {
         guard !needle.isEmpty, needle.count <= haystack.count else { return [] }
         var offsets: [Int] = []
@@ -552,9 +551,9 @@ enum EditMatch {
     /// - Parameter text: the line text to normalize.
     /// - Returns: the trimmed text.
     ///
-    /// Kept visible to the module (not `private`) because the edit-engine card
-    /// (^87tzkdp) makes `EditEngine`'s near-miss diagnostic trim lines on
-    /// exactly the ladder's terms rather than duplicating the trim.
+    /// Kept visible to the module (not `private`) because `EditEngine`'s
+    /// near-miss diagnostic (card ^87tzkdp) trims lines on exactly the
+    /// ladder's terms rather than duplicating the trim.
     static func normalize(_ text: String) -> String {
         text.trimmingCharacters(in: CharacterSet(charactersIn: " \t\r"))
     }
@@ -581,9 +580,9 @@ enum EditMatch {
     /// - Parameter text: the line text to fold and normalize.
     /// - Returns: the confusable-folded, whitespace-trimmed text.
     ///
-    /// Kept visible to the module (not `private`) because the edit-engine card
-    /// (^87tzkdp) makes `EditEngine`'s near-miss confusable diagnostic fold and
-    /// trim on exactly the unicode rung's terms.
+    /// Kept visible to the module (not `private`) because `EditEngine`'s
+    /// near-miss confusable diagnostic (card ^87tzkdp) folds and trims on
+    /// exactly the unicode rung's terms.
     static func unicodeNormalize(_ text: String) -> String {
         normalize(foldConfusables(text))
     }
@@ -733,9 +732,9 @@ enum EditMatch {
     ///   - offset: the byte offset whose line number to compute.
     /// - Returns: the 1-based line number.
     ///
-    /// Kept visible to the module (not `private`) because the edit-engine card
-    /// (^87tzkdp) makes `EditEngine`'s byte-offset-to-line mapping share this
-    /// one newline count rather than duplicating it.
+    /// Kept visible to the module (not `private`) because `EditEngine`'s
+    /// byte-offset-to-line mapping (card ^87tzkdp) shares this one newline
+    /// count rather than duplicating it.
     static func lineNumber(in contentBytes: [UInt8], at offset: Int) -> Int {
         contentBytes[0..<offset].reduce(1) { count, byte in count + (byte == newlineByte ? 1 : 0) }
     }

@@ -45,12 +45,34 @@ comments:
     - evidence: swift test — 766 tests in 60 suites passed, 0 failed, 0 skipped; build complete with only the known pre-existing mlx-swift "missing creator for mutated node" warning, no new warnings
     - next: none
   timestamp: 2026-08-25T20:07:27.367579+00:00
+- actor: claude-code
+  id: 01m0x944wwy36fpstrqdbsfd1f
+  text: |-
+    ### review — clean
+    - evidence: review sha 3f4a2af~1..3f4a2af, backend local — 0 findings, 0 confirmed, 0 refuted, 7 attempted, 0 failed. 10 files reviewed; 4 files in .kanban/ excluded by .reviewignore.
+    - next: none. The task moved to done.
+
+    step: review
+    outcome: clean
+    evidence: 0 findings (attempted 7, failed 0) on 3f4a2af~1..3f4a2af
+    task: ^zcr6qz8
+  timestamp: 2026-08-25T20:17:26.940056+00:00
+- actor: claude-code
+  id: 01m0x94pe30k1vxd0n0sksjhw9
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — FileContext (no diagnostics), FileChangeJournal, FileWalker, CorrectiveResult, CorrectiveEncodable, EnumParameter, PathCorrective edit; three new test suites
+    - test: green — swift test, 766 tests in 60 suites, 0 failed
+    - commit: 3f4a2af
+    - review: clean — review sha 3f4a2af~1..3f4a2af, 0 findings
+    - task landed in done
+  timestamp: 2026-08-25T20:17:44.899136+00:00
 depends_on:
 - 01M0WWNQJYKW346Z0HVE601E9N
 - 01M0WWP84DQAHJXYF04DRTZX60
 - 01M0WXACC6Q0PY1QKZ6Y2TH7J4
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: fc80
 title: Port FileContext, FileChangeJournal, and FileWalker together, without diagnostics
 ---
 ## What

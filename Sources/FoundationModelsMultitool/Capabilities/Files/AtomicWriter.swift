@@ -9,8 +9,9 @@
 // eventplan.md § "Consolidation of the siblings": the Files capability gets
 // `AtomicWriter`, and capabilities keep their own serialization where order
 // is important (atomic file writes). The write verb (task ^p238zzp) and the
-// `EditEngine` (task ^87tzkdp) consume this primitive; until they land, the
-// ported suite (`AtomicWriterTests`) is the one caller.
+// edit verb (task ^v5xap97, which commits `EditEngine`'s content) consume
+// this primitive; until they land, the ported suite (`AtomicWriterTests`)
+// is the one caller.
 
 import Darwin
 import Foundation
