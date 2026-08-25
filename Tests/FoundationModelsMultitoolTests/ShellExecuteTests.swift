@@ -62,12 +62,6 @@ struct ShellExecuteTests {
     /// call blocked on the command rather than handing back its identifier.
     private static let doesNotBlockUpperBound = Duration.seconds(10)
 
-    /// How long a poll of the run plane waits between reads.
-    private static let pollInterval = Duration.milliseconds(25)
-
-    /// How long a poll waits for a detached run to reach the run plane.
-    private static let parkArrivalDeadline = Duration.seconds(10)
-
     /// How many lines the command of the progress test writes. More than one,
     /// thus the run has output to report before it ends.
     private static let progressLineCount = 3
@@ -219,49 +213,6 @@ struct ShellExecuteTests {
             try await verb.call(arguments: arguments)
         }
     }
-
-    /// Mounts the verb on the shared elevation engine over one mailbox, the
-    /// way `RunBinding` mounts every inner `tools.*` call.
-    ///
-    /// The configuration is `RunBinding.innerCallMount` on purpose: the verb's
-    /// own `detachmentMount` must win over it, because that declaration is the
-    /// only way a `wait: false` call can ever park.
-    ///
-    /// - Parameters:
-    ///   - verb: The verb to mount.
-    ///   - context: The session context the engine inherits.
-    /// - Returns: The mounted engine.
-    /// - Throws: When the decorator did not preserve the verb's own types.
-    private static func mounted(
-        _ verb: Execute, inheriting context: ToolContext
-    ) throws -> any Tool<ExecuteArguments, String> {
-        try #require(
-            ToolDetachment.wrapping(
-                tool: verb,
-                inheriting: context,
-                sink: AmbientUpstreamSink(context: context),
-                configuration: RunBinding.innerCallMount
-            ) as? any Tool<ExecuteArguments, String>
-        )
-    }
-
-    /// Waits until the run plane of `context` holds a run, and answers it.
-    ///
-    /// - Parameter context: The session context whose run plane to read.
-    /// - Returns: The parked run.
-    /// - Throws: When no run reaches the run plane before the deadline.
-    private static func parkedRun(in context: ToolContext) async throws -> ParkedRun {
-        let deadline = ContinuousClock.now + parkArrivalDeadline
-        while ContinuousClock.now < deadline {
-            if let going = await context.parkedRuns().first { return going }
-            try await Task.sleep(for: pollInterval)
-        }
-        Issue.record("No run reached the run plane before the deadline.")
-        throw ParkedRunAbsent()
-    }
-
-    /// The failure ``parkedRun(in:)`` throws when no run parks.
-    private struct ParkedRunAbsent: Error {}
 
     /// A command of exactly `byteCount` UTF-8 bytes that writes
     /// ``inlineMarker``.
@@ -477,7 +428,7 @@ struct ShellExecuteTests {
         let state = try makeState()
         let mailbox = SessionMailbox()
         let context = makeOuterRunContext(mailbox: mailbox, sink: RecordingEventSink())
-        let engine = try Self.mounted(makeVerb(over: state), inheriting: context)
+        let engine = try ShellRunPlane.mounted(makeVerb(over: state), inheriting: context)
 
         let started = ContinuousClock.now
         let output = try await engine.call(
@@ -485,7 +436,7 @@ struct ShellExecuteTests {
                 command: "sleep \(Self.detachedRunSleepSeconds)", wait: false))
         let elapsed = ContinuousClock.now - started
 
-        let going = try await Self.parkedRun(in: context)
+        let going = try await ShellRunPlane.parkedRun(in: context)
 
         #expect(elapsed < Self.doesNotBlockUpperBound, "the call took \(elapsed)")
         #expect(
@@ -505,13 +456,13 @@ struct ShellExecuteTests {
         let state = try makeState()
         let mailbox = SessionMailbox()
         let context = makeOuterRunContext(mailbox: mailbox, sink: RecordingEventSink())
-        let engine = try Self.mounted(makeVerb(over: state), inheriting: context)
+        let engine = try ShellRunPlane.mounted(makeVerb(over: state), inheriting: context)
 
         _ = try await engine.call(
             arguments: ExecuteArguments(
                 command: "sleep \(Self.detachedRunSleepSeconds)", wait: false))
 
-        let going = try await Self.parkedRun(in: context)
+        let going = try await ShellRunPlane.parkedRun(in: context)
 
         #expect(going.kind == .process)
         #expect(await state.record(commandID: going.completionToken) != nil)
@@ -529,12 +480,12 @@ struct ShellExecuteTests {
         let state = try makeState()
         let mailbox = SessionMailbox()
         let context = makeOuterRunContext(mailbox: mailbox, sink: RecordingEventSink())
-        let engine = try Self.mounted(makeVerb(over: state), inheriting: context)
+        let engine = try ShellRunPlane.mounted(makeVerb(over: state), inheriting: context)
 
         _ = try await engine.call(
             arguments: ExecuteArguments(
                 command: "sleep \(Self.detachedRunSleepSeconds)", wait: false))
-        let going = try await Self.parkedRun(in: context)
+        let going = try await ShellRunPlane.parkedRun(in: context)
 
         let outcome = await context.cancel(completionToken: going.completionToken)
 

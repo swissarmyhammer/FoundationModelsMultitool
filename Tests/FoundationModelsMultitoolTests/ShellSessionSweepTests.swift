@@ -1,0 +1,338 @@
+import Foundation
+import FoundationModels
+import FoundationModelsExtras
+import Testing
+
+@testable import FoundationModelsMultitool
+@testable import FoundationModelsRouter
+
+/// Coverage for the session-end sweep of a parked shell run — eventplan.md
+/// § "Elevation: waitSeconds and the completion token": *"Parked runs die with
+/// the session."* Teardown does one deterministic sweep of the mailbox, and it
+/// processes each kind with that kind's own semantics: *"Shell runs get
+/// `killpg(SIGKILL)` and post `.stopped`."*
+///
+/// The route this suite proves has three owners:
+///
+/// 1. `Execute` declares, through `DetachmentParameterProviding`, that its runs
+///    are `RunKind.process` and that `ShellRunner.canceler(completionToken:)`
+///    stops one. `DetachingTool` hands both to `SessionMailbox.park`.
+/// 2. `SessionMailbox.sweep()` walks the parked runs in park order, awaits each
+///    canceler, and answers exactly one terminal event for each run.
+/// 3. `RoutedSessionActor.close()` journals that whole list before it returns.
+///
+/// The tests drive step 2, which is the step that turns a session teardown into
+/// a dead process group. Step 3 journals whatever step 2 hands it, thus a sweep
+/// that answers one terminal event for each parked run and leaves the run plane
+/// empty is a durable record with no hole and no orphan.
+///
+/// **`SessionMailbox.sweep()` is `internal` to Router**, thus this file takes
+/// `@testable import FoundationModelsRouter`. The other route to the sweep is
+/// `RoutedSession.close()`, which needs a loaded model, and a unit test must
+/// not need one.
+///
+/// Each test spawns real `sh` children, exactly as `ShellRunnerTests` and
+/// `ShellExecuteTests` do: the shell is what the capability spawns itself, so
+/// this stays a unit test of the wiring rather than an integration test of a
+/// service. Each test kills the process group it spawned, through the sweep it
+/// is testing, and every signal this file sends goes to a group this file
+/// spawned and to no other.
+@Suite("ShellSessionSweepTests")
+struct ShellSessionSweepTests {
+
+    /// Owns the temporary directories this test makes. Thus they go away when
+    /// the test ends, and they do not collect in `$TMPDIR` run after run.
+    private let scratch = TestScratch()
+
+    /// The name prefix of the temporary directory of one test. Thus a leaked
+    /// directory is traceable to this suite.
+    private static let testDirectoryNamePrefix = "shellsessionsweep-tests"
+
+    /// The name of the store folder inside the directory of one test.
+    private static let shellStoreDirectoryName = ".shell"
+
+    /// How long each command of a parked run sleeps. Long enough that the run
+    /// certainly still stands on the run plane when the sweep reaches it, thus
+    /// what ends it is the sweep and never the command ending by itself.
+    private static let parkedRunSleepSeconds = 60
+
+    /// The command each parked run starts.
+    ///
+    /// It is a process TREE and not one process: the shell starts one `sleep`
+    /// in the background and then runs a second one. A sweep that signalled the
+    /// leader alone would leave the background `sleep` alive, and the reading of
+    /// the process group below would still find the group.
+    private static let parkedCommand =
+        "sleep \(parkedRunSleepSeconds) & sleep \(parkedRunSleepSeconds)"
+
+    /// How many runs park in the tests that read one run's terminal event.
+    private static let oneParkedRun = 1
+
+    /// How many runs park in the tests that prove the sweep answers for each
+    /// parked run and not for the first one alone.
+    private static let twoParkedRuns = 2
+
+    /// How many terminal events one swept run gets. `SessionMailbox.sweep()`
+    /// states the invariant: exactly one for each run, never two.
+    private static let terminalEventsPerRun = 1
+
+    /// The signal `killpg` takes to ASK whether a process group is still there.
+    ///
+    /// Signal 0 sends NOTHING. `killpg` performs the checks of a signal it is
+    /// about to send and then sends none, thus this is the one reading that
+    /// answers "does this group still hold a process" with no risk to what
+    /// stands in the group.
+    private static let existenceProbeSignal: Int32 = 0
+
+    /// What `killpg` answers when it reached the group.
+    private static let killpgReachedGroup: Int32 = 0
+
+    /// How long a poll of the store, of the process table or of the registry
+    /// waits between reads.
+    private static let pollInterval = Duration.milliseconds(25)
+
+    /// How long a test waits for the child of a parked run to register its
+    /// process group.
+    private static let processGroupArrivalDeadline = Duration.seconds(10)
+
+    /// How long a test waits for a process group to go away after the sweep.
+    ///
+    /// The poll is real work and not slack. `killpg` kills the tree at once,
+    /// and the leader of the group then stays an unreaped child of this process
+    /// until swift-subprocess reaps it. A group that still holds a zombie still
+    /// answers the probe, thus the reading polls until the group holds nothing
+    /// at all — which is also the proof that the child was reaped and left no
+    /// orphan behind.
+    private static let processGroupExitDeadline = Duration.seconds(10)
+
+    /// How long a test waits for the teardown of a swept run to take its pid
+    /// out of the process-group registry.
+    private static let registryDrainDeadline = Duration.seconds(10)
+
+    // MARK: - The ground of one test
+
+    /// One session whose run plane holds parked shell runs, each one a live
+    /// process tree this test spawned.
+    private struct ParkedSession {
+
+        /// The mailbox the runs parked in, whose `sweep()` is the teardown.
+        let mailbox: SessionMailbox
+
+        /// The ambient context of the outer run, which reports the run plane.
+        let context: ToolContext
+
+        /// The store each run recorded into.
+        let state: ShellState
+
+        /// The process-group registry of the runner, private to this test.
+        let registry: ProcessRegistry
+
+        /// The parked runs, in park order.
+        let runs: [ParkedRun]
+
+        /// The process group of each parked run, in the order of ``runs``.
+        let groups: [pid_t]
+    }
+
+    /// Parks `count` shell runs in one session, and answers everything a test
+    /// needs to tear that session down and read what the teardown did.
+    ///
+    /// The process-group registry is a PRIVATE `ProcessRegistry()` and never
+    /// `.global`: an ordinary test must not touch the process-wide instance —
+    /// see the doc comment of that property. It is also what the test of the
+    /// `atexit` backstop reads.
+    ///
+    /// - Parameter count: How many runs to park.
+    /// - Returns: The session, its parked runs and their process groups.
+    /// - Throws: When the store does not prepare, when the engine does not
+    ///   mount, when a run does not park, or when a child of a run registers no
+    ///   process group.
+    private func makeParkedSession(runCount count: Int) async throws -> ParkedSession {
+        let directory = try scratch.makeDirectory(prefix: Self.testDirectoryNamePrefix)
+        let state = try ShellState(
+            preferredDirectory: directory.appendingPathComponent(Self.shellStoreDirectoryName))
+        let registry = ProcessRegistry()
+        let mailbox = SessionMailbox()
+        let context = makeOuterRunContext(mailbox: mailbox, sink: RecordingEventSink())
+        let engine = try ShellRunPlane.mounted(
+            Execute(runner: ShellRunner(state: state, registry: registry)), inheriting: context)
+
+        for _ in 0..<count {
+            _ = try await engine.call(
+                arguments: ExecuteArguments(command: Self.parkedCommand, wait: false))
+        }
+
+        let runs = try await ShellRunPlane.parkedRuns(in: context, count: count)
+        var groups: [pid_t] = []
+        for run in runs {
+            groups.append(try await Self.processGroup(of: run.completionToken, in: state))
+        }
+        return ParkedSession(
+            mailbox: mailbox,
+            context: context,
+            state: state,
+            registry: registry,
+            runs: runs,
+            groups: groups
+        )
+    }
+
+    /// The process group of the run under `completionToken`, once its child
+    /// registered one.
+    ///
+    /// A poll, because the engine parks a run as it takes it and the child
+    /// registers its pid inside the spawn, thus a read that arrives first finds
+    /// nothing. `ShellState.runningProcess(commandID:)` is the plain,
+    /// non-suspending reading, which is the one an observer takes.
+    ///
+    /// - Parameters:
+    ///   - completionToken: The completion token of the run.
+    ///   - state: The store the run recorded into.
+    /// - Returns: The pid of the leader of the process group, which is also the
+    ///   identifier of that group.
+    /// - Throws: When no child registers before the deadline.
+    private static func processGroup(
+        of completionToken: String, in state: ShellState
+    ) async throws -> pid_t {
+        let deadline = ContinuousClock.now + processGroupArrivalDeadline
+        while ContinuousClock.now < deadline {
+            if let group = await state.runningProcess(commandID: completionToken) { return group }
+            try await Task.sleep(for: pollInterval)
+        }
+        Issue.record("The run under \(completionToken) registered no process group.")
+        throw ProcessGroupAbsent()
+    }
+
+    /// The failure ``processGroup(of:in:)`` throws when no child registers.
+    private struct ProcessGroupAbsent: Error {}
+
+    /// Whether any process still stands in the process group that `group`
+    /// leads.
+    ///
+    /// Every group this is asked about is one this suite spawned itself.
+    ///
+    /// - Parameter group: The identifier of the process group to ask about.
+    /// - Returns: `true` while the group still holds a process.
+    private static func processGroupStands(_ group: pid_t) -> Bool {
+        killpg(group, existenceProbeSignal) == killpgReachedGroup
+    }
+
+    /// Polls `condition` until it holds, or until `deadline` passes.
+    ///
+    /// One poll for each reading a teardown makes true after the sweep returns
+    /// — the group that goes away, and the registry that drains — thus the two
+    /// readings share one loop and neither can drift from the other.
+    ///
+    /// - Parameters:
+    ///   - deadline: How long to keep polling.
+    ///   - condition: What must become true.
+    /// - Returns: `true` when the condition held before the deadline.
+    private static func waitUntil(
+        before deadline: Duration, _ condition: () -> Bool
+    ) async -> Bool {
+        let end = ContinuousClock.now + deadline
+        while ContinuousClock.now < end {
+            if condition() { return true }
+            try? await Task.sleep(for: pollInterval)
+        }
+        return condition()
+    }
+
+    // MARK: - The sweep kills the process group of each parked run
+
+    /// eventplan.md: *"Shell runs get `killpg(SIGKILL)`."* The parked run
+    /// declares `RunKind.process`, thus the mailbox holds the canceler that
+    /// sends that signal, and the sweep sends it to each parked run in turn.
+    ///
+    /// What this reads is the process group and never the word the sweep
+    /// answered: a canceler that reported `.stopped` and signalled nothing
+    /// would pass a test that read the word alone.
+    @Test("session teardown kills the child process group of each parked shell run")
+    func sessionTeardownKillsTheProcessGroupOfEachParkedShellRun() async throws {
+        let session = try await makeParkedSession(runCount: Self.twoParkedRuns)
+        #expect(session.runs.allSatisfy { $0.kind == .process })
+        for group in session.groups {
+            #expect(Self.processGroupStands(group), "the process group \(group) never came up")
+        }
+
+        _ = await session.mailbox.sweep()
+
+        for group in session.groups {
+            let gone = await Self.waitUntil(before: Self.processGroupExitDeadline) {
+                !Self.processGroupStands(group)
+            }
+            #expect(gone, "the sweep left the process group \(group) alive")
+        }
+    }
+
+    // MARK: - The terminal event of a swept run
+
+    /// eventplan.md: *"Shell runs get `killpg(SIGKILL)` and post `.stopped`."*
+    /// It is `.stopped` and never `.cancelled`, because `killpg` on the own
+    /// process group of the child is authoritative: the work is over, and that
+    /// is certain.
+    ///
+    /// The record of the store carries the same answer from the other side. The
+    /// canceler writes `.killed` there, and `CommandStatus.killed` is the one
+    /// status a cancel reaches, thus the run plane and the store agree on how
+    /// this run ended.
+    @Test("the terminal event of a swept shell run carries the outcome .stopped")
+    func theTerminalEventOfASweptShellRunCarriesStopped() async throws {
+        let session = try await makeParkedSession(runCount: Self.oneParkedRun)
+        let run = try #require(session.runs.first)
+
+        let terminals = await session.mailbox.sweep()
+
+        #expect(terminals.count == Self.terminalEventsPerRun)
+        let terminal = try #require(terminals.first)
+        #expect(terminal.correlationID == run.completionToken)
+        #expect(terminal.kind == .completed)
+        #expect(terminal.outcome == .stopped)
+        #expect(await session.state.record(commandID: run.completionToken)?.status == .killed)
+    }
+
+    /// eventplan.md: *"Each outcome goes into the journal before the session
+    /// closes. There are no orphans and no holes in the durable record."*
+    ///
+    /// `RoutedSessionActor.close()` journals exactly the list the sweep answers
+    /// with, and nothing else. So one terminal event for each parked run, each
+    /// one under that run's own completion token, is that record with no hole;
+    /// and a run plane the sweep left empty is that record with no orphan,
+    /// because no run is left for a later observer to find.
+    @Test("each of two parked shell runs gets its own terminal event, and none stays parked")
+    func eachOfTwoParkedShellRunsGetsItsOwnTerminalEvent() async throws {
+        let session = try await makeParkedSession(runCount: Self.twoParkedRuns)
+
+        let terminals = await session.mailbox.sweep()
+
+        #expect(terminals.count == Self.twoParkedRuns)
+        #expect(terminals.map(\.correlationID) == session.runs.map(\.completionToken))
+        #expect(terminals.allSatisfy { $0.kind == .completed })
+        #expect(terminals.allSatisfy { $0.outcome == .stopped })
+        #expect(await session.context.parkedRuns().isEmpty)
+    }
+
+    // MARK: - The atexit backstop of the process registry
+
+    /// The sweep runs first, thus the `atexit` backstop of `ProcessRegistry`
+    /// finds nothing left and the two never signal the same group twice.
+    ///
+    /// The teardown of a run deregisters its pid INSIDE the spawn closure of
+    /// `ShellRunner.run`, which is before swift-subprocess reaps the child, thus
+    /// no window exists in which the registry holds a pid the kernel already
+    /// gave to another process. The sweep starts that teardown and does not wait
+    /// for it, which is why the reading below polls.
+    @Test("the sweep drains the process registry, thus the atexit backstop finds nothing to kill")
+    func theSweepDrainsTheProcessRegistry() async throws {
+        let session = try await makeParkedSession(runCount: Self.twoParkedRuns)
+        let registry = session.registry
+        #expect(registry.registeredPids == Set(session.groups))
+
+        _ = await session.mailbox.sweep()
+
+        let drained = await Self.waitUntil(before: Self.registryDrainDeadline) {
+            registry.registeredPids.isEmpty
+        }
+        #expect(drained, "the registry still held \(registry.registeredPids)")
+    }
+}
