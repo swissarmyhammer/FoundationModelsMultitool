@@ -169,6 +169,28 @@ struct PathGuard: Sendable {
     /// matches ``writePermissionBits``.
     private static let readPermissionBits: mode_t = 0o444
 
+    /// The highest Unicode scalar value of the C0 control block (`U+001F`).
+    ///
+    /// The C0 block covers `U+0000` through `U+001F`.
+    /// ``containsInvalidControlCharacter(_:)`` rejects each scalar at or
+    /// below this value, thus the literal lives in one place, which matches
+    /// ``writePermissionBits``.
+    private static let highestC0ControlScalar: UInt32 = 0x1F
+
+    /// The Unicode scalar value of the `DEL` control character (`U+007F`).
+    ///
+    /// `DEL` starts the upper control range.
+    /// ``containsInvalidControlCharacter(_:)`` rejects each scalar from this
+    /// value through ``highestC1ControlScalar``.
+    private static let deleteControlScalar: UInt32 = 0x7F
+
+    /// The highest Unicode scalar value of the C1 control block (`U+009F`).
+    ///
+    /// The C1 block covers `U+0080` through `U+009F`.
+    /// ``containsInvalidControlCharacter(_:)`` rejects each scalar from
+    /// ``deleteControlScalar`` through this value.
+    private static let highestC1ControlScalar: UInt32 = 0x9F
+
     /// Creates a guard rooted at a session working directory.
     ///
     /// - Parameters:
@@ -900,7 +922,9 @@ struct PathGuard: Sendable {
     private static func containsInvalidControlCharacter(_ path: String) -> Bool {
         path.unicodeScalars.contains { scalar in
             let value = scalar.value
-            let isControl = value <= 0x1F || (value >= 0x7F && value <= 0x9F)
+            let isControl =
+                value <= highestC0ControlScalar
+                || (value >= deleteControlScalar && value <= highestC1ControlScalar)
             return isControl && scalar != "\n" && scalar != "\r" && scalar != "\t"
         }
     }

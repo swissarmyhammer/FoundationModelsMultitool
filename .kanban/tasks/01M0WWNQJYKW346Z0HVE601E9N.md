@@ -28,6 +28,36 @@ comments:
     - note: one warning is present. It is not new. It is present with and without the working-tree change. Text: "warning: missing creator for mutated node: ('.../.build/out/Products/Debug/mlx-swift_Cmlx.bundle/Contents/MacOS')". It comes from the mlx-swift dependency build plan, not from project code.
     - next: none. The build is clean.
   timestamp: 2026-08-25T17:29:00.543473+00:00
+- actor: claude-code
+  id: 01m0x00bfdcp15xd69h5m0fwtq
+  text: |-
+    ### review — findings
+    - evidence: 1 finding — Sources/FoundationModelsMultitool/Capabilities/Files/PathGuard.swift:903 (code-hygiene/magic-numbers-swift). Scope: review sha HEAD~1..HEAD, backend local. Counts: findings 1, confirmed 3, refuted 0.
+    - next: Correct the finding. Replace each magic number in the file with a named constant. Then run the review again.
+  timestamp: 2026-08-25T17:38:05.421193+00:00
+- actor: claude-code
+  id: 01m0x07ddj748m7wx05nq7v7x9
+  text: |-
+    Finding fix, with the scan of the whole file:
+
+    - The `magic-numbers-swift` rule is swiftlint `no_magic_numbers` with `allowed_numbers: [0, 1, -1, 100]`. A declaration that names its value (`static let`, stored property, enum raw value, default parameter) does not report.
+    - A scan of each numeric literal in the file found three offenders, all on the reported line: `0x1F`, `0x7F`, `0x9F` in `containsInvalidControlCharacter(_:)`. Each other literal is safe: `4096`, `0o222`, `0o444` sit in named `static let` declarations with doc comments; the `0` and `1` comparisons are in the rule's allow-list.
+    - Fix: three new named constants in the constants block — `highestC0ControlScalar` (0x1F), `deleteControlScalar` (0x7F), `highestC1ControlScalar` (0x9F) — each with a doc comment that states the value, in the file's style. The comparison now reads the constants. No behavior change; this is the refactor phase, and the ported tests hold it green.
+  timestamp: 2026-08-25T17:41:56.786270+00:00
+- actor: claude-code
+  id: 01m0x07fy96ec7ztersfd2gzr1
+  text: |-
+    ### implement — changed
+    - evidence: 1 file — Sources/FoundationModelsMultitool/Capabilities/Files/PathGuard.swift. Replaced the magic numbers 0x1F, 0x7F, 0x9F with the named constants `highestC0ControlScalar`, `deleteControlScalar`, `highestC1ControlScalar`, each with a doc comment that states the value. All other literals in the file already sit in named constants or in the rule's allow-list (0, 1, -1, 100). `swift build` — Build complete. `swift test --filter PathGuardTests` — 35 tests, 1 suite, all pass. The one build warning is the pre-existing mlx-swift bundle notice. The finding's checklist item is now `- [x]`.
+    - next: /review
+  timestamp: 2026-08-25T17:41:59.369031+00:00
+- actor: claude-code
+  id: 01m0x097w91c7rsz1xz1es1a6w
+  text: |-
+    ### test — green
+    - evidence: swift test — 643 tests, 52 suites, all passed, 0 failed, 0 skipped. Only warning found: the named pre-existing one (missing creator for mutated node: mlx-swift_Cmlx.bundle/Contents/MacOS). No new warnings.
+    - next: no fix needed. No edit made to PathGuard.swift.
+  timestamp: 2026-08-25T17:42:56.649081+00:00
 depends_on:
 - 01M0WXACC6Q0PY1QKZ6Y2TH7J4
 position_column: doing
@@ -56,3 +86,12 @@ Note on the tests: `PathGuardTests.swift` lines 510 and 518 construct a `FileCon
 
 ## Workflow
 - Use `/tdd` — port the tests first, then port the code to make them pass. #phase-3 #eventplan
+
+## Review Findings (2026-08-25 12:30)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 5 file(s) reviewed, 18 not reviewed.
+
+> 18 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 18 file(s)
+
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Files/PathGuard.swift:903` `code-hygiene/magic-numbers-swift` — Magic numbers should be replaced by named constants.
