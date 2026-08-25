@@ -75,6 +75,18 @@ import Testing
         try Data(contentsOf: URL(fileURLWithPath: path))
     }
 
+    /// Read a file back through the `tools.files.read` verb, whole and in
+    /// the default hashline format.
+    ///
+    /// - Parameters:
+    ///   - path: the file path to read.
+    ///   - context: the session context the verb reads against.
+    /// - Returns: the read verb's flat result.
+    private static func readBack(path: String, in context: FileContext) async throws -> ReadResult {
+        try await Read(context: context)
+            .call(arguments: ReadArguments(path: path, offset: nil, limit: nil, format: nil))
+    }
+
     // MARK: New and overwrite
 
     /// A write to a fresh path creates the file with the exact bytes.
@@ -211,7 +223,8 @@ import Testing
 
     // MARK: Unicode and empty content
 
-    /// Unicode content survives the write byte for byte.
+    /// Unicode content survives the write byte for byte, and the envelope
+    /// equals what a subsequent read of the path computes.
     @Test func unicodeContentRoundTripsOnDisk() async throws {
         let root = TestSupport.makeTemporaryDirectory(named: "FilesWriteTests")
         let url = root.appendingPathComponent("unicode.txt", isDirectory: false)
@@ -223,9 +236,15 @@ import Testing
         #expect(result.correction == nil)
         #expect(try Self.readBytes(url.path) == Data(text.utf8))
         #expect(result.bytesWritten == Data(text.utf8).count)
+
+        let readResult = try await Self.readBack(path: url.path, in: context)
+
+        #expect(result.hash == readResult.hash)
+        #expect(result.taggedContent == readResult.lines)
     }
 
-    /// Empty content writes an empty file with the empty-bytes token.
+    /// Empty content writes an empty file with the empty-bytes token, and
+    /// the envelope equals what a subsequent read of the path computes.
     @Test func emptyContentWritesAnEmptyFile() async throws {
         let root = TestSupport.makeTemporaryDirectory(named: "FilesWriteTests")
         let url = root.appendingPathComponent("empty.txt", isDirectory: false)
@@ -238,6 +257,11 @@ import Testing
         #expect(result.bytesWritten == 0)
         #expect(result.taggedContent.isEmpty)
         #expect(result.hash == Hashline.wholeFileHash(bytes: Data()))
+
+        let readResult = try await Self.readBack(path: url.path, in: context)
+
+        #expect(readResult.lines == result.taggedContent)
+        #expect(readResult.hash == result.hash)
     }
 
     // MARK: Permission preservation
@@ -260,7 +284,8 @@ import Testing
 
     // MARK: Envelope fields
 
-    /// `bytesWritten` counts UTF-8 bytes, not characters.
+    /// `bytesWritten` counts UTF-8 bytes, not characters, and the unicode
+    /// envelope equals what a subsequent read of the path computes.
     @Test func envelopeBytesWrittenCountsUTF8Bytes() async throws {
         let root = TestSupport.makeTemporaryDirectory(named: "FilesWriteTests")
         let url = root.appendingPathComponent("bytes.txt", isDirectory: false)
@@ -273,6 +298,13 @@ import Testing
         #expect(result.correction == nil)
         #expect(result.bytesWritten == Data(text.utf8).count)
         #expect(result.bytesWritten != text.count, "byte count must not be conflated with character count")
+        #expect(result.hash == Hashline.wholeFileHash(bytes: Data(text.utf8)))
+        #expect(result.taggedContent == Hashline.taggedLines(of: text))
+
+        let readResult = try await Self.readBack(path: url.path, in: context)
+
+        #expect(result.hash == readResult.hash)
+        #expect(result.taggedContent == readResult.lines)
     }
 
     /// The write's `hash` equals a subsequent read's freshness token.
@@ -285,8 +317,7 @@ import Testing
         let writeResult = try await Self.write(path: url.path, content: text, in: context)
         #expect(writeResult.correction == nil)
 
-        let readResult = try await Read(context: context)
-            .call(arguments: ReadArguments(path: url.path, offset: nil, limit: nil, format: nil))
+        let readResult = try await Self.readBack(path: url.path, in: context)
 
         #expect(writeResult.hash == readResult.hash)
         #expect(writeResult.hash == Hashline.wholeFileHash(bytes: Data(text.utf8)))
@@ -302,8 +333,7 @@ import Testing
         let writeResult = try await Self.write(path: url.path, content: text, in: context)
         #expect(writeResult.correction == nil)
 
-        let readResult = try await Read(context: context)
-            .call(arguments: ReadArguments(path: url.path, offset: nil, limit: nil, format: nil))
+        let readResult = try await Self.readBack(path: url.path, in: context)
 
         #expect(writeResult.taggedContent == readResult.lines)
         #expect(writeResult.taggedContent.first?.hasPrefix("1:") == true)

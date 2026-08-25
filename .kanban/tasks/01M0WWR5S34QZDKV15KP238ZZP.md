@@ -40,6 +40,41 @@ comments:
     - evidence: swift test — Build complete (2.08 sec); Test run with 908 tests in 67 suites passed, 0 failures, 0 skipped. Only warning seen: the known pre-existing mlx-swift "missing creator for mutated node" notice. No new warnings.
     - next: none
   timestamp: 2026-08-25T22:16:16.336094+00:00
+- actor: claude-code
+  id: 01m0xgkp52ps79sn1qvjw8v39e
+  text: |-
+    ### review — findings
+    - evidence: 3 findings, 4 confirmed, 0 refuted, 0 failed — Sources/FoundationModelsMultitool/Capabilities/Files/Write.swift:77, Tests/FoundationModelsMultitoolTests/FilesWriteTests.swift:239, Tests/FoundationModelsMultitoolTests/FilesWriteTests.swift:275 (scope: review sha 9ae854c~1..9ae854c, backend local)
+    - next: correct each finding in the checklist "## Review Findings (2026-08-25 17:17)", then review again. The task stays in review.
+  timestamp: 2026-08-25T22:28:16.162262+00:00
+- actor: claude-code
+  id: 01m0xgvg89ca2r0h7hxszb0qce
+  text: |-
+    Corrected the 3 review findings.
+
+    - `Write.swift` magic numbers: the literal expression `1024 * 1024` is replaced with the named constants `bytesPerKibibyte` (1024) and `kibibytesPerMebibyte` (1024), each with a doc comment in the PathGuard/EditMatch pattern. `bytesPerMebibyte` is now the product of the two named factors. A scan of the whole file finds no other unnamed literal outside {0, 1, -1, 100}: `maximumContentMebibytes` (10) was already a named constant with a doc comment.
+    - Empty-content coverage: `emptyContentWritesAnEmptyFile` now reads the file back through the `Read` verb and compares `readResult.lines == result.taggedContent` and `readResult.hash == result.hash`, as the finding specifies.
+    - Unicode-content coverage: `envelopeBytesWrittenCountsUTF8Bytes` now verifies `result.hash == Hashline.wholeFileHash(bytes: Data(text.utf8))` and `result.taggedContent == Hashline.taggedLines(of: text)`, then reads the file back through the `Read` verb and compares `hash` and `taggedContent` with the read's fields, as the finding specifies. To remove the same cause from the whole file, `unicodeContentRoundTripsOnDisk` (the multi-line unicode variant) also reads back through `Read` and compares the same two fields.
+    - To keep the `Read` call shape in one place, the suite gets one `readBack(path:in:)` helper. The two envelope tests that made the same call inline now use the helper.
+    - The 3 finding checkboxes in "## Review Findings (2026-08-25 17:17)" are set to `- [x]`.
+
+    Verification: `swift build` — Build complete. `swift test --filter FilesWriteTests` — 19/19 pass. `swift test --filter FilesReadTests` — 21/21 pass. The only warning seen is the known pre-existing mlx-swift "missing creator for mutated node" notice.
+  timestamp: 2026-08-25T22:32:32.265751+00:00
+- actor: claude-code
+  id: 01m0xgvmk5phjdy4s2n5tt1ce3
+  text: |-
+    ### implement — changed
+    - evidence: 2 files — Sources/FoundationModelsMultitool/Capabilities/Files/Write.swift (named constants for the 1024 literals), Tests/FoundationModelsMultitoolTests/FilesWriteTests.swift (Read round-trip for the empty and unicode cases, one readBack helper). Verified: swift build ok; swift test --filter FilesWriteTests 19/19 pass; swift test --filter FilesReadTests 21/21 pass. The 3 findings are checked on the card.
+    - next: /review. The task stays in doing.
+  timestamp: 2026-08-25T22:32:36.709041+00:00
+- actor: claude-code
+  id: 01m0xh63f8vaa7jk1zbvqjkeyv
+  text: |-
+    ### test — green
+    - evidence: `swift test` — 908 tests, 67 suites, 0 failed, 0 skipped. `swift build --build-tests` after a forced recompile of Sources/Tests — only the known pre-existing mlx-swift warning "missing creator for mutated node" is present, no new warnings.
+    - note: one run showed a single transient failure in "eventplan.md names no part of the deleted permission design" (file read raced with a concurrent process). The suite was re-run twice more, both fully clean, and the same test passed in isolation. Treated as environmental, not a code defect.
+    - next: ready for commit.
+  timestamp: 2026-08-25T22:38:19.624341+00:00
 depends_on:
 - 01M0WWPWHFXSDJKH2GYZCR6QZ8
 - 01M0WWNWDG0SPX34065AZ7JW8H
@@ -76,3 +111,14 @@ Shape:
 
 ## Workflow
 - Use `/tdd` — port the tests first, then port the code to make them pass. #phase-3 #eventplan
+
+## Review Findings (2026-08-25 17:17)
+
+> Scope: `review sha 9ae854c~1..9ae854c` — reviewed the diffs only — lines this change added or modified. 3 file(s) reviewed, 4 not reviewed.
+
+> 4 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 4 file(s)
+
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Files/Write.swift:77` `code-hygiene/magic-numbers-swift` — Magic numbers should be replaced by named constants.
+- [x] `Tests/FoundationModelsMultitoolTests/FilesWriteTests.swift:239` `completeness/inverse-operation-coverage` — Empty content variant is tested for write but not verified to round-trip through Read. The test suite claims to cover 'taggedContent matching that read's hashline tagging' (line 33), demonstrated by envelopeTaggedContentEqualsSubsequentReadBackTagging (line 296) which reads back written content. Empty files should similarly be read back to verify the envelope fields match what Read produces, since the Write contract states values are 'exactly as a subsequent read of the same path computes them' (line 215). After line 240, add a read back via Read verb to verify empty files' envelope fields match what Read produces: `let readResult = try await Read(context: context).call(arguments: ReadArguments(path: url.path, offset: nil, limit: nil, format: nil))` followed by `#expect(readResult.lines == result.taggedContent)` and `#expect(readResult.hash == result.hash)`.
+- [x] `Tests/FoundationModelsMultitoolTests/FilesWriteTests.swift:275` `completeness/inverse-operation-coverage` — Unicode content variant is tested for bytesWritten (line 264-276) but hash and taggedContent envelope fields are not verified via a subsequent Read. The Write contract states hash and taggedContent are 'exactly as a subsequent read of the same path computes them' (lines 215-217). This round-trip verification is performed for ASCII multi-line content in envelopeHashEqualsASubsequentReadToken (line 279) and envelopeTaggedContentEqualsSubsequentReadBackTagging (line 296), but unicode content should also be tested for full envelope consistency to ensure Hashline computations are correct for multi-byte characters. After line 275, add full envelope verification for unicode: `#expect(result.hash == Hashline.wholeFileHash(bytes: Data(text.utf8)))` and `#expect(result.taggedContent == Hashline.taggedLines(of: text))`. Then add a Read round-trip verification: `let readResult = try await Read(context: context).call(arguments: ReadArguments(path: url.path, offset: nil, limit: nil, format: nil))` followed by `#expect(result.hash == readResult.hash)` and `#expect(result.taggedContent == readResult.lines)`.

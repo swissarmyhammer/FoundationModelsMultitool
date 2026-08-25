@@ -73,8 +73,15 @@ extension Write {
 
     // MARK: Content-size cap
 
-    /// The number of bytes in one mebibyte.
-    private static let bytesPerMebibyte = 1024 * 1024
+    /// The number of bytes in one kibibyte (`1024`).
+    private static let bytesPerKibibyte = 1024
+
+    /// The number of kibibytes in one mebibyte (`1024`).
+    private static let kibibytesPerMebibyte = 1024
+
+    /// The number of bytes in one mebibyte, as the product of the two
+    /// named binary factors.
+    private static let bytesPerMebibyte = bytesPerKibibyte * kibibytesPerMebibyte
 
     /// The maximum accepted content size in mebibytes, matching the Rust `files` tool.
     private static let maximumContentMebibytes = 10
