@@ -27,6 +27,23 @@ comments:
     - evidence: swift test — 889 tests, 66 suites, 0 failed, 0 skipped. Build showed one warning: the known pre-existing mlx-swift "missing creator for mutated node" notice. No new warnings.
     - next: proceed to review.
   timestamp: 2026-08-25T21:58:58.128201+00:00
+- actor: claude-code
+  id: 01m0xfcvjgdbc6bx1gx68ar4bh
+  text: |-
+    ### review — clean
+    - evidence: review sha 711df74~1..711df74 (local backend) — 0 findings, 0 confirmed, 0 refuted, 7 attempted, 0 failed
+    - next: task moved to done
+  timestamp: 2026-08-25T22:07:03.760130+00:00
+- actor: claude-code
+  id: 01m0xfdc9j3qrg41zwp2nyd4nj
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — PatchEngine.swift, PatchEngineTests.swift
+    - test: green — swift test, 889 tests in 66 suites, 0 failed
+    - commit: 711df74
+    - review: clean — review sha 711df74~1..711df74, 0 findings
+    - task landed in done
+  timestamp: 2026-08-25T22:07:20.882275+00:00
 depends_on:
 - 01M0WWQE8N2DCTRDVPSM37GSXQ
 - 01M0WWNWDG0SPX34065AZ7JW8H
@@ -34,8 +51,8 @@ depends_on:
 - 01M0WWPWHFXSDJKH2GYZCR6QZ8
 - 01M0WWQAT9YQ2XN087287TZKDP
 - 01M0WXACC6Q0PY1QKZ6Y2TH7J4
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ff8280
 title: Port PatchEngine into Capabilities/Files
 ---
 ## What
