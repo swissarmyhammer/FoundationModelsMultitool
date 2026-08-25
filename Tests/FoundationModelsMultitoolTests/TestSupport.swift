@@ -1,6 +1,8 @@
 import Darwin
 import Foundation
 
+@testable import FoundationModelsMultitool
+
 /// Shared scaffolding for the file-capability suites of this test target.
 ///
 /// Collects the helpers those suites share, thus one implementation governs
@@ -66,13 +68,13 @@ enum TestSupport {
     /// root itself, or a genuine descendant of it — rather than merely
     /// sharing the string prefix of the root.
     ///
-    /// Both URLs are standardized (collapsing `.` / `..` components) before
-    /// comparison. The trailing path separator on the prefix test is what
-    /// rejects a *sibling* that shares the prefix of the root: for root
-    /// `/tmp/test`, `/tmp/test/a` is contained but `/tmp/test-evil` is not —
-    /// a bare `hasPrefix(root)` would wrongly admit the latter. A suite that
-    /// must keep a path inside a root routes the check through here, thus the
-    /// check lives in one place.
+    /// Both URLs are standardized (collapsing `.` / `..` components), then
+    /// `PathContainment` decides on whole path components. The component
+    /// comparison is what rejects a *sibling* that shares the prefix of the
+    /// root: for root `/tmp/test`, `/tmp/test/a` is contained but
+    /// `/tmp/test-evil` is not — a bare `hasPrefix(root)` would wrongly admit
+    /// the latter. A suite that must keep a path inside a root routes the
+    /// check through here, thus the check and the package guards agree.
     ///
     /// - Parameters:
     ///   - candidate: the path to test for containment.
@@ -80,9 +82,9 @@ enum TestSupport {
     /// - Returns: `true` when `candidate` is `root` or a descendant of it,
     ///   and `false` in each other case.
     static func path(candidate: URL, isContainedBy root: URL) -> Bool {
-        let rootPath = root.standardizedFileURL.path
-        let candidatePath = candidate.standardizedFileURL.path
-        return candidatePath == rootPath || candidatePath.hasPrefix(rootPath + "/")
+        PathContainment.path(
+            candidate.standardizedFileURL.path,
+            isContainedBy: root.standardizedFileURL.path)
     }
 
     /// The absolute path of `name` directly under `root`, without creating it.

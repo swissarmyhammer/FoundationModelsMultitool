@@ -501,29 +501,23 @@ public struct SeatbeltSandbox: CommandSandbox {
     ///   - root: The absolute, resolved directory it must sit inside.
     /// - Returns: `true` when `path` is `root` or sits below it.
     private static func path(_ path: String, isInside root: String) -> Bool {
-        guard let pathComponents = normalizedComponents(of: path),
-            let rootComponents = normalizedComponents(of: root)
-        else {
-            return false
-        }
-        return pathComponents.starts(with: rootComponents)
+        guard isNormalizedAbsolutePath(path), isNormalizedAbsolutePath(root) else { return false }
+        return PathContainment.path(path, isContainedBy: root)
     }
 
-    /// The path components of an absolute `path` that carries no traversal, or
-    /// `nil` when `path` is neither.
+    /// Whether `path` is absolute and carries no traversal component.
     ///
     /// An empty component — from a separator at the end, or from two
-    /// separators together — is dropped, thus `/private/tmp/a/` and
-    /// `/private/tmp//a` break down the same way as `/private/tmp/a`.
+    /// separators together — is dropped before the check, thus
+    /// `/private/tmp/a/` and `/private/tmp//a` pass the same way as
+    /// `/private/tmp/a`.
     ///
-    /// - Parameter path: The path to break down.
-    /// - Returns: The components that are not empty, in order, or `nil` when
-    ///   `path` is relative or carries a `.` or `..` component.
-    private static func normalizedComponents(of path: String) -> [Substring]? {
-        guard path.hasPrefix("/") else { return nil }
-        let components = path.split(separator: "/", omittingEmptySubsequences: true)
-        guard !components.contains(where: { $0 == "." || $0 == ".." }) else { return nil }
-        return components
+    /// - Parameter path: The path to check.
+    /// - Returns: `true` when `path` is absolute and free of `.` and `..`
+    ///   components.
+    private static func isNormalizedAbsolutePath(_ path: String) -> Bool {
+        path.hasPrefix("/")
+            && !PathContainment.components(of: path).contains(where: { $0 == "." || $0 == ".." })
     }
 }
 

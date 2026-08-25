@@ -635,7 +635,7 @@ struct PathGuard: Sendable {
     ) -> Result<Void, PathViolation> {
         canonicalize(workspaceRoots: workspaceRoots).flatMap { canonicalRoots in
             resolvedPathToCheck(path).flatMap { pathToCheck in
-                canonicalRoots.contains(where: { Self.pathStartsWith(pathToCheck, prefix: $0) })
+                canonicalRoots.contains(where: { PathContainment.path(pathToCheck, isContainedBy: $0) })
                     ? .success(())
                     : .failure(
                         PathViolation(
@@ -728,7 +728,8 @@ struct PathGuard: Sendable {
     private static func rejoinRemainder(of path: String, below originalParent: String, onto canonicalParent: String)
         -> String
     {
-        let remainder = components(path).dropFirst(components(originalParent).count)
+        let remainder = PathContainment.components(of: path)
+            .dropFirst(PathContainment.components(of: originalParent).count)
         return remainder.isEmpty ? canonicalParent : join(canonicalParent, remainder.joined(separator: "/"))
     }
 
@@ -881,22 +882,6 @@ struct PathGuard: Sendable {
         guard let lastSlash = trimmed.lastIndex(of: "/") else { return nil }
         if lastSlash == trimmed.startIndex { return "/" }
         return String(trimmed[trimmed.startIndex..<lastSlash])
-    }
-
-    /// The non-empty path components of a path (leading/trailing slashes dropped).
-    private static func components(_ path: String) -> [String] {
-        path.split(separator: "/", omittingEmptySubsequences: true).map(String.init)
-    }
-
-    /// Whether `path` is at or below `prefix`, compared component-wise.
-    ///
-    /// Component-wise comparison (not string prefix), thus `/foobar` is not
-    /// considered inside `/foo`.
-    private static func pathStartsWith(_ path: String, prefix: String) -> Bool {
-        let pathComponents = components(path)
-        let prefixComponents = components(prefix)
-        guard prefixComponents.count <= pathComponents.count else { return false }
-        return Array(pathComponents.prefix(prefixComponents.count)) == prefixComponents
     }
 
     /// A "control characters" violation when a path holds a disallowed control character, else `nil`.

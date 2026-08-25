@@ -272,8 +272,58 @@ comments:
 
     This card gates the other ten `#phase-3` cards, so the blocker holds the whole scope.
   timestamp: 2026-08-25T17:46:16.519336+00:00
-position_column: review
-position_ordinal: '8180'
+- actor: claude-code
+  id: 01m0x11pce24dax02s67h42hg6
+  text: |-
+    Finding pass on the `reuse/reuse` finding at `TestSupport.swift:82`. The tree is single-owner now, thus the `Sources/` edits the prior blocker named are permitted.
+
+    The decided fix is applied: ONE shared path-containment utility, `PathContainment`, now sits at `Sources/FoundationModelsMultitool/Capabilities/PathContainment.swift`. Placement: the two production callers are `Capabilities/Files/PathGuard.swift` and `Capabilities/Shell/SeatbeltSandbox.swift`, thus the shared file sits in their common parent folder `Capabilities/`, the same way the repository groups code by concern. The utility is `internal`, thus the test target reaches it through `@testable import`.
+
+    The utility holds the two shared pieces: `components(of:)` (split on `/`, empty components dropped) and `path(_:isContainedBy:)` (component-wise `starts(with:)`). Component comparison wins, per the decision: a string-prefix check wrongly reports `/a/bc` as inside `/a/b`, and these guards are security boundaries.
+
+    Three callers route through it:
+    1. `PathGuard` — `pathStartsWith(_:prefix:)` is deleted. `ensureWorkspaceBoundary` calls `PathContainment.path(_:isContainedBy:)` directly. The private `components(_:)` helper is also deleted; its one other caller, `rejoinRemainder`, uses `PathContainment.components(of:)`. Behavior equal: `pathStartsWith` was exactly a component-prefix check, and `rejoinRemainder` gets the same components as `Substring` in place of `String`, which changes no joined output.
+    2. `SeatbeltSandbox` — `path(_:isInside:)` keeps its own strict gate (absolute, no `.` or `..`), now as the Bool validator `isNormalizedAbsolutePath(_:)`, then delegates the comparison to `PathContainment.path(_:isContainedBy:)`. `normalizedComponents(of:)` is deleted. Behavior equal: the same two refusal conditions, then the same `starts(with:)` on the same split. The validation stays local because it is a refusal policy of this boundary, not containment logic; the containment logic itself has one implementation.
+    3. `TestSupport.path(candidate:isContainedBy:)` — standardizes both URLs, then delegates to `PathContainment.path(_:isContainedBy:)`. The old string body (`==` or `hasPrefix(root + "/")`) is gone.
+
+    TDD order: the TestSupport reroute went in first and failed to compile — `TestSupport.swift:85:9: error: cannot find 'PathContainment' in scope` — the expected RED. The utility and the two `Sources/` reroutes then made it GREEN.
+
+    Re-check of the four `PathContainmentTests` expectations against component semantics: all four hold unchanged, thus no expectation encoded the string-prefix defect and no correction was necessary. (1) root itself — equal component lists, contained. (2) descendant — contained. (3) sibling `/tmp/test-evil` — component `test-evil` differs from `test`, not contained. (4) `..` escape — `standardizedFileURL` collapses it to `/tmp/etc/passwd` before the check, not contained. The old TestSupport body was already sibling-safe through its trailing-slash trick; the two semantics differ only at edges no expectation pins (for example root `/`, where the component form correctly contains everything and the old string form did not). The suite passed unmodified.
+
+    Tests: `swift test --filter "PathContainmentTests|PathGuardTests|SeatbeltSandboxTests"` — 61 tests in 3 suites pass, thus the reroute changed no guard's observable behavior. Full `swift test` — 643 tests in 52 suites, 0 failures. `swift build` — clean; the one warning (mlx-swift_Cmlx.bundle "missing creator for mutated node") pre-exists and is recorded on this card already. A validator reconciliation pass against the full rule set is in flight before the step record.
+  timestamp: 2026-08-25T17:56:17.934191+00:00
+- actor: claude-code
+  id: 01m0x13ry8n149jaj5rcmzj35v
+  text: |-
+    ### implement — changed
+    - evidence: 4 files — /Users/wballard/github/swissarmyhammer/FoundationModelsMultitool/Sources/FoundationModelsMultitool/Capabilities/PathContainment.swift (new shared utility), /Users/wballard/github/swissarmyhammer/FoundationModelsMultitool/Sources/FoundationModelsMultitool/Capabilities/Files/PathGuard.swift (deleted `pathStartsWith(_:prefix:)` and `components(_:)`, rerouted `ensureWorkspaceBoundary` and `rejoinRemainder`), /Users/wballard/github/swissarmyhammer/FoundationModelsMultitool/Sources/FoundationModelsMultitool/Capabilities/Shell/SeatbeltSandbox.swift (deleted `normalizedComponents(of:)`, delegated the comparison, kept the absolute/no-traversal gate as `isNormalizedAbsolutePath(_:)`), /Users/wballard/github/swissarmyhammer/FoundationModelsMultitool/Tests/FoundationModelsMultitoolTests/TestSupport.swift (delegates through `@testable import`). TDD: RED was `TestSupport.swift: error: cannot find 'PathContainment' in scope`; GREEN followed the extraction. Verification: `swift build` clean; `swift test --filter "PathContainmentTests|PathGuardTests|SeatbeltSandboxTests"` — 61 tests in 3 suites pass, thus no guard's observable behavior changed; full `swift test` — 643 tests in 52 suites, 0 failures. The one warning (mlx-swift_Cmlx.bundle "missing creator for mutated node") pre-exists this card. The `reuse/reuse` finding at `TestSupport.swift:82` is corrected and its checklist item is now `- [x]`. All four `PathContainmentTests` expectations hold under component semantics; none encoded the string-prefix defect, thus no expectation was corrected — see the finding-pass comment above for the case-by-case check.
+    - next: /review. The card stays in `doing`.
+  timestamp: 2026-08-25T17:57:26.088536+00:00
+- actor: claude-code
+  id: 01m0x194644gfaghqqbn9be5dr
+  text: |-
+    Reconciliation against the full 55-rule validator set (the rules dump was read whole by a delegated agent; its report arrived after the step record). Result: zero code changes required. The points a reviewer will most likely probe, with the answers:
+
+    - `swift/doc-parameter-naming` — each `- Parameter` key in the new and edited docs names the internal parameter (`path`, `root`, `name`). Correct.
+    - `swift/access-control` — `PathContainment` is `internal`. The rule states `@testable import` reaches `internal` and never `private`, and blesses "internal because a test calls it". `public` on a helper no other module consumes would itself be a finding, thus `internal` is the correct level.
+    - `dead-code` — all three new declarations have in-module production callers in the same change (`PathGuard.ensureWorkspaceBoundary`, `PathGuard.rejoinRemainder`, `SeatbeltSandbox.path(_:isInside:)`, `SeatbeltSandbox.isNormalizedAbsolutePath(_:)`), thus no `periphery:ignore` marker is necessary and none was added. The deleted helpers are deleted, not commented out.
+    - `reuse` — the splitter is one call to the standard library (`String.split(separator:omittingEmptySubsequences:)`), the same call both original implementations made. `NSString.pathComponents` and `URL.pathComponents` were considered and rejected: they keep `/`, `.`, and trailing-slash entries as components, thus they are not behavior-equal to the three rerouted guards.
+    - `swift/idioms` and `swift/fluent-usage` — `[Substring]` sugar; the member name `path(_:isContainedBy:)` puts the preposition on the argument label and mirrors the member shape this repository's review already accepted twice (`SeatbeltSandbox.path(_:isInside:)`, `TestSupport.path(candidate:isContainedBy:)`); the base name does not repeat the enclosing type's name.
+    - `invariant-propagation` — the tree holds no further copy of the containment logic: `pathStartsWith` and `normalizedComponents` have zero remaining references, and the earlier whole-`Tests/` sweep (recorded on this card) found no other containment implementation. The two inline `hasPrefix` negations in `ShellStateTests` are pre-existing test-body code, which the review skill's written rule excludes.
+    - `case-sensitivity-coverage` — the diff does not change the case contract: each of the three original comparisons was case-sensitive, and the shared comparison stays case-sensitive, thus the rule's "pre-existing comparison" exception applies. Recorded here so a reviewer sees the contract was considered, not missed.
+    - `magic-numbers-swift` — no numeric literal beyond the allowed set; a repeated `"/"` string literal is not covered by the Swift rule.
+
+    The step record above stands unchanged: implement — changed, 4 files, build clean, 643 tests in 52 suites green.
+  timestamp: 2026-08-25T18:00:21.444305+00:00
+- actor: claude-code
+  id: 01m0x1acn1v9xesbem2554cyaf
+  text: |-
+    ### test — green
+    - evidence: swift test (forced rebuild of the FoundationModelsMultitool package targets only) — 643 tests, 52 suites, all pass. 0 fail. 0 skip. 0 new warning. The known pre-existing warning about the mlx-swift_Cmlx.bundle path did not show this run, because that dependency target did not rebuild. We name it and do not chase it.
+    - next: none. The suite is clean.
+  timestamp: 2026-08-25T18:01:02.881347+00:00
+position_column: doing
+position_ordinal: '80'
 title: Port TestSupport and PathContainmentTests into the test target
 ---
 ## What
@@ -310,6 +360,6 @@ Keep `makeTemporaryDirectory` and the path-containment helper. Remove the helper
 
 > Scope: `review file Tests/FoundationModelsMultitoolTests/TestSupport.swift` — reviewed the whole of each named file. 1 file(s) reviewed, 0 not reviewed.
 
-- [ ] `Tests/FoundationModelsMultitoolTests/TestSupport.swift:82` `reuse/reuse` — The `path(candidate:isContainedBy:root:)` function reimplements functionality that already exists in multiple locations. Rather than creating a new implementation, existing functions with the same capability should have been reused or extended. Reuse or extend one of the existing implementations, or extract the common path-containment logic into a shared utility that both the original locations and TestSupport can call.
+- [x] `Tests/FoundationModelsMultitoolTests/TestSupport.swift:82` `reuse/reuse` — The `path(candidate:isContainedBy:root:)` function reimplements functionality that already exists in multiple locations. Rather than creating a new implementation, existing functions with the same capability should have been reused or extended. Reuse or extend one of the existing implementations, or extract the common path-containment logic into a shared utility that both the original locations and TestSupport can call.
 
 > Scope: `review file Tests/FoundationModelsMultitoolTests/PathContainmentTests.swift` — reviewed the whole of each named file. 1 file(s) reviewed, 0 not reviewed. No findings.

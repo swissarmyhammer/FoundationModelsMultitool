@@ -58,10 +58,27 @@ comments:
     - evidence: swift test — 643 tests, 52 suites, all passed, 0 failed, 0 skipped. Only warning found: the named pre-existing one (missing creator for mutated node: mlx-swift_Cmlx.bundle/Contents/MacOS). No new warnings.
     - next: no fix needed. No edit made to PathGuard.swift.
   timestamp: 2026-08-25T17:42:56.649081+00:00
+- actor: claude-code
+  id: 01m0x0mwyx9y04ekq1x3v74nss
+  text: |-
+    ### review — clean
+    - evidence: `review sha 59df84e~1..59df84e` (local backend) — counts: findings 0, confirmed 0, refuted 1. All items in the prior findings checklist are checked.
+    - next: none. The task moved to done.
+  timestamp: 2026-08-25T17:49:18.685722+00:00
+- actor: claude-code
+  id: 01m0x0nxrwb8g9hn4y7x422bb4
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — PathGuard.swift, three named control-scalar constants
+    - test: green — swift test, 643 tests in 52 suites, 0 failed
+    - commit: 59df84e (explicit staging, shared-tree protocol)
+    - review: clean — review sha 59df84e~1..59df84e, 0 findings, 1 refuted
+    - task landed in done
+  timestamp: 2026-08-25T17:49:52.284047+00:00
 depends_on:
 - 01M0WXACC6Q0PY1QKZ6Y2TH7J4
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: f680
 title: Port PathGuard and PathCorrective into Capabilities/Files
 ---
 ## What
