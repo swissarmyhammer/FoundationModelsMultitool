@@ -64,7 +64,7 @@ import FoundationModelsRouter
 /// It carries no quotation mark and no nonce, because the model has to reproduce
 /// it verbatim inside a JavaScript string literal and every character it has to
 /// escape is a character it can get wrong.
-let shellElevationCommand = "echo $$ ; while true ; do echo tick ; sleep 1 ; done"
+private let shellElevationCommand = "echo $$ ; while true ; do echo tick ; sleep 1 ; done"
 
 /// The request the model is given.
 ///
@@ -81,7 +81,7 @@ let shellElevationCommand = "echo $$ ; while true ; do echo tick ; sleep 1 ; don
 /// `Execute.detachmentMount` answers a 30-second block window and this command
 /// outlives it — so the scenario does not depend on which of the two the model
 /// chose.
-let shellElevationPrompt = """
+private let shellElevationPrompt = """
     Start this shell command running in the background and tell me the completion token it hands \
     back. Do not wait for it to finish, because it never finishes.
 
@@ -106,38 +106,56 @@ private let shellExecutePath = "shell.execute"
 /// finished run.
 private let sweptRunSleepSeconds = 600
 
-/// How long the harness waits for the model to reach `tools.shell.execute`.
+/// How many seconds the harness waits for the model to reach
+/// `tools.shell.execute`.
 ///
 /// This bounds the whole model-driven half: discovery, the `runCode` call, and
 /// the snippet reaching the verb. It is generous because a live turn on the
 /// shipped 30-billion-parameter pin takes minutes, and it is bounded because a
 /// turn that never calls the verb must report that rather than hang until the
 /// suite's own time limit fires and reads as a hang of something else.
-private let shellRunArrivalDeadline = Duration.seconds(480)
+private let shellRunArrivalDeadlineSeconds = 480
 
-/// How long the harness waits for the started run to reach the run plane.
+/// How long the harness waits for the model to reach `tools.shell.execute`.
+private let shellRunArrivalDeadline = Duration.seconds(shellRunArrivalDeadlineSeconds)
+
+/// How many seconds the harness waits for the started run to reach the run
+/// plane.
 ///
 /// Longer than `Execute`'s own 30-second block window, because a call that did
 /// not ask to skip the wait parks only when that window elapses.
-private let shellRunParkDeadline = Duration.seconds(90)
+private let shellRunParkDeadlineSeconds = 90
+
+/// How long the harness waits for the started run to reach the run plane.
+private let shellRunParkDeadline = Duration.seconds(shellRunParkDeadlineSeconds)
+
+/// How many seconds the harness waits for the live run to have written a line.
+private let shellRunOutputDeadlineSeconds = 30
 
 /// How long the harness waits for the live run to have written a line.
-private let shellRunOutputDeadline = Duration.seconds(30)
+private let shellRunOutputDeadline = Duration.seconds(shellRunOutputDeadlineSeconds)
 
-/// How long the harness waits for the killed process group to go away.
+/// How many seconds the harness waits for the killed process group to go away.
 ///
 /// A poll and not slack: `killpg` kills the tree at once, and the leader of the
 /// group then stays an unreaped child of this process until swift-subprocess
 /// reaps it. A group that still holds a zombie still answers the probe.
-private let killedProcessGroupDeadline = Duration.seconds(30)
+private let killedProcessGroupDeadlineSeconds = 30
 
-/// How long the harness waits for the swept terminal to reach the transcript.
+/// How long the harness waits for the killed process group to go away.
+private let killedProcessGroupDeadline = Duration.seconds(killedProcessGroupDeadlineSeconds)
+
+/// How many seconds the harness waits for the swept terminal to reach the
+/// transcript.
 ///
 /// `RoutedSessionActor.close()` journals the sweep's terminals before it
 /// returns, and the journal write is chained through the outbox — but the
 /// recorder writes the transcript to disk, and this poll is the synchronization
 /// point onto that file rather than a claim about how long the write takes.
-private let journaledTerminalDeadline = Duration.seconds(30)
+private let journaledTerminalDeadlineSeconds = 30
+
+/// How long the harness waits for the swept terminal to reach the transcript.
+private let journaledTerminalDeadline = Duration.seconds(journaledTerminalDeadlineSeconds)
 
 /// The signal `killpg` takes to ASK whether a process group is still there.
 ///
@@ -661,28 +679,28 @@ struct ShellElevationEvidence: Sendable {
 
 /// The label of the check that grades the elevated call as having handed a
 /// pending envelope back.
-let shellPendingEnvelopeCheckName = "pendingEnvelope"
+private let shellPendingEnvelopeCheckName = "pendingEnvelope"
 
 /// The label of the check that grades the elevation as having reported itself
 /// exactly once.
-let shellElevationReportCheckName = "elevationReport"
+private let shellElevationReportCheckName = "elevationReport"
 
 /// The label of the check that grades the run plane as listing the shell run.
-let shellRunListedCheckName = "statusListsShellRun"
+private let shellRunListedCheckName = "statusListsShellRun"
 
 /// The label of the check that grades `tools.shell.getLines` as having read the
 /// live run.
-let shellLiveOutputCheckName = "getLinesReadsLiveRun"
+private let shellLiveOutputCheckName = "getLinesReadsLiveRun"
 
 /// The label of the check that grades the cancel as having reported `.stopped`.
-let shellCancelStoppedCheckName = "cancelReportsStopped"
+private let shellCancelStoppedCheckName = "cancelReportsStopped"
 
 /// The label of the check that grades the child's process group as gone.
-let shellChildGoneCheckName = "childProcessGone"
+private let shellChildGoneCheckName = "childProcessGone"
 
 /// The label of the check that grades the journal as holding exactly one
 /// terminal event for the swept run.
-let shellJournaledTerminalCheckName = "oneJournaledTerminal"
+private let shellJournaledTerminalCheckName = "oneJournaledTerminal"
 
 /// Grades one shell elevation run into the conditions its verdict is the
 /// conjunction of.

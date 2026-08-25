@@ -179,6 +179,126 @@ comments:
         `missing creator for mutated node: (.../mlx-swift_Cmlx.bundle/...)`.
     - next: `/review`
   timestamp: 2026-08-25T15:28:33.302654+00:00
+- actor: claude-code
+  id: 01m0ws69wyx3eky5rqmm5w0fp8
+  text: |
+    ### review — findings
+
+    - evidence: `review sha HEAD~1..HEAD` (commit `ee152f0`) — 10 findings, 10 confirmed, 2 refuted, 7 validators attempted, 0 failed. All 10 land in one file,
+      `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Support/ShellElevationRunner.swift`:
+      lines 116, 122, 125, 132, 140 (`code-hygiene/magic-numbers-swift`) and lines 664, 668, 678, 681, 685 (`swift/access-control`).
+      The `.kanban` files in the delta were excluded by `.reviewignore`.
+    - The gated suite was NOT run in this step, on instruction. It drives a live model. Its result is the one already recorded on this card: 7 of 7 PASS on three runs.
+    - next: `/implement` this card again to clear the 10 findings, then `/review` it again. Two causes to remove from the WHOLE file, not only the named lines: the unnamed numeric literals, and the file-local top-level check-name constants that are not `private`.
+  timestamp: 2026-08-25T15:39:00.382284+00:00
+- actor: claude-code
+  id: 01m0ws7bj1nb09tj3vm6wzrbew
+  text: |-
+    ### finish iteration 1 — findings
+    - implement: changed — 6 files in `IntegrationTests/`. Four added (`ShellElevationTests.swift`, `Support/ShellElevationRunner.swift`, `Support/ShellRunContextProbe.swift`, `Support/IntegrationPoll.swift`) and two widened by access level alone (`Support/ScenarioRunner.swift`, `Support/LiveRouterFixture.swift`). Nothing in `Sources/` changed.
+    - The live run is what found the one reading that had to move. The first attempt scored 6 of 7: `SessionEvent.toolStatus(.running, summary:)` arrives with an EMPTY summary for an elevated call, so a run that reported its elevation and one that went silent read identically. Reading the recorded journal back fixed it and turned up two more facts now written into the code — an inner run's events are re-stamped with the OUTER run's `correlationID`, so the envelope's own token is what identifies the elevation report; and Router defect ^vbja15j is directly visible, with the outer run journaled `succeeded` for a turn whose child was SIGKILLed. No assertion reads the retained outcome.
+    - test: green — gated suite 7 of 7 checks PASS on three separate runs (42.1s, 59.5s, and 269.4s inside the whole-target run). Root `swift test` 599 tests in 49 suites, 0 failures. The whole gated target showed two failures in OTHER pre-existing suites, `inBandCollection` (model grading) and `SelectionForkPerCallTests` (a warm-vs-cold timing check at 6.071s against 6.232s); both were re-run alone and both passed.
+    - The `swift package update` item was checked off by the orchestrator after the run. The ban that blocked it was a guard put on the implementing agent after a half-deleted checkout cost this session 20 minutes, and was never a property of this card. Both packages answered "Everything is already up-to-date" in about 14 seconds, both at Router `f31f453`.
+    - commit: ee152f0 — test(shell): prove a detached command through the elevation path (^wcnkm9b)
+    - review: findings — 10 confirmed, 2 refuted, over 6 files. All ten land in `Support/ShellElevationRunner.swift`, from two causes: `magic-numbers-swift` at lines 116, 122, 125, 132, 140, and `swift/access-control` at lines 664, 668, 678, 681, 685, where five top-level check-name constants are used only inside that file and must be `private`. The access-level widening in the two shared files drew no finding.
+  timestamp: 2026-08-25T15:39:34.849072+00:00
+- actor: claude-code
+  id: 01m0wsjrhhrtggdkp61z8ffc09
+  text: |
+    ### how the two causes were removed from the WHOLE file
+
+    Both causes are gone from
+    `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Support/ShellElevationRunner.swift`.
+    Nothing else changed, in this file or in any other.
+
+    **`code-hygiene/magic-numbers-swift`.** The five reported literals all stood as
+    CALL ARGUMENTS of `Duration.seconds(...)`. swiftlint's `no_magic_numbers`
+    exempts a literal that a declaration names directly, and reports one that stands
+    as a call argument; only `0, 1, -1, 100` pass bare. Each of the five now names
+    its number first and builds the `Duration` from that name, which is the pattern
+    `IntegrationPoll` and `TestPoll` already use (`intervalMilliseconds` →
+    `Duration.milliseconds(intervalMilliseconds)`):
+
+        private let shellRunArrivalDeadlineSeconds = 480
+        private let shellRunArrivalDeadline = Duration.seconds(shellRunArrivalDeadlineSeconds)
+
+    The same for `shellRunParkDeadline` (90), `shellRunOutputDeadline` (30),
+    `killedProcessGroupDeadline` (30) and `journaledTerminalDeadline` (30). The
+    reason each number carries moved onto the `...Seconds` constant, and the
+    `Duration` keeps the one-line statement of what it bounds.
+
+    Swept for the rest of the file: every other numeric literal already names itself
+    at a declaration (`sweptRunSleepSeconds = 600`,
+    `shellElevationReplyPreviewCharacters = 120`, `elevationReportsPerRun = 1`,
+    `terminalEventsPerRun = 1`) or is an allowed value (`existenceProbeSignal = 0`,
+    `killpgReachedGroup = 0`), so none of them reports.
+
+    **`swift/access-control`.** The five reported constants are `private` now, and
+    so are the FOUR MORE of the same shape that the report did not name — the cause,
+    not the line. `grep` over the whole nested target confirms each of the nine is
+    read only inside this file:
+
+    - `shellPendingEnvelopeCheckName`, `shellElevationReportCheckName`,
+      `shellRunListedCheckName`, `shellLiveOutputCheckName`,
+      `shellCancelStoppedCheckName`, `shellChildGoneCheckName`,
+      `shellJournaledTerminalCheckName` — the seven check names.
+    - `shellElevationCommand` and `shellElevationPrompt`, which are top-level
+      constants of the same kind and were `internal` for no caller.
+
+    `runShellElevationScenario(name:)` stays `internal`: `ShellElevationTests.swift`
+    calls it, so `private` there would not compile.
+
+    **The test is not weakened.** The seven graded conditions, and how each one is
+    read, are byte-identical. The `CommandSandbox.preflight` seam that reaches
+    `ToolContext.current` stands; the `childProcessGone` poll of `killpg(group, 0)`
+    to `ESRCH` stands; no assertion reads the mailbox's retained outcome, so Router
+    defect `^vbja15j` is still stepped around and not over.
+
+    **How the magic-number fix was verified, rather than guessed.** swiftlint run
+    over the file with `only_rules: [no_magic_numbers]` and
+    `allowed_numbers: [0, 1, -1, 100]`, before and after:
+
+        before: Done linting! Found 5 violations, 0 serious in 1 file.
+                lines 116, 122, 125, 132, 140 — the five reported lines exactly
+        after:  Done linting! Found 0 violations, 0 serious in 1 file.
+  timestamp: 2026-08-25T15:45:48.593598+00:00
+- actor: claude-code
+  id: 01m0wsk5ygmsq5h98cf6axyc3t
+  text: |
+    ### implement — changed
+
+    - evidence:
+      - 1 file modified:
+        `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Support/ShellElevationRunner.swift`.
+        All 10 review findings are now `- [x]`.
+      - `code-hygiene/magic-numbers-swift` — swiftlint with
+        `only_rules: [no_magic_numbers]`, `allowed_numbers: [0, 1, -1, 100]`, over
+        the file: 5 violations before (lines 116, 122, 125, 132, 140), 0 after.
+      - `swift/access-control` — nine top-level constants are `private` now: the
+        five named, plus `shellRunListedCheckName`, `shellLiveOutputCheckName`,
+        `shellElevationCommand` and `shellElevationPrompt`, which carry the same
+        cause. `runShellElevationScenario(name:)` stays `internal` because
+        `ShellElevationTests.swift` calls it.
+      - `swift build --package-path IntegrationTests --build-tests` — Build
+        complete, 6.53s, exit 0. No new warning; the only one printed is the
+        pre-existing `missing creator for mutated node: (.../mlx-swift_Cmlx.bundle/Contents/MacOS)`.
+      - `swift test --package-path IntegrationTests --no-parallel --filter ShellElevation`
+        — 1 test in 1 suite passed after 50.176s. 7 of 7 checks PASS:
+        `pendingEnvelope=pass elevationReport=pass statusListsShellRun=pass
+        getLinesReadsLiveRun=pass cancelReportsStopped=pass childProcessGone=pass
+        oneJournaledTerminal=pass`. Run ONCE, as instructed.
+        Readings of that run: `elevationReports=1`,
+        `parked=execute/execute shell/process`, `declaredOp=execute shell`,
+        `liveLines=2`, `processGroup=44456`, `cancel=stopped`, `childGone=true`,
+        `sweptTerminals=1`, `failedCalls=0`.
+      - `swift test` at the repository root — 599 tests in 49 suites, 0 failures.
+        The baseline holds.
+      - `git remote -v` reads
+        `git@github.com:swissarmyhammer/FoundationModelsMultitool.git`, unchanged.
+        No `swift package update` or `resolve` was run, no `.build` tree was
+        removed, and the FoundationModelsRouter package was not touched.
+    - next: `/review`
+  timestamp: 2026-08-25T15:46:02.320653+00:00
 depends_on:
 - 01M0NAN7P3RFWAR33JF1HQ8XNY
 position_column: doing
@@ -249,7 +369,8 @@ capability, on the shipped configuration.
 ## Tests
 
 - [x] `cd IntegrationTests && swift test --filter ShellElevationTests` passes.
-      Passed three times: 42.1s, 59.5s, and 269.4s inside the whole-target run.
+      Passed four times: 42.1s, 59.5s, 269.4s inside the whole-target run, and
+      50.2s after the review findings were cleared.
 - [x] Run the gated suite one at a time. Do not chain two multi-minute runs in
       one shell command.
 - [x] Run `swift package update` in the repository root and in
@@ -268,3 +389,21 @@ capability, on the shipped configuration.
 
 ## Workflow
 - Use `/tdd` — write failing tests first, then implement to make them pass. #phase-2 #eventplan
+
+## Review Findings (2026-08-25 10:32)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 6 file(s) reviewed, 2 not reviewed.
+
+> 2 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 2 file(s)
+
+- [x] `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Support/ShellElevationRunner.swift:116` `code-hygiene/magic-numbers-swift` — Magic numbers should be replaced by named constants.
+- [x] `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Support/ShellElevationRunner.swift:122` `code-hygiene/magic-numbers-swift` — Magic numbers should be replaced by named constants.
+- [x] `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Support/ShellElevationRunner.swift:125` `code-hygiene/magic-numbers-swift` — Magic numbers should be replaced by named constants.
+- [x] `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Support/ShellElevationRunner.swift:132` `code-hygiene/magic-numbers-swift` — Magic numbers should be replaced by named constants.
+- [x] `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Support/ShellElevationRunner.swift:140` `code-hygiene/magic-numbers-swift` — Magic numbers should be replaced by named constants.
+- [x] `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Support/ShellElevationRunner.swift:664` `swift/access-control` — Top-level constant used only within this file should be marked `private` to prevent accidental export. The probe evidence shows no external callers. Add `private` modifier: `private let shellPendingEnvelopeCheckName = "pendingEnvelope"`.
+- [x] `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Support/ShellElevationRunner.swift:668` `swift/access-control` — Top-level constant used only within this file should be marked `private` to prevent accidental export. The probe evidence shows no external callers. Add `private` modifier: `private let shellElevationReportCheckName = "elevationReport"`.
+- [x] `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Support/ShellElevationRunner.swift:678` `swift/access-control` — Top-level constant used only within this file should be marked `private` to prevent accidental export. The probe evidence shows no external callers. Add `private` modifier: `private let shellCancelStoppedCheckName = "cancelReportsStopped"`.
+- [x] `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Support/ShellElevationRunner.swift:681` `swift/access-control` — Top-level constant used only within this file should be marked `private` to prevent accidental export. The probe evidence shows no external callers. Add `private` modifier: `private let shellChildGoneCheckName = "childProcessGone"`.
+- [x] `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Support/ShellElevationRunner.swift:685` `swift/access-control` — Top-level constant used only within this file should be marked `private` to prevent accidental export. The probe evidence shows no external callers. Add `private` modifier: `private let shellJournaledTerminalCheckName = "oneJournaledTerminal"`.
