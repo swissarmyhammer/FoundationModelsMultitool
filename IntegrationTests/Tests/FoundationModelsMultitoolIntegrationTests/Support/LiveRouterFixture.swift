@@ -670,8 +670,9 @@ struct LiveRouterFixture {
     private static let fixtureDirectoryPrefix = "FMMultitoolIntegration-"
 
     /// Creates a unique temporary directory, for state that must NOT outlive
-    /// the run — the Router cache directory.
-    private static func makeTempDir() -> URL {
+    /// the run — the Router cache directory, and a capability store a scenario
+    /// configures for the surface it mounts.
+    static func makeTempDir() -> URL {
         makeUniqueDirectory(under: FileManager.default.temporaryDirectory)
     }
 

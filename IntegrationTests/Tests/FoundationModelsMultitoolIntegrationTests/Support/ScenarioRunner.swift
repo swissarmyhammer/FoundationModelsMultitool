@@ -20,7 +20,7 @@ import FoundationModels
 /// - Parameter turn: the streamed turn to describe.
 /// - Returns: `off` when no seeding was requested, `ok` when it ran, or
 ///   `FAILED(reason)` when Router reported it downgraded.
-private func primingLabel(_ turn: StreamedTurn) -> String {
+func primingLabel(_ turn: StreamedTurn) -> String {
     if let failure = turn.discoveryPrimingFailure { return "FAILED(\(failure))" }
     return scenarioDiscoveryPriming == nil ? "off" : "ok"
 }
@@ -383,7 +383,7 @@ func runElevationIntegrationScenario(
 
 /// Everything one streamed turn produced that an elevation scenario grades or
 /// reports.
-private struct StreamedTurn {
+struct StreamedTurn {
     /// The turn's reply text, every `textDelta` in production order.
     var answer = ""
 
@@ -512,7 +512,7 @@ private func traceExcerpt(_ text: String) -> String {
 ///   - prompt: the user request driving this turn.
 /// - Returns: the turn's reply, tool-call count, and tool outputs.
 /// - Throws: whatever the session's event stream throws.
-private func streamTurn(of session: RoutedSession, prompt: String) async throws -> StreamedTurn {
+func streamTurn(of session: RoutedSession, prompt: String) async throws -> StreamedTurn {
     var turn = StreamedTurn()
     for try await event in await session.streamEvents(to: prompt) {
         switch event {
@@ -652,7 +652,7 @@ func integerAnswers(for value: Int) -> [String] {
 ///   - body: the scenario's own work, given the resolved fixture.
 /// - Throws: whatever `body` throws, other than
 ///   `GenerationError.notWiredForLiveInference`.
-private func withLiveRouterFixture(
+func withLiveRouterFixture(
     name: String,
     profile definition: ProfileDefinition = multitoolTinyProfile,
     _ body: (LiveRouterFixture) async throws -> Void
@@ -796,7 +796,7 @@ struct ScenarioCheck {
 /// - Parameters:
 ///   - name: the scenario label.
 ///   - checks: every condition this scenario graded, in reporting order.
-private func grade(scenario name: String, checks: [ScenarioCheck]) {
+func grade(scenario name: String, checks: [ScenarioCheck]) {
     let result = checks.allSatisfy(\.held) ? "PASS" : "FAIL"
     let breakdown = checks.map { "\($0.name)=\($0.held ? "pass" : "fail")" }.joined(separator: " ")
     print("SCENARIO [\(name)] result=\(result) \(breakdown)")
