@@ -78,13 +78,35 @@ comments:
     - evidence: swift test — 937 tests passed, 0 failed, 0 skipped, in 68 suites. One warning is present: the known mlx-swift "missing creator for mutated node" notice. No new warning is present.
     - next: none. The build is clean.
   timestamp: 2026-08-25T23:15:54.148691+00:00
+- actor: claude-code
+  id: 01m0xkkkhefpq74k1182beddyk
+  text: |-
+    ### review — clean
+    - evidence: `review sha 45d41b9~1..45d41b9` (backend: local) — counts: findings 0, confirmed 0, refuted 0, attempted 7, failed 0. All 3 prior findings items are checked.
+    - next: none. The task moved to done.
+
+    step: review
+    outcome: clean
+    evidence: 0 findings (attempted 7, failed 0) on `review sha 45d41b9~1..45d41b9`; all 3 prior findings checked
+    task: ^2j06zb7
+  timestamp: 2026-08-25T23:20:39.214513+00:00
+- actor: claude-code
+  id: 01m0xkm4kd4rp027eg8h6q846w
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — named the sniff-window constants in GrepEngine.swift, added two case-insensitivity tests
+    - test: green — swift test, 937 tests in 68 suites, 0 failed
+    - commit: 45d41b9 (iteration 1: 99f6447)
+    - review: clean — review sha 45d41b9~1..45d41b9, 0 findings, all 3 prior items checked
+    - task landed in done
+  timestamp: 2026-08-25T23:20:56.685252+00:00
 depends_on:
 - 01M0WWPWHFXSDJKH2GYZCR6QZ8
 - 01M0WWQR0QYAT02TQ1D4CMVJQH
 - 01M0WWP2KJHX313ZFGC80EVN62
 - 01M0WXACC6Q0PY1QKZ6Y2TH7J4
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ff8480
 title: Port GrepEngine, and make the tools.files.grep verb
 ---
 ## What
