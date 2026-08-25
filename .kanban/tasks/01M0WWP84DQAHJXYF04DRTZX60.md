@@ -37,6 +37,34 @@ comments:
     - evidence: swift test — 686 tests, 55 suites passed, 0 failed, 0 skipped. No warning text in output (the known pre-existing "missing creator for mutated node" mlx-swift warning did not appear this run).
     - next: none. Build is clean.
   timestamp: 2026-08-25T18:32:17.859925+00:00
+- actor: claude-code
+  id: 01m0x3mw144q1ke5193wvr47mt
+  text: |-
+    ### review — findings
+    - evidence: 2 findings — Sources/FoundationModelsMultitool/Capabilities/Files/FileChangeSet.swift:122, Sources/FoundationModelsMultitool/Capabilities/Files/FileChangeSet.swift:150 (scope: review sha 50c7060~1..50c7060, local backend; counts: 2 findings, 2 confirmed, 0 refuted)
+    - next: correct each finding, set each checkbox to done, then run the review again
+  timestamp: 2026-08-25T18:41:43.460123+00:00
+- actor: claude-code
+  id: 01m0x3rnek7kwdfke6ra5nwd5z
+  text: |-
+    Correction of the two review findings:
+    - The finding "superfluousIgnoreCommand" is a report from periphery. It says that a `// periphery:ignore` mark is on a declaration that is NOT dead. The mark is the defect, not the code.
+    - Cause: the validator runs periphery with `--build-tests`. The test targets stay in the index and count as callers. `GitPatchTests` calls `FileChangeSet` and reads `patch`, thus periphery sees the callers and the mark became unnecessary.
+    - Fix: the one `// periphery:ignore` mark and its three reason lines above `struct FileChangeSet` are removed. The file has no other periphery mark. The file header keeps its correct note about the future journal callers.
+    - Verification: the exact validator command ran — `swift build --build-tests`, then `periphery scan` with the validator's flag set and test-target report excludes, index store at `.build/out`. Zero findings remain for `FileChangeSet.swift`. `swift test --filter "LineDiffTests|GitPatchTests"` — 27 tests in 2 suites, all pass.
+    - The two finding checkboxes in the description are set to done.
+
+    ### implement — changed
+    - evidence: 1 file — Sources/FoundationModelsMultitool/Capabilities/Files/FileChangeSet.swift; periphery scan (validator command, periphery 3.x, store .build/out) reports 0 findings for the file; swift build --build-tests succeeds; swift test --filter "LineDiffTests|GitPatchTests" 27/27 pass
+    - next: /review
+  timestamp: 2026-08-25T18:43:47.795632+00:00
+- actor: claude-code
+  id: 01m0x3tccbq80z8e887w6j9w4m
+  text: |-
+    ### test — green
+    - evidence: swift test — 686 tests passed, 0 failed, 0 skipped, in 55 suites. Build log has 1 warning, and it is the known pre-existing one: "missing creator for mutated node: ('.../mlx-swift_Cmlx.bundle/Contents/MacOS')". No new warnings found.
+    - next: none. The build is clean.
+  timestamp: 2026-08-25T18:44:44.043875+00:00
 depends_on:
 - 01M0WXACC6Q0PY1QKZ6Y2TH7J4
 position_column: doing
@@ -66,3 +94,13 @@ Port the change-record value layer from the FileTool package into this package.
 
 ## Workflow
 - Use `/tdd` — port the tests first, then port the code to make them pass. #phase-3 #eventplan
+
+## Review Findings (2026-08-25 13:33)
+
+> Scope: `review sha 50c7060~1..50c7060` — reviewed the diffs only — lines this change added or modified. 5 file(s) reviewed, 4 not reviewed.
+
+> 4 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 4 file(s)
+
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Files/FileChangeSet.swift:122` `code-hygiene/dead-code-swift` — struct `FileChangeSet` is superfluousIgnoreCommand.
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Files/FileChangeSet.swift:150` `code-hygiene/dead-code-swift` — var.instance `patch` is superfluousIgnoreCommand.

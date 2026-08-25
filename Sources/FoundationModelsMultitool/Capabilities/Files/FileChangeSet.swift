@@ -115,10 +115,6 @@ struct FileChange: Equatable, Sendable {
 /// ``root`` is the session root the patch's paths are rendered relative to,
 /// the way a git patch's paths are relative to the repository it applies in;
 /// the ``FileChange/path`` values themselves stay absolute.
-// The file-change journal (task ^zcr6qz8) is the production caller; until it
-// lands, `GitPatchTests` and the ported change-set suite (task ^7r99xf5) are
-// the callers.
-// periphery:ignore
 struct FileChangeSet: Equatable, Sendable {
     /// The session root the ``patch``'s paths are relative to.
     let root: URL
