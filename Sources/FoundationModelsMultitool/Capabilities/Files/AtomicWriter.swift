@@ -256,8 +256,21 @@ enum AtomicWriter {
         let text: String
     }
 
+    /// The first byte of the UTF-8 byte-order mark. Its value is `0xEF`.
+    private static let utf8ByteOrderMarkFirstByte: UInt8 = 0xEF
+
+    /// The second byte of the UTF-8 byte-order mark. Its value is `0xBB`.
+    private static let utf8ByteOrderMarkSecondByte: UInt8 = 0xBB
+
+    /// The third byte of the UTF-8 byte-order mark. Its value is `0xBF`.
+    private static let utf8ByteOrderMarkThirdByte: UInt8 = 0xBF
+
     /// The UTF-8 byte-order mark bytes (`EF BB BF`).
-    private static let utf8ByteOrderMark: [UInt8] = [0xEF, 0xBB, 0xBF]
+    private static let utf8ByteOrderMark: [UInt8] = [
+        utf8ByteOrderMarkFirstByte,
+        utf8ByteOrderMarkSecondByte,
+        utf8ByteOrderMarkThirdByte,
+    ]
 
     /// Decode file bytes to text, detecting the encoding from a leading byte-order mark.
     ///
