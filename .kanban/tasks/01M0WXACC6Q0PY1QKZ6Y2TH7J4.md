@@ -322,8 +322,25 @@ comments:
     - evidence: swift test (forced rebuild of the FoundationModelsMultitool package targets only) — 643 tests, 52 suites, all pass. 0 fail. 0 skip. 0 new warning. The known pre-existing warning about the mlx-swift_Cmlx.bundle path did not show this run, because that dependency target did not rebuild. We name it and do not chase it.
     - next: none. The suite is clean.
   timestamp: 2026-08-25T18:01:02.881347+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m0x1hw7xw9q74rd8kc0k89qm
+  text: |-
+    ### review — clean
+    - evidence: `review sha 954d4a8~1..954d4a8` — 0 findings, 0 confirmed, 0 refuted; 4 file(s) reviewed, 4 file(s) excluded by `.reviewignore` (`.kanban/`). All items in the two prior `## Review Findings` checklists are checked.
+    - next: none. The task moved to done.
+  timestamp: 2026-08-25T18:05:08.221847+00:00
+- actor: claude-code
+  id: 01m0x1jn16k38h6qyf6n0vwxgz
+  text: |-
+    ### finish iteration 4 — clean
+    - implement: changed — PathContainment.swift (new shared utility), PathGuard.swift, SeatbeltSandbox.swift, TestSupport.swift; component semantics decided and applied
+    - test: green — swift test forced rebuild, 643 tests in 52 suites, 0 failed, 0 new warnings
+    - commit: 954d4a8
+    - review: clean — review sha 954d4a8~1..954d4a8, 0 findings, all 3 prior items checked
+    - task landed in done
+  timestamp: 2026-08-25T18:05:33.606707+00:00
+position_column: done
+position_ordinal: f780
 title: Port TestSupport and PathContainmentTests into the test target
 ---
 ## What

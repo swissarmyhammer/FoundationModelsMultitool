@@ -1,0 +1,439 @@
+{
+  "_comment": "Generated from swissarmyhammer-hashline via examples/golden.rs. Do not hand-edit.",
+  "hashLine": [
+    {
+      "hash": 0,
+      "input": "",
+      "rendered": "00"
+    },
+    {
+      "hash": 67,
+      "input": "a",
+      "rendered": "43"
+    },
+    {
+      "hash": 249,
+      "input": "b",
+      "rendered": "f9"
+    },
+    {
+      "hash": 111,
+      "input": "c",
+      "rendered": "6f"
+    },
+    {
+      "hash": 134,
+      "input": "hello",
+      "rendered": "86"
+    },
+    {
+      "hash": 67,
+      "input": "world",
+      "rendered": "43"
+    },
+    {
+      "hash": 55,
+      "input": "let x = 1;",
+      "rendered": "37"
+    },
+    {
+      "hash": 55,
+      "input": "    let x = 1;",
+      "rendered": "37"
+    },
+    {
+      "hash": 55,
+      "input": "\tlet x = 1;",
+      "rendered": "37"
+    },
+    {
+      "hash": 55,
+      "input": "let x = 1;   ",
+      "rendered": "37"
+    },
+    {
+      "hash": 55,
+      "input": " \t let x = 1; \t ",
+      "rendered": "37"
+    },
+    {
+      "hash": 150,
+      "input": "let  x = 1;",
+      "rendered": "96"
+    },
+    {
+      "hash": 244,
+      "input": "let x = 2;",
+      "rendered": "f4"
+    },
+    {
+      "hash": 56,
+      "input": "a\tb",
+      "rendered": "38"
+    },
+    {
+      "hash": 181,
+      "input": "café",
+      "rendered": "b5"
+    },
+    {
+      "hash": 243,
+      "input": "α β γ",
+      "rendered": "f3"
+    },
+    {
+      "hash": 97,
+      "input": "dup",
+      "rendered": "61"
+    },
+    {
+      "hash": 5,
+      "input": "match",
+      "rendered": "05"
+    },
+    {
+      "hash": 45,
+      "input": "target_a",
+      "rendered": "2d"
+    },
+    {
+      "hash": 151,
+      "input": "target_b",
+      "rendered": "97"
+    },
+    {
+      "hash": 131,
+      "input": "NEEDLE",
+      "rendered": "83"
+    },
+    {
+      "hash": 131,
+      "input": "x",
+      "rendered": "83"
+    },
+    {
+      "hash": 91,
+      "input": "totally-different",
+      "rendered": "5b"
+    },
+    {
+      "hash": 0,
+      "input": "    ",
+      "rendered": "00"
+    },
+    {
+      "hash": 23,
+      "input": "fn main() -> Result<(), Box<dyn std::error::Error>> {",
+      "rendered": "17"
+    },
+    {
+      "hash": 50,
+      "input": " ́x",
+      "rendered": "32"
+    },
+    {
+      "hash": 50,
+      "input": "́x",
+      "rendered": "32"
+    },
+    {
+      "hash": 202,
+      "input": "\t́code",
+      "rendered": "ca"
+    }
+  ],
+  "parseAnchor": [
+    {
+      "input": "42:a3",
+      "result": {
+        "hash": 163,
+        "line": 42
+      }
+    },
+    {
+      "input": "42:a3|text",
+      "result": {
+        "hash": 163,
+        "line": 42
+      }
+    },
+    {
+      "input": "42:a3|a|b",
+      "result": {
+        "hash": 163,
+        "line": 42
+      }
+    },
+    {
+      "input": "1:86|hello",
+      "result": {
+        "hash": 134,
+        "line": 1
+      }
+    },
+    {
+      "input": "00:00",
+      "result": {
+        "hash": 0,
+        "line": 0
+      }
+    },
+    {
+      "input": "255:ff|foo",
+      "result": {
+        "hash": 255,
+        "line": 255
+      }
+    },
+    {
+      "input": "hello world",
+      "result": null
+    },
+    {
+      "input": "42",
+      "result": null
+    },
+    {
+      "input": ":a3",
+      "result": null
+    },
+    {
+      "input": "42:",
+      "result": null
+    },
+    {
+      "input": "42:zz",
+      "result": null
+    },
+    {
+      "input": "42:a3a",
+      "result": null
+    },
+    {
+      "input": "x:a3",
+      "result": null
+    },
+    {
+      "input": "",
+      "result": null
+    },
+    {
+      "input": "+42:a3",
+      "result": {
+        "hash": 163,
+        "line": 42
+      }
+    },
+    {
+      "input": "-42:a3",
+      "result": null
+    },
+    {
+      "input": "+255:ff",
+      "result": {
+        "hash": 255,
+        "line": 255
+      }
+    },
+    {
+      "input": " 42:a3",
+      "result": null
+    },
+    {
+      "input": "42 :a3",
+      "result": null
+    }
+  ],
+  "resolveAnchor": [
+    {
+      "content": "a\nb\nc",
+      "expected": 2,
+      "hash": 249,
+      "line": 2,
+      "text": null
+    },
+    {
+      "content": "a\nx\nb\nc",
+      "expected": 3,
+      "hash": 249,
+      "line": 2,
+      "text": null
+    },
+    {
+      "content": "a\nb\nc",
+      "expected": null,
+      "hash": 91,
+      "line": 2,
+      "text": null
+    },
+    {
+      "content": "dup\nanchor\ndup",
+      "expected": 3,
+      "hash": 97,
+      "line": 2,
+      "text": "dup"
+    },
+    {
+      "content": "match\nfiller\nanchor_pos\nfiller\nmatch",
+      "expected": 5,
+      "hash": 5,
+      "line": 3,
+      "text": null
+    },
+    {
+      "content": "x\ntarget_a\ny\nz\ntarget_b",
+      "expected": 2,
+      "hash": 45,
+      "line": 3,
+      "text": null
+    },
+    {
+      "content": "x\ntarget_a\ny\nz\ntarget_b",
+      "expected": 2,
+      "hash": 45,
+      "line": 3,
+      "text": "target_a"
+    },
+    {
+      "content": "a\nb\nc",
+      "expected": null,
+      "hash": 16,
+      "line": 2,
+      "text": "nope"
+    },
+    {
+      "content": "",
+      "expected": null,
+      "hash": 67,
+      "line": 1,
+      "text": null
+    },
+    {
+      "content": "a\nb",
+      "expected": null,
+      "hash": 67,
+      "line": 0,
+      "text": null
+    },
+    {
+      "content": "a\n    b\nc",
+      "expected": 2,
+      "hash": 249,
+      "line": 2,
+      "text": null
+    },
+    {
+      "content": "z\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nNEEDLE",
+      "expected": 51,
+      "hash": 131,
+      "line": 1,
+      "text": null
+    },
+    {
+      "content": "z\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nNEEDLE",
+      "expected": null,
+      "hash": 131,
+      "line": 1,
+      "text": null
+    },
+    {
+      "content": "NEEDLE\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz\nz",
+      "expected": 1,
+      "hash": 131,
+      "line": 51,
+      "text": null
+    }
+  ],
+  "tag": [
+    {
+      "content": "a\nb",
+      "expected": "1:43|a\n2:f9|b",
+      "startLine": 1
+    },
+    {
+      "content": "a\nb",
+      "expected": "10:43|a\n11:f9|b",
+      "startLine": 10
+    },
+    {
+      "content": "",
+      "expected": "",
+      "startLine": 1
+    },
+    {
+      "content": "a\n",
+      "expected": "1:43|a\n",
+      "startLine": 1
+    },
+    {
+      "content": "a\r\nb",
+      "expected": "1:43|a\r\n2:f9|b",
+      "startLine": 1
+    },
+    {
+      "content": "a\rb\rc",
+      "expected": "1:43|a\r2:f9|b\r3:6f|c",
+      "startLine": 1
+    },
+    {
+      "content": "hello\nworld\n",
+      "expected": "1:86|hello\n2:43|world\n",
+      "startLine": 1
+    },
+    {
+      "content": "a\nb\r\nc\rd",
+      "expected": "1:43|a\n2:f9|b\r\n3:6f|c\r4:cc|d",
+      "startLine": 1
+    },
+    {
+      "content": "solo",
+      "expected": "1:11|solo",
+      "startLine": 1
+    },
+    {
+      "content": "x\r\n",
+      "expected": "1:83|x\r\n",
+      "startLine": 1
+    },
+    {
+      "content": "hello\nworld\n",
+      "expected": "100:86|hello\n101:43|world\n",
+      "startLine": 100
+    },
+    {
+      "content": "    indented\nplain",
+      "expected": "1:2f|    indented\n2:cf|plain",
+      "startLine": 1
+    }
+  ],
+  "wholeFileHash": [
+    {
+      "content": "",
+      "expected": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    {
+      "content": "a",
+      "expected": "0cc175b9c0f1b6a831c399e269772661"
+    },
+    {
+      "content": "alpha\nbeta\n",
+      "expected": "852e77b490fb4e8653fbc11f4c6f89c2"
+    },
+    {
+      "content": "alpha\nbeta\ngamma\n",
+      "expected": "6c7831c26f0d0a5f807006854aa682f4"
+    },
+    {
+      "content": "hello\nworld\n",
+      "expected": "0f723ae7f9bf07744445e93ac5595156"
+    },
+    {
+      "content": "café\n",
+      "expected": "6e99834b7c3e3fd53529a5489725d7e8"
+    },
+    {
+      "content": "a\r\nb\r\n",
+      "expected": "59b0d7772f0561efb95518f3cb8abc60"
+    }
+  ]
+}

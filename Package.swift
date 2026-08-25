@@ -316,7 +316,14 @@ let package = Package(
                 // (M2). Tests read these directly off disk via `#filePath`,
                 // not `Bundle.module`; declared as a resource purely so
                 // SwiftPM doesn't warn about an unhandled source-tree file.
-                .copy("Goldens")
+                .copy("Goldens"),
+                // Golden vectors that pin the files capability's hashline
+                // anchor dialect against the Rust `swissarmyhammer-hashline`
+                // crate. `HashlineTests` loads these through `Bundle.module`.
+                // The sibling `Fixtures/` directory must NOT get a resource
+                // rule: it holds compiled `.swift` files, and a resource rule
+                // would stop their compilation and break this target.
+                .copy("FilesGoldens"),
             ]
         ),
     ]
