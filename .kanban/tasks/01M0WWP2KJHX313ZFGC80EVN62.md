@@ -29,10 +29,27 @@ comments:
     - evidence: swift test — 659 tests, 53 suites, all passed; 0 failed; 0 skipped. Only warning seen: the known pre-existing "missing creator for mutated node: ('.../mlx-swift_Cmlx.bundle/Contents/MacOS')". No new warning found.
     - next: none. The build is clean.
   timestamp: 2026-08-25T18:15:40.210059+00:00
+- actor: claude-code
+  id: 01m0x2hx8wj5z7b0prr2ns6xx9
+  text: |-
+    ### review — clean
+    - evidence: `review sha c85255e~1..c85255e`, backend local — 0 findings, 0 confirmed, 0 refuted; 3 files reviewed, 4 files skipped by `.reviewignore` (`.kanban/`)
+    - next: none — the task moved to done
+  timestamp: 2026-08-25T18:22:37.852395+00:00
+- actor: claude-code
+  id: 01m0x2jcse2n4ynwym7g1nz9y2
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — Hashline.swift, HashlineTests.swift, FilesGoldens/hashline-golden.json, Package.swift (.copy("FilesGoldens"))
+    - test: green — swift test, 659 tests in 53 suites, 0 failed
+    - commit: c85255e
+    - review: clean — review sha c85255e~1..c85255e, 0 findings
+    - task landed in done
+  timestamp: 2026-08-25T18:22:53.742616+00:00
 depends_on:
 - 01M0WXACC6Q0PY1QKZ6Y2TH7J4
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: f880
 title: Port Hashline and its golden fixtures into Capabilities/Files
 ---
 ## What
