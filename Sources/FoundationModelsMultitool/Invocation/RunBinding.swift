@@ -40,7 +40,7 @@ import FoundationModelsRouter
 ///
 /// ## What it does
 ///
-/// ``invoke(_:arguments:)`` mounts each inner call on the shared
+/// ``invoke(_:arguments:journalOp:)`` mounts each inner call on the shared
 /// `DetachingTool` engine with elevation **off** — eventplan.md "Elevation":
 /// "two mounts, one engine, two policies." Only the outer `runCode` call
 /// elevates; an inner call runs to completion, bounded by its `timeout`. The
@@ -106,7 +106,7 @@ struct RunBinding: Sendable {
     /// Runs one inner `tools.*` call through the shared elevation engine with
     /// elevation off.
     ///
-    /// `ToolDetachment.wrapping(tool:inheriting:sink:configuration:)`
+    /// `ToolDetachment.wrapping(tool:inheriting:sink:op:configuration:)`
     /// picks the decorator: `DetachingTool` for a `String`-output tool,
     /// `ContextBindingTool` for any other output. Both mint the call its own
     /// `completionToken` and bind `ToolContext.$current` around it
@@ -115,6 +115,12 @@ struct RunBinding: Sendable {
     /// Either decorator preserves the wrapped tool's own `Output` type, so
     /// the returned value is the tool's, unchanged.
     ///
+    /// This is the one place in this package that hands the engine a journal
+    /// op, which is why `journalOp` is threaded down to here rather than read
+    /// from anything the tool itself carries — a verb does not know its own
+    /// noun. See `APISurface.Entry.journalOp` for the derivation and for the
+    /// plane the pair appears on.
+    ///
     /// - Parameters:
     ///   - tool: the wrapped tool this call dispatches to. May be passed as a
     ///     concrete `T` or as an `any Tool` existential — SE-0352 implicit
@@ -122,12 +128,17 @@ struct RunBinding: Sendable {
     ///     `ToolInvoker.invoke(_:content:)` relies on.
     ///   - arguments: the call's already-validated, already-decoded
     ///     arguments.
+    ///   - journalOp: the `"verb noun"` string this call's run journals as its
+    ///     `op`, or `nil` for a tool registered under no noun — which keeps the
+    ///     engine's own default of stamping `op` with the tool's name.
     /// - Returns: the tool's `Output`, exactly as `tool.call(arguments:)`
     ///   produced it.
     /// - Throws: whatever the wrapped tool throws, unchanged; or
     ///   `DetachingToolError.timedOut(tool:timeoutSeconds:)` when the mount's
     ///   per-call `timeout` ends the call.
-    func invoke<T: Tool>(_ tool: T, arguments: T.Arguments) async throws -> T.Output {
+    func invoke<T: Tool>(
+        _ tool: T, arguments: T.Arguments, journalOp: String? = nil
+    ) async throws -> T.Output {
         try await Self.trace.span(
             "RunBinding.invoke",
             detail: "tool=\(tool.name) outerToken=\(context.completionToken)"
@@ -136,6 +147,7 @@ struct RunBinding: Sendable {
                 tool: tool,
                 inheriting: context,
                 sink: AmbientUpstreamSink(context: context),
+                op: journalOp,
                 configuration: innerElevation
             )
             guard let engine = mounted as? any Tool<T.Arguments, T.Output> else {

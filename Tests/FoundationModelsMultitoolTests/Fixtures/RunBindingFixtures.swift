@@ -20,6 +20,23 @@ struct AmbientObservation: Sendable, Equatable {
     /// The observing tool's own `tools.*` name.
     let toolName: String
 
+    /// The `tool` the run's ambient context is stamped with, or `nil` when the
+    /// call ran with no ambient context bound at all. Always the tool's own
+    /// name, whatever noun it was registered under.
+    let stampedTool: String?
+
+    /// The `op` the run's ambient context is stamped with, or `nil` when the
+    /// call ran with no ambient context bound at all — the canonical
+    /// `"verb noun"` pair for a tool registered under a noun, and the tool's own
+    /// name for one registered with none.
+    ///
+    /// This is the one stamp both run-plane readings are made from:
+    /// `SessionMailbox.park(tool:op:...)` fills `ParkedRun.op` from it, and
+    /// `ToolInvocationRecord` carries it too. The event journal of an enclosing
+    /// snippet never shows it, because `ToolContext.post(_:)` re-stamps every
+    /// forwarded event with the outer run's own identity.
+    let stampedOp: String?
+
     /// The run's `completionToken`, or `nil` when the call ran with no
     /// ambient context bound at all.
     let completionToken: String?
@@ -92,6 +109,8 @@ final class AmbientRecordingTool: Tool, Sendable {
             $0.append(
                 AmbientObservation(
                     toolName: name,
+                    stampedTool: context?.tool,
+                    stampedOp: context?.op,
                     completionToken: context?.completionToken,
                     sessionID: context?.sessionID,
                     detachedContextWasNil: detachedContextWasNil

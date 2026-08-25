@@ -812,6 +812,12 @@ public struct MultiTool: Tool {
 
         /// The live tool a `tools.<path>(…)` call dispatches into.
         let tool: any Tool
+
+        /// The `"verb noun"` string this entry's runs journal as their `op`, or
+        /// `nil` for a standalone entry that was registered under no noun — see
+        /// `APISurface.Entry.journalOp`, which derives it from the same pair the
+        /// entry's `path` comes from.
+        let journalOp: String?
     }
 
     /// The positional host-function name for `registry.surface.entries[index]`
@@ -836,7 +842,13 @@ public struct MultiTool: Tool {
         var liveTools: [LiveTool] = []
         for (index, entry) in registry.surface.entries.enumerated() {
             guard let tool = registry.tools[entry.path] else { continue }
-            liveTools.append(LiveTool(hostFunctionName: hostFunctionName(at: index), tool: tool))
+            liveTools.append(
+                LiveTool(
+                    hostFunctionName: hostFunctionName(at: index),
+                    tool: tool,
+                    journalOp: entry.journalOp
+                )
+            )
         }
         return liveTools
     }
@@ -863,6 +875,12 @@ public struct MultiTool: Tool {
     ///     `nil` when it has none.
     ///   - ledger: this invocation's record of what its `tools.*` calls
     ///     returned.
+    ///
+    /// Each live tool's binding carries that tool's own `journalOp`, so a verb
+    /// registered under a noun journals the `"verb noun"` pair. `searchTools`
+    /// and the nested `runCode` are session-level operations that no noun was
+    /// registered under, so each keeps the engine's own default of stamping
+    /// `op` with the tool's name.
     /// - Returns: one `AsyncHostFunction` per live tool, in `liveTools`'
     ///   order.
     private func makeAsyncHostFunctions(
@@ -870,7 +888,12 @@ public struct MultiTool: Tool {
     ) -> [AsyncHostFunction] {
         var functions = liveTools.map { liveTool in
             AsyncHostFunction(name: liveTool.hostFunctionName) { arguments in
-                try await Self.invokeAsync(tool: liveTool.tool, arguments: arguments, binding: binding)
+                try await Self.invokeAsync(
+                    tool: liveTool.tool,
+                    arguments: arguments,
+                    binding: binding,
+                    journalOp: liveTool.journalOp
+                )
             }
         }
         if let searchTools {
@@ -1201,6 +1224,8 @@ public struct MultiTool: Tool {
     ///     `ArgumentMarshalerError`/`ToolInvokerError` below, never a crash.
     ///   - binding: the enclosing `runCode` invocation's captured session
     ///     binding, or `nil` when it has none.
+    ///   - journalOp: the `"verb noun"` string this call's run journals as its
+    ///     `op`, or `nil` for a tool registered under no noun.
     /// - Returns: the tool's rendered `Output`, JS-ready.
     /// - Throws: `ArgumentMarshalerError` if `arguments` can't be marshaled
     ///   into the tool's `Arguments` shape (or its `Output` can't be
@@ -1213,12 +1238,14 @@ public struct MultiTool: Tool {
     private static func invokeAsync(
         tool: any Tool,
         arguments: [InterpreterValue],
-        binding: RunBinding?
+        binding: RunBinding?,
+        journalOp: String? = nil
     ) async throws -> InterpreterValue {
         let start = ContinuousClock.now
         logger.debug("tools.\(tool.name, privacy: .public) invocation started.")
         do {
-            let value = try await performInvocation(tool: tool, arguments: arguments, binding: binding)
+            let value = try await performInvocation(
+                tool: tool, arguments: arguments, binding: binding, journalOp: journalOp)
             logger.debug(
                 "tools.\(tool.name, privacy: .public) invocation finished in \(start.duration(to: .now), privacy: .public)."
             )
@@ -1301,6 +1328,8 @@ public struct MultiTool: Tool {
     ///   - binding: the enclosing `runCode` invocation's captured session
     ///     binding, or `nil` when it has none — selects `ToolInvoker`'s
     ///     mount.
+    ///   - journalOp: the `"verb noun"` string this call's run journals as its
+    ///     `op`, or `nil` for a tool registered under no noun.
     /// - Returns: the tool's rendered `Output`, JS-ready.
     /// - Throws: `ArgumentMarshalerError`, `ToolInvokerError`, or whatever
     ///   `tool.call(arguments:)` itself throws — see `invokeAsync`'s
@@ -1308,11 +1337,13 @@ public struct MultiTool: Tool {
     private static func performInvocation(
         tool: any Tool,
         arguments: [InterpreterValue],
-        binding: RunBinding?
+        binding: RunBinding?,
+        journalOp: String? = nil
     ) async throws -> InterpreterValue {
         let argumentObject = arguments.first ?? .object([:])
         let content = try ArgumentMarshaler.marshalArguments(argumentObject)
-        let output = try await ToolInvoker.invoke(tool, content: content, binding: binding)
+        let output = try await ToolInvoker.invoke(
+            tool, content: content, binding: binding, journalOp: journalOp)
         return try ArgumentMarshaler.renderOutput(output)
     }
 

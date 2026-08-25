@@ -171,16 +171,21 @@ public enum ToolInvoker {
     ///     `GeneratedContent`.
     ///   - binding: the enclosing `runCode` invocation's captured session
     ///     binding, or `nil` to call `tool` natively.
+    ///   - journalOp: the `"verb noun"` string this call's run journals as its
+    ///     `op` — `APISurface.Entry.journalOp`, derived at the registration
+    ///     site — or `nil` for a tool registered under no noun. Carried only to
+    ///     the engine mount, so it means nothing on the native mount.
     /// - Returns: `tool`'s `Output`, exactly as `tool.call(arguments:)`
     ///   produced it.
     /// - Throws: `ToolInvokerError` if `content` fails validation before
     ///   `tool.call` runs; otherwise, whatever `tool.call(arguments:)`
     ///   itself throws, unchanged, or whichever failure the engine itself
-    ///   produces (see `RunBinding.invoke(_:arguments:)`).
+    ///   produces (see `RunBinding.invoke(_:arguments:journalOp:)`).
     static func invoke<T: Tool>(
         _ tool: T,
         content: GeneratedContent,
-        binding: RunBinding?
+        binding: RunBinding?,
+        journalOp: String? = nil
     ) async throws -> T.Output {
         try validate(content, against: tool.parameters, toolName: tool.name)
         let arguments: T.Arguments
@@ -195,7 +200,7 @@ public enum ToolInvoker {
         guard let binding else {
             return try await tool.call(arguments: arguments)
         }
-        return try await binding.invoke(tool, arguments: arguments)
+        return try await binding.invoke(tool, arguments: arguments, journalOp: journalOp)
     }
 
     // MARK: - Pre-call validation

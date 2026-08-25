@@ -50,6 +50,41 @@ public struct APISurface: Sendable, Equatable {
             self.descriptor = descriptor
         }
 
+        /// The canonical `"verb noun"` string this entry's runs journal as
+        /// their `OperationEvent.op` — `"execute shell"` for
+        /// `tools.shell.execute` — or `nil` for a standalone entry, which has
+        /// no noun and keeps the tool's own name as its op.
+        ///
+        /// eventplan.md § "Registration of capabilities: noun/verb":
+        /// "`OperationEvent.op` stays the canonical `"verb noun"` string.
+        /// Registration derives it as `"\(verb) \(noun)"`."
+        ///
+        /// **Derived from the same two halves `path` is.** `group` is the noun
+        /// `register(noun:tool:)` supplied and `descriptor.name` is the verb
+        /// `Tool.name` supplied, so `tools.<noun>.<verb>` and `"verb noun"`
+        /// come from the one pair and neither is spelled a second time
+        /// anywhere. A verb could not derive this for itself: it does not know
+        /// its own noun, which is why the derivation stands here rather than in
+        /// the tool.
+        ///
+        /// ## The plane this string appears on
+        ///
+        /// The run plane, and never the event journal of an enclosing snippet.
+        /// `MultiTool` hands this string to `ToolDetachment.wrapping`, which
+        /// stamps it onto the call's own `ToolContext.op` — so
+        /// `SessionMailbox.park(tool:op:)` fills `ParkedRun.op` from it, and
+        /// the run's `ToolInvocationRecord` carries it. The `OperationEvent`s
+        /// of an inner `tools.*` call reach the session's outbox through the
+        /// enclosing `runCode` context's `post(_:)`, which re-stamps every
+        /// event it forwards with the OUTER run's identity, so the snippet's
+        /// own journal never shows this pair.
+        ///
+        /// The `tool` field of every one of those records keeps naming the tool
+        /// itself (`"execute"`); only `op` carries the pair.
+        public var journalOp: String? {
+            group.map { "\(descriptor.name) \($0)" }
+        }
+
         /// This entry's full renderable text block, as it appears in the
         /// concatenated `APISurface.source`: a `// tools.<path>` banner
         /// line naming its fully-qualified call path (so a grouped tool's

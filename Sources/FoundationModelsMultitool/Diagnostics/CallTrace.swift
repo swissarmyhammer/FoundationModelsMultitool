@@ -25,7 +25,7 @@ import os
 /// anywhere else: the two tools a session mounts (``MultiTool/call(arguments:)``
 /// and ``SearchToolsTool/call(arguments:)``), the tool a model calls to block
 /// (``WaitTool/call(arguments:)``), the inner `tools.*` dispatch
-/// (`RunBinding.invoke(_:arguments:)`), and the selection tier's own session
+/// (`RunBinding.invoke(_:arguments:journalOp:)`), and the selection tier's own session
 /// calls behind the `AgentSession` seam (``TracedAgentSession``). A span costs
 /// two log writes, so it belongs on a call whose own cost is a model turn — not
 /// on a hot loop.
