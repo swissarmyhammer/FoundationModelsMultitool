@@ -41,13 +41,30 @@ comments:
     - note: 1 warning seen. It is the known mlx-swift notice: "missing creator for mutated node". This is a known issue. No action taken on it.
     - next: none. The build is clean.
   timestamp: 2026-08-25T20:34:58.191125+00:00
+- actor: claude-code
+  id: 01m0xamktjnx8qa5f31fjmrrj3
+  text: |-
+    ### review — clean
+    - evidence: review sha e3e3d8a~1..e3e3d8a (backend local) — counts: 0 findings, 0 confirmed, 4 refuted, 7 attempted, 0 failed
+    - next: none — task moved to done
+  timestamp: 2026-08-25T20:43:55.090720+00:00
+- actor: claude-code
+  id: 01m0xan629g17rtkq49ydm7dk5
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — EditEngine.swift, EditOutcomeProjection.swift (no diagnostics fold), two new test suites, comment updates in three files
+    - test: green — swift test, 804 tests in 62 suites, 0 failed
+    - commit: e3e3d8a
+    - review: clean — review sha e3e3d8a~1..e3e3d8a, 0 findings, 4 refuted
+    - task landed in done
+  timestamp: 2026-08-25T20:44:13.769225+00:00
 depends_on:
 - 01M0WWPC0PMTEJGP2MHGX95ZTX
 - 01M0WWNWDG0SPX34065AZ7JW8H
 - 01M0WWPWHFXSDJKH2GYZCR6QZ8
 - 01M0WXACC6Q0PY1QKZ6Y2TH7J4
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: fd80
 title: Port EditEngine and EditOutcomeProjection into Capabilities/Files
 ---
 ## What

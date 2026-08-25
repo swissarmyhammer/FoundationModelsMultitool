@@ -2,10 +2,10 @@
 // failure.
 //
 // A behavioral port of `../FoundationModelsFileTool/Sources/FileTool/
-// CorrectiveResult.swift`. The sibling also conforms its `ParseFailure` to
-// `CorrectiveFailure`; that type belongs to the patch parser, which is not
-// in this package yet, thus the patch-verb port brings that conformance
-// with it. `PathCorrective.UnreadableFile` conforms in its own file.
+// CorrectiveResult.swift`. The `ParseFailure` conformance stands here
+// beside `PathViolation`'s, as it does in the sibling, now that the patch
+// parser is in this package. `PathCorrective.UnreadableFile` conforms in
+// its own file.
 //
 // eventplan.md § "Consolidation of the siblings": a corrective result stays
 // in band, never thrown.
@@ -31,6 +31,16 @@ protocol CorrectiveFailure: Error {
 extension PathViolation: CorrectiveFailure {
     /// The corrective message that says why the path was rejected.
     var correctiveMessage: String { message }
+}
+
+extension ParseFailure: CorrectiveFailure {
+    /// The corrective message that says why the patch was rejected, carrying
+    /// the 1-based line number it refers to.
+    ///
+    /// The line number is part of the message the model acts on — it is what
+    /// tells the model *where* to fix the envelope — so the corrective is the
+    /// full ``description``, not the bare ``message``.
+    var correctiveMessage: String { description }
 }
 
 extension Result where Failure: CorrectiveFailure {
