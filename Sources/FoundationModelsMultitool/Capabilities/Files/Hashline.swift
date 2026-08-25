@@ -115,8 +115,11 @@ enum Hashline {
     ///
     /// - Parameter content: the content to tag.
     /// - Returns: the tagged lines, empty for empty content.
-    // The read verb card (^d3px093) makes `tools.files.read` render this;
-    // until that card lands, no code in this package calls it.
+    // The write verb card (^p238zzp) and the edit verb card (^v5xap97)
+    // make `tools.files.write` and `tools.files.edit` render this, as
+    // `WriteFile` and `EditFile` do in the sibling; the read verb windows
+    // through `tag(lines:startingAtLine:)` directly. Until those cards
+    // land, no code in this package calls it.
     // periphery:ignore
     static func taggedLines(of content: String) -> [String] {
         splitLines(tag(lines: content, startingAtLine: firstTaggedLineNumber)).map(\.text)

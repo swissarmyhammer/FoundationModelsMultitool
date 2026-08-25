@@ -32,11 +32,28 @@ comments:
     - evidence: swift test — 844 tests passed, 0 failed, 0 skipped, in 64 suites; 1 known pre-existing warning (mlx-swift "missing creator for mutated node"), 0 new warnings
     - next: none
   timestamp: 2026-08-25T21:13:44.768838+00:00
+- actor: claude-code
+  id: 01m0xctx9ssksvkmvh96r5v585
+  text: |-
+    ### review — clean
+    - evidence: review sha 22771b2~1..22771b2, backend local — 0 findings, 0 confirmed, 0 refuted; 7 files reviewed, 0 failed; 4 files not reviewed (.kanban/, .reviewignore rule)
+    - next: none — task moved to done
+  timestamp: 2026-08-25T21:22:18.553497+00:00
+- actor: claude-code
+  id: 01m0xcvdy3yt6pd7fapcsyw0pc
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — GlobEngine.swift, Glob.swift (first Files verb), FilesGlobTests.swift, shared runGit in TestSupport
+    - test: green — swift test, 844 tests in 64 suites, 0 failed
+    - commit: 22771b2
+    - review: clean — review sha 22771b2~1..22771b2, 0 findings
+    - task landed in done
+  timestamp: 2026-08-25T21:22:35.587506+00:00
 depends_on:
 - 01M0WWPWHFXSDJKH2GYZCR6QZ8
 - 01M0WXACC6Q0PY1QKZ6Y2TH7J4
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ff80
 title: Port GlobEngine, and make the tools.files.glob verb
 ---
 ## What
