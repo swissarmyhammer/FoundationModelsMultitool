@@ -27,6 +27,36 @@ comments:
     - evidence: swift test — 737 passed, 0 failed, 0 skipped; 1 warning found (known pre-existing mlx-swift "missing creator for mutated node", not chased); no failures to fix.
     - next: ready for review.
   timestamp: 2026-08-25T19:36:11.420755+00:00
+- actor: claude-code
+  id: 01m0x78pnvsaaepqc11zxn68mp
+  text: |-
+    ### review — findings
+    - evidence: 4 findings — Sources/FoundationModelsMultitool/Capabilities/Files/EditMatch.swift:611, Sources/FoundationModelsMultitool/Capabilities/Files/EditMatch.swift:612, Sources/FoundationModelsMultitool/Capabilities/Files/EditMatch.swift:613, Sources/FoundationModelsMultitool/Capabilities/Files/EditMatch.swift:615 (scope: review sha 859e4bf~1..859e4bf, backend local; counts findings=4 confirmed=18 refuted=1 failed=0)
+    - next: replace each magic number in EditMatch.swift with a named constant, then run the review again
+  timestamp: 2026-08-25T19:44:59.067242+00:00
+- actor: claude-code
+  id: 01m0x7f8s9k1zzjek36fd5sc6w
+  text: |-
+    Fix for the four magic-number findings:
+    - I gave a name to each Unicode scalar value in the confusableFoldings table. The names follow the shape of the control-scalar constants in PathGuard: a private static let of type UInt32, with a doc comment that states the character. The names are hyphenBlockStart (U+2010), hyphenBlockEnd (U+2015), minusSign (U+2212), singleQuoteBlockStart (U+2018), singleQuoteBlockEnd (U+201B), doubleQuoteBlockStart (U+201C), doubleQuoteBlockEnd (U+201F), noBreakSpace (U+00A0), spaceBlockStart (U+2000), spaceBlockEnd (U+200A), narrowNoBreakSpace (U+202F), mediumMathematicalSpace (U+205F), and ideographicSpace (U+3000).
+    - The confusableFoldings table now uses only the named constants. The doc comment on the table points to the constant names, not to bare code points.
+    - I examined the full file for other unnamed literals outside {0, 1, -1, 100}. There are none. The values 0.85, 0.10, 1e-4, 1.0, 2, 3, 0x0A, and 0x0D already have names (fuzzyAcceptThreshold, fuzzyRunnerUpMargin, fuzzyBoundaryEpsilon, confidentMatchScore, minimumAnchorLineCount, maxNearMisses, newlineByte, carriageReturnByte).
+    - The behavior did not change. swift build passes. swift test --filter EditMatchTests passes (30 tests). The one build warning is the known mlx-swift "missing creator for mutated node" warning, which the test record on this card already names as pre-existing.
+  timestamp: 2026-08-25T19:48:34.217401+00:00
+- actor: claude-code
+  id: 01m0x7fcpqwvgcygs06hb57xz6
+  text: |-
+    ### implement — changed
+    - evidence: 1 file — Sources/FoundationModelsMultitool/Capabilities/Files/EditMatch.swift. All four magic-number findings are fixed and checked in the description. `swift build` passes. `swift test --filter EditMatchTests` passes (30 tests).
+    - next: /review
+  timestamp: 2026-08-25T19:48:38.231366+00:00
+- actor: claude-code
+  id: 01m0x7he3jr137vmwzejtbfj12
+  text: |-
+    ### test — green
+    - evidence: swift test — 737 tests, 57 suites, 0 failures, 0 skipped. 1 warning found: the known mlx-swift "missing creator for mutated node" notice (pre-existing, not chased). No new warnings.
+    - next: none
+  timestamp: 2026-08-25T19:49:45.202755+00:00
 depends_on:
 - 01M0WXACC6Q0PY1QKZ6Y2TH7J4
 position_column: doing
@@ -52,3 +82,15 @@ Fixture: `EditMatchTests` loads `edit-match-golden.json` through `Bundle.module`
 
 ## Workflow
 - Use `/tdd` — port the tests first, then port the code to make them pass. #phase-3 #eventplan
+
+## Review Findings (2026-08-25 14:37)
+
+> Scope: `review sha 859e4bf~1..859e4bf` — reviewed the diffs only — lines this change added or modified. 2 file(s) reviewed, 4 not reviewed.
+
+> 4 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 4 file(s)
+
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Files/EditMatch.swift:611` `code-hygiene/magic-numbers-swift` — Magic numbers should be replaced by named constants.
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Files/EditMatch.swift:612` `code-hygiene/magic-numbers-swift` — Magic numbers should be replaced by named constants.
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Files/EditMatch.swift:613` `code-hygiene/magic-numbers-swift` — Magic numbers should be replaced by named constants.
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Files/EditMatch.swift:615` `code-hygiene/magic-numbers-swift` — Magic numbers should be replaced by named constants.

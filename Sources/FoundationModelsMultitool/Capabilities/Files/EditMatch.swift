@@ -598,21 +598,93 @@ enum EditMatch {
         let replacement: Unicode.Scalar
     }
 
+    /// The Unicode scalar value of `HYPHEN` (`U+2010`).
+    ///
+    /// The first scalar of the typographic-dash block that folds to `-`.
+    private static let hyphenBlockStart: UInt32 = 0x2010
+
+    /// The Unicode scalar value of `HORIZONTAL BAR` (`U+2015`).
+    ///
+    /// The last scalar of the typographic-dash block that folds to `-`.
+    private static let hyphenBlockEnd: UInt32 = 0x2015
+
+    /// The Unicode scalar value of `MINUS SIGN` (`U+2212`). Folds to `-`.
+    private static let minusSign: UInt32 = 0x2212
+
+    /// The Unicode scalar value of `LEFT SINGLE QUOTATION MARK` (`U+2018`).
+    ///
+    /// The first scalar of the curly-single-quote block that folds to `'`.
+    private static let singleQuoteBlockStart: UInt32 = 0x2018
+
+    /// The Unicode scalar value of `SINGLE HIGH-REVERSED-9 QUOTATION MARK` (`U+201B`).
+    ///
+    /// The last scalar of the curly-single-quote block that folds to `'`.
+    private static let singleQuoteBlockEnd: UInt32 = 0x201B
+
+    /// The Unicode scalar value of `LEFT DOUBLE QUOTATION MARK` (`U+201C`).
+    ///
+    /// The first scalar of the curly-double-quote block that folds to `"`.
+    private static let doubleQuoteBlockStart: UInt32 = 0x201C
+
+    /// The Unicode scalar value of `DOUBLE HIGH-REVERSED-9 QUOTATION MARK` (`U+201F`).
+    ///
+    /// The last scalar of the curly-double-quote block that folds to `"`.
+    private static let doubleQuoteBlockEnd: UInt32 = 0x201F
+
+    /// The Unicode scalar value of `NO-BREAK SPACE` (`U+00A0`). Folds to a space.
+    private static let noBreakSpace: UInt32 = 0x00A0
+
+    /// The Unicode scalar value of `EN QUAD` (`U+2000`).
+    ///
+    /// The first scalar of the fixed-width-space block that folds to a space.
+    private static let spaceBlockStart: UInt32 = 0x2000
+
+    /// The Unicode scalar value of `HAIR SPACE` (`U+200A`).
+    ///
+    /// The last scalar of the fixed-width-space block that folds to a space.
+    private static let spaceBlockEnd: UInt32 = 0x200A
+
+    /// The Unicode scalar value of `NARROW NO-BREAK SPACE` (`U+202F`). Folds to a space.
+    private static let narrowNoBreakSpace: UInt32 = 0x202F
+
+    /// The Unicode scalar value of `MEDIUM MATHEMATICAL SPACE` (`U+205F`). Folds to a space.
+    private static let mediumMathematicalSpace: UInt32 = 0x205F
+
+    /// The Unicode scalar value of `IDEOGRAPHIC SPACE` (`U+3000`). Folds to a space.
+    private static let ideographicSpace: UInt32 = 0x3000
+
     /// The confusable-punctuation fold map as data: scalar ranges → ASCII replacement.
     ///
     /// Each entry lists the Unicode scalar-value ranges that fold to one ASCII
     /// scalar, so ``foldConfusables(_:)`` is a single data-driven pass rather than
-    /// a hand-maintained switch. Covers typographic dashes (`U+2010`–`U+2015`,
-    /// `U+2212`), curly single quotes (`U+2018`–`U+201B`), curly double quotes
-    /// (`U+201C`–`U+201F`), and exotic spaces (`U+00A0`, `U+2000`–`U+200A`,
-    /// `U+202F`, `U+205F`, `U+3000`). Mirrors the grok/codex `apply_patch` pass-4
-    /// confusable set.
+    /// a hand-maintained switch. Covers typographic dashes
+    /// (``hyphenBlockStart``–``hyphenBlockEnd``, ``minusSign``), curly single
+    /// quotes (``singleQuoteBlockStart``–``singleQuoteBlockEnd``), curly double
+    /// quotes (``doubleQuoteBlockStart``–``doubleQuoteBlockEnd``), and exotic
+    /// spaces (``noBreakSpace``, ``spaceBlockStart``–``spaceBlockEnd``,
+    /// ``narrowNoBreakSpace``, ``mediumMathematicalSpace``, ``ideographicSpace``).
+    /// Mirrors the grok/codex `apply_patch` pass-4 confusable set.
     private static let confusableFoldings: [ConfusableFolding] = [
-        ConfusableFolding(scalarRanges: [0x2010...0x2015, 0x2212...0x2212], replacement: "-"),
-        ConfusableFolding(scalarRanges: [0x2018...0x201B], replacement: "'"),
-        ConfusableFolding(scalarRanges: [0x201C...0x201F], replacement: "\""),
         ConfusableFolding(
-            scalarRanges: [0x00A0...0x00A0, 0x2000...0x200A, 0x202F...0x202F, 0x205F...0x205F, 0x3000...0x3000],
+            scalarRanges: [hyphenBlockStart...hyphenBlockEnd, minusSign...minusSign],
+            replacement: "-"
+        ),
+        ConfusableFolding(
+            scalarRanges: [singleQuoteBlockStart...singleQuoteBlockEnd],
+            replacement: "'"
+        ),
+        ConfusableFolding(
+            scalarRanges: [doubleQuoteBlockStart...doubleQuoteBlockEnd],
+            replacement: "\""
+        ),
+        ConfusableFolding(
+            scalarRanges: [
+                noBreakSpace...noBreakSpace,
+                spaceBlockStart...spaceBlockEnd,
+                narrowNoBreakSpace...narrowNoBreakSpace,
+                mediumMathematicalSpace...mediumMathematicalSpace,
+                ideographicSpace...ideographicSpace,
+            ],
             replacement: " "
         ),
     ]
