@@ -29,4 +29,4 @@ Port the change-record value layer from the FileTool package into this package.
 - [ ] `swift test --filter GitPatchTests` passes.
 
 ## Workflow
-- Use `/tdd` — port the tests first, then port the code to make them pass.
+- Use `/tdd` — port the tests first, then port the code to make them pass. #phase-3 #eventplan

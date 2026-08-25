@@ -32,4 +32,4 @@ Port `GlobEngine`, and make the first Files verb. `FileWalker` is NOT in this ta
 - [ ] `swift test --filter FilesGlobTests` passes.
 
 ## Workflow
-- Use `/tdd` — port the tests first, then port the code to make them pass.
+- Use `/tdd` — port the tests first, then port the code to make them pass. #phase-3 #eventplan

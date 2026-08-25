@@ -74,8 +74,45 @@ comments:
     - pre-existing warning named (present before and after the current change, not caused by it): `warning: missing creator for mutated node: ('/Users/wballard/github/swissarmyhammer/FoundationModelsMultitool/.build/out/Products/Debug/mlx-swift_Cmlx.bundle/Contents/MacOS')` — a SwiftPM build-system diagnostic tied to the `mlx-swift` dependency artifact
     - next: none
   timestamp: 2026-08-25T17:09:42.130473+00:00
+- actor: claude-code
+  id: 01m0wyrdp3xg1h0w1ndf9nrg9v
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit 30bcfa2), backend local — counts: 0 findings, 0 confirmed, 0 refuted, 7 validator passes. 2 files reviewed. 2 `.kanban/` files not reviewed (an ignore rule excludes them).
+    - next: none. The task moved from review to done.
+  timestamp: 2026-08-25T17:16:16.963484+00:00
+- actor: claude-code
+  id: 01m0wyry2bghy0y5bwnfn4cff3
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 2 files (TestSupport.swift, PathContainmentTests.swift)
+    - test: green — swift test, 603 tests in 50 suites, 0 failed
+    - commit: 30bcfa2
+    - review: clean — 0 findings, 7 validator passes
+    - task landed in done
+  timestamp: 2026-08-25T17:16:33.739003+00:00
+- actor: claude-code
+  id: 01m0wyv5ngwghyx07jen9wk729
+  text: |
+    ### review — findings
+    - evidence: 2 findings, 2 confirmed, 0 refuted — `review sha HEAD~1..HEAD` (commit 30bcfa2). Tests/FoundationModelsMultitoolTests/TestSupport.swift:108 (`swift/idioms`), Tests/FoundationModelsMultitoolTests/TestSupport.swift:128 (`swift/fluent-usage`). The 2 `.kanban/` files in the delta are excluded by `.reviewignore`.
+    - next: /implement — correct both findings in TestSupport.swift, then re-run /review. The card stays in `review`.
+  timestamp: 2026-08-25T17:17:47.056627+00:00
+- actor: claude-code
+  id: 01m0wyvyyrdqhbvth6rrrv9wq2
+  text: |-
+    ### finish iteration 1 — findings
+    - implement: changed — 2 new files, `Tests/FoundationModelsMultitoolTests/PathContainmentTests.swift` (4 tests) and `Tests/FoundationModelsMultitoolTests/TestSupport.swift`. Done TDD: the tests were ported first and failed with "cannot find 'TestSupport' in scope", then the helper was ported to make them pass. `payload` was dropped, because its only callers were fused-`FileTool` dispatch tests and that dispatch is out of this port; the `FoundationModels` import went with it. A reconciliation pass then fixed `swift/doc-parameter-naming` and added the `// periphery:ignore` markers, each with a reason line naming the phase-3 task that will call the helper.
+    - test: green — `swift test --filter PathContainmentTests` 4 tests pass; full `swift test` 603 tests in 50 suites, 0 failures.
+    - commit: 30bcfa2 — test(files): add TestSupport and PathContainmentTests to test target (^y2th7j4)
+    - review: findings — 2 confirmed, 0 refuted, both in `TestSupport.swift`. Line 108, `swift/idioms`: `(try? …) ?? nil` is redundant, because `try?` already yields an optional. Line 128, `swift/fluent-usage`: `setImmutable(path, true)` does not read as a phrase; the boolean needs a label.
+
+    Note for the next iteration: the three acceptance-criteria items in the description are still unchecked although the work is done. They must be checked as part of the finding pass, so the card's own record agrees with its state.
+
+    This card gates ten other phase-3 cards, so nothing else in the scope can start until it lands.
+  timestamp: 2026-08-25T17:18:12.952572+00:00
 position_column: doing
-position_ordinal: '80'
+position_ordinal: '8180'
 title: Port TestSupport and PathContainmentTests into the test target
 ---
 ## What
@@ -97,3 +134,13 @@ Keep `makeTemporaryDirectory` and the path-containment helper. Remove the helper
 
 ## Workflow
 - Use `/tdd` — port the tests first, then port the support to make them pass. #phase-3 #eventplan
+
+## Review Findings (2026-08-25 12:14)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 2 file(s) reviewed, 2 not reviewed.
+
+> 2 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 2 file(s)
+
+- [ ] `Tests/FoundationModelsMultitoolTests/TestSupport.swift:108` `swift/idioms` — The expression `(try? ...) ?? nil` is redundant. The `try?` operator already converts a `throws` expression into an optional; appending `?? nil` has no effect. Remove the redundant `?? nil`: `try? FileManager.default.attributesOfItem(atPath: path)[.posixPermissions] as? Int`.
+- [ ] `Tests/FoundationModelsMultitoolTests/TestSupport.swift:128` `swift/fluent-usage` — The function call `setImmutable(path, true)` does not form a grammatical phrase. The second parameter lacks a label, so the boolean argument's purpose is unclear at the call site. Label the second parameter to clarify its role: `static func setImmutable(_ path: String, to immutable: Bool) -> Bool`, which reads as 'setImmutable(path, to: true)' or 'setImmutable(path, to: false)'.

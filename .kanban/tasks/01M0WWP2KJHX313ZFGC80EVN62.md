@@ -32,4 +32,4 @@ The golden vectors come from the Rust `swissarmyhammer-hashline` crate. They kee
 - [ ] `swift test --filter HashlineTests` passes.
 
 ## Workflow
-- Use `/tdd` — port the tests first, then port the code to make them pass.
+- Use `/tdd` — port the tests first, then port the code to make them pass. #phase-3 #eventplan

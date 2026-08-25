@@ -105,7 +105,7 @@ enum TestSupport {
     // The ported suites of tasks ^p238zzp, ^v5xap97, and ^az7jw8h call this helper.
     // periphery:ignore
     static func permissionBits(_ path: String) -> Int? {
-        (try? FileManager.default.attributesOfItem(atPath: path)[.posixPermissions] as? Int) ?? nil
+        try? FileManager.default.attributesOfItem(atPath: path)[.posixPermissions] as? Int
     }
 
     /// Set or clear the user-immutable (`UF_IMMUTABLE`) flag on a file.
@@ -125,7 +125,7 @@ enum TestSupport {
     // The ported suites of tasks ^bhgtf8t and ^7r99xf5 call this helper.
     // periphery:ignore
     @discardableResult
-    static func setImmutable(_ path: String, _ immutable: Bool) -> Bool {
+    static func setImmutable(_ path: String, to immutable: Bool) -> Bool {
         chflags(path, immutable ? UInt32(UF_IMMUTABLE) : 0) == 0
     }
 
