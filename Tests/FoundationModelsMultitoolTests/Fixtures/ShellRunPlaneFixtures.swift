@@ -18,12 +18,6 @@ import Testing
 /// and the wait for the park.
 enum ShellRunPlane {
 
-    /// How long a poll of the run plane waits between reads.
-    static let pollInterval = Duration.milliseconds(25)
-
-    /// How long a poll waits for a detached run to reach the run plane.
-    static let parkArrivalDeadline = Duration.seconds(10)
-
     /// How many runs ``parkedRun(in:)`` waits for.
     private static let oneRun = 1
 
@@ -55,8 +49,8 @@ enum ShellRunPlane {
     /// Waits until the run plane of `context` holds `count` runs, and answers
     /// them in park order.
     ///
-    /// A poll rather than one read: a `wait: false` call answers as the engine
-    /// parks its run, and the answer and the park are not one hop.
+    /// A ``TestPoll`` rather than one read: a `wait: false` call answers as the
+    /// engine parks its run, and the answer and the park are not one hop.
     ///
     /// - Parameters:
     ///   - context: The session context whose run plane to read.
@@ -65,13 +59,12 @@ enum ShellRunPlane {
     /// - Throws: When fewer than `count` runs reach the plane before the
     ///   deadline.
     static func parkedRuns(in context: ToolContext, count: Int) async throws -> [ParkedRun] {
-        let deadline = ContinuousClock.now + parkArrivalDeadline
-        var going = await context.parkedRuns()
-        while going.count < count, ContinuousClock.now < deadline {
-            try await Task.sleep(for: pollInterval)
+        var going: [ParkedRun] = []
+        let arrived = await TestPoll.holds {
             going = await context.parkedRuns()
+            return going.count >= count
         }
-        guard going.count >= count else {
+        guard arrived else {
             Issue.record(
                 "Only \(going.count) of \(count) runs reached the run plane before the deadline.")
             throw ParkedRunAbsent()

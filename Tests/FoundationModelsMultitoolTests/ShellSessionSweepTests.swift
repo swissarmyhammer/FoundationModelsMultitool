@@ -87,28 +87,6 @@ struct ShellSessionSweepTests {
     /// What `killpg` answers when it reached the group.
     private static let killpgReachedGroup: Int32 = 0
 
-    /// How long a poll of the store, of the process table or of the registry
-    /// waits between reads.
-    private static let pollInterval = Duration.milliseconds(25)
-
-    /// How long a test waits for the child of a parked run to register its
-    /// process group.
-    private static let processGroupArrivalDeadline = Duration.seconds(10)
-
-    /// How long a test waits for a process group to go away after the sweep.
-    ///
-    /// The poll is real work and not slack. `killpg` kills the tree at once,
-    /// and the leader of the group then stays an unreaped child of this process
-    /// until swift-subprocess reaps it. A group that still holds a zombie still
-    /// answers the probe, thus the reading polls until the group holds nothing
-    /// at all — which is also the proof that the child was reaped and left no
-    /// orphan behind.
-    private static let processGroupExitDeadline = Duration.seconds(10)
-
-    /// How long a test waits for the teardown of a swept run to take its pid
-    /// out of the process-group registry.
-    private static let registryDrainDeadline = Duration.seconds(10)
-
     // MARK: - The ground of one test
 
     /// One session whose run plane holds parked shell runs, each one a live
@@ -180,9 +158,9 @@ struct ShellSessionSweepTests {
     /// The process group of the run under `completionToken`, once its child
     /// registered one.
     ///
-    /// A poll, because the engine parks a run as it takes it and the child
-    /// registers its pid inside the spawn, thus a read that arrives first finds
-    /// nothing. `ShellState.runningProcess(commandID:)` is the plain,
+    /// A ``TestPoll``, because the engine parks a run as it takes it and the
+    /// child registers its pid inside the spawn, thus a read that arrives first
+    /// finds nothing. `ShellState.runningProcess(commandID:)` is the plain,
     /// non-suspending reading, which is the one an observer takes.
     ///
     /// - Parameters:
@@ -194,13 +172,16 @@ struct ShellSessionSweepTests {
     private static func processGroup(
         of completionToken: String, in state: ShellState
     ) async throws -> pid_t {
-        let deadline = ContinuousClock.now + processGroupArrivalDeadline
-        while ContinuousClock.now < deadline {
-            if let group = await state.runningProcess(commandID: completionToken) { return group }
-            try await Task.sleep(for: pollInterval)
+        var registered: pid_t?
+        let came = await TestPoll.holds {
+            registered = await state.runningProcess(commandID: completionToken)
+            return registered != nil
         }
-        Issue.record("The run under \(completionToken) registered no process group.")
-        throw ProcessGroupAbsent()
+        guard came, let registered else {
+            Issue.record("The run under \(completionToken) registered no process group.")
+            throw ProcessGroupAbsent()
+        }
+        return registered
     }
 
     /// The failure ``processGroup(of:in:)`` throws when no child registers.
@@ -217,27 +198,6 @@ struct ShellSessionSweepTests {
         killpg(group, existenceProbeSignal) == killpgReachedGroup
     }
 
-    /// Polls `condition` until it holds, or until `deadline` passes.
-    ///
-    /// One poll for each reading a teardown makes true after the sweep returns
-    /// — the group that goes away, and the registry that drains — thus the two
-    /// readings share one loop and neither can drift from the other.
-    ///
-    /// - Parameters:
-    ///   - deadline: How long to keep polling.
-    ///   - condition: What must become true.
-    /// - Returns: `true` when the condition held before the deadline.
-    private static func waitUntil(
-        before deadline: Duration, _ condition: () -> Bool
-    ) async -> Bool {
-        let end = ContinuousClock.now + deadline
-        while ContinuousClock.now < end {
-            if condition() { return true }
-            try? await Task.sleep(for: pollInterval)
-        }
-        return condition()
-    }
-
     // MARK: - The sweep kills the process group of each parked run
 
     /// eventplan.md: *"Shell runs get `killpg(SIGKILL)`."* The parked run
@@ -247,6 +207,13 @@ struct ShellSessionSweepTests {
     /// What this reads is the process group and never the word the sweep
     /// answered: a canceler that reported `.stopped` and signalled nothing
     /// would pass a test that read the word alone.
+    ///
+    /// The reading is a ``TestPoll`` and the poll is real work, not slack.
+    /// `killpg` kills the tree at once, and the leader of the group then stays
+    /// an unreaped child of this process until swift-subprocess reaps it. A
+    /// group that still holds a zombie still answers the probe, thus the
+    /// reading polls until the group holds nothing at all — which is also the
+    /// proof that the child was reaped and left no orphan behind.
     @Test("session teardown kills the child process group of each parked shell run")
     func sessionTeardownKillsTheProcessGroupOfEachParkedShellRun() async throws {
         let session = try await makeParkedSession(runCount: Self.twoParkedRuns)
@@ -258,9 +225,7 @@ struct ShellSessionSweepTests {
         _ = await session.mailbox.sweep()
 
         for group in session.groups {
-            let gone = await Self.waitUntil(before: Self.processGroupExitDeadline) {
-                !Self.processGroupStands(group)
-            }
+            let gone = await TestPoll.holds { !Self.processGroupStands(group) }
             #expect(gone, "the sweep left the process group \(group) alive")
         }
     }
@@ -330,9 +295,7 @@ struct ShellSessionSweepTests {
 
         _ = await session.mailbox.sweep()
 
-        let drained = await Self.waitUntil(before: Self.registryDrainDeadline) {
-            registry.registeredPids.isEmpty
-        }
+        let drained = await TestPoll.holds { registry.registeredPids.isEmpty }
         #expect(drained, "the registry still held \(registry.registeredPids)")
     }
 }

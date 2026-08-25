@@ -75,9 +75,6 @@ struct ShellRunnerTests {
     /// The highest marker a test picks for that sleep duration.
     private static let markerUpperBound = 999_999
 
-    /// How long a poll of the process table or of the log waits between reads.
-    private static let pollInterval = Duration.milliseconds(25)
-
     /// How long a test waits for a process tree to come up.
     private static let treeStartDeadline = Duration.seconds(2)
 
@@ -180,7 +177,7 @@ struct ShellRunnerTests {
         let start = clock.now
         var count = processCount(matching: pattern)
         while !predicate(count), clock.now - start < deadline {
-            try? await Task.sleep(for: Self.pollInterval)
+            try? await Task.sleep(for: TestPoll.interval)
             count = processCount(matching: pattern)
         }
         return count
@@ -200,7 +197,7 @@ struct ShellRunnerTests {
         let start = clock.now
         var lines = try await linesOnceStarted(in: state, commandID: commandID)
         while lines.isEmpty, clock.now - start < Self.outputArrivalDeadline {
-            try? await Task.sleep(for: Self.pollInterval)
+            try? await Task.sleep(for: TestPoll.interval)
             lines = try await linesOnceStarted(in: state, commandID: commandID)
         }
         return lines

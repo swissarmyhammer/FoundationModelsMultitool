@@ -55,9 +55,6 @@ struct ShellHistoryOpsTests {
     /// and the test kills the run as soon as it read what it came for.
     private static let liveRunSleepSeconds = 5
 
-    /// How long a poll of the store waits between reads.
-    private static let pollInterval = Duration.milliseconds(25)
-
     /// How long a poll waits for the first line of a run to arrive.
     private static let outputArrivalDeadline = Duration.seconds(10)
 
@@ -172,7 +169,7 @@ struct ShellHistoryOpsTests {
         let start = clock.now
         var answer = try await read()
         while !isReady(answer), clock.now - start < Self.outputArrivalDeadline {
-            try? await Task.sleep(for: Self.pollInterval)
+            try? await Task.sleep(for: TestPoll.interval)
             answer = try await read()
         }
         return answer

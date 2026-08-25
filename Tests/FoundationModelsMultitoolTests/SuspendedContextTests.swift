@@ -111,7 +111,7 @@ struct SuspendedContextTests {
         // JSC start-up, which made a true statement about the product fail
         // whenever the machine was loaded. The latch is still closed here, so
         // the call starting at all is what the assertion was always after.
-        try await Self.waitUntil { harness.gated.hasStarted }
+        try await TestPoll.waitUntil("the gated call started") { harness.gated.hasStarted }
         #expect(!harness.gated.wasCancelled)
 
         let token = try Self.completionToken(of: rendered)
@@ -157,7 +157,7 @@ struct SuspendedContextTests {
             configuration: MultiToolConfiguration(liveContextLimit: 1)
         )
         let parked = Task { try await multiTool.call(arguments: RunCodeArguments(code: Self.gatedSnippet)) }
-        try await Self.waitUntil { gated.hasStarted }
+        try await TestPoll.waitUntil("the gated call started") { gated.hasStarted }
 
         let refused = try await multiTool.call(arguments: RunCodeArguments(code: "return 1 + 1;"))
 
@@ -200,9 +200,10 @@ struct SuspendedContextTests {
         // The pending promise's own work was torn down with the context —
         // nothing released the gate. `wasCancelled` is written by the tool's
         // own task as it unwinds, and the terminal event above can be observed
-        // before that write lands, so wait for it the way ``waitUntil(_:)``
-        // exists to — sampling it here is a race, not a check.
-        try await Self.waitUntil { harness.gated.wasCancelled }
+        // before that write lands, so wait for it the way
+        // ``TestPoll.waitUntil(_:before:_:)`` exists to — sampling it here is a
+        // race, not a check.
+        try await TestPoll.waitUntil("the gated call unwound") { harness.gated.wasCancelled }
         #expect(!harness.latch.isReleased)
         let backgrounded = await backgroundRuns(over: harness.mailbox).parkedRuns()
         #expect(backgrounded.isEmpty)
@@ -231,12 +232,6 @@ struct SuspendedContextTests {
     /// Generous against scheduling jitter, and far below the clock it proves
     /// was not the one enforced.
     private static let promptResponseBound: Duration = .seconds(3)
-
-    /// How often ``waitUntil(_:)`` re-reads its condition.
-    private static let readinessPollIntervalNanoseconds: UInt64 = 5_000_000
-
-    /// How long ``waitUntil(_:)`` keeps polling before recording a failure.
-    private static let readinessDeadlineSeconds: TimeInterval = 10
 
     /// The snippet every suspended-context test runs.
     ///
@@ -360,22 +355,5 @@ struct SuspendedContextTests {
             throw FixtureError()
         }
         return terminal
-    }
-
-    /// Polls `condition` until it holds.
-    ///
-    /// A synchronization point, not a timing assertion, so the deadline only
-    /// bounds a genuine hang.
-    ///
-    /// - Parameter condition: the state a test is waiting to observe.
-    private static func waitUntil(_ condition: @Sendable () -> Bool) async throws {
-        let deadline = ContinuousClock.now + .seconds(readinessDeadlineSeconds)
-        while !condition() {
-            guard ContinuousClock.now < deadline else {
-                Issue.record("condition never held within \(readinessDeadlineSeconds)s")
-                throw FixtureError()
-            }
-            try await Task.sleep(nanoseconds: readinessPollIntervalNanoseconds)
-        }
     }
 }
