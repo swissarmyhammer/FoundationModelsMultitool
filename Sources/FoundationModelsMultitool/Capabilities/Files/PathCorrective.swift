@@ -2,11 +2,10 @@
 // operation.
 //
 // A behavioral port of `../FoundationModelsFileTool/Sources/FileTool/
-// PathCorrective.swift`. The sibling's `UnreadableFile` conforms to a
-// `CorrectiveFailure` protocol from its `CorrectiveResult.swift`; that
-// protocol is not in this package yet, thus the ported failure conforms to
-// `Error` directly and keeps `correctiveMessage` as a plain property. The
-// verb ports that need the protocol bring it with them.
+// PathCorrective.swift`. `UnreadableFile` conforms to the `CorrectiveFailure`
+// protocol from `CorrectiveResult.swift` beside it, the same way the
+// sibling's does, thus a read failure resolves through
+// `Result.resolve(corrective:then:)` like every other corrective failure.
 //
 // eventplan.md § "Consolidation of the siblings": a corrective result stays
 // in band, never thrown. The read and edit verbs both validate a path via
@@ -53,9 +52,9 @@ enum PathCorrective {
     ///
     /// Exists only so ``readData(at:path:)`` can return a `Result`
     /// (`Failure` must be an `Error`) while it still reduces to one
-    /// corrective string, the same way ``PathViolation`` does for its own
-    /// `Result` failures.
-    struct UnreadableFile: Error, Equatable, Sendable, CustomStringConvertible {
+    /// corrective string via ``CorrectiveFailure``, the same way
+    /// ``PathViolation`` does for its own `Result` failures.
+    struct UnreadableFile: CorrectiveFailure, Equatable, Sendable, CustomStringConvertible {
         /// The originally requested path, echoed in the corrective message.
         let path: String
 

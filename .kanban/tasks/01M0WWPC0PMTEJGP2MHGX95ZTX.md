@@ -57,10 +57,32 @@ comments:
     - evidence: swift test — 737 tests, 57 suites, 0 failures, 0 skipped. 1 warning found: the known mlx-swift "missing creator for mutated node" notice (pre-existing, not chased). No new warnings.
     - next: none
   timestamp: 2026-08-25T19:49:45.202755+00:00
+- actor: claude-code
+  id: 01m0x7rtj49bvpff9qxz064z6y
+  text: |-
+    ### review — clean
+    - evidence: `review sha eae26cd~1..eae26cd` (local backend) — 0 findings, 0 confirmed, 0 refuted, 7 attempted, 0 failed. All 4 prior findings are checked.
+    - next: none — task moved to done.
+
+    step: review
+    outcome: clean
+    evidence: 0 findings (7 attempted, 0 failed) on eae26cd~1..eae26cd; 4/4 prior findings checked
+    task: ^gx95ztx
+  timestamp: 2026-08-25T19:53:47.332356+00:00
+- actor: claude-code
+  id: 01m0x7safnett5cy418jt15dsm
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — named each Unicode scalar constant in the confusable-fold table of EditMatch.swift
+    - test: green — swift test, 737 tests in 57 suites, 0 failed
+    - commit: eae26cd (iteration 1: 859e4bf)
+    - review: clean — review sha eae26cd~1..eae26cd, 0 findings, all 4 prior items checked
+    - task landed in done
+  timestamp: 2026-08-25T19:54:03.637368+00:00
 depends_on:
 - 01M0WXACC6Q0PY1QKZ6Y2TH7J4
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: fb80
 title: Port EditMatch into Capabilities/Files
 ---
 ## What
