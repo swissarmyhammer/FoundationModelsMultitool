@@ -58,11 +58,28 @@ comments:
     - new warnings: none found.
     - next: none. The build is clean.
   timestamp: 2026-08-25T19:14:59.741870+00:00
+- actor: claude-code
+  id: 01m0x5s4pnpqnb0y4vmb1tcsag
+  text: |-
+    ### review — clean
+    - evidence: `review sha f1a3018~1..f1a3018` (backend: local) — 0 findings, 0 confirmed, 0 refuted, 7 attempted, 0 failed. 1 file reviewed. The one prior finding item is checked.
+    - next: none — the task moved to done.
+  timestamp: 2026-08-25T19:19:00.565623+00:00
+- actor: claude-code
+  id: 01m0x5sm5w70n6kxqagecbrhfh
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — named the three UTF-8 BOM byte constants in AtomicWriter.swift
+    - test: green — swift test, 707 tests in 56 suites, 0 failed
+    - commit: f1a3018 (iteration 1: ae82449)
+    - review: clean — review sha f1a3018~1..f1a3018, 0 findings, prior item checked
+    - task landed in done
+  timestamp: 2026-08-25T19:19:16.412807+00:00
 depends_on:
 - 01M0WWP2KJHX313ZFGC80EVN62
 - 01M0WXACC6Q0PY1QKZ6Y2TH7J4
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: fa80
 title: Port AtomicWriter into Capabilities/Files
 ---
 ## What

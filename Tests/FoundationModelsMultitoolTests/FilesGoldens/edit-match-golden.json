@@ -1,0 +1,590 @@
+{
+    "similarity": [
+        {
+            "a": "abc",
+            "b": "abc",
+            "expected": 1
+        },
+        {
+            "a": "",
+            "b": "",
+            "expected": 1
+        },
+        {
+            "a": "abc",
+            "b": "",
+            "expected": 0
+        },
+        {
+            "a": "",
+            "b": "x",
+            "expected": 0
+        },
+        {
+            "a": "",
+            "b": "abc",
+            "expected": 0
+        },
+        {
+            "a": "kitten",
+            "b": "sitting",
+            "expected": 0.57142854
+        },
+        {
+            "a": "the quick brown fax",
+            "b": "the quick brown fox",
+            "expected": 0.94736844
+        },
+        {
+            "a": "aaaaaaaaaaaaaaaaaaaa",
+            "b": "bbbbaaaaaaaaaaaaaaaa",
+            "expected": 0.8
+        },
+        {
+            "a": "aaaaaaaaaaaaaaaaaaaa",
+            "b": "bbbaaaaaaaaaaaaaaaaa",
+            "expected": 0.85
+        },
+        {
+            "a": "aaaaaaaaaaaaaaaaaaaa",
+            "b": "baaaaaaaaaaaaaaaaaaa",
+            "expected": 0.95
+        },
+        {
+            "a": "aaaaaaaaaaaaaaaaaaaa",
+            "b": "bbaaaaaaaaaaaaaaaaaa",
+            "expected": 0.9
+        }
+    ],
+    "cases": [
+        {
+            "group": "exact",
+            "name": "exact_substring",
+            "content": "alpha\nbeta\ngamma\n",
+            "find": "beta",
+            "outcome": {
+                "kind": "unique",
+                "range": {
+                    "start": 6,
+                    "end": 10
+                },
+                "rung": "exact",
+                "confidence": 1
+            }
+        },
+        {
+            "group": "exact",
+            "name": "exact_preferred_over_lower_rung",
+            "content": "fn foo() {}\nfn bar() {}\n",
+            "find": "fn bar() {}",
+            "outcome": {
+                "kind": "unique",
+                "range": {
+                    "start": 12,
+                    "end": 23
+                },
+                "rung": "exact",
+                "confidence": 1
+            }
+        },
+        {
+            "group": "exact",
+            "name": "exact_crlf_single_line_more_following",
+            "content": "alpha\r\nbeta\r\ngamma\r\n",
+            "find": "beta",
+            "outcome": {
+                "kind": "unique",
+                "range": {
+                    "start": 7,
+                    "end": 11
+                },
+                "rung": "exact",
+                "confidence": 1
+            }
+        },
+        {
+            "group": "exact",
+            "name": "exact_trailing_cr_at_eof",
+            "content": "alpha\nbeta\r",
+            "find": "beta",
+            "outcome": {
+                "kind": "unique",
+                "range": {
+                    "start": 6,
+                    "end": 10
+                },
+                "rung": "exact",
+                "confidence": 1
+            }
+        },
+        {
+            "group": "normalized",
+            "name": "dropped_leading_indentation",
+            "content": "fn outer() {\n    let x = compute();\n}\n",
+            "find": "let x = compute();",
+            "outcome": {
+                "kind": "unique",
+                "range": {
+                    "start": 13,
+                    "end": 35
+                },
+                "rung": "normalized",
+                "confidence": 1
+            }
+        },
+        {
+            "group": "normalized",
+            "name": "reindented_two_line_block_trailing_blank",
+            "content": "header\n    keep one;\n    keep two;\nfooter\n",
+            "find": "keep one;\nkeep two;\n\n",
+            "outcome": {
+                "kind": "unique",
+                "range": {
+                    "start": 7,
+                    "end": 34
+                },
+                "rung": "normalized",
+                "confidence": 1
+            }
+        },
+        {
+            "group": "normalized",
+            "name": "final_line_without_trailing_newline",
+            "content": "first\n    last-no-newline",
+            "find": "last-no-newline",
+            "outcome": {
+                "kind": "unique",
+                "range": {
+                    "start": 6,
+                    "end": 25
+                },
+                "rung": "normalized",
+                "confidence": 1
+            }
+        },
+        {
+            "group": "crlf",
+            "name": "crlf_find_matches_lf_content",
+            "content": "first line\nsecond line\nthird line\n",
+            "find": "first line\r\nsecond line",
+            "outcome": {
+                "kind": "unique",
+                "range": {
+                    "start": 0,
+                    "end": 22
+                },
+                "rung": "normalized",
+                "confidence": 1
+            }
+        },
+        {
+            "group": "crlf",
+            "name": "lf_find_matches_crlf_content",
+            "content": "one\r\ntwo\r\nthree\r\n",
+            "find": "one\ntwo",
+            "outcome": {
+                "kind": "unique",
+                "range": {
+                    "start": 0,
+                    "end": 8
+                },
+                "rung": "normalized",
+                "confidence": 1
+            }
+        },
+        {
+            "group": "anchor",
+            "name": "anchor_tolerates_interior_drift",
+            "content": "fn f() {\n    let a = 1;\n    let b = 2;\n    let c = 3;\n}\n",
+            "find": "fn f() {\n    DIFFERENT INTERIOR\n}",
+            "outcome": {
+                "kind": "unique",
+                "range": {
+                    "start": 0,
+                    "end": 55
+                },
+                "rung": "anchor",
+                "confidence": 1
+            }
+        },
+        {
+            "group": "fuzzy",
+            "name": "fuzzy_single_close_candidate",
+            "content": "the quick brown fox\ncompletely unrelated text here\n",
+            "find": "the quick brown fax",
+            "outcome": {
+                "kind": "unique",
+                "range": {
+                    "start": 0,
+                    "end": 19
+                },
+                "rung": "fuzzy",
+                "confidence": 0.94736844
+            }
+        },
+        {
+            "group": "fuzzy",
+            "name": "fuzzy_below_threshold_no_match",
+            "content": "bbbbaaaaaaaaaaaaaaaa\n",
+            "find": "aaaaaaaaaaaaaaaaaaaa",
+            "outcome": {
+                "kind": "noMatch",
+                "near": [
+                    {
+                        "range": {
+                            "start": 0,
+                            "end": 20
+                        },
+                        "startLine": 1,
+                        "endLine": 1,
+                        "text": "bbbbaaaaaaaaaaaaaaaa"
+                    }
+                ]
+            }
+        },
+        {
+            "group": "fuzzy",
+            "name": "fuzzy_at_threshold_unique",
+            "content": "bbbaaaaaaaaaaaaaaaaa\nzzzzzzzzzzzzzzzzzzzz\n",
+            "find": "aaaaaaaaaaaaaaaaaaaa",
+            "outcome": {
+                "kind": "unique",
+                "range": {
+                    "start": 0,
+                    "end": 20
+                },
+                "rung": "fuzzy",
+                "confidence": 0.85
+            }
+        },
+        {
+            "group": "fuzzy",
+            "name": "fuzzy_within_margin_ambiguous",
+            "content": "baaaaaaaaaaaaaaaaaaa\nbbaaaaaaaaaaaaaaaaaa\n",
+            "find": "aaaaaaaaaaaaaaaaaaaa",
+            "outcome": {
+                "kind": "ambiguous",
+                "candidates": [
+                    {
+                        "range": {
+                            "start": 0,
+                            "end": 20
+                        },
+                        "startLine": 1,
+                        "endLine": 1,
+                        "text": "baaaaaaaaaaaaaaaaaaa"
+                    },
+                    {
+                        "range": {
+                            "start": 21,
+                            "end": 41
+                        },
+                        "startLine": 2,
+                        "endLine": 2,
+                        "text": "bbaaaaaaaaaaaaaaaaaa"
+                    }
+                ]
+            }
+        },
+        {
+            "group": "fuzzy",
+            "name": "fuzzy_beyond_margin_unique",
+            "content": "baaaaaaaaaaaaaaaaaaa\nbbbaaaaaaaaaaaaaaaaa\n",
+            "find": "aaaaaaaaaaaaaaaaaaaa",
+            "outcome": {
+                "kind": "unique",
+                "range": {
+                    "start": 0,
+                    "end": 20
+                },
+                "rung": "fuzzy",
+                "confidence": 0.95
+            }
+        },
+        {
+            "group": "ambiguous",
+            "name": "exact_duplicate_lines",
+            "content": "dup line\nmiddle\ndup line\n",
+            "find": "dup line",
+            "outcome": {
+                "kind": "ambiguous",
+                "candidates": [
+                    {
+                        "range": {
+                            "start": 0,
+                            "end": 8
+                        },
+                        "startLine": 1,
+                        "endLine": 1,
+                        "text": "dup line"
+                    },
+                    {
+                        "range": {
+                            "start": 16,
+                            "end": 24
+                        },
+                        "startLine": 3,
+                        "endLine": 3,
+                        "text": "dup line"
+                    }
+                ]
+            }
+        },
+        {
+            "group": "ambiguous",
+            "name": "normalized_block_duplicated",
+            "content": "fn a() {\n    do_work();\n    cleanup();\n}\nfn b() {\n    do_work();\n    cleanup();\n}\n",
+            "find": "do_work();\ncleanup();",
+            "outcome": {
+                "kind": "ambiguous",
+                "candidates": [
+                    {
+                        "range": {
+                            "start": 9,
+                            "end": 38
+                        },
+                        "startLine": 2,
+                        "endLine": 3,
+                        "text": "    do_work();\n    cleanup();"
+                    },
+                    {
+                        "range": {
+                            "start": 50,
+                            "end": 79
+                        },
+                        "startLine": 6,
+                        "endLine": 7,
+                        "text": "    do_work();\n    cleanup();"
+                    }
+                ]
+            }
+        },
+        {
+            "group": "ambiguous",
+            "name": "repeated_block_reaching_eof",
+            "content": "x\ny\nx\ny\n",
+            "find": "x\ny\n",
+            "outcome": {
+                "kind": "ambiguous",
+                "candidates": [
+                    {
+                        "range": {
+                            "start": 0,
+                            "end": 4
+                        },
+                        "startLine": 1,
+                        "endLine": 2,
+                        "text": "x\ny\n"
+                    },
+                    {
+                        "range": {
+                            "start": 4,
+                            "end": 8
+                        },
+                        "startLine": 3,
+                        "endLine": 4,
+                        "text": "x\ny\n"
+                    }
+                ]
+            }
+        },
+        {
+            "group": "noMatch",
+            "name": "no_match_returns_near_miss",
+            "content": "the quick brown fox\nanother line entirely\n",
+            "find": "zzzzzzzzzzzzzzzzzzz",
+            "outcome": {
+                "kind": "noMatch",
+                "near": []
+            }
+        },
+        {
+            "group": "noMatch",
+            "name": "anchor_non_unique_first_line",
+            "content": "open {\n    alpha;\nclose }\nopen {\n    beta;\nclose }\n",
+            "find": "open {\n    DRIFTED INTERIOR\nclose }",
+            "outcome": {
+                "kind": "noMatch",
+                "near": [
+                    {
+                        "range": {
+                            "start": 18,
+                            "end": 25
+                        },
+                        "startLine": 3,
+                        "endLine": 3,
+                        "text": "close }"
+                    },
+                    {
+                        "range": {
+                            "start": 43,
+                            "end": 50
+                        },
+                        "startLine": 6,
+                        "endLine": 6,
+                        "text": "close }"
+                    },
+                    {
+                        "range": {
+                            "start": 0,
+                            "end": 6
+                        },
+                        "startLine": 1,
+                        "endLine": 1,
+                        "text": "open {"
+                    }
+                ]
+            }
+        },
+        {
+            "group": "noMatch",
+            "name": "anchor_inverted_last_before_first",
+            "content": "THE_END marker\nsome middle text\nTHE_START marker\n",
+            "find": "THE_START marker\ndrifted\nTHE_END marker",
+            "outcome": {
+                "kind": "noMatch",
+                "near": [
+                    {
+                        "range": {
+                            "start": 32,
+                            "end": 48
+                        },
+                        "startLine": 3,
+                        "endLine": 3,
+                        "text": "THE_START marker"
+                    },
+                    {
+                        "range": {
+                            "start": 0,
+                            "end": 14
+                        },
+                        "startLine": 1,
+                        "endLine": 1,
+                        "text": "THE_END marker"
+                    },
+                    {
+                        "range": {
+                            "start": 15,
+                            "end": 31
+                        },
+                        "startLine": 2,
+                        "endLine": 2,
+                        "text": "some middle text"
+                    }
+                ]
+            }
+        },
+        {
+            "group": "noMatch",
+            "name": "anchor_empty_first_line",
+            "content": "alpha\nbeta\ngamma\n",
+            "find": "\nzeta-unmatched",
+            "outcome": {
+                "kind": "noMatch",
+                "near": [
+                    {
+                        "range": {
+                            "start": 6,
+                            "end": 10
+                        },
+                        "startLine": 2,
+                        "endLine": 2,
+                        "text": "beta"
+                    },
+                    {
+                        "range": {
+                            "start": 11,
+                            "end": 16
+                        },
+                        "startLine": 3,
+                        "endLine": 3,
+                        "text": "gamma"
+                    },
+                    {
+                        "range": {
+                            "start": 0,
+                            "end": 5
+                        },
+                        "startLine": 1,
+                        "endLine": 1,
+                        "text": "alpha"
+                    }
+                ]
+            }
+        },
+        {
+            "group": "noMatch",
+            "name": "find_longer_than_content",
+            "content": "only one line\n",
+            "find": "alpha line\nbeta line\ngamma line",
+            "outcome": {
+                "kind": "noMatch",
+                "near": [
+                    {
+                        "range": {
+                            "start": 0,
+                            "end": 13
+                        },
+                        "startLine": 1,
+                        "endLine": 1,
+                        "text": "only one line"
+                    }
+                ]
+            }
+        },
+        {
+            "group": "empty",
+            "name": "empty_find_blank_lines_ambiguous",
+            "content": "a\n\n\nb\n",
+            "find": "",
+            "outcome": {
+                "kind": "ambiguous",
+                "candidates": [
+                    {
+                        "range": {
+                            "start": 2,
+                            "end": 2
+                        },
+                        "startLine": 2,
+                        "endLine": 2,
+                        "text": ""
+                    },
+                    {
+                        "range": {
+                            "start": 3,
+                            "end": 3
+                        },
+                        "startLine": 3,
+                        "endLine": 3,
+                        "text": ""
+                    }
+                ]
+            }
+        },
+        {
+            "group": "empty",
+            "name": "empty_find_no_blank_no_match",
+            "content": "alpha\nbeta\n",
+            "find": "",
+            "outcome": {
+                "kind": "noMatch",
+                "near": []
+            }
+        },
+        {
+            "group": "combined",
+            "name": "crlf_and_reindent_block",
+            "content": "class C {\r\n    def method():\r\n        return 1\r\n}\r\n",
+            "find": "def method():\nreturn 1",
+            "outcome": {
+                "kind": "unique",
+                "range": {
+                    "start": 11,
+                    "end": 46
+                },
+                "rung": "normalized",
+                "confidence": 1
+            }
+        }
+    ]
+}
