@@ -405,12 +405,8 @@ struct Read: Tool {
         """
 
     /// The session context this verb reads against, which the files capability owns.
-    let context: FileContext
-
-    /// Makes the verb over one session context.
     ///
-    /// - Parameter context: The per-session state of the file verbs.
-    init(context: FileContext) {
-        self.context = context
-    }
+    /// The compiler-synthesized memberwise initializer takes this one
+    /// property, thus the capability makes the verb as `Read(context:)`.
+    let context: FileContext
 }

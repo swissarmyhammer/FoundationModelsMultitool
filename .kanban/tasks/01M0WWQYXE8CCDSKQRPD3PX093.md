@@ -26,6 +26,31 @@ comments:
     - evidence: swift test — 865 tests passed, 65 suites, 0 failed, 0 skipped. swift build --build-tests clean of new warnings; only the known pre-existing mlx-swift "missing creator for mutated node" notice is present.
     - next: none
   timestamp: 2026-08-25T21:33:27.597187+00:00
+- actor: claude-code
+  id: 01m0xdsgbxga13jy70za9gyxbf
+  text: |-
+    ### review — findings
+    - evidence: 1 finding, 1 confirmed, 0 refuted, 0 failed — Sources/FoundationModelsMultitool/Capabilities/Files/Read.swift:413 (swift/idioms). Scope: review sha 40a6870~1..40a6870.
+    - next: Correct the finding in the `## Review Findings (2026-08-25 16:34)` section, then run the review again. The task stays in review.
+  timestamp: 2026-08-25T21:39:01.117386+00:00
+- actor: claude-code
+  id: 01m0xdvzfn0973h972e8vhm24t
+  text: 'Finding corrected. I deleted the explicit `init(context:)` from `Read` — the compiler now synthesizes the identical memberwise initializer. I moved the initializer''s information onto the `context` property doc comment, which now says the synthesized initializer takes this one property as `Read(context:)`. I examined the whole file for other redundant explicit initializers: `ReadArguments` and `ReadResult` are `@Generable` structs with no explicit initializer, thus `init(context:)` was the only one. Verification: `swift build` is complete; `swift test --filter FilesReadTests` — 21 tests pass, 0 failed. The only warning is the known pre-existing mlx-swift "missing creator for mutated node" notice.'
+  timestamp: 2026-08-25T21:40:22.133161+00:00
+- actor: claude-code
+  id: 01m0xdw3cmsncqee2qcjs02qmb
+  text: |-
+    ### implement — changed
+    - evidence: 1 file — Sources/FoundationModelsMultitool/Capabilities/Files/Read.swift (deleted the redundant explicit `init(context:)`; the compiler synthesizes it; the doc information moved to the `context` property). Finding checked in the card. `swift build` complete; `swift test --filter FilesReadTests` — 21 tests pass, 0 failed.
+    - next: /review
+  timestamp: 2026-08-25T21:40:26.132854+00:00
+- actor: claude-code
+  id: 01m0xdy74fjz2eyc773tvjae36
+  text: |-
+    ### test — green
+    - evidence: swift test — 865 passed, 0 failed, 0 skipped; 65 suites passed. Only warning present: the known pre-existing mlx-swift "missing creator for mutated node" notice. No new warnings, no failures.
+    - next: ready for review or commit.
+  timestamp: 2026-08-25T21:41:35.503715+00:00
 depends_on:
 - 01M0WWPWHFXSDJKH2GYZCR6QZ8
 - 01M0WWP2KJHX313ZFGC80EVN62
@@ -59,3 +84,12 @@ Shape:
 
 ## Workflow
 - Use `/tdd` — port the tests first, then port the code to make them pass. #phase-3 #eventplan
+
+## Review Findings (2026-08-25 16:34)
+
+> Scope: `review sha 40a6870~1..40a6870` — reviewed the diffs only — lines this change added or modified. 3 file(s) reviewed, 4 not reviewed.
+
+> 4 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 4 file(s)
+
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Files/Read.swift:413` `swift/idioms` — The explicit `init(context:)` is identical to the memberwise initializer the compiler would synthesize for `Read`. It assigns the single parameter to the only property without a default value, which is exactly what the compiler synthesizes when the other properties have defaults. This redundant explicit init should be deleted and left to the compiler. Delete the explicit `init(context:)` at lines 413–415 and let the Swift compiler synthesize it automatically. The documentation comment can be moved to the struct if its purpose needs explanation.
