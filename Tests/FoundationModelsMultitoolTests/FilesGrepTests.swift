@@ -209,6 +209,24 @@ import Testing
         #expect((result.matches ?? []).allSatisfy { $0.file == "code.swift" })
     }
 
+    /// The `type` lookup ignores case, the same way the `outputMode` lookup
+    /// does: a non-canonical spelling resolves to the same extensions as the
+    /// canonical lowercase form.
+    @Test func typeFilterResolvesCaseInsensitively() async throws {
+        let root = Self.makeDirectory()
+        try Self.write("code.swift", in: root, contents: "// TODO fix\n")
+        try Self.write("notes.txt", in: root, contents: "TODO fix\n")
+
+        let result = try await Self.makeVerb(root: root)
+            .call(
+                arguments: GrepArguments(
+                    pattern: "TODO", path: root.path, type: "SWIFT", contextLines: 0))
+
+        #expect(result.correction == nil)
+        #expect(result.matchCount == 1)
+        #expect((result.matches ?? []).allSatisfy { $0.file == "code.swift" })
+    }
+
     /// An unknown `type` comes back as a correction that names the rejected
     /// value and lists every known type.
     @Test func unknownTypeIsCorrectiveListingKnownTypes() async throws {
@@ -244,6 +262,25 @@ import Testing
 
         #expect(result.matchCount == 1)
         #expect((result.matches ?? []).allSatisfy { $0.file == "b.txt" })
+    }
+
+    /// The `glob` filename filter matches without case sensitivity: a
+    /// mixed-case filename matches a lowercase pattern, the same way the
+    /// `tools.files.glob` verb matches (the engine passes
+    /// `caseSensitive: false` to the filename filter).
+    @Test func globFilterMatchesFilenamesCaseInsensitively() async throws {
+        let root = Self.makeDirectory()
+        try Self.write("TestFile.TXT", in: root, contents: "match\n")
+        try Self.write("other.swift", in: root, contents: "match\n")
+
+        let result = try await Self.makeVerb(root: root)
+            .call(
+                arguments: GrepArguments(
+                    pattern: "match", path: root.path, glob: "*.txt", contextLines: 0))
+
+        #expect(result.correction == nil)
+        #expect(result.matchCount == 1)
+        #expect((result.matches ?? []).allSatisfy { $0.file == "TestFile.TXT" })
     }
 
     // MARK: Output modes

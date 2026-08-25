@@ -47,6 +47,37 @@ comments:
     - evidence: swift test — 935 passed, 0 failed, 0 skipped, 68 suites; build clean except the known pre-existing mlx-swift warning "missing creator for mutated node" (not chased, per instruction)
     - next: none
   timestamp: 2026-08-25T22:59:44.381543+00:00
+- actor: claude-code
+  id: 01m0xk2kzfcgp6b2d1g6dr5dx5
+  text: |-
+    ### review — findings
+    - evidence: `review sha 99f6447~1..99f6447` (backend: local) — 3 findings, 4 confirmed, 0 refuted, 0 failed. Files: Sources/FoundationModelsMultitool/Capabilities/Files/GrepEngine.swift:130, Tests/FoundationModelsMultitoolTests/FilesGrepTests.swift:235, Tests/FoundationModelsMultitoolTests/FilesGrepTests.swift:286
+    - next: correct the findings in the "## Review Findings (2026-08-25 18:01)" checklist, then request a new review. The task stays in review.
+  timestamp: 2026-08-25T23:11:22.607596+00:00
+- actor: claude-code
+  id: 01m0xk7skdv1e2aqdnb5hwc0e4
+  text: |-
+    Corrections for the three review findings:
+    - GrepEngine.swift — the value `8 * 1024` is now the product of two named constants, `binarySniffWindowKibibytes` and `bytesPerKibibyte`, each with a doc comment (the same pattern as Write.swift). I examined the full file: each other numeral is 0, 1, or -1, or is the definition of a named constant (`defaultContextLines`, `millisecondsPerSecond`), thus no other change is necessary.
+    - FilesGrepTests.swift — the new test `globFilterMatchesFilenamesCaseInsensitively` writes the file "TestFile.TXT" and finds it with the glob "*.txt". This shows that the glob filename filter operates without case sensitivity.
+    - FilesGrepTests.swift — the new test `typeFilterResolvesCaseInsensitively` supplies `type: "SWIFT"` and shows that the lookup resolves to the same extensions as the canonical "swift" form, with no correction.
+    The three finding checkboxes in the description are now `- [x]`.
+    Evidence: `swift build` succeeds; `swift test --filter FilesGrepTests` — 29 tests, all pass (27 before, 2 new). The only build warning is the known mlx-swift "missing creator for mutated node" warning, which existed before this change.
+  timestamp: 2026-08-25T23:14:12.205283+00:00
+- actor: claude-code
+  id: 01m0xk7y9p4fx3ngqh8a2zcg2j
+  text: |-
+    ### implement — changed
+    - evidence: 2 files — Sources/FoundationModelsMultitool/Capabilities/Files/GrepEngine.swift (named constants for the binary sniff window), Tests/FoundationModelsMultitoolTests/FilesGrepTests.swift (tests globFilterMatchesFilenamesCaseInsensitively and typeFilterResolvesCaseInsensitively). `swift build`: succeeds. `swift test --filter FilesGrepTests`: 29/29 pass. The three review-finding checkboxes are `- [x]`.
+    - next: /review
+  timestamp: 2026-08-25T23:14:17.014509+00:00
+- actor: claude-code
+  id: 01m0xkax5424q9ptj8t5fc1fwd
+  text: |-
+    ### test — green
+    - evidence: swift test — 937 tests passed, 0 failed, 0 skipped, in 68 suites. One warning is present: the known mlx-swift "missing creator for mutated node" notice. No new warning is present.
+    - next: none. The build is clean.
+  timestamp: 2026-08-25T23:15:54.148691+00:00
 depends_on:
 - 01M0WWPWHFXSDJKH2GYZCR6QZ8
 - 01M0WWQR0QYAT02TQ1D4CMVJQH
@@ -81,3 +112,14 @@ Port `GrepEngine`, and rewrite the `GrepFiles` operation as the plain `Tool` con
 
 ## Workflow
 - Use `/tdd` — port the tests first, then port the code to make them pass. #phase-3 #eventplan
+
+## Review Findings (2026-08-25 18:01)
+
+> Scope: `review sha 99f6447~1..99f6447` — reviewed the diffs only — lines this change added or modified. 5 file(s) reviewed, 4 not reviewed.
+
+> 4 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 4 file(s)
+
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Files/GrepEngine.swift:130` `code-hygiene/magic-numbers-swift` — Magic numbers should be replaced by named constants.
+- [x] `Tests/FoundationModelsMultitoolTests/FilesGrepTests.swift:235` `completeness/case-sensitivity-coverage` — The glob filename filter's case-insensitivity is implemented in the engine (GrepEngine.swift:635, `caseSensitive: false`) but not tested. The test only exercises glob matching where the pattern and filenames have matching case (lowercase pattern "*.txt" against lowercase filenames "a.swift", "b.txt"), which would succeed equally under both case-sensitive and case-insensitive matching, leaving the case-insensitive behavior unverified. Add one test that creates a file with a mixed-case name (e.g., "TestFile.TXT") and searches with a glob pattern in different case (e.g., "*.txt") to verify case-insensitive glob matching, similar to how `outputModeResolvesCaseInsensitivelyLikeTheTypeFilter` tests outputMode case-insensitivity with "FILESWITHMATCHES".
+- [x] `Tests/FoundationModelsMultitoolTests/FilesGrepTests.swift:286` `completeness/case-sensitivity-coverage` — The test `outputModeResolvesCaseInsensitivelyLikeTheTypeFilter` claims in its docstring (lines 284-285) that the `type` filter resolves case-insensitively the same way `outputMode` does, but the test only exercises `outputMode`'s case-insensitivity with 'FILESWITHMATCHES' (line 293), not `type`'s. The implementation in GrepEngine.swift:306 does perform case-insensitive type lookup via `type.lowercased()`, but this behavior is not proven by any test. Add one test assertion where the type parameter is supplied in non-canonical case (e.g., 'SWIFT' or 'Swift') and verify it resolves to the same extensions as the canonical 'swift' form. For example, extend the existing `typeFilterRestrictsToMatchingExtensions` test or add a peer to `outputModeResolvesCaseInsensitivelyLikeTheTypeFilter` that tests type case-insensitivity alongside outputMode.

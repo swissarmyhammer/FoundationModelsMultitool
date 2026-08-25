@@ -123,11 +123,19 @@ struct GrepEngine: Sendable {
     /// The smallest permitted context-line count: a floor that degrades any requested negative value to match-lines-only.
     private static let minimumContextLines = 0
 
-    /// The number of leading bytes inspected for a NUL byte when classifying a file as binary.
+    /// The number of bytes in one kibibyte (`1024`).
+    private static let bytesPerKibibyte = 1024
+
+    /// The size of the binary sniff window in kibibytes, matching the Rust
+    /// `files` tool's binary-detection window.
+    private static let binarySniffWindowKibibytes = 8
+
+    /// The number of leading bytes inspected for a NUL byte when classifying
+    /// a file as binary, as the product of the two named factors.
     ///
-    /// A file whose first 8 kibibytes contain a NUL byte is treated as binary
-    /// and skipped, matching the Rust `files` tool's binary-detection window.
-    private static let binarySniffWindowByteCount = 8 * 1024
+    /// A file whose first ``binarySniffWindowKibibytes`` kibibytes contain a
+    /// NUL byte is treated as binary and skipped.
+    private static let binarySniffWindowByteCount = binarySniffWindowKibibytes * bytesPerKibibyte
 
     /// The byte value whose presence in the sniff window marks a file as binary.
     private static let nullByte: UInt8 = 0
