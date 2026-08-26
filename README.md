@@ -22,9 +22,9 @@ that it runs in the background: it conforms to `BackgroundTool` and gives a
 `ToolMount`. A `RoutedSession` reads that declaration when it mounts the tool,
 so a slow `runCode` starts a background run and answers at once with a pending
 envelope. The model collects the result with the mounted `wait` tool. A bare
-`FoundationModels.LanguageModelSession` does not read the declaration, so the
-same tools run in band: the snippet blocks, no envelope is written, and `wait`
-has nothing to join.
+`FoundationModels.LanguageModelSession` reads no such declaration, so it applies
+no background wrapper and `MultiTool`'s own `call(arguments:)` runs in band: the
+snippet blocks, no envelope is written, and `wait` has nothing to join.
 
 This example mirrors the runnable demo in `Sources/MultitoolCLI`
 (`CLIRunner.runDemo`), which drives exactly this wiring end to end:
