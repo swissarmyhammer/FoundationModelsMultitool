@@ -2,10 +2,18 @@
 
 Note: This document uses ASD-STE100 Simplified Technical English. Code
 identifiers (for example `ToolContext`) and product names are technical names.
-They keep their usual form. Words such as "elevate", "park", "mount", and
+They keep their usual form. Words such as "background", "track", "mount", and
 "render" are technical verbs in this project. Multi-word terms of this project,
 for example "terminal-event scope contract" and "do-more-per-call", are
 technical names also.
+
+> **Update (2026-08-25).** The "Quick sync return" dual mode is removed from
+> this plan. No timer selects sync or background. A tool is synchronous by
+> default and runs to completion. A tool that is known ahead of time to run
+> long — shell, an agent, the outer `runCode` — declares the background
+> protocol, and each of its calls returns the completion-token handle at once.
+> The session pushes settlement to the calling model. `timeout` stays as the
+> one bound on the work. The sections below are corrected to this contract.
 
 Router owns the host substrate. The substrate contains the event vocabulary, the
 outbox, the mailbox, and the ambient `ToolContext`. Router is one package with
@@ -30,8 +38,8 @@ each MultiTool. It is never behind a Builder option.
 
 | Capability | Surface |
 |---|---|
-| Quick sync return | A `Tool` call that completes in `waitSeconds` returns its value inline. `ElevatingTool` applies this rule at the `Tool` protocol level, on the native path and on the code path. |
-| Long-running with token | The call elevates to a `completionToken`. The `status()`, `wait()`, and `cancel()` builtins do the follow-up. |
+| Synchronous by default | A `Tool` call runs to completion and returns its value inline. File, skill, and discovery tools are synchronous. `timeout` bounds the work. |
+| Background by declaration | A tool that declares the background protocol returns a `completionToken` handle at once, on every call. The `status()`, `wait()`, and `cancel()` builtins collect; the session pushes settlement to the model. |
 | Elicitation | `elicit()` is available at the snippet top level. `ToolContext.elicit` is available in each tool. These are always available. |
 | Notification events | `notify()` and `progress()` are available at the snippet top level. `ToolContext.post` and `progress` are available in each tool. These are always available. |
 | Discovery | `findAPIs`, `help()`, `docs()` |
@@ -76,37 +84,40 @@ third-party emitter needs an MLX-free import in the future, a product split
 along that folder boundary is only a manifest change. No source moves are
 necessary.
 
-## Elevation: waitSeconds and the completion token
+## Background tools and the completion token
 
-The elevation engine is at the `FoundationModels.Tool` protocol level, in
-Router's `Hosting/` folder. It is not in the code-mode bridge. `ElevatingTool`
-wraps `any Tool`. It runs `call(arguments:)` in a race against a `waitSeconds`
-timer (default: 5 s). If the call completes in the window, the wrapper returns
-the rendered output.
+A tool's mode is static, and it is known before any call. The default is
+synchronous: `call(arguments:)` runs to completion and returns its value. A
+tool that can run for a long time — shell, an agent, the outer `runCode` —
+declares itself a background tool with an explicit protocol. No timer selects
+the mode.
 
-If the call does not complete, the wrapper parks the call in the session
-mailbox. The wrapper then posts the synthesized events. It returns the pending
-envelope — `{ pending: true, completionToken: "01…" }` — as the rendered
-output. The wrapper's `Output` is the rendered value. As a result, a typed
-wrapped `Output` does not need to represent the pending case. The model reads
-text on the wire in each case.
+The background engine is at the `FoundationModels.Tool` protocol level, in
+Router's `Hosting/` folder. It is not in the code-mode bridge. The wrapper
+wraps `any Tool`. A background tool call starts the work, tracks the run in
+the session mailbox, and returns the pending envelope —
+`{ pending: true, completionToken: "01…" }` — as the rendered output, at
+once, on every call. The wrapper's `Output` is the rendered value. As a
+result, a typed wrapped `Output` does not need to represent the pending case.
+The model reads text on the wire in each case.
 
-This engine is a promotion of two designs: MCP's `CallWait` soft deadline and
-Shelltool's `RunSupervisor` race. See "Consolidation of the siblings" for the
-two-clocks model. The two designs already agree on that model.
+A background run speaks to its calling model with five signals:
 
-There are two mounts, one engine, and two policies. Router applies the wrapper
-when it composes the tool list of a native session. There, each call elevates
-at `waitSeconds`. MultiTool's `ToolInvoker` sends each `tools.*` call through
-the same engine with elevation off. Inner calls run until they complete, and
-only the outer `runCode` call elevates (see "The constraint boundary"). One
-engine owns the parked runs, the events, and the outcomes in each case.
+1. "I started" — the pending envelope with the `completionToken`.
+2. "I make progress" — `progress` events; each one resets `timeout`.
+3. "I must elicit" — the elicitation request; only this run suspends.
+4. "I have an error" — settlement with the honest failure outcome
+   (`failed`, `timedOut`, `stopped`, `lost`).
+5. "I am done" — one terminal `.completed` event with the bounded output
+   tail.
 
-Follow-up is different for each path, and this is intentional. Code mode has
-the `status(completionToken)`, `wait(completionToken, seconds)`, and
-`cancel(completionToken)` builtins. The model keeps the token across turns. The
-native path has no builtins. Completion arrives as a turn-riding event through
-the outbox at the next turn boundary. No follow-up pseudo-tools return.
+The session pushes signals 4 and 5 to the model at the next turn boundary. The
+model does not poll. Follow-up is different for each path, and this is
+intentional. Code mode has the `status(completionToken)`,
+`wait(completionToken, seconds)`, and `cancel(completionToken)` builtins. The
+model keeps the token across turns. The native path has no builtins.
+Completion arrives as a turn-riding event through the outbox at the next turn
+boundary. No follow-up pseudo-tools return.
 
 The token is a ULID. It is the same value as the run's event `correlationID`.
 The word is always `completionToken`. Do not write "token" alone. That word
@@ -150,9 +161,9 @@ the sink. `ToolInvoker` binds it for each `tools.*` call with MultiTool's own
 sink. MultiTool's sink updates the mailbox first and then sends the event
 upstream. One binding point, two consumers, no protocol.
 
-If a parked call has no events of its own, the engine makes the events. This
-occurs where elevation is on: the native mount, and the outer `runCode` run.
-The engine posts one `progress` event at elevation. It posts one `.completed`
+If a background run has no events of its own, the engine makes the events.
+This occurs where backgrounding is on: the declared background tools, and the
+outer `runCode` run. The engine posts one `progress` event at the start. It posts one `.completed`
 event at the end. That event carries the rendered output in `detail`, the
 `completionToken` as `correlationID`, and the correct `OperationOutcome`. The
 terminal-event contract applies to each elevated run, with an emitter or
@@ -185,10 +196,9 @@ session scope. The correlation has run scope. The capabilities are:
 - `post(_ event:)` and `progress(_ detail:)` — the event path. The context
   supplies this run's `correlationID` before the call.
 - `elicit(_ request:) async throws -> ElicitationResponse` — a question to the
-  user in the middle of a run. This is only another elevation. The run parks as
-  a pending promise. The elicitation request goes upstream through the same
-  event chain. The answer comes down through the mailbox and resumes the parked
-  continuation. An elicitation is a long-running operation. Its completion is a
+  user in the middle of a run. The run suspends as a pending promise. The
+  elicitation request goes upstream through the same event chain. The answer
+  comes down through the mailbox and resumes the suspended continuation. An elicitation is a long-running operation. Its completion is a
   user reply. There is no second machinery.
 - Cancellation, the run's `completionToken`, and the session identity.
 
@@ -259,7 +269,7 @@ Task, posts the honest terminal outcome, and releases the context. A snippet
 must not put a released resource's cleanup in a `finally {}` block and expect
 cancel to reach it.
 
-Elevation composes. A snippet that continues after `waitSeconds` elevates while
+Backgrounding composes. A `runCode` snippet answers with the handle while
 its inner promises stay in flight. Call settlements and elicitation answers
 resolve them until the snippet ends in its terminal event. The `runCode`
 description gets one more line: await each `tools.*` call; use `Promise.all`
@@ -387,14 +397,14 @@ const repo = await elicit("Which repository should I target?");
 return tools.github.createIssue({ repo, title });
 ```
 
-It parks and resumes through the same elevation path as every other call.
+It suspends and resumes through the same background path as every other call.
 
 `elicit()` returns a promise like every other call (see "Async JavaScript").
 The snippet awaits it. The control flow gets the answer. No OS thread is held
 while the user thinks.
 
-The model's turn is also not held. The outer `runCode` run elevates past
-`waitSeconds`, and the model gets the pending envelope. The pending items are a
+The model's turn is also not held. The outer `runCode` run returns the
+pending envelope at once. The pending items are a
 promise plus a suspended JSC context. `respond` resolves them, and the snippet
 continues from the next statement.
 
@@ -475,20 +485,20 @@ Shelltool has `RunSupervisor` / `ShellRunner`. It contains:
 - a `ProcessRegistry` with an exit sweep
 - a capture-at-start sink that posts detached events.
 
-As a result, consolidation is promotion, not construction. One elevation engine
-goes in `ToolInvoker` plus the Router mailbox. We delete the two local designs.
+As a result, consolidation is promotion, not construction. One background
+engine goes in `ToolInvoker` plus the Router mailbox. We delete the two local designs.
 
-The two-clocks model of MCP goes into the engine without change. `waitSeconds`
-limits *the block of the tool call*. Nothing resets it. A per-call `timeout`
-limits *the work itself*. Progress resets it.
+The engine keeps one clock. A per-call `timeout` limits *the work itself*.
+Progress resets it. The `waitSeconds` block-clock is removed together with the
+sync-or-background race.
 
-Progress keeps the work alive. It never gives the caller more wait time.
+Progress keeps the work alive.
 
-Progress does not make a snippet immortal. The two clocks above belong to the
-engine. The host's interpreter has a third clock of its own: the watchdog that
-`MultiToolConfiguration.executionTimeLimit` arms. That clock is absolute. It
+Progress does not make a snippet immortal. The `timeout` clock belongs to the
+engine. The host's interpreter has a watchdog clock of its own, armed by
+`MultiToolConfiguration.executionTimeLimit`. That clock is absolute. It
 measures from the start of the snippet, and nothing resets it — not progress,
-and not a park on `elicit()`. The engine's `timeout` is clamped to it. As a
+and not a suspension on `elicit()`. The engine's `timeout` is clamped to it. As a
 result, progress keeps the work alive up to that ceiling only, and a snippet
 that reaches the ceiling is force-terminated there.
 
@@ -567,7 +577,7 @@ completed run (the store stays after the run).
 
 The join: the `commandID` of a shell run is its `correlationID` is its
 `completionToken` — one string, two planes. Nested runs obey the same rule. An
-elevated `runCode` has its own outer token. Its pending envelope and `status()`
+backgrounded `runCode` has its own outer token. Its pending envelope and `status()`
 list the child runs found so far. The `detail` of each terminal event carries
 the output tail plus the run's identifier. As a result, the model always knows
 how to get more.
@@ -635,22 +645,17 @@ The envelope carries the control surface explicitly. Each argument has `@Guide`
 documentation and token constraints:
 
 - `code`.
-- `waitSeconds` — the first clock. It sets how long this run blocks before it
-  elevates. The default is the configured 5. A value of `0` detaches
-  immediately (MCP's `bounded(.zero)` case).
-- `timeout` — the second clock. It is the hard limit on the work. Progress
+- `timeout` — the one clock. It is the hard limit on the work. Progress
   resets it, up to the host's absolute interpreter ceiling (see
   "Consolidation of the siblings").
 
 `findAPIs` keeps its search argument as the discovery half. **Inner `tools.*`
-calls never elevate.** An awaited inner call runs until it completes, limited
-by `timeout`. Only the outer `runCode` elevates.
+calls run to completion.** An awaited inner call runs until it completes,
+limited by `timeout`. Only the outer `runCode` is a background tool.
 
-There is one elevation point, at the boundary that the model already sees. As
-a result, no snippet branches on a pending envelope in the middle of code. A
-capability that wants detach semantics declares it as a usual argument
-(shell's `wait`). The capability then returns the run's identifier for the
-builtins. The two clocks appear exactly one time, at the envelope.
+There is one background point, at the boundary that the model already sees.
+As a result, no snippet branches on a pending envelope in the middle of code.
+The `timeout` argument appears exactly one time, at the envelope.
 
 Does a weak model do better with per-tool decode-time constraints, or with the
 code envelope plus the repair loop? That is an empirical question for the gated
@@ -787,7 +792,7 @@ the history of each session and `config.yaml`, which is where the write roots
 of the sandbox are meant to come from; no reader of that file exists yet.
 Detach supervision moves to the shared engine. We delete `RunSupervisor` and
 the race logic of the shell `ProcessRegistry`, and the engine replaces them.
-Shell is the reference emitter. Its detached commands prove the elevation path
+Shell is the reference emitter. Its detached commands prove the background path
 end to end. Exit: ACPAgent, Extras, and Skills — the three org consumers of
 Shelltool — move to the MultiTool capability, and we archive the
 FoundationModelsShelltool repository.
@@ -814,7 +819,7 @@ The per-capability CLIs are gone, and `multitool-cli` is the single demo and
 test binary. Exit: we archive the FoundationModelsOperationTool repository.
 
 The order is fixed: 1 → 2 → 3 → 4 → 5. Phases 2–4 each depend only on phase 1.
-But they land serially. As a result, the elevation engine hardens against one
+But they land serially. As a result, the background engine hardens against one
 consumer at a time. Shell goes first, as the emitter that tests each path.
 
 ## Open
