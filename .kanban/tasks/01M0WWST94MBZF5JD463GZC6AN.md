@@ -28,6 +28,23 @@ comments:
     - evidence: swift test — 989 tests passed, 0 failed, 0 skipped, in 71 suites. Only warning seen: the known mlx-swift notice "missing creator for mutated node" (Cmlx.bundle). No new warning found.
     - next: none. The build is clean.
   timestamp: 2026-08-26T00:12:14.098250+00:00
+- actor: claude-code
+  id: 01m0xpy1ytc0xj0m2hvqnygvjh
+  text: |-
+    ### review — clean
+    - evidence: review sha cdd741f~1..cdd741f, backend local. counts: findings 0, confirmed 0, refuted 0, attempted 7, failed 0. 3 files reviewed; 4 files in .kanban/ excluded by .reviewignore.
+    - next: none. The task moved to done.
+  timestamp: 2026-08-26T00:18:47.386628+00:00
+- actor: claude-code
+  id: 01m0xpyk0bh1pqe8bchdrfy4bk
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — FilesCapability.swift (noun files, six verbs), Builder.withFiles(root:), FilesCapabilityTests.swift (11 tests)
+    - test: green — swift test, 989 tests in 71 suites, 0 failed
+    - commit: cdd741f
+    - review: clean — review sha cdd741f~1..cdd741f, 0 findings
+    - task landed in done
+  timestamp: 2026-08-26T00:19:04.843253+00:00
 depends_on:
 - 01M0WWQYXE8CCDSKQRPD3PX093
 - 01M0WWR5S34QZDKV15KP238ZZP
@@ -35,8 +52,8 @@ depends_on:
 - 01M0WWSCM9CHRT7B5AWVB4DVZP
 - 01M0WWQR0QYAT02TQ1D4CMVJQH
 - 01M0WWRTNNZSJ623GRW2J06ZB7
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ff8780
 title: Make FilesCapability and Builder.withFiles(root:)
 ---
 ## What
