@@ -271,11 +271,11 @@ func runNativeIntegrationScenario(
 ///
 /// **Why a second runner exists — and it is not the session.** Both runners
 /// build the same thing: `fixture.profile.standard.makeSession(tools:
-/// discoveryPriming:)`, a real `RoutedSession`, which mounts every tool under
-/// `ToolMount.synchronous` — the background path on, stock clocks — and
-/// gives the snippet the live background-run globals (`status()`, `wait()`,
-/// `cancel()`) to collect a background run through. What differs is what each
-/// one grades.
+/// discoveryPriming:)`, a real `RoutedSession`, which puts every tool through
+/// Router's own mounting path. There a tool's own declared mount takes effect,
+/// so `runCode` goes to the background. The session also gives the snippet the
+/// live background-run globals (`status()`, `wait()`, `cancel()`) to collect a
+/// background run through. What differs is what each one grades.
 /// `runNativeIntegrationScenario` grades a valid, fixture-grounded answer and
 /// reports route diagnostics; this runner grades a valid answer **and** that a
 /// pending envelope really appeared, which is the one mechanism it exists to
