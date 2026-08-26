@@ -170,12 +170,12 @@ actor ShellState {
     /// Continuations of a `pidToCancel(commandID:)` call that arrived before
     /// this store had a pid to give it, keyed by completion token.
     ///
-    /// A `wait: false` call can detach before its child is even spawned —
-    /// the block window can be zero, see `Execute.detachmentClocks(from:)` —
+    /// A mounted call answers the envelope before its child is even spawned —
+    /// the verb declares the background, see `Execute.detachmentMount` —
     /// so a cancel can reach `pidToCancel` before `registerProcess` ever
     /// runs. Rather than answer `nil` and leave the process to run
     /// unwatched, `pidToCancel` SUSPENDS, and this dictionary is where it
-    /// parks the continuation that resumes it. `registerProcess(commandID:pid:)`
+    /// holds the continuation that resumes it. `registerProcess(commandID:pid:)`
     /// resumes it with the pid the moment the child registers, and
     /// `completeCommand(commandID:status:exitCode:)` resumes it with `nil`
     /// on every exit path that ends the command without ever registering

@@ -21,17 +21,17 @@ import Testing
 /// The run plane, and not the event journal of the enclosing snippet. An inner
 /// `tools.*` call inside a `runCode` snippet reaches the session's outbox
 /// re-stamped with the OUTER run's op, because `ToolContext.post(_:)` re-stamps
-/// every event it forwards. So `"execute shell"` surfaces on `ParkedRun.op` —
-/// which `SessionMailbox.park(tool:op:)` fills from `ToolContext.op` — and on
-/// the `ToolInvocationRecord` built from that same field, and nowhere in the
+/// every event it forwards. So `"execute shell"` surfaces on `BackgroundRun.op`
+/// — which `SessionMailbox.track(tool:op:)` fills from `ToolContext.op` — and
+/// on the `ToolInvocationRecord` built from that same field, and nowhere in the
 /// snippet's own journal.
 ///
 /// `ToolInvocationRecord` is not readable from this package: `RunBinding` hands
 /// the engine an `AmbientUpstreamSink`, which implements `post(event:)` alone,
 /// so an inner run's record takes `OperationEventSink`'s no-op default. The two
-/// readings below are therefore `ParkedRun.op` and the `op` a called verb reads
-/// out of its own `ToolContext.current` — the one stamp both records are made
-/// from.
+/// readings below are therefore `BackgroundRun.op` and the `op` a called verb
+/// reads out of its own `ToolContext.current` — the one stamp both records are
+/// made from.
 @Suite("RegisteredJournalOp")
 struct RegisteredJournalOpTests {
 
@@ -63,14 +63,13 @@ struct RegisteredJournalOpTests {
     /// test ends it before it returns.
     private static let detachedRunSleepSeconds = 30
 
-    /// The command of the awaited run. A shell builtin that ends at once, thus
-    /// that run settles inside the call it was made from and it never reaches
-    /// the block window of the verb.
+    /// The command of the short run. A shell builtin that ends at once, thus
+    /// that run settles as soon as the test waits for it.
     ///
     /// It reaches no system outside the shell the capability spawns itself,
     /// exactly as the `sleep` of the run-plane test above does, thus this stays
     /// a unit test of the wiring rather than an integration test of a service.
-    private static let inlineCommand = "true"
+    private static let shortCommand = "true"
 
     // MARK: - The one pair, read off the rendered surface
 
@@ -142,23 +141,23 @@ struct RegisteredJournalOpTests {
 
     // MARK: - The run plane
 
-    @Test("a detached tools.shell.execute run stands on the run plane under the op \"execute shell\"")
-    func aDetachedShellRunStandsOnTheRunPlaneUnderThePair() async throws {
+    @Test("a background tools.shell.execute run stands on the run plane under the op \"execute shell\"")
+    func aBackgroundShellRunStandsOnTheRunPlaneUnderThePair() async throws {
         let registry = try Self.makeShellRegistry(in: scratch)
         let context = makeOuterRunContext(mailbox: SessionMailbox(), sink: RecordingEventSink())
 
         try await Self.run(
             """
             return await tools.\(Self.shellNoun).\(Self.executeVerb)({ \
-            command: "sleep \(Self.detachedRunSleepSeconds)", wait: false });
+            command: "sleep \(Self.detachedRunSleepSeconds)" });
             """,
             over: registry,
             under: context)
 
-        // `DetachingTool.detach` awaits `SessionMailbox.park` before it hands
+        // `BackgroundTool.call` awaits `SessionMailbox.track` before it hands
         // the pending envelope back, so the run stands on the plane by the time
         // the snippet that called it has settled. No poll is needed.
-        let going = try #require(await context.parkedRuns().first)
+        let going = try #require(await context.backgroundRuns().first)
         #expect(going.op == "\(Self.executeVerb) \(Self.shellNoun)")
         #expect(going.tool == Self.executeVerb)
 
@@ -170,15 +169,18 @@ struct RegisteredJournalOpTests {
 
     // MARK: - The stamp the shell verb itself reads
 
-    /// The second reading of the pair, made on the ORDINARY run: a
-    /// `tools.shell.execute` call that waits for its command settles inside the
-    /// call, thus it stands on no plane a test can read afterwards. What it
-    /// does read is its own `ToolContext`, and `Execute` asks its sandbox to
-    /// preflight from inside that call — so a probe sandbox reports the stamp
-    /// the registration site put on the run, which is the one field
-    /// `ParkedRun.op` and `ToolInvocationRecord.op` are both built from.
-    @Test("an awaited tools.shell.execute run carries the journal op \"execute shell\"")
-    func anAwaitedShellRunCarriesThePair() async throws {
+    /// The second reading of the pair, made from INSIDE the run: `Execute`
+    /// reads its own `ToolContext` and asks its sandbox to preflight from
+    /// inside that call — so a probe sandbox reports the stamp the
+    /// registration site put on the run, which is the one field
+    /// `BackgroundRun.op` and `ToolInvocationRecord.op` are both built from.
+    ///
+    /// The verb declares the background mount, so the snippet settles with the
+    /// pending envelope while the command still spawns. A short command can
+    /// be off the plane again before the snippet returns, so the test polls
+    /// the sandbox itself for the stamp instead of reading the plane.
+    @Test("a tools.shell.execute run carries the journal op \"execute shell\" into its own call")
+    func aShellRunCarriesThePairIntoItsOwnCall() async throws {
         let sandbox = JournalOpProbeSandbox()
         let registry = try Self.makeShellRegistry(in: scratch, sandbox: sandbox)
         let context = makeOuterRunContext(mailbox: SessionMailbox(), sink: RecordingEventSink())
@@ -186,10 +188,14 @@ struct RegisteredJournalOpTests {
         try await Self.run(
             """
             return await tools.\(Self.shellNoun).\(Self.executeVerb)({ \
-            command: "\(Self.inlineCommand)" });
+            command: "\(Self.shortCommand)" });
             """,
             over: registry,
             under: context)
+
+        try await TestPoll.waitUntil("the run consulted its sandbox") {
+            !sandbox.observedOps.isEmpty
+        }
 
         let stampedOp = try #require(
             sandbox.observedOps.first, "the run never consulted its sandbox")

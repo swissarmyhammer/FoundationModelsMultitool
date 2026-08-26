@@ -5,73 +5,75 @@ import Testing
 
 @testable import FoundationModelsMultitool
 
-/// Phase-1 coverage for the `runCode` envelope's two clocks.
+/// Phase-1 coverage for the `runCode` background mount and its work bound.
 ///
-/// The suspended JSC contexts those clocks govern are eventplan.md § "The
+/// The suspended JSC contexts that mount governs are eventplan.md § "The
 /// constraint boundary, and the escape hatch".
 ///
-/// A `runCode` call that outlives its wait window hands back a pending envelope
-/// and keeps running: the pending items are the promise the snippet is awaiting
-/// *and* the suspended JSC context holding it. Everything here is about that
-/// state — that the interpreter's own watchdog does not kill the context at the
-/// instant the run elevates, that the run settles into exactly one terminal
-/// event when its inner call finally returns, that too many live contexts is a
-/// repairable error rather than a pile-up, and that `cancel()` genuinely tears
-/// one down.
+/// A mounted `runCode` call hands back a pending envelope at once and keeps
+/// running: the pending items are the promise the snippet is awaiting *and*
+/// the suspended JSC context holding it. Everything here is about that state —
+/// that the interpreter's own watchdog does not kill the context at the instant
+/// the call returns, that the run settles into exactly one terminal event when
+/// its inner call finally returns, that too many live contexts is a repairable
+/// error rather than a pile-up, and that `cancel()` genuinely tears one down.
 ///
 /// Every test mounts `MultiTool` exactly as Router's native session does —
-/// `ToolDetachment.wrapping` with an elevating configuration — so what is
-/// exercised is the real composition, not a stand-in for it.
+/// `ToolDetachment.wrapping` under `nativeSessionMount` — so what is exercised
+/// is the real composition, not a stand-in for it.
 @Suite("SuspendedContext")
 struct SuspendedContextTests {
-    // MARK: - Clocks
+    // MARK: - The declared mount and the work bound
 
-    @Test("the work clock outlives the mount's stock wait clock, so a run never meets the watchdog at the instant it elevates")
-    func workClockOutlivesTheMountsStockWaitClock() throws {
+    @Test("runCode declares the background mount, so no site can make it block")
+    func runCodeDeclaresTheBackgroundMount() throws {
         let multiTool = MultiTool(registry: try Self.registry(exposing: GatedTool(latch: ToolReleaseLatch())))
 
-        let clocks = Self.clocks(of: multiTool)
-
-        // The regression this test exists for: `MultiToolConfiguration
-        // .executionTimeLimit` and `DetachConfiguration.defaultWaitSeconds`
-        // were both 5 seconds, so the JSC watchdog force-terminated the
-        // suspended context at exactly the moment elevation backgrounded it.
-        let timeout = try #require(clocks.timeout)
-        #expect(timeout > DetachConfiguration.defaultWaitSeconds)
-        #expect(timeout == MultiToolConfiguration.default.executionTimeLimit)
+        #expect(multiTool.detachmentMount == DetachConfiguration(mode: .background, timeout: nil))
     }
 
-    @Test("every runCode call answers a zero wait clock, so there is no stock wait clock left to inherit")
-    func everyCallAnswersAZeroWaitClock() throws {
-        let multiTool = MultiTool(registry: try Self.registry(exposing: GatedTool(latch: ToolReleaseLatch())))
-
-        // Not `nil` — which used to mean "leave it to the mount" — and not a
-        // value a call chose. `runCode` always backgrounds, so the answer is
-        // the same zero for every call, on every mount (task ^cv98vff).
-        #expect(Self.clocks(of: multiTool).waitSeconds == 0)
-    }
-
-    @Test("the work clock is the configured ceiling, and no call can raise or lower it")
-    func theWorkClockIsAlwaysTheConfiguredCeiling() throws {
+    @Test("the work bound is the configured ceiling, and no call can raise or lower it")
+    func theWorkBoundIsAlwaysTheConfiguredCeiling() throws {
         let ceiling: TimeInterval = 30
         let multiTool = MultiTool(
             registry: try Self.registry(exposing: GatedTool(latch: ToolReleaseLatch())),
             configuration: MultiToolConfiguration(executionTimeLimit: ceiling)
         )
 
-        // The per-call `timeout` went out of the schema with `waitSeconds`, so
-        // there is nothing left to clamp: the host's ceiling is the whole
-        // answer. A backgrounded snippet is exactly what needs one, because
-        // nothing is blocking on it to notice that it ran away.
-        #expect(Self.clocks(of: multiTool).timeout == ceiling)
-        #expect(Self.clocks(of: MultiTool(registry: try Self.registry(exposing: GatedTool(latch: ToolReleaseLatch())))).timeout
+        // `RunCodeArguments` carries no clock, so there is nothing to clamp:
+        // the host's ceiling is the whole answer. A background snippet is
+        // exactly what needs one, because nothing is blocking on it to notice
+        // that it ran away.
+        #expect(Self.workBound(of: multiTool) == ceiling)
+        #expect(Self.workBound(of: MultiTool(registry: try Self.registry(exposing: GatedTool(latch: ToolReleaseLatch()))))
             == MultiToolConfiguration.default.executionTimeLimit)
     }
 
-    // MARK: - The suspended context stays alive past waitSeconds
+    @Test("every mounted runCode call answers the pending envelope at once, whatever mount the site applies")
+    func everyMountedCallAnswersThePendingEnvelope() async throws {
+        // The harshest site there is: run to completion under no clock. The
+        // tool's own declaration wins over it.
+        let harness = try Self.makeHarness(mount: .runToCompletionMount)
 
-    @Test("a snippet that elevates at waitSeconds is still alive at 3x waitSeconds, and still settles with its real result")
-    func elevatedSnippetStaysAliveWellPastItsWaitWindow() async throws {
+        let start = ContinuousClock.now
+        let rendered = try await harness.mounted.call(
+            arguments: RunCodeArguments(code: Self.gatedSnippet)
+        )
+        let elapsed = start.duration(to: .now)
+
+        #expect(PendingRunEnvelope.isRendered(text: rendered))
+        #expect(elapsed < Self.promptResponseBound)
+
+        harness.latch.release()
+        _ = try await Self.settledTerminal(
+            of: try Self.completionToken(of: rendered), in: harness.mailbox
+        )
+    }
+
+    // MARK: - The suspended context stays alive after the call returned
+
+    @Test("a snippet whose call returned the envelope is still alive well after it, and still settles with its real result")
+    func backgroundSnippetStaysAliveWellPastItsCall() async throws {
         let harness = try Self.makeHarness()
 
         let rendered = try await harness.mounted.call(
@@ -82,22 +84,22 @@ struct SuspendedContextTests {
 
         // Alive: the mailbox still holds the background run, and the promise
         // the snippet is awaiting has not been torn down under it.
-        let backgrounded = await backgroundRuns(over: harness.mailbox).parkedRuns()
+        let backgrounded = await backgroundRuns(over: harness.mailbox).backgroundRuns()
         #expect(backgrounded.contains { $0.completionToken == token })
         #expect(!harness.gated.wasCancelled)
 
         // Resumable: releasing the inner call still produces the snippet's own
-        // value, long after the wait window closed.
+        // value, long after the call returned.
         harness.latch.release()
         let terminal = try await Self.settledTerminal(of: token, in: harness.mailbox)
         #expect(terminal.detail == Self.renderedGatedResult)
         #expect(terminal.outcome == .succeeded)
     }
 
-    // MARK: - Outer elevation composes
+    // MARK: - The background run composes
 
-    @Test("a snippet that elevates while its inner call is in flight settles into exactly one terminal event carrying its result")
-    func elevatedSnippetSettlesIntoExactlyOneTerminalEvent() async throws {
+    @Test("a snippet whose inner call is in flight settles into exactly one terminal event carrying its result")
+    func backgroundSnippetSettlesIntoExactlyOneTerminalEvent() async throws {
         let harness = try Self.makeHarness()
 
         let rendered = try await harness.mounted.call(
@@ -107,10 +109,10 @@ struct SuspendedContextTests {
         #expect(PendingRunEnvelope.isRendered(text: rendered))
         // The inner fixture call runs under the background run — the pending
         // promise, not a finished one. Awaited rather than read at the instant
-        // the envelope returned: that instant raced `shortWaitSeconds` against
-        // JSC start-up, which made a true statement about the product fail
-        // whenever the machine was loaded. The latch is still closed here, so
-        // the call starting at all is what the assertion was always after.
+        // the envelope returned: that instant races JSC start-up, which made a
+        // true statement about the product fail whenever the machine was
+        // loaded. The latch is still closed here, so the call starting at all
+        // is what the assertion was always after.
         try await TestPoll.waitUntil("the gated call started") { harness.gated.hasStarted }
         #expect(!harness.gated.wasCancelled)
 
@@ -125,27 +127,6 @@ struct SuspendedContextTests {
         #expect(completions.first?.detail == Self.renderedGatedResult)
     }
 
-    @Test("waitSeconds: 0 in the envelope detaches the run immediately, whatever the mount's own wait clock says")
-    func zeroWaitSecondsDetachesImmediately() async throws {
-        let harness = try Self.makeHarness(waitSeconds: Self.generousWaitSeconds)
-
-        let start = ContinuousClock.now
-        let rendered = try await harness.mounted.call(
-            arguments: RunCodeArguments(code: Self.gatedSnippet)
-        )
-        let elapsed = start.duration(to: .now)
-
-        #expect(PendingRunEnvelope.isRendered(text: rendered))
-        // Far below the mount's own generous wait window: only the envelope's
-        // own zero, read through `DetachmentParameterProviding`, detaches here.
-        #expect(elapsed < Self.promptResponseBound)
-
-        harness.latch.release()
-        _ = try await Self.settledTerminal(
-            of: try Self.completionToken(of: rendered), in: harness.mailbox
-        )
-    }
-
     // MARK: - The cap on live contexts
 
     @Test("a run beyond the live-context cap is a repairable in-band error, not a crash")
@@ -156,7 +137,7 @@ struct SuspendedContextTests {
             registry: try Self.registry(exposing: gated),
             configuration: MultiToolConfiguration(liveContextLimit: 1)
         )
-        let parked = Task { try await multiTool.call(arguments: RunCodeArguments(code: Self.gatedSnippet)) }
+        let held = Task { try await multiTool.call(arguments: RunCodeArguments(code: Self.gatedSnippet)) }
         try await TestPoll.waitUntil("the gated call started") { gated.hasStarted }
 
         let refused = try await multiTool.call(arguments: RunCodeArguments(code: "return 1 + 1;"))
@@ -164,7 +145,7 @@ struct SuspendedContextTests {
         #expect(refused.contains("Too many runCode snippets are running at once"))
         #expect(refused.contains(RepairDirective.repairSnippet.closingLine))
         latch.release()
-        #expect(try await parked.value == Self.renderedGatedResult)
+        #expect(try await held.value == Self.renderedGatedResult)
     }
 
     // MARK: - The hard unblock
@@ -180,9 +161,9 @@ struct SuspendedContextTests {
         // A second snippet, in the same session and through the same mounted
         // tool, cancels the first through the sandbox's own `cancel()` global.
         //
-        // That second snippet backgrounds as well — every mounted `runCode`
-        // does now (task ^cv98vff) — so the call hands back its own token and
-        // its answer is collected from the background run rather than read off the
+        // That second snippet goes to the background as well — every mounted
+        // `runCode` call does — so the call hands back its own token and its
+        // answer is collected from the background run rather than read off the
         // call. The cancel still happens on its own run; only where its result
         // is read from changed.
         let cancelRendered = try await harness.mounted.call(
@@ -205,31 +186,21 @@ struct SuspendedContextTests {
         // race, not a check.
         try await TestPoll.waitUntil("the gated call unwound") { harness.gated.wasCancelled }
         #expect(!harness.latch.isReleased)
-        let backgrounded = await backgroundRuns(over: harness.mailbox).parkedRuns()
+        let backgrounded = await backgroundRuns(over: harness.mailbox).backgroundRuns()
         #expect(backgrounded.isEmpty)
     }
 
     // MARK: - Fixtures
 
-    /// The soft deadline every elevating test detaches at.
+    /// How long after its call returned a suspended run must still be alive.
     ///
-    /// Also the unit each test's "still alive well past it" assertion is
-    /// measured in.
-    private static let shortWaitSeconds: TimeInterval = 0.2
-
-    /// A wait window no test could ever sit through.
-    ///
-    /// Only a per-call `waitSeconds` can detach a call mounted with this one.
-    private static let generousWaitSeconds: TimeInterval = 30
-
-    /// How long past its wait window a suspended run must still be alive.
-    ///
-    /// Three wait windows, per the card's regression bound.
-    private static let aliveWindowNanoseconds = UInt64(shortWaitSeconds * 3 * 1_000_000_000)
+    /// Long enough that a watchdog armed at the moment the call returned would
+    /// have fired, and short enough that the suite stays fast.
+    private static let aliveWindowNanoseconds: UInt64 = 600_000_000
 
     /// The bound every "this happened promptly" assertion uses.
     ///
-    /// Generous against scheduling jitter, and far below the clock it proves
+    /// Generous against scheduling jitter, and far below any clock it proves
     /// was not the one enforced.
     private static let promptResponseBound: Duration = .seconds(3)
 
@@ -261,10 +232,10 @@ struct SuspendedContextTests {
         /// The latch that releases `gated`.
         let latch: ToolReleaseLatch
 
-        /// `MultiTool` wrapped in the elevation engine.
+        /// `MultiTool` wrapped in the shared engine.
         let mounted: any Tool<RunCodeArguments, String>
 
-        /// The session mailbox elevated runs background into.
+        /// The session mailbox background runs are tracked in.
         let mailbox: SessionMailbox
 
         /// The session's upstream sink.
@@ -281,17 +252,18 @@ struct SuspendedContextTests {
 
     /// Mounts a `runCode` tool over one gated tool.
     ///
-    /// The mount is exactly the one Router's native session builds.
+    /// The mount is exactly the one Router's native session builds, unless a
+    /// test asks for another site configuration to prove the tool's own
+    /// declaration wins over it.
     ///
     /// - Parameters:
     ///   - configuration: the `MultiTool` knobs under test. Defaults to
     ///     `.default`, so what the tests prove holds at stock settings.
-    ///   - waitSeconds: the mount's own wait clock, overridden per call by any
-    ///     `waitSeconds` in the envelope.
+    ///   - mount: the site's own mount, which `runCode`'s declaration overrides.
     /// - Returns: the harness.
     private static func makeHarness(
         configuration: MultiToolConfiguration = .default,
-        waitSeconds: TimeInterval = DetachConfiguration.defaultWaitSeconds
+        mount: DetachConfiguration = .nativeSessionMount
     ) throws -> Harness {
         let latch = ToolReleaseLatch()
         let gated = GatedTool(latch: latch)
@@ -306,7 +278,7 @@ struct SuspendedContextTests {
             sessionID: ULID(),
             mailbox: mailbox,
             sink: sink,
-            configuration: DetachConfiguration(mode: .detaching, waitSeconds: waitSeconds)
+            configuration: mount
         )
         return Harness(
             gated: gated,
@@ -317,22 +289,19 @@ struct SuspendedContextTests {
         )
     }
 
-    /// The clocks `multiTool` reports for an envelope requesting these ones.
+    /// The per-call work bound `multiTool` reports for one `runCode` call.
     ///
-    /// The round trip through `GeneratedContent` the elevation engine itself
-    /// makes.
+    /// The round trip through `GeneratedContent` the engine itself makes.
     ///
-    /// - Parameter multiTool: the tool answering the clocks.
-    /// - Returns: the clocks the elevation engine would use.
-    private static func clocks(
-        of multiTool: MultiTool
-    ) -> (waitSeconds: TimeInterval?, timeout: TimeInterval?) {
-        multiTool.detachmentClocks(from: RunCodeArguments(code: "return 1;").generatedContent)
+    /// - Parameter multiTool: the tool answering the bound.
+    /// - Returns: the bound the engine would use, or `nil` for the mount's own.
+    private static func workBound(of multiTool: MultiTool) -> TimeInterval? {
+        multiTool.detachmentTimeout(from: RunCodeArguments(code: "return 1;").generatedContent)
     }
 
     /// The completion token of a rendered pending envelope.
     ///
-    /// - Parameter rendered: the tool output an elevated call handed back.
+    /// - Parameter rendered: the tool output a mounted call handed back.
     /// - Returns: the background run's completion token.
     private static func completionToken(of rendered: String) throws -> String {
         try JSONDecoder().decode(PendingRunEnvelope.self, from: Data(rendered.utf8)).completionToken
@@ -342,7 +311,7 @@ struct SuspendedContextTests {
     ///
     /// - Parameters:
     ///   - completionToken: the background run's token.
-    ///   - mailbox: the session mailbox the run backgrounded into.
+    ///   - mailbox: the session mailbox the run is tracked in.
     /// - Returns: the run's terminal event.
     private static func settledTerminal(
         of completionToken: String, in mailbox: SessionMailbox

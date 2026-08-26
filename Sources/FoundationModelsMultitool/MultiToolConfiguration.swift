@@ -17,30 +17,27 @@ import FoundationModelsRouter
 /// `runCode`-sandbox limits remain.
 public struct MultiToolConfiguration: Sendable, Equatable {
     /// Wall-clock ceiling, in seconds, on a single `runCode` snippet's own
-    /// work: both the default for the envelope's `timeout` and the hard cap
-    /// that no envelope can raise (see
-    /// `MultiTool.detachmentClocks(from:)`). Clamped to at least `0` at
+    /// work: the work bound every `runCode` call answers the engine (see
+    /// `MultiTool.detachmentTimeout(from:)`). Clamped to at least `0` at
     /// `init`.
     ///
-    /// ## Why this is the work clock, and never the wait clock
+    /// ## Why this is the one work clock
     ///
-    /// A `runCode` call runs under two clocks (eventplan.md § "Consolidation
-    /// of the siblings"): `waitSeconds`, how long the call blocks before it
-    /// elevates, and `timeout`, how long the work itself may run. Elevation
-    /// exists precisely to keep a suspended JSC context alive past
-    /// `waitSeconds` — so this limit, which arms the watchdog of every
-    /// sandbox `MultiTool.init` runs (`Interpreter.withTimeLimit(_:)`),
-    /// must never be a second clock racing the first. It was: this default and
-    /// `DetachConfiguration.defaultWaitSeconds` were both 5 seconds, so
-    /// the watchdog force-terminated a snippet at the exact instant its run
-    /// elevated. The default is now the engine's own stock work clock,
+    /// A mounted `runCode` call answers its pending envelope at once and the
+    /// snippet goes on in the background, so the suspended JSC context lives
+    /// past the call. This limit, which arms the watchdog of every sandbox
+    /// `MultiTool.init` runs (`Interpreter.withTimeLimit(_:)`), must never be
+    /// a second clock racing the engine's. It was: this default and the
+    /// engine's stock wait window were both 5 seconds, so the watchdog
+    /// force-terminated a snippet at the exact instant its run went to the
+    /// background. The default is now the engine's own stock work clock,
     /// `DetachConfiguration.defaultTimeoutSeconds`, taken from that one
     /// definition so the two can never drift apart again.
     ///
-    /// The per-call `timeout` an envelope carries is enforced by the
-    /// elevation engine — which resets it on every progress event and
-    /// reaches the interpreter through the same cancellation path a
-    /// cancelled `Task` does — and is clamped to this ceiling.
+    /// The work bound `runCode` answers per call is enforced by the engine —
+    /// which resets it on every progress event and reaches the interpreter
+    /// through the same cancellation path a cancelled `Task` does — and it is
+    /// this ceiling.
     ///
     /// The clamp bounds the two clocks' *starting* values; it does not make
     /// this one the looser of the two forever. The engine's clock resets on

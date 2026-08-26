@@ -183,7 +183,7 @@ struct WaitToolTests {
         #expect(report.contains(CallResult.timeout))
         #expect(report.contains(run.completionToken))
         // Still going is not failure, and the run is still there to collect.
-        #expect(await backgroundRuns(over: mailbox).parkedRuns().map(\.completionToken) == [run.completionToken])
+        #expect(await backgroundRuns(over: mailbox).backgroundRuns().map(\.completionToken) == [run.completionToken])
     }
 
     @Test("a finished run is told to answer with the detail this call just delivered")
@@ -263,17 +263,16 @@ struct WaitToolTests {
         let mailbox = SessionMailbox()
         let run = try await startScriptedRun(in: mailbox)
 
-        // Mounted to detach immediately — harsher than the stock five seconds
-        // that made this tool only accidentally safe. The tool answers both of
-        // its own clocks at the ceiling, and a per-call answer overrides the
-        // mount, so the wait runs to its own conclusion.
+        // The harshest site mount there is: background, no clock. The tool
+        // declares `runToCompletionMount` itself, and a declaration wins over
+        // the site, so the wait runs to its own conclusion.
         let mounted = try #require(
             ToolDetachment.wrapping(
                 tool: WaitTool(),
                 sessionID: ULID(),
                 mailbox: mailbox,
                 sink: RecordingEventSink(),
-                configuration: DetachConfiguration(mode: .detaching, waitSeconds: 0)
+                configuration: DetachConfiguration(mode: .background, timeout: nil)
             ) as? any Tool<WaitArguments, String>
         )
 

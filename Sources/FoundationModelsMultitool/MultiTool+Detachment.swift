@@ -3,23 +3,22 @@ import FoundationModels
 import FoundationModelsRouter
 import os
 
-// MARK: - The runCode envelope's two clocks (eventplan.md § "Elevation:
-// waitSeconds and the completion token")
+// MARK: - The runCode mount and its work bound
 //
-// Router's native session mount wraps `runCode` in `DetachingTool` like any
-// other tool, and the engine reads each call's own clocks back out of the
-// opaque `GeneratedContent` through `DetachmentParameterProviding`. This file is
-// that reading, the collect sentence the pending envelope carries — plus the
-// cap on how many of the suspended JSC contexts elevation creates may be alive
-// at once.
+// Router mounts `runCode` through `ToolDetachment.wrapping` like any other
+// tool, and the tool states its own mount and its own per-call work bound
+// through `DetachmentParameterProviding`. This file is that declaration, the
+// collect sentence the pending envelope carries — plus the cap on how many of
+// the suspended JSC contexts a background run creates may be alive at once.
 //
-// There is exactly one elevation point per snippet: the outer `runCode` call.
-// Inner `tools.*` calls run on the same engine with elevation off (see
-// `RunBinding`), so no snippet ever branches on a pending envelope mid-code.
+// There is exactly one background point per snippet: the outer `runCode` call.
+// Inner `tools.*` calls run on the same engine under `RunBinding.innerCallMount`,
+// which runs to completion, so no snippet ever branches on a pending envelope
+// mid-code.
 
 extension MultiTool: DetachmentParameterProviding {
-    /// The `next` sentence of the pending envelope a parked `runCode` call
-    /// hands the model: call the `wait` tool with this envelope's token.
+    /// The `next` sentence of the pending envelope a background `runCode`
+    /// call hands the model: call the `wait` tool with this envelope's token.
     ///
     /// This package ships the `wait` tool and owns its report, so the
     /// sentence states the exact read — `state` `complete` or `error` means
@@ -28,15 +27,15 @@ extension MultiTool: DetachmentParameterProviding {
     /// ``CallResult`` so the names cannot drift from what `wait` reports.
     ///
     /// It never names `runCode` and never prescribes a snippet. Every mounted
-    /// `runCode` call backgrounds (``detachmentClocks(from:)``), so a snippet
-    /// that waits on a pending token is itself parked and hands back a fresh
-    /// token. A sentence that told the model to run another snippet made it
-    /// chase tokens one generation a round until it reached for the `wait`
-    /// tool on its own (task `^4qcf1v9`: 21 rounds and about 1700 seconds
-    /// for an eight-second run). The `wait` tool on this token returns the
-    /// parked snippet's result at once.
+    /// `runCode` call goes to the background (``detachmentMount``), so a
+    /// snippet that waits on a pending token is itself a background run and
+    /// hands back a fresh token. A sentence that told the model to run another
+    /// snippet made it chase tokens one generation a round until it reached
+    /// for the `wait` tool on its own (task `^4qcf1v9`: 21 rounds and about
+    /// 1700 seconds for an eight-second run). The `wait` tool on this token
+    /// returns the background snippet's result at once.
     ///
-    /// - Parameter completionToken: the parked `runCode` call's token.
+    /// - Parameter completionToken: the background `runCode` call's token.
     /// - Returns: the collect directive, as plain prose.
     public func detachmentCollectInstruction(forCompletionToken completionToken: String) -> String {
         "Do not answer yet, and do not guess the result. "
@@ -47,29 +46,37 @@ extension MultiTool: DetachmentParameterProviding {
             + "call the wait tool again with the same completionToken."
     }
 
-    /// The per-call clocks every `runCode` call carries.
+    /// The mount every `runCode` call carries: the background, whatever mount
+    /// the composition site applies.
     ///
-    /// **The wait clock is always zero, and no call can raise it.**
-    /// `DetachConfiguration.waitSeconds`' own documentation defines `0` as
-    /// detach-immediately, so answering zero here is what makes `runCode` the
-    /// backgrounder: it hands back a completion token every time, whatever the
-    /// mount's own wait clock says (task `^cv98vff`). The arguments are no
-    /// longer read for it — `RunCodeArguments` carries no clocks at all — so
-    /// the answer cannot vary by call, by host, or by machine load.
+    /// **A snippet can run for hours, so the tool states this itself.** A
+    /// declared mount wins over the site, and this is the declaration that
+    /// makes `runCode` the backgrounder: every mounted call hands back a
+    /// completion token at once, and the snippet goes on behind it. The
+    /// answer cannot vary by call, by host, or by machine load, because
+    /// `RunCodeArguments` carries no clock at all.
     ///
-    /// `timeout` is still answered, never left to the mount, and always
-    /// bounded by `configuration.executionTimeLimit`: that limit is both this
+    /// The mount carries no clock of its own. The work bound is answered per
+    /// call by ``detachmentTimeout(from:)``, which the engine reads ahead of
+    /// the mount, so the clock here would never be consulted.
+    public var detachmentMount: DetachConfiguration? {
+        DetachConfiguration(mode: .background, timeout: nil)
+    }
+
+    /// The per-call work bound every `runCode` call carries: this package's
+    /// own ceiling, `configuration.executionTimeLimit`.
+    ///
+    /// Always answered, never left to the mount. That limit is both this
     /// package's default work clock and its hard ceiling (see
     /// `MultiToolConfiguration.executionTimeLimit` for the full
-    /// reconciliation). A backgrounded snippet is exactly what needs a
-    /// ceiling, since nothing is blocking on it to notice that it ran away.
-    /// Answering it here is what keeps the engine's clock at or under the
-    /// limit the watchdog of the sandbox `MultiTool.init` runs is armed with,
-    /// so the engine's own timeout is what a well-behaved suspended context
-    /// meets first. That holds for an interpreter injected into
-    /// `MultiTool.init` too: it is re-armed from the same ceiling this bound
-    /// comes from (`Interpreter.withTimeLimit(_:)`), so the two sides cannot
-    /// disagree.
+    /// reconciliation). A background snippet is exactly what needs a ceiling,
+    /// since nothing is blocking on it to notice that it ran away. Answering
+    /// it here is what keeps the engine's clock at or under the limit the
+    /// watchdog of the sandbox `MultiTool.init` runs is armed with, so the
+    /// engine's own timeout is what a well-behaved suspended context meets
+    /// first. That holds for an interpreter injected into `MultiTool.init`
+    /// too: it is re-armed from the same ceiling this bound comes from
+    /// (`Interpreter.withTimeLimit(_:)`), so the two sides cannot disagree.
     ///
     /// It is a bound, not a promise of survival. The two clocks are not the
     /// same kind: the engine's timeout resets on every progress event, while
@@ -81,29 +88,12 @@ extension MultiTool: DetachmentParameterProviding {
     /// was armed with, and is force-terminated there. The absolute cap is the
     /// intended safety property, not a gap.
     ///
-    /// **The conformance stays, although nothing is read from the arguments.**
-    /// It has three jobs, and all of them are answers this package must give
-    /// rather than inherit: forcing the wait clock to zero against whatever
-    /// the mount configured, holding the work clock at this package's own
-    /// ceiling, and stating the collect sentence
-    /// (``detachmentCollectInstruction(forCompletionToken:)``). Dropping it
-    /// would put all three back in the mount's hands.
-    ///
     /// - Parameter arguments: the call's arguments as opaque
-    ///   `GeneratedContent`. Unread: every `runCode` call gets the same two
-    ///   answers, because every one of them backgrounds.
-    /// - Returns: a zero wait clock, and this package's bounded work clock.
-    public func detachmentClocks(
-        from arguments: GeneratedContent
-    ) -> (waitSeconds: TimeInterval?, timeout: TimeInterval?) {
-        (detachImmediatelySeconds, configuration.executionTimeLimit)
+    ///   `GeneratedContent`. Unread: every `runCode` call gets the same bound.
+    /// - Returns: this package's bounded work clock.
+    public func detachmentTimeout(from arguments: GeneratedContent) -> TimeInterval? {
+        configuration.executionTimeLimit
     }
-
-    /// The wait clock every `runCode` call reports: detach immediately.
-    ///
-    /// Named rather than written as a bare `0` at the one site that answers
-    /// it, because the value is the whole rule — see ``detachmentClocks(from:)``.
-    private var detachImmediatelySeconds: TimeInterval { 0 }
 }
 
 // MARK: - The cap on live contexts
@@ -112,13 +102,13 @@ extension MultiTool {
     /// How many of one `MultiTool`'s `runCode` contexts are live right now.
     ///
     /// A live context is a `runCode` call between entering
-    /// `call(arguments:)` and leaving it — which, past its wait window, means
-    /// a *suspended* JSC context: elevation is the only way a call stays live
-    /// once it has handed back a pending envelope. Each one holds a real JS
-    /// context, its pending promises, and the thread its run occupies, so the
-    /// set is capped rather than left to grow (eventplan.md § "The constraint
-    /// boundary, and the escape hatch"; the cap itself is
-    /// `MultiToolConfiguration.liveContextLimit`).
+    /// `call(arguments:)` and leaving it — which, once the call has handed
+    /// back its pending envelope, means a *suspended* JSC context: the
+    /// background run is the only way a call stays live after it answered.
+    /// Each one holds a real JS context, its pending promises, and the thread
+    /// its run occupies, so the set is capped rather than left to grow
+    /// (eventplan.md § "The constraint boundary, and the escape hatch"; the
+    /// cap itself is `MultiToolConfiguration.liveContextLimit`).
     ///
     /// A reference type because every copy of the `MultiTool` value that owns
     /// it shares the one interpreter whose contexts it counts. Guarded by

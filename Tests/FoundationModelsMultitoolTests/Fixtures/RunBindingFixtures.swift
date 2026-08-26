@@ -31,7 +31,7 @@ struct AmbientObservation: Sendable, Equatable {
     /// name for one registered with none.
     ///
     /// This is the one stamp both run-plane readings are made from:
-    /// `SessionMailbox.park(tool:op:...)` fills `ParkedRun.op` from it, and
+    /// `SessionMailbox.track(tool:op:...)` fills `BackgroundRun.op` from it, and
     /// `ToolInvocationRecord` carries it too. The event journal of an enclosing
     /// snippet never shows it, because `ToolContext.post(_:)` re-stamps every
     /// forwarded event with the outer run's own identity.
@@ -124,7 +124,7 @@ final class AmbientRecordingTool: Tool, Sendable {
 /// Builds the ambient `ToolContext` a Router session binds around one
 /// `runCode` call — the context `MultiTool` captures into its `RunBinding`.
 ///
-/// Stamped with `runCode`'s own tool name, exactly as `DetachingTool` stamps a
+/// Stamped with `runCode`'s own tool name, exactly as `BackgroundTool` stamps a
 /// wrapped tool's context, and given a freshly minted `completionToken` so a
 /// test can tell the outer run's correlation from every inner one.
 ///

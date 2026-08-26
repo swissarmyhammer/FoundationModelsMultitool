@@ -11,6 +11,7 @@
 .swiftpm/
 *.xcodeproj
 DerivedData/
+Packages/
 
 # macOS
 .DS_Store

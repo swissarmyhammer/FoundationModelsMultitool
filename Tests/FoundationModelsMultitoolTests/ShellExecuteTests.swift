@@ -14,7 +14,7 @@ import Testing
 /// The sibling drives its operation through `OperationTool.call` with a
 /// `GeneratedContent` bag and races its own deadline; here the verb is a plain
 /// `FoundationModels.Tool` and the shared elevation engine of Router owns the
-/// race, the park and the cancel.
+/// tracking, the work bound and the cancel.
 ///
 /// Each test makes a store in a temporary directory of its own, thus the tests
 /// are independent and they run in parallel safely. Each test that starts a
@@ -57,7 +57,7 @@ struct ShellExecuteTests {
     /// each such test ends it before it returns.
     private static let detachedRunSleepSeconds = 30
 
-    /// The longest a `wait: false` call may take. It stands far under
+    /// The longest a mounted call may take. It stands far under
     /// ``detachedRunSleepSeconds``, thus a call that reaches it proves the
     /// call blocked on the command rather than handing back its identifier.
     private static let doesNotBlockUpperBound = Duration.seconds(10)
@@ -186,7 +186,7 @@ struct ShellExecuteTests {
     /// The report one rendered answer carries, read back as a JSON object.
     ///
     /// The verb answers `String`, because only a `String`-output tool reaches
-    /// `DetachingTool` and thus the run plane. So a test reads the answer the
+    /// `BackgroundTool` and thus the run plane. So a test reads the answer the
     /// way the model does: as the JSON object `ResultRenderer` serialized.
     ///
     /// - Parameter output: The rendered answer of one call.
@@ -418,13 +418,51 @@ struct ShellExecuteTests {
         stream.finish()
     }
 
-    // MARK: - The detached run
+    // MARK: - The background run
 
-    /// eventplan.md § "The constraint boundary": "A capability that wants
-    /// detach semantics declares it as a usual argument (shell's `wait`). The
-    /// capability then returns the run's identifier for the builtins."
-    @Test("a wait: false call answers with the run identifier and does not block")
-    func aCallThatDoesNotWaitAnswersWithTheIdentifierAndDoesNotBlock() async throws {
+    /// The verb declares the background mount, thus every mounted call answers
+    /// at once with the pending envelope, and the command goes on behind it.
+    /// A short command is the sharpest case: the body could finish in
+    /// microseconds, and the call still answers the envelope, never the report.
+    @Test("a mounted execute call always answers with the pending envelope, and the report settles behind it")
+    func aMountedCallAlwaysAnswersWithThePendingEnvelope() async throws {
+        let state = try makeState()
+        let mailbox = SessionMailbox()
+        let context = makeOuterRunContext(mailbox: mailbox, sink: RecordingEventSink())
+        let engine = try ShellRunPlane.mounted(makeVerb(over: state), inheriting: context)
+
+        let output = try await engine.call(
+            arguments: ExecuteArguments(command: "echo \(Self.inlineMarker)"))
+
+        #expect(PendingRunEnvelope.isRendered(text: output), "answer was: \(output)")
+        let envelope = try JSONDecoder().decode(PendingRunEnvelope.self, from: Data(output.utf8))
+        let settlement = await context.wait(
+            completionToken: envelope.completionToken, seconds: scriptedRunSettlementSeconds)
+        guard case .settled(let terminal) = settlement else {
+            Issue.record("the run never settled: \(settlement)")
+            return
+        }
+        let report = try Self.report(terminal.detail)
+        #expect(report["status"] as? String == CommandStatus.completed.rawValue)
+        let lines = try #require(report["output"] as? [String])
+        #expect(lines.contains { $0.contains(Self.inlineMarker) }, "output was: \(lines)")
+    }
+
+    /// The `wait` argument selected a block window. There is no block window:
+    /// a mounted call answers at once, so the schema offers no such choice.
+    @Test("the rendered execute schema has no wait argument")
+    func theRenderedSchemaHasNoWaitArgument() throws {
+        let state = try makeState()
+
+        let schema = try ToolAPIRenderer.jsonSchemaString(for: makeVerb(over: state).parameters)
+
+        #expect(!schema.contains("\"wait\""), "schema was: \(schema)")
+    }
+
+    /// The verb never blocks on its command: the call hands back the run's
+    /// identifier, and the builtins read the run from there.
+    @Test("a mounted call answers with the run identifier and does not block")
+    func aMountedCallAnswersWithTheIdentifierAndDoesNotBlock() async throws {
         let state = try makeState()
         let mailbox = SessionMailbox()
         let context = makeOuterRunContext(mailbox: mailbox, sink: RecordingEventSink())
@@ -432,11 +470,10 @@ struct ShellExecuteTests {
 
         let started = ContinuousClock.now
         let output = try await engine.call(
-            arguments: ExecuteArguments(
-                command: "sleep \(Self.detachedRunSleepSeconds)", wait: false))
+            arguments: ExecuteArguments(command: "sleep \(Self.detachedRunSleepSeconds)"))
         let elapsed = ContinuousClock.now - started
 
-        let going = try await ShellRunPlane.parkedRun(in: context)
+        let going = try await ShellRunPlane.backgroundRun(in: context)
 
         #expect(elapsed < Self.doesNotBlockUpperBound, "the call took \(elapsed)")
         #expect(
@@ -451,21 +488,24 @@ struct ShellExecuteTests {
 
     /// eventplan.md § "Processes and tasks stay different kinds": an OS
     /// process group is a `RunKind.process`, and never a `.swiftTask`.
-    @Test("a detached run stands in the run plane under RunKind.process")
-    func aDetachedRunStandsInTheRunPlaneAsAProcess() async throws {
+    @Test("a background run stands in the run plane under RunKind.process")
+    func aBackgroundRunStandsInTheRunPlaneAsAProcess() async throws {
         let state = try makeState()
         let mailbox = SessionMailbox()
         let context = makeOuterRunContext(mailbox: mailbox, sink: RecordingEventSink())
         let engine = try ShellRunPlane.mounted(makeVerb(over: state), inheriting: context)
 
         _ = try await engine.call(
-            arguments: ExecuteArguments(
-                command: "sleep \(Self.detachedRunSleepSeconds)", wait: false))
+            arguments: ExecuteArguments(command: "sleep \(Self.detachedRunSleepSeconds)"))
 
-        let going = try await ShellRunPlane.parkedRun(in: context)
+        let going = try await ShellRunPlane.backgroundRun(in: context)
 
         #expect(going.kind == .process)
-        #expect(await state.record(commandID: going.completionToken) != nil)
+        // The record is written by the run body, which starts after the call
+        // already answered its envelope; one read here is a race, not a check.
+        try await TestPoll.waitUntil("the store holds the record of the run") {
+            await state.record(commandID: going.completionToken) != nil
+        }
 
         // Awaited rather than deferred into a task of its own — see the reason
         // in the test above.
@@ -475,17 +515,16 @@ struct ShellExecuteTests {
     /// eventplan.md § "Processes and tasks stay different kinds":
     /// `killpg(SIGKILL)` is authoritative, thus the honest outcome is
     /// `.stopped` and never `.cancelled`.
-    @Test("cancel of a detached run reports .stopped")
-    func cancelOfADetachedRunReportsStopped() async throws {
+    @Test("cancel of a background run reports .stopped")
+    func cancelOfABackgroundRunReportsStopped() async throws {
         let state = try makeState()
         let mailbox = SessionMailbox()
         let context = makeOuterRunContext(mailbox: mailbox, sink: RecordingEventSink())
         let engine = try ShellRunPlane.mounted(makeVerb(over: state), inheriting: context)
 
         _ = try await engine.call(
-            arguments: ExecuteArguments(
-                command: "sleep \(Self.detachedRunSleepSeconds)", wait: false))
-        let going = try await ShellRunPlane.parkedRun(in: context)
+            arguments: ExecuteArguments(command: "sleep \(Self.detachedRunSleepSeconds)"))
+        let going = try await ShellRunPlane.backgroundRun(in: context)
 
         let outcome = await context.cancel(completionToken: going.completionToken)
 

@@ -102,6 +102,31 @@ struct CLITurnDrainTests {
         #expect(output.lines.contains { $0.contains("no fragment") && $0.contains("in flight") })
     }
 
+    @Test("a background run that settles is reported under its tool, its token and its outcome")
+    func runSettlementIsPrinted() async throws {
+        let output = DrainOutputCollector()
+        _ = try await CLIRunner.drainTurn(
+            scriptedEvents([
+                .runSettled(
+                    OperationEvent(
+                        tool: "execute",
+                        op: "execute command",
+                        correlationID: "run-7",
+                        kind: .completed,
+                        detail: "{\"exitCode\":0}",
+                        outcome: .succeeded
+                    )
+                )
+            ]),
+            output: output.append
+        )
+
+        #expect(
+            output.lines.contains {
+                $0.contains("execute") && $0.contains("run-7") && $0.contains("succeeded")
+            })
+    }
+
     @Test("an error on the stream propagates to the caller")
     func streamErrorPropagates() async {
         let output = DrainOutputCollector()

@@ -5,7 +5,7 @@
 // `ShellContext`, races a deadline of its own and supervises its own detach;
 // this package has none of those, thus the verb is a plain
 // `FoundationModels.Tool` and the shared elevation engine of Router owns the
-// race, the park and the cancel.
+// tracking, the work bound and the cancel.
 //
 // eventplan.md § "Consolidation of the siblings": "consolidation is promotion,
 // not construction", and "Detach supervision moves to the shared engine". So
@@ -30,22 +30,23 @@
 // the runner is erased to a string on the way out, and a failure the model
 // cannot read stops the turn instead of being repaired inside it.
 //
-// **Detach is an ordinary argument, and never an elevation the verb performs.**
-// eventplan.md § "The constraint boundary": "A capability that wants detach
-// semantics declares it as a usual argument (shell's `wait`). The capability
-// then returns the run's identifier for the builtins." `wait` is that argument.
-// The verb never parks a run itself — `SessionMailbox.park` is internal to
-// Router and no code here names it. It DECLARES, through
-// `DetachmentParameterProviding`, what kind of run this is and how to stop one,
-// and the engine parks it on those terms. See the extension below.
+// **The background is a declaration of the verb, and never a choice of the
+// call.** A command can run for hours, so the verb declares the background
+// mount through `DetachmentParameterProviding`, and every mounted call answers
+// the pending envelope at once. There is no argument that selects a block
+// window, because there is no block window. The verb never tracks a run
+// itself — `SessionMailbox.track` is internal to Router and no code here names
+// it. It DECLARES what kind of run this is and how to stop one, and the engine
+// tracks it on those terms. See the extension below.
 //
 // **The answer is `String`, and its two siblings answer a `@Generable` value.**
 // That is the Router's rule rather than a preference:
-// `ToolDetachment.wrapping` gives `DetachingTool` to a tool whose `Output` is
-// `String`, and `ContextBindingTool` — which never parks — to every other tool.
-// A verb that must reach the run plane therefore has one available output type.
-// The answer is rendered through `ResultRenderer`, exactly as `runCode` and
-// `wait` render theirs, thus the model reads one format for all of them.
+// `ToolDetachment.wrapping` gives `BackgroundTool` to a `String`-output tool
+// that declares the background, and `ContextBindingTool` — which never reaches
+// the run plane — to every tool with another output. A verb that must reach the
+// run plane therefore has one available output type. The answer is rendered
+// through `ResultRenderer`, exactly as `runCode` and `wait` render theirs, thus
+// the model reads one format for all of them.
 //
 // A request the verb cannot make stays IN BAND, as a `correction`. It is never
 // thrown: a blank command, a command over the length cap, an environment that
@@ -67,7 +68,7 @@ import FoundationModels
 import FoundationModelsRouter
 
 /// The arguments of `tools.shell.execute`: what to run, where, under what
-/// environment, for how long, and whether to wait for it.
+/// environment, and for how long.
 @Generable
 struct ExecuteArguments {
 
@@ -96,14 +97,6 @@ struct ExecuteArguments {
             + "'{\"KEY\":\"value\"}'. They stand on top of the environment this process holds. "
             + "Omit it to add none.")
     var environment: String?
-
-    /// `false` to start the command in the background, or `nil` to wait for it.
-    @Guide(
-        description:
-            "Whether to wait for the command to finish. Pass false to start it in the background "
-            + "and get its completion token back at once, then collect it with the wait tool. "
-            + "Omit it to wait.")
-    var wait: Bool?
 }
 
 // MARK: - What kind of run this is, and how to stop one
@@ -111,53 +104,26 @@ struct ExecuteArguments {
 extension Execute: DetachmentParameterProviding {
 
     /// The mount every `execute` call carries, which stands over the mount of
-    /// whatever composed this verb.
+    /// whatever composed this verb: the background.
     ///
-    /// **A declared mount is the only way `wait: false` can ever park.**
-    /// `DetachingTool` decides to detach on `configuration.mode` alone, and
-    /// `RunBinding.innerCallMount` — the mount every inner `tools.*` call
-    /// travels under — is `.runToCompletion`. A clock cannot move a mode, so a
-    /// verb that answers a wait clock of zero under that mount would still
-    /// block. Router states that a declared mount wins over the composition
-    /// site, and this is the declaration eventplan.md § "The constraint
-    /// boundary" asks a capability with detach semantics to make.
+    /// **A declared mount is the only way a call of this verb reaches the
+    /// background.** `ToolDetachment.wrapping` picks `BackgroundTool` on the
+    /// mount's mode alone, and `RunBinding.innerCallMount` — the mount every
+    /// inner `tools.*` call travels under — is `.runToCompletion`. Router
+    /// states that a declared mount wins over the composition site, and this
+    /// is that declaration: every mounted call answers the pending envelope at
+    /// once, and the command goes on behind it.
     ///
     /// The work clock is deliberately absent. A shell run already carries its
     /// own hard limit — the `timeout` argument, which `ShellRunner` arms as a
     /// timer that kills the process group — so a second work clock in the
-    /// engine would be a second authority over the same question, firing on its
-    /// own schedule. Leaving it `nil` also puts the `waitSeconds >= timeout`
-    /// refusal of `DetachConfiguration` out of reach, which a per-call `timeout`
-    /// under the block window would otherwise trip before any work started.
+    /// engine would be a second authority over the same question, firing on
+    /// its own schedule.
     var detachmentMount: DetachConfiguration? {
-        DetachConfiguration(mode: .detaching, waitSeconds: Self.blockSeconds, timeout: nil)
+        DetachConfiguration(mode: .background, timeout: nil)
     }
 
-    /// The per-call clocks one `execute` call carries: the block window, and no
-    /// work clock.
-    ///
-    /// This is the whole of what the `wait` argument does. `wait: false`
-    /// answers a block window of zero, which `DetachConfiguration.waitSeconds`
-    /// defines as detach immediately, so the call hands back the run's
-    /// identifier and the command goes on. Every other value falls back to the
-    /// mount's own window, and a command that outruns it detaches there.
-    ///
-    /// The arguments arrive as opaque `GeneratedContent`, and they are decoded
-    /// through `ExecuteArguments` itself rather than read field by field, so
-    /// this reading and the reading `call(arguments:)` makes cannot drift.
-    ///
-    /// - Parameter arguments: The call's arguments, as the engine holds them.
-    /// - Returns: The block window, and no work clock.
-    func detachmentClocks(
-        from arguments: GeneratedContent
-    ) -> (waitSeconds: TimeInterval?, timeout: TimeInterval?) {
-        guard let decoded = try? ExecuteArguments(arguments), decoded.wait == false else {
-            return (nil, nil)
-        }
-        return (Self.detachImmediatelySeconds, nil)
-    }
-
-    /// What kind of work a parked `execute` call is: an OS process group.
+    /// What kind of work a background `execute` call is: an OS process group.
     ///
     /// eventplan.md § "Processes and tasks stay different kinds" keeps this
     /// distinction mandatory. A `.swiftTask` is cancelled cooperatively and
@@ -166,12 +132,12 @@ extension Execute: DetachmentParameterProviding {
     /// half of the contract, and this property carries the declaration of it.
     var detachmentRunKind: RunKind { .process }
 
-    /// The canceler the engine parks beside the run body: the one that kills
+    /// The canceler the engine tracks beside the run body: the one that kills
     /// the process group of the child and reports `.stopped`.
     ///
     /// It is `ShellRunner.canceler(completionToken:)` and nothing else. That
     /// closure was written as this canceler — its own doc comment says it is
-    /// "the closure that `SessionMailbox.park(kind:)` takes beside the run
+    /// "the closure that `SessionMailbox.track(kind:)` takes beside the run
     /// body" — and it holds no pid of its own, reading the process group out of
     /// the store at the moment it runs. A second copy of that reading here
     /// could signal a group the store already gave up.
@@ -189,16 +155,16 @@ extension Execute: DetachmentParameterProviding {
         ShellRunner(state: runner.state).canceler(completionToken: completionToken)
     }
 
-    /// The `next` sentence the pending envelope of a backgrounded command hands
+    /// The `next` sentence the pending envelope of a background command hands
     /// the model.
     ///
-    /// It names the two planes a backgrounded run answers on, because they
+    /// It names the two planes a background run answers on, because they
     /// answer different questions: the `wait` tool says when the run ended, and
     /// `tools.shell.getLines` says what it wrote up to now. A sentence that
     /// named one alone would leave the model either blocked on a run it only
     /// wanted to peek at, or reading output with no way to learn it was final.
     ///
-    /// - Parameter completionToken: The backgrounded run's token.
+    /// - Parameter completionToken: The background run's token.
     /// - Returns: The collect directive, as plain prose.
     func detachmentCollectInstruction(forCompletionToken completionToken: String) -> String {
         "The command is running in the background. Do not answer yet, and do not guess what it "
@@ -217,25 +183,12 @@ extension Execute {
     /// whole output stays in the store, where `tools.shell.getLines` reads it.
     private static let tailLineCount = 32
 
-    /// How many seconds a call blocks before the command goes to the
-    /// background, when the call did not ask to skip the wait.
-    ///
-    /// Long enough that an ordinary command still answers inline in the same
-    /// call, short enough that a runaway command still hands the model a
-    /// completion token inside one turn instead of holding it.
-    private static let blockSeconds: TimeInterval = 30
-
-    /// The block window a `wait: false` call reports: detach immediately.
-    ///
-    /// Named rather than written as a bare `0` at the one site that answers it,
-    /// because the value is the whole rule — see ``detachmentClocks(from:)``.
-    private static let detachImmediatelySeconds: TimeInterval = 0
-
     /// The exit code of a command that ended with success.
     private static let successExitCode = 0
 
-    /// Runs one command and answers with its tail, or starts one and answers
-    /// with its identifier.
+    /// Runs one command and answers with the report of the run. Mounted, the
+    /// engine hands the model the pending envelope at once and delivers this
+    /// report as the terminal detail when the command ends.
     ///
     /// **The ambient context is read one time, at the start.** eventplan.md
     /// § "The ambient context" makes that rule mandatory: a detached task
@@ -802,7 +755,8 @@ extension Execute {
     }
 }
 
-/// Runs one shell command, and answers with the tail of its output.
+/// Runs one shell command in the background, and reports the tail of its
+/// output when it ends.
 ///
 /// ```swift
 /// // In a snippet the model writes:
@@ -819,13 +773,13 @@ struct Execute: Tool {
 
     /// The usage instructions, as the model reads them.
     let description = """
-        execute runs one shell command and answers with the tail of its output, its status and its \
-        exit code. commandID in the answer is the run's completion token: pass it to \
-        tools.shell.getLines to read the whole output, and to tools.shell.grepHistory to search \
-        it. Give timeout to bound the command, workingDirectory to run it somewhere else, and \
-        environment as a JSON object of string values to add variables. Pass wait false to start a \
-        long command in the background and get its completion token back at once, then collect it \
-        with the wait tool. A command that is empty or longer than 262144 UTF-8 bytes, an \
+        execute starts one shell command in the background and answers at once with its \
+        completion token. When the command ends, its report carries the tail of its output, its \
+        status and its exit code; collect it with the wait tool. commandID in the report is the \
+        run's completion token: pass it to tools.shell.getLines to read the whole output so far, \
+        and to tools.shell.grepHistory to search it. Give timeout to bound the command, \
+        workingDirectory to run it somewhere else, and environment as a JSON object of string \
+        values to add variables. A command that is empty or longer than 262144 UTF-8 bytes, an \
         environment that is not a JSON object of strings, an environment value longer than 1024 \
         UTF-8 bytes or holding a null byte, a carriage return or a line feed, and a command the \
         sandbox cannot confine each come back as a correction rather than as an error — read it, \

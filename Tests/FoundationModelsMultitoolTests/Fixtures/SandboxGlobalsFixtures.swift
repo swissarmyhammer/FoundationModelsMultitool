@@ -236,10 +236,10 @@ func startScriptedRun(
         sessionID: ULID(),
         mailbox: mailbox,
         sink: RecordingEventSink(),
-        // A zero wait clock is detach-immediately, so the call goes to the
-        // background on its first suspension rather than after a real five
-        // seconds of test time.
-        configuration: DetachConfiguration(mode: .detaching, waitSeconds: 0)
+        // The scripted tool declares no mount of its own, so the site puts it
+        // in the background: the call answers the envelope at once, and the
+        // body goes on behind it under no clock.
+        configuration: DetachConfiguration(mode: .background, timeout: nil)
     )
     guard let engine = mounted as? any Tool<NoArguments, String> else {
         throw ScriptedRunFailure.notDetachable
@@ -278,7 +278,7 @@ private func awaitProgress(
     let context = backgroundRuns(over: mailbox)
     let deadline = ContinuousClock.now.advanced(by: .seconds(scriptedRunSettlementSeconds))
     while ContinuousClock.now < deadline {
-        let row = await context.parkedRuns().first { $0.completionToken == completionToken }
+        let row = await context.backgroundRuns().first { $0.completionToken == completionToken }
         if row?.latestProgressDetail == detail { return }
         await Task.yield()
     }

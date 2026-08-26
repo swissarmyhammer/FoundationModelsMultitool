@@ -5,15 +5,10 @@ import Testing
 
 @testable import FoundationModelsMultitool
 
-/// How long the slow fixture tool sleeps before returning — comfortably
-/// longer than `elapsedWaitSeconds`, so an inner call that elevated would
-/// have detached long before its real value arrived.
+/// How long the slow fixture tool sleeps before returning — long enough that
+/// a mount which handed back a handle at once would have answered long before
+/// the real value arrived.
 private let innerCallDelayNanoseconds: UInt64 = 200_000_000
-
-/// A soft deadline already elapsed by the time the slow fixture tool returns.
-/// Only a mount with elevation genuinely off can still hand back the tool's
-/// real value under it.
-private let elapsedWaitSeconds: TimeInterval = 0.01
 
 /// Phase-1 coverage for `RunBinding` — eventplan.md § "Async JavaScript"
 /// ("Session affinity across the seam"), § "Elevation" (the code-mode mount:
@@ -27,23 +22,26 @@ private let elapsedWaitSeconds: TimeInterval = 0.01
 /// asserts what the inner calls actually saw.
 @Suite("RunBinding")
 struct RunBindingTests {
-    // MARK: - The code-mode mount: elevation off
+    // MARK: - The code-mode mount: run to completion
 
-    @Test("an inner call slower than waitSeconds still returns its real value, and never backgrounds")
-    func slowInnerCallReturnsItsRealValueWithoutElevating() async throws {
+    @Test("the inner-call mount runs to completion, so a snippet never receives a handle in place of a value")
+    func theInnerCallMountRunsToCompletion() {
+        #expect(RunBinding.innerCallMount.mode == .runToCompletion)
+        #expect(RunBinding.innerCallMount.timeout == DetachConfiguration.defaultTimeoutSeconds)
+    }
+
+    @Test("a slow inner call still returns its real value, and never goes to the background")
+    func slowInnerCallReturnsItsRealValueWithoutBackgrounding() async throws {
         let slowTool = WindowRecordingTool(name: "slow", delayNanoseconds: innerCallDelayNanoseconds)
         let mailbox = SessionMailbox()
         let sink = RecordingEventSink()
-        let binding = RunBinding(
-            context: makeOuterRunContext(mailbox: mailbox, sink: sink),
-            innerElevation: DetachConfiguration(mode: .runToCompletion, waitSeconds: elapsedWaitSeconds)
-        )
+        let binding = RunBinding(context: makeOuterRunContext(mailbox: mailbox, sink: sink))
 
         let output = try await binding.invoke(slowTool, arguments: NoArguments(unused: nil))
 
         #expect(output == "slow-result")
         #expect(!PendingRunEnvelope.isRendered(text: output))
-        #expect(await backgroundRuns(over: mailbox).parkedRuns().isEmpty)
+        #expect(await backgroundRuns(over: mailbox).backgroundRuns().isEmpty)
     }
 
     // MARK: - Parallel inner calls correlate independently

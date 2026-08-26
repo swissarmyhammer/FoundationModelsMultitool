@@ -17,12 +17,10 @@ struct HardeningTests {
     @Test("MultiToolConfiguration.default carries the elevation engine's own work clock and each renderer default")
     func defaultConfigurationMatchesTheEngineAndRendererDefaults() {
         let configuration = MultiToolConfiguration.default
-        // The work clock's default is the engine's own, never the wait
-        // clock's: the two were both 5 seconds, so the interpreter's watchdog
-        // killed a snippet at the instant its run elevated — see
-        // `MultiToolConfiguration.executionTimeLimit`.
+        // The work bound's default is the engine's own. It is the one clock a
+        // background `runCode` call has: the wait clock is gone with the race
+        // it served — see `MultiToolConfiguration.executionTimeLimit`.
         #expect(configuration.executionTimeLimit == DetachConfiguration.defaultTimeoutSeconds)
-        #expect(configuration.executionTimeLimit > DetachConfiguration.defaultWaitSeconds)
         #expect(configuration.liveContextLimit == MultiToolConfiguration.defaultLiveContextLimit)
         #expect(configuration.returnValueCharacterLimit == ResultRendererLimits.default.returnValueCharacterLimit)
         #expect(configuration.consoleCharacterLimit == ResultRendererLimits.default.consoleCharacterLimit)

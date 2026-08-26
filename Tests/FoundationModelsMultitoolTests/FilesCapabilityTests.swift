@@ -115,6 +115,37 @@ struct FilesCapabilityTests {
         try #require(capability.tools.compactMap { $0 as? Verb }.first)
     }
 
+    // MARK: - A file verb answers inline
+
+    /// A file verb declares no mount, and it answers a `@Generable` value, so
+    /// the shared engine binds it and never puts it in the background: a
+    /// mounted read answers the file's lines in band, whatever mount the site
+    /// applies.
+    @Test("a file verb mounted by the session answers its value inline, never a pending envelope")
+    func aFileVerbMountedByTheSessionAnswersInline() async throws {
+        let root = makeRoot()
+        let capability = FilesCapability(root: root)
+        let path = root.appendingPathComponent("note.txt", isDirectory: false).path
+        try Self.sharedContextContent.write(toFile: path, atomically: true, encoding: .utf8)
+        let mailbox = SessionMailbox()
+        let read = try #require(
+            ToolDetachment.wrapping(
+                tool: try Self.verb(Read.self, in: capability),
+                sessionID: ULID(),
+                mailbox: mailbox,
+                sink: RecordingEventSink(),
+                configuration: .nativeSessionMount
+            ) as? any Tool<ReadArguments, ReadResult>
+        )
+
+        let result = try await read.call(
+            arguments: ReadArguments(path: path, offset: nil, limit: nil, format: "plain"))
+
+        #expect(result.correction == nil)
+        #expect(result.lines == ["alpha", "beta"])
+        #expect(await backgroundRuns(over: mailbox).backgroundRuns().isEmpty)
+    }
+
     // MARK: - The noun and its verbs
 
     /// eventplan.md § "Registration of capabilities: noun/verb": a capability

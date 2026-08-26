@@ -1,5 +1,6 @@
 import Foundation
 import FoundationModels
+import FoundationModelsRouter
 import Testing
 
 @testable import FoundationModelsMultitool
@@ -27,6 +28,22 @@ struct MultiToolExecutionTests {
         // for a shape this tool does not have.
         #expect(!schema.contains("waitSeconds"))
         #expect(!schema.contains("timeout"))
+    }
+
+    /// A snippet can run for hours, so the tool states the background mount
+    /// itself rather than take whatever mount its composition site applies.
+    /// The per-call work bound stays with the tool as well, thus no site can
+    /// raise it over the configured ceiling.
+    @Test("runCode declares the background mount, and bounds each call at the configured ceiling")
+    func runCodeDeclaresTheBackgroundMount() throws {
+        let ceiling: TimeInterval = 30
+        let registry = try MultiTool.Builder().addTool(TempTool()).buildRegistry()
+        let multiTool = MultiTool(
+            registry: registry, configuration: MultiToolConfiguration(executionTimeLimit: ceiling))
+
+        #expect(multiTool.detachmentMount == DetachConfiguration(mode: .background, timeout: nil))
+        let bound = multiTool.detachmentTimeout(from: RunCodeArguments(code: "return 1;").generatedContent)
+        #expect(bound == ceiling)
     }
 
     @Test("runCode arguments carrying only code still decode")

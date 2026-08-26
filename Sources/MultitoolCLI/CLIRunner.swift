@@ -586,6 +586,15 @@ public enum CLIRunner {
                 // model does. Printed and never acted on — a demo that stayed
                 // silent here reads as stuck while it is working.
                 output("\(stall)")
+            case .runSettled(let terminal):
+                // A background call answered its envelope earlier in the
+                // turn, or in an earlier one; this is the one terminal event
+                // that says how that run ended. A demo that stayed silent
+                // here would leave the user with a token and no ending.
+                output(
+                    "\(terminal.tool) run \(terminal.correlationID) settled: "
+                        + "\(terminal.outcome?.rawValue ?? Self.missingDetail)"
+                )
             case .toolStatus, .turnStarted, .reasoningDelta, .toolInvocation, .entryRecorded,
                 .compaction, .discoveryPrimingFailed, .turnEnded:
                 // `.toolStatus` here is the residue of the three statuses

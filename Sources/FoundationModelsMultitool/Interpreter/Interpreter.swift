@@ -371,8 +371,8 @@ public protocol Interpreter: Sendable {
     /// default returning `self` would let a conformer silently keep its own
     /// ceiling under a host that configured a different one — the exact
     /// mismatch this member exists to make impossible, and one that put a
-    /// `JSCInterpreter()`'s stock limit within collision range of
-    /// `DetachConfiguration.defaultWaitSeconds`. A conformer with no
+    /// `JSCInterpreter()`'s stock limit within collision range of the
+    /// engine's own clocks. A conformer with no
     /// wall-clock mechanism of its own has nothing to arm and returns
     /// `self`, and says so in its own documentation.
     ///

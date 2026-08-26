@@ -73,34 +73,25 @@ public struct WaitArguments {
 // MARK: - `wait` never backgrounds itself
 
 extension WaitTool: DetachmentParameterProviding {
-    /// The per-call clocks a `wait` call carries: neither of them a limit.
+    /// The mount a `wait` call carries: run to completion, under no clock.
     ///
     /// **There are two ways for `wait` to return, and this is what keeps a
     /// third from existing.** It returns when the run finishes, or when the
-    /// bound the caller passed elapses. Mounted like every other tool, on a
-    /// stock `.detaching` configuration, a `wait` call that blocks past the
-    /// mount's five seconds would *background itself* — handing the model a
-    /// completion token for its own wait, which is the exact regress this tool
-    /// was built to end (task `^2w9vbkm`, and `^w8dzvee` D5). It was only
-    /// accidentally safe before: safe while the runs it waited on happened to
-    /// finish inside the mount's window.
+    /// bound the caller passed elapses. Mounted by a site that backgrounds, a
+    /// `wait` call would *background itself* — handing the model a completion
+    /// token for its own wait, which is the exact regress this tool was built
+    /// to end (task `^2w9vbkm`, and `^w8dzvee` D5). A declared mount wins
+    /// over the site, and this declaration is what keeps the site's choice
+    /// away from this tool.
     ///
     /// The mount is `runToCompletionMount`, for the same reason
-    /// `SearchToolsTool` takes it: neither of the two clock questions has a
-    /// bounded answer here. The wait clock asks when this call should become
-    /// asynchronous — never, since blocking is the whole point of a `wait`.
-    /// The work clock asks how long it may run before being cancelled and
+    /// `SearchToolsTool` takes it: neither question a mount answers has a
+    /// bounded answer here. The mode asks whether this call hands back a
+    /// handle — never, since blocking is the whole point of a `wait`. The
+    /// work clock asks how long it may run before being cancelled and
     /// reported failed — no limit, because the caller's own `timeout` is the
     /// only bound in this design, and a host clock firing under it would
     /// report a timeout on its own schedule rather than the caller's.
-    ///
-    /// This replaces a `(86_400, 86_400)` clock pair that stated the intent
-    /// without being able to declare it, back when
-    /// `DetachmentParameterProviding` exposed clocks alone. Router's
-    /// `^jgh63sf` both added the mount and made that pair a hard error, whose
-    /// text names this replacement: "a tool that must never park is mounted on
-    /// `DetachConfiguration.runToCompletionMount`, which carries no clock at
-    /// all, rather than on two clocks set to the same number."
     ///
     /// A `wait` that backgrounded itself would be self-defeating in a way
     /// worth stating plainly: the model calls it to collect a token, and a
@@ -166,7 +157,7 @@ public struct WaitTool: Tool {
                     await Self.settlement(of: token, in: context, within: bound)
                 ))
             }
-            let pending = await context.parkedRuns().map(\.completionToken)
+            let pending = await context.backgroundRuns().map(\.completionToken)
             guard !pending.isEmpty else {
                 return Self.rendered(.object([
                     "result": .string(Self.nothingPendingResult),

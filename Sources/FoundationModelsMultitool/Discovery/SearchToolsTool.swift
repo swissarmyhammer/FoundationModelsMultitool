@@ -432,47 +432,37 @@ public struct SearchToolsTool: Tool {
 // MARK: - Discovery is synchronous (task h773bed)
 
 extension SearchToolsTool: DetachmentParameterProviding {
-    /// The per-call clocks a discovery call carries: neither of them a limit.
+    /// The mount a discovery call carries: run to completion, under no clock.
     ///
     /// **Discovery is synchronous.** A model cannot write a snippet without
     /// knowing which `tools.*` paths exist, so nothing can be done while a
-    /// discovery call is in flight — there is no concurrent work for a detached
-    /// one to overlap with. Backgrounding it turns a blocking dependency into one the
-    /// model has to go and collect, which is strictly worse than waiting.
+    /// discovery call is in flight — there is no concurrent work for a
+    /// background one to overlap with. Backgrounding it turns a blocking
+    /// dependency into one the model has to go and collect, which is strictly
+    /// worse than waiting.
     ///
-    /// **And a timeout is not backgrounding.** The two clocks answer different
-    /// questions: `waitSeconds` asks when a call should become asynchronous, and
-    /// the answer here is never; `timeout` asks how long the work may run before
-    /// it is cancelled and reported as failed. For a prerequisite read the second
-    /// answer is also "no limit", because *slow is not broken*. A timeout would
-    /// report a failure for a search that is merely still working, and the model
-    /// would act on a lie: it would be told discovery failed when discovery is
-    /// running. Only a real error — the searcher throwing, the selection model
-    /// failing — should reach the model, and those already do, as errors.
+    /// **And a timeout is not backgrounding.** A mount answers two questions:
+    /// its mode asks whether a call hands back a handle, and the answer here
+    /// is never; its `timeout` asks how long the work may run before it is
+    /// cancelled and reported as failed. For a prerequisite read the second
+    /// answer is also "no limit", because *slow is not broken*. A timeout
+    /// would report a failure for a search that is merely still working, and
+    /// the model would act on a lie: it would be told discovery failed when
+    /// discovery is running. Only a real error — the searcher throwing, the
+    /// selection model failing — should reach the model, and those already
+    /// do, as errors.
     ///
-    /// Measured, both limits fired in turn. At the mount's stock 5-second wait
-    /// every discovery call was backgrounded, and the model never obtained the catalog:
-    /// three real-model runs ended `invoked=[] returned=[]` answering "I don't have
-    /// access to real-time weather data". With the wait raised, the 120-second
-    /// work clock cancelled it instead —
+    /// Measured, both limits fired in turn. Under a mount that backgrounded
+    /// slow calls, every discovery call was backgrounded, and the model never
+    /// obtained the catalog: three real-model runs ended
+    /// `invoked=[] returned=[]` answering "I don't have access to real-time
+    /// weather data". Under the stock 120-second work clock, that clock
+    /// cancelled it instead —
     /// `DetachingToolError.timedOut(tool: "searchTools", timeoutSeconds: 120.0)`,
     /// the turn dead in its first call.
     ///
-    /// **Stated as a mount, which is what it always meant.** Until Router
-    /// shipped a per-tool mount (`^jgh63sf`), a tool could declare only its two
-    /// clocks, so this type answered `(86_400, 86_400)` — two very large
-    /// numbers standing in for an intent the surface could not express.
-    ///
-    /// That workaround was wrong in a way that had not yet bitten. The clocks
-    /// are independent and unvalidated, so the pair did not buy "never
-    /// detach": it bought a 24-hour block followed by a race between a soft
-    /// deadline and a timeout watcher, with `waitSeconds` usually winning and
-    /// the watcher then killing the run it had just backgrounded. No search runs a
-    /// day, so nothing ever reached it. Router now rejects that pair outright
-    /// and names this mount in the error.
-    ///
-    /// `runCode` declares nothing here, keeping its composition site's
-    /// `nativeSessionMount`, so it goes on detaching. One session, two
-    /// policies, each stated by the tool it belongs to.
+    /// `runCode` declares the background mount for itself, and this tool
+    /// declares run-to-completion. One session, two policies, each stated by
+    /// the tool it belongs to.
     public var detachmentMount: DetachConfiguration? { .runToCompletionMount }
 }

@@ -353,7 +353,7 @@ struct SandboxGlobalsTests {
         )
 
         #expect(try decode([String].self, from: output) == ["timeout", run.completionToken])
-        #expect(await backgroundRuns(over: mailbox).parkedRuns().map(\.completionToken) == [run.completionToken])
+        #expect(await backgroundRuns(over: mailbox).backgroundRuns().map(\.completionToken) == [run.completionToken])
     }
 
     @Test("wait() reports an unknown token as a safe no-op, never a throw")

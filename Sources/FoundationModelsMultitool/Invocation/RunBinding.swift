@@ -41,20 +41,21 @@ import FoundationModelsRouter
 /// ## What it does
 ///
 /// ``invoke(_:arguments:journalOp:)`` mounts each inner call on the shared
-/// `DetachingTool` engine with elevation **off** — eventplan.md "Elevation":
-/// "two mounts, one engine, two policies." Only the outer `runCode` call
-/// elevates; an inner call runs to completion, bounded by its `timeout`. The
-/// engine still owns correlation, events, and outcomes for inner calls: it
-/// mints each one a fresh `completionToken` and re-binds
-/// `ToolContext.$current` explicitly around it, which is what lets two
-/// parallel calls under a snippet's `Promise.all` correlate independently
-/// while posting to the one session's mailbox and sink.
+/// engine as a `RunToCompletionTool` — "two mounts, one engine, two
+/// policies." Only the outer `runCode` call goes to the background; an inner
+/// call runs to completion, bounded by its `timeout`, unless the called tool
+/// declares a mount of its own. The engine still owns correlation, events,
+/// and outcomes for inner calls: it mints each one a fresh `completionToken`
+/// and re-binds `ToolContext.$current` explicitly around it, which is what
+/// lets two parallel calls under a snippet's `Promise.all` correlate
+/// independently while posting to the one session's mailbox and sink.
 struct RunBinding: Sendable {
-    /// The code-mode mount: elevation off, stock clocks. Inner `tools.*`
-    /// calls run to completion, bounded only by the engine's per-call
-    /// `timeout` — the constraint boundary (eventplan.md "The constraint
-    /// boundary, and the escape hatch"): a snippet never receives a pending
-    /// envelope in place of a value it awaited.
+    /// The code-mode mount: run to completion, under the stock clock. Inner
+    /// `tools.*` calls run to completion, bounded only by the engine's
+    /// per-call `timeout` — the constraint boundary (eventplan.md "The
+    /// constraint boundary, and the escape hatch"): a snippet never receives
+    /// a pending envelope in place of a value it awaited, unless the tool it
+    /// called declares the background for itself.
     static let innerCallMount = DetachConfiguration(mode: .runToCompletion)
 
     /// Where each inner `tools.*` dispatch is recorded — see ``CallTrace``.
@@ -103,12 +104,13 @@ struct RunBinding: Sendable {
         self.innerElevation = innerElevation
     }
 
-    /// Runs one inner `tools.*` call through the shared elevation engine with
-    /// elevation off.
+    /// Runs one inner `tools.*` call through the shared engine, to
+    /// completion.
     ///
     /// `ToolDetachment.wrapping(tool:inheriting:sink:op:configuration:)`
-    /// picks the decorator: `DetachingTool` for a `String`-output tool,
-    /// `ContextBindingTool` for any other output. Both mint the call its own
+    /// picks the decorator: `RunToCompletionTool` for a `String`-output tool
+    /// (or `BackgroundTool`, when that tool declares the background),
+    /// `ContextBindingTool` for any other output. Each mints the call its own
     /// `completionToken` and bind `ToolContext.$current` around it
     /// explicitly, so neither depends on what the calling task did or did not
     /// inherit — the property that makes this safe to call from the JS seam.
@@ -135,7 +137,7 @@ struct RunBinding: Sendable {
     ///   produced it.
     /// - Throws: whatever the wrapped tool throws, unchanged; or
     ///   `DetachingToolError.timedOut(tool:timeoutSeconds:)` when the mount's
-    ///   per-call `timeout` ends the call.
+    ///   `timeout` ends the call.
     func invoke<T: Tool>(
         _ tool: T, arguments: T.Arguments, journalOp: String? = nil
     ) async throws -> T.Output {

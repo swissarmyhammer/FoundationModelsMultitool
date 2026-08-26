@@ -5,12 +5,6 @@ import Testing
 
 @testable import FoundationModelsMultitool
 
-/// The wait window the elevating mount here detaches at.
-///
-/// Short enough that the gated inner call is still in flight when the outer
-/// `runCode` run backgrounds, which is the state the test is about.
-private let hostWaitSeconds: TimeInterval = 0.2
-
 /// The progress detail `AmbientRecordingTool(name: "recorder")` posts.
 ///
 /// It goes out through whichever ambient context the tool ran under.
@@ -26,10 +20,10 @@ private let renderedRecorderResult = "\"recorder-result\""
 /// The emitter half is the ambient route. A registered tool posts through
 /// `ToolContext.current` and the event arrives at whichever sink the host bound
 /// around `runCode` — no conformance cast, no registry wiring, no second tool
-/// protocol. `RunBindingTests` already pins that route for a run that never
-/// leaves its wait window; what is pinned here is the harder case, an
-/// **elevated** run, where the outer call has already handed back its pending
-/// envelope and the inner tool posts from the detached remainder.
+/// protocol. `RunBindingTests` already pins that route for an inner call that
+/// runs to completion; what is pinned here is the harder case, a
+/// **background** run, where the outer call has already handed back its
+/// pending envelope and the inner tool posts from the remainder.
 ///
 /// The host half is `ForkableTool`, and what is pinned there is the discovery
 /// shape, not fork semantics. `MultiTool` takes the protocol's blanket identity
@@ -59,7 +53,9 @@ struct HostAndEmitterTests {
                 sessionID: sessionID,
                 mailbox: mailbox,
                 sink: sink,
-                configuration: DetachConfiguration(mode: .detaching, waitSeconds: hostWaitSeconds)
+                // The stock session mount. `runCode` declares the background
+                // mount itself, and the declaration wins over the site.
+                configuration: .nativeSessionMount
             ) as? any Tool<RunCodeArguments, String>
         )
 

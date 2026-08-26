@@ -291,7 +291,7 @@ struct SearchToolsToolTests {
 
     // MARK: - Discovery blocks until it is done (^bffrdpr)
 
-    @Test("a slow discovery call returns its catalog inline, even mounted to detach immediately")
+    @Test("a slow discovery call returns its catalog inline, even mounted by a site that backgrounds")
     func discoveryNeverReturnsAPendingEnvelope() async throws {
         let surface = try MultiTool.Builder().addTool(CitiesTool()).build()
         let root = SlowSelectionRootSession(
@@ -304,19 +304,18 @@ struct SearchToolsToolTests {
         )
         let tool = SearchToolsTool(searcher: searcher, limit: surface.entries.count)
 
-        // The harshest mount there is: detach immediately, the very
-        // configuration under which `runCode` always backgrounds. The tool answers
-        // both of its own clocks at `unlimitedSeconds`, and a per-call answer
-        // overrides the wrap-time configuration, so discovery still blocks.
-        // Asserted against a mount rather than by timing a real search: "however
-        // long it takes" is a property of the clocks, not of a stopwatch.
+        // The harshest site mount there is: background, no clock. The tool
+        // declares `runToCompletionMount` itself, and a declaration wins over
+        // the site, so discovery still blocks. Asserted against a mount rather
+        // than by timing a real search: "however long it takes" is a property
+        // of the mount, not of a stopwatch.
         let mounted = try #require(
             ToolDetachment.wrapping(
                 tool: tool,
                 sessionID: ULID(),
                 mailbox: SessionMailbox(),
                 sink: RecordingEventSink(),
-                configuration: DetachConfiguration(mode: .detaching, waitSeconds: 0)
+                configuration: DetachConfiguration(mode: .background, timeout: nil)
             ) as? any Tool<SearchToolsArguments, String>
         )
 
@@ -343,7 +342,7 @@ struct SearchToolsToolTests {
                 sessionID: ULID(),
                 mailbox: SessionMailbox(),
                 sink: RecordingEventSink(),
-                configuration: DetachConfiguration(mode: .detaching, waitSeconds: 0)
+                configuration: DetachConfiguration(mode: .background, timeout: nil)
             ) as? any Tool<SearchToolsArguments, String>
         )
 

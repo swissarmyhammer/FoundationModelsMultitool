@@ -224,8 +224,8 @@ extension MultiTool {
 /// `waitSeconds` bounded a wait that no longer exists, and `timeout` let a
 /// model bound work it no longer blocks on; the host's own
 /// `MultiToolConfiguration.executionTimeLimit` remains the ceiling, and
-/// `MultiTool`'s `DetachmentParameterProviding` conformance still answers both
-/// clocks to the engine (see `MultiTool+Detachment.swift`).
+/// `MultiTool`'s `DetachmentParameterProviding` conformance answers it to the
+/// engine as the work bound of every call (see `MultiTool+Detachment.swift`).
 @Generable
 public struct RunCodeArguments {
     /// The JavaScript snippet to run against `tools.*`.

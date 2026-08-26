@@ -382,7 +382,7 @@ extension MultiTool {
     ) async throws -> InterpreterValue {
         let context = try sessionContext(from: binding)
         guard let token = try optionalCompletionToken(argument, usage: "status(completionToken)") else {
-            return .array(await context.parkedRuns().map { .object(backgroundRunFields(of: $0)) })
+            return .array(await context.backgroundRuns().map { .object(backgroundRunFields(of: $0)) })
         }
         return await report(of: token, in: context)
     }
@@ -394,7 +394,7 @@ extension MultiTool {
     ///   - context: the session context the run is read through.
     /// - Returns: the run's report, or the call outcome when there is no run.
     private static func report(of token: String, in context: ToolContext) async -> InterpreterValue {
-        if let going = await context.parkedRuns().first(where: { $0.completionToken == token }) {
+        if let going = await context.backgroundRuns().first(where: { $0.completionToken == token }) {
             return .object(backgroundRunFields(of: going))
         }
         // Absent from the snapshot above, so the run either already finished
@@ -410,7 +410,7 @@ extension MultiTool {
             // The run registered between the snapshot and the probe. Re-read
             // it, so the reported row carries the same fields a running run
             // always does rather than a partial one.
-            let going = await context.parkedRuns().first { $0.completionToken == token }
+            let going = await context.backgroundRuns().first { $0.completionToken == token }
             guard let going else {
                 return .object(tokenOnlyFields(result: CallResult.unknown, token: token))
             }
@@ -488,13 +488,12 @@ extension MultiTool {
     /// `status()` lists, and the object `status(completionToken)` reports for a
     /// run still in flight.
     ///
-    /// The `ParkedRun` in the signature is Router's own type for the row and
-    /// is spelled as Router spells it; this package's word for what the row
-    /// describes is a background run.
+    /// The `BackgroundRun` in the signature is Router's own type for the row,
+    /// and it is what this package calls the row too.
     ///
     /// - Parameter run: the mailbox's own snapshot row.
     /// - Returns: the object's fields.
-    private static func backgroundRunFields(of run: ParkedRun) -> [String: InterpreterValue] {
+    private static func backgroundRunFields(of run: BackgroundRun) -> [String: InterpreterValue] {
         [
             "state": .string(RunState.running),
             "completionToken": .string(run.completionToken),
