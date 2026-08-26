@@ -47,11 +47,33 @@ comments:
     - evidence: `swift test` — Test run with 1018 tests in 73 suites passed after 4.017 seconds; 0 failed; 0 skipped. One warning found: the known mlx-swift "missing creator for mutated node" notice (pre-existing, not chased). No other new warnings.
     - next: none. The build is clean.
   timestamp: 2026-08-26T00:53:50.960429+00:00
+- actor: claude-code
+  id: 01m0xsb9q9kxp05h9y3xk4a60h
+  text: |-
+    ### review — clean
+    - evidence: review sha 8d04ba9~1..8d04ba9 (local backend) — 0 findings, 0 confirmed, 0 refuted, 7 attempted, 0 failed. 1 file reviewed; 4 .kanban files excluded by .reviewignore.
+    - next: none. The task moved to done.
+
+    step: review
+    outcome: clean
+    evidence: 0 findings, 0 confirmed, 0 refuted, 7 attempted, 0 failed (review sha 8d04ba9~1..8d04ba9, local)
+    task: ^7r99xf5
+  timestamp: 2026-08-26T01:00:58.473735+00:00
+- actor: claude-code
+  id: 01m0xsbryxwzn8jynkk7yya94w
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — FileChangeSetTests.swift (22 tests over Write, Edit, Patch); no production change, Patch.changeKinds confirmed total
+    - test: green — swift test, 1018 tests in 73 suites, 0 failed
+    - commit: 8d04ba9
+    - review: clean — review sha 8d04ba9~1..8d04ba9, 0 findings
+    - task landed in done
+  timestamp: 2026-08-26T01:01:14.077823+00:00
 depends_on:
 - 01M0WWSCM9CHRT7B5AWVB4DVZP
 - 01M0WXACC6Q0PY1QKZ6Y2TH7J4
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ff8980
 title: Port FileChangeSetTests after the mutating verbs exist
 ---
 ## What
