@@ -27,7 +27,7 @@
 // confinement itself, through `sandbox`.
 //
 // **`listProcesses` and `killProcess` are deliberately absent.** eventplan.md §
-// "Consolidation of the siblings" removes them: the shared elevation engine of
+// "Consolidation of the siblings" removes them: the shared background engine of
 // Router owns the run plane now, so `status()` and `cancel(completionToken)`
 // answer those two questions for every capability at once rather than for this
 // one alone.

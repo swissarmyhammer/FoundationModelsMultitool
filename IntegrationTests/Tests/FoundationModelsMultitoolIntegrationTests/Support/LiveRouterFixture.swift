@@ -268,7 +268,7 @@ import MultitoolCLI
 /// three scenarios of five while Muse exceeds it on none. On the repair
 /// scenario Qwen spent 8 calls against Muse's 3.
 ///
-/// Qwen is the faster of the two per scenario: elevation 39.8s against
+/// Qwen is the faster of the two per scenario: background 39.8s against
 /// 64-70s, CLI smoke 51.3s against 61-63s, the nested-generation probe 16.4s
 /// against 26-28s, search-then-call 265.6s against 283-299s. Respond
 /// self-drain went the other way, 211.7s against 146-169s. Whole-run totals
@@ -363,7 +363,7 @@ let multitoolTinyProfile = CLIRunner.demoProfile
 /// intelligence.** A suite asserting that a valid, fixture-grounded answer came
 /// back is making a capability claim, and a small model would fail it for
 /// reasons that say nothing about this package —
-/// `SearchThenCallTests`, `ElevationTests`, `AsyncFanOutTests`,
+/// `SearchThenCallTests`, `BackgroundTests`, `AsyncFanOutTests`,
 /// `RespondDrainTests` and `InBandCollectionCanaryTests` are all of that kind,
 /// and `^wnfzwxg` turned on exactly which model produced which answer.
 /// `SelectionForkPerCallTests` is excluded for a third reason: cache behaviour
@@ -442,7 +442,7 @@ let plumbingProbeProfile = ProfileDefinition(
 ///
 ///   suite                        parallel   --no-parallel
 ///   Gated async fan-out             443.5s          71.4s
-///   Gated elevation-in-code-mode    371.2s          64.2s
+///   Gated background-in-code-mode   371.2s          64.2s
 ///   Gated search-then-call (x4)     661.0s         283.1s
 ///   Selection tier fork()-per-call   85.6s          16.5s
 ///   Gated nested-generation probe   >180s(*)        28.1s

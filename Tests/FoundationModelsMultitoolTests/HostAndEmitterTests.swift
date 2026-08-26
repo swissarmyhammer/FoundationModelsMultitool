@@ -34,10 +34,10 @@ private let renderedRecorderResult = "\"recorder-result\""
 /// return still downcasting to the `runCode` tool type a host mounts and runs.
 @Suite("HostAndEmitter")
 struct HostAndEmitterTests {
-    // MARK: - The emitter half: events from an elevated run
+    // MARK: - The emitter half: events from a background run
 
-    @Test("an inner tool's own event reaches the session sink after its runCode run has elevated")
-    func innerToolEventsReachTheSessionSinkAfterTheRunElevates() async throws {
+    @Test("an inner tool's own event reaches the session sink after its runCode run has gone to the background")
+    func innerToolEventsReachTheSessionSinkAfterTheRunGoesToTheBackground() async throws {
         let latch = ToolReleaseLatch()
         let recorder = AmbientRecordingTool(name: "recorder")
         let registry = try MultiTool.Builder()
@@ -74,7 +74,7 @@ struct HostAndEmitterTests {
         let settlement = await backgroundRuns(over: mailbox)
             .wait(completionToken: token, seconds: scriptedRunSettlementSeconds)
         guard case .settled(let terminal) = settlement else {
-            Issue.record("the elevated run never settled: \(settlement)")
+            Issue.record("the background run never settled: \(settlement)")
             return
         }
 

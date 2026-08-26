@@ -481,8 +481,8 @@ public enum CLIRunner {
             // and `DemoWeatherTool` answer instantly, so every snippet here
             // finishes inline and no pending envelope is ever written. The
             // wiring carries the design; the fixtures only keep the demo quick.
-            // A deliberately slow tool proves the background-and-collect path in the
-            // elevation scenario
+            // A deliberately slow tool proves the background-and-collect path in
+            // the background scenario
             // (`IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests`).
             //
             // No instructions. Mounting the vended tools is the whole host

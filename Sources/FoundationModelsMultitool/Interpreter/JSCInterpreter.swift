@@ -230,11 +230,11 @@ private func jscTerminateCallback(_: JSContextRef?, _ info: UnsafeMutableRawPoin
 ///
 /// The whole run executes on a serial queue of its own — one per `run`, never
 /// one per interpreter, so two runs of the same interpreter never wait on each
-/// other. That matters as soon as a `runCode` call can elevate: an elevated
-/// call keeps its context (and its queue) for as long as it stays suspended,
-/// and the session's follow-up snippet — the `wait()` or `cancel()` that
-/// collects it — has to be able to run meanwhile. Nothing is shared for those
-/// runs to race: `evaluate` creates, owns, and tears down every piece of a
+/// other. That matters as soon as a `runCode` call can go to the background: a
+/// background call keeps its context (and its queue) for as long as it stays
+/// suspended, and the session's follow-up snippet — the `wait()` or `cancel()`
+/// that collects it — has to be able to run meanwhile. Nothing is shared for
+/// those runs to race: `evaluate` creates, owns, and tears down every piece of a
 /// run's state, starting with its own `JSContextGroup`. How many runs may be
 /// live at once is `MultiTool`'s to bound, not this type's (see
 /// `MultiToolConfiguration.liveContextLimit`).
@@ -275,7 +275,7 @@ public final class JSCInterpreter: Interpreter {
     /// The default applies to an interpreter constructed without an explicit
     /// `timeLimit` and run directly. Standing alone like that, this watchdog
     /// is the only clock in play — there is no `runCode` wait clock for it to
-    /// race, because elevation belongs to a `MultiTool` mount.
+    /// race, because the background path belongs to a `MultiTool` mount.
     ///
     /// It does not survive that mount. `MultiTool.init` arms every
     /// interpreter it runs — the sandbox it builds for itself, and one a

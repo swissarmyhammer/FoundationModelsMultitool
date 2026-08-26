@@ -266,13 +266,13 @@ func runNativeIntegrationScenario(
 }
 
 /// Runs one gated scenario end to end against a *Router-mounted* session, so
-/// the scenario's `runCode` calls really can elevate — eventplan.md §
-/// "Elevation: waitSeconds and the completion token".
+/// the scenario's `runCode` calls really can go to the background — eventplan.md
+/// § "Background tools and the completion token".
 ///
 /// **Why a second runner exists — and it is not the session.** Both runners
 /// build the same thing: `fixture.profile.standard.makeSession(tools:
 /// discoveryPriming:)`, a real `RoutedSession`, which mounts every tool under
-/// `ToolMount.synchronous` — elevation on, stock clocks — and
+/// `ToolMount.synchronous` — the background path on, stock clocks — and
 /// gives the snippet the live background-run globals (`status()`, `wait()`,
 /// `cancel()`) to collect a background run through. What differs is what each
 /// one grades.
@@ -283,7 +283,7 @@ func runNativeIntegrationScenario(
 ///
 /// It used to be the session. Until `f8964b4` the native runner built a bare
 /// `LanguageModelSession` over an `MLXLanguageModel`, which carries no
-/// elevation mount at all — `BackgroundToolRunner` is applied only by Router's own
+/// background mount at all — `BackgroundToolRunner` is applied only by Router's own
 /// per-session tool wiring (`ToolMounting.makeSessionMounted(tool:sessionID:
 /// mailbox:sink:cappedToTokenLimit:)`) — so on that path a slow snippet simply
 /// blocked and a pending envelope could never appear. That is history, not the
@@ -333,7 +333,7 @@ func runNativeIntegrationScenario(
 ///   - answerContainsOneOf: candidate substrings, at least one of which the
 ///     reply must contain (case-insensitively) to count as a valid answer.
 /// - Throws: any error other than `GenerationError.notWiredForLiveInference`.
-func runElevationIntegrationScenario(
+func runBackgroundIntegrationScenario(
     name: String,
     tools makeTools: (ScenarioCallLog) -> [any Tool],
     prompt: String,
@@ -363,7 +363,7 @@ func runElevationIntegrationScenario(
                 name: pendingEnvelopeCheckName,
                 held: !pendingEnvelopes.isEmpty,
                 failureMessage:
-                    "expected at least one runCode call to elevate and return a pending envelope, but the tool outputs were \(turn.toolOutputs)"
+                    "expected at least one runCode call to go to the background and return a pending envelope, but the tool outputs were \(turn.toolOutputs)"
             )
         )
         grade(scenario: name, checks: checks)
@@ -381,7 +381,7 @@ func runElevationIntegrationScenario(
     }
 }
 
-/// Everything one streamed turn produced that an elevation scenario grades or
+/// Everything one streamed turn produced that a background scenario grades or
 /// reports.
 struct StreamedTurn {
     /// The turn's reply text, every `textDelta` in production order.
@@ -629,7 +629,7 @@ func streamTurn(of session: RoutedSession, prompt: String) async throws -> Strea
 /// A grounded answer is graded on the value it carries, never on how the model
 /// chose to punctuate it, so every scenario whose distinctive fixture value is
 /// a number offers both candidates to `answerContainsOneOf`. Observed on real
-/// hardware: an elevation run collected the backgrounded scan correctly and answered
+/// hardware: a background run collected the backgrounded scan correctly and answered
 /// "exactly **41,739**" — the right value, spelled the way prose spells it —
 /// and was failed by an assertion that only accepted `41739`.
 ///
@@ -821,7 +821,7 @@ let answerNotInvalidatedCheckName = "answerNotInvalidated"
 /// depends on.
 let groundedCheckName = "grounded"
 
-/// The label of the check that grades an elevated `runCode` call as having
+/// The label of the check that grades a background `runCode` call as having
 /// handed a pending envelope back.
 let pendingEnvelopeCheckName = "pendingEnvelope"
 
@@ -1034,7 +1034,7 @@ private func printSkipNote(_ name: String) {
 /// not only the ones its own turn started — waits for all of them to settle,
 /// and runs one more ordinary turn carrying their results. It repeats, so a
 /// run started from inside a drained turn is drained too, bounded at four
-/// continuation turns (`RoutedSessionActor.parkedRunDrainRoundLimit`): one
+/// continuation turns (`RoutedSessionActor.backgroundRunDrainRoundLimit`): one
 /// `respond` costs at most five model turns.
 ///
 /// Two consequences for a scenario written here. A prompt whose answer needs
@@ -1220,7 +1220,7 @@ private let inBandCollectionReplyPreviewCharacters = 120
 /// going — then the drain has become reachable from this host, and task
 /// `^xeqs138`'s original question reopens with it: `respond`'s snapshot of
 /// every background run, its continuation turn, and its bounded re-entry at
-/// `RoutedSessionActor.parkedRunDrainRoundLimit` would be running for real, and
+/// `RoutedSessionActor.backgroundRunDrainRoundLimit` would be running for real, and
 /// nothing in this target covers any of them. Read `inBandCollection` beside it:
 /// those two failing together is the drain-reachable reading, and it is the one
 /// to act on. Do not relax either of them.
@@ -1244,7 +1244,7 @@ private let inBandCollectionReplyPreviewCharacters = 120
 /// because it never started.
 ///
 /// **What this says about the drain: nothing.** The drain is not entered on a
-/// passing run — `settleParkedRuns` answers `false` on its first round and no
+/// passing run — `settleBackgroundRuns` answers `false` on its first round and no
 /// continuation turn runs — so this suite must never be cited for what the loop
 /// does or for its re-entry bound. Router's own suite starts the runs it drains
 /// and covers that; it proves what the loop does, not how often a real model

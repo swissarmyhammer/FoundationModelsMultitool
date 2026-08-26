@@ -1,6 +1,6 @@
 import Testing
 
-/// The elevation-in-code-mode scenario — eventplan.md's phase-1 exit
+/// The background-in-code-mode scenario — eventplan.md's phase-1 exit
 /// proof that the two surfaces really do meet on real hardware: a snippet whose
 /// work outlives the mount's wait clock hands the model a pending envelope,
 /// and the model collects the background run through the background-run globals
@@ -10,7 +10,7 @@ import Testing
 /// session: both runners build the same `RoutedSession` from
 /// `profile.standard.makeSession(tools:discoveryPriming:)`, so both mount
 /// `runCode` under `ToolMount.synchronous`. It is the
-/// assertion. `runElevationIntegrationScenario` also requires that a pending
+/// assertion. `runBackgroundIntegrationScenario` also requires that a pending
 /// envelope really appeared on the way to the answer, which is the whole
 /// claim of this suite and which the native runner does not check. See
 /// `Support/ScenarioRunner.swift` for both runners and what each asserts.
@@ -22,7 +22,7 @@ import Testing
 /// and runs no live inference; the command that does run this suite is
 /// `swift test --package-path IntegrationTests --no-parallel`.
 @Suite(
-    "Elevation-in-code-mode scenario (phase-1 exit)",
+    "Background-in-code-mode scenario (phase-1 exit)",
     .serialized,
     // Ten minutes, derived on 2026-08-21 from measurement, by the method of
     // task `^nhxj8hx` (task `^4qcf1v9`). Read this before you change the number.
@@ -73,11 +73,11 @@ import Testing
     // or remove it.
     .timeLimit(.minutes(10))
 )
-struct ElevationTests {
-    @Test("an elevating snippet hands back a pending envelope and the model still answers the deep scan's report code")
-    func elevationInCodeMode() async throws {
-        try await runElevationIntegrationScenario(
-            name: "elevationInCodeMode",
+struct BackgroundTests {
+    @Test("a snippet that goes to the background hands back a pending envelope and the model still answers the deep scan's report code")
+    func backgroundInCodeMode() async throws {
+        try await runBackgroundIntegrationScenario(
+            name: "backgroundInCodeMode",
             tools: { log in [IntegrationDeepScanTool(log: log)] },
             // The whole job in one request, the way a user would ask for it.
             // Two weaker phrasings were tried on real hardware and are worse:
@@ -87,7 +87,7 @@ struct ElevationTests {
             // scan and invent a number. Asking it to wait for the result is
             // what actually gets the snippet run — and a snippet that awaits
             // this fixture always outlives the mount's wait window, so this is
-            // the turn that elevates.
+            // the turn that goes to the background.
             prompt: "Start the deep scan of my archive, wait for it to finish, and tell me the exact "
                 + "report code it returns.",
             // The deep-scan fixture always returns the same report code, and it

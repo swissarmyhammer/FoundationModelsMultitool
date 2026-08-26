@@ -11,7 +11,7 @@ import Testing
 /// three rules entirely: a backgrounded `runCode` is collected before the
 /// caller sees it, a `wait` has nothing left to wait for, and a blocking
 /// `searchTools` is indistinguishable from a backgrounding one. The scenarios in
-/// `SearchThenCallTests` and `ElevationTests` stay on streaming for exactly
+/// `SearchThenCallTests` and `BackgroundTests` stay on streaming for exactly
 /// that reason. This suite adds the one job `respond` keeps: proving that the
 /// blocking surface still reaches the same grounded answer once every tool
 /// call hands back a token instead of data.

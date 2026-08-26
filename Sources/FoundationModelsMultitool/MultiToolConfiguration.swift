@@ -63,8 +63,8 @@ public struct MultiToolConfiguration: Sendable, Equatable {
     /// is refused with a repairable in-band error. Clamped to at least `1` at
     /// `init`.
     ///
-    /// A snippet stays live past its wait window only by elevating, so this
-    /// is the cap on suspended JSC contexts (eventplan.md § "The constraint
+    /// A snippet stays live past its wait window only in the background, so
+    /// this is the cap on suspended JSC contexts (eventplan.md § "The constraint
     /// boundary, and the escape hatch"). Each one holds a real JS context and
     /// the thread its run occupies, so they are bounded rather than allowed
     /// to pile up: a model that has backgrounded this many snippets has lost track
@@ -100,7 +100,7 @@ public struct MultiToolConfiguration: Sendable, Equatable {
     /// - Parameters:
     ///   - executionTimeLimit: wall-clock ceiling, in seconds, on a single
     ///     `runCode` snippet's work. Defaults to
-    ///     `ToolMount.defaultTimeoutSeconds`, the elevation
+    ///     `ToolMount.defaultTimeoutSeconds`, the background
     ///     engine's own stock work clock.
     ///   - liveContextLimit: how many `runCode` snippets may be live at once.
     ///     Defaults to ``defaultLiveContextLimit``.

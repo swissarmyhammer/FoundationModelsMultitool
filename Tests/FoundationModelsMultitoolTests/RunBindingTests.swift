@@ -11,9 +11,9 @@ import Testing
 private let innerCallDelayNanoseconds: UInt64 = 200_000_000
 
 /// Phase-1 coverage for `RunBinding` — eventplan.md § "Async JavaScript"
-/// ("Session affinity across the seam"), § "Elevation" (the code-mode mount:
-/// elevation off), and § "The constraint boundary" (inner calls never
-/// elevate).
+/// ("Session affinity across the seam"), § "Background tools and the completion
+/// token" (the code-mode mount: the background off), and § "The constraint
+/// boundary, and the escape hatch" (inner calls never go to the background).
 ///
 /// The JS thread is not a Swift task: a JSC callback lands outside every task
 /// tree, so nothing on the `tools.*` route may rely on task-local

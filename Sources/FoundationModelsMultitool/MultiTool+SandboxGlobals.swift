@@ -580,7 +580,7 @@ extension MultiTool {
     // MARK: - elicit()
 
     /// `elicit()`'s implementation: suspends the snippet on the session's
-    /// mailbox through `ToolContext.elicit` — the same elevation path every
+    /// mailbox through `ToolContext.elicit` — the same background path every
     /// other elicitor takes — and resumes with the user's answer.
     ///
     /// - Parameters:

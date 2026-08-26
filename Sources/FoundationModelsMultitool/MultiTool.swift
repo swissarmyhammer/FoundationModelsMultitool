@@ -210,8 +210,8 @@ extension MultiTool {
 /// **`runCode` always backgrounds.** It hands back a completion token every
 /// time, so waiting is not one of its options — the concept is out of this
 /// schema rather than set to zero. A model that needs the result calls `wait`;
-/// a model that does not lets the snippet run (eventplan.md § "Elevation",
-/// task `^cv98vff`).
+/// a model that does not lets the snippet run (eventplan.md § "Background tools
+/// and the completion token", task `^cv98vff`).
 ///
 /// A tool with two return shapes is unlearnable. Under "inline if it is fast,
 /// a token if it is slow" the same call sometimes yields a value and sometimes
@@ -381,8 +381,8 @@ public struct MultiTool: Tool {
     private let registry: Registry
 
     /// The M10 hardening knobs this tool enforces. Internal, not `private`,
-    /// because the elevation extension reads the work clock's ceiling out of
-    /// it (see `MultiTool+Elevation.swift`).
+    /// because the background extension reads the work clock's ceiling out of
+    /// it (see `MultiTool+Background.swift`).
     let configuration: MultiToolConfiguration
 
     /// How many of this tool's `runCode` contexts are live right now, capped
@@ -1210,9 +1210,9 @@ public struct MultiTool: Tool {
     /// That `Task` lands outside every task tree, so the session behind the
     /// call arrives as `binding` — a value captured back in
     /// `call(arguments:)` — never as an inherited ambient context. `binding`
-    /// also selects the mount: through the elevation engine with elevation
-    /// off when a session bound one, natively when none did (see
-    /// `ToolInvoker`'s "The two mounts").
+    /// also selects the mount: through the background engine in
+    /// run-to-completion mode when a session bound one, natively when none did
+    /// (see `ToolInvoker`'s "The two mounts").
     ///
     /// - Parameters:
     ///   - tool: the wrapped tool this call dispatches to.

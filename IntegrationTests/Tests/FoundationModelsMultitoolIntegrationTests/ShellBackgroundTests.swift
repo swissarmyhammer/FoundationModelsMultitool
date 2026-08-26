@@ -1,19 +1,19 @@
 import Testing
 
 /// The background-shell-command scenario — eventplan.md's phase-2 claim that the
-/// shell capability is the reference emitter, and that "its background commands
-/// prove the elevation path end to end."
+/// shell capability is the reference emitter, and that "its detached commands
+/// prove the background path end to end."
 ///
 /// One live turn on the shipped configuration: `MultiTool.Builder().withShell()`
 /// vended through `makeSessionTools(librarian:)` and mounted on a
 /// `RoutedSession`. The model discovers `tools.shell.execute`, starts a
-/// never-ending command from a `runCode` snippet, and the outer run elevates and
-/// hands back a pending envelope. The harness then reads the run plane while the
-/// command is still running, ends it, and closes the session.
+/// never-ending command from a `runCode` snippet, and the outer run goes to the
+/// background and hands back a pending envelope. The harness then reads the run
+/// plane while the command is still running, ends it, and closes the session.
 ///
 /// What each condition proves, and where the reading comes from, is stated on
-/// `shellElevationChecks(for:)` and on the runner in
-/// `Support/ShellElevationRunner.swift`. Two of them are worth naming here
+/// `shellBackgroundChecks(for:)` and on the runner in
+/// `Support/ShellBackgroundRunner.swift`. Two of them are worth naming here
 /// because they are the reason this suite is gated rather than a unit test:
 ///
 /// - `cancelReportsStopped` needs a REAL child process group. `.stopped` means
@@ -35,14 +35,14 @@ import Testing
 /// not a preference — see `LiveProfileTurnstile` for what the clock counts
 /// without it.
 @Suite(
-    "Background shell command through the elevation path (phase-2)",
+    "A shell command on the background path (phase-2)",
     .serialized,
-    // Fifteen minutes, derived by the method `ElevationTests` states, applied to
+    // Fifteen minutes, derived by the method `BackgroundTests` states, applied to
     // this scenario's own costs. Read that suite's derivation before changing
     // this number.
     //
     // THE LIMIT IS THE DETECTOR, exactly as it is there. This suite exists to
-    // show that one background shell command travels the whole elevation path. The
+    // show that one shell command travels the whole background path. The
     // failure the limit must catch is a turn that never reaches
     // `tools.shell.execute` at all — and the harness already bounds that with
     // `shellRunArrivalDeadline`, eight minutes, after which it reports what it
@@ -80,9 +80,9 @@ import Testing
     // that failed, or remove it.
     .timeLimit(.minutes(15))
 )
-struct ShellElevationTests {
-    @Test("a background shell command elevates, stands on the run plane, is read live, is stopped, and is journaled")
-    func backgroundShellCommandThroughTheElevationPath() async throws {
-        try await runShellElevationScenario(name: "backgroundShellCommand")
+struct ShellBackgroundTests {
+    @Test("a shell command goes to the background, stands on the run plane, is read live, is stopped, and is journaled")
+    func shellCommandThroughTheBackgroundPath() async throws {
+        try await runShellBackgroundScenario(name: "backgroundShellCommand")
     }
 }

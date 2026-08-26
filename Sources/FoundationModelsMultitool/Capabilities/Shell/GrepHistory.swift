@@ -9,7 +9,7 @@
 // `tools.shell.getLines` on the CONTENT plane: it reads the captured output
 // that stays in the per-session dotfolder, for a run that is still going and
 // for a run that ended alike. It answers no question about the life of a run,
-// which the shared elevation engine owns.
+// which the shared background engine owns.
 //
 // The scan itself is `ShellState.grep`, which owns the compilation of the
 // pattern, the optional escape for a literal match, the filter by run, and the

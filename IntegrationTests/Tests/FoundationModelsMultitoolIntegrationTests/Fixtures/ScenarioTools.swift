@@ -481,7 +481,7 @@ struct IntegrationBookingTool: Tool {
     }
 }
 
-// MARK: - Scenario 5: elevation in code mode (eventplan.md phase-1 exit)
+// MARK: - Scenario 5: background in code mode (eventplan.md phase-1 exit)
 
 /// `IntegrationDeepScanTool`'s output.
 @Generable(description: "a completed scan's report code.")
@@ -494,8 +494,8 @@ struct IntegrationDeepScanOutput {
 /// Chosen to sit between the two clocks Router's native session mount arms a
 /// `runCode` call with (`ToolMount.synchronous`): longer
 /// than its 5-second `defaultWaitSeconds`, so the outer `runCode` call that
-/// awaits this tool always outlives its wait window and elevates into a
-/// pending envelope; and far shorter than its 120-second
+/// awaits this tool always outlives its wait window and goes to the background
+/// with a pending envelope; and far shorter than its 120-second
 /// `defaultTimeoutSeconds` (and than `MultiToolConfiguration
 /// .executionTimeLimit`, the sandbox watchdog's absolute ceiling), so the
 /// background run settles on its own while the model is still composing the
@@ -514,7 +514,7 @@ let integrationDeepScanDuration: Duration = .seconds(8)
 /// of the scenario.
 let integrationDeepScanReportCode = 41739
 
-/// The deliberately slow tool the elevation scenario drives: a snippet that
+/// The deliberately slow tool the background scenario drives: a snippet that
 /// awaits it cannot finish inside the mount's wait window, so the outer
 /// `runCode` call hands the model a pending envelope and keeps running in the
 /// background. Recovering the answer then requires the background-run globals
@@ -665,7 +665,7 @@ let integrationArchiveRebuildManifestCode = 58204
 ///
 /// The contrast with `IntegrationDeepScanTool` is the contrast in what the two
 /// scenarios ask. That fixture is slow so that the outer `runCode` outlives the
-/// mount's wait window, which is the elevation scenario's own subject. Nothing
+/// mount's wait window, which is the background scenario's own subject. Nothing
 /// here rests on how long anything takes.
 ///
 /// **An earlier version was held on a gate, and that cost the canary its

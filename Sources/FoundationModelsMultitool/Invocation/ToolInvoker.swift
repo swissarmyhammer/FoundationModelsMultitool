@@ -133,8 +133,8 @@ public struct ToolInvokerError: Error, Sendable, Equatable, CustomStringConverti
 /// `RunBinding` — the ambient context `MultiTool.call(arguments:)` captured
 /// for this `runCode` invocation — the validated call is dispatched through
 /// the shared engine as a `RunToCompletionRunner`, so the engine owns
-/// its correlation, events, and outcome (eventplan.md "Elevation": "two
-/// mounts, one engine, two policies"). With no binding — a `MultiTool`
+/// its correlation, events, and outcome (eventplan.md § "Background tools and
+/// the completion token"). With no binding — a `MultiTool`
 /// constructed and called directly, outside any session — there is no run
 /// plane to correlate against, and the tool is called natively, unchanged.
 public enum ToolInvoker {

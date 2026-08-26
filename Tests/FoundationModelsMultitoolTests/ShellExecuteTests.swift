@@ -13,7 +13,7 @@ import Testing
 /// `../FoundationModelsShelltool/Tests/ShellToolTests/ExecuteCommandTests.swift`.
 /// The sibling drives its operation through `OperationTool.call` with a
 /// `GeneratedContent` bag and races its own deadline; here the verb is a plain
-/// `FoundationModels.Tool` and the shared elevation engine of Router owns the
+/// `FoundationModels.Tool` and the shared background engine of Router owns the
 /// tracking, the work bound and the cancel.
 ///
 /// Each test makes a store in a temporary directory of its own, thus the tests
@@ -198,7 +198,7 @@ struct ShellExecuteTests {
     }
 
     /// Runs one call of the verb under a bound ambient context, the way the
-    /// elevation engine binds one around every mounted call.
+    /// background engine binds one around every mounted call.
     ///
     /// - Parameters:
     ///   - verb: The verb to call.

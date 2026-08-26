@@ -73,11 +73,11 @@ struct RunBinding: Sendable {
     /// outer run's `completionToken`.
     let context: ToolContext
 
-    /// The mount policy every inner `tools.*` call is wrapped with. Always
-    /// an elevation-off mode; the clocks are exposed so a caller (and this
+    /// The mount policy every inner `tools.*` call is wrapped with. Always a
+    /// run-to-completion mode; the clocks are exposed so a caller (and this
     /// package's own tests) can bound an inner call differently without
     /// changing the policy.
-    let innerElevation: ToolMount
+    let innerMount: ToolMount
 
     /// The binding for the enclosing `runCode` invocation, or `nil` when no
     /// session bound an ambient context around it — a `MultiTool`
@@ -97,11 +97,11 @@ struct RunBinding: Sendable {
     /// - Parameters:
     ///   - context: the ambient context captured from the enclosing
     ///     `runCode` invocation.
-    ///   - innerElevation: the mount policy for inner `tools.*` calls.
+    ///   - innerMount: the mount policy for inner `tools.*` calls.
     ///     Defaults to ``innerCallMount``.
-    init(context: ToolContext, innerElevation: ToolMount = RunBinding.innerCallMount) {
+    init(context: ToolContext, innerMount: ToolMount = RunBinding.innerCallMount) {
         self.context = context
-        self.innerElevation = innerElevation
+        self.innerMount = innerMount
     }
 
     /// Runs one inner `tools.*` call through the shared engine, to
@@ -150,7 +150,7 @@ struct RunBinding: Sendable {
                 inheriting: context,
                 sink: AmbientUpstreamSink(context: context),
                 op: journalOp,
-                configuration: innerElevation
+                configuration: innerMount
             )
             guard let engine = mounted as? any Tool<T.Arguments, T.Output> else {
                 // Unreachable: both decorators preserve `Arguments`/`Output`, and

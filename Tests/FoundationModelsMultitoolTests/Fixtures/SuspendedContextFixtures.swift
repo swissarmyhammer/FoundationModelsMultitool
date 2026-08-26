@@ -87,7 +87,7 @@ final class GatedTool: Tool, Sendable {
     /// Whether `call` has begun at least once.
     ///
     /// The evidence that an inner `tools.*` call was genuinely in flight when
-    /// its snippet elevated.
+    /// its snippet went to the background.
     var hasStarted: Bool { startedBox.withLock { $0 } }
 
     /// Whether a call was cancelled instead of released.

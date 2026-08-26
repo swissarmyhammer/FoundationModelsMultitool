@@ -32,7 +32,7 @@ import Testing
 /// going, so that Router's `respond` drain would be the only thing that could
 /// collect it — the drain's snapshot of every background run, its continuation
 /// turn and its bounded re-entry at
-/// `RoutedSessionActor.parkedRunDrainRoundLimit` had never executed in any
+/// `RoutedSessionActor.backgroundRunDrainRoundLimit` had never executed in any
 /// scenario this target ships. The recorded run answered plainly:
 ///
 /// ```

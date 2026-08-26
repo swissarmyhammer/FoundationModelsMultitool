@@ -14,7 +14,7 @@ import FoundationModelsRouter
 struct HardeningTests {
     // MARK: - MultiToolConfiguration itself
 
-    @Test("MultiToolConfiguration.default carries the elevation engine's own work clock and each renderer default")
+    @Test("MultiToolConfiguration.default carries the background engine's own work clock and each renderer default")
     func defaultConfigurationMatchesTheEngineAndRendererDefaults() {
         let configuration = MultiToolConfiguration.default
         // The work bound's default is the engine's own. It is the one clock a

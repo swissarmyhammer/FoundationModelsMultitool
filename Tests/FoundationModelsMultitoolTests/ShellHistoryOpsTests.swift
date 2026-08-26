@@ -22,7 +22,7 @@ import Testing
 /// `SessionMailbox.makeCompletionToken()` mints. eventplan.md § "Consolidation
 /// of the siblings" makes the `commandID` of a shell run its `correlationID`
 /// and its `completionToken` — one string on two planes — thus a test mints a
-/// token exactly as the elevation engine does.
+/// token exactly as the background engine does.
 @Suite("ShellHistoryOpsTests")
 struct ShellHistoryOpsTests {
 

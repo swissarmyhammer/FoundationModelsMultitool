@@ -13,7 +13,7 @@ import Testing
 /// `SessionMailbox.makeCompletionToken()` mints. eventplan.md
 /// § "Consolidation of the siblings" makes the `commandID` of a shell run its
 /// `correlationID` and its `completionToken` — one string on two planes — so
-/// the tests mint a token exactly as the elevation engine does, and they never
+/// the tests mint a token exactly as the background engine does, and they never
 /// write an identifier of their own.
 @Suite("ShellStateTests")
 struct ShellStateTests {

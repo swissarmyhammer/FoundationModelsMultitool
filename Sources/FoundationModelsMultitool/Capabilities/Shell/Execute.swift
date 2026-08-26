@@ -4,7 +4,7 @@
 // Operations/ExecuteCommand.swift`. The sibling is an `@Operation` that takes a
 // `ShellContext`, races a deadline of its own and supervises its own backgrounding;
 // this package has none of those, thus the verb is a plain
-// `FoundationModels.Tool` and the shared elevation engine of Router owns the
+// `FoundationModels.Tool` and the shared background engine of Router owns the
 // tracking, the work bound and the cancel.
 //
 // eventplan.md § "Consolidation of the siblings": "consolidation is promotion,

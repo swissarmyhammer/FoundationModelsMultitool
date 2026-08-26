@@ -228,7 +228,7 @@ struct ScenarioFailureModes {
     /// taking it.
     ///
     /// The recorded shape is a turn that opens "Let me first find…" and
-    /// ends there — see `runElevationIntegrationScenario`'s note that a turn
+    /// ends there — see `runBackgroundIntegrationScenario`'s note that a turn
     /// asked only to start a job "gets an announcement and no `runCode` call
     /// at all".
     private static let announcementPhrases = [
