@@ -4,9 +4,9 @@ import Foundation
 //
 // Some readings a gated scenario takes become true a little AFTER the call that
 // makes them true, and a live model decides WHEN that call happens. A shell run
-// reaches the run plane after the block window of its own call elapses, a child
-// registers its process group inside the spawn, and a process group goes away
-// after the canceler that killed it returned.
+// reaches the run plane when the engine tracks it, a child registers its process
+// group inside the spawn, and a process group goes away after the canceler that
+// killed it returned.
 //
 // A read taken at one instant is a race, and a fixed sleep is slack. A poll is
 // neither: it re-reads until the reading holds, and it gives up at a deadline

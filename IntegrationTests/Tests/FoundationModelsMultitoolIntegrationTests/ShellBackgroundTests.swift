@@ -57,15 +57,16 @@ import Testing
     //   2026-08-25   59.471s      2           searchTools, runCode
     //
     // The shape is constant: searchTools, then one `runCode` whose snippet calls
-    // `tools.shell.execute` with `wait: false`. The worst healthy run is 59.471s.
+    // `tools.shell.execute`. The worst healthy run is 59.471s.
     //
-    // Both runs took the `wait: false` path, so neither paid `Execute`'s own
-    // 30-second block window. A run whose model omits that argument does pay it,
-    // and the limit has to hold that run too, so the number carried forward is
-    // 59.471s + 30s ≈ 90s. The two polls beside it — the live `getLines` read and
-    // the process-group probe — each cost about one `IntegrationPoll.interval`,
-    // because the command writes its first line at once and `killpg` kills the
-    // tree at once.
+    // The limit of about 90s is headroom over that worst run, not a derived
+    // number. It was once 59.471s + 30s, where the 30s was `Execute`'s block
+    // window. That window is gone: `Execute` declares a background mount, so
+    // every call goes to the background at once and no call waits for a window
+    // to elapse. The headroom stays because a live model sets the pace. The two
+    // polls beside it — the live `getLines` read and the process-group probe —
+    // each cost about one `IntegrationPoll.interval`, because the command writes
+    // its first line at once and `killpg` kills the tree at once.
     //
     // THE DERIVATION. Task `^nhxj8hx` measured the CI runner at 6.21 times this
     // dev box over ten suites (3614s / 581.7s). Project the worst healthy run

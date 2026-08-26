@@ -77,10 +77,9 @@ private let shellBackgroundCommand = "echo $$ ; while true ; do echo tick ; slee
 ///
 /// It asks for the background start explicitly, in the words the verb's own
 /// description uses ("start a long command in the background and get its
-/// completion token back at once"). A call that waits instead still goes to the
-/// background — `Execute.mount` answers a 30-second block window and this
-/// command outlives it — so the scenario does not depend on which of the two the
-/// model chose.
+/// completion token back at once"). The wording does not decide the outcome:
+/// `Execute` declares a background mount for itself, so every `execute` call
+/// goes to the background whatever the model asked for.
 private let shellBackgroundPrompt = """
     Start this shell command running in the background and tell me the completion token it hands \
     back. Do not wait for it to finish, because it never finishes.
@@ -122,9 +121,9 @@ private let shellRunArrivalDeadline = Duration.seconds(shellRunArrivalDeadlineSe
 /// How many seconds the harness waits for the started run to reach the run
 /// plane.
 ///
-/// Longer than `Execute`'s own 30-second block window, because a call that did
-/// not ask to skip the wait goes to the background only when that window
-/// elapses.
+/// Generous rather than derived. A call reaches the plane as soon as the engine
+/// tracks it, so this bounds a live model's own pace and not a wait of the
+/// verb's.
 private let shellRunPlaneDeadlineSeconds = 90
 
 /// How long the harness waits for the started run to reach the run plane.
@@ -457,8 +456,7 @@ private func processGroupStands(_ group: pid_t) -> Bool {
 /// which is the path an inner `tools.*` call always takes (`RunBinding`): the
 /// unmounted `MultiTool` runs the snippet inline, and the inner
 /// `tools.shell.execute` call goes to the background on the session's mailbox
-/// because `Execute.mount` declares a background mount and `wait: false`
-/// answers a block window of zero. The root package's `RegisteredJournalOpTests`
+/// because `Execute.mount` declares a background mount. The root package's `RegisteredJournalOpTests`
 /// drives a snippet the same way.
 ///
 /// It exists for one reading: `close()` has to have a background shell run to
@@ -482,7 +480,7 @@ private func startSweptRun(
             arguments: RunCodeArguments(
                 code: """
                     return await tools.\(shellExecutePath)({ \
-                    command: "sleep \(sweptRunSleepSeconds)", wait: false });
+                    command: "sleep \(sweptRunSleepSeconds)" });
                     """
             )
         )
