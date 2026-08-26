@@ -38,9 +38,8 @@ public indirect enum ToolValueShape: Sendable, Equatable {
     /// `declare function` signature.
     ///
     /// Delegates to `ToolAPIRenderer`, which owns every rule about splicing
-    /// schema-derived text into generated TypeScript safely — the escaping and
-    /// key-quoting live with the rest of the rendering rather than being
-    /// restated here.
+    /// schema-derived text into generated TypeScript safely, so the escaping
+    /// and the key-quoting are not restated here.
     public var declaredType: String {
         ToolAPIRenderer.declaredType(of: self)
     }
@@ -66,11 +65,6 @@ public struct ToolObjectShape: Sendable, Equatable {
         /// struct's synthesized initializer is only `internal`-accessible,
         /// and this type is part of the `FoundationModelsMultitool` library
         /// product's surface.
-        ///
-        /// - Parameters:
-        ///   - name: the property's name, as the schema spelled it.
-        ///   - shape: the property's own declared shape.
-        ///   - isRequired: whether the schema lists it as required.
         public init(name: String, shape: ToolValueShape, isRequired: Bool) {
             self.name = name
             self.shape = shape
@@ -87,8 +81,6 @@ public struct ToolObjectShape: Sendable, Equatable {
     ///
     /// Explicit for the same reason as `Property.init` above: a `public`
     /// struct's synthesized initializer is only `internal`-accessible.
-    ///
-    /// - Parameter properties: the declared properties, in schema order.
     public init(properties: [Property]) {
         self.properties = properties
     }
@@ -101,9 +93,6 @@ public struct ToolObjectShape: Sendable, Equatable {
 
     /// Returns the declared property with the given name, or `nil` when this
     /// object declares no such property.
-    ///
-    /// - Parameter name: the property name to look up.
-    /// - Returns: the matching property, or `nil`.
     public func property(named name: String) -> Property? {
         properties.first { $0.name == name }
     }
@@ -128,10 +117,6 @@ public struct ToolSignature: Sendable, Equatable {
     ///
     /// Explicit for the same reason as `ToolObjectShape.init`: a `public`
     /// struct's synthesized initializer is only `internal`-accessible.
-    ///
-    /// - Parameters:
-    ///   - arguments: the single `args` object the call takes.
-    ///   - result: what awaiting the call resolves to.
     public init(arguments: ToolObjectShape, result: ToolValueShape) {
         self.arguments = arguments
         self.result = result

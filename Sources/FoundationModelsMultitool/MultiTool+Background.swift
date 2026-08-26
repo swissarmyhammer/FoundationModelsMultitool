@@ -20,11 +20,10 @@ extension MultiTool: BackgroundTool {
     /// The `next` sentence of the pending envelope a background `runCode`
     /// call hands the model: call the `wait` tool with this envelope's token.
     ///
-    /// This package ships the `wait` tool and owns its report, so the
-    /// sentence states the exact read — `state` `complete` or `error` means
-    /// answer from `detail`; `result` `timeout` means call `wait` again with
-    /// the same token — with every value spliced from ``RunState`` and
-    /// ``CallResult`` so the names cannot drift from what `wait` reports.
+    /// This package ships the `wait` tool and owns its report, so the sentence
+    /// can state the exact read. The three values it names — `complete`,
+    /// `error` and `timeout` — are spliced from ``RunState`` and
+    /// ``CallResult``, so they cannot drift from what `wait` reports.
     ///
     /// It never names `runCode` and never prescribes a snippet. Every mounted
     /// `runCode` call goes to the background (``mount``), so a
@@ -34,9 +33,6 @@ extension MultiTool: BackgroundTool {
     /// for the `wait` tool on its own (task `^4qcf1v9`: 21 rounds and about
     /// 1700 seconds for an eight-second run). The `wait` tool on this token
     /// returns the background snippet's result at once.
-    ///
-    /// - Parameter completionToken: the background `runCode` call's token.
-    /// - Returns: the collect directive, as plain prose.
     public func collectInstruction(forCompletionToken completionToken: String) -> String {
         "Do not answer yet, and do not guess the result. "
             + "Call the wait tool with completionToken \"\(completionToken)\" to collect it. "
@@ -46,51 +42,40 @@ extension MultiTool: BackgroundTool {
             + "call the wait tool again with the same completionToken."
     }
 
-    /// The mount every `runCode` call carries: the background, whatever mount
-    /// the composition site applies.
+    /// The mount every `runCode` call carries. It is always background.
     ///
     /// **A snippet can run for hours, so the tool states this itself.** A
-    /// declared mount wins over the site, and this is the declaration that
-    /// makes `runCode` the backgrounder: every mounted call hands back a
-    /// completion token at once, and the snippet goes on behind it. The
-    /// answer cannot vary by call, by host, or by machine load, because
-    /// `RunCodeArguments` carries no clock at all.
+    /// declared mount wins over the mount the composition site applies, and
+    /// this is the declaration that makes `runCode` the backgrounder: every
+    /// mounted call hands back a completion token at once, and the snippet
+    /// goes on behind it. The answer cannot vary by call, by host, or by
+    /// machine load, because `RunCodeArguments` carries no clock at all.
     ///
-    /// The mount carries no clock of its own. The work bound is answered per
-    /// call by ``timeout(from:)``, which the engine reads ahead of
-    /// the mount, so the clock here would never be consulted.
+    /// The engine reads ``timeout(from:)`` ahead of the mount's own clock, so
+    /// a clock here would never be consulted.
     public var mount: ToolMount? {
         ToolMount(mode: .background, timeout: nil)
     }
 
     /// The per-call work bound every `runCode` call carries: this package's
-    /// own ceiling, `configuration.executionTimeLimit`.
+    /// own ceiling, `configuration.executionTimeLimit`. Every call gets the
+    /// same bound, so `arguments` is unread.
     ///
     /// Always answered, never left to the mount. That limit is both this
     /// package's default work clock and its hard ceiling (see
     /// `MultiToolConfiguration.executionTimeLimit` for the full
-    /// reconciliation). A background snippet is exactly what needs a ceiling,
-    /// since nothing is blocking on it to notice that it ran away. Answering
-    /// it here is what keeps the engine's clock at or under the limit the
-    /// watchdog of the sandbox `MultiTool.init` runs is armed with, so the
-    /// engine's own timeout is what a well-behaved suspended context meets
-    /// first. That holds for an interpreter injected into `MultiTool.init`
-    /// too: it is re-armed from the same ceiling this bound comes from
-    /// (`Interpreter.withTimeLimit(_:)`), so the two sides cannot disagree.
+    /// reconciliation of the two clocks). A background snippet is exactly what
+    /// needs a ceiling, since nothing is blocking on it to notice that it ran
+    /// away. Answering it here is what keeps the engine's clock at or under
+    /// the limit the watchdog of the sandbox `MultiTool.init` runs is armed
+    /// with, so the engine's own timeout is what a well-behaved suspended
+    /// context meets first.
     ///
-    /// It is a bound, not a promise of survival. The two clocks are not the
-    /// same kind: the engine's timeout resets on every progress event, while
-    /// the watchdog measures from sandbox creation and nothing resets it
-    /// (`WatchdogState.runStart` is a `let`; `rearm()` re-arms the poll
-    /// interval, not the deadline). A snippet that keeps resetting the
-    /// engine's clock — by reporting progress, or by suspending on `elicit()` —
-    /// therefore still meets the configured ceiling its sandbox's watchdog
-    /// was armed with, and is force-terminated there. The absolute cap is the
-    /// intended safety property, not a gap.
-    ///
-    /// - Parameter arguments: the call's arguments as opaque
-    ///   `GeneratedContent`. Unread: every `runCode` call gets the same bound.
-    /// - Returns: this package's bounded work clock.
+    /// It is a bound, not a promise of survival. The engine's clock and the
+    /// sandbox watchdog's are not the same kind, and a snippet that keeps
+    /// resetting the engine's clock is still force-terminated at the ceiling
+    /// its watchdog was armed with. That absolute cap is the intended safety
+    /// property, not a gap. The reconciliation named above states why.
     public func timeout(from arguments: GeneratedContent) -> TimeInterval? {
         configuration.executionTimeLimit
     }
@@ -122,7 +107,6 @@ extension MultiTool {
 
         /// Claims one live context, if the cap leaves room for it.
         ///
-        /// - Parameter limit: the most contexts that may be live at once.
         /// - Returns: `true` when the context was claimed, and the caller owes
         ///   a matching ``release()``; `false` when the cap is already full
         ///   and the caller must not run.
@@ -148,7 +132,6 @@ extension MultiTool {
     /// collect a background run, because collecting one is exactly what makes
     /// room for this call.
     ///
-    /// - Parameter limit: the configured cap the call would have exceeded.
     /// - Returns: the error `ResultRenderer` renders as the call's output.
     static func liveContextCapError(limit: Int) -> InterpreterError {
         InterpreterError(

@@ -15,10 +15,6 @@ import os
 /// That is why a hang inside an awaited call cannot be answered by sampling,
 /// and why this package writes its own trail instead.
 ///
-/// Each span writes one line before the call and one line after it, under a
-/// single signpost id. The last unmatched entry in the log names the call that
-/// was entered and never returned — which is the whole question a hang asks.
-///
 /// ## Where spans are placed
 ///
 /// On the calls that can suspend for a long time and are not visible from
@@ -39,6 +35,9 @@ import os
 /// or, after the fact, `log show --last 10m --predicate '…'`. Each line reads
 /// `enter <name> #<id> <detail>` or `exit <name> #<id> <outcome>`; `#<id>` is
 /// the signpost id, so two concurrent calls of the same name stay apart.
+/// Spans nest, so one hang leaves more than one unmatched entry line. The
+/// LAST unmatched entry names the call that was entered and never returned —
+/// which is the whole question a hang asks.
 struct CallTrace: Sendable {
     /// The unified-logging subsystem every span publishes under.
     ///
@@ -105,15 +104,11 @@ struct CallTrace: Sendable {
     /// package sits on a production path, which is why that is a tested
     /// property (`CallTraceTests`) and not merely an intention.
     ///
-    /// - Parameters:
-    ///   - name: the span's name. A `StaticString` because the unified log
-    ///     stores a signpost name by reference rather than copying it.
-    ///   - detail: the call's own identity — the tool name, the completion
-    ///     token, whatever tells two concurrent calls of this name apart.
-    ///     Defaults to empty, for a span that is unique on its name alone.
-    ///   - body: the call to record.
-    /// - Returns: whatever `body` returned.
-    /// - Throws: whatever `body` threw.
+    /// `name` is a `StaticString` because the unified log stores a signpost
+    /// name by reference rather than copying it. `detail` is the call's own
+    /// identity — the tool name, the completion token, whatever tells two
+    /// concurrent calls of this name apart — and stays empty for a span that
+    /// is unique on its name alone.
     func span<Result>(
         _ name: StaticString,
         detail: String = "",
@@ -138,6 +133,7 @@ struct CallTrace: Sendable {
     /// `async` alone is well-defined — an `async` context prefers the
     /// asynchronous overload, and a synchronous context is the only place this
     /// one is viable — so both spans keep the one name a reader looks for.
+    /// That overload documents `name` and `detail`, which are the same here.
     /// Everything the two share is already factored into `begin`/`end`; what
     /// repeats is the `do`/`catch` the language requires at each.
     ///
@@ -146,14 +142,6 @@ struct CallTrace: Sendable {
     /// so it can hold a thread, and a call that never returns from a
     /// synchronous factory looks identical, from outside, to one suspended in
     /// an `await`.
-    ///
-    /// - Parameters:
-    ///   - name: the span's name. A `StaticString` because the unified log
-    ///     stores a signpost name by reference rather than copying it.
-    ///   - detail: the call's own identity. Defaults to empty.
-    ///   - body: the call to record.
-    /// - Returns: whatever `body` returned.
-    /// - Throws: whatever `body` threw.
     func span<Result>(
         _ name: StaticString,
         detail: String = "",
@@ -171,11 +159,6 @@ struct CallTrace: Sendable {
     }
 
     /// Opens a span: begins the signpost interval and writes the entry line.
-    ///
-    /// - Parameters:
-    ///   - name: the span's name.
-    ///   - detail: the call's own identity.
-    /// - Returns: what ``end(_:outcome:)`` needs to close it.
     private func begin(_ name: StaticString, detail: String) -> Open {
         let id = signposter.makeSignpostID()
         let state = signposter.beginInterval(name, id: id, "\(detail, privacy: .public)")
@@ -187,10 +170,9 @@ struct CallTrace: Sendable {
 
     /// Closes a span: writes the exit line and ends the signpost interval.
     ///
-    /// - Parameters:
-    ///   - open: the span ``begin(_:detail:)`` opened.
-    ///   - outcome: how the call ended — ``returnedOutcome``, or the error it
-    ///     threw.
+    /// `outcome` is ``returnedOutcome``, or `threw` and then the error the call
+    /// threw. The exit line prints it whole, so a reader looking for the error
+    /// text alone will not find it.
     private func end(_ open: Open, outcome: String) {
         logger.notice(
             "exit \(open.name.description, privacy: .public) #\(open.id.rawValue, privacy: .public) \(outcome, privacy: .public)"
