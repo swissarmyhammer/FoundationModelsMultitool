@@ -38,7 +38,7 @@ enum ShellRunPlane {
         _ verb: Execute, inheriting context: ToolContext
     ) throws -> any Tool<ExecuteArguments, String> {
         try #require(
-            ToolMounting.wrapping(
+            ToolMounting.makeWrapped(
                 tool: verb,
                 inheriting: context,
                 sink: AmbientUpstreamSink(context: context),

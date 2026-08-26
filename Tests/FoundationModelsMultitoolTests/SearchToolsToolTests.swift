@@ -310,7 +310,7 @@ struct SearchToolsToolTests {
         // than by timing a real search: "however long it takes" is a property
         // of the mount, not of a stopwatch.
         let mounted = try #require(
-            ToolMounting.wrapping(
+            ToolMounting.makeWrapped(
                 tool: tool,
                 sessionID: ULID(),
                 mailbox: SessionMailbox(),
@@ -337,7 +337,7 @@ struct SearchToolsToolTests {
         )
         let tool = SearchToolsTool(searcher: searcher, limit: surface.entries.count)
         let mounted = try #require(
-            ToolMounting.wrapping(
+            ToolMounting.makeWrapped(
                 tool: tool,
                 sessionID: ULID(),
                 mailbox: SessionMailbox(),

@@ -129,7 +129,7 @@ struct FilesCapabilityTests {
         try Self.sharedContextContent.write(toFile: path, atomically: true, encoding: .utf8)
         let mailbox = SessionMailbox()
         let read = try #require(
-            ToolMounting.wrapping(
+            ToolMounting.makeWrapped(
                 tool: try Self.verb(Read.self, in: capability),
                 sessionID: ULID(),
                 mailbox: mailbox,

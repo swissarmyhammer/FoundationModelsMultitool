@@ -19,7 +19,7 @@ import Testing
 /// error rather than a pile-up, and that `cancel()` genuinely tears one down.
 ///
 /// Every test mounts `MultiTool` exactly as Router's native session does —
-/// `ToolMounting.wrapping` under `synchronous` — so what is exercised
+/// `ToolMounting.makeWrapped` under `synchronous` — so what is exercised
 /// is the real composition, not a stand-in for it.
 @Suite("SuspendedContext")
 struct SuspendedContextTests {
@@ -273,7 +273,7 @@ struct SuspendedContextTests {
         )
         let mailbox = SessionMailbox()
         let sink = RecordingEventSink()
-        let mounted = ToolMounting.wrapping(
+        let mounted = ToolMounting.makeWrapped(
             tool: multiTool,
             sessionID: ULID(),
             mailbox: mailbox,

@@ -107,7 +107,7 @@ struct RunBinding: Sendable {
     /// Runs one inner `tools.*` call through the shared engine, to
     /// completion.
     ///
-    /// `ToolMounting.wrapping(tool:inheriting:sink:op:configuration:)`
+    /// `ToolMounting.makeWrapped(tool:inheriting:sink:op:configuration:)`
     /// picks the decorator: `RunToCompletionRunner` for a `String`-output tool
     /// (or `BackgroundToolRunner`, when that tool declares the background),
     /// `ContextBindingTool` for any other output. Each mints the call its own
@@ -145,7 +145,7 @@ struct RunBinding: Sendable {
             "RunBinding.invoke",
             detail: "tool=\(tool.name) outerToken=\(context.completionToken)"
         ) {
-            let mounted = ToolMounting.wrapping(
+            let mounted = ToolMounting.makeWrapped(
                 tool: tool,
                 inheriting: context,
                 sink: AmbientUpstreamSink(context: context),
@@ -154,7 +154,7 @@ struct RunBinding: Sendable {
             )
             guard let engine = mounted as? any Tool<T.Arguments, T.Output> else {
                 // Unreachable: both decorators preserve `Arguments`/`Output`, and
-                // `ToolMounting.wrapping`'s own unreachable fallback returns the
+                // `ToolMounting.makeWrapped`'s own unreachable fallback returns the
                 // tool itself, which matches too. Kept as a graceful degradation
                 // rather than a trap, matching this package's "throw/degrade,
                 // never trap" posture — the call still happens, only without the

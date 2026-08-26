@@ -783,7 +783,7 @@ let integrationNestedGenerationTokenLimit = 32
 ///
 /// **Why the output is not a `String`.** Router's session mount wraps a
 /// `Tool<_, String>` in `BackgroundToolRunner` and leaves every other tool in band
-/// (`ToolMounting.wrapping(tool:sessionID:mailbox:sink:configuration:)`). A
+/// (`ToolMounting.makeWrapped(tool:sessionID:mailbox:sink:configuration:)`). A
 /// background body would run outside the turn that holds the permit, which is the
 /// one arrangement that cannot deadlock — and would make this probe answer a
 /// question nobody asked. A `@Generable` output keeps the call in band.

@@ -224,7 +224,7 @@ func startScriptedRun(
 ) async throws -> ScriptedRun {
     let gate = SettlementGate()
     let backgrounded = SettlementGate()
-    let mounted = ToolMounting.wrapping(
+    let mounted = ToolMounting.makeWrapped(
         tool: GatedScriptedTool(
             name: tool,
             gate: gate,

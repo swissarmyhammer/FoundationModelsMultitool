@@ -5,7 +5,7 @@ import os
 
 // MARK: - The runCode mount and its work bound
 //
-// Router mounts `runCode` through `ToolMounting.wrapping` like any other
+// Router mounts `runCode` through `ToolMounting.makeWrapped` like any other
 // tool, and the tool states its own mount and its own per-call work bound
 // through `BackgroundTool`. This file is that declaration, the
 // collect sentence the pending envelope carries — plus the cap on how many of

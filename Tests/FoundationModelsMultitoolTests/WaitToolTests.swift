@@ -267,7 +267,7 @@ struct WaitToolTests {
         // declares `synchronousUnbounded` itself, and a declaration wins over
         // the site, so the wait runs to its own conclusion.
         let mounted = try #require(
-            ToolMounting.wrapping(
+            ToolMounting.makeWrapped(
                 tool: WaitTool(),
                 sessionID: ULID(),
                 mailbox: mailbox,

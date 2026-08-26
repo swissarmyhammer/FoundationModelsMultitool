@@ -41,7 +41,7 @@
 //
 // **The answer is `String`, and its two siblings answer a `@Generable` value.**
 // That is the Router's rule rather than a preference:
-// `ToolMounting.wrapping` gives `BackgroundToolRunner` to a `String`-output tool
+// `ToolMounting.makeWrapped` gives `BackgroundToolRunner` to a `String`-output tool
 // that declares the background, and `ContextBindingTool` — which never reaches
 // the run plane — to every tool with another output. A verb that must reach the
 // run plane therefore has one available output type. The answer is rendered
@@ -107,7 +107,7 @@ extension Execute: BackgroundTool {
     /// whatever composed this verb: the background.
     ///
     /// **A declared mount is the only way a call of this verb reaches the
-    /// background.** `ToolMounting.wrapping` picks `BackgroundToolRunner` on the
+    /// background.** `ToolMounting.makeWrapped` picks `BackgroundToolRunner` on the
     /// mount's mode alone, and `RunBinding.innerCallMount` — the mount every
     /// inner `tools.*` call travels under — is `.runToCompletion`. Router
     /// states that a declared mount wins over the composition site, and this

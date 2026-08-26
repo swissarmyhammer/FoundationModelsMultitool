@@ -284,7 +284,7 @@ func runNativeIntegrationScenario(
 /// It used to be the session. Until `f8964b4` the native runner built a bare
 /// `LanguageModelSession` over an `MLXLanguageModel`, which carries no
 /// elevation mount at all — `BackgroundToolRunner` is applied only by Router's own
-/// per-session tool wiring (`ToolMounting.sessionMounted(tool:sessionID:
+/// per-session tool wiring (`ToolMounting.makeSessionMounted(tool:sessionID:
 /// mailbox:sink:cappedToTokenLimit:)`) — so on that path a slow snippet simply
 /// blocked and a pending envelope could never appear. That is history, not the
 /// reason this runner is still here.

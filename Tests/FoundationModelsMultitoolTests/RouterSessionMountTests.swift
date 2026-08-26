@@ -37,7 +37,7 @@ struct RouterSessionMountTests {
 
         let direct = try await searchTools.call(arguments: SearchToolsArguments(task: task))
         let mounted = try #require(
-            Self.sessionMounted(searchTools) as? any Tool<SearchToolsArguments, String>
+            Self.makeSessionMounted(searchTools) as? any Tool<SearchToolsArguments, String>
         )
         let throughMount = try await mounted.call(arguments: SearchToolsArguments(task: task))
 
@@ -53,7 +53,7 @@ struct RouterSessionMountTests {
 
         let direct = try await runCode.call(arguments: RunCodeArguments(code: snippet))
         let mounted = try #require(
-            Self.sessionMounted(runCode) as? any Tool<RunCodeArguments, String>
+            Self.makeSessionMounted(runCode) as? any Tool<RunCodeArguments, String>
         )
         let throughMount = try await mounted.call(arguments: RunCodeArguments(code: snippet))
 
@@ -80,7 +80,7 @@ struct RouterSessionMountTests {
         let registry = try Self.registry()
         let searchTools = try SearchToolsTool(registry: registry, librarian: nil)
 
-        let mounted = Self.sessionMounted(searchTools)
+        let mounted = Self.makeSessionMounted(searchTools)
 
         #expect(mounted.name == searchTools.name)
         #expect(mounted.description == searchTools.description)
@@ -100,7 +100,7 @@ struct RouterSessionMountTests {
         let pendingRun = try await startScriptedRun(in: mailbox)
         let runCode = MultiTool(registry: registry)
         let mounted = try #require(
-            Self.sessionMounted(runCode, mailbox: mailbox) as? any Tool<RunCodeArguments, String>
+            Self.makeSessionMounted(runCode, mailbox: mailbox) as? any Tool<RunCodeArguments, String>
         )
 
         let rendered = try await mounted.call(
@@ -151,8 +151,8 @@ struct RouterSessionMountTests {
     ///   - mailbox: the session mailbox the mount tracks runs in; a fresh one
     ///     when the test holds no background run of its own.
     /// - Returns: the composed, model-facing tool.
-    private static func sessionMounted(_ tool: any Tool, mailbox: SessionMailbox = SessionMailbox()) -> any Tool {
-        ToolMounting.wrapping(
+    private static func makeSessionMounted(_ tool: any Tool, mailbox: SessionMailbox = SessionMailbox()) -> any Tool {
+        ToolMounting.makeWrapped(
             tool: tool,
             sessionID: ULID(),
             mailbox: mailbox,

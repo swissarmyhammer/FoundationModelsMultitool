@@ -48,7 +48,7 @@ struct HostAndEmitterTests {
         let sink = RecordingEventSink()
         let sessionID = ULID()
         let mounted = try #require(
-            ToolMounting.wrapping(
+            ToolMounting.makeWrapped(
                 tool: MultiTool(registry: registry),
                 sessionID: sessionID,
                 mailbox: mailbox,
