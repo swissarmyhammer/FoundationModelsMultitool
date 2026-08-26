@@ -4,12 +4,11 @@ import FoundationModels
 /// A failure raised by `MultiTool.Builder.build()`.
 ///
 /// Never raised by `addTool`/`addTools`/`addGroup`/`register`/
-/// `withCapability`, which only ever record what was added — every
-/// validation (group-name and noun legality, name collisions, and each
-/// tool's own completeness contract via
-/// `ToolAPIRenderer`) happens once, at `build()`. That's why plan.md's
-/// fluent chain needs `try` only on the final call:
-/// `try MultiTool.Builder().addTool(...)....addGroup(...).build()`.
+/// `withCapability`, which only record what was added. Every validation —
+/// group-name and noun legality, name collisions, and each tool's own
+/// completeness contract through `ToolAPIRenderer` — occurs one time, at
+/// `build()`. That is why the fluent chain needs `try` only on its final
+/// call.
 ///
 /// `withShell(storeDirectory:sandbox:outputChunkStream:)` is the one
 /// registration method that throws, and it never throws THIS error: it
@@ -21,10 +20,9 @@ public struct MultiToolBuilderError: Error, Sendable, Equatable, CustomStringCon
         /// Two tools would render at the same top-level snippet call
         /// path: two standalone tools sharing a `name`, two tools in the
         /// same group sharing a `name`, or a standalone tool's `name`
-        /// matching a group's name outright. Namespacing per plan.md
-        /// Resolved #5: duplicates *across different groups* are fine
-        /// (their fully-qualified paths differ), so this is never raised
-        /// for those.
+        /// matching a group's name outright. Duplicates *across different
+        /// groups* are fine — their fully-qualified paths differ — so this
+        /// is never raised for those.
         case duplicateName
 
         /// A group name passed to `addGroup(named:_:)` — or a noun passed
@@ -36,11 +34,8 @@ public struct MultiToolBuilderError: Error, Sendable, Equatable, CustomStringCon
         /// toward a tool's own `name`.
         case illegalGroupName
 
-        /// A noun a capability owns was registered a second time —
-        /// eventplan.md § "Registration of capabilities: noun/verb": "Nouns
-        /// are unique. Registration rejects a duplicate noun. An MCP server
-        /// with the name `files`, against the files capability, fails loudly
-        /// at `buildRegistry()`."
+        /// A noun a capability owns was registered a second time. Nouns are
+        /// unique, and registration rejects a duplicate noun.
         ///
         /// `withCapability(_:)` claims the whole `tools.<noun>` namespace, so
         /// three shapes raise this: a second capability that claims the same
@@ -52,8 +47,7 @@ public struct MultiToolBuilderError: Error, Sendable, Equatable, CustomStringCon
         /// render at one path. This case reports ownership, so it is raised
         /// even when every path differs: `tools.demo.first` and
         /// `tools.demo.second` collide nowhere, and a second owner of `demo`
-        /// is the failure all the same. A group name claims nothing — two
-        /// `addGroup(named:_:)` calls with one name still merge.
+        /// is the failure all the same.
         case duplicateNoun
     }
 
@@ -68,17 +62,10 @@ public struct MultiToolBuilderError: Error, Sendable, Equatable, CustomStringCon
 
     /// Creates a builder error.
     ///
-    /// Explicit for the same reason as `ToolDescriptor.init` in
-    /// `ToolDescriptor.swift`: a `public` struct's synthesized initializer
-    /// is only `internal`-accessible, and `MultiToolBuilderError` is a
-    /// public `Error` type thrown across the `FoundationModelsMultitool`
-    /// library product's boundary, e.g. to build a fixture in a caller's
-    /// own tests.
-    ///
-    /// - Parameters:
-    ///   - kind: what kind of failure this was.
-    ///   - name: the offending tool or group name.
-    ///   - message: a human-readable description of the failure.
+    /// Explicit because a `public` struct's synthesized initializer is
+    /// `internal` only, and this error crosses the
+    /// `FoundationModelsMultitool` library product's boundary — a caller
+    /// builds one to make a fixture in its own tests.
     public init(kind: Kind, name: String, message: String) {
         self.kind = kind
         self.name = name
@@ -86,15 +73,14 @@ public struct MultiToolBuilderError: Error, Sendable, Equatable, CustomStringCon
     }
 
     /// A human-readable description of the error, satisfying
-    /// `CustomStringConvertible`. Identical to `message`.
+    /// `CustomStringConvertible`.
     public var description: String { message }
 }
 
 extension MultiTool {
     /// Collects wrapped `Tool`s into a model-agnostic catalog and renders
-    /// them, via `ToolAPIRenderer`, into an `APISurface` — plan.md §
-    /// "Adding tools is the easy path" / Component 2: "The `Builder` is a
-    /// pure catalog — no model wiring here."
+    /// them, through `ToolAPIRenderer`, into an `APISurface`. It is a pure
+    /// catalog, with no model wiring in it.
     ///
     /// ```swift
     /// let surface = try MultiTool.Builder()
@@ -120,7 +106,6 @@ extension MultiTool {
         /// order the registration methods were called. A noun and a group
         /// are the same segment, so `register(noun:tool:)` and
         /// `addGroup(named:_:)` both queue `.grouped`.
-        /// `ToolAPIRenderer` never runs until `build()`.
         private enum PendingTool {
             case standalone(any Tool)
             case grouped(group: String, tool: any Tool)
@@ -163,19 +148,14 @@ extension MultiTool {
         /// Queues `tool` as a standalone tool, destined to render flat at
         /// `tools.<tool.name>`.
         ///
-        /// Generic over `T: Tool` (rather than accepting `any Tool`
-        /// directly) per plan.md: "`addTool` is generic over `T: Tool`,
-        /// capturing the concrete type so `ToolInvoker` can open it
-        /// later." Passing a concrete `T` or an already-erased `any Tool`
-        /// value both work identically at this call site — Swift's
-        /// implicit existential opening (SE-0352) binds `T` to the
-        /// value's underlying concrete type either way — and the `any
-        /// Tool` stored in `pending` is exactly what a later
-        /// `ToolInvoker.invoke` (M3b) opens again to make the native
-        /// call.
+        /// Generic over `T: Tool`, and not `any Tool`, to capture the
+        /// concrete type. A concrete `T` and an already-erased `any Tool`
+        /// both work at this call site — Swift's implicit existential
+        /// opening (SE-0352) binds `T` to the underlying concrete type
+        /// either way — and the `any Tool` stored in `pending` is what a
+        /// later `ToolInvoker.invoke` opens again to make the native call.
         ///
         /// - Parameter tool: the tool to add.
-        /// - Returns: `self`, for fluent chaining.
         @discardableResult
         public func addTool<T: Tool>(_ tool: T) -> Self {
             pending.append(.standalone(tool))
@@ -184,17 +164,13 @@ extension MultiTool {
 
         /// Queues every tool in `tools` as a standalone tool, in order —
         /// equivalent to calling `addTool(_:)` once per element.
-        ///
-        /// - Parameter tools: the tools to add.
-        /// - Returns: `self`, for fluent chaining.
         @discardableResult
         public func addTools(_ tools: [any Tool]) -> Self {
             enqueue(tools) { addTool($0) }
         }
 
         /// Queues `tool` under the namespace `noun`, destined to render at
-        /// `tools.<noun>.<tool.name>` — the registration primitive of
-        /// eventplan.md § "Registration of capabilities: noun/verb".
+        /// `tools.<noun>.<tool.name>` — the registration primitive.
         ///
         /// The method supplies the noun, and nothing else. The tool supplies
         /// the verb, because `Tool.name` is the verb. Thus a `Tool` conformer
@@ -209,10 +185,9 @@ extension MultiTool {
         /// - Parameters:
         ///   - noun: the namespace `tool` renders under. Must be a legal
         ///     TypeScript identifier; examined at `buildRegistry()`, and not
-        ///     here — see this type's documentation for why no registration
+        ///     here — see ``MultiToolBuilderError`` for why no registration
         ///     method throws.
         ///   - tool: the tool to add under `noun`.
-        /// - Returns: `self`, for fluent chaining.
         @discardableResult
         public func register(noun: String, tool: any Tool) -> Self {
             pending.append(.grouped(group: noun, tool: tool))
@@ -220,8 +195,7 @@ extension MultiTool {
         }
 
         /// Queues every tool of `capability` under that capability's own
-        /// noun, in order — eventplan.md's "`Builder.withCapability(_:)`
-        /// fills in the noun one time".
+        /// noun, in order.
         ///
         /// A capability is only a noun plus its tools, so this method is only
         /// `register(noun:tool:)` called one time for each tool. Built-in
@@ -234,11 +208,9 @@ extension MultiTool {
         /// and a second registration under it — another capability, an
         /// `addGroup(named:_:)` call, a `register(noun:tool:)` call, or a
         /// standalone tool of that name — is a `.duplicateNoun` failure at
-        /// `buildRegistry()`, however the verbs fall. eventplan.md §
-        /// "Registration of capabilities: noun/verb": "Nouns are unique."
+        /// `buildRegistry()`, however the verbs fall.
         ///
         /// - Parameter capability: the capability to register.
-        /// - Returns: `self`, for fluent chaining.
         @discardableResult
         public func withCapability(_ capability: any Capability) -> Self {
             let firstPosition = pending.count
@@ -253,30 +225,14 @@ extension MultiTool {
             return self
         }
 
-        /// Queues the three verbs of the shell capability under the noun
-        /// `shell` — eventplan.md § "Registration of capabilities: noun/verb":
-        /// "`withShell()` is a short form of
-        /// `withCapability(ShellCapability(...))`."
+        /// Queues the three verbs of the shell capability —
+        /// `tools.shell.execute`, `tools.shell.getLines` and
+        /// `tools.shell.grepHistory` — under the noun `shell`. It is a short
+        /// form of `withCapability(ShellCapability(...))`, so the verbs render
+        /// and the noun is owned as any other capability's are.
         ///
-        /// That is the whole of what this method is. It builds a
-        /// `ShellCapability` from the three arguments and hands it to
-        /// `withCapability(_:)`, so `tools.shell.execute`,
-        /// `tools.shell.getLines` and `tools.shell.grepHistory` render exactly
-        /// as any other capability's verbs do, and the noun is owned exactly
-        /// as any other capability's noun is.
-        ///
-        /// **The shell is OFF by default.** eventplan.md § "The capability
-        /// contract": "The modules are opt-in ... They are off by default."
-        /// A builder that never calls this renders no `tools.shell` namespace
-        /// at all.
-        ///
-        /// **This is the one registration method that throws**, and what it
-        /// throws is never a `MultiToolBuilderError`. The store of the shell
-        /// prepares a directory on disk, which is resource acquisition rather
-        /// than validation — see
-        /// `ShellCapability.init(storeDirectory:sandbox:outputChunkStream:)`.
-        /// Every rule `MultiToolBuilderError` reports, this method included,
-        /// is still examined one time at `buildRegistry()`.
+        /// **The shell is OFF by default.** A builder that never calls this
+        /// renders no `tools.shell` namespace at all.
         ///
         /// - Parameters:
         ///   - storeDirectory: the directory each run's history and captured
@@ -285,7 +241,6 @@ extension MultiTool {
         ///     no confinement at all.
         ///   - outputChunkStream: the live view of the output a subscribed host
         ///     reads. Defaults to teeing nothing.
-        /// - Returns: `self`, for fluent chaining.
         /// - Throws: what
         ///   `ShellCapability.init(storeDirectory:sandbox:outputChunkStream:)`
         ///   throws when the store cannot prepare.
@@ -303,29 +258,18 @@ extension MultiTool {
             return withCapability(capability)
         }
 
-        /// Queues the six verbs of the files capability under the noun
-        /// `files` — eventplan.md § "Registration of capabilities: noun/verb":
-        /// "The Builder opts modules in explicitly: `withShell()`,
-        /// `withFiles(root:)`...".
+        /// Queues the six verbs of the files capability — `tools.files.read`,
+        /// `tools.files.write`, `tools.files.edit`, `tools.files.patch`,
+        /// `tools.files.glob` and `tools.files.grep` — under the noun `files`,
+        /// through `withCapability(_:)`.
         ///
-        /// That is the whole of what this method is. It builds a
-        /// `FilesCapability` from the five arguments and hands it to
-        /// `withCapability(_:)`, so `tools.files.read`, `tools.files.write`,
-        /// `tools.files.edit`, `tools.files.patch`, `tools.files.glob` and
-        /// `tools.files.grep` render exactly as any other capability's verbs
-        /// do, and the noun is owned exactly as any other capability's noun
-        /// is.
-        ///
-        /// **Files is OFF by default.** eventplan.md § "The capability
-        /// contract": "The modules are opt-in ... They are off by default."
-        /// A builder that never calls this renders no `tools.files` namespace
-        /// at all.
+        /// **Files is OFF by default.** A builder that never calls this
+        /// renders no `tools.files` namespace at all.
         ///
         /// Unlike `withShell(...)`, this method does not throw. The files
         /// capability acquires no resource at construction: the session
         /// context validates nothing up front, and every path question is
-        /// answered per call, as a correction in the verb's own result — see
-        /// `FilesCapability.init(root:additionalRoots:readOnly:allowSymlinks:recordsChanges:)`.
+        /// answered per call, as a correction in the verb's own result.
         ///
         /// - Parameters:
         ///   - root: the session working directory: the boundary every path
@@ -339,7 +283,6 @@ extension MultiTool {
         ///   - recordsChanges: whether the mutating verbs record what they
         ///     changed into the session's change journal. Defaults to
         ///     recording nothing.
-        /// - Returns: `self`, for fluent chaining.
         @discardableResult
         public func withFiles(
             root: URL,
@@ -360,42 +303,31 @@ extension MultiTool {
         }
 
         /// Queues every tool in `tools` under the named `group`, destined
-        /// to render at `tools.<group>.<name>` — plan.md's namespacing for
-        /// "many `Tool`s under one namespace" (Resolved #5). Calling
-        /// `addGroup(named:_:)` more than once with the same `group`
-        /// merges every call's tools into that one namespace, in the order
-        /// added.
+        /// to render at `tools.<group>.<name>`. Calling `addGroup(named:_:)`
+        /// more than once with the same `group` merges every call's tools
+        /// into that one namespace, in the order added.
         ///
         /// The group is the noun, so this method registers through
-        /// `register(noun:tool:)`. A group and a capability make the same
-        /// entry, and one queue holds both.
+        /// `register(noun:tool:)`.
         ///
         /// - Parameters:
         ///   - group: the namespace every tool in `tools` renders under.
-        ///     Must be a legal TypeScript identifier; validated at
-        ///     `build()`, not here — see this type's documentation for why
-        ///     no `add*` method throws.
+        ///     Must be a legal TypeScript identifier; examined at
+        ///     `buildRegistry()`, and not here — see ``MultiToolBuilderError``
+        ///     for why no registration method throws.
         ///   - tools: the tools to add under `group`.
-        /// - Returns: `self`, for fluent chaining.
         @discardableResult
         public func addGroup(named group: String, _ tools: [any Tool]) -> Self {
             enqueue(tools) { register(noun: group, tool: $0) }
         }
 
         /// Queues every tool in `tools`, in order, through the single-tool
-        /// registration method `add` names — the shared iterate-and-queue
-        /// loop that `addTools(_:)`, `addGroup(named:_:)` and
-        /// `withCapability(_:)` all need.
+        /// registration method `add` names.
         ///
         /// Each caller passes its own primitive: `addTool(_:)` for a flat
         /// entry, `register(noun:tool:)` for a `tools.<noun>.<verb>` entry.
         /// Thus one method queues one tool, and this loop holds the only
         /// copy of the fluent tail.
-        ///
-        /// - Parameters:
-        ///   - tools: the tools to add.
-        ///   - add: queues one tool.
-        /// - Returns: `self`, for fluent chaining.
         @discardableResult
         private func enqueue(_ tools: [any Tool], by add: (any Tool) -> Void) -> Self {
             for tool in tools {
@@ -404,56 +336,45 @@ extension MultiTool {
             return self
         }
 
-        /// Renders every queued tool and assembles the result into an
-        /// `APISurface` — the rendered catalog alone, with no live tool
-        /// instances attached. Equivalent to `try buildRegistry().surface`;
-        /// kept as its own entry point for a caller that only wants the
-        /// model-agnostic catalog (the registry-backed selection tier's
-        /// instruction prefix, `help()`/`docs()`, or a host UI listing), not
-        /// an executable `MultiTool`.
+        /// Renders every queued tool into an `APISurface` — the rendered
+        /// catalog alone, with no live tool instances attached.
         ///
-        /// - Returns: the rendered, model-agnostic catalog.
+        /// Its own entry point for a caller that only wants the
+        /// model-agnostic catalog — the registry-backed selection tier's
+        /// instruction prefix, `help()`/`docs()`, or a host UI listing — and
+        /// not an executable `MultiTool`.
+        ///
         /// - Throws: see `buildRegistry()` — this delegates to it entirely.
         public func build() throws -> APISurface {
             try buildRegistry().surface
         }
 
         /// Renders every queued tool and assembles the result into a
-        /// `MultiTool.Registry` — plan.md's "registry," pairing the same
-        /// rendered `APISurface` `build()` returns with the live `any Tool`
-        /// instances a `MultiTool` (M4a) dispatches `tools.*` calls to. This
-        /// is the primary entry point; `build()` above is the thin,
-        /// surface-only convenience wrapper over it.
+        /// `MultiTool.Registry`, which pairs the same rendered `APISurface`
+        /// `build()` returns with the live `any Tool` instances a `MultiTool`
+        /// dispatches `tools.*` calls to. This is the primary entry point;
+        /// `build()` above is the thin, surface-only wrapper over it.
         ///
-        /// Validates, per plan.md Resolved #5's namespacing rule: every
-        /// standalone tool's name is unique among standalone tools; every
-        /// tool's name is unique within its own group; and no standalone
-        /// tool's name collides with a group's name (which would make
-        /// `tools.<name>` ambiguous between a function and a namespace).
-        /// Duplicate names *across different groups* are explicitly fine —
-        /// their fully-qualified paths (`tools.<groupA>.<name>` vs.
-        /// `tools.<groupB>.<name>`) never collide.
+        /// Validates the namespacing rule: every standalone tool's name is
+        /// unique among standalone tools; every tool's name is unique within
+        /// its own group; and no standalone tool's name collides with a
+        /// group's name, which would make `tools.<name>` ambiguous between a
+        /// function and a namespace.
         ///
-        /// Validates one rule more, per eventplan.md § "Registration of
-        /// capabilities: noun/verb": a noun `withCapability(_:)` claims is
-        /// owned whole, so nothing else may register under it. The check runs
-        /// after the rule above, so a real path collision keeps its
-        /// `.duplicateName` report and the ownership rule answers what is
-        /// left. A group name claims nothing, so two `addGroup(named:_:)`
-        /// calls with one name still merge.
+        /// Validates one rule more: a noun `withCapability(_:)` claims is
+        /// owned whole, so nothing else may register under it.
         ///
         /// - Returns: the rendered catalog paired with its live tool
         ///   instances, in `.directMode() == false` (both `runCode` and
         ///   `searchTools` surfaced).
-        /// - Throws: `ToolAPIRendererError`, propagated unchanged (never
-        ///   wrapped — the same posture `ToolInvoker` takes toward a
-        ///   tool's own thrown error), if any queued tool can't be fully
-        ///   rendered — plan.md's completeness contract: "`Builder.build()`
-        ///   fails loudly if a tool can't be fully rendered rather than
-        ///   emit a lossy stub." `MultiToolBuilderError` if a group name
-        ///   isn't a legal TypeScript identifier, if two tools would
-        ///   collide at the same top-level snippet call path, or if anything
-        ///   other than the owning capability registers under a noun
+        /// - Throws: `ToolAPIRendererError`, propagated unchanged and never
+        ///   wrapped — the same posture `ToolInvoker` takes toward a tool's
+        ///   own thrown error — when a queued tool cannot be fully rendered.
+        ///   A tool that cannot be fully rendered fails loudly here rather
+        ///   than emit a lossy stub. `MultiToolBuilderError` when a group
+        ///   name isn't a legal TypeScript identifier, when two tools would
+        ///   collide at the same top-level snippet call path, or when
+        ///   anything other than the owning capability registers under a noun
         ///   `withCapability(_:)` claimed.
         public func buildRegistry() throws -> MultiTool.Registry {
             var entries: [APISurface.Entry] = []
@@ -526,7 +447,6 @@ extension MultiTool {
 
         /// Answers which capability owns each claimed noun.
         ///
-        /// - Returns: the owning claim of each noun a capability claims.
         /// - Throws: `MultiToolBuilderError` of kind `.duplicateNoun`, naming
         ///   the noun and both capabilities, when one noun holds two claims.
         private func capabilityOwnersByNoun() throws -> [String: CapabilityClaim] {
@@ -548,9 +468,7 @@ extension MultiTool {
             return owners
         }
 
-        /// Holds each capability to the whole noun it claims — eventplan.md §
-        /// "Registration of capabilities: noun/verb": "Nouns are unique.
-        /// Registration rejects a duplicate noun."
+        /// Holds each capability to the whole noun it claims.
         ///
         /// Runs after the render loop above, so two tools that would render at
         /// one path are still reported as the `.duplicateName` collision they

@@ -4,9 +4,6 @@ import FoundationModelsMetadataRegistry
 import FoundationModelsRouter
 
 /// The arguments a `searchTools` call carries.
-///
-/// The plain-language goal the session's own native tool-calling loop passes
-/// when it decides to call `searchTools`.
 @Generable
 public struct SearchToolsArguments: Sendable {
     /// The plain-language goal to search the catalog for.
@@ -18,10 +15,8 @@ public struct SearchToolsArguments: Sendable {
 
     /// Creates `searchTools`'s arguments with the given task description.
     ///
-    /// Explicit for the same reason as every other public `@Generable` type's
-    /// initializer in this package (e.g. `RunCodeArguments.init`): a
-    /// `public` struct's synthesized memberwise initializer is only
-    /// `internal`-accessible.
+    /// Explicit because a `public` struct's synthesized memberwise initializer
+    /// is `internal` only.
     ///
     /// - Parameter task: the plain-language goal to search for.
     public init(task: String) {
@@ -31,69 +26,30 @@ public struct SearchToolsArguments: Sendable {
 
 /// The discovery tool a session searches for its mounted functions.
 ///
-/// plan.md Component 8 (Discovery): `searchTools` as its own real
-/// `FoundationModels.Tool` conformer, independently constructible and
-/// mountable directly alongside `MultiTool` on the session a resolved Router
-/// slot vends —
-/// `profile.standard.makeSession(tools: try registry.makeSessionTools(librarian:))`
-/// — fully decoupled from the retired `MultiToolAgent` hand-rolled ReAct loop
-/// and its turn machinery. That vending call is how a host should mount the
-/// pair — it presents this tool *before* `runCode`, so the model reads
-/// "discover what exists" before "execute code" when it picks its opening
-/// move (see `MultiTool.Registry.makeSessionTools(librarian:)`).
+/// A host mounts this tool with
+/// `MultiTool.Registry.makeSessionTools(librarian:sampleGenerator:)`, which
+/// presents it before `runCode`.
 ///
-/// Every call forwards to a searcher running in `.auto` mode.
-///
-/// `call(arguments:)` hands each `searchTools(task)` call to a
-/// `MetadataSearcher<APISurface.Entry>` in `.auto` mode (plan.md §7):
-/// cheap retrieval (BM25/trigram/cosine signals fused by RRF) when no
-/// selection tier is configured, retrieval-then-LLM-selection over the
-/// narrowed candidates when one is — never `.selection` unconditionally, so
-/// discovery degrades gracefully instead of requiring a second model call by
-/// construction.
-///
-/// The searcher's selection tier (when configured) answers *what* is
-/// relevant — ids only, grammar-enforced against the current candidate set
-/// via `idEnumGrammar(ids:)` (the registry's `SelectionTier`, generalizing
-/// Multitool's own former `Librarian`) — and `SearchToolsTool` owns *how that
-/// answer reaches the caller* — splicing each selected entry's `Match.item
-/// .block` **verbatim** (never re-derived or re-rendered) plus its runnable,
-/// namespace-qualified example, so the model reads exactly what the
-/// searcher matched.
+/// The selection tier, when one is configured, answers only *what* is
+/// relevant — ids, held to the current candidate set by a grammar.
+/// `SearchToolsTool` owns how that answer reaches the caller: each selected
+/// entry's `Match.item.block` spliced **verbatim**, never re-derived or
+/// re-rendered, plus its runnable, namespace-qualified example.
 public struct SearchToolsTool: Tool {
     /// This tool's `Tool`-protocol name, always `"searchTools"`.
     public let name = "searchTools"
 
     /// This tool's usage instructions, as the model reads them.
     ///
-    /// The `Tool`-protocol description presented for `searchTools`.
-    ///
     /// Together with `MultiTool.description` this carries the **whole**
     /// behavioral contract a session needs. Mounting the two tools is the
-    /// entire integration: a `Tool` conformance's description is serialized
-    /// into the prompt on every turn, whereas a session instruction is
-    /// optional and a host may not pass one, so nothing load-bearing may
-    /// live outside these two strings.
+    /// entire integration: a `Tool` conformance's description goes into the
+    /// prompt on every turn, but a session instruction is optional and a host
+    /// can supply none. So nothing load-bearing can live outside these two
+    /// strings. `searchTools` owns the discovery mandate.
     ///
-    /// Ordered the way the surveyed code-execution tool prompts order theirs
-    /// (Cloudflare `@cloudflare/codemode`, HuggingFace `smolagents`,
-    /// Microsoft TaskWeaver, Vercel `ai-sdk-tool-code-execution`): the
-    /// numbered procedure comes first, before any rule, because the
-    /// procedure *is* the discovery mandate; each rule then carries its own
-    /// mechanical consequence, which is specification rather than
-    /// persuasion. The anti-guessing rule triggers on checkable
-    /// conversational state ("if you have not called searchTools in this
-    /// conversation") rather than on the model's own confidence — a
-    /// confident model always passes an "if you are unsure" test, which is
-    /// the failure this wording exists to close.
-    ///
-    /// Persona-free by design: no "you are a helpful assistant" framing,
-    /// just clear information on how to call the tools — the only part that
-    /// carries weight.
-    ///
-    /// The worked example uses `getDocument`/`getRevision` deliberately.
-    /// Fixture-shaped example data (weather, trips) would hand a model the
-    /// very value an integration scenario grades on, which passes with zero calls.
+    /// Persona-free by design: no "you are a helpful assistant" framing, only
+    /// how to call the tools.
     public let description = """
         This session's functions are mounted dynamically, and searchTools is the only
         way to see them. Call searchTools before you answer any request, passing the
@@ -115,33 +71,17 @@ public struct SearchToolsTool: Tool {
     private static let trace = CallTrace(category: "SearchTools")
 
     /// The catalog searcher every `searchTools` call forwards to.
-    ///
-    /// Runs in `.auto` mode (plan.md §7): retrieval-only when no selection tier
-    /// is configured, retrieval-then-selection when one is.
     private let searcher: MetadataSearcher<APISurface.Entry>
 
     /// The maximum number of matches to request per search call.
-    ///
-    /// Typically the catalog's own entry count, so nothing the model
-    /// legitimately selected from the full candidate set is ever truncated.
     private let limit: Int
 
-    /// How to generate and validate this tool's runnable sample.
-    ///
-    /// `nil` answers with the signatures alone.
-    ///
-    /// Absent by default, exactly like the searcher's selection tier: a host
-    /// that supplies nothing here gets the result `searchTools` has always
-    /// returned, byte for byte.
+    /// How to generate and validate this tool's runnable sample, or `nil` for
+    /// the signatures-only result.
     private let sample: SampleSnippetConfig?
 
-    /// Creates a `searchTools` tool over an already-built `searcher`.
-    ///
-    /// The test-facing/low-level entry point: a caller (production or test)
-    /// that has already assembled a `MetadataSearcher` — with or without a
-    /// selection tier, in whatever mode it chose — wires it in directly. Used
-    /// by `init(registry:librarian:limit:)` below, and by tests driving a
-    /// scripted searcher through the internal `AgentSession` seam.
+    /// Creates a `searchTools` tool over an already-built `searcher`, in
+    /// whatever mode that searcher was assembled in.
     ///
     /// - Parameters:
     ///   - searcher: the searcher to forward every `searchTools(task)` call to.
@@ -161,29 +101,20 @@ public struct SearchToolsTool: Tool {
 
     /// Creates a `searchTools` tool bound to a Router profile.
     ///
-    /// Uses the resolved profile's generation slot for its selection tier — the
-    /// production, independently
-    /// constructible entry point plan.md calls for: no dependency on any
-    /// agent loop or turn machinery, just a registry and an optional
-    /// selection-tier backing.
+    /// This path builds its searcher in `.auto` mode, never `.selection`. With
+    /// no selection tier configured, `.auto` answers by retrieval alone, with
+    /// no session and no tokens. Discovery then degrades, instead of requiring
+    /// a second model call by construction.
     ///
-    /// Builds a `.auto`-mode `MetadataSearcher` over `registry.surface
-    /// .entries`: when `librarian` is `nil`, `.auto` degrades to `.retrieval`
-    /// (no session, no tokens); when it's supplied, `.auto` drives its
-    /// selection tier through `librarian`'s guided sessions — mirroring the
-    /// "librarian on the flash slot" split, decoupled from any main loop's
-    /// own turn machinery. Per `SelectionConfig`'s own cached-root/`fork()`
-    /// -per-call contract, `librarian`'s own `RoutedLLM.makeGuidedSession
-    /// (grammar:instructions:)` — not `LanguageModelSession` — backs every
-    /// selection call, since the FoundationModels interop path doesn't
-    /// expose the Router's cache-level `fork()`.
+    /// `librarian`'s own `RoutedLLM.makeGuidedSession(grammar:instructions:)`
+    /// backs every selection call, not `LanguageModelSession`, because the
+    /// FoundationModels interop path does not expose the Router's cache-level
+    /// `fork()` that `SelectionConfig`'s cached-root contract needs.
     ///
-    /// The selection grammar is no longer built here: `SelectionConfig
-    /// .model` now receives the current call's `Grammar` alongside its
-    /// instructions, so the `SelectionTier` supplies the correctly-scoped
-    /// `idEnumGrammar(ids:)` per call (the whole catalog under budget, the
-    /// top-M candidates over budget) — this closure just threads that
-    /// grammar into `makeGuidedSession`.
+    /// The `SelectionTier` supplies the correctly-scoped `idEnumGrammar(ids:)`
+    /// for each call — the whole catalog under budget, the top-M candidates
+    /// over it. This closure only threads that grammar into
+    /// `makeGuidedSession`.
     ///
     /// - Parameters:
     ///   - registry: the catalog whose entries become the searcher's
@@ -285,8 +216,6 @@ public struct SearchToolsTool: Tool {
 
     /// Runs one `searchTools(task)` call.
     ///
-    /// Searches `searcher`, then formats the result into this tool's `Output`.
-    ///
     /// - Parameter arguments: the plain-language goal to search for.
     /// - Returns: the text describing the matched tool-functions, led by a
     ///   validated runnable snippet when one was generated — see
@@ -318,41 +247,37 @@ public struct SearchToolsTool: Tool {
         }
     }
 
-    /// Generates and validates the runnable sample for one call.
+    /// Generates and validates the runnable sample for one call, over the
+    /// `entries` the snippet may call.
     ///
     /// Answers `nil` when this tool has no generator configured or the gate
     /// rejected every candidate.
-    ///
-    /// - Parameters:
-    ///   - task: the plain-language goal passed to `searchTools`.
-    ///   - entries: the matched entries the snippet may call.
-    /// - Returns: the validated snippet, or `nil`.
     private func generateSample(forTask task: String, over entries: [APISurface.Entry]) async -> String? {
         guard let sample else { return nil }
         return await SampleSnippet.generate(forTask: task, over: entries, using: sample)
     }
 
-    /// The imperative next-step footer a signatures-only result ends with.
-    ///
-    /// The result of a `searchTools` call is the moment of maximum model
-    /// attention, and describing functions without prescribing the next
-    /// action leaves the two dominant failure modes open: announcing a plan
-    /// instead of acting, and answering from priors instead of from a
-    /// snippet's real return value. The footer closes both, and its
-    /// composition clause ("compose multiple calls in that one snippet")
-    /// is what multi-step tasks need spelled out — the models that fail
-    /// them stop after describing step one.
     /// The sentence that orders a model to write a snippet from scratch.
     ///
     /// The only place it is written. ``nextStepFooter`` opens with it, and
     /// `SearchToolsToolTests` reads it here in both directions — asserting it is
     /// present when no sample was generated, and absent when one was. The
     /// absent case carries that proof alone: "Call runCode now" appears in
-    /// both this footer and ``runSampleFooter``, so only this sentence tells
-    /// them apart. A copy of it in the test would keep holding after a
+    /// both ``nextStepFooter`` and ``runSampleFooter``, so only this sentence
+    /// tells them apart. A copy of it in the test would keep holding after a
     /// reword, whichever footer shipped.
     static let writeSnippetInstruction = "Now write one runCode snippet"
 
+    /// The imperative next-step footer a signatures-only result ends with.
+    ///
+    /// The result of a `searchTools` call is the moment of maximum model
+    /// attention. Functions described without the next action prescribed leave
+    /// the two dominant failure modes open: the model announces a plan instead
+    /// of acting, and it answers from priors instead of from a snippet's real
+    /// return value. This footer closes both. Its composition clause — put
+    /// every call the task needs in that one snippet — is what multi-step
+    /// tasks need spelled out, because the models that fail them stop after
+    /// describing step one.
     private static let nextStepFooter = """
         \(writeSnippetInstruction) that calls these exact tools.* paths. Put every \
         call the task needs in that one snippet, passing values between them with \
@@ -361,8 +286,6 @@ public struct SearchToolsTool: Tool {
         """
 
     /// The next-step footer a sample-carrying result ends with.
-    ///
-    /// Used in place of ``nextStepFooter``.
     ///
     /// "Now write one runCode snippet" is false once a snippet has been
     /// supplied — following it literally means discarding the sample and
@@ -397,8 +320,7 @@ public struct SearchToolsTool: Tool {
     /// `APISurface.swift`'s `Entry` documentation) — followed by its runnable
     /// example, qualified the same way via `Entry.qualifiedExample` so this
     /// trailer never shows a different, bare call than the one `block`'s own
-    /// embedded `@example` line just displayed. A non-empty result closes
-    /// with `nextStepFooter`.
+    /// embedded `@example` line just displayed.
     ///
     /// When `sample` is present the runnable snippet **leads**, and the
     /// signature blocks follow it as supporting material: the deliverable is

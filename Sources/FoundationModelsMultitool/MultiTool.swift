@@ -6,61 +6,45 @@ import os
 
 extension MultiTool {
     /// The built, executable artifact `MultiTool.Builder.buildRegistry()`
-    /// produces — plan.md's "registry" (the value the "Adding tools is the
-    /// easy path" usage sample assigns `Builder.build()`'s result to, and
-    /// that `MultiTool.init(registry:)` and `SearchToolsTool
-    /// .init(registry:librarian:limit:)` both take): the rendered
-    /// `APISurface` (M2.5) paired with the actual
-    /// wrapped `any Tool` instances a `runCode` snippet's `tools.*` calls
-    /// dispatch to.
+    /// produces: the rendered `APISurface` paired with the wrapped `any Tool`
+    /// instances a `runCode` snippet's `tools.*` calls dispatch to.
     ///
-    /// `APISurface` alone can't drive execution — by its own design (see
-    /// `APISurface`'s documentation) it is "pure data: no model wiring, no
-    /// rendering logic of its own beyond composing already-rendered pieces,"
-    /// carrying only each tool's rendered *descriptor*, never the tool object
-    /// itself. `Registry` is the pairing that closes that gap for M4a: every
-    /// entry in `surface.entries` has a fully-qualified `path` (`"getWeather"`,
+    /// `APISurface` alone cannot drive execution. It is pure data, and it
+    /// carries only each tool's rendered *descriptor*, never the tool object
+    /// itself. `Registry` is the pairing that closes that gap: every entry in
+    /// `surface.entries` has a fully-qualified `path` (`"getWeather"`,
     /// `"github.createIssue"`, …), and `tools[path]` is that entry's live
     /// `any Tool` to invoke.
     public struct Registry: Sendable {
         /// The rendered, model-agnostic catalog — declarations, doc comments,
-        /// and examples only (M2.5). Backs the registry-backed selection
-        /// tier's instruction prefix (`FoundationModelsMetadataRegistry`) and
-        /// `help()`/`docs()` (M6/M7); carries no tool instances of its own.
+        /// and examples only. Backs the registry-backed selection tier's
+        /// instruction prefix and `help()`/`docs()`.
         public let surface: APISurface
 
         /// Every wrapped tool, keyed by its fully-qualified snippet call path
-        /// (`surface.entries`'s own `path`, e.g. `"getWeather"` or
-        /// `"github.createIssue"`) — the pairing `MultiTool` uses to bind
-        /// each `tools.*` entry point to a live `any Tool` to invoke via
-        /// `ToolInvoker`.
+        /// — `surface.entries`'s own `path`, e.g. `"getWeather"` or
+        /// `"github.createIssue"`.
         public let tools: [String: any Tool]
 
-        /// Whether this registry surfaces only `runCode` — plan.md's "direct
-        /// mode": discovery (`searchTools`) is skipped, and a snippet is
-        /// expected to introspect the surface itself via `help()`/`docs()`
-        /// (M7) instead. `false` (the default) surfaces both `runCode` and
-        /// `searchTools` to the session's tool-calling loop (M4b/M6).
+        /// Whether this registry surfaces only `runCode`. `false`, the
+        /// default, surfaces `searchTools` as well — see ``directMode()``.
         public let isDirectMode: Bool
 
         /// Creates a registry pairing a rendered surface with its live tool
         /// instances.
         ///
-        /// Explicit for the same reason as `APISurface.init`/
-        /// `ToolDescriptor.init`: a `public` struct's synthesized initializer
-        /// is only `internal`-accessible, and `Registry` is a public type of
-        /// the `FoundationModelsMultitool` library product a caller must be
-        /// able to construct directly.
+        /// Explicit because a `public` struct's synthesized initializer is
+        /// `internal` only, and a caller must be able to construct a
+        /// `Registry` directly.
         ///
         /// - Parameters:
         ///   - surface: the rendered, model-agnostic catalog.
         ///   - tools: every wrapped tool, keyed by `surface.entries`'s own
         ///     `path`. `MultiTool.Builder.buildRegistry()` always keeps the
-        ///     two in agreement; a path present in `surface` with no
-        ///     matching key here simply has no live dispatch target — the
-        ///     generated `tools.<path>` binding resolves to `undefined` in
-        ///     the sandbox rather than crash (plan.md's "throw/degrade,
-        ///     never trap" posture, mirrored throughout this package).
+        ///     two in agreement. A path present in `surface` with no matching
+        ///     key here has no live dispatch target, and the generated
+        ///     `tools.<path>` binding is then never set rather than crashing —
+        ///     see `makePreamble(for:bindsSearchTools:)`.
         ///   - isDirectMode: whether this registry is in direct mode
         ///     (`runCode` only). Defaults to `false`.
         public init(surface: APISurface, tools: [String: any Tool], isDirectMode: Bool = false) {
@@ -69,39 +53,34 @@ extension MultiTool {
             self.isDirectMode = isDirectMode
         }
 
-        /// Returns a copy of this registry in **direct mode** — plan.md
-        /// "Direct mode (skip discovery)": `runCode` and `wait` are surfaced to
-        /// the session and `searchTools` is not; a snippet is expected to
-        /// introspect the surface itself via `help()`/`docs()` (M7) rather than
-        /// a `searchTools` round trip. Direct mode takes discovery away and
-        /// nothing else — `wait` stays, because every mounted `runCode` call
-        /// goes to the background and the model still needs a deliberate join.
-        /// The executable surface itself (`surface`/`tools`) is unchanged —
-        /// only the affordance metadata (`isDirectMode`, `affordances`,
-        /// `supportsSearchTools`) flips.
+        /// Returns a copy of this registry in **direct mode**: `runCode` and
+        /// `wait` are surfaced to the session and `searchTools` is not, and a
+        /// snippet is then expected to introspect the surface itself with
+        /// `help()`/`docs()` rather than a `searchTools` round trip.
         ///
-        /// - Returns: a copy of this registry with `isDirectMode` set to
-        ///   `true`.
+        /// Direct mode takes discovery away and nothing else. `wait` stays,
+        /// because every mounted `runCode` call goes to the background and the
+        /// model still needs a deliberate join. The executable surface itself
+        /// (`surface`/`tools`) is unchanged — only the affordance metadata
+        /// (`isDirectMode`, `affordances`, `supportsSearchTools`) flips.
         public func directMode() -> Registry {
             Registry(surface: surface, tools: tools, isDirectMode: true)
         }
 
         /// The session-facing operations this registry surfaces —
         /// `["runCode", "wait"]` in direct mode, `["runCode", "searchTools",
-        /// "wait"]` otherwise. Plain, checkable metadata for a caller (or a
-        /// test) to read without having to separately know `isDirectMode`'s
-        /// exact semantics.
+        /// "wait"]` otherwise. Plain, checkable metadata for a caller or a
+        /// test to read without knowing `isDirectMode`'s exact semantics.
         ///
-        /// **`wait` appears in both arms because `makeSessionTools(librarian:)`
-        /// mounts it in both.** It named only `runCode` and `searchTools` until
-        /// 2026-08-18, which made this property disagree with the array a host
-        /// actually receives, in every mode: direct mode takes discovery away
-        /// and nothing else. A caller reading this to learn what the model can
-        /// call was told two thirds of the answer.
+        /// **`wait` appears in both arms because
+        /// `makeSessionTools(librarian:sampleGenerator:)` mounts it in both.**
+        /// Direct mode takes discovery away and nothing else, so a list that
+        /// named only `runCode` and `searchTools` would disagree with the
+        /// array a host actually receives, in every mode.
         ///
-        /// The order is not the mount order, and this property is not the place
-        /// to learn one — see `makeSessionTools(librarian:)`, which says so and
-        /// owns it.
+        /// The order is not the mount order, and this property is not the
+        /// place to learn one — see
+        /// `makeSessionTools(librarian:sampleGenerator:)`, which owns it.
         public var affordances: [String] {
             isDirectMode ? ["runCode", "wait"] : ["runCode", "searchTools", "wait"]
         }
@@ -133,12 +112,9 @@ extension MultiTool {
         ///
         /// This is the whole host contract. A host builds a registry, mounts
         /// what this returns on a `RoutedSession`, and drives that session by
-        /// draining `streamEvents(to:)` — nothing else. In particular it passes
-        /// **no session instructions**: the mounted tool descriptions carry the
-        /// entire behavioral contract, and they do so because a `Tool`
-        /// conformance's description is serialized into the prompt on every
-        /// turn while a session instruction is optional and a host may not
-        /// pass one at all.
+        /// draining `streamEvents(to:)` — nothing else. In particular it
+        /// passes **no session instructions**: the mounted tool descriptions
+        /// carry the entire behavioral contract — see ``description``.
         ///
         /// The session type is part of the contract, not a detail. A
         /// `RoutedSession` is what puts each tool through Router's own
@@ -156,9 +132,8 @@ extension MultiTool {
         /// instructions, then drains `streamEvents`.
         ///
         /// The order here is deliberately not `affordances`'s. That property
-        /// names which operations a registry surfaces, for a caller or a test
-        /// to check; it is a capability list, not a mount order, and only
-        /// this method's result reaches the model.
+        /// is a capability list, not a mount order, and only this method's
+        /// result reaches the model.
         ///
         /// - Parameters:
         ///   - librarian: the model backing `searchTools`'s selection
@@ -213,8 +188,7 @@ extension MultiTool {
 /// **`runCode` always backgrounds.** It hands back a completion token every
 /// time, so waiting is not one of its options — the concept is out of this
 /// schema rather than set to zero. A model that needs the result calls `wait`;
-/// a model that does not lets the snippet run (eventplan.md § "Background tools
-/// and the completion token", task `^cv98vff`).
+/// a model that does not lets the snippet run (task `^cv98vff`).
 ///
 /// A tool with two return shapes is unlearnable. Under "inline if it is fast,
 /// a token if it is slow" the same call sometimes yields a value and sometimes
@@ -223,12 +197,12 @@ extension MultiTool {
 /// before it is a simplification — and it happens to be deterministic too: the
 /// same call behaves identically on a fast machine and a loaded one.
 ///
-/// The clocks that used to stand here are gone with the choice they served.
-/// `waitSeconds` bounded a wait that no longer exists, and `timeout` let a
-/// model bound work it no longer blocks on; the host's own
-/// `MultiToolConfiguration.executionTimeLimit` remains the ceiling, and
-/// `MultiTool`'s `BackgroundTool` conformance answers it to the
-/// engine as the work bound of every call (see `MultiTool+Background.swift`).
+/// This schema carries no clock, and must not grow one back. A `waitSeconds`
+/// would bound a wait that no longer exists, and a `timeout` would let a model
+/// bound work it no longer blocks on. The host's own
+/// `MultiToolConfiguration.executionTimeLimit` is the ceiling, and
+/// `MultiTool`'s `BackgroundTool` conformance answers it to the engine as the
+/// work bound of every call (see `MultiTool+Background.swift`).
 @Generable
 public struct RunCodeArguments {
     /// The JavaScript snippet to run against `tools.*`.
@@ -242,10 +216,8 @@ public struct RunCodeArguments {
 
     /// Creates `runCode`'s arguments with the given snippet.
     ///
-    /// Explicit for the same reason as every other public `@Generable`
-    /// type's initializer in this package (e.g. `ToolDescriptor.init`): a
-    /// `public` struct's synthesized memberwise initializer is only
-    /// `internal`-accessible.
+    /// Explicit because a `public` struct's synthesized memberwise
+    /// initializer is `internal` only.
     ///
     /// - Parameter code: the JavaScript snippet to run.
     public init(code: String) {
@@ -253,39 +225,32 @@ public struct RunCodeArguments {
     }
 }
 
-/// plan.md Component 1 ⭐ — the `runCode` `Tool`: the execution half of the
-/// MultiTool idea, "a single `Tool`... that wraps other, in-process `Tool`s
-/// and exposes them to the model as a callable code API." Conforms to
-/// `FoundationModels.Tool`, so it mounts directly on the session a resolved
-/// Router slot vends —
-/// `profile.standard.makeSession(tools: try registry.makeSessionTools(librarian:))`
-/// — and that session's own native tool-calling loop decides when to call it
-/// (the hand-rolled `MultiToolAgent` ReAct loop that used to drive it is
-/// retired). Mount through `Registry.makeSessionTools(librarian:)` rather
-/// than assembling the array by hand: it puts `searchTools` ahead of `runCode`,
-/// which is the order this package's whole search-then-call premise depends
-/// on, and drops `searchTools` under `directMode()`.
+/// The `runCode` `Tool`: the execution half of the MultiTool idea — a single
+/// `Tool` that wraps other, in-process `Tool`s and exposes them to the model
+/// as a callable code API.
+///
+/// Mount through `Registry.makeSessionTools(librarian:sampleGenerator:)`
+/// rather than assembling the array by hand. That call puts `searchTools`
+/// ahead of `runCode`, which is the order this package's whole
+/// search-then-call premise depends on, and it drops `searchTools` under
+/// `directMode()`.
 ///
 /// Per call, `call(arguments:)`:
 /// 1. builds `tools.*` glue that assigns every registry entry's real,
-///    wrapped tool to its fully-qualified snippet path (flat `tools.<name>`
+///    wrapped tool to its fully-qualified snippet path — flat `tools.<name>`
 ///    for a standalone tool, nested `tools.<group>.<name>` for a grouped
-///    one — plan.md Resolved #5) — see "tools.* glue" below;
+///    one — see "tools.* glue" below;
 /// 2. runs the glue followed by the snippet in a fresh `Interpreter` sandbox
-///    (M1) off the calling thread (see "Off-cooperative-thread dispatch"),
-///    with `help()`/`docs()` and the six ambient globals of eventplan.md §
-///    "The sandbox globals" — `status()`, `wait()`, `cancel()`, `elicit()`,
-///    `notify()`, `progress()`, see `MultiTool+SandboxGlobals.swift` — also
-///    installed;
-/// 3. renders the result — or a thrown `InterpreterError` — via
-///    `ResultRenderer` (M5).
+///    off the calling thread (see "Off-cooperative-thread dispatch"), with
+///    `help()`/`docs()` and the six ambient globals — `status()`, `wait()`,
+///    `cancel()`, `elicit()`, `notify()`, `progress()`, see
+///    `MultiTool+SandboxGlobals.swift` — also installed;
+/// 3. renders the result, or a thrown `InterpreterError`, through
+///    `ResultRenderer`.
 ///
-/// Each `tools.X(...)` call is an `AsyncHostFunction`: the interpreter's own
-/// promise pump (eventplan.md "Async JavaScript") installs it as a JS
-/// function returning a `Promise`, starts the wrapped tool's real, async
-/// `call(arguments:)` in its own Swift `Task`, and settles that promise when
-/// the `Task` completes — see `invokeAsync`'s documentation for the full
-/// dispatch.
+/// Each `tools.X(...)` call is an `AsyncHostFunction`, which the interpreter's
+/// own promise pump installs as a JS function returning a `Promise` — see
+/// `invokeAsync` for the full dispatch.
 public struct MultiTool: Tool {
     /// This tool's `Tool`-protocol name, always `"runCode"`.
     public let name = "runCode"
@@ -294,36 +259,15 @@ public struct MultiTool: Tool {
     ///
     /// Together with `SearchToolsTool.description` this carries the **whole**
     /// behavioral contract a session needs. Mounting the two tools is the
-    /// entire integration: a `Tool` conformance's description is serialized
-    /// into the prompt on every turn, whereas a session instruction is
-    /// optional and a host may not pass one, so nothing load-bearing may live
-    /// outside these two strings. `searchTools` owns the discovery mandate; this
-    /// side owns the snippet, the provenance rule, and the error-recovery
-    /// contract.
+    /// entire integration: a `Tool` conformance's description goes into the
+    /// prompt on every turn, but a session instruction is optional and a host
+    /// can supply none. So nothing load-bearing can live outside these two
+    /// strings. `searchTools` owns the discovery mandate; this side owns the
+    /// snippet, the provenance rule, and the error-recovery contract.
     ///
-    /// Ordered the way the surveyed code-execution tool prompts order theirs
-    /// (Cloudflare `@cloudflare/codemode`, HuggingFace `smolagents`,
-    /// Microsoft TaskWeaver, Vercel `ai-sdk-tool-code-execution`): the
-    /// numbered procedure comes first, before any rule, and each rule then
-    /// carries its own mechanical consequence, which is specification rather
-    /// than persuasion.
-    ///
-    /// Three placements are deliberate and were previously the recorded
-    /// failure sites:
-    /// - **In-sandbox discovery is named at step 1**, not left as an aside.
-    ///   `help()`/`docs(name)` are synchronous host functions *inside* the
-    ///   sandbox (see "MARK: - help()/docs() globals"), so a snippet can
-    ///   confirm the surface and keep going in the same call. Every recorded
-    ///   plan-and-stop happens at the `searchTools` → `runCode` turn boundary,
-    ///   and that path removes the boundary.
-    /// - **The anti-guessing rule triggers on checkable conversational
-    ///   state** ("if you have not called searchTools in this conversation"),
-    ///   never on the model's own confidence: a confident model always passes
-    ///   an "if you are unsure" test, which is the failure being closed.
-    /// - **The provenance rule sits directly under the procedure**, with the
-    ///   consequence attached. It was previously buried in the second half
-    ///   and got violated by runs that reported a booking as confirmed with
-    ///   nothing invoked.
+    /// The provenance rule — answer only from what the snippet returns — is
+    /// in this text because runs reported a booking as confirmed with nothing
+    /// invoked.
     ///
     /// The ambient globals' *contract* is the one part deliberately not
     /// carried here. This text is read on every turn, alongside every tool
@@ -333,10 +277,6 @@ public struct MultiTool: Tool {
     /// the global world around them, and points at `docs("globals")`, which
     /// hands back the contract on demand (see
     /// `MultiTool+SandboxGlobals.swift`, "MARK: - The docs() page").
-    ///
-    /// The worked example uses `getDocument`/`getRevision` deliberately.
-    /// Fixture-shaped example data (weather, trips) would hand a model the
-    /// very value an integration scenario grades on, which passes with zero calls.
     public let description = """
         runCode is an isolated JavaScript runtime that runs one snippet and returns what
         that snippet returns — use it for any computation (arithmetic, string work,
@@ -356,8 +296,8 @@ public struct MultiTool: Tool {
         never appear in searchTools — run `docs("globals")` in a snippet to read them.
         """
 
-    /// Where this tool logs its M10 diagnostics — one `runCode` call's
-    /// start/end, and each `tools.*` invocation's start/end/validation
+    /// Where this tool logs its diagnostics — one `runCode` call's start and
+    /// end, and each `tools.*` invocation's start, end and validation
     /// failure — and, at `.notice`, every imagined `tools.*` name a snippet
     /// reached for (see `logImaginedTool(_:)`).
     private static let logger = Logger(subsystem: "FoundationModelsMultitool", category: "MultiTool")
@@ -403,43 +343,40 @@ public struct MultiTool: Tool {
     private let limits: ResultRendererLimits
 
     /// `help()`/`docs()`'s `HostFunction` bridges — the *surface-reading*
-    /// synchronous globals this tool installs (see "MARK: - help()/docs()
-    /// globals" below; `notify()`/`progress()` are synchronous too, but are
-    /// built per invocation because each closes over that invocation's own
-    /// notice outbox) — built once at `init` time (stable for the registry's
-    /// lifetime — installing them is cheap and the mapping never changes
-    /// call to call) and re-installed fresh into every `runCode` call's own
-    /// sandbox by `Interpreter.run`.
+    /// synchronous globals this tool installs. `notify()`/`progress()` are
+    /// synchronous too, but are built per invocation because each closes over
+    /// that invocation's own notice outbox.
+    ///
+    /// Built once at `init`, because the mapping never changes call to call,
+    /// and re-installed fresh into every `runCode` call's own sandbox by
+    /// `Interpreter.run` — installing them is cheap.
     private let hostFunctions: [HostFunction]
 
     /// The catalog ranker `UnknownToolHint` resolves an invented `tools.*`
     /// name against when no real path resembles its spelling.
     ///
-    /// The same `MetadataSearcher` machinery `searchTools` matches an intent to
-    /// tools with, over this registry's own entries, in `.retrieval` mode: no
-    /// selection tier and no embedder, so repairing a wrong guess costs no
+    /// The same `MetadataSearcher` machinery `searchTools` matches an intent
+    /// to tools with, over this registry's own entries, in `.retrieval` mode:
+    /// no selection tier and no embedder, so repairing a wrong guess costs no
     /// model call and no tokens. Built once at `init` for the same reason as
-    /// `hostFunctions`/`liveTools` — it depends only on the registry, which
-    /// never changes over this tool's lifetime.
+    /// `hostFunctions`: it depends only on the registry, which never changes
+    /// over this tool's lifetime.
     private let hintSearcher: MetadataSearcher<APISurface.Entry>
 
     /// Every registry entry that has a live tool to dispatch to, paired with
     /// the flat host-function name its `tools.*` binding installs under —
-    /// precomputed once at `init` time for the same reason as
-    /// `hostFunctions`: it depends only on `registry`, which never changes.
+    /// precomputed once at `init` for the same reason as `hostFunctions`.
     ///
     /// The `AsyncHostFunction`s built from it deliberately are *not*
-    /// precomputed: each one closes over the invocation's own `RunBinding`
-    /// (eventplan.md "Async JavaScript": one binding per `runCode`
-    /// invocation, captured at bind time and never inherited), so
-    /// `makeAsyncHostFunctions(binding:)` rebuilds them per call from this
-    /// stable pairing.
+    /// precomputed: each one closes over the invocation's own `RunBinding` —
+    /// one binding per `runCode` invocation, captured at bind time and never
+    /// inherited — so `makeAsyncHostFunctions(binding:)` rebuilds them per
+    /// call from this stable pairing.
     private let liveTools: [LiveTool]
 
     /// The `tools.*` assignment glue prepended to every snippet — see
-    /// "tools.* glue" below. Precomputed once at `init` time for the same
-    /// reason as `hostFunctions`/`liveTools`: it depends only on
-    /// `registry.surface`, which never changes.
+    /// "tools.* glue" below. Precomputed once at `init` for the same reason
+    /// as `hostFunctions`.
     private let preamble: String
 
     /// Creates a `runCode` tool over `registry`.
@@ -447,12 +384,12 @@ public struct MultiTool: Tool {
     /// - Parameters:
     ///   - registry: the catalog + live tool instances to expose as
     ///     `tools.*`.
-    ///   - configuration: the M10 hardening knobs (the work clock's ceiling,
-    ///     the live-context cap, return/console caps) this tool enforces.
-    ///     Defaults to `MultiToolConfiguration.default`. Ignored for
-    ///     whichever of `interpreter`/`limits` is explicitly supplied instead
-    ///     of left `nil` — an explicit override always wins over the
-    ///     configuration's corresponding derived value.
+    ///   - configuration: the hardening knobs — the work clock's ceiling, the
+    ///     live-context cap, the return and console caps — this tool
+    ///     enforces. Defaults to `MultiToolConfiguration.default`. An
+    ///     explicitly supplied `limits` wins over the value derived from it;
+    ///     an explicitly supplied `interpreter` does NOT, and is still armed
+    ///     with `configuration.executionTimeLimit` as below.
     ///   - interpreter: the sandbox to run every snippet in. Defaults to a
     ///     fresh `JSCInterpreter`. Whichever sandbox is used, it is armed
     ///     here with `configuration.executionTimeLimit` — the work clock's
@@ -517,22 +454,21 @@ public struct MultiTool: Tool {
 
     /// Runs `arguments.code` against `tools.*` and renders the outcome.
     ///
-    /// Never throws for an ordinary snippet failure — a thrown
-    /// `InterpreterError` (a JS exception, syntax error, or watchdog
-    /// timeout) is caught here and rendered as `ResultRenderer`'s
-    /// repairable-error text instead, per plan.md: "Errors are returned to
-    /// you to fix and retry." A cancelled enclosing `Task`, however, is never
-    /// rendered as text — plan.md M10: cancelling the task running this call
-    /// "terminates the in-flight snippet... and propagates
-    /// `CancellationError`" — so `CancellationError` always propagates
-    /// unchanged.
+    /// Never throws for an ordinary snippet failure. A thrown
+    /// `InterpreterError` — a JS exception, a syntax error, or a watchdog
+    /// timeout — is caught here and rendered as `ResultRenderer`'s
+    /// repairable-error text instead, because errors are returned to the
+    /// model to fix and retry. A cancelled enclosing `Task`, however, is
+    /// never rendered as text: cancelling the task running this call
+    /// terminates the in-flight snippet, so `CancellationError` always
+    /// propagates unchanged.
     ///
     /// A call that would push this tool past `configuration
     /// .liveContextLimit` never reaches the sandbox at all: it renders the
     /// same repairable error text instead, naming the cap and the three
     /// globals that collect a background run (see ``LiveContextCounter``).
     ///
-    /// - Parameter arguments: the snippet to run, and the clocks bounding it.
+    /// - Parameter arguments: the snippet to run.
     /// - Returns: the rendered `runCode` result — the snippet's return
     ///   value (plus any captured console output) on success, or a
     ///   repairable error description on failure.
@@ -558,9 +494,7 @@ public struct MultiTool: Tool {
     /// reaches the sandbox, has to be as visible as one that reaches the
     /// interpreter.
     ///
-    /// - Parameter arguments: the snippet to run, and the clocks bounding it.
-    /// - Returns: what ``call(arguments:)`` returns.
-    /// - Throws: what ``call(arguments:)`` throws.
+    /// Returns and throws what ``call(arguments:)`` does.
     private func runSnippet(arguments: RunCodeArguments) async throws -> String {
         try Task.checkCancellation()
         guard liveContexts.claim(upTo: configuration.liveContextLimit) else {
@@ -636,12 +570,6 @@ public struct MultiTool: Tool {
     /// the rendered text back into a value — so a sentence appended there
     /// would reach JavaScript rather than the model, where the teaching has no
     /// reader and the decode has one more thing to fail on.
-    ///
-    /// - Parameters:
-    ///   - ledger: this invocation's record of what its `tools.*` calls
-    ///     returned.
-    ///   - returnValue: the value the snippet returned.
-    /// - Returns: the notice, or `nil`.
     private func uncarriedReturnNotice(
         from ledger: ToolReturnLedger, for returnValue: InterpreterValue
     ) -> String? {
@@ -654,15 +582,6 @@ public struct MultiTool: Tool {
     /// Runs one snippet and captures its outcome instead of throwing it, so
     /// `call(arguments:)` can flush the invocation's notice chain on both the
     /// success and the failure path before deciding what to hand back.
-    ///
-    /// - Parameters:
-    ///   - code: the JavaScript source to run.
-    ///   - installing: the synchronous host functions to expose as globals.
-    ///   - installingAsync: the asynchronous host functions to expose as
-    ///     globals.
-    ///   - interpreter: the sandbox to run `code` in.
-    /// - Returns: the run's result, or the error
-    ///   `run(code:installing:installingAsync:using:)` threw.
     private static func runCapturingOutcome(
         code: String,
         installing: [HostFunction],
@@ -688,35 +607,23 @@ public struct MultiTool: Tool {
     /// cooperative-pool thread for its duration.
     ///
     /// `Interpreter.run` already guarantees it never runs on the caller's
-    /// thread (`JSCInterpreter`'s own documentation: "groundwork for the M4
-    /// blocking async bridge... that blocking must not happen on the
-    /// caller's (potentially main) thread") by dispatching internally onto
-    /// the run's own dedicated worker queue via `DispatchQueue.sync` — but
-    /// calling that *synchronously* from here would still tie up whichever
-    /// cooperative-pool thread is running this `async` `call(arguments:)`
-    /// for the run's entire duration. Wrapping it in
-    /// `withCheckedThrowingContinuation` and dispatching onto a plain,
-    /// elastic GCD global queue instead means this `async` function
-    /// *suspends* (freeing its cooperative-pool thread for other work)
-    /// rather than *blocks* while the snippet runs — a second, independent
-    /// half of the same "never block the caller" principle
+    /// thread, by dispatching internally onto the run's own dedicated worker
+    /// queue with `DispatchQueue.sync`. But calling that *synchronously* from
+    /// here would still tie up whichever cooperative-pool thread is running
+    /// this `async` `call(arguments:)` for the run's entire duration.
+    /// Wrapping it in `withCheckedThrowingContinuation` and dispatching onto
+    /// a plain, elastic GCD global queue instead means this `async` function
+    /// *suspends* — freeing its cooperative-pool thread for other work —
+    /// rather than *blocks* while the snippet runs. It is the second,
+    /// independent half of the same "never block the caller" principle
     /// `JSCInterpreter` established for the interpreter's own worker thread,
     /// applied here to the tool-call boundary above it.
     ///
-    /// M10: also threads this `async` context's own `Task` cancellation
-    /// into the interpreter's `isCancelled` hook
-    /// (`Interpreter.run(code:installing:installingAsync:isCancelled:)`), so
-    /// cancelling the `Task` running `call(arguments:)` reaches all the way
-    /// into the running snippet rather than only being observed after it
-    /// finishes.
+    /// It also threads this `async` context's own `Task` cancellation into
+    /// the interpreter's `isCancelled` hook, so cancelling the `Task` running
+    /// `call(arguments:)` reaches all the way into the running snippet rather
+    /// than only being observed after it finishes.
     ///
-    /// - Parameters:
-    ///   - code: the JavaScript source to run.
-    ///   - installing: the synchronous host functions to expose as globals.
-    ///   - installingAsync: the asynchronous host functions to expose as
-    ///     globals — every live `tools.*` binding.
-    ///   - interpreter: the sandbox to run `code` in.
-    /// - Returns: the run's result.
     /// - Throws: `CancellationError` if the calling `Task` is cancelled
     ///   before or during the run; otherwise whatever
     ///   `interpreter.run(code:installing:installingAsync:isCancelled:)`
@@ -751,21 +658,13 @@ public struct MultiTool: Tool {
     /// The GCD-queue half of `run(code:installing:installingAsync:using:)`'s
     /// bridge: performs the actual blocking `interpreter.run` off the
     /// cooperative pool and settles `continuation` with its outcome. Pulled
-    /// out of `run` itself so that function's cancellation-handler/
-    /// continuation nesting doesn't also have to carry the
-    /// dispatch-queue/do-catch levels below it.
+    /// out of `run` itself so that function's cancellation-handler and
+    /// continuation nesting does not also have to carry the dispatch-queue
+    /// and do-catch levels below it.
     ///
-    /// - Parameters:
-    ///   - code: the JavaScript source to run.
-    ///   - installing: the synchronous host functions to expose as globals.
-    ///   - installingAsync: the asynchronous host functions to expose as
-    ///     globals.
-    ///   - interpreter: the sandbox to run `code` in.
-    ///   - cancelledBox: polled as `interpreter.run`'s `isCancelled` hook;
-    ///     flipped to `true` by
-    ///     `run(code:installing:installingAsync:using:)`'s `onCancel`.
-    ///   - continuation: resumed with `interpreter.run`'s result or thrown
-    ///     error.
+    /// `cancelledBox` is polled as `interpreter.run`'s `isCancelled` hook,
+    /// and `run(code:installing:installingAsync:using:)`'s `onCancel` is what
+    /// flips it to `true`.
     private static func dispatchRun(
         code: String,
         installing: [HostFunction],
@@ -824,12 +723,9 @@ public struct MultiTool: Tool {
     }
 
     /// The positional host-function name for `registry.surface.entries[index]`
-    /// — shared by `makeLiveTools` (which names it) and `makePreamble` (which
-    /// assigns it into `tools.*`), so the two always agree on naming without
+    /// — shared by `makeLiveTools`, which names it, and `makePreamble`, which
+    /// assigns it into `tools.*`, so the two always agree on naming without
     /// either duplicating the scheme.
-    ///
-    /// - Parameter index: the entry's position in `registry.surface.entries`.
-    /// - Returns: that entry's flat host-function name.
     private static func hostFunctionName(at index: Int) -> String {
         "__tool\(index)"
     }
@@ -837,10 +733,8 @@ public struct MultiTool: Tool {
     /// Pairs every registry entry that has a live tool with the flat
     /// host-function name it installs under.
     ///
-    /// - Parameter registry: the catalog + live tool instances to bridge.
-    /// - Returns: one pairing per entry with a matching
-    ///   `registry.tools[path]`, named per `hostFunctionName(at:)` and in
-    ///   the same order as `registry.surface.entries`.
+    /// One pairing per entry with a matching `registry.tools[path]`, in the
+    /// same order as `registry.surface.entries`.
     private static func makeLiveTools(for registry: Registry) -> [LiveTool] {
         var liveTools: [LiveTool] = []
         for (index, entry) in registry.surface.entries.enumerated() {
@@ -873,17 +767,12 @@ public struct MultiTool: Tool {
     /// the whole list at once rather than at each construction site, so no
     /// binding added later can be left out of the record by omission.
     ///
-    /// - Parameters:
-    ///   - binding: this `runCode` invocation's captured session binding, or
-    ///     `nil` when it has none.
-    ///   - ledger: this invocation's record of what its `tools.*` calls
-    ///     returned.
-    ///
     /// Each live tool's binding carries that tool's own `journalOp`, so a verb
     /// registered under a noun journals the `"verb noun"` pair. `searchTools`
     /// and the nested `runCode` are session-level operations that no noun was
     /// registered under, so each keeps the engine's own default of stamping
     /// `op` with the tool's name.
+    ///
     /// - Returns: one `AsyncHostFunction` per live tool, in `liveTools`'
     ///   order.
     private func makeAsyncHostFunctions(
@@ -915,13 +804,7 @@ public struct MultiTool: Tool {
     }
 
     /// Wraps one `tools.*` binding so this run's ledger sees the value it
-    /// handed back.
-    ///
-    /// - Parameters:
-    ///   - function: the binding to wrap.
-    ///   - ledger: the record to write to.
-    /// - Returns: the same binding, under the same name, recording as it
-    ///   returns.
+    /// handed back. The wrapper keeps the same name.
     private static func recording(
         _ function: AsyncHostFunction, into ledger: ToolReturnLedger
     ) -> AsyncHostFunction {
@@ -960,12 +843,8 @@ public struct MultiTool: Tool {
     /// documented call. A model that reads `searchTools(task)` in prose writes
     /// `tools.searchTools("…")` instead, which is the same intent — task
     /// `bwk7knm` chose to accept it rather than correct it. An argument list
-    /// that is already an object, or is empty, is handed through unchanged.
-    ///
-    /// - Parameters:
-    ///   - arguments: the argument list the snippet called with.
-    ///   - field: the single field a bare scalar stands for.
-    /// - Returns: `arguments`, with a leading bare scalar wrapped in an object.
+    /// that is already an object, or is empty, is handed through unchanged;
+    /// `field` names the single field a bare scalar stands for.
     private static func widenedToObject(
         _ arguments: [InterpreterValue], field: String
     ) -> [InterpreterValue] {
@@ -982,9 +861,7 @@ public struct MultiTool: Tool {
     ///
     /// Accepts the bare string a model writes first, and the object form the
     /// generated signatures otherwise teach, under either `code` or `snippet`.
-    ///
-    /// - Parameter arguments: the argument list the snippet called with.
-    /// - Returns: the snippet source, or `nil` when no argument carries one.
+    /// Answers `nil` when no argument carries one.
     private static func snippetArgument(_ arguments: [InterpreterValue]) -> String? {
         switch arguments.first {
         case .string(let snippet):
@@ -1019,8 +896,6 @@ public struct MultiTool: Tool {
     /// Refuses past ``maxRunCodeDepth`` rather than recursing further, so a
     /// snippet with no base case ends with a repairable error naming the
     /// limit instead of spending the run's whole time budget.
-    ///
-    /// - Returns: the `tools.runCode` binding for this run's depth.
     private func makeNestedRunCodeHostFunction() -> AsyncHostFunction {
         let depth = depth
         let nested = MultiTool(
@@ -1071,15 +946,14 @@ public struct MultiTool: Tool {
     /// `APISurface.Entry.block`'s own documentation relies on for its `//
     /// tools.<path>` banner comment.
     ///
-    /// An entry with no matching `registry.tools[path]` is skipped
-    /// entirely, exactly like `makeLiveTools`'s own `guard` — the
-    /// two must agree, since a skipped entry here has no host function for
-    /// `makeLiveTools` to name: unconditionally emitting
-    /// `tools.<path> = __toolN;` regardless would reference an
-    /// *undeclared* JS identifier (a `ReferenceError`, since that global was
-    /// never installed) rather than degrade gracefully — skipping the
-    /// assignment instead leaves `tools.<path>` simply never set, so
-    /// reading it evaluates to `undefined` like any other absent property.
+    /// An entry with no matching `registry.tools[path]` is skipped entirely,
+    /// exactly like `makeLiveTools`'s own `guard`. The two must agree: a
+    /// skipped entry here has no host function for `makeLiveTools` to name,
+    /// so emitting `tools.<path> = __toolN;` regardless would reference an
+    /// *undeclared* JS identifier — a `ReferenceError`, since that global was
+    /// never installed. Skipping the assignment instead leaves `tools.<path>`
+    /// never set, so reading it evaluates to `undefined` like any other
+    /// absent property.
     ///
     /// - Parameters:
     ///   - registry: the catalog + live tool instances to build glue for.
@@ -1174,10 +1048,6 @@ public struct MultiTool: Tool {
     /// path holds it: leaving it would add a global the README's "Injected
     /// globals" list does not name, which `HardeningTests` enumerates and pins.
     ///
-    /// - Parameters:
-    ///   - path: the `tools.*` path a snippet calls.
-    ///   - hostName: the flat global the interpreter installed the function
-    ///     under.
     /// - Returns: the assignment and the delete, in that order.
     private static func siblingBindingLines(path: String, hostName: String) -> [String] {
         [
@@ -1221,9 +1091,9 @@ public struct MultiTool: Tool {
     ///   - tool: the wrapped tool this call dispatches to.
     ///   - arguments: the JS call's arguments, already converted to
     ///     `InterpreterValue` by `JSCInterpreter`. A well-formed call always
-    ///     supplies exactly one JS object (`tools.name({ … })`, plan.md:
-    ///     "object (named) parameters, always"); a missing or non-object
-    ///     first argument is treated as `{}` and surfaces as an ordinary
+    ///     supplies exactly one JS object — `tools.name({ … })`, object and
+    ///     named parameters, always. A missing or non-object first argument
+    ///     is treated as `{}` and surfaces as an ordinary
     ///     `ArgumentMarshalerError`/`ToolInvokerError` below, never a crash.
     ///   - binding: the enclosing `runCode` invocation's captured session
     ///     binding, or `nil` when it has none.
@@ -1262,47 +1132,38 @@ public struct MultiTool: Tool {
     /// Records one imagined `tools.*` path a snippet reached for, so a host
     /// can mine its own log for the names its model expects.
     ///
-    /// **Why this is logged at all.** An imagined name is free evidence
-    /// about the catalog: it is the model saying what it thought the tool
-    /// should be called. Accumulated across real sessions, those guesses
-    /// rank the synonyms a host's naming (or an alias table) should cover.
-    /// Nothing else on this route records them — the hint is rendered into
-    /// the model's error text and discarded.
+    /// **Why this is logged at all.** An imagined name is free evidence about
+    /// the catalog: it is the model saying what it thought the tool should be
+    /// called. Accumulated across real sessions, those guesses rank the
+    /// synonyms a host's naming, or an alias table, should cover. Nothing
+    /// else on this route records them — the hint is rendered into the
+    /// model's error text and discarded.
     ///
     /// **Why `.notice`.** The corpus has to survive an ordinary host run to
-    /// be worth mining. `.debug` is disabled by default and never reaches
-    /// the store at all; `.info` reaches the in-memory buffer but is not
+    /// be worth mining. `.debug` is disabled by default and never reaches the
+    /// store at all. `.info` reaches the in-memory buffer, but is not
     /// persisted to disk unless the subsystem's info level is turned on, so
-    /// it survives a live `log stream` and not a later `log show`.
-    /// `.notice` is the lowest level that persists by default. Against this
-    /// file's own gradient it also fits: the `.debug` lines here are
-    /// per-invocation and high-volume, and the `.warning`/`.error` lines
-    /// report a failure a host should act on — an imagined name is neither.
+    /// it survives a live `log stream` and not a later `log show`. `.notice`
+    /// is the lowest level that persists by default. Nor `.warning`/`.error`:
+    /// the lines at those levels in this file report a failure a host should
+    /// act on, and an imagined name is not one.
     ///
     /// **Why `.public`.** Every field is model- or catalog-authored and
     /// carries no user data: `imaginedPath` is a name the model made up,
-    /// `suggestedPaths` are the host's own tool names (already `.public`
-    /// wherever `tool.name` is logged above), and the tier is one of three
-    /// fixed words. Nothing derived from a snippet's arguments, a tool's
-    /// output, or the user's prompt is in the line, and none is added: the
-    /// message is composed by `UnknownToolHint.Resolution.logMessage` from
-    /// exactly those three fields.
-    ///
-    /// - Parameter resolution: the unknown-path detection to record.
+    /// `suggestedPaths` are the host's own tool names, and the tier is one of
+    /// three fixed words. Nothing derived from a snippet's arguments, a
+    /// tool's output, or the user's prompt is in the line, and none can be
+    /// added: `UnknownToolHint.Resolution.logMessage` composes the message
+    /// from exactly those three fields.
     private static func logImaginedTool(_ resolution: UnknownToolHint.Resolution) {
         logger.notice("\(resolution.logMessage, privacy: .public)")
     }
 
-    /// Logs one `tools.*` invocation's failure — plan.md M10: "each
-    /// tools.* invocation, validation failures" — distinguishing a
-    /// pre-call **validation failure** (`ToolInvokerError`/
-    /// `ArgumentMarshalerError`, logged at `.warning`: the snippet's call
-    /// was malformed, not the tool itself) from any other failure (the
-    /// tool's own thrown error, logged at `.error`).
-    ///
-    /// - Parameters:
-    ///   - tool: the tool `invokeAsync` was invoking.
-    ///   - error: the failure `performInvocation` threw.
+    /// Logs one `tools.*` invocation's failure, distinguishing a pre-call
+    /// **validation failure** — `ToolInvokerError`/`ArgumentMarshalerError`,
+    /// logged at `.warning`, because the snippet's call was malformed and not
+    /// the tool itself — from any other failure, which is the tool's own
+    /// thrown error and is logged at `.error`.
     private static func logInvocationFailure(tool: any Tool, error: Error) {
         switch error {
         case let validationError as ToolInvokerError:
@@ -1321,22 +1182,9 @@ public struct MultiTool: Tool {
     }
 
     /// The actual marshal → validate → call → render pipeline `invokeAsync`
-    /// wraps with start/end logging — see that function's documentation for
-    /// the full async host-function bridge.
-    ///
-    /// - Parameters:
-    ///   - tool: the wrapped tool this call dispatches to.
-    ///   - arguments: the JS call's arguments, already converted to
-    ///     `InterpreterValue`.
-    ///   - binding: the enclosing `runCode` invocation's captured session
-    ///     binding, or `nil` when it has none — selects `ToolInvoker`'s
-    ///     mount.
-    ///   - journalOp: the `"verb noun"` string this call's run journals as its
-    ///     `op`, or `nil` for a tool registered under no noun.
-    /// - Returns: the tool's rendered `Output`, JS-ready.
-    /// - Throws: `ArgumentMarshalerError`, `ToolInvokerError`, or whatever
-    ///   `tool.call(arguments:)` itself throws — see `invokeAsync`'s
-    ///   documentation.
+    /// wraps with start and end logging. `binding` selects `ToolInvoker`'s
+    /// mount. See `invokeAsync` for every parameter, the return value, and
+    /// the failures this can throw.
     private static func performInvocation(
         tool: any Tool,
         arguments: [InterpreterValue],
@@ -1380,9 +1228,10 @@ public struct MultiTool: Tool {
     /// Builds the `help()` and `docs(name)` host functions — the two
     /// surface-reading globals `MultiTool` installs beyond `tools.*` itself.
     ///
-    /// - Parameter registry: the catalog whose `surface` backs both
-    ///   functions.
-    /// - Returns: two host functions, named `"help"` and `"docs"`.
+    /// Synchronous, and installed *inside* the sandbox, so a snippet can
+    /// confirm the surface and keep going in the same call. Every recorded
+    /// plan-and-stop happens at the `searchTools` → `runCode` turn boundary,
+    /// and this path removes the boundary.
     private static func makeHelpDocsHostFunctions(for registry: Registry) -> [HostFunction] {
         [
             HostFunction(name: "help") { _ in
@@ -1394,20 +1243,12 @@ public struct MultiTool: Tool {
         ]
     }
 
-    /// Renders `docs(name)`'s result: the exact `APISurface.Entry.block`
-    /// for the entry whose `path` matches `name` — plan.md: "reuse
-    /// `APISurface.Entry.block`... rather than re-rendering anything" — or,
-    /// when `name` doesn't match any entry (including when it isn't a
-    /// string at all), a helpful error naming the closest known names
-    /// instead of crashing.
+    /// Renders `docs(name)`'s result: the exact `APISurface.Entry.block` for
+    /// the entry whose `path` matches `name`, reused rather than re-rendered.
     ///
-    /// - Parameters:
-    ///   - argument: the JS call's first argument, already converted to
-    ///     `InterpreterValue` by `JSCInterpreter` — expected to be
-    ///     `.string(name)` for a well-formed `docs("name")` call.
-    ///   - surface: the catalog to look `name` up against.
-    /// - Returns: the matching entry's full rendered block, or an error
-    ///   message listing near-match suggestions.
+    /// When `name` matches no entry — which includes `argument` not being a
+    /// string at all — the result is an error naming the closest known names,
+    /// never a crash.
     private static func renderDocs(for argument: InterpreterValue?, in surface: APISurface) -> String {
         guard case .string(let name) = argument else {
             return "docs(name) requires a string tool name, e.g. docs(\"getWeather\")."
@@ -1431,10 +1272,8 @@ public struct MultiTool: Tool {
     }
 
     /// The closest known tool paths to `name`, ranked by Levenshtein edit
-    /// distance — a deliberately simple fuzzy match (plan.md M7: "a simple
-    /// approach... is fine — don't over-engineer a fuzzy-matching
-    /// library"), good enough to point a model at the right function after
-    /// a typo'd `docs()` call.
+    /// distance — a deliberately simple fuzzy match, good enough to point a
+    /// model at the right function after a typo'd `docs()` call.
     ///
     /// - Parameters:
     ///   - name: the (unknown) name `docs()` was called with.
@@ -1458,35 +1297,18 @@ public struct MultiTool: Tool {
     /// near-match suggestions — not exposed beyond
     /// `nearestMatches(to:among:limitingTo:)`.
     ///
-    /// A standard two-row dynamic-programming implementation, operating
-    /// over `Character`s (extended grapheme clusters) rather than raw
-    /// UTF-8/UTF-16 units, matching this package's established posture
-    /// toward user/schema-derived text (`ResultRendererLimits`'s own
-    /// documentation gives the same reasoning for its truncation caps).
+    /// A standard two-row dynamic-programming implementation. It operates
+    /// over `Character`s — extended grapheme clusters — rather than raw
+    /// UTF-8/UTF-16 units, matching this package's established posture toward
+    /// user- and schema-derived text; `ResultRendererLimits` gives the same
+    /// reasoning for its truncation caps.
     ///
-    /// The textbook algorithm fills an `(a.count + 1) x (b.count + 1)`
-    /// matrix, where cell `[i][j]` holds the edit distance between `a`'s
-    /// first `i` characters and `b`'s first `j` characters. Row `0` and
-    /// column `0` are the base cases (turning a prefix into the empty
-    /// string costs one deletion/insertion per character), and every other
-    /// cell is the cheapest of three moves in from its already-computed
-    /// neighbors: deleting `a[i-1]` (from the cell above), inserting `b[j-1]`
-    /// (from the cell to the left), or substituting (from the cell
-    /// diagonally above-left, plus `0`/`1` depending on whether `a[i-1] ==
-    /// b[j-1]`). Since row `i` only ever reads from row `i-1` and itself,
-    /// the full matrix is never needed — this implementation keeps just two
-    /// rows, `previousRow` (row `i-1`, seeded with the base case
-    /// `0...b.count`) and `currentRow` (row `i`, being filled left to
-    /// right), and slides `currentRow` into `previousRow` at the end of
-    /// each outer iteration before starting the next row. That trades the
-    /// textbook's `O(a.count * b.count)` space for `O(b.count)`, at no cost
-    /// to the `O(a.count * b.count)` time — the only ingredient
-    /// `nearestMatches` actually needs is the final `previousRow[b.count]`.
-    ///
-    /// - Parameters:
-    ///   - lhs: the first string.
-    ///   - rhs: the second string.
-    /// - Returns: the edit distance between `lhs` and `rhs`.
+    /// Two rows rather than the textbook's full
+    /// `(a.count + 1) x (b.count + 1)` matrix, because row `i` only ever
+    /// reads from row `i-1` and itself. That trades `O(a.count * b.count)`
+    /// space for `O(b.count)`, at no cost to the `O(a.count * b.count)` time,
+    /// and the only ingredient `nearestMatches` needs is the final
+    /// `previousRow[b.count]`.
     private static func levenshteinDistance(_ lhs: String, _ rhs: String) -> Int {
         let a = Array(lhs)
         let b = Array(rhs)
