@@ -31,10 +31,32 @@ comments:
     - evidence: swift test — 996 tests passed, 0 failed, 0 skipped, in 72 suites (4.207 seconds); only warning seen was the known mlx-swift "missing creator for mutated node" notice
     - next: no action needed
   timestamp: 2026-08-26T00:33:28.054155+00:00
+- actor: claude-code
+  id: 01m0xr76a8pens9wkcqv33m9ew
+  text: |-
+    ### review — clean
+    - evidence: review sha 805e389~1..805e389 (backend local) — counts: 0 findings, 0 confirmed, 0 refuted, 7 attempted, 0 failed. 1 file reviewed; 4 .kanban files excluded by .reviewignore.
+    - next: none. The task moved from review to done.
+
+    step: review
+    outcome: clean
+    evidence: 0 findings, 0 confirmed, 0 refuted, 7 attempted, 0 failed — scope 805e389~1..805e389
+    task: ^ztkvkhq
+  timestamp: 2026-08-26T00:41:15.336065+00:00
+- actor: claude-code
+  id: 01m0xr7pj4vzm3yhn66n92yywk
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — FilesCrossOpFlowTests.swift, 7 tests over the six flows plus a ledger control test; no production change
+    - test: green — swift test, 996 tests in 72 suites, 0 failed
+    - commit: 805e389
+    - review: clean — review sha 805e389~1..805e389, 0 findings
+    - task landed in done
+  timestamp: 2026-08-26T00:41:31.972301+00:00
 depends_on:
 - 01M0WWST94MBZF5JD463GZC6AN
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ff8880
 title: Prove the files capability end to end through runCode
 ---
 ## What
