@@ -70,7 +70,7 @@ struct WaitToolTests {
 
     // MARK: - The model-facing surface
 
-    @Test("the description tells the model when to call wait and never suggests a number of seconds")
+    @Test("the description makes collecting the normal path and never suggests a number of seconds")
     func theDescriptionNamesNoDuration() {
         let description = WaitTool()
             .description
@@ -78,9 +78,18 @@ struct WaitToolTests {
             .joined(separator: " ")
 
         #expect(WaitTool().name == "wait")
-        // The condition for calling it, stated as a condition rather than as an
-        // invitation: this tool is a last resort, not a habit.
-        #expect(description.contains("only when you cannot continue"))
+        // What a model holds when it reaches this tool. Every mounted `runCode`
+        // call goes to the background (`MultiTool.mount`), so a completion
+        // token is what a snippet answers with and collecting is the usual
+        // move.
+        #expect(description.contains("completionToken"))
+        // A token is not a result. A model that reads the token as the answer
+        // answers with the token, so the description states the difference.
+        #expect(description.contains("not the result"))
+        // Never framed as a last resort. The earlier text said to call it "only
+        // when you cannot continue", which made a model treat the ordinary case
+        // — a backgrounded call, which is every call — as an exception.
+        #expect(!description.contains("only when you cannot continue"))
         // Where the answer is.
         #expect(description.contains("`detail`"))
         // A still-running call is not a failure, and the description says so —

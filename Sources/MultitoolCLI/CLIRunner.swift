@@ -468,22 +468,36 @@ public enum CLIRunner {
 
             // Vended by the resolved profile, because the session type is part
             // of the host contract and not a detail (see
-            // `Registry.makeSessionTools(librarian:)`). A `RoutedSession`
-            // mounts each vended tool under
-            // `ToolMount.synchronous`, which is what lets a
-            // slow `runCode` go to the background and answer with a pending envelope the model
-            // then collects with the mounted `wait` tool. Mounted on a bare
-            // `FoundationModels.LanguageModelSession` the same tools cannot
-            // go to the background at all: the snippet simply blocks, no envelope is ever
-            // written, and `wait` has nothing to join.
+            // `Registry.makeSessionTools(librarian:)`). A `RoutedSession` reads
+            // each tool's own declared `ToolMount`, and `MultiTool` declares
+            // `.background` with no condition on it (`MultiTool.mount`), so
+            // every `runCode` call here starts a background run and answers
+            // with a pending envelope the model then collects with the mounted
+            // `wait` tool. Mounted on a bare
+            // `FoundationModels.LanguageModelSession` the same tools cannot go
+            // to the background at all: that session reads no mount
+            // declaration, so the snippet blocks, no envelope is ever written,
+            // and `wait` has nothing to join.
             //
-            // **No run of this demo will show a background run.** `DemoTripTool`
-            // and `DemoWeatherTool` answer instantly, so every snippet here
-            // finishes inline and no pending envelope is ever written. The
-            // wiring carries the design; the fixtures only keep the demo quick.
-            // A deliberately slow tool proves the background-and-collect path in
-            // the background scenario
-            // (`IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests`).
+            // **Every run of this demo takes the background path.**
+            // `DemoTripTool` and `DemoWeatherTool` answer in microseconds, and
+            // that changes nothing. There is no clock to beat and no race to
+            // win: a snippet that finishes at once gets a completion token
+            // exactly as a slow one does. The fixtures keep the demo quick;
+            // they do not keep it synchronous.
+            //
+            // Which lines then print is the model's own doing rather than this
+            // file's. The pending envelope carries
+            // `MultiTool.collectInstruction(forCompletionToken:)`, which tells
+            // the model to call `wait` with that token, so a model that follows
+            // it produces a `Calling wait` line and then a settled-run line. A
+            // model that ignores it produces neither, and that is a model
+            // result and not a wiring defect.
+            //
+            // The background scenario in
+            // `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests`
+            // adds a deliberately slow tool, so it measures the wait instead of
+            // only reaching it.
             //
             // No instructions. Mounting the vended tools is the whole host
             // contract — their descriptions carry the entire behavioral
@@ -499,6 +513,15 @@ public enum CLIRunner {
             // and the only one on which a tool still working can report that it
             // is working. A demo that took the shorter call would leave out
             // half of what a host has to write.
+            //
+            // The choice decides who collects. `respond(to:)` awaits each
+            // background run itself and re-prompts the model with the results;
+            // `streamEvents(to:)` declares that it does not drain the run
+            // plane, so this turn can end while the run is still going and
+            // `.runSettled` below reports the ending to *this* code rather than
+            // to the model. On this surface the mounted `wait` tool is how the
+            // model gets a result inside the turn, which is why the registry
+            // vends it and why the demo mounts it.
             let answer = try await Self.drainTurn(
                 await session.streamEvents(to: demoPrompt),
                 output: output
@@ -528,10 +551,10 @@ public enum CLIRunner {
     /// This is the host half of the contract
     /// `MultiTool.Registry.makeSessionTools(librarian:)` states: a session that
     /// carries the mounted tools is driven by draining `streamEvents(to:)`.
-    /// Every line written here is one a `respond(to:)` caller never sees — a
-    /// call that goes to the background or takes its time reports itself while it is still
-    /// working, where `respond(to:)` is a single await that returns only once
-    /// the answer is whole.
+    /// Every line written here is one a `respond(to:)` caller never sees. Each
+    /// `runCode` call goes to the background, and it reports itself while it is
+    /// still working, where `respond(to:)` is a single await that returns only
+    /// once the answer is whole.
     ///
     /// Not `private`:
     /// `Tests/FoundationModelsMultitoolTests/CLITurnDrainTests.swift` drives it

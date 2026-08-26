@@ -20,8 +20,10 @@ decides when to call `searchTools` (discovery) and `runCode` (execution).
 The session type is part of the contract, not a detail. `MultiTool` declares
 that it runs in the background: it conforms to `BackgroundTool` and gives a
 `ToolMount`. A `RoutedSession` reads that declaration when it mounts the tool,
-so a slow `runCode` starts a background run and answers at once with a pending
-envelope. The model collects the result with the mounted `wait` tool. A bare
+so every `runCode` call starts a background run and answers at once with a
+pending envelope. The mount carries no condition, thus this is not the slow
+calls only: a snippet that finishes in a millisecond answers with a token too.
+The model collects the result with the mounted `wait` tool. A bare
 `FoundationModels.LanguageModelSession` reads no such declaration, so it applies
 no background wrapper and `MultiTool`'s own `call(arguments:)` runs in band: the
 snippet blocks, no envelope is written, and `wait` has nothing to join.

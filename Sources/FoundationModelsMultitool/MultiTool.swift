@@ -145,8 +145,9 @@ extension MultiTool {
         /// mounting path, where the background mount `MultiTool` declares for
         /// itself takes effect. So every `runCode` call goes to the background
         /// and answers with a pending envelope the model collects with `wait`.
-        /// Mounted on a bare `FoundationModels
-        /// .LanguageModelSession` the same tools cannot go to the background at all: the
+        /// Mounted on a bare
+        /// `FoundationModels.LanguageModelSession` the same tools cannot go to
+        /// the background at all: the
         /// snippet simply blocks, no envelope is ever written, and `wait` has
         /// nothing to join. The integration suite drives exactly this contract —
         /// `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/

@@ -576,7 +576,7 @@ live detached run (`OutputBuffer` reads while the child runs) and to a
 completed run (the store stays after the run).
 
 The join: the `commandID` of a shell run is its `correlationID` is its
-`completionToken` — one string, two planes. Nested runs obey the same rule. An
+`completionToken` — one string, two planes. Nested runs obey the same rule. A
 backgrounded `runCode` has its own outer token. Its pending envelope and `status()`
 list the child runs found so far. The `detail` of each terminal event carries
 the output tail plus the run's identifier. As a result, the model always knows

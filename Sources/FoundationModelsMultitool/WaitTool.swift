@@ -8,8 +8,8 @@ import FoundationModelsRouter
 public struct WaitArguments {
     /// One run's completion token, or `nil` to wait for every pending run.
     @Guide(
-        description: "Optional. The completion token of one long-running call to wait for. Omit it to "
-            + "wait for every call this session still has running."
+        description: "Optional. The completion token a background run gave you, to collect that one "
+            + "run. Omit it to collect every call this session still has running."
     )
     public var completionToken: String?
 
@@ -38,16 +38,25 @@ public struct WaitArguments {
     }
 }
 
-/// The tool a model calls when it has decided to block until running work
-/// finishes.
+/// The tool a model calls to collect the result of a background run.
 ///
-/// **Why this is a tool and not something a snippet does.** Waiting used to be
-/// a `wait(completionToken, seconds)` global inside the `runCode` sandbox, and
-/// that shape asked the model for a number it cannot know: how long someone
-/// else's work will take. Every value it can write is wrong — too short burns a
-/// turn, too long stalls one — and a gated run measured the consequence, writing
-/// `return await wait(token, 60)` seven times without ever collecting anything
-/// (tasks `2w9vbkm`, `h773bed`).
+/// **Collecting is the normal path, not an exception.** Every mounted
+/// `runCode` call goes to the background — ``MultiTool/mount`` declares
+/// `.background` with no condition on it — so a snippet answers with a
+/// completion token and the result comes back through this tool. A `runCode`
+/// call that answers with a result instead is the un-mounted case: a bare
+/// `FoundationModels.LanguageModelSession` reads no mount declaration, and
+/// there is then no token and nothing for this tool to join.
+///
+/// **Why this is a tool and not something a snippet does.** The sandbox still
+/// vends a `wait(completionToken, seconds)` global, and a snippet that started
+/// its own inner work still uses it (see `MultiTool.sandboxGlobalsPage`). What
+/// that global cannot serve is a *model* that has to wait, because reaching it
+/// means writing a snippet, and the snippet has to name a number the model
+/// cannot know: how long someone else's work will take. Every value it can
+/// write is wrong — too short burns a turn, too long stalls one — and a gated
+/// run measured the consequence, writing `return await wait(token, 60)` seven
+/// times without ever collecting anything (tasks `2w9vbkm`, `h773bed`).
 ///
 /// The difference is what the model supplies. A snippet-level wait asked it to
 /// *predict a duration*. This tool asks it to *declare an intent to block*, and
@@ -59,12 +68,30 @@ public struct WaitArguments {
 /// It is also visible. A `wait` call appears in the transcript and in a UI as
 /// itself, where the same decision buried in snippet source did not.
 ///
-/// **The two surfaces.** On the streaming surface no tool holds the turn: slow
-/// work runs in the background and its result arrives. This tool is how a model
-/// that genuinely cannot proceed without a result chooses to stop and wait for
-/// one. A caller that wants blocking for its own sake calls
-/// `RoutedSession.respond(to:)` instead, which drains everything — that is
-/// FoundationModels semantics and needs no tool.
+/// **The two surfaces, and only one of them collects for the model.** A
+/// settled run reaches the model by itself on one surface and not on the
+/// other. The host picks the surface; the model cannot see which one it got.
+///
+/// `RoutedSession.respond(to:)` collects. After its own turn it awaits every
+/// background run that turn started and runs a further turn with the results,
+/// up to its own round limit — see `RoutedSessionActor.respond(to:maxTokens:)`
+/// and `backgroundRunDrainRoundLimit` in the Router. A model there can get a
+/// result without calling this tool.
+///
+/// `RoutedSession.streamEvents(to:)` and `.streamResponse(to:)` do not
+/// collect. Each declares that it does not drain the run plane, and a turn on
+/// either one ends while the run is still going. Settlement is reported to the
+/// *host* as `SessionEvent.runSettled`, which is not the model's context. On
+/// those two surfaces this tool is the only way the model gets the result
+/// inside the turn — and `streamEvents(to:)` is the surface this package's own
+/// host contract names, so it is the case to design for.
+///
+/// A host that drives `dispatchNextPrompt()` gets a third behaviour: a
+/// delivery turn that carries a staged terminal. Nothing in Router starts that
+/// turn on its own, so it is the host's doing rather than the session's.
+///
+/// Because the model cannot tell these apart, ``description`` promises it
+/// nothing about a result arriving unasked.
 ///
 /// **No session, nothing to wait for.** Like the sandbox globals, this reads
 /// the ambient `ToolContext`; constructed and called outside any session it
@@ -105,13 +132,28 @@ public struct WaitTool: Tool {
 
     /// This tool's usage instructions, as the model reads them.
     ///
-    /// States when to call it and what comes back, and deliberately never
-    /// suggests a number of seconds: the bound is optional and the host has
-    /// one, so a model reading this has no reason to invent a duration.
+    /// **Collecting is stated as the normal path, because it is one.** Every
+    /// mounted `runCode` call goes to the background (``MultiTool/mount``), so
+    /// a completion token — not a result — is what a snippet answers with, and
+    /// this tool is how that result is read. The text this replaced said to
+    /// call `wait` "only when you cannot continue", which framed the ordinary
+    /// case as a last resort.
+    ///
+    /// **It promises nothing about a result arriving on its own.** A settled
+    /// run does reach the model unasked on one surface and not on the other
+    /// (see this type's own documentation), and the model cannot tell which
+    /// surface it is on. A sentence here that said a result comes by itself
+    /// would strand a model on the streaming surface, which is the surface
+    /// this package's host contract names.
+    ///
+    /// It deliberately never suggests a number of seconds: the bound is
+    /// optional and the host has one, so a model reading this has no reason to
+    /// invent a duration.
     public let description = """
-        wait blocks until long-running calls finish, and hands back what they returned. Call it only
-        when you cannot continue without a result you have not been given yet. With no arguments it
-        waits for every call this session still has running; with a completionToken it waits for that
+        wait collects the result of a background run. When runCode answers with a completionToken,
+        the run is still going and that token is not the result. Call wait to collect the result.
+        This is the normal way to read a runCode result, and not an exception. With no arguments it
+        collects every call this session still has running; with a completionToken it collects that
         one. Each finished call comes back with a `state` — `\(RunState.complete)` when it delivered
         its result and `\(RunState.error)` when it did not — and a `detail`, which is the result and
         is what to answer from. A call still running when the bound passes comes back with a `result`
