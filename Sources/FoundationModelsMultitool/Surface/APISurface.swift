@@ -1,24 +1,18 @@
 /// The rendered, model-agnostic tool catalog `MultiTool.Builder.build()`
-/// produces (plan.md Component 7): "the rendered catalog; backs the
-/// librarian prefix, `help()`/`docs()`, and a host-listable data view." That
-/// "librarian prefix" is now realized by `FoundationModelsMetadataRegistry`'s
-/// registry-backed selection tier (`MetadataSearcher`/`SelectionTier`),
-/// which renders this same `source` as its instruction preamble.
+/// produces (plan.md Component 7).
 ///
 /// One `ToolAPIRenderer` call per wrapped tool produces every entry's
-/// `ToolDescriptor` (M2); this type layers on the *namespace* a tool was
-/// added under — flat at `tools.<name>` for a standalone tool, or
-/// `tools.<group>.<name>` for one added via `addGroup(named:_:)` — per
-/// plan.md Resolved #5. `APISurface` itself is pure data: no model wiring,
-/// no rendering logic of its own beyond composing already-rendered pieces.
+/// `ToolDescriptor` (M2). This type adds the namespace a tool was added under
+/// (plan.md Resolved #5) — see ``Entry/path``. `APISurface` itself is pure
+/// data: no model wiring, and no rendering logic of its own beyond the
+/// composition of already-rendered pieces.
 public struct APISurface: Sendable, Equatable {
     /// One rendered tool in the catalog.
     public struct Entry: Sendable, Equatable {
-        /// The fully-qualified path the snippet calls this tool by,
-        /// relative to `tools` — `"getWeather"` for a standalone tool, or
-        /// `"<group>.<name>"` for a grouped one. Always equal to
-        /// `descriptor.name` for a standalone entry (`group == nil`), and
-        /// always `"\(group).\(descriptor.name)"` for a grouped one.
+        /// The fully-qualified path the snippet calls this tool by, relative
+        /// to `tools`. It is always `descriptor.name` for a standalone entry
+        /// (`group == nil`), and always `"\(group).\(descriptor.name)"` for a
+        /// grouped one.
         public let path: String
 
         /// The group this tool was added under (via
@@ -27,23 +21,18 @@ public struct APISurface: Sendable, Equatable {
         public let group: String?
 
         /// The tool's own rendered descriptor, exactly as `ToolAPIRenderer`
-        /// produced it — its `name`/`declaration`/`doc`/`example`/`source`
-        /// are always unqualified (plan.md: "M2 always renders a flat,
-        /// unqualified `name`"); `path` is what carries the namespace.
+        /// produced it and never post-processed. Its `name`, `declaration`,
+        /// `doc`, `example` and `source` are always unqualified (plan.md: "M2
+        /// always renders a flat, unqualified `name`"); ``path`` is what
+        /// carries the namespace.
         public let descriptor: ToolDescriptor
 
         /// Creates a catalog entry.
         ///
-        /// Explicit for the same reason as `ToolDescriptor.init` in
-        /// `ToolDescriptor.swift`: a `public` struct's synthesized
-        /// initializer is only `internal`-accessible, and `Entry` is a
-        /// public type of the `FoundationModelsMultitool` library product
-        /// that callers must be able to construct directly.
-        ///
-        /// - Parameters:
-        ///   - path: the fully-qualified snippet call path.
-        ///   - group: the owning group name, or `nil` for a standalone tool.
-        ///   - descriptor: the tool's own rendered descriptor.
+        /// Explicit, because a `public` struct's synthesized initializer is
+        /// only `internal`-accessible, and a caller of the
+        /// `FoundationModelsMultitool` library product must be able to
+        /// construct an `Entry` directly.
         public init(path: String, group: String?, descriptor: ToolDescriptor) {
             self.path = path
             self.group = group
@@ -52,101 +41,89 @@ public struct APISurface: Sendable, Equatable {
 
         /// The canonical `"verb noun"` string this entry's runs journal as
         /// their `OperationEvent.op` — `"execute shell"` for
-        /// `tools.shell.execute` — or `nil` for a standalone entry, which has
-        /// no noun and keeps the tool's own name as its op.
+        /// `tools.shell.execute`. `nil` for a standalone entry, which has no
+        /// noun and keeps the tool's own name as its op.
         ///
-        /// eventplan.md § "Registration of capabilities: noun/verb":
-        /// "`OperationEvent.op` stays the canonical `"verb noun"` string.
-        /// Registration derives it as `"\(verb) \(noun)"`."
+        /// The order is externally specified, not a local choice. eventplan.md
+        /// § "Registration of capabilities: noun/verb": "`OperationEvent.op`
+        /// stays the canonical `"verb noun"` string. Registration derives it as
+        /// `"\(verb) \(noun)"`."
         ///
-        /// **Derived from the same two halves `path` is.** `group` is the noun
-        /// `register(noun:tool:)` supplied and `descriptor.name` is the verb
-        /// `Tool.name` supplied, so `tools.<noun>.<verb>` and `"verb noun"`
-        /// come from the one pair and neither is spelled a second time
-        /// anywhere. A verb could not derive this for itself: it does not know
-        /// its own noun, which is why the derivation stands here rather than in
-        /// the tool.
+        /// It comes from the same two halves ``path`` does: `group` is the
+        /// noun `register(noun:tool:)` supplied, and `descriptor.name` is the
+        /// verb `Tool.name` supplied. Neither half is spelled a second time
+        /// anywhere. A verb could not derive this for itself, because it does
+        /// not know its own noun. That is why the derivation stands here and
+        /// not in the tool.
         ///
-        /// ## The plane this string appears on
+        /// The string appears on the run plane only, never in the event
+        /// journal of an enclosing snippet. `MultiTool` hands it to
+        /// `ToolMounting.makeWrapped`, which stamps it on the call's own
+        /// `ToolContext.op`, so `SessionMailbox.track(tool:op:)` fills
+        /// `BackgroundRun.op` from it and the run's `ToolInvocationRecord`
+        /// carries it. The `OperationEvent`s of an inner `tools.*` call reach
+        /// the session's outbox through the enclosing `runCode` context's
+        /// `post(_:)`, which re-stamps each forwarded event with the OUTER
+        /// run's identity.
         ///
-        /// The run plane, and never the event journal of an enclosing snippet.
-        /// `MultiTool` hands this string to `ToolMounting.makeWrapped`, which
-        /// stamps it onto the call's own `ToolContext.op` — so
-        /// `SessionMailbox.track(tool:op:)` fills `BackgroundRun.op` from it, and
-        /// the run's `ToolInvocationRecord` carries it. The `OperationEvent`s
-        /// of an inner `tools.*` call reach the session's outbox through the
-        /// enclosing `runCode` context's `post(_:)`, which re-stamps every
-        /// event it forwards with the OUTER run's identity, so the snippet's
-        /// own journal never shows this pair.
-        ///
-        /// The `tool` field of every one of those records keeps naming the tool
-        /// itself (`"execute"`); only `op` carries the pair.
+        /// The `tool` field of each of those records keeps naming the tool
+        /// itself (`"execute"`). Only `op` carries the pair.
         public var journalOp: String? {
             group.map { "\(descriptor.name) \($0)" }
         }
 
         /// This entry's full renderable text block, as it appears in the
-        /// concatenated `APISurface.source`: a `// tools.<path>` banner
-        /// line naming its fully-qualified call path (so a grouped tool's
-        /// namespace is visible even though `descriptor` itself never
-        /// mentions it — see `path`'s documentation), followed by
-        /// `descriptor.source` — its JSDoc doc comment and `declare
-        /// function` signature — with its embedded `@example` line's call
-        /// qualified the same way (see `qualify(_:)`), so the runnable
-        /// example a reader actually sees always matches the namespace the
-        /// banner just named — never the bare, unqualified call a model
-        /// has no way to infer needs a group prefix prepended.
+        /// concatenated `APISurface.source`: a `// tools.<path>` banner line
+        /// that names the fully-qualified call path, then `descriptor.source`
+        /// with its embedded `@example` call qualified the same way (see
+        /// `qualify(_:)`). The runnable example a reader sees thus always
+        /// matches the namespace the banner just named, and never the bare
+        /// call a model has no way to know needs a group prefix.
         ///
-        /// `path` is safe to splice bare into a `//` comment: it's built
-        /// exclusively from `descriptor.name` (already validated as a
-        /// legal TypeScript identifier by `ToolAPIRenderer.render`, which
-        /// throws otherwise) and, for a grouped entry, `group` (validated
-        /// the same way by `MultiTool.Builder.build()` before this `Entry`
-        /// is ever constructed) — neither can contain a newline or other
-        /// character that could break out of a single-line comment.
+        /// `path` is safe to splice bare into a `//` comment. It is built only
+        /// from `descriptor.name`, which `ToolAPIRenderer.render` validates as
+        /// a legal TypeScript identifier and throws otherwise, and, for a
+        /// grouped entry, `group`, which `MultiTool.Builder.build()` validates
+        /// the same way before this `Entry` is constructed. Neither can hold a
+        /// newline or another character that could break out of a single-line
+        /// comment.
         public var block: String {
             "// tools.\(path)\n\(qualify(descriptor.source))"
         }
 
-        /// `descriptor.example` — the auto-generated, runnable example
-        /// call — with its bare `tools.<name>(` call prefix qualified the
-        /// same way `block`'s embedded `@example` line is, so a caller
-        /// splicing this field directly (`SearchToolsTool.format`'s separate
-        /// `Example: ...` trailer) never shows a different, disagreeing
-        /// call than the one `block` itself displays.
+        /// `descriptor.example` — the auto-generated, runnable example call —
+        /// with its bare `tools.<name>(` prefix qualified the same way
+        /// ``block``'s embedded `@example` line is. A caller that splices this
+        /// field directly (`SearchToolsTool.format`'s separate `Example: ...`
+        /// trailer) thus never shows a call that disagrees with the one
+        /// ``block`` displays.
         ///
-        /// A no-op for a standalone entry (`path == descriptor.name`) —
-        /// `descriptor.example` is returned unmodified.
+        /// A no-op for a standalone entry, where `path == descriptor.name`.
         public var qualifiedExample: String {
             qualify(descriptor.example)
         }
 
-        /// Replaces the unqualified `tools.<name>(` call prefix
+        /// Replaces the unqualified `tools.<name>(` call prefix that
         /// `ToolAPIRenderer.render`'s `exampleCall` always renders with the
         /// fully-qualified `tools.<path>(` prefix, everywhere it appears in
         /// `text` — the embedded JSDoc `@example` line inside
         /// `descriptor.source`, and `descriptor.example` itself.
         ///
-        /// A targeted substitution rather than a re-render: `descriptor`
-        /// (M2's flat, unqualified rendering) is never re-derived, only its
-        /// one namespace-dependent call-path prefix is corrected. Safe to
-        /// splice, since `descriptor.name` is validated as a legal TS
-        /// identifier by `ToolAPIRenderer.render`: the replacement text can
-        /// never itself break out of the surrounding JSDoc/declaration
-        /// syntax. This does not guarantee the *search* substring
-        /// `"tools.\(descriptor.name)("` is unique within `text` — a tool's
-        /// author-supplied `description`/`@Guide` prose (also embedded
-        /// verbatim in `descriptor.source`) could in principle happen to
-        /// contain that exact literal substring — but the only place
-        /// `ToolAPIRenderer.render` itself ever emits it is the `@example`
-        /// line/`example` field this method targets, so this is a
-        /// theoretical, not a practical, concern for any real generated
-        /// doc. A no-op for a standalone entry, since `path ==
-        /// descriptor.name` there.
+        /// A targeted substitution rather than a re-render: `descriptor` (M2's
+        /// flat, unqualified rendering) is never re-derived, and only its one
+        /// namespace-dependent call-path prefix is corrected. The replacement
+        /// text is safe to splice, because `ToolAPIRenderer.render` validates
+        /// `descriptor.name` as a legal TypeScript identifier: the text can
+        /// never break out of the surrounding JSDoc or declaration syntax.
         ///
-        /// - Parameter text: the rendered text to qualify — either
-        ///   `descriptor.source` or `descriptor.example`.
-        /// - Returns: `text` with its bare call prefix qualified.
+        /// This does not make the *search* substring
+        /// `"tools.\(descriptor.name)("` unique within `text`. A tool's
+        /// author-supplied `description` or `@Guide` prose, which
+        /// `descriptor.source` also embeds verbatim, could in principle hold
+        /// that exact literal substring. But the only place
+        /// `ToolAPIRenderer.render` itself emits it is the `@example` line and
+        /// `example` field this method targets, so the risk is theoretical and
+        /// not practical for any real generated doc.
         private func qualify(_ text: String) -> String {
             text.replacingOccurrences(
                 of: "tools.\(descriptor.name)(",
@@ -161,37 +138,29 @@ public struct APISurface: Sendable, Equatable {
 
     /// Creates a rendered API surface.
     ///
-    /// Explicit for the same reason as `Entry.init` above: a `public`
-    /// struct's synthesized initializer is only `internal`-accessible, and
-    /// `APISurface` is the public return type of `MultiTool.Builder.build()`
-    /// that a host may need to assemble directly (e.g. in tests).
-    ///
-    /// - Parameter entries: every tool in the catalog, in catalog order.
+    /// Explicit for the same reason as ``Entry/init(path:group:descriptor:)``.
     public init(entries: [Entry]) {
         self.entries = entries
     }
 
-    /// The full rendered surface — every entry's `block`, in catalog
-    /// order, separated by a blank line. This is what backs the
-    /// registry-backed selection tier's instruction prefix
-    /// (`FoundationModelsMetadataRegistry`'s `MetadataSearcher`/
-    /// `SelectionTier`, prefix-cached per plan.md § "Discovery: a
-    /// prefix-cached 'librarian' agent") and the in-snippet `help()`/`docs()`
-    /// globals.
+    /// The full rendered surface — every entry's ``Entry/block``, in catalog
+    /// order, separated by a blank line. It backs the instruction prefix of
+    /// `FoundationModelsMetadataRegistry`'s registry-backed selection tier
+    /// (`MetadataSearcher`/`SelectionTier`, prefix-cached per plan.md
+    /// § "Discovery: a prefix-cached 'librarian' agent") and the in-snippet
+    /// `help()`/`docs()` globals.
     public var source: String {
         entries.map(\.block).joined(separator: "\n\n")
     }
 
-    /// Every standalone (flat-namespaced) entry, in catalog order — a
-    /// convenience view for a host UI that wants to list ungrouped tools
-    /// separately from grouped ones.
+    /// Every standalone (flat-namespaced) entry, in catalog order — a view for
+    /// a host UI that lists ungrouped tools separately from grouped ones.
     public var standaloneEntries: [Entry] {
         entries.filter { $0.group == nil }
     }
 
-    /// Every grouped entry, keyed by its group name, each group's entries
-    /// kept in catalog order — a convenience view for a host UI that wants
-    /// to render tools under their namespace headings.
+    /// Every grouped entry, keyed by group name, each group's entries in
+    /// catalog order — a view for a host UI that renders namespace headings.
     public var groupedEntries: [String: [Entry]] {
         var result: [String: [Entry]] = [:]
         for entry in entries {
