@@ -17,12 +17,14 @@ conformers, and the host contract is one sentence: build a registry, mount what
 session by draining `streamEvents(to:)`. The session's own tool-calling loop
 decides when to call `searchTools` (discovery) and `runCode` (execution).
 
-The session type is part of the contract, not a detail. A `RoutedSession`
-mounts each vended tool under `DetachConfiguration.nativeSessionMount`, so a
-slow `runCode` goes to the background and answers with a pending envelope the
-model collects with the mounted `wait` tool. Mounted on a bare
-`FoundationModels.LanguageModelSession` the same tools cannot detach at all:
-the snippet blocks, no envelope is written, and `wait` has nothing to join.
+The session type is part of the contract, not a detail. `MultiTool` declares
+that it runs in the background: it conforms to `BackgroundTool` and gives a
+`ToolMount`. A `RoutedSession` reads that declaration when it mounts the tool,
+so a slow `runCode` starts a background run and answers at once with a pending
+envelope. The model collects the result with the mounted `wait` tool. A bare
+`FoundationModels.LanguageModelSession` does not read the declaration, so the
+same tools run in band: the snippet blocks, no envelope is written, and `wait`
+has nothing to join.
 
 This example mirrors the runnable demo in `Sources/MultitoolCLI`
 (`CLIRunner.runDemo`), which drives exactly this wiring end to end:
@@ -126,8 +128,8 @@ for what that costs and for the Router gate that used to deadlock it.
 For a small, fixed tool set, skip discovery entirely — direct mode: build the
 registry with `.directMode()` and mount it the same way. A direct-mode
 registry vends `runCode` and `wait` alone — direct mode takes discovery away,
-never detachment — and snippets introspect the surface via `help()`/`docs(name)`
-instead (the demo's `--direct` flag).
+never the background run — and snippets introspect the surface via
+`help()`/`docs(name)` instead (the demo's `--direct` flag).
 
 The living-documentation suite,
 [`Tests/FoundationModelsMultitoolTests/ExamplesTests.swift`](Tests/FoundationModelsMultitoolTests/ExamplesTests.swift),
