@@ -1110,7 +1110,7 @@ struct JSCInterpreterTests {
     }
 
     @Test(
-        "cancelling a snippet parked on a pending call runs none of its author-written .catch() or finally {}"
+        "cancelling a snippet that waits on a pending call runs none of its author-written .catch() or finally {}"
     )
     func cancellationSkipsAuthorCatchAndFinally() throws {
         // Pins the ruled cancellation contract (eventplan.md "Async

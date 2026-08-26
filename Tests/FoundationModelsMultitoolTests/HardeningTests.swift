@@ -65,12 +65,12 @@ struct HardeningTests {
     }
 
     @Test(
-        "cancelling the task running MultiTool.call while it's parked awaiting a pending tools.* promise still throws CancellationError within the watchdog window"
+        "cancelling the task running MultiTool.call while it waits on a pending tools.* promise still throws CancellationError within the watchdog window"
     )
     func cancellationCancelsWhileAwaitingAPendingToolCall() async throws {
         // Regression for the async host-function bridge (eventplan.md "Async
         // JavaScript"): unlike `while (true) {}` above, this snippet spends
-        // its time parked in the interpreter's promise pump
+        // its time in the interpreter's promise pump
         // (`pumpUntilSettled`) waiting on a pending `tools.*` call, not
         // spinning the JS thread — a different code path M10's cancellation
         // guarantee must also reach.

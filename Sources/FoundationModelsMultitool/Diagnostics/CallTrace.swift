@@ -10,10 +10,10 @@ import os
 /// A suspended Swift `async` function occupies no OS thread. Its frame lives on
 /// the heap, and the cooperative pool thread that was running it has moved on,
 /// so `sample`, `spindump`, and a crash report all print stacks that belong to
-/// something else entirely. Every thread parked on a condition variable is the
-/// *expected* picture of a suspended async program, and it names nothing. That
-/// is why a hang inside an awaited call cannot be answered by sampling, and why
-/// this package writes its own trail instead.
+/// something else entirely. Every thread that waits on a condition variable is
+/// the *expected* picture of a suspended async program, and it names nothing.
+/// That is why a hang inside an awaited call cannot be answered by sampling,
+/// and why this package writes its own trail instead.
 ///
 /// Each span writes one line before the call and one line after it, under a
 /// single signpost id. The last unmatched entry in the log names the call that

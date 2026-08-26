@@ -4,10 +4,10 @@ import Testing
 // MARK: - The one poll of this test target
 //
 // Some readings a test takes become true a little AFTER the call that makes
-// them true: a background run reaches the run plane after the call that parked it
-// answered, a gated call starts after the snippet that called it returned, a
-// process group goes away after the sweep that killed it returned, a registry
-// drains after the teardown that started it.
+// them true: a background run reaches the run plane after the call that
+// started it answered, a gated call starts after the snippet that called it
+// returned, a process group goes away after the sweep that killed it returned,
+// a registry drains after the teardown that started it.
 //
 // A read taken at that instant is a race, and a fixed sleep is slack. A poll is
 // neither: it re-reads until the reading holds, and it gives up at a deadline
