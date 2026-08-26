@@ -73,7 +73,7 @@ that one tool's own `call(arguments:)`.
   the interpreter's watchdog (`JSContextGroupSetExecutionTimeLimit`), not left
   to run forever. Under a `MultiTool` the ceiling it terminates at is always
   `MultiToolConfiguration.executionTimeLimit`, which defaults to
-  `ElevationConfiguration.defaultTimeoutSeconds` (120 seconds). That holds for
+  `ToolMount.defaultTimeoutSeconds` (120 seconds). That holds for
   the sandbox `MultiTool.init` builds for itself and for one injected through
   its `interpreter:` parameter alike: `MultiTool.init` re-arms whatever
   interpreter it is given from the configured ceiling

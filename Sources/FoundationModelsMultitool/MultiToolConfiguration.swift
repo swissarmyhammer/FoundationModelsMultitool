@@ -27,12 +27,9 @@ public struct MultiToolConfiguration: Sendable, Equatable {
     /// snippet goes on in the background, so the suspended JSC context lives
     /// past the call. This limit, which arms the watchdog of every sandbox
     /// `MultiTool.init` runs (`Interpreter.withTimeLimit(_:)`), must never be
-    /// a second clock racing the engine's. It was: this default and the
-    /// engine's stock wait window were both 5 seconds, so the watchdog
-    /// force-terminated a snippet at the exact instant its run went to the
-    /// background. The default is now the engine's own stock work clock,
-    /// `ToolMount.defaultTimeoutSeconds`, taken from that one
-    /// definition so the two can never drift apart again.
+    /// a second clock racing the engine's. The default is thus the engine's
+    /// own stock work clock, `ToolMount.defaultTimeoutSeconds`, taken from
+    /// that one definition so the two cannot drift apart.
     ///
     /// The work bound `runCode` answers per call is enforced by the engine —
     /// which resets it on every progress event and reaches the interpreter
@@ -54,22 +51,21 @@ public struct MultiToolConfiguration: Sendable, Equatable {
     /// builds for itself: an `interpreter:` a caller hands it is re-armed
     /// with this ceiling too (`Interpreter.withTimeLimit(_:)`). So injecting
     /// an interpreter cannot put a second, different limit under a `runCode`
-    /// call, and cannot reinstate the collision described above: a plain
-    /// `JSCInterpreter()`, whose own stock limit is the 5 seconds that
-    /// collision was made of, is armed from here like any other.
+    /// call: a plain `JSCInterpreter()`, whose own stock limit is 5 seconds,
+    /// is armed from here like any other.
     public let executionTimeLimit: TimeInterval
 
     /// How many `runCode` snippets may be live at once before a further call
     /// is refused with a repairable in-band error. Clamped to at least `1` at
     /// `init`.
     ///
-    /// A snippet stays live past its wait window only in the background, so
-    /// this is the cap on suspended JSC contexts (eventplan.md § "The constraint
-    /// boundary, and the escape hatch"). Each one holds a real JS context and
-    /// the thread its run occupies, so they are bounded rather than allowed
-    /// to pile up: a model that has backgrounded this many snippets has lost track
-    /// of them, and is told to collect one — `status()`, `wait()`,
-    /// `cancel()` — instead of starting another.
+    /// A snippet stays live after its call has answered only in the background,
+    /// so this is the cap on suspended JSC contexts (eventplan.md § "The
+    /// constraint boundary, and the escape hatch"). Each one holds a real JS
+    /// context and the thread its run occupies, so they are bounded rather
+    /// than allowed to pile up: a model that has backgrounded this many
+    /// snippets has lost track of them, and is told to collect one —
+    /// `status()`, `wait()`, `cancel()` — instead of starting another.
     public let liveContextLimit: Int
 
     /// Maximum length, in characters, a snippet's serialized return value

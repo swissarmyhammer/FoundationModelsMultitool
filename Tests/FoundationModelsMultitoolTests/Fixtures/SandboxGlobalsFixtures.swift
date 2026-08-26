@@ -12,11 +12,11 @@ import FoundationModelsRouter
 // reply — so what these tests exercise is the actual Router surface, not a
 // stand-in.
 //
-// A run goes to the background the way a real one does. A genuinely slow call
-// is raced against a zero wait clock by the mount engine, which
-// backgrounds it and hands back the pending envelope. Nothing here registers a
-// run by hand: the mailbox's bookkeeping is Router's own wiring, and a host
-// reads it only through `ToolContext` (Router task ^k0mecjp).
+// A run goes to the background the way a real one does. The site mounts the
+// call in the background, so the mount engine backgrounds it and hands back
+// the pending envelope. Nothing here registers a run by hand: the mailbox's
+// bookkeeping is Router's own wiring, and a host reads it only through
+// `ToolContext` (Router task ^k0mecjp).
 
 /// A one-shot gate that holds a scripted background run going until a test
 /// decides it should finish.
@@ -120,8 +120,8 @@ struct ScriptedToolFailure: Error, CustomStringConvertible {
 
 /// A tool whose call blocks until its gate opens.
 ///
-/// Genuinely slow, so the mount engine backgrounds it for the real reason
-/// a real tool is backgrounded: the work outlived the wait clock.
+/// Genuinely slow: the call blocks until its gate opens, so the run stays
+/// going while a test reads it and drives it.
 final class GatedScriptedTool: Tool, Sendable {
     let name: String
     let description = "Blocks until its gate opens, then returns its scripted detail."
@@ -170,8 +170,8 @@ final class GatedScriptedTool: Tool, Sendable {
     func call(arguments: NoArguments) async throws -> String {
         if let progress {
             // Only once the run is in the background. A progress detail is
-            // recorded against a running row, so a post made while the call is
-            // still inside its wait window updates nothing and is lost — and
+            // recorded against a running row, so a post made before the mount
+            // engine tracks the run updates nothing and is lost — and
             // it also makes the run non-silent, which suppresses the
             // synthesized progress the engine posts for a silent one.
             await backgrounded.wait()

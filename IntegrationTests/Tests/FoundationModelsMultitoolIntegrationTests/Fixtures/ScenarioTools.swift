@@ -491,15 +491,9 @@ struct IntegrationDeepScanOutput {
 
 /// How long `IntegrationDeepScanTool` works before it reports.
 ///
-/// Chosen to sit between the two clocks Router's native session mount arms a
-/// `runCode` call with (`ToolMount.synchronous`): longer
-/// than its 5-second `defaultWaitSeconds`, so the outer `runCode` call that
-/// awaits this tool always outlives its wait window and goes to the background
-/// with a pending envelope; and far shorter than its 120-second
-/// `defaultTimeoutSeconds` (and than `MultiToolConfiguration
-/// .executionTimeLimit`, the sandbox watchdog's absolute ceiling), so the
-/// background run settles on its own while the model is still composing the
-/// follow-up that collects it.
+/// Far shorter than `MultiToolConfiguration.executionTimeLimit`, the sandbox
+/// watchdog's absolute ceiling, so the background run settles on its own while
+/// the model is still composing the follow-up that collects it.
 let integrationDeepScanDuration: Duration = .seconds(8)
 
 /// The report code `IntegrationDeepScanTool` always returns.
@@ -514,10 +508,10 @@ let integrationDeepScanDuration: Duration = .seconds(8)
 /// of the scenario.
 let integrationDeepScanReportCode = 41739
 
-/// The deliberately slow tool the background scenario drives: a snippet that
-/// awaits it cannot finish inside the mount's wait window, so the outer
+/// The deliberately slow tool the background scenario drives: the outer
 /// `runCode` call hands the model a pending envelope and keeps running in the
-/// background. Recovering the answer then requires the background-run globals
+/// background while a snippet awaits this tool.
+/// Recovering the answer then requires the background-run globals
 /// (`status()`, `wait(completionToken, seconds)`) the sandbox installs — which
 /// is exactly the round trip eventplan.md's phase 1 has to prove end to end.
 struct IntegrationDeepScanTool: Tool {
@@ -655,8 +649,8 @@ let integrationArchiveRebuildManifestCode = 58204
 ///
 /// **Why it does not have to be slow, which is not obvious.** The canary asks
 /// whether the model collected its own backgrounded run, and a backgrounded run
-/// is not something a slow tool produces. `MultiTool.timeout(from:)`
-/// answers a zero wait clock for every call, so *every* `runCode` backgrounds
+/// is not something a slow tool produces. `MultiTool.mount` declares the
+/// background mount for every call, so *every* `runCode` backgrounds
 /// the instant it is made, whatever the snippet awaits. The backgrounding is
 /// what hands the model a `PendingRunEnvelope`, and the envelope's text is what
 /// makes it spend a `wait` call (Router's `^466d38p`). So the graded shape —
@@ -664,9 +658,9 @@ let integrationArchiveRebuildManifestCode = 58204
 /// that returns immediately produces it just as surely as one that stalls.
 ///
 /// The contrast with `IntegrationDeepScanTool` is the contrast in what the two
-/// scenarios ask. That fixture is slow so that the outer `runCode` outlives the
-/// mount's wait window, which is the background scenario's own subject. Nothing
-/// here rests on how long anything takes.
+/// scenarios ask. That fixture is slow so that its background run is still
+/// going when the model collects it, which is the background scenario's own
+/// subject. Nothing here rests on how long anything takes.
 ///
 /// **An earlier version was held on a gate, and that cost the canary its
 /// verdict.** The gate was built for the scenario this canary was inverted
@@ -863,9 +857,7 @@ struct IntegrationDelayedEchoOutput {
 /// state past the instant the snippet's own collect starts, so `wait` must
 /// block and be woken by the settlement.
 ///
-/// Four seconds and not the deep scan's eight: `runCode` backgrounds every
-/// call at once (`MultiTool.timeout(from:)` answers a zero wait
-/// clock), so no wait window has to be outlived here. The delay only has to
+/// Four seconds and not the deep scan's eight: the delay only has to
 /// be clearly nonzero, and every extra second is wall clock the mechanism
 /// test pays on each run. It stays far under
 /// `MultiToolConfiguration.executionTimeLimit`, the sandbox work clock, so a

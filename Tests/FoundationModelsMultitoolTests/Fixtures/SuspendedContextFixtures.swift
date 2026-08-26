@@ -5,7 +5,7 @@ import os
 // MARK: - Phase-1 suspended-context fixtures (eventplan.md § "The constraint
 // boundary, and the escape hatch")
 //
-// A snippet only stays alive past its wait window because something inside it
+// A snippet stays alive after its call has answered because something inside it
 // is still pending. These fixtures are that something: a tool whose call blocks
 // until the test releases it, so a test decides exactly when the suspended JSC
 // context resumes — and can observe whether the context was torn down instead.

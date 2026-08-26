@@ -1,8 +1,8 @@
 import Testing
 
 /// The background-in-code-mode scenario — eventplan.md's phase-1 exit
-/// proof that the two surfaces really do meet on real hardware: a snippet whose
-/// work outlives the mount's wait clock hands the model a pending envelope,
+/// proof that the two surfaces really do meet on real hardware: a snippet that
+/// goes to the background hands the model a pending envelope,
 /// and the model collects the background run through the background-run globals
 /// and still answers.
 ///
@@ -85,9 +85,9 @@ struct BackgroundTests {
             // announce it had started the scan without ever calling `runCode`,
             // and adding "give me the number in this reply" made it skip the
             // scan and invent a number. Asking it to wait for the result is
-            // what actually gets the snippet run — and a snippet that awaits
-            // this fixture always outlives the mount's wait window, so this is
-            // the turn that goes to the background.
+            // what actually gets the snippet run — and every `runCode` call
+            // goes to the background, so this is the turn that hands the model
+            // a pending envelope.
             prompt: "Start the deep scan of my archive, wait for it to finish, and tell me the exact "
                 + "report code it returns.",
             // The deep-scan fixture always returns the same report code, and it
