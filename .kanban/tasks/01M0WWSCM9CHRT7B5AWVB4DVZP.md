@@ -29,11 +29,28 @@ comments:
     - evidence: swift test — Test run with 978 tests in 70 suites passed after 4.291 seconds; 0 failures; 0 skipped; 1 known pre-existing warning: mlx-swift "missing creator for mutated node" (not chased, per instruction).
     - next: none
   timestamp: 2026-08-25T23:55:33.004445+00:00
+- actor: claude-code
+  id: 01m0xp1tncm7q08a08z4zfr0be
+  text: |-
+    ### review — clean
+    - evidence: review sha df1d7e2~1..df1d7e2, backend local — counts: 0 findings, 0 confirmed, 0 refuted, 7 attempted, 0 failed. 5 files reviewed; 4 files in .kanban/ excluded by .reviewignore.
+    - next: none. The task moved to done.
+  timestamp: 2026-08-26T00:03:22.412068+00:00
+- actor: claude-code
+  id: 01m0xp2cv1t8fk6qvjjcgj2knr
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — Patch.swift (tools.files.patch, changeKinds table included), FilesPatchTests.swift, shared outcome encoder in EditOutcomeProjection.swift
+    - test: green — swift test, 978 tests in 70 suites, 0 failed
+    - commit: df1d7e2
+    - review: clean — review sha df1d7e2~1..df1d7e2, 0 findings
+    - task landed in done
+  timestamp: 2026-08-26T00:03:41.025748+00:00
 depends_on:
 - 01M0WWRKSCECWP5XSEZBHGTF8T
 - 01M0WXACC6Q0PY1QKZ6Y2TH7J4
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ff8680
 title: Make the tools.files.patch verb from PatchFiles
 ---
 ## What

@@ -303,6 +303,62 @@ extension MultiTool {
             return withCapability(capability)
         }
 
+        /// Queues the six verbs of the files capability under the noun
+        /// `files` — eventplan.md § "Registration of capabilities: noun/verb":
+        /// "The Builder opts modules in explicitly: `withShell()`,
+        /// `withFiles(root:)`...".
+        ///
+        /// That is the whole of what this method is. It builds a
+        /// `FilesCapability` from the five arguments and hands it to
+        /// `withCapability(_:)`, so `tools.files.read`, `tools.files.write`,
+        /// `tools.files.edit`, `tools.files.patch`, `tools.files.glob` and
+        /// `tools.files.grep` render exactly as any other capability's verbs
+        /// do, and the noun is owned exactly as any other capability's noun
+        /// is.
+        ///
+        /// **Files is OFF by default.** eventplan.md § "The capability
+        /// contract": "The modules are opt-in ... They are off by default."
+        /// A builder that never calls this renders no `tools.files` namespace
+        /// at all.
+        ///
+        /// Unlike `withShell(...)`, this method does not throw. The files
+        /// capability acquires no resource at construction: the session
+        /// context validates nothing up front, and every path question is
+        /// answered per call, as a correction in the verb's own result — see
+        /// `FilesCapability.init(root:additionalRoots:readOnly:allowSymlinks:recordsChanges:)`.
+        ///
+        /// - Parameters:
+        ///   - root: the session working directory: the boundary every path
+        ///     is confined to, and the base a relative path resolves against.
+        ///   - additionalRoots: extra workspace boundaries paths may also
+        ///     resolve within, alongside `root`. Defaults to none.
+        ///   - readOnly: whether the session forbids the mutating verbs.
+        ///     Defaults to letting them run.
+        ///   - allowSymlinks: whether the path guard resolves symlinks rather
+        ///     than rejecting them. Defaults to rejecting them.
+        ///   - recordsChanges: whether the mutating verbs record what they
+        ///     changed into the session's change journal. Defaults to
+        ///     recording nothing.
+        /// - Returns: `self`, for fluent chaining.
+        @discardableResult
+        public func withFiles(
+            root: URL,
+            additionalRoots: Set<URL> = [],
+            readOnly: Bool = false,
+            allowSymlinks: Bool = false,
+            recordsChanges: Bool = false
+        ) -> Self {
+            withCapability(
+                FilesCapability(
+                    root: root,
+                    additionalRoots: additionalRoots,
+                    readOnly: readOnly,
+                    allowSymlinks: allowSymlinks,
+                    recordsChanges: recordsChanges
+                )
+            )
+        }
+
         /// Queues every tool in `tools` under the named `group`, destined
         /// to render at `tools.<group>.<name>` — plan.md's namespacing for
         /// "many `Tool`s under one namespace" (Resolved #5). Calling
