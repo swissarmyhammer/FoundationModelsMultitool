@@ -258,7 +258,7 @@ struct WaitToolTests {
 
     // MARK: - wait never backgrounds itself
 
-    @Test("a wait call blocking past the mount's wait clock still returns its report, never a token")
+    @Test("a wait call never backgrounds itself, whatever mount the site puts it under")
     func waitNeverBackgroundsItself() async throws {
         let mailbox = SessionMailbox()
         let run = try await startScriptedRun(in: mailbox)

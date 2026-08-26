@@ -8,8 +8,8 @@ import Testing
 ///
 /// **Why this suite does not use `runNativeIntegrationScenario`.** Not the
 /// session: both runners build the same `RoutedSession` from
-/// `profile.standard.makeSession(tools:discoveryPriming:)`, so both mount
-/// `runCode` under `ToolMount.synchronous`. It is the
+/// `profile.standard.makeSession(tools:discoveryPriming:)`, so `runCode` goes
+/// to the background on both. It is the
 /// assertion. `runBackgroundIntegrationScenario` also requires that a pending
 /// envelope really appeared on the way to the answer, which is the whole
 /// claim of this suite and which the native runner does not check. See

@@ -74,11 +74,11 @@ extension MultiTool {
         /// the session and `searchTools` is not; a snippet is expected to
         /// introspect the surface itself via `help()`/`docs()` (M7) rather than
         /// a `searchTools` round trip. Direct mode takes discovery away and
-        /// nothing else — `wait` stays, because a slow `runCode` still goes to the background
-        /// and the model still needs a deliberate join. The executable surface
-        /// itself (`surface`/`tools`) is unchanged — only the affordance
-        /// metadata (`isDirectMode`, `affordances`, `supportsSearchTools`)
-        /// flips.
+        /// nothing else — `wait` stays, because every mounted `runCode` call
+        /// goes to the background and the model still needs a deliberate join.
+        /// The executable surface itself (`surface`/`tools`) is unchanged —
+        /// only the affordance metadata (`isDirectMode`, `affordances`,
+        /// `supportsSearchTools`) flips.
         ///
         /// - Returns: a copy of this registry with `isDirectMode` set to
         ///   `true`.
@@ -141,10 +141,11 @@ extension MultiTool {
         /// pass one at all.
         ///
         /// The session type is part of the contract, not a detail. A
-        /// `RoutedSession` is what mounts each tool under
-        /// `ToolMount.synchronous`, so a slow `runCode`
-        /// goes to the background and answers with a pending envelope the model collects
-        /// with `wait`. Mounted on a bare `FoundationModels
+        /// `RoutedSession` is what puts each tool through Router's own
+        /// mounting path, where the background mount `MultiTool` declares for
+        /// itself takes effect. So every `runCode` call goes to the background
+        /// and answers with a pending envelope the model collects with `wait`.
+        /// Mounted on a bare `FoundationModels
         /// .LanguageModelSession` the same tools cannot go to the background at all: the
         /// snippet simply blocks, no envelope is ever written, and `wait` has
         /// nothing to join. The integration suite drives exactly this contract —
@@ -178,8 +179,9 @@ extension MultiTool {
             librarian: RoutedLLM?,
             sampleGenerator: RoutedLLM? = nil
         ) throws -> [any Tool] {
-            // `wait` is mounted in both modes: a direct-mode surface still
-            // backgrounds a slow `runCode`, so a model still needs a way to say
+            // `wait` is mounted in both modes: a direct-mode surface declares
+            // the background mount for `runCode` too, so every mounted call
+            // goes to the background and a model still needs a way to say
             // "I cannot continue without that result" (task `h773bed`).
             guard supportsSearchTools else {
                 return [MultiTool(registry: self), WaitTool()]

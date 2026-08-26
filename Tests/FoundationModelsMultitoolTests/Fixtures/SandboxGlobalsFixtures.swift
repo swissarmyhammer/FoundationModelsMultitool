@@ -136,7 +136,7 @@ final class GatedScriptedTool: Tool, Sendable {
     /// bounded output tail. Also the reason it throws, when `fails` is set.
     private let detail: String
 
-    /// The progress detail to post once backgrounded, or `nil` to stay silent.
+    /// The progress detail to post once backgrounded, or `nil` to post none.
     private let progress: String?
 
     /// Whether the call throws once its gate opens rather than returning.
@@ -169,11 +169,14 @@ final class GatedScriptedTool: Tool, Sendable {
 
     func call(arguments: NoArguments) async throws -> String {
         if let progress {
-            // Only once the run is in the background. A progress detail is
-            // recorded against a running row, so a post made before the mount
-            // engine tracks the run updates nothing and is lost — and
-            // it also makes the run non-silent, which suppresses the
-            // synthesized progress the engine posts for a silent one.
+            // Only once the run is in the background. The mount engine
+            // records a progress detail against the run's status row
+            // (`SessionMailbox.updateProgress`). `SessionMailbox.track` makes
+            // that row, and a post that arrives before it updates nothing.
+            // `BackgroundToolRunner` holds this body on a start gate until
+            // after it tracks the run, so that order already holds. This gate
+            // states the order at the fixture too, and the tests that read
+            // `latestProgress` do not depend on that internal step.
             await backgrounded.wait()
             await ToolContext.current?.progress(progress)
         }
@@ -207,7 +210,7 @@ func backgroundRuns(over mailbox: SessionMailbox) -> ToolContext {
 ///   - detail: what the call returns once it finishes — the bounded output
 ///     tail a `wait()` resolves to. Also the reason it throws when `failing`.
 ///   - progress: the latest progress detail `status()` should report, or
-///     `nil` to leave the run silent. When given, this returns only once that
+///     `nil` to let the run post none. When given, this returns only once that
 ///     detail has reached the run's status row, so a following assertion never
 ///     races the post.
 ///   - failing: whether the run throws once its gate opens rather than

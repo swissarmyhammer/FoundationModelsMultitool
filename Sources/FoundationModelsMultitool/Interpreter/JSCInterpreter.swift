@@ -283,9 +283,10 @@ public final class JSCInterpreter: Interpreter {
     /// `MultiToolConfiguration.executionTimeLimit` through
     /// ``withTimeLimit(_:)``, so under a `MultiTool` the watchdog always
     /// fires at the configured ceiling, whatever this interpreter was
-    /// constructed with. That is the value kept clear of a `runCode` call's
-    /// wait clock (see that property's own documentation), and keeping the
-    /// two apart is not something an injecting caller has to arrange.
+    /// constructed with. `MultiTool.timeout(from:)` answers that same ceiling
+    /// as the per-call work bound (see that method's own documentation), so
+    /// the watchdog and the engine's clock come from one value. An injecting
+    /// caller does not have to align the two.
     ///
     /// - Parameter timeLimit: seconds a single `run` may execute before the
     ///   watchdog terminates it. Defaults to a ceiling sized for a

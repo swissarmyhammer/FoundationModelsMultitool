@@ -15,10 +15,10 @@ import FoundationModelsRouter
 // split the product itself makes:
 //
 // - The MODEL owns discovery and the start. It finds `tools.shell.execute`
-//   through `searchTools` and starts the command from a `runCode` snippet. Every
-//   mounted `runCode` call answers a wait clock of zero
-//   (`MultiTool.timeout(from:)`), so that outer run goes to the background and
-//   hands back a pending envelope on every turn.
+//   through `searchTools` and starts the command from a `runCode` snippet.
+//   `MultiTool` declares a background mount for itself, and a declared mount
+//   wins over the composition site, so that outer run goes to the background
+//   and hands back a pending envelope on every turn.
 // - The HARNESS owns the readings that follow, because a live model cannot be
 //   asked to make them reliably and a scenario that asked would be grading the
 //   model rather than the background path. Each reading is taken through the
