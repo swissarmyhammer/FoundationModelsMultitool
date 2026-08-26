@@ -180,7 +180,7 @@ func runNativeIntegrationScenario(
         // **On `respond(to:)` the design under test does not exist.** `respond`
         // blocks and drains, so a backgrounded `runCode` is collected before the
         // caller sees it, a `wait` call has nothing left to wait for, and a
-        // blocking `searchTools` is indistinguishable from a detaching one. A
+        // blocking `searchTools` is indistinguishable from a backgrounding one. A
         // gated suite driven through `respond` would go green while observing
         // none of the three rules it exists to check: searchTools blocks,
         // runCode always backgrounds, wait joins on a token.
@@ -272,7 +272,7 @@ func runNativeIntegrationScenario(
 /// **Why a second runner exists — and it is not the session.** Both runners
 /// build the same thing: `fixture.profile.standard.makeSession(tools:
 /// discoveryPriming:)`, a real `RoutedSession`, which mounts every tool under
-/// `DetachConfiguration.nativeSessionMount` — elevation on, stock clocks — and
+/// `ToolMount.synchronous` — elevation on, stock clocks — and
 /// gives the snippet the live background-run globals (`status()`, `wait()`,
 /// `cancel()`) to collect a background run through. What differs is what each
 /// one grades.
@@ -283,8 +283,8 @@ func runNativeIntegrationScenario(
 ///
 /// It used to be the session. Until `f8964b4` the native runner built a bare
 /// `LanguageModelSession` over an `MLXLanguageModel`, which carries no
-/// elevation mount at all — `DetachingTool` is applied only by Router's own
-/// per-session tool wiring (`ToolDetachment.sessionMounted(tool:sessionID:
+/// elevation mount at all — `BackgroundToolRunner` is applied only by Router's own
+/// per-session tool wiring (`ToolMounting.sessionMounted(tool:sessionID:
 /// mailbox:sink:cappedToTokenLimit:)`) — so on that path a slow snippet simply
 /// blocked and a pending envelope could never appear. That is history, not the
 /// reason this runner is still here.
@@ -609,12 +609,14 @@ func streamTurn(of session: RoutedSession, prompt: String) async throws -> Strea
         case .turnEnded(let usage):
             // Output only, and the input half relabelled — see `tokenUsage`.
             turn.tokenUsage = usageForDisplay(usage)
-        case .toolStatus, .reasoningDelta, .toolInvocation, .entryRecorded:
+        case .toolStatus, .reasoningDelta, .toolInvocation, .entryRecorded, .runSettled:
             // `.toolStatus` here is the residue of the three status cases
             // handled above. `.toolInvocation` carries the open/close record
             // of each call, and `.entryRecorded` announces a transcript entry;
             // both restate what `.toolCall`/`.toolStatus` already gave this
             // runner, which grades a scenario on its calls and its answer.
+            // `.runSettled` announces a background run's terminal event, which
+            // the journal readings below already grade.
             break
         }
     }
@@ -709,9 +711,9 @@ private struct ScenarioSurface {
 /// It was wired here, and removing it was not a preference. Each generated
 /// sample is a nested generation on the `.standard` slot with up to three
 /// attempts, so every `searchTools` call paid two large-model generations
-/// instead of one. Once discovery stopped detaching — it is a synchronous
+/// instead of one. Once discovery stopped backgrounding — it is a synchronous
 /// prerequisite and must never background — that cost stopped being hidden by a
-/// thrashing turn and became a hard failure: `DetachingToolError.timedOut(tool:
+/// thrashing turn and became a hard failure: `ToolMountError.timedOut(tool:
 /// "searchTools", timeoutSeconds: 120.0)`, the whole turn dead in its first
 /// call (task `h773bed`).
 ///
@@ -1008,7 +1010,7 @@ private func printSkipNote(_ name: String) {
 /// left:
 ///
 /// - the model collects it in-band, because the pending envelope instructs it
-///   to (its `next` sentence, `MultiTool.detachmentCollectInstruction(forCompletionToken:)`:
+///   to (its `next` sentence, `MultiTool.collectInstruction(forCompletionToken:)`:
 ///   "Call the wait tool with completionToken ...");
 /// - the turn ends with runs still going, and `respond`'s drain settles them.
 ///
@@ -1147,7 +1149,7 @@ func runRespondDrainScenario(
         // the drain idle. Measured, it is 2, and the product is why: every
         // `runCode` backgrounds, and the pending envelope it returns *tells*
         // the model to call `wait` ("Call the wait tool with completionToken
-        // ...", `MultiTool.detachmentCollectInstruction(forCompletionToken:)`).
+        // ...", `MultiTool.collectInstruction(forCompletionToken:)`).
         // The model obeying its own tool is not a drain failure, and an
         // assertion that fires on it would be demanding the model ignore the
         // instruction the product gives it.
@@ -1200,7 +1202,7 @@ private let inBandCollectionReplyPreviewCharacters = 120
 /// `RoutedSessionActorGeneration`'s "How often this drain enters its loop"
 /// comment (their commit `b4c0282`, card `^466d38p`): every background run hands
 /// a `PendingRunEnvelope` whose text tells it to collect that run with a `wait`
-/// call before it answers; `DetachingTool` writes that text, and `ToolContext`
+/// call before it answers; `BackgroundToolRunner` writes that text, and `ToolContext`
 /// starts no background run of its own — so **no host can start one without the
 /// instruction**. A host whose tools always advise collection is every host, not
 /// an unusual one. The condition is not hard to reach from here; it is
@@ -1350,8 +1352,8 @@ struct InBandCollectionEvidence {
     /// The tools owning the runs still going at the instant the model's first
     /// turn ended.
     ///
-    /// The owning tools' names rather than the `ParkedRun` rows themselves, for
-    /// the reason `ScenarioEvidence` carries paths: a `ParkedRun` is Router's
+    /// The owning tools' names rather than the `BackgroundRun` rows themselves, for
+    /// the reason `ScenarioEvidence` carries paths: a `BackgroundRun` is Router's
     /// own type — its spelling, for the row this package calls a background run
     /// — and its memberwise initializer is internal to that module, so a record
     /// built from rows could be graded only by a live run. The name is all the
@@ -1460,7 +1462,7 @@ func inBandCollectionChecks(
 private func backgroundRuns(
     atFirstTurnEndIn events: AsyncStream<SessionEvent>,
     reading log: ScenarioCallLog
-) async -> [ParkedRun] {
+) async -> [BackgroundRun] {
     for await event in events {
         guard case .turnEnded = event else { continue }
         return await log.backgroundRuns()

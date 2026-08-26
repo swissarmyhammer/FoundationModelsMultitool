@@ -1,7 +1,7 @@
 import Testing
 
-/// The detached-shell-command scenario — eventplan.md's phase-2 claim that the
-/// shell capability is the reference emitter, and that "its detached commands
+/// The background-shell-command scenario — eventplan.md's phase-2 claim that the
+/// shell capability is the reference emitter, and that "its background commands
 /// prove the elevation path end to end."
 ///
 /// One live turn on the shipped configuration: `MultiTool.Builder().withShell()`
@@ -35,14 +35,14 @@ import Testing
 /// not a preference — see `LiveProfileTurnstile` for what the clock counts
 /// without it.
 @Suite(
-    "Detached shell command through the elevation path (phase-2)",
+    "Background shell command through the elevation path (phase-2)",
     .serialized,
     // Fifteen minutes, derived by the method `ElevationTests` states, applied to
     // this scenario's own costs. Read that suite's derivation before changing
     // this number.
     //
     // THE LIMIT IS THE DETECTOR, exactly as it is there. This suite exists to
-    // show that one detached shell command travels the whole elevation path. The
+    // show that one background shell command travels the whole elevation path. The
     // failure the limit must catch is a turn that never reaches
     // `tools.shell.execute` at all — and the harness already bounds that with
     // `shellRunArrivalDeadline`, eight minutes, after which it reports what it
@@ -81,8 +81,8 @@ import Testing
     .timeLimit(.minutes(15))
 )
 struct ShellElevationTests {
-    @Test("a detached shell command elevates, stands on the run plane, is read live, is stopped, and is journaled")
-    func detachedShellCommandThroughTheElevationPath() async throws {
-        try await runShellElevationScenario(name: "detachedShellCommand")
+    @Test("a background shell command elevates, stands on the run plane, is read live, is stopped, and is journaled")
+    func backgroundShellCommandThroughTheElevationPath() async throws {
+        try await runShellElevationScenario(name: "backgroundShellCommand")
     }
 }

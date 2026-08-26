@@ -5,9 +5,9 @@ import os
 
 // MARK: - The runCode mount and its work bound
 //
-// Router mounts `runCode` through `ToolDetachment.wrapping` like any other
+// Router mounts `runCode` through `ToolMounting.wrapping` like any other
 // tool, and the tool states its own mount and its own per-call work bound
-// through `DetachmentParameterProviding`. This file is that declaration, the
+// through `BackgroundTool`. This file is that declaration, the
 // collect sentence the pending envelope carries — plus the cap on how many of
 // the suspended JSC contexts a background run creates may be alive at once.
 //
@@ -16,7 +16,7 @@ import os
 // which runs to completion, so no snippet ever branches on a pending envelope
 // mid-code.
 
-extension MultiTool: DetachmentParameterProviding {
+extension MultiTool: BackgroundTool {
     /// The `next` sentence of the pending envelope a background `runCode`
     /// call hands the model: call the `wait` tool with this envelope's token.
     ///
@@ -27,7 +27,7 @@ extension MultiTool: DetachmentParameterProviding {
     /// ``CallResult`` so the names cannot drift from what `wait` reports.
     ///
     /// It never names `runCode` and never prescribes a snippet. Every mounted
-    /// `runCode` call goes to the background (``detachmentMount``), so a
+    /// `runCode` call goes to the background (``mount``), so a
     /// snippet that waits on a pending token is itself a background run and
     /// hands back a fresh token. A sentence that told the model to run another
     /// snippet made it chase tokens one generation a round until it reached
@@ -37,7 +37,7 @@ extension MultiTool: DetachmentParameterProviding {
     ///
     /// - Parameter completionToken: the background `runCode` call's token.
     /// - Returns: the collect directive, as plain prose.
-    public func detachmentCollectInstruction(forCompletionToken completionToken: String) -> String {
+    public func collectInstruction(forCompletionToken completionToken: String) -> String {
         "Do not answer yet, and do not guess the result. "
             + "Call the wait tool with completionToken \"\(completionToken)\" to collect it. "
             + "When the report shows state \"\(RunState.complete)\" or \"\(RunState.error)\", "
@@ -57,10 +57,10 @@ extension MultiTool: DetachmentParameterProviding {
     /// `RunCodeArguments` carries no clock at all.
     ///
     /// The mount carries no clock of its own. The work bound is answered per
-    /// call by ``detachmentTimeout(from:)``, which the engine reads ahead of
+    /// call by ``timeout(from:)``, which the engine reads ahead of
     /// the mount, so the clock here would never be consulted.
-    public var detachmentMount: DetachConfiguration? {
-        DetachConfiguration(mode: .background, timeout: nil)
+    public var mount: ToolMount? {
+        ToolMount(mode: .background, timeout: nil)
     }
 
     /// The per-call work bound every `runCode` call carries: this package's
@@ -91,7 +91,7 @@ extension MultiTool: DetachmentParameterProviding {
     /// - Parameter arguments: the call's arguments as opaque
     ///   `GeneratedContent`. Unread: every `runCode` call gets the same bound.
     /// - Returns: this package's bounded work clock.
-    public func detachmentTimeout(from arguments: GeneratedContent) -> TimeInterval? {
+    public func timeout(from arguments: GeneratedContent) -> TimeInterval? {
         configuration.executionTimeLimit
     }
 }

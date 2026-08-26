@@ -2,13 +2,13 @@
 //
 // A behavioral port of `../FoundationModelsShelltool/Sources/ShellTool/
 // Operations/ExecuteCommand.swift`. The sibling is an `@Operation` that takes a
-// `ShellContext`, races a deadline of its own and supervises its own detach;
+// `ShellContext`, races a deadline of its own and supervises its own backgrounding;
 // this package has none of those, thus the verb is a plain
 // `FoundationModels.Tool` and the shared elevation engine of Router owns the
 // tracking, the work bound and the cancel.
 //
 // eventplan.md § "Consolidation of the siblings": "consolidation is promotion,
-// not construction", and "Detach supervision moves to the shared engine". So
+// not construction", and "Background supervision moves to the shared engine". So
 // this file holds the shape of one request and the shape of one answer, and it
 // holds no supervisor.
 //
@@ -32,7 +32,7 @@
 //
 // **The background is a declaration of the verb, and never a choice of the
 // call.** A command can run for hours, so the verb declares the background
-// mount through `DetachmentParameterProviding`, and every mounted call answers
+// mount through `BackgroundTool`, and every mounted call answers
 // the pending envelope at once. There is no argument that selects a block
 // window, because there is no block window. The verb never tracks a run
 // itself — `SessionMailbox.track` is internal to Router and no code here names
@@ -41,7 +41,7 @@
 //
 // **The answer is `String`, and its two siblings answer a `@Generable` value.**
 // That is the Router's rule rather than a preference:
-// `ToolDetachment.wrapping` gives `BackgroundTool` to a `String`-output tool
+// `ToolMounting.wrapping` gives `BackgroundToolRunner` to a `String`-output tool
 // that declares the background, and `ContextBindingTool` — which never reaches
 // the run plane — to every tool with another output. A verb that must reach the
 // run plane therefore has one available output type. The answer is rendered
@@ -101,13 +101,13 @@ struct ExecuteArguments {
 
 // MARK: - What kind of run this is, and how to stop one
 
-extension Execute: DetachmentParameterProviding {
+extension Execute: BackgroundTool {
 
     /// The mount every `execute` call carries, which stands over the mount of
     /// whatever composed this verb: the background.
     ///
     /// **A declared mount is the only way a call of this verb reaches the
-    /// background.** `ToolDetachment.wrapping` picks `BackgroundTool` on the
+    /// background.** `ToolMounting.wrapping` picks `BackgroundToolRunner` on the
     /// mount's mode alone, and `RunBinding.innerCallMount` — the mount every
     /// inner `tools.*` call travels under — is `.runToCompletion`. Router
     /// states that a declared mount wins over the composition site, and this
@@ -119,8 +119,8 @@ extension Execute: DetachmentParameterProviding {
     /// timer that kills the process group — so a second work clock in the
     /// engine would be a second authority over the same question, firing on
     /// its own schedule.
-    var detachmentMount: DetachConfiguration? {
-        DetachConfiguration(mode: .background, timeout: nil)
+    var mount: ToolMount? {
+        ToolMount(mode: .background, timeout: nil)
     }
 
     /// What kind of work a background `execute` call is: an OS process group.
@@ -130,7 +130,7 @@ extension Execute: DetachmentParameterProviding {
     /// reports `.cancelled`; a `.process` dies by `killpg(SIGKILL)`, which is
     /// authoritative, and reports `.stopped`. The canceler below carries that
     /// half of the contract, and this property carries the declaration of it.
-    var detachmentRunKind: RunKind { .process }
+    var runKind: RunKind { .process }
 
     /// The canceler the engine tracks beside the run body: the one that kills
     /// the process group of the child and reports `.stopped`.
@@ -149,7 +149,7 @@ extension Execute: DetachmentParameterProviding {
     ///
     /// - Parameter completionToken: The completion token of the run to stop.
     /// - Returns: The canceler of that run.
-    func detachmentCanceler(
+    func canceler(
         forCompletionToken completionToken: String
     ) -> (@Sendable () async -> OperationOutcome)? {
         ShellRunner(state: runner.state).canceler(completionToken: completionToken)
@@ -166,7 +166,7 @@ extension Execute: DetachmentParameterProviding {
     ///
     /// - Parameter completionToken: The background run's token.
     /// - Returns: The collect directive, as plain prose.
-    func detachmentCollectInstruction(forCompletionToken completionToken: String) -> String {
+    func collectInstruction(forCompletionToken completionToken: String) -> String {
         "The command is running in the background. Do not answer yet, and do not guess what it "
             + "wrote. Call the wait tool with completionToken \"\(completionToken)\" to collect "
             + "its result. To read what it has written so far without waiting for it, call "
@@ -191,8 +191,8 @@ extension Execute {
     /// report as the terminal detail when the command ends.
     ///
     /// **The ambient context is read one time, at the start.** eventplan.md
-    /// § "The ambient context" makes that rule mandatory: a detached task
-    /// inherits no task local, so a verb that read `ToolContext.current` again
+    /// § "The ambient context" makes that rule mandatory: work that inherits
+    /// no task local sees none, so a verb that read `ToolContext.current` again
     /// after an `await` would find `nil` exactly on the path this verb exists
     /// to serve. The value captured here is what every later post and every
     /// later identifier comes from.

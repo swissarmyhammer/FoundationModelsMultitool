@@ -52,13 +52,13 @@ struct ShellExecuteTests {
     /// The exit code a command that ended with success reports.
     private static let successExitCode = 0
 
-    /// How long the long command of the detached tests sleeps. Long enough
+    /// How long the long command of the background tests sleeps. Long enough
     /// that it certainly still runs while the test reads the run plane, and
     /// each such test ends it before it returns.
-    private static let detachedRunSleepSeconds = 30
+    private static let backgroundRunSleepSeconds = 30
 
     /// The longest a mounted call may take. It stands far under
-    /// ``detachedRunSleepSeconds``, thus a call that reaches it proves the
+    /// ``backgroundRunSleepSeconds``, thus a call that reaches it proves the
     /// call blocked on the command rather than handing back its identifier.
     private static let doesNotBlockUpperBound = Duration.seconds(10)
 
@@ -186,7 +186,7 @@ struct ShellExecuteTests {
     /// The report one rendered answer carries, read back as a JSON object.
     ///
     /// The verb answers `String`, because only a `String`-output tool reaches
-    /// `BackgroundTool` and thus the run plane. So a test reads the answer the
+    /// `BackgroundToolRunner` and thus the run plane. So a test reads the answer the
     /// way the model does: as the JSON object `ResultRenderer` serialized.
     ///
     /// - Parameter output: The rendered answer of one call.
@@ -470,7 +470,7 @@ struct ShellExecuteTests {
 
         let started = ContinuousClock.now
         let output = try await engine.call(
-            arguments: ExecuteArguments(command: "sleep \(Self.detachedRunSleepSeconds)"))
+            arguments: ExecuteArguments(command: "sleep \(Self.backgroundRunSleepSeconds)"))
         let elapsed = ContinuousClock.now - started
 
         let going = try await ShellRunPlane.backgroundRun(in: context)
@@ -496,7 +496,7 @@ struct ShellExecuteTests {
         let engine = try ShellRunPlane.mounted(makeVerb(over: state), inheriting: context)
 
         _ = try await engine.call(
-            arguments: ExecuteArguments(command: "sleep \(Self.detachedRunSleepSeconds)"))
+            arguments: ExecuteArguments(command: "sleep \(Self.backgroundRunSleepSeconds)"))
 
         let going = try await ShellRunPlane.backgroundRun(in: context)
 
@@ -523,7 +523,7 @@ struct ShellExecuteTests {
         let engine = try ShellRunPlane.mounted(makeVerb(over: state), inheriting: context)
 
         _ = try await engine.call(
-            arguments: ExecuteArguments(command: "sleep \(Self.detachedRunSleepSeconds)"))
+            arguments: ExecuteArguments(command: "sleep \(Self.backgroundRunSleepSeconds)"))
         let going = try await ShellRunPlane.backgroundRun(in: context)
 
         let outcome = await context.cancel(completionToken: going.completionToken)

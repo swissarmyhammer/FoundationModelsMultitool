@@ -8,7 +8,7 @@
 // eventplan.md § "Consolidation of the siblings": "Captured content lives in
 // the store of the capability that owns it. Shell output stays in the
 // per-session dotfolder. `tools.shell.getLines` and `tools.shell.grepHistory`
-// read it as usual surface operations. They apply to a live detached run
+// read it as usual surface operations. They apply to a live background run
 // (`OutputBuffer` reads while the child runs) and to a completed run (the store
 // stays after the run)."
 //

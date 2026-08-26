@@ -48,14 +48,14 @@ struct HostAndEmitterTests {
         let sink = RecordingEventSink()
         let sessionID = ULID()
         let mounted = try #require(
-            ToolDetachment.wrapping(
+            ToolMounting.wrapping(
                 tool: MultiTool(registry: registry),
                 sessionID: sessionID,
                 mailbox: mailbox,
                 sink: sink,
                 // The stock session mount. `runCode` declares the background
                 // mount itself, and the declaration wins over the site.
-                configuration: .nativeSessionMount
+                configuration: .synchronous
             ) as? any Tool<RunCodeArguments, String>
         )
 

@@ -305,17 +305,17 @@ struct SearchToolsToolTests {
         let tool = SearchToolsTool(searcher: searcher, limit: surface.entries.count)
 
         // The harshest site mount there is: background, no clock. The tool
-        // declares `runToCompletionMount` itself, and a declaration wins over
+        // declares `synchronousUnbounded` itself, and a declaration wins over
         // the site, so discovery still blocks. Asserted against a mount rather
         // than by timing a real search: "however long it takes" is a property
         // of the mount, not of a stopwatch.
         let mounted = try #require(
-            ToolDetachment.wrapping(
+            ToolMounting.wrapping(
                 tool: tool,
                 sessionID: ULID(),
                 mailbox: SessionMailbox(),
                 sink: RecordingEventSink(),
-                configuration: DetachConfiguration(mode: .background, timeout: nil)
+                configuration: ToolMount(mode: .background, timeout: nil)
             ) as? any Tool<SearchToolsArguments, String>
         )
 
@@ -337,18 +337,18 @@ struct SearchToolsToolTests {
         )
         let tool = SearchToolsTool(searcher: searcher, limit: surface.entries.count)
         let mounted = try #require(
-            ToolDetachment.wrapping(
+            ToolMounting.wrapping(
                 tool: tool,
                 sessionID: ULID(),
                 mailbox: SessionMailbox(),
                 sink: RecordingEventSink(),
-                configuration: DetachConfiguration(mode: .background, timeout: nil)
+                configuration: ToolMount(mode: .background, timeout: nil)
             ) as? any Tool<SearchToolsArguments, String>
         )
 
         // Slow is not broken, and broken is not slow: a real failure reaches the
         // model as a failure. What must never happen is the other two shapes —
-        // a `DetachingToolError.timedOut` blaming the clock, or a completion
+        // a `ToolMountError.timedOut` blaming the clock, or a completion
         // token for a search that already failed.
         await #expect(throws: SelectionSearchFailure.self) {
             try await mounted.call(arguments: SearchToolsArguments(task: "list the cities"))
@@ -365,7 +365,7 @@ struct SelectionSearchFailure: Error, Equatable {}
 /// A selection root whose `fork()` takes its time before answering.
 ///
 /// Slow, not broken: it returns a genuine selection in the end. The delay is
-/// what gives a detaching mount its chance to background the call, which is exactly
+/// what gives a background mount its chance to background the call, which is exactly
 /// what `searchTools` must not allow.
 final class SlowSelectionRootSession: AgentSession, Sendable {
     /// How long `fork()` takes before it answers.

@@ -7,7 +7,7 @@ import Synchronization
 // MARK: - The one seam a gated harness has onto the run plane of a live session
 //
 // `ToolContext.current` is the ONLY route to a session's run plane. Router
-// publishes no `parkedRuns`, no `wait(completionToken:)` and no
+// publishes no `backgroundRuns`, no `wait(completionToken:)` and no
 // `cancel(completionToken:)` on `RoutedSession`; `RoutedSessionActor` and every
 // run-plane member of `SessionMailbox` are internal to that package. So a
 // scenario that has to read what a live session's shell run is doing needs a

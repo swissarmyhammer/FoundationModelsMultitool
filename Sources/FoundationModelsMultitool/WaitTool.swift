@@ -72,7 +72,7 @@ public struct WaitArguments {
 /// mode every unit suite in this package runs in.
 // MARK: - `wait` never backgrounds itself
 
-extension WaitTool: DetachmentParameterProviding {
+extension WaitTool: BackgroundTool {
     /// The mount a `wait` call carries: run to completion, under no clock.
     ///
     /// **There are two ways for `wait` to return, and this is what keeps a
@@ -84,7 +84,7 @@ extension WaitTool: DetachmentParameterProviding {
     /// over the site, and this declaration is what keeps the site's choice
     /// away from this tool.
     ///
-    /// The mount is `runToCompletionMount`, for the same reason
+    /// The mount is `synchronousUnbounded`, for the same reason
     /// `SearchToolsTool` takes it: neither question a mount answers has a
     /// bounded answer here. The mode asks whether this call hands back a
     /// handle — never, since blocking is the whole point of a `wait`. The
@@ -96,7 +96,7 @@ extension WaitTool: DetachmentParameterProviding {
     /// A `wait` that backgrounded itself would be self-defeating in a way
     /// worth stating plainly: the model calls it to collect a token, and a
     /// backgrounding `wait` would answer with a second token to collect.
-    public var detachmentMount: DetachConfiguration? { .runToCompletionMount }
+    public var mount: ToolMount? { .synchronousUnbounded }
 }
 
 public struct WaitTool: Tool {

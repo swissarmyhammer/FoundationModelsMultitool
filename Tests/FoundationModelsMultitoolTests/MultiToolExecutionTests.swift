@@ -41,8 +41,8 @@ struct MultiToolExecutionTests {
         let multiTool = MultiTool(
             registry: registry, configuration: MultiToolConfiguration(executionTimeLimit: ceiling))
 
-        #expect(multiTool.detachmentMount == DetachConfiguration(mode: .background, timeout: nil))
-        let bound = multiTool.detachmentTimeout(from: RunCodeArguments(code: "return 1;").generatedContent)
+        #expect(multiTool.mount == ToolMount(mode: .background, timeout: nil))
+        let bound = multiTool.timeout(from: RunCodeArguments(code: "return 1;").generatedContent)
         #expect(bound == ceiling)
     }
 
@@ -321,7 +321,7 @@ struct MultiToolExecutionTests {
         #expect(registry.isDirectMode == false)
         #expect(registry.supportsSearchTools == true)
         // `wait` in both arms, because `makeSessionTools(librarian:)` mounts it
-        // in both — direct mode takes discovery away, never detachment.
+        // in both — direct mode takes discovery away, never the background.
         #expect(registry.affordances == ["runCode", "searchTools", "wait"])
 
         let direct = registry.directMode()
@@ -359,7 +359,7 @@ struct MultiToolExecutionTests {
         let mounted = try registry.makeSessionTools(librarian: nil)
 
         // Direct mode drops discovery, not waiting: a slow `runCode` still
-        // detaches, so the model still needs a deliberate join.
+        // goes to the background, so the model still needs a deliberate join.
         #expect(mounted.map(\.name) == ["runCode", "wait"])
     }
 

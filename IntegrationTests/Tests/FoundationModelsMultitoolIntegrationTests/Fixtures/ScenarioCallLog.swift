@@ -106,15 +106,15 @@ actor ScenarioCallLog {
 
     /// The runs still going on the session this log's tools ran under.
     ///
-    /// `ToolContext.parkedRuns()` behind it is Router's own spelling for the
+    /// `ToolContext.backgroundRuns()` behind it is Router's own spelling for the
     /// same rows; this package's word for what a row describes is a background
     /// run.
     ///
     /// - Returns: every background run, or an empty array when no fixture tool
     ///   was ever entered — in which case a scenario has a bigger problem than
     ///   its background runs, and its groundedness assertion will say so first.
-    func backgroundRuns() async -> [ParkedRun] {
-        await observedContext?.parkedRuns() ?? []
+    func backgroundRuns() async -> [BackgroundRun] {
+        await observedContext?.backgroundRuns() ?? []
     }
 
     /// Runs one fixture tool's body and records the invocation it makes.

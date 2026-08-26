@@ -66,7 +66,7 @@ final class ToolReturnLedger: Sendable {
     /// The notice a snippet gets back when it called `tools.*` and returned a
     /// value carrying nothing those calls returned.
     ///
-    /// Written as `MultiTool+Detachment.swift`'s `liveContextCapError` is: the
+    /// Written as `MultiTool+Background.swift`'s `liveContextCapError` is: the
     /// fact first, then the consequence the model cannot otherwise see, then
     /// the action. The last of the three is what `RepairDirective.closingLine`
     /// puts last for the same reason — it is what the model reads immediately

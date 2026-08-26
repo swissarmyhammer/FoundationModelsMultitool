@@ -13,7 +13,7 @@ import FoundationModelsRouter
 // stand-in.
 //
 // A run goes to the background the way a real one does. A genuinely slow call
-// is raced against a zero wait clock by the detachment engine, which
+// is raced against a zero wait clock by the mount engine, which
 // backgrounds it and hands back the pending envelope. Nothing here registers a
 // run by hand: the mailbox's bookkeeping is Router's own wiring, and a host
 // reads it only through `ToolContext` (Router task ^k0mecjp).
@@ -85,7 +85,7 @@ let scriptedRunSettlementSeconds: Double = 10
 /// What a scripted run could not do.
 enum ScriptedRunFailure: Error, CustomStringConvertible {
     /// The engine did not hand back a decorator this fixture can call.
-    case notDetachable
+    case notBackgroundable
 
     /// The call returned something other than a pending envelope, so the run
     /// never went to the background — the text it returned instead.
@@ -97,8 +97,8 @@ enum ScriptedRunFailure: Error, CustomStringConvertible {
 
     var description: String {
         switch self {
-        case .notDetachable:
-            return "the detachment engine returned a decorator this fixture cannot call"
+        case .notBackgroundable:
+            return "the mount engine returned a decorator this fixture cannot call"
         case .didNotBackground(let text):
             return "the call returned \"\(text)\" instead of going to the background"
         case .progressNeverArrived(let detail):
@@ -120,7 +120,7 @@ struct ScriptedToolFailure: Error, CustomStringConvertible {
 
 /// A tool whose call blocks until its gate opens.
 ///
-/// Genuinely slow, so the detachment engine backgrounds it for the real reason
+/// Genuinely slow, so the mount engine backgrounds it for the real reason
 /// a real tool is backgrounded: the work outlived the wait clock.
 final class GatedScriptedTool: Tool, Sendable {
     let name: String
@@ -224,7 +224,7 @@ func startScriptedRun(
 ) async throws -> ScriptedRun {
     let gate = SettlementGate()
     let backgrounded = SettlementGate()
-    let mounted = ToolDetachment.wrapping(
+    let mounted = ToolMounting.wrapping(
         tool: GatedScriptedTool(
             name: tool,
             gate: gate,
@@ -239,10 +239,10 @@ func startScriptedRun(
         // The scripted tool declares no mount of its own, so the site puts it
         // in the background: the call answers the envelope at once, and the
         // body goes on behind it under no clock.
-        configuration: DetachConfiguration(mode: .background, timeout: nil)
+        configuration: ToolMount(mode: .background, timeout: nil)
     )
     guard let engine = mounted as? any Tool<NoArguments, String> else {
-        throw ScriptedRunFailure.notDetachable
+        throw ScriptedRunFailure.notBackgroundable
     }
     let rendered = try await engine.call(arguments: NoArguments())
     guard PendingRunEnvelope.isRendered(text: rendered) else {

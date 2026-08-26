@@ -13,8 +13,8 @@ import MultitoolCLI
 /// vended tools mounted on a `RoutedSession` over `profile.standard`, and one
 /// turn drained through `streamEvents(to:)` — and asserts on the emitted
 /// output lines rather than a human reading console output. This is the
-/// shipped host contract, so the run exercises the mounted detachment path
-/// rather than a bare session that cannot detach. Unlike the retired
+/// shipped host contract, so the run exercises the mounted background path
+/// rather than a bare session that cannot background. Unlike the retired
 /// `MultiToolAgent`-based demo this replaces, there is no hand-rolled turn
 /// trace to assert on: `runDemo` prints the tool calls it made and the final
 /// answer, so this only asserts that the answer is present and non-empty.

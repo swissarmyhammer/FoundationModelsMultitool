@@ -8,7 +8,7 @@ import FoundationModelsRouter
 // MARK: - The shell elevation scenario
 //
 // eventplan.md § "Phases", phase 2: "Shell is the reference emitter. Its
-// detached commands prove the elevation path end to end."
+// background commands prove the elevation path end to end."
 //
 // One live turn drives the elevation, and the harness reads the run plane while
 // the run is still going. The split is deliberate, and it is the split the
@@ -17,18 +17,18 @@ import FoundationModelsRouter
 // - The MODEL owns discovery and elevation. It finds `tools.shell.execute`
 //   through `searchTools` and starts the command from a `runCode` snippet. Every
 //   mounted `runCode` call answers a wait clock of zero
-//   (`MultiTool.detachmentClocks(from:)`), so that outer run elevates and hands
+//   (`MultiTool.timeout(from:)`), so that outer run elevates and hands
 //   back a pending envelope on every turn.
 // - The HARNESS owns the readings that follow, because a live model cannot be
 //   asked to make them reliably and a scenario that asked would be grading the
 //   model rather than the elevation path. Each reading is taken through the
 //   product's own surface: the run plane `status()` reports
-//   (`ToolContext.parkedRuns()`), the live verb `tools.shell.getLines`, the
+//   (`ToolContext.backgroundRuns()`), the live verb `tools.shell.getLines`, the
 //   canceler `cancel()` invokes (`ToolContext.cancel(completionToken:)`), and
 //   the session's own run journal.
 //
 // **The mailbox's retained outcome is never read here.** Router's ^vbja15j:
-// `DetachingTool.settle` builds its terminal from `terminalFacts(for:)`, which
+// `ToolRun` builds its terminal from `terminalFacts(for:)`, which
 // sees only whether the wrapped Swift call returned. A `.process` run stopped by
 // `killpg` lets `Execute.call` return normally, so the mailbox retains
 // `OperationOutcome.succeeded` for a run a SIGKILL ended. `wait(completionToken:)`
@@ -78,7 +78,7 @@ private let shellElevationCommand = "echo $$ ; while true ; do echo tick ; sleep
 /// It asks for the background start explicitly, in the words the verb's own
 /// description uses ("start a long command in the background and get its
 /// completion token back at once"). A call that waits instead still elevates —
-/// `Execute.detachmentMount` answers a 30-second block window and this command
+/// `Execute.mount` answers a 30-second block window and this command
 /// outlives it — so the scenario does not depend on which of the two the model
 /// chose.
 private let shellElevationPrompt = """
@@ -170,8 +170,8 @@ private let killpgReachedGroup: Int32 = 0
 
 /// How many elevation reports one elevated run makes.
 ///
-/// `DetachingTool` posts exactly one synthesized `progress` event as it parks a
-/// run — `RunEventFunnel.markDetached(postingIfSilent:)` — and its `detail` is
+/// `BackgroundToolRunner` posts exactly one synthesized `progress` event as it parks a
+/// run, and its `detail` is
 /// the rendered pending envelope of that run.
 private let elevationReportsPerRun = 1
 
@@ -281,7 +281,7 @@ private let shellElevationReplyPreviewCharacters = 120
 /// of them, or it is not on the plane — so they are one value rather than four
 /// optionals a reader would have to check for agreement.
 ///
-/// Plain values rather than Router's own `ParkedRun`, for the reason
+/// Plain values rather than Router's own `BackgroundRun`, for the reason
 /// `InBandCollectionEvidence` states: that type has no public initializer, so a
 /// record built from it could be graded only by a live run, and the grading rule
 /// would then be checkable nowhere.
@@ -362,12 +362,12 @@ private func observeShellRunPlane(
     let token = context.completionToken
 
     // The run plane `status()` reports. `MultiTool`'s `status()` global is
-    // `ToolContext.parkedRuns()` rendered as JS objects — see
+    // `ToolContext.backgroundRuns()` rendered as JS objects — see
     // `MultiTool.makeBackgroundRunHostFunctions(binding:)` — so this is the same
     // snapshot a snippet reads, taken through the same call.
-    var parked: ParkedRun?
+    var parked: BackgroundRun?
     _ = await IntegrationPoll.holds(before: shellRunParkDeadline) {
-        parked = await context.parkedRuns().first { $0.completionToken == token }
+        parked = await context.backgroundRuns().first { $0.completionToken == token }
         return parked != nil
     }
     guard let parked else { return observation }
@@ -455,7 +455,7 @@ private func processGroupStands(_ group: pid_t) -> Bool {
 /// which is the path an inner `tools.*` call always takes (`RunBinding`): the
 /// unmounted `MultiTool` runs the snippet inline, and the inner
 /// `tools.shell.execute` call parks on the session's mailbox because
-/// `Execute.detachmentMount` declares a detaching mount and `wait: false`
+/// `Execute.mount` declares a background mount and `wait: false`
 /// answers a block window of zero. The root package's `RegisteredJournalOpTests`
 /// drives a snippet the same way.
 ///
@@ -486,7 +486,7 @@ private func startSweptRun(
     }
     var token: String?
     _ = await IntegrationPoll.holds(before: shellRunParkDeadline) {
-        token = await context.parkedRuns()
+        token = await context.backgroundRuns()
             .first { $0.kind == .process && $0.completionToken != other }?
             .completionToken
         return token != nil
@@ -498,7 +498,7 @@ private func startSweptRun(
 ///
 /// Only `CancelOutcome.reported` is read. `.alreadySettled` hands back the
 /// mailbox's RETAINED terminal event, which Router's ^vbja15j makes wrong for a
-/// killed run — `DetachingTool.settle` builds it from `terminalFacts(for:)`, and
+/// killed run — `ToolRun` builds it from `terminalFacts(for:)`, and
 /// a `.process` run stopped by `killpg` lets the wrapped call return normally,
 /// so the retained outcome reads `succeeded` for a run a SIGKILL ended. Reading
 /// it here would assert the defect. A run still going has no retained event, so
@@ -598,7 +598,7 @@ private func terminals(in events: [OperationEvent], of token: String?) -> [Opera
 /// hand-written parse would be a second spelling of it.
 ///
 /// The FIRST envelope, because that is the outer `runCode` run of the turn — the
-/// one elevation point per snippet (`MultiTool+Detachment`).
+/// one elevation point per snippet (`MultiTool+Background`).
 ///
 /// - Parameter outputs: each completed tool call's own output text, in
 ///   completion order.
@@ -613,7 +613,7 @@ private func elevatedRunToken(in outputs: [String]) -> String? {
 
 /// How many elevation reports the session journaled for one run.
 ///
-/// `DetachingTool` posts one synthesized `progress` event as it parks a run, and
+/// `BackgroundToolRunner` posts one synthesized `progress` event as it parks a run, and
 /// that event's `detail` is the rendered pending envelope OF THAT RUN. Both
 /// halves are needed to count it, and this is why:
 ///

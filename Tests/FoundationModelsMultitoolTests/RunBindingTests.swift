@@ -27,7 +27,7 @@ struct RunBindingTests {
     @Test("the inner-call mount runs to completion, so a snippet never receives a handle in place of a value")
     func theInnerCallMountRunsToCompletion() {
         #expect(RunBinding.innerCallMount.mode == .runToCompletion)
-        #expect(RunBinding.innerCallMount.timeout == DetachConfiguration.defaultTimeoutSeconds)
+        #expect(RunBinding.innerCallMount.timeout == ToolMount.defaultTimeoutSeconds)
     }
 
     @Test("a slow inner call still returns its real value, and never goes to the background")
@@ -107,7 +107,7 @@ struct RunBindingTests {
 
     // MARK: - Explicit re-bind across the JS seam
 
-    @Test("a tools.* call re-binds the ambient context explicitly, and a detached task inside it sees none")
+    @Test("a tools.* call re-binds the ambient context explicitly, and work that inherits no task-locals inside it sees none")
     func innerCallRebindsTheAmbientContextExplicitly() async throws {
         let recorder = AmbientRecordingTool(name: "recorder")
         let registry = try MultiTool.Builder().addTool(recorder).buildRegistry()
@@ -122,6 +122,6 @@ struct RunBindingTests {
         #expect(observation.completionToken != nil)
         #expect(observation.completionToken != context.completionToken)
         #expect(observation.sessionID == context.sessionID)
-        #expect(observation.detachedContextWasNil)
+        #expect(observation.uninheritedContextWasNil)
     }
 }

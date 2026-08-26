@@ -10,7 +10,7 @@ import Testing
 ///
 /// Three things are covered: the bound arithmetic, the two in-band reports a
 /// call makes when there is nothing to wait for, and — since a run can now be
-/// backgrounded through the real detachment engine (`startScriptedRun(in:)`) —
+/// backgrounded through the real mount engine (`startScriptedRun(in:)`) —
 /// the settlement path itself, with no live inference anywhere.
 @Suite("WaitTool")
 struct WaitToolTests {
@@ -264,15 +264,15 @@ struct WaitToolTests {
         let run = try await startScriptedRun(in: mailbox)
 
         // The harshest site mount there is: background, no clock. The tool
-        // declares `runToCompletionMount` itself, and a declaration wins over
+        // declares `synchronousUnbounded` itself, and a declaration wins over
         // the site, so the wait runs to its own conclusion.
         let mounted = try #require(
-            ToolDetachment.wrapping(
+            ToolMounting.wrapping(
                 tool: WaitTool(),
                 sessionID: ULID(),
                 mailbox: mailbox,
                 sink: RecordingEventSink(),
-                configuration: DetachConfiguration(mode: .background, timeout: nil)
+                configuration: ToolMount(mode: .background, timeout: nil)
             ) as? any Tool<WaitArguments, String>
         )
 

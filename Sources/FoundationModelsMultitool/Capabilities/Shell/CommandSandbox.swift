@@ -38,7 +38,7 @@
 /// The value carries no environment, no working directory, and no platform
 /// options. Those belong to the caller, and confinement does not change them.
 /// A wrapper starts its target in place — the same process identifier — thus
-/// the teardown of the process group, the registry of processes, and the detach
+/// the teardown of the process group, the registry of processes, and the backgrounding
 /// behavior all stay as they are.
 public struct SandboxedInvocation: Sendable, Equatable {
 

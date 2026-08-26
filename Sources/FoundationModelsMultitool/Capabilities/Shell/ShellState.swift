@@ -171,7 +171,7 @@ actor ShellState {
     /// this store had a pid to give it, keyed by completion token.
     ///
     /// A mounted call answers the envelope before its child is even spawned —
-    /// the verb declares the background, see `Execute.detachmentMount` —
+    /// the verb declares the background, see `Execute.mount` —
     /// so a cancel can reach `pidToCancel` before `registerProcess` ever
     /// runs. Rather than answer `nil` and leave the process to run
     /// unwatched, `pidToCancel` SUSPENDS, and this dictionary is where it
@@ -469,7 +469,7 @@ actor ShellState {
     ///
     /// The one lookup by token that each caller with a need for one
     /// authoritative record shares — the response of the execute operation, and
-    /// the detached events the runner posts — instead of each one scanning
+    /// the background events the runner posts — instead of each one scanning
     /// `listCommands()` with a search of its own.
     ///
     /// - Parameter commandID: The completion token of the run.

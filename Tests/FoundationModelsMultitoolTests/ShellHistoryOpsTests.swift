@@ -203,7 +203,7 @@ struct ShellHistoryOpsTests {
     // MARK: - getLines
 
     /// eventplan.md § "Consolidation of the siblings": the content plane
-    /// answers "to a live detached run (`OutputBuffer` reads while the child
+    /// answers "to a live background run (`OutputBuffer` reads while the child
     /// runs)". The runner writes each line the buffer completes into the store
     /// as the chunks arrive, thus the verb reads the output of a run that has
     /// not ended.

@@ -18,7 +18,7 @@ import FoundationModelsRouter
 public struct MultiToolConfiguration: Sendable, Equatable {
     /// Wall-clock ceiling, in seconds, on a single `runCode` snippet's own
     /// work: the work bound every `runCode` call answers the engine (see
-    /// `MultiTool.detachmentTimeout(from:)`). Clamped to at least `0` at
+    /// `MultiTool.timeout(from:)`). Clamped to at least `0` at
     /// `init`.
     ///
     /// ## Why this is the one work clock
@@ -31,7 +31,7 @@ public struct MultiToolConfiguration: Sendable, Equatable {
     /// engine's stock wait window were both 5 seconds, so the watchdog
     /// force-terminated a snippet at the exact instant its run went to the
     /// background. The default is now the engine's own stock work clock,
-    /// `DetachConfiguration.defaultTimeoutSeconds`, taken from that one
+    /// `ToolMount.defaultTimeoutSeconds`, taken from that one
     /// definition so the two can never drift apart again.
     ///
     /// The work bound `runCode` answers per call is enforced by the engine —
@@ -100,7 +100,7 @@ public struct MultiToolConfiguration: Sendable, Equatable {
     /// - Parameters:
     ///   - executionTimeLimit: wall-clock ceiling, in seconds, on a single
     ///     `runCode` snippet's work. Defaults to
-    ///     `DetachConfiguration.defaultTimeoutSeconds`, the elevation
+    ///     `ToolMount.defaultTimeoutSeconds`, the elevation
     ///     engine's own stock work clock.
     ///   - liveContextLimit: how many `runCode` snippets may be live at once.
     ///     Defaults to ``defaultLiveContextLimit``.
@@ -111,7 +111,7 @@ public struct MultiToolConfiguration: Sendable, Equatable {
     ///     snippet's joined console output. Defaults to
     ///     `ResultRendererLimits.default.consoleCharacterLimit`.
     public init(
-        executionTimeLimit: TimeInterval = DetachConfiguration.defaultTimeoutSeconds,
+        executionTimeLimit: TimeInterval = ToolMount.defaultTimeoutSeconds,
         liveContextLimit: Int = MultiToolConfiguration.defaultLiveContextLimit,
         returnValueCharacterLimit: Int = ResultRendererLimits.default.returnValueCharacterLimit,
         consoleCharacterLimit: Int = ResultRendererLimits.default.consoleCharacterLimit

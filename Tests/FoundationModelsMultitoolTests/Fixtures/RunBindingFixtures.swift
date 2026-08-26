@@ -45,10 +45,10 @@ struct AmbientObservation: Sendable, Equatable {
     /// ambient context bound at all.
     let sessionID: ULID?
 
-    /// Whether a `Task.detached` started inside the call saw no ambient
-    /// context — the capture-at-start rule the ambient design enforces
-    /// (a detached task inherits no task locals).
-    let detachedContextWasNil: Bool
+    /// Whether work that inherits no task-locals, started inside the call, saw
+    /// no ambient context — the capture-at-start rule the ambient design
+    /// enforces.
+    let uninheritedContextWasNil: Bool
 }
 
 /// An `OperationEventSink` that keeps every event posted to it, so a test can
@@ -103,7 +103,11 @@ final class AmbientRecordingTool: Tool, Sendable {
 
     func call(arguments: NoArguments) async throws -> String {
         let context = ToolContext.current
-        let detachedContextWasNil = await Task.detached { ToolContext.current == nil }.value
+        // A raw thread inherits no task-locals, so the probe reads the context
+        // the way any non-inheriting work would.
+        let uninheritedContextWasNil = await withCheckedContinuation { continuation in
+            Thread { continuation.resume(returning: ToolContext.current == nil) }.start()
+        }
         await context?.progress("\(name) ran")
         observationsBox.withLock {
             $0.append(
@@ -113,7 +117,7 @@ final class AmbientRecordingTool: Tool, Sendable {
                     stampedOp: context?.op,
                     completionToken: context?.completionToken,
                     sessionID: context?.sessionID,
-                    detachedContextWasNil: detachedContextWasNil
+                    uninheritedContextWasNil: uninheritedContextWasNil
                 )
             )
         }
@@ -124,7 +128,7 @@ final class AmbientRecordingTool: Tool, Sendable {
 /// Builds the ambient `ToolContext` a Router session binds around one
 /// `runCode` call — the context `MultiTool` captures into its `RunBinding`.
 ///
-/// Stamped with `runCode`'s own tool name, exactly as `BackgroundTool` stamps a
+/// Stamped with `runCode`'s own tool name, exactly as `BackgroundToolRunner` stamps a
 /// wrapped tool's context, and given a freshly minted `completionToken` so a
 /// test can tell the outer run's correlation from every inner one.
 ///

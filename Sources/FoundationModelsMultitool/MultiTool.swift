@@ -74,7 +74,7 @@ extension MultiTool {
         /// the session and `searchTools` is not; a snippet is expected to
         /// introspect the surface itself via `help()`/`docs()` (M7) rather than
         /// a `searchTools` round trip. Direct mode takes discovery away and
-        /// nothing else — `wait` stays, because a slow `runCode` still detaches
+        /// nothing else — `wait` stays, because a slow `runCode` still goes to the background
         /// and the model still needs a deliberate join. The executable surface
         /// itself (`surface`/`tools`) is unchanged — only the affordance
         /// metadata (`isDirectMode`, `affordances`, `supportsSearchTools`)
@@ -142,10 +142,10 @@ extension MultiTool {
         ///
         /// The session type is part of the contract, not a detail. A
         /// `RoutedSession` is what mounts each tool under
-        /// `DetachConfiguration.nativeSessionMount`, so a slow `runCode`
-        /// detaches and answers with a pending envelope the model collects
+        /// `ToolMount.synchronous`, so a slow `runCode`
+        /// goes to the background and answers with a pending envelope the model collects
         /// with `wait`. Mounted on a bare `FoundationModels
-        /// .LanguageModelSession` the same tools cannot detach at all: the
+        /// .LanguageModelSession` the same tools cannot go to the background at all: the
         /// snippet simply blocks, no envelope is ever written, and `wait` has
         /// nothing to join. The integration suite drives exactly this contract —
         /// `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/
@@ -170,7 +170,7 @@ extension MultiTool {
         ///     quality matters more than its cost. Unused in direct mode.
         /// - Returns: `searchTools`, `runCode`, `wait` — or `runCode` and
         ///   `wait` in direct mode, which takes discovery away but not
-        ///   detachment.
+        ///   the background.
         /// - Throws: whatever
         ///   `SearchToolsTool.init(registry:librarian:limit:sampleGenerator:)`
         ///   throws.
@@ -179,7 +179,7 @@ extension MultiTool {
             sampleGenerator: RoutedLLM? = nil
         ) throws -> [any Tool] {
             // `wait` is mounted in both modes: a direct-mode surface still
-            // detaches a slow `runCode`, so a model still needs a way to say
+            // backgrounds a slow `runCode`, so a model still needs a way to say
             // "I cannot continue without that result" (task `h773bed`).
             guard supportsSearchTools else {
                 return [MultiTool(registry: self), WaitTool()]
@@ -224,8 +224,8 @@ extension MultiTool {
 /// `waitSeconds` bounded a wait that no longer exists, and `timeout` let a
 /// model bound work it no longer blocks on; the host's own
 /// `MultiToolConfiguration.executionTimeLimit` remains the ceiling, and
-/// `MultiTool`'s `DetachmentParameterProviding` conformance answers it to the
-/// engine as the work bound of every call (see `MultiTool+Detachment.swift`).
+/// `MultiTool`'s `BackgroundTool` conformance answers it to the
+/// engine as the work bound of every call (see `MultiTool+Background.swift`).
 @Generable
 public struct RunCodeArguments {
     /// The JavaScript snippet to run against `tools.*`.

@@ -54,7 +54,7 @@ import Testing
 /// `RoutedSessionActorGeneration`'s "How often this drain enters its loop"
 /// comment (their commit `b4c0282`, card `^466d38p`): every background run hands
 /// the model a `PendingRunEnvelope` whose text tells it to collect that run with
-/// a `wait` call before it answers; `DetachingTool` writes that text, and
+/// a `wait` call before it answers; `BackgroundToolRunner` writes that text, and
 /// `ToolContext` starts no background run of its own, so **no host can start one
 /// without the instruction** — a host whose tools always advise collection is
 /// every host, not an unusual one. The condition is unreachable, and it is

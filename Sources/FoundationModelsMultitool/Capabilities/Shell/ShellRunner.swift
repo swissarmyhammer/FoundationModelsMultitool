@@ -11,10 +11,10 @@
 // guarantee that the group dies on each exit path of the body, thus that reap
 // can complete — see the `defer` inside the closure of the spawn.
 //
-// **This runner holds no race, no detach and no supervision.** eventplan.md
+// **This runner holds no race, no backgrounding and no supervision.** eventplan.md
 // § "Consolidation of the siblings" states that "consolidation is promotion, not
-// construction", and that "Detach supervision moves to the shared engine". The
-// `BackgroundTool` engine of Router owns all three now: `run(_:)` is the run body
+// construction", and that "Background supervision moves to the shared engine". The
+// `BackgroundToolRunner` engine of Router owns all three now: `run(_:)` is the run body
 // that the mailbox tracks, and `canceler(completionToken:)` is the canceler that
 // the mailbox tracks beside it. There is no `wait:` parameter here, there is no
 // deadline race, and there is no supervisor.
@@ -24,7 +24,7 @@
 // is the one home of that pid, thus the canceler can never signal a process
 // group that the store already gave up. A cancel can also arrive before that
 // pid exists at all — a mounted call answers the envelope before its command
-// spawns, see `Execute.detachmentMount` — and `pidToCancel` answers
+// spawns, see `Execute.mount` — and `pidToCancel` answers
 // that case by SUSPENDING instead of answering with a pid it does not have
 // yet: it waits for `ShellState.registerProcess(commandID:pid:)` to give one,
 // or for the run's own finalize to report there will never be one. Thus the
@@ -274,7 +274,7 @@ struct ShellRunner {
     ///
     /// `pidToCancel` can also find no pid yet, when this cancel outraces the
     /// spawn of its own child — a mounted call answers the envelope before its
-    /// command spawns, see `Execute.detachmentMount`, so a cancel can
+    /// command spawns, see `Execute.mount`, so a cancel can
     /// reach this closure before `ShellRunner.run`'s spawn closure ever calls
     /// `registerProcess`. Rather than give up, `pidToCancel` SUSPENDS this
     /// closure until either that registration gives it a pid to kill, or the

@@ -8,7 +8,7 @@ import Testing
 // MARK: - The run plane of a shell run
 //
 // A `tools.shell.execute` call reaches the run plane only through the shared
-// engine of Router: `BackgroundTool` tracks the run in the session mailbox, and
+// engine of Router: `BackgroundToolRunner` tracks the run in the session mailbox, and
 // the ambient `ToolContext` reports it. Thus a suite that examines a background
 // shell run takes two steps before it can assert anything — mount the verb on
 // that engine, and wait for the run to reach the plane. Both steps stand here,
@@ -26,7 +26,7 @@ enum ShellRunPlane {
     /// `RunBinding` mounts every inner `tools.*` call.
     ///
     /// The configuration is `RunBinding.innerCallMount` on purpose: the verb's
-    /// own `detachmentMount` must win over it, because that declaration is the
+    /// own `mount` must win over it, because that declaration is the
     /// only way a call of this verb reaches the background.
     ///
     /// - Parameters:
@@ -38,7 +38,7 @@ enum ShellRunPlane {
         _ verb: Execute, inheriting context: ToolContext
     ) throws -> any Tool<ExecuteArguments, String> {
         try #require(
-            ToolDetachment.wrapping(
+            ToolMounting.wrapping(
                 tool: verb,
                 inheriting: context,
                 sink: AmbientUpstreamSink(context: context),

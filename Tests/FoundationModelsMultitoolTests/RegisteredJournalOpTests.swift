@@ -61,7 +61,7 @@ struct RegisteredJournalOpTests {
     /// How long the command of the run-plane test sleeps. Long enough that it
     /// certainly still stands on the run plane while the test reads it, and the
     /// test ends it before it returns.
-    private static let detachedRunSleepSeconds = 30
+    private static let backgroundRunSleepSeconds = 30
 
     /// The command of the short run. A shell builtin that ends at once, thus
     /// that run settles as soon as the test waits for it.
@@ -149,12 +149,12 @@ struct RegisteredJournalOpTests {
         try await Self.run(
             """
             return await tools.\(Self.shellNoun).\(Self.executeVerb)({ \
-            command: "sleep \(Self.detachedRunSleepSeconds)" });
+            command: "sleep \(Self.backgroundRunSleepSeconds)" });
             """,
             over: registry,
             under: context)
 
-        // `BackgroundTool.call` awaits `SessionMailbox.track` before it hands
+        // `BackgroundToolRunner.call` awaits `SessionMailbox.track` before it hands
         // the pending envelope back, so the run stands on the plane by the time
         // the snippet that called it has settled. No poll is needed.
         let going = try #require(await context.backgroundRuns().first)

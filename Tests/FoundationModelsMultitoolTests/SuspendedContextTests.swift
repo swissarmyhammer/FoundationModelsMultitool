@@ -19,7 +19,7 @@ import Testing
 /// error rather than a pile-up, and that `cancel()` genuinely tears one down.
 ///
 /// Every test mounts `MultiTool` exactly as Router's native session does —
-/// `ToolDetachment.wrapping` under `nativeSessionMount` — so what is exercised
+/// `ToolMounting.wrapping` under `synchronous` — so what is exercised
 /// is the real composition, not a stand-in for it.
 @Suite("SuspendedContext")
 struct SuspendedContextTests {
@@ -29,7 +29,7 @@ struct SuspendedContextTests {
     func runCodeDeclaresTheBackgroundMount() throws {
         let multiTool = MultiTool(registry: try Self.registry(exposing: GatedTool(latch: ToolReleaseLatch())))
 
-        #expect(multiTool.detachmentMount == DetachConfiguration(mode: .background, timeout: nil))
+        #expect(multiTool.mount == ToolMount(mode: .background, timeout: nil))
     }
 
     @Test("the work bound is the configured ceiling, and no call can raise or lower it")
@@ -53,7 +53,7 @@ struct SuspendedContextTests {
     func everyMountedCallAnswersThePendingEnvelope() async throws {
         // The harshest site there is: run to completion under no clock. The
         // tool's own declaration wins over it.
-        let harness = try Self.makeHarness(mount: .runToCompletionMount)
+        let harness = try Self.makeHarness(mount: .synchronousUnbounded)
 
         let start = ContinuousClock.now
         let rendered = try await harness.mounted.call(
@@ -263,7 +263,7 @@ struct SuspendedContextTests {
     /// - Returns: the harness.
     private static func makeHarness(
         configuration: MultiToolConfiguration = .default,
-        mount: DetachConfiguration = .nativeSessionMount
+        mount: ToolMount = .synchronous
     ) throws -> Harness {
         let latch = ToolReleaseLatch()
         let gated = GatedTool(latch: latch)
@@ -273,7 +273,7 @@ struct SuspendedContextTests {
         )
         let mailbox = SessionMailbox()
         let sink = RecordingEventSink()
-        let mounted = ToolDetachment.wrapping(
+        let mounted = ToolMounting.wrapping(
             tool: multiTool,
             sessionID: ULID(),
             mailbox: mailbox,
@@ -296,7 +296,7 @@ struct SuspendedContextTests {
     /// - Parameter multiTool: the tool answering the bound.
     /// - Returns: the bound the engine would use, or `nil` for the mount's own.
     private static func workBound(of multiTool: MultiTool) -> TimeInterval? {
-        multiTool.detachmentTimeout(from: RunCodeArguments(code: "return 1;").generatedContent)
+        multiTool.timeout(from: RunCodeArguments(code: "return 1;").generatedContent)
     }
 
     /// The completion token of a rendered pending envelope.

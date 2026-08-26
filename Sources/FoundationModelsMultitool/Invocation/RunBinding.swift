@@ -41,7 +41,7 @@ import FoundationModelsRouter
 /// ## What it does
 ///
 /// ``invoke(_:arguments:journalOp:)`` mounts each inner call on the shared
-/// engine as a `RunToCompletionTool` — "two mounts, one engine, two
+/// engine as a `RunToCompletionRunner` — "two mounts, one engine, two
 /// policies." Only the outer `runCode` call goes to the background; an inner
 /// call runs to completion, bounded by its `timeout`, unless the called tool
 /// declares a mount of its own. The engine still owns correlation, events,
@@ -56,7 +56,7 @@ struct RunBinding: Sendable {
     /// constraint boundary, and the escape hatch"): a snippet never receives
     /// a pending envelope in place of a value it awaited, unless the tool it
     /// called declares the background for itself.
-    static let innerCallMount = DetachConfiguration(mode: .runToCompletion)
+    static let innerCallMount = ToolMount(mode: .runToCompletion)
 
     /// Where each inner `tools.*` dispatch is recorded — see ``CallTrace``.
     ///
@@ -77,7 +77,7 @@ struct RunBinding: Sendable {
     /// an elevation-off mode; the clocks are exposed so a caller (and this
     /// package's own tests) can bound an inner call differently without
     /// changing the policy.
-    let innerElevation: DetachConfiguration
+    let innerElevation: ToolMount
 
     /// The binding for the enclosing `runCode` invocation, or `nil` when no
     /// session bound an ambient context around it — a `MultiTool`
@@ -99,7 +99,7 @@ struct RunBinding: Sendable {
     ///     `runCode` invocation.
     ///   - innerElevation: the mount policy for inner `tools.*` calls.
     ///     Defaults to ``innerCallMount``.
-    init(context: ToolContext, innerElevation: DetachConfiguration = RunBinding.innerCallMount) {
+    init(context: ToolContext, innerElevation: ToolMount = RunBinding.innerCallMount) {
         self.context = context
         self.innerElevation = innerElevation
     }
@@ -107,9 +107,9 @@ struct RunBinding: Sendable {
     /// Runs one inner `tools.*` call through the shared engine, to
     /// completion.
     ///
-    /// `ToolDetachment.wrapping(tool:inheriting:sink:op:configuration:)`
-    /// picks the decorator: `RunToCompletionTool` for a `String`-output tool
-    /// (or `BackgroundTool`, when that tool declares the background),
+    /// `ToolMounting.wrapping(tool:inheriting:sink:op:configuration:)`
+    /// picks the decorator: `RunToCompletionRunner` for a `String`-output tool
+    /// (or `BackgroundToolRunner`, when that tool declares the background),
     /// `ContextBindingTool` for any other output. Each mints the call its own
     /// `completionToken` and bind `ToolContext.$current` around it
     /// explicitly, so neither depends on what the calling task did or did not
@@ -136,7 +136,7 @@ struct RunBinding: Sendable {
     /// - Returns: the tool's `Output`, exactly as `tool.call(arguments:)`
     ///   produced it.
     /// - Throws: whatever the wrapped tool throws, unchanged; or
-    ///   `DetachingToolError.timedOut(tool:timeoutSeconds:)` when the mount's
+    ///   `ToolMountError.timedOut(tool:timeoutSeconds:)` when the mount's
     ///   `timeout` ends the call.
     func invoke<T: Tool>(
         _ tool: T, arguments: T.Arguments, journalOp: String? = nil
@@ -145,7 +145,7 @@ struct RunBinding: Sendable {
             "RunBinding.invoke",
             detail: "tool=\(tool.name) outerToken=\(context.completionToken)"
         ) {
-            let mounted = ToolDetachment.wrapping(
+            let mounted = ToolMounting.wrapping(
                 tool: tool,
                 inheriting: context,
                 sink: AmbientUpstreamSink(context: context),
@@ -154,7 +154,7 @@ struct RunBinding: Sendable {
             )
             guard let engine = mounted as? any Tool<T.Arguments, T.Output> else {
                 // Unreachable: both decorators preserve `Arguments`/`Output`, and
-                // `ToolDetachment.wrapping`'s own unreachable fallback returns the
+                // `ToolMounting.wrapping`'s own unreachable fallback returns the
                 // tool itself, which matches too. Kept as a graceful degradation
                 // rather than a trap, matching this package's "throw/degrade,
                 // never trap" posture — the call still happens, only without the

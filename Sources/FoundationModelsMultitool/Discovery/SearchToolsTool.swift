@@ -108,7 +108,7 @@ public struct SearchToolsTool: Tool {
     /// Where this tool's call boundaries are recorded — see ``CallTrace``.
     ///
     /// A discovery call runs to completion with no timeout at all
-    /// (`detachmentMount` below), which is right — slow is not broken — but it
+    /// (`mount` below), which is right — slow is not broken — but it
     /// also means nothing above this tool will ever interrupt a search that has
     /// stopped making progress. These spans are the only thing that tells a
     /// slow search from a stalled one.
@@ -431,7 +431,7 @@ public struct SearchToolsTool: Tool {
 
 // MARK: - Discovery is synchronous (task h773bed)
 
-extension SearchToolsTool: DetachmentParameterProviding {
+extension SearchToolsTool: BackgroundTool {
     /// The mount a discovery call carries: run to completion, under no clock.
     ///
     /// **Discovery is synchronous.** A model cannot write a snippet without
@@ -458,11 +458,11 @@ extension SearchToolsTool: DetachmentParameterProviding {
     /// `invoked=[] returned=[]` answering "I don't have access to real-time
     /// weather data". Under the stock 120-second work clock, that clock
     /// cancelled it instead —
-    /// `DetachingToolError.timedOut(tool: "searchTools", timeoutSeconds: 120.0)`,
+    /// `ToolMountError.timedOut(tool: "searchTools", timeoutSeconds: 120.0)`,
     /// the turn dead in its first call.
     ///
     /// `runCode` declares the background mount for itself, and this tool
     /// declares run-to-completion. One session, two policies, each stated by
     /// the tool it belongs to.
-    public var detachmentMount: DetachConfiguration? { .runToCompletionMount }
+    public var mount: ToolMount? { .synchronousUnbounded }
 }

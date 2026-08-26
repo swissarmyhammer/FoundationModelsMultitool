@@ -405,7 +405,7 @@ public enum CLIRunner {
     /// - Parameters:
     ///   - direct: whether to run in direct mode — the registry vends
     ///     `runCode` and `wait`, and `searchToolsTool` is omitted. Direct
-    ///     mode takes discovery away, never detachment.
+    ///     mode takes discovery away, never the background.
     ///   - resolve: the profile-resolution step.
     ///   - output: where progress/answer lines are written.
     /// - Throws: `CLIRouterUnavailableError` if `resolve` throws; otherwise
@@ -470,14 +470,14 @@ public enum CLIRunner {
             // of the host contract and not a detail (see
             // `Registry.makeSessionTools(librarian:)`). A `RoutedSession`
             // mounts each vended tool under
-            // `DetachConfiguration.nativeSessionMount`, which is what lets a
+            // `ToolMount.synchronous`, which is what lets a
             // slow `runCode` go to the background and answer with a pending envelope the model
             // then collects with the mounted `wait` tool. Mounted on a bare
             // `FoundationModels.LanguageModelSession` the same tools cannot
-            // detach at all: the snippet simply blocks, no envelope is ever
+            // go to the background at all: the snippet simply blocks, no envelope is ever
             // written, and `wait` has nothing to join.
             //
-            // **No run of this demo will show a detachment.** `DemoTripTool`
+            // **No run of this demo will show a background run.** `DemoTripTool`
             // and `DemoWeatherTool` answer instantly, so every snippet here
             // finishes inline and no pending envelope is ever written. The
             // wiring carries the design; the fixtures only keep the demo quick.

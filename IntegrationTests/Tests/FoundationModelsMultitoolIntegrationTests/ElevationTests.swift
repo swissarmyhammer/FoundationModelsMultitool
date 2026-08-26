@@ -9,7 +9,7 @@ import Testing
 /// **Why this suite does not use `runNativeIntegrationScenario`.** Not the
 /// session: both runners build the same `RoutedSession` from
 /// `profile.standard.makeSession(tools:discoveryPriming:)`, so both mount
-/// `runCode` under `DetachConfiguration.nativeSessionMount`. It is the
+/// `runCode` under `ToolMount.synchronous`. It is the
 /// assertion. `runElevationIntegrationScenario` also requires that a pending
 /// envelope really appeared on the way to the answer, which is the whole
 /// claim of this suite and which the native runner does not check. See

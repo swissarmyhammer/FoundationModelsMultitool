@@ -70,7 +70,7 @@ public struct APISurface: Sendable, Equatable {
         /// ## The plane this string appears on
         ///
         /// The run plane, and never the event journal of an enclosing snippet.
-        /// `MultiTool` hands this string to `ToolDetachment.wrapping`, which
+        /// `MultiTool` hands this string to `ToolMounting.wrapping`, which
         /// stamps it onto the call's own `ToolContext.op` — so
         /// `SessionMailbox.track(tool:op:)` fills `BackgroundRun.op` from it, and
         /// the run's `ToolInvocationRecord` carries it. The `OperationEvent`s

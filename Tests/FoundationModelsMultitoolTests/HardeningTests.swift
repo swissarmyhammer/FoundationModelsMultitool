@@ -20,7 +20,7 @@ struct HardeningTests {
         // The work bound's default is the engine's own. It is the one clock a
         // background `runCode` call has: the wait clock is gone with the race
         // it served — see `MultiToolConfiguration.executionTimeLimit`.
-        #expect(configuration.executionTimeLimit == DetachConfiguration.defaultTimeoutSeconds)
+        #expect(configuration.executionTimeLimit == ToolMount.defaultTimeoutSeconds)
         #expect(configuration.liveContextLimit == MultiToolConfiguration.defaultLiveContextLimit)
         #expect(configuration.returnValueCharacterLimit == ResultRendererLimits.default.returnValueCharacterLimit)
         #expect(configuration.consoleCharacterLimit == ResultRendererLimits.default.consoleCharacterLimit)

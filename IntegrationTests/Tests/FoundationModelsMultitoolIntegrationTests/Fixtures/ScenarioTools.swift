@@ -492,7 +492,7 @@ struct IntegrationDeepScanOutput {
 /// How long `IntegrationDeepScanTool` works before it reports.
 ///
 /// Chosen to sit between the two clocks Router's native session mount arms a
-/// `runCode` call with (`DetachConfiguration.nativeSessionMount`): longer
+/// `runCode` call with (`ToolMount.synchronous`): longer
 /// than its 5-second `defaultWaitSeconds`, so the outer `runCode` call that
 /// awaits this tool always outlives its wait window and elevates into a
 /// pending envelope; and far shorter than its 120-second
@@ -655,7 +655,7 @@ let integrationArchiveRebuildManifestCode = 58204
 ///
 /// **Why it does not have to be slow, which is not obvious.** The canary asks
 /// whether the model collected its own backgrounded run, and a backgrounded run
-/// is not something a slow tool produces. `MultiTool.detachmentClocks(from:)`
+/// is not something a slow tool produces. `MultiTool.timeout(from:)`
 /// answers a zero wait clock for every call, so *every* `runCode` backgrounds
 /// the instant it is made, whatever the snippet awaits. The backgrounding is
 /// what hands the model a `PendingRunEnvelope`, and the envelope's text is what
@@ -782,9 +782,9 @@ let integrationNestedGenerationTokenLimit = 32
 /// to hold when two pins collide.
 ///
 /// **Why the output is not a `String`.** Router's session mount wraps a
-/// `Tool<_, String>` in `DetachingTool` and leaves every other tool in band
-/// (`ToolDetachment.wrapping(tool:sessionID:mailbox:sink:configuration:)`). A
-/// detached body would run outside the turn that holds the permit, which is the
+/// `Tool<_, String>` in `BackgroundToolRunner` and leaves every other tool in band
+/// (`ToolMounting.wrapping(tool:sessionID:mailbox:sink:configuration:)`). A
+/// background body would run outside the turn that holds the permit, which is the
 /// one arrangement that cannot deadlock — and would make this probe answer a
 /// question nobody asked. A `@Generable` output keeps the call in band.
 struct IntegrationNestedGenerationTool: Tool {
@@ -864,7 +864,7 @@ struct IntegrationDelayedEchoOutput {
 /// block and be woken by the settlement.
 ///
 /// Four seconds and not the deep scan's eight: `runCode` backgrounds every
-/// call at once (`MultiTool.detachmentClocks(from:)` answers a zero wait
+/// call at once (`MultiTool.timeout(from:)` answers a zero wait
 /// clock), so no wait window has to be outlived here. The delay only has to
 /// be clearly nonzero, and every extra second is wall clock the mechanism
 /// test pays on each run. It stays far under

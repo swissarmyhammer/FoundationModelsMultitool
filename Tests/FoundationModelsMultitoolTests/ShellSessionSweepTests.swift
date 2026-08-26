@@ -13,9 +13,9 @@ import Testing
 ///
 /// The route this suite proves has three owners:
 ///
-/// 1. `Execute` declares, through `DetachmentParameterProviding`, that its runs
+/// 1. `Execute` declares, through `BackgroundTool`, that its runs
 ///    are `RunKind.process` and that `ShellRunner.canceler(completionToken:)`
-///    stops one. `BackgroundTool` hands both to `SessionMailbox.track`.
+///    stops one. `BackgroundToolRunner` hands both to `SessionMailbox.track`.
 /// 2. `SessionMailbox.sweep()` walks the background runs in the order they
 ///    were tracked, awaits each canceler, and answers exactly one terminal
 ///    event for each run.

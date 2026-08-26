@@ -24,7 +24,7 @@ import Testing
 /// instead** — `profile.standard.makeSession(tools: try registry
 /// .makeSessionTools(librarian:))`, drained through `streamEvents(to:)` — and
 /// only that session mounts a tool under
-/// `DetachConfiguration.nativeSessionMount`, which is what lets a slow
+/// `ToolMount.synchronous`, which is what lets a slow
 /// `runCode` background. `README.md` and `Sources/MultitoolCLI/CLIRunner.swift`
 /// state the contract; these examples show the catalog and call shapes it
 /// carries.

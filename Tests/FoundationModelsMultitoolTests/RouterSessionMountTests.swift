@@ -12,8 +12,8 @@ import ULID
 /// The integration scenarios score 0/4 on Router's session and 1/4-3/4 on a plain
 /// `LanguageModelSession`, with the model reporting that it has no functions
 /// at all (task `tkrdwb8`). Router's per-session tool wiring was the first
-/// suspect, since it wraps every tool in `BackgroundTool` or
-/// `RunToCompletionTool` before the model sees it. These tests exist to keep
+/// suspect, since it wraps every tool in `BackgroundToolRunner` or
+/// `RunToCompletionRunner` before the model sees it. These tests exist to keep
 /// that suspicion answered: the wrapper is transparent, so a future regression
 /// there is caught here rather than in a twenty-minute integration run.
 @Suite("Router session mount")
@@ -109,7 +109,7 @@ struct RouterSessionMountTests {
 
         #expect(PendingRunEnvelope.isRendered(text: rendered))
         let envelope = try JSONDecoder().decode(PendingRunEnvelope.self, from: Data(rendered.utf8))
-        #expect(envelope.next == runCode.detachmentCollectInstruction(forCompletionToken: envelope.completionToken))
+        #expect(envelope.next == runCode.collectInstruction(forCompletionToken: envelope.completionToken))
         // The sentence leads to the top-level `wait` tool with this envelope's
         // token, and it names the wait tool's own report values.
         #expect(envelope.next.contains("wait tool"))
@@ -142,7 +142,7 @@ struct RouterSessionMountTests {
 
     /// Wraps `tool` the way a Router session wraps every tool it mounts.
     ///
-    /// `DetachConfiguration.nativeSessionMount` is the one configuration
+    /// `ToolMount.synchronous` is the one configuration
     /// `RoutedModel.makeSession` applies, so this is the same composition the
     /// integration scenarios run through.
     ///
@@ -152,12 +152,12 @@ struct RouterSessionMountTests {
     ///     when the test holds no background run of its own.
     /// - Returns: the composed, model-facing tool.
     private static func sessionMounted(_ tool: any Tool, mailbox: SessionMailbox = SessionMailbox()) -> any Tool {
-        ToolDetachment.wrapping(
+        ToolMounting.wrapping(
             tool: tool,
             sessionID: ULID(),
             mailbox: mailbox,
             sink: DiscardingSink(),
-            configuration: .nativeSessionMount
+            configuration: .synchronous
         )
     }
 }
