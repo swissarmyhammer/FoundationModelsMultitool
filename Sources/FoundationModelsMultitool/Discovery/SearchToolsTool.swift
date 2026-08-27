@@ -70,11 +70,29 @@ public struct SearchToolsTool: Tool {
     /// slow search from a stalled one.
     private static let trace = CallTrace(category: "SearchTools")
 
-    /// The catalog searcher every `searchTools` call forwards to.
-    private let searcher: MetadataSearcher<APISurface.Entry>
+    /// Where this tool reads the catalog it searches.
+    private enum Catalog: Sendable {
+        /// One searcher, built before this tool, that never changes.
+        case fixed(searcher: MetadataSearcher<APISurface.Entry>, limit: Int)
 
-    /// The maximum number of matches to request per search call.
-    private let limit: Int
+        /// The holder this tool shares with the `runCode` mounted beside it.
+        /// Each call reads the holder's current bundle, so a swap at the turn
+        /// boundary reaches discovery and execution at the same tick. `limit`
+        /// is `nil` for "every entry of the current registry".
+        case shared(holder: MultiTool.RegistryHolder, limit: Int?)
+    }
+
+    /// The error a call throws when the shared holder's bundle was built
+    /// with no discovery searcher.
+    ///
+    /// A bundle built with `DiscoverySearch.none` has none; only
+    /// `makeSessionToolsAndStaging` builds the bundle a `searchTools` shares,
+    /// and it always configures one. So this is a programming error, and it
+    /// is thrown, not hidden by a searcher built on the fly.
+    struct DiscoverySearcherMissing: Error {}
+
+    /// The catalog this tool searches.
+    private let catalog: Catalog
 
     /// How to generate and validate this tool's runnable sample, or `nil` for
     /// the signatures-only result.
@@ -94,9 +112,64 @@ public struct SearchToolsTool: Tool {
         limit: Int,
         sample: SampleSnippetConfig? = nil
     ) {
-        self.searcher = searcher
-        self.limit = limit
+        self.catalog = .fixed(searcher: searcher, limit: limit)
         self.sample = sample
+    }
+
+    /// Creates a `searchTools` tool that reads the catalog of `holder` at
+    /// each call — the tool `makeSessionToolsAndStaging` mounts beside the
+    /// `runCode` that shares the same holder.
+    ///
+    /// - Parameters:
+    ///   - holder: the box whose current bundle every call searches. Its
+    ///     bundle must carry a discovery searcher — see
+    ///     `DiscoverySearch.configured`.
+    ///   - limit: the maximum number of matches to request per call, or
+    ///     `nil` for the entry count of the registry current at the call.
+    ///   - sample: how to generate and validate the runnable sample snippet,
+    ///     or `nil` for the signatures-only result.
+    init(
+        holder: MultiTool.RegistryHolder,
+        limit: Int? = nil,
+        sample: SampleSnippetConfig? = nil
+    ) {
+        self.catalog = .shared(holder: holder, limit: limit)
+        self.sample = sample
+    }
+
+    /// The searcher over `entries` a `searchTools` tool forwards to, in
+    /// `.auto` mode: selection when `selection` is configured, retrieval
+    /// alone otherwise.
+    ///
+    /// The one place a discovery searcher is built. `init(registry:...)`
+    /// builds one here for a fixed catalog, and `MultiTool.RegistryBundle`
+    /// builds one here for each bundle of a shared holder.
+    ///
+    /// - Parameters:
+    ///   - entries: the catalog to index.
+    ///   - selection: the selection tier, or `nil` for retrieval alone.
+    /// - Returns: the searcher.
+    static func makeSearcher(
+        over entries: [APISurface.Entry], selection: SelectionConfig?
+    ) -> MetadataSearcher<APISurface.Entry> {
+        MetadataSearcher(items: entries, mode: .auto, selection: selection)
+    }
+
+    /// The searcher and the limit one call uses, read at the call.
+    ///
+    /// - Returns: the searcher to forward to, and the maximum number of
+    ///   matches to request.
+    /// - Throws: ``DiscoverySearcherMissing`` when a shared holder's bundle
+    ///   carries no discovery searcher.
+    private func resolveCatalog() throws -> (searcher: MetadataSearcher<APISurface.Entry>, limit: Int) {
+        switch catalog {
+        case .fixed(let searcher, let limit):
+            return (searcher, limit)
+        case .shared(let holder, let limit):
+            let bundle = holder.current
+            guard let searcher = bundle.discoverySearcher else { throw DiscoverySearcherMissing() }
+            return (searcher, limit ?? bundle.registry.surface.entries.count)
+        }
     }
 
     /// Creates a `searchTools` tool bound to a Router profile.
@@ -144,6 +217,24 @@ public struct SearchToolsTool: Tool {
         limit: Int? = nil,
         sampleGenerator: RoutedLLM? = nil
     ) throws {
+        self.init(
+            searcher: Self.makeSearcher(
+                over: registry.surface.entries, selection: Self.makeSelection(librarian: librarian)),
+            limit: limit ?? registry.surface.entries.count,
+            sample: Self.makeSample(generator: sampleGenerator)
+        )
+    }
+
+    /// The selection tier over `librarian`, or `nil` when there is no
+    /// librarian and discovery answers by retrieval alone.
+    ///
+    /// The one place the selection tier is wired. `init(registry:...)` and
+    /// `makeSessionToolsAndStaging` both build it here.
+    ///
+    /// - Parameter librarian: the resolved `RoutedLLM` every selection
+    ///   session runs on, or `nil`.
+    /// - Returns: the selection configuration, or `nil`.
+    static func makeSelection(librarian: RoutedLLM?) -> SelectionConfig? {
         // **The selection session must come from `librarian`, a handle other
         // than the one whose turn is calling this tool. That is a correctness
         // requirement, not a cost preference.**
@@ -173,7 +264,7 @@ public struct SearchToolsTool: Tool {
         // Reusing the caller's session here looks like the natural
         // simplification — one session, one transcript, no second handle to
         // thread. It is the one change this factory must never take.
-        let selection: SelectionConfig? = librarian.map { librarian in
+        return librarian.map { librarian in
             SelectionConfig(model: { instructions, grammar in
                 // Traced, and traced *here*, because both ends of this
                 // factory are opaque from outside. The call itself is
@@ -194,7 +285,19 @@ public struct SearchToolsTool: Tool {
                 }
             })
         }
-        let sample: SampleSnippetConfig? = sampleGenerator.map { generator in
+    }
+
+    /// The sample-snippet configuration over `generator`, or `nil` when
+    /// there is no generator and discovery answers with the signatures alone.
+    ///
+    /// The one place sample generation is wired. `init(registry:...)` and
+    /// `makeSessionToolsAndStaging` both build it here.
+    ///
+    /// - Parameter generator: the resolved `RoutedLLM` the generation
+    ///   session runs on, or `nil`.
+    /// - Returns: the sample configuration, or `nil`.
+    static func makeSample(generator sampleGenerator: RoutedLLM?) -> SampleSnippetConfig? {
+        sampleGenerator.map { generator in
             SampleSnippetConfig(makeSession: { instructions in
                 Self.trace.span(
                     "SearchToolsTool.makeSampleSession",
@@ -207,11 +310,6 @@ public struct SearchToolsTool: Tool {
                 }
             })
         }
-        self.init(
-            searcher: MetadataSearcher(items: registry.surface.entries, mode: .auto, selection: selection),
-            limit: limit ?? registry.surface.entries.count,
-            sample: sample
-        )
     }
 
     /// Runs one `searchTools(task)` call.
@@ -220,9 +318,10 @@ public struct SearchToolsTool: Tool {
     /// - Returns: the text describing the matched tool-functions, led by a
     ///   validated runnable snippet when one was generated — see
     ///   `format(task:matches:sample:)`.
-    /// - Throws: whatever `searcher.search(intent:limit:)` throws. Sample
-    ///   generation never throws out of here: a failure in it yields no
-    ///   sample, and discovery answers with the signatures alone.
+    /// - Throws: whatever `searcher.search(intent:limit:)` throws, and
+    ///   ``DiscoverySearcherMissing`` from a shared holder with no discovery
+    ///   searcher. Sample generation never throws out of here: a failure in
+    ///   it yields no sample, and discovery answers with the signatures alone.
     ///
     /// Three spans, because this call has two independent model-backed steps
     /// and formatting is neither: the search (which drives the selection tier)
@@ -231,6 +330,10 @@ public struct SearchToolsTool: Tool {
     /// which.
     public func call(arguments: SearchToolsArguments) async throws -> String {
         try await Self.trace.span("SearchToolsTool.call", detail: "task=\(arguments.task)") {
+            // Read one time, at the top: the catalog of a shared holder can
+            // swap at the next turn boundary, and this call searches the one
+            // current when it started.
+            let (searcher, limit) = try resolveCatalog()
             let matches = try await Self.trace.span(
                 "SearchToolsTool.search",
                 detail: "limit=\(limit)"

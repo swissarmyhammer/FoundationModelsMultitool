@@ -29,10 +29,33 @@ comments:
     - evidence: `swift test` — 1271 tests in 95 suites passed, 0 failed, 0 skipped, no compiler warning in the changed files. `swift build --package-path IntegrationTests --build-tests`: build complete.
     - next: /commit
   timestamp: 2026-08-27T20:56:31.312291+00:00
+- actor: claude-code
+  id: 01m12g5g521nk0n7etx6hpqahq
+  text: |-
+    ### commit — changed
+    - evidence: 3507741 feat(builder): add RegistrySource and rebuildRegistry() for a re-runnable Builder
+    - next: /review
+  timestamp: 2026-08-27T20:56:43.426536+00:00
+- actor: claude-code
+  id: 01m12gffbamk0ajdx1wkf9jbx5
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (3507741) — 0 findings, 4 files reviewed, 7 validators attempted, 0 failed; no prior findings on the card. `.kanban/` excluded by ignore rule.
+    - next: none. The task is done.
+  timestamp: 2026-08-27T21:02:10.282532+00:00
+- actor: claude-code
+  id: 01m12gfgtkhfajwgdp17keermw
+  text: |-
+    ### finish iteration 1 — done
+    - implement: changed (4 files — `RegistrySource.swift` new, `RegistryRebuildTests.swift` new, `MultiToolBuilder.swift`, `MCPCapability.swift`)
+    - test: green (swift test — 1271 tests in 95 suites, 0 failed, 0 skipped; IntegrationTests package builds)
+    - commit: 3507741
+    - review: clean (0 findings; no prior findings)
+  timestamp: 2026-08-27T21:02:11.795488+00:00
 depends_on:
 - 01M112EG33CSGN466M9BHVD8C0
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ff9b80
 title: 'Make the Builder re-runnable: rebuild a Registry from the same configuration'
 ---
 ## What

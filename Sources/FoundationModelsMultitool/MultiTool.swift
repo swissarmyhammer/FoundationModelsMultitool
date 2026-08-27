@@ -155,29 +155,69 @@ extension MultiTool {
             librarian: RoutedLLM?,
             sampleGenerator: RoutedLLM? = nil
         ) throws -> [any Tool] {
+            try makeSessionToolsAndStaging(librarian: librarian, sampleGenerator: sampleGenerator).tools
+        }
+
+        /// Builds the tools a host mounts on its session, exactly as
+        /// ``makeSessionTools(librarian:sampleGenerator:)`` does, and vends
+        /// beside them the `RegistryStaging` a refresher stages a rebuilt
+        /// registry on.
+        ///
+        /// The mounted `runCode` and `searchTools` share one `RegistryHolder`.
+        /// A registry staged on the returned `staging` is applied when the
+        /// session calls `runCode`'s `turnWillBegin()`, and from that tick
+        /// both tools read the new surface: `tools.*`, `help()`, `docs()` and
+        /// discovery swap together.
+        ///
+        /// A method of its own name, and not an overload: two overloads that
+        /// differ in the return type alone make
+        /// `let mounted = try registry.makeSessionTools(librarian: nil)`
+        /// ambiguous, and every caller of the old method writes exactly that.
+        ///
+        /// - Parameters:
+        ///   - librarian: see ``makeSessionTools(librarian:sampleGenerator:)``.
+        ///   - sampleGenerator: see
+        ///     ``makeSessionTools(librarian:sampleGenerator:)``.
+        /// - Returns: the tools in mount order, and the staging half of the
+        ///   holder they share.
+        /// - Throws: what ``makeSessionTools(librarian:sampleGenerator:)``
+        ///   throws.
+        public func makeSessionToolsAndStaging(
+            librarian: RoutedLLM?,
+            sampleGenerator: RoutedLLM? = nil
+        ) throws -> (tools: [any Tool], staging: any RegistryStaging) {
             // `wait` is mounted in both modes: a direct-mode surface declares
             // the background mount for `runCode` too, so every mounted call
             // goes to the background and a model still needs a way to say
             // "I cannot continue without that result" (task `h773bed`).
             guard supportsSearchTools else {
-                return [MultiTool(registry: self), WaitTool()]
+                let holder = RegistryHolder(
+                    current: RegistryBundle(
+                        registry: self,
+                        shape: RegistryBundleShape(bindsSearchTools: false, discovery: .none)))
+                return ([MultiTool(holder: holder), WaitTool()], holder)
             }
-            let searchTools = try SearchToolsTool(
-                registry: self,
-                librarian: librarian,
-                sampleGenerator: sampleGenerator
+            let holder = RegistryHolder(
+                current: RegistryBundle(
+                    registry: self,
+                    shape: RegistryBundleShape(
+                        bindsSearchTools: true,
+                        discovery: .configured(selection: SearchToolsTool.makeSelection(librarian: librarian)))))
+            let searchTools = SearchToolsTool(
+                holder: holder,
+                sample: SearchToolsTool.makeSample(generator: sampleGenerator)
             )
             // The same instance both ways in: mounted for the model to call
             // directly, and bound as `tools.searchTools` for a snippet that
             // reaches for it mid-run. One instance means one librarian and one
             // sample generator, so the two doors cannot answer differently.
-            let runCode = MultiTool(registry: self, searchTools: searchTools)
+            let runCode = MultiTool(holder: holder, searchTools: searchTools)
             // Presented last, deliberately. A model reads "discover what
             // exists", then "execute code", and only then "block until
             // something finishes" — which is the rarest of the three and the
             // one it should reach for only when the other two have left it
             // waiting on a result.
-            return [searchTools, runCode, WaitTool()]
+            return ([searchTools, runCode, WaitTool()], holder)
         }
     }
 }
@@ -320,8 +360,17 @@ public struct MultiTool: Tool {
     /// and it reads as an explicit absence rather than a blank.
     private static let noAmbientToken = CallTrace.absent
 
-    /// The catalog + live tool instances this `runCode` dispatches into.
-    private let registry: Registry
+    /// The box that holds the catalog + live tool instances this `runCode`
+    /// dispatches into, and everything precomputed from them, as one
+    /// `RegistryBundle` — see `RegistryHolder`.
+    ///
+    /// A reference, shared by every copy of this struct and by the
+    /// `searchTools` mounted beside it, so a swap at the turn boundary
+    /// reaches all of them at one tick. Read one time at the top of
+    /// `call(arguments:)`; the run keeps that bundle to its end. Internal,
+    /// not `private`, because the turn-boundary extension applies the staged
+    /// registry through it (see `MultiTool+TurnBoundary.swift`).
+    let holder: RegistryHolder
 
     /// The M10 hardening knobs this tool enforces. Internal, not `private`,
     /// because the background extension reads the work clock's ceiling out of
@@ -342,48 +391,50 @@ public struct MultiTool: Tool {
     /// output.
     private let limits: ResultRendererLimits
 
-    /// `help()`/`docs()`'s `HostFunction` bridges — the *surface-reading*
-    /// synchronous globals this tool installs. `notify()`/`progress()` are
-    /// synchronous too, but are built per invocation because each closes over
-    /// that invocation's own notice outbox.
+    /// Creates a `runCode` tool over `registry`, in a holder of its own.
     ///
-    /// Built once at `init`, because the mapping never changes call to call,
-    /// and re-installed fresh into every `runCode` call's own sandbox by
-    /// `Interpreter.run` — installing them is cheap.
-    private let hostFunctions: [HostFunction]
-
-    /// The catalog ranker `UnknownToolHint` resolves an invented `tools.*`
-    /// name against when no real path resembles its spelling.
-    ///
-    /// The same `MetadataSearcher` machinery `searchTools` matches an intent
-    /// to tools with, over this registry's own entries, in `.retrieval` mode:
-    /// no selection tier and no embedder, so repairing a wrong guess costs no
-    /// model call and no tokens. Built once at `init` for the same reason as
-    /// `hostFunctions`: it depends only on the registry, which never changes
-    /// over this tool's lifetime.
-    private let hintSearcher: MetadataSearcher<APISurface.Entry>
-
-    /// Every registry entry that has a live tool to dispatch to, paired with
-    /// the flat host-function name its `tools.*` binding installs under —
-    /// precomputed once at `init` for the same reason as `hostFunctions`.
-    ///
-    /// The `AsyncHostFunction`s built from it deliberately are *not*
-    /// precomputed: each one closes over the invocation's own `RunBinding` —
-    /// one binding per `runCode` invocation, captured at bind time and never
-    /// inherited — so `makeAsyncHostFunctions(binding:)` rebuilds them per
-    /// call from this stable pairing.
-    private let liveTools: [LiveTool]
-
-    /// The `tools.*` assignment glue prepended to every snippet — see
-    /// "tools.* glue" below. Precomputed once at `init` for the same reason
-    /// as `hostFunctions`.
-    private let preamble: String
-
-    /// Creates a `runCode` tool over `registry`.
+    /// A tool made here swaps alone: `stage(_:)` and `turnWillBegin()` reach
+    /// its holder, and no `searchTools` shares it. A host that mounts both
+    /// uses `Registry.makeSessionToolsAndStaging(librarian:sampleGenerator:)`,
+    /// which gives the two one holder.
     ///
     /// - Parameters:
     ///   - registry: the catalog + live tool instances to expose as
     ///     `tools.*`.
+    ///   - configuration: see ``init(holder:configuration:interpreter:limits:searchTools:depth:)``.
+    ///   - interpreter: see ``init(holder:configuration:interpreter:limits:searchTools:depth:)``.
+    ///   - limits: see ``init(holder:configuration:interpreter:limits:searchTools:depth:)``.
+    ///   - searchTools: the mounted discovery tool a snippet reaches as
+    ///     `tools.searchTools`. Defaults to `nil`, which binds no such path.
+    ///   - depth: see ``init(holder:configuration:interpreter:limits:searchTools:depth:)``.
+    public init(
+        registry: Registry,
+        configuration: MultiToolConfiguration = .default,
+        interpreter: (any Interpreter)? = nil,
+        limits: ResultRendererLimits? = nil,
+        searchTools: (any Tool)? = nil,
+        depth: Int = 0
+    ) {
+        self.init(
+            holder: RegistryHolder(
+                current: RegistryBundle(
+                    registry: registry,
+                    shape: RegistryBundleShape(bindsSearchTools: searchTools != nil, discovery: .none))),
+            configuration: configuration,
+            interpreter: interpreter,
+            limits: limits,
+            searchTools: searchTools,
+            depth: depth
+        )
+    }
+
+    /// Creates a `runCode` tool over `holder`, the box it reads its bundle
+    /// from at the top of every call.
+    ///
+    /// - Parameters:
+    ///   - holder: the box that holds the catalog + live tool instances to
+    ///     expose as `tools.*`, and everything precomputed from them. Shared
+    ///     with the `searchTools` mounted beside this tool, when there is one.
     ///   - configuration: the hardening knobs — the work clock's ceiling, the
     ///     live-context cap, the return and console caps — this tool
     ///     enforces. Defaults to `MultiToolConfiguration.default`. An
@@ -406,15 +457,15 @@ public struct MultiTool: Tool {
     ///   - depth: how many enclosing `tools.runCode` calls this run sits
     ///     inside. Defaults to `0`, the depth of a run the model started;
     ///     ``maxRunCodeDepth`` is where nesting stops.
-    public init(
-        registry: Registry,
+    init(
+        holder: RegistryHolder,
         configuration: MultiToolConfiguration = .default,
         interpreter: (any Interpreter)? = nil,
         limits: ResultRendererLimits? = nil,
         searchTools: (any Tool)? = nil,
         depth: Int = 0
     ) {
-        self.registry = registry
+        self.holder = holder
         self.configuration = configuration
         self.liveContexts = LiveContextCounter()
         // One arming path for every sandbox this tool runs, injected or
@@ -423,10 +474,6 @@ public struct MultiTool: Tool {
         // own stock limit instead (see `Interpreter.withTimeLimit(_:)`).
         self.interpreter = (interpreter ?? JSCInterpreter()).withTimeLimit(configuration.executionTimeLimit)
         self.limits = limits ?? configuration.resultLimits
-        self.hostFunctions = Self.makeHelpDocsHostFunctions(for: registry)
-        self.liveTools = Self.makeLiveTools(for: registry)
-        self.preamble = Self.makePreamble(for: registry, bindsSearchTools: searchTools != nil)
-        self.hintSearcher = MetadataSearcher(items: registry.surface.entries, mode: .retrieval)
         self.searchTools = searchTools
         self.depth = depth
     }
@@ -506,6 +553,11 @@ public struct MultiTool: Tool {
             return ResultRenderer.render(Self.liveContextCapError(limit: configuration.liveContextLimit))
         }
         defer { liveContexts.release() }
+        // Read one time, here, and kept to the end of this run: a registry
+        // staged on the holder is applied at the next turn boundary, and
+        // "an in-flight run keeps the registry that it started with" — see
+        // `RegistryHolder`.
+        let bundle = holder.current
         // Captured here, and only here: this is the last point on the route
         // where the session's ambient `ToolContext` is still reachable. Every
         // `tools.*` call below runs in a `Task` the interpreter's promise pump
@@ -527,12 +579,12 @@ public struct MultiTool: Tool {
         // below reads it back once the snippet has finished (see
         // ``LostRunRecord``).
         let lostRuns = LostRunRecord()
-        let code = "\(preamble)\n\(arguments.code)"
+        let code = "\(bundle.preamble)\n\(arguments.code)"
         let outcome = await Self.runCapturingOutcome(
             code: code,
-            installing: hostFunctions + Self.makeNoticeHostFunctions(outbox: notices),
+            installing: bundle.hostFunctions + Self.makeNoticeHostFunctions(outbox: notices),
             installingAsync: makeAsyncHostFunctions(
-                binding: binding, recordingInto: ledger, noting: lostRuns)
+                over: bundle, binding: binding, recordingInto: ledger, noting: lostRuns)
                 + Self.makeBackgroundRunHostFunctions(binding: binding),
             using: interpreter
         )
@@ -563,8 +615,8 @@ public struct MultiTool: Tool {
                 // a rule that asks what the *model* reached for would find a
                 // real path every time.
                 snippet: arguments.code,
-                surface: registry.surface,
-                searcher: hintSearcher
+                surface: bundle.registry.surface,
+                searcher: bundle.hintSearcher
             )
             if let resolution {
                 Self.logImaginedTool(resolution)
@@ -725,7 +777,9 @@ public struct MultiTool: Tool {
 
     /// One registry entry that has a live tool to dispatch to, paired with
     /// the flat global its `tools.*` binding installs under.
-    private struct LiveTool: Sendable {
+    ///
+    /// Internal, not `private`: `RegistryBundle` holds the list.
+    struct LiveTool: Sendable {
         /// The entry's flat host-function name — see `hostFunctionName(at:)`.
         let hostFunctionName: String
 
@@ -752,7 +806,9 @@ public struct MultiTool: Tool {
     ///
     /// One pairing per entry with a matching `registry.tools[path]`, in the
     /// same order as `registry.surface.entries`.
-    private static func makeLiveTools(for registry: Registry) -> [LiveTool] {
+    ///
+    /// Internal, not `private`: `RegistryBundle.init` builds the list.
+    static func makeLiveTools(for registry: Registry) -> [LiveTool] {
         var liveTools: [LiveTool] = []
         for (index, entry) in registry.surface.entries.enumerated() {
             guard let tool = registry.tools[entry.path] else { continue }
@@ -793,12 +849,15 @@ public struct MultiTool: Tool {
     /// registered under, so each keeps the engine's own default of stamping
     /// `op` with the tool's name.
     ///
+    /// - Parameter bundle: the bundle this run read at its start, whose
+    ///   `liveTools` the bindings dispatch into.
     /// - Returns: one `AsyncHostFunction` per live tool, in `liveTools`'
     ///   order.
     private func makeAsyncHostFunctions(
+        over bundle: RegistryBundle,
         binding: RunBinding?, recordingInto ledger: ToolReturnLedger, noting lostRuns: LostRunRecord
     ) -> [AsyncHostFunction] {
-        var functions = liveTools.map { liveTool in
+        var functions = bundle.liveTools.map { liveTool in
             AsyncHostFunction(name: liveTool.hostFunctionName) { arguments in
                 try await Self.invokeAsync(
                     tool: liveTool.tool,
@@ -819,7 +878,7 @@ public struct MultiTool: Tool {
                 }
             )
         }
-        functions.append(makeNestedRunCodeHostFunction())
+        functions.append(makeNestedRunCodeHostFunction(over: bundle))
         return functions.map { Self.recording($0, into: ledger, noting: lostRuns) }
     }
 
@@ -919,10 +978,17 @@ public struct MultiTool: Tool {
     /// Refuses past ``maxRunCodeDepth`` rather than recursing further, so a
     /// snippet with no base case ends with a repairable error naming the
     /// limit instead of spending the run's whole time budget.
-    private func makeNestedRunCodeHostFunction() -> AsyncHostFunction {
+    ///
+    /// The nested run gets a holder of its own over `bundle`, the bundle
+    /// this run read at its start, so a nested snippet resolves the same
+    /// surface as the snippet that started it: a swap at the turn boundary
+    /// reaches neither of them.
+    ///
+    /// - Parameter bundle: the bundle this run read at its start.
+    private func makeNestedRunCodeHostFunction(over bundle: RegistryBundle) -> AsyncHostFunction {
         let depth = depth
         let nested = MultiTool(
-            registry: registry,
+            holder: RegistryHolder(current: bundle),
             configuration: configuration,
             limits: limits,
             searchTools: searchTools,
@@ -987,7 +1053,9 @@ public struct MultiTool: Tool {
     ///   live tool, preceded by `globalThis.tools = {};`, by the void
     ///   re-binding of every name in `voidGlobalNames`, and by the sibling
     ///   paths this tool binds itself.
-    private static func makePreamble(for registry: Registry, bindsSearchTools: Bool) -> String {
+    ///
+    /// Internal, not `private`: `RegistryBundle.init` builds the preamble.
+    static func makePreamble(for registry: Registry, bindsSearchTools: Bool) -> String {
         // `globalThis.tools = {}` (not `var tools = {}`) so `tools` is a
         // genuine `globalThis` property — like `console`/`help`/`docs`,
         // installed directly via `context.setObject` — rather than a
@@ -1255,7 +1323,9 @@ public struct MultiTool: Tool {
     /// confirm the surface and keep going in the same call. Every recorded
     /// plan-and-stop happens at the `searchTools` → `runCode` turn boundary,
     /// and this path removes the boundary.
-    private static func makeHelpDocsHostFunctions(for registry: Registry) -> [HostFunction] {
+    ///
+    /// Internal, not `private`: `RegistryBundle.init` builds the pair.
+    static func makeHelpDocsHostFunctions(for registry: Registry) -> [HostFunction] {
         [
             HostFunction(name: "help") { _ in
                 .array(registry.surface.entries.map { .string($0.path) })

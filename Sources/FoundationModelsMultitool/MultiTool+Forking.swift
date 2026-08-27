@@ -16,11 +16,14 @@ import FoundationModelsRouter
 /// What makes it correct here in substance, rather than only in form, is where
 /// this tool keeps its state:
 ///
-/// - **Nothing derived at `init` can drift.** `registry`, and the
-///   `hostFunctions`, `liveTools`, and `preamble` precomputed from it, are
-///   `let`s that depend only on the registry, which never changes. A fork has
-///   nothing to re-derive, and two sessions reading the same catalog is the
-///   point of sharing a registry, not a leak.
+/// - **Nothing derived from the registry can drift.** The registry, and the
+///   host functions, live tools and preamble precomputed from it, live as one
+///   `RegistryBundle` in the `RegistryHolder` box. The registry now changes
+///   only at a turn boundary, when `turnWillBegin()` applies a staged one. A
+///   run keeps the bundle it read at its start to its end. Forks share the
+///   box: a copy of the struct copies the reference, so a fork and its parent
+///   swap together at the same tick, and two sessions reading the same catalog
+///   is the point of sharing a registry, not a leak.
 /// - **Per-run state never lives on the tool.** Everything one invocation's
 ///   inner `tools.*` calls need is captured into a `RunBinding` at the top of
 ///   `call(arguments:)`, from the ambient `ToolContext` that invocation's own
@@ -28,12 +31,12 @@ import FoundationModelsRouter
 ///   number of sessions concurrently without cross-routing (see
 ///   `RunBinding`), which is exactly the property a fork would otherwise have
 ///   to buy by copying.
-/// - **The two reference-typed members are shared on purpose.** A fork keeps
-///   the one `interpreter`, and `liveContexts` counts the live contexts of
+/// - **The other reference-typed members are shared on purpose too.** A fork
+///   keeps the one `interpreter`, and `liveContexts` counts the live contexts of
 ///   *that* interpreter. Handing a fork a fresh counter would let every fork
 ///   open a full `configuration.liveContextLimit` worth of suspended contexts
 ///   on the same sandbox, which is the pile-up the cap exists to prevent.
 ///
-/// A real `forked()` would therefore have to reconstruct immutable state that
-/// cannot go stale, and split a counter whose whole job is to be shared.
+/// A real `forked()` would therefore have to copy a box whose whole job is to
+/// be shared, and split a counter whose whole job is to be shared.
 extension MultiTool: ForkableTool {}
