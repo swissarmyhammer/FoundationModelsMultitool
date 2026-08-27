@@ -1,10 +1,33 @@
 ---
 assignees:
 - claude-code
+comments:
+- actor: claude-code
+  id: 01m11q9192rt3c8vs02qzt8z5c
+  text: |-
+    ### research — done
+
+    - The source is 10 files, 1,462 lines. `ScriptedServer.swift` is the actor; the four extension files add tools. `ServerMode.swift` parses `--mode`. `main.swift` is a 5-line stdio wrapper.
+    - `MCPServer` is not in this package yet (task ^832pg8r). So `connectedServer(over: .inMemory)` returns the connected `MCP.Client` for now. The card names the function; the return type changes when `MCPServer` lands.
+    - The test target here has no `TestServerCLILocator`. The port puts one in `Tests/FoundationModelsMultitoolTests/Support/TestServerLocator.swift`, with the `..` path check of the source's `ProductsDirectoryPathValidation` folded in, because this package has one reader of it.
+    - `TestPoll` (`Fixtures/PollFixtures.swift`) is the one poll of the test target. The ported self-tests use it in place of the source's private `poll` helper.
+    - The rules to obey up front: every public item documented; every numeric literal named (swiftlint `no_magic_numbers`, tests included); no unstructured leaks; `// periphery:ignore` with a reason line above it for assign-only properties.
+    - Of the four deferred `StdioServerProcessTests` cases, two need only the test server: the handshake-and-tool-call case (over a raw `MCP.Client`), and the external-kill case reduced to its `F_SETNOSIGPIPE` claim (a write after the child dies throws, and does not signal the host). The identity case and the reconnect half wait for `MCPServer`.
+    - The swift-sdk here is 0.12.1, the same as the source package, so the `requestElicitation(message:url:elicitationId:)` and `ElicitationCompleteNotification` API match.
+  timestamp: 2026-08-27T13:41:44.866246+00:00
+- actor: claude-code
+  id: 01m11qyhq75287djjwg9j8xw8f
+  text: |-
+    ### implement — changed
+    - evidence: 17 files — Package.swift, IntegrationTests/Package.swift, Tests/Support/MCPTestServer/{ScriptedServer,ScriptedTool,JSONSchemaBuilder,FlakyConnectTransport,EchoTool,LoopbackTools,CatalogShowcaseTool,DynamicToolsetScenario,FilesystemToolKit,ServerMode}.swift, Tests/Support/mcp-test-server/main.swift, Tests/FoundationModelsMultitoolTests/{ScriptedServerSelfTests,ServerModeTests}.swift, Tests/FoundationModelsMultitoolTests/Support/{MCPTestSupport,TestServerLocator}.swift, Tests/FoundationModelsMultitoolTests/StdioServerProcessTests.swift
+    - checks: `swift build --build-tests` clean; `swift build --product mcp-test-server` clean; `swift test` 1166 tests in 83 suites pass; `swift test --filter 'ScriptedServerSelf|ServerMode|StdioServerProcessTests'` 42 tests pass; the binary answers `initialize` and `tools/list` over stdio in `--mode loopback` (echo, elicitEcho, elicitURL); `swift build --package-path IntegrationTests --build-tests` clean with a probe file that imports `MCPTestServer` (probe removed after the build); swiftlint `missing_docs` + `no_magic_numbers` over the new files: 0 findings; periphery with `--retain-public`: 0 findings in this package.
+    - decisions: `connectedServer(to:over:clientName:capabilities:)` returns the connected `MCP.Client` until `MCPServer` (^832pg8r) lands; `ServerMode.loopback` is the new case; `DynamicToolsetScenario` holds its three stages as one table; `TestServerLocator` folds the source's path validation in as private helpers.
+    - next: /test, then /commit, then /review
+  timestamp: 2026-08-27T13:53:29.831788+00:00
 depends_on:
 - 01M11286356T1VMGHBSMF9V7W5
-position_column: todo
-position_ordinal: '8680'
+position_column: doing
+position_ordinal: '80'
 title: Port the MCP scripted test server as a test-support product (in-memory and stdio)
 ---
 ## What
@@ -22,17 +45,17 @@ The MCP tests run against a scripted server. Port it with its two transports (in
 - Keep `swift-log` out of this package's own targets. The sdk's `Server` takes a `Logging.Logger`; pass a `Logger(label:)` from the transitive `swift-log` the sdk brings, and do not declare it as a dependency of the library target.
 
 ## Acceptance Criteria
-- [ ] `ScriptedServer` serves `initialize`, `tools/list`, `tools/call`, `notifications/progress`, `notifications/tools/list_changed`, and `elicitation/create`, as the source does.
-- [ ] `addLoopbackTools()` registers `echo`, `elicitEcho`, and `elicitURL` by those names.
-- [ ] `import MCPTestServer` compiles from `IntegrationTests/`.
-- [ ] `swift build --product mcp-test-server` gives an executable that answers `initialize` over stdio and serves the loopback mode.
-- [ ] `swift build` succeeds.
+- [x] `ScriptedServer` serves `initialize`, `tools/list`, `tools/call`, `notifications/progress`, `notifications/tools/list_changed`, and `elicitation/create`, as the source does.
+- [x] `addLoopbackTools()` registers `echo`, `elicitEcho`, and `elicitURL` by those names.
+- [x] `import MCPTestServer` compiles from `IntegrationTests/`.
+- [x] `swift build --product mcp-test-server` gives an executable that answers `initialize` over stdio and serves the loopback mode.
+- [x] `swift build` succeeds.
 
 ## Tests
-- [ ] Port `ScriptedServerSelfTests.swift` and `ServerModeTests.swift` from `/Users/wballard/github/swissarmyhammer/FoundationModelsMCP/Tests/FoundationModelsMCPTests/` into `Tests/FoundationModelsMultitoolTests/`. Add a case for the loopback `ServerMode`.
-- [ ] Port the `mcp-test-server` cases that the `StdioServerProcess` task left out, into `StdioServerProcessTests.swift`.
-- [ ] `swift test --filter ScriptedServerSelfTests` passes.
-- [ ] `swift test --filter ServerModeTests` passes.
+- [x] Port `ScriptedServerSelfTests.swift` and `ServerModeTests.swift` from `/Users/wballard/github/swissarmyhammer/FoundationModelsMCP/Tests/FoundationModelsMCPTests/` into `Tests/FoundationModelsMultitoolTests/`. Add a case for the loopback `ServerMode`.
+- [x] Port the `mcp-test-server` cases that the `StdioServerProcess` task left out, into `StdioServerProcessTests.swift`.
+- [x] `swift test --filter ScriptedServerSelfTests` passes.
+- [x] `swift test --filter ServerModeTests` passes.
 
 ## Workflow
 - Use `/tdd` — port the self-tests first, then the server. #eventplan #phase-4

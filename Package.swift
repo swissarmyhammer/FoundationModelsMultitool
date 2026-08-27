@@ -223,6 +223,30 @@ private let mcpProducts: [Target.Dependency] = [
     .product(name: "MCP", package: mcpPackage)
 ]
 
+/// The name of the scripted MCP test server library target, and of the
+/// product that exports it.
+///
+/// **Test support, declared as a product.** The MCP suites run against a
+/// scripted `MCP.Server` (`ScriptedServer`), ported from
+/// `../FoundationModelsMCP/Sources/MCPTestServer/`. It stands under
+/// `Tests/Support/` because no shipped target links it: the library target
+/// above never depends on it. It is a product all the same, because
+/// `IntegrationTests/Package.swift` is a separate package that reaches this
+/// one through `.package(path: "..")`, and a package can import the products
+/// of another package only — never its targets. The unit test target below
+/// links it as a target.
+private let testServerTargetName = "MCPTestServer"
+
+/// The name of the stdio executable over `testServerTargetName`, and of the
+/// product that exports it.
+///
+/// **Test support, declared as a product** for the same reason as
+/// `testServerTargetName`: a test that cannot script a server in-process
+/// spawns this binary through `StdioServerProcess` and talks to it over
+/// stdio. `main.swift` alone — it parses `--mode`, registers the tool set
+/// that mode names, and serves until the connection closes.
+private let testServerExecutableName = "mcp-test-server"
+
 /// The `Sources/` subdirectory prefix used by every source target's `path`
 /// below.
 private let sourcesPath = "Sources/"
@@ -230,6 +254,13 @@ private let sourcesPath = "Sources/"
 /// The `Tests/` subdirectory prefix used by every test target's `path`
 /// below.
 private let testsPath = "Tests/"
+
+/// The `Tests/Support/` subdirectory prefix used by the two test-support
+/// targets (`testServerTargetName`, `testServerExecutableName`) below. A
+/// target of test support is not a test target, so it cannot stand under
+/// `Tests/<Name>Tests`, and it is not shipped, so it does not stand under
+/// `Sources/`.
+private let testSupportPath = "\(testsPath)Support/"
 
 /// SwiftPM manifest for FoundationModelsMultitool.
 ///
@@ -260,6 +291,20 @@ let package = Package(
         .library(
             name: cliLibraryTargetName,
             targets: [cliLibraryTargetName]
+        ),
+        // Test support. Consumed by `IntegrationTests/Package.swift`, which
+        // can import products only — see `testServerTargetName`.
+        .library(
+            name: testServerTargetName,
+            targets: [testServerTargetName]
+        ),
+        // Test support. The stdio binary a test spawns through
+        // `StdioServerProcess` — see `testServerExecutableName`. A product,
+        // so that `swift build --product mcp-test-server` names it and the
+        // nested integration package can spawn what this package built.
+        .executable(
+            name: testServerExecutableName,
+            targets: [testServerExecutableName]
         ),
     ],
     dependencies: [
@@ -333,14 +378,40 @@ let package = Package(
             // launches with SwiftPM's default rpaths — verified by running
             // the built binary directly.
         ),
+        // The scripted MCP test server — see `testServerTargetName`. Links
+        // `mcpProducts` alone: the sdk's `Server` is what it wraps. It does
+        // NOT declare `swift-log`, on purpose: `FlakyConnectTransport` names
+        // `Logging.Logger` because the `Transport` protocol requires the
+        // property, and the transitive `swift-log` the sdk brings satisfies
+        // the import, exactly as `StdioServerProcess.swift` relies on — see
+        // `mcpPackage` above.
+        .target(
+            name: testServerTargetName,
+            dependencies: mcpProducts,
+            path: "\(testSupportPath)\(testServerTargetName)"
+        ),
+        // The stdio entry point over the test server — see
+        // `testServerExecutableName`. `main.swift` and nothing else.
+        .executableTarget(
+            name: testServerExecutableName,
+            dependencies: [
+                .target(name: testServerTargetName)
+            ] + mcpProducts,
+            path: "\(testSupportPath)\(testServerExecutableName)"
+        ),
         // `shellProducts` and `mcpProducts` again: `DependencyReachTests`
         // imports `Subprocess` and `MCP` directly, and this target declares
         // each product it imports, as it does for the two products above.
+        // `testServerTargetName` is the scripted server the MCP suites run
+        // against; the executable over it is not a dependency, because a
+        // test target cannot depend on an executable, and `swift test`
+        // builds every target of the package regardless.
         .testTarget(
             name: "\(packageName)Tests",
             dependencies: [
                 .target(name: packageName),
                 .target(name: cliLibraryTargetName),
+                .target(name: testServerTargetName),
                 .product(name: routerDependencyName, package: routerDependencyName),
                 .product(name: metadataRegistryDependencyName, package: metadataRegistryDependencyName),
                 .product(name: extrasDependencyName, package: extrasDependencyName),

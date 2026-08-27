@@ -105,6 +105,12 @@ let package = Package(
             dependencies: [
                 .product(name: productPackageName, package: productPackageName),
                 .product(name: "MultitoolCLI", package: productPackageName),
+                // The scripted MCP test server, a test-support product of the
+                // root package — `../Package.swift`'s `testServerTargetName`.
+                // A gated MCP scenario scripts its server in-process through
+                // it, or spawns the `mcp-test-server` binary the root build
+                // produces.
+                .product(name: "MCPTestServer", package: productPackageName),
                 .product(name: routerDependencyName, package: routerDependencyName),
                 .product(name: metadataRegistryDependencyName, package: metadataRegistryDependencyName),
                 .product(name: "MLXLMCommon", package: mlxPackage),

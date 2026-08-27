@@ -1,6 +1,7 @@
 import Foundation
 import FoundationModelsExtras
 import MCP
+import MCPTestServer
 import Testing
 
 @testable import FoundationModelsMultitool
@@ -16,18 +17,23 @@ import Testing
 /// `FoundationModelsExtras.ProcessRegistry`, which this package takes in place
 /// of a copy.
 ///
-/// **Four cases of the source are not here.** Each one connects an
-/// `MCPServer` over the vended transport, and two of them also spawn the
-/// `mcp-test-server` executable. They wait for the tasks that port those two
-/// pieces, and they are listed here so that nothing is lost in silence:
+/// **Two cases of the source drive the `mcp-test-server` executable over a
+/// raw `MCP.Client`** — the handshake-and-tool-call case, and the external
+/// kill case reduced to the claim `F_SETNOSIGPIPE` makes. The source drove
+/// both over an `MCPServer`.
+///
+/// **Two cases of the source are not here.** Each one needs `MCPServer`,
+/// which task ^832pg8r ports, and they are listed here so that nothing is
+/// lost in silence:
 ///
 /// - `respawnFailingToSpawnDoesNotBurnBackoffAttemptsWhenUsedAsMCPServerFactory`
-///   — needs `MCPServer`, `BackoffPolicy` and `ManualClock` (task ^832pg8r).
-/// - `respawnVendsAWorkingTransportThatCompletesAnMCPHandshakeAndToolCall`
-///   — needs `MCPServer` and the test server (tasks ^832pg8r and ^gqrtxxy).
-/// - `nameFlowsIntoServerIdentityOnceConnected` — the same two.
-/// - `killingTheChildExternallySurfacesAsConnectionLossAndReconnects` — the
-///   same two.
+///   — needs `MCPServer`, `BackoffPolicy` and `ManualClock`.
+/// - `nameFlowsIntoServerIdentityOnceConnected` — needs the `identity` of
+///   an `MCPServer`.
+/// - The reconnect half of
+///   `killingTheChildExternallySurfacesAsConnectionLossAndReconnects` — the
+///   healed `.ready` state and the fresh pid after a fault are the work of
+///   `MCPServer`; the half that needs only the test server is here.
 ///
 /// Each test constructs its own PRIVATE registry, and never `.global`, so a
 /// group-kill cannot reach a process another suite owns. One test reads
@@ -73,6 +79,47 @@ struct StdioServerProcessTests {
     /// How many file descriptors one spawn creates before `posix_spawn` runs:
     /// the two ends of the stdin pipe, and the two ends of the stdout pipe.
     private static let pipeFdsPerSpawn = 4
+
+    /// The server name the `mcp-test-server` executable reports at
+    /// `initialize` — `serverName` in its `main.swift`.
+    private static let testServerReportedName = "mcp-test-server"
+
+    /// The text the handshake test sends through the echo tool.
+    private static let echoedText = "hello"
+
+    /// A `StdioServerProcess` over the `mcp-test-server` executable in
+    /// `mode`, registered into `sharedRegistry`.
+    ///
+    /// - Parameters:
+    ///   - mode: The tool set the executable registers.
+    ///   - name: The server name of the process.
+    /// - Returns: The process, not yet spawned.
+    /// - Throws: What `TestServerLocator.executableURL()` or
+    ///   `StdioServerProcess.init` throws.
+    private static func makeTestServer(mode: ServerMode, named name: String) throws -> StdioServerProcess {
+        try StdioServerProcess(
+            command: TestServerLocator.executableURL().path,
+            args: [ServerMode.flagName, mode.rawValue],
+            name: name,
+            registry: sharedRegistry)
+    }
+
+    /// Spawns `stdio` and completes an MCP `initialize` over the vended
+    /// transport with a fresh client.
+    ///
+    /// - Parameters:
+    ///   - stdio: The process to spawn.
+    ///   - clientName: The client name to log under.
+    /// - Returns: The connected client and the result of `initialize`.
+    /// - Throws: What `respawn()` or `Client.connect(transport:)` throws.
+    private static func connectClient(
+        to stdio: StdioServerProcess, clientName: String
+    ) async throws -> (client: Client, initialized: Initialize.Result) {
+        let transport = try await stdio.respawn()
+        let client = MCPTestSupport.makeClient(name: clientName)
+        let initialized = try await client.connect(transport: transport)
+        return (client, initialized)
+    }
 
     /// Confirms `sharedRegistry` holds nothing — called at the end of every
     /// test in this suite.
@@ -230,6 +277,75 @@ struct StdioServerProcessTests {
 
         #expect(!ProcessRegistry.global.registeredPids.contains(pid))
         #expect(Self.isGone(pid))
+    }
+
+    // MARK: - respawn() vends a working transport: a real handshake and tool call
+
+    /// `respawn()` vends a working `StdioTransport` wired to a real
+    /// subprocess — the `mcp-test-server` executable in echo mode — and a
+    /// full MCP `initialize` plus one `tools/call` go through it, not only
+    /// raw bytes through a pipe pair.
+    @Test func respawnVendsAWorkingTransportThatCompletesAnMCPHandshakeAndToolCall() async throws {
+        let stdio = try Self.makeTestServer(mode: .echo, named: "handshake-test")
+
+        let (client, initialized) = try await Self.connectClient(to: stdio, clientName: "StdioServerProcessTestClient")
+        #expect(initialized.serverInfo.name == Self.testServerReportedName)
+
+        let (content, isError) = try await client.callTool(
+            name: ScriptedServer.echoToolName,
+            arguments: [ScriptedServer.echoTextArgument: .string(Self.echoedText)])
+        #expect(isError != true)
+        #expect(content == [.text(text: Self.echoedText, annotations: nil, _meta: nil)])
+
+        await client.disconnect()
+        await stdio.shutdown()
+        Self.confirmNoLeaks()
+    }
+
+    // MARK: - Killing the child externally surfaces as a thrown error, never a signal
+
+    /// An unscripted death of the child — `SIGKILL` from outside, never
+    /// `shutdown()` — must reach the caller as an ordinary thrown error on
+    /// the next call, and never as a `SIGPIPE` that ends the host process.
+    ///
+    /// The test forces the default `SIGPIPE` disposition (`SIG_DFL`) instead
+    /// of ignoring it: `spawn(command:args:env:)` protects the write end of
+    /// the stdin pipe of the child with `F_SETNOSIGPIPE`, so a write after
+    /// the child died returns `EPIPE` whatever the process-wide disposition
+    /// is. That per-fd mitigation is what this proves, deterministically:
+    /// with `SIGPIPE` ignored process-wide, the test would pass with the
+    /// mitigation removed.
+    ///
+    /// The source went on to prove that an `MCPServer` reconnects through a
+    /// fresh spawn; that half waits for task ^832pg8r.
+    @Test func killingTheChildExternallySurfacesAsAThrownErrorAndNotASignal() async throws {
+        let previousSigpipeDisposition = signal(SIGPIPE, SIG_DFL)
+        defer { signal(SIGPIPE, previousSigpipeDisposition) }
+
+        let stdio = try Self.makeTestServer(mode: .echo, named: "external-kill-test")
+        let (client, _) = try await Self.connectClient(to: stdio, clientName: "ExternalKillTestClient")
+        guard let pid = stdio.currentPid else {
+            Issue.record("expected respawn() to record a pid")
+            return
+        }
+
+        // A real, unscripted death — reaped through a blocking `waitpid`,
+        // because this process is the parent of the pid — so the fds of the
+        // child are closed before the call below writes to them.
+        kill(pid, SIGKILL)
+        var status: Int32 = 0
+        waitpid(pid, &status, 0)
+
+        await #expect(throws: (any Error).self) {
+            _ = try await client.callTool(
+                name: ScriptedServer.echoToolName,
+                arguments: [ScriptedServer.echoTextArgument: .string(Self.echoedText)])
+        }
+
+        await client.disconnect()
+        await stdio.shutdown()
+        #expect(Self.isGone(pid))
+        Self.confirmNoLeaks()
     }
 
     // MARK: - Explicit shutdown group-kills and reaps, asserted by pid
