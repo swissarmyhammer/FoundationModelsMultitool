@@ -10,8 +10,8 @@
 // directly — `ServerModeTests` lists tools, `ScriptedServerSelfTests` calls
 // them. `connectedMCPServer(to:over:name:)` returns an `MCPServer` connected
 // against the scripted server, for a suite of the server itself.
-// `MCPTransportKind` is open for `.http`, which the in-process HTTP loopback
-// task adds.
+// `MCPTransportKind.http` is the in-process HTTP loopback of
+// `LoopbackHTTPServer`, so one parameterized case runs over both transports.
 
 import MCP
 import MCPTestServer
@@ -23,6 +23,16 @@ import MCPTestServer
 enum MCPTransportKind {
     /// One end of an `InMemoryTransport.createConnectedPair()` for each side.
     case inMemory
+
+    /// An `HTTPClientTransport` at the endpoint of a `LoopbackHTTPServer`
+    /// over the scripted server — HTTP in one process, with no socket.
+    ///
+    /// The helper never stops the loopback: the registry of
+    /// `LoopbackHTTPServer` holds it for the rest of the test process, as
+    /// the in-memory pair of ``inMemory`` is never torn down by the helper
+    /// either. A test that must stop one builds the `LoopbackHTTPServer`
+    /// itself.
+    case http
 }
 
 /// Shared "connect to a `ScriptedServer`" scaffolding for the MCP suites of
@@ -53,7 +63,8 @@ enum MCPTestSupport {
     ///   - scripted: The scripted server to serve on the far end.
     ///   - kind: The transport to connect over.
     /// - Returns: The client end of the transport.
-    /// - Throws: What `ScriptedServer.start(transport:)` throws.
+    /// - Throws: What `ScriptedServer.start(transport:)` or
+    ///   `LoopbackHTTPServer.start()` throws.
     static func clientTransport(
         serving scripted: ScriptedServer, over kind: MCPTransportKind
     ) async throws -> any Transport {
@@ -62,6 +73,10 @@ enum MCPTestSupport {
             let (clientTransport, serverTransport) = await InMemoryTransport.createConnectedPair()
             try await scripted.start(transport: serverTransport)
             return clientTransport
+        case .http:
+            let loopback = LoopbackHTTPServer(serving: scripted)
+            let (endpoint, configuration) = try await loopback.start()
+            return HTTPClientTransport(endpoint: endpoint, configuration: configuration)
         }
     }
 
