@@ -71,11 +71,34 @@ comments:
     - evidence: 6 files — Sources/FoundationModelsMultitool/Invocation/SequentialKeys.swift (new), Sources/FoundationModelsMultitool/Invocation/InFlightInnerCalls.swift, Sources/FoundationModelsMultitool/Capabilities/MCP/CancellationNotices.swift, Sources/FoundationModelsMultitool/Capabilities/MCP/MCPServerPool.swift, Tests/FoundationModelsMultitoolTests/Support/WireRecordingTransport.swift, Tests/FoundationModelsMultitoolTests/MCPSessionSweepTests.swift. `swift build --build-tests` clean, 0 warnings; `swift test`: 1282 tests in 97 suites passed, 0 failures and 0 warnings. All 4 review findings are corrected and checked.
     - next: /review
   timestamp: 2026-08-27T22:17:26.033226+00:00
+- actor: claude-code
+  id: 01m12myxvcme0nrw4t55cy6rdt
+  text: |-
+    ### commit — changed
+    - evidence: 0ab1135 refactor: fix argument labels and remove a duplicate counter — 8 files changed, 121 insertions(+), 23 deletions(-)
+    - next: none, local commit only, not pushed
+  timestamp: 2026-08-27T22:20:30.956530+00:00
+- actor: claude-code
+  id: 01m12n5mdbm6bgkzxb7zy5zht3
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit 0ab1135) — 0 findings, 0 confirmed, 0 refuted. 6 files reviewed, 2 files not reviewed because an ignore rule excludes `.kanban/`. All 4 findings of the section `## Review Findings (2026-08-27 16:57)` are checked.
+    - next: none. The task moves to `done`.
+  timestamp: 2026-08-27T22:24:10.667621+00:00
+- actor: claude-code
+  id: 01m12n642sdtb7jhqzdd83795w
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — 6 files, the four findings answered, SequentialKeys extracted
+    - test: green — swift test, 1282 passed, 0 failed, 0 skipped, 97 suites
+    - commit: 0ab1135 — 8 files changed
+    - review: clean — 0 new findings, 4 of 4 prior findings checked; task moved to done
+  timestamp: 2026-08-27T22:24:26.713504+00:00
 depends_on:
 - 01M112EG33CSGN466M9BHVD8C0
 - 01M112DXH2AS8Z8VNYAD9QXVY4
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ff9d80
 title: Session teardown sweep for MCP calls and server subprocesses
 ---
 ## What

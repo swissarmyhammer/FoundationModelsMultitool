@@ -269,4 +269,13 @@ struct MCPToolCatalogDiff: Sendable {
     /// Every same-named tool present in both snapshots whose
     /// ``MCPCatalogEntry/fingerprint`` differs between them.
     let changed: [ChangedTool]
+
+    /// Whether the two snapshots declare the same tools: nothing was added,
+    /// nothing was removed, and no same-named tool was re-declared.
+    ///
+    /// `SurfaceRefresher` reads it as its one gate: a snapshot whose delta is
+    /// empty renders the registry that already stands, so it rebuilds nothing.
+    var isEmpty: Bool {
+        added.isEmpty && removed.isEmpty && changed.isEmpty
+    }
 }

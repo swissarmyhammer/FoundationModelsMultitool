@@ -43,9 +43,6 @@ struct RegistrySwapTests {
     /// The rendered path of `GatedTool`.
     private static let gatePath = "gated"
 
-    /// The snippet that reads the surface of the sandbox as a list of paths.
-    private static let helpSnippet = "return help();"
-
     /// The snippet that reads the docs of the temperature verb.
     private static let temperatureDocsSnippet = "return docs(\"\(temperaturePath)\");"
 
@@ -86,16 +83,6 @@ struct RegistrySwapTests {
         try MultiTool.Builder().addGroup(named: issueGroup, [IssueCountTool()]).buildRegistry()
     }
 
-    /// The paths `help()` lists in a snippet run on `runCode`.
-    ///
-    /// - Parameter runCode: The tool to run the snippet on.
-    /// - Returns: The paths, in render order.
-    /// - Throws: What the run or the decode throws.
-    private static func helpPaths(of runCode: MultiTool) async throws -> [String] {
-        let rendered = try await runCode.call(arguments: RunCodeArguments(code: helpSnippet))
-        return try JSONDecoder().decode([String].self, from: Data(rendered.utf8))
-    }
-
     /// The mounted `runCode` and `searchTools` of `tools`, found by type.
     ///
     /// - Parameter tools: The array `makeSessionToolsAndStaging` vended.
@@ -113,12 +100,12 @@ struct RegistrySwapTests {
     func stageThenTickSwapsEverySurfaceAtOnce() async throws {
         let (tools, staging) = try Self.citiesRegistry().makeSessionToolsAndStaging(librarian: nil)
         let (runCode, searchTools) = try Self.mounted(in: tools)
-        #expect(try await Self.helpPaths(of: runCode) == [Self.citiesPath])
+        #expect(try await helpPaths(of: runCode) == [Self.citiesPath])
 
         staging.stage(try Self.temperatureRegistry())
         await runCode.turnWillBegin()
 
-        #expect(try await Self.helpPaths(of: runCode) == [Self.temperaturePath])
+        #expect(try await helpPaths(of: runCode) == [Self.temperaturePath])
         let docs = try await runCode.call(arguments: RunCodeArguments(code: Self.temperatureDocsSnippet))
         #expect(docs.contains(Self.temperaturePath))
         let temperature = try await runCode.call(arguments: RunCodeArguments(code: Self.temperatureSnippet))
@@ -135,7 +122,7 @@ struct RegistrySwapTests {
 
         staging.stage(try Self.temperatureRegistry())
 
-        #expect(try await Self.helpPaths(of: runCode) == [Self.citiesPath])
+        #expect(try await helpPaths(of: runCode) == [Self.citiesPath])
         let discovery = try await searchTools.call(arguments: SearchToolsArguments(task: Self.citiesQuery))
         #expect(discovery.contains("tools.\(Self.citiesPath)"))
         #expect(!discovery.contains("tools.\(Self.temperaturePath)"))
@@ -149,7 +136,7 @@ struct RegistrySwapTests {
         runCode.stage(try Self.issueRegistry())
         await runCode.turnWillBegin()
 
-        #expect(try await Self.helpPaths(of: runCode) == [Self.issueCountPath])
+        #expect(try await helpPaths(of: runCode) == [Self.issueCountPath])
     }
 
     // MARK: - A run in flight
@@ -173,7 +160,7 @@ struct RegistrySwapTests {
 
         #expect(try await run.value == Self.joinedCities)
         // The next run sees the swapped surface.
-        #expect(try await Self.helpPaths(of: runCode) == [Self.temperaturePath])
+        #expect(try await helpPaths(of: runCode) == [Self.temperaturePath])
     }
 
     // MARK: - Forks share the box
@@ -182,13 +169,13 @@ struct RegistrySwapTests {
     func forkSeesTheSwapOfItsParent() async throws {
         let parent = MultiTool(registry: try Self.citiesRegistry())
         let fork = try #require(parent.forked() as? MultiTool)
-        #expect(try await Self.helpPaths(of: fork) == [Self.citiesPath])
+        #expect(try await helpPaths(of: fork) == [Self.citiesPath])
 
         parent.stage(try Self.temperatureRegistry())
         await parent.turnWillBegin()
 
-        #expect(try await Self.helpPaths(of: fork) == [Self.temperaturePath])
-        #expect(try await Self.helpPaths(of: parent) == [Self.temperaturePath])
+        #expect(try await helpPaths(of: fork) == [Self.temperaturePath])
+        #expect(try await helpPaths(of: parent) == [Self.temperaturePath])
     }
 
     @Test("a stage and a tick on the fork reach the parent")
@@ -199,6 +186,6 @@ struct RegistrySwapTests {
         fork.stage(try Self.issueRegistry())
         await fork.turnWillBegin()
 
-        #expect(try await Self.helpPaths(of: parent) == [Self.issueCountPath])
+        #expect(try await helpPaths(of: parent) == [Self.issueCountPath])
     }
 }

@@ -1,5 +1,4 @@
 import Foundation
-import OSLog
 
 @testable import FoundationModelsMultitool
 
@@ -69,18 +68,8 @@ private let logReadbackPollInterval = 50
 /// - Returns: every `imaginedTool` record the store holds in that window.
 /// - Throws: whatever `OSLogStore` throws when it cannot be opened or read.
 private func readImaginedToolLogRecords(since start: Date) throws -> [ImaginedToolLogRecord] {
-    let store = try OSLogStore(scope: .currentProcessIdentifier)
-    let entries = try store.getEntries(at: store.position(date: start))
-    return entries.compactMap { entry in
-        guard let log = entry as? OSLogEntryLog, log.subsystem == multitoolLogSubsystem else {
-            return nil
-        }
-        return ImaginedToolLogRecord(parsing: log.composedMessage)
-    }
+    try multitoolLogMessages(since: start).compactMap(ImaginedToolLogRecord.init(parsing:))
 }
-
-/// The `os.Logger` subsystem every logger in this package is built with.
-private let multitoolLogSubsystem = "FoundationModelsMultitool"
 
 extension ImaginedToolLogRecord {
     /// Parses one `imaginedTool` line, or fails when `message` is some other
