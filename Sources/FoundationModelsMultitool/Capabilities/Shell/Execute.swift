@@ -16,10 +16,12 @@
 // `tools.shell.getLines` and `tools.shell.grepHistory` read what a run wrote;
 // this verb starts one. The join between the two planes is one string:
 // eventplan.md states that "the `commandID` of a shell run is its
-// `correlationID` is its `completionToken` — one string, two planes." This verb
-// mints nothing. It reads that string out of the ambient `ToolContext` at the
-// start of the call, thus a run is reachable under the same identifier from the
-// store, from the event stream and from the run plane.
+// `correlationID` is its `completionToken` — one string, two planes." Mounted
+// under Router, this verb reads that string out of the ambient `ToolContext` at
+// the start of the call, thus a run is reachable under the same identifier from
+// the store, from the event stream and from the run plane. On a bare
+// `LanguageModelSession` there is no context, so the verb mints the string
+// itself: the store records the run under it, and no run-plane entry exists.
 //
 // **The seatbelt sandbox is the only gate on a command** (decision of
 // 2026-08-24, eventplan.md § "Consolidation of the siblings"). This verb asks
@@ -197,10 +199,13 @@ extension Execute {
     /// to serve. The value captured here is what every later post and every
     /// later identifier comes from.
     ///
-    /// **A call with no session runs nothing.** The verb mints no identifier,
-    /// so with no ambient context there is no `commandID` for the store, no
-    /// `correlationID` for the events and no token for the run plane. That is
-    /// answered in band, like every other request this verb cannot make.
+    /// **There are two paths, and the ambient context decides between them.**
+    /// Mounted under Router, the engine parks the run, the model gets the
+    /// pending envelope at once, and the `commandID` is the completion token
+    /// the context carries. On a bare `LanguageModelSession` there is no
+    /// context: the verb mints the `commandID` itself, runs the command to
+    /// completion and returns the report — the same text the terminal detail
+    /// carries when mounted. Every post through the absent context is a no-op.
     ///
     /// - Parameter arguments: What to run, and how.
     /// - Returns: The rendered report: the run's identifier, its status and the
@@ -209,10 +214,8 @@ extension Execute {
     ///   started, and what the pipeline of the output throws in the middle of a
     ///   run. A request this verb refuses does not reach it.
     func call(arguments: ExecuteArguments) async throws -> String {
-        guard let context = ToolContext.current else {
-            return Self.corrected(Self.noSessionCorrection)
-        }
-        let commandID = context.completionToken
+        let context = ToolContext.current
+        let commandID = context?.completionToken ?? SessionMailbox.makeCompletionToken()
 
         if arguments.command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return Self.corrected(Self.blankCommandCorrection)
@@ -306,11 +309,12 @@ extension Execute {
     ///
     /// - Parameters:
     ///   - request: The command to run.
-    ///   - context: The session context captured at the start of the call.
+    ///   - context: The session context captured at the start of the call, or
+    ///     `nil` on a bare session, where every post is a no-op.
     /// - Returns: The rendered report of the run.
     /// - Throws: What `ShellRunner.run(_:)` throws.
     private func report(
-        of request: ShellRunner.Request, in context: ToolContext
+        of request: ShellRunner.Request, in context: ToolContext?
     ) async throws -> String {
         let stream = ShellOutputChunkStream()
         var running = runner
@@ -349,9 +353,11 @@ extension Execute {
     ///
     /// - Parameters:
     ///   - stream: The live view of the output of the run.
-    ///   - context: The session context captured at the start of the call.
+    ///   - context: The session context captured at the start of the call, or
+    ///     `nil` on a bare session, where the stream is drained and no event
+    ///     is posted.
     private static func reportOutput(
-        of stream: ShellOutputChunkStream, to context: ToolContext
+        of stream: ShellOutputChunkStream, to context: ToolContext?
     ) async {
         for await event in stream {
             switch event.kind {
@@ -359,9 +365,9 @@ extension Execute {
                 let text = String(decoding: bytes, as: UTF8.self)
                     .trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !text.isEmpty else { continue }
-                await context.progress("\(name(of: source)): \(text)")
+                await context?.progress("\(name(of: source)): \(text)")
             case .gap(let source, let droppedByteCount):
-                await context.progress(
+                await context?.progress(
                     "\(name(of: source)): \(droppedByteCount) bytes of output went away")
             case .completed:
                 continue
@@ -391,16 +397,19 @@ extension Execute {
     /// mounted call posts through `RunEventFunnel`, which settles the run on
     /// the first `.completed` it carries and drops every later one, so the
     /// event the engine would otherwise synthesize is dropped rather than
-    /// added. An unmounted call has this event and no other.
+    /// added. An unmounted call under a bound context has this event and no
+    /// other. A call on a bare session has no context and posts nothing.
     ///
     /// - Parameters:
     ///   - detail: The rendered report of the run.
     ///   - completionToken: The completion token of the run.
     ///   - state: The store the run recorded into.
-    ///   - context: The session context captured at the start of the call.
+    ///   - context: The session context captured at the start of the call, or
+    ///     `nil` on a bare session.
     private static func postTerminal(
-        _ detail: String, of completionToken: String, in state: ShellState, to context: ToolContext
+        _ detail: String, of completionToken: String, in state: ShellState, to context: ToolContext?
     ) async {
+        guard let context else { return }
         await context.post(
             OperationEvent(
                 tool: context.tool,
@@ -530,11 +539,6 @@ extension Execute {
 // MARK: - The requests this verb refuses
 
 extension Execute {
-
-    /// What a call outside any session says to the model.
-    static let noSessionCorrection =
-        "This call has no session, so the run has no identifier to record under and nothing was "
-        + "run. Call it from a snippet, where the session gives each run its completion token."
 
     /// What a command of only whitespace says to the model.
     static let blankCommandCorrection =

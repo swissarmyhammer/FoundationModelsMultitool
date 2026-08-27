@@ -175,7 +175,9 @@ struct ShellRunner {
         /// gives it here. It is the identifier of the record in `ShellState`, it
         /// is the `correlationID` of each event the run posts, and it is the
         /// token that `canceler(completionToken:)` takes. One string on two
-        /// planes — see `ShellState.startCommand(_:commandID:)`.
+        /// planes — see `ShellState.startCommand(_:commandID:)`. With no
+        /// session, this is a locally minted id, and no run-plane entry exists
+        /// for it.
         var completionToken: String
 
         /// The directory the command runs in, or `nil` to take the current

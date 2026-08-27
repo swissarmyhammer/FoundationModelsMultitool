@@ -9,6 +9,23 @@ intermediate result through the model's context, the model writes a snippet
 that composes several tools with real control flow and returns only the
 answer.
 
+## Layering
+
+The package stands in three layers, and each layer needs only the one under
+it:
+
+| Layer | What it holds | What it needs |
+|---|---|---|
+| Verb | Each `any Tool` of the files, shell and MCP capabilities | `FoundationModels` only |
+| Router `Hosting/` | The ambient `ToolContext`, the event stream, elicitation, and the background engine | The verbs |
+| `MultiTool` | `runCode`, `findAPIs`, and the snippet globals | Router and the verbs |
+
+Each verb of files, shell and MCP works on a bare `LanguageModelSession`. Mount
+`ShellCapability().tools` on one with no Router, and `tools.shell.execute`
+runs the command to completion and answers with its report. Background is a
+property of the Router mount, not of the verb: under a `RoutedSession` the same
+verb parks its run and answers a pending envelope at once.
+
 ## Usage: mount the vended tools on a `RoutedSession`
 
 `MultiTool` and `SearchToolsTool` are ordinary `FoundationModels.Tool`

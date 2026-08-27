@@ -23,8 +23,10 @@ import Testing
 ///
 /// eventplan.md § "Consolidation of the siblings" makes the `commandID` of a
 /// shell run its `correlationID` and its `completionToken` — one string on two
-/// planes. The verb mints nothing: it reads that string out of the ambient
-/// `ToolContext`, which is why every test here binds one.
+/// planes. Under a bound `ToolContext` the verb reads that string out of the
+/// context, which is why most tests here bind one. With no context — a bare
+/// `LanguageModelSession` — the verb mints the string itself and runs the
+/// command to completion; one test here binds nothing for that reason.
 @Suite("ShellExecuteTests")
 struct ShellExecuteTests {
 
@@ -315,8 +317,9 @@ struct ShellExecuteTests {
     /// shell run is its `correlationID` is its `completionToken` — one string,
     /// two planes."
     ///
-    /// The verb mints nothing, so the store's key and the correlation of every
-    /// event are the token the ambient context already carried.
+    /// Under a bound context the verb mints nothing, so the store's key and the
+    /// correlation of every event are the token the ambient context already
+    /// carried.
     @Test("the commandID, the event correlationID and the completionToken are one string")
     func theThreeIdentifiersAreOneString() async throws {
         let state = try makeState()
@@ -561,16 +564,35 @@ struct ShellExecuteTests {
         #expect(await state.listCommands().isEmpty)
     }
 
-    @Test("a call with no session answers with a correction, because it mints nothing")
-    func aCallWithNoSessionAnswersWithACorrection() async throws {
+    // MARK: - The bare session
+
+    /// A constituent verb is a plain `FoundationModels.Tool`, and it works on
+    /// a bare `LanguageModelSession` with no Router. With no ambient context
+    /// the verb mints the `commandID` itself, runs the command to completion
+    /// and answers with the report; the store records the run under that id,
+    /// so `tools.shell.getLines` reads it back as usual.
+    @Test("a call with no session runs the command to completion and answers with the report")
+    func aCallWithNoSessionRunsToCompletionAndAnswersWithTheReport() async throws {
         let state = try makeState()
         let verb = makeVerb(over: state)
 
         let output = try await verb.call(
-            arguments: ExecuteArguments(command: "echo \(Self.inlineMarker)"))
+            arguments: ExecuteArguments(command: "printf '%s' \(Self.inlineMarker)"))
+        let report = try Self.report(output)
 
-        #expect(try Self.report(output)["correction"] as? String != nil, "answer was: \(output)")
-        #expect(await state.listCommands().isEmpty)
+        #expect(report["status"] as? String == CommandStatus.completed.rawValue)
+        #expect(report["exitCode"] as? Int == Self.successExitCode)
+        let commandID = try #require(report["commandID"] as? String)
+        #expect(!commandID.isEmpty, "the report carries no run identifier: \(output)")
+        let lines = try #require(report["output"] as? [String])
+        #expect(lines.contains { $0.contains(Self.inlineMarker) }, "output was: \(lines)")
+
+        let stored = try await GetLines(state: state)
+            .call(arguments: GetLinesArguments(commandID: commandID))
+        #expect(stored.commandID == commandID)
+        #expect(
+            stored.lines.contains { $0.contains(Self.inlineMarker) },
+            "getLines read: \(stored.lines)")
     }
 
     // MARK: - The caps that stand in front of E2BIG

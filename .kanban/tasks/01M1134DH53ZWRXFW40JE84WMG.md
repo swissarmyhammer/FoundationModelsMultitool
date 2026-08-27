@@ -1,8 +1,36 @@
 ---
 assignees:
 - claude-code
-position_column: todo
-position_ordinal: '9380'
+comments:
+- actor: claude-code
+  id: 01m11vr71erewzyzq0g8t75526
+  text: |-
+    Research and implementation notes:
+    - `Execute.call` read `ToolContext.current` with a `guard` and answered `noSessionCorrection` when it was `nil`. The three helpers `report`, `reportOutput` and `postTerminal` took a non-optional `ToolContext`.
+    - Change: `call` reads the context as an optional. The `commandID` is `context?.completionToken ?? SessionMailbox.makeCompletionToken()`. The three helpers take `ToolContext?`. `reportOutput` posts through `context?.progress`. `postTerminal` returns at once when the context is `nil`. The stream pump is unchanged, so the store gets the same lines on both paths.
+    - `noSessionCorrection` is deleted. The header comment and the doc comment of `call` state the two paths.
+    - `ShellRunner.Request.completionToken` doc comment carries the one new sentence.
+    - README has a "Layering" section before "Usage".
+    - Tests: `ShellExecuteTests` replaces the `noSessionCorrection` case with a no-context `printf` case that reads the run back with `GetLines`. The suite doc comment no longer says every test binds a context.
+    - `IntegrationTests/.../ShellBareSessionTests.swift` mounts `ShellCapability().tools` on `LanguageModelSession(model: SystemLanguageModel.default, tools:)`, asks for `echo bare`, and asserts the reply carries `bare`. It skips with a note when the system model is not available. `swift build --package-path IntegrationTests --build-tests` compiles it.
+    - The repo holds no swift-format or swiftformat config file, so no formatter ran.
+  timestamp: 2026-08-27T14:59:56.590159+00:00
+- actor: claude-code
+  id: 01m11vr91pjh14dpv2xs31ptnc
+  text: |-
+    ### implement — changed
+    - evidence: 5 files — Sources/FoundationModelsMultitool/Capabilities/Shell/Execute.swift, Sources/FoundationModelsMultitool/Capabilities/Shell/ShellRunner.swift, Tests/FoundationModelsMultitoolTests/ShellExecuteTests.swift, IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/ShellBareSessionTests.swift, README.md. `swift build` ok; `swift test --filter ShellExecuteTests` 23 tests passed; `swift build --package-path IntegrationTests --build-tests` ok.
+    - next: run the full `swift test`, then commit and review.
+  timestamp: 2026-08-27T14:59:58.646544+00:00
+- actor: claude-code
+  id: 01m11vsc9tzch8sfh0r37sjk64
+  text: |-
+    ### test — green
+    - evidence: swift test — 1203 tests in 87 suites passed, 0 failed, 0 skipped, exit 0; swift build --package-path IntegrationTests --build-tests ok
+    - next: commit
+  timestamp: 2026-08-27T15:00:34.746718+00:00
+position_column: doing
+position_ordinal: '80'
 title: Make tools.shell.execute run on a bare LanguageModelSession
 ---
 ## What
@@ -15,18 +43,18 @@ The constituent verbs are plain `FoundationModels.Tool` conformers, and they mus
 - Update `README.md`: add a short "Layering" section before "Usage" that states the three layers in a table — verb (`any Tool`, needs `FoundationModels` only) / Router `Hosting/` (context, events, elicitation, background) / MultiTool (`runCode`, `findAPIs`, the globals). State that each verb of files, shell, and MCP works on a bare `LanguageModelSession`, and that background is a property of the Router mount, not of the verb.
 
 ## Acceptance Criteria
-- [ ] `Execute(runner:).call(arguments:)` with no bound `ToolContext` runs the command and returns the report with the run's id, status, and output tail.
-- [ ] After that call, `GetLines` and `GrepHistory` on the same `ShellState` read the run's output.
-- [ ] Under a bound `ToolContext`, the behavior is unchanged: `commandID == context.completionToken`, and the events post.
-- [ ] `noSessionCorrection` no longer exists.
-- [ ] `README.md` has the "Layering" section.
-- [ ] `swift build` succeeds.
+- [x] `Execute(runner:).call(arguments:)` with no bound `ToolContext` runs the command and returns the report with the run's id, status, and output tail.
+- [x] After that call, `GetLines` and `GrepHistory` on the same `ShellState` read the run's output.
+- [x] Under a bound `ToolContext`, the behavior is unchanged: `commandID == context.completionToken`, and the events post.
+- [x] `noSessionCorrection` no longer exists.
+- [x] `README.md` has the "Layering" section.
+- [x] `swift build` succeeds.
 
 ## Tests
-- [ ] Extend `Tests/FoundationModelsMultitoolTests/ShellExecuteTests.swift`: a no-context case that runs `printf` and asserts the report, then reads it back with `GetLines`. Remove the case that asserts `noSessionCorrection`.
-- [ ] Add a gated case in `IntegrationTests/`: mount `ShellCapability().tools` on `LanguageModelSession(model: .default, tools:)` with no Router, prompt the model to run `echo bare`, and assert the answer carries `bare`.
-- [ ] `swift test --filter ShellExecuteTests` passes.
-- [ ] Full `swift test` passes.
+- [x] Extend `Tests/FoundationModelsMultitoolTests/ShellExecuteTests.swift`: a no-context case that runs `printf` and asserts the report, then reads it back with `GetLines`. Remove the case that asserts `noSessionCorrection`.
+- [x] Add a gated case in `IntegrationTests/`: mount `ShellCapability().tools` on `LanguageModelSession(model: .default, tools:)` with no Router, prompt the model to run `echo bare`, and assert the answer carries `bare`.
+- [x] `swift test --filter ShellExecuteTests` passes.
+- [x] Full `swift test` passes.
 
 ## Workflow
 - Use `/tdd` — write the no-context case first, then remove the guard. #eventplan #phase-4
