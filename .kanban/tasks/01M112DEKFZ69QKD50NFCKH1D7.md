@@ -25,12 +25,28 @@ comments:
     - evidence: 13 files. New: `Sources/FoundationModelsMultitool/Capabilities/MCP/MCPTool.swift`, `Tests/FoundationModelsMultitoolTests/MCPToolTests.swift`, `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/MCPBareSessionTests.swift`. Changed: `Tests/Support/MCPTestServer/ScriptedServer.swift` (`startOnInMemoryPair()`, public `progressToolCompletionText`), `Tests/FoundationModelsMultitoolTests/Support/MCPTestSupport.swift` (shared `connectedMCPServer(serving:...)`, `renderBudget` parameter), `Tests/FoundationModelsMultitoolTests/MCPServerCallTests.swift` (uses the shared helper), and the headers of `GeneratedContentCodec.swift`, `ToolContentRenderer.swift`, `SchemaConverter.swift`, `MCPToolCatalog.swift`, `MCPServer.swift`, `MCPServer+Discovery.swift`. `swift build --build-tests`: no compiler warnings in the changed files. `swift test --filter MCPToolTests`: 15 tests in 1 suite pass. `swift build --package-path IntegrationTests --build-tests`: build complete. All 10 checkboxes on the card are ticked.
     - next: `test` step, full `swift test`.
   timestamp: 2026-08-27T19:59:52.874721+00:00
+- actor: claude-code
+  id: 01m12d9xy36xa742chq5ea4et4
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (f97576b) — 0 findings, 12 files reviewed, 7 validators attempted, 0 failed; no prior findings on the card
+    - next: none. The task is done.
+  timestamp: 2026-08-27T20:06:42.883847+00:00
+- actor: claude-code
+  id: 01m12da02mzdg54dknwahrewpt
+  text: |-
+    ### finish iteration 1 — done
+    - implement: changed (13 files — `MCPTool.swift`, `MCPToolTests.swift`, the gated `MCPBareSessionTests.swift`, the shared test support, and six header updates)
+    - test: green (swift test — 1247 tests in 92 suites, 0 failed, 0 skipped; IntegrationTests package builds)
+    - commit: f97576b
+    - review: clean (0 findings; no prior findings)
+  timestamp: 2026-08-27T20:06:45.076246+00:00
 depends_on:
 - 01M112A9AT308HGW19PK815DJV
 - 01M112AJNVGJ40ABS0QWPKEGPV
 - 01M112CTS4HSY5R312NW7VK7SV
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ff9880
 title: Port MCPTool as a plain Tool verb over the codec and the renderer
 ---
 ## What
