@@ -57,21 +57,20 @@ actor RespawningTransport: Transport {
         self.makePair = makePair
     }
 
-    /// A respawning transport whose every ``connect()`` starts the
-    /// `ScriptedServer` `makeScripted` builds on the server end of a fresh
-    /// `InMemoryTransport` pair, and connects over the client end — the pair
-    /// every suite that scripts a transport drop and a reconnect needs.
+    /// Makes a respawning transport whose every ``connect()`` starts the
+    /// `ScriptedServer` `makeScripted` builds over a fresh in-memory pair —
+    /// `MCPTestSupport.clientTransport(serving:over:)` — the pair every
+    /// suite that scripts a transport drop and a reconnect needs.
     ///
     /// - Parameter makeScripted: Builds the scripted server of one connect,
     ///   with every tool it serves already registered.
     /// - Returns: The respawning transport.
-    static func servingFreshScriptedServers(
+    static func makeServingFreshScriptedServers(
         _ makeScripted: @escaping @Sendable () async -> ScriptedServer
     ) -> RespawningTransport {
         RespawningTransport {
-            let (client, server) = await InMemoryTransport.createConnectedPair()
             let scripted = await makeScripted()
-            try await scripted.start(transport: server)
+            let client = try await MCPTestSupport.clientTransport(serving: scripted, over: .inMemory)
             return (client, scripted)
         }
     }

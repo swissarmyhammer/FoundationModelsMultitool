@@ -92,7 +92,7 @@ struct LostCallTests {
     /// `ResilienceTests`, for this suite's own outcome assertion.
     @Test("a transport dropped before the call throws lost, and the run posts exactly one completed event with outcome lost")
     func aTransportDroppedBeforeTheCallThrowsLost() async throws {
-        let respawning = RespawningTransport.servingFreshScriptedServers {
+        let respawning = RespawningTransport.makeServingFreshScriptedServers {
             let scripted = ScriptedServer()
             await scripted.addEchoTool()
             return scripted
@@ -136,7 +136,7 @@ struct LostCallTests {
     @Test("no call is re-sent after reconnect, even for a tool annotated idempotentHint: true")
     func noAutoRetryAfterReconnectEvenForIdempotentHintedTool() async throws {
         let counter = CallCounter()
-        let respawning = RespawningTransport.servingFreshScriptedServers {
+        let respawning = RespawningTransport.makeServingFreshScriptedServers {
             let scripted = ScriptedServer()
             await scripted.addTool(Self.hangingTool(counting: counter))
             return scripted

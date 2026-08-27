@@ -22,6 +22,29 @@ comments:
     - evidence: 13 files. New: `Sources/FoundationModelsMultitool/Capabilities/MCP/MCPServer+Call.swift`, `Sources/FoundationModelsMultitool/Capabilities/MCP/DropObservingTransport.swift`, `Sources/FoundationModelsMultitool/Invocation/LostRunRecord.swift`, `Tests/FoundationModelsMultitoolTests/MCPServerCallTests.swift`, `Tests/FoundationModelsMultitoolTests/LostCallTests.swift`, `Tests/FoundationModelsMultitoolTests/Support/MCPCallProbeTool.swift`. Changed: `MCPServer.swift`, `MCPServer+Connection.swift`, `MCPServer+ClientQueue.swift`, `BackoffPolicy.swift` (`MCPServerError: LostRunError`, new `.lost` case), `MCPCapability.swift`, `MultiTool.swift` (`LostRunRecord` rethrow after the snippet), `Tests/.../Support/MCPTestSupport.swift`, `Tests/.../Support/RespawningTransport.swift` (shared `servingFreshScriptedServers`). `swift build --build-tests`: no compiler warnings. `swift test --filter 'MCPServerCallTests|LostCallTests'`: 12 tests in 2 suites pass. All 10 checkboxes on the card are ticked.
     - next: `test` step, full `swift test`.
   timestamp: 2026-08-27T19:32:30.381497+00:00
+- actor: claude-code
+  id: 01m12bxbmm1h643r4b6pqrdmpy
+  text: |-
+    ### review — findings
+    - evidence: review sha HEAD~1..HEAD — 2 findings, both on `Tests/FoundationModelsMultitoolTests/Support/RespawningTransport.swift:68` (`reuse/reuse`, `swift/fluent-usage`)
+    - next: implement the two findings, then test, commit, and review again.
+  timestamp: 2026-08-27T19:42:22.356678+00:00
+- actor: claude-code
+  id: 01m12c09520kfhetbmjkw9pa71
+  text: |-
+    ### finish iteration 1 — findings
+    - implement: changed (13 files, the call path, the drop observer, the lost-run record, the two test suites)
+    - test: green (swift test — 1232 tests in 91 suites, 0 failed, 0 skipped)
+    - commit: 72fc1db
+    - review: findings (2, both on `Tests/FoundationModelsMultitoolTests/Support/RespawningTransport.swift:68`: `reuse/reuse`, `swift/fluent-usage`)
+  timestamp: 2026-08-27T19:43:58.114744+00:00
+- actor: claude-code
+  id: 01m12c0ckajmt0540khgm9hw9c
+  text: |-
+    ### implement — changed
+    - evidence: 2 files — `Tests/FoundationModelsMultitoolTests/Support/RespawningTransport.swift` (the factory is `makeServingFreshScriptedServers`, and it builds the pair through the shared `MCPTestSupport.clientTransport(serving:over:)`), `Tests/FoundationModelsMultitoolTests/LostCallTests.swift` (the two call sites). Both review findings of 2026-08-27 14:33 are ticked. `swift build --build-tests`: no compiler warnings. `swift test`: 1232 tests in 91 suites pass.
+    - next: `commit` step, then `review` again.
+  timestamp: 2026-08-27T19:44:01.642308+00:00
 depends_on:
 - 01M112C9B7VKH4MEEVD832PG8R
 - 01M1143Z8N0PH576EWD5EGQBJT
@@ -59,3 +82,13 @@ Give `MCPServer` one call method that runs to completion and speaks to the run p
 
 ## Workflow
 - Use `/tdd` — write the criteria as tests first, then implement the call. #eventplan #phase-4
+
+## Review Findings (2026-08-27 14:33)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 14 file(s) reviewed, 2 not reviewed.
+
+> 2 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 2 file(s)
+
+- [x] `Tests/FoundationModelsMultitoolTests/Support/RespawningTransport.swift:68` `reuse/reuse` — The implementation of `servingFreshScriptedServers` appears to duplicate the logic of existing `makeScriptedPair` helper in ResilienceTests (0.90 semantic similarity). Test utility code should be consolidated rather than reimplemented across multiple files to reduce maintenance burden. Verify whether `makeScriptedPair` from ResilienceTests can be called here, or extract a shared test utility function that both locations can reuse rather than maintaining separate implementations of the same InMemoryTransport pair creation and ScriptedServer initialization logic.
+- [x] `Tests/FoundationModelsMultitoolTests/Support/RespawningTransport.swift:68` `swift/fluent-usage` — Factory methods should begin with `make` to form a clear imperative verb phrase at the call site, following Swift API conventions. Rename to `makeServingFreshScriptedServers()` or similar, starting with `make`.
