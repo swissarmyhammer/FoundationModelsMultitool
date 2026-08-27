@@ -25,8 +25,8 @@ final class CancellationNotices: Sendable {
     /// One task for each notice in flight, keyed by the order it started.
     private let inFlight = Mutex<[Int: Task<Void, Never>]>([:])
 
-    /// The key the next notice takes.
-    private let nextKey = Mutex(0)
+    /// The counter that gives each notice its key.
+    private let keys = SequentialKeys()
 
     /// Creates an empty ledger.
     init() {}
@@ -38,10 +38,7 @@ final class CancellationNotices: Sendable {
     ///
     /// - Parameter notice: The work that carries the notice to the wire.
     func track(_ notice: @escaping @Sendable () async -> Void) {
-        let key = nextKey.withLock { key -> Int in
-            defer { key += 1 }
-            return key
-        }
+        let key = keys.take()
         let task = Task {
             await notice()
             self.forget(key)

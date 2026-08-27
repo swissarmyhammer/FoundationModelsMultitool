@@ -33,8 +33,8 @@ final class InFlightInnerCalls: Sendable {
     /// started.
     private let tasks = Mutex<[Int: Task<InterpreterValue, any Error>]>([:])
 
-    /// The key the next call takes.
-    private let nextKey = Mutex(0)
+    /// The counter that gives each call its key.
+    private let keys = SequentialKeys()
 
     /// Creates an empty record.
     init() {}
@@ -48,10 +48,7 @@ final class InFlightInnerCalls: Sendable {
     func running(
         _ call: @escaping @Sendable () async throws -> InterpreterValue
     ) async throws -> InterpreterValue {
-        let key = nextKey.withLock { key -> Int in
-            defer { key += 1 }
-            return key
-        }
+        let key = keys.take()
         let task = Task { try await call() }
         tasks.withLock { $0[key] = task }
         defer { tasks.withLock { $0[key] = nil } }

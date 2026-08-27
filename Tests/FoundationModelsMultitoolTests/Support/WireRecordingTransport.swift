@@ -80,7 +80,7 @@ actor WireRecordingTransport: WrappingTransport {
     /// Appends a marker of the test's own.
     ///
     /// - Parameter label: What the marker stands for.
-    func mark(_ label: String) {
+    func mark(as label: String) {
         ledger.append(.marker(label))
     }
 

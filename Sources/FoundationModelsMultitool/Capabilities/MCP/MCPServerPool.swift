@@ -77,7 +77,7 @@ public actor MCPServerPool {
     /// any server. A later attachment replaces the one before it.
     ///
     /// - Parameter attachment: What to stop first.
-    public func attach(_ attachment: any Stoppable) {
+    public func attach(attachment: any Stoppable) {
         self.attachment = attachment
     }
 

@@ -183,7 +183,7 @@ struct MCPSessionSweepTests {
     ///   - second: The entry that must come second.
     ///   - wire: The transport whose ledger to read.
     private static func expectOrder(
-        _ first: WireRecordingTransport.Entry, before second: WireRecordingTransport.Entry,
+        of first: WireRecordingTransport.Entry, before second: WireRecordingTransport.Entry,
         on wire: WireRecordingTransport
     ) async throws {
         let ledger = await wire.ledger
@@ -223,7 +223,7 @@ struct MCPSessionSweepTests {
         try await Self.waitForTheCall(on: ground)
 
         let terminals = await mailbox.sweep()
-        await ground.wire.mark(Self.terminalMarker)
+        await ground.wire.mark(as: Self.terminalMarker)
         await ground.pool.shutdownAll()
 
         #expect(terminals.count == Self.terminalEventsPerRun)
@@ -232,8 +232,9 @@ struct MCPSessionSweepTests {
         #expect(terminal.kind == .completed)
         #expect(terminal.outcome == .cancelled)
         await Self.expectServerReceivedTheCancel(from: ground.scripted)
-        try await Self.expectOrder(Self.cancelEntry, before: .disconnected, on: ground.wire)
-        try await Self.expectOrder(.marker(Self.terminalMarker), before: .disconnected, on: ground.wire)
+        try await Self.expectOrder(of: Self.cancelEntry, before: .disconnected, on: ground.wire)
+        try await Self.expectOrder(
+            of: .marker(Self.terminalMarker), before: .disconnected, on: ground.wire)
         #expect(await mailbox.backgroundRuns().isEmpty)
         withExtendedLifetime(ground.scripted) {}
     }
@@ -265,7 +266,7 @@ struct MCPSessionSweepTests {
         await ground.pool.shutdownAll()
 
         await Self.expectServerReceivedTheCancel(from: ground.scripted)
-        try await Self.expectOrder(Self.cancelEntry, before: .disconnected, on: ground.wire)
+        try await Self.expectOrder(of: Self.cancelEntry, before: .disconnected, on: ground.wire)
         withExtendedLifetime(ground.scripted) {}
     }
 
@@ -277,14 +278,15 @@ struct MCPSessionSweepTests {
     @Test("shutdownAll stops the attachment before it disconnects the servers")
     func shutdownAllStopsTheAttachmentBeforeTheServers() async throws {
         let (ground, _) = try await Self.makeGround()
-        let attachment = RecordingAttachment { await ground.wire.mark(Self.stopMarker) }
-        await ground.pool.attach(attachment)
+        let attachment = RecordingAttachment { await ground.wire.mark(as: Self.stopMarker) }
+        await ground.pool.attach(attachment: attachment)
 
         await ground.pool.shutdownAll()
 
         #expect(await attachment.stopCount == Self.oneStop)
         #expect(await ground.server.state == .disconnected)
-        try await Self.expectOrder(.marker(Self.stopMarker), before: .disconnected, on: ground.wire)
+        try await Self.expectOrder(
+            of: .marker(Self.stopMarker), before: .disconnected, on: ground.wire)
         withExtendedLifetime(ground.scripted) {}
     }
 
