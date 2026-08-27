@@ -293,7 +293,7 @@ public struct SearchToolsTool: Tool {
     /// The one place sample generation is wired. `init(registry:...)` and
     /// `makeSessionToolsAndStaging` both build it here.
     ///
-    /// - Parameter generator: the resolved `RoutedLLM` the generation
+    /// - Parameter sampleGenerator: the resolved `RoutedLLM` the generation
     ///   session runs on, or `nil`.
     /// - Returns: the sample configuration, or `nil`.
     static func makeSample(generator sampleGenerator: RoutedLLM?) -> SampleSnippetConfig? {
