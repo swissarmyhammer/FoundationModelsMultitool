@@ -24,10 +24,26 @@ comments:
     - decisions: `connectedServer(to:over:clientName:capabilities:)` returns the connected `MCP.Client` until `MCPServer` (^832pg8r) lands; `ServerMode.loopback` is the new case; `DynamicToolsetScenario` holds its three stages as one table; `TestServerLocator` folds the source's path validation in as private helpers.
     - next: /test, then /commit, then /review
   timestamp: 2026-08-27T13:53:29.831788+00:00
+- actor: claude-code
+  id: 01m11rjxd3f2shggkkzd69pvqn
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (8f3eee7) — 0 findings, 0 confirmed, 1 refuted; 18 files reviewed, 2 `.kanban/` files excluded by `.reviewignore`
+    - next: task moves to done
+  timestamp: 2026-08-27T14:04:37.155399+00:00
+- actor: claude-code
+  id: 01m11rk01hzk53g7znra1bwmfx
+  text: |-
+    ### finish iteration 1 — review clean, task done
+    - implement: changed — 17 files (the MCPTestServer library and mcp-test-server executable under Tests/Support/, the two manifests, the ported suites, MCPTestSupport, TestServerLocator, and two cases in StdioServerProcessTests)
+    - test: green — swift test 1166 tests in 83 suites passed, 0 failed, 0 skipped; 0 warnings from this package
+    - commit: 8f3eee7
+    - review: clean — 0 findings over HEAD~1..HEAD
+  timestamp: 2026-08-27T14:04:39.857596+00:00
 depends_on:
 - 01M11286356T1VMGHBSMF9V7W5
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ff8f80
 title: Port the MCP scripted test server as a test-support product (in-memory and stdio)
 ---
 ## What
