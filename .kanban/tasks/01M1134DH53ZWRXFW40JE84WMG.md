@@ -29,8 +29,31 @@ comments:
     - evidence: swift test — 1203 tests in 87 suites passed, 0 failed, 0 skipped, exit 0; swift build --package-path IntegrationTests --build-tests ok
     - next: commit
   timestamp: 2026-08-27T15:00:34.746718+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m11vss2xqdnw2tdt4vvaevx1
+  text: |-
+    ### commit — changed
+    - evidence: 0f42c9d feat(shell): run tools.shell.execute to completion on a bare LanguageModelSession
+    - next: review HEAD~1..HEAD
+  timestamp: 2026-08-27T15:00:47.837772+00:00
+- actor: claude-code
+  id: 01m11vz860n7x1r9zt5n3qrj5r
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD — 0 findings, 0 confirmed, 0 refuted; 4 files reviewed (README.md has no validator, .kanban/ is ignored)
+    - next: move to done
+  timestamp: 2026-08-27T15:03:47.136318+00:00
+- actor: claude-code
+  id: 01m11vze63snetq15nj9z7wpsc
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — Execute.swift, ShellRunner.swift, ShellExecuteTests.swift, ShellBareSessionTests.swift, README.md
+    - test: green — swift test 1203 tests in 87 suites passed; IntegrationTests build ok
+    - commit: 0f42c9d
+    - review: clean — 0 findings on HEAD~1..HEAD; task moved to done
+  timestamp: 2026-08-27T15:03:53.283789+00:00
+position_column: done
+position_ordinal: ff9280
 title: Make tools.shell.execute run on a bare LanguageModelSession
 ---
 ## What
