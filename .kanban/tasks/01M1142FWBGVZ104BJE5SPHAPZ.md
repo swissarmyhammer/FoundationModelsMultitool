@@ -31,10 +31,24 @@ comments:
     - Fix: the platform-native `.serialized` trait on the suite, so one loopback SSE stream is open at a time. This is a serialization trait, not an environment switch; every test still runs on every `swift test`. Reasoning is documented on the suite.
     - next: /commit
   timestamp: 2026-08-27T16:06:07.889576+00:00
+- actor: claude-code
+  id: 01m11zj4c73ef9e09gr37ds519
+  text: |-
+    ### commit — changed
+    - evidence: 2d6a8bf test(mcp): add in-process HTTP loopback for the MCP test server
+    - next: /review
+  timestamp: 2026-08-27T16:06:31.559799+00:00
+- actor: claude-code
+  id: 01m11zrysyc2393qxd1hbehkvc
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` — 0 findings, 7 validators attempted, 0 failed. `.kanban/` excluded by ignore rule.
+    - next: task moves to done
+  timestamp: 2026-08-27T16:10:15.230363+00:00
 depends_on:
 - 01M112BHBVEYK3ZZH0RGQRTXXY
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ff9480
 title: In-process HTTP loopback for the MCP test server
 ---
 ## What
