@@ -16,21 +16,9 @@ import Testing
 /// selects it. Every case here builds its catalogs from `MCP.Tool` literals,
 /// with no live server.
 ///
-/// The cases that need a live `MCPServer` stay with the server task. They
-/// are, from `LiveCatalogTests.swift`:
-///
-/// - `coalescesRapidBurstIntoOneRelist`
-/// - `epochsStrictlyIncreaseAcrossEmissions`
-/// - `reconnectEmitsSnapshotReflectingReturningServer`
-/// - `failedReconnectEmitsFaultedSnapshot`
-/// - `midCallFaultEmitsFaultedThenReadySnapshots`
-/// - `toolResolutionReturnsNilAfterScriptedRemoval`
-/// - `modelCallOnVanishedToolShortCircuitsToNotAvailableResult`
-///
-/// and, from `CatalogTypeTests.swift`:
-///
-/// - `serverCatalogReflectsDiscoveredTools`
-/// - `serverCatalogThrowsBeforeReady`
+/// The cases that need a live `MCPServer` stand in `LiveCatalogTests.swift`
+/// and `MCPServerDiscoveryTests.swift` of this target; the headers of those
+/// two files name the cases of the source that are not ported.
 @Suite("MCPToolCatalogTests")
 struct MCPToolCatalogTests {
 

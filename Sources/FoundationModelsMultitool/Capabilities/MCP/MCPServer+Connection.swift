@@ -17,8 +17,14 @@
 // `elicitation/complete`. The `progress` handler belongs to the deleted call
 // path and is gone for good. The `elicitation/complete` handler comes with the
 // elicitation task. The `tools/list_changed` handler is registered here, once
-// per actor, and the discovery task fills in the coalesced re-list it routes
-// to.
+// per actor, and routes to the coalesced re-list of
+// `MCPServer+LiveCatalog.swift`.
+//
+// **A connect discovers before it is ready.** `applyConnect(via:generation:)`
+// runs the paginated `tools/list` of `MCPServer+Discovery.swift` right after
+// the `initialize` handshake, and only then moves to `.ready` and emits the
+// first `catalogUpdates` snapshot — a discovery failure faults the connect the
+// same as a handshake failure does.
 //
 // **The per-attempt timeout races, and never joins.** A `withThrowingTaskGroup`
 // implicitly awaits every child before it returns, and `MCP.Client.connect(transport:)`
@@ -215,10 +221,13 @@ extension MCPServer {
     /// altering ``identity``.
     ///
     /// Bumps the generation, so a connect attempt still in flight when this
-    /// runs is discarded instead of moving the state back to `.ready`. A
+    /// runs is discarded instead of moving the state back to `.ready`, and
+    /// cancels a `tools/list_changed` watcher still waiting out its coalesce
+    /// window, so it re-lists nothing against the disconnected client. A
     /// later `connect(via:)` is what drives the next transition.
     public func disconnect() async {
         connectGeneration += 1
+        coalescingTask?.cancel()
         await disconnectClientWithoutHanging()
         transition(to: .disconnected)
     }
@@ -361,10 +370,12 @@ extension MCPServer {
     }
 
     /// The connection work shared by the single-attempt and the retried
-    /// connects: calls `factory` for a fresh transport, then connects over
-    /// it — and mutates ``state`` and ``identity`` only when `generation`
-    /// still matches ``connectGeneration`` at the moment it would apply its
-    /// result.
+    /// connects: calls `factory` for a fresh transport, connects over it,
+    /// then discovers every tool through the paginated `tools/list` — and
+    /// mutates ``state``, ``identity`` and ``discoveredTools`` only when
+    /// `generation` still matches ``connectGeneration`` at the moment it
+    /// would apply its result. A success and a failure after a prior success
+    /// each emit one ``catalogUpdates`` snapshot.
     ///
     /// A fresh, non-racing `connect(via:)` always passes its own
     /// just-incremented generation, so the guard is satisfied there. For an
@@ -376,9 +387,10 @@ extension MCPServer {
     ///   - factory: Builds the fresh transport to connect over.
     ///   - generation: The ``connectGeneration`` this attempt was launched
     ///     under.
-    /// - Throws: What `factory` or `MCP.Client.connect(transport:)` throws —
-    ///   even when `generation` turns out to be stale, so the detached task
-    ///   of `performConnectAttempt(factory:timeout:)` still observes failure
+    /// - Throws: What `factory`, `MCP.Client.connect(transport:)` or
+    ///   `discoverAllTools()` throws — even when `generation` turns out to be
+    ///   stale, so the detached task of
+    ///   `performConnectAttempt(factory:timeout:)` still observes failure
     ///   against success correctly.
     private func applyConnect(via factory: TransportFactory, generation: Int) async throws {
         guard
@@ -397,6 +409,7 @@ extension MCPServer {
             else {
                 return
             }
+            let tools = try await discoverAllTools()
             guard
                 isCurrentGeneration(
                     generation,
@@ -404,10 +417,12 @@ extension MCPServer {
             else {
                 return
             }
+            discoveredTools = tools
             establishIdentityIfAbsent()
             transition(to: .ready)
+            emitCatalogSnapshot()
             logger.debug(
-                "MCPServer \(self.identityNameForDiagnostics, privacy: .public) initialized against server \(initialized.serverInfo.name, privacy: .public)"
+                "MCPServer \(self.identityNameForDiagnostics, privacy: .public) initialized against server \(initialized.serverInfo.name, privacy: .public) with \(tools.count) tools"
             )
         } catch {
             guard
@@ -419,6 +434,7 @@ extension MCPServer {
                 throw error
             }
             transition(to: .faulted(String(describing: error)))
+            emitCatalogSnapshot()
             throw error
         }
     }
@@ -494,15 +510,5 @@ extension MCPServer {
             guard let self else { return }
             await handler(self, message)
         }
-    }
-
-    /// What a `notifications/tools/list_changed` reaches: the coalesced
-    /// re-list of the discovery task. Until that task lands, the notification
-    /// is logged, so a stream of one connection shows that the server sent
-    /// it.
-    private func handleToolListChangedNotification() {
-        logger.debug(
-            "MCPServer \(self.identityNameForDiagnostics, privacy: .public) received tools/list_changed"
-        )
     }
 }

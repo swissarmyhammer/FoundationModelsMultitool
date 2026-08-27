@@ -107,13 +107,19 @@ enum MCPTestSupport {
     ///   - scripted: The scripted server to serve on the far end.
     ///   - kind: The transport to connect over.
     ///   - name: The name of the `MCPServer`, and so its identity.
+    ///   - clock: The clock the server sleeps on — between retries, and for
+    ///     the `tools/list_changed` coalesce window. Defaults to a real
+    ///     clock; a suite of the live catalog passes a `ManualClock`.
     /// - Returns: The connected server.
     /// - Throws: What `ScriptedServer.start(transport:)` or
     ///   `MCPServer.connect(via:)` throws.
     static func connectedMCPServer(
-        to scripted: ScriptedServer, over kind: MCPTransportKind, name: String
+        to scripted: ScriptedServer,
+        over kind: MCPTransportKind,
+        name: String,
+        clock: any Clock<Duration> = ContinuousClock()
     ) async throws -> MCPServer {
-        let server = MCPServer(name: name)
+        let server = MCPServer(name: name, clock: clock)
         let transport = try await clientTransport(serving: scripted, over: kind)
         try await server.connect(via: transport)
         return server

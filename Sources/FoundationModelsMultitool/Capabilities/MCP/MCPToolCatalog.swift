@@ -30,8 +30,8 @@
 // validates it.
 //
 // **The types are internal.** The Shell capability keeps its types internal,
-// and this folder does the same: `MCPServer`, which comes in a later task, is
-// the production writer, and the tests reach the types with
+// and this folder does the same: `MCPServer` is the production writer — see
+// `MCPServer+Discovery.swift` — and the tests reach the types with
 // `@testable import`.
 
 import CryptoKit

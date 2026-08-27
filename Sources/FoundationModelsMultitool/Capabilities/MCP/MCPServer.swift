@@ -1,9 +1,9 @@
 // `MCPServer` — one `MCP.Client` connection to one MCP server: the actor, its
 // state, and the readiness a host waits on.
 //
-// A behavioral port of the connection half of
+// A behavioral port of the connection and discovery halves of
 // `../FoundationModelsMCP/Sources/FoundationModelsMCP/MCPServer.swift`, split
-// across three files by concern, the way `RoutedSessionActor*.swift` splits
+// across five files by concern, the way `RoutedSessionActor*.swift` splits
 // its actor in Router:
 //
 // - `MCPServer.swift` (this file) — the actor: its stored state, `init`,
@@ -13,14 +13,20 @@
 //   guard, and the notification handlers registered at connect.
 // - `MCPServer+ClientQueue.swift` — the FIFO queue that serializes every
 //   `client.connect(transport:)` and `client.disconnect()` call.
+// - `MCPServer+Discovery.swift` — the paginated `tools/list` round trip a
+//   connect makes, `mcpTools()`, `tool(named:)`, `catalog`, and the one
+//   emission point of `catalogUpdates`.
+// - `MCPServer+LiveCatalog.swift` — the coalesced re-list a burst of
+//   `tools/list_changed` notifications starts.
 //
 // **What is not ported, for good.** The call path of the source — the soft
 // deadline, the call handle and the running-call snapshot, the retained call
 // records, the three follow-up tools, the progress and outcome streams — is
 // gone. eventplan.md § "Consolidation of the siblings": "We delete
 // the two local designs." A later task rewrites the call path onto the run
-// plane of Router. Discovery and the live catalog come in the next task, so a
-// connect here reaches `.ready` on the `initialize` handshake alone.
+// plane of Router. With the call path gone, the source's `MCPTool` is gone
+// too: a discovered tool is an `MCPCatalogEntry` here, and `mcpTools()` and
+// `tool(named:)` vend that entry.
 //
 // **This actor constructs its own `MCP.Client`.** In swift-sdk 0.12.1 the
 // client capabilities are fixed at `Client.init(name:version:capabilities:)`
@@ -154,6 +160,73 @@ public actor MCPServer {
     /// `.connecting`, resumed by the next state change.
     private var readinessWaiters: [CheckedContinuation<Void, Never>] = []
 
+    /// The tools the most recent successful discovery round trip returned —
+    /// the paginated `tools/list` of a connect, or the coalesced re-list a
+    /// `tools/list_changed` burst starts — in `tools/list` page order.
+    ///
+    /// Replaced whole on every successful round trip, and left as it was by
+    /// a round trip that failed. See `MCPServer+Discovery.swift`.
+    var discoveredTools: [MCPCatalogEntry] = []
+
+    /// Incremented by every `emitCatalogSnapshot()` call — the per-server
+    /// generation number each ``catalogUpdates`` snapshot carries as
+    /// `MCPToolCatalog.epoch`. Starts at `0`, before any successful connect,
+    /// and is never reset for the life of this actor.
+    var catalogEpoch = 0
+
+    /// The stream of versioned `MCPToolCatalog` snapshots this server emits.
+    ///
+    /// `emitCatalogSnapshot()` in `MCPServer+Discovery.swift` is the one
+    /// point that yields to it, and it runs at each of these moments:
+    ///
+    /// - A `connect(via:)` that reaches `.ready` — the first connect, and
+    ///   every reconnect after it, whether through `reconnect()` or through a
+    ///   new `connect(via:)` call. A consumer sees a reconnect the same way it
+    ///   sees a `tools/list_changed`: one snapshot with the tools of the
+    ///   returning server, which may differ from the tools before.
+    /// - A connect after a prior success that fails — one snapshot whose state
+    ///   is `.faulted`, with the last-known tools.
+    /// - A coalesced `tools/list_changed` re-list that succeeds — see
+    ///   `MCPServer+LiveCatalog.swift`.
+    ///
+    /// Every emission is a complete, self-contained snapshot a consumer can
+    /// start from with no prior state — never a delta. No emission occurs
+    /// before the first successful connect, because ``identity`` — which
+    /// every snapshot carries — is not established before then, and
+    /// `disconnect()` emits none: a host that disconnects on purpose knows.
+    ///
+    /// - Important: Backed by a single continuation, like any `AsyncStream`:
+    ///   one consumer iterates this stream. A second concurrent iterator is a
+    ///   programming error — it would only ever see whichever snapshots the
+    ///   first one has not already consumed, never a copy of every snapshot.
+    ///
+    /// - Note: Finishes when this server is deallocated, and never before — a
+    ///   connection fault emits a snapshot instead of ending the stream.
+    let catalogUpdates: AsyncStream<MCPToolCatalog>
+
+    /// The continuation `emitCatalogSnapshot()` yields new snapshots to —
+    /// paired with ``catalogUpdates`` one time, at construction.
+    let catalogContinuation: AsyncStream<MCPToolCatalog>.Continuation
+
+    /// Incremented by every inbound `tools/list_changed` notification, and
+    /// read back by the coalescing re-list to learn whether more arrived
+    /// while it ran — see `coalesceAndRelist()` in
+    /// `MCPServer+LiveCatalog.swift`.
+    var toolListChangedGeneration = 0
+
+    /// Whether a `coalesceAndRelist()` watcher is running, so a burst of
+    /// notifications starts one watcher and not one per notification.
+    var isCoalescingToolListChanged = false
+
+    /// The task `handleToolListChangedNotification()` started to run
+    /// `coalesceAndRelist()`, or `nil` when no watcher is running.
+    ///
+    /// Stored, so that `disconnect()` cancels a watcher still waiting out its
+    /// coalesce window instead of letting it re-list against a client the
+    /// host just disconnected; cleared back to `nil` by the watcher itself
+    /// once it finishes.
+    var coalescingTask: Task<Void, Never>?
+
     /// Creates a server that owns a fresh `MCP.Client` named `name`.
     ///
     /// The client declares the elicitation capability with both `form` and
@@ -191,6 +264,13 @@ public actor MCPServer {
         self.clock = clock
         self.renderBudget = renderBudget
         self.logger = logger
+        (self.catalogUpdates, self.catalogContinuation) = AsyncStream.makeStream()
+    }
+
+    /// Finishes ``catalogUpdates``, so a consumer still iterating it ends
+    /// once this server is gone — the one point that finishes the stream.
+    deinit {
+        catalogContinuation.finish()
     }
 
     /// The name log lines and ``MCPServerError`` carry for this server — the
