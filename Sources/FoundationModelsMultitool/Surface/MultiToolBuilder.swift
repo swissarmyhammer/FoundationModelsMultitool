@@ -10,10 +10,12 @@ import FoundationModels
 /// `build()`. That is why the fluent chain needs `try` only on its final
 /// call.
 ///
-/// `withShell(storeDirectory:sandbox:outputChunkStream:)` is the one
-/// registration method that throws, and it never throws THIS error: it
-/// prepares the store of the shell on disk, which is resource acquisition
-/// rather than validation. The single leading `try` of the chain covers it.
+/// `withShell(storeDirectory:sandbox:outputChunkStream:)` and
+/// `withMCP(servers:)` are the two registration methods that throw, and
+/// neither throws THIS error: the first prepares the store of the shell on
+/// disk, and the second waits for each server to be ready, which is resource
+/// acquisition rather than validation. The single leading `try` of the chain
+/// covers both.
 public struct MultiToolBuilderError: Error, Sendable, Equatable, CustomStringConvertible {
     /// What kind of build-time failure this was.
     public enum Kind: Sendable, Equatable {
@@ -300,6 +302,39 @@ extension MultiTool {
                     recordsChanges: recordsChanges
                 )
             )
+        }
+
+        /// Queues one MCP capability for each server of `servers`, in order —
+        /// the verbs of each server under the noun that is the server's own
+        /// name, `tools.<serverName>.<toolName>`. It is a short form of
+        /// `withCapability(MCPCapability(server:))` called one time for each
+        /// server, so the verbs render and each noun is owned as any other
+        /// capability's are. No `tools.mcp` group exists: the model must not
+        /// see the transport.
+        ///
+        /// **MCP is OFF by default.** A builder that never calls this renders
+        /// no server group at all.
+        ///
+        /// The method awaits readiness, and it does not connect. eventplan.md:
+        /// "Servers connect before `buildRegistry()`." The host connects each
+        /// server first; this method waits for each one through
+        /// `MCPServer.waitUntilReady()` and reads its catalog.
+        ///
+        /// A server whose name is a noun another registration owns — a server
+        /// named `files` beside `withFiles(root:)` — is the `.duplicateNoun`
+        /// failure of `buildRegistry()`, as for any other capability.
+        ///
+        /// - Parameter servers: the servers the host connected, in the order
+        ///   their groups render.
+        /// - Throws: `MCPServerError.notReady(_:)` when a server is `.faulted`
+        ///   or `.disconnected`, and so cannot reach `.ready` without a new
+        ///   connect — see `MCPCapability.init(server:)`.
+        @discardableResult
+        public func withMCP(servers: [MCPServer]) async throws -> Self {
+            for server in servers {
+                withCapability(try await MCPCapability(server: server))
+            }
+            return self
         }
 
         /// Queues every tool in `tools` under the named `group`, destined

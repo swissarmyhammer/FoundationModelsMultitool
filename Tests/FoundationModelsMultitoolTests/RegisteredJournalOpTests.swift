@@ -1,6 +1,7 @@
 import Foundation
 import FoundationModels
 import FoundationModelsRouter
+import MCPTestServer
 import Synchronization
 import Testing
 
@@ -58,6 +59,21 @@ struct RegisteredJournalOpTests {
     /// The `Tool.name` of the run-plane verb of the shell capability.
     private static let executeVerb = "execute"
 
+    /// The name of the MCP server of the MCP cases, which is the noun its
+    /// verbs register under.
+    private static let mcpServerName = "loopback"
+
+    /// The `Tool.name` of the progress-reporting verb of the MCP server, whose
+    /// call stands in flight long enough for the test to read its stamp.
+    private static let mcpSlowVerb = "slow"
+
+    /// How many progress notifications the slow verb sends before it returns.
+    private static let mcpProgressSteps = 3
+
+    /// How long the slow verb waits between notifications — long enough that
+    /// the call is still in flight when the poll below reads it.
+    private static let mcpProgressStepDelay = Duration.milliseconds(200)
+
     /// How long the command of the run-plane test sleeps. Long enough that it
     /// certainly still stands on the run plane while the test reads it, and the
     /// test ends it before it returns.
@@ -91,6 +107,25 @@ struct RegisteredJournalOpTests {
         let entry = try #require(
             registry.surface.entries.first { $0.path == "\(Self.shellNoun).\(Self.executeVerb)" })
         #expect(entry.journalOp == "\(Self.executeVerb) \(Self.shellNoun)")
+    }
+
+    /// eventplan.md § "Registration of capabilities: noun/verb": "MCP obeys
+    /// the same grammar. The server is the noun, and the tool is the verb."
+    /// So the op of a server verb is `"<toolName> <serverName>"`, derived at
+    /// the same registration site as the shell's.
+    @Test("an MCP server renders tools.<serverName>.echo and the journal op \"echo <serverName>\"")
+    func anMCPServerRendersBothHalvesOfItsPair() async throws {
+        let (scripted, server) = try await MCPTestSupport.connectedMCPServer(
+            serving: [ScriptedServer.echoTool()], name: Self.mcpServerName)
+
+        let surface = try await MultiTool.Builder()
+            .withMCP(servers: [server])
+            .build()
+
+        let entry = try #require(
+            surface.entries.first { $0.path == "\(Self.mcpServerName).\(ScriptedServer.echoToolName)" })
+        #expect(entry.journalOp == "\(ScriptedServer.echoToolName) \(Self.mcpServerName)")
+        withExtendedLifetime(scripted) {}
     }
 
     @Test("a standalone tool has no noun, so it declares no journal op of its own")
@@ -200,6 +235,48 @@ struct RegisteredJournalOpTests {
         let stampedOp = try #require(
             sandbox.observedOps.first, "the run never consulted its sandbox")
         #expect(stampedOp == "\(Self.executeVerb) \(Self.shellNoun)")
+    }
+
+    // MARK: - The stamp the MCP verb itself carries
+
+    /// The second reading of the pair for an MCP verb, made from INSIDE the
+    /// run: `MCPServer.call(name:arguments:)` captures its own `ToolContext`
+    /// into the in-flight record of the call, so that record carries the
+    /// stamp the registration site put on the run — the one field
+    /// `BackgroundRun.op` and `ToolInvocationRecord.op` are both built from.
+    ///
+    /// The verb is synchronous, so the snippet holds the call until the
+    /// server answers. The test runs the snippet in a task of its own and
+    /// polls the in-flight table of the server for the stamp while the slow
+    /// verb still stands there.
+    @Test("a tools.<serverName>.<verb> call of an MCP server carries the journal op \"<verb> <serverName>\" into its own call")
+    func anMCPVerbCarriesThePairIntoItsOwnCall() async throws {
+        let scripted = ScriptedServer()
+        await scripted.addProgressReportingTool(
+            named: Self.mcpSlowVerb, totalSteps: Self.mcpProgressSteps, stepDelay: Self.mcpProgressStepDelay)
+        let server = try await MCPTestSupport.connectedMCPServer(
+            to: scripted, over: .inMemory, name: Self.mcpServerName)
+        let registry = try await MultiTool.Builder()
+            .withMCP(servers: [server])
+            .buildRegistry()
+        let context = makeOuterRunContext(mailbox: SessionMailbox(), sink: RecordingEventSink())
+
+        let run = Task {
+            try await Self.run(
+                "return await tools.\(Self.mcpServerName).\(Self.mcpSlowVerb)({});",
+                over: registry,
+                under: context)
+        }
+
+        var stampedOp: String?
+        try await TestPoll.waitUntil("the call reached the server") {
+            stampedOp = await server.inFlightCalls.values.first?.context?.op
+            return stampedOp != nil
+        }
+        try await run.value
+
+        #expect(stampedOp == "\(Self.mcpSlowVerb) \(Self.mcpServerName)")
+        withExtendedLifetime(scripted) {}
     }
 
     // MARK: - The ground of one test

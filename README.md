@@ -177,6 +177,32 @@ let warmest = try await multiTool.call(
 )
 ```
 
+## Capabilities: shell, files and MCP servers
+
+The built-in capabilities are opt-in. Each one owns one noun, and a builder
+that never asks for a capability renders no entry under its noun. An MCP
+server is a capability too: the host connects the server first, and
+`withMCP(servers:)` waits for the server to be ready and reads its catalog.
+
+```swift
+let github = MCPServer(name: "github")
+try await github.connect(via: transport)     // servers connect before buildRegistry()
+
+let registry = try await MultiTool.Builder()
+    .withShell()                              // tools.shell.execute, getLines, grepHistory
+    .withFiles(root: workspaceURL)            // tools.files.read, write, edit, patch, glob, grep
+    .withMCP(servers: [github])               // tools.github.<tool>, one for each catalog entry
+    .buildRegistry()
+```
+
+Each connected server registers as its own top-level group, named after the
+server: `tools.github.createIssue`, never `tools.mcp.github.createIssue`. The
+model does not see the transport. A server whose name is a noun another
+registration owns — a server named `files` beside `withFiles(root:)` — fails
+at `buildRegistry()` with `MultiToolBuilderError.Kind.duplicateNoun`. A server
+that cannot reach `.ready` makes `withMCP(servers:)` throw
+`MCPServerError.notReady`.
+
 ## Security model
 
 A `runCode` snippet executes inside a fresh, deny-by-default JavaScriptCore

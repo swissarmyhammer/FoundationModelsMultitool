@@ -1,4 +1,5 @@
 import Foundation
+import MCPTestServer
 import Testing
 
 import FoundationModels
@@ -11,6 +12,33 @@ import FoundationModels
 /// tools is the easy path" / Component 2/7.
 @Suite("BuilderSurface")
 struct BuilderSurfaceTests {
+    /// The golden of the fixture set of standalone and grouped tools.
+    private static let builderGoldenName = "BuilderSurface.ts.txt"
+
+    /// The golden of one MCP server rendered as its own group.
+    private static let mcpGoldenName = "MCPSurface.ts.txt"
+
+    /// The name of the server of the MCP golden, which is the noun its one
+    /// verb renders under.
+    private static let mcpServerName = "loopback"
+
+    /// The rendered call path of the one verb of the MCP golden.
+    private static let mcpEchoPath = "\(mcpServerName).\(ScriptedServer.echoToolName)"
+
+    /// Reads the golden file named `name` beside this suite, with its
+    /// trailing newlines trimmed as the rendered source is trimmed.
+    ///
+    /// - Parameter name: The file name under `Goldens/`.
+    /// - Returns: The golden text.
+    /// - Throws: When the file does not read.
+    private static func golden(named name: String) throws -> String {
+        let goldenURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .appendingPathComponent("Goldens/\(name)")
+        return try String(contentsOf: goldenURL, encoding: .utf8)
+            .trimmingCharacters(in: .newlines)
+    }
+
     @Test("a builder with a fixture set of standalone and grouped tools renders byte-identical to the golden file")
     func fixtureSetMatchesGoldenFile() throws {
         let surface = try MultiTool.Builder()
@@ -19,14 +47,30 @@ struct BuilderSurfaceTests {
             .addGroup(named: "github", [GithubCreateIssueTool(), GithubSearchTool()])
             .build()
 
-        let goldenURL = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .appendingPathComponent("Goldens/BuilderSurface.ts.txt")
-        let golden = try String(contentsOf: goldenURL, encoding: .utf8)
-            .trimmingCharacters(in: .newlines)
+        let golden = try Self.golden(named: Self.builderGoldenName)
 
         #expect(surface.entries.map(\.path) == ["getWeather", "echoText", "github.createIssue", "github.search"])
         #expect(surface.source.trimmingCharacters(in: .newlines) == golden)
+    }
+
+    /// eventplan.md § "Consolidation of the siblings": "Each connected server
+    /// registers as its own top-level group." The verb of an MCP server
+    /// renders from its converted `inputSchema`, so the golden pins the shape
+    /// the model reads for a schema the server declared.
+    @Test("a builder with one MCP server renders tools.<serverName>.<toolName> byte-identical to the golden file")
+    func mcpGroupMatchesGoldenFile() async throws {
+        let (scripted, server) = try await MCPTestSupport.connectedMCPServer(
+            serving: [ScriptedServer.echoTool()], name: Self.mcpServerName)
+
+        let surface = try await MultiTool.Builder()
+            .withMCP(servers: [server])
+            .build()
+
+        let golden = try Self.golden(named: Self.mcpGoldenName)
+
+        #expect(surface.entries.map(\.path) == [Self.mcpEchoPath])
+        #expect(surface.source.trimmingCharacters(in: .newlines) == golden)
+        withExtendedLifetime(scripted) {}
     }
 
     @Test("two standalone tools with the same name make build() throw, naming the collision")

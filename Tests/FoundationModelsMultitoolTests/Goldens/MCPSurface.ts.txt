@@ -1,0 +1,8 @@
+// tools.loopback.echo
+/**
+ * Echoes the provided text back verbatim.
+ * @param args.text — The text to echo back. (required)
+ * @returns Promise<string>
+ * @example const r = await tools.loopback.echo({ text: "text" });
+ */
+declare function echo(args: { text: string }): Promise<string>;

@@ -64,8 +64,8 @@ import os
 /// this actor calls on demand.
 ///
 /// `public`, because a host constructs and connects a server before
-/// `buildRegistry()`; the capability that registers the tools of a connected
-/// server comes in a later task.
+/// `buildRegistry()`; `MCPCapability` then registers the tools of the
+/// connected server, through `MultiTool.Builder.withMCP(servers:)`.
 public actor MCPServer {
     /// The version ``init(name:version:clock:callTimeout:renderBudget:logger:)``
     /// reports at `initialize` when the host names none.

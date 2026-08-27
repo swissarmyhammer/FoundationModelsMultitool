@@ -12,6 +12,8 @@
 // against the scripted server, for a suite of the server itself.
 // `MCPTransportKind.http` is the in-process HTTP loopback of
 // `LoopbackHTTPServer`, so one parameterized case runs over both transports.
+// `connectedLoopbackMCPServer(over:name:)` builds the scripted server with the
+// three loopback tools and connects it, for a suite of the capability.
 
 import MCP
 import MCPTestServer
@@ -179,6 +181,32 @@ enum MCPTestSupport {
         let server = try await connectedMCPServer(
             to: scripted, over: .inMemory, name: name, callTimeout: callTimeout,
             renderBudget: renderBudget)
+        return (scripted, server)
+    }
+
+    /// Builds a fresh `ScriptedServer` that serves the three loopback tools of
+    /// `ScriptedServer.addLoopbackTools()`, and returns it beside an
+    /// `MCPServer` named `name` connected against it over a transport of
+    /// `kind` — the shape a suite of the capability starts from, so one
+    /// parameterized case runs over both transports.
+    ///
+    /// - Important: The caller keeps the returned `ScriptedServer` alive for
+    ///   the whole test, as ``connectedMCPServer(to:over:name:clock:callTimeout:renderBudget:)``
+    ///   requires.
+    ///
+    /// - Parameters:
+    ///   - kind: The transport to connect over.
+    ///   - name: The name of the `MCPServer`, and so its identity and the
+    ///     noun its verbs render under.
+    /// - Returns: The scripted server, which the test keeps alive, and the
+    ///   connected server.
+    /// - Throws: What the connect throws.
+    static func connectedLoopbackMCPServer(
+        over kind: MCPTransportKind, name: String
+    ) async throws -> (scripted: ScriptedServer, server: MCPServer) {
+        let scripted = ScriptedServer()
+        await scripted.addLoopbackTools()
+        let server = try await connectedMCPServer(to: scripted, over: kind, name: name)
         return (scripted, server)
     }
 }
