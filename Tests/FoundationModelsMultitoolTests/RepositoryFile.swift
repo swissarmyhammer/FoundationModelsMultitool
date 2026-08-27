@@ -81,6 +81,65 @@ enum RepositoryFile {
         return swiftFiles.sorted { $0.path < $1.path }
     }
 
+    /// Names each needle that the Swift files under one directory hold.
+    ///
+    /// A guard that bans a name reads a tree and fails when the name comes
+    /// back. Each guard of this target calls this one scan, thus one
+    /// implementation decides what a sighting is, and no suite carries a
+    /// near-identical copy.
+    ///
+    /// - Parameters:
+    ///   - needles: the texts to search for, for example a banned type name.
+    ///   - relativePath: the directory's path from the repository root, for
+    ///     example `"Sources"`.
+    ///   - excludedFiles: the files the walk passes over, for example a guard
+    ///     file that must spell each needle to search for it. Each URL is
+    ///     compared in its standardized form.
+    /// - Returns: one `path:line: needle` entry for each sighting, with the
+    ///   path read from the repository root.
+    /// - Throws: an error when the directory cannot be walked, or when a file
+    ///   under it cannot be read. A walk that reads nothing is a failure and
+    ///   never an empty answer.
+    static func sightings(
+        of needles: [String],
+        inRelativeDirectory relativePath: String,
+        excluding excludedFiles: Set<URL> = []
+    ) throws -> [String] {
+        try swiftFiles(inRelativeDirectory: relativePath)
+            .filter { !excludedFiles.contains($0.standardizedFileURL) }
+            .flatMap { try sightings(of: needles, inRelativeFile: Self.relativePath(of: $0)) }
+    }
+
+    /// Names each needle that one file holds.
+    ///
+    /// - Parameters:
+    ///   - needles: the texts to search for.
+    ///   - filePath: the file's path from the repository root.
+    /// - Returns: one `path:line: needle` entry for each sighting.
+    /// - Throws: an error when the file cannot be read.
+    static func sightings(of needles: [String], inRelativeFile filePath: String) throws -> [String] {
+        let text = try read(relativePath: filePath)
+        return text.split(separator: "\n", omittingEmptySubsequences: false)
+            .enumerated()
+            .flatMap { lineIndex, line in
+                needles
+                    .filter { line.contains($0) }
+                    .map { "\(filePath):\(lineIndex + 1): \($0)" }
+            }
+    }
+
+    /// The path of a file inside this repository, read from the repository
+    /// root.
+    ///
+    /// - Parameter fileURL: the file's absolute location.
+    /// - Returns: the same file, named the way a reader of the repository
+    ///   names it, or the absolute path when the file stands outside `root`.
+    static func relativePath(of fileURL: URL) -> String {
+        let rootPrefix = root.path + "/"
+        guard fileURL.path.hasPrefix(rootPrefix) else { return fileURL.path }
+        return String(fileURL.path.dropFirst(rootPrefix.count))
+    }
+
     /// Resolves one repository-relative path against `root`.
     ///
     /// - Parameter relativePath: the path from the repository root.

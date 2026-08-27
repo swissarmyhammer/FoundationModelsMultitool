@@ -62,16 +62,17 @@ struct ShellPermissionRemovalTests {
 
     /// Names each banned name that the Swift files under one directory hold.
     ///
+    /// The scan is `RepositoryFile.sightings(of:inRelativeDirectory:excluding:)`,
+    /// with this guard file passed over.
+    ///
     /// - Parameter directoryPath: the directory's path from the repository
     ///   root, for example `"Sources"`.
     /// - Returns: one `path:line: name` entry for each sighting.
     /// - Throws: an error when the directory cannot be walked, or when a file
-    ///   under it cannot be read. A walk that reads nothing is a failure and
-    ///   never an empty answer.
+    ///   under it cannot be read.
     private static func sightings(inRelativeDirectory directoryPath: String) throws -> [String] {
-        try RepositoryFile.swiftFiles(inRelativeDirectory: directoryPath)
-            .filter { $0.standardizedFileURL != guardFileURL }
-            .flatMap { try sightings(inRelativeFile: relativePath(of: $0)) }
+        try RepositoryFile.sightings(
+            of: bannedNames, inRelativeDirectory: directoryPath, excluding: [guardFileURL])
     }
 
     /// Names each banned name that one file holds.
@@ -80,26 +81,7 @@ struct ShellPermissionRemovalTests {
     /// - Returns: one `path:line: name` entry for each sighting.
     /// - Throws: an error when the file cannot be read.
     private static func sightings(inRelativeFile filePath: String) throws -> [String] {
-        let text = try RepositoryFile.read(relativePath: filePath)
-        return text.split(separator: "\n", omittingEmptySubsequences: false)
-            .enumerated()
-            .flatMap { lineIndex, line in
-                bannedNames
-                    .filter { line.contains($0) }
-                    .map { "\(filePath):\(lineIndex + 1): \($0)" }
-            }
-    }
-
-    /// The path of a file inside this repository, read from the repository
-    /// root.
-    ///
-    /// - Parameter fileURL: the file's absolute location.
-    /// - Returns: the same file, named the way a reader of the repository
-    ///   names it.
-    private static func relativePath(of fileURL: URL) -> String {
-        let rootPrefix = RepositoryFile.root.path + "/"
-        guard fileURL.path.hasPrefix(rootPrefix) else { return fileURL.path }
-        return String(fileURL.path.dropFirst(rootPrefix.count))
+        try RepositoryFile.sightings(of: bannedNames, inRelativeFile: filePath)
     }
 
     /// The failure message that names each sighting.
