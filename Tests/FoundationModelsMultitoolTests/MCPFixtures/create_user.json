@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "title": "create_user",
+  "description": "Create a new user record.",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "The user's full name."
+    },
+    "address": {
+      "type": "object",
+      "description": "The user's mailing address.",
+      "properties": {
+        "street": {
+          "type": "string",
+          "description": "Street address."
+        },
+        "city": {
+          "type": "string",
+          "description": "City."
+        },
+        "postalCode": {
+          "type": "string",
+          "description": "Postal code."
+        }
+      },
+      "required": ["street", "city"]
+    }
+  },
+  "required": ["name", "address"]
+}

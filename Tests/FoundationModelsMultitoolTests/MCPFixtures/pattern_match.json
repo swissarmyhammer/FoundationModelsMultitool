@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "title": "pattern_match",
+  "description": "Exercises string pattern guides, valid and invalid.",
+  "properties": {
+    "code": {
+      "type": "string",
+      "description": "A ticket code like ABC-1234.",
+      "pattern": "^[A-Z]{3}-[0-9]{4}$"
+    },
+    "raw": {
+      "type": "string",
+      "description": "A field whose declared pattern fails to compile as a Swift Regex.",
+      "pattern": "[abc"
+    }
+  },
+  "required": ["code"]
+}

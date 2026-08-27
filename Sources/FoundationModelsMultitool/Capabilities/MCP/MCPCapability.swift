@@ -15,12 +15,12 @@
 // `MultiTool.Builder.withMCP(servers:)`, the short form of
 // `withCapability(MCPCapability(...))` — comes in a later task.
 //
-// **The files that later tasks add to this folder:**
+// **The files that stand in this folder, and the files that later tasks add:**
 //
 // - `SchemaConverter.swift`, `GeneratedContentCodec.swift` and
 //   `Value+ScalarString.swift` — a JSON Schema from `tools/list` becomes a
 //   `GenerationSchema`, and the model's `GeneratedContent` becomes the
-//   `[String: MCP.Value]` of `tools/call`.
+//   `[String: MCP.Value]` of `tools/call`. These three are ported.
 // - `ToolContentRenderer.swift` and `RenderBudget.swift` — a `CallTool.Result`
 //   becomes the one string the model reads.
 // - `MCPToolCatalog.swift` and `MCPServerIdentity.swift` — the catalog of a

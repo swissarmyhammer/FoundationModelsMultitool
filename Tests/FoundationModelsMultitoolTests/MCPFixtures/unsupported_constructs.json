@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "title": "unsupported_constructs",
+  "description": "Exercises every JSON Schema construct SchemaConverter cannot map onto DynamicGenerationSchema, one per property.",
+  "properties": {
+    "union": {
+      "description": "A raw predicate string or a structured predicate object.",
+      "anyOf": [{ "type": "string" }, { "type": "object" }]
+    },
+    "choice": {
+      "description": "An old-style tagged union.",
+      "oneOf": [{ "type": "string" }, { "type": "integer" }]
+    },
+    "openBag": {
+      "type": "object",
+      "description": "An object that accepts arbitrary extra keys beyond its declared properties.",
+      "properties": { "known": { "type": "string" } },
+      "additionalProperties": true
+    },
+    "dynamicKeys": {
+      "type": "object",
+      "description": "An object keyed by a regular expression instead of fixed names.",
+      "patternProperties": { "^[a-z]+$": { "type": "string" } }
+    },
+    "pair": {
+      "type": "array",
+      "description": "A fixed-length heterogeneous tuple via 2020-12 prefixItems.",
+      "prefixItems": [{ "type": "string" }, { "type": "integer" }]
+    },
+    "legacyTuple": {
+      "type": "array",
+      "description": "A fixed-length heterogeneous tuple via the legacy draft-07 array-form items.",
+      "items": [{ "type": "string" }, { "type": "integer" }]
+    },
+    "anythingButNull": {
+      "description": "Anything that is not null.",
+      "not": { "type": "null" }
+    },
+    "selfReferential": {
+      "description": "An unresolved self-referential $ref.",
+      "$ref": "#"
+    },
+    "refWithSiblingAnyOf": {
+      "description": "A $ref with a sibling anyOf, meaningful under 2020-12 applicator semantics but not representable together.",
+      "$ref": "#/$defs/Whatever",
+      "anyOf": [{ "type": "string" }]
+    }
+  },
+  "required": ["union"]
+}

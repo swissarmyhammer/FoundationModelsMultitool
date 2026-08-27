@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "title": "create_ticket",
+  "description": "Create a support ticket.",
+  "properties": {
+    "summary": {
+      "type": "string",
+      "description": "One-line ticket summary."
+    },
+    "priority": {
+      "$ref": "#/$defs/Priority"
+    }
+  },
+  "required": ["summary", "priority"],
+  "$defs": {
+    "Priority": {
+      "type": "string",
+      "description": "Ticket priority.",
+      "enum": ["low", "medium", "high", "urgent"]
+    }
+  }
+}

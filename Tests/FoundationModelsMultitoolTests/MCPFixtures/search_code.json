@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "title": "search_code",
+  "description": "Search a codebase for a pattern.",
+  "properties": {
+    "query": {
+      "type": "string",
+      "description": "The search pattern."
+    },
+    "maxResults": {
+      "type": "integer",
+      "description": "Maximum number of results to return."
+    },
+    "matchThreshold": {
+      "type": "number",
+      "description": "Minimum fuzzy-match score, 0.0-1.0."
+    },
+    "caseSensitive": {
+      "type": "boolean",
+      "description": "Whether the search is case-sensitive."
+    }
+  },
+  "required": ["query"]
+}

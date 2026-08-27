@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "title": "list_directory",
+  "description": "List the contents of one or more directories.",
+  "properties": {
+    "paths": {
+      "type": "array",
+      "description": "Directories to list.",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": ["paths"]
+}

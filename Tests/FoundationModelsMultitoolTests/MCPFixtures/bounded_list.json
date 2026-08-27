@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "title": "bounded_list",
+  "description": "Exercises minItems/maxItems count guides on nested arrays.",
+  "properties": {
+    "batches": {
+      "type": "array",
+      "description": "A bounded list of fixed-size coordinate pairs.",
+      "minItems": 1,
+      "maxItems": 5,
+      "items": {
+        "type": "array",
+        "description": "A pair of coordinate values.",
+        "minItems": 2,
+        "maxItems": 2,
+        "items": {
+          "type": "number"
+        }
+      }
+    },
+    "impossibleBatch": {
+      "type": "array",
+      "description": "A self-contradictory count constraint: minItems exceeds maxItems.",
+      "minItems": 5,
+      "maxItems": 2,
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": ["batches"]
+}

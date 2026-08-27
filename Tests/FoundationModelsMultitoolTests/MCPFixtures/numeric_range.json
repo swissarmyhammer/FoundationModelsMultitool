@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "title": "numeric_range",
+  "description": "Exercises numeric minimum/maximum and exclusive-bound guides.",
+  "properties": {
+    "score": {
+      "type": "number",
+      "description": "A percentage score, inclusive bounds.",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "priority": {
+      "type": "integer",
+      "description": "A minimum-only priority level.",
+      "minimum": 1
+    },
+    "temperatureDelta": {
+      "type": "number",
+      "description": "An exclusive-bounded temperature delta.",
+      "exclusiveMinimum": -50,
+      "exclusiveMaximum": 50
+    },
+    "attempts": {
+      "type": "integer",
+      "description": "An exclusive-bounded integer attempt count.",
+      "exclusiveMinimum": 0,
+      "exclusiveMaximum": 10
+    },
+    "strictLowerBound": {
+      "type": "integer",
+      "description": "Both minimum and a stricter exclusiveMinimum are present; the stricter (nudged) bound wins.",
+      "minimum": 3,
+      "exclusiveMinimum": 5
+    },
+    "strictUpperBound": {
+      "type": "number",
+      "description": "Both maximum and a stricter exclusiveMaximum are present; the stricter (nudged) bound wins.",
+      "maximum": 10,
+      "exclusiveMaximum": 9
+    },
+    "impossibleRange": {
+      "type": "integer",
+      "description": "A vacuous constraint: nudging exclusiveMinimum/exclusiveMaximum inward crosses the bounds (no integer satisfies it).",
+      "exclusiveMinimum": 5,
+      "exclusiveMaximum": 6
+    }
+  },
+  "required": ["score"]
+}

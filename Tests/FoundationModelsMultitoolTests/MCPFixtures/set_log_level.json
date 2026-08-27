@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "title": "set_log_level",
+  "description": "Set the server's minimum logging level.",
+  "properties": {
+    "level": {
+      "type": "string",
+      "description": "The minimum severity to log.",
+      "enum": ["debug", "info", "warning", "error", "critical"]
+    }
+  },
+  "required": ["level"]
+}

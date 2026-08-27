@@ -356,6 +356,11 @@ let package = Package(
                 // rule: it holds compiled `.swift` files, and a resource rule
                 // would stop their compilation and break this target.
                 .copy("FilesGoldens"),
+                // A corpus of real-world MCP tool `inputSchema` documents, ported
+                // from `../FoundationModelsMCP`. The `SchemaConverter` suites
+                // load these through `Bundle.module`, as `HashlineTests` loads
+                // its goldens.
+                .copy("MCPFixtures"),
             ]
         ),
     ]

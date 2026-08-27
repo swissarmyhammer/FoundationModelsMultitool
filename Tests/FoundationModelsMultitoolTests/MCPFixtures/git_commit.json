@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "title": "git_commit",
+  "description": "Create a commit in a git repository.",
+  "properties": {
+    "message": {
+      "type": "string",
+      "description": "The commit message."
+    },
+    "author": {
+      "$ref": "#/$defs/Author"
+    },
+    "files": {
+      "type": "array",
+      "description": "Paths to stage for the commit.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "mode": {
+      "type": "string",
+      "description": "How to apply the commit.",
+      "enum": ["amend", "new"]
+    }
+  },
+  "required": ["message", "files"],
+  "$defs": {
+    "Author": {
+      "type": "object",
+      "description": "Commit author identity.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Author name."
+        },
+        "email": {
+          "type": "string",
+          "description": "Author email."
+        }
+      },
+      "required": ["name", "email"]
+    }
+  }
+}

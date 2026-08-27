@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "title": "advanced_filter",
+  "description": "Filter records using an advanced predicate.",
+  "properties": {
+    "predicate": {
+      "description": "Either a raw predicate string or a structured predicate object.",
+      "anyOf": [
+        { "type": "string" },
+        { "type": "object", "additionalProperties": true }
+      ]
+    },
+    "tags": {
+      "type": "array",
+      "description": "Tags to match.",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": ["predicate"]
+}
