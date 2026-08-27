@@ -10,8 +10,9 @@
 // `MCPTool` — the call-path adapter — and converted it to a descriptor for
 // the catalog. The call path is not ported, so each tool is stored as the
 // `MCPCatalogEntry` the catalog carries, converted from the `MCP.Tool` of the
-// wire at discovery time. `mcpTools()` and `tool(named:)` vend that entry.
-// `foundationModelsTools()` of the source is gone with `MCPTool`.
+// wire at discovery time. `mcpTools()` and `tool(named:)` vend that entry,
+// and a host builds an `MCPTool` over it. `foundationModelsTools()` of the
+// source is gone: the capability, not the server, builds the verbs.
 //
 // **Why the whole list is read on every round trip.** A one-page read
 // silently truncates whenever the server paginates its `tools/list`

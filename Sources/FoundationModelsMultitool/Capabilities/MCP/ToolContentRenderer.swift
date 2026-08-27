@@ -24,9 +24,9 @@
 // went wrong in the same string it reads a success in.
 //
 // **The types are internal.** The Shell capability keeps its types internal,
-// and this folder does the same: `MCPTool`, which comes in a later task, is
-// the one production caller, and the tests reach the renderer with
-// `@testable import`. `jsonString(for:)` is private here. The sibling kept it
+// and this folder does the same: `MCPTool` is the one production caller, and
+// the tests reach the renderer with `@testable import`. `jsonString(for:)` is
+// private here. The sibling kept it
 // internal for `MCPElicitationTool`, which is not in this package.
 
 import Foundation

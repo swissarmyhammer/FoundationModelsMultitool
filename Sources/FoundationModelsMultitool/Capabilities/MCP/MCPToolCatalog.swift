@@ -16,9 +16,10 @@
 // `MCP.Tool.Annotations`.
 //
 // **What is not ported.** The sibling's `init(mcpTool:)` reused the
-// `GenerationSchema` an already-converted `MCPTool` held. `MCPTool` comes in
-// a later task, and this catalog reads `MCP.Tool` only, so every entry
-// converts its own `inputSchema` through `SchemaConverter`.
+// `GenerationSchema` an already-converted `MCPTool` held. Here the direction
+// is reversed: this catalog reads `MCP.Tool` only, every entry converts its
+// own `inputSchema` through `SchemaConverter`, and `MCPTool` is built over
+// an entry — see `MCPTool.swift`.
 //
 // **Why the fingerprint is a SHA-256 digest, and not `Hasher`.** Swift's
 // `Hasher` is seeded per process, so two snapshots taken in two runs can

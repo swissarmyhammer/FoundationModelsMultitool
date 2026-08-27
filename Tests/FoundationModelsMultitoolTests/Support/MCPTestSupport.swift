@@ -70,9 +70,7 @@ enum MCPTestSupport {
     ) async throws -> any Transport {
         switch kind {
         case .inMemory:
-            let (clientTransport, serverTransport) = await InMemoryTransport.createConnectedPair()
-            try await scripted.start(transport: serverTransport)
-            return clientTransport
+            return try await scripted.startOnInMemoryPair()
         case .http:
             let loopback = LoopbackHTTPServer(serving: scripted)
             let (endpoint, configuration) = try await loopback.start()
@@ -128,6 +126,9 @@ enum MCPTestSupport {
     ///   - callTimeout: The bound of a call made with no ambient
     ///     `ToolContext`. Defaults to `MCPServer.defaultCallTimeout`; a
     ///     suite of the bare call passes a short one.
+    ///   - renderBudget: The render budget every rendered result of the
+    ///     server obeys. Defaults to `RenderBudget.default`; a suite of the
+    ///     verb passes a tight one.
     /// - Returns: The connected server.
     /// - Throws: What `ScriptedServer.start(transport:)` or
     ///   `MCPServer.connect(via:)` throws.
@@ -136,11 +137,48 @@ enum MCPTestSupport {
         over kind: MCPTransportKind,
         name: String,
         clock: any Clock<Duration> = ContinuousClock(),
-        callTimeout: Duration = MCPServer.defaultCallTimeout
+        callTimeout: Duration = MCPServer.defaultCallTimeout,
+        renderBudget: RenderBudget = .default
     ) async throws -> MCPServer {
-        let server = MCPServer(name: name, clock: clock, callTimeout: callTimeout)
+        let server = MCPServer(
+            name: name, clock: clock, callTimeout: callTimeout, renderBudget: renderBudget)
         let transport = try await clientTransport(serving: scripted, over: kind)
         try await server.connect(via: transport)
         return server
+    }
+
+    /// Builds a fresh `ScriptedServer` that serves `tools`, and returns it
+    /// beside an `MCPServer` named `name` connected against it over the
+    /// in-memory transport — the shape every suite of the call path and of
+    /// the verb starts from.
+    ///
+    /// - Important: The caller keeps the returned `ScriptedServer` alive for
+    ///   the whole test, as ``connectedMCPServer(to:over:name:clock:callTimeout:renderBudget:)``
+    ///   requires.
+    ///
+    /// - Parameters:
+    ///   - tools: The tools to register before the connect.
+    ///   - name: The name of the `MCPServer`, and so its identity.
+    ///   - callTimeout: The bound of a bare call of the server. Defaults to
+    ///     `MCPServer.defaultCallTimeout`.
+    ///   - renderBudget: The render budget of the server. Defaults to
+    ///     `RenderBudget.default`.
+    /// - Returns: The scripted server, which the test keeps alive, and the
+    ///   connected server.
+    /// - Throws: What the connect throws.
+    static func connectedMCPServer(
+        serving tools: [ScriptedTool],
+        name: String,
+        callTimeout: Duration = MCPServer.defaultCallTimeout,
+        renderBudget: RenderBudget = .default
+    ) async throws -> (scripted: ScriptedServer, server: MCPServer) {
+        let scripted = ScriptedServer()
+        for tool in tools {
+            await scripted.addTool(tool)
+        }
+        let server = try await connectedMCPServer(
+            to: scripted, over: .inMemory, name: name, callTimeout: callTimeout,
+            renderBudget: renderBudget)
+        return (scripted, server)
     }
 }

@@ -137,6 +137,20 @@ public actor ScriptedServer {
         }
     }
 
+    /// Starts this server on the server end of a fresh
+    /// `InMemoryTransport.createConnectedPair()`, and returns the client end,
+    /// ready for a connect — the in-process pair every in-memory suite
+    /// connects over, in one place, so a consumer that names no `MCP` type
+    /// of its own (the nested integration package) still gets the pair.
+    ///
+    /// - Returns: The client end of the pair.
+    /// - Throws: What ``start(transport:)`` throws.
+    public func startOnInMemoryPair() async throws -> any Transport {
+        let (clientTransport, serverTransport) = await InMemoryTransport.createConnectedPair()
+        try await start(transport: serverTransport)
+        return clientTransport
+    }
+
     /// Records the capabilities the client declared at `initialize` — the
     /// initialize hook ``start(transport:)`` installs.
     ///
@@ -374,8 +388,9 @@ public actor ScriptedServer {
     }
 
     /// The result text of ``addProgressReportingTool(named:totalSteps:stepDelay:)``,
-    /// which has no per-call identity to report.
-    private static let progressToolCompletionText = "done"
+    /// which has no per-call identity to report — what a test of the
+    /// rendered result of that tool expects.
+    public static let progressToolCompletionText = "done"
 
     /// The registration ``addProgressReportingTool(named:totalSteps:stepDelay:)``
     /// and ``addCallIdentifyingProgressTool(named:totalSteps:stepDelay:)``

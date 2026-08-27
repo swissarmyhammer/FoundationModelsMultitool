@@ -29,9 +29,9 @@
 // records, the three follow-up tools, the progress and outcome streams — is
 // gone. eventplan.md § "Consolidation of the siblings": "We delete
 // the two local designs." The call path stands on the run plane of Router
-// instead — see `MCPServer+Call.swift`. The source's `MCPTool` is gone too:
-// a discovered tool is an `MCPCatalogEntry` here, and `mcpTools()` and
-// `tool(named:)` vend that entry.
+// instead — see `MCPServer+Call.swift`. A discovered tool is an
+// `MCPCatalogEntry` here, and `mcpTools()` and `tool(named:)` vend that
+// entry; `MCPTool.swift` is the plain `Tool` a host builds over one entry.
 //
 // **This actor constructs its own `MCP.Client`.** In swift-sdk 0.12.1 the
 // client capabilities are fixed at `Client.init(name:version:capabilities:)`
@@ -95,8 +95,8 @@ public actor MCPServer {
     public let name: String
 
     /// The render budget every rendered result of this server obeys — see
-    /// `RenderBudget`. Stored at construction for the verb that renders a
-    /// `CallTool.Result` for the model, which a later task adds.
+    /// `RenderBudget`. Stored at construction for `MCPTool`, the verb that
+    /// renders a `CallTool.Result` for the model.
     public let renderBudget: RenderBudget
 
     /// The bound of a call made with no ambient `ToolContext` — a bare host

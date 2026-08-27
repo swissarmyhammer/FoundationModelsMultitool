@@ -10,9 +10,8 @@
 // schema becomes the `[String: MCP.Value]` of `tools/call`.
 //
 // **The types are internal.** The Shell capability keeps its types internal,
-// and this folder does the same: `MCPTool`, which comes in a later task, is
-// the one production caller, and the tests reach the codec with
-// `@testable import`.
+// and this folder does the same: `MCPTool` is the one production caller, and
+// the tests reach the codec with `@testable import`.
 //
 // **Integers are the one place the two representations disagree.**
 // `GeneratedContent.Kind.number` holds a `Double` and nothing else, and

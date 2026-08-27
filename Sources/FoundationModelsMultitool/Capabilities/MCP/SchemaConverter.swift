@@ -26,9 +26,9 @@
 // of its own, thus the caller decides where a record goes.
 //
 // **The types are internal.** The Shell capability keeps its types internal,
-// and this folder does the same: `MCPTool`, which comes in a later task, is
-// the one production caller, and the tests reach the converter with
-// `@testable import`. The three value types below hold the synthesized
+// and this folder does the same: `MCPCatalogEntry` is the one production
+// caller, and the tests reach the converter with `@testable import`. The
+// three value types below hold the synthesized
 // memberwise initializer, which is internal too.
 
 import Foundation

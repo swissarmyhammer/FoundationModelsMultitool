@@ -42,8 +42,8 @@ import ULID
 ///   `connectingIsPureAndReceiverIsUnchanged`,
 ///   `lateConnectingDoesNotRedirectAnInFlightCall`,
 ///   `forkedSharesConnectionWithoutReconnectingOrRelisting` — the
-///   `connecting(_:)` and `forked()` cases of `MCPTool`, a type this package
-///   does not have.
+///   `connecting(_:)` and `forked()` cases of the sibling's `MCPTool`, which
+///   the `MCPTool` of this package does not carry.
 ///
 /// Each test binds a `ToolContext` with a recording sink around the call, the
 /// way `ShellExecuteTests` does, and the `.lost` settlement case runs the call
@@ -115,7 +115,9 @@ struct MCPServerCallTests {
     // MARK: - Helpers
 
     /// A scripted server that serves `tools`, connected to a fresh
-    /// `MCPServer` over the in-memory transport.
+    /// `MCPServer` named ``serverName`` over the in-memory transport — the
+    /// shared ``MCPTestSupport/connectedMCPServer(serving:name:callTimeout:renderBudget:)``
+    /// under this suite's own name.
     ///
     /// - Parameters:
     ///   - tools: The tools to register before the connect.
@@ -126,13 +128,8 @@ struct MCPServerCallTests {
     private static func connected(
         serving tools: [ScriptedTool], callTimeout: Duration = MCPServer.defaultCallTimeout
     ) async throws -> (scripted: ScriptedServer, server: MCPServer) {
-        let scripted = ScriptedServer()
-        for tool in tools {
-            await scripted.addTool(tool)
-        }
-        let server = try await MCPTestSupport.connectedMCPServer(
-            to: scripted, over: .inMemory, name: serverName, callTimeout: callTimeout)
-        return (scripted, server)
+        try await MCPTestSupport.connectedMCPServer(
+            serving: tools, name: serverName, callTimeout: callTimeout)
     }
 
     /// A scripted tool that answers `result` after `delay`.
