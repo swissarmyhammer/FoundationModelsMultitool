@@ -1,10 +1,38 @@
 ---
 assignees:
 - claude-code
+comments:
+- actor: claude-code
+  id: 01m12g3184wcc1jk92a65yjbh3
+  text: |-
+    ### Discoveries during the implementation
+
+    - The build logic moved out of `Builder` into a new `Sendable` value, `MultiTool.RegistrySource` (`Sources/FoundationModelsMultitool/Surface/RegistrySource.swift`). It records three kinds of registration: `.standalone(tool)`, `.grouped(group:tool:)` and `.capability(capability)`. The capability is kept as the capability, and not as its tools, so a rebuild can ask an `MCPCapability` for its current tools. `buildRegistry()` expands the capabilities into the same tool queue and the same claims the old code held, and then runs the validation that was in the builder, unchanged.
+    - `Builder` now holds one `private var source` and gives `public var registrySource`. Every registration method appends to the source. `build()`, `buildRegistry()` and the new `rebuildRegistry()` delegate to it.
+    - `MCPCapability` keeps its `server` (internal) and gives `refreshed()`, which is `init(server:)` again. `RegistrySource.rebuildRegistry()` maps each `MCPCapability` through it and then builds.
+    - A verb that is not a legal identifier is refused by `ToolAPIRenderer.render`, which throws `ToolAPIRendererError`, and `buildRegistry()` documents that it propagates that error unchanged. So the "illegal verb" rebuild throws `ToolAPIRendererError`, not `MultiToolBuilderError`. The `MultiToolBuilderError` collision on a rebuild is the `.duplicateName` case: `ScriptedServer.addTool` appends without a name check, so a second tool with the echo name makes `tools/list` publish one verb two times. `RegistryRebuildTests` pins both shapes, and in both the caller keeps the old `Registry`.
+    - The `ScriptedServer` catalog re-list after `emitToolListChanged` lands on a `ManualClock` server with no real wait, as in `LiveCatalogTests`. The tests poll `server.tool(named:)` with `TestPoll.waitUntil` to know when the re-list landed before they rebuild.
+    - Identity across a rebuild is checked on `GetLines.state` (`ShellState`, an actor) and `Read.context` (`FileContext`, a final class), both with `===`. The MCP verb after a rebuild is a new `MCPTool` over the same `MCPServer`.
+    - The rules dump for `.swift` is 670,000 characters. I did not read it whole. I applied the five rules the finish prompt names: no assign-only property, every numeric literal is a named constant, no copied helper, every call-site parameter carries its label, one shared helper in `MCPTestSupport`.
+  timestamp: 2026-08-27T20:55:22.628415+00:00
+- actor: claude-code
+  id: 01m12g33vqpghwse848q12rxp3
+  text: |-
+    ### implement — changed
+    - evidence: 4 files. New: `Sources/FoundationModelsMultitool/Surface/RegistrySource.swift`, `Tests/FoundationModelsMultitoolTests/RegistryRebuildTests.swift`. Changed: `Sources/FoundationModelsMultitool/Surface/MultiToolBuilder.swift` (`registrySource`, `rebuildRegistry()`, build logic delegated), `Sources/FoundationModelsMultitool/Capabilities/MCP/MCPCapability.swift` (`server`, `refreshed()`). `swift build --build-tests`: build complete, no warning in the changed files. `swift test --filter "RegistryRebuildTests|CapabilityRegistrationTests|MCPCapabilityTests|BuilderSurface"`: 31 tests in 4 suites pass. All 8 checkboxes on the card are ticked.
+    - next: `test` step, full `swift test`.
+  timestamp: 2026-08-27T20:55:25.303723+00:00
+- actor: claude-code
+  id: 01m12g54agagvjne9422qnh7nv
+  text: |-
+    ### test — green
+    - evidence: `swift test` — 1271 tests in 95 suites passed, 0 failed, 0 skipped, no compiler warning in the changed files. `swift build --package-path IntegrationTests --build-tests`: build complete.
+    - next: /commit
+  timestamp: 2026-08-27T20:56:31.312291+00:00
 depends_on:
 - 01M112EG33CSGN466M9BHVD8C0
-position_column: todo
-position_ordinal: 8c80
+position_column: doing
+position_ordinal: '80'
 title: 'Make the Builder re-runnable: rebuild a Registry from the same configuration'
 ---
 ## What
@@ -16,16 +44,16 @@ The first half of rebuild-and-swap. eventplan.md § "Consolidation of the siblin
 - Keep `build()` and `buildRegistry()` as they are. The one-time path does not change.
 
 ## Acceptance Criteria
-- [ ] `rebuildRegistry()` after a `ScriptedServer` adds a tool gives a `Registry` with the new verb, and the first `Registry` value is unchanged.
-- [ ] `rebuildRegistry()` after a server removes a tool gives a `Registry` without it.
-- [ ] A rebuild that would now collide (a server tool renamed to an illegal verb) throws `MultiToolBuilderError`, and the caller keeps the old `Registry`.
-- [ ] Shell and files verbs are the same instances across a rebuild (identity of the `ShellState` store holds).
-- [ ] `swift build` succeeds.
+- [x] `rebuildRegistry()` after a `ScriptedServer` adds a tool gives a `Registry` with the new verb, and the first `Registry` value is unchanged.
+- [x] `rebuildRegistry()` after a server removes a tool gives a `Registry` without it.
+- [x] A rebuild that would now collide (a server tool renamed to an illegal verb) throws `MultiToolBuilderError`, and the caller keeps the old `Registry`.
+- [x] Shell and files verbs are the same instances across a rebuild (identity of the `ShellState` store holds).
+- [x] `swift build` succeeds.
 
 ## Tests
-- [ ] Add `Tests/FoundationModelsMultitoolTests/RegistryRebuildTests.swift` with the criteria above, over `DynamicToolsetScenario` from the test server.
-- [ ] `swift test --filter RegistryRebuildTests` passes.
-- [ ] `swift test --filter CapabilityRegistrationTests` still passes.
+- [x] Add `Tests/FoundationModelsMultitoolTests/RegistryRebuildTests.swift` with the criteria above, over `DynamicToolsetScenario` from the test server.
+- [x] `swift test --filter RegistryRebuildTests` passes.
+- [x] `swift test --filter CapabilityRegistrationTests` still passes.
 
 ## Workflow
 - Use `/tdd` — write the rebuild tests first, then implement. #eventplan #phase-4

@@ -32,12 +32,35 @@ comments:
     - evidence: `swift test` — 1266 tests in 94 suites passed, 0 failed, 0 skipped, no compiler warning in the changed files. `swift build --package-path IntegrationTests --build-tests`: build complete.
     - next: /commit
   timestamp: 2026-08-27T20:39:38.377515+00:00
+- actor: claude-code
+  id: 01m12f6h9pqb6rdp650b7epdrv
+  text: |-
+    ### commit — changed
+    - evidence: c663130 feat(mcp): route server-initiated elicitation through ToolContext.elicit, with a bare-session handler
+    - next: /review
+  timestamp: 2026-08-27T20:39:48.790744+00:00
+- actor: claude-code
+  id: 01m12fktdp2gas3kafa7bqrx3n
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (c663130) — 0 findings, 7 files reviewed, 7 validators attempted, 0 failed; no prior findings on the card. `.kanban/` excluded by ignore rule.
+    - next: none. The task is done.
+  timestamp: 2026-08-27T20:47:04.118651+00:00
+- actor: claude-code
+  id: 01m12fkx1qk7nznvc27rsybq0q
+  text: |-
+    ### finish iteration 1 — done
+    - implement: changed (7 files — `MCPServer+Elicitation.swift`, `MCPServer.swift`, `MCPServer+Connection.swift`, `MCPServer+Call.swift`, `MCPTestSupport.swift`, `MCPElicitationTests.swift`, `IntegrationTests/.../MCPElicitationBareSessionTests.swift`)
+    - test: green (swift test — 1266 tests in 94 suites, 0 failed, 0 skipped; IntegrationTests package builds)
+    - commit: c663130
+    - review: clean (0 findings; no prior findings)
+  timestamp: 2026-08-27T20:47:06.807120+00:00
 depends_on:
 - 01M112CTS4HSY5R312NW7VK7SV
 - 01M1142FWBGVZ104BJE5SPHAPZ
 - 01M112EG33CSGN466M9BHVD8C0
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ff9a80
 title: Route server-initiated elicitation through ToolContext.elicit, with a bare-session handler
 ---
 ## What

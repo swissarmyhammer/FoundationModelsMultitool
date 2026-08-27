@@ -85,7 +85,7 @@ import MCP
 /// A value: the noun and the tools are read one time, at construction, from
 /// the catalog the server holds then. A later `tools/list_changed` re-list
 /// moves the server's catalog and not this value; the rebuild-and-swap of
-/// the registry is the reader of that change.
+/// the registry is the reader of that change, through ``refreshed()``.
 public struct MCPCapability: Capability {
     /// The name of the server — its `ServerIdentity.name` — which is the
     /// first segment of every `tools.<noun>.<verb>` path of this server.
@@ -94,6 +94,19 @@ public struct MCPCapability: Capability {
     /// One `MCPTool` for each entry of the server's catalog, in `tools/list`
     /// page order. Each tool gives its own verb through `Tool.name`.
     public let tools: [any FoundationModels.Tool]
+
+    /// The server the catalog was read from, kept so ``refreshed()`` can read
+    /// its current catalog again.
+    let server: MCPServer
+
+    /// A new capability of the same server, read from the catalog the server
+    /// holds now — the read a registry rebuild makes.
+    ///
+    /// - Returns: the capability of the current catalog.
+    /// - Throws: what ``init(server:)`` throws.
+    func refreshed() async throws -> MCPCapability {
+        try await MCPCapability(server: server)
+    }
 
     /// Creates the capability of `server` once the server is ready.
     ///
@@ -109,5 +122,6 @@ public struct MCPCapability: Capability {
         let catalog = try await server.catalog
         self.noun = catalog.identity.name
         self.tools = catalog.tools.map { MCPTool(entry: $0, server: server) }
+        self.server = server
     }
 }
