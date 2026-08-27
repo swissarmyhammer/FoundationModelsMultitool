@@ -31,10 +31,33 @@ comments:
     - evidence: `swift test` — 1203 tests in 87 suites passed, 0 failed, 0 skipped; `swift build --build-tests` reports no compiler warning.
     - next: commit.
   timestamp: 2026-08-27T14:45:41.305275+00:00
+- actor: claude-code
+  id: 01m11tygegk66cdamnk3q0m75z
+  text: |-
+    ### commit — changed
+    - evidence: aadfb3c feat(mcp): port MCPServer discovery and the live catalog stream
+    - next: review HEAD~1..HEAD.
+  timestamp: 2026-08-27T14:45:54.256818+00:00
+- actor: claude-code
+  id: 01m11v6bf6xmtff7zea7mjqjdh
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (aadfb3c) — 0 findings, 7 validator runs attempted, 0 failed; 9 files reviewed, 2 `.kanban/` files excluded by `.reviewignore`. No prior finding on the card.
+    - next: the task moves to done.
+  timestamp: 2026-08-27T14:50:11.302842+00:00
+- actor: claude-code
+  id: 01m11v6eeqfzs7hbngnm63hbym
+  text: |-
+    ### finish iteration 1 — review clean, task done
+    - implement: changed — 9 files; `MCPServer+Discovery.swift` and `MCPServer+LiveCatalog.swift` new; the catalog state, `deinit` and the discovery round trip of a connect added to `MCPServer.swift` and `MCPServer+Connection.swift`; `MCPServerDiscoveryTests` and `LiveCatalogTests` ported, with a `reconnect()` case and a `DynamicToolsetScenario` case added; `connectedMCPServer` gains a `clock:` parameter.
+    - test: green — `swift test` 1203 tests in 87 suites passed, 0 failed, 0 skipped, no compiler warning.
+    - commit: aadfb3c
+    - review: clean — 0 findings on HEAD~1..HEAD.
+  timestamp: 2026-08-27T14:50:14.359775+00:00
 depends_on:
 - 01M112C9B7VKH4MEEVD832PG8R
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ff9180
 title: Port MCPServer discovery and the live catalog stream
 ---
 ## What
