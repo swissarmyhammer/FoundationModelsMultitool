@@ -149,7 +149,9 @@ extension MCPServer {
         return try await withTaskCancellationHandler {
             try await dispatch(name: name, arguments: arguments, requestID: requestID, context: context)
         } onCancel: {
-            Task {
+            // Tracked, so that `disconnect()` waits for the notice to reach
+            // the wire before it closes the transport.
+            cancellationNotices.track {
                 await self.endInFlightCall(requestID: requestID, reason: Self.taskCancelledReason) { _ in
                     .failure(CancellationError())
                 }

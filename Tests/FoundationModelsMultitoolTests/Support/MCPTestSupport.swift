@@ -154,6 +154,31 @@ enum MCPTestSupport {
         return server
     }
 
+    /// Starts `scripted` on the server end of an in-memory pair, and returns
+    /// an `MCPServer` named `name` connected against the client end through a
+    /// ``WireRecordingTransport`` — beside that transport, so a suite of the
+    /// session-end sweep reads the order of the wire.
+    ///
+    /// - Important: The caller keeps the `scripted` server alive for the
+    ///   whole test, as ``connectedServer(to:over:clientName:capabilities:)``
+    ///   requires.
+    ///
+    /// - Parameters:
+    ///   - scripted: The scripted server to serve on the far end.
+    ///   - name: The name of the `MCPServer`, and so its identity.
+    /// - Returns: The connected server, and the recording transport it
+    ///   connected over.
+    /// - Throws: What `ScriptedServer.startOnInMemoryPair()` or
+    ///   `MCPServer.connect(via:)` throws.
+    static func connectedRecordingMCPServer(
+        to scripted: ScriptedServer, name: String
+    ) async throws -> (server: MCPServer, wire: WireRecordingTransport) {
+        let wire = WireRecordingTransport(wrapping: try await scripted.startOnInMemoryPair())
+        let server = MCPServer(name: name)
+        try await server.connect(via: wire)
+        return (server, wire)
+    }
+
     /// Builds a fresh `ScriptedServer` that serves `tools`, and returns it
     /// beside an `MCPServer` named `name` connected against it over the
     /// in-memory transport — the shape every suite of the call path and of

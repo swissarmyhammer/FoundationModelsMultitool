@@ -220,14 +220,18 @@ extension MCPServer {
     /// Disconnects the client and moves ``state`` to `.disconnected`, without
     /// altering ``identity``.
     ///
-    /// Bumps the generation, so a connect attempt still in flight when this
-    /// runs is discarded instead of moving the state back to `.ready`, and
-    /// cancels a `tools/list_changed` watcher still waiting out its coalesce
-    /// window, so it re-lists nothing against the disconnected client. Every
-    /// call still in flight ends as `MCPServerError.lost`: the answer it
-    /// waited for can no longer arrive. A later `connect(via:)` is what
-    /// drives the next transition.
+    /// Waits first for every `notifications/cancelled` a cancelled calling
+    /// `Task` started, so the advisory cancel is on the wire before the
+    /// transport closes — eventplan.md § "Background tools and the completion
+    /// token". Then bumps the generation, so a connect attempt still in
+    /// flight when this runs is discarded instead of moving the state back to
+    /// `.ready`, and cancels a `tools/list_changed` watcher still waiting out
+    /// its coalesce window, so it re-lists nothing against the disconnected
+    /// client. Every call still in flight ends as `MCPServerError.lost`: the
+    /// answer it waited for can no longer arrive. A later `connect(via:)` is
+    /// what drives the next transition.
     public func disconnect() async {
+        await cancellationNotices.drain()
         connectGeneration += 1
         coalescingTask?.cancel()
         failInFlightCalls(underlying: Self.hostDisconnectedDescription)

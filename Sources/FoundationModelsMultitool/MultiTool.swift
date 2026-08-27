@@ -579,14 +579,20 @@ public struct MultiTool: Tool {
         // below reads it back once the snippet has finished (see
         // ``LostRunRecord``).
         let lostRuns = LostRunRecord()
+        // One record per invocation, once more: it holds the inner `tools.*`
+        // calls of *this* run that are in flight, so the cancellation of this
+        // run reaches each of them at once (see ``InFlightInnerCalls``).
+        let inFlight = InFlightInnerCalls()
         let code = "\(bundle.preamble)\n\(arguments.code)"
         let outcome = await Self.runCapturingOutcome(
             code: code,
             installing: bundle.hostFunctions + Self.makeNoticeHostFunctions(outbox: notices),
             installingAsync: makeAsyncHostFunctions(
-                over: bundle, binding: binding, recordingInto: ledger, noting: lostRuns)
+                over: bundle, binding: binding, recordingInto: ledger, noting: lostRuns,
+                holding: inFlight)
                 + Self.makeBackgroundRunHostFunctions(binding: binding),
-            using: interpreter
+            using: interpreter,
+            cancelling: inFlight
         )
         // "They enqueue and continue; the bridge flushes them" — the flush,
         // before this call hands anything back, so a run's last notice never
@@ -651,24 +657,37 @@ public struct MultiTool: Tool {
     /// Runs one snippet and captures its outcome instead of throwing it, so
     /// `call(arguments:)` can flush the invocation's notice chain on both the
     /// success and the failure path before deciding what to hand back.
+    ///
+    /// A cancelled call answers `CancellationError` whatever the snippet did
+    /// once the cancellation reached it. The cancellation reaches the inner
+    /// `tools.*` calls first (see ``InFlightInnerCalls``), and a snippet that
+    /// catches the rejection of one — or that fails on it — can finish with
+    /// a value or a repairable error before the watchdog reads the flag.
+    /// Neither is the answer of a cancelled call: `call(arguments:)` promises
+    /// that a cancellation "always propagates unchanged".
     private static func runCapturingOutcome(
         code: String,
         installing: [HostFunction],
         installingAsync: [AsyncHostFunction],
-        using interpreter: any Interpreter
+        using interpreter: any Interpreter,
+        cancelling inFlight: InFlightInnerCalls
     ) async -> Result<InterpreterResult, Error> {
+        let outcome: Result<InterpreterResult, Error>
         do {
-            return .success(
+            outcome = .success(
                 try await run(
                     code: code,
                     installing: installing,
                     installingAsync: installingAsync,
-                    using: interpreter
+                    using: interpreter,
+                    cancelling: inFlight
                 )
             )
         } catch {
-            return .failure(error)
+            outcome = .failure(error)
         }
+        guard !Task.isCancelled else { return .failure(CancellationError()) }
+        return outcome
     }
 
     /// Runs `interpreter.run(code:installing:)` — a synchronous, blocking
@@ -691,8 +710,18 @@ public struct MultiTool: Tool {
     /// It also threads this `async` context's own `Task` cancellation into
     /// the interpreter's `isCancelled` hook, so cancelling the `Task` running
     /// `call(arguments:)` reaches all the way into the running snippet rather
-    /// than only being observed after it finishes.
+    /// than only being observed after it finishes — and into every inner
+    /// `tools.*` call of the run that is in flight, at once, through
+    /// `inFlight` (see ``InFlightInnerCalls`` for why the hook alone is not
+    /// enough).
     ///
+    /// - Parameters:
+    ///   - code: the JavaScript source to run.
+    ///   - installing: host functions to expose as globals for this run only.
+    ///   - installingAsync: asynchronous host functions to expose as globals
+    ///     for this run only.
+    ///   - interpreter: the sandbox to run the snippet in.
+    ///   - inFlight: the inner `tools.*` calls of this run, cancelled with it.
     /// - Throws: `CancellationError` if the calling `Task` is cancelled
     ///   before or during the run; otherwise whatever
     ///   `interpreter.run(code:installing:installingAsync:isCancelled:)`
@@ -701,7 +730,8 @@ public struct MultiTool: Tool {
         code: String,
         installing: [HostFunction],
         installingAsync: [AsyncHostFunction],
-        using interpreter: any Interpreter
+        using interpreter: any Interpreter,
+        cancelling inFlight: InFlightInnerCalls
     ) async throws -> InterpreterResult {
         // Lock-protected (not a plain `Bool`) for the same reason
         // `JSCInterpreter`'s own `WatchdogState` is: `onCancel` below can run
@@ -721,6 +751,7 @@ public struct MultiTool: Tool {
             }
         } onCancel: {
             cancelledBox.withLock { $0 = true }
+            inFlight.cancelAll()
         }
     }
 
@@ -836,12 +867,14 @@ public struct MultiTool: Tool {
     ///
     /// Every binding is wrapped so `ledger` sees what it returned, which is
     /// what lets `call(arguments:)` tell a snippet that reported a value from
-    /// one that promised it (see ``ToolReturnLedger``), and so `lostRuns`
+    /// one that promised it (see ``ToolReturnLedger``), so `lostRuns`
     /// sees the `LostRunError` it threw, which is what lets `call(arguments:)`
-    /// throw it once the snippet has finished (see ``LostRunRecord``). The
-    /// wrap is applied to the whole list at once rather than at each
-    /// construction site, so no binding added later can be left out of either
-    /// record by omission.
+    /// throw it once the snippet has finished (see ``LostRunRecord``), and so
+    /// `inFlight` holds it while it runs, which is what lets the cancellation
+    /// of this run reach it at once (see ``InFlightInnerCalls``). The wraps
+    /// are applied to the whole list at once rather than at each construction
+    /// site, so no binding added later can be left out of any record by
+    /// omission.
     ///
     /// Each live tool's binding carries that tool's own `journalOp`, so a verb
     /// registered under a noun journals the `"verb noun"` pair. `searchTools`
@@ -849,13 +882,19 @@ public struct MultiTool: Tool {
     /// registered under, so each keeps the engine's own default of stamping
     /// `op` with the tool's name.
     ///
-    /// - Parameter bundle: the bundle this run read at its start, whose
-    ///   `liveTools` the bindings dispatch into.
+    /// - Parameters:
+    ///   - bundle: the bundle this run read at its start, whose `liveTools`
+    ///     the bindings dispatch into.
+    ///   - binding: the captured session binding of this run, or `nil`.
+    ///   - ledger: the record of what each binding returned.
+    ///   - lostRuns: the record of the `LostRunError` a binding threw.
+    ///   - inFlight: the record of the bindings in flight.
     /// - Returns: one `AsyncHostFunction` per live tool, in `liveTools`'
     ///   order.
     private func makeAsyncHostFunctions(
         over bundle: RegistryBundle,
-        binding: RunBinding?, recordingInto ledger: ToolReturnLedger, noting lostRuns: LostRunRecord
+        binding: RunBinding?, recordingInto ledger: ToolReturnLedger, noting lostRuns: LostRunRecord,
+        holding inFlight: InFlightInnerCalls
     ) -> [AsyncHostFunction] {
         var functions = bundle.liveTools.map { liveTool in
             AsyncHostFunction(name: liveTool.hostFunctionName) { arguments in
@@ -879,18 +918,31 @@ public struct MultiTool: Tool {
             )
         }
         functions.append(makeNestedRunCodeHostFunction(over: bundle))
-        return functions.map { Self.recording($0, into: ledger, noting: lostRuns) }
+        return functions.map {
+            Self.recording($0, into: ledger, noting: lostRuns, holding: inFlight)
+        }
     }
 
     /// Wraps one `tools.*` binding so this run's ledger sees the value it
-    /// handed back, and this run's record sees the `LostRunError` it threw.
-    /// The wrapper keeps the same name.
+    /// handed back, this run's record sees the `LostRunError` it threw, and
+    /// this run's in-flight record holds it while it runs. The wrapper keeps
+    /// the same name.
+    ///
+    /// - Parameters:
+    ///   - function: the binding to wrap.
+    ///   - ledger: the record of what the binding returned.
+    ///   - lostRuns: the record of the `LostRunError` the binding threw.
+    ///   - inFlight: the record that holds the binding while it runs.
+    /// - Returns: the wrapped binding.
     private static func recording(
-        _ function: AsyncHostFunction, into ledger: ToolReturnLedger, noting lostRuns: LostRunRecord
+        _ function: AsyncHostFunction, into ledger: ToolReturnLedger, noting lostRuns: LostRunRecord,
+        holding inFlight: InFlightInnerCalls
     ) -> AsyncHostFunction {
         AsyncHostFunction(name: function.name) { arguments in
-            try await lostRuns.noting {
-                try await ledger.recording { try await function.call(arguments) }
+            try await inFlight.running {
+                try await lostRuns.noting {
+                    try await ledger.recording { try await function.call(arguments) }
+                }
             }
         }
     }

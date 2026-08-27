@@ -263,6 +263,12 @@ public actor MCPServer {
     /// removed when the call settles and its caller was resumed.
     var inFlightCalls: [ID: InFlightCall] = [:]
 
+    /// The tasks that carry a `notifications/cancelled` to the wire for a
+    /// call whose calling `Task` was cancelled — see `CancellationNotices.swift`.
+    /// `disconnect()` drains it before it tears the client down, thus every
+    /// advisory cancel is on the wire before the transport closes.
+    let cancellationNotices = CancellationNotices()
+
     /// Whether the receive stream of the connected transport ended without a
     /// `disconnect()` — set by `handleTransportDrop(generation:)`, and reset
     /// by the next connect that succeeds. While set, a call that would send a

@@ -113,8 +113,21 @@ extension MultiTool {
         /// session keeps after `build()`.
         private var source = MultiTool.RegistrySource()
 
+        /// The servers ``withMCP(servers:)`` recorded, for the shutdown that
+        /// follows the session sweep — see ``serverPool``.
+        private let pool = MCPServerPool()
+
         /// Creates an empty builder.
         public init() {}
+
+        /// The pool that holds every server ``withMCP(servers:)`` recorded.
+        ///
+        /// A host keeps this pool beside ``registrySource``, adds the
+        /// `StdioServerProcess` of each server it spawned, and calls
+        /// `MCPServerPool.shutdownAll()` after the session sweep at session
+        /// end. A builder that never called ``withMCP(servers:)`` holds an
+        /// empty pool, whose `shutdownAll()` does nothing.
+        public var serverPool: MCPServerPool { pool }
 
         /// The recorded registrations of this builder, as the `Sendable`
         /// value a session keeps after `build()`.
@@ -296,6 +309,9 @@ extension MultiTool {
         /// named `files` beside `withFiles(root:)` — is the `.duplicateNoun`
         /// failure of `buildRegistry()`, as for any other capability.
         ///
+        /// Each server is also recorded into ``serverPool``, so the host's
+        /// `MCPServerPool.shutdownAll()` after the session sweep reaches it.
+        ///
         /// - Parameter servers: the servers the host connected, in the order
         ///   their groups render.
         /// - Throws: `MCPServerError.notReady(_:)` when a server is `.faulted`
@@ -305,6 +321,7 @@ extension MultiTool {
         public func withMCP(servers: [MCPServer]) async throws -> Self {
             for server in servers {
                 withCapability(try await MCPCapability(server: server))
+                await pool.add(server: server)
             }
             return self
         }

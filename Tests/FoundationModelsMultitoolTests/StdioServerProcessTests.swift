@@ -164,25 +164,22 @@ struct StdioServerProcessTests {
             command: sleepCommand, args: sleepArguments, name: name, registry: sharedRegistry)
     }
 
-    /// Whether `pid` names no live process and no zombie: `kill(pid, 0)`
-    /// answers `ESRCH`.
-    ///
-    /// `ESRCH` — and not just "signaled" — proves a reap and not merely a kill:
-    /// a killed but unreaped (zombie) pid still answers `kill(pid, 0) == 0`,
-    /// because its pid slot stays allocated until something calls `waitpid`.
+    /// Whether `pid` names no live process and no zombie — see
+    /// ``ProcessLiveness/isGone(_:)``.
     ///
     /// - Parameter pid: The pid to probe.
     /// - Returns: `true` when the pid is gone.
     private static func isGone(_ pid: pid_t) -> Bool {
-        kill(pid, 0) == -1 && errno == ESRCH
+        ProcessLiveness.isGone(pid)
     }
 
-    /// Whether `pid` names a live process (or a zombie).
+    /// Whether `pid` names a live process (or a zombie) — see
+    /// ``ProcessLiveness/isAlive(_:)``.
     ///
     /// - Parameter pid: The pid to probe.
     /// - Returns: `true` when `kill(pid, 0)` succeeds.
     private static func isAlive(_ pid: pid_t) -> Bool {
-        kill(pid, 0) == 0
+        ProcessLiveness.isAlive(pid)
     }
 
     // MARK: - Absolute-path requirement
