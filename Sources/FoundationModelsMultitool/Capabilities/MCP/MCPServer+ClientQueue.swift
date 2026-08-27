@@ -157,6 +157,13 @@ extension MCPServer {
     /// its `DisposableTransport` conformance when it has one, and never
     /// connected.
     ///
+    /// The client connects over a `DropObservingTransport` around
+    /// `transport`, which reports the end of the receive stream of
+    /// `transport` to `handleTransportDrop(generation:)` — see
+    /// `DropObservingTransport.swift`. The wrap comes after the
+    /// `DisposableTransport` check above, which reads the conformance of the
+    /// factory-built instance itself.
+    ///
     /// - Parameters:
     ///   - transport: The transport to connect over.
     ///   - generation: The ``connectGeneration`` this attempt was launched
@@ -168,6 +175,12 @@ extension MCPServer {
     func connectClientExclusively(
         transport: any Transport, generation: Int
     ) async throws -> Initialize.Result? {
+        // Built here, and not inside the queued operation: the wrapper
+        // outlives this call — the client holds it for the whole connection —
+        // so its report holds this actor weakly, and no cycle stands.
+        let observed = DropObservingTransport(wrapping: transport) { [weak self] in
+            await self?.handleTransportDrop(generation: generation)
+        }
         let task = enqueueClientOperation(kind: .connect) { () async throws -> Initialize.Result? in
             guard
                 await self.isCurrentGeneration(
@@ -178,7 +191,7 @@ extension MCPServer {
                 await (transport as? DisposableTransport)?.dispose()
                 return nil
             }
-            return try await self.client.connect(transport: transport)
+            return try await self.client.connect(transport: observed)
         }
         return try await task.value
     }

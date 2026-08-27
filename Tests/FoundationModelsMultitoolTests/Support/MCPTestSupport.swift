@@ -125,6 +125,9 @@ enum MCPTestSupport {
     ///   - clock: The clock the server sleeps on — between retries, and for
     ///     the `tools/list_changed` coalesce window. Defaults to a real
     ///     clock; a suite of the live catalog passes a `ManualClock`.
+    ///   - callTimeout: The bound of a call made with no ambient
+    ///     `ToolContext`. Defaults to `MCPServer.defaultCallTimeout`; a
+    ///     suite of the bare call passes a short one.
     /// - Returns: The connected server.
     /// - Throws: What `ScriptedServer.start(transport:)` or
     ///   `MCPServer.connect(via:)` throws.
@@ -132,9 +135,10 @@ enum MCPTestSupport {
         to scripted: ScriptedServer,
         over kind: MCPTransportKind,
         name: String,
-        clock: any Clock<Duration> = ContinuousClock()
+        clock: any Clock<Duration> = ContinuousClock(),
+        callTimeout: Duration = MCPServer.defaultCallTimeout
     ) async throws -> MCPServer {
-        let server = MCPServer(name: name, clock: clock)
+        let server = MCPServer(name: name, clock: clock, callTimeout: callTimeout)
         let transport = try await clientTransport(serving: scripted, over: kind)
         try await server.connect(via: transport)
         return server

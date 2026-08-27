@@ -461,7 +461,11 @@ public struct MultiTool: Tool {
     /// model to fix and retry. A cancelled enclosing `Task`, however, is
     /// never rendered as text: cancelling the task running this call
     /// terminates the in-flight snippet, so `CancellationError` always
-    /// propagates unchanged.
+    /// propagates unchanged. Nor is a lost inner call: a `tools.*` call whose
+    /// transport dropped under it throws a `LostRunError`, and once the
+    /// snippet has finished this call throws that error, whatever the snippet
+    /// went on to do, so the engine settles this run as `.lost` — see
+    /// ``LostRunRecord``.
     ///
     /// A call that would push this tool past `configuration
     /// .liveContextLimit` never reaches the sandbox at all: it renders the
@@ -473,11 +477,12 @@ public struct MultiTool: Tool {
     ///   value (plus any captured console output) on success, or a
     ///   repairable error description on failure.
     /// - Throws: `CancellationError` if the calling `Task` is cancelled
-    ///   before or during the run; otherwise only a failure this tool cannot
-    ///   itself render as text — e.g. `interpreter.run` failing for a reason
-    ///   other than `InterpreterError`/`CancellationError` (not reachable
-    ///   through `JSCInterpreter`, kept as a defensive passthrough for any
-    ///   other `Interpreter` conformer).
+    ///   before or during the run; the `LostRunError` an inner `tools.*` call
+    ///   threw, once the snippet has finished; otherwise only a failure this
+    ///   tool cannot itself render as text — e.g. `interpreter.run` failing
+    ///   for a reason other than `InterpreterError`/`CancellationError` (not
+    ///   reachable through `JSCInterpreter`, kept as a defensive passthrough
+    ///   for any other `Interpreter` conformer).
     public func call(arguments: RunCodeArguments) async throws -> String {
         try await Self.trace.span(
             "MultiTool.call",
@@ -517,11 +522,17 @@ public struct MultiTool: Tool {
         // `call(arguments:)` reads it back once the snippet has finished (see
         // ``ToolReturnLedger``).
         let ledger = ToolReturnLedger()
+        // One record per invocation, for the same reason again: it notes the
+        // `LostRunError` an inner call of *this* run threw, and the check
+        // below reads it back once the snippet has finished (see
+        // ``LostRunRecord``).
+        let lostRuns = LostRunRecord()
         let code = "\(preamble)\n\(arguments.code)"
         let outcome = await Self.runCapturingOutcome(
             code: code,
             installing: hostFunctions + Self.makeNoticeHostFunctions(outbox: notices),
-            installingAsync: makeAsyncHostFunctions(binding: binding, recordingInto: ledger)
+            installingAsync: makeAsyncHostFunctions(
+                binding: binding, recordingInto: ledger, noting: lostRuns)
                 + Self.makeBackgroundRunHostFunctions(binding: binding),
             using: interpreter
         )
@@ -531,6 +542,12 @@ public struct MultiTool: Tool {
         // path too: a notice a snippet already made happened, whatever the
         // snippet went on to do.
         await notices?.flush()
+        // A lost inner call makes the outcome of this whole run unknowable,
+        // whatever the snippet returned or threw, so it is thrown ahead of
+        // the rendering — the engine settles this run as `.lost`.
+        if let lost = lostRuns.lostError {
+            throw lost
+        }
         switch outcome {
         case .success(let result):
             return ResultRenderer.render(
@@ -763,9 +780,12 @@ public struct MultiTool: Tool {
     ///
     /// Every binding is wrapped so `ledger` sees what it returned, which is
     /// what lets `call(arguments:)` tell a snippet that reported a value from
-    /// one that promised it (see ``ToolReturnLedger``). The wrap is applied to
-    /// the whole list at once rather than at each construction site, so no
-    /// binding added later can be left out of the record by omission.
+    /// one that promised it (see ``ToolReturnLedger``), and so `lostRuns`
+    /// sees the `LostRunError` it threw, which is what lets `call(arguments:)`
+    /// throw it once the snippet has finished (see ``LostRunRecord``). The
+    /// wrap is applied to the whole list at once rather than at each
+    /// construction site, so no binding added later can be left out of either
+    /// record by omission.
     ///
     /// Each live tool's binding carries that tool's own `journalOp`, so a verb
     /// registered under a noun journals the `"verb noun"` pair. `searchTools`
@@ -776,7 +796,7 @@ public struct MultiTool: Tool {
     /// - Returns: one `AsyncHostFunction` per live tool, in `liveTools`'
     ///   order.
     private func makeAsyncHostFunctions(
-        binding: RunBinding?, recordingInto ledger: ToolReturnLedger
+        binding: RunBinding?, recordingInto ledger: ToolReturnLedger, noting lostRuns: LostRunRecord
     ) -> [AsyncHostFunction] {
         var functions = liveTools.map { liveTool in
             AsyncHostFunction(name: liveTool.hostFunctionName) { arguments in
@@ -800,16 +820,19 @@ public struct MultiTool: Tool {
             )
         }
         functions.append(makeNestedRunCodeHostFunction())
-        return functions.map { Self.recording($0, into: ledger) }
+        return functions.map { Self.recording($0, into: ledger, noting: lostRuns) }
     }
 
     /// Wraps one `tools.*` binding so this run's ledger sees the value it
-    /// handed back. The wrapper keeps the same name.
+    /// handed back, and this run's record sees the `LostRunError` it threw.
+    /// The wrapper keeps the same name.
     private static func recording(
-        _ function: AsyncHostFunction, into ledger: ToolReturnLedger
+        _ function: AsyncHostFunction, into ledger: ToolReturnLedger, noting lostRuns: LostRunRecord
     ) -> AsyncHostFunction {
         AsyncHostFunction(name: function.name) { arguments in
-            try await ledger.recording { try await function.call(arguments) }
+            try await lostRuns.noting {
+                try await ledger.recording { try await function.call(arguments) }
+            }
         }
     }
 

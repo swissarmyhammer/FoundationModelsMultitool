@@ -18,14 +18,19 @@
 //   emission point of `catalogUpdates`.
 // - `MCPServer+LiveCatalog.swift` — the coalesced re-list a burst of
 //   `tools/list_changed` notifications starts.
+// - `MCPServer+Call.swift` — `call(name:arguments:)`, the one call method,
+//   on the run plane of Router: the in-flight table, progress to the ambient
+//   `ToolContext`, cancellation to the wire, and the transport drop as
+//   `MCPServerError.lost`. `DropObservingTransport.swift` is the transport
+//   the client connects over, which reports that drop.
 //
 // **What is not ported, for good.** The call path of the source — the soft
 // deadline, the call handle and the running-call snapshot, the retained call
 // records, the three follow-up tools, the progress and outcome streams — is
 // gone. eventplan.md § "Consolidation of the siblings": "We delete
-// the two local designs." A later task rewrites the call path onto the run
-// plane of Router. With the call path gone, the source's `MCPTool` is gone
-// too: a discovered tool is an `MCPCatalogEntry` here, and `mcpTools()` and
+// the two local designs." The call path stands on the run plane of Router
+// instead — see `MCPServer+Call.swift`. The source's `MCPTool` is gone too:
+// a discovered tool is an `MCPCatalogEntry` here, and `mcpTools()` and
 // `tool(named:)` vend that entry.
 //
 // **This actor constructs its own `MCP.Client`.** In swift-sdk 0.12.1 the
@@ -62,12 +67,18 @@ import os
 /// `buildRegistry()`; the capability that registers the tools of a connected
 /// server comes in a later task.
 public actor MCPServer {
-    /// The version ``init(name:version:clock:renderBudget:logger:)`` reports at
-    /// `initialize` when the host names none.
+    /// The version ``init(name:version:clock:callTimeout:renderBudget:logger:)``
+    /// reports at `initialize` when the host names none.
     public static let defaultClientVersion = "1.0"
 
-    /// The logger ``init(name:version:clock:renderBudget:logger:)`` takes when
-    /// the host supplies none.
+    /// How many seconds ``defaultCallTimeout`` lasts.
+    private static let defaultCallTimeoutSeconds = 120
+
+    /// The default ``callTimeout`` — see that property.
+    public static let defaultCallTimeout = Duration.seconds(defaultCallTimeoutSeconds)
+
+    /// The logger ``init(name:version:clock:callTimeout:renderBudget:logger:)``
+    /// takes when the host supplies none.
     public static let defaultLogger = Logger(
         subsystem: "FoundationModelsMultitool", category: "MCPServer")
 
@@ -84,9 +95,20 @@ public actor MCPServer {
     public let name: String
 
     /// The render budget every rendered result of this server obeys — see
-    /// `RenderBudget`. Stored at construction for the call path that a later
-    /// task rewrites onto the run plane of Router.
+    /// `RenderBudget`. Stored at construction for the verb that renders a
+    /// `CallTool.Result` for the model, which a later task adds.
     public let renderBudget: RenderBudget
+
+    /// The bound of a call made with no ambient `ToolContext` — a bare host
+    /// call, outside any run of Router — measured from the moment the
+    /// request went out, and reset by nothing. Once it elapses, the call
+    /// answers an in-band `isError` result and `notifications/cancelled` goes
+    /// out for the request. Defaults to ``defaultCallTimeout``.
+    ///
+    /// A call made under a context is never bounded by this: the engine's
+    /// `timeout` is its clock, and every `notifications/progress` resets it.
+    /// See `MCPServer+Call.swift`.
+    public let callTimeout: Duration
 
     /// The current readiness state — see ``MCPServerState``.
     public private(set) var state: MCPServerState = .connecting
@@ -227,6 +249,18 @@ public actor MCPServer {
     /// once it finishes.
     var coalescingTask: Task<Void, Never>?
 
+    /// Every `tools/call` in flight, keyed by its request id — see
+    /// `MCPServer+Call.swift`. An entry is added when a call starts, and
+    /// removed when the call settles and its caller was resumed.
+    var inFlightCalls: [ID: InFlightCall] = [:]
+
+    /// Whether the receive stream of the connected transport ended without a
+    /// `disconnect()` — set by `handleTransportDrop(generation:)`, and reset
+    /// by the next connect that succeeds. While set, a call that would send a
+    /// request throws `MCPServerError.lost` at once, because no answer can
+    /// arrive.
+    var isTransportDropped = false
+
     /// Creates a server that owns a fresh `MCP.Client` named `name`.
     ///
     /// The client declares the elicitation capability with both `form` and
@@ -244,6 +278,9 @@ public actor MCPServer {
     ///     Never used by the per-attempt timeout, which always measures real
     ///     wall-clock time — a virtual clock that never suspends would make
     ///     the timeout win at once against an attempt in flight.
+    ///   - callTimeout: The bound of a call made with no ambient
+    ///     `ToolContext` — see ``callTimeout``. Defaults to
+    ///     ``defaultCallTimeout``.
     ///   - renderBudget: The render budget every rendered result of this
     ///     server obeys. Defaults to `RenderBudget.default`.
     ///   - logger: The logger every retry, reconnect and discarded attempt is
@@ -252,6 +289,7 @@ public actor MCPServer {
         name: String,
         version: String = MCPServer.defaultClientVersion,
         clock: any Clock<Duration> = ContinuousClock(),
+        callTimeout: Duration = MCPServer.defaultCallTimeout,
         renderBudget: RenderBudget = .default,
         logger: Logger = MCPServer.defaultLogger
     ) {
@@ -262,6 +300,7 @@ public actor MCPServer {
             capabilities: Client.Capabilities(elicitation: .init(form: .init(), url: .init()))
         )
         self.clock = clock
+        self.callTimeout = callTimeout
         self.renderBudget = renderBudget
         self.logger = logger
         (self.catalogUpdates, self.catalogContinuation) = AsyncStream.makeStream()

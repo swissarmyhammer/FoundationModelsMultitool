@@ -37,13 +37,21 @@
 //   `SingleResume.swift` the one-resumption race both extensions use. The
 //   host handler that a bare `LanguageModelSession` sends elicitation to
 //   comes with the elicitation task.
+// - `MCPServer+Discovery.swift` and `MCPServer+LiveCatalog.swift` — the
+//   paginated `tools/list` of a connect, and the coalesced re-list a
+//   `tools/list_changed` burst starts.
+// - `MCPServer+Call.swift` — `call(name:arguments:)` on the run plane of
+//   Router: progress to the ambient `ToolContext`, cancellation to the wire,
+//   a transport drop as `MCPServerError.lost`. `DropObservingTransport.swift`
+//   is the transport the client connects over, which reports that drop.
 // - `MCPTool.swift` — the plain synchronous `Tool` that one server verb
 //   renders as.
 //
 // **Each file logs with `os.Logger`**, as `MultiTool.swift` does. The `MCP`
-// module brings `swift-log` transitively for its own use. One file of this
-// folder imports it: `StdioServerProcess.swift` names `Logging.Logger` as the
-// type the `Transport` protocol requires, and logs nothing through it — see
+// module brings `swift-log` transitively for its own use. Two files of this
+// folder import it: `StdioServerProcess.swift` and
+// `DropObservingTransport.swift` each name `Logging.Logger` as the type the
+// `Transport` protocol requires, and each logs nothing through it — see
 // `mcpPackage` in `Package.swift`.
 
 import MCP

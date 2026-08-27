@@ -5,13 +5,16 @@
 // A behavioral port of the `BackoffPolicy`, `TransportFactory` and
 // `MCPServerError` declarations of
 // `../FoundationModelsMCP/Sources/FoundationModelsMCP/MCPServer.swift`. The
-// `callTimedOut` case of the source error is not ported: it belongs to the
-// call path, which a later task rewrites onto the run plane of Router.
+// `callTimedOut` case of the source error is not ported: the engine of Router
+// bounds a call made under a context, and a bare call answers its timeout in
+// band — see `MCPServer+Call.swift`. The `lost` case is new: it is what the
+// call path throws for a transport drop under an in-flight request.
 //
 // **The types are `public`.** A host constructs a `BackoffPolicy` and hands
 // it to `MCPServer.connect(via:backoffPolicy:)`, and it catches an
 // `MCPServerError` from that call, so both cross the module boundary.
 
+import FoundationModelsRouter
 import MCP
 
 /// Configuration for the connect-retry and reconnect backoff of `MCPServer`
@@ -108,7 +111,15 @@ public typealias TransportFactory = @Sendable () async throws -> any Transport
 
 /// Errors thrown by the own operations of `MCPServer`, distinct from what the
 /// wrapped `MCP.Client` or its transport throws.
-public enum MCPServerError: Error, Sendable, Equatable {
+///
+/// **Why the whole type is a `LostRunError`.** Router's `ToolRun` settles a
+/// run as `.lost` when the error its tool threw conforms to that marker, and
+/// a conformance is per type, never per case. The one case a run can meet is
+/// ``lost(serverName:toolName:underlying:)``: `MCPServer.call(name:arguments:)`
+/// throws no other case, and answers a server that is not ready in band.
+/// Every other case is thrown by a host operation — a connect, a reconnect, a
+/// `waitUntilReady()` — outside any run, where no `ToolRun` reads it.
+public enum MCPServerError: Error, Sendable, Equatable, LostRunError {
     /// A caller asked for a ready server — `MCPServer.waitUntilReady()` — and
     /// the state can no longer reach `MCPServerState.ready` without a new
     /// connect: it is `faulted` or `disconnected`. Carries the state at the
@@ -141,4 +152,16 @@ public enum MCPServerError: Error, Sendable, Equatable {
     /// call ever gave a transport factory to, so there is nothing to
     /// reconnect through.
     case neverConnected
+
+    /// The transport dropped under an in-flight `tools/call` of
+    /// `MCPServer.call(name:arguments:)`. The only channel the result was
+    /// ever going to arrive on is gone, so the outcome is unknowable — never
+    /// a reported failure, and never retried by this package. Carries the
+    /// name of the server, the name of the tool the request named, and a
+    /// human-readable description of what ended the connection.
+    ///
+    /// eventplan.md § "Consolidation of the siblings": "A transport drop is
+    /// `.lost`." Router's `ToolRun` reads the `LostRunError` conformance of
+    /// this type and settles the calling run that way.
+    case lost(serverName: String, toolName: String, underlying: String)
 }

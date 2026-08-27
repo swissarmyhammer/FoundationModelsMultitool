@@ -7,18 +7,20 @@
 // of them, of `../FoundationModelsMCP/Sources/FoundationModelsMCP/MCPServer.swift`.
 //
 // **What `reconnect()` is.** The source reconnected from inside the call path,
-// when a mid-call transport fault was noticed. That call path is not ported.
-// The reconnect itself — call the retained factory again, under the retained
-// policy — is a host operation here, `reconnect()`, and the later task that
-// rewrites the call path onto the run plane calls it on a fault.
+// when a mid-call transport fault was noticed. The call path of this package
+// never reconnects: a transport drop under an in-flight call fails that call
+// as `MCPServerError.lost` (see `MCPServer+Call.swift`), and the reconnect
+// itself — call the retained factory again, under the retained policy — is a
+// host operation here, `reconnect()`.
 //
 // **What `setupHandlers()` registers.** The source registered three
 // notification handlers: `tools/list_changed`, `progress` and
-// `elicitation/complete`. The `progress` handler belongs to the deleted call
-// path and is gone for good. The `elicitation/complete` handler comes with the
-// elicitation task. The `tools/list_changed` handler is registered here, once
-// per actor, and routes to the coalesced re-list of
-// `MCPServer+LiveCatalog.swift`.
+// `elicitation/complete`. The `elicitation/complete` handler comes with the
+// elicitation task. The other two are registered here, once per actor: the
+// `tools/list_changed` handler routes to the coalesced re-list of
+// `MCPServer+LiveCatalog.swift`, and the `progress` handler routes to the
+// in-flight call of `MCPServer+Call.swift` whose token the notification
+// names.
 //
 // **A connect discovers before it is ready.** `applyConnect(via:generation:)`
 // runs the paginated `tools/list` of `MCPServer+Discovery.swift` right after
@@ -223,11 +225,14 @@ extension MCPServer {
     /// Bumps the generation, so a connect attempt still in flight when this
     /// runs is discarded instead of moving the state back to `.ready`, and
     /// cancels a `tools/list_changed` watcher still waiting out its coalesce
-    /// window, so it re-lists nothing against the disconnected client. A
-    /// later `connect(via:)` is what drives the next transition.
+    /// window, so it re-lists nothing against the disconnected client. Every
+    /// call still in flight ends as `MCPServerError.lost`: the answer it
+    /// waited for can no longer arrive. A later `connect(via:)` is what
+    /// drives the next transition.
     public func disconnect() async {
         connectGeneration += 1
         coalescingTask?.cancel()
+        failInFlightCalls(underlying: Self.hostDisconnectedDescription)
         await disconnectClientWithoutHanging()
         transition(to: .disconnected)
     }
@@ -409,6 +414,10 @@ extension MCPServer {
             else {
                 return
             }
+            // A fresh connection: the drop of the previous one, if any, is
+            // over. Cleared before discovery, so a drop under discovery is
+            // recorded against this connection and not lost to the reset.
+            isTransportDropped = false
             let tools = try await discoverAllTools()
             guard
                 isCurrentGeneration(
@@ -477,6 +486,11 @@ extension MCPServer {
         await registerNotificationHandlerOnce(Self.toolListChangedHandlerName) {
             await self.registerNotificationHandler(ToolListChangedNotification.self) { server, _ in
                 await server.handleToolListChangedNotification()
+            }
+        }
+        await registerNotificationHandlerOnce(Self.progressHandlerName) {
+            await self.registerNotificationHandler(ProgressNotification.self) { server, message in
+                await server.handleProgressNotification(parameters: message.params)
             }
         }
     }
