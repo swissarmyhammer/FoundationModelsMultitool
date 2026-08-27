@@ -161,6 +161,12 @@ typealias SchemaConversionLogHandler = @Sendable (SchemaConversionLogRecord) -> 
 /// The result of parsing an MCP `inputSchema`: the root ``SchemaIR`` plus any named `$defs` schemas reachable from it via `$ref`.
 struct SchemaConversion: Sendable, Equatable {
     /// The name given to the root schema (typically the MCP tool name); also the `DynamicGenerationSchema` / `GenerationSchema` type name at emission.
+    ///
+    /// `emit(_:)` reads the name off ``root`` rather than off this property,
+    /// because `parse(_:name:onDrop:)` gave the root node the same name.
+    /// This property is read by the synthesized `Equatable` conformance;
+    /// periphery sees no caller.
+    // periphery:ignore
     var name: String
     /// The parsed root schema — the top-level `inputSchema` node.
     var root: SchemaIR
@@ -383,8 +389,12 @@ enum SchemaConverter {
         }
     }
 
+    /// The power of ten of ``numberExclusiveBoundEpsilon``: `1e-9`.
+    private static let numberExclusiveBoundExponent = -9
+
     /// A fixed epsilon nudged inward from a `number` schema's `exclusiveMinimum`/`exclusiveMaximum` to approximate its strict bound as an inclusive one, since `Decimal` has no portable "next representable value" operation (see ``SchemaIR/GuideSpec/numericRange(minimum:maximum:)``).
-    private static let numberExclusiveBoundEpsilon = Decimal(sign: .plus, exponent: -9, significand: 1)
+    private static let numberExclusiveBoundEpsilon = Decimal(
+        sign: .plus, exponent: numberExclusiveBoundExponent, significand: 1)
 
     /// Applies `minimum`/`maximum`/`exclusiveMinimum`/`exclusiveMaximum` to an `.integer` or `.number` base, wrapping it in ``SchemaIR/guided(base:guide:)`` if any bound is present.
     ///
