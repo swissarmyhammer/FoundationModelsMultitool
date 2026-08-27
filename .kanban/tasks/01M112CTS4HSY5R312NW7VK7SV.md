@@ -45,11 +45,27 @@ comments:
     - evidence: 2 files — `Tests/FoundationModelsMultitoolTests/Support/RespawningTransport.swift` (the factory is `makeServingFreshScriptedServers`, and it builds the pair through the shared `MCPTestSupport.clientTransport(serving:over:)`), `Tests/FoundationModelsMultitoolTests/LostCallTests.swift` (the two call sites). Both review findings of 2026-08-27 14:33 are ticked. `swift build --build-tests`: no compiler warnings. `swift test`: 1232 tests in 91 suites pass.
     - next: `commit` step, then `review` again.
   timestamp: 2026-08-27T19:44:01.642308+00:00
+- actor: claude-code
+  id: 01m12c5vzwjmkqar4c0wsmxfvr
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (f269239) — 0 findings; the 2 findings of 2026-08-27 14:33 are checked
+    - next: none. The task is done.
+  timestamp: 2026-08-27T19:47:01.244696+00:00
+- actor: claude-code
+  id: 01m12c5wxj8zs4171tbdxfgpd6
+  text: |-
+    ### finish iteration 2 — done
+    - implement: changed (2 files, the two review findings of iteration 1)
+    - test: green (swift test — 1232 tests in 91 suites, 0 failed, 0 skipped)
+    - commit: f269239
+    - review: clean (0 findings; all prior findings checked)
+  timestamp: 2026-08-27T19:47:02.194100+00:00
 depends_on:
 - 01M112C9B7VKH4MEEVD832PG8R
 - 01M1143Z8N0PH576EWD5EGQBJT
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ff9780
 title: Rewrite MCPServer.call onto the run plane
 ---
 ## What
