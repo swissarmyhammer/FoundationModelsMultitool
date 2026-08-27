@@ -11,9 +11,9 @@
 // alone. This function is the one rendering the converter applies at that
 // step, thus an enum of numbers still gives the model a set of choices.
 //
-// `ToolContentRenderer`, which reads the same function for its enum-membership
-// check, comes to this folder in a later task. The function stands in a file
-// of its own for that reason: it has two readers, and neither one owns it.
+// `ToolContentRenderer` reads the same function for its enum-membership
+// check. The function stands in a file of its own for that reason: it has two
+// readers, and neither one owns it.
 
 import MCP
 
