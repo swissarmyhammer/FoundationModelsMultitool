@@ -588,10 +588,7 @@ private final class ProcessState: Sendable {
     /// on a dead group is a harmless `ESRCH`, and `waitpid` runs exactly one
     /// time per pid, when this method took it out of `currentPid`.
     func terminateCurrent() {
-        guard let pid = currentPid.withLock({ let recorded = $0; $0 = nil; return recorded }) else {
-            return
-        }
-        killReapAndDeregister(pid)
+        terminate(where: { _ in true })
     }
 
     /// Group-kills and reaps `pid`, but only when `pid` is still the recorded
@@ -609,13 +606,28 @@ private final class ProcessState: Sendable {
     ///
     /// - Parameter pid: The pid to terminate, only when `currentPid` holds it.
     func terminateIfCurrent(pid: pid_t) {
-        let matched = currentPid.withLock { current -> Bool in
-            guard current == pid else { return false }
+        terminate(where: { $0 == pid })
+    }
+
+    /// Takes the recorded pid out of `currentPid` when `accepts` says so, and
+    /// group-kills, reaps and deregisters it — the one "take and clear" that
+    /// `terminateCurrent()` and `terminateIfCurrent(pid:)` share, so the lock,
+    /// the clear and the reap cannot drift apart between the two.
+    ///
+    /// The check and the clear happen inside one lock hold, so a pid that
+    /// `accepts` approved is the pid this call tears down, and no other caller
+    /// can take it in between. A no-op when nothing is recorded, or when
+    /// `accepts` refuses the recorded pid.
+    ///
+    /// - Parameter accepts: Whether the recorded pid is one to tear down.
+    private func terminate(where accepts: (pid_t) -> Bool) {
+        let taken = currentPid.withLock { current -> pid_t? in
+            guard let recorded = current, accepts(recorded) else { return nil }
             current = nil
-            return true
+            return recorded
         }
-        guard matched else { return }
-        killReapAndDeregister(pid)
+        guard let taken else { return }
+        killReapAndDeregister(taken)
     }
 
     /// Group-kills and reaps `pid` unconditionally, then deregisters it — the
