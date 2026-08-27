@@ -67,14 +67,6 @@ import Testing
         try await Write(context: context).call(arguments: WriteArguments(path: path, content: content))
     }
 
-    /// Read the raw on-disk bytes of a file.
-    ///
-    /// - Parameter path: the absolute path to read.
-    /// - Returns: the file's bytes.
-    private static func readBytes(_ path: String) throws -> Data {
-        try Data(contentsOf: URL(fileURLWithPath: path))
-    }
-
     /// Read a file back through the `tools.files.read` verb, whole and in
     /// the default hashline format.
     ///
@@ -98,7 +90,7 @@ import Testing
         let result = try await Self.write(path: path, content: "hello\nworld\n", in: context)
 
         #expect(result.correction == nil)
-        #expect(try Self.readBytes(path) == Data("hello\nworld\n".utf8))
+        #expect(try TestSupport.readBytes(at: path) == Data("hello\nworld\n".utf8))
         #expect(result.bytesWritten == Data("hello\nworld\n".utf8).count)
     }
 
@@ -112,7 +104,7 @@ import Testing
         let result = try await Self.write(path: url.path, content: "fresh\n", in: context)
 
         #expect(result.correction == nil)
-        #expect(try Self.readBytes(url.path) == Data("fresh\n".utf8))
+        #expect(try TestSupport.readBytes(at: url.path) == Data("fresh\n".utf8))
         #expect(result.bytesWritten == Data("fresh\n".utf8).count)
     }
 
@@ -173,7 +165,8 @@ import Testing
         let message = try #require(result.correction)
 
         #expect(!message.isEmpty)
-        #expect(try Self.readBytes(url.path) == Data("original\n".utf8), "a read-only target must be untouched")
+        #expect(
+            try TestSupport.readBytes(at: url.path) == Data("original\n".utf8), "a read-only target must be untouched")
     }
 
     // MARK: Cleanup on failure
@@ -234,7 +227,7 @@ import Testing
         let result = try await Self.write(path: url.path, content: text, in: context)
 
         #expect(result.correction == nil)
-        #expect(try Self.readBytes(url.path) == Data(text.utf8))
+        #expect(try TestSupport.readBytes(at: url.path) == Data(text.utf8))
         #expect(result.bytesWritten == Data(text.utf8).count)
 
         let readResult = try await Self.readBack(path: url.path, in: context)
@@ -253,7 +246,7 @@ import Testing
         let result = try await Self.write(path: url.path, content: "", in: context)
 
         #expect(result.correction == nil)
-        #expect(try Self.readBytes(url.path).isEmpty)
+        #expect(try TestSupport.readBytes(at: url.path).isEmpty)
         #expect(result.bytesWritten == 0)
         #expect(result.taggedContent.isEmpty)
         #expect(result.hash == Hashline.wholeFileHash(bytes: Data()))

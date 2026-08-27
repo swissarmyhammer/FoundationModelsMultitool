@@ -96,6 +96,32 @@ enum TestSupport {
         root.appendingPathComponent(name, isDirectory: false).path
     }
 
+    /// Read the raw on-disk bytes of a file.
+    ///
+    /// Each file suite that compares a committed file against expected bytes
+    /// reads it here, thus one implementation reads the disk and no suite
+    /// carries a near-identical copy.
+    ///
+    /// - Parameter path: the absolute path to read.
+    /// - Returns: the file's bytes.
+    /// - Throws: an error when the file cannot be read.
+    static func readBytes(at path: String) throws -> Data {
+        try Data(contentsOf: URL(fileURLWithPath: path))
+    }
+
+    /// The on-disk bytes of a file, decoded as UTF-8 text.
+    ///
+    /// A suite that asserts a file is absent, or holds given text, reads it
+    /// here: the read goes through `readBytes(at:)`, and a file that is not
+    /// there answers `nil` rather than throwing.
+    ///
+    /// - Parameter path: the absolute path to read.
+    /// - Returns: the file's text, or `nil` when the file cannot be read or
+    ///   is not UTF-8.
+    static func text(at path: String) -> String? {
+        (try? readBytes(at: path)).flatMap { String(data: $0, encoding: .utf8) }
+    }
+
     /// The POSIX permission bits (`mode & 0o777`) of a path.
     ///
     /// - Parameter path: the absolute path to inspect.

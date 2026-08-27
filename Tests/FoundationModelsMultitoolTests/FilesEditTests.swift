@@ -106,14 +106,6 @@ import Testing
         return (FileContext(root: root, recordsChanges: recordsChanges), fileURL, fileURL.path)
     }
 
-    /// Read the raw on-disk bytes of a file.
-    ///
-    /// - Parameter path: the absolute path to read.
-    /// - Returns: the file's bytes.
-    private static func readBytes(_ path: String) throws -> Data {
-        try Data(contentsOf: URL(fileURLWithPath: path))
-    }
-
     // MARK: Single / replacesAll / occurrence
 
     /// A scalar edit rewrites the one matched text and reports a literal match.
@@ -126,7 +118,7 @@ import Testing
         #expect(result.status == "applied")
         #expect(result.applied == 1)
         #expect(try #require(result.outcomes.first).contains("\"matchedBy\":\"literal\""))
-        #expect(try Self.readBytes(path) == Data("alpha\nBETA\ngamma\n".utf8))
+        #expect(try TestSupport.readBytes(at: path) == Data("alpha\nBETA\ngamma\n".utf8))
     }
 
     /// `replacesAll` rewrites every occurrence in one applied pair.
@@ -137,7 +129,7 @@ import Testing
 
         #expect(result.status == "applied")
         #expect(result.applied == 1)
-        #expect(try Self.readBytes(path) == Data("y\ny\ny\n".utf8))
+        #expect(try TestSupport.readBytes(at: path) == Data("y\ny\ny\n".utf8))
     }
 
     /// `occurrence` selects one site among several literal matches.
@@ -148,7 +140,7 @@ import Testing
             path: path, find: ["x"], replace: ["y"], occurrence: Self.secondOccurrence, in: context)
 
         #expect(result.status == "applied")
-        #expect(try Self.readBytes(path) == Data("x\ny\nx\n".utf8))
+        #expect(try TestSupport.readBytes(at: path) == Data("x\ny\nx\n".utf8))
     }
 
     // MARK: Multi-pair batch
@@ -163,7 +155,7 @@ import Testing
         #expect(result.status == "applied")
         #expect(result.applied == finds.count)
         #expect(result.outcomes.count == finds.count)
-        #expect(try Self.readBytes(path) == Data("FOO\nBAR\n".utf8))
+        #expect(try TestSupport.readBytes(at: path) == Data("FOO\nBAR\n".utf8))
     }
 
     // MARK: CRLF round-trip
@@ -178,7 +170,7 @@ import Testing
         #expect(result.status == "applied")
         #expect(result.lineEndings == "crlf")
         #expect(result.encoding == "utf-8")
-        let committed = try Self.readBytes(path)
+        let committed = try TestSupport.readBytes(at: path)
         #expect(committed == Data("line one\r\nLINE TWO\r\nline three\r\n".utf8))
         // Every terminator survives: the edit rewrites only the line's text.
         #expect(String(decoding: committed, as: UTF8.self).contains("\r\n"))
@@ -196,7 +188,7 @@ import Testing
 
         #expect(result.status == "applied")
         #expect(result.encoding == "utf-8 bom")
-        let committed = try Self.readBytes(path)
+        let committed = try TestSupport.readBytes(at: path)
         #expect(committed.prefix(Self.utf8ByteOrderMark.count) == Self.utf8ByteOrderMark)
         #expect(committed == Self.utf8ByteOrderMark + Data("alpha\nBETA\n".utf8))
     }
@@ -248,7 +240,7 @@ import Testing
         let message = try #require(result.correction)
 
         #expect(!message.isEmpty)
-        #expect(try Self.readBytes(path) == original, "a read-only target must be byte-identical")
+        #expect(try TestSupport.readBytes(at: path) == original, "a read-only target must be byte-identical")
     }
 
     // MARK: Commit-failure cleanup
@@ -281,7 +273,9 @@ import Testing
         #expect(
             TestSupport.temporaryFileLeftovers(in: lockedDirectory).isEmpty,
             "a failed commit must remove the temp file")
-        #expect(try Self.readBytes(fileURL.path) == original, "a failed commit must leave the file byte-identical")
+        #expect(
+            try TestSupport.readBytes(at: fileURL.path) == original,
+            "a failed commit must leave the file byte-identical")
     }
 
     // MARK: Structured retryable outcomes
@@ -301,7 +295,8 @@ import Testing
         #expect(outcome.contains("\"matchedBy\":\"ambiguous\""))
         #expect(outcome.contains("\"occurrence\":1"))
         #expect(outcome.contains("\"occurrence\":\(Self.secondOccurrence)"))
-        #expect(try Self.readBytes(path) == original, "an ambiguous edit must leave the file byte-identical")
+        #expect(
+            try TestSupport.readBytes(at: path) == original, "an ambiguous edit must leave the file byte-identical")
     }
 
     /// A near-miss edit reports a line diff and commits nothing.
@@ -317,7 +312,7 @@ import Testing
         #expect(outcome.contains("\"startLine\":1"))
         #expect(outcome.contains("{\"change\":\"expected\",\"text\":\"the quick red fox\"}"))
         #expect(outcome.contains("{\"change\":\"actual\",\"text\":\"the quick brown fox\"}"))
-        #expect(try Self.readBytes(path) == original, "a near-miss must leave the file byte-identical")
+        #expect(try TestSupport.readBytes(at: path) == original, "a near-miss must leave the file byte-identical")
     }
 
     /// A near-miss that differs only by confusable punctuation carries the
@@ -337,7 +332,7 @@ import Testing
         #expect(outcome.contains("\"note\":\"differs only by Unicode punctuation"))
         #expect(outcome.contains("U+2019"))
         #expect(outcome.contains("U+0027"))
-        #expect(try Self.readBytes(path) == original, "a near-miss must leave the file byte-identical")
+        #expect(try TestSupport.readBytes(at: path) == original, "a near-miss must leave the file byte-identical")
     }
 
     /// A near-miss that differs by a real word carries no punctuation note.
@@ -366,7 +361,7 @@ import Testing
         #expect(result.status == "alreadyApplied")
         #expect(result.applied == 0)
         #expect(try #require(result.outcomes.first).contains("\"note\":"))
-        #expect(try Self.readBytes(path) == original)
+        #expect(try TestSupport.readBytes(at: path) == original)
     }
 
     /// A consumed-target edit is reported and commits nothing.
@@ -378,7 +373,7 @@ import Testing
 
         #expect(result.status == "consumedTarget")
         #expect(result.applied == 0)
-        #expect(try Self.readBytes(path) == original)
+        #expect(try TestSupport.readBytes(at: path) == original)
     }
 
     // MARK: Corrective hard errors
@@ -448,7 +443,8 @@ import Testing
         #expect(
             message
                 == "The file is not valid UTF-8 text and appears to be binary, so it cannot be edited as text: \(path)")
-        #expect(try Self.readBytes(path) == original, "a binary file must never be decoded or rewritten")
+        #expect(
+            try TestSupport.readBytes(at: path) == original, "a binary file must never be decoded or rewritten")
     }
 
     // MARK: Corrective paths of this card
@@ -468,7 +464,8 @@ import Testing
         let message = try #require(result.correction)
 
         #expect(!message.isEmpty)
-        #expect(try Self.readBytes(outsideURL.path) == original, "a rejected edit must not change the file")
+        #expect(
+            try TestSupport.readBytes(at: outsideURL.path) == original, "a rejected edit must not change the file")
     }
 
     /// An edit on a read-only context comes back as a correction and the
@@ -485,7 +482,8 @@ import Testing
         let message = try #require(result.correction)
 
         #expect(!message.isEmpty)
-        #expect(try Self.readBytes(url.path) == original, "a read-only context must not change the file")
+        #expect(
+            try TestSupport.readBytes(at: url.path) == original, "a read-only context must not change the file")
     }
 
     // MARK: Applied-result envelope fields
@@ -497,7 +495,7 @@ import Testing
 
         let result = try await Self.edit(path: path, find: ["beta"], replace: ["BETA"], in: context)
 
-        let committed = try Self.readBytes(path)
+        let committed = try TestSupport.readBytes(at: path)
         #expect(result.bytesWritten == committed.count)
         #expect(result.encoding == "utf-8")
         #expect(result.hash == Hashline.wholeFileHash(bytes: committed))
@@ -531,7 +529,7 @@ import Testing
         let outcome = try #require(result.outcomes.first)
         #expect(outcome.contains("\"matchedBy\":\"anchor\""))
         #expect(outcome.contains("\"line\":\(Self.secondOccurrence)"))
-        #expect(try Self.readBytes(url.path) == Data("alpha\nBETA\ngamma\n".utf8))
+        #expect(try TestSupport.readBytes(at: url.path) == Data("alpha\nBETA\ngamma\n".utf8))
     }
 
     // MARK: Change recording

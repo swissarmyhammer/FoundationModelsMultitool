@@ -22,8 +22,49 @@ comments:
     - No production change. No verb reads the ambient context; the reflective case found no sighting.
     - next: /test, /commit, /review
   timestamp: 2026-08-27T15:12:45.821170+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m11x17ty85462s4b3ec4jv4w
+  text: |-
+    ### review — findings
+    - evidence: 4 findings — Tests/FoundationModelsMultitoolTests/PlainToolContractTests.swift:77, :94, :102, :111 (review sha HEAD~1..HEAD; counts findings 4, confirmed 4, refuted 4)
+    - next: /implement corrects the four findings, then /test, /commit, /review
+  timestamp: 2026-08-27T15:22:20.894343+00:00
+- actor: claude-code
+  id: 01m11x1ak5026kgfv5je9vnaz9
+  text: |-
+    ### finish iteration 1 — review found 4 findings
+    - implement: changed — 6 files (PlainToolContractTests.swift, RepositoryFile.swift, ShellPermissionRemovalTests.swift, Support/BareSessionScenario.swift, FilesBareSessionTests.swift, ShellBareSessionTests.swift)
+    - test: green — swift test 1216 passed, 0 failed, 0 skipped; IntegrationTests package builds; both gated bare-session cases passed on this machine
+    - commit: d9a765b
+    - review: findings — PlainToolContractTests.swift:77 swift/fluent-usage, :94 swift/fluent-usage, :102 swift/fluent-usage, :111 reuse/reuse
+  timestamp: 2026-08-27T15:22:23.717052+00:00
+- actor: claude-code
+  id: 01m11xb49evqgcmt06th8fgfrc
+  text: |-
+    ### implement — changed
+    - evidence: 4 files — Tests/FoundationModelsMultitoolTests/PlainToolContractTests.swift (`seed(in:)`, `verb(of:in:)`, `expectOutsideRoot(correction:)`; the private `text(at:)` is gone), Tests/FoundationModelsMultitoolTests/TestSupport.swift (shared `readBytes(at:)` and `text(at:)`), Tests/FoundationModelsMultitoolTests/FilesEditTests.swift and FilesWriteTests.swift (the private `readBytes(_:)` copies are gone; each call goes to `TestSupport.readBytes(at:)`).
+    - Each of the four review findings of 2026-08-27 10:14 is corrected: the three unlabeled first parameters carry labels, and the file-reading logic stands in `TestSupport` one time.
+    - `swift build --build-tests`: no compiler warning. `swift test`: 1216 tests in 88 suites passed.
+    - next: /test, /commit, /review
+  timestamp: 2026-08-27T15:27:44.942582+00:00
+- actor: claude-code
+  id: 01m11xgn1jqnn7qj7bghc9zced
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (3b530d8) — counts findings 0, confirmed 0, refuted 0; 4 files reviewed. The four findings of 2026-08-27 10:14 are corrected in 3b530d8 and checked.
+    - next: task moves to done
+  timestamp: 2026-08-27T15:30:45.938054+00:00
+- actor: claude-code
+  id: 01m11xgph3cn7ykpdxhsa9w8x5
+  text: |-
+    ### finish iteration 2 — review clean
+    - implement: changed — 4 files (PlainToolContractTests.swift, TestSupport.swift, FilesEditTests.swift, FilesWriteTests.swift); the four findings of iteration 1 corrected
+    - test: green — swift test 1216 passed, 0 failed, 0 skipped; swift build --build-tests no compiler warning
+    - commit: 3b530d8
+    - review: clean — 0 findings; task moved to done
+  timestamp: 2026-08-27T15:30:47.459367+00:00
+position_column: done
+position_ordinal: ff9380
 title: 'Pin the plain-Tool contract: files verbs on a bare LanguageModelSession'
 ---
 ## What
@@ -46,3 +87,22 @@ The six files verbs (`Read`, `Write`, `Edit`, `Patch`, `Glob`, `Grep`) take a `F
 
 ## Workflow
 - Use `/tdd` — the tests are the deliverable; write them, run them, and record the result. #eventplan #phase-4
+
+## Review Findings (2026-08-27 10:14)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 6 file(s) reviewed, 2 not reviewed.
+
+> 2 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 2 file(s)
+
+- [x] `Tests/FoundationModelsMultitoolTests/PlainToolContractTests.swift:77` `swift/fluent-usage` — The first parameter of `seed(_:)` is unlabeled, but this is not a value-preserving conversion. The parameter should be labeled to form a clear phrase at the call site. Change `seed(_ directory: URL)` to `seed(directory: URL)` or `seed(in directory: URL)` to make calls like `Self.seed(directory: root)` read more fluently.
+- [x] `Tests/FoundationModelsMultitoolTests/PlainToolContractTests.swift:94` `swift/fluent-usage` — The first parameter of `verb<Verb:Tool>(_:root:)` is unlabeled, but this is not a value-preserving conversion. The parameter should be labeled to form a clear phrase at the call site. Change `verb<Verb: Tool>(_ type: Verb.Type, root: URL)` to `verb<Verb: Tool>(of type: Verb.Type, in root: URL)` or similar to make calls read: `Self.verb(of: Read.self, in: root)`.
+- [x] `Tests/FoundationModelsMultitoolTests/PlainToolContractTests.swift:102` `swift/fluent-usage` — The first parameter of `expectOutsideRoot(_:)` is unlabeled, but this is not a value-preserving conversion. The parameter should be labeled to form a clear phrase at the call site. Change `expectOutsideRoot(_ correction: String?)` to `expectOutsideRoot(correction: String?)` to make calls read: `Self.expectOutsideRoot(correction: result.correction)`.
+- [x] `Tests/FoundationModelsMultitoolTests/PlainToolContractTests.swift:111` `reuse/reuse` — The `text` function implements generic file-reading logic (load bytes, decode as UTF-8) that is already duplicated across multiple test files. FilesEditTests and FilesWriteTests both define `readBytes()` with identical semantics (0.89 similarity). This utility belongs in TestSupport, not scattered across test classes. Move this function to TestSupport as a shared utility (e.g., `TestSupport.text(at path:)` or `TestSupport.readFileAsText(at:)`). Update all test classes (FilesEditTests, FilesWriteTests, and PlainToolContractTests) to call this single version rather than maintaining parallel copies.
+
+## Review Findings (2026-08-27 10:27)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 4 file(s) reviewed, 2 not reviewed.
+
+> 2 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 2 file(s)
