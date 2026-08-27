@@ -23,6 +23,9 @@
 //   `ToolContext`, cancellation to the wire, and the transport drop as
 //   `MCPServerError.lost`. `DropObservingTransport.swift` is the transport
 //   the client connects over, which reports that drop.
+// - `MCPServer+Elicitation.swift` — the passthrough of a server-initiated
+//   `elicitation/create` to `ToolContext.elicit`, the host's handler for a
+//   bare session, and the relay of `notifications/elicitation/complete`.
 //
 // **What is not ported, for good.** The call path of the source — the soft
 // deadline, the call handle and the running-call snapshot, the retained call
@@ -39,9 +42,9 @@
 // `Client.Capabilities.Elicitation.init(form:url:)` defaults `url` to `nil`,
 // so URL-mode elicitation is off unless declared. So `init` builds the client
 // with `Elicitation(form: .init(), url: .init())`, and takes no client from
-// the host. The elicitation handler registration comes with the elicitation
-// task; the capability is declared here, because the declaration cannot wait
-// for the handler.
+// the host. The handler is registered at connect, by `setupHandlers()` in
+// `MCPServer+Connection.swift`; the capability is declared here, because the
+// declaration cannot wait for the handler.
 //
 // **Logging goes through `os.Logger`**, as `MultiTool.swift` logs. Each
 // message names the server, so a stream can be narrowed to one connection.
@@ -67,7 +70,7 @@ import os
 /// `buildRegistry()`; `MCPCapability` then registers the tools of the
 /// connected server, through `MultiTool.Builder.withMCP(servers:)`.
 public actor MCPServer {
-    /// The version ``init(name:version:clock:callTimeout:renderBudget:logger:)``
+    /// The version ``init(name:version:clock:callTimeout:renderBudget:elicitationHandler:logger:)``
     /// reports at `initialize` when the host names none.
     public static let defaultClientVersion = "1.0"
 
@@ -77,7 +80,7 @@ public actor MCPServer {
     /// The default ``callTimeout`` — see that property.
     public static let defaultCallTimeout = Duration.seconds(defaultCallTimeoutSeconds)
 
-    /// The logger ``init(name:version:clock:callTimeout:renderBudget:logger:)``
+    /// The logger ``init(name:version:clock:callTimeout:renderBudget:elicitationHandler:logger:)``
     /// takes when the host supplies none.
     public static let defaultLogger = Logger(
         subsystem: "FoundationModelsMultitool", category: "MCPServer")
@@ -109,6 +112,12 @@ public actor MCPServer {
     /// `timeout` is its clock, and every `notifications/progress` resets it.
     /// See `MCPServer+Call.swift`.
     public let callTimeout: Duration
+
+    /// The host's answerer for a server-initiated elicitation that arrives
+    /// under no `ToolContext` — the bare-session path. `nil` answers such a
+    /// request with `cancel`. A Router host never sets it: a bound context
+    /// answers first. See `MCPServer+Elicitation.swift`.
+    let elicitationHandler: ElicitationHandler?
 
     /// The current readiness state — see ``MCPServerState``.
     public private(set) var state: MCPServerState = .connecting
@@ -261,6 +270,11 @@ public actor MCPServer {
     /// arrive.
     var isTransportDropped = false
 
+    /// Every URL-mode elicitation the host's ``elicitationHandler`` accepted
+    /// and this actor still holds open, keyed by the wire `elicitationId` —
+    /// resumed by `complete(elicitationId:)`. See `MCPServer+Elicitation.swift`.
+    var pendingHostElicitations: [String: CheckedContinuation<Void, Never>] = [:]
+
     /// Creates a server that owns a fresh `MCP.Client` named `name`.
     ///
     /// The client declares the elicitation capability with both `form` and
@@ -283,6 +297,9 @@ public actor MCPServer {
     ///     ``defaultCallTimeout``.
     ///   - renderBudget: The render budget every rendered result of this
     ///     server obeys. Defaults to `RenderBudget.default`.
+    ///   - elicitationHandler: The host's answerer for a server-initiated
+    ///     elicitation that arrives under no `ToolContext` — see
+    ///     ``elicitationHandler``. Defaults to `nil`, which answers `cancel`.
     ///   - logger: The logger every retry, reconnect and discarded attempt is
     ///     reported to. Defaults to ``defaultLogger``.
     public init(
@@ -291,6 +308,7 @@ public actor MCPServer {
         clock: any Clock<Duration> = ContinuousClock(),
         callTimeout: Duration = MCPServer.defaultCallTimeout,
         renderBudget: RenderBudget = .default,
+        elicitationHandler: ElicitationHandler? = nil,
         logger: Logger = MCPServer.defaultLogger
     ) {
         self.name = name
@@ -302,6 +320,7 @@ public actor MCPServer {
         self.clock = clock
         self.callTimeout = callTimeout
         self.renderBudget = renderBudget
+        self.elicitationHandler = elicitationHandler
         self.logger = logger
         (self.catalogUpdates, self.catalogContinuation) = AsyncStream.makeStream()
     }

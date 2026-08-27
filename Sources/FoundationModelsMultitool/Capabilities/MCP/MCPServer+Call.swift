@@ -25,9 +25,9 @@
 // under its request id, with the tool name, the captured context and — once
 // the caller waits — its continuation. The id is minted here, and its string
 // is the `progressToken` of the request, so one key finds the entry for a
-// progress notification, for a cancel, and for the sweep a drop makes. The
-// elicitation task routes a server request to the calling run through the
-// same table.
+// progress notification, for a cancel, and for the sweep a drop makes.
+// `MCPServer+Elicitation.swift` routes a server-initiated elicitation to the
+// calling run through the same table.
 //
 // **The two in-band answers.** A server that is not `.ready` cannot carry a
 // request, and a call with no ambient context has no engine to bound it.

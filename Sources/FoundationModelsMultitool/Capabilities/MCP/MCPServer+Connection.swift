@@ -13,14 +13,12 @@
 // itself — call the retained factory again, under the retained policy — is a
 // host operation here, `reconnect()`.
 //
-// **What `setupHandlers()` registers.** The source registered three
-// notification handlers: `tools/list_changed`, `progress` and
-// `elicitation/complete`. The `elicitation/complete` handler comes with the
-// elicitation task. The other two are registered here, once per actor: the
-// `tools/list_changed` handler routes to the coalesced re-list of
-// `MCPServer+LiveCatalog.swift`, and the `progress` handler routes to the
-// in-flight call of `MCPServer+Call.swift` whose token the notification
-// names.
+// **What `setupHandlers()` registers.** Three notification handlers, once per
+// actor, and one request handler, on every connect. The `tools/list_changed`
+// handler routes to the coalesced re-list of `MCPServer+LiveCatalog.swift`;
+// the `progress` handler routes to the in-flight call of `MCPServer+Call.swift`
+// whose token the notification names; the `elicitation/complete` handler and
+// the `elicitation/create` request handler route to `MCPServer+Elicitation.swift`.
 //
 // **A connect discovers before it is ready.** `applyConnect(via:generation:)`
 // runs the paginated `tools/list` of `MCPServer+Discovery.swift` right after
@@ -474,14 +472,16 @@ extension MCPServer {
 
     // MARK: - The notification handlers registered at connect
 
-    /// Registers every notification handler this actor needs on ``client`` —
-    /// extracted from `applyConnect(via:generation:)` so that method reads as
+    /// Registers every handler this actor needs on ``client`` — extracted
+    /// from `applyConnect(via:generation:)` so that method reads as
     /// "register handlers, then connect".
     ///
     /// `MCP.Client.onNotification(_:handler:)` appends a handler to its list
-    /// instead of replacing it, so each registration goes through
-    /// `registerNotificationHandlerOnce(_:register:)` and runs at most one
-    /// time per actor, however many reconnects follow.
+    /// instead of replacing it, so each notification registration goes
+    /// through `registerNotificationHandlerOnce(_:register:)` and runs at
+    /// most one time per actor, however many reconnects follow. The
+    /// `elicitation/create` request handler replaces the one before it, so it
+    /// is registered on every connect.
     private func setupHandlers() async {
         await registerNotificationHandlerOnce(Self.toolListChangedHandlerName) {
             await self.registerNotificationHandler(ToolListChangedNotification.self) { server, _ in
@@ -493,6 +493,12 @@ extension MCPServer {
                 await server.handleProgressNotification(parameters: message.params)
             }
         }
+        await registerNotificationHandlerOnce(Self.elicitationCompleteHandlerName) {
+            await self.registerNotificationHandler(ElicitationCompleteNotification.self) { server, message in
+                await server.complete(elicitationId: message.params.elicitationId)
+            }
+        }
+        await registerElicitationHandler()
     }
 
     /// Runs `register` at most one time per actor, keyed by `name`.

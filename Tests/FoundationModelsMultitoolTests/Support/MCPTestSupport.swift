@@ -131,6 +131,9 @@ enum MCPTestSupport {
     ///   - renderBudget: The render budget every rendered result of the
     ///     server obeys. Defaults to `RenderBudget.default`; a suite of the
     ///     verb passes a tight one.
+    ///   - elicitationHandler: The host's answerer for an elicitation that
+    ///     arrives under no `ToolContext`. Defaults to `nil`; a suite of the
+    ///     bare-session path passes one.
     /// - Returns: The connected server.
     /// - Throws: What `ScriptedServer.start(transport:)` or
     ///   `MCPServer.connect(via:)` throws.
@@ -140,10 +143,12 @@ enum MCPTestSupport {
         name: String,
         clock: any Clock<Duration> = ContinuousClock(),
         callTimeout: Duration = MCPServer.defaultCallTimeout,
-        renderBudget: RenderBudget = .default
+        renderBudget: RenderBudget = .default,
+        elicitationHandler: MCPServer.ElicitationHandler? = nil
     ) async throws -> MCPServer {
         let server = MCPServer(
-            name: name, clock: clock, callTimeout: callTimeout, renderBudget: renderBudget)
+            name: name, clock: clock, callTimeout: callTimeout, renderBudget: renderBudget,
+            elicitationHandler: elicitationHandler)
         let transport = try await clientTransport(serving: scripted, over: kind)
         try await server.connect(via: transport)
         return server
@@ -155,7 +160,7 @@ enum MCPTestSupport {
     /// the verb starts from.
     ///
     /// - Important: The caller keeps the returned `ScriptedServer` alive for
-    ///   the whole test, as ``connectedMCPServer(to:over:name:clock:callTimeout:renderBudget:)``
+    ///   the whole test, as ``connectedMCPServer(to:over:name:clock:callTimeout:renderBudget:elicitationHandler:)``
     ///   requires.
     ///
     /// - Parameters:
@@ -191,22 +196,26 @@ enum MCPTestSupport {
     /// parameterized case runs over both transports.
     ///
     /// - Important: The caller keeps the returned `ScriptedServer` alive for
-    ///   the whole test, as ``connectedMCPServer(to:over:name:clock:callTimeout:renderBudget:)``
+    ///   the whole test, as ``connectedMCPServer(to:over:name:clock:callTimeout:renderBudget:elicitationHandler:)``
     ///   requires.
     ///
     /// - Parameters:
     ///   - kind: The transport to connect over.
     ///   - name: The name of the `MCPServer`, and so its identity and the
     ///     noun its verbs render under.
+    ///   - elicitationHandler: The host's answerer for an elicitation that
+    ///     arrives under no `ToolContext`. Defaults to `nil`.
     /// - Returns: The scripted server, which the test keeps alive, and the
     ///   connected server.
     /// - Throws: What the connect throws.
     static func connectedLoopbackMCPServer(
-        over kind: MCPTransportKind, name: String
+        over kind: MCPTransportKind, name: String,
+        elicitationHandler: MCPServer.ElicitationHandler? = nil
     ) async throws -> (scripted: ScriptedServer, server: MCPServer) {
         let scripted = ScriptedServer()
         await scripted.addLoopbackTools()
-        let server = try await connectedMCPServer(to: scripted, over: kind, name: name)
+        let server = try await connectedMCPServer(
+            to: scripted, over: kind, name: name, elicitationHandler: elicitationHandler)
         return (scripted, server)
     }
 }
