@@ -22,18 +22,13 @@ import Testing
 /// kill case reduced to the claim `F_SETNOSIGPIPE` makes. The source drove
 /// both over an `MCPServer`.
 ///
-/// **Two cases of the source are not here.** Each one needs `MCPServer`,
-/// which task ^832pg8r ports, and they are listed here so that nothing is
-/// lost in silence:
-///
-/// - `respawnFailingToSpawnDoesNotBurnBackoffAttemptsWhenUsedAsMCPServerFactory`
-///   — needs `MCPServer`, `BackoffPolicy` and `ManualClock`.
-/// - `nameFlowsIntoServerIdentityOnceConnected` — needs the `identity` of
-///   an `MCPServer`.
-/// - The reconnect half of
-///   `killingTheChildExternallySurfacesAsConnectionLossAndReconnects` — the
-///   healed `.ready` state and the fresh pid after a fault are the work of
-///   `MCPServer`; the half that needs only the test server is here.
+/// **Three cases drive an `MCPServer` over `respawn()` as its transport
+/// factory:** the spawn failure that burns no backoff attempt, the name that
+/// flows into the identity, and the reconnect after an external kill. The
+/// source healed that kill through a faulting call; this package does not
+/// port the call path, so the test heals it through `MCPServer.reconnect()`,
+/// the host operation that replaced the fault-driven reconnect, and asserts
+/// the healed `.ready` state and the fresh pid the source asserted.
 ///
 /// Each test constructs its own PRIVATE registry, and never `.global`, so a
 /// group-kill cannot reach a process another suite owns. One test reads
@@ -86,6 +81,37 @@ struct StdioServerProcessTests {
 
     /// The text the handshake test sends through the echo tool.
     private static let echoedText = "hello"
+
+    /// A per-attempt timeout no attempt of the backoff test reaches.
+    private static let generousConnectTimeout = Duration.seconds(10)
+
+    /// The base delay of the backoff test — arbitrary, because the test
+    /// asserts that no delay was slept at all.
+    private static let backoffBaseDelay = Duration.milliseconds(10)
+
+    /// The delay cap of the backoff test.
+    private static let backoffMaxDelay = Duration.seconds(1)
+
+    /// The attempt budget of the backoff test — generous, so a regression
+    /// that retried after all shows as a non-empty sleep list.
+    private static let backoffMaxAttempts = 5
+
+    /// A `MCPServer` named `name`, connected through the `respawn()` of
+    /// `stdio` under `policy`.
+    ///
+    /// - Parameters:
+    ///   - stdio: The process whose `respawn()` is the transport factory.
+    ///   - name: The name of the server.
+    ///   - policy: The retry policy of the connect.
+    /// - Returns: The connected server.
+    /// - Throws: What `MCPServer.connect(via:backoffPolicy:)` throws.
+    private static func connectServer(
+        through stdio: StdioServerProcess, named name: String, policy: BackoffPolicy = .default
+    ) async throws -> MCPServer {
+        let server = MCPServer(name: name)
+        try await server.connect(via: stdio.respawn, backoffPolicy: policy)
+        return server
+    }
 
     /// A `StdioServerProcess` over the `mcp-test-server` executable in
     /// `mode`, registered into `sharedRegistry`.
@@ -227,6 +253,37 @@ struct StdioServerProcessTests {
         Self.confirmNoLeaks()
     }
 
+    /// A `command` that fails to spawn is a permanent configuration error,
+    /// not a flaky connection: as the transport factory of an `MCPServer`,
+    /// it fails after exactly one attempt, and burns none of the remaining
+    /// attempts of `BackoffPolicy` and none of its backoff delay.
+    @Test func respawnFailingToSpawnDoesNotBurnBackoffAttemptsWhenUsedAsMCPServerFactory()
+        async throws
+    {
+        let stdio = try StdioServerProcess(
+            command: Self.absentCommand, name: "spawn-failure-backoff-test", registry: Self.sharedRegistry)
+        let clock = ManualClock()
+        let server = MCPServer(name: "spawn-failure-backoff-test", clock: clock)
+        let policy = BackoffPolicy(
+            connectTimeout: Self.generousConnectTimeout, baseDelay: Self.backoffBaseDelay,
+            maxDelay: Self.backoffMaxDelay, maxAttempts: Self.backoffMaxAttempts)
+
+        do {
+            try await server.connect(via: stdio.respawn, backoffPolicy: policy)
+            Issue.record("expected connect(via:backoffPolicy:) to throw")
+        } catch let error as MCPServerError {
+            guard case .connectConfigurationFailed = error else {
+                Issue.record("expected .connectConfigurationFailed, got \(error)")
+                return
+            }
+        }
+
+        // No backoff delay was slept: the spawn failure was classified as
+        // permanent on the first attempt.
+        #expect(clock.recordedSleeps.isEmpty)
+        Self.confirmNoLeaks()
+    }
+
     /// A pure classification test, with no spawn: `commandNotAbsolute` and
     /// `spawnFailed` are permanent (a bad path never spawns, however often it
     /// is retried), but `pipeCreationFailed` stays retryable — fd exhaustion
@@ -316,8 +373,8 @@ struct StdioServerProcessTests {
     /// with `SIGPIPE` ignored process-wide, the test would pass with the
     /// mitigation removed.
     ///
-    /// The source went on to prove that an `MCPServer` reconnects through a
-    /// fresh spawn; that half waits for task ^832pg8r.
+    /// The reconnect through a fresh spawn that the source went on to prove
+    /// stands in `killingTheChildExternallyIsHealedByAReconnectThroughRespawn`.
     @Test func killingTheChildExternallySurfacesAsAThrownErrorAndNotASignal() async throws {
         let previousSigpipeDisposition = signal(SIGPIPE, SIG_DFL)
         defer { signal(SIGPIPE, previousSigpipeDisposition) }
@@ -345,6 +402,56 @@ struct StdioServerProcessTests {
         await client.disconnect()
         await stdio.shutdown()
         #expect(Self.isGone(pid))
+        Self.confirmNoLeaks()
+    }
+
+    // MARK: - An external kill is healed by a reconnect through a fresh spawn
+
+    /// After an unscripted death of the child, `MCPServer.reconnect()` calls
+    /// `respawn()` again — the retained transport factory — and heals the
+    /// connection with a fresh process: the state is `.ready` again, and the
+    /// pid is a new one.
+    @Test func killingTheChildExternallyIsHealedByAReconnectThroughRespawn() async throws {
+        let stdio = try Self.makeTestServer(mode: .echo, named: "external-kill-reconnect-test")
+        let server = try await Self.connectServer(through: stdio, named: "external-kill-reconnect-test")
+        #expect(await server.state == .ready)
+        guard let firstPid = stdio.currentPid else {
+            Issue.record("expected respawn() to record a pid")
+            return
+        }
+
+        kill(firstPid, SIGKILL)
+        var status: Int32 = 0
+        waitpid(firstPid, &status, 0)
+
+        try await server.reconnect()
+
+        #expect(await server.state == .ready)
+        guard let secondPid = stdio.currentPid else {
+            Issue.record("expected the reconnect to have spawned a fresh process")
+            return
+        }
+        #expect(secondPid != firstPid)
+        #expect(Self.isAlive(secondPid))
+
+        await server.disconnect()
+        await stdio.shutdown()
+        #expect(Self.isGone(secondPid))
+        Self.confirmNoLeaks()
+    }
+
+    // MARK: - name flows into ServerIdentity
+
+    @Test func nameFlowsIntoServerIdentityOnceConnected() async throws {
+        let serverName = "stdio-server-process-identity-test"
+        let stdio = try Self.makeTestServer(mode: .echo, named: serverName)
+
+        let server = try await Self.connectServer(through: stdio, named: serverName)
+
+        #expect(await server.identity == ServerIdentity(name: serverName))
+
+        await server.disconnect()
+        await stdio.shutdown()
         Self.confirmNoLeaks()
     }
 

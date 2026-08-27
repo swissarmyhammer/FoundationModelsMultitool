@@ -20,10 +20,10 @@
 // budget is a decision: `limited(characters:)` keeps the elision, and
 // `unlimited` turns it off for a host that caps downstream.
 //
-// **The types are internal.** The Shell capability keeps its types internal,
-// and this folder does the same: `MCPTool` and `MCPServer`, which come in later
-// tasks, are the production callers, and the tests reach the type with
-// `@testable import`.
+// **The type is `public`.** A host chooses the budget of a server at
+// `MCPServer.init(name:version:clock:renderBudget:logger:)`, so the type
+// crosses the module boundary. `characterLimit` stays internal: the renderer
+// is its one reader.
 
 /// How large a single rendered text unit — a `.text`/`.resource` content
 /// item's text, or `structuredContent`'s JSON — may grow before
@@ -45,7 +45,7 @@
 ///   The two passes are not designed to compose: pick exactly one place to
 ///   trim, and let this package's trimming be the one that yields when a host
 ///   already owns that job downstream.
-enum RenderBudget: Sendable, Equatable {
+public enum RenderBudget: Sendable, Equatable {
     /// Trim any single rendered text unit that exceeds `characters`,
     /// replacing its middle with an elision marker naming exactly how many
     /// characters were removed — see `ToolContentRenderer`'s
@@ -60,7 +60,8 @@ enum RenderBudget: Sendable, Equatable {
     /// The default render budget: ``limited(characters:)`` at
     /// ``ToolContentRenderer/defaultRenderBudget`` — unchanged from the
     /// sibling package's behavior for every host that configures nothing.
-    static let `default`: RenderBudget = .limited(characters: ToolContentRenderer.defaultRenderBudget)
+    public static let `default`: RenderBudget = .limited(
+        characters: ToolContentRenderer.defaultRenderBudget)
 
     /// The character budget to pass to `ToolContentRenderer.render(result:outputSchema:budget:)`.
     ///

@@ -6,8 +6,8 @@
 // `DisposableTransport` protocols of
 // `../FoundationModelsMCP/Sources/FoundationModelsMCP/MCPServer.swift`. They
 // stand in a file of their own here because `StdioServerProcess` conforms to
-// both, and it lands before `MCPServer`, the one reader of both. That reader
-// comes with the task that ports the connection lifecycle.
+// both, and `MCPServer` — the one reader of both, on its connect path — stands
+// in files of its own.
 //
 // **Why the sdk's own `Transport` cannot carry either.** `Transport` is the
 // protocol of the `MCP` module, and this package does not own it, so it
@@ -46,9 +46,6 @@ import MCP
 protocol NonRetryableConnectError: Error, Sendable {
     /// Whether this specific error instance is a permanent configuration
     /// failure that a retry cannot fix, as opposed to a transient one.
-    // `MCPServer` (task ^832pg8r) reads this through the protocol on its
-    // connect path; today only the concrete conformer is read, by a test.
-    // periphery:ignore
     var isNonRetryable: Bool { get }
 }
 
@@ -56,9 +53,6 @@ extension NonRetryableConnectError {
     /// Permanent by default — see the doc of the protocol for why a
     /// conforming type overrides this only when some of its cases are
     /// transient.
-    // The one conformer of this package overrides this; `MCPServer` (task
-    // ^832pg8r) reads it through the protocol for a conformer that does not.
-    // periphery:ignore
     var isNonRetryable: Bool { true }
 }
 

@@ -95,6 +95,11 @@ public actor ScriptedServer {
     /// See ``RecordedNotification`` for what is captured.
     public private(set) var recordedNotifications: [RecordedNotification] = []
 
+    /// The capabilities the client declared in its `initialize` request, or
+    /// `nil` before any client initialized — what a test reads to prove the
+    /// wire carried a capability, and not only that the client held it.
+    public private(set) var receivedClientCapabilities: Client.Capabilities?
+
     /// Creates a scripted server around a fresh `MCP.Server`.
     ///
     /// - Parameters:
@@ -127,7 +132,17 @@ public actor ScriptedServer {
     public func start(transport: any Transport) async throws {
         self.transport = transport
         await registerHandlers()
-        try await server.start(transport: transport)
+        try await server.start(transport: transport) { [weak self] _, capabilities in
+            await self?.recordClientCapabilities(capabilities)
+        }
+    }
+
+    /// Records the capabilities the client declared at `initialize` — the
+    /// initialize hook ``start(transport:)`` installs.
+    ///
+    /// - Parameter capabilities: The declared capabilities.
+    private func recordClientCapabilities(_ capabilities: Client.Capabilities) {
+        receivedClientCapabilities = capabilities
     }
 
     /// Blocks until the message loop of the wrapped server ends.

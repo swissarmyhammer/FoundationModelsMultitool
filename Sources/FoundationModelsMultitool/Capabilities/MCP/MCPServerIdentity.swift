@@ -7,8 +7,8 @@
 // into this folder, and the catalog carries these two types: every snapshot
 // names the server it describes, and states the readiness the server was in
 // when the snapshot was taken. `MCPServer` itself, which owns the connection
-// and sets both, comes in a later task. These two stand in a file of their
-// own so that the catalog does not wait for it.
+// and sets both, stands in `MCPServer.swift`. These two stand in a file of
+// their own so that the catalog reads them without the actor.
 //
 // **Why the identity is a type, and not the server's own name.** A server
 // reports a `Server.Info.name` on each `initialize`, and that name can change
@@ -21,24 +21,27 @@
 // `Sendable` nor `Equatable`, and this state must be both: it crosses actor
 // boundaries inside a catalog snapshot, and a test asserts on it directly.
 //
-// **The types are internal.** The Shell capability keeps its types internal,
-// and this folder does the same: `MCPServer` and `MCPToolCatalog` are the
-// production readers, and the tests reach the types with `@testable import`.
+// **The types are `public`.** `MCPServer` is public, because a host constructs
+// and connects it before `buildRegistry()`, and it exposes both: its `state`
+// is one of these, and `MCPServerError.notReady(_:)` carries one, so a host
+// that reads the state or catches the error names the type.
 
 /// The readiness of an `MCPServer`'s connection to its underlying MCP server.
 ///
-/// There is no separate "disconnected" or "idle" case: a freshly-constructed
-/// `MCPServer` starts ``connecting`` (it exists to become connected), and its
-/// connect resets to ``connecting`` at the start of every attempt, including
-/// a reconnect after ``faulted(_:)`` or after an explicit disconnect.
-enum MCPServerState: Sendable, Equatable {
-    /// The `initialize` handshake and/or paginated `tools/list` discovery has
-    /// not yet completed successfully.
+/// There is no "idle" case: a freshly-constructed `MCPServer` starts
+/// ``connecting`` (it exists to become connected), and its connect resets to
+/// ``connecting`` at the start of every attempt, including a reconnect after
+/// ``faulted(_:)`` or after an explicit disconnect. ``disconnected`` is the one
+/// state a host reaches on purpose, through `MCPServer.disconnect()`.
+public enum MCPServerState: Sendable, Equatable {
+    /// The `initialize` handshake has not yet completed successfully.
     case connecting
 
-    /// `initialize` succeeded and every `tools/list` page was fetched to
-    /// exhaustion — the server's tools are safe to read.
+    /// `initialize` succeeded — the connection is up.
     case ready
+
+    /// The host called `MCPServer.disconnect()`, and no connect ran after it.
+    case disconnected
 
     /// The most recent connection attempt failed — either the transport
     /// handshake or paginated discovery — carrying a human-readable
@@ -60,7 +63,7 @@ enum MCPServerState: Sendable, Equatable {
 /// callers that key state by server identity — routing tables, tool caches,
 /// UI labels — need that key to stay put across a reconnect. `MCPServer`
 /// chooses the name one time, at construction.
-struct ServerIdentity: Sendable, Hashable {
+public struct ServerIdentity: Sendable, Hashable {
     /// The stable name identifying this server connection.
-    let name: String
+    public let name: String
 }

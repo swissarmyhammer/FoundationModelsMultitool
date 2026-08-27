@@ -29,8 +29,14 @@
 //   subprocess registered into `ProcessRegistry.global`, and
 //   `TransportContracts.swift` — the two contracts a transport states to the
 //   server: a permanent failure, and a resource to release. Both are ported.
-// - `MCPServer.swift` — the connected server, and the host handler that a
-//   bare `LanguageModelSession` sends elicitation to.
+// - `MCPServer.swift`, `MCPServer+Connection.swift` and
+//   `MCPServer+ClientQueue.swift` — the connected server: its state, its
+//   connect, reconnect and disconnect, and the queue that serializes its
+//   client operations. `BackoffPolicy.swift` holds the retry schedule, the
+//   transport factory and the errors of the connect path, and
+//   `SingleResume.swift` the one-resumption race both extensions use. The
+//   host handler that a bare `LanguageModelSession` sends elicitation to
+//   comes with the elicitation task.
 // - `MCPTool.swift` — the plain synchronous `Tool` that one server verb
 //   renders as.
 //
