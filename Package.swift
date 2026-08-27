@@ -207,7 +207,10 @@ private let shellProducts: [Target.Dependency] = [
 /// The sdk depends on `swift-log` for its own logging. This package does NOT
 /// declare `swift-log`: it logs with `os.Logger` (see `MultiTool.swift`), and
 /// each ported MCP file does the same. `swift-log` reaches the build
-/// transitively and no target here names a symbol of it.
+/// transitively. One file names one symbol of it: `StdioServerProcess.swift`
+/// wraps a `Transport`, and that protocol requires a `Logging.Logger`
+/// property, so the wrapper names the type to conform and logs nothing
+/// through it.
 private let mcpPackage = "swift-sdk"
 
 /// The products of `mcpPackage`, linked by the library target and the unit

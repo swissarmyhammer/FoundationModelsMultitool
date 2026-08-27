@@ -26,14 +26,18 @@
 // - `MCPToolCatalog.swift` and `MCPServerIdentity.swift` — the catalog of a
 //   server's tools, and the identity and state the catalog carries.
 // - `StdioServerProcess.swift` — the stdio transport over a server
-//   subprocess registered into `ProcessRegistry.global`.
+//   subprocess registered into `ProcessRegistry.global`, and
+//   `TransportContracts.swift` — the two contracts a transport states to the
+//   server: a permanent failure, and a resource to release. Both are ported.
 // - `MCPServer.swift` — the connected server, and the host handler that a
 //   bare `LanguageModelSession` sends elicitation to.
 // - `MCPTool.swift` — the plain synchronous `Tool` that one server verb
 //   renders as.
 //
 // **Each file logs with `os.Logger`**, as `MultiTool.swift` does. The `MCP`
-// module brings `swift-log` transitively for its own use, and no file of this
-// folder imports it — see `mcpPackage` in `Package.swift`.
+// module brings `swift-log` transitively for its own use. One file of this
+// folder imports it: `StdioServerProcess.swift` names `Logging.Logger` as the
+// type the `Transport` protocol requires, and logs nothing through it — see
+// `mcpPackage` in `Package.swift`.
 
 import MCP
