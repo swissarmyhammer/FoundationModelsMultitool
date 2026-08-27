@@ -194,6 +194,32 @@ private let shellProducts: [Target.Dependency] = [
     .product(name: "Subprocess", package: subprocessPackage)
 ]
 
+/// The Model Context Protocol wire library the MCP capability speaks through.
+///
+/// eventplan.md § "Consolidation of the siblings" moves the FoundationModelsMCP
+/// package into this one as `Capabilities/MCP`. The ported files — `MCPServer`,
+/// `StdioServerProcess`, the `SchemaConverter` / `GeneratedContentCodec` pair,
+/// `ToolContentRenderer` with its `RenderBudget`, and the `ToolCatalog` — are
+/// written over this package's `MCP` module: its `Client`, its `Transport`,
+/// and its `Tool` / `Value` wire types. The package stands under the
+/// `modelcontextprotocol` organization, so neither helper above fits it.
+///
+/// The sdk depends on `swift-log` for its own logging. This package does NOT
+/// declare `swift-log`: it logs with `os.Logger` (see `MultiTool.swift`), and
+/// each ported MCP file does the same. `swift-log` reaches the build
+/// transitively and no target here names a symbol of it.
+private let mcpPackage = "swift-sdk"
+
+/// The products of `mcpPackage`, linked by the library target and the unit
+/// test target below.
+///
+/// The MCP capability is the one consumer. `hubProducts`,
+/// `liveLoaderMLXProducts` and `shellProducts` group their own products the
+/// same way.
+private let mcpProducts: [Target.Dependency] = [
+    .product(name: "MCP", package: mcpPackage)
+]
+
 /// The `Sources/` subdirectory prefix used by every source target's `path`
 /// below.
 private let sourcesPath = "Sources/"
@@ -251,17 +277,23 @@ let package = Package(
         // resolve the same version: a pre-release carries no compatible-range
         // promise, and a floor would let one package move alone.
         .package(url: "https://github.com/swiftlang/\(subprocessPackage).git", exact: "1.0.0-beta.1"),
+        // The package of `mcpProducts` — see its documentation above. A
+        // semantic-version floor, as `huggingFaceOrgPackage(name:from:)` takes,
+        // because the sdk publishes tagged releases with a compatible-range
+        // promise.
+        .package(url: "https://github.com/modelcontextprotocol/\(mcpPackage).git", from: "0.12.1"),
     ],
     targets: [
         // Links `shellProducts` for the shell capability this library takes
-        // over from `../FoundationModelsShelltool`.
+        // over from `../FoundationModelsShelltool`, and `mcpProducts` for the
+        // MCP capability it takes over from `../FoundationModelsMCP`.
         .target(
             name: packageName,
             dependencies: [
                 .product(name: routerDependencyName, package: routerDependencyName),
                 .product(name: metadataRegistryDependencyName, package: metadataRegistryDependencyName),
                 .product(name: extrasDependencyName, package: extrasDependencyName),
-            ] + shellProducts,
+            ] + shellProducts + mcpProducts,
             path: "\(sourcesPath)\(packageName)"
         ),
         // M9: the sample CLI's whole implementation — plan.md "M9 — Sample CLI.
@@ -298,9 +330,9 @@ let package = Package(
             // launches with SwiftPM's default rpaths — verified by running
             // the built binary directly.
         ),
-        // `shellProducts` again: `DependencyReachTests` imports `Subprocess`
-        // directly, and this target declares each product it imports, as it
-        // does for the two products above.
+        // `shellProducts` and `mcpProducts` again: `DependencyReachTests`
+        // imports `Subprocess` and `MCP` directly, and this target declares
+        // each product it imports, as it does for the two products above.
         .testTarget(
             name: "\(packageName)Tests",
             dependencies: [
@@ -309,7 +341,7 @@ let package = Package(
                 .product(name: routerDependencyName, package: routerDependencyName),
                 .product(name: metadataRegistryDependencyName, package: metadataRegistryDependencyName),
                 .product(name: extrasDependencyName, package: extrasDependencyName),
-            ] + shellProducts,
+            ] + shellProducts + mcpProducts,
             path: "\(testsPath)\(packageName)Tests",
             resources: [
                 // Golden files pinning `ToolAPIRenderer`'s rendered surface

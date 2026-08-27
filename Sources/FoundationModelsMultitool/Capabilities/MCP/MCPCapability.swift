@@ -1,0 +1,39 @@
+// `MCPCapability` — the folder of the MCP capability, and the file its type
+// will stand in.
+//
+// eventplan.md § "Consolidation of the siblings": "MCP (`Capabilities/MCP`)
+// gets `MCPServer`, `StdioServerProcess`, the `SchemaConverter` /
+// `GeneratedContentCodec` pair, `ToolContentRenderer` with its
+// `RenderBudget`, and the `ToolCatalog`. Each connected server registers as
+// its own top-level group: `tools.github.createIssue`, never
+// `tools.mcp.github.createIssue`. The model must not see the transport."
+//
+// **This file holds no type yet.** It opens the folder and it links the `MCP`
+// wire module into the library target, so the dated phase-4 note of
+// eventplan.md § "Phases" stands before the files it governs. The type
+// `MCPCapability` — the `Capability` conformer a host registers through
+// `MultiTool.Builder.withMCP(servers:)`, the short form of
+// `withCapability(MCPCapability(...))` — comes in a later task.
+//
+// **The files that later tasks add to this folder:**
+//
+// - `SchemaConverter.swift`, `GeneratedContentCodec.swift` and
+//   `Value+ScalarString.swift` — a JSON Schema from `tools/list` becomes a
+//   `GenerationSchema`, and the model's `GeneratedContent` becomes the
+//   `[String: MCP.Value]` of `tools/call`.
+// - `ToolContentRenderer.swift` and `RenderBudget.swift` — a `CallTool.Result`
+//   becomes the one string the model reads.
+// - `MCPToolCatalog.swift` and `MCPServerIdentity.swift` — the catalog of a
+//   server's tools, and the identity and state the catalog carries.
+// - `StdioServerProcess.swift` — the stdio transport over a server
+//   subprocess registered into `ProcessRegistry.global`.
+// - `MCPServer.swift` — the connected server, and the host handler that a
+//   bare `LanguageModelSession` sends elicitation to.
+// - `MCPTool.swift` — the plain synchronous `Tool` that one server verb
+//   renders as.
+//
+// **Each file logs with `os.Logger`**, as `MultiTool.swift` does. The `MCP`
+// module brings `swift-log` transitively for its own use, and no file of this
+// folder imports it — see `mcpPackage` in `Package.swift`.
+
+import MCP

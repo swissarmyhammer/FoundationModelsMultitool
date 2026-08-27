@@ -812,6 +812,29 @@ remove the follow-up pseudo-tools, and the builtins replace them. The
 `ToolContext.elicit`, URL mode included. Exit: we archive the
 FoundationModelsMCP repository. ACPAgent, its one org consumer, moves first.
 
+> **Note (2026-08-27).** Four decisions amend this phase before its tasks
+> start, so the tasks are built on an amended plan.
+>
+> 1. **An MCP verb is a plain synchronous `Tool`.** It does not conform to
+>    `BackgroundTool`, and no `RunKind` case is added. The section
+>    "Consolidation of the siblings" lists "An MCP request (a protocol task)"
+>    as an object behind a parked run. That sentence now reads: an MCP request
+>    runs inside the run that called it. Cancellation of that run becomes the
+>    advisory `notifications/cancelled` on the wire, and the outcome is the
+>    calling run's. A transport drop under an in-flight request throws a
+>    `LostRunError` (Router), and the engine settles the calling run as
+>    `.lost`. The reason is the content plane: an MCP result has no store, so
+>    a background envelope would give the model a 4 KB tail and nothing else.
+> 2. **The verbs of files, shell, and MCP are plain `FoundationModels.Tool`
+>    conformers** that work on a bare `LanguageModelSession`. Background and
+>    non-blocking elicitation are what Router adds. On a bare session, MCP
+>    elicitation goes to a host handler on `MCPServer`, and the turn waits.
+> 3. **Router supplies the turn boundary** through
+>    `TurnBoundaryTool.turnWillBegin()`. MultiTool stages a rebuilt registry
+>    and applies it there.
+> 4. **ACPAgent does not import FoundationModelsMCP** (manifest comment
+>    only), so the "consumer moves first" step is a check and a comment edit.
+
 **Phase 5 — operation. Tag: `consolidation-5-operation`.** Nothing imports
 `Operations` or `OperationsCLI` any longer. We make sure of this across the
 org. We do not assume it. Skills is the last known consumer and moves here.
