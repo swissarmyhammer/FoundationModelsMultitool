@@ -136,6 +136,118 @@ comments:
       from about 6 s to 0.09 s. A red run would now report in about 31 s, not 121.
     - next: `/review`.
   timestamp: 2026-08-28T15:42:00.000813+00:00
+- actor: claude-code
+  id: 01m14gvgk5yds6mhzdb39h34j2
+  text: |-
+    ### commit — changed
+    - evidence: 4 local commits, 24 files total, no push:
+      - 316d906 fix(mcp): end the dropped transport's mirror stream with an error (2 files)
+      - feda733 fix(tests): release the loopback's gate when a test connect fails (2 files)
+      - 9cf7d58 fix(tests): drop the loopback client's stray Last-Event-ID (3 files)
+      - 6a53b4a chore(kanban): sync board state (18 files)
+    - next: none
+  timestamp: 2026-08-28T15:47:13.637333+00:00
+- actor: claude-code
+  id: 01m14hb6s4gjpf8537m6v8k90w
+  text: |
+    ### review — findings
+    - scope: `review sha HEAD~4..HEAD` — the diffs only. 7 files read, 18 files
+      not read because `.reviewignore` holds out `.kanban/`.
+    - validators: 7 attempted, 0 failed, 0 skipped. The result is therefore
+      trustworthy: no rule was stopped by a stale checkout.
+    - evidence: 2 findings, both confirmed, 3 refuted —
+      `Tests/FoundationModelsMultitoolTests/LoopbackHTTPServerTests.swift:212`
+      (`completeness/case-sensitivity-coverage`);
+      `Tests/Support/MCPTestServer/LoopbackHTTPServer.swift:221`
+      (`swift/fluent-usage`).
+    - the production change: the engine confirmed no finding against
+      `Sources/FoundationModelsMultitool/Capabilities/MCP/DropObservingTransport.swift`.
+      The mirror stream that now ends with `MCPError.connectionClosed` passed
+      every validator.
+    - the two findings are both in test support. The first asks for a test of a
+      header name that is not in the usual case, because
+      `withoutResumeHeader` compares without case. The second asks for a label on
+      the first parameter of `withoutResumeHeader`.
+    - next: `/implement` the two findings, then `/review` again. The card stays in
+      `review`.
+  timestamp: 2026-08-28T15:55:47.876433+00:00
+- actor: claude-code
+  id: 01m14hbyt3b6g42jq07cv0fyjm
+  text: |-
+    ### finish iteration 1 — findings
+    - implement: changed — 7 files; the true cause found in the swift-sdk HTTPClientTransport (one lastEventID for every SSE stream), plus two more defects: the mirror stream of DropObservingTransport ended with no error and spun a thread for ever, and the process-wide gate of LoopbackHTTPServer was not given back when a connect threw
+    - test: green — 30 of 30 clean full swift test runs, 11 to 13 seconds each, 0 warnings; the baseline was 19 of 20. The loopback timeout went DOWN, 120 seconds to 30 seconds; the user CPU of one run fell from about 22.5 seconds to about 16.1 seconds
+    - commit: 316d906, feda733, 9cf7d58, 6a53b4a — 24 files
+    - review: findings — Tests/FoundationModelsMultitoolTests/LoopbackHTTPServerTests.swift:212, Tests/Support/MCPTestServer/LoopbackHTTPServer.swift:221
+
+    The one production change, the mirror stream that now ends with MCPError.connectionClosed, drew no finding.
+  timestamp: 2026-08-28T15:56:12.483774+00:00
+- actor: claude-code
+  id: 01m14hxc7dwqrgdhfpcepg26ca
+  text: |
+    ### The two review findings, and how each was answered
+
+    **`swift/fluent-usage`.** `withoutResumeHeader(_:)` is a noun phrase, and its
+    first parameter is not a value-preserving conversion, so the rule asks for a
+    label. The function is now `withoutResumeHeader(from:)`, and the one call site
+    reads `Self.withoutResumeHeader(from: request)`.
+
+    The whole of `LoopbackHTTPServer.swift` was then read for the same cause. It
+    holds three more parameters with no label, and each is correct as it stands:
+    `handle(_ request:)`, `deliver(_ response:, for url:)` and
+    `relayStream(_ stream:)` are imperative verb phrases with a direct object,
+    which the finding itself accepts — it offers `removingResumeHeader(_:)` as an
+    alternative repair "which reads as a verb with a clear object". Each of
+    `init(serving:)`, `loopback(for url:)` and `body(of request:)` already carries
+    a label, and `canInit(with:)`, `canonicalRequest(for:)`, `startLoading()` and
+    `stopLoading()` are `URLProtocol` overrides whose signature is fixed.
+
+    **`completeness/case-sensitivity-coverage`.** The resume test is now
+    parameterized over `resumeHeaderSpellings`, which holds the usual name and the
+    same name in lower case. It reuses `connect(to:resumingFrom:)`, which gains one
+    parameter with a default so the three other call sites do not move. No sleep
+    and no timeout was added: the two cases together run in 0.076 s.
+
+    ### Two facts that were measured before the test was written
+
+    1. **Foundation keeps the case the client spells.** A probe set a header in
+       lower case and in mixed case through a `URLSession` with a `URLProtocol`,
+       and the protocol read back the spelling the caller wrote. So the spelling
+       really reaches `LoopbackHTTPServer.handle(_:)`, and the test is not empty.
+    2. **The sdk reads the header without case too.**
+       `HTTPRequest.header(_:)` in `HTTPServerTypes.swift` of the swift-sdk
+       lowercases both sides. A lower-case name the loopback let through would
+       therefore reach `handleResumeRequest` exactly as the usual name does. This
+       is what makes the new case load-bearing rather than decorative.
+
+    ### The red that was watched
+
+    `caseInsensitiveCompare` was temporarily replaced by `==` in the filter. The
+    run then reported the usual spelling PASSED and `last-event-id` FAILED with
+    "the standalone SSE stream never held within 10.0 seconds" — the loopback let
+    the lower-case header through, the sdk took its resume path, and no standalone
+    stream opened. The filter was put back and both cases passed in 0.076 s.
+  timestamp: 2026-08-28T16:05:43.277145+00:00
+- actor: claude-code
+  id: 01m14hy3fgmbphd6yxg9s97jq1
+  text: |
+    ### implement — changed
+    - evidence: 2 files —
+      `Tests/FoundationModelsMultitoolTests/LoopbackHTTPServerTests.swift`;
+      `Tests/Support/MCPTestServer/LoopbackHTTPServer.swift`.
+    - findings: both of the two are now `- [x]`.
+      `swift/fluent-usage` — `withoutResumeHeader(_:)` becomes
+      `withoutResumeHeader(from:)`. `completeness/case-sensitivity-coverage` — the
+      resume test takes `arguments: resumeHeaderSpellings`, which holds
+      `Last-Event-ID` and `last-event-id`.
+    - runs: 10 of 10 clean full `swift test` runs, 11.5 to 12.6 seconds of wall
+      clock each. The baseline was 30 of 30 at 11 to 13 seconds, so neither number
+      moved. `swift build --build-tests` is clean; the one warning of each run is
+      the vendored `mlx-swift_Cmlx.bundle`, which is out of scope.
+    - speed: the new case costs nothing that can be measured — the whole resume
+      test, both spellings, runs in 0.076 s. No sleep and no timeout was added.
+    - next: `/review`.
+  timestamp: 2026-08-28T16:06:07.088032+00:00
 position_column: doing
 position_ordinal: '80'
 title: The HTTP-loopback elicitation tests time out on about one full swift test run in six
@@ -213,4 +325,14 @@ session never outlives a disconnect, so replay has nothing to give it.
 - [x] 30 consecutive full `swift test` runs, each green.
 
 ## Workflow
-Read the doc comment of `LoopbackHTTPServerTests` first. #eventplan
+Read the doc comment of `LoopbackHTTPServerTests` first.
+
+## Review Findings (2026-08-28 10:47)
+
+> Scope: `review sha HEAD~4..HEAD` — reviewed the diffs only — lines this change added or modified. 7 file(s) reviewed, 18 not reviewed.
+
+> 18 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 18 file(s)
+
+- [x] `Tests/FoundationModelsMultitoolTests/LoopbackHTTPServerTests.swift:212` `completeness/case-sensitivity-coverage` — The `withoutResumeHeader()` function in LoopbackHTTPServer.swift (line 221-224) uses `caseInsensitiveCompare()` to match the Last-Event-ID header, which is correct for HTTP headers. However, the test `aResumeRequestStillGetsTheStandaloneStream()` exercises only the canonical case "Last-Event-ID" and does not verify that non-canonical spellings (e.g., "last-event-id", "Last-Event-Id") are also filtered. Add one assertion or test variant that sends the Last-Event-ID header with a non-canonical case (e.g., lowercase "last-event-id" or mixed case "Last-Event-Id") and verify that the server-initiated messages still arrive, proving the filter handles all case variations.
+- [x] `Tests/Support/MCPTestServer/LoopbackHTTPServer.swift:221` `swift/fluent-usage` — The first parameter `request` is unlabeled, but should only be unlabeled for value-preserving conversions (e.g., `Int64(someUInt32)`). Since this function transforms the request by filtering headers rather than preserving it unchanged in a different type, the parameter needs a label for clarity at the call site. Add a label to the first parameter: `private static func withoutResumeHeader(from request: HTTPRequest) -> HTTPRequest` so the call reads as `withoutResumeHeader(from: request)`, or alternatively rename to `removingResumeHeader(_ request: HTTPRequest)` which reads as a verb with a clear object. #eventplan

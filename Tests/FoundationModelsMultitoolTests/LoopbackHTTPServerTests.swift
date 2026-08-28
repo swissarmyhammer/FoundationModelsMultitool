@@ -9,7 +9,8 @@ import Testing
 ///
 /// The three loopback tools (`echo`, `elicitEcho`, `elicitURL`), the
 /// `tools/list_changed` notification and a client that asks to resume a stream
-/// are the cases. The last test runs one case over both transports of
+/// are the cases. The resume case runs over each spelling of the resume header
+/// name, and the last test runs one case over both transports of
 /// ``MCPTransportKind``.
 ///
 /// The suite is `.serialized` so its tests run one at a time. Each test holds a
@@ -40,6 +41,18 @@ struct LoopbackHTTPServerTests {
 
     /// The header a client sends to ask a server to resume a stream.
     private static let lastEventIDHeader = "Last-Event-ID"
+
+    /// The cases the resume test spells ``lastEventIDHeader`` in: the usual
+    /// one, and the same name in lower case.
+    ///
+    /// A header name has no case in HTTP, and the loopback compares this one
+    /// without case, so each spelling must reach the same standalone SSE
+    /// stream. The lower-case form is not an unusual client: HTTP/2 and HTTP/3
+    /// send every header name that way. The second spelling is derived from the
+    /// first one, so the two can never name different headers.
+    private static let resumeHeaderSpellings = [
+        lastEventIDHeader, lastEventIDHeader.lowercased(),
+    ]
 
     /// The HTTP method of the standalone SSE stream request.
     private static let eventStreamMethod = "GET"
@@ -93,12 +106,15 @@ struct LoopbackHTTPServerTests {
     ///   - capabilities: The client capabilities to advertise.
     ///   - lastEventID: What every `GET` of the client carries as
     ///     `Last-Event-ID`, or `nil` for a client that asks to resume nothing.
+    ///   - headerName: The case the client spells that header name in. The
+    ///     usual spelling by default — see ``resumeHeaderSpellings``.
     /// - Returns: The loopback and the connected client.
     /// - Throws: What the start, the connect, or the wait throws.
     private func connect(
         to scripted: ScriptedServer,
         capabilities: Client.Capabilities = .init(),
-        resumingFrom lastEventID: String? = nil
+        resumingFrom lastEventID: String? = nil,
+        resumeHeaderNamed headerName: String = LoopbackHTTPServerTests.lastEventIDHeader
     ) async throws -> Connection {
         let loopback = LoopbackHTTPServer(serving: scripted)
         let (endpoint, configuration) = try await loopback.start()
@@ -107,7 +123,9 @@ struct LoopbackHTTPServerTests {
             _ = try await client.connect(
                 transport: HTTPClientTransport(
                     endpoint: endpoint, configuration: configuration,
-                    requestModifier: { Self.asking(to: $0, resumeFrom: lastEventID) }))
+                    requestModifier: {
+                        Self.asking(to: $0, resumeFrom: lastEventID, headerNamed: headerName)
+                    }))
             try await TestPoll.waitUntil("the standalone SSE stream") {
                 await loopback.isServingEventStream
             }
@@ -118,19 +136,26 @@ struct LoopbackHTTPServerTests {
         }
     }
 
-    /// `request` with `lastEventID` set as its `Last-Event-ID`, when it is a
+    /// `request` with `lastEventID` set under `headerName`, when it is a
     /// standalone SSE stream request and `lastEventID` is not `nil`.
+    ///
+    /// `URLRequest` keeps the case the caller spells a header name in, and the
+    /// loader hands that same spelling to the `URLProtocol`, so `headerName`
+    /// reaches the loopback as it is written here.
     ///
     /// - Parameters:
     ///   - request: The request the client is about to send.
     ///   - lastEventID: The id to ask to resume from, or `nil` to ask nothing.
+    ///   - headerName: The name to set that id under, in the case to send.
     /// - Returns: The request to send.
-    private static func asking(to request: URLRequest, resumeFrom lastEventID: String?) -> URLRequest {
+    private static func asking(
+        to request: URLRequest, resumeFrom lastEventID: String?, headerNamed headerName: String
+    ) -> URLRequest {
         guard let lastEventID, request.httpMethod == Self.eventStreamMethod else {
             return request
         }
         var asking = request
-        asking.setValue(lastEventID, forHTTPHeaderField: Self.lastEventIDHeader)
+        asking.setValue(lastEventID, forHTTPHeaderField: headerName)
         return asking
     }
 
@@ -208,11 +233,21 @@ struct LoopbackHTTPServerTests {
     /// standalone stream to that other stream, or answer 400, and every
     /// server-initiated message would then reach nothing. See the header of
     /// `LoopbackHTTPServer.swift`.
-    @Test("a client that asks to resume a stream still gets the standalone SSE stream")
-    func aResumeRequestStillGetsTheStandaloneStream() async throws {
+    ///
+    /// The case of the header name is what each argument moves. The loopback
+    /// compares that name without case, and `StatefulHTTPServerTransport`
+    /// reads it without case too, so a spelling the loopback let through would
+    /// reach the resume path of the sdk exactly as the usual spelling does.
+    /// Each spelling of ``resumeHeaderSpellings`` must therefore reach the same
+    /// standalone stream.
+    @Test(
+        "a client that asks to resume a stream still gets the standalone SSE stream",
+        arguments: LoopbackHTTPServerTests.resumeHeaderSpellings)
+    func aResumeRequestStillGetsTheStandaloneStream(headerName: String) async throws {
         let scripted = ScriptedServer()
         await scripted.addLoopbackTools()
-        let connection = try await connect(to: scripted, resumingFrom: Self.idOfNoStream)
+        let connection = try await connect(
+            to: scripted, resumingFrom: Self.idOfNoStream, resumeHeaderNamed: headerName)
         defer { Task { await connection.close() } }
 
         let counter = NotificationCounter()
