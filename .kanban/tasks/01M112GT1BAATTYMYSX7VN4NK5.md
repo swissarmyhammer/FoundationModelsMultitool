@@ -65,11 +65,34 @@ comments:
   text: |
     Correction to the step record above: the file count is 7, not 6. The list itself is complete and correct — three new source and test files, one edited source file, two new test fixtures, and two edited test files, which is seven paths in all (`git status` agrees).
   timestamp: 2026-08-27T22:45:35.133391+00:00
+- actor: claude-code
+  id: 01m12q3k8y7dwc51bp08fj5q4g
+  text: |-
+    ### commit — changed
+    - evidence: 372274e feat(mcp): link catalog updates to a rebuild and stage step (11 files changed, 1062 insertions(+), 47 deletions(-))
+    - next: none
+  timestamp: 2026-08-27T22:58:01.118231+00:00
+- actor: claude-code
+  id: 01m12qcmfn88z3zmxepcqbmwyt
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit 372274e). 7 files reviewed, 0 findings, 0 confirmed, 0 refuted. The 4 `.kanban/` files are not reviewed, because an ignore rule excludes them. The commit renames no file, thus the diff scope reads all 7 source files.
+    - next: The task moves to `done`. No prior findings sections are open, and all checklist items have a mark.
+  timestamp: 2026-08-27T23:02:57.269941+00:00
+- actor: claude-code
+  id: 01m12qd4czgr9pmf3s8jmztyhj
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 7 files, SurfaceRefresher added
+    - test: green — swift test, 1290 tests in 98 suites passed, 0 failures, 0 skipped; one unnecessary await removed from SurfaceRefresher.swift
+    - commit: 372274e — 11 files changed, 1062 insertions, 47 deletions
+    - review: clean — 0 findings over 7 files; task moved to done
+  timestamp: 2026-08-27T23:03:13.567616+00:00
 depends_on:
 - 01M112F1XGAN9VWW702AZPXVZ4
 - 01M112FH3741JEQ7QN97C5E13R
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ff9e80
 title: Wire catalogUpdates and reconnects to rebuild-and-stage
 ---
 ## What

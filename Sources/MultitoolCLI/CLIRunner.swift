@@ -40,6 +40,12 @@ struct CLIArguments: Equatable {
     /// plan.md "Direct mode (skip discovery)".
     var direct = false
 
+    /// Every MCP server the `--mcp` options named, in the order the options stand.
+    ///
+    /// Each one becomes a spawned subprocess, a connected `MCPServer`, and one
+    /// group of the rendered surface — see `CLIRunner.makeDemoRegistry(direct:mcpServers:)`.
+    var mcpServers: [MCPServerSpec] = []
+
     /// Whether to print usage text and exit without touching the Router.
     ///
     /// Set by the `--help`/`-h` flags.
@@ -59,9 +65,109 @@ struct CLIArgumentError: Error, Equatable, CustomStringConvertible {
     }
 }
 
+// MARK: - One `--mcp` option
+
+/// One `--mcp` option: the name of a server, the command that serves it, and
+/// the arguments of that command.
+///
+/// The name is the noun, so every verb of that server renders at
+/// `tools.<name>.<verb>` — eventplan.md § "Registration of capabilities": "The
+/// server is the noun, and the tool is the verb." Nothing here names the
+/// transport, and the model never sees one.
+struct MCPServerSpec: Equatable, Sendable {
+    /// The name of the server, and the first segment of every path its verbs
+    /// render at.
+    let name: String
+
+    /// The command that serves it, exactly as the option spelled it.
+    let command: String
+
+    /// The arguments handed to ``command`` on every spawn, in order.
+    let arguments: [String]
+
+    /// The absolute path of ``command``.
+    ///
+    /// `StdioServerProcess` resolves nothing through `PATH` and refuses a
+    /// relative path, so a relative path of the option is resolved here,
+    /// against the current directory. That is what makes the documented
+    /// `--mcp echo=.build/debug/mcp-test-server` run from a checkout.
+    var absoluteCommand: String {
+        URL(fileURLWithPath: command).standardizedFileURL.path
+    }
+}
+
+/// An error thrown by `CLIRunner.parse(_:)` for a `--mcp` value it cannot read.
+enum CLIMCPArgumentError: Error, Equatable, CustomStringConvertible {
+    /// The `--mcp` option stood last, with no value after it.
+    case missingValue
+
+    /// The value carries no `=`, so it separates no name from a command.
+    /// Carries the value, verbatim.
+    case missingSeparator(String)
+
+    /// The value opens at the `=`, so it names no server. Carries the value,
+    /// verbatim.
+    case emptyName(String)
+
+    /// The value ends at the `=`, so it names no command. Carries the value,
+    /// verbatim.
+    case emptyCommand(String)
+
+    /// The shape a `--mcp` value takes, as a message spells it.
+    private static let valueForm = "<name>=<command>"
+
+    /// A human-readable description of the error, on one line.
+    ///
+    /// Implementation of the `CustomStringConvertible` protocol requirement.
+    var description: String {
+        "\(cliErrorPrefix) \(reason)"
+    }
+
+    /// What the value lacked, and what to write in its place.
+    private var reason: String {
+        let option = CLIRunner.mcpFlag.names[0]
+        switch self {
+        case .missingValue:
+            return "\(option) needs a \(Self.valueForm) value after it."
+        case .missingSeparator(let value):
+            return "\(option) value \"\(value)\" carries no \"=\"; write \(Self.valueForm)."
+        case .emptyName(let value):
+            return "\(option) value \"\(value)\" names no server before the \"=\"."
+        case .emptyCommand(let value):
+            return "\(option) value \"\(value)\" names no command after the \"=\"."
+        }
+    }
+}
+
+/// An error thrown when the server a `--mcp` option names cannot be started.
+///
+/// A configuration failure rather than a Router failure — a command that is not
+/// there, or one that never completes the `initialize` handshake — so
+/// `CLIRunner.run(...)` maps it to `CLIRunner.ExitCode.usageError` and prints
+/// it on one line.
+struct CLIMCPStartError: Error, CustomStringConvertible {
+    /// The name of the server, as the `--mcp` option spelled it.
+    let name: String
+
+    /// The command the option named, as the option spelled it.
+    let command: String
+
+    /// What the spawn or the connect reported.
+    let underlying: String
+
+    /// A human-readable description of the failure, on one line.
+    ///
+    /// Implementation of the `CustomStringConvertible` protocol requirement.
+    var description: String {
+        "\(cliErrorPrefix) MCP server \"\(name)\" did not start from \"\(command)\": \(underlying)"
+    }
+}
+
 // MARK: - Flags
 
-/// One CLI flag: its recognized spelling(s), `OPTIONS:` description, and the effect it has on `CLIArguments` when parsed.
+/// One CLI flag: its recognized spelling(s), the value it reads after its own
+/// name, its `OPTIONS:` description, and the effect it has on `CLIArguments`
+/// when parsed.
 ///
 /// The single source of truth for a flag's name(s) — `CLIRunner.parse(_:)`'s
 /// dispatch, `CLIRunner.usageText`'s `OPTIONS:` listing, and
@@ -75,6 +181,10 @@ struct Flag: Sendable {
     /// referenced by error messages.
     let names: [String]
 
+    /// How `USAGE:` and `OPTIONS:` spell the arguments this flag reads after
+    /// its own name, or `nil` for a flag that reads none.
+    let valueSyntax: String?
+
     /// The `OPTIONS:` description lines shown next to this flag's names, pre-wrapped to `usageText`'s line width.
     ///
     /// Indentation is excluded; `usageText` computes it separately from
@@ -82,7 +192,17 @@ struct Flag: Sendable {
     let descriptionLines: [String]
 
     /// The effect to apply to `arguments` when `parse(_:)` matches this flag.
-    let apply: @Sendable (_ arguments: inout CLIArguments) -> Void
+    ///
+    /// A flag with no ``valueSyntax`` reads nothing and answers `0`; a flag
+    /// that takes a value reads it out of `following` and answers how many
+    /// arguments it took, which is where `parse(_:)` resumes.
+    ///
+    /// - Parameters:
+    ///   - arguments: the flags parsed so far, which this effect updates.
+    ///   - following: every argument standing after this flag's own name.
+    /// - Returns: how many arguments of `following` this flag read.
+    /// - Throws: what a flag throws for a value it cannot read.
+    let apply: @Sendable (_ arguments: inout CLIArguments, _ following: ArraySlice<String>) throws -> Int
 }
 
 // MARK: - The Router-unavailable degrade path
@@ -159,32 +279,86 @@ public enum CLIRunner {
     /// The `--direct` flag, for running in direct mode (`runCode` and `wait` registered with the session, no `searchToolsTool`).
     static let directFlag = Flag(
         names: ["--direct"],
+        valueSyntax: nil,
         descriptionLines: [
             "Run in direct mode: the registry vends runCode and wait alone,",
             "with no searchTools tool; the snippet discovers tools via",
             "help()/docs() instead.",
         ],
-        apply: { $0.direct = true }
+        apply: { arguments, _ in
+            arguments.direct = true
+            return 0
+        }
+    )
+
+    /// The `--mcp` option, for attaching one stdio MCP server to the demo.
+    ///
+    /// Repeatable: one option for each server. The name is the noun, so the
+    /// verbs of that server render at `tools.<name>.<verb>` and the model
+    /// never sees the transport.
+    static let mcpFlag = Flag(
+        names: ["--mcp"],
+        valueSyntax: "<name>=<command> [args...]",
+        descriptionLines: [
+            "Attach an MCP server this CLI spawns and speaks to over stdio.",
+            "The name is the noun, so the verbs of the server render at",
+            "tools.<name>.<verb>. The command is the executable, resolved",
+            "against the current directory when the path is relative. Each",
+            "argument after it that is not a flag of this CLI goes to the",
+            "server. Repeat the option to attach a second server.",
+        ],
+        apply: { arguments, following in
+            let read = try readMCPOption(from: following)
+            arguments.mcpServers.append(read.spec)
+            return read.consumed
+        }
     )
 
     /// The `--help`/`-h` flag, for printing usage text and exiting without touching the Router.
     static let helpFlag = Flag(
         names: ["--help", "-h"],
+        valueSyntax: nil,
         descriptionLines: ["Print this usage text and exit."],
-        apply: { $0.help = true }
+        apply: { arguments, _ in
+            arguments.help = true
+            return 0
+        }
     )
 
     /// The flags `parse(_:)` recognizes, in `USAGE:`/`OPTIONS:` display order.
     ///
     /// The single source of truth `usageText` is generated from, and
     /// `parse(_:)` dispatches against — see `Flag`'s documentation.
-    static let flags: [Flag] = [directFlag, helpFlag]
+    static let flags: [Flag] = [directFlag, mcpFlag, helpFlag]
+
+    /// Every spelling ``flags`` recognizes.
+    ///
+    /// Where the arguments of a `--mcp` server command stop: an argument this
+    /// set holds belongs to the CLI, and every other one belongs to the server
+    /// — see ``readMCPOption(from:)``.
+    static let flagNames: Set<String> = Set(flags.flatMap(\.names))
+
+    /// How `USAGE:` and `OPTIONS:` spell one flag: its names, and the value
+    /// syntax it reads after them.
+    ///
+    /// The two listings differ in how many names they show and in the brackets
+    /// they wrap the result in, and in nothing else, so the value syntax is
+    /// appended in one place.
+    ///
+    /// - Parameters:
+    ///   - names: the names to spell, already joined.
+    ///   - flag: the flag whose value syntax follows them.
+    /// - Returns: `names`, with the value syntax after it when the flag reads one.
+    private static func spelling(of names: String, for flag: Flag) -> String {
+        guard let valueSyntax = flag.valueSyntax else { return names }
+        return "\(names) \(valueSyntax)"
+    }
 
     /// `--help`'s usage text, generated from `flags`.
     static var usageText: String {
         let leadingIndent = "  "
         let columnGap = "   "
-        let nameColumns = flags.map { $0.names.joined(separator: ", ") }
+        let nameColumns = flags.map { spelling(of: $0.names.joined(separator: ", "), for: $0) }
         let columnWidth = nameColumns.map(\.count).max() ?? 0
         let continuationIndent = String(repeating: " ", count: leadingIndent.count + columnWidth + columnGap.count)
         let optionsLines = zip(flags, nameColumns).flatMap { flag, nameColumn -> [String] in
@@ -193,7 +367,7 @@ public enum CLIRunner {
                 index == 0 ? "\(leadingIndent)\(paddedName)\(columnGap)\(line)" : "\(continuationIndent)\(line)"
             }
         }
-        let usageSummary = flags.map { "[\($0.names[0])]" }.joined(separator: " ")
+        let usageSummary = flags.map { "[\(spelling(of: $0.names[0], for: $0))]" }.joined(separator: " ")
         return """
             multitool-cli — a runnable demonstration of the FoundationModelsMultitool pipeline.
 
@@ -330,16 +504,61 @@ public enum CLIRunner {
     ///   `CommandLine.arguments.dropFirst()`.
     /// - Returns: the parsed flags.
     /// - Throws: `CLIArgumentError` on the first argument that isn't a
-    ///   recognized flag.
+    ///   recognized flag, or `CLIMCPArgumentError` for a `--mcp` value that
+    ///   cannot be read.
     static func parse(_ arguments: [String]) throws -> CLIArguments {
         var result = CLIArguments()
-        for argument in arguments {
+        var index = arguments.startIndex
+        while index < arguments.endIndex {
+            let argument = arguments[index]
             guard let flag = flags.first(where: { $0.names.contains(argument) }) else {
                 throw CLIArgumentError(flag: argument)
             }
-            flag.apply(&result)
+            let read = try flag.apply(&result, arguments[arguments.index(after: index)...])
+            // The flag's own name, plus whatever it read after it.
+            index = arguments.index(index, offsetBy: read + 1)
         }
         return result
+    }
+
+    // MARK: - Reading one `--mcp` option
+
+    /// The character a `--mcp` value separates the name of the server from the
+    /// command with.
+    private static let mcpNameSeparator: Character = "="
+
+    /// Reads one `--mcp` option out of the arguments standing after the flag
+    /// name.
+    ///
+    /// The first argument is the `<name>=<command>` value. Every argument after
+    /// it that is no spelling of a flag of this CLI is an argument of the
+    /// server command, so a server carries its own flags — `--mode echo` for
+    /// `mcp-test-server` — with no separator of its own.
+    ///
+    /// - Parameter following: every argument standing after the `--mcp` name.
+    /// - Returns: the server the option names, and how many arguments were read.
+    /// - Throws: ``CLIMCPArgumentError`` for a value this cannot read.
+    static func readMCPOption(
+        from following: ArraySlice<String>
+    ) throws -> (spec: MCPServerSpec, consumed: Int) {
+        guard let value = following.first else {
+            throw CLIMCPArgumentError.missingValue
+        }
+        guard let separator = value.firstIndex(of: mcpNameSeparator) else {
+            throw CLIMCPArgumentError.missingSeparator(value)
+        }
+        let name = String(value[value.startIndex..<separator])
+        guard !name.isEmpty else {
+            throw CLIMCPArgumentError.emptyName(value)
+        }
+        let command = String(value[value.index(after: separator)...])
+        guard !command.isEmpty else {
+            throw CLIMCPArgumentError.emptyCommand(value)
+        }
+        let serverArguments = following.dropFirst().prefix { !flagNames.contains($0) }
+        let spec = MCPServerSpec(name: name, command: command, arguments: Array(serverArguments))
+        // The value itself, plus every argument of the server standing after it.
+        return (spec, serverArguments.count + 1)
     }
 
     /// Runs the complete demo pipeline end-to-end.
@@ -360,9 +579,10 @@ public enum CLIRunner {
     ///     final answer) is written. Defaults to `print(_:)`; a test
     ///     injects a collector to assert on the emitted lines.
     /// - Returns: the process exit code — `ExitCode.success` on success or
-    ///   `--help`, `ExitCode.usageError` for an argument error, or
-    ///   `ExitCode.unavailable` if the Router path couldn't be resolved (or
-    ///   the demo otherwise failed after resolution).
+    ///   `--help`, `ExitCode.usageError` for an argument error or for a `--mcp`
+    ///   server that does not start, or `ExitCode.unavailable` if the Router
+    ///   path couldn't be resolved (or the demo otherwise failed after
+    ///   resolution).
     public static func run(
         arguments: [String],
         resolve: @escaping ProfileResolver = defaultResolve,
@@ -383,8 +603,16 @@ public enum CLIRunner {
         }
 
         do {
-            try await runDemo(direct: parsed.direct, resolve: resolve, output: output)
+            try await runDemo(
+                direct: parsed.direct, mcpServers: parsed.mcpServers, resolve: resolve,
+                output: output)
             return ExitCode.success
+        } catch let error as CLIMCPStartError {
+            // A `--mcp` value that names no runnable server is a bad argument,
+            // not an unavailable Router, so it takes the usage exit code and
+            // one line rather than the two-line Router message.
+            output(error.description)
+            return ExitCode.usageError
         } catch let error as CLIRouterUnavailableError {
             output(error.description)
             return ExitCode.unavailable
@@ -394,25 +622,200 @@ public enum CLIRunner {
         }
     }
 
+    // MARK: - The registry of one demo run
+
+    /// One server a `--mcp` option started: the connected server, and the
+    /// subprocess it speaks to over stdio.
+    struct StartedMCPServer {
+        /// The connected server. Its name is the noun of every
+        /// `tools.<name>.<verb>` path its catalog renders.
+        let server: MCPServer
+
+        /// The subprocess that serves it.
+        ///
+        /// Recorded into the pool, which ends it with the session.
+        /// `CLIArgumentTests` reads it to prove that no subprocess outlives a
+        /// run.
+        let process: StdioServerProcess
+    }
+
+    /// The rendered registry of one demo run, and what a host holds beside it.
+    struct DemoRegistry {
+        /// The registry whose tools the session mounts.
+        let registry: MultiTool.Registry
+
+        /// The recorded registrations a rebuild renders again — the `source`
+        /// the `SurfaceRefresher` reads.
+        let source: MultiTool.RegistrySource
+
+        /// Every server the `--mcp` options started, in option order.
+        let servers: [StartedMCPServer]
+
+        /// The pool that stops the attachment, disconnects each server, and
+        /// ends each subprocess — in that order.
+        let pool: MCPServerPool
+    }
+
+    /// Starts every server the `--mcp` options name, and renders the registry
+    /// of the demo: the two fixture tools, plus one group for each server.
+    ///
+    /// The servers connect before the build, which is what eventplan.md asks of
+    /// a host: "Servers connect before `buildRegistry()`." A failure after a
+    /// server started shuts the pool down, so a call that throws leaves no
+    /// subprocess behind.
+    ///
+    /// Not `private`:
+    /// `Tests/FoundationModelsMultitoolTests/CLIArgumentTests.swift` builds the
+    /// same registry to drive a direct-mode snippet against a real
+    /// `mcp-test-server`, with no model and no Router.
+    ///
+    /// - Parameters:
+    ///   - direct: whether the registry vends `runCode` and `wait` alone.
+    ///   - specs: what the `--mcp` options named, in option order.
+    /// - Returns: the registry, its servers, and the pool that shuts them down.
+    /// - Throws: ``CLIMCPStartError`` when a server does not start, and what
+    ///   `MultiTool.Builder.buildRegistry()` throws when the rendered surface
+    ///   is not legal — a server name that is no identifier, or a noun another
+    ///   registration already owns.
+    static func makeDemoRegistry(
+        direct: Bool, mcpServers specs: [MCPServerSpec]
+    ) async throws -> DemoRegistry {
+        let builder = MultiTool.Builder()
+            .addTool(DemoTripTool())
+            .addTool(DemoWeatherTool())
+        let started = try await startMCPServers(specs, recordingInto: builder.serverPool)
+        do {
+            try await builder.withMCP(servers: started.map(\.server))
+            var registry = try builder.buildRegistry()
+            if direct {
+                registry = registry.directMode()
+            }
+            return DemoRegistry(
+                registry: registry, source: builder.registrySource, servers: started,
+                pool: builder.serverPool)
+        } catch {
+            await builder.serverPool.shutdownAll()
+            throw error
+        }
+    }
+
+    /// Spawns and connects one server for each `--mcp` option, recording each
+    /// subprocess and each server into `pool`.
+    ///
+    /// Each pair is recorded before the connect, so a connect that fails still
+    /// leaves the pool holding the subprocess the spawn made. A failure shuts
+    /// the whole pool down before it throws, and `MCPServerPool.add(server:)`
+    /// records a server one time, so the later `withMCP(servers:)` adds none of
+    /// these a second time.
+    ///
+    /// - Parameters:
+    ///   - specs: what the `--mcp` options named, in option order.
+    ///   - pool: where each started server and each subprocess is recorded.
+    /// - Returns: the started servers, in the order of `specs`.
+    /// - Throws: ``CLIMCPStartError`` when a server does not spawn or does not
+    ///   connect.
+    private static func startMCPServers(
+        _ specs: [MCPServerSpec], recordingInto pool: MCPServerPool
+    ) async throws -> [StartedMCPServer] {
+        var started: [StartedMCPServer] = []
+        for spec in specs {
+            do {
+                let process = try StdioServerProcess(
+                    command: spec.absoluteCommand, args: spec.arguments, name: spec.name)
+                let server = MCPServer(name: spec.name)
+                await pool.add(process: process)
+                await pool.add(server: server)
+                try await server.connect(via: process.respawn, backoffPolicy: .default)
+                started.append(StartedMCPServer(server: server, process: process))
+            } catch {
+                await pool.shutdownAll()
+                throw CLIMCPStartError(
+                    name: spec.name, command: spec.command, underlying: String(describing: error))
+            }
+        }
+        return started
+    }
+
+    // MARK: - The surface listing
+
+    /// The heading the surface listing opens with.
+    static let surfaceListingHeading = "Tool surface:"
+
+    /// The indent each entry of the surface listing stands under.
+    private static let surfaceListingIndent = "  "
+
+    /// Writes one line for each rendered entry of `surface`, so a reader sees
+    /// which verbs the model was given — the `tools.<noun>.<verb>` of every
+    /// attached MCP server among them.
+    ///
+    /// Not `private`: `CLIArgumentTests` reads the lines this writes.
+    ///
+    /// - Parameters:
+    ///   - surface: the rendered catalog to list.
+    ///   - output: where each line is written.
+    static func reportSurface(_ surface: APISurface, output: @Sendable (String) -> Void) {
+        output(surfaceListingHeading)
+        for entry in surface.entries {
+            output("\(surfaceListingIndent)tools.\(entry.path)")
+        }
+    }
+
     // MARK: - The demo run
 
-    /// Resolves a profile, mounts the vended tools on a `RoutedSession`, and
-    /// prints the model's answer.
+    /// Starts the MCP servers, renders the registry, lists the surface, drives
+    /// the turn, and shuts the pool down.
     ///
-    /// Factored out of `run(...)` as its resolve-through-print body, so
-    /// `run(...)` only has to decide which exit code an error maps to.
+    /// Factored out of `run(...)` as its whole body, so `run(...)` only has to
+    /// decide which exit code an error maps to.
+    ///
+    /// The servers start before the model resolves. A `--mcp` value that names
+    /// no runnable command is a configuration failure, and a user reads it at
+    /// once rather than after a model download.
     ///
     /// - Parameters:
     ///   - direct: whether to run in direct mode — the registry vends
     ///     `runCode` and `wait`, and `searchToolsTool` is omitted. Direct
     ///     mode takes discovery away, never the background.
+    ///   - mcpServers: what the `--mcp` options named, in option order.
+    ///   - resolve: the profile-resolution step.
+    ///   - output: where progress/answer lines are written.
+    /// - Throws: ``CLIMCPStartError`` when a server does not start,
+    ///   `CLIRouterUnavailableError` if `resolve` throws; otherwise whatever
+    ///   building the tools, `searchToolsTool`'s own initializer, or the turn's
+    ///   own event stream throws.
+    private static func runDemo(
+        direct: Bool,
+        mcpServers: [MCPServerSpec],
+        resolve: ProfileResolver,
+        output: @escaping @Sendable (String) -> Void
+    ) async throws {
+        let demo = try await Self.makeDemoRegistry(direct: direct, mcpServers: mcpServers)
+        Self.reportSurface(demo.registry.surface, output: output)
+        do {
+            try await Self.runTurn(demo, resolve: resolve, output: output)
+        } catch {
+            // The shutdown that follows the turn, on the failure path as on the
+            // success one: the pool stops the refresher, disconnects each
+            // server, and ends each subprocess. A demo that drives one turn has
+            // no parked run to sweep first.
+            await demo.pool.shutdownAll()
+            throw error
+        }
+        await demo.pool.shutdownAll()
+    }
+
+    /// Resolves a profile, mounts the tools `demo` vends on a `RoutedSession`,
+    /// watches the catalog of each MCP server, and prints the model's answer.
+    ///
+    /// - Parameters:
+    ///   - demo: the registry of this run, its servers, and its pool.
     ///   - resolve: the profile-resolution step.
     ///   - output: where progress/answer lines are written.
     /// - Throws: `CLIRouterUnavailableError` if `resolve` throws; otherwise
     ///   whatever building the tools, `searchToolsTool`'s own initializer, or
     ///   the turn's own event stream throws.
-    private static func runDemo(
-        direct: Bool,
+    private static func runTurn(
+        _ demo: DemoRegistry,
         resolve: ProfileResolver,
         output: @escaping @Sendable (String) -> Void
     ) async throws {
@@ -442,17 +845,9 @@ public enum CLIRunner {
         // immediate `exit(_:)` after `run(...)` returns would likely never
         // let finish.
         do {
-            var registry = try MultiTool.Builder()
-                .addTool(DemoTripTool())
-                .addTool(DemoWeatherTool())
-                .buildRegistry()
-            if direct {
-                registry = registry.directMode()
-            }
-
             // The registry vends its own mounted tools, in the order the
             // model reads them — `searchTools`, then `runCode`, then `wait`,
-            // with discovery dropped once `directMode()` above has taken it
+            // with discovery dropped once `directMode()` has taken it
             // away. The `searchTools` half's internal selection tier is backed
             // by a Router-resolved `profile.flash` session — the
             // registry-backed `SelectionTier`'s "librarian on flash" split.
@@ -461,10 +856,31 @@ public enum CLIRunner {
             // so that tier and the main session below share one resident
             // container. See `demoProfile` for what that costs.
             //
+            // The staging half of the same call is what a rebuilt registry is
+            // handed to, and it is vended here rather than made by a factory:
+            // `makeSessionToolsAndStaging(librarian:)` starts nothing of its
+            // own, so a host that mounts a session leaves no task behind.
+            //
             // Explicitly typed, so the element type a host mounts is stated
             // where a reader meets it rather than inferred from a call in
             // another module.
-            let tools: [any FoundationModels.Tool] = try registry.makeSessionTools(librarian: profile.flash)
+            let mounted: (tools: [any FoundationModels.Tool], staging: any RegistryStaging) =
+                try demo.registry.makeSessionToolsAndStaging(librarian: profile.flash)
+
+            // The refresher starts AFTER the session tools, and the pool stops
+            // it BEFORE it closes any server — the two halves of the MCP
+            // lifetime a host owns. From here a `tools/list_changed`, a
+            // reconnect, or a late server reaches the surface at the next turn
+            // boundary with no further action of this file's.
+            //
+            // Made even when no `--mcp` option named a server: one path, one
+            // shutdown, and a refresher over no server watches nothing and
+            // costs one parked task that `shutdownAll()` ends.
+            let refresher = SurfaceRefresher(
+                source: demo.source, staging: mounted.staging,
+                servers: demo.servers.map(\.server))
+            refresher.start()
+            await demo.pool.attach(attachment: refresher)
 
             // Vended by the resolved profile, because the session type is part
             // of the host contract and not a detail (see
@@ -504,7 +920,7 @@ public enum CLIRunner {
             // contract, and a session instruction a real host may never pass
             // must not be load-bearing (see
             // `Registry.makeSessionTools(librarian:)`).
-            let session = profile.standard.makeSession(tools: tools)
+            let session = profile.standard.makeSession(tools: mounted.tools)
 
             // Drained, never `respond(to:)`. `RoutedSession.respond(to:)`
             // self-drains the background runs (Router `^nmpejc5`), so it would answer

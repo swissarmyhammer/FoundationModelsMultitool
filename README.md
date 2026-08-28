@@ -280,3 +280,24 @@ Sandbox guarantees and escape hatches are documented in
 resolution, a tool-carrying `RoutedSession`, a drained turn, tool composition)
 lives in `Sources/MultitoolCLI`, behind the thin `Sources/multitool-cli`
 executable.
+
+## The demo CLI
+
+`multitool-cli` prints the rendered tool surface, then drives one turn. Its
+repeatable `--mcp <name>=<command> [args...]` option attaches a stdio MCP
+server: the CLI spawns the command, connects, and registers the catalog of the
+server under the name as its noun. Every argument after the value that is no
+flag of the CLI goes to the server command, so a server carries its own flags.
+
+```sh
+swift build --product mcp-test-server
+multitool-cli --mcp echo=.build/debug/mcp-test-server --mode echo
+```
+
+The surface listing then names `tools.echo.echo` beside the fixture tools, and
+a snippet calls it like any other verb. The CLI starts a `SurfaceRefresher`
+after it mounts the session tools, so a `tools/list_changed` reaches the
+surface at the next turn boundary; at the end of the run it calls
+`MCPServerPool.shutdownAll()`, which stops that refresher, disconnects each
+server and ends each subprocess. A `--mcp` value that carries no `=`, or names
+a command that does not start, exits 64 with one line and touches no model.
