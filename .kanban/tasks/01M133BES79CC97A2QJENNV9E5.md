@@ -369,8 +369,37 @@ comments:
       of this card.
     - next: `/review`.
   timestamp: 2026-08-28T16:20:53.307977+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m14jtgx6n59ggstgzxdede57
+  text: |-
+    ### commit — changed
+    - evidence: be6ea1f 6 files changed, 195 insertions(+), 13 deletions(-)
+    - next: none
+  timestamp: 2026-08-28T16:21:38.342992+00:00
+- actor: claude-code
+  id: 01m14jzcy77zmknpa0zf13x3xh
+  text: |-
+    ### review — clean
+
+    - evidence: 0 findings. The engine attempted 7 validators. 0 validators failed and 0 validators were skipped. Scope: `review sha HEAD~1..HEAD`, which is commit be6ea1f. The engine read 2 Swift files. It did not read 4 files in `.kanban/`, because an ignore rule excludes them.
+    - The rule `swift/fluent-usage` did not report an item on these two files. This is the third review of this pair of files. The rule reported an item in the two reviews before this one.
+    - The commit changes no file name. It changes only the names of three helper functions. Thus the review read the two Swift files fully.
+    - All items in the two `## Review Findings` sections are complete. The task has 7 complete items and 0 incomplete items.
+    - next: none. The task moves to `done`.
+  timestamp: 2026-08-28T16:24:18.119460+00:00
+- actor: claude-code
+  id: 01m14k07zvc51xdhf46z6xvagz
+  text: |-
+    ### finish iteration 3 — clean
+    - implement: changed — 2 files; all 25 declarations of both files judged against the shipped rule body, 3 names corrected
+    - test: green — 10 of 10 clean swift test runs, 1310 tests in 100 suites, 11.6 to 13.0 seconds each
+    - commit: be6ea1f — 6 files changed
+    - review: clean — 0 findings, 7 validators attempted, 0 failed, 0 skipped; all 3 prior finding items checked; task moved to done
+
+    The rule swift/fluent-usage did not fire a third time, thus the loop guardrail was never reached.
+  timestamp: 2026-08-28T16:24:45.819393+00:00
+position_column: done
+position_ordinal: ffa180
 title: The HTTP-loopback elicitation tests time out on about one full swift test run in six
 ---
 ## What

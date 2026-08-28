@@ -835,6 +835,27 @@ FoundationModelsMCP repository. ACPAgent, its one org consumer, moves first.
 > 4. **ACPAgent does not import FoundationModelsMCP** (manifest comment
 >    only), so the "consumer moves first" step is a check and a comment edit.
 
+> **Note (2026-08-28), written at the exit of the phase.** The four decisions
+> above are correct. One sentence of the phase text is not correct, and this
+> note corrects it.
+>
+> The phase text says: "The `ElicitationCoordinator` protocol becomes the host
+> seam of `ToolContext.elicit`, URL mode included." No protocol of that name is
+> in the code. The `ElicitationCoordinator` protocol and the
+> `MCPElicitationTool` of the sibling package are gone.
+> `MCPServer+Elicitation.swift` sends each question to three answerers, in one
+> order: first the `ToolContext` of the calling run, where
+> `ToolContext.elicit(_:)` holds that run in Router's `SessionMailbox` and the
+> turn goes on; else the host's `MCPServer.ElicitationHandler` closure, which
+> is the seam of a bare session, where the turn waits; else `cancel` to the
+> server. URL mode is in the code, as the phase text says. It is a flow of
+> three messages, and each answerer holds the accept until
+> `complete(elicitationId:)` ends the flow.
+>
+> The exit of the phase is complete. No repository of the organization imports
+> `FoundationModelsMCP` or depends on it, and we archived that repository on
+> 2026-08-28.
+
 **Phase 5 — operation. Tag: `consolidation-5-operation`.** Nothing imports
 `Operations` or `OperationsCLI` any longer. We make sure of this across the
 org. We do not assume it. Skills is the last known consumer and moves here.

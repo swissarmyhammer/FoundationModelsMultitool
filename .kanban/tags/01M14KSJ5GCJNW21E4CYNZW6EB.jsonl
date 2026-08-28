@@ -1,0 +1,1 @@
+{"id":"01M14KSJ5G62K2XETDY0ZNAFVR","timestamp":"2026-08-28T16:38:35.440338Z","op":"create","item_id":"01M14KSJ5GCJNW21E4CYNZW6EB","forward_patch":"--- original\n+++ modified\n@@ -0,0 +1,2 @@\n+color: 0e8a16\n+tag_name: eventplan-phase-4\n","reverse_patch":"--- original\n+++ modified\n@@ -1,2 +0,0 @@\n-color: 0e8a16\n-tag_name: eventplan-phase-4\n","transaction_id":null}
