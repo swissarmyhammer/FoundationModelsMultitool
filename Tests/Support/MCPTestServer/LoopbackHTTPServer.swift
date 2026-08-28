@@ -205,7 +205,7 @@ public actor LoopbackHTTPServer {
     /// - Parameter request: The request, converted from the `URLRequest`.
     /// - Returns: What the server transport answered.
     func handle(_ request: HTTPRequest) async -> HTTPResponse {
-        let response = await transport.handleRequest(Self.withoutResumeHeader(from: request))
+        let response = await transport.handleRequest(Self.removingResumeHeader(from: request))
         if request.method == Self.eventStreamMethod, case .stream = response {
             isServingEventStream = true
         }
@@ -218,7 +218,7 @@ public actor LoopbackHTTPServer {
     /// - Parameter request: The request the client sent.
     /// - Returns: The request to route, which is `request` itself when it
     ///   carries no such header.
-    private static func withoutResumeHeader(from request: HTTPRequest) -> HTTPRequest {
+    private static func removingResumeHeader(from request: HTTPRequest) -> HTTPRequest {
         let kept = request.headers.filter {
             $0.key.caseInsensitiveCompare(lastEventIDHeader) != .orderedSame
         }

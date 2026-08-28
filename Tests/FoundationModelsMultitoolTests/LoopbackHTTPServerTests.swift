@@ -112,9 +112,9 @@ struct LoopbackHTTPServerTests {
     /// - Throws: What the start, the connect, or the wait throws.
     private func connect(
         to scripted: ScriptedServer,
-        capabilities: Client.Capabilities = .init(),
+        advertising capabilities: Client.Capabilities = .init(),
         resumingFrom lastEventID: String? = nil,
-        resumeHeaderNamed headerName: String = LoopbackHTTPServerTests.lastEventIDHeader
+        sendingResumeHeaderNamed headerName: String = LoopbackHTTPServerTests.lastEventIDHeader
     ) async throws -> Connection {
         let loopback = LoopbackHTTPServer(serving: scripted)
         let (endpoint, configuration) = try await loopback.start()
@@ -124,7 +124,7 @@ struct LoopbackHTTPServerTests {
                 transport: HTTPClientTransport(
                     endpoint: endpoint, configuration: configuration,
                     requestModifier: {
-                        Self.asking(to: $0, resumeFrom: lastEventID, headerNamed: headerName)
+                        Self.addingResumeHeader(to: $0, resumingFrom: lastEventID, named: headerName)
                     }))
             try await TestPoll.waitUntil("the standalone SSE stream") {
                 await loopback.isServingEventStream
@@ -148,15 +148,15 @@ struct LoopbackHTTPServerTests {
     ///   - lastEventID: The id to ask to resume from, or `nil` to ask nothing.
     ///   - headerName: The name to set that id under, in the case to send.
     /// - Returns: The request to send.
-    private static func asking(
-        to request: URLRequest, resumeFrom lastEventID: String?, headerNamed headerName: String
+    private static func addingResumeHeader(
+        to request: URLRequest, resumingFrom lastEventID: String?, named headerName: String
     ) -> URLRequest {
         guard let lastEventID, request.httpMethod == Self.eventStreamMethod else {
             return request
         }
-        var asking = request
-        asking.setValue(lastEventID, forHTTPHeaderField: headerName)
-        return asking
+        var carrying = request
+        carrying.setValue(lastEventID, forHTTPHeaderField: headerName)
+        return carrying
     }
 
     // MARK: - initialize, tools/list, tools/call
@@ -183,7 +183,7 @@ struct LoopbackHTTPServerTests {
     func elicitEchoRoundTrip() async throws {
         let scripted = ScriptedServer()
         await scripted.addLoopbackTools()
-        let connection = try await connect(to: scripted, capabilities: Self.elicitingCapabilities)
+        let connection = try await connect(to: scripted, advertising: Self.elicitingCapabilities)
         defer { Task { await connection.close() } }
 
         await connection.client.withElicitationHandler { params in
@@ -247,7 +247,7 @@ struct LoopbackHTTPServerTests {
         let scripted = ScriptedServer()
         await scripted.addLoopbackTools()
         let connection = try await connect(
-            to: scripted, resumingFrom: Self.idOfNoStream, resumeHeaderNamed: headerName)
+            to: scripted, resumingFrom: Self.idOfNoStream, sendingResumeHeaderNamed: headerName)
         defer { Task { await connection.close() } }
 
         let counter = NotificationCounter()

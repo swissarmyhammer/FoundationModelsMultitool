@@ -248,6 +248,127 @@ comments:
       test, both spellings, runs in 0.076 s. No sleep and no timeout was added.
     - next: `/review`.
   timestamp: 2026-08-28T16:06:07.088032+00:00
+- actor: claude-code
+  id: 01m14hzhp5hwrsh4wstkkwz9v0
+  text: |-
+    ### commit — changed
+    - evidence: 9432639 test: check the resume header name without case, rename a helper (4 files changed, 179 insertions(+), 12 deletions(-))
+    - next: none
+  timestamp: 2026-08-28T16:06:54.405360+00:00
+- actor: claude-code
+  id: 01m14j97yp5tdafsgbvkhsmx3c
+  text: |
+    ### review — findings
+    - scope: `review sha HEAD~1..HEAD` (commit 9432639), diffs only. 2 files reviewed, 2 files not reviewed (`.kanban/`, an ignore rule).
+    - validators: 7 attempted, 0 failed, 0 skipped. The result is complete.
+    - prior findings: the two items of the 2026-08-28 10:47 section are both checked.
+    - evidence: 1 new finding — `Tests/FoundationModelsMultitoolTests/LoopbackHTTPServerTests.swift:151` `swift/fluent-usage`. The name `asking` does not make a grammatical phrase with its parameters.
+    - next: give the helper a name that reads correctly at the call site, for example `addingResumeHeader`. Then run the review again.
+  timestamp: 2026-08-28T16:12:12.118618+00:00
+- actor: claude-code
+  id: 01m14j9zmw7wdmd75xv3pva9te
+  text: |-
+    ### finish iteration 2 — findings
+    - implement: changed — 2 files, both prior findings answered
+    - test: green — 10 of 10 clean swift test runs, 11.5 to 12.6 seconds each; no regression of the rate or the time
+    - commit: 9432639 — 4 files changed
+    - review: findings — Tests/FoundationModelsMultitoolTests/LoopbackHTTPServerTests.swift:151
+
+    Note for the next iteration: this is the SECOND finding of the rule swift/fluent-usage in this one file. Iteration 1 raised it at line 221 of LoopbackHTTPServer.swift, and this iteration raises it at line 151 of LoopbackHTTPServerTests.swift. The next fix must sweep every helper of both files, and not the one line named.
+  timestamp: 2026-08-28T16:12:36.380028+00:00
+- actor: claude-code
+  id: 01m14jrsyedykpy4174y2rgh48
+  text: |
+    ### The full sweep of `swift/fluent-usage` over both files
+
+    The rule fired twice on this pair, so this pass reads the shipped rule body
+    (`get validator swift`, rule `fluent-usage`, version 0.18.1) and judges EVERY
+    declaration of both files against it, and not the one line named. The verdict
+    of each declaration is below.
+
+    These are the parts of the rule the verdicts use:
+
+    - A name makes a grammatical phrase at the call site. Read the call aloud.
+    - The preposition goes on the argument label, and not on the base name.
+    - The first label goes off only for a conversion that keeps the value.
+    - An operation with no side effect is a noun phrase; an operation with a side
+      effect is an imperative verb phrase. A non-mutating form of a verb takes
+      `ed` or `ing`.
+
+    **`Tests/FoundationModelsMultitoolTests/LoopbackHTTPServerTests.swift`**
+
+    | Declaration | Call site | Verdict |
+    | --- | --- | --- |
+    | `NotificationCounter.increment()` | `counter.increment()` | Passes. An imperative verb, and the call has a side effect. |
+    | `Connection.close()` | `connection.close()` | Passes. Same shape. |
+    | `Connection.init(loopback:client:)`, which the compiler makes | `Connection(loopback: loopback, client: client)` | Passes. Noun labels of an initializer, as in `Color(red:green:blue:)`. |
+    | `connect(to:capabilities:resumingFrom:resumeHeaderNamed:)` | `connect(to: scripted, capabilities: Self.elicitingCapabilities)` | **Fails**, and it was not the line the finding named. `capabilities:` is a bare noun after the verb — the shape the rule refuses as `x.subviews(color: c)`. `resumeHeaderNamed:` had no word to join it to the verb. Now `connect(to:advertising:resumingFrom:sendingResumeHeaderNamed:)`, which reads "connect to scripted, advertising the eliciting capabilities" and "connect to scripted, resuming from the id of no stream, sending the resume header named last-event-id". |
+    | `asking(to:resumeFrom:headerNamed:)` | `Self.asking(to: $0, resumeFrom: lastEventID, headerNamed: headerName)` | **Fails** — the finding of 11:07. The call has no side effect and returns a new request, so the rule asks for the `ing` form of the verb. Now `addingResumeHeader(to:resumingFrom:named:)`, which reads "adding the resume header to the request, resuming from the id, named last-event-id". The local `var asking` becomes `var carrying`. |
+    | `initializeListAndCallEcho()` | none | Passes. The framework calls it; there is no call site to read. |
+    | `elicitEchoRoundTrip()` | none | Passes. Same. |
+    | `toolListChangedOverEventStream()` | none | Passes. Same. |
+    | `aResumeRequestStillGetsTheStandaloneStream(headerName:)` | none | Passes. The framework supplies the argument from `arguments:`. |
+    | `toolsListOverEachTransport(kind:)` | none | Passes. Same. |
+
+    **`Tests/Support/MCPTestServer/LoopbackHTTPServer.swift`**
+
+    | Declaration | Call site | Verdict |
+    | --- | --- | --- |
+    | `init(serving:)` | `LoopbackHTTPServer(serving: scripted)` | Passes. |
+    | `start()` | `loopback.start()` | Passes. An imperative verb with a side effect. |
+    | `stop()` | `loopback.stop()` | Passes. Same. |
+    | `endpoint` | a property | Passes. A noun, and the read has no side effect. |
+    | `loopback(for:)` | `LoopbackHTTPServer.loopback(for: request.url)` | Passes. A noun phrase with its preposition, and no side effect. |
+    | `handle(_:)` | `loopback.handle(httpRequest)` | Passes. A verb with a direct object, which the rule permits with no label, as in `x.append(y)`. |
+    | `withoutResumeHeader(from:)` | `Self.withoutResumeHeader(from: request)` | **Fails**, and it was not the line the finding named. "without resume header from request" starts with a preposition and has no head. Now `removingResumeHeader(from:)` — "removing the resume header from the request", the `ing` form the rule asks of a call with no side effect, and the alternative the 10:47 finding itself offered. It also makes a pair with `addingResumeHeader(to:)` of the test file. |
+    | `body(of:)` | `Self.body(of: request)` | Passes. A noun phrase with its preposition. |
+    | `deliver(_:for:)` | `self.deliver(response, for: url)` | Passes. "deliver the response for the url" — a verb, a direct object, and a preposition on the second label. |
+    | `relayStream(_:)` | `relayStream(stream)` | Passes. "relay stream" is a verb with its object. The name cannot become `relay(_:)`: the class holds a stored property `relay`, and Swift refuses the two names in one type. |
+    | `canInit(with:)` | the loader | Cannot change. A `URLProtocol` override: the signature is fixed by the superclass. |
+    | `canonicalRequest(for:)` | the loader | Cannot change. Same. |
+    | `startLoading()` | the loader | Cannot change. Same. |
+    | `stopLoading()` | the loader | Cannot change. Same. |
+
+    Three declarations were corrected: two the review had not named, and the one
+    it did. Every other declaration passes, or has a signature the superclass
+    fixes.
+
+    ### One more site of the same cause, in a third file
+
+    `ScriptedServerSelfTests.connect(to:capabilities:)` carries the same bare
+    `capabilities:` label. That file is not one of the two this card names, and no
+    review raised it because every review of this card read the diff only. It is
+    now task `^5h9cf3p`.
+  timestamp: 2026-08-28T16:20:42.062445+00:00
+- actor: claude-code
+  id: 01m14js4xvxhep6xh0h3vqnywk
+  text: |
+    ### implement — changed
+    - evidence: 2 files, 12 insertions and 12 deletions —
+      `Tests/FoundationModelsMultitoolTests/LoopbackHTTPServerTests.swift`;
+      `Tests/Support/MCPTestServer/LoopbackHTTPServer.swift`.
+    - findings: the one item of the 2026-08-28 11:07 section is now `- [x]`.
+    - renames: `asking(to:resumeFrom:headerNamed:)` becomes
+      `addingResumeHeader(to:resumingFrom:named:)`;
+      `connect(to:capabilities:resumingFrom:resumeHeaderNamed:)` becomes
+      `connect(to:advertising:resumingFrom:sendingResumeHeaderNamed:)`;
+      `withoutResumeHeader(from:)` becomes `removingResumeHeader(from:)`; the
+      local `var asking` becomes `var carrying`. The sweep comment above lists
+      every declaration of both files and the verdict for each.
+    - build: `swift build --build-tests` complete in 10.3 s. The one warning is
+      the vendored `mlx-swift_Cmlx.bundle`, which is out of scope.
+    - runs: 10 of 10 clean full `swift test` runs. 1310 tests in 100 suites, and
+      one warning of each run, which is the vendored bundle. Wall clock 11.6 to
+      13.0 s: the first run after the build took 12.98 s, and the other nine took
+      11.6 to 12.1 s. The figure to hold was 10 of 10 at 11.5 to 12.6 s.
+    - speed: nothing new to run. This pass renames only. The resume test, both
+      spellings, still runs in 0.062 s, and the whole `LoopbackHTTPServer` suite
+      in 0.114 s.
+    - new work: `^5h9cf3p` — the same bare `capabilities:` label in
+      `ScriptedServerSelfTests.swift`, which is a third file and out of the scope
+      of this card.
+    - next: `/review`.
+  timestamp: 2026-08-28T16:20:53.307977+00:00
 position_column: doing
 position_ordinal: '80'
 title: The HTTP-loopback elicitation tests time out on about one full swift test run in six
@@ -335,4 +456,13 @@ Read the doc comment of `LoopbackHTTPServerTests` first.
 > - `.kanban/ (from .reviewignore)` — 18 file(s)
 
 - [x] `Tests/FoundationModelsMultitoolTests/LoopbackHTTPServerTests.swift:212` `completeness/case-sensitivity-coverage` — The `withoutResumeHeader()` function in LoopbackHTTPServer.swift (line 221-224) uses `caseInsensitiveCompare()` to match the Last-Event-ID header, which is correct for HTTP headers. However, the test `aResumeRequestStillGetsTheStandaloneStream()` exercises only the canonical case "Last-Event-ID" and does not verify that non-canonical spellings (e.g., "last-event-id", "Last-Event-Id") are also filtered. Add one assertion or test variant that sends the Last-Event-ID header with a non-canonical case (e.g., lowercase "last-event-id" or mixed case "Last-Event-Id") and verify that the server-initiated messages still arrive, proving the filter handles all case variations.
-- [x] `Tests/Support/MCPTestServer/LoopbackHTTPServer.swift:221` `swift/fluent-usage` — The first parameter `request` is unlabeled, but should only be unlabeled for value-preserving conversions (e.g., `Int64(someUInt32)`). Since this function transforms the request by filtering headers rather than preserving it unchanged in a different type, the parameter needs a label for clarity at the call site. Add a label to the first parameter: `private static func withoutResumeHeader(from request: HTTPRequest) -> HTTPRequest` so the call reads as `withoutResumeHeader(from: request)`, or alternatively rename to `removingResumeHeader(_ request: HTTPRequest)` which reads as a verb with a clear object. #eventplan
+- [x] `Tests/Support/MCPTestServer/LoopbackHTTPServer.swift:221` `swift/fluent-usage` — The first parameter `request` is unlabeled, but should only be unlabeled for value-preserving conversions (e.g., `Int64(someUInt32)`). Since this function transforms the request by filtering headers rather than preserving it unchanged in a different type, the parameter needs a label for clarity at the call site. Add a label to the first parameter: `private static func withoutResumeHeader(from request: HTTPRequest) -> HTTPRequest` so the call reads as `withoutResumeHeader(from: request)`, or alternatively rename to `removingResumeHeader(_ request: HTTPRequest)` which reads as a verb with a clear object.
+
+## Review Findings (2026-08-28 11:07)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 2 file(s) reviewed, 2 not reviewed.
+
+> 2 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 2 file(s)
+
+- [x] `Tests/FoundationModelsMultitoolTests/LoopbackHTTPServerTests.swift:151` `swift/fluent-usage` — The function name `asking` does not form a grammatical phrase with its parameters. Reading the call `asking(to: request, resumeFrom: id, headerNamed: name)` aloud as "asking to [request] resumeFrom [id]..." is unnatural English; prepositions like `to` typically follow verbs that form idiomatic phrases (e.g., `insert(at:)`, `removeValue(forKey:)`), but "asking to [object]" is not a standard English phrase structure. Rename the function to better describe its action. Suggested names: `addingResumeHeader`, `withResumeHeader`, or `requestWithResumeHeader`, which form clearer phrases: "adding resume header to [request]" or "with resume header [request] resumeFrom [id]". #eventplan
