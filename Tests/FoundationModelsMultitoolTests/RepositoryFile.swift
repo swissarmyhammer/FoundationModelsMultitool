@@ -115,12 +115,22 @@ enum RepositoryFile {
     /// - Parameters:
     ///   - needles: the texts to search for.
     ///   - filePath: the file's path from the repository root.
+    ///   - skippingCommentLines: `true` to pass over each comment line of a
+    ///     Swift file. A guard that reads what a manifest or a source file
+    ///     DECLARES needs this, because prose that names the needle declares
+    ///     nothing. The default is `false`, thus a scan reports a comment line
+    ///     the same way it reports a line of code.
     /// - Returns: one `path:line: needle` entry for each sighting.
     /// - Throws: an error when the file cannot be read.
-    static func sightings(of needles: [String], inRelativeFile filePath: String) throws -> [String] {
+    static func sightings(
+        of needles: [String],
+        inRelativeFile filePath: String,
+        skippingCommentLines: Bool = false
+    ) throws -> [String] {
         let text = try read(relativePath: filePath)
         return text.split(separator: "\n", omittingEmptySubsequences: false)
             .enumerated()
+            .filter { !skippingCommentLines || !isCommentLine($0.element) }
             .flatMap { lineIndex, line in
                 needles
                     .filter { line.contains($0) }
@@ -138,6 +148,22 @@ enum RepositoryFile {
         let rootPrefix = root.path + "/"
         guard fileURL.path.hasPrefix(rootPrefix) else { return fileURL.path }
         return String(fileURL.path.dropFirst(rootPrefix.count))
+    }
+
+    /// The text that opens a comment line of a Swift file.
+    private static let commentMarker = "//"
+
+    /// Says whether one line of a Swift file is a comment.
+    ///
+    /// The rule is conservative: only a line whose first text is the marker is
+    /// a comment. A needle inside a block comment, or after code on the same
+    /// line, stands on a line this rule reads as code. The author who meets
+    /// such a report moves the comment onto a line of its own.
+    ///
+    /// - Parameter line: one line of the file, with its indentation.
+    /// - Returns: `true` when the first text of the line is `//`.
+    private static func isCommentLine(_ line: Substring) -> Bool {
+        line.trimmingCharacters(in: .whitespaces).hasPrefix(commentMarker)
     }
 
     /// Resolves one repository-relative path against `root`.

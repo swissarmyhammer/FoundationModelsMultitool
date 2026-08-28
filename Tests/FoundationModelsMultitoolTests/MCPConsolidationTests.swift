@@ -1,4 +1,3 @@
-import Foundation
 import Testing
 
 /// Guards the exit of phase 4 of eventplan.md § "Phases": the MCP capability
@@ -13,12 +12,10 @@ import Testing
 ///
 /// The suite reads the CODE of the manifest and not its comments. The manifest
 /// names `FoundationModelsMCP` in four doc comments that record where each
-/// ported file comes from, and those comments are the history of the move. A
-/// line whose first text is `//` is a comment; every other line is code. The
-/// rule is conservative: a name inside a block comment, or after code on the
-/// same line, reads as code and is reported. The manifest carries neither
-/// shape today, so the reader who meets such a report moves the comment onto a
-/// line of its own.
+/// ported file comes from, and those comments are the history of the move.
+/// `RepositoryFile.sightings(of:inRelativeFile:skippingCommentLines:)` carries
+/// the comment rule and states what it counts as a comment, and the
+/// `RepositoryFile` suite pins that rule.
 ///
 /// This suite does not repeat `DependencyReachTests`. That suite calls
 /// `MCP.Tool` and `MCP.Client`, thus it shows that the module resolves,
@@ -47,9 +44,6 @@ struct MCPConsolidationTests {
     /// The manifest declares it one time, in `mcpProducts`.
     private static let wireProductDeclaration = #".product(name: "MCP", package: mcpPackage)"#
 
-    /// The text that opens a comment line of a Swift file.
-    private static let commentMarker = "//"
-
     @Test("the manifest declares no FoundationModelsMCP dependency")
     func manifestDeclaresNoArchivedSibling() throws {
         let sightings = try Self.codeSightings(of: Self.archivedSiblingName)
@@ -59,7 +53,7 @@ struct MCPConsolidationTests {
             The manifest names the archived \(Self.archivedSiblingName) package \
             in code. That repository is archived, and its files stand in \
             `Sources/FoundationModelsMultitool/Capabilities/MCP/` now, thus \
-            each line below must go:
+            each line named below must go:
             \(sightings.joined(separator: "\n"))
             """
         )
@@ -89,26 +83,16 @@ struct MCPConsolidationTests {
 
     /// Names each code line of the manifest that holds `needle`.
     ///
-    /// A comment line holds no declaration, so the scan passes over it — see
-    /// the note on the suite for what counts as a comment.
+    /// The scan is
+    /// `RepositoryFile.sightings(of:inRelativeFile:skippingCommentLines:)`,
+    /// with the comment lines passed over. A comment line declares nothing.
     ///
     /// - Parameter needle: the text to search for, for example a package name.
-    /// - Returns: one `path:line: text` entry for each sighting, in the order
+    /// - Returns: one `path:line: needle` entry for each sighting, in the order
     ///   the lines stand in the file.
     /// - Throws: an error when the manifest cannot be read.
     private static func codeSightings(of needle: String) throws -> [String] {
-        try RepositoryFile.read(relativePath: manifestPath)
-            .split(separator: "\n", omittingEmptySubsequences: false)
-            .enumerated()
-            .filter { !isComment($0.element) && $0.element.contains(needle) }
-            .map { "\(manifestPath):\($0.offset + 1): \($0.element)" }
-    }
-
-    /// Says whether one line of a Swift file is a comment.
-    ///
-    /// - Parameter line: the line, with its indentation.
-    /// - Returns: `true` when the first text of the line is `//`.
-    private static func isComment(_ line: Substring) -> Bool {
-        line.trimmingCharacters(in: .whitespaces).hasPrefix(commentMarker)
+        try RepositoryFile.sightings(
+            of: [needle], inRelativeFile: manifestPath, skippingCommentLines: true)
     }
 }

@@ -59,6 +59,88 @@ comments:
     - evidence: org import check clean across every repository of the organization (working copies, `origin/main` of the 21 non-archived checkouts, and the `gh repo list` roster), thus the archive gate opened. `gh repo archive swissarmyhammer/FoundationModelsMCP --yes` ran, and `gh repo view` answers `archived=true`. Files changed, 3: `Tests/FoundationModelsMultitoolTests/MCPConsolidationTests.swift` (new), `eventplan.md` (the note of 2026-08-28, 21 lines), and `../FoundationModelsACPAgent/Package.swift` (the manifest comment, in the sibling repository). Local annotated tag `consolidation-4-mcp` created on `be6ea1f`. `swift build --build-tests`: clean. `swift test`: 1312 tests in 101 suites, all passed.
     - next: `/review`. Two items stay open, and the card records them: the commit step must move the tag onto the commit that lands this card (`git tag -f -a consolidation-4-mcp`), and the push of that tag to `origin` is the user's step. The `IntegrationTests/` gated suite cannot run until task `^jmtpfwv` is answered. The edit of `../FoundationModelsACPAgent/Package.swift` stands uncommitted in that repository; this session commits nothing.
   timestamp: 2026-08-28T16:39:32.197501+00:00
+- actor: claude-code
+  id: 01m14kybyctwpqb908sctm7qrz
+  text: |-
+    ### commit — changed
+    - evidence: 4bb141f 10 files changed, 304 insertions(+), 11 deletions(-)
+    - staged and committed: MCPConsolidationTests.swift, the eventplan.md exit note, both kanban task files (^tq2qzga and ^9cc97a2qjennv9e5), and the new kanban task 01M14KS4RQQWTMTBFSWJMTPFWV (the IntegrationTests build-failure record) plus its tag files
+    - did not touch the sibling repo FoundationModelsACPAgent; its uncommitted Package.swift edit is untouched
+    - tag: moved the annotated tag `consolidation-4-mcp` from be6ea1f onto 4bb141f, message kept word for word; `git tag --list 'consolidation*'` and `git log --oneline -1 consolidation-4-mcp` both confirm 4bb141f
+    - commit and tag are local only; no push
+    - next: none
+  timestamp: 2026-08-28T16:41:12.908024+00:00
+- actor: claude-code
+  id: 01m14m5zx875asb1ewh4e2fdhw
+  text: |
+    ### review — findings
+    - scope: `review sha HEAD~1..HEAD` (commit 4bb141f). The engine reads the added and changed lines only.
+    - validators: 7 attempted, 0 failed, 0 skipped. The run is complete.
+    - evidence: 1 finding, 1 confirmed, 0 refuted — `Tests/FoundationModelsMultitoolTests/MCPConsolidationTests.swift:99` `reuse/reuse`. The `codeSightings` function does the same read, split, filter and map as `RepositoryFile.sightings`. Call that utility, or add a parameter to it that skips comment lines.
+    - files not read: the 8 `.kanban/` files (an ignore rule excludes them) and `eventplan.md` (no validator matches Markdown). The commit renames no file, thus no path is unread for that cause.
+    - open card items that do NOT hold the card: the gated `IntegrationTests` suite (local machine state, task `^jmtpfwv`) and the push of the commit and the tag `consolidation-4-mcp` (the user's step). This commit changed no manifest and no library source.
+    - next: correct the duplication in `MCPConsolidationTests.swift`, then review again. The card stays in `review`.
+  timestamp: 2026-08-28T16:45:22.728792+00:00
+- actor: claude-code
+  id: 01m14m6qaptmwvzbwddxxr1t00
+  text: |-
+    ### finish iteration 1 — findings
+    - implement: changed — 3 files. The org import check passed clean over the working copies, over origin/main of the 21 non-archived checkouts, and over the gh repo list roster, with a control grep to prove the method finds a hit. No repository of the organization imports FoundationModelsMCP or depends on it. The repository is archived, and gh repo view answers archived=true.
+    - test: green — swift test, 1312 tests in 101 suites, all passed, no warning from this repository
+    - commit: 4bb141f — 10 files changed; the tag consolidation-4-mcp now names 4bb141f
+    - review: findings — Tests/FoundationModelsMultitoolTests/MCPConsolidationTests.swift:99
+
+    Two items of the card stay open on purpose, and neither is a finding: the gated IntegrationTests suite cannot build on this machine, from an edited-Router symlink of 2026-08-26 that this commit did not cause (filed as ^jmtpfwv); and the push of the commit and the tag is the step of the user.
+  timestamp: 2026-08-28T16:45:46.710175+00:00
+- actor: claude-code
+  id: 01m14mg4h81yw8am72xf5ty4wv
+  text: |
+    ### Research — which of the two repairs the finding offers
+
+    The finding gives two repairs. I read `Tests/FoundationModelsMultitoolTests/RepositoryFile.swift` first, and the code decides between them.
+
+    **Repair A cannot work.** `RepositoryFile.sightings(of:inRelativeFile:)` builds each entry as `"\(filePath):\(lineIndex + 1): \(needle)"`. The entry holds the path, the line number and the NEEDLE. It never holds the text of the line. Thus no returned entry says if the line it names was a comment, and a filter over the results cannot separate a comment line from a line of code. To make that filter work, the caller must read the file a second time and look each line up — which is the duplication the finding reports.
+
+    **Repair B is the one the code supports.** An optional parameter on `RepositoryFile.sightings` keeps one read-filter-map implementation, keeps the shape of each entry, and leaves every existing caller alone through its default: `ShellPermissionRemovalTests` (two call sites), `PlainToolContractTests` (one), and the directory form of `sightings` (one). The doc comment of the directory form already states this intent: "Each guard of this target calls this one scan, thus one implementation decides what a sighting is, and no suite carries a near-identical copy."
+
+    I chose repair B.
+
+    **What moves.** `codeSightings` and `isComment` and `commentMarker` leave `MCPConsolidationTests`. The comment rule becomes `skippingCommentLines: Bool = false` on `RepositoryFile.sightings(of:inRelativeFile:)`, with the same conservative meaning: a line whose first text is `//` is a comment; a needle inside a block comment, or after code on the same line, stands on a line the scan reads as code and reports.
+
+    **What the failure message loses.** The message of the ban assertion listed the text of each line. An entry now names the path, the line number and the needle. The reader still finds each line, and each other guard of this target reports the same way.
+
+    **Sweep.** After the change, `MCPConsolidationTests.swift` holds no read, no split, no filter and no map. What stays is the constants, the two tests, and a one-line named wrapper on `RepositoryFile.sightings` — the same shape `ShellPermissionRemovalTests` uses.
+  timestamp: 2026-08-28T16:50:55.144334+00:00
+- actor: claude-code
+  id: 01m14mzj9185e5bqd51pt0sbys
+  text: |
+    ### The repair, and the red I watched
+
+    **Repair B, and why.** `RepositoryFile.sightings(of:inRelativeFile:)` returns `path:line: needle` entries. An entry never carries the text of its line, thus repair A — a filter over the results — cannot tell a comment line from a line of code without a second read of the file. Repair B is what the code supports: `skippingCommentLines: Bool = false` on that function. Its default keeps the four existing callers unchanged.
+
+    **TDD, in order.**
+
+    1. RED, the build: the four new tests in `RepositoryFileTests` called an argument that was not there — `RepositoryFileTests.swift:131:35: error: extra argument 'skippingCommentLines' in call`.
+    2. RED, the assertion: with the parameter added but not read, "sightings skips a comment line when skippingCommentLines is true" failed — `Expectation failed: !sightings.contains { $0.hasSuffix(Self.needleInAComment) }`. The other three passed, which shows the fixture stands on all three kinds of line.
+    3. GREEN: `.filter { !skippingCommentLines || !isCommentLine($0.element) }` before the map. All 11 tests of the suite passed.
+
+    **The fixture.** The comment tests scan `RepositoryFileTests.swift` itself. Three declarations give one line of each kind: a needle in a comment line, a needle on a line of code, and a needle in the trailing comment of a line of code. Two of the three needles are built from two pieces, because a needle written as one literal would stand on the line of its own declaration, and that line is code.
+
+    **The guard kept its meaning. Three reds, each watched.**
+
+    1. The ban assertion. A probe line `private let archivedSiblingProbe = "FoundationModelsMCP"` was appended to `Package.swift`. The suite failed: `Expectation failed: sightings.isEmpty`, and the report named one line only — `Package.swift:481: FoundationModelsMCP`. The manifest holds the name in four comment lines (199, 231, 361, 471) and NONE was reported. Comment-blindness is kept. The probe was removed with `git checkout -- Package.swift`, and the suite passed.
+    2. The wire-package assertion. The needle was changed to `swift-sdk-probe`. The suite failed: `Expectation failed: !packageSightings.isEmpty`. The needle was put back.
+    3. The wire-product assertion. The needle was changed to `.product(name: "MCPProbe", package: mcpPackage)`. The suite failed: `Expectation failed: !productSightings.isEmpty`. The needle was put back.
+
+    **The sweep of the whole file.** `MCPConsolidationTests.swift` now holds no read, no split, no line filter, no line map and no comment rule. What stays is the constants, the two tests, and `codeSightings`, a one-line named wrapper on `RepositoryFile.sightings` — the same shape `ShellPermissionRemovalTests` uses for the same purpose. `import Foundation` went out with `trimmingCharacters`; the file needs Foundation no longer. Two more sightings of the same cause were examined and are not instances of it: the failure message beside `ShellPermissionRemovalTests.report(_:)` shares one stdlib call and no logic, and each message carries different prose; and `CIWorkflowTests.workflowLines()` gives lines and not sightings, which is a different capability, in a file this change does not touch.
+  timestamp: 2026-08-28T16:59:20.737488+00:00
+- actor: claude-code
+  id: 01m14mzwzsjeqgh198qncs7aq7
+  text: |
+    ### implement — changed
+    - evidence: 3 files — `Tests/FoundationModelsMultitoolTests/RepositoryFile.swift` (the `skippingCommentLines` parameter, plus `commentMarker` and `isCommentLine`), `Tests/FoundationModelsMultitoolTests/RepositoryFileTests.swift` (the three-line fixture and four tests of the comment rule), `Tests/FoundationModelsMultitoolTests/MCPConsolidationTests.swift` (`codeSightings` now calls the utility; the read, the split, the line filter, the line map, `isComment`, `commentMarker` and `import Foundation` are gone). Repair chosen: extend `RepositoryFile.sightings`, because an entry it returns carries the needle and not the line, thus a filter over the results cannot see a comment. Red watched four times: the build error for the missing argument; the skip assertion with the parameter ignored; the ban assertion under a probe line in `Package.swift`, which named the probe line only and none of the four comment mentions; and each of the two wire assertions under a probe needle. `swift build --build-tests`: clean, no warning from this repository. `swift test` three times: 1316 tests in 101 suites, all passed, zero warnings, 13.07 s / 11.77 s / 11.64 s. The count rose from 1312 by the four new tests, and the suite count stays 101. No sleep and no timeout was added.
+    - next: `/review`. The card keeps its two open items, and neither is a finding: the push of the commit and of the tag `consolidation-4-mcp` is the user's step, and the gated `IntegrationTests` suite cannot build on this machine for a cause outside this repository (task `^jmtpfwv`). The commit step must move the tag onto the commit that lands this change.
+  timestamp: 2026-08-28T16:59:31.705842+00:00
 depends_on:
 - 01M112GT1BAATTYMYSX7VN4NK5
 - 01M112FXM6H40D8C5YS0PVNXQQ
@@ -95,10 +177,22 @@ Finding from planning (2026-08-27): `FoundationModelsACPAgent/Package.swift` doe
 
 ## Open items of this card
 
-**The tag.** `git tag --list` shows `consolidation-4-mcp`. The tag is annotated, and it stands on `be6ea1f`, which is HEAD as this card was implemented. Two steps are open:
+**The tag.** `git tag --list` shows `consolidation-4-mcp`. The tag is annotated, and it stands on `4bb141f`. Two steps are open:
 
 1. The commit step must move the tag onto the commit that lands this card:
    `git tag -f -a consolidation-4-mcp` with the same message.
 2. The push to `origin` is the user's step. This session does not push this repository.
 
-**The gated suite.** Full `swift test` of the root package passes: 1312 tests in 101 suites, zero failures and zero warnings from this repository's own source. The `IntegrationTests/` suite cannot run today, because the nested package does not build. The cause is local machine state and not a file of this repository — see task `^jmtpfwv`. #eventplan #phase-4
+**The gated suite.** Full `swift test` of the root package passes: 1316 tests in 101 suites, zero failures and zero warnings from this repository's own source. The `IntegrationTests/` suite cannot run today, because the nested package does not build. The cause is local machine state and not a file of this repository — see task `^jmtpfwv`.
+
+## Review Findings (2026-08-28 11:41)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 1 file(s) reviewed, 9 not reviewed.
+
+> 8 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 8 file(s)
+
+> 1 file(s) not reviewed — no validator matched:
+> - `eventplan.md` — no validator matches this file
+
+- [x] `Tests/FoundationModelsMultitoolTests/MCPConsolidationTests.swift:99` `reuse/reuse` — The `codeSightings` function reimplements the core search logic already present in `RepositoryFile.sightings`. Both read a file, split by newlines, filter matching lines, and return formatted results. The new code should call or extend the existing utility instead of duplicating the read-filter-map pattern. Call `RepositoryFile.sightings([needle], inRelativeFile: manifestPath)` and filter the results to exclude comment-mentioning lines, or extend `RepositoryFile.sightings` with an optional parameter to skip comment lines. #eventplan #phase-4
