@@ -9,13 +9,38 @@
 // server transport, and the response — a body, or an SSE stream — is relayed
 // back to the session. Test support — see the header of `ScriptedServer.swift`.
 //
-// **Headers relay verbatim.** The default validation pipeline of the server
-// transport stays: `OriginValidator.localhost()`, `AcceptHeaderValidator(mode:
-// .sseRequired)`, `ContentTypeValidator`, `ProtocolVersionValidator` and
-// `SessionValidator`. A `URLRequest` handed to a `URLProtocol` carries every
-// header the client set — `Accept`, `Content-Type`, `MCP-Protocol-Version`,
-// `MCP-Session-Id` — and no `Host` or `Origin`, so the origin validator reads
-// nothing and every other validator reads what the client sent.
+// **Headers relay verbatim, except `Last-Event-ID`.** The default validation
+// pipeline of the server transport stays: `OriginValidator.localhost()`,
+// `AcceptHeaderValidator(mode: .sseRequired)`, `ContentTypeValidator`,
+// `ProtocolVersionValidator` and `SessionValidator`. A `URLRequest` handed to a
+// `URLProtocol` carries every header the client set — `Accept`,
+// `Content-Type`, `MCP-Protocol-Version`, `MCP-Session-Id` — and no `Host` or
+// `Origin`, so the origin validator reads nothing and every other validator
+// reads what the client sent.
+//
+// **Why this loopback serves no resumption.** `HTTPClientTransport` of the sdk
+// keeps ONE `lastEventID` for every SSE stream it reads, the response stream of
+// a `POST` included. So the `Last-Event-ID` it sends on the standalone `GET` is
+// simply the id of the last event that arrived on ANY stream, and that is
+// usually an event of a `POST` response stream. `StatefulHTTPServerTransport`
+// then takes `handleGet`'s resume path, resolves that id to the stream it
+// belongs to, and binds the new `GET` connection to
+// `requestSSEContinuations[thatRequestID]` instead of to
+// `standaloneSSEContinuation`. The session now has NO standalone stream:
+// `routeServerInitiatedMessage` finds no continuation and stores every
+// `elicitation/create` and every notification "for replay", so none of them
+// ever reaches the client. The tool call that waits on the elicitation never
+// finishes, and the `POST` fails on the request timeout below. Whether it
+// happens is a race — the `GET` goes out as soon as the session id is read from
+// the initialize RESPONSE HEADERS, while the body of that same response is
+// still being parsed into `lastEventID` — which is why about one full
+// `swift test` run in six was red.
+//
+// A loopback lives for one test and its session never outlives a disconnect, so
+// replay has nothing to give it. `handle(_:)` therefore drops `Last-Event-ID`
+// before it routes, and every `GET` opens the standalone stream. The defect
+// itself stands in the sdk, which this package consumes as a released
+// dependency and cannot patch.
 
 import Foundation
 import MCP
@@ -52,18 +77,22 @@ public actor LoopbackHTTPServer {
     /// The request and resource timeout of the `URLSessionConfiguration`
     /// ``start()`` returns.
     ///
-    /// A loopback never reaches a real network. Each request routes to
-    /// `LoopbackURLProtocol`, in the same process, over `Task`s on the
-    /// shared cooperative thread pool. Foundation's default request
-    /// timeout is 60 seconds. That value fits a call to a real, remote
-    /// server that has truly stalled. It does not fit a same-process
-    /// transport, which has no real network delay of its own. Under the
-    /// full parallel `swift test` run, that shared pool can delay a relayed
-    /// message past 60 seconds on its own, with no request truly stuck.
-    /// That delay showed up as a false `NSURLErrorTimedOut` failure. This
-    /// longer timeout gives a delayed message more room to arrive, without
-    /// hiding a request that will truly never finish.
-    private static let requestTimeout: TimeInterval = 120
+    /// A loopback never reaches a real network: every request routes to
+    /// `LoopbackURLProtocol`, in the same process, so it has no network delay
+    /// of its own to wait out. This timeout therefore says nothing about how
+    /// long a good request may take; it says only how long a stuck one takes to
+    /// report. Foundation's default of 60 seconds, and the 120 seconds this
+    /// file carried while the cause of the stall was unknown, both make a red
+    /// run ten times longer than a green one.
+    ///
+    /// 30 seconds is three times the deadline `TestPoll` gives a reading of the
+    /// unit target, and thirty times a whole green `swift test` run. Silence
+    /// that long on a same-process transport is a genuinely stuck request.
+    private static let requestTimeout: TimeInterval = 30
+
+    /// The header a client sends to ask a server to resume a stream, which
+    /// ``handle(_:)`` drops — see the header of this file.
+    private static let lastEventIDHeader = "Last-Event-ID"
 
     /// The started loopbacks, by the host of their endpoint. A `Mutex`, and
     /// not an actor, because `URLProtocol.canInit(with:)` is synchronous.
@@ -74,18 +103,22 @@ public actor LoopbackHTTPServer {
     /// open SSE stream at any one time.
     ///
     /// A `.serialized` `@Suite` trait puts the tests of ONE suite in order. It
-    /// does not put one suite in order against another suite. Two suites can
-    /// each connect over `.http` — for example, `LoopbackHTTPServerTests` and
-    /// `MCPElicitationTests`. By default, these two suites can still run at the
-    /// same time. Each one then holds its own open SSE stream through
-    /// `URLSession`, on the shared cooperative thread pool. Several open
-    /// streams at once — across suites, not only inside one suite — push that
-    /// pool past the point where a server-to-client message stalls and does not
-    /// arrive. See the header of this file, and `LoopbackHTTPServerTests`, for
-    /// more on this. This gate holds every loopback of the process to one
-    /// active loopback at a time. That is the same limit every suite that opens
-    /// a loopback already treats as safe. The gate does this by making
-    /// ``start()`` wait for the prior loopback's ``stop()`` to finish first.
+    /// does not put one suite in order against another suite, and two suites
+    /// each connect over `.http` — `LoopbackHTTPServerTests` and
+    /// `MCPElicitationTests`. This gate is what puts them in order against each
+    /// other: ``start()`` waits for the prior loopback's ``stop()``.
+    ///
+    /// What that buys is ownership, and not speed. `registry` is process-wide
+    /// and `URLProtocol.canInit(with:)` reads it, so one live loopback at a
+    /// time means every registry entry, every `URLSession` and every open SSE
+    /// stream belongs to exactly one running test, and a stream one test leaves
+    /// open cannot reach into the next one.
+    ///
+    /// It is NOT what makes a server-to-client message arrive. An earlier note
+    /// here said several open streams loaded the cooperative thread pool past a
+    /// threshold. That was measured wrong: a stalled run holds no cooperative
+    /// thread at all, and the message is dropped and not delayed. The header of
+    /// this file states the cause and the repair.
     private static let concurrencyGate = ConcurrencyGate()
 
     /// The scripted server this loopback serves.
@@ -166,16 +199,32 @@ public actor LoopbackHTTPServer {
         return registry.withLock { $0[host] }
     }
 
-    /// Routes one request to the server transport.
+    /// Routes one request to the server transport, without its
+    /// `Last-Event-ID` — see the header of this file.
     ///
     /// - Parameter request: The request, converted from the `URLRequest`.
     /// - Returns: What the server transport answered.
     func handle(_ request: HTTPRequest) async -> HTTPResponse {
-        let response = await transport.handleRequest(request)
+        let response = await transport.handleRequest(Self.withoutResumeHeader(request))
         if request.method == Self.eventStreamMethod, case .stream = response {
             isServingEventStream = true
         }
         return response
+    }
+
+    /// `request` without its ``lastEventIDHeader``, whatever case the client
+    /// spelled that header in.
+    ///
+    /// - Parameter request: The request the client sent.
+    /// - Returns: The request to route, which is `request` itself when it
+    ///   carries no such header.
+    private static func withoutResumeHeader(_ request: HTTPRequest) -> HTTPRequest {
+        let kept = request.headers.filter {
+            $0.key.caseInsensitiveCompare(lastEventIDHeader) != .orderedSame
+        }
+        guard kept.count != request.headers.count else { return request }
+        return HTTPRequest(
+            method: request.method, headers: kept, body: request.body, path: request.path)
     }
 }
 

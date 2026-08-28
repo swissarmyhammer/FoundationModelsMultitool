@@ -7,19 +7,22 @@ import Testing
 /// `HTTPClientTransport(endpoint:configuration:)` against a `ScriptedServer`
 /// served through `LoopbackHTTPServer`, in one process, with no socket.
 ///
-/// The three loopback tools (`echo`, `elicitEcho`, `elicitURL`) and the
-/// `tools/list_changed` notification are the cases. The last test runs one
-/// case over both transports of ``MCPTransportKind``.
+/// The three loopback tools (`echo`, `elicitEcho`, `elicitURL`), the
+/// `tools/list_changed` notification and a client that asks to resume a stream
+/// are the cases. The last test runs one case over both transports of
+/// ``MCPTransportKind``.
 ///
-/// The suite is `.serialized` so its tests run one at a time. Each test holds
-/// a live `HTTPClientTransport` SSE stream open through `URLSession` for its
-/// whole body, and the client's SSE read runs on the shared cooperative
-/// thread pool. Four such streams open at once, on top of the rest of the
-/// parallel `swift test` run, tip that pool past a threshold where a
-/// server-to-client message stalls and never arrives — measured with the
-/// tools/list_changed and elicitation tests. One stream at a time stays under
-/// that threshold. This is a platform-native serialization trait, not an
-/// environment switch, and every test still runs on every `swift test`.
+/// The suite is `.serialized` so its tests run one at a time. Each test holds a
+/// live SSE stream and a registry entry of `LoopbackHTTPServer` open for its
+/// whole body, and that registry is process-wide, so one test at a time keeps
+/// each of them owned by exactly one test. This is a platform-native
+/// serialization trait, not an environment switch, and every test still runs on
+/// every `swift test`.
+///
+/// The trait is not what makes a server-to-client message arrive. An earlier
+/// note here said several open streams loaded the shared cooperative thread
+/// pool past a threshold; that was measured wrong. The message was dropped, and
+/// not delayed — see the header of `LoopbackHTTPServer.swift`.
 @Suite("LoopbackHTTPServer", .serialized)
 struct LoopbackHTTPServerTests {
     /// The client name every test of this suite connects under.
@@ -34,6 +37,17 @@ struct LoopbackHTTPServerTests {
     /// The client capabilities the card names: form and URL elicitation.
     private static let elicitingCapabilities = Client.Capabilities(
         elicitation: Client.Capabilities.Elicitation(form: .init(), url: .init()))
+
+    /// The header a client sends to ask a server to resume a stream.
+    private static let lastEventIDHeader = "Last-Event-ID"
+
+    /// The HTTP method of the standalone SSE stream request.
+    private static let eventStreamMethod = "GET"
+
+    /// The `Last-Event-ID` the resume case sends — an id of no stream of the
+    /// session, so a loopback that read the header would answer 400 and open
+    /// no standalone stream at all.
+    private static let idOfNoStream = "an-event-of-no-stream"
 
     /// A counter of client-observed notifications, awaited through
     /// `TestPoll`: the SSE delivery of the server and the message loop of
@@ -68,23 +82,56 @@ struct LoopbackHTTPServerTests {
     /// standalone SSE stream of the client is open, so a server-initiated
     /// message has a stream to go to.
     ///
+    /// A started loopback holds the one process-wide gate of
+    /// `LoopbackHTTPServer` until its `stop()`, so a connect that throws after
+    /// the start stops the loopback before it rethrows. A loopback nobody stops
+    /// parks every later `.http` test of the process for ever, which reports as
+    /// a hang of the whole run and not as the one failure that caused it.
+    ///
     /// - Parameters:
     ///   - scripted: The server to serve.
     ///   - capabilities: The client capabilities to advertise.
+    ///   - lastEventID: What every `GET` of the client carries as
+    ///     `Last-Event-ID`, or `nil` for a client that asks to resume nothing.
     /// - Returns: The loopback and the connected client.
     /// - Throws: What the start, the connect, or the wait throws.
     private func connect(
-        to scripted: ScriptedServer, capabilities: Client.Capabilities = .init()
+        to scripted: ScriptedServer,
+        capabilities: Client.Capabilities = .init(),
+        resumingFrom lastEventID: String? = nil
     ) async throws -> Connection {
         let loopback = LoopbackHTTPServer(serving: scripted)
         let (endpoint, configuration) = try await loopback.start()
-        let client = MCPTestSupport.makeClient(name: Self.clientName, capabilities: capabilities)
-        _ = try await client.connect(
-            transport: HTTPClientTransport(endpoint: endpoint, configuration: configuration))
-        try await TestPoll.waitUntil("the standalone SSE stream") {
-            await loopback.isServingEventStream
+        do {
+            let client = MCPTestSupport.makeClient(name: Self.clientName, capabilities: capabilities)
+            _ = try await client.connect(
+                transport: HTTPClientTransport(
+                    endpoint: endpoint, configuration: configuration,
+                    requestModifier: { Self.asking(to: $0, resumeFrom: lastEventID) }))
+            try await TestPoll.waitUntil("the standalone SSE stream") {
+                await loopback.isServingEventStream
+            }
+            return Connection(loopback: loopback, client: client)
+        } catch {
+            await loopback.stop()
+            throw error
         }
-        return Connection(loopback: loopback, client: client)
+    }
+
+    /// `request` with `lastEventID` set as its `Last-Event-ID`, when it is a
+    /// standalone SSE stream request and `lastEventID` is not `nil`.
+    ///
+    /// - Parameters:
+    ///   - request: The request the client is about to send.
+    ///   - lastEventID: The id to ask to resume from, or `nil` to ask nothing.
+    /// - Returns: The request to send.
+    private static func asking(to request: URLRequest, resumeFrom lastEventID: String?) -> URLRequest {
+        guard let lastEventID, request.httpMethod == Self.eventStreamMethod else {
+            return request
+        }
+        var asking = request
+        asking.setValue(lastEventID, forHTTPHeaderField: Self.lastEventIDHeader)
+        return asking
     }
 
     // MARK: - initialize, tools/list, tools/call
@@ -139,6 +186,33 @@ struct LoopbackHTTPServerTests {
         let scripted = ScriptedServer()
         await scripted.addLoopbackTools()
         let connection = try await connect(to: scripted)
+        defer { Task { await connection.close() } }
+
+        let counter = NotificationCounter()
+        await connection.client.onNotification(ToolListChangedNotification.self) { _ in
+            await counter.increment()
+        }
+        try await scripted.emitToolListChanged()
+
+        let observed = await TestPoll.holds { await counter.count == 1 }
+        #expect(observed)
+    }
+
+    // MARK: - a client that asks to resume a stream
+
+    /// The loopback reads no `Last-Event-ID`, so a `GET` that carries one still
+    /// opens the standalone SSE stream and still carries a server-initiated
+    /// message. `HTTPClientTransport` of the sdk keeps ONE last event id for
+    /// every stream it reads, so the id it sends on a `GET` can be the id of a
+    /// `POST` response stream; a loopback that read the header would bind the
+    /// standalone stream to that other stream, or answer 400, and every
+    /// server-initiated message would then reach nothing. See the header of
+    /// `LoopbackHTTPServer.swift`.
+    @Test("a client that asks to resume a stream still gets the standalone SSE stream")
+    func aResumeRequestStillGetsTheStandaloneStream() async throws {
+        let scripted = ScriptedServer()
+        await scripted.addLoopbackTools()
+        let connection = try await connect(to: scripted, resumingFrom: Self.idOfNoStream)
         defer { Task { await connection.close() } }
 
         let counter = NotificationCounter()

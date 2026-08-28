@@ -30,7 +30,9 @@ import ULID
 /// Each case that reaches the server over the wire runs over both transports
 /// of ``MCPTransportKind``. The suite is `.serialized` for the reason
 /// `LoopbackHTTPServerTests` states: a connect over `.http` holds a live SSE
-/// stream open for the whole test, and several at once stall a server message.
+/// stream and a process-wide registry entry of `LoopbackHTTPServer` open for
+/// the whole test, and one test at a time keeps each of them owned by exactly
+/// one test.
 @Suite("MCPElicitationTests", .serialized)
 struct MCPElicitationTests {
 
