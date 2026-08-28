@@ -88,7 +88,7 @@ struct CIWorkflowTests {
     }
 
     @Test("the shared call names the root product the integration suite starts")
-    func sharedCallNamesRootProductTheIntegrationSuiteStarts() throws {
+    func sharedCallNamesRootProductIntegrationSuiteStarts() throws {
         let namesRootProduct = try Self.workflowContainsLine(
             "integration-root-products: mcp-test-server"
         )

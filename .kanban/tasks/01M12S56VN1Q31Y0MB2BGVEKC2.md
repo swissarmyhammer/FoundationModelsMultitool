@@ -127,6 +127,84 @@ comments:
 
     The work of this card is in the tree, uncommitted.
   timestamp: 2026-08-28T02:39:54.523054+00:00
+- actor: claude-code
+  id: 01m149p8qkcaewnt4anhnx6x27
+  text: |-
+    ### commit — changed
+    - evidence: 46586a4 — 9 files changed (293 insertions, 9 deletions): .github/workflows/ci.yml, README.md, Tests/FoundationModelsMultitoolTests/CIWorkflowTests.swift, plus .kanban/ state for tasks ^bgvekc2, ^8f, and the new ^ennv9e5.
+    - scope: local commit only. No push from this repository.
+    - next: a CI run of the integration job must still pass demoAttachesAnMCPServer for the third acceptance box.
+  timestamp: 2026-08-28T13:42:01.715943+00:00
+- actor: claude-code
+  id: 01m14a93gm7cx0s54pjj1bxayd
+  text: |-
+    ### review — findings
+    - evidence: 1 finding — Tests/FoundationModelsMultitoolTests/CIWorkflowTests.swift:91
+    - scope: `review sha HEAD~1..HEAD` (commit 46586a4). 2 files judged, 6 kanban files excluded by `.reviewignore`, `README.md` matched no validator.
+    - note: the first run of the engine stopped the rule `code-hygiene/dead-code-swift`. A stale, unreadable checkout of `swift-distributed-tracing` in `.build/checkouts/` stopped SwiftPM. That run gave a false clean result. The stale directory is now moved away, and the second run made all 7 rules judge. The one finding comes from the complete run.
+    - open: the criterion "A CI run of the integration job passes `demoAttachesAnMCPServer`" stays open. No local copy can start that run. The user pushes the repository. The other half of the fix is on `swissarmyhammer/workflows` as commit `1d31952`.
+    - next: rename the function at CIWorkflowTests.swift:91 to `sharedCallNamesRootProductIntegrationSuiteStarts`. Then run the review again.
+  timestamp: 2026-08-28T13:52:18.964633+00:00
+- actor: claude-code
+  id: 01m14aa2gxbhhx7nvhewhx34pv
+  text: |-
+    ### finish iteration 2 — findings
+    - implement: changed — 3 files here, plus swissarmyhammer/workflows 1d31952 which the user approved
+    - test: green — swift test, 1306 tests in 99 suites, 6 consecutive clean runs
+    - commit: 46586a4 — 9 files changed, 293 insertions, 9 deletions
+    - review: findings — Tests/FoundationModelsMultitoolTests/CIWorkflowTests.swift:91
+
+    Note of the review step: its first engine run gave a false clean result, because a stale checkout of swift-distributed-tracing in .build/checkouts/ stopped SwiftPM before one rule could judge. The step moved that directory away and ran again. No source file changed.
+  timestamp: 2026-08-28T13:52:50.717517+00:00
+- actor: claude-code
+  id: 01m14akspyye85fswsw8sjs76c
+  text: |
+    ### The rename, and the sweep of the whole file
+
+    The finding gives one example of a cause: a needless article inside a name. I
+    read every name in `CIWorkflowTests.swift` for that cause — the suite type, the
+    six test functions, the two private helpers, and each local constant.
+
+    Only one name carried an article:
+
+    - `sharedCallNamesRootProductTheIntegrationSuiteStarts` becomes
+      `sharedCallNamesRootProductIntegrationSuiteStarts`.
+
+    The other five test functions already drop their articles
+    (`sharedCallNamesNestedIntegrationPackage`, `sharedCallSetsIntegrationNoParallel`,
+    `sharedCallPassesMetallibGlob`, `sharedCallNamesIntegrationArtifactsPath`,
+    `workflowCallsSharedSwiftCI`), and the locals (`namesRootProduct`, `inputKey`,
+    `globValue`) carry no article. A search of the file for an article inside a name
+    gives no more results. Thus the file holds one instance of the cause, and the
+    change removes it.
+
+    The `@Test("...")` display string stays as it is, as the card says. The name is
+    the only change. No other file of the repository named the old function.
+
+    ### The rules
+
+    I read the full validator dump for `.swift` files (55 rules, 7 validators). The
+    rule the finding cites, `swift/naming-clarity`, says: "Omit needless words. Every
+    word must carry salient information at the use site." The article carries none,
+    so the new name obeys the rule. The name stays `lowerCamelCase`, so
+    `swift/casing` stays silent. No rule of the dump speaks about a `@Test` display
+    string, and no rule asks for a doc comment on an internal test function.
+
+    ### implement — changed
+
+    - evidence: 1 file — `Tests/FoundationModelsMultitoolTests/CIWorkflowTests.swift`
+      (one line: the function name).
+    - build: `swift build --build-tests` — exit 0. The one warning is the
+      `mlx-swift_Cmlx.bundle` line of a vendored git-ignored dependency, out of
+      scope.
+    - tests: `swift test` — exit 0, 1306 tests in 99 suites, all passed. The renamed
+      case, "the shared call names the root product the integration suite starts",
+      started and passed.
+    - open: the acceptance box "A CI run of the integration job passes
+      `demoAttachesAnMCPServer`" and the Tests box stay unchecked. They need a CI
+      run, thus a push. No local run can close them.
+    - next: `/review`.
+  timestamp: 2026-08-28T13:58:09.374302+00:00
 position_column: doing
 position_ordinal: '80'
 title: 'CI: build mcp-test-server before the integration job runs CLISmokeTests'
@@ -148,4 +226,16 @@ That is correct on a developer machine, where the root suite runs first. It is n
 - [ ] One CI run of the integration job, green.
 
 ## Workflow
-Read the shared workflow first. Change no test to make it pass. #eventplan #phase-4
+Read the shared workflow first. Change no test to make it pass.
+
+## Review Findings (2026-08-28 08:47)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 2 file(s) reviewed, 7 not reviewed.
+
+> 6 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 6 file(s)
+
+> 1 file(s) not reviewed — no validator matched:
+> - `README.md` — no validator matches this file
+
+- [x] `Tests/FoundationModelsMultitoolTests/CIWorkflowTests.swift:91` `swift/naming-clarity` — Function name includes the needless article "The" (capitalized as part of `TheIntegrationSuiteStarts`), violating the established pattern in the test class that omits articles when deriving function names from test strings. Rename to `sharedCallNamesRootProductIntegrationSuiteStarts`, omitting the article "The" to maintain consistency with existing test function naming conventions. #eventplan #phase-4
