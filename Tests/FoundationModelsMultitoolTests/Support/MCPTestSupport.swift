@@ -111,8 +111,34 @@ enum MCPTestSupport {
     ) async throws -> Client {
         let client = makeClient(name: clientName, capabilities: capabilities)
         let transport = try await clientTransport(serving: scripted, over: kind)
-        _ = try await client.connect(transport: transport)
+        try await closingOnFailure(transport) {
+            _ = try await client.connect(transport: transport)
+        }
         return client
+    }
+
+    /// Runs `connect`, and disconnects `transport` when it throws.
+    ///
+    /// A `.http` transport is a ``LoopbackClosingTransport`` over a started
+    /// `LoopbackHTTPServer`, and that loopback holds the one process-wide gate
+    /// of `LoopbackHTTPServer` until its `stop()`. A connect that throws and
+    /// leaves the transport connected parks every later `.http` connect of the
+    /// process for ever, which reports as a hang of the whole run and not as
+    /// the one failure that caused it.
+    ///
+    /// - Parameters:
+    ///   - transport: The transport to disconnect when the connect throws.
+    ///   - connect: The connect to run.
+    /// - Throws: What `connect` throws.
+    private static func closingOnFailure(
+        _ transport: any Transport, _ connect: () async throws -> Void
+    ) async throws {
+        do {
+            try await connect()
+        } catch {
+            await transport.disconnect()
+            throw error
+        }
     }
 
     /// Starts `scripted` on the server end of a transport of `kind`, and
@@ -155,7 +181,9 @@ enum MCPTestSupport {
             name: name, clock: clock, callTimeout: callTimeout, renderBudget: renderBudget,
             elicitationHandler: elicitationHandler)
         let transport = try await clientTransport(serving: scripted, over: kind)
-        try await server.connect(via: transport)
+        try await closingOnFailure(transport) {
+            try await server.connect(via: transport)
+        }
         return server
     }
 

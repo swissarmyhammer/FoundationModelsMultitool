@@ -8,10 +8,9 @@
 // that keeps such a loopback alive. Nothing releases it, and its live SSE
 // stream stays open, until something calls `stop()` on it. A suite that
 // never calls `MCPServer.disconnect()` (or `Client.disconnect()`) leaves
-// that stream open for the rest of the test process. That is one more open
-// stream on the shared cooperative thread pool for each `.http` connect the
-// suite made. `LoopbackHTTPServerTests` and `MCPElicitationTests` name this
-// build-up as the cause of an intermittent stall.
+// that stream open, and holds the one process-wide gate of
+// `LoopbackHTTPServer`, for the rest of the test process. Every later `.http`
+// connect of the process then parks on that gate for ever.
 //
 // This double ties the loopback's lifetime to the one disconnect every
 // suite already owes its client at the end of a test. Wrapping the
