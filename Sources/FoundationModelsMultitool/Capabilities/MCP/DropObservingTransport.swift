@@ -17,6 +17,17 @@
 // calls the `disconnect()` of this wrapper, and the wrapped stream ends as a
 // result. That end is the host's own doing, and it is not reported.
 //
+// **A drop ends the mirror with an error, and never without one.** The message
+// loop of `MCP.Client` is `repeat { for try await data in await
+// connection.receive() } while true`. It leaves that loop when its task is
+// cancelled, or when the stream ends with a THROW, which its `catch` breaks on.
+// A stream that ends with no error sends the loop straight back to `receive()`,
+// which gives back that same ended stream, and the loop then spins hot on one
+// cooperative-pool thread for the life of the process. Nothing cancels that
+// task: `handleTransportDrop(generation:)` fails the calls in flight and leaves
+// the client where it is. So every end this wrapper reports as a drop carries
+// an error, and so does the stream of a wrapper that never connected.
+//
 // **`import Logging` names ONE type, and logs nothing.** The sdk's `Transport`
 // protocol requires `var logger: Logging.Logger`, so this actor names the
 // type to conform, as `StdioServerProcess.swift` does. It writes nothing
@@ -31,6 +42,16 @@ import MCP
 actor DropObservingTransport: Transport {
     /// The label of the no-op logger of this wrapper.
     private static let loggerLabel = "mcp.transport.drop-observing"
+
+    /// The error the mirror ends with when the wrapped receive stream ended
+    /// under a connected client and threw nothing of its own, and the error the
+    /// stream of a wrapper that never connected ends with.
+    ///
+    /// The end has to carry an error, or the message loop of `MCP.Client` spins
+    /// — see the header of this file. `MCPError.connectionClosed` is what the
+    /// sdk's own `InMemoryTransport` ends a peer's stream with on a
+    /// disconnection, and `MCPServer` already reads it as the loss of a call.
+    private static let dropError = MCPError.connectionClosed
 
     /// The transport every operation delegates to.
     private let wrapped: any Transport
@@ -95,16 +116,18 @@ actor DropObservingTransport: Transport {
     }
 
     /// The mirror of the wrapped receive stream, built by the most recent
-    /// ``connect()`` — or a finished empty stream when no `connect()` ran.
+    /// ``connect()`` — or a stream that ends with ``dropError`` when no
+    /// `connect()` ran. That end carries an error for the reason the header of
+    /// this file states.
     func receive() -> AsyncThrowingStream<Data, Swift.Error> {
         guard let mirroredReceiveStream else {
-            return AsyncThrowingStream { $0.finish() }
+            return AsyncThrowingStream { $0.finish(throwing: Self.dropError) }
         }
         return mirroredReceiveStream
     }
 
-    /// Builds the stream the client iterates: every element of `inner`, and
-    /// the same end, relayed by one task that then reports a drop.
+    /// Builds the stream the client iterates: every element of `inner`, and an
+    /// end that ``end(_:after:)`` classifies.
     ///
     /// - Parameter inner: The receive stream of the wrapped transport.
     /// - Returns: The mirror.
@@ -113,24 +136,41 @@ actor DropObservingTransport: Transport {
     ) -> AsyncThrowingStream<Data, Swift.Error> {
         AsyncThrowingStream { continuation in
             let relay = Task {
+                var failure: (any Swift.Error)?
                 do {
                     for try await data in inner {
                         continuation.yield(data)
                     }
-                    continuation.finish()
                 } catch {
-                    continuation.finish(throwing: error)
+                    failure = error
                 }
-                await self.reportDropUnlessDisconnected()
+                await self.end(continuation, after: failure)
             }
             continuation.onTermination = { _ in relay.cancel() }
         }
     }
 
-    /// Calls ``onDrop`` unless ``disconnect()`` ran on this wrapper — the
-    /// one place the end of the wrapped stream is classified.
-    private func reportDropUnlessDisconnected() async {
-        guard !wasDisconnected else { return }
+    /// Ends `continuation` and reports a drop — the one place the end of the
+    /// wrapped stream is classified.
+    ///
+    /// A ``disconnect()`` of this wrapper caused this end, thus the end stands
+    /// as the wrapped stream gave it and nothing is reported. Otherwise the end
+    /// is a drop: it carries ``dropError`` when the wrapped stream threw
+    /// nothing of its own, and ``onDrop`` is called.
+    ///
+    /// - Parameters:
+    ///   - continuation: The continuation of the mirror.
+    ///   - failure: What the wrapped stream threw, or `nil` when it ended with
+    ///     no error.
+    private func end(
+        _ continuation: AsyncThrowingStream<Data, Swift.Error>.Continuation,
+        after failure: (any Swift.Error)?
+    ) async {
+        guard !wasDisconnected else {
+            continuation.finish(throwing: failure)
+            return
+        }
+        continuation.finish(throwing: failure ?? Self.dropError)
         await onDrop()
     }
 }
