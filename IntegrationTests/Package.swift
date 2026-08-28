@@ -42,7 +42,7 @@ private let transformersPackage = "swift-transformers"
 ///
 /// `--no-parallel` is not a preference. Swift Testing runs suites concurrently
 /// and starts a test's `.timeLimit` when the test starts, while every scenario
-/// here queues behind `LiveProfileTurnstile` for the one resident live profile,
+/// here queues behind `liveProfileTurnstile` for the one resident live profile,
 /// so a parallel run spends the limit on queue time and a queued suite fails in
 /// the same way as a hang. `LiveRouterFixture.swift` records the measurement.
 ///
@@ -111,6 +111,11 @@ let package = Package(
                 // it, or spawns the `mcp-test-server` binary the root build
                 // produces.
                 .product(name: "MCPTestServer", package: productPackageName),
+                // The shared gate of the test support code, another test-support
+                // product of the root package — `../Package.swift`'s
+                // `testConcurrencyTargetName`. `liveProfileTurnstile` is one of
+                // them, and it holds this target to one resident live profile.
+                .product(name: "TestConcurrency", package: productPackageName),
                 .product(name: routerDependencyName, package: routerDependencyName),
                 .product(name: metadataRegistryDependencyName, package: metadataRegistryDependencyName),
                 .product(name: "MLXLMCommon", package: mlxPackage),

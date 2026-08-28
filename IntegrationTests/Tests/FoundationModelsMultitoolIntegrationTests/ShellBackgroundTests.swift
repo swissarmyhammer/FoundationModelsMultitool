@@ -32,7 +32,7 @@ import Testing
 /// `swift test`, which declares no target for this nested `IntegrationTests`
 /// package. The command that runs it is
 /// `swift test --package-path IntegrationTests --no-parallel`, and the flag is
-/// not a preference — see `LiveProfileTurnstile` for what the clock counts
+/// not a preference — see `liveProfileTurnstile` for what the clock counts
 /// without it.
 @Suite(
     "A shell command on the background path (phase-2)",

@@ -20,53 +20,7 @@
 import Foundation
 import MCP
 import Synchronization
-
-/// Makes ``LoopbackHTTPServer/start()`` and ``LoopbackHTTPServer/stop()``
-/// run one at a time, for the whole test process. As a result, only one
-/// loopback can hold an open SSE stream at any one time.
-///
-/// A `.serialized` `@Suite` trait puts the tests of ONE suite in order. It
-/// does not put one suite in order against another suite. Two suites can
-/// each connect over `.http` — for example, `LoopbackHTTPServerTests` and
-/// `MCPElicitationTests`. By default, these two suites can still run at the
-/// same time. Each one then holds its own open SSE stream through
-/// `URLSession`, on the shared cooperative thread pool. Several open
-/// streams at once — across suites, not only inside one suite — push that
-/// pool past the point where a server-to-client message stalls and does not
-/// arrive. See the header of this file, and `LoopbackHTTPServerTests`, for
-/// more on this. This gate holds every loopback of the process to one
-/// active loopback at a time. That is the same limit every suite that opens
-/// a loopback already treats as safe. The gate does this by making
-/// `start()` wait for the prior loopback's `stop()` to finish first.
-private actor LoopbackConcurrencyGate {
-    /// The one gate of the process.
-    static let shared = LoopbackConcurrencyGate()
-
-    /// Whether a loopback currently holds the gate.
-    private var isHeld = false
-
-    /// Every `start()` waiting for the gate, in arrival order.
-    private var waiters: [CheckedContinuation<Void, Never>] = []
-
-    /// Waits until no other loopback holds the gate, then takes it.
-    func acquire() async {
-        guard isHeld else {
-            isHeld = true
-            return
-        }
-        await withCheckedContinuation { waiters.append($0) }
-    }
-
-    /// Releases the gate: hands it to the next waiter, if there is one,
-    /// otherwise opens it for the next ``acquire()``.
-    func release() {
-        guard !waiters.isEmpty else {
-            isHeld = false
-            return
-        }
-        waiters.removeFirst().resume()
-    }
-}
+import TestConcurrency
 
 /// Serves one ``ScriptedServer`` over HTTP inside the test process.
 ///
@@ -79,10 +33,9 @@ private actor LoopbackConcurrencyGate {
 /// `URLProtocol` consults, until ``stop()`` removes it. The caller of
 /// ``start()`` calls ``stop()`` at the end of its test.
 ///
-/// ``start()`` and ``stop()`` also acquire and release
-/// ``LoopbackConcurrencyGate/shared``. As a result, only one loopback of the
-/// whole process can hold an open SSE stream at any one time. See the
-/// header of that type for more on this.
+/// ``start()`` and ``stop()`` also take and give back one process-wide gate.
+/// As a result, only one loopback of the whole process can hold an open SSE
+/// stream at any one time. See `concurrencyGate` for more on this.
 public actor LoopbackHTTPServer {
     /// The path of every loopback endpoint.
     private static let endpointPath = "/mcp"
@@ -116,6 +69,25 @@ public actor LoopbackHTTPServer {
     /// not an actor, because `URLProtocol.canInit(with:)` is synchronous.
     private static let registry = Mutex<[String: LoopbackHTTPServer]>([:])
 
+    /// The one gate that makes ``start()`` and ``stop()`` run one at a time,
+    /// for the whole test process. As a result, only one loopback can hold an
+    /// open SSE stream at any one time.
+    ///
+    /// A `.serialized` `@Suite` trait puts the tests of ONE suite in order. It
+    /// does not put one suite in order against another suite. Two suites can
+    /// each connect over `.http` — for example, `LoopbackHTTPServerTests` and
+    /// `MCPElicitationTests`. By default, these two suites can still run at the
+    /// same time. Each one then holds its own open SSE stream through
+    /// `URLSession`, on the shared cooperative thread pool. Several open
+    /// streams at once — across suites, not only inside one suite — push that
+    /// pool past the point where a server-to-client message stalls and does not
+    /// arrive. See the header of this file, and `LoopbackHTTPServerTests`, for
+    /// more on this. This gate holds every loopback of the process to one
+    /// active loopback at a time. That is the same limit every suite that opens
+    /// a loopback already treats as safe. The gate does this by making
+    /// ``start()`` wait for the prior loopback's ``stop()`` to finish first.
+    private static let concurrencyGate = ConcurrencyGate()
+
     /// The scripted server this loopback serves.
     private let scripted: ScriptedServer
 
@@ -147,11 +119,11 @@ public actor LoopbackHTTPServer {
     ///   `protocolClasses` routes the endpoint to this loopback.
     /// - Throws: What `ScriptedServer.start(transport:)` throws.
     public func start() async throws -> (endpoint: URL, configuration: URLSessionConfiguration) {
-        await LoopbackConcurrencyGate.shared.acquire()
+        await Self.concurrencyGate.acquire()
         do {
             try await scripted.start(transport: transport)
         } catch {
-            await LoopbackConcurrencyGate.shared.release()
+            await Self.concurrencyGate.release()
             throw error
         }
         Self.registry.withLock { $0[host] = self }
@@ -164,13 +136,12 @@ public actor LoopbackHTTPServer {
 
     /// Removes this loopback from the registry, and ends the session of the
     /// server transport. This closes every open stream. It then releases
-    /// ``LoopbackConcurrencyGate/shared``, so the next loopback's `start()`
-    /// can proceed.
+    /// `concurrencyGate`, so the next loopback's ``start()`` can proceed.
     public func stop() async {
         _ = Self.registry.withLock { $0.removeValue(forKey: host) }
         isServingEventStream = false
         await transport.disconnect()
-        await LoopbackConcurrencyGate.shared.release()
+        await Self.concurrencyGate.release()
     }
 
     /// The URL a client connects to.

@@ -237,6 +237,23 @@ private let mcpProducts: [Target.Dependency] = [
 /// links it as a target.
 private let testServerTargetName = "MCPTestServer"
 
+/// The name of the shared test-support concurrency library, and of the product
+/// that exports it.
+///
+/// **Test support, declared as a product**, for the same reason as
+/// `testServerTargetName`. It carries `ConcurrencyGate` alone — the actor that
+/// holds one shared resource to one user at a time. Two callers share it, and
+/// they stand in two packages: `LoopbackHTTPServer` in `testServerTargetName`
+/// below, and `liveProfileTurnstile` in the nested `IntegrationTests` package.
+/// Each one held a gate of its own before, and the two were the same actor with
+/// two sets of names.
+///
+/// A target of its own, and not a file of `testServerTargetName`: that target
+/// is the scripted MCP server and it links the `MCP` product, while a gate over
+/// a resident model profile has nothing to do with MCP. This target links
+/// nothing.
+private let testConcurrencyTargetName = "TestConcurrency"
+
 /// The name of the stdio executable over `testServerTargetName`, and of the
 /// product that exports it.
 ///
@@ -255,9 +272,10 @@ private let sourcesPath = "Sources/"
 /// below.
 private let testsPath = "Tests/"
 
-/// The `Tests/Support/` subdirectory prefix used by the two test-support
-/// targets (`testServerTargetName`, `testServerExecutableName`) below. A
-/// target of test support is not a test target, so it cannot stand under
+/// The `Tests/Support/` subdirectory prefix used by the three test-support
+/// targets (`testServerTargetName`, `testConcurrencyTargetName`,
+/// `testServerExecutableName`) below. A target of test support is not a test
+/// target, so it cannot stand under
 /// `Tests/<Name>Tests`, and it is not shipped, so it does not stand under
 /// `Sources/`.
 private let testSupportPath = "\(testsPath)Support/"
@@ -297,6 +315,12 @@ let package = Package(
         .library(
             name: testServerTargetName,
             targets: [testServerTargetName]
+        ),
+        // Test support. Consumed by `IntegrationTests/Package.swift`, for the
+        // same reason as the product above — see `testConcurrencyTargetName`.
+        .library(
+            name: testConcurrencyTargetName,
+            targets: [testConcurrencyTargetName]
         ),
         // Test support. The stdio binary a test spawns through
         // `StdioServerProcess` — see `testServerExecutableName`. A product,
@@ -385,10 +409,22 @@ let package = Package(
         // property, and the transitive `swift-log` the sdk brings satisfies
         // the import, exactly as `StdioServerProcess.swift` relies on — see
         // `mcpPackage` above.
+        //
+        // It links `testConcurrencyTargetName` for the one gate
+        // `LoopbackHTTPServer` holds the loopbacks of the process with.
         .target(
             name: testServerTargetName,
-            dependencies: mcpProducts,
+            dependencies: [
+                .target(name: testConcurrencyTargetName)
+            ] + mcpProducts,
             path: "\(testSupportPath)\(testServerTargetName)"
+        ),
+        // The shared gate of the test support code — see
+        // `testConcurrencyTargetName`. It links nothing: the actor is written
+        // over the standard library alone.
+        .target(
+            name: testConcurrencyTargetName,
+            path: "\(testSupportPath)\(testConcurrencyTargetName)"
         ),
         // The stdio entry point over the test server — see
         // `testServerExecutableName`. `main.swift` and nothing else.
@@ -412,6 +448,7 @@ let package = Package(
                 .target(name: packageName),
                 .target(name: cliLibraryTargetName),
                 .target(name: testServerTargetName),
+                .target(name: testConcurrencyTargetName),
                 .product(name: routerDependencyName, package: routerDependencyName),
                 .product(name: metadataRegistryDependencyName, package: metadataRegistryDependencyName),
                 .product(name: extrasDependencyName, package: extrasDependencyName),

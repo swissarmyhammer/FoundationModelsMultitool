@@ -83,10 +83,10 @@ struct CLISmokeTests {
         // `LiveRouterFixture`, so it takes the target's one-resident-profile
         // turnstile itself — otherwise it would generate alongside whichever
         // scenario suite Swift Testing is running in parallel with it, which
-        // measurably destroys grounding (see `LiveProfileTurnstile`).
-        await LiveProfileTurnstile.shared.enter()
+        // measurably destroys grounding (see `liveProfileTurnstile`).
+        await liveProfileTurnstile.acquire()
         let exitCode = await CLIRunner.run(arguments: arguments, output: output.append)
-        await LiveProfileTurnstile.shared.leave()
+        await liveProfileTurnstile.release()
         return (exitCode, output.lines)
     }
 

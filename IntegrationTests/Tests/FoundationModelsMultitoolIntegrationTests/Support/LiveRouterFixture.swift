@@ -14,6 +14,7 @@ import Tokenizers
 
 import FoundationModelsRouter
 import MultitoolCLI
+import TestConcurrency
 
 /// The deliberately small, tool-calling-capable `mlx-community` models this
 /// suite resolves — plan.md M6.5: "small tool-calling-capable instruct
@@ -421,9 +422,8 @@ let plumbingProbeProfile = ProfileDefinition(
 /// ("only one profile is resident at a time per `Router`"), extended across
 /// suite boundaries where a suite trait cannot reach.
 ///
-/// A counting semaphore of one, written as an actor: both operations are
-/// decisions on the actor's own state, and a waiter parks on a continuation
-/// rather than blocking a thread.
+/// One ``ConcurrencyGate``, the shared gate of the test support code. The unit
+/// test process holds its HTTP loopbacks with another one of them.
 ///
 /// **Run this suite with `--no-parallel`.** The command is
 /// `swift test --package-path IntegrationTests --no-parallel`, and the flag is
@@ -456,36 +456,7 @@ let plumbingProbeProfile = ProfileDefinition(
 /// exactly like a hang, and it lands on whichever suite holds the tightest
 /// ceiling rather than on whichever scenario is slow. Two suites failed that
 /// way before the flag was tried, and both pass with it.
-actor LiveProfileTurnstile {
-    /// The one turnstile the whole target shares.
-    static let shared = LiveProfileTurnstile()
-
-    /// Whether a profile currently holds the turnstile.
-    private var isOccupied = false
-
-    /// The scenarios parked until the holder leaves, in arrival order.
-    private var waiters: [CheckedContinuation<Void, Never>] = []
-
-    /// Takes the turnstile, waiting for the current holder to leave if there is
-    /// one. The caller owes a matching ``leave()``.
-    func enter() async {
-        guard isOccupied else {
-            isOccupied = true
-            return
-        }
-        await withCheckedContinuation { waiters.append($0) }
-    }
-
-    /// Gives the turnstile up, handing it straight to the longest-waiting
-    /// scenario if any is parked.
-    func leave() {
-        guard waiters.isEmpty else {
-            waiters.removeFirst().resume()
-            return
-        }
-        isOccupied = false
-    }
-}
+let liveProfileTurnstile = ConcurrencyGate()
 
 /// One resolved, live `Router` + `LanguageModelProfile` pair, together with
 /// the recording root its sessions write their JSONL transcript under —
@@ -515,7 +486,7 @@ struct LiveRouterFixture {
     /// real Hugging Face Hub client + tokenizer loader, mirroring Router's
     /// own gated `IntegrationTests.endToEnd()`.
     ///
-    /// Takes ``LiveProfileTurnstile/shared`` before resolving anything, so at
+    /// Takes ``liveProfileTurnstile`` before resolving anything, so at
     /// most one integration scenario in the target has a profile resident at a time;
     /// ``tearDown()`` gives it back. A resolution that throws gives it back
     /// itself, since its caller is left with no fixture to tear down.
@@ -538,7 +509,7 @@ struct LiveRouterFixture {
         // lookup (see `MetalLibraryTestBootstrap`'s documentation) — must run
         // before any live model resolution touches the GPU device.
         _ = MetalLibraryTestBootstrap.ensureColocatedMetallib
-        await LiveProfileTurnstile.shared.enter()
+        await liveProfileTurnstile.acquire()
         do {
             let cacheDir = Self.makeTempDir()
             let recordingsDir = Self.makeRecordingsDir()
@@ -588,18 +559,18 @@ struct LiveRouterFixture {
             )
             return LiveRouterFixture(router: router, profile: profile, recordingsDir: recordingsDir)
         } catch {
-            await LiveProfileTurnstile.shared.leave()
+            await liveProfileTurnstile.release()
             throw error
         }
     }
 
     /// Releases the resolved profile, evicting its three resident models, and
-    /// gives ``LiveProfileTurnstile/shared`` back to the next waiting scenario.
+    /// gives ``liveProfileTurnstile`` back to the next waiting scenario.
     /// Call once a scenario is done with this fixture, on every exit path
     /// (success, assertion failure, or thrown error).
     func tearDown() async {
         await profile.release()
-        await LiveProfileTurnstile.shared.leave()
+        await liveProfileTurnstile.release()
     }
 
     /// Reads back this fixture's whole recorded run as a totally-ordered
