@@ -21,6 +21,53 @@ import Foundation
 import MCP
 import Synchronization
 
+/// Makes ``LoopbackHTTPServer/start()`` and ``LoopbackHTTPServer/stop()``
+/// run one at a time, for the whole test process. As a result, only one
+/// loopback can hold an open SSE stream at any one time.
+///
+/// A `.serialized` `@Suite` trait puts the tests of ONE suite in order. It
+/// does not put one suite in order against another suite. Two suites can
+/// each connect over `.http` — for example, `LoopbackHTTPServerTests` and
+/// `MCPElicitationTests`. By default, these two suites can still run at the
+/// same time. Each one then holds its own open SSE stream through
+/// `URLSession`, on the shared cooperative thread pool. Several open
+/// streams at once — across suites, not only inside one suite — push that
+/// pool past the point where a server-to-client message stalls and does not
+/// arrive. See the header of this file, and `LoopbackHTTPServerTests`, for
+/// more on this. This gate holds every loopback of the process to one
+/// active loopback at a time. That is the same limit every suite that opens
+/// a loopback already treats as safe. The gate does this by making
+/// `start()` wait for the prior loopback's `stop()` to finish first.
+private actor LoopbackConcurrencyGate {
+    /// The one gate of the process.
+    static let shared = LoopbackConcurrencyGate()
+
+    /// Whether a loopback currently holds the gate.
+    private var isHeld = false
+
+    /// Every `start()` waiting for the gate, in arrival order.
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    /// Waits until no other loopback holds the gate, then takes it.
+    func acquire() async {
+        guard isHeld else {
+            isHeld = true
+            return
+        }
+        await withCheckedContinuation { waiters.append($0) }
+    }
+
+    /// Releases the gate: hands it to the next waiter, if there is one,
+    /// otherwise opens it for the next ``acquire()``.
+    func release() {
+        guard !waiters.isEmpty else {
+            isHeld = false
+            return
+        }
+        waiters.removeFirst().resume()
+    }
+}
+
 /// Serves one ``ScriptedServer`` over HTTP inside the test process.
 ///
 /// ``start()`` returns the endpoint and the `URLSessionConfiguration` a
@@ -31,6 +78,11 @@ import Synchronization
 /// A started loopback is held by a process-wide registry, which the
 /// `URLProtocol` consults, until ``stop()`` removes it. The caller of
 /// ``start()`` calls ``stop()`` at the end of its test.
+///
+/// ``start()`` and ``stop()`` also acquire and release
+/// ``LoopbackConcurrencyGate/shared``. As a result, only one loopback of the
+/// whole process can hold an open SSE stream at any one time. See the
+/// header of that type for more on this.
 public actor LoopbackHTTPServer {
     /// The path of every loopback endpoint.
     private static let endpointPath = "/mcp"
@@ -43,6 +95,22 @@ public actor LoopbackHTTPServer {
 
     /// The HTTP method of a standalone SSE stream request.
     private static let eventStreamMethod = "GET"
+
+    /// The request and resource timeout of the `URLSessionConfiguration`
+    /// ``start()`` returns.
+    ///
+    /// A loopback never reaches a real network. Each request routes to
+    /// `LoopbackURLProtocol`, in the same process, over `Task`s on the
+    /// shared cooperative thread pool. Foundation's default request
+    /// timeout is 60 seconds. That value fits a call to a real, remote
+    /// server that has truly stalled. It does not fit a same-process
+    /// transport, which has no real network delay of its own. Under the
+    /// full parallel `swift test` run, that shared pool can delay a relayed
+    /// message past 60 seconds on its own, with no request truly stuck.
+    /// That delay showed up as a false `NSURLErrorTimedOut` failure. This
+    /// longer timeout gives a delayed message more room to arrive, without
+    /// hiding a request that will truly never finish.
+    private static let requestTimeout: TimeInterval = 120
 
     /// The started loopbacks, by the host of their endpoint. A `Mutex`, and
     /// not an actor, because `URLProtocol.canInit(with:)` is synchronous.
@@ -79,19 +147,30 @@ public actor LoopbackHTTPServer {
     ///   `protocolClasses` routes the endpoint to this loopback.
     /// - Throws: What `ScriptedServer.start(transport:)` throws.
     public func start() async throws -> (endpoint: URL, configuration: URLSessionConfiguration) {
-        try await scripted.start(transport: transport)
+        await LoopbackConcurrencyGate.shared.acquire()
+        do {
+            try await scripted.start(transport: transport)
+        } catch {
+            await LoopbackConcurrencyGate.shared.release()
+            throw error
+        }
         Self.registry.withLock { $0[host] = self }
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [LoopbackURLProtocol.self]
+        configuration.timeoutIntervalForRequest = Self.requestTimeout
+        configuration.timeoutIntervalForResource = Self.requestTimeout
         return (endpoint: endpoint, configuration: configuration)
     }
 
-    /// Removes this loopback from the registry and terminates the session of
-    /// the server transport, which closes every open stream.
+    /// Removes this loopback from the registry, and ends the session of the
+    /// server transport. This closes every open stream. It then releases
+    /// ``LoopbackConcurrencyGate/shared``, so the next loopback's `start()`
+    /// can proceed.
     public func stop() async {
         _ = Self.registry.withLock { $0.removeValue(forKey: host) }
         isServingEventStream = false
         await transport.disconnect()
+        await LoopbackConcurrencyGate.shared.release()
     }
 
     /// The URL a client connects to.

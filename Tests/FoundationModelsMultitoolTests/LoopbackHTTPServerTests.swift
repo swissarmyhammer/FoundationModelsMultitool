@@ -94,6 +94,7 @@ struct LoopbackHTTPServerTests {
         let scripted = ScriptedServer()
         await scripted.addLoopbackTools()
         let connection = try await connect(to: scripted)
+        defer { Task { await connection.close() } }
 
         let page = try await connection.client.listTools()
         #expect(page.tools.map(\.name) == ScriptedServer.loopbackToolNames)
@@ -102,7 +103,6 @@ struct LoopbackHTTPServerTests {
             name: ScriptedServer.echoToolName,
             arguments: [ScriptedServer.echoTextArgument: .string(Self.echoText)])
         #expect(result.content == [.text(text: Self.echoText, annotations: nil, _meta: nil)])
-        await connection.close()
     }
 
     // MARK: - elicitation/create over the loopback
@@ -112,6 +112,7 @@ struct LoopbackHTTPServerTests {
         let scripted = ScriptedServer()
         await scripted.addLoopbackTools()
         let connection = try await connect(to: scripted, capabilities: Self.elicitingCapabilities)
+        defer { Task { await connection.close() } }
 
         await connection.client.withElicitationHandler { params in
             guard case .form(let formParams) = params else {
@@ -129,7 +130,6 @@ struct LoopbackHTTPServerTests {
         #expect(
             result.structuredContent?.objectValue?[ScriptedServer.elicitEchoAnswerField]?.stringValue
                 == Self.scriptedAnswer)
-        await connection.close()
     }
 
     // MARK: - tools/list_changed over the SSE stream
@@ -139,6 +139,7 @@ struct LoopbackHTTPServerTests {
         let scripted = ScriptedServer()
         await scripted.addLoopbackTools()
         let connection = try await connect(to: scripted)
+        defer { Task { await connection.close() } }
 
         let counter = NotificationCounter()
         await connection.client.onNotification(ToolListChangedNotification.self) { _ in
@@ -148,7 +149,6 @@ struct LoopbackHTTPServerTests {
 
         let observed = await TestPoll.holds { await counter.count == 1 }
         #expect(observed)
-        await connection.close()
     }
 
     // MARK: - one case over both transports
@@ -159,9 +159,9 @@ struct LoopbackHTTPServerTests {
         await scripted.addLoopbackTools()
         let client = try await MCPTestSupport.connectedServer(
             to: scripted, over: kind, clientName: Self.clientName)
+        defer { Task { await client.disconnect() } }
 
         let page = try await client.listTools()
         #expect(page.tools.map(\.name) == ScriptedServer.loopbackToolNames)
-        await client.disconnect()
     }
 }

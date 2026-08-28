@@ -253,6 +253,7 @@ struct MCPElicitationTests {
     @Test("the answer the test delivers through the mailbox reaches elicitEcho", arguments: transports)
     func theMailboxAnswerReachesTheTool(kind: MCPTransportKind) async throws {
         let (scripted, server) = try await Self.connected(over: kind)
+        defer { Task { await server.disconnect() } }
         let run = BoundRun()
 
         let call = Self.startCall(server, tool: ScriptedServer.elicitEchoToolName, under: run.context)
@@ -273,6 +274,7 @@ struct MCPElicitationTests {
     @Test("a URL-mode accept keeps the call open until the mailbox completes the flow", arguments: transports)
     func aURLAcceptHoldsTheCallUntilTheMailboxCompletes(kind: MCPTransportKind) async throws {
         let (scripted, server) = try await Self.connected(over: kind)
+        defer { Task { await server.disconnect() } }
         let run = BoundRun()
 
         let call = Self.startCall(server, tool: ScriptedServer.elicitURLToolName, under: run.context)
@@ -293,6 +295,7 @@ struct MCPElicitationTests {
     @Test("a runCode snippet suspends on the elicitation and returns the mailbox answer over the HTTP loopback")
     func aSnippetSuspendsOnTheElicitationAndReturnsTheAnswer() async throws {
         let (scripted, server) = try await Self.connected(over: .http)
+        defer { Task { await server.disconnect() } }
         let registry = try await MultiTool.Builder().withMCP(servers: [server]).buildRegistry()
         let multiTool = MultiTool(registry: registry)
         let run = BoundRun()

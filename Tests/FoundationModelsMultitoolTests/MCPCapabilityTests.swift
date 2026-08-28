@@ -163,6 +163,7 @@ struct MCPCapabilityTests {
     @Test("withMCP renders tools.<serverName>.<toolName> for each server tool, and no tools.mcp group", arguments: transports)
     func withMCPRendersOneGroupPerServer(kind: MCPTransportKind) async throws {
         let (scripted, server) = try await Self.connected(over: kind)
+        defer { Task { await server.disconnect() } }
 
         let registry = try await Self.makeRegistry(over: server)
 
@@ -178,6 +179,7 @@ struct MCPCapabilityTests {
     @Test("a snippet that awaits tools.<serverName>.echo reaches the loopback server and returns the rendered result", arguments: transports)
     func anEchoSnippetReachesTheServer(kind: MCPTransportKind) async throws {
         let (scripted, server) = try await Self.connected(over: kind)
+        defer { Task { await server.disconnect() } }
         let registry = try await Self.makeRegistry(over: server)
 
         let result = try await Self.stringResult(
@@ -200,6 +202,7 @@ struct MCPCapabilityTests {
     @Test("searchTools finds each server verb with a sample snippet that runs", arguments: transports)
     func searchToolsFindsEachServerVerbWithARunnableExample(kind: MCPTransportKind) async throws {
         let (scripted, server) = try await Self.connected(over: kind)
+        defer { Task { await server.disconnect() } }
         let registry = try await Self.makeRegistry(over: server)
         let surface = registry.surface
         let searchTools = Self.makeSearchTools(over: surface)

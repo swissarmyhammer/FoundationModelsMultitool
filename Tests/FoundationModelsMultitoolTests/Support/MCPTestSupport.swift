@@ -29,11 +29,14 @@ enum MCPTransportKind {
     /// An `HTTPClientTransport` at the endpoint of a `LoopbackHTTPServer`
     /// over the scripted server — HTTP in one process, with no socket.
     ///
-    /// The helper never stops the loopback: the registry of
-    /// `LoopbackHTTPServer` holds it for the rest of the test process, as
-    /// the in-memory pair of ``inMemory`` is never torn down by the helper
-    /// either. A test that must stop one builds the `LoopbackHTTPServer`
-    /// itself.
+    /// The returned transport is a ``LoopbackClosingTransport``. Its
+    /// `disconnect()` stops the loopback, after the wrapped transport ends.
+    /// So the live SSE stream and the registry entry of `LoopbackHTTPServer`
+    /// both end when a test disconnects its `Client` or `MCPServer`. A test
+    /// over `.http` owes that disconnect, the same way any well-behaved
+    /// caller of a live resource does. The in-memory pair of ``inMemory`` is
+    /// never torn down by the helper, and needs no disconnect: it holds no
+    /// OS-level resource, unlike a loopback's SSE stream.
     case http
 }
 
@@ -76,7 +79,9 @@ enum MCPTestSupport {
         case .http:
             let loopback = LoopbackHTTPServer(serving: scripted)
             let (endpoint, configuration) = try await loopback.start()
-            return HTTPClientTransport(endpoint: endpoint, configuration: configuration)
+            return LoopbackClosingTransport(
+                wrapping: HTTPClientTransport(endpoint: endpoint, configuration: configuration),
+                stopping: loopback)
         }
     }
 
