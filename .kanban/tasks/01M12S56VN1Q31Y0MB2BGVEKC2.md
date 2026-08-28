@@ -205,8 +205,37 @@ comments:
       run, thus a push. No local run can close them.
     - next: `/review`.
   timestamp: 2026-08-28T13:58:09.374302+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m14amt51b4qqj9xsbfrxkg8f
+  text: |-
+    ### commit — changed
+    - evidence: d66a667 test: drop the article from a CIWorkflowTests function name (3 files changed, 100 insertions(+), 2 deletions(-))
+    - next: none
+  timestamp: 2026-08-28T13:58:42.593417+00:00
+- actor: claude-code
+  id: 01m14asfpvd9w6jv8z0q9afy0b
+  text: |
+    ### review — clean
+
+    - evidence: 0 findings. The engine attempted 7 rules. 0 rules failed. 0 rules were skipped. Scope: `review sha HEAD~1..HEAD`, thus commit `d66a667`. The engine judged 1 file: `Tests/FoundationModelsMultitoolTests/CIWorkflowTests.swift`. It excluded 2 `.kanban` files by the rule in `.reviewignore`.
+    - prior findings: the one finding of 2026-08-28 08:47 is checked. The function name at `CIWorkflowTests.swift:91` does not hold the article.
+    - environment: this run is correct. An earlier run gave a false clean result, because a stale checkout of `swift-distributed-tracing` in `.build/checkouts/` stopped SwiftPM before one rule could judge. Before this run, `swift package describe --type json` gave exit 0 and wrote no error. The counts of this run show 7 rules attempted, 0 failed and 0 skipped. Thus all rules judged the change.
+    - open: two boxes stay unchecked. The acceptance criterion "A CI run of the integration job passes `demoAttachesAnMCPServer`" and the Tests box need a CI run of the pushed repository. No local copy can start that run. The other half of the fix is on `swissarmyhammer/workflows` as commit `1d31952`. The card does not stay open for a run that this machine cannot start. The review judged the code of the range on its own terms.
+    - next: none. The task moves to `done`.
+  timestamp: 2026-08-28T14:01:15.739649+00:00
+- actor: claude-code
+  id: 01m14at8e15g43kcbe6c8320s2
+  text: |-
+    ### finish iteration 3 — clean
+    - implement: changed — 1 file, the article dropped from the function name
+    - test: green — swift test, 1306 tests in 99 suites, all passed
+    - commit: d66a667 — 3 files changed
+    - review: clean — 0 findings, 7 validators attempted, 0 failed, 0 skipped; the one prior finding checked; task moved to done
+
+    Two boxes of the card stay open on purpose: the acceptance criterion for a green CI run of the integration job, and its Tests box. No local copy can start that run. It becomes possible when the user pushes this repository.
+  timestamp: 2026-08-28T14:01:41.057154+00:00
+position_column: done
+position_ordinal: ffa080
 title: 'CI: build mcp-test-server before the integration job runs CLISmokeTests'
 ---
 ## What
