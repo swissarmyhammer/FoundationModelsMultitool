@@ -257,10 +257,24 @@ starts a test's `.timeLimit` when the test starts, while every scenario queues
 for the one resident live profile — so a parallel run spends the limit on queue
 time and a queued suite fails in the same way as a hang.
 
+One test of that suite starts `mcp-test-server` as a subprocess. That
+executable is a product of the ROOT package, and the test reads it at
+`.build/debug/mcp-test-server`. The nested package builds no executable of its
+own, so build the product at the repository root before you run the suite:
+
+```sh
+swift build --product mcp-test-server
+```
+
+The root `swift test` above builds it too, so a run that follows one needs no
+separate build.
+
 CI runs both, in two jobs. Its unit job also runs
 `swift build --package-path IntegrationTests --build-tests` on every trigger, so
 a broken integration test is caught by an ordinary push rather than by the next
-expensive run.
+expensive run. Its integration job removes the root `.build` at its start, so
+the shared workflow call names the same product in `integration-root-products`
+and the job builds it there.
 
 ## Install
 

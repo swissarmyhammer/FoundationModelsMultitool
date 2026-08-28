@@ -102,13 +102,38 @@ comments:
     - evidence: 8 files — Tests/Support/TestConcurrency/ConcurrencyGate.swift (new), Tests/FoundationModelsMultitoolTests/ConcurrencyGateTests.swift (new), Tests/Support/MCPTestServer/LoopbackHTTPServer.swift, Package.swift, IntegrationTests/Package.swift, IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Support/LiveRouterFixture.swift, IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/CLISmokeTests.swift, IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/ShellBackgroundTests.swift. `swift build --build-tests`: Build complete, 0 errors and 0 warnings from this repository. `swift build --package-path IntegrationTests --build-tests`: Build complete, 0 errors and 0 warnings from this repository. `swift test`: three runs one after the other, 1305 tests in 99 suites passed each time, 0 failures.
     - next: `/review`, scoped to the changed files.
   timestamp: 2026-08-28T02:07:22.746317+00:00
+- actor: claude-code
+  id: 01m13255mgzqwfq2sx9v39yyea
+  text: |-
+    ### commit — changed
+    - evidence: 1d2708b — 10 files changed (337 insertions, 104 deletions)
+    - next: review the merged ConcurrencyGate change
+  timestamp: 2026-08-28T02:11:07.024167+00:00
+- actor: claude-code
+  id: 01m132esfqzghzj05yb8fsp0yh
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit 1d2708b) — 0 findings, 0 confirmed, 0 refuted, 7 validators attempted, 0 failed. 8 files reviewed; 2 `.kanban/` files not reviewed by the ignore rule.
+    - prior findings: the one item of `## Review Findings (2026-08-27 20:49)` is checked. No open finding is left.
+    - renames: the commit has no rename. Each changed file was read at its own path.
+    - next: no action. The task is in `done`.
+  timestamp: 2026-08-28T02:16:22.263228+00:00
+- actor: claude-code
+  id: 01m132fc8qsazrvtga278aetmm
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — 8 files; LoopbackConcurrencyGate and LiveProfileTurnstile merged into one ConcurrencyGate actor, in the new TestConcurrency test-support product that both packages name
+    - test: green — swift test, 1305 tests in 99 suites, 0 failures, 3 consecutive clean runs; both packages build clean
+    - commit: 1d2708b — 10 files changed, 337 insertions, 104 deletions
+    - review: clean — 0 new findings, the one prior finding checked; task moved to done
+  timestamp: 2026-08-28T02:16:41.495921+00:00
 depends_on:
 - 01M112EG33CSGN466M9BHVD8C0
 - 01M112BHBVEYK3ZZH0RGQRTXXY
 - 01M112GT1BAATTYMYSX7VN4NK5
 - 01M112FXM6H40D8C5YS0PVNXQQ
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ff9f80
 title: 'multitool-cli: attach stdio MCP servers with --mcp'
 ---
 ## What

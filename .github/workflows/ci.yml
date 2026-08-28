@@ -57,6 +57,19 @@ jobs:
       # and skips when the file is already there, so the two never fight.
       integration-metallib-glob: "*Cmlx*/default.metallib"
 
+      # `CLISmokeTests.demoAttachesAnMCPServer` starts the `mcp-test-server`
+      # executable through the `--mcp` option of the CLI, and it reads that
+      # executable at `<repository root>/.build/debug`. The nested package
+      # builds no executable of its own, and the integration job removes the
+      # root `.build` at its start and then writes the nested build under
+      # `IntegrationTests/.build`. Thus no other step of that job puts the
+      # binary where the test reads it. Workflows commit 1d31952 added this
+      # input, and the shared workflow runs
+      # `swift build --product mcp-test-server` at the repository root before
+      # the suite. The unit job needs no such input: its root
+      # `swift build --build-tests` builds every product of this manifest.
+      integration-root-products: mcp-test-server
+
       # Keep the transcripts of the run. The integration suite writes each
       # Router recordings directory under `IntegrationTests/.build/recordings`
       # (`LiveRouterFixture.recordingsRoot`, held by `RecordingsLocationTests`),
