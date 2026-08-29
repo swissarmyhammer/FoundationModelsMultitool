@@ -212,9 +212,11 @@ private let shellProducts: [Target.Dependency] = [
 /// Upstream writes the module and each type above. The fork adds no module and
 /// changes no name, thus each ported file stays the same.
 ///
-/// The fork exists for one correction, card `^qba8j6x`. `HTTPClientTransport`
-/// keeps one `lastEventID` for all of its SSE streams together. Thus a stream
-/// that connects again asks the server for the events of a different stream.
+/// The fork exists for one correction, card `^qba8j6x`. The upstream
+/// `HTTPClientTransport` keeps one `lastEventID` for all of its SSE streams
+/// together. Thus a stream that connects again asks the server for the events
+/// of a different stream. The fork carries the correction, and upstream does
+/// not carry it yet.
 /// The dependency goes back to `modelcontextprotocol` when a released version
 /// there carries that correction, and not before. `MCPConsolidationTests`
 /// reads this URL and fails on a change back to upstream, thus a commit that
