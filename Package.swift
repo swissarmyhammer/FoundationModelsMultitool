@@ -28,6 +28,10 @@ private let cliTargetName = "multitool-cli"
 /// The git branch tracked by the `.package(url:branch:)` declaration for
 /// `metadataRegistryDependencyName` below, and the default for
 /// `swissArmyHammerPackage(name:branch:)`.
+///
+/// The `mcpPackage` declaration below names it too. That dependency is a fork
+/// this package follows on its `main` branch, and it does not go through the
+/// helper — see `mcpPackage`.
 private let mainBranch = "main"
 
 /// The name of the FoundationModelsRouter dependency package.
@@ -201,8 +205,27 @@ private let shellProducts: [Target.Dependency] = [
 /// `StdioServerProcess`, the `SchemaConverter` / `GeneratedContentCodec` pair,
 /// `ToolContentRenderer` with its `RenderBudget`, and the `ToolCatalog` — are
 /// written over this package's `MCP` module: its `Client`, its `Transport`,
-/// and its `Tool` / `Value` wire types. The package stands under the
-/// `modelcontextprotocol` organization, so neither helper above fits it.
+/// and its `Tool` / `Value` wire types.
+///
+/// **A fork.** The package comes from `swissarmyhammer/swift-sdk`. That
+/// repository is this organization's fork of `modelcontextprotocol/swift-sdk`.
+/// Upstream writes the module and each type above. The fork adds no module and
+/// changes no name, thus each ported file stays the same.
+///
+/// The fork exists for one correction, card `^qba8j6x`. `HTTPClientTransport`
+/// keeps one `lastEventID` for all of its SSE streams together. Thus a stream
+/// that connects again asks the server for the events of a different stream.
+/// The dependency goes back to `modelcontextprotocol` when a released version
+/// there carries that correction, and not before. `MCPConsolidationTests`
+/// reads this URL and fails on a change back to upstream, thus a commit that
+/// goes back must change that suite too.
+///
+/// Neither helper above fits it. `huggingFaceOrgPackage(name:from:)` names
+/// another organization. `swissArmyHammerPackage(name:branch:)` builds the
+/// `git@github.com:` URL of the three packages this repository develops. This
+/// one is a public fork, and it keeps the HTTPS URL it always had, thus a
+/// machine with no SSH key resolves it. The organization name is the whole
+/// change from the upstream URL.
 ///
 /// The sdk depends on `swift-log` for its own logging. This package does NOT
 /// declare `swift-log`: it logs with `os.Logger` (see `MultiTool.swift`), and
@@ -349,11 +372,22 @@ let package = Package(
         // resolve the same version: a pre-release carries no compatible-range
         // promise, and a floor would let one package move alone.
         .package(url: "https://github.com/swiftlang/\(subprocessPackage).git", exact: "1.0.0-beta.1"),
-        // The package of `mcpProducts` — see its documentation above. A
-        // semantic-version floor, as `huggingFaceOrgPackage(name:from:)` takes,
-        // because the sdk publishes tagged releases with a compatible-range
-        // promise.
-        .package(url: "https://github.com/modelcontextprotocol/\(mcpPackage).git", from: "0.12.1"),
+        // The package of `mcpProducts` — see its documentation above for the
+        // fork and the defect behind it.
+        //
+        // The `main` branch of the fork, and not a version tag. The correction
+        // of card `^qba8j6x` lands on that branch, and this package follows it
+        // there. A tag cannot do that. Upstream releases this package, and a
+        // tag of the fork would be one more release to cut for each change to
+        // the correction.
+        //
+        // The cost is that a branch carries no compatible-range promise, thus
+        // `swift package update` moves this dependency to whatever the branch
+        // holds that day. `Package.resolved` is what keeps the build the same
+        // until then, because it pins one revision of the branch. To stop the
+        // movement, change `branch: mainBranch` to `revision:` with the
+        // revision that file names.
+        .package(url: "https://github.com/swissarmyhammer/\(mcpPackage).git", branch: mainBranch),
     ],
     targets: [
         // Links `shellProducts` for the shell capability this library takes

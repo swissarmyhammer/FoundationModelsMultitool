@@ -10,6 +10,12 @@ import Testing
 /// dependency, and it fails when the wire library that replaced the sibling
 /// goes away.
 ///
+/// The suite guards one more fact of the same shape: this package takes the
+/// wire library from a fork, and the repository the fork comes from also still
+/// answers on the network. A manifest that goes back to it resolves and builds,
+/// and it silently drops the correction the fork carries — see
+/// ``MCPConsolidationTests/wirePackageURLDeclaration``.
+///
 /// The suite reads the CODE of the manifest and not its comments. The manifest
 /// names `FoundationModelsMCP` in four doc comments that record where each
 /// ported file comes from, and those comments are the history of the move.
@@ -34,8 +40,9 @@ struct MCPConsolidationTests {
 
     /// The wire library package the MCP capability speaks through.
     ///
-    /// It stands under the `modelcontextprotocol` organization. The manifest
-    /// names it in `mcpPackage`.
+    /// The manifest names it in `mcpPackage`. This package takes it from the
+    /// `swissarmyhammer` fork of it, and no longer from the
+    /// `modelcontextprotocol` original — see ``wirePackageURLDeclaration``.
     private static let wirePackageName = "swift-sdk"
 
     /// The product of ``wirePackageName`` that the library target and the unit
@@ -43,6 +50,24 @@ struct MCPConsolidationTests {
     ///
     /// The manifest declares it one time, in `mcpProducts`.
     private static let wireProductDeclaration = #".product(name: "MCP", package: mcpPackage)"#
+
+    /// The URL the manifest must take ``wirePackageName`` from.
+    ///
+    /// The fork carries the correction of card `^qba8j6x`. The original
+    /// `HTTPClientTransport` keeps one `lastEventID` for all of its SSE
+    /// streams together. Thus a stream that connects again asks the server for
+    /// the events of a different stream. A manifest that goes back to the
+    /// `modelcontextprotocol` original drops that correction, and the defect
+    /// comes back with no other sign. This suite is what stops that.
+    ///
+    /// The text is the source the manifest holds, and not the URL the source
+    /// builds: the manifest names the package with `mcpPackage`, as
+    /// ``wireProductDeclaration`` above is also the source and not a value.
+    /// The version requirement stands outside this text on purpose, because
+    /// which revision of the fork this package builds against is free to
+    /// change.
+    private static let wirePackageURLDeclaration =
+        #"url: "https://github.com/swissarmyhammer/\(mcpPackage).git""#
 
     @Test("the manifest declares no FoundationModelsMCP dependency")
     func manifestDeclaresNoArchivedSibling() throws {
@@ -77,6 +102,20 @@ struct MCPConsolidationTests {
             """
             The manifest declares no \(Self.wireProductDeclaration). Each \
             target that imports `MCP` needs that product.
+            """
+        )
+    }
+
+    @Test("the manifest takes the swift-sdk package from the fork")
+    func manifestTakesTheWirePackageFromTheFork() throws {
+        let urlSightings = try Self.codeSightings(of: Self.wirePackageURLDeclaration)
+        #expect(
+            !urlSightings.isEmpty,
+            """
+            The manifest declares no \(Self.wirePackageURLDeclaration). The \
+            fork is what carries the correction of the `HTTPClientTransport` \
+            defect of card `^qba8j6x`, thus a manifest that goes back to the \
+            `modelcontextprotocol` original brings the defect back.
             """
         )
     }
