@@ -86,38 +86,42 @@ struct MCPConsolidationTests {
 
     @Test("the manifest declares the swift-sdk package and its MCP product")
     func manifestDeclaresTheWirePackage() throws {
-        let packageSightings = try Self.codeSightings(of: Self.wirePackageName)
-        #expect(
-            !packageSightings.isEmpty,
-            """
-            The manifest names no \(Self.wirePackageName) package. The MCP \
-            capability speaks through it, thus the capability cannot build \
-            without it.
-            """
-        )
+        try Self.expectManifestHolds(
+            Self.wirePackageName,
+            because: """
+                The MCP capability speaks through that package, thus the \
+                capability cannot build without it.
+                """)
 
-        let productSightings = try Self.codeSightings(of: Self.wireProductDeclaration)
-        #expect(
-            !productSightings.isEmpty,
-            """
-            The manifest declares no \(Self.wireProductDeclaration). Each \
-            target that imports `MCP` needs that product.
-            """
-        )
+        try Self.expectManifestHolds(
+            Self.wireProductDeclaration,
+            because: "Each target that imports `MCP` needs that product.")
     }
 
     @Test("the manifest takes the swift-sdk package from the fork")
     func manifestTakesTheWirePackageFromTheFork() throws {
-        let urlSightings = try Self.codeSightings(of: Self.wirePackageURLDeclaration)
-        #expect(
-            !urlSightings.isEmpty,
-            """
-            The manifest declares no \(Self.wirePackageURLDeclaration). The \
-            fork is what carries the correction of the `HTTPClientTransport` \
-            defect of card `^qba8j6x`, thus a manifest that goes back to the \
-            `modelcontextprotocol` original brings the defect back.
-            """
-        )
+        try Self.expectManifestHolds(
+            Self.wirePackageURLDeclaration,
+            because: """
+                The fork carries the correction of the `HTTPClientTransport` \
+                defect of card `^qba8j6x`, thus a manifest that goes back to \
+                the `modelcontextprotocol` original brings the defect back.
+                """)
+    }
+
+    /// Fails when no code line of the manifest holds `text`.
+    ///
+    /// Each check above of a text the manifest must hold has this one shape.
+    /// The text and the reason are the whole difference between them.
+    ///
+    /// - Parameters:
+    ///   - text: the manifest text to search for.
+    ///   - reason: why the manifest must hold that text. The failure message
+    ///     ends with it.
+    /// - Throws: an error when the manifest cannot be read.
+    private static func expectManifestHolds(_ text: String, because reason: String) throws {
+        let sightings = try codeSightings(of: text)
+        #expect(!sightings.isEmpty, "The manifest holds no \(text) in code. \(reason)")
     }
 
     /// Names each code line of the manifest that holds `needle`.
