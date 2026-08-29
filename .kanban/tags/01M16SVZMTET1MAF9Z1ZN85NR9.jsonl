@@ -1,0 +1,1 @@
+{"id":"01M16SVZMTCDQ1GZ2W2HKN0XCM","timestamp":"2026-08-29T13:03:15.098912Z","op":"create","item_id":"01M16SVZMTET1MAF9Z1ZN85NR9","forward_patch":"--- original\n+++ modified\n@@ -0,0 +1,2 @@\n+color: d73a4a\n+tag_name: swift-sdk-fork\n","reverse_patch":"--- original\n+++ modified\n@@ -1,2 +0,0 @@\n-color: d73a4a\n-tag_name: swift-sdk-fork\n","transaction_id":null}
