@@ -31,4 +31,4 @@ Update the unit tests in the same change:
 - [ ] Run `cd /Users/wballard/github/swissarmyhammer/FoundationModelsFileTool && swift test`. Expect zero failures.
 
 ## Workflow
-- Use `/tdd` — change the wire-key assertions first, see them fail, then change the operations to make them pass. #filetool-pure-edit
+- Use `/tdd` — change the wire-key assertions first, see them fail, then change the operations to make them pass. #filetool-pure-edit #lsp

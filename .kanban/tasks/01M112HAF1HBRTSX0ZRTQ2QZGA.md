@@ -141,12 +141,40 @@ comments:
     - evidence: 3 files — `Tests/FoundationModelsMultitoolTests/RepositoryFile.swift` (the `skippingCommentLines` parameter, plus `commentMarker` and `isCommentLine`), `Tests/FoundationModelsMultitoolTests/RepositoryFileTests.swift` (the three-line fixture and four tests of the comment rule), `Tests/FoundationModelsMultitoolTests/MCPConsolidationTests.swift` (`codeSightings` now calls the utility; the read, the split, the line filter, the line map, `isComment`, `commentMarker` and `import Foundation` are gone). Repair chosen: extend `RepositoryFile.sightings`, because an entry it returns carries the needle and not the line, thus a filter over the results cannot see a comment. Red watched four times: the build error for the missing argument; the skip assertion with the parameter ignored; the ban assertion under a probe line in `Package.swift`, which named the probe line only and none of the four comment mentions; and each of the two wire assertions under a probe needle. `swift build --build-tests`: clean, no warning from this repository. `swift test` three times: 1316 tests in 101 suites, all passed, zero warnings, 13.07 s / 11.77 s / 11.64 s. The count rose from 1312 by the four new tests, and the suite count stays 101. No sleep and no timeout was added.
     - next: `/review`. The card keeps its two open items, and neither is a finding: the push of the commit and of the tag `consolidation-4-mcp` is the user's step, and the gated `IntegrationTests` suite cannot build on this machine for a cause outside this repository (task `^jmtpfwv`). The commit step must move the tag onto the commit that lands this change.
   timestamp: 2026-08-28T16:59:31.705842+00:00
+- actor: claude-code
+  id: 01m14n1rm5k93ss0wdpfkd3qjw
+  text: |-
+    ### commit — changed
+    - evidence: 7585ada refactor(tests): let RepositoryFile.sightings skip comment lines — 5 files changed, 217 insertions(+), 32 deletions(-)
+    - files: .kanban/tasks/01M112HAF1HBRTSX0ZRTQ2QZGA.jsonl, .kanban/tasks/01M112HAF1HBRTSX0ZRTQ2QZGA.md, Tests/FoundationModelsMultitoolTests/MCPConsolidationTests.swift, Tests/FoundationModelsMultitoolTests/RepositoryFile.swift, Tests/FoundationModelsMultitoolTests/RepositoryFileTests.swift
+    - tag: consolidation-4-mcp moved from 24398f0 to 7585ada (tag message kept as is)
+    - next: none — commit is local only, push is the user's own step
+  timestamp: 2026-08-28T17:00:32.773737+00:00
+- actor: claude-code
+  id: 01m14n791sgpmyczjkwnrnt2z6
+  text: |
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` on commit `7585ada`. 0 findings (0 confirmed, 0 refuted). 7 validators attempted, 0 failed, 0 skipped. 3 files reviewed: `Tests/FoundationModelsMultitoolTests/MCPConsolidationTests.swift`, `Tests/FoundationModelsMultitoolTests/RepositoryFile.swift`, `Tests/FoundationModelsMultitoolTests/RepositoryFileTests.swift`. 2 files not reviewed, because `.reviewignore` excludes `.kanban/`. The commit renames no file, thus the review reads all changed files.
+    - prior findings: the one item of the section `## Review Findings (2026-08-28 11:41)` is checked. The `reuse/reuse` finding is answered: `RepositoryFile.sightings` has the new parameter `skippingCommentLines`, which has the default value `false`, and `MCPConsolidationTests` calls it. Four new tests in `RepositoryFileTests` hold the comment rule.
+    - next: the card moves to `done`. Two items stay open on purpose and do not hold the card: (1) the gated `IntegrationTests` suite cannot build on this machine, because of an edited-Router symlink of 2026-08-26 that this work did not cause — task `^jmtpfwv` records it; (2) the push of the commit and of the tag `consolidation-4-mcp` is the user's separate step.
+  timestamp: 2026-08-28T17:03:33.433918+00:00
+- actor: claude-code
+  id: 01m14n7xf7aasfrpnqk0m5bae3
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — 3 files; RepositoryFile.sightings gains skippingCommentLines, and the guard makes one call instead of its own scan. Four tests pin the comment rule. The red was watched four times, and the ban assertion under a probe named only the code line and none of the four comment lines, thus the comment-blindness of the guard survives the reuse.
+    - test: green — swift test, 1316 tests in 101 suites, 0 failures, 0 warnings, 3 runs at 11.6 to 13.1 seconds
+    - commit: 7585ada — 5 files changed; the tag consolidation-4-mcp now names 7585ada
+    - review: clean — 0 findings, 7 validators attempted, 0 failed, 0 skipped; the one prior finding checked; task moved to done
+
+    Phase 4 of eventplan.md is closed. Two items stay open by design: the gated IntegrationTests suite (^jmtpfwv), and the push of the commit and the tag, which is the step of the user.
+  timestamp: 2026-08-28T17:03:54.343318+00:00
 depends_on:
 - 01M112GT1BAATTYMYSX7VN4NK5
 - 01M112FXM6H40D8C5YS0PVNXQQ
 - 01M112G8MMPH6QN1XQJVSACZ8F
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffa280
 title: 'Phase 4 exit: org import check, archive FoundationModelsMCP, tag consolidation-4-mcp'
 ---
 ## What

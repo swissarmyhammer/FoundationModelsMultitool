@@ -51,4 +51,4 @@ Other tests and docs:
 - [ ] Run `cd /Users/wballard/github/swissarmyhammer/FoundationModelsFileTool && swift test`. Expect zero failures.
 
 ## Workflow
-- Use `/tdd` — write the failing `FileContext` test first, then implement to make it pass. #filetool-pure-edit
+- Use `/tdd` — write the failing `FileContext` test first, then implement to make it pass. #filetool-pure-edit #lsp

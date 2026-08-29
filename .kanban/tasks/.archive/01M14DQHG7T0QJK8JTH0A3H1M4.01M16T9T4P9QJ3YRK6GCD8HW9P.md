@@ -29,4 +29,4 @@ Then run `swift package resolve` so `Package.resolved` drops the removed package
 - [ ] Run `cd /Users/wballard/github/swissarmyhammer/FoundationModelsFileTool && swift build && swift test`. Expect zero failures.
 
 ## Workflow
-- Use `/tdd` where new code is written. This task has no new code, so the build and the suite are the checks. #filetool-pure-edit
+- Use `/tdd` where new code is written. This task has no new code, so the build and the suite are the checks. #filetool-pure-edit #lsp

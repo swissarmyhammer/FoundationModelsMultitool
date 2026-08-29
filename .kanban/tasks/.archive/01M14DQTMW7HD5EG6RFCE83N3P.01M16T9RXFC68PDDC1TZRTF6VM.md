@@ -25,4 +25,4 @@ The CI workflow changes moved to the first task of this chain, so this task is d
 - [ ] Run `cd /Users/wballard/github/swissarmyhammer/FoundationModelsFileTool && swift test`. Expect zero failures.
 
 ## Workflow
-- Use `/tdd` where new code is written. This task changes documents, so the README parity test and the suite are the checks. #filetool-pure-edit
+- Use `/tdd` where new code is written. This task changes documents, so the README parity test and the suite are the checks. #filetool-pure-edit #lsp

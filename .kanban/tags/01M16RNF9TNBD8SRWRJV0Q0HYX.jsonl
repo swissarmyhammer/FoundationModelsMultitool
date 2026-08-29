@@ -1,0 +1,1 @@
+{"id":"01M16RNF9TZCHDPD4RQXY1VPRV","timestamp":"2026-08-29T12:42:13.178885Z","op":"create","item_id":"01M16RNF9TNBD8SRWRJV0Q0HYX","forward_patch":"--- original\n+++ modified\n@@ -0,0 +1,2 @@\n+color: d876e3\n+tag_name: lsp\n","reverse_patch":"--- original\n+++ modified\n@@ -1,2 +0,0 @@\n-color: d876e3\n-tag_name: lsp\n","transaction_id":null}

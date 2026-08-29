@@ -13,7 +13,7 @@
 // keeps it internal, the same way `PathGuard` and `FileChangeSet` beside it
 // do.
 //
-// eventplan.md § "We remove OperationTool": typed per-capability contexts
+// eventplan.md § "We move off OperationTool": typed per-capability contexts
 // (`ShellContext`, `FileContext`) stay as usual constructor dependencies.
 
 import Foundation
