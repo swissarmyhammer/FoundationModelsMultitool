@@ -30,8 +30,27 @@ comments:
     - evidence: filed https://github.com/modelcontextprotocol/swift-sdk/issues/281, open, author wballard. Title: "HTTPClientTransport shares one lastEventID between all SSE streams, so the standalone GET can resume a POST stream". Checked three of four criteria: the read of the sdk (was already checked), the user decision, and the filing of the issue. Files changed in this repository: only this card, `.kanban/tasks/01M14GJH62XJ3CEEHHXYYHFF27.md` and `.kanban/tasks/01M14GJH62XJ3CEEHHXYYHFF27.jsonl`. No source file changed, so I ran no build and no `swift test`. The clone at `/Users/wballard/github/swissarmyhammer/swift-sdk` did not change; `git status` there is clean.
     - next: one criterion stays open, and it is genuinely not done. "Tell the swift-sdk session which way the answer went." That session's board lives in the clone, and this step was told not to modify the clone. A person must carry the answer, or a later step with permission to write that board must do it. The answer to carry: the report is filed as issue 281, so that session must not file a second one.
   timestamp: 2026-08-29T14:57:56.035986+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m170thc8r8fnfkfgfxrdt93h
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` on commit `51e9d80`. Counts: 0 findings, 0 confirmed, 0 refuted. Validators: 0 attempted, 0 failed, 0 skipped. The commit changes two files only: `.kanban/tasks/01M14GJH62XJ3CEEHHXYYHFF27.jsonl` and `.kanban/tasks/01M14GJH62XJ3CEEHHXYYHFF27.md`. The `.reviewignore` file excludes `.kanban/`, thus the engine reviewed no file. The engine says this result is a clean review, and not a failed run and not a size limit. No validator failed and no validator was skipped.
+    - criteria: I checked the four acceptance criteria against evidence that exists. (1) `Package.resolved` pins `swissarmyhammer/swift-sdk` at revision `168bf40`, which is the commit that holds the correction. Thus the statement is correct: the field is shared upstream, and it is not shared in the fork. (2) The user invoked `/finish` on this card by id. (3) Issue 281 of `modelcontextprotocol/swift-sdk` is OPEN. The author is `wballard` and the date is 2026-08-29. The title agrees with the card. The body gives the trace, the failing case of about one run in six, the race at line 351 and line 361, and it offers the commits `9aa6fd0` and `0a82e31` of the fork and a pull request. The body names no downstream package and no downstream file path. (4) The peer session was told session to session. This repository holds no record of that message, and that is correct.
+    - next: none. The card moves to `done`.
+  timestamp: 2026-08-29T15:04:47.752854+00:00
+- actor: claude-code
+  id: 01m170vgrmp2enxgmw0bmmmhxg
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — filed https://github.com/modelcontextprotocol/swift-sdk/issues/281 (open, author `wballard`). 2 files changed, both this card. No source file changed.
+    - test: not run — no source file changed, thus there was no code to build and no code to test.
+    - notify: the `swift-sdk-cd` session was told session to session. It replied and confirmed it will not file a second report. That closed the fourth criterion, which the implement step had left open.
+    - commit: 51e9d80 — "docs(kanban): mark all criteria done for the swift-sdk defect card", 2 files.
+    - review: clean — `review sha HEAD~1..HEAD`. 0 findings, 0 confirmed, 0 refuted. Validators 0 attempted, 0 failed, 0 skipped: both files sit under `.kanban/`, which `.reviewignore` excludes by a deliberate rule. Thus no validator was stopped. The reviewer confirmed issue 281 is OPEN with `gh issue view`, and confirmed the body holds the trace, the rate, the location of the race, and both fork commits.
+    - next: none. All four criteria are checked and the card is in `done`.
+  timestamp: 2026-08-29T15:05:19.892642+00:00
+position_column: done
+position_ordinal: ffa380
 title: 'Report upstream: HTTPClientTransport of swift-sdk keeps one lastEventID for every SSE stream'
 ---
 ## What
