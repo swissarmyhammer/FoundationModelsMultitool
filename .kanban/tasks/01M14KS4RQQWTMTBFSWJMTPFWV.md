@@ -1,6 +1,19 @@
 ---
 assignees:
 - claude-code
+comments:
+- actor: claude-code
+  id: 01m173keppedkh9j9b3y4hpvsj
+  text: |-
+    ### finish iteration 1 — stuck
+    - The diagnosis in the description is wrong, and the correction changes what this task is. The failure is not local machine state. The Router removed a public symbol that this package calls.
+    - `6f0b2a8 refactor(api): demote the mistakenly public Hosting plumbing to internal` changed `public enum ToolMounting` to `enum ToolMounting` in `Sources/FoundationModelsRouter/Hosting/ToolMounting.swift`. The symbol has a consumer outside that package: `Sources/FoundationModelsMultitool/Invocation/RunBinding.swift:148` calls `ToolMounting.makeWrapped(...)`. Five more sites name it in documentation comments: `Capabilities/Shell/Execute.swift:46`, `Capabilities/Shell/Execute.swift:112`, `Surface/APISurface.swift:61`, `MultiTool+Background.swift:8`, `Invocation/RunBinding.swift:110` and `Invocation/RunBinding.swift:157`.
+    - Evidence: at `760ae89`, which `Package.resolved` pins, the file declares `public enum ToolMounting`. At `origin/main` of the Router, which is `b26ee0f`, it declares `enum ToolMounting`. `760ae89` is an ancestor of `b26ee0f`.
+    - Thus the root build is not safe, it is only lucky. The pin is declared as `branch: "main"`, so the next `swift package update` takes `b26ee0f` and the ROOT package fails to build, and not only the nested `IntegrationTests` package. The edit link did not cause the failure. It read the newer Router code first and showed the break early.
+    - The Router working copy holds no source edit now. Only board files are dirty there, and it is 4 commits ahead of `origin/main`.
+    - Asked the `foundationmodelsrouter-46` session which way to go: make `ToolMounting.makeWrapped` public again, or name a supported API to call instead. This package cannot decide it, because the symbol belongs to the other package.
+    - next: wait for that answer. Do not remove the edit link yet — removing it hides the break behind the stale pin and leaves the pin unable to move.
+  timestamp: 2026-08-29T15:53:21.366439+00:00
 position_column: todo
 position_ordinal: '9980'
 title: The nested IntegrationTests package builds against an edited Router working copy, and cannot compile

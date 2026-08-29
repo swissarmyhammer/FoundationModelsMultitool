@@ -110,7 +110,7 @@ struct ScriptedServerSelfTests {
     /// - Returns: The connected client.
     /// - Throws: What the connect throws.
     private func connect(
-        to scripted: ScriptedServer, capabilities: Client.Capabilities = .init()
+        to scripted: ScriptedServer, advertising capabilities: Client.Capabilities = .init()
     ) async throws -> Client {
         try await MCPTestSupport.connectedServer(
             to: scripted, over: .inMemory, clientName: Self.clientName, capabilities: capabilities)
@@ -280,7 +280,7 @@ struct ScriptedServerSelfTests {
         let scripted = ScriptedServer()
         await scripted.addLoopbackTools()
         let client = try await connect(
-            to: scripted, capabilities: Client.Capabilities(elicitation: .init()))
+            to: scripted, advertising: Client.Capabilities(elicitation: .init()))
 
         await client.withElicitationHandler { params in
             guard case .form(let formParams) = params else {
@@ -311,7 +311,7 @@ struct ScriptedServerSelfTests {
         let scripted = ScriptedServer()
         await scripted.addLoopbackTools()
         let client = try await connect(
-            to: scripted, capabilities: Client.Capabilities(elicitation: .init()))
+            to: scripted, advertising: Client.Capabilities(elicitation: .init()))
 
         await client.withElicitationHandler { params in
             guard case .url(let urlParams) = params else {
