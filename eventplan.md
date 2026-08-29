@@ -27,7 +27,8 @@ long-running work. JS-based tool systems give these capabilities to a handler.
 structure.
 
 Shell, files, and MCP move into MultiTool as built-in capability modules. We
-remove OperationTool, Shelltool, the MCP package, and the FileTool package. This
+remove Shelltool, the MCP package, and the FileTool package, and we move off
+OperationTool. This
 is an intentional change away from the operation pattern of the Rust base. We
 record this change, and we accept it.
 
@@ -439,15 +440,16 @@ the same way that boundary metadata keeps discovered-tool state. A
 post-compaction model reads its pending work from the boundary. Then it calls
 `status()`.
 
-## We remove OperationTool
+## We move off OperationTool
 
 Schema fusion exists to fit N schemas into a 4,096-token instruction window.
 MultiTool removes the same pressure differently: one `runCode` schema plus a
 rendered API surface. As a result, the reason for fusion goes away when the
 model surface is code mode. The sibling tools become capability modules. Then
-nothing outside OperationTool uses `@Operation`. As a result, we remove the
-full package: the fused `OperationTool<Context>` runtime, `SchemaFusion`,
-noun-in-path dispatch, the macro, and the ArgumentParser CLI driver.
+nothing outside OperationTool uses `@Operation`. As a result, we stop all use
+of the full package: the fused `OperationTool<Context>` runtime, `SchemaFusion`,
+noun-in-path dispatch, the macro, and the ArgumentParser CLI driver. The
+FoundationModelsOperationTool repository stays active; we do not archive it.
 
 Authors write capabilities directly against MultiTool's own registry surface: a
 `ToolDescriptor` plus a plain `Tool` conformer that reads `ToolContext.current`.
@@ -730,8 +732,10 @@ models and descriptions change.
 ## Phases
 
 Each consolidation is one phase. Each phase gets its own tag at completion.
-The exit criterion of each phase is a deletion. When the last phase lands, the
-Shelltool, FileTool, MCP, and OperationTool packages are gone.
+The exit criterion of each of phases 1–4 is a deletion. Phase 5 exits on
+import-freedom instead. When the last phase lands, the Shelltool, FileTool, and
+MCP packages are gone, and no repository of the organization imports
+OperationTool.
 
 **Phase 1 — foundation. Tag: `consolidation-1-foundation`** (Router and
 MultiTool). The scope:
@@ -743,7 +747,7 @@ MultiTool). The scope:
   build that holds the two imports (ACPAgent does) sees one type, not two
   ambiguous types. The shim pulls MLX transitively into the builds of the
   doomed packages. This is temporary build weight only, and we schedule
-  each payer for deletion. The shim itself dies with OperationTool in phase 5.
+  each payer for deletion. The shim itself dies in phase 5.
 - The mailbox actor adjacent to `SessionOutbox`.
 - The `ElevatingTool` engine at the `Tool` protocol level, with the two-clocks
   model. Router mounts it for native sessions. `ToolInvoker` mounts it for
@@ -860,7 +864,32 @@ FoundationModelsMCP repository. ACPAgent, its one org consumer, moves first.
 `Operations` or `OperationsCLI` any longer. We make sure of this across the
 org. We do not assume it. Skills is the last known consumer and moves here.
 The per-capability CLIs are gone, and `multitool-cli` is the single demo and
-test binary. Exit: we archive the FoundationModelsOperationTool repository.
+test binary. Exit: no repository of the organization imports `Operations` or
+`OperationsCLI`. The FoundationModelsOperationTool repository stays active.
+
+> **Note (2026-08-29).** A decision amends this phase and the phase-1 shim.
+> The event vocabulary does not stay in Router, and the OperationTool
+> capability does not die. Both move to FoundationModelsExtras:
+>
+> 1. **Extras owns the event vocabulary.** The canonical definitions of
+>    `OperationEvent`, `OperationEventKind`, `OperationOutcome`,
+>    `OperationEventSink`, `ToolInvocationRecord`, the `Elicitation` family,
+>    and `ForkableTool` are in the Extras core module, in its
+>    `OperationEvents/` folder. Router depends on Extras and re-exports these
+>    types as typealiases (`Hosting/OperationVocabulary.swift`). Extras added
+>    the ULID.swift dependency for this.
+> 2. **The `Operations` and `OperationsCLI` modules live on in Extras**, as
+>    targets of that one package, with their macros, tests, and the NotesTool
+>    example. They get the vocabulary from the Extras core module, not from
+>    Router, so an `Operations` consumer does not pull MLX.
+> 3. **The FoundationModelsOperationTool repository is retired.** Skills, the
+>    last consumer, moves to the Extras products. Then we archive that
+>    repository. The phase-5 sentence "the repository stays active" no longer
+>    applies.
+>
+> This phase's exit changes to: no repository of the organization imports
+> `Operations` or `OperationsCLI` **from FoundationModelsOperationTool**, and
+> that repository is archived.
 
 The order is fixed: 1 → 2 → 3 → 4 → 5. Phases 2–4 each depend only on phase 1.
 But they land serially. As a result, the background engine hardens against one
