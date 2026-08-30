@@ -49,29 +49,19 @@ enum MCPCallProbe {
     /// mode, over `mailbox`, with `sink` as the upstream sink — the mount
     /// `RoutedModel.makeSession` applies to every tool of a session.
     ///
-    /// The sink is handed to the engine directly, and not through an
-    /// `AmbientUpstreamSink`, so every event a run posts carries that run's
-    /// own `completionToken` as its `correlationID`, which is what a test of
-    /// the correlation of two concurrent runs reads.
+    /// The mount supplies the sink itself, so every event a run posts carries
+    /// that run's own `completionToken` as its `correlationID`, which is what
+    /// a test of the correlation of two concurrent runs reads.
     ///
     /// - Parameters:
     ///   - probe: The probe to mount.
-    ///   - mailbox: The session mailbox the engine tracks the run in.
-    ///   - sink: The upstream sink the run's events reach.
+    ///   - context: The session context the engine mounts on. Take one from
+    ///     ``makeStubRun(in:)``.
     /// - Returns: The mounted engine.
-    /// - Throws: When the decorator did not preserve the probe's own types.
     static func mountedRunToCompletion(
-        _ probe: MCPCallProbeTool, mailbox: SessionMailbox, sink: any OperationEventSink
-    ) throws -> any FoundationModels.Tool<NoArguments, String> {
-        try #require(
-            ToolMounting.makeWrapped(
-                tool: probe,
-                sessionID: ULID(),
-                mailbox: mailbox,
-                sink: sink,
-                configuration: .synchronous
-            ) as? any FoundationModels.Tool<NoArguments, String>
-        )
+        _ probe: MCPCallProbeTool, on context: ToolContext
+    ) -> any FoundationModels.Tool<NoArguments, String> {
+        context.mount(probe, as: .synchronous)
     }
 
     /// The error `body` threw, or `nil` when it returned.

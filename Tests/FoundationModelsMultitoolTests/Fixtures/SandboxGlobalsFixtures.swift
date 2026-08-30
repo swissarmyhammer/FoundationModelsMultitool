@@ -84,9 +84,6 @@ let scriptedRunSettlementSeconds: Double = 10
 
 /// What a scripted run could not do.
 enum ScriptedRunFailure: Error, CustomStringConvertible {
-    /// The engine did not hand back a decorator this fixture can call.
-    case notBackgroundable
-
     /// The call returned something other than a pending envelope, so the run
     /// never went to the background — the text it returned instead.
     case didNotBackground(String)
@@ -97,8 +94,6 @@ enum ScriptedRunFailure: Error, CustomStringConvertible {
 
     var description: String {
         switch self {
-        case .notBackgroundable:
-            return "the mount engine returned a decorator this fixture cannot call"
         case .didNotBackground(let text):
             return "the call returned \"\(text)\" instead of going to the background"
         case .progressNeverArrived(let detail):
@@ -186,17 +181,10 @@ final class GatedScriptedTool: Tool, Sendable {
     }
 }
 
-/// The session's background runs over `mailbox`, as a host reads them.
-///
-/// A `ToolContext` is the only route to them (Router task ^k0mecjp), and a
-/// test owns its mailbox, so it can bind one over it and read the runs exactly
-/// as the product does.
-///
-/// - Parameter mailbox: the session mailbox to read.
-/// - Returns: a context bound over `mailbox`.
-func backgroundRuns(over mailbox: SessionMailbox) -> ToolContext {
-    makeOuterRunContext(mailbox: mailbox, sink: RecordingEventSink())
-}
+// The run plane is read through the `ToolContext` a stub session hands out.
+// `SessionMailbox` is internal to Router, so a test cannot own one; what it
+// owns instead is a real session, and the context that session binds around a
+// tool call reads that session's own run plane. See `StubRouterFixtures.swift`.
 
 /// Starts a scripted background run in `mailbox` and returns the handle a test
 /// drives it through.
@@ -205,7 +193,7 @@ func backgroundRuns(over mailbox: SessionMailbox) -> ToolContext {
 /// `wait()` — until ``settle(_:in:)`` opens its gate.
 ///
 /// - Parameters:
-///   - mailbox: the session mailbox to start the run in.
+///   - context: the session context to start the run on.
 ///   - tool: the tool's name that owns the run; also the run's op.
 ///   - detail: what the call returns once it finishes — the bounded output
 ///     tail a `wait()` resolves to. Also the reason it throws when `failing`.
@@ -219,7 +207,7 @@ func backgroundRuns(over mailbox: SessionMailbox) -> ToolContext {
 /// - Throws: ``ScriptedRunFailure`` when the call never went to the
 ///   background, or when a requested progress detail never arrived.
 func startScriptedRun(
-    in mailbox: SessionMailbox,
+    on context: ToolContext,
     tool: String = "shell",
     detail: String = "scripted-terminal-detail",
     progress: String? = nil,
@@ -227,8 +215,8 @@ func startScriptedRun(
 ) async throws -> ScriptedRun {
     let gate = SettlementGate()
     let backgrounded = SettlementGate()
-    let mounted = ToolMounting.makeWrapped(
-        tool: GatedScriptedTool(
+    let engine = context.mount(
+        GatedScriptedTool(
             name: tool,
             gate: gate,
             backgrounded: backgrounded,
@@ -236,17 +224,11 @@ func startScriptedRun(
             progress: progress,
             fails: failing
         ),
-        sessionID: ULID(),
-        mailbox: mailbox,
-        sink: RecordingEventSink(),
         // The scripted tool declares no mount of its own, so the site puts it
         // in the background: the call answers the envelope at once, and the
         // body goes on behind it under no clock.
-        configuration: ToolMount(mode: .background, timeout: nil)
+        as: ToolMount(mode: .background, timeout: nil)
     )
-    guard let engine = mounted as? any Tool<NoArguments, String> else {
-        throw ScriptedRunFailure.notBackgroundable
-    }
     let rendered = try await engine.call(arguments: NoArguments())
     guard PendingRunEnvelope.isRendered(text: rendered) else {
         throw ScriptedRunFailure.didNotBackground(rendered)
@@ -258,7 +240,7 @@ func startScriptedRun(
         // The envelope is proof the run is in the background, so the call may
         // post now.
         await backgrounded.open()
-        try await awaitProgress(progress, of: completionToken, in: mailbox)
+        try await awaitProgress(progress, of: completionToken, on: context)
     }
     return ScriptedRun(completionToken: completionToken, tool: tool, op: tool, gate: gate)
 }
@@ -273,12 +255,11 @@ func startScriptedRun(
 /// - Parameters:
 ///   - detail: the progress detail to wait for.
 ///   - completionToken: the run that posted it.
-///   - mailbox: the session mailbox the run is registered in.
+///   - context: the session context the run is registered on.
 /// - Throws: ``ScriptedRunFailure/progressNeverArrived(_:)`` if it never lands.
 private func awaitProgress(
-    _ detail: String, of completionToken: String, in mailbox: SessionMailbox
+    _ detail: String, of completionToken: String, on context: ToolContext
 ) async throws {
-    let context = backgroundRuns(over: mailbox)
     let deadline = ContinuousClock.now.advanced(by: .seconds(scriptedRunSettlementSeconds))
     while ContinuousClock.now < deadline {
         let row = await context.backgroundRuns().first { $0.completionToken == completionToken }
@@ -294,10 +275,10 @@ private func awaitProgress(
 ///
 /// - Parameters:
 ///   - run: the background run to settle.
-///   - mailbox: the mailbox the run is registered in.
-func settle(_ run: ScriptedRun, in mailbox: SessionMailbox) async {
+///   - context: the session context the run is registered on.
+func settle(_ run: ScriptedRun, on context: ToolContext) async {
     await run.gate.open()
-    _ = await backgroundRuns(over: mailbox).wait(
+    _ = await context.wait(
         completionToken: run.completionToken, seconds: scriptedRunSettlementSeconds
     )
 }

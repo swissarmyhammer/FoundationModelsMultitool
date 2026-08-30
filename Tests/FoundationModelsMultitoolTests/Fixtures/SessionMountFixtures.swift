@@ -24,18 +24,12 @@ enum SessionMount {
     ///
     /// - Parameters:
     ///   - tool: The tool to mount.
-    ///   - mailbox: The session mailbox the engine tracks a run in.
-    ///   - sink: The upstream sink the events of a run reach.
+    ///   - context: The session context the engine mounts on. Take one from
+    ///     ``makeStubRun(in:)``.
     /// - Returns: The mounted, model-facing tool.
     static func synchronous(
-        _ tool: any Tool, mailbox: SessionMailbox, sink: any OperationEventSink
+        _ tool: any Tool, on context: ToolContext
     ) -> any Tool {
-        ToolMounting.makeWrapped(
-            tool: tool,
-            sessionID: ULID(),
-            mailbox: mailbox,
-            sink: sink,
-            configuration: .synchronous
-        )
+        context.mount(tool, as: .synchronous)
     }
 }
