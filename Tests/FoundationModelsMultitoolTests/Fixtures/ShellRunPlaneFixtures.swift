@@ -33,18 +33,10 @@ enum ShellRunPlane {
     ///   - verb: The verb to mount.
     ///   - context: The session context the engine inherits.
     /// - Returns: The mounted engine.
-    /// - Throws: When the decorator did not preserve the verb's own types.
     static func mounted(
         _ verb: Execute, inheriting context: ToolContext
-    ) throws -> any Tool<ExecuteArguments, String> {
-        try #require(
-            ToolMounting.makeWrapped(
-                tool: verb,
-                inheriting: context,
-                sink: AmbientUpstreamSink(context: context),
-                configuration: RunBinding.innerCallMount
-            ) as? any Tool<ExecuteArguments, String>
-        )
+    ) -> any Tool<ExecuteArguments, String> {
+        context.mount(verb, as: RunBinding.innerCallMount)
     }
 
     /// Waits until the run plane of `context` holds `count` runs, and answers

@@ -1,9 +1,5 @@
 import Foundation
 import FoundationModels
-// `OperationEventSink` and `OperationEvent` are declared here. Router names
-// them through a typealias, so this import is what keeps `AmbientUpstreamSink`
-// compiling when Router stops publishing that alias.
-import FoundationModelsExtras
 import FoundationModelsRouter
 
 /// Everything one `runCode` invocation's inner `tools.*` calls need to reach
@@ -111,15 +107,23 @@ struct RunBinding: Sendable {
     /// Runs one inner `tools.*` call through the shared engine, to
     /// completion.
     ///
-    /// `ToolMounting.makeWrapped(tool:inheriting:sink:op:configuration:)`
-    /// picks the decorator: `RunToCompletionRunner` for a `String`-output tool
-    /// (or `BackgroundToolRunner`, when that tool declares the background),
-    /// `ContextBindingTool` for any other output. Each mints the call its own
-    /// `completionToken` and bind `ToolContext.$current` around it
-    /// explicitly, so neither depends on what the calling task did or did not
-    /// inherit — the property that makes this safe to call from the JS seam.
-    /// Either decorator preserves the wrapped tool's own `Output` type, so
-    /// the returned value is the tool's, unchanged.
+    /// `ToolContext.mount(_:op:as:)` picks the decorator: a run-to-completion
+    /// runner for a `String`-output tool (or a background runner, when that
+    /// tool declares the background), a context-binding tool for any other
+    /// output. Each mints the call its own `completionToken` and binds
+    /// `ToolContext.$current` around it explicitly, so neither depends on what
+    /// the calling task did or did not inherit — the property that makes this
+    /// safe to call from the JS seam. Every decorator preserves the wrapped
+    /// tool's own `Output` type, so the returned value is the tool's,
+    /// unchanged, and the mount states that in its return type.
+    ///
+    /// The mount also supplies the upstream sink. It forwards each event
+    /// through this ``context``, and `ToolContext.post(_:)` re-stamps what it
+    /// forwards with its own identity. Thus an inner run's events reach the
+    /// session's outbox on the **outer** `runCode` run's correlation — the
+    /// operation the session actually issued — while the inner run's own
+    /// `completionToken` stays with the background runs. A context whose
+    /// session has gone away posts into a no-op, which is not an error.
     ///
     /// This is the one place in this package that hands the engine a journal
     /// op, which is why `journalOp` is threaded down to here rather than read
@@ -149,47 +153,8 @@ struct RunBinding: Sendable {
             "RunBinding.invoke",
             detail: "tool=\(tool.name) outerToken=\(context.completionToken)"
         ) {
-            let mounted = ToolMounting.makeWrapped(
-                tool: tool,
-                inheriting: context,
-                sink: AmbientUpstreamSink(context: context),
-                op: journalOp,
-                configuration: innerMount
-            )
-            guard let engine = mounted as? any Tool<T.Arguments, T.Output> else {
-                // Unreachable: both decorators preserve `Arguments`/`Output`, and
-                // `ToolMounting.makeWrapped`'s own unreachable fallback returns the
-                // tool itself, which matches too. Kept as a graceful degradation
-                // rather than a trap, matching this package's "throw/degrade,
-                // never trap" posture — the call still happens, only without the
-                // engine's correlation.
-                return try await tool.call(arguments: arguments)
-            }
+            let engine = context.mount(tool, op: journalOp, as: innerMount)
             return try await engine.call(arguments: arguments)
         }
-    }
-}
-
-/// The upstream end of an inner `tools.*` run's event route: the sink
-/// `RunBinding` hands the engine, forwarding every event the run's funnel
-/// produces through the ambient `ToolContext` the enclosing `runCode` call was
-/// bound to.
-///
-/// `ToolContext.post(_:)` is the only egress a captured context publishes, and
-/// it re-stamps what it forwards with its own identity. So an inner run's
-/// events reach the session's outbox on the **outer** `runCode` run's
-/// correlation — which is the operation the session actually issued — while
-/// the inner run's own `completionToken` stays with the background runs: the engine's
-/// funnel addresses the session mailbox by it, and the inner tool reads it
-/// from its own `ToolContext.current`.
-///
-/// A context that is bound but whose session has gone away posts into a
-/// no-op, exactly as a `nil` ambient context does — neither is an error.
-struct AmbientUpstreamSink: OperationEventSink {
-    /// The captured ambient context every event is forwarded through.
-    let context: ToolContext
-
-    func post(event: OperationEvent) async {
-        await context.post(event)
     }
 }
