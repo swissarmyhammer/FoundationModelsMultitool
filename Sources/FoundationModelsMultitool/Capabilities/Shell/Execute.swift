@@ -215,7 +215,7 @@ extension Execute {
     ///   run. A request this verb refuses does not reach it.
     func call(arguments: ExecuteArguments) async throws -> String {
         let context = ToolContext.current
-        let commandID = context?.completionToken ?? SessionMailbox.makeCompletionToken()
+        let commandID = context?.completionToken ?? ToolContext.makeCompletionToken()
 
         if arguments.command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return Self.corrected(Self.blankCommandCorrection)

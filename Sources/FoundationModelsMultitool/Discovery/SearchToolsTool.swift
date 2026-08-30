@@ -184,10 +184,13 @@ public struct SearchToolsTool: Tool {
     /// FoundationModels interop path does not expose the Router's cache-level
     /// `fork()` that `SelectionConfig`'s cached-root contract needs.
     ///
-    /// The `SelectionTier` supplies the correctly-scoped `idEnumGrammar(ids:)`
-    /// for each call — the whole catalog under budget, the top-M candidates
-    /// over it. This closure only threads that grammar into
-    /// `makeGuidedSession`.
+    /// The grammar is built here, one time, over the whole catalog, and
+    /// threaded into `makeGuidedSession`. The `SelectionTier` used to supply a
+    /// correctly-scoped grammar for each call — the whole catalog under
+    /// budget, the top-M candidates over it — but its factory takes the
+    /// instructions alone as of the ranker's `34fe8d4`, so a per-call grammar
+    /// is no longer expressible. See ``makeSelection(librarian:ids:)`` for why
+    /// the looser grammar stays safe.
     ///
     /// - Parameters:
     ///   - registry: the catalog whose entries become the searcher's
@@ -209,8 +212,8 @@ public struct SearchToolsTool: Tool {
     ///     argument, which is what keeps `searchTools` off the generation
     ///     session's own surface: it writes a snippet, it does not execute
     ///     one.
-    /// - Throws: reserved for API stability across selection-tier wiring
-    ///   changes; the current construction path has no fallible step.
+    /// - Throws: what ``makeSelection(librarian:ids:)`` throws while it builds
+    ///   the selection grammar.
     public init(
         registry: MultiTool.Registry,
         librarian: RoutedLLM?,
@@ -219,7 +222,9 @@ public struct SearchToolsTool: Tool {
     ) throws {
         self.init(
             searcher: Self.makeSearcher(
-                over: registry.surface.entries, selection: Self.makeSelection(librarian: librarian)),
+                over: registry.surface.entries,
+                selection: try Self.makeSelection(
+                    librarian: librarian, ids: registry.surface.entries.map(\.path))),
             limit: limit ?? registry.surface.entries.count,
             sample: Self.makeSample(generator: sampleGenerator)
         )
@@ -231,10 +236,30 @@ public struct SearchToolsTool: Tool {
     /// The one place the selection tier is wired. `init(registry:...)` and
     /// `makeSessionToolsAndStaging` both build it here.
     ///
-    /// - Parameter librarian: the resolved `RoutedLLM` every selection
-    ///   session runs on, or `nil`.
+    /// - Parameters:
+    ///   - librarian: the resolved `RoutedLLM` every selection session runs
+    ///     on, or `nil`.
+    ///   - ids: every id in the catalog, which the grammar constrains output
+    ///     to. One grammar over the whole catalog, built here, because the
+    ///     tier's factory takes instructions alone and cannot vary the grammar
+    ///     per call.
     /// - Returns: the selection configuration, or `nil`.
-    static func makeSelection(librarian: RoutedLLM?) -> SelectionConfig? {
+    /// - Throws: what ``idEnumGrammar(ids:)`` throws when `ids` cannot be
+    ///   serialized to JSON, which is not expected for an array of strings.
+    static func makeSelection(librarian: RoutedLLM?, ids: [String]) throws -> SelectionConfig? {
+        // One grammar for every call, built before the factory closure rather
+        // than inside it. `SelectionConfig`'s factory takes the instructions
+        // alone as of the ranker's `34fe8d4`; it no longer hands a per-call
+        // grammar down, so a grammar scoped to one round's candidates is no
+        // longer expressible.
+        //
+        // Over budget, the tier selects among the top-M candidates while this
+        // grammar still permits every id in the catalog. That is looser than
+        // the per-call grammar was, and it is safe: the tier's own
+        // `.unknownSelectedId` filter drops an id outside the round's
+        // candidate set. Under `capacityCharacterLimit` the over-budget path
+        // never runs, and the two are identical.
+        let grammar = try idEnumGrammar(ids: ids)
         // **The selection session must come from `librarian`, a handle other
         // than the one whose turn is calling this tool. That is a correctness
         // requirement, not a cost preference.**
@@ -265,7 +290,7 @@ public struct SearchToolsTool: Tool {
         // simplification — one session, one transcript, no second handle to
         // thread. It is the one change this factory must never take.
         return librarian.map { librarian in
-            SelectionConfig(model: { instructions, grammar in
+            SelectionConfig(model: { instructions in
                 // Traced, and traced *here*, because both ends of this
                 // factory are opaque from outside. The call itself is
                 // synchronous but not cheap — a grammar-constrained session

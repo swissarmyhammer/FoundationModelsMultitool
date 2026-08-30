@@ -202,7 +202,9 @@ extension MultiTool {
                     registry: self,
                     shape: RegistryBundleShape(
                         bindsSearchTools: true,
-                        discovery: .configured(selection: SearchToolsTool.makeSelection(librarian: librarian)))))
+                        discovery: .configured(
+                            selection: try SearchToolsTool.makeSelection(
+                                librarian: librarian, ids: surface.entries.map(\.path))))))
             let searchTools = SearchToolsTool(
                 holder: holder,
                 sample: SearchToolsTool.makeSample(generator: sampleGenerator)
