@@ -1,5 +1,9 @@
 import Foundation
 import FoundationModels
+// `OperationEventSink` and `OperationEvent` are declared here. Router names
+// them through a typealias, so this import is what keeps `AmbientUpstreamSink`
+// compiling when Router stops publishing that alias.
+import FoundationModelsExtras
 import FoundationModelsRouter
 
 /// Everything one `runCode` invocation's inner `tools.*` calls need to reach
