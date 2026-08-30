@@ -327,11 +327,11 @@ actor ScriptedElicitationSink: OperationEventSink {
 
     /// What the mailbox reported for each delivered answer, in delivery
     /// order.
-    private(set) var deliveries: [SessionMailbox.ElicitationAnswerDelivery] = []
+    private(set) var deliveries: [ElicitationAnswerDelivery] = []
 
     /// What the mailbox reported for each URL-mode completion, in completion
     /// order.
-    private(set) var completions: [SessionMailbox.ElicitationCompletionDelivery] = []
+    private(set) var completions: [ElicitationCompletionDelivery] = []
 
     /// Creates a sink that answers every elicitation with one scripted
     /// response.
