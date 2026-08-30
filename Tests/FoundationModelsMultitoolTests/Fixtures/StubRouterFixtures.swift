@@ -301,3 +301,27 @@ struct StubMetadata: MetadataSource {
                 """.utf8))
     }
 }
+
+/// The terminal `OperationEvent` of each settled run of `session`, read off
+/// the session's own event stream.
+///
+/// `SessionEvent.runSettled` is the only public route to a run's terminal
+/// event: a host cannot inject an `OperationEventSink`, because nothing public
+/// of Router accepts one.
+///
+/// - Parameters:
+///   - session: The session whose runs to read.
+///   - count: How many settled runs to wait for.
+///   - seconds: How long to wait before giving up.
+/// - Returns: The terminal events, in arrival order, or fewer on a timeout.
+func settledEvents(
+    on session: RoutedSession, count: Int, seconds: Double = 10
+) async -> [OperationEvent] {
+    var settled: [OperationEvent] = []
+    let deadline = ContinuousClock.now.advanced(by: .seconds(seconds))
+    for await event in await session.streamSessionEvents() {
+        if case .runSettled(let operation) = event { settled.append(operation) }
+        if settled.count >= count || ContinuousClock.now >= deadline { break }
+    }
+    return settled
+}

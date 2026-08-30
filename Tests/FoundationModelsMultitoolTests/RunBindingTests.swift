@@ -33,7 +33,6 @@ struct RunBindingTests {
     @Test("a slow inner call still returns its real value, and never goes to the background")
     func slowInnerCallReturnsItsRealValueWithoutBackgrounding() async throws {
         let slowTool = WindowRecordingTool(name: "slow", delayNanoseconds: innerCallDelayNanoseconds)
-        let mailbox = SessionMailbox()
         let sink = RecordingEventSink()
         let binding = RunBinding(context: makeOuterRunContext(mailbox: mailbox, sink: sink))
 
@@ -41,7 +40,7 @@ struct RunBindingTests {
 
         #expect(output == "slow-result")
         #expect(!PendingRunEnvelope.isRendered(text: output))
-        #expect(await backgroundRuns(over: mailbox).backgroundRuns().isEmpty)
+        #expect(await context.backgroundRuns().isEmpty)
     }
 
     // MARK: - Parallel inner calls correlate independently
@@ -112,7 +111,7 @@ struct RunBindingTests {
         let recorder = AmbientRecordingTool(name: "recorder")
         let registry = try MultiTool.Builder().addTool(recorder).buildRegistry()
         let multiTool = MultiTool(registry: registry)
-        let context = makeOuterRunContext(mailbox: SessionMailbox(), sink: RecordingEventSink())
+        let context = try await makeOuterRunContext()
 
         _ = try await ToolContext.$current.withValue(context) {
             try await multiTool.call(arguments: RunCodeArguments(code: "return await tools.recorder();"))

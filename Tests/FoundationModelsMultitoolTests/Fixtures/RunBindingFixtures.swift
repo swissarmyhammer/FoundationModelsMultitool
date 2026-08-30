@@ -1,5 +1,6 @@
 import Foundation
 import FoundationModels
+import FoundationModelsExtras
 import FoundationModelsRouter
 import os
 
@@ -125,25 +126,15 @@ final class AmbientRecordingTool: Tool, Sendable {
     }
 }
 
-/// Builds the ambient `ToolContext` a Router session binds around one
-/// `runCode` call — the context `MultiTool` captures into its `RunBinding`.
+/// The ambient `ToolContext` a Router session binds around one `runCode`
+/// call — the context `MultiTool` captures into its `RunBinding`.
 ///
-/// Stamped with `runCode`'s own tool name, exactly as `BackgroundToolRunner` stamps a
-/// wrapped tool's context, and given a freshly minted `completionToken` so a
-/// test can tell the outer run's correlation from every inner one.
+/// Taken from a real session over the stub model, because `ToolContext` has no
+/// public initializer and `SessionMailbox` is internal to Router. See
+/// `StubRouterFixtures.swift` for the stack that stands the session up.
 ///
-/// - Parameters:
-///   - mailbox: the session's mailbox.
-///   - sink: the session's upstream sink.
-/// - Returns: the outer `runCode` run's ambient context.
-func makeOuterRunContext(mailbox: SessionMailbox, sink: any OperationEventSink) -> ToolContext {
-    ToolContext(
-        sessionID: ULID(),
-        mailbox: mailbox,
-        sink: sink,
-        tool: "runCode",
-        op: "runCode",
-        completionToken: SessionMailbox.makeCompletionToken(),
-        isCancelled: { false }
-    )
+/// - Returns: the outer run's ambient context.
+/// - Throws: whatever standing up the stub session throws.
+func makeOuterRunContext() async throws -> ToolContext {
+    try await makeStubRun().context
 }

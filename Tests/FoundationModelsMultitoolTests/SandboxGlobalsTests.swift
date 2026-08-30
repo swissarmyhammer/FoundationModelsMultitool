@@ -58,7 +58,7 @@ struct SandboxGlobalsTests {
 
     @Test("the run verbs return promises; notify, progress, help, and docs return plain values")
     func promiseVersusSynchronousContractHolds() async throws {
-        let context = makeOuterRunContext(mailbox: SessionMailbox(), sink: RecordingEventSink())
+        let context = try await makeOuterRunContext()
 
         let output = try await runSnippet(
             """
@@ -131,9 +131,8 @@ struct SandboxGlobalsTests {
 
     @Test("the globals page declares the exact fields a running background run really reports")
     func theGlobalsPageMatchesTheBackgroundRunItDocuments() async throws {
-        let mailbox = SessionMailbox()
-        _ = try await startScriptedRun(in: mailbox, progress: "step one")
-        let context = makeOuterRunContext(mailbox: mailbox, sink: RecordingEventSink())
+        _ = try await startScriptedRun(on: context, progress: "step one")
+        let context = try await makeOuterRunContext()
 
         let output = try await runSnippet(
             "return Object.keys((await status())[0]).sort();",
@@ -147,7 +146,6 @@ struct SandboxGlobalsTests {
 
     @Test("the globals page declares the exact fields an elicitation answer really carries")
     func theGlobalsPageMatchesTheElicitationAnswerItDocuments() async throws {
-        let mailbox = SessionMailbox()
         let sink = ScriptedElicitationSink(mailbox: mailbox, answering: .accept(content: ["repo": .string("sah")]))
         let context = makeOuterRunContext(mailbox: mailbox, sink: sink)
 
@@ -165,11 +163,10 @@ struct SandboxGlobalsTests {
 
     @Test("state and result never appear on one object — state is the run, result is the call")
     func stateAndResultNeverAppearOnOneObject() async throws {
-        let mailbox = SessionMailbox()
-        let running = try await startScriptedRun(in: mailbox, tool: "slow")
-        let finished = try await startScriptedRun(in: mailbox, tool: "quick")
-        await settle(finished, in: mailbox)
-        let context = makeOuterRunContext(mailbox: mailbox, sink: RecordingEventSink())
+        let running = try await startScriptedRun(on: context, tool: "slow")
+        let finished = try await startScriptedRun(on: context, tool: "quick")
+        await settle(finished, on: context)
+        let context = try await makeOuterRunContext()
 
         let output = try await runSnippet(
             """
@@ -206,9 +203,8 @@ struct SandboxGlobalsTests {
 
     @Test("status() with no argument lists each running run's token, op, and latest progress")
     func statusWithNoArgumentListsEveryRunningRun() async throws {
-        let mailbox = SessionMailbox()
-        let run = try await startScriptedRun(in: mailbox, progress: "downloading")
-        let context = makeOuterRunContext(mailbox: mailbox, sink: RecordingEventSink())
+        let run = try await startScriptedRun(on: context, progress: "downloading")
+        let context = try await makeOuterRunContext()
 
         let output = try await runSnippet(
             "return (await status()).map(row => [row.completionToken, row.op, row.latestProgress]);",
@@ -220,9 +216,8 @@ struct SandboxGlobalsTests {
 
     @Test("status(completionToken) reports a running run as running")
     func statusWithATokenReportsARunningRun() async throws {
-        let mailbox = SessionMailbox()
-        let run = try await startScriptedRun(in: mailbox, progress: "step one")
-        let context = makeOuterRunContext(mailbox: mailbox, sink: RecordingEventSink())
+        let run = try await startScriptedRun(on: context, progress: "step one")
+        let context = try await makeOuterRunContext()
 
         let output = try await runSnippet(
             """
@@ -241,10 +236,9 @@ struct SandboxGlobalsTests {
 
     @Test("status(completionToken) reports a finished run as complete, with its terminal outcome")
     func statusWithATokenReportsAFinishedRun() async throws {
-        let mailbox = SessionMailbox()
-        let run = try await startScriptedRun(in: mailbox)
-        await settle(run, in: mailbox)
-        let context = makeOuterRunContext(mailbox: mailbox, sink: RecordingEventSink())
+        let run = try await startScriptedRun(on: context)
+        await settle(run, on: context)
+        let context = try await makeOuterRunContext()
 
         let output = try await runSnippet(
             """
@@ -263,10 +257,9 @@ struct SandboxGlobalsTests {
 
     @Test("status(completionToken) reports a run that failed as error, and outcome says why")
     func statusWithATokenReportsAFailedRun() async throws {
-        let mailbox = SessionMailbox()
-        let run = try await startScriptedRun(in: mailbox, failing: true)
-        await settle(run, in: mailbox)
-        let context = makeOuterRunContext(mailbox: mailbox, sink: RecordingEventSink())
+        let run = try await startScriptedRun(on: context, failing: true)
+        await settle(run, on: context)
+        let context = try await makeOuterRunContext()
 
         let output = try await runSnippet(
             """
@@ -285,7 +278,7 @@ struct SandboxGlobalsTests {
 
     @Test("status(completionToken) reports an unknown token as a safe no-op, never a throw")
     func statusWithAnUnknownTokenIsASafeNoOp() async throws {
-        let context = makeOuterRunContext(mailbox: SessionMailbox(), sink: RecordingEventSink())
+        let context = try await makeOuterRunContext()
 
         let output = try await runSnippet(
             """
@@ -302,10 +295,9 @@ struct SandboxGlobalsTests {
 
     @Test("wait() returns the terminal event's detail and the run's identifier")
     func waitReturnsTheTerminalEventDetailAndIdentifier() async throws {
-        let mailbox = SessionMailbox()
-        let run = try await startScriptedRun(in: mailbox)
-        let context = makeOuterRunContext(mailbox: mailbox, sink: RecordingEventSink())
-        await settle(run, in: mailbox)
+        let run = try await startScriptedRun(on: context)
+        let context = try await makeOuterRunContext()
+        await settle(run, on: context)
 
         let output = try await runSnippet(
             """
@@ -325,10 +317,9 @@ struct SandboxGlobalsTests {
     @Test("wait()'s detail is the mailbox's bounded output tail, never a capability's full store")
     func waitDetailIsBoundedToTheTerminalTail() async throws {
         let overlongDetail = String(repeating: "d", count: ToolContext.terminalDetailTailLimit + 500)
-        let mailbox = SessionMailbox()
-        let run = try await startScriptedRun(in: mailbox, detail: overlongDetail)
-        let context = makeOuterRunContext(mailbox: mailbox, sink: RecordingEventSink())
-        await settle(run, in: mailbox)
+        let run = try await startScriptedRun(on: context, detail: overlongDetail)
+        let context = try await makeOuterRunContext()
+        await settle(run, on: context)
 
         let output = try await runSnippet(
             "return (await wait(\"\(run.completionToken)\", \(generousWaitSeconds))).detail.length;",
@@ -340,9 +331,8 @@ struct SandboxGlobalsTests {
 
     @Test("wait() reports a timeout while the run keeps running")
     func waitReportsATimeout() async throws {
-        let mailbox = SessionMailbox()
-        let run = try await startScriptedRun(in: mailbox)
-        let context = makeOuterRunContext(mailbox: mailbox, sink: RecordingEventSink())
+        let run = try await startScriptedRun(on: context)
+        let context = try await makeOuterRunContext()
 
         let output = try await runSnippet(
             """
@@ -353,12 +343,12 @@ struct SandboxGlobalsTests {
         )
 
         #expect(try decode([String].self, from: output) == ["timeout", run.completionToken])
-        #expect(await backgroundRuns(over: mailbox).backgroundRuns().map(\.completionToken) == [run.completionToken])
+        #expect(await context.backgroundRuns().map(\.completionToken) == [run.completionToken])
     }
 
     @Test("wait() reports an unknown token as a safe no-op, never a throw")
     func waitWithAnUnknownTokenIsASafeNoOp() async throws {
-        let context = makeOuterRunContext(mailbox: SessionMailbox(), sink: RecordingEventSink())
+        let context = try await makeOuterRunContext()
 
         let output = try await runSnippet(
             """
@@ -373,7 +363,7 @@ struct SandboxGlobalsTests {
 
     @Test("wait() called without a seconds deadline rejects with a repairable error naming the shape")
     func waitWithoutADeadlineRejectsRepairably() async throws {
-        let context = makeOuterRunContext(mailbox: SessionMailbox(), sink: RecordingEventSink())
+        let context = try await makeOuterRunContext()
 
         let output = try await runSnippet(
             """
@@ -396,9 +386,8 @@ struct SandboxGlobalsTests {
 
     @Test("cancel() returns the canceler's honest outcome, verbatim")
     func cancelReturnsTheHonestOutcome() async throws {
-        let mailbox = SessionMailbox()
-        let run = try await startScriptedRun(in: mailbox)
-        let context = makeOuterRunContext(mailbox: mailbox, sink: RecordingEventSink())
+        let run = try await startScriptedRun(on: context)
+        let context = try await makeOuterRunContext()
 
         let output = try await runSnippet(
             """
@@ -417,10 +406,9 @@ struct SandboxGlobalsTests {
 
     @Test("cancel() on a run that already finished reports the retained terminal event, not an unknown token")
     func cancelOnAFinishedRunReportsItsTerminalEvent() async throws {
-        let mailbox = SessionMailbox()
-        let run = try await startScriptedRun(in: mailbox)
-        await settle(run, in: mailbox)
-        let context = makeOuterRunContext(mailbox: mailbox, sink: RecordingEventSink())
+        let run = try await startScriptedRun(on: context)
+        await settle(run, on: context)
+        let context = try await makeOuterRunContext()
 
         let output = try await runSnippet(
             """
@@ -439,7 +427,7 @@ struct SandboxGlobalsTests {
 
     @Test("cancel() reports an unknown token as a safe no-op, never a throw")
     func cancelWithAnUnknownTokenIsASafeNoOp() async throws {
-        let context = makeOuterRunContext(mailbox: SessionMailbox(), sink: RecordingEventSink())
+        let context = try await makeOuterRunContext()
 
         let output = try await runSnippet(
             """
@@ -456,7 +444,6 @@ struct SandboxGlobalsTests {
 
     @Test("elicit(\"question\") suspends the snippet and resumes with the accepted answer")
     func elicitStringShorthandRoundTripsAnAcceptedAnswer() async throws {
-        let mailbox = SessionMailbox()
         let sink = ScriptedElicitationSink(
             mailbox: mailbox,
             answering: .accept(content: ["repo": .string("swissarmyhammer")])
@@ -483,7 +470,6 @@ struct SandboxGlobalsTests {
 
     @Test("a declined elicitation surfaces as a decline, distinct from a cancel")
     func elicitSurfacesADeclineDistinctly() async throws {
-        let mailbox = SessionMailbox()
         let sink = ScriptedElicitationSink(mailbox: mailbox, answering: .decline)
         let context = makeOuterRunContext(mailbox: mailbox, sink: sink)
 
@@ -500,7 +486,6 @@ struct SandboxGlobalsTests {
 
     @Test("a cancelled elicitation surfaces as a cancel, distinct from a decline")
     func elicitSurfacesACancelDistinctly() async throws {
-        let mailbox = SessionMailbox()
         let sink = ScriptedElicitationSink(mailbox: mailbox, answering: .cancel)
         let context = makeOuterRunContext(mailbox: mailbox, sink: sink)
 
@@ -517,7 +502,6 @@ struct SandboxGlobalsTests {
 
     @Test("elicit({ message, requestedSchema }) carries the restricted form schema through unchanged")
     func elicitCarriesAFormSchemaThrough() async throws {
-        let mailbox = SessionMailbox()
         let sink = ScriptedElicitationSink(
             mailbox: mailbox,
             answering: .accept(content: ["repo": .string("multitool")])
@@ -552,7 +536,6 @@ struct SandboxGlobalsTests {
 
     @Test("elicit({ message, url }) resolves only once the out-of-band flow completes")
     func elicitUrlModeResolvesAfterCompletion() async throws {
-        let mailbox = SessionMailbox()
         let sink = ScriptedElicitationSink(mailbox: mailbox, answering: .accept(content: nil))
         let context = makeOuterRunContext(mailbox: mailbox, sink: sink)
 
@@ -574,7 +557,7 @@ struct SandboxGlobalsTests {
 
     @Test("elicit() with neither a question nor a message rejects with a repairable error naming the shape")
     func elicitWithoutAMessageRejectsRepairably() async throws {
-        let context = makeOuterRunContext(mailbox: SessionMailbox(), sink: RecordingEventSink())
+        let context = try await makeOuterRunContext()
 
         let output = try await runSnippet(
             """

@@ -127,7 +127,6 @@ struct FilesCapabilityTests {
         let capability = FilesCapability(root: root)
         let path = root.appendingPathComponent("note.txt", isDirectory: false).path
         try Self.sharedContextContent.write(toFile: path, atomically: true, encoding: .utf8)
-        let mailbox = SessionMailbox()
         let read = try #require(
             ToolMounting.makeWrapped(
                 tool: try Self.verb(Read.self, in: capability),
@@ -143,7 +142,7 @@ struct FilesCapabilityTests {
 
         #expect(result.correction == nil)
         #expect(result.lines == ["alpha", "beta"])
-        #expect(await backgroundRuns(over: mailbox).backgroundRuns().isEmpty)
+        #expect(await context.backgroundRuns().isEmpty)
     }
 
     // MARK: - The noun and its verbs
@@ -307,7 +306,7 @@ struct FilesCapabilityTests {
         let searcher = MetadataSearcher(
             items: surface.entries,
             mode: .auto,
-            selection: SelectionConfig(model: { _, _ in selection }, capacityCharacterLimit: .max)
+            selection: SelectionConfig(model: { _ in selection }, capacityCharacterLimit: .max)
         )
         let searchTools = SearchToolsTool(searcher: searcher, limit: surface.entries.count)
 

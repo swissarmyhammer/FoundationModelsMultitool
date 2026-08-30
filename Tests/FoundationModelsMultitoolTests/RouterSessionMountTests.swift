@@ -18,26 +18,16 @@ import ULID
 /// there is caught here rather than in a twenty-minute integration run.
 @Suite("Router session mount")
 struct RouterSessionMountTests {
-    /// A sink that drops every event.
-    ///
-    /// The mount requires one; these tests assert on returned output, not on
-    /// posted progress.
-    private struct DiscardingSink: OperationEventSink {
-        /// Drops `event`.
-        ///
-        /// - Parameter event: the event to discard.
-        func post(event: OperationEvent) async {}
-    }
-
     @Test("searchTools returns the same text through Router's session mount as it does direct")
     func searchToolsIsTransparentThroughTheMount() async throws {
+        let context = try await makeOuterRunContext()
         let registry = try Self.registry()
         let searchTools = try SearchToolsTool(registry: registry, librarian: nil)
         let task = "the cities on the trip"
 
         let direct = try await searchTools.call(arguments: SearchToolsArguments(task: task))
         let mounted = try #require(
-            Self.makeSessionMounted(searchTools) as? any Tool<SearchToolsArguments, String>
+            Self.makeSessionMounted(searchTools, on: context) as? any Tool<SearchToolsArguments, String>
         )
         let throughMount = try await mounted.call(arguments: SearchToolsArguments(task: task))
 
@@ -47,13 +37,14 @@ struct RouterSessionMountTests {
 
     @Test("the mount returns a token where a direct call returns the value")
     func runCodeBackgroundsThroughTheMount() async throws {
+        let context = try await makeOuterRunContext()
         let registry = try Self.registry()
         let runCode = MultiTool(registry: registry)
         let snippet = "const r = await tools.getCities({}); return r.cities.length;"
 
         let direct = try await runCode.call(arguments: RunCodeArguments(code: snippet))
         let mounted = try #require(
-            Self.makeSessionMounted(runCode) as? any Tool<RunCodeArguments, String>
+            Self.makeSessionMounted(runCode, on: context) as? any Tool<RunCodeArguments, String>
         )
         let throughMount = try await mounted.call(arguments: RunCodeArguments(code: snippet))
 
@@ -77,10 +68,11 @@ struct RouterSessionMountTests {
 
     @Test("the mount leaves the model-facing name and description untouched")
     func theMountPreservesTheModelFacingSurface() async throws {
+        let context = try await makeOuterRunContext()
         let registry = try Self.registry()
         let searchTools = try SearchToolsTool(registry: registry, librarian: nil)
 
-        let mounted = Self.makeSessionMounted(searchTools)
+        let mounted = Self.makeSessionMounted(searchTools, on: context)
 
         #expect(mounted.name == searchTools.name)
         #expect(mounted.description == searchTools.description)
@@ -88,6 +80,7 @@ struct RouterSessionMountTests {
 
     @Test("a snippet that waits on a pending run hands back an envelope that leads to the wait tool, not to another snippet")
     func runCodeEnvelopeLeadsToTheWaitTool() async throws {
+        let context = try await makeOuterRunContext()
         // The live-lock of task ^4qcf1v9: every mounted `runCode` call
         // backgrounds, so a snippet that waits on a pending token is itself
         // tracked and hands back a fresh token. An envelope whose `next` told the
@@ -96,11 +89,10 @@ struct RouterSessionMountTests {
         // `next` is this package's own sentence, and it must name the `wait`
         // tool and never a snippet.
         let registry = try Self.registry()
-        let mailbox = SessionMailbox()
-        let pendingRun = try await startScriptedRun(in: mailbox)
+        let pendingRun = try await startScriptedRun(on: context)
         let runCode = MultiTool(registry: registry)
         let mounted = try #require(
-            Self.makeSessionMounted(runCode, mailbox: mailbox) as? any Tool<RunCodeArguments, String>
+            Self.makeSessionMounted(runCode, on: context) as? any Tool<RunCodeArguments, String>
         )
 
         let rendered = try await mounted.call(
@@ -124,8 +116,8 @@ struct RouterSessionMountTests {
 
         // Release the run the snippet waits on; the background snippet then
         // finishes, and the token the envelope names resolves to a result.
-        await settle(pendingRun, in: mailbox)
-        let collected = await backgroundRuns(over: mailbox)
+        await settle(pendingRun, on: context)
+        let collected = await context
             .wait(completionToken: envelope.completionToken, seconds: scriptedRunSettlementSeconds)
         guard case .settled = collected else {
             Issue.record("the background snippet never settled: \(collected)")
@@ -148,16 +140,11 @@ struct RouterSessionMountTests {
     ///
     /// - Parameters:
     ///   - tool: the tool to mount.
-    ///   - mailbox: the session mailbox the mount tracks runs in; a fresh one
-    ///     when the test holds no background run of its own.
+    ///   - context: the session context the mount tracks runs on.
     /// - Returns: the composed, model-facing tool.
-    private static func makeSessionMounted(_ tool: any Tool, mailbox: SessionMailbox = SessionMailbox()) -> any Tool {
-        ToolMounting.makeWrapped(
-            tool: tool,
-            sessionID: ULID(),
-            mailbox: mailbox,
-            sink: DiscardingSink(),
-            configuration: .synchronous
-        )
+    private static func makeSessionMounted(
+        _ tool: any Tool, on context: ToolContext
+    ) -> any Tool {
+        context.mount(tool, as: .synchronous)
     }
 }

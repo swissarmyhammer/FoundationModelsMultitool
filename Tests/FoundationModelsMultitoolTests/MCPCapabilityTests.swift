@@ -135,7 +135,7 @@ struct MCPCapabilityTests {
         let searcher = MetadataSearcher(
             items: surface.entries,
             mode: .auto,
-            selection: SelectionConfig(model: { _, _ in selection }, capacityCharacterLimit: .max)
+            selection: SelectionConfig(model: { _ in selection }, capacityCharacterLimit: .max)
         )
         return SearchToolsTool(searcher: searcher, limit: surface.entries.count)
     }

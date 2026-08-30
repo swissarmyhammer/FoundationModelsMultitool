@@ -131,8 +131,7 @@ struct ShellSessionSweepTests {
         let state = try ShellState(
             preferredDirectory: directory.appendingPathComponent(Self.shellStoreDirectoryName))
         let registry = ProcessRegistry()
-        let mailbox = SessionMailbox()
-        let context = makeOuterRunContext(mailbox: mailbox, sink: RecordingEventSink())
+        let context = try await makeOuterRunContext()
         let engine = try ShellRunPlane.mounted(
             Execute(runner: ShellRunner(state: state, registry: registry)), inheriting: context)
 

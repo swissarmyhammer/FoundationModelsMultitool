@@ -125,15 +125,14 @@ struct WaitToolTests {
     private static func waitCall(
         _ arguments: WaitArguments, against mailbox: SessionMailbox
     ) async throws -> String {
-        try await ToolContext.$current.withValue(backgroundRuns(over: mailbox)) {
+        try await ToolContext.$current.withValue(context) {
             try await WaitTool().call(arguments: arguments)
         }
     }
 
     @Test("wait blocks until a background run finishes, and answers with its terminal detail")
     func waitBlocksUntilTheRunSettles() async throws {
-        let mailbox = SessionMailbox()
-        let run = try await startScriptedRun(in: mailbox, detail: "the-collected-result")
+        let run = try await startScriptedRun(on: context, detail: "the-collected-result")
         let heldOpen = Duration.milliseconds(300)
 
         // The run is deliberately held open for a known time after the wait is
@@ -142,7 +141,7 @@ struct WaitToolTests {
         // event of an already-settled run would assert exactly the same way.
         let settling = Task {
             try await Task.sleep(for: heldOpen)
-            await settle(run, in: mailbox)
+            await settle(run, on: context)
         }
         let start = ContinuousClock.now
         let finished = try await Self.waitCall(
@@ -161,15 +160,14 @@ struct WaitToolTests {
 
     @Test("a run that settles early returns early — the bound is not a floor")
     func anEarlySettlementReturnsEarly() async throws {
-        let mailbox = SessionMailbox()
-        let run = try await startScriptedRun(in: mailbox)
+        let run = try await startScriptedRun(on: context)
         let generousBound: Double = 600
 
         let start = ContinuousClock.now
         async let report = Self.waitCall(
             WaitArguments(completionToken: run.completionToken, timeout: generousBound), against: mailbox
         )
-        await settle(run, in: mailbox)
+        await settle(run, on: context)
         _ = try await report
         let elapsed = start.duration(to: .now)
 
@@ -180,8 +178,7 @@ struct WaitToolTests {
 
     @Test("a run still going at the caller's bound reports a timeout, not failure")
     func aRunStillGoingAtTheBoundReportsATimeout() async throws {
-        let mailbox = SessionMailbox()
-        let run = try await startScriptedRun(in: mailbox)
+        let run = try await startScriptedRun(on: context)
 
         // Never settled: the gate stays closed for the whole test, so the bound
         // is what ends the wait. Deterministic — nothing races the clock.
@@ -192,7 +189,7 @@ struct WaitToolTests {
         #expect(report.contains(CallResult.timeout))
         #expect(report.contains(run.completionToken))
         // Still going is not failure, and the run is still there to collect.
-        #expect(await backgroundRuns(over: mailbox).backgroundRuns().map(\.completionToken) == [run.completionToken])
+        #expect(await context.backgroundRuns().map(\.completionToken) == [run.completionToken])
     }
 
     @Test("a finished run is told to answer with the detail this call just delivered")
@@ -202,9 +199,8 @@ struct WaitToolTests {
         // mechanical right: it spent the wait, the run finished, nothing was
         // left going. Nothing in band told it that a promise is not a report,
         // and this is the moment it had the value in hand.
-        let mailbox = SessionMailbox()
-        let run = try await startScriptedRun(in: mailbox, detail: "the-collected-result")
-        await settle(run, in: mailbox)
+        let run = try await startScriptedRun(on: context, detail: "the-collected-result")
+        await settle(run, on: context)
 
         let finished = try await Self.waitCall(
             WaitArguments(completionToken: run.completionToken), against: mailbox
@@ -218,8 +214,7 @@ struct WaitToolTests {
     func aDeadlineThatElapsedCarriesNoAnswerDirective() async throws {
         // The directive names a `detail` this report carries. A report that
         // carries none would be telling the model to answer with nothing.
-        let mailbox = SessionMailbox()
-        let run = try await startScriptedRun(in: mailbox)
+        let run = try await startScriptedRun(on: context)
 
         let report = try await Self.waitCall(
             WaitArguments(completionToken: run.completionToken, timeout: 0.2), against: mailbox
@@ -231,9 +226,8 @@ struct WaitToolTests {
 
     @Test("waiting with no token waits for every pending run")
     func waitingWithNoTokenWaitsForEveryPendingRun() async throws {
-        let mailbox = SessionMailbox()
-        let first = try await startScriptedRun(in: mailbox, tool: "first", detail: "first-result")
-        let second = try await startScriptedRun(in: mailbox, tool: "second", detail: "second-result")
+        let first = try await startScriptedRun(on: context, tool: "first", detail: "first-result")
+        let second = try await startScriptedRun(on: context, tool: "second", detail: "second-result")
 
         // Both runs are going before the wait is issued, and both are held
         // open past it, so the call snapshots two pending runs and blocks on
@@ -241,8 +235,8 @@ struct WaitToolTests {
         // start after they were already over, which proves nothing.
         let settling = Task {
             try await Task.sleep(for: .milliseconds(200))
-            await settle(first, in: mailbox)
-            await settle(second, in: mailbox)
+            await settle(first, on: context)
+            await settle(second, on: context)
         }
         let collected = try await Self.waitCall(WaitArguments(), against: mailbox)
         try await settling.value
@@ -252,9 +246,8 @@ struct WaitToolTests {
 
     @Test("a session whose runs have all finished says so, and points at the answer")
     func aSessionWithNothingPendingSaysSo() async throws {
-        let mailbox = SessionMailbox()
-        let run = try await startScriptedRun(in: mailbox)
-        await settle(run, in: mailbox)
+        let run = try await startScriptedRun(on: context)
+        await settle(run, on: context)
 
         let report = try await Self.waitCall(WaitArguments(), against: mailbox)
 
@@ -269,8 +262,7 @@ struct WaitToolTests {
 
     @Test("a wait call never backgrounds itself, whatever mount the site puts it under")
     func waitNeverBackgroundsItself() async throws {
-        let mailbox = SessionMailbox()
-        let run = try await startScriptedRun(in: mailbox)
+        let run = try await startScriptedRun(on: context)
 
         // The harshest site mount there is: background, no clock. The tool
         // declares `synchronousUnbounded` itself, and a declaration wins over
@@ -285,7 +277,7 @@ struct WaitToolTests {
             ) as? any Tool<WaitArguments, String>
         )
 
-        let report = try await ToolContext.$current.withValue(backgroundRuns(over: mailbox)) {
+        let report = try await ToolContext.$current.withValue(context) {
             try await mounted.call(
                 arguments: WaitArguments(completionToken: run.completionToken, timeout: 0.2)
             )

@@ -236,7 +236,7 @@ struct ShellCapabilityTests {
         let searcher = MetadataSearcher(
             items: surface.entries,
             mode: .auto,
-            selection: SelectionConfig(model: { _, _ in selection }, capacityCharacterLimit: .max)
+            selection: SelectionConfig(model: { _ in selection }, capacityCharacterLimit: .max)
         )
         let searchTools = SearchToolsTool(searcher: searcher, limit: surface.entries.count)
 

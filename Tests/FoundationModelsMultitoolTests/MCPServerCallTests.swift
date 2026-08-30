@@ -198,7 +198,7 @@ struct MCPServerCallTests {
     @Test("a call against ScriptedServer returns the server's result")
     func aCallReturnsTheServersResult() async throws {
         let (scripted, server) = try await Self.connected(serving: [ScriptedServer.echoTool()])
-        let context = makeOuterRunContext(mailbox: SessionMailbox(), sink: RecordingEventSink())
+        let context = try await makeOuterRunContext()
 
         let result = try await Self.call(
             server, tool: ScriptedServer.echoToolName,
@@ -215,7 +215,7 @@ struct MCPServerCallTests {
     @Test("a result with isError returns as a value")
     func anIsErrorResultReturnsAsAValue() async throws {
         let (scripted, server) = try await Self.connected(serving: [Self.failingTool])
-        let context = makeOuterRunContext(mailbox: SessionMailbox(), sink: RecordingEventSink())
+        let context = try await makeOuterRunContext()
 
         let result = try await Self.call(server, tool: Self.failingToolName, under: context)
 
@@ -274,7 +274,7 @@ struct MCPServerCallTests {
     func aTransportDropMidCallThrowsLost() async throws {
         let (scripted, server) = try await Self.connected(serving: [])
         await scripted.addTransportDroppingTool(named: Self.droppingToolName)
-        let context = makeOuterRunContext(mailbox: SessionMailbox(), sink: RecordingEventSink())
+        let context = try await makeOuterRunContext()
 
         let thrown = await MCPCallProbe.thrownError {
             _ = try await Self.call(server, tool: Self.droppingToolName, under: context)
@@ -298,7 +298,6 @@ struct MCPServerCallTests {
         let registry = try MultiTool.Builder()
             .addTool(Self.probe(server, tool: Self.droppingToolName))
             .buildRegistry()
-        let mailbox = SessionMailbox()
         let mounted = try #require(
             ToolMounting.makeWrapped(
                 tool: MultiTool(registry: registry),
@@ -313,7 +312,7 @@ struct MCPServerCallTests {
 
         #expect(PendingRunEnvelope.isRendered(text: rendered), "answer was: \(rendered)")
         let envelope = try JSONDecoder().decode(PendingRunEnvelope.self, from: Data(rendered.utf8))
-        let settlement = await backgroundRuns(over: mailbox).wait(
+        let settlement = await context.wait(
             completionToken: envelope.completionToken, seconds: scriptedRunSettlementSeconds)
         guard case .settled(let terminal) = settlement else {
             Issue.record("the background run never settled: \(settlement)")
@@ -331,7 +330,7 @@ struct MCPServerCallTests {
     @Test("a call on a server that is not ready answers an isError result in band")
     func aCallOnAServerThatIsNotReadyAnswersInBand() async throws {
         let (scripted, server) = try await Self.connected(serving: [ScriptedServer.echoTool()])
-        let context = makeOuterRunContext(mailbox: SessionMailbox(), sink: RecordingEventSink())
+        let context = try await makeOuterRunContext()
         await server.disconnect()
 
         let result = try await Self.call(server, tool: ScriptedServer.echoToolName, under: context)

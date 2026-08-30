@@ -99,12 +99,12 @@ struct LostCallTests {
         }
         let server = MCPServer(name: Self.serverName)
         try await server.connect(via: respawning, backoffPolicy: .default)
-        let sink = RecordingEventSink()
-        let engine = try MCPCallProbe.mountedRunToCompletion(
+        let run = try await makeStubRun()
+        let engine = MCPCallProbe.mountedRunToCompletion(
             MCPCallProbeTool(
                 server: server, toolName: ScriptedServer.echoToolName,
                 callArguments: [ScriptedServer.echoTextArgument: .string(Self.echoText)]),
-            mailbox: SessionMailbox(), sink: sink)
+            on: run.context)
 
         await respawning.disconnect()
         try await TestPoll.waitUntil("the server noticed the drop") {
@@ -118,7 +118,11 @@ struct LostCallTests {
             Issue.record("expected MCPServerError.lost, got \(String(describing: thrown))")
             return
         }
-        let completed = await sink.events.filter { $0.kind == .completed }
+        // The terminal event is read off the session's own event stream:
+        // `SessionEvent.runSettled` carries a run's one terminal
+        // `OperationEvent`, and a host cannot inject a sink of its own.
+        let completed = await settledEvents(
+            on: run.session, count: Self.terminalEventCount)
         #expect(completed.count == Self.terminalEventCount)
         // `.lost` must never flatten into `.failed` in the shared envelope
         // vocabulary — the outcome is unknowable, not a reported failure.
@@ -143,7 +147,7 @@ struct LostCallTests {
         }
         let server = MCPServer(name: Self.serverName)
         try await server.connect(via: respawning, backoffPolicy: .default)
-        let context = makeOuterRunContext(mailbox: SessionMailbox(), sink: RecordingEventSink())
+        let context = try await makeOuterRunContext()
 
         let callTask = Task {
             try await ToolContext.$current.withValue(context) {

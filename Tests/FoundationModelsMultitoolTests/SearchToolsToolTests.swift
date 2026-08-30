@@ -24,7 +24,7 @@ struct SearchToolsToolTests {
         let searcher = MetadataSearcher(
             items: surface.entries,
             mode: .auto,
-            selection: SelectionConfig(model: { _, _ in root }, capacityCharacterLimit: .max)
+            selection: SelectionConfig(model: { _ in root }, capacityCharacterLimit: .max)
         )
         let searchToolsTool = SearchToolsTool(searcher: searcher, limit: surface.entries.count)
 
@@ -49,7 +49,7 @@ struct SearchToolsToolTests {
         let searcher = MetadataSearcher(
             items: surface.entries,
             mode: .auto,
-            selection: SelectionConfig(model: { _, _ in root }, capacityCharacterLimit: .max)
+            selection: SelectionConfig(model: { _ in root }, capacityCharacterLimit: .max)
         )
         let searchToolsTool = SearchToolsTool(searcher: searcher, limit: surface.entries.count)
 
@@ -77,7 +77,7 @@ struct SearchToolsToolTests {
         let searcher = MetadataSearcher(
             items: surface.entries,
             mode: .auto,
-            selection: SelectionConfig(model: { _, _ in root }, capacityCharacterLimit: .max)
+            selection: SelectionConfig(model: { _ in root }, capacityCharacterLimit: .max)
         )
         let searchToolsTool = SearchToolsTool(searcher: searcher, limit: surface.entries.count)
 
@@ -264,7 +264,7 @@ struct SearchToolsToolTests {
         let searcher = MetadataSearcher(
             items: surface.entries,
             mode: .auto,
-            selection: SelectionConfig(model: { _, _ in root }, capacityCharacterLimit: .max)
+            selection: SelectionConfig(model: { _ in root }, capacityCharacterLimit: .max)
         )
         let session = ScriptedAgentSession([Self.sampleReply])
         let tool = SearchToolsTool(
@@ -300,7 +300,7 @@ struct SearchToolsToolTests {
         let searcher = MetadataSearcher(
             items: surface.entries,
             mode: .auto,
-            selection: SelectionConfig(model: { _, _ in root }, capacityCharacterLimit: .max)
+            selection: SelectionConfig(model: { _ in root }, capacityCharacterLimit: .max)
         )
         let tool = SearchToolsTool(searcher: searcher, limit: surface.entries.count)
 

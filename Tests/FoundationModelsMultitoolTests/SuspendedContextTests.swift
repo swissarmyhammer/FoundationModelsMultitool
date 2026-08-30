@@ -271,7 +271,6 @@ struct SuspendedContextTests {
             registry: try Self.registry(exposing: gated),
             configuration: configuration
         )
-        let mailbox = SessionMailbox()
         let sink = RecordingEventSink()
         let mounted = ToolMounting.makeWrapped(
             tool: multiTool,
@@ -316,7 +315,7 @@ struct SuspendedContextTests {
     private static func settledTerminal(
         of completionToken: String, in mailbox: SessionMailbox
     ) async throws -> OperationEvent {
-        let settlement = await backgroundRuns(over: mailbox).wait(
+        let settlement = await context.wait(
             completionToken: completionToken, seconds: scriptedRunSettlementSeconds
         )
         guard case .settled(let terminal) = settlement else {

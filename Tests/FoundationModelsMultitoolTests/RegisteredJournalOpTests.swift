@@ -147,7 +147,7 @@ struct RegisteredJournalOpTests {
         let registry = try MultiTool.Builder()
             .register(noun: Self.demoNoun, tool: probe)
             .buildRegistry()
-        let context = makeOuterRunContext(mailbox: SessionMailbox(), sink: RecordingEventSink())
+        let context = try await makeOuterRunContext()
 
         try await Self.run(
             "return await tools.\(Self.demoNoun).\(Self.demoVerb)();",
@@ -165,7 +165,7 @@ struct RegisteredJournalOpTests {
         let registry = try MultiTool.Builder()
             .addTool(probe)
             .buildRegistry()
-        let context = makeOuterRunContext(mailbox: SessionMailbox(), sink: RecordingEventSink())
+        let context = try await makeOuterRunContext()
 
         try await Self.run("return await tools.\(Self.demoVerb)();", over: registry, under: context)
 
@@ -179,7 +179,7 @@ struct RegisteredJournalOpTests {
     @Test("a background tools.shell.execute run stands on the run plane under the op \"execute shell\"")
     func aBackgroundShellRunStandsOnTheRunPlaneUnderThePair() async throws {
         let registry = try Self.makeShellRegistry(in: scratch)
-        let context = makeOuterRunContext(mailbox: SessionMailbox(), sink: RecordingEventSink())
+        let context = try await makeOuterRunContext()
 
         try await Self.run(
             """
@@ -218,7 +218,7 @@ struct RegisteredJournalOpTests {
     func aShellRunCarriesThePairIntoItsOwnCall() async throws {
         let sandbox = JournalOpProbeSandbox()
         let registry = try Self.makeShellRegistry(in: scratch, sandbox: sandbox)
-        let context = makeOuterRunContext(mailbox: SessionMailbox(), sink: RecordingEventSink())
+        let context = try await makeOuterRunContext()
 
         try await Self.run(
             """
@@ -259,7 +259,7 @@ struct RegisteredJournalOpTests {
         let registry = try await MultiTool.Builder()
             .withMCP(servers: [server])
             .buildRegistry()
-        let context = makeOuterRunContext(mailbox: SessionMailbox(), sink: RecordingEventSink())
+        let context = try await makeOuterRunContext()
 
         let run = Task {
             try await Self.run(

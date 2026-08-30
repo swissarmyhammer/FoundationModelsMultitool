@@ -1,5 +1,6 @@
 import Foundation
 import FoundationModels
+import FoundationModelsExtras
 import FoundationModelsRouter
 
 // MARK: - Phase-1 sandbox-globals fixtures (eventplan.md § "The sandbox
@@ -284,12 +285,12 @@ func settle(_ run: ScriptedRun, on context: ToolContext) async {
 }
 
 /// An `OperationEventSink` that answers every elicitation it observes with one
-/// scripted response, delivering it through `mailbox` from inside its own
+/// scripted response, delivering it through `session` from inside its own
 /// `post(_:)`.
 ///
 /// Answering from inside the post is deliberate and is what makes the
 /// round-trip tests deterministic rather than timing-dependent:
-/// `SessionMailbox.awaitAnswer(to:posting:)` installs the pending entry
+/// Router installs the pending entry
 /// *before* it starts the upstream post, so an answer delivered the instant a
 /// host observes the event always finds that entry.
 ///
@@ -297,8 +298,8 @@ func settle(_ run: ScriptedRun, on context: ToolContext) async {
 /// so this sink follows it with `complete(elicitationId:)`, exactly as a real
 /// host's out-of-band flow would.
 actor ScriptedElicitationSink: OperationEventSink {
-    /// The mailbox every answer is delivered through.
-    private let mailbox: SessionMailbox
+    /// The session every answer is delivered through.
+    private let session: RoutedSession
 
     /// The answer this sink gives to every elicitation it observes.
     private let response: ElicitationResponse
@@ -318,10 +319,10 @@ actor ScriptedElicitationSink: OperationEventSink {
     /// response.
     ///
     /// - Parameters:
-    ///   - mailbox: the mailbox to deliver each answer through.
+    ///   - session: the session to deliver each answer through.
     ///   - response: the answer to give.
-    init(mailbox: SessionMailbox, answering response: ElicitationResponse) {
-        self.mailbox = mailbox
+    init(session: RoutedSession, answering response: ElicitationResponse) {
+        self.session = session
         self.response = response
     }
 
@@ -349,10 +350,12 @@ actor ScriptedElicitationSink: OperationEventSink {
     func post(event: OperationEvent) async {
         events.append(event)
         guard let request = event.elicitation else { return }
-        let delivery = await mailbox.respond(elicitationId: request.elicitationId, response)
+        let delivery = await session.respond(
+            elicitationId: request.elicitationId.description, response: response)
         deliveries.append(delivery)
         guard delivery == .acceptedAwaitingCompletion else { return }
-        completions.append(await mailbox.complete(elicitationId: request.elicitationId))
+        completions.append(
+            await session.complete(elicitationId: request.elicitationId.description))
     }
 
     /// The elicitation request carried by the first elicitation-kind event

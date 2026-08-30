@@ -44,7 +44,6 @@ struct HostAndEmitterTests {
             .addTool(GatedTool(latch: latch))
             .addTool(recorder)
             .buildRegistry()
-        let mailbox = SessionMailbox()
         let sink = RecordingEventSink()
         let sessionID = ULID()
         let mounted = try #require(
@@ -71,7 +70,7 @@ struct HostAndEmitterTests {
 
         let token = try JSONDecoder().decode(PendingRunEnvelope.self, from: Data(rendered.utf8)).completionToken
         latch.release()
-        let settlement = await backgroundRuns(over: mailbox)
+        let settlement = await context
             .wait(completionToken: token, seconds: scriptedRunSettlementSeconds)
         guard case .settled(let terminal) = settlement else {
             Issue.record("the background run never settled: \(settlement)")

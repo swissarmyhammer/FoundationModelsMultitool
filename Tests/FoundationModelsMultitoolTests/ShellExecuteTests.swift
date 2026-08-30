@@ -252,7 +252,7 @@ struct ShellExecuteTests {
     private func refusal(forEnvironmentValueLiteral valueLiteral: String) async throws -> String {
         let state = try makeState()
         let verb = makeVerb(over: state)
-        let context = makeOuterRunContext(mailbox: SessionMailbox(), sink: RecordingEventSink())
+        let context = try await makeOuterRunContext()
 
         let output = try await Self.call(
             verb,
@@ -299,7 +299,7 @@ struct ShellExecuteTests {
     func aShortCommandAnswersWithItsOutputInline() async throws {
         let state = try makeState()
         let verb = makeVerb(over: state)
-        let context = makeOuterRunContext(mailbox: SessionMailbox(), sink: RecordingEventSink())
+        let context = try await makeOuterRunContext()
 
         let output = try await Self.call(
             verb, ExecuteArguments(command: "echo \(Self.inlineMarker)"), under: context)
@@ -380,7 +380,7 @@ struct ShellExecuteTests {
     func aHostStreamReceivesTheChunksOfARunAndItsMarker() async throws {
         let stream = ShellOutputChunkStream()
         let verb = try makeVerb(teeing: stream)
-        let context = makeOuterRunContext(mailbox: SessionMailbox(), sink: RecordingEventSink())
+        let context = try await makeOuterRunContext()
         let token = context.completionToken
 
         _ = try await Self.call(
@@ -430,8 +430,7 @@ struct ShellExecuteTests {
     @Test("a mounted execute call always answers with the pending envelope, and the report settles behind it")
     func aMountedCallAlwaysAnswersWithThePendingEnvelope() async throws {
         let state = try makeState()
-        let mailbox = SessionMailbox()
-        let context = makeOuterRunContext(mailbox: mailbox, sink: RecordingEventSink())
+        let context = try await makeOuterRunContext()
         let engine = try ShellRunPlane.mounted(makeVerb(over: state), inheriting: context)
 
         let output = try await engine.call(
@@ -467,8 +466,7 @@ struct ShellExecuteTests {
     @Test("a mounted call answers with the run identifier and does not block")
     func aMountedCallAnswersWithTheIdentifierAndDoesNotBlock() async throws {
         let state = try makeState()
-        let mailbox = SessionMailbox()
-        let context = makeOuterRunContext(mailbox: mailbox, sink: RecordingEventSink())
+        let context = try await makeOuterRunContext()
         let engine = try ShellRunPlane.mounted(makeVerb(over: state), inheriting: context)
 
         let started = ContinuousClock.now
@@ -494,8 +492,7 @@ struct ShellExecuteTests {
     @Test("a background run stands in the run plane under RunKind.process")
     func aBackgroundRunStandsInTheRunPlaneAsAProcess() async throws {
         let state = try makeState()
-        let mailbox = SessionMailbox()
-        let context = makeOuterRunContext(mailbox: mailbox, sink: RecordingEventSink())
+        let context = try await makeOuterRunContext()
         let engine = try ShellRunPlane.mounted(makeVerb(over: state), inheriting: context)
 
         _ = try await engine.call(
@@ -521,8 +518,7 @@ struct ShellExecuteTests {
     @Test("cancel of a background run reports .stopped")
     func cancelOfABackgroundRunReportsStopped() async throws {
         let state = try makeState()
-        let mailbox = SessionMailbox()
-        let context = makeOuterRunContext(mailbox: mailbox, sink: RecordingEventSink())
+        let context = try await makeOuterRunContext()
         let engine = try ShellRunPlane.mounted(makeVerb(over: state), inheriting: context)
 
         _ = try await engine.call(
@@ -541,7 +537,7 @@ struct ShellExecuteTests {
     func aBlankCommandAnswersWithACorrection() async throws {
         let state = try makeState()
         let verb = makeVerb(over: state)
-        let context = makeOuterRunContext(mailbox: SessionMailbox(), sink: RecordingEventSink())
+        let context = try await makeOuterRunContext()
 
         let output = try await Self.call(verb, ExecuteArguments(command: "   "), under: context)
 
@@ -553,7 +549,7 @@ struct ShellExecuteTests {
     func anUnparsableEnvironmentAnswersWithACorrection() async throws {
         let state = try makeState()
         let verb = makeVerb(over: state)
-        let context = makeOuterRunContext(mailbox: SessionMailbox(), sink: RecordingEventSink())
+        let context = try await makeOuterRunContext()
 
         let output = try await Self.call(
             verb,
@@ -609,7 +605,7 @@ struct ShellExecuteTests {
     func aCommandOfExactlyTheCapRuns() async throws {
         let state = try makeState()
         let verb = makeVerb(over: state)
-        let context = makeOuterRunContext(mailbox: SessionMailbox(), sink: RecordingEventSink())
+        let context = try await makeOuterRunContext()
 
         let output = try await Self.call(
             verb,
@@ -626,7 +622,7 @@ struct ShellExecuteTests {
     func aCommandOneByteOverTheCapAnswersWithACorrection() async throws {
         let state = try makeState()
         let verb = makeVerb(over: state)
-        let context = makeOuterRunContext(mailbox: SessionMailbox(), sink: RecordingEventSink())
+        let context = try await makeOuterRunContext()
         let byteCount = Execute.maximumCommandLengthBytes + 1
 
         let output = try await Self.call(
@@ -646,7 +642,7 @@ struct ShellExecuteTests {
     func aMultiByteCommandOverTheByteCapAnswersWithACorrection() async throws {
         let state = try makeState()
         let verb = makeVerb(over: state)
-        let context = makeOuterRunContext(mailbox: SessionMailbox(), sink: RecordingEventSink())
+        let context = try await makeOuterRunContext()
         let command = String(
             repeating: Self.fourByteCharacter, count: Self.multiByteCommandCharacterCount)
 
