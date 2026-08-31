@@ -1,5 +1,7 @@
 import Testing
 
+import ScenarioGrading
+
 /// The background-in-code-mode scenario — eventplan.md's phase-1 exit
 /// proof that the two surfaces really do meet on real hardware: a snippet that
 /// goes to the background hands the model a pending envelope,

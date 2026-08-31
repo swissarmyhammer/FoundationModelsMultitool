@@ -4,6 +4,7 @@ import Testing
 import FoundationModelsRouter
 
 @testable import FoundationModelsMultitool
+import ScenarioGrading
 
 // MARK: - The shell background scenario
 //

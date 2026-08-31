@@ -116,6 +116,15 @@ let package = Package(
                 // `testConcurrencyTargetName`. `liveProfileTurnstile` is one of
                 // them, and it holds this target to one resident live profile.
                 .product(name: "TestConcurrency", package: productPackageName),
+                // The model-free half of this suite's own harness, a third
+                // test-support product of the root package —
+                // `../Package.swift`'s `scenarioGradingTargetName`. It carries
+                // the fixture tools every scenario below mounts, their call
+                // log, the readers over one run's record, the failure-mode
+                // instrument and the grading rules. The root package grades
+                // those rules on each commit; this target drives them against
+                // a real model.
+                .product(name: "ScenarioGrading", package: productPackageName),
                 .product(name: routerDependencyName, package: routerDependencyName),
                 .product(name: metadataRegistryDependencyName, package: metadataRegistryDependencyName),
                 .product(name: "MLXLMCommon", package: mlxPackage),

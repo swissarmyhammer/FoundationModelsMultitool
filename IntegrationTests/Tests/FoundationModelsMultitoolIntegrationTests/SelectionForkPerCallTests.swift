@@ -3,6 +3,7 @@ import Testing
 
 import FoundationModelsRouter
 @testable import FoundationModelsMultitool
+import ScenarioGrading
 
 /// How many `searchTools` calls the scenario makes, and therefore how many
 /// `fork()`s of the selection tier's cached root it must produce.

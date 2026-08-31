@@ -1,5 +1,7 @@
 import Testing
 
+import ScenarioGrading
+
 /// The gated async fan-out scenario — eventplan.md's phase-1 exit proof that
 /// the "each call that goes into Swift effects returns a promise" contract
 /// composes: two independent fixture tools have no ordering between them, so

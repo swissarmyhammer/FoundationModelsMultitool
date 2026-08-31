@@ -1,6 +1,7 @@
 import Testing
 
 @testable import FoundationModelsMultitool
+import ScenarioGrading
 
 /// Ungated coverage for the verdicts a gated scenario is graded on —
 /// `scenarioChecks(for:answerContainsOneOf:answerMustNotContain:groundedIn:)`
@@ -170,8 +171,8 @@ struct ScenarioGradingTests {
         let checks = nestedGenerationChecks(
             for: NestedGenerationEvidence(
                 answer: Self.replyReportingTheReadinessToken,
-                enteredPaths: [IntegrationNestedGenerationTool.path],
-                returnedPaths: [IntegrationNestedGenerationTool.path]
+                enteredPaths: [integrationNestedGenerationPath],
+                returnedPaths: [integrationNestedGenerationPath]
             )
         )
 
@@ -206,7 +207,7 @@ struct ScenarioGradingTests {
         let checks = nestedGenerationChecks(
             for: NestedGenerationEvidence(
                 answer: "",
-                enteredPaths: [IntegrationNestedGenerationTool.path],
+                enteredPaths: [integrationNestedGenerationPath],
                 returnedPaths: []
             )
         )

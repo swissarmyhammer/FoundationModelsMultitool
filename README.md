@@ -54,6 +54,28 @@ nothing but the tools you gave it. The guarantees and the escape hatches are
 written down in [`docs/SECURITY.md`](docs/SECURITY.md) — read that before
 mounting the shell capability.
 
+### Injected globals
+
+The only globals beyond JavaScriptCore's standard ECMAScript environment that
+a fresh `runCode` sandbox can reach:
+
+- `console`
+- `tools`
+- `help`
+- `docs`
+- `status`
+- `wait`
+- `cancel`
+- `elicit`
+- `notify`
+- `progress`
+
+This list is not documentation alone. `HardeningTests` parses it out of this
+file and asserts it is set-equal to the globals the sandbox enumerates at
+runtime, so a global added to the code and not to this list fails the suite.
+Do not delete or reword the list items. [`docs/SECURITY.md`](docs/SECURITY.md)
+says what each one guarantees.
+
 ## Documentation
 
 - [`docs/SECURITY.md`](docs/SECURITY.md) — the sandbox contract: what a snippet

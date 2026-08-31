@@ -2,6 +2,7 @@ import Testing
 
 import FoundationModels
 @testable import FoundationModelsMultitool
+import ScenarioGrading
 
 /// Ungated coverage for the premises the gated scenarios grade on
 /// (`Fixtures/ScenarioTools.swift`).

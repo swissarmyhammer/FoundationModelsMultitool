@@ -2,6 +2,8 @@ import Foundation
 import Testing
 
 import FoundationModels
+import ScenarioGrading
+@testable import FoundationModelsMultitool
 // `@testable` for one reason, and only the nested-generation probe needs it:
 // `RoutedModel.generationGate` and `AsyncSemaphore`'s `availablePermits` /
 // `waiterCount` are `internal`, and they are the direct reading of the deadlock
@@ -46,7 +48,6 @@ func primingLabel(_ turn: StreamedTurn) -> String {
 /// `DiscoveryPriming(tool: MultiTool.searchToolsPath, queryProperty:
 /// MultiTool.searchToolsTaskField)` to measure the primed arm again.
 let scenarioDiscoveryPriming: DiscoveryPriming? = nil
-@testable import FoundationModelsMultitool
 
 /// Runs one gated scenario end to end against a freshly-resolved live
 /// profile, using the session-driven design — no `MultiToolAgent`, no
@@ -623,22 +624,6 @@ func streamTurn(of session: RoutedSession, prompt: String) async throws -> Strea
     return turn
 }
 
-/// Both spellings of one integer a model may write in prose: the bare digits
-/// and the locale's grouped form (`41,739`).
-///
-/// A grounded answer is graded on the value it carries, never on how the model
-/// chose to punctuate it, so every scenario whose distinctive fixture value is
-/// a number offers both candidates to `answerContainsOneOf`. Observed on real
-/// hardware: a background run collected the backgrounded scan correctly and answered
-/// "exactly **41,739**" — the right value, spelled the way prose spells it —
-/// and was failed by an assertion that only accepted `41739`.
-///
-/// - Parameter value: the fixture value the answer must carry.
-/// - Returns: the candidate substrings for `answerContainsOneOf`.
-func integerAnswers(for value: Int) -> [String] {
-    ["\(value)", value.formatted(.number.grouping(.automatic))]
-}
-
 // MARK: - Shared scenario plumbing
 
 /// Resolves one live fixture, runs `body` against it, and releases it on every
@@ -679,12 +664,10 @@ func withLiveRouterFixture(
     }
 }
 
-
 /// The model-facing tool surface one scenario drives, and the catalog
 /// behind it.
 private struct ScenarioSurface {
-    
-/// The tools to register with the session, in the mount order the
+    /// The tools to register with the session, in the mount order the
     /// registry itself vends.
     let tools: [any Tool]
 
@@ -761,25 +744,7 @@ private func makeScenarioSurface(
     )
 }
 
-// MARK: - Per-scenario grading and measurement
-
-/// One graded condition in a gated scenario's verdict.
-///
-/// A scenario's conditions are collected before any of them is asserted, so
-/// the same list drives both the recorded expectations and the per-scenario
-/// `SCENARIO` line — the verdict a run reports can never drift from the
-/// verdict it enforces.
-struct ScenarioCheck {
-    /// The short label naming this condition on the `SCENARIO` line.
-    let name: String
-
-    /// Whether the condition held on this run.
-    let held: Bool
-
-    /// What to say when it did not — the scenario label is prefixed by
-    /// `grade(scenario:checks:)`.
-    let failureMessage: String
-}
+// MARK: - Reporting one run's verdict
 
 /// Reports one scenario's verdict, then records an issue for each condition
 /// that did not hold.
@@ -806,169 +771,6 @@ func grade(scenario name: String, checks: [ScenarioCheck]) {
     for check in checks {
         #expect(check.held, "[\(name)] \(check.failureMessage)")
     }
-}
-
-/// The label of the check that grades the reply's *form* — the one
-/// `ScenarioFailureModes` reads to tell a wrong-form answer from a right
-/// one.
-let validAnswerCheckName = "validAnswer"
-
-/// The label of the check that grades the reply as carrying none of the
-/// phrasings that invalidate it, even when a required substring matched.
-let answerNotInvalidatedCheckName = "answerNotInvalidated"
-
-/// The label of the check that grades the answer as grounded in the returns it
-/// depends on.
-let groundedCheckName = "grounded"
-
-/// The label of the check that grades a background `runCode` call as having
-/// handed a pending envelope back.
-let pendingEnvelopeCheckName = "pendingEnvelope"
-
-/// The label of the check that grades the model as having collected its own
-/// background run in band, with a `wait` call of its own.
-let inBandCollectionCheckName = "inBandCollection"
-
-/// The label of the check that grades no background run as still running at the
-/// instant the model's first turn ended.
-let noBackgroundRunsAtAnswerCheckName = "noBackgroundRunsAtAnswer"
-
-/// The label of the check that grades no background run as still running at the
-/// instant `respond(to:)` returned.
-let noBackgroundRunsAfterRespondCheckName = "noBackgroundRunsAfterRespond"
-
-/// The label of the check that grades the nested-generation probe's tool as
-/// having been entered at all.
-let nestedCallEnteredCheckName = "nestedCallEntered"
-
-/// The label of the check that grades the nested, ungrammared generation as
-/// having come back.
-let nestedGenerationReturnedCheckName = "nestedGenerationReturned"
-
-/// Everything one native scenario run produced that its verdict is graded on.
-///
-/// Three signals, three different questions, deliberately kept apart: the typed
-/// paths are what the model *wrote* into its snippets, read off the transcript;
-/// the invoked paths are what a fixture tool actually *entered*; the returned
-/// paths are what handed a value back. Only the first was ever measured, and it
-/// answered the other two wrongly (task `0981ar3`).
-///
-/// Distinct from `ScenarioObservation`, which the failure-mode instrument
-/// reads: that record carries `isValidAnswer`, which is read *off* this
-/// verdict, so the verdict cannot take it as input.
-struct ScenarioEvidence {
-    /// The model's final reply.
-    let answer: String
-
-    /// The `tools.*` paths the run's `runCode` snippets wrote — `NativeTranscript.typedToolPaths(in:)`.
-    ///
-    /// Reported in the grounding condition's failure message, and never graded
-    /// on: a path the model merely typed never ran.
-    let typedPaths: Set<String>
-
-    /// The `tools.*` paths a fixture tool entered — `ScenarioCallLog.invokedPaths`.
-    ///
-    /// Reported in the grounding condition's failure message, and never graded
-    /// on: a call that entered and then threw handed the snippet an error
-    /// rather than data.
-    let invokedPaths: Set<String>
-
-    /// The `tools.*` paths whose call handed a value back — `ScenarioCallLog.returnedPaths`.
-    let returnedPaths: Set<String>
-}
-
-/// Grades one native scenario run into the conditions its verdict is the
-/// conjunction of.
-///
-/// Separate from the run that produced the evidence so the grading rule is
-/// checkable without live inference: `ScenarioGradingTests` grades evidence
-/// built from real fixture calls and asserts which conditions hold, so the
-/// gated `SCENARIO` line rests on a rule that has itself been tested. The rule
-/// this replaced was checkable only by reading a gated run's output, and it
-/// passed a recorded run whose answer nothing it fetched could support (task
-/// `0981ar3`).
-///
-/// - Parameters:
-///   - evidence: what the run produced.
-///   - answerContainsOneOf: candidate substrings, at least one of which the
-///     reply must contain case-insensitively.
-///   - answerMustNotContain: substrings whose case-insensitive presence
-///     invalidates the reply even when a required substring matched.
-///   - groundedIn: the `tools.*` paths whose returns this scenario's answer
-///     depends on. Must not be empty: an empty declaration would grade every
-///     run as grounded, including one that called nothing.
-/// - Returns: every condition this run is graded on, in reporting order.
-func scenarioChecks(
-    for evidence: ScenarioEvidence,
-    answerContainsOneOf: [String],
-    answerMustNotContain: [String],
-    groundedIn: Set<String>
-) -> [ScenarioCheck] {
-    precondition(
-        !groundedIn.isEmpty,
-        """
-        a scenario must declare the tools.* returns its answer depends on; an empty declaration grades \
-        every run as grounded, including one that called nothing
-        """
-    )
-    var checks = answerChecks(
-        evidence.answer,
-        containsOneOf: answerContainsOneOf,
-        mustNotContain: answerMustNotContain
-    )
-    checks.append(
-        ScenarioCheck(
-            name: groundedCheckName,
-            // Containment, not emptiness: the question is whether the values
-            // this answer depends on were fetched, not whether anything came
-            // back at all. The rule this replaced asked the second question
-            // and passed a run that held the itinerary and named the warmest
-            // city off it.
-            held: groundedIn.isSubset(of: evidence.returnedPaths),
-            failureMessage:
-                "expected the answer to be grounded in what \(groundedIn.sorted()) returned, but only "
-                + "\(evidence.returnedPaths.sorted()) returned (\(evidence.invokedPaths.sorted()) were "
-                + "invoked at all, and the snippets wrote \(evidence.typedPaths.sorted()))"
-        )
-    )
-    return checks
-}
-
-/// Grades one scenario's reply as a valid answer: it carries at least one
-/// required substring, and none of the phrasings that would invalidate it.
-///
-/// - Parameters:
-///   - answer: the model's final reply.
-///   - containsOneOf: candidate substrings, at least one of which `answer`
-///     must contain case-insensitively.
-///   - mustNotContain: substrings whose case-insensitive presence invalidates
-///     `answer` even when a required substring matched. An empty list adds no
-///     check rather than a vacuously true one.
-/// - Returns: the answer-content checks, ready to extend with the scenario's
-///   own.
-private func answerChecks(
-    _ answer: String,
-    containsOneOf: [String],
-    mustNotContain: [String]
-) -> [ScenarioCheck] {
-    var checks = [
-        ScenarioCheck(
-            name: validAnswerCheckName,
-            held: containsOneOf.contains { answer.localizedCaseInsensitiveContains($0) },
-            failureMessage: "expected the answer to contain one of \(containsOneOf), got \"\(answer)\""
-        )
-    ]
-    let invalidating = mustNotContain.filter { answer.localizedCaseInsensitiveContains($0) }
-    if !mustNotContain.isEmpty {
-        checks.append(
-            ScenarioCheck(
-                name: answerNotInvalidatedCheckName,
-                held: invalidating.isEmpty,
-                failureMessage: "the answer contains \(invalidating), which invalidates it: \"\(answer)\""
-            )
-        )
-    }
-    return checks
 }
 
 /// Prints the standard note for a scenario skipped because this environment
@@ -1334,114 +1136,6 @@ func runInBandCollectionCanaryScenario(
     }
 }
 
-/// Everything one in-band collection canary run produced that its verdict is
-/// graded on.
-///
-/// Collected into one value so `inBandCollectionChecks(for:answerContainsOneOf:
-/// groundedIn:)` grades a record rather than five loose arguments, and so the
-/// printed line and the assertions read the same record.
-///
-/// Built from plain values a test can write down, which is what lets
-/// `ScenarioGradingTests` grade the recorded gated run and its inverse without
-/// live inference — the canary's whole worth is in which conditions fire, and a
-/// rule only a 30GB model can exercise is a rule that rots.
-struct InBandCollectionEvidence {
-    /// The model's final reply — the last drained turn's, when the drain ran one.
-    let answer: String
-
-    /// The tools owning the runs still going at the instant the model's first
-    /// turn ended.
-    ///
-    /// The owning tools' names rather than the `BackgroundRun` rows themselves, for
-    /// the reason `ScenarioEvidence` carries paths: a `BackgroundRun` is Router's
-    /// own type — its spelling, for the row this package calls a background run
-    /// — and its memberwise initializer is internal to that module, so a record
-    /// built from rows could be graded only by a live run. The name is all the
-    /// verdict and the diagnostic line ever read.
-    let backgroundRunsAtAnswer: [String]
-
-    /// The tools owning the runs still going when `respond(to:)` returned.
-    let backgroundRunsAfterRespond: [String]
-
-    /// The `tools.*` paths a fixture tool handed a value back from.
-    let returnedPaths: Set<String>
-
-    /// How many `wait` calls the model made — the whole of the in-band
-    /// collection surface, so any call at all is the model collecting its own
-    /// run and none is something else having collected it.
-    let waitCalls: Int
-}
-
-/// Grades one in-band collection canary run into the conditions its verdict is
-/// the conjunction of.
-///
-/// Two of them are the canary proper — `inBandCollection` and
-/// `noBackgroundRunsAtAnswer` — and their failure messages say what a failure
-/// means rather than only what was expected, because that reading is the whole
-/// reason the scenario is run. The other three keep the canary from asserting
-/// that nothing happened: the answer must be a valid one, grounded in the
-/// rebuild's own return, with no background run left on the way out.
-///
-/// - Parameters:
-///   - evidence: what the run produced.
-///   - answerContainsOneOf: candidate substrings, at least one of which the
-///     reply must contain case-insensitively.
-///   - groundedIn: the `tools.*` paths whose returns the answer depends on.
-/// - Returns: every condition this run is graded on, in reporting order.
-func inBandCollectionChecks(
-    for evidence: InBandCollectionEvidence,
-    answerContainsOneOf: [String],
-    groundedIn: Set<String>
-) -> [ScenarioCheck] {
-    var checks = answerChecks(evidence.answer, containsOneOf: answerContainsOneOf, mustNotContain: [])
-    checks.append(
-        ScenarioCheck(
-            name: groundedCheckName,
-            held: groundedIn.isSubset(of: evidence.returnedPaths),
-            failureMessage:
-                "expected the answer to be grounded in what \(groundedIn.sorted()) returned, but "
-                + "only \(evidence.returnedPaths.sorted()) returned"
-        )
-    )
-    checks.append(
-        ScenarioCheck(
-            name: inBandCollectionCheckName,
-            held: evidence.waitCalls > 0,
-            failureMessage:
-                "expected the model to collect its own background run with a `wait` call — the "
-                + "only in-band collector, and the path every host's own tooling advises (Router's "
-                + "`^466d38p`) — but it made none. Read `\(noBackgroundRunsAtAnswerCheckName)` "
-                + "beside this: if "
-                + "that failed too, the turn ended with work in flight and Router's drain is what "
-                + "collected it"
-        )
-    )
-    checks.append(
-        ScenarioCheck(
-            name: noBackgroundRunsAtAnswerCheckName,
-            held: evidence.backgroundRunsAtAnswer.isEmpty,
-            failureMessage:
-                "expected no background run at the instant the model's first turn ended, but "
-                + "\(evidence.backgroundRunsAtAnswer) were still running — the turn ended with "
-                + "work in flight, so Router's respond drain, not the model, is what collected "
-                + "it. That is "
-                + "the condition `^466d38p` says no host can reach, so task `^xeqs138`'s question "
-                + "reopens: the drain is running for real and nothing in this target covers it. "
-                + "Do not relax this check to make the run green"
-        )
-    )
-    checks.append(
-        ScenarioCheck(
-            name: noBackgroundRunsAfterRespondCheckName,
-            held: evidence.backgroundRunsAfterRespond.isEmpty,
-            failureMessage:
-                "expected no background run when respond returned, but "
-                + "\(evidence.backgroundRunsAfterRespond) were still running"
-        )
-    )
-    return checks
-}
-
 /// Snapshots the session's background runs at the end of the model's first
 /// turn.
 ///
@@ -1527,61 +1221,6 @@ private func sampleGenerationGate(on slot: RoutedLLM) async {
         print("GATE permits=\(gate.availablePermits) waiters=\(gate.waiterCount)")
         try? await Task.sleep(for: generationGateSampleInterval)
     }
-}
-
-/// Everything one nested-generation probe run produced that its verdict is
-/// graded on.
-///
-/// Both fields are read off the run's own `ScenarioCallLog`, and they are two
-/// different questions. `enteredPaths` says the probe measured anything at all
-/// — a model that never called the tool leaves a run with nothing in it, and
-/// that must fail rather than pass vacuously. `returnedPaths` says the nested
-/// call *came back*, which is the whole subject.
-///
-/// Plain values a test can write down, for `InBandCollectionEvidence`'s reason:
-/// the grading rule is then exercised without live inference.
-struct NestedGenerationEvidence {
-    /// The model's final reply.
-    let answer: String
-
-    /// The `tools.*` paths a fixture tool entered, recorded on the way in —
-    /// `ScenarioCallLog.enteredPaths`, never `invokedPaths`.
-    let enteredPaths: Set<String>
-
-    /// The `tools.*` paths a fixture tool handed a value back from.
-    let returnedPaths: Set<String>
-}
-
-/// Grades one nested-generation probe run into the conditions its verdict is
-/// the conjunction of.
-///
-/// - Parameter evidence: what the run produced.
-/// - Returns: every condition this run is graded on, in reporting order.
-func nestedGenerationChecks(for evidence: NestedGenerationEvidence) -> [ScenarioCheck] {
-    let path = IntegrationNestedGenerationTool.path
-    return [
-        ScenarioCheck(
-            name: nestedCallEnteredCheckName,
-            held: evidence.enteredPaths.contains(path),
-            failureMessage:
-                "expected the model to call `\(path)`, the one tool mounted, but it called nothing "
-                + "— so this run measured neither a hang nor a return, and says nothing about "
-                + "either explanation. Read the CALL lines: a run with none is a prompt problem, "
-                + "not a verdict"
-        ),
-        ScenarioCheck(
-            name: nestedGenerationReturnedCheckName,
-            held: evidence.returnedPaths.contains(path),
-            failureMessage:
-                "`\(path)` was entered and handed no value back, so its nested ungrammared "
-                + "`respond` did not come back. Read the `GATE` lines to say which way: "
-                + "`permits=0 waiters=1` held to the end is the generation-gate deadlock — the "
-                + "outer turn holding the permit `beginTurn()` took, the nested `respond` parked "
-                + "on `generationGate.wait()` — and it is what the first gated run of this probe "
-                + "measured. Any other gate reading means the call threw instead, which is a "
-                + "third thing and belongs to neither explanation"
-        ),
-    ]
 }
 
 /// Runs the nested-generation probe: one turn whose single mounted tool

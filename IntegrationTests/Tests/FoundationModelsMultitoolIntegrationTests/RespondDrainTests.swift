@@ -2,6 +2,7 @@ import Foundation
 import Testing
 
 @testable import FoundationModelsMultitool
+import ScenarioGrading
 
 /// The gated proof that `respond(to:)` self-drains its own background runs
 /// (task `^n6kgckr`).

@@ -1,6 +1,7 @@
 import Testing
 
 @testable import FoundationModelsMultitool
+import ScenarioGrading
 
 /// The gated real-model suite: the four sample MultiTools scenarios,
 /// retargeted at the shipped host contract — the tools
@@ -14,7 +15,7 @@ import Testing
 /// documentation for the exact assertions and why route assertions
 /// (tool ordering, exact call sets, call budgets) were retired in favor of
 /// diagnostics. The `answerContainsOneOf` values below are the fixtures'
-/// own distinctive data (`Fixtures/ScenarioTools.swift`), read from those
+/// own distinctive data (`ScenarioGrading`'s `ScenarioTools.swift`), read from those
 /// fixtures rather than restated here: `IntegrationScenarioAnswers` derives
 /// both the single-call reading and the one warmest trip city from
 /// `integrationCityWeather`, and the booking fixture confirms id 42 only

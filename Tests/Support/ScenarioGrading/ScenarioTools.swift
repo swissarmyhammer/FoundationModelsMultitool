@@ -2,34 +2,47 @@ import Foundation
 import FoundationModels
 import FoundationModelsRouter
 
-@testable import FoundationModelsMultitool
-
 // MARK: - Scenario 1: single-call `getWeather` (plan.md M6.5 scenario 1)
 
 /// `IntegrationWeatherTool`'s arguments.
 @Generable
-struct IntegrationWeatherArguments {
+public struct IntegrationWeatherArguments {
+    /// The city to read, as an IATA code or as a spelled-out name.
     @Guide(description: "IATA city code or city name.")
-    var city: String
+    public var city: String
+
+    /// Creates the arguments for one `getWeather` call.
+    ///
+    /// Explicit because a `public` struct's synthesized memberwise
+    /// initializer is `internal` only, and both test targets call this fixture
+    /// directly as well as through a model.
+    ///
+    /// - Parameter city: the IATA code or spelled-out name to resolve.
+    public init(city: String) {
+        self.city = city
+    }
 }
 
 /// `IntegrationWeatherTool`'s output.
 @Generable(description: "current conditions.")
-struct IntegrationWeatherResult {
-    var tempC: Double
-    var summary: String
+public struct IntegrationWeatherResult {
+    /// The city's temperature, in °C.
+    public var tempC: Double
+
+    /// A short description of the conditions.
+    public var summary: String
 }
 
 /// One trip city's fixture weather reading.
-struct IntegrationCityWeather {
+public struct IntegrationCityWeather: Sendable {
     /// The IATA code `IntegrationTripTool` reports this city by.
-    let code: String
+    public let code: String
 
     /// The city's spelled-out name, which models routinely expand codes to.
-    let name: String
+    public let name: String
 
     /// The city's temperature, in °C.
-    let tempC: Double
+    public let tempC: Double
 }
 
 /// The trip cities' fixture weather readings, in itinerary order.
@@ -48,7 +61,7 @@ struct IntegrationCityWeather {
 /// warmest one. Raising a temperature therefore moves that scenario onto
 /// another city instead of leaving it grading a reading that stopped being
 /// the one it asks about.
-let integrationCityWeather: [IntegrationCityWeather] = [
+public let integrationCityWeather: [IntegrationCityWeather] = [
     IntegrationCityWeather(code: "ATX", name: "Austin", tempC: 31),
     IntegrationCityWeather(code: "SFO", name: "San Francisco", tempC: 34),
     IntegrationCityWeather(code: "NYC", name: "New York", tempC: 22),
@@ -66,7 +79,7 @@ let integrationCityWeather: [IntegrationCityWeather] = [
 /// while the assertion still looked derived — the unearned pass the human
 /// ruling of 2026-08-07 on task `tkrdwb8` removed. A fixture edit that
 /// reintroduces a tie now traps here.
-let integrationWarmestCity: IntegrationCityWeather = {
+public let integrationWarmestCity: IntegrationCityWeather = {
     let byDescendingTemperature = integrationCityWeather.sorted { $0.tempC > $1.tempC }
     precondition(
         byDescendingTemperature.count >= 2,
@@ -93,7 +106,7 @@ let integrationWarmestCity: IntegrationCityWeather = {
 /// Deriving the city means raising its temperature past every other reading
 /// moves scenario 1 onto a different city, instead of silently collapsing the
 /// two questions into one.
-let integrationSingleCallCity: IntegrationCityWeather = {
+public let integrationSingleCallCity: IntegrationCityWeather = {
     guard let city = integrationCityWeather.first(where: { $0.code != integrationWarmestCity.code }) else {
         preconditionFailure("integrationCityWeather has no reading other than the warmest one")
     }
@@ -123,16 +136,16 @@ private func integrationTemperatureAnswer(_ tempC: Double) -> String {
 /// reading past the others would have made scenario 1's temperature and the
 /// warmest-city answer describe the same city without anything noticing. The
 /// derivation below traps on any overlap.
-enum IntegrationScenarioAnswers {
+public enum IntegrationScenarioAnswers {
     /// The only valid answers to scenario 1's question, "how warm is it in
     /// `integrationSingleCallCity`": that city's own reading.
-    static let singleCall = derived.singleCall
+    public static let singleCall = derived.singleCall
 
     /// The only valid answers to the compose/chain and discovery scenarios'
     /// shared question, "which trip city is warmest": the single warmest
     /// fixture city, by IATA code and by the spelled-out name models routinely
     /// expand codes to. Any other city is wrong.
-    static let warmestCity = derived.warmestCity
+    public static let warmestCity = derived.warmestCity
 
     /// Both answer sets, derived in one place so the distinctness check below
     /// runs whenever either set is read.
@@ -176,14 +189,14 @@ enum IntegrationScenarioAnswers {
 /// a bad argument earns, rather than only that some error was thrown — the two
 /// cases describe different defects and a test that conflates them would pass
 /// while one of them regressed into the other.
-enum IntegrationWeatherError: Error, Equatable, CustomStringConvertible {
+public enum IntegrationWeatherError: Error, Equatable, CustomStringConvertible {
     /// No fixture reading matches the requested city.
     case unknownCity(String)
 
     /// The requested city matches more than one fixture reading, named here.
     case ambiguousCity(String, matches: [String])
 
-    var description: String {
+    public var description: String {
         let known = integrationCityWeather.map { "\($0.code) (\($0.name))" }.joined(separator: ", ")
         switch self {
         case .unknownCity(let city):
@@ -205,19 +218,30 @@ private func integrationCityKey(_ city: String) -> String {
 
 /// The one obvious tool scenario 1 asserts the model finds and calls,
 /// rather than hallucinating an answer — plan.md M6.5 scenario 1.
-struct IntegrationWeatherTool: Tool {
+public struct IntegrationWeatherTool: Tool {
     /// The `tools.*` path this fixture mounts under.
     ///
     /// Declared at the type level so a scenario can name the path its answer
     /// depends on — see `IntegrationScenarioGrounding` — without spelling the
     /// string a second time somewhere a rename would not reach.
-    static let path = "getWeather"
+    public static let path = "getWeather"
 
-    let name = IntegrationWeatherTool.path
-    let description = "Current weather for a city. Use when asked how warm/cold/rainy it is right now."
+    public let name = IntegrationWeatherTool.path
+    public let description = "Current weather for a city. Use when asked how warm/cold/rainy it is right now."
 
     /// The scenario run's call log every invocation of this tool records itself in.
     let log: ScenarioCallLog
+
+    /// Creates the weather fixture, recording into `log`.
+    ///
+    /// Explicit because a `public` struct's synthesized memberwise
+    /// initializer is `internal` only, and `IntegrationWeatherTool` is mounted from
+    /// both test targets.
+    ///
+    /// - Parameter log: the scenario run's call log this tool records into.
+    public init(log: ScenarioCallLog) {
+        self.log = log
+    }
 
     /// Reports the fixture reading for the one city `arguments` names.
     ///
@@ -236,7 +260,7 @@ struct IntegrationWeatherTool: Tool {
     /// - Throws: `IntegrationWeatherError.unknownCity` when no reading
     ///   resolves, `IntegrationWeatherError.ambiguousCity` when more than one
     ///   does.
-    func call(arguments: IntegrationWeatherArguments) async throws -> IntegrationWeatherResult {
+    public func call(arguments: IntegrationWeatherArguments) async throws -> IntegrationWeatherResult {
         try await log.recordCall(to: name) {
             let requested = integrationCityKey(arguments.city)
             let matches = integrationCityWeather.filter { city in
@@ -262,9 +286,22 @@ struct IntegrationWeatherTool: Tool {
 /// stands in for "no arguments", mirroring the main test target's own
 /// `NoArguments` fixture (a distinct module, so redeclared here).
 @Generable
-struct IntegrationNoArguments {
+public struct IntegrationNoArguments {
+    /// The field that stands in for "no arguments". It carries nothing, and a
+    /// caller writing these arguments by hand passes `nil`.
     @Guide(description: "unused.")
-    var unused: String?
+    public var unused: String?
+
+    /// Creates the arguments for a tool that takes nothing.
+    ///
+    /// Explicit because a `public` struct's synthesized memberwise
+    /// initializer is `internal` only.
+    ///
+    /// - Parameter unused: the field that stands in for "no arguments"; a
+    ///   caller writing these arguments by hand passes `nil`.
+    public init(unused: String?) {
+        self.unused = unused
+    }
 }
 
 /// `IntegrationTripTool`'s output — a whole trip, not just its cities.
@@ -281,29 +318,49 @@ struct IntegrationNoArguments {
 /// naming it costs no reading. Five fields make the declaration something a
 /// snippet has to consult.
 @Generable(description: "the user's current trip.")
-struct IntegrationTripOutput {
-    var confirmationCode: String
-    var traveler: String
-    var startDate: String
-    var endDate: String
-    var cities: [String]
+public struct IntegrationTripOutput {
+    /// The trip's booking reference.
+    public var confirmationCode: String
+
+    /// The traveler's name.
+    public var traveler: String
+
+    /// The first day of the trip, as `YYYY-MM-DD`.
+    public var startDate: String
+
+    /// The last day of the trip, as `YYYY-MM-DD`.
+    public var endDate: String
+
+    /// The trip's cities, by IATA code, in itinerary order.
+    public var cities: [String]
 }
 
 /// The first half of the compose/chain scenario.
-struct IntegrationTripTool: Tool {
+public struct IntegrationTripTool: Tool {
     /// The `tools.*` path this fixture mounts under.
     ///
     /// Declared at the type level for the same reason as
     /// `IntegrationWeatherTool.path`: the compose and discovery scenarios name
     /// it in what their answer depends on.
-    static let path = "getTrip"
+    public static let path = "getTrip"
 
-    let name = IntegrationTripTool.path
-    let description = "The user's current trip: its cities in itinerary order, plus its dates, "
+    public let name = IntegrationTripTool.path
+    public let description = "The user's current trip: its cities in itinerary order, plus its dates, "
         + "its traveler and its booking confirmation code."
 
     /// The scenario run's call log every invocation of this tool records itself in.
     let log: ScenarioCallLog
+
+    /// Creates the trip fixture, recording into `log`.
+    ///
+    /// Explicit because a `public` struct's synthesized memberwise
+    /// initializer is `internal` only, and `IntegrationTripTool` is mounted from
+    /// both test targets.
+    ///
+    /// - Parameter log: the scenario run's call log this tool records into.
+    public init(log: ScenarioCallLog) {
+        self.log = log
+    }
 
     /// Reports the fixture itinerary.
     ///
@@ -311,7 +368,7 @@ struct IntegrationTripTool: Tool {
     /// - Returns: the fixture trip.
     /// - Throws: nothing of its own; the signature is `Tool`'s, and
     ///   `recordCall(to:_:)` only rethrows what its body throws.
-    func call(arguments: IntegrationNoArguments) async throws -> IntegrationTripOutput {
+    public func call(arguments: IntegrationNoArguments) async throws -> IntegrationTripOutput {
         await log.recordCall(to: name) {
             IntegrationTripOutput(
                 confirmationCode: "QX7T2M",
@@ -394,7 +451,7 @@ struct IntegrationDistractorTool: Tool {
 ///
 /// - Parameter log: the scenario run's call log, shared by all ten.
 /// - Returns: the ten distractor tools, in a fixed order.
-func integrationDistractorTools(log: ScenarioCallLog) -> [any Tool] {
+public func integrationDistractorTools(log: ScenarioCallLog) -> [any Tool] {
     [
         ("convertCurrency", "Converts an amount between two currencies."),
         ("bookHotel", "Books a hotel room for given dates."),
@@ -417,27 +474,32 @@ func integrationDistractorTools(log: ScenarioCallLog) -> [any Tool] {
 /// model summarizing "confirm this booking" often forgets to set at all,
 /// tripping `ToolInvoker`'s argument-decoding validation on the first call.
 @Generable
-struct IntegrationBookingArguments {
+public struct IntegrationBookingArguments {
+    /// The booking to confirm.
     @Guide(description: "the booking id to confirm.")
-    var id: Int
+    public var id: Int
 
+    /// Whether the caller really asks for the booking to be confirmed. The
+    /// tool throws on anything but `true`.
     @Guide(description: "must be set to true to actually confirm the booking.")
-    var confirm: Bool
+    public var confirm: Bool
 }
 
 /// `IntegrationBookingTool`'s output.
 @Generable
-struct IntegrationBookingResult {
-    var confirmed: Bool
+public struct IntegrationBookingResult {
+    /// Whether the booking is now confirmed. Always `true`: the tool throws
+    /// rather than report a booking it did not confirm.
+    public var confirmed: Bool
 }
 
 /// Thrown by `IntegrationBookingTool.call` when a well-formed call
 /// nonetheless passes `confirm: false` — `ToolInvoker`/`ResultRenderer` turn
 /// this into the repairable error text fed back to the model, exercising the
 /// same repair mechanics as an omitted `confirm` tripping decode validation.
-enum IntegrationBookingError: Error, CustomStringConvertible {
+public enum IntegrationBookingError: Error, CustomStringConvertible {
     case confirmationRequired
-    var description: String { "booking requires confirm: true" }
+    public var description: String { "booking requires confirm: true" }
 }
 
 /// A deliberately trip-prone tool — plan.md M6.5 scenario 4: "a tool the
@@ -447,19 +509,30 @@ enum IntegrationBookingError: Error, CustomStringConvertible {
 /// passes `false` (tripping this `call`'s own guard) — either way, the
 /// resulting repairable error is exactly what the repair-loop scenario needs
 /// to recover from.
-struct IntegrationBookingTool: Tool {
+public struct IntegrationBookingTool: Tool {
     /// The `tools.*` path this fixture mounts under.
     ///
     /// Declared at the type level for the same reason as
     /// `IntegrationWeatherTool.path`: the repair scenario names it in what its
     /// answer depends on, since a confirmation is the whole of that answer.
-    static let path = "confirmBooking"
+    public static let path = "confirmBooking"
 
-    let name = IntegrationBookingTool.path
-    let description = "Confirms a trip booking by id."
+    public let name = IntegrationBookingTool.path
+    public let description = "Confirms a trip booking by id."
 
     /// The scenario run's call log every invocation of this tool records itself in.
     let log: ScenarioCallLog
+
+    /// Creates the booking fixture, recording into `log`.
+    ///
+    /// Explicit because a `public` struct's synthesized memberwise
+    /// initializer is `internal` only, and `IntegrationBookingTool` is mounted from
+    /// both test targets.
+    ///
+    /// - Parameter log: the scenario run's call log this tool records into.
+    public init(log: ScenarioCallLog) {
+        self.log = log
+    }
 
     /// Confirms the booking `arguments` names, if the caller really asked to.
     ///
@@ -471,7 +544,7 @@ struct IntegrationBookingTool: Tool {
     /// - Returns: the confirmation.
     /// - Throws: `IntegrationBookingError.confirmationRequired` when
     ///   `arguments.confirm` is `false`.
-    func call(arguments: IntegrationBookingArguments) async throws -> IntegrationBookingResult {
+    public func call(arguments: IntegrationBookingArguments) async throws -> IntegrationBookingResult {
         try await log.recordCall(to: name) {
             guard arguments.confirm else {
                 throw IntegrationBookingError.confirmationRequired
@@ -485,8 +558,9 @@ struct IntegrationBookingTool: Tool {
 
 /// `IntegrationDeepScanTool`'s output.
 @Generable(description: "a completed scan's report code.")
-struct IntegrationDeepScanOutput {
-    var reportCode: Int
+public struct IntegrationDeepScanOutput {
+    /// The completed scan's report code — `integrationDeepScanReportCode`.
+    public var reportCode: Int
 }
 
 /// How long `IntegrationDeepScanTool` works before it reports.
@@ -494,7 +568,7 @@ struct IntegrationDeepScanOutput {
 /// Far shorter than `MultiToolConfiguration.executionTimeLimit`, the sandbox
 /// watchdog's absolute ceiling, so the background run settles on its own while
 /// the model is still composing the follow-up that collects it.
-let integrationDeepScanDuration: Duration = .seconds(8)
+public let integrationDeepScanDuration: Duration = .seconds(8)
 
 /// The report code `IntegrationDeepScanTool` always returns.
 ///
@@ -506,7 +580,7 @@ let integrationDeepScanDuration: Duration = .seconds(8)
 /// own archive: that is a value it plainly cannot know, so the only way to it
 /// is to run the scan and collect the background run — which is the whole point
 /// of the scenario.
-let integrationDeepScanReportCode = 41739
+public let integrationDeepScanReportCode = 41739
 
 /// The deliberately slow tool the background scenario drives: the outer
 /// `runCode` call hands the model a pending envelope and keeps running in the
@@ -514,20 +588,31 @@ let integrationDeepScanReportCode = 41739
 /// Recovering the answer then requires the background-run globals
 /// (`status()`, `wait(completionToken, seconds)`) the sandbox installs — which
 /// is exactly the round trip eventplan.md's phase 1 has to prove end to end.
-struct IntegrationDeepScanTool: Tool {
-    let name = "runDeepScan"
-    let description = "Runs a full deep scan of the user's archive and returns that scan's report code. "
+public struct IntegrationDeepScanTool: Tool {
+    public let name = "runDeepScan"
+    public let description = "Runs a full deep scan of the user's archive and returns that scan's report code. "
         + "The scan takes several seconds to complete."
 
     /// The scenario run's call log every invocation of this tool records itself in.
     let log: ScenarioCallLog
+
+    /// Creates the deep-scan fixture, recording into `log`.
+    ///
+    /// Explicit because a `public` struct's synthesized memberwise
+    /// initializer is `internal` only, and `IntegrationDeepScanTool` is mounted from
+    /// both test targets.
+    ///
+    /// - Parameter log: the scenario run's call log this tool records into.
+    public init(log: ScenarioCallLog) {
+        self.log = log
+    }
 
     /// Runs the scan, slowly, and reports its code.
     ///
     /// - Parameter arguments: unused — this tool takes nothing.
     /// - Returns: the fixture report code.
     /// - Throws: a `CancellationError` if the run is cancelled mid-scan.
-    func call(arguments: IntegrationNoArguments) async throws -> IntegrationDeepScanOutput {
+    public func call(arguments: IntegrationNoArguments) async throws -> IntegrationDeepScanOutput {
         try await log.recordCall(to: name) {
             try await Task.sleep(for: integrationDeepScanDuration)
             return IntegrationDeepScanOutput(reportCode: integrationDeepScanReportCode)
@@ -539,8 +624,9 @@ struct IntegrationDeepScanTool: Tool {
 
 /// The output both halves of the fan-out pair report.
 @Generable(description: "a stock count, in units.")
-struct IntegrationStockCount {
-    var units: Int
+public struct IntegrationStockCount {
+    /// The counter's unit count.
+    public var units: Int
 }
 
 /// One stock counter — a named, fully-described tool that reports a fixed
@@ -550,9 +636,9 @@ struct IntegrationStockCount {
 /// the other, so the natural snippet reads both at once (`Promise.all`) rather
 /// than chaining them, and only their sum answers the question — which is what
 /// makes the combined total a grounded assertion.
-struct IntegrationStockTool: Tool {
-    let name: String
-    let description: String
+public struct IntegrationStockTool: Tool {
+    public let name: String
+    public let description: String
 
     /// The unit count this counter always reports.
     let units: Int
@@ -566,7 +652,7 @@ struct IntegrationStockTool: Tool {
     /// - Returns: this counter's unit count.
     /// - Throws: nothing of its own; the signature is `Tool`'s, and
     ///   `recordCall(to:_:)` only rethrows what its body throws.
-    func call(arguments: IntegrationNoArguments) async throws -> IntegrationStockCount {
+    public func call(arguments: IntegrationNoArguments) async throws -> IntegrationStockCount {
         await log.recordCall(to: name) {
             IntegrationStockCount(units: units)
         }
@@ -574,10 +660,10 @@ struct IntegrationStockTool: Tool {
 }
 
 /// How many units the warehouse half of the async fan-out pair reports.
-let integrationWarehouseStockUnits = 1904
+public let integrationWarehouseStockUnits = 1904
 
 /// How many units the store-floor half of the async fan-out pair reports.
-let integrationStoreStockUnits = 268
+public let integrationStoreStockUnits = 268
 
 /// The async fan-out pair's counters, as the rows both the counters themselves
 /// and their `tools.*` paths are built from.
@@ -603,7 +689,7 @@ private let integrationStockCounters: [(path: String, description: String, units
 /// scenario's answer is the two counters' *sum*: it is knowable only when both
 /// of them returned, so what it depends on must never drift from what the
 /// fixture mounts.
-let integrationStockPaths = Set(integrationStockCounters.map(\.path))
+public let integrationStockPaths = Set(integrationStockCounters.map(\.path))
 
 /// Builds the async fan-out scenario's pair of independent stock counters.
 ///
@@ -615,7 +701,7 @@ let integrationStockPaths = Set(integrationStockCounters.map(\.path))
 ///
 /// - Parameter log: the scenario run's call log, shared by both counters.
 /// - Returns: the warehouse counter and the store-floor counter, in that order.
-func integrationStockTools(log: ScenarioCallLog) -> [IntegrationStockTool] {
+public func integrationStockTools(log: ScenarioCallLog) -> [IntegrationStockTool] {
     integrationStockCounters.map { counter in
         IntegrationStockTool(
             name: counter.path,
@@ -630,8 +716,10 @@ func integrationStockTools(log: ScenarioCallLog) -> [IntegrationStockTool] {
 
 /// `IntegrationArchiveRebuildTool`'s output.
 @Generable(description: "a completed archive rebuild's manifest code.")
-struct IntegrationArchiveRebuildOutput {
-    var manifestCode: Int
+public struct IntegrationArchiveRebuildOutput {
+    /// The completed rebuild's manifest code —
+    /// `integrationArchiveRebuildManifestCode`.
+    public var manifestCode: Int
 }
 
 /// The manifest code `IntegrationArchiveRebuildTool` always reports.
@@ -642,7 +730,7 @@ struct IntegrationArchiveRebuildOutput {
 /// code from the deep scan's, because the two scenarios are answered by two
 /// different fixtures: one graded value that satisfied both would let a reply
 /// about the wrong run pass.
-let integrationArchiveRebuildManifestCode = 58204
+public let integrationArchiveRebuildManifestCode = 58204
 
 /// The tool the in-band collection canary drives: it reports the manifest code
 /// at once, and the canary's whole reading still holds.
@@ -670,15 +758,15 @@ let integrationArchiveRebuildManifestCode = 58204
 /// 90-second ceiling instead — about 200 seconds for one collect cycle, and the
 /// cycle count is the model's choice, so the run had no bound it could meet. It
 /// was killed by the suite's own time limit having graded nothing.
-struct IntegrationArchiveRebuildTool: Tool {
+public struct IntegrationArchiveRebuildTool: Tool {
     /// The `tools.*` path this fixture mounts under.
     ///
     /// Declared at the type level for the same reason as
     /// `IntegrationWeatherTool.path`: the in-band collection canary names it in
     /// what its answer depends on.
-    static let path = "rebuildArchive"
+    public static let path = "rebuildArchive"
 
-    let name = IntegrationArchiveRebuildTool.path
+    public let name = IntegrationArchiveRebuildTool.path
     /// Says the rebuild runs in the background, and stops there. It deliberately
     /// does not tell the model to wait for the result: whether the model blocks
     /// is exactly what the canary measures, so a tool description that answered
@@ -688,11 +776,22 @@ struct IntegrationArchiveRebuildTool: Tool {
     /// `runCode` backgrounds every call, so the model is handed a token rather
     /// than a value either way. What the description no longer claims is that the
     /// rebuild takes a while, which stopped being true when the gate came off.
-    let description = "Rebuilds the user's archive index and returns that rebuild's manifest code. "
+    public let description = "Rebuilds the user's archive index and returns that rebuild's manifest code. "
         + "The rebuild runs in the background."
 
     /// The scenario run's call log every invocation of this tool records itself in.
     let log: ScenarioCallLog
+
+    /// Creates the archive-rebuild fixture, recording into `log`.
+    ///
+    /// Explicit because a `public` struct's synthesized memberwise
+    /// initializer is `internal` only, and `IntegrationArchiveRebuildTool` is mounted from
+    /// both test targets.
+    ///
+    /// - Parameter log: the scenario run's call log this tool records into.
+    public init(log: ScenarioCallLog) {
+        self.log = log
+    }
 
     /// Reports the manifest code.
     ///
@@ -700,7 +799,7 @@ struct IntegrationArchiveRebuildTool: Tool {
     /// - Returns: the fixture manifest code.
     /// - Throws: nothing of its own; the signature is `Tool`'s, and
     ///   `recordCall(to:_:)` only rethrows what its body throws.
-    func call(arguments: IntegrationNoArguments) async throws -> IntegrationArchiveRebuildOutput {
+    public func call(arguments: IntegrationNoArguments) async throws -> IntegrationArchiveRebuildOutput {
         await log.recordCall(to: name) {
             IntegrationArchiveRebuildOutput(manifestCode: integrationArchiveRebuildManifestCode)
         }
@@ -709,11 +808,19 @@ struct IntegrationArchiveRebuildTool: Tool {
 
 // MARK: - Scenario 8: an unguided generation nested inside a tool call
 
-/// `IntegrationNestedGenerationTool`'s output.
-@Generable(description: "the readiness token the nested check produced.")
-struct IntegrationNestedGenerationOutput {
-    var readinessToken: String
-}
+// The tool itself stands in the gated package, at
+// `IntegrationTests/.../Fixtures/IntegrationNestedGenerationTool.swift`: its
+// body opens a nested generation on a resolved slot, so it drives a model.
+// What stays here is what the grading rule and its ungated coverage read.
+
+/// The `tools.*` path the nested-generation probe's one tool mounts under.
+///
+/// A constant of its own, rather than a `static let` on that tool, because the
+/// tool and the rule that grades it now stand in different modules.
+/// `nestedGenerationChecks(for:)` reads plain values and stands here; the tool
+/// generates and stands in the gated package. Both name this one string, so
+/// neither can drift from the other.
+public let integrationNestedGenerationPath = "checkModelReadiness"
 
 /// The readiness token `IntegrationNestedGenerationTool` reports once its
 /// nested generation has come back.
@@ -721,110 +828,7 @@ struct IntegrationNestedGenerationOutput {
 /// A string no model would volunteer, for `integrationDeepScanReportCode`'s
 /// reason: an answer carrying it rests on this fixture's own return rather than
 /// on anything the model could have supplied itself.
-let integrationNestedGenerationToken = "READY-7Q4X"
-
-/// The prompt the nested session is given.
-///
-/// Deliberately trivial, and deliberately ungraded. The probe asks whether the
-/// nested call **returns**, not what it says, so a prompt with any substance
-/// would only add ways for a run to be slow without adding anything to read.
-let integrationNestedGenerationPrompt = "Say hello."
-
-/// How many tokens the nested generation is allowed.
-///
-/// Small on purpose, and load-bearing for the probe's verdict. A model that
-/// reasons before it answers — Muse Glimmer, which held the slot when this
-/// was measured, cannot be asked not to — can spend minutes on an uncapped
-/// nested turn, and a suite whose own limit is three minutes
-/// would then report a slow call and a deadlocked call identically. A cap this
-/// tight makes a live nested turn a matter of seconds, so the limit can only be
-/// reached by a call that is not running at all.
-let integrationNestedGenerationTokenLimit = 32
-
-/// The tool the nested-generation probe drives: its body opens a plain session
-/// on the very model the outer turn is running on, and generates.
-///
-/// **What it is for.** A gated scenario hangs for ever — 0% CPU, ~19GB
-/// resident, every thread parked — when both profile slots name one `ModelRef`,
-/// because `searchTools` generates from inside the outer turn's tool call. Two
-/// explanations fit that picture, and this fixture separates them:
-///
-/// - the nested **grammar-constrained** decode deadlocks in MLX, whose xgrammar
-///   path keeps shared per-model caches; or
-/// - Router's `RoutedModel.generationGate` — an `AsyncSemaphore(value: 1)`
-///   minted per resident container — is taken by `beginTurn()` and held for the
-///   whole turn, tool calls included, so a nested `respond` on that container
-///   parks on `generationGate.wait()` and can never be admitted: the permit is
-///   handed back by `endTurn()`, which needs the tool call to return, which
-///   needs the nested `respond`.
-///
-/// The second explanation needs no grammar. The first needs one. So this body
-/// carries no grammar anywhere: `makeSession()` with every argument defaulted,
-/// no `Grammar`, no selection tier, no `MetadataSearcher`. A hang here belongs
-/// to the gate; a return here leaves the grammar as the thing that matters.
-///
-/// It hung, on 2026-08-16: 165 seconds inside this one call with the gate at
-/// zero permits and one waiter throughout, unwound only when the suite's time
-/// limit cancelled the outer turn. `runNestedGenerationProbe` records the whole
-/// reading. So this call deadlocks today, and the fixture is unchanged by that
-/// — it is what the regression test drives, and it will come back when the gate
-/// lets a nested generation in.
-///
-/// **Why the same slot.** `slot` is the resolved `.standard` the outer turn is
-/// already running on, so the nested session shares that container's gate by
-/// construction — the condition under test, rather than something that happens
-/// to hold when two pins collide.
-///
-/// **Why the output is not a `String`.** Router's session mount wraps a
-/// `Tool<_, String>` in `BackgroundToolRunner` and leaves every other tool in band
-/// (`ToolMounting.makeWrapped(tool:sessionID:mailbox:sink:configuration:)`). A
-/// background body would run outside the turn that holds the permit, which is the
-/// one arrangement that cannot deadlock — and would make this probe answer a
-/// question nobody asked. A `@Generable` output keeps the call in band.
-struct IntegrationNestedGenerationTool: Tool {
-    /// The `tools.*` path this fixture mounts under.
-    ///
-    /// Declared at the type level for the same reason as
-    /// `IntegrationWeatherTool.path`: the probe names it in what it reads back
-    /// off the run's call log.
-    static let path = "checkModelReadiness"
-
-    /// Where this fixture's nested call is recorded as a span.
-    ///
-    /// A suspended `async` call occupies no thread, so `sample` and `spindump`
-    /// name nothing when this hangs — see ``CallTrace``. The entry line with no
-    /// matching exit line is the whole evidence a deadlocked run leaves.
-    private static let trace = CallTrace(category: "NestedGenerationProbe")
-
-    let name = IntegrationNestedGenerationTool.path
-    let description = "Checks that the assistant's own language model is responsive right now, and "
-        + "returns the readiness token that check produced. Takes no arguments."
-
-    /// The resolved slot the outer turn is running on — the same one, on
-    /// purpose.
-    let slot: RoutedLLM
-
-    /// The scenario run's call log every invocation of this tool records itself in.
-    let log: ScenarioCallLog
-
-    /// Generates on ``slot`` from inside this tool call, then reports the
-    /// readiness token.
-    ///
-    /// - Parameter arguments: unused — this tool takes nothing.
-    /// - Returns: the fixture readiness token.
-    /// - Throws: whatever the nested `respond(to:maxTokens:)` throws.
-    func call(arguments: IntegrationNoArguments) async throws -> IntegrationNestedGenerationOutput {
-        try await log.recordCall(to: name) {
-            try await Self.trace.span("nestedRespond", detail: name) {
-                _ = try await slot.makeSession().respond(
-                    to: integrationNestedGenerationPrompt,
-                    maxTokens: integrationNestedGenerationTokenLimit
-                )
-                return IntegrationNestedGenerationOutput(readinessToken: integrationNestedGenerationToken)
-            }
-        }
-    }
-}
+public let integrationNestedGenerationToken = "READY-7Q4X"
 
 // MARK: - Scenario 9: the delayed echo (background-run mechanism, task `^nhxj8hx`)
 
@@ -833,19 +837,31 @@ struct IntegrationNestedGenerationTool: Tool {
 /// This declaration names the number directly, so no call site passes a raw
 /// literal — `integrationDelayedEchoDelay` turns it into a `Duration`. The
 /// reasons for the value stand on that constant.
-let integrationDelayedEchoDelaySeconds = 4
+public let integrationDelayedEchoDelaySeconds = 4
 
 /// `IntegrationDelayedEchoTool`'s arguments.
 @Generable
-struct IntegrationDelayedEchoArguments {
+public struct IntegrationDelayedEchoArguments {
+    /// The value the echo must hand back unchanged.
     @Guide(description: "the value to echo back.")
-    var value: String
+    public var value: String
+
+    /// Creates the arguments for one `echoAfterDelay` call.
+    ///
+    /// Explicit because a `public` struct's synthesized memberwise
+    /// initializer is `internal` only.
+    ///
+    /// - Parameter value: the value the echo must hand back unchanged.
+    public init(value: String) {
+        self.value = value
+    }
 }
 
 /// `IntegrationDelayedEchoTool`'s output.
 @Generable(description: "the echoed value.")
-struct IntegrationDelayedEchoOutput {
-    var value: String
+public struct IntegrationDelayedEchoOutput {
+    /// The value the call was given, unchanged.
+    public var value: String
 }
 
 /// How long `IntegrationDelayedEchoTool` holds its value before it settles.
@@ -862,14 +878,14 @@ struct IntegrationDelayedEchoOutput {
 /// test pays on each run. It stays far under
 /// `MultiToolConfiguration.executionTimeLimit`, the sandbox work clock, so a
 /// snippet that awaits the echo in line still completes.
-let integrationDelayedEchoDelay: Duration = .seconds(integrationDelayedEchoDelaySeconds)
+public let integrationDelayedEchoDelay: Duration = .seconds(integrationDelayedEchoDelaySeconds)
 
 /// How many characters `integrationDelayedEchoNonce()` returns.
 ///
 /// Twelve hex characters carry 48 random bits: enough that no two runs
 /// collide and no model states the value from its priors, and short enough
 /// that a reply quotes it verbatim rather than reformatting it.
-let integrationDelayedEchoNonceLength = 12
+public let integrationDelayedEchoNonceLength = 12
 
 /// Makes one fresh nonce for a delayed-echo run.
 ///
@@ -880,7 +896,7 @@ let integrationDelayedEchoNonceLength = 12
 ///
 /// - Returns: `integrationDelayedEchoNonceLength` hex characters drawn from a
 ///   fresh UUID.
-func integrationDelayedEchoNonce() -> String {
+public func integrationDelayedEchoNonce() -> String {
     String(UUID().uuidString.filter(\.isHexDigit).prefix(integrationDelayedEchoNonceLength))
 }
 
@@ -892,27 +908,38 @@ func integrationDelayedEchoNonce() -> String {
 /// there. It does not tell the model to collect: the pending envelope on the
 /// handle carries that instruction, and it must stay the only source of it —
 /// the same rule `IntegrationArchiveRebuildTool`'s description follows.
-struct IntegrationDelayedEchoTool: Tool {
+public struct IntegrationDelayedEchoTool: Tool {
     /// The `tools.*` path this fixture mounts under.
     ///
     /// Declared at the type level for the same reason as
     /// `IntegrationWeatherTool.path`: the mechanism test names it in its
     /// prompt and in what its answer depends on.
-    static let path = "echoAfterDelay"
+    public static let path = "echoAfterDelay"
 
-    let name = IntegrationDelayedEchoTool.path
-    let description = "Returns the exact value you pass it. "
+    public let name = IntegrationDelayedEchoTool.path
+    public let description = "Returns the exact value you pass it. "
         + "The result settles in the background a few seconds after the call."
 
     /// The scenario run's call log every invocation of this tool records itself in.
     let log: ScenarioCallLog
+
+    /// Creates the delayed-echo fixture, recording into `log`.
+    ///
+    /// Explicit because a `public` struct's synthesized memberwise
+    /// initializer is `internal` only, and `IntegrationDelayedEchoTool` is mounted from
+    /// both test targets.
+    ///
+    /// - Parameter log: the scenario run's call log this tool records into.
+    public init(log: ScenarioCallLog) {
+        self.log = log
+    }
 
     /// Waits `integrationDelayedEchoDelay`, then reports the value back.
     ///
     /// - Parameter arguments: the value to echo.
     /// - Returns: that exact value.
     /// - Throws: a `CancellationError` if the run is cancelled mid-delay.
-    func call(arguments: IntegrationDelayedEchoArguments) async throws -> IntegrationDelayedEchoOutput {
+    public func call(arguments: IntegrationDelayedEchoArguments) async throws -> IntegrationDelayedEchoOutput {
         try await log.recordCall(to: name) {
             try await Task.sleep(for: integrationDelayedEchoDelay)
             return IntegrationDelayedEchoOutput(value: arguments.value)
@@ -941,28 +968,28 @@ struct IntegrationDelayedEchoTool: Tool {
 /// here: each is read from the same declaration the fixture mounting it takes
 /// its own name from. A rename therefore cannot leave a scenario depending on
 /// a path no fixture mounts.
-enum IntegrationScenarioGrounding {
+public enum IntegrationScenarioGrounding {
     /// What scenario 1's answer depends on: the reading `getWeather` reports
     /// for `integrationSingleCallCity`. "How warm is it there" is a question
     /// about a temperature, so the city's own name grounds nothing.
-    static let singleCall: Set<String> = [IntegrationWeatherTool.path]
+    public static let singleCall: Set<String> = [IntegrationWeatherTool.path]
 
     /// What the compose/chain and discovery scenarios' shared answer depends
     /// on: the itinerary that says which cities are candidates, and a
     /// temperature reading that says which of them is warmest. Naming a city
     /// is necessary and not sufficient — it is exactly what the recorded false
     /// pass did.
-    static let warmestCity: Set<String> = [IntegrationTripTool.path, IntegrationWeatherTool.path]
+    public static let warmestCity: Set<String> = [IntegrationTripTool.path, IntegrationWeatherTool.path]
 
     /// What the repair scenario's answer depends on: the confirmation itself.
     /// "Your booking is confirmed" is true only if `confirmBooking` handed a
     /// confirmation back, and that fixture throws rather than confirming when
     /// `confirm` is not `true`, so reaching it proves nothing.
-    static let booking: Set<String> = [IntegrationBookingTool.path]
+    public static let booking: Set<String> = [IntegrationBookingTool.path]
 
     /// What the async fan-out scenario's answer depends on: both counters,
     /// since only their sum answers the question that scenario asks.
-    static let combinedStock = integrationStockPaths
+    public static let combinedStock = integrationStockPaths
 
     /// What the in-band collection canary's answer depends on: the rebuild's
     /// own return. The manifest code exists nowhere else — not in the prompt,
@@ -970,12 +997,12 @@ enum IntegrationScenarioGrounding {
     /// carrying it rests on this return and on nothing the model could have
     /// supplied itself. That is what keeps the canary from passing on a run
     /// where nothing happened.
-    static let archiveRebuild: Set<String> = [IntegrationArchiveRebuildTool.path]
+    public static let archiveRebuild: Set<String> = [IntegrationArchiveRebuildTool.path]
 
     /// What the delayed-echo mechanism test's answer depends on: the echo's
     /// own return. The nonce is in the prompt — the model has to pass it —
     /// so the reply alone cannot prove the round trip. This path proves the
     /// echo really handed the value back, and the in-band collection check
     /// proves the model collected the run that carried it.
-    static let delayedEcho: Set<String> = [IntegrationDelayedEchoTool.path]
+    public static let delayedEcho: Set<String> = [IntegrationDelayedEchoTool.path]
 }

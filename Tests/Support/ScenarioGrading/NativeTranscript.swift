@@ -24,7 +24,7 @@ import FoundationModelsRouter
 /// .swift`/`AgentStep` (retired alongside `MultiToolAgent` — see the
 /// `7840f24` kanban task), so this gated suite's port does not itself become
 /// a reason to keep that file around.
-enum NativeTranscript {
+public enum NativeTranscript {
     /// The tool name `MultiTool` mounts under — the snippet runner.
     private static let runCodeToolName = "runCode"
 
@@ -40,7 +40,7 @@ enum NativeTranscript {
     ///
     /// - Parameter transcript: the transcript to scan.
     /// - Returns: every tool call, in the order the session recorded them.
-    static func toolCalls(in transcript: Transcript) -> [Transcript.ToolCall] {
+    public static func toolCalls(in transcript: Transcript) -> [Transcript.ToolCall] {
         transcript.flatMap { entry -> [Transcript.ToolCall] in
             guard case .toolCalls(let calls) = entry else { return [] }
             return Array(calls)
@@ -54,7 +54,7 @@ enum NativeTranscript {
     ///   - name: the tool name to count calls for, or `nil` to count every
     ///     call regardless of name. Defaults to `nil`.
     /// - Returns: the matching call count.
-    static func toolCallCount(in transcript: Transcript, named name: String? = nil) -> Int {
+    public static func toolCallCount(in transcript: Transcript, named name: String? = nil) -> Int {
         toolCalls(in: transcript).count { name == nil || $0.toolName == name }
     }
 
@@ -64,7 +64,7 @@ enum NativeTranscript {
     /// - Returns: `true` if a `searchTools` call precedes the first `runCode`
     ///   call; `false` if there is no `runCode` call at all, or the first
     ///   `runCode` call has no preceding `searchTools` call.
-    static func searchToolsPrecedesRunCode(in transcript: Transcript) -> Bool {
+    public static func searchToolsPrecedesRunCode(in transcript: Transcript) -> Bool {
         let calls = toolCalls(in: transcript)
         guard let runCodeIndex = calls.firstIndex(where: { $0.toolName == runCodeToolName }) else {
             return false
@@ -100,13 +100,104 @@ enum NativeTranscript {
     ///
     /// - Parameter transcript: the transcript to scan.
     /// - Returns: the union of every `runCode` call's typed `tools.*` call paths.
-    static func typedToolPaths(in transcript: Transcript) -> Set<String> {
+    public static func typedToolPaths(in transcript: Transcript) -> Set<String> {
         toolCalls(in: transcript).reduce(into: Set<String>()) { paths, call in
             guard call.toolName == runCodeToolName,
                 let code = try? call.arguments.value(String.self, forProperty: "code")
             else { return }
             paths.formUnion(toolCallPaths(in: code))
         }
+    }
+
+    /// One `tools.*`-bearing call as the session's event stream reports it.
+    ///
+    /// `RoutedSession` publishes no transcript, so a run on the Router path
+    /// derives the same evidence from `SessionEvent.toolCall`, which carries
+    /// the tool's name and its arguments as JSON.
+    public struct StreamedCall {
+        /// The mounted tool's name.
+        public let name: String
+
+        /// The call's arguments, as the event delivered them.
+        public let argumentsJSON: String
+
+        /// The tool's rendered output, once it completed.
+        public var output: String?
+
+        /// Records one call the stream reported.
+        ///
+        /// Explicit because a `public` struct's synthesized memberwise
+        /// initializer is `internal` only.
+        ///
+        /// - Parameters:
+        ///   - name: the mounted tool's name.
+        ///   - argumentsJSON: the call's arguments, as the event delivered them.
+        ///   - output: the tool's rendered output, or `nil` while it runs.
+        public init(name: String, argumentsJSON: String, output: String?) {
+            self.name = name
+            self.argumentsJSON = argumentsJSON
+            self.output = output
+        }
+    }
+
+    /// Every `tools.*` path the `runCode` calls in `calls` wrote.
+    ///
+    /// The event-stream twin of ``typedToolPaths(in:)``: same extraction, same
+    /// `runCode`-only filter, reading the snippet out of the call's arguments
+    /// JSON rather than out of a transcript entry.
+    ///
+    /// - Parameter calls: the run's calls, in the order the stream reported.
+    /// - Returns: every `tools.*` path those snippets named.
+    public static func typedToolPaths(in calls: [StreamedCall]) -> Set<String> {
+        calls.reduce(into: Set<String>()) { paths, call in
+            guard call.name == runCodeToolName, let code = snippet(of: call) else { return }
+            paths.formUnion(toolCallPaths(in: code))
+        }
+    }
+
+    /// Whether a `searchTools` call precedes the first `runCode` call.
+    ///
+    /// The event-stream twin of ``searchToolsPrecedesRunCode(in:)``.
+    ///
+    /// - Parameter calls: the run's calls, in the order the stream reported.
+    /// - Returns: `true` when discovery came first, `false` when no `runCode`
+    ///   call was made at all.
+    public static func searchToolsPrecedesRunCode(in calls: [StreamedCall]) -> Bool {
+        guard let runCodeIndex = calls.firstIndex(where: { $0.name == runCodeToolName }) else {
+            return false
+        }
+        return calls[..<runCodeIndex].contains { $0.name == searchToolsToolName }
+    }
+
+    /// Every scalar the `runCode` calls in `calls` returned.
+    ///
+    /// The event-stream twin of ``returnedValues(in:)``.
+    ///
+    /// - Parameter calls: the run's calls, with their outputs attached.
+    /// - Returns: every scalar those outputs carried.
+    public static func returnedValues(in calls: [StreamedCall]) -> Set<String> {
+        calls.reduce(into: Set<String>()) { values, call in
+            guard call.name == runCodeToolName, let output = call.output,
+                let data = output.data(using: .utf8),
+                let json = try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
+            else {
+                return
+            }
+            collectScalars(of: json, into: &values)
+        }
+    }
+
+    /// Reads the snippet out of a `runCode` call's arguments JSON.
+    ///
+    /// - Parameter call: the call to read.
+    /// - Returns: the snippet source, or `nil` when the arguments carry none.
+    private static func snippet(of call: StreamedCall) -> String? {
+        guard let data = call.argumentsJSON.data(using: .utf8),
+            let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else {
+            return nil
+        }
+        return object["code"] as? String
     }
 
     /// Extracts the scalar values the tools genuinely returned to the model.
@@ -147,83 +238,7 @@ enum NativeTranscript {
     /// - Parameter transcript: the transcript to scan.
     /// - Returns: every distinct scalar the `runCode` outputs carried,
     ///   rendered as text.
-    /// One `tools.*`-bearing call as the session's event stream reports it.
-    ///
-    /// `RoutedSession` publishes no transcript, so a run on the Router path
-    /// derives the same evidence from `SessionEvent.toolCall`, which carries
-    /// the tool's name and its arguments as JSON.
-    struct StreamedCall {
-        /// The mounted tool's name.
-        let name: String
-
-        /// The call's arguments, as the event delivered them.
-        let argumentsJSON: String
-
-        /// The tool's rendered output, once it completed.
-        var output: String?
-    }
-
-    /// Every `tools.*` path the `runCode` calls in `calls` wrote.
-    ///
-    /// The event-stream twin of ``typedToolPaths(in:)``: same extraction, same
-    /// `runCode`-only filter, reading the snippet out of the call's arguments
-    /// JSON rather than out of a transcript entry.
-    ///
-    /// - Parameter calls: the run's calls, in the order the stream reported.
-    /// - Returns: every `tools.*` path those snippets named.
-    static func typedToolPaths(in calls: [StreamedCall]) -> Set<String> {
-        calls.reduce(into: Set<String>()) { paths, call in
-            guard call.name == runCodeToolName, let code = snippet(of: call) else { return }
-            paths.formUnion(toolCallPaths(in: code))
-        }
-    }
-
-    /// Whether a `searchTools` call precedes the first `runCode` call.
-    ///
-    /// The event-stream twin of ``searchToolsPrecedesRunCode(in:)``.
-    ///
-    /// - Parameter calls: the run's calls, in the order the stream reported.
-    /// - Returns: `true` when discovery came first, `false` when no `runCode`
-    ///   call was made at all.
-    static func searchToolsPrecedesRunCode(in calls: [StreamedCall]) -> Bool {
-        guard let runCodeIndex = calls.firstIndex(where: { $0.name == runCodeToolName }) else {
-            return false
-        }
-        return calls[..<runCodeIndex].contains { $0.name == searchToolsToolName }
-    }
-
-    /// Every scalar the `runCode` calls in `calls` returned.
-    ///
-    /// The event-stream twin of ``returnedValues(in:)``.
-    ///
-    /// - Parameter calls: the run's calls, with their outputs attached.
-    /// - Returns: every scalar those outputs carried.
-    static func returnedValues(in calls: [StreamedCall]) -> Set<String> {
-        calls.reduce(into: Set<String>()) { values, call in
-            guard call.name == runCodeToolName, let output = call.output,
-                let data = output.data(using: .utf8),
-                let json = try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
-            else {
-                return
-            }
-            collectScalars(of: json, into: &values)
-        }
-    }
-
-    /// Reads the snippet out of a `runCode` call's arguments JSON.
-    ///
-    /// - Parameter call: the call to read.
-    /// - Returns: the snippet source, or `nil` when the arguments carry none.
-    private static func snippet(of call: StreamedCall) -> String? {
-        guard let data = call.argumentsJSON.data(using: .utf8),
-            let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        else {
-            return nil
-        }
-        return object["code"] as? String
-    }
-
-    static func returnedValues(in transcript: Transcript) -> Set<String> {
+    public static func returnedValues(in transcript: Transcript) -> Set<String> {
         transcript.reduce(into: Set<String>()) { values, entry in
             guard case .toolOutput(let output) = entry, output.toolName == runCodeToolName else {
                 return
@@ -328,7 +343,7 @@ enum NativeTranscript {
     ///   call.
     /// - Throws: a decoding error if a `.response` event's body isn't valid,
     ///   schema-conforming JSON for `Selection`.
-    static func selections(in events: [TranscriptEvent], slot: ModelSlot) throws -> [Selection] {
+    public static func selections(in events: [TranscriptEvent], slot: ModelSlot) throws -> [Selection] {
         try events
             .filter { $0.slot == slot && $0.kind == .response }
             .compactMap(Self.selectionJSON)

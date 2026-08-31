@@ -7,9 +7,9 @@ import FoundationModelsRouter
 /// invocation — "did the model reach a real tool at all" and "did a tool hand
 /// data back" — and a call that entered and then threw answers them
 /// differently.
-struct ScenarioCall: Equatable, Sendable {
+public struct ScenarioCall: Equatable, Sendable {
     /// How one invocation ended.
-    enum Outcome: Equatable, Sendable {
+    public enum Outcome: Equatable, Sendable {
         /// The tool's body ran to completion and handed its result back to the
         /// awaiting snippet.
         case returned
@@ -20,10 +20,23 @@ struct ScenarioCall: Equatable, Sendable {
     }
 
     /// The `tools.*` path that ran — the invoked tool's own `name`.
-    let path: String
+    public let path: String
 
     /// How this invocation ended.
-    let outcome: Outcome
+    public let outcome: Outcome
+
+    /// Records one invocation.
+    ///
+    /// Explicit because a `public` struct's synthesized memberwise initializer
+    /// is `internal` only.
+    ///
+    /// - Parameters:
+    ///   - path: the `tools.*` path that ran.
+    ///   - outcome: how the invocation ended.
+    public init(path: String, outcome: Outcome) {
+        self.path = path
+        self.outcome = outcome
+    }
 }
 
 /// The record of which fixture tools a scenario's snippets genuinely ran.
@@ -45,12 +58,18 @@ struct ScenarioCall: Equatable, Sendable {
 /// One log belongs to one scenario run. `runNativeIntegrationScenario` mints a
 /// fresh one per run and builds that run's tools around it, so no scenario can
 /// read back what another scenario did.
-actor ScenarioCallLog {
+public actor ScenarioCallLog {
+    /// Creates a log that has recorded nothing.
+    ///
+    /// Explicit because a `public` actor's synthesized initializer is
+    /// `internal` only.
+    public init() {}
+
     /// Every invocation recorded so far, in the order the invocations finished.
     ///
     /// Ordered rather than a set, so a later reader can ask about call order
     /// as well as call membership.
-    private(set) var calls: [ScenarioCall] = []
+    public private(set) var calls: [ScenarioCall] = []
 
     /// The distinct `tools.*` paths a fixture tool entered *and finished*,
     /// however each call then ended.
@@ -61,7 +80,7 @@ actor ScenarioCallLog {
     /// after its turn is over, where the distinction cannot arise; a scenario
     /// that has to tell "never called" from "called and never came back" reads
     /// ``enteredPaths`` instead.
-    var invokedPaths: Set<String> {
+    public var invokedPaths: Set<String> {
         Set(calls.map(\.path))
     }
 
@@ -75,10 +94,10 @@ actor ScenarioCallLog {
     /// was parked on Router's generation gate, and `invokedPaths` reported the
     /// empty set for it — the same reading a model that never called the tool
     /// produces, and the opposite conclusion.
-    private(set) var enteredPaths: Set<String> = []
+    public private(set) var enteredPaths: Set<String> = []
 
     /// The distinct `tools.*` paths whose call handed a value back rather than throwing.
-    var returnedPaths: Set<String> {
+    public var returnedPaths: Set<String> {
         Set(calls.lazy.filter { $0.outcome == .returned }.map(\.path))
     }
 
@@ -102,7 +121,7 @@ actor ScenarioCallLog {
     /// call is still open then: recording the handle on completion would make
     /// that read report nothing running and grade a real background run as
     /// none — which is the one reading the canary must never get wrong.
-    private(set) var observedContext: ToolContext?
+    public private(set) var observedContext: ToolContext?
 
     /// The runs still going on the session this log's tools ran under.
     ///
@@ -113,7 +132,7 @@ actor ScenarioCallLog {
     /// - Returns: every background run, or an empty array when no fixture tool
     ///   was ever entered — in which case a scenario has a bigger problem than
     ///   its background runs, and its groundedness assertion will say so first.
-    func backgroundRuns() async -> [BackgroundRun] {
+    public func backgroundRuns() async -> [BackgroundRun] {
         await observedContext?.backgroundRuns() ?? []
     }
 
@@ -134,7 +153,7 @@ actor ScenarioCallLog {
     ///   - body: the tool's own work.
     /// - Returns: whatever `body` returned.
     /// - Throws: whatever `body` threw, unchanged.
-    nonisolated func recordCall<Value>(
+    public nonisolated func recordCall<Value>(
         to path: String,
         _ body: () async throws -> Value
     ) async rethrows -> Value {

@@ -3,6 +3,7 @@ import Testing
 
 import FoundationModels
 @testable import FoundationModelsMultitool
+import ScenarioGrading
 
 /// Coverage for the per-scenario failure-mode instrument — the derivation
 /// `ScenarioRunner` reports a gated run's `MODES` line from.

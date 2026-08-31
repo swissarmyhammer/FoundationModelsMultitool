@@ -10,12 +10,12 @@ import Foundation
 ///
 /// Every field is `var` so a test can vary one at a time against a
 /// known-clean run.
-struct ScenarioObservation {
+public struct ScenarioObservation {
     /// The model's final reply text.
-    var reply: String
+    public var reply: String
 
     /// How many tool calls the turn made, of any tool.
-    var toolCallCount: Int
+    public var toolCallCount: Int
 
     /// The `tools.*` paths the model's `runCode` snippets **wrote**.
     ///
@@ -23,7 +23,7 @@ struct ScenarioObservation {
     /// see `NativeTranscript.typedToolPaths(in:)`. It is the right evidence
     /// for `inventedPath`, whose question is precisely what the model reached
     /// for, and it is the wrong evidence for anything about what happened.
-    var typedPaths: Set<String>
+    public var typedPaths: Set<String>
 
     /// The `tools.*` paths a fixture tool actually **entered**.
     ///
@@ -31,13 +31,13 @@ struct ScenarioObservation {
     /// `ScenarioCallLog`. A path here genuinely executed, whether its call
     /// then returned a value or threw. Which of them handed data back is a
     /// third question, answered by `returnedValues`.
-    var invokedPaths: Set<String>
+    public var invokedPaths: Set<String>
 
     /// Every `tools.*` path the mounted catalog actually defines.
-    var catalogPaths: Set<String>
+    public var catalogPaths: Set<String>
 
     /// Whether a `searchTools` call preceded the first `runCode` call.
-    var searchedToolsFirst: Bool
+    public var searchedToolsFirst: Bool
 
     /// Whether this run could observe the turn's *route* at all — the ordered
     /// tool calls, their typed paths, and their outputs.
@@ -48,14 +48,52 @@ struct ScenarioObservation {
     /// derive from they compute to `0` — indistinguishable from a measured
     /// clean run. They print `n/a` instead. This is the same defect class as a
     /// `priming=ok` printed when priming was never requested.
-    var routeObservable: Bool = true
+    public var routeObservable: Bool
 
     /// The scalar values the tools genuinely returned to the model this
     /// turn — see `NativeTranscript.returnedValues(in:)`.
-    var returnedValues: Set<String>
+    public var returnedValues: Set<String>
 
     /// Whether the reply carried the form the scenario grades on.
-    var isValidAnswer: Bool
+    public var isValidAnswer: Bool
+
+    /// Records one run's raw evidence.
+    ///
+    /// Explicit because a `public` struct's synthesized memberwise initializer
+    /// is `internal` only. `routeObservable` keeps the default the stored
+    /// property used to carry.
+    ///
+    /// - Parameters:
+    ///   - reply: the model's final reply text.
+    ///   - toolCallCount: how many tool calls the turn made.
+    ///   - typedPaths: the `tools.*` paths the snippets wrote.
+    ///   - invokedPaths: the `tools.*` paths a fixture tool entered.
+    ///   - catalogPaths: every `tools.*` path the mounted catalog defines.
+    ///   - searchedToolsFirst: whether discovery came before the first snippet.
+    ///   - routeObservable: whether this run could observe the turn's route.
+    ///   - returnedValues: the scalars the tools returned to the model.
+    ///   - isValidAnswer: whether the reply carried the form the scenario grades on.
+    public init(
+        reply: String,
+        toolCallCount: Int,
+        typedPaths: Set<String>,
+        invokedPaths: Set<String>,
+        catalogPaths: Set<String>,
+        searchedToolsFirst: Bool,
+        routeObservable: Bool = true,
+        returnedValues: Set<String>,
+        isValidAnswer: Bool
+    ) {
+        self.reply = reply
+        self.toolCallCount = toolCallCount
+        self.typedPaths = typedPaths
+        self.invokedPaths = invokedPaths
+        self.catalogPaths = catalogPaths
+        self.searchedToolsFirst = searchedToolsFirst
+        self.routeObservable = routeObservable
+        self.returnedValues = returnedValues
+        self.isValidAnswer = isValidAnswer
+    }
 }
 
 /// The fewest tool calls any scenario this runner drives can be answered
@@ -66,7 +104,7 @@ struct ScenarioObservation {
 /// in the session instructions, so a model that has not searched does not
 /// know a single real name — which is why the floor is two rather than one,
 /// and why it is the same floor for all four scenarios.
-let scenarioMinimumToolCalls = 2
+public let scenarioMinimumToolCalls = 2
 
 /// How far past `scenarioMinimumToolCalls` a turn may go before it counts
 /// as thrashing.
@@ -75,7 +113,7 @@ let scenarioMinimumToolCalls = 2
 /// deliberately provoke — a mis-called tool, its repairable error, and the
 /// corrected call — while still separating "repaired once" from a turn
 /// going around the same loop over and over.
-let scenarioThrashFactor = 2
+public let scenarioThrashFactor = 2
 
 /// The shortest returned value that counts as evidence the reply carries
 /// tool data.
@@ -93,48 +131,48 @@ private let scenarioGroundingValueMinimumLength = 2
 /// the same run already produces and used to discard: each is counted
 /// alongside the existing grade, never in place of it, so a run yields many
 /// signals instead of one.
-struct ScenarioFailureModes {
+public struct ScenarioFailureModes {
     /// The reply denied access or capability and the turn called nothing at
     /// all.
-    let isOverRefusal: Bool
+    public let isOverRefusal: Bool
 
     /// The reply answered substantively while no `tools.*` path ever ran.
-    let answeredWithoutCalling: Bool
+    public let answeredWithoutCalling: Bool
 
     /// The reply announced what the model was about to do, and the turn
     /// then ended without doing it.
-    let didAnnounceThenStop: Bool
+    public let didAnnounceThenStop: Bool
 
     /// The `tools.*` paths a snippet wrote that the mounted catalog does
     /// not define, sorted.
     ///
     /// Sorted rather than a set so a run's line is byte-comparable with the
     /// next run's.
-    let inventedPaths: [String]
+    public let inventedPaths: [String]
 
     /// A `searchTools` call preceded the first `runCode` call.
-    let searchedToolsFirst: Bool
+    public let searchedToolsFirst: Bool
 
     /// Whether the route-derived modes were measurable — see
     /// ``ScenarioObservation/routeObservable``.
-    let routeObservable: Bool
+    public let routeObservable: Bool
 
     /// The turn made more calls than `scenarioThrashFactor` times the
     /// minimum the scenario needs.
-    let didThrash: Bool
+    public let didThrash: Bool
 
     /// The reply carried a value the tools genuinely returned, but not in
     /// the form the scenario grades on.
-    let isGroundedButWrongForm: Bool
+    public let isGroundedButWrongForm: Bool
 
     /// How many tool calls the turn made — the denominator `didThrash` is read
     /// against, carried so a reader need not recompute it.
-    let toolCallCount: Int
+    public let toolCallCount: Int
 
     /// Derives every mode from one run's evidence.
     ///
     /// - Parameter observation: the run's raw evidence.
-    init(_ observation: ScenarioObservation) {
+    public init(_ observation: ScenarioObservation) {
         let deniesAccess = observation.reply.containsAnyPhrase(of: Self.refusalPhrases)
         let announcesIntent = observation.reply.containsAnyPhrase(of: Self.announcementPhrases)
         let isSubstantive =
@@ -177,7 +215,7 @@ struct ScenarioFailureModes {
     ///
     /// - Parameter scenario: the scenario label.
     /// - Returns: the `MODES` line to print.
-    func line(scenario: String) -> String {
+    public func line(scenario: String) -> String {
         // The reply-derived modes are measurable on every path; the
         // route-derived four are not. Printing `0` for a mode this run could
         // not observe reads as a measured clean result, which is how a

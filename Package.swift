@@ -279,6 +279,28 @@ private let testServerTargetName = "MCPTestServer"
 /// nothing.
 private let testConcurrencyTargetName = "TestConcurrency"
 
+/// The name of the shared gated-scenario grading library, and of the product
+/// that exports it.
+///
+/// **Test support, declared as a product**, for the same reason as
+/// `testServerTargetName`. It carries the model-free half of the gated
+/// scenario suite: the fixture tools a scenario mounts, the log those tools
+/// record into, the readers over one run's record, the failure-mode
+/// instrument, and the grading rules. Every one of them reads plain values, so
+/// the unit test target below grades them on each commit, while the nested
+/// `IntegrationTests` package drives the same rules against a real model.
+///
+/// The two halves used to be one file. `ScenarioRunner.swift` in the nested
+/// package held the grading beside the live-model driving, so 50 tests that
+/// need no model ran only when a person opted into a 14-minute suite.
+///
+/// A target of its own, and not a file of `testServerTargetName`: that target
+/// is the scripted MCP server. This one links Router — for `ToolContext`,
+/// `BackgroundRun` and `TranscriptEvent` — and the metadata registry, for
+/// `Selection`. It does not link the library target, because no file of it
+/// names a symbol of this package.
+private let scenarioGradingTargetName = "ScenarioGrading"
+
 /// The name of the stdio executable over `testServerTargetName`, and of the
 /// product that exports it.
 ///
@@ -297,10 +319,10 @@ private let sourcesPath = "Sources/"
 /// below.
 private let testsPath = "Tests/"
 
-/// The `Tests/Support/` subdirectory prefix used by the three test-support
+/// The `Tests/Support/` subdirectory prefix used by the four test-support
 /// targets (`testServerTargetName`, `testConcurrencyTargetName`,
-/// `testServerExecutableName`) below. A target of test support is not a test
-/// target, so it cannot stand under
+/// `scenarioGradingTargetName`, `testServerExecutableName`) below. A target of
+/// test support is not a test target, so it cannot stand under
 /// `Tests/<Name>Tests`, and it is not shipped, so it does not stand under
 /// `Sources/`.
 private let testSupportPath = "\(testsPath)Support/"
@@ -346,6 +368,13 @@ let package = Package(
         .library(
             name: testConcurrencyTargetName,
             targets: [testConcurrencyTargetName]
+        ),
+        // Test support. Consumed by `IntegrationTests/Package.swift`, for the
+        // same reason as the two products above — see
+        // `scenarioGradingTargetName`.
+        .library(
+            name: scenarioGradingTargetName,
+            targets: [scenarioGradingTargetName]
         ),
         // Test support. The stdio binary a test spawns through
         // `StdioServerProcess` — see `testServerExecutableName`. A product,
@@ -462,6 +491,17 @@ let package = Package(
             name: testConcurrencyTargetName,
             path: "\(testSupportPath)\(testConcurrencyTargetName)"
         ),
+        // The model-free half of the gated scenario suite — see
+        // `scenarioGradingTargetName`. It links Router and the metadata
+        // registry, and no target of this package.
+        .target(
+            name: scenarioGradingTargetName,
+            dependencies: [
+                .product(name: routerDependencyName, package: routerDependencyName),
+                .product(name: metadataRegistryDependencyName, package: metadataRegistryDependencyName),
+            ],
+            path: "\(testSupportPath)\(scenarioGradingTargetName)"
+        ),
         // The stdio entry point over the test server — see
         // `testServerExecutableName`. `main.swift` and nothing else.
         .executableTarget(
@@ -485,6 +525,7 @@ let package = Package(
                 .target(name: cliLibraryTargetName),
                 .target(name: testServerTargetName),
                 .target(name: testConcurrencyTargetName),
+                .target(name: scenarioGradingTargetName),
                 .product(name: routerDependencyName, package: routerDependencyName),
                 .product(name: metadataRegistryDependencyName, package: metadataRegistryDependencyName),
                 .product(name: extrasDependencyName, package: extrasDependencyName),

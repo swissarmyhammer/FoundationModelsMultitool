@@ -1,5 +1,7 @@
 import Testing
 
+import ScenarioGrading
+
 /// The canary over how a backgrounded run is collected on this host: the model
 /// collects its own, in band, and the turn never ends with work in flight
 /// (task `^xeqs138`).
