@@ -233,7 +233,15 @@ struct MCPSessionSweepTests {
         await ground.wire.mark(as: Self.terminalMarker)
         await ground.pool.shutdownAll()
 
-        #expect(terminals.count == Self.terminalEventsPerRun)
+        // Diagnostic: this passes here and fails on CI, and the failure is a
+        // count that is too HIGH rather than too low, so the message carries
+        // what actually landed.
+        #expect(
+            terminals.count == Self.terminalEventsPerRun,
+            """
+            terminals=\(terminals.count)             kinds=\(terminals.map(\.kind))             outcomes=\(terminals.map { String(describing: $0.outcome) })             correlations=\(terminals.map(\.correlationID))             envelope=\(envelope.completionToken)             outer=\(run.context.completionToken)
+            """
+        )
         let terminal = try #require(terminals.first)
         #expect(terminal.correlationID == envelope.completionToken)
         #expect(terminal.kind == .completed)
