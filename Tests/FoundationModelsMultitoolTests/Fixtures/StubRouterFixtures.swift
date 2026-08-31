@@ -471,14 +471,32 @@ func settledEvents(
 ///   - count: How many to wait for.
 /// - Returns: The events, once `count` of them are there, or whatever was
 ///   journaled when the deadline passed.
+///   - correlatedTo: The runs to keep, by `correlationID`, or `nil` for every
+///     run of the session.
+///
+/// **Pass `correlatedTo` for anything that sweeps.** `RoutedSession.close()`
+/// settles EVERY background run the session holds, and one of those is the
+/// capture run ``makeStubRun(in:)`` makes to obtain its `ToolContext`. That run
+/// is fixture scaffolding rather than anything a test asked for, and whether it
+/// is still on the plane at sweep time is a matter of timing: it had settled on
+/// a warm machine and had not on CI, which is how it reached an assertion as a
+/// second terminal nobody expected.
 func recordedOperationEvents(
-    of run: StubRun, ofKind kind: OperationEventKind, awaiting count: Int
+    of run: StubRun,
+    ofKind kind: OperationEventKind,
+    correlatedTo correlationIDs: Set<String>? = nil,
+    awaiting count: Int
 ) async -> [OperationEvent] {
+    func matching() async -> [OperationEvent] {
+        let events = await recordedOperationEvents(of: run, ofKind: kind)
+        guard let correlationIDs else { return events }
+        return events.filter { correlationIDs.contains($0.correlationID) }
+    }
     let deadline = ContinuousClock.now.advanced(by: TestPoll.deadline)
-    var events = await recordedOperationEvents(of: run, ofKind: kind)
+    var events = await matching()
     while events.count < count, ContinuousClock.now < deadline {
         try? await Task.sleep(for: TestPoll.interval)
-        events = await recordedOperationEvents(of: run, ofKind: kind)
+        events = await matching()
     }
     return events
 }

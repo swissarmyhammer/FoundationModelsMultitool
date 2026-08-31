@@ -229,7 +229,9 @@ struct MCPSessionSweepTests {
         // sweep, so this is the public route to the same behaviour.
         await run.session.close()
         let terminals = await recordedOperationEvents(
-            of: run, ofKind: .completed, awaiting: Self.terminalEventsPerRun)
+            of: run, ofKind: .completed,
+            correlatedTo: [envelope.completionToken],
+            awaiting: Self.terminalEventsPerRun)
         await ground.wire.mark(as: Self.terminalMarker)
         await ground.pool.shutdownAll()
 

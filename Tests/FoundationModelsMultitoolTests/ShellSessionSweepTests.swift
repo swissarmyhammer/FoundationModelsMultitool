@@ -268,7 +268,9 @@ struct ShellSessionSweepTests {
         // run's own token — measured.
         await session.stub.session.close()
         let terminals = await recordedOperationEvents(
-            of: session.stub, ofKind: .completed, awaiting: Self.terminalEventsPerRun)
+            of: session.stub, ofKind: .completed,
+            correlatedTo: Set(session.runs.map(\.completionToken)),
+            awaiting: Self.terminalEventsPerRun)
         #expect(terminals.count == Self.terminalEventsPerRun)
         let terminal = try #require(terminals.first)
         #expect(terminal.correlationID == run.completionToken)
@@ -297,7 +299,9 @@ struct ShellSessionSweepTests {
         // run's own token — measured.
         await session.stub.session.close()
         let terminals = await recordedOperationEvents(
-            of: session.stub, ofKind: .completed, awaiting: Self.twoBackgroundRuns)
+            of: session.stub, ofKind: .completed,
+            correlatedTo: Set(session.runs.map(\.completionToken)),
+            awaiting: Self.twoBackgroundRuns)
 
         #expect(terminals.count == Self.twoBackgroundRuns)
         #expect(terminals.map(\.correlationID) == session.runs.map(\.completionToken))
