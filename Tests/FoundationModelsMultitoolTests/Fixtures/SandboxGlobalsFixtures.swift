@@ -284,83 +284,71 @@ func settle(_ run: ScriptedRun, on context: ToolContext) async {
     )
 }
 
-/// An `OperationEventSink` that answers every elicitation it observes with one
-/// scripted response, delivering it through `session` from inside its own
-/// `post(_:)`.
+/// Answers every elicitation a run raises with one scripted response.
 ///
-/// Answering from inside the post is deliberate and is what makes the
-/// round-trip tests deterministic rather than timing-dependent:
-/// Router installs the pending entry
-/// *before* it starts the upstream post, so an answer delivered the instant a
-/// host observes the event always finds that entry.
+/// A consumer cannot inject an `OperationEventSink`, so this cannot observe
+/// events by being handed them. It watches the run's journal instead — the
+/// route that does carry `.elicitation` events — and answers through
+/// `RoutedSession.respond(elicitationId:response:)`.
 ///
-/// A URL-mode accept is a two-step flow — `respond` only records the accept —
-/// so this sink follows it with `complete(elicitationId:)`, exactly as a real
+/// The watch starts as soon as this is made, so build it BEFORE the snippet
+/// that elicits. A URL-mode accept is a two-step flow: `respond` records the
+/// accept and the snippet stays suspended, so an `.acceptedAwaitingCompletion`
+/// delivery is followed by `complete(elicitationId:)`, exactly as a real
 /// host's out-of-band flow would.
-actor ScriptedElicitationSink: OperationEventSink {
-    /// The session every answer is delivered through.
-    private let session: RoutedSession
+actor ScriptedElicitationSink {
+    /// The run whose journal is watched and whose session answers.
+    private let run: StubRun
 
-    /// The answer this sink gives to every elicitation it observes.
+    /// The answer this gives to every elicitation it observes.
     private let response: ElicitationResponse
 
-    /// Every event posted to this sink, in arrival order.
-    private(set) var events: [OperationEvent] = []
+    /// Every elicitation request observed, in arrival order.
+    private(set) var requests: [ElicitationRequest] = []
 
-    /// What the mailbox reported for each delivered answer, in delivery
-    /// order.
+    /// What the session reported for each delivered answer, in delivery order.
     private(set) var deliveries: [ElicitationAnswerDelivery] = []
 
-    /// What the mailbox reported for each URL-mode completion, in completion
-    /// order.
+    /// What the session reported for each URL-mode completion.
     private(set) var completions: [ElicitationCompletionDelivery] = []
 
-    /// Creates a sink that answers every elicitation with one scripted
-    /// response.
+    /// The elicitation ids already answered, so the watch answers each one time.
+    private var answered: Set<String> = []
+
+    /// Makes an answerer and starts watching at once.
     ///
     /// - Parameters:
-    ///   - session: the session to deliver each answer through.
+    ///   - run: the run to watch and answer through.
     ///   - response: the answer to give.
-    init(session: RoutedSession, answering response: ElicitationResponse) {
-        self.session = session
+    init(run: StubRun, answering response: ElicitationResponse) {
+        self.run = run
         self.response = response
+        Task { await self.watch() }
     }
 
-    /// Records `event` and, when it carries an elicitation, answers that
-    /// request through the mailbox with this sink's one scripted response.
-    ///
-    /// Every event is kept, not only the elicitations: a test asserts on the
-    /// full arrival order, and the non-elicitation events are what prove a
-    /// run's notices reached the sink on the right correlation.
-    ///
-    /// The answer is delivered from inside the post — synchronously with
-    /// observing the event, before this method returns — which is what makes
-    /// the round trip deterministic rather than timing-dependent; see the
-    /// type's own documentation for why the mailbox's ordering guarantees
-    /// that.
-    ///
-    /// A URL-mode accept comes back as `.acceptedAwaitingCompletion`: the
-    /// mailbox has recorded the accept, but the out-of-band flow is still
-    /// open and the waiting snippet stays suspended until it closes. Only that
-    /// delivery gets the second `complete(elicitationId:)` step, because every
-    /// other delivery — a form accept, a decline, a cancel, or a rejected
-    /// answer — already settled the request.
-    ///
-    /// - Parameter event: the operation event the observed run posted.
-    func post(event: OperationEvent) async {
-        events.append(event)
-        guard let request = event.elicitation else { return }
-        let delivery = await session.respond(
-            elicitationId: request.elicitationId.description, response: response)
-        deliveries.append(delivery)
-        guard delivery == .acceptedAwaitingCompletion else { return }
-        completions.append(
-            await session.complete(elicitationId: request.elicitationId.description))
-    }
+    /// The first observed request, or `nil` when none arrived.
+    var observedRequest: ElicitationRequest? { requests.first }
 
-    /// The elicitation request carried by the first elicitation-kind event
-    /// this sink observed, or `nil` when it observed none.
-    var observedRequest: ElicitationRequest? {
-        events.compactMap(\.elicitation).first
+    /// Polls the journal and answers each elicitation exactly one time.
+    ///
+    /// A poll rather than a stream: `SessionEvent` carries no elicitation case,
+    /// and the journal is where a drained elicitation lands.
+    private func watch() async {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(scriptedRunSettlementSeconds))
+        while ContinuousClock.now < deadline {
+            for event in await recordedOperationEvents(of: run, ofKind: .elicitation) {
+                guard let request = event.elicitation else { continue }
+                let id = request.elicitationId.description
+                guard !answered.contains(id) else { continue }
+                answered.insert(id)
+                requests.append(request)
+                let delivery = await run.session.respond(
+                    elicitationId: id, response: response)
+                deliveries.append(delivery)
+                guard delivery == .acceptedAwaitingCompletion else { continue }
+                completions.append(await run.session.complete(elicitationId: id))
+            }
+            await Task.yield()
+        }
     }
 }

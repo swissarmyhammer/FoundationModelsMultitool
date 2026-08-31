@@ -150,7 +150,7 @@ struct SandboxGlobalsTests {
     func theGlobalsPageMatchesTheElicitationAnswerItDocuments() async throws {
         let stub = try await makeStubRun()
         let context = stub.context
-        let sink = ScriptedElicitationSink(session: stub.session, answering: .accept(content: ["repo": .string("sah")]))
+        let sink = ScriptedElicitationSink(run: stub, answering: .accept(content: ["repo": .string("sah")]))
 
         let output = try await runSnippet(
             "return Object.keys(await elicit(\"Which repository?\")).sort();",
@@ -464,7 +464,7 @@ struct SandboxGlobalsTests {
         let stub = try await makeStubRun()
         let context = stub.context
         let sink = ScriptedElicitationSink(
-            session: stub.session,
+            run: stub,
             answering: .accept(content: ["repo": .string("swissarmyhammer")])
         )
 
@@ -490,7 +490,7 @@ struct SandboxGlobalsTests {
     func elicitSurfacesADeclineDistinctly() async throws {
         let stub = try await makeStubRun()
         let context = stub.context
-        let sink = ScriptedElicitationSink(session: stub.session, answering: .decline)
+        let sink = ScriptedElicitationSink(run: stub, answering: .decline)
 
         let output = try await runSnippet(
             """
@@ -507,7 +507,7 @@ struct SandboxGlobalsTests {
     func elicitSurfacesACancelDistinctly() async throws {
         let stub = try await makeStubRun()
         let context = stub.context
-        let sink = ScriptedElicitationSink(session: stub.session, answering: .cancel)
+        let sink = ScriptedElicitationSink(run: stub, answering: .cancel)
 
         let output = try await runSnippet(
             """
@@ -525,7 +525,7 @@ struct SandboxGlobalsTests {
         let stub = try await makeStubRun()
         let context = stub.context
         let sink = ScriptedElicitationSink(
-            session: stub.session,
+            run: stub,
             answering: .accept(content: ["repo": .string("multitool")])
         )
 
@@ -559,7 +559,7 @@ struct SandboxGlobalsTests {
     func elicitUrlModeResolvesAfterCompletion() async throws {
         let stub = try await makeStubRun()
         let context = stub.context
-        let sink = ScriptedElicitationSink(session: stub.session, answering: .accept(content: nil))
+        let sink = ScriptedElicitationSink(run: stub, answering: .accept(content: nil))
 
         let output = try await runSnippet(
             """

@@ -73,9 +73,18 @@ The fix removes another session's edit link, and that session is at work in the 
 - If the edit link is wanted, wait until the Router work lands on `main` and the type is public.
 
 ## Acceptance Criteria
-- [ ] `swift build --package-path IntegrationTests --build-tests` completes with no error.
-- [ ] `IntegrationTests/Package.resolved` holds a `foundationmodelsrouter` pin, or the person who owns the edit link says why the link stays.
-- [ ] The gated suite runs: `swift test --package-path IntegrationTests --no-parallel`.
+- [x] `swift build --package-path IntegrationTests --build-tests` completes with no error. Done on 2026-08-31, commit `8df2ccf`.
+- [x] `IntegrationTests/Package.resolved` holds a `foundationmodelsrouter` pin. Done on 2026-08-31: branch `main`, revision `475befba6`. The edit link is removed and `IntegrationTests/Packages/` is gone.
+- [ ] The gated suite runs: `swift test --package-path IntegrationTests --no-parallel`. NOT attempted. That suite drives real models, thus running it costs real time and money and is a decision for a person, separate from making the package build.
+
+## What the diagnosis above got wrong
+
+The description says the cause is local machine state and not a file of
+this repository. That is wrong. The Router had demoted symbols this package
+named — `ToolMounting`, `SessionMailbox`, the `OperationEventSink` typealias,
+`MergedTranscript`, `OperationEventSegment` and `RoutedLLM.resolution` — and
+the edit link only made the break visible before a resolve would have found
+it. The fix was to take the Router's published readers, not to remove a link.
 
 ## Found by
 Task `^tq2qzga`, the phase-4 exit, on 2026-08-28. That task changed no manifest and no source of the library, thus it did not cause this failure. #eventplan #phase-4 #eventplan-phase-4
