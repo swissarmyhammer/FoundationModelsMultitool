@@ -57,11 +57,18 @@ enum MCPCallProbe {
     ///   - probe: The probe to mount.
     ///   - context: The session context the engine mounts on. Take one from
     ///     ``makeStubRun(in:)``.
+    ///   - sink: The upstream sink each run's events reach, or `nil` to let the
+    ///     mount supply its own. A caller-supplied sink observes each run's OWN
+    ///     `completionToken` as the `correlationID`; the mount's own sink
+    ///     re-stamps every event onto the mounting run's token, which makes two
+    ///     concurrent runs indistinguishable.
     /// - Returns: The mounted engine.
     static func mountedRunToCompletion(
-        _ probe: MCPCallProbeTool, on context: ToolContext
+        _ probe: MCPCallProbeTool, on context: ToolContext,
+        postingTo sink: (any OperationEventSink)? = nil
     ) -> any FoundationModels.Tool<NoArguments, String> {
-        context.mount(probe, as: .synchronous)
+        guard let sink else { return context.mount(probe, as: .synchronous) }
+        return context.mount(probe, as: .synchronous, postingTo: sink)
     }
 
     /// The error `body` threw, or `nil` when it returned.

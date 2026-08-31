@@ -1,6 +1,40 @@
 ---
 assignees:
 - claude-code
+comments:
+- actor: claude-code
+  id: 01m1bzdsv90vnqe1pxhx5yh5pc
+  text: |-
+    ### implement — changed
+
+    **1312 of 1316 pass, in 10.8 seconds.** The baseline before any of this was 1316 in about 24 seconds, thus the suite is faster than it was as well as free of the Router's internals.
+
+    Commits: `7adb698`, `6d7c640`, `81e5c6c`, `bf0c815`.
+
+    **Done.** This package names `ToolMounting` and `SessionMailbox` in no code. 23 test files moved to the Router's published API:
+
+    - A `ToolContext` comes from a real session over a stub `ModelLoader`. Standing one up takes 6 ms, thus the stub is not a cost. A fixture keys off that context where it keyed off a mailbox it owned.
+    - `.progress` and `.elicitation` events are read through a `TranscriptRecorder` this package supplies to `Router.init(recorder:)`. Operation events come off `partial.entry?.segments`: a structure segment that is not one fails to decode and drops, thus this package names neither `OperationEventSegment` nor its schema name.
+    - A terminal event is read off `SessionEvent.runSettled`, **subscribed before the run settles**. That stream is live and has no replay, and `close()` finishes every open subscription.
+    - A sweep is `RoutedSession.close()`.
+    - An elicitation is answered through `RoutedSession.respond(elicitationId:response:)` and `complete(elicitationId:)`. The answerer watches the journal, because a consumer cannot inject a sink.
+
+    **Three defects of my own were found and fixed, each by measuring rather than reading.**
+
+    1. The stub router had no recorder, so nothing was journaled and about 24 assertions observed nothing at all. They failed only because they expected content; an assertion expecting emptiness would have stayed green over a broken read.
+    2. `settledEvents` tested its deadline inside the `for await` body, which runs only when an event arrives. With no event it never returned. That is what made full runs reach the 1700-second timeout.
+    3. A single-run test waited for two terminals and burned the whole deadline on every run.
+
+    **Blocked: four assertions, one cause.**
+
+    `MCPServerCallTests:400`, `HostAndEmitterTests:82`, `ShellSessionSweepTests:263`, `SuspendedContextTests:138`.
+
+    `ToolContext.mount` re-stamps twice — the run's context stamps the run's token, then `MountedRunUpstreamSink` stamps the mounting context's token over it. Measured: a scripted run's own token `01M1BYNARGPQG5SKHKG0MRYQHA` appeared on neither its `.progress` nor its `.completed` event; the outer token `01M1BYNARFGAGYBN42VDH26D5D` appeared on both. The old fixtures passed a sink straight to `ToolMounting.makeWrapped`, which never applied the second stamp.
+
+    The Router owns this. Its session called the hardcoded sink in `ToolContext.mount` a design regression it introduced, and its user chose the fix: `mount(_:op:as:postingTo:)`, a caller-supplied sink, plus making `OperationEventSink` public. Card `^bbbkas1` there.
+
+    next: wait for that push, then take the four call sites onto `postingTo:` and drop the `FoundationModelsExtras` import from the two fixtures that took the conformance that way. Nothing else is open.
+  timestamp: 2026-08-31T13:16:34.025059+00:00
 position_column: todo
 position_ordinal: 9a80
 title: Mount inner tools.* calls through ToolContext.mount instead of ToolMounting.makeWrapped

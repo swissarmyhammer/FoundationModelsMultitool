@@ -388,14 +388,20 @@ struct MCPServerCallTests {
         let (scripted, server) = try await Self.connected(serving: [])
         await Self.addProgressTool(to: scripted)
         let run = try await makeStubRun()
+        // A caller-supplied sink, because this is the assertion that needs the
+        // UNSTAMPED correlation: the mount's own sink re-stamps every event
+        // onto the mounting run's token, which collapses two concurrent runs to
+        // one correlation and makes this test inexpressible.
+        let sink = RecordingEventSink()
         let engine = MCPCallProbe.mountedRunToCompletion(
-            Self.probe(server, tool: Self.progressToolName), on: run.context)
+            Self.probe(server, tool: Self.progressToolName), on: run.context,
+            postingTo: sink)
 
         async let first = engine.call(arguments: NoArguments())
         async let second = engine.call(arguments: NoArguments())
         _ = try await (first, second)
 
-        let events = await recordedOperationEvents(of: run)
+        let events = await sink.events
         let correlationIDs = Set(events.map(\.correlationID))
         #expect(correlationIDs.count == Self.concurrentCallCount)
         for correlationID in correlationIDs {

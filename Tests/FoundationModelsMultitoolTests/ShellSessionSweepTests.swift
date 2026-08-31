@@ -98,6 +98,9 @@ struct ShellSessionSweepTests {
         /// terminal events, and a consumer cannot call that sweep directly.
         let stub: StubRun
 
+        /// The sink each mounted run posts to, unstamped.
+        let sink: RecordingEventSink
+
         /// The ambient context of the outer run, which reports the run plane.
         let context: ToolContext
 
@@ -135,8 +138,13 @@ struct ShellSessionSweepTests {
         let registry = ProcessRegistry()
         let run = try await makeStubRun()
         let context = run.context
-        let engine = try ShellRunPlane.mounted(
-            Execute(runner: ShellRunner(state: state, registry: registry)), inheriting: context)
+        // A caller-supplied sink: each swept run's terminal must carry that
+        // run's OWN token, and the mount's own sink re-stamps onto the
+        // mounting run.
+        let sink = RecordingEventSink()
+        let engine = ShellRunPlane.mounted(
+            Execute(runner: ShellRunner(state: state, registry: registry)),
+            inheriting: context, postingTo: sink)
 
         for _ in 0..<count {
             _ = try await engine.call(arguments: ExecuteArguments(command: Self.backgroundCommand))
@@ -149,6 +157,7 @@ struct ShellSessionSweepTests {
         }
         return BackgroundSession(
             stub: run,
+            sink: sink,
             context: context,
             state: state,
             registry: registry,
@@ -252,12 +261,13 @@ struct ShellSessionSweepTests {
         // Subscribed BEFORE the sweep. `streamSessionEvents()` is live and has
         // no replay, and `close()` finishes every open subscription, so a
         // stream opened after the sweep sees nothing at all.
-        let collecting = Task {
-            await settledEvents(on: session.stub.session, count: Self.terminalEventsPerRun)
-        }
+        // The sweep's terminal reaches the JOURNAL, not the mounted run's own
+        // sink: `close()` sweeps through the mailbox, which is not the run
+        // posting an event of its own. With a caller-supplied sink in the mount
+        // there is no re-stamping layer, so the journaled terminal carries the
+        // run's own token — measured.
         await session.stub.session.close()
-        let terminals = await collecting.value
-
+        let terminals = await recordedOperationEvents(of: session.stub, ofKind: .completed)
         #expect(terminals.count == Self.terminalEventsPerRun)
         let terminal = try #require(terminals.first)
         #expect(terminal.correlationID == run.completionToken)
@@ -279,11 +289,13 @@ struct ShellSessionSweepTests {
         let session = try await makeBackgroundSession(runCount: Self.twoBackgroundRuns)
 
         // Subscribed BEFORE the sweep; see the sibling test for why.
-        let collecting = Task {
-            await settledEvents(on: session.stub.session, count: Self.twoBackgroundRuns)
-        }
+        // The sweep's terminal reaches the JOURNAL, not the mounted run's own
+        // sink: `close()` sweeps through the mailbox, which is not the run
+        // posting an event of its own. With a caller-supplied sink in the mount
+        // there is no re-stamping layer, so the journaled terminal carries the
+        // run's own token — measured.
         await session.stub.session.close()
-        let terminals = await collecting.value
+        let terminals = await recordedOperationEvents(of: session.stub, ofKind: .completed)
 
         #expect(terminals.count == Self.twoBackgroundRuns)
         #expect(terminals.map(\.correlationID) == session.runs.map(\.completionToken))

@@ -119,22 +119,16 @@ struct SuspendedContextTests {
         let token = try Self.completionToken(of: rendered)
         // Subscribed BEFORE the latch releases the run; the stream is live and
         // has no replay.
-        let collecting = Task {
-            // By correlation, not by arrival position: the snippet's inner call
-            // settles its own run too, and its terminal reaches the stream
-            // first. This assertion is about the OUTER run.
-            await settledEvents(on: harness.run.session, correlationID: token)
-        }
         harness.latch.release()
         let terminal = try await Self.settledTerminal(of: token, on: harness.run.context)
 
         #expect(terminal.detail == Self.renderedGatedResult)
-        // The terminal event is read off the session outbox rather than the
-        // journal. `ToolContext.post` re-stamps what it forwards with the
-        // mounting run's identity, so the outbox carries the OUTER run's
-        // correlation; the journal keeps each run's own. This assertion is
-        // about the re-stamped view.
-        let completions = await collecting.value
+        // Read off the caller-supplied sink, which observes each run's OWN
+        // completionToken. The mount's own sink would re-stamp onto the
+        // mounting run and this count could not be attributed.
+        let completions = await harness.sink.events.filter {
+            $0.kind == .completed && $0.correlationID == token
+        }
         #expect(completions.count == 1)
         #expect(completions.first?.correlationID == token)
         #expect(completions.first?.detail == Self.renderedGatedResult)
@@ -250,6 +244,9 @@ struct SuspendedContextTests {
 
         /// The stub run whose context background runs are tracked on.
         let run: StubRun
+
+        /// The sink each mounted run posts to, unstamped.
+        let sink: RecordingEventSink
     }
 
     /// A registry exposing one gated tool as `tools.gated`.
@@ -282,12 +279,16 @@ struct SuspendedContextTests {
             configuration: configuration
         )
         let run = try await makeStubRun()
-        let mounted = run.context.mount(multiTool, as: mount)
+        // A caller-supplied sink, so a terminal carries the run's OWN token
+        // rather than the mounting run's.
+        let sink = RecordingEventSink()
+        let mounted = run.context.mount(multiTool, as: mount, postingTo: sink)
         return Harness(
             gated: gated,
             latch: latch,
             mounted: try #require(mounted as? any Tool<RunCodeArguments, String>),
-            run: run
+            run: run,
+            sink: sink
         )
     }
 

@@ -357,7 +357,13 @@ let package = Package(
         ),
     ],
     dependencies: [
-        swissArmyHammerPackage(name: routerDependencyName),
+        // TEMPORARY, VALIDATION ONLY: pinned to the router's `mount-posting-to`
+        // branch to prove `ToolContext.mount(_:op:as:postingTo:)` against real
+        // call sites before it reaches that package's main. Revert to
+        // `swissArmyHammerPackage(name: routerDependencyName)` once it merges.
+        .package(
+            url: "git@github.com:swissarmyhammer/\(routerDependencyName).git",
+            revision: "d576a724228b73978f53b9b5568345644f3c0b03"),
         swissArmyHammerPackage(name: metadataRegistryDependencyName),
         swissArmyHammerPackage(name: extrasDependencyName),
         // Only the M9 `cliLibraryTargetName` library below links products from

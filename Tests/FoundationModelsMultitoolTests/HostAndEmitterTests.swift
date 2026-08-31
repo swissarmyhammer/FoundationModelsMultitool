@@ -46,10 +46,14 @@ struct HostAndEmitterTests {
             .buildRegistry()
         let run = try await makeStubRun()
         let sessionID = run.context.sessionID
+        // A caller-supplied sink: this test reads the run's OWN correlation,
+        // and the mount's own sink re-stamps onto the mounting run's token.
+        let sink = RecordingEventSink()
         let mounted = try #require(
             // The stock session mount. `runCode` declares the background
             // mount itself, and the declaration wins over the site.
-            run.context.mount(MultiTool(registry: registry), as: .synchronous)
+            run.context.mount(
+                MultiTool(registry: registry), as: .synchronous, postingTo: sink)
                 as? any Tool<RunCodeArguments, String>
         )
 
@@ -60,8 +64,7 @@ struct HostAndEmitterTests {
         // The run backgrounded with its snippet still inside the gated call, so the
         // recorder has not run yet and nothing of its own is on the sink.
         #expect(PendingRunEnvelope.isRendered(text: rendered))
-        let beforeRelease = await recordedOperationEvents(of: run, ofKind: .progress)
-            .map(\.detail)
+        let beforeRelease = await sink.details(ofKind: .progress)
         #expect(!beforeRelease.contains(recorderProgressDetail))
 
         let token = try JSONDecoder().decode(PendingRunEnvelope.self, from: Data(rendered.utf8)).completionToken
@@ -77,7 +80,7 @@ struct HostAndEmitterTests {
         // Posted after the envelope was already handed back, and still routed
         // to the one sink the host bound — on the outer run's correlation,
         // because `ToolContext.post` re-stamps what it forwards.
-        let events = await recordedOperationEvents(of: run)
+        let events = await sink.events
         let recorderEvent = try #require(events.first { $0.detail == recorderProgressDetail })
         #expect(recorderEvent.correlationID == token)
         // No wiring and no cast reached the tool: it read the context the

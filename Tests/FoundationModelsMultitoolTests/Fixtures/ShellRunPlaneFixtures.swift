@@ -32,11 +32,16 @@ enum ShellRunPlane {
     /// - Parameters:
     ///   - verb: The verb to mount.
     ///   - context: The session context the engine inherits.
+    ///   - sink: The upstream sink each run's events reach, or `nil` to let the
+    ///     mount supply its own. A caller-supplied sink observes each run's OWN
+    ///     `completionToken`.
     /// - Returns: The mounted engine.
     static func mounted(
-        _ verb: Execute, inheriting context: ToolContext
+        _ verb: Execute, inheriting context: ToolContext,
+        postingTo sink: (any OperationEventSink)? = nil
     ) -> any Tool<ExecuteArguments, String> {
-        context.mount(verb, as: RunBinding.innerCallMount)
+        guard let sink else { return context.mount(verb, as: RunBinding.innerCallMount) }
+        return context.mount(verb, as: RunBinding.innerCallMount, postingTo: sink)
     }
 
     /// Waits until the run plane of `context` holds `count` runs, and answers
