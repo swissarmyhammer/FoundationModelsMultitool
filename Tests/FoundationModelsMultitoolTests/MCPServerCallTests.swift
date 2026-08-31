@@ -45,9 +45,9 @@ import ULID
 ///   `connecting(_:)` and `forked()` cases of the sibling's `MCPTool`, which
 ///   the `MCPTool` of this package does not carry.
 ///
-/// Each test binds a `ToolContext` with a recording sink around the call, the
+/// Each test binds a real `ToolContext` from a stub session around the call, the
 /// way `ShellExecuteTests` does, and the `.lost` settlement case runs the call
-/// inside a mounted `MultiTool` over a real `SessionMailbox`.
+/// inside a mounted `MultiTool` over that session's own run plane.
 @Suite("MCPServerCallTests")
 struct MCPServerCallTests {
 
@@ -230,12 +230,12 @@ struct MCPServerCallTests {
     func progressReachesTheAmbientContext() async throws {
         let (scripted, server) = try await Self.connected(serving: [])
         await Self.addProgressTool(to: scripted)
-        let sink = RecordingEventSink()
-        let context = makeOuterRunContext(mailbox: SessionMailbox(), sink: sink)
+        let run = try await makeStubRun()
+        let context = run.context
 
         _ = try await Self.call(server, tool: Self.progressToolName, under: context)
 
-        let progress = await sink.events.filter { $0.kind == .progress }
+        let progress = await recordedOperationEvents(of: run, ofKind: .progress)
         #expect(progress.count == Self.progressSteps, "progress was: \(progress)")
         #expect(progress.allSatisfy { $0.correlationID == context.completionToken })
         withExtendedLifetime(scripted) {}
@@ -249,14 +249,14 @@ struct MCPServerCallTests {
         await scripted.addProgressReportingTool(
             named: Self.progressToolName, totalSteps: Self.longRunSteps,
             stepDelay: Self.longRunStepDelay)
-        let sink = RecordingEventSink()
-        let context = makeOuterRunContext(mailbox: SessionMailbox(), sink: sink)
+        let run = try await makeStubRun()
+        let context = run.context
 
         let callTask = Task {
             try await Self.call(server, tool: Self.progressToolName, under: context)
         }
         try await TestPoll.waitUntil("the call reported progress") {
-            await !sink.details(ofKind: .progress).isEmpty
+            await !recordedOperationEvents(of: run, ofKind: .progress).isEmpty
         }
         callTask.cancel()
 
@@ -298,14 +298,10 @@ struct MCPServerCallTests {
         let registry = try MultiTool.Builder()
             .addTool(Self.probe(server, tool: Self.droppingToolName))
             .buildRegistry()
+        let context = try await makeOuterRunContext()
         let mounted = try #require(
-            ToolMounting.makeWrapped(
-                tool: MultiTool(registry: registry),
-                sessionID: ULID(),
-                mailbox: mailbox,
-                sink: RecordingEventSink(),
-                configuration: .synchronous
-            ) as? any FoundationModels.Tool<RunCodeArguments, String>
+            context.mount(MultiTool(registry: registry), as: .synchronous)
+                as? any FoundationModels.Tool<RunCodeArguments, String>
         )
 
         let rendered = try await mounted.call(arguments: RunCodeArguments(code: Self.probeSnippet))
@@ -371,13 +367,13 @@ struct MCPServerCallTests {
     func progressThenExactlyOneCompleted() async throws {
         let (scripted, server) = try await Self.connected(serving: [])
         await Self.addProgressTool(to: scripted)
-        let sink = RecordingEventSink()
-        let engine = try MCPCallProbe.mountedRunToCompletion(
-            Self.probe(server, tool: Self.progressToolName), mailbox: SessionMailbox(), sink: sink)
+        let run = try await makeStubRun()
+        let engine = MCPCallProbe.mountedRunToCompletion(
+            Self.probe(server, tool: Self.progressToolName), on: run.context)
 
         _ = try await engine.call(arguments: NoArguments())
 
-        let events = await sink.events
+        let events = await recordedOperationEvents(of: run)
         let kinds = events.map(\.kind)
         #expect(kinds.count == Self.progressSteps + Self.terminalEventCount, "kinds were: \(kinds)")
         #expect(kinds.last == .completed)
@@ -391,15 +387,15 @@ struct MCPServerCallTests {
     func concurrentCallsAreDistinguishableByCorrelationID() async throws {
         let (scripted, server) = try await Self.connected(serving: [])
         await Self.addProgressTool(to: scripted)
-        let sink = RecordingEventSink()
-        let engine = try MCPCallProbe.mountedRunToCompletion(
-            Self.probe(server, tool: Self.progressToolName), mailbox: SessionMailbox(), sink: sink)
+        let run = try await makeStubRun()
+        let engine = MCPCallProbe.mountedRunToCompletion(
+            Self.probe(server, tool: Self.progressToolName), on: run.context)
 
         async let first = engine.call(arguments: NoArguments())
         async let second = engine.call(arguments: NoArguments())
         _ = try await (first, second)
 
-        let events = await sink.events
+        let events = await recordedOperationEvents(of: run)
         let correlationIDs = Set(events.map(\.correlationID))
         #expect(correlationIDs.count == Self.concurrentCallCount)
         for correlationID in correlationIDs {

@@ -53,7 +53,7 @@ struct SuspendedContextTests {
     func everyMountedCallAnswersThePendingEnvelope() async throws {
         // The harshest site there is: run to completion under no clock. The
         // tool's own declaration wins over it.
-        let harness = try Self.makeHarness(mount: .synchronousUnbounded)
+        let harness = try await Self.makeHarness(mount: .synchronousUnbounded)
 
         let start = ContinuousClock.now
         let rendered = try await harness.mounted.call(
@@ -66,7 +66,7 @@ struct SuspendedContextTests {
 
         harness.latch.release()
         _ = try await Self.settledTerminal(
-            of: try Self.completionToken(of: rendered), in: harness.mailbox
+            of: try Self.completionToken(of: rendered), on: harness.run.context
         )
     }
 
@@ -74,7 +74,7 @@ struct SuspendedContextTests {
 
     @Test("a snippet whose call returned the envelope is still alive well after it, and still settles with its real result")
     func backgroundSnippetStaysAliveWellPastItsCall() async throws {
-        let harness = try Self.makeHarness()
+        let harness = try await Self.makeHarness()
 
         let rendered = try await harness.mounted.call(
             arguments: RunCodeArguments(code: Self.gatedSnippet)
@@ -84,14 +84,14 @@ struct SuspendedContextTests {
 
         // Alive: the mailbox still holds the background run, and the promise
         // the snippet is awaiting has not been torn down under it.
-        let backgrounded = await backgroundRuns(over: harness.mailbox).backgroundRuns()
+        let backgrounded = await harness.run.context.backgroundRuns()
         #expect(backgrounded.contains { $0.completionToken == token })
         #expect(!harness.gated.wasCancelled)
 
         // Resumable: releasing the inner call still produces the snippet's own
         // value, long after the call returned.
         harness.latch.release()
-        let terminal = try await Self.settledTerminal(of: token, in: harness.mailbox)
+        let terminal = try await Self.settledTerminal(of: token, on: harness.run.context)
         #expect(terminal.detail == Self.renderedGatedResult)
         #expect(terminal.outcome == .succeeded)
     }
@@ -100,7 +100,7 @@ struct SuspendedContextTests {
 
     @Test("a snippet whose inner call is in flight settles into exactly one terminal event carrying its result")
     func backgroundSnippetSettlesIntoExactlyOneTerminalEvent() async throws {
-        let harness = try Self.makeHarness()
+        let harness = try await Self.makeHarness()
 
         let rendered = try await harness.mounted.call(
             arguments: RunCodeArguments(code: Self.gatedSnippet)
@@ -118,10 +118,10 @@ struct SuspendedContextTests {
 
         let token = try Self.completionToken(of: rendered)
         harness.latch.release()
-        let terminal = try await Self.settledTerminal(of: token, in: harness.mailbox)
+        let terminal = try await Self.settledTerminal(of: token, on: harness.run.context)
 
         #expect(terminal.detail == Self.renderedGatedResult)
-        let completions = await harness.sink.events.filter { $0.kind == .completed }
+        let completions = await recordedOperationEvents(of: harness.run, ofKind: .completed)
         #expect(completions.count == 1)
         #expect(completions.first?.correlationID == token)
         #expect(completions.first?.detail == Self.renderedGatedResult)
@@ -152,7 +152,7 @@ struct SuspendedContextTests {
 
     @Test("cancel(completionToken) on a suspended snippet tears its context down within the time limit")
     func cancellingASuspendedRunTearsDownItsContext() async throws {
-        let harness = try Self.makeHarness()
+        let harness = try await Self.makeHarness()
         let rendered = try await harness.mounted.call(
             arguments: RunCodeArguments(code: Self.gatedSnippet)
         )
@@ -170,12 +170,12 @@ struct SuspendedContextTests {
             arguments: RunCodeArguments(code: "return await cancel(\"\(token)\");")
         )
         let cancelTerminal = try await Self.settledTerminal(
-            of: try Self.completionToken(of: cancelRendered), in: harness.mailbox
+            of: try Self.completionToken(of: cancelRendered), on: harness.run.context
         )
         #expect(cancelTerminal.detail.contains("\"result\":\"cancelled\""))
 
         let start = ContinuousClock.now
-        let terminal = try await Self.settledTerminal(of: token, in: harness.mailbox)
+        let terminal = try await Self.settledTerminal(of: token, on: harness.run.context)
         #expect(start.duration(to: .now) < Self.promptResponseBound)
         #expect(terminal.outcome == .cancelled)
         // The pending promise's own work was torn down with the context —
@@ -186,7 +186,7 @@ struct SuspendedContextTests {
         // race, not a check.
         try await TestPoll.waitUntil("the gated call unwound") { harness.gated.wasCancelled }
         #expect(!harness.latch.isReleased)
-        let backgrounded = await backgroundRuns(over: harness.mailbox).backgroundRuns()
+        let backgrounded = await harness.run.context.backgroundRuns()
         #expect(backgrounded.isEmpty)
     }
 
@@ -235,11 +235,8 @@ struct SuspendedContextTests {
         /// `MultiTool` wrapped in the shared engine.
         let mounted: any Tool<RunCodeArguments, String>
 
-        /// The session mailbox background runs are tracked in.
-        let mailbox: SessionMailbox
-
-        /// The session's upstream sink.
-        let sink: RecordingEventSink
+        /// The stub run whose context background runs are tracked on.
+        let run: StubRun
     }
 
     /// A registry exposing one gated tool as `tools.gated`.
@@ -264,27 +261,20 @@ struct SuspendedContextTests {
     private static func makeHarness(
         configuration: MultiToolConfiguration = .default,
         mount: ToolMount = .synchronous
-    ) throws -> Harness {
+    ) async throws -> Harness {
         let latch = ToolReleaseLatch()
         let gated = GatedTool(latch: latch)
         let multiTool = MultiTool(
             registry: try Self.registry(exposing: gated),
             configuration: configuration
         )
-        let sink = RecordingEventSink()
-        let mounted = ToolMounting.makeWrapped(
-            tool: multiTool,
-            sessionID: ULID(),
-            mailbox: mailbox,
-            sink: sink,
-            configuration: mount
-        )
+        let run = try await makeStubRun()
+        let mounted = run.context.mount(multiTool, as: mount)
         return Harness(
             gated: gated,
             latch: latch,
             mounted: try #require(mounted as? any Tool<RunCodeArguments, String>),
-            mailbox: mailbox,
-            sink: sink
+            run: run
         )
     }
 
@@ -310,10 +300,10 @@ struct SuspendedContextTests {
     ///
     /// - Parameters:
     ///   - completionToken: the background run's token.
-    ///   - mailbox: the session mailbox the run is tracked in.
+    ///   - context: the session context the run is tracked on.
     /// - Returns: the run's terminal event.
     private static func settledTerminal(
-        of completionToken: String, in mailbox: SessionMailbox
+        of completionToken: String, on context: ToolContext
     ) async throws -> OperationEvent {
         let settlement = await context.wait(
             completionToken: completionToken, seconds: scriptedRunSettlementSeconds

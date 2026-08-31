@@ -324,8 +324,8 @@ struct ShellExecuteTests {
     func theThreeIdentifiersAreOneString() async throws {
         let state = try makeState()
         let verb = makeVerb(over: state)
-        let sink = RecordingEventSink()
-        let context = makeOuterRunContext(mailbox: SessionMailbox(), sink: sink)
+        let run = try await makeStubRun()
+        let context = run.context
         let token = context.completionToken
 
         let output = try await Self.call(
@@ -334,7 +334,7 @@ struct ShellExecuteTests {
         #expect(try Self.report(output)["commandID"] as? String == token)
         #expect(await state.record(commandID: token) != nil)
 
-        let correlations = await Set(sink.events.map(\.correlationID))
+        let correlations = await Set(recordedOperationEvents(of: run).map(\.correlationID))
         #expect(correlations == [token], "correlations were: \(correlations)")
     }
 
@@ -346,13 +346,13 @@ struct ShellExecuteTests {
     func oneTerminalEventStandsAfterTheProgressEvents() async throws {
         let state = try makeState()
         let verb = makeVerb(over: state)
-        let sink = RecordingEventSink()
-        let context = makeOuterRunContext(mailbox: SessionMailbox(), sink: sink)
+        let run = try await makeStubRun()
+        let context = run.context
         let command = (1...Self.progressLineCount).map { "echo line\($0)" }.joined(separator: "; ")
 
         _ = try await Self.call(verb, ExecuteArguments(command: command), under: context)
 
-        let events = await sink.events
+        let events = await recordedOperationEvents(of: run)
         let kinds = events.map(\.kind)
         #expect(
             kinds.filter { $0 == .completed }.count == Self.terminalEventCount,
@@ -405,15 +405,15 @@ struct ShellExecuteTests {
     func theProgressEventsStandAsTheyDoWithNoHostStream() async throws {
         let stream = ShellOutputChunkStream()
         let verb = try makeVerb(teeing: stream)
-        let sink = RecordingEventSink()
-        let context = makeOuterRunContext(mailbox: SessionMailbox(), sink: sink)
+        let run = try await makeStubRun()
+        let context = run.context
 
         _ = try await Self.call(
             verb, ExecuteArguments(command: "echo \(Self.inlineMarker)"), under: context)
 
-        let progress = await sink.details(ofKind: .progress)
+        let progress = await recordedOperationEvents(of: run, ofKind: .progress).map(\.detail)
         #expect(progress == ["stdout: \(Self.inlineMarker)"], "progress was: \(progress)")
-        let kinds = await sink.events.map(\.kind)
+        let kinds = await recordedOperationEvents(of: run).map(\.kind)
         #expect(
             kinds.filter { $0 == .completed }.count == Self.terminalEventCount,
             "kinds were: \(kinds)")

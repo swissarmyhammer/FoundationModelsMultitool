@@ -44,18 +44,13 @@ struct HostAndEmitterTests {
             .addTool(GatedTool(latch: latch))
             .addTool(recorder)
             .buildRegistry()
-        let sink = RecordingEventSink()
-        let sessionID = ULID()
+        let run = try await makeStubRun()
+        let sessionID = run.context.sessionID
         let mounted = try #require(
-            ToolMounting.makeWrapped(
-                tool: MultiTool(registry: registry),
-                sessionID: sessionID,
-                mailbox: mailbox,
-                sink: sink,
-                // The stock session mount. `runCode` declares the background
-                // mount itself, and the declaration wins over the site.
-                configuration: .synchronous
-            ) as? any Tool<RunCodeArguments, String>
+            // The stock session mount. `runCode` declares the background
+            // mount itself, and the declaration wins over the site.
+            run.context.mount(MultiTool(registry: registry), as: .synchronous)
+                as? any Tool<RunCodeArguments, String>
         )
 
         let rendered = try await mounted.call(
@@ -65,12 +60,13 @@ struct HostAndEmitterTests {
         // The run backgrounded with its snippet still inside the gated call, so the
         // recorder has not run yet and nothing of its own is on the sink.
         #expect(PendingRunEnvelope.isRendered(text: rendered))
-        let beforeRelease = await sink.details(ofKind: .progress)
+        let beforeRelease = await recordedOperationEvents(of: run, ofKind: .progress)
+            .map(\.detail)
         #expect(!beforeRelease.contains(recorderProgressDetail))
 
         let token = try JSONDecoder().decode(PendingRunEnvelope.self, from: Data(rendered.utf8)).completionToken
         latch.release()
-        let settlement = await context
+        let settlement = await run.context
             .wait(completionToken: token, seconds: scriptedRunSettlementSeconds)
         guard case .settled(let terminal) = settlement else {
             Issue.record("the background run never settled: \(settlement)")
@@ -81,7 +77,7 @@ struct HostAndEmitterTests {
         // Posted after the envelope was already handed back, and still routed
         // to the one sink the host bound — on the outer run's correlation,
         // because `ToolContext.post` re-stamps what it forwards.
-        let events = await sink.events
+        let events = await recordedOperationEvents(of: run)
         let recorderEvent = try #require(events.first { $0.detail == recorderProgressDetail })
         #expect(recorderEvent.correlationID == token)
         // No wiring and no cast reached the tool: it read the context the
@@ -106,15 +102,17 @@ struct HostAndEmitterTests {
         let registered: any Tool = MultiTool(registry: registry)
         let forkable = try #require(registered as? any ForkableTool)
         let forked = try #require(forkable.forked() as? any Tool<RunCodeArguments, String>)
-        let sink = RecordingEventSink()
-        let context = makeOuterRunContext(mailbox: SessionMailbox(), sink: sink)
+        let run = try await makeStubRun()
+        let context = run.context
 
         let output = try await ToolContext.$current.withValue(context) {
             try await forked.call(arguments: RunCodeArguments(code: "return await tools.recorder();"))
         }
 
         #expect(output == renderedRecorderResult)
-        #expect(await sink.details(ofKind: .progress) == [recorderProgressDetail])
+        #expect(
+            await recordedOperationEvents(of: run, ofKind: .progress).map(\.detail)
+                == [recorderProgressDetail])
         #expect(recorder.observations.first?.sessionID == context.sessionID)
     }
 }

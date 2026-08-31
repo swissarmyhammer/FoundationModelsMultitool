@@ -212,17 +212,23 @@ struct MCPSessionSweepTests {
     @Test("parked shape: the sweep sends the advisory cancel and records .cancelled before the transport closes")
     func parkedCallGetsTheAdvisoryCancelAndCancelledBeforeTheTransportCloses() async throws {
         let (ground, registry) = try await Self.makeGround()
-        let mailbox = SessionMailbox()
+        let run = try await makeStubRun()
+        let context = run.context
         let mounted = try #require(
             SessionMount.synchronous(
-                MultiTool(registry: registry), mailbox: mailbox, sink: RecordingEventSink())
+                MultiTool(registry: registry), on: context)
                 as? any FoundationModels.Tool<RunCodeArguments, String>)
         let rendered = try await mounted.call(arguments: RunCodeArguments(code: Self.parkedSnippet))
         #expect(PendingRunEnvelope.isRendered(text: rendered), "answer was: \(rendered)")
         let envelope = try JSONDecoder().decode(PendingRunEnvelope.self, from: Data(rendered.utf8))
         try await Self.waitForTheCall(on: ground)
 
-        let terminals = await mailbox.sweep()
+        // `RoutedSession.close()` runs the sweep — it cancels every background
+        // run, rejects every pending elicitation, and journals the terminal
+        // events before it returns. A consumer cannot call the mailbox's own
+        // sweep, so this is the public route to the same behaviour.
+        await run.session.close()
+        let terminals = await recordedOperationEvents(of: run, ofKind: .completed)
         await ground.wire.mark(as: Self.terminalMarker)
         await ground.pool.shutdownAll()
 
@@ -235,7 +241,7 @@ struct MCPSessionSweepTests {
         try await Self.expectOrder(of: Self.cancelEntry, before: .disconnected, on: ground.wire)
         try await Self.expectOrder(
             of: .marker(Self.terminalMarker), before: .disconnected, on: ground.wire)
-        #expect(await mailbox.backgroundRuns().isEmpty)
+        #expect(await context.backgroundRuns().isEmpty)
         withExtendedLifetime(ground.scripted) {}
     }
 
@@ -249,15 +255,16 @@ struct MCPSessionSweepTests {
     @Test("native shape: the cancelled turn sends the advisory cancel before the transport closes")
     func nativeCallGetsTheAdvisoryCancelBeforeTheTransportCloses() async throws {
         let (ground, _) = try await Self.makeGround()
-        let mailbox = SessionMailbox()
+        let run = try await makeStubRun()
+        let context = run.context
         let entry = try #require(await ground.server.tool(named: ServerMode.slowBuildToolName))
         let mounted = try #require(
             SessionMount.synchronous(
-                MCPTool(entry: entry, server: ground.server), mailbox: mailbox, sink: RecordingEventSink())
+                MCPTool(entry: entry, server: ground.server), on: context)
                 as? any FoundationModels.Tool<GeneratedContent, String>)
         let turn = Task { try await mounted.call(arguments: GeneratedContent(properties: [:])) }
         try await Self.waitForTheCall(on: ground)
-        #expect(await mailbox.backgroundRuns().isEmpty, "a native call is never parked")
+        #expect(await context.backgroundRuns().isEmpty, "a native call is never parked")
 
         turn.cancel()
         await #expect(throws: CancellationError.self) {

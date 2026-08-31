@@ -10,7 +10,7 @@ import Testing
 /// Thus the tests are independent, and they run in parallel safely.
 ///
 /// Each command here runs under a completion token that
-/// `SessionMailbox.makeCompletionToken()` mints. eventplan.md
+/// `ToolContext.makeCompletionToken()` mints. eventplan.md
 /// § "Consolidation of the siblings" makes the `commandID` of a shell run its
 /// `correlationID` and its `completionToken` — one string on two planes — so
 /// the tests mint a token exactly as the background engine does, and they never
@@ -163,7 +163,7 @@ struct ShellStateTests {
     @Test("A command started under a token reads back under that same token")
     func storageRoundTripWritesAndReadsBackLines() async throws {
         let state = try makeState()
-        let token = SessionMailbox.makeCompletionToken()
+        let token = ToolContext.makeCompletionToken()
         let outputs = ["hello", "world"]
 
         await state.startCommand("echo hello", commandID: token)
@@ -176,7 +176,7 @@ struct ShellStateTests {
     @Test("Each stored log line carries the completion token in field 2")
     func logFileCarriesTheCompletionTokenInFieldTwo() async throws {
         let state = try makeState()
-        let token = SessionMailbox.makeCompletionToken()
+        let token = ToolContext.makeCompletionToken()
         let outputs = ["first", "second"]
 
         await state.startCommand("echo", commandID: token)
@@ -213,8 +213,8 @@ struct ShellStateTests {
     @Test("Each record keeps the completion token the caller gave")
     func commandRecordsKeepTheCallerSuppliedTokens() async throws {
         let state = try makeState()
-        let first = SessionMailbox.makeCompletionToken()
-        let second = SessionMailbox.makeCompletionToken()
+        let first = ToolContext.makeCompletionToken()
+        let second = ToolContext.makeCompletionToken()
         #expect(first != second)
 
         await state.startCommand("first", commandID: first)
@@ -227,7 +227,7 @@ struct ShellStateTests {
     @Test("Line numbers continue from stdout into stderr")
     func lineNumbersContinueFromStdoutIntoStderr() async throws {
         let state = try makeState()
-        let token = SessionMailbox.makeCompletionToken()
+        let token = ToolContext.makeCompletionToken()
         let standardOutput = ["out1", "out2"]
         let standardError = ["err1", "err2"]
 
@@ -246,9 +246,9 @@ struct ShellStateTests {
     func recordAnswersNothingForAnUnknownToken() async throws {
         let state = try makeState()
 
-        await state.startCommand("real", commandID: SessionMailbox.makeCompletionToken())
+        await state.startCommand("real", commandID: ToolContext.makeCompletionToken())
 
-        #expect(await state.record(commandID: SessionMailbox.makeCompletionToken()) == nil)
+        #expect(await state.record(commandID: ToolContext.makeCompletionToken()) == nil)
     }
 
     // MARK: - Filtering by session
@@ -261,8 +261,8 @@ struct ShellStateTests {
         let second = try ShellState(preferredDirectory: storeDirectory)
         #expect(first.sessionID != second.sessionID)
 
-        let firstToken = SessionMailbox.makeCompletionToken()
-        let secondToken = SessionMailbox.makeCompletionToken()
+        let firstToken = ToolContext.makeCompletionToken()
+        let secondToken = ToolContext.makeCompletionToken()
         await first.startCommand("a", commandID: firstToken)
         await second.startCommand("b", commandID: secondToken)
         try await first.appendLines(commandID: firstToken, stdout: ["shared_word from A"])
@@ -284,7 +284,7 @@ struct ShellStateTests {
     @Test("grep keeps the limit and reports the total apart from it")
     func grepRespectsLimitAndReportsTotalSeparately() async throws {
         let state = try makeState()
-        let token = SessionMailbox.makeCompletionToken()
+        let token = ToolContext.makeCompletionToken()
 
         await state.startCommand("many", commandID: token)
         try await state.appendLines(
@@ -298,8 +298,8 @@ struct ShellStateTests {
     @Test("grep scoped to one token answers for that command only")
     func grepScopedToOneTokenAnswersForThatCommandOnly() async throws {
         let state = try makeState()
-        let wanted = SessionMailbox.makeCompletionToken()
-        let other = SessionMailbox.makeCompletionToken()
+        let wanted = ToolContext.makeCompletionToken()
+        let other = ToolContext.makeCompletionToken()
 
         await state.startCommand("wanted", commandID: wanted)
         await state.startCommand("other", commandID: other)
@@ -321,7 +321,7 @@ struct ShellStateTests {
     @Test("grep reports the line number of each match")
     func grepReportsTheLineNumberOfEachMatch() async throws {
         let state = try makeState()
-        let token = SessionMailbox.makeCompletionToken()
+        let token = ToolContext.makeCompletionToken()
 
         await state.startCommand("numbered", commandID: token)
         // The first line does not match, thus the two matches are the second
@@ -336,7 +336,7 @@ struct ShellStateTests {
     @Test("An invalid regular expression surfaces a recoverable error")
     func grepInvalidRegexSurfacesRecoverableError() async throws {
         let state = try makeState()
-        let token = SessionMailbox.makeCompletionToken()
+        let token = ToolContext.makeCompletionToken()
 
         await state.startCommand("x", commandID: token)
         try await state.appendLines(commandID: token, stdout: ["text"])
@@ -369,7 +369,7 @@ struct ShellStateTests {
 
     @Test("The unknown-command description names the token")
     func unknownCommandDescriptionNamesTheToken() {
-        let token = SessionMailbox.makeCompletionToken()
+        let token = ToolContext.makeCompletionToken()
         let error = ShellStateError.unknownCommand(token)
         #expect(error.description == "Unknown command ID \(token)")
     }
@@ -377,7 +377,7 @@ struct ShellStateTests {
     @Test("A literal grep pattern matches plain text")
     func grepLiteralTreatsPatternAsPlainText() async throws {
         let state = try makeState()
-        let token = SessionMailbox.makeCompletionToken()
+        let token = ToolContext.makeCompletionToken()
 
         await state.startCommand("literal", commandID: token)
         try await state.appendLines(
@@ -404,7 +404,7 @@ struct ShellStateTests {
     @Test("grep does not match the metadata prefix of a log line")
     func grepDoesNotMatchLogLineMetadataPrefix() async throws {
         let state = try makeState()
-        let token = SessionMailbox.makeCompletionToken()
+        let token = ToolContext.makeCompletionToken()
 
         await state.startCommand("plain", commandID: token)
         // Text with no digit, no colon, and no part of either identifier.
@@ -437,7 +437,7 @@ struct ShellStateTests {
     @Test("grep matches the output text with no leak of the prefix")
     func grepMatchesOutputTextWithoutPrefixLeakage() async throws {
         let state = try makeState()
-        let token = SessionMailbox.makeCompletionToken()
+        let token = ToolContext.makeCompletionToken()
 
         await state.startCommand("find", commandID: token)
         try await state.appendLines(
@@ -454,7 +454,7 @@ struct ShellStateTests {
     @Test("The default range of getLines answers with everything")
     func getLinesDefaultRangeReturnsEverything() async throws {
         let state = try makeState()
-        let token = SessionMailbox.makeCompletionToken()
+        let token = ToolContext.makeCompletionToken()
         let outputs = (1...Self.sequenceLineCount).map { "line\($0)" }
 
         await state.startCommand("seq", commandID: token)
@@ -466,7 +466,7 @@ struct ShellStateTests {
     @Test("getLines keeps the start and the end it is given")
     func getLinesHonorsStartAndEnd() async throws {
         let state = try makeState()
-        let token = SessionMailbox.makeCompletionToken()
+        let token = ToolContext.makeCompletionToken()
         let outputs = (1...Self.rangeSampleCount).map { "data\($0)" }
 
         await state.startCommand("seq", commandID: token)
@@ -481,9 +481,9 @@ struct ShellStateTests {
     @Test("getLines under an unknown token throws unknownCommand")
     func getLinesUnknownCommandThrows() async throws {
         let state = try makeState()
-        let unknown = SessionMailbox.makeCompletionToken()
+        let unknown = ToolContext.makeCompletionToken()
 
-        await state.startCommand("real", commandID: SessionMailbox.makeCompletionToken())
+        await state.startCommand("real", commandID: ToolContext.makeCompletionToken())
 
         await #expect {
             _ = try await state.getLines(commandID: unknown)
@@ -496,9 +496,9 @@ struct ShellStateTests {
     @Test("appendLines under an unknown token throws unknownCommand")
     func appendLinesUnknownCommandThrows() async throws {
         let state = try makeState()
-        let unknown = SessionMailbox.makeCompletionToken()
+        let unknown = ToolContext.makeCompletionToken()
 
-        await state.startCommand("real", commandID: SessionMailbox.makeCompletionToken())
+        await state.startCommand("real", commandID: ToolContext.makeCompletionToken())
 
         await #expect {
             try await state.appendLines(commandID: unknown, stdout: ["orphan"])
@@ -515,7 +515,7 @@ struct ShellStateTests {
     @Test("grep drops the trailing whitespace of the result text")
     func grepTrimsTrailingWhitespaceFromResultText() async throws {
         let state = try makeState()
-        let token = SessionMailbox.makeCompletionToken()
+        let token = ToolContext.makeCompletionToken()
 
         await state.startCommand("trailing", commandID: token)
         try await state.appendLines(commandID: token, stdout: ["match here   "])
@@ -530,7 +530,7 @@ struct ShellStateTests {
     @Test("getLines drops a trailing carriage return and keeps the spaces")
     func getLinesStripsTrailingCarriageReturnButKeepsSpaces() async throws {
         let state = try makeState()
-        let token = SessionMailbox.makeCompletionToken()
+        let token = ToolContext.makeCompletionToken()
 
         await state.startCommand("crlf", commandID: token)
         try await state.appendLines(commandID: token, stdout: ["carriage\r", "spaces here  "])
@@ -572,7 +572,7 @@ struct ShellStateTests {
     @Test("startCommand makes a running record under the token")
     func startCommandCreatesRunningRecord() async throws {
         let state = try makeState()
-        let token = SessionMailbox.makeCompletionToken()
+        let token = ToolContext.makeCompletionToken()
         let before = Date()
 
         await state.startCommand("ls -la", commandID: token)
@@ -592,7 +592,7 @@ struct ShellStateTests {
     @Test("completeCommand sets the status, the exit code and the end time")
     func completeCommandSetsStatusAndExitCode() async throws {
         let state = try makeState()
-        let token = SessionMailbox.makeCompletionToken()
+        let token = ToolContext.makeCompletionToken()
 
         await state.startCommand("echo done", commandID: token)
         await state.completeCommand(commandID: token, exitCode: 0)
@@ -610,7 +610,7 @@ struct ShellStateTests {
     @Test("completeCommand marks a command that ran out of time")
     func completeCommandCanMarkTimedOut() async throws {
         let state = try makeState()
-        let token = SessionMailbox.makeCompletionToken()
+        let token = ToolContext.makeCompletionToken()
 
         await state.startCommand("sleep 999", commandID: token)
         await state.completeCommand(commandID: token, status: .timedOut, exitCode: -1)
@@ -630,7 +630,7 @@ struct ShellStateTests {
     @Test("A registered process group reads back and goes away at completion")
     func registeredProcessReadsBackAndIsDroppedAtCompletion() async throws {
         let state = try makeState()
-        let token = SessionMailbox.makeCompletionToken()
+        let token = ToolContext.makeCompletionToken()
         // The test process is a real, running process group. Thus the store
         // holds a pid that exists, and the test spawns no child of its own.
         let group = getpid()
@@ -650,7 +650,7 @@ struct ShellStateTests {
     @Test("completeIfRunning finalizes a command that still runs")
     func completeIfRunningTransitionsARunningCommand() async throws {
         let state = try makeState()
-        let token = SessionMailbox.makeCompletionToken()
+        let token = ToolContext.makeCompletionToken()
 
         await state.startCommand("echo hi", commandID: token)
         await state.completeIfRunning(commandID: token, status: .completed, exitCode: 0)
@@ -669,7 +669,7 @@ struct ShellStateTests {
     @Test("completeIfRunning leaves a command that a cancel already stopped")
     func completeIfRunningLeavesAnAlreadyStoppedCommandUntouched() async throws {
         let state = try makeState()
-        let token = SessionMailbox.makeCompletionToken()
+        let token = ToolContext.makeCompletionToken()
 
         await state.startCommand("sleep 60", commandID: token)
         await state.completeCommand(commandID: token, status: .killed, exitCode: nil)

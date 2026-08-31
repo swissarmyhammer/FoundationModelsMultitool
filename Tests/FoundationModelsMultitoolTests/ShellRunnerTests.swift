@@ -15,7 +15,7 @@ import Testing
 /// test to the next.
 ///
 /// Each run here carries a completion token that
-/// `SessionMailbox.makeCompletionToken()` mints. eventplan.md § "Consolidation
+/// `ToolContext.makeCompletionToken()` mints. eventplan.md § "Consolidation
 /// of the siblings" makes the `commandID` of a shell run its `correlationID` and
 /// its `completionToken` — one string on two planes — thus the tests mint a
 /// token exactly as the background engine does.
@@ -239,7 +239,7 @@ struct ShellRunnerTests {
     @Test("the group kill at the time limit leaves no survivor in the process tree")
     func timeoutGroupKillLeavesNoSurvivorsInProcessTree() async throws {
         let (runner, _, _) = try makeRunner()
-        let token = SessionMailbox.makeCompletionToken()
+        let token = ToolContext.makeCompletionToken()
 
         let marker = Self.makeMarker()
         let pattern = "sleep \(marker)"
@@ -278,7 +278,7 @@ struct ShellRunnerTests {
     @Test("an echo round trip captures one line and exits zero")
     func echoRoundTripCapturesOneLineAndExitsZero() async throws {
         let (runner, state, _) = try makeRunner()
-        let token = SessionMailbox.makeCompletionToken()
+        let token = ToolContext.makeCompletionToken()
 
         let outcome = try await runner.run(.init(command: "echo hi", completionToken: token))
         #expect(outcome.status == .completed)
@@ -293,7 +293,7 @@ struct ShellRunnerTests {
     @Test("an exit code of zero is reported and successful")
     func zeroExitIsReportedAndSuccessful() async throws {
         let (runner, _, _) = try makeRunner()
-        let token = SessionMailbox.makeCompletionToken()
+        let token = ToolContext.makeCompletionToken()
 
         let outcome = try await runner.run(.init(command: "exit 0", completionToken: token))
         #expect(outcome.status == .completed)
@@ -303,7 +303,7 @@ struct ShellRunnerTests {
     @Test("an exit code that is not zero is reported, and it is not a thrown error")
     func nonZeroExitIsReportedAndNotAThrownError() async throws {
         let (runner, _, _) = try makeRunner()
-        let token = SessionMailbox.makeCompletionToken()
+        let token = ToolContext.makeCompletionToken()
 
         // A run that ends without success is a call that WORKED, and it reports
         // the code the child gave.
@@ -316,7 +316,7 @@ struct ShellRunnerTests {
     @Test("a death by signal reports the absent exit code")
     func signalDeathReportsTheAbsentExitCode() async throws {
         let (runner, _, _) = try makeRunner()
-        let token = SessionMailbox.makeCompletionToken()
+        let token = ToolContext.makeCompletionToken()
 
         // The shell kills itself. A death by signal has no exit code to report,
         // and it is not a time limit.
@@ -330,7 +330,7 @@ struct ShellRunnerTests {
     @Test("the requested environment stands on top of the inherited environment")
     func requestedEnvironmentIsAddedOnTopOfTheInheritedOne() async throws {
         let (runner, state, _) = try makeRunner()
-        let token = SessionMailbox.makeCompletionToken()
+        let token = ToolContext.makeCompletionToken()
 
         // SHELLRUNNER_TEST comes from the request. HOME is inherited, and it
         // must survive.
@@ -350,7 +350,7 @@ struct ShellRunnerTests {
     @Test("the command runs in the requested working directory")
     func runsInRequestedWorkingDirectory() async throws {
         let (runner, state, directory) = try makeRunner()
-        let token = SessionMailbox.makeCompletionToken()
+        let token = ToolContext.makeCompletionToken()
         let workDirectory = directory.appendingPathComponent("work", isDirectory: true)
         try FileManager.default.createDirectory(
             at: workDirectory, withIntermediateDirectories: true)
@@ -382,7 +382,7 @@ struct ShellRunnerTests {
         // marker through to the log.
         let runner = ShellRunner(
             state: state, maxOutputSize: Self.smallOutputCap, registry: ProcessRegistry())
-        let token = SessionMailbox.makeCompletionToken()
+        let token = ToolContext.makeCompletionToken()
 
         let outcome = try await runner.run(
             .init(
@@ -404,7 +404,7 @@ struct ShellRunnerTests {
     @Test("a null byte in the output gives the binary placeholder")
     func nullByteInOutputYieldsBinaryPlaceholder() async throws {
         let (runner, state, _) = try makeRunner()
-        let token = SessionMailbox.makeCompletionToken()
+        let token = ToolContext.makeCompletionToken()
 
         // Seven bytes: a b c NUL d e f. The null starts the binary detection.
         _ = try await runner.run(.init(command: #"printf 'abc\000def'"#, completionToken: token))
@@ -434,7 +434,7 @@ struct ShellRunnerTests {
     @Test("standard output and standard error each keep their own write order")
     func stdoutAndStderrEachStayInWriteOrderWithAlternatingWrites() async throws {
         let (runner, state, _) = try makeRunner()
-        let token = SessionMailbox.makeCompletionToken()
+        let token = ToolContext.makeCompletionToken()
 
         let command = """
             printf 'out1\\n'; sleep 0.05
@@ -460,7 +460,7 @@ struct ShellRunnerTests {
     @Test("lines are visible in the store while the command still runs")
     func linesAreVisibleInShellStateWhileTheCommandIsStillRunning() async throws {
         let (runner, state, _) = try makeRunner()
-        let token = SessionMailbox.makeCompletionToken()
+        let token = ToolContext.makeCompletionToken()
 
         let runTask = Task {
             try await runner.run(.init(command: "echo one; sleep 5", completionToken: token))
@@ -489,7 +489,7 @@ struct ShellRunnerTests {
     @Test("the canceler stops a long command, reports .stopped, and leaves no child")
     func cancelerStopsALongCommandAndReportsStopped() async throws {
         let (runner, state, _) = try makeRunner()
-        let token = SessionMailbox.makeCompletionToken()
+        let token = ToolContext.makeCompletionToken()
         let marker = Self.makeMarker()
         let pattern = "sleep \(marker)"
 
@@ -519,7 +519,7 @@ struct ShellRunnerTests {
     @Test("the canceler kills the whole process group, and not the leader alone")
     func cancelerKillsTheWholeProcessGroupAndNotTheLeaderAlone() async throws {
         let (runner, _, _) = try makeRunner()
-        let token = SessionMailbox.makeCompletionToken()
+        let token = ToolContext.makeCompletionToken()
         let marker = Self.makeMarker()
         let pattern = "sleep \(marker)"
 
@@ -550,7 +550,7 @@ struct ShellRunnerTests {
     @Test("the requested time limit kills well before the command would end")
     func requestedTimeoutKillsWellBeforeTheCommandWouldFinish() async throws {
         let (runner, _, _) = try makeRunner()
-        let token = SessionMailbox.makeCompletionToken()
+        let token = ToolContext.makeCompletionToken()
 
         let clock = ContinuousClock()
         let start = clock.now
@@ -568,7 +568,7 @@ struct ShellRunnerTests {
     @Test("no time limit applies when the request asks for none")
     func noTimeoutIsAppliedWhenNoneRequested() async throws {
         let (runner, _, _) = try makeRunner()
-        let token = SessionMailbox.makeCompletionToken()
+        let token = ToolContext.makeCompletionToken()
 
         // With no limit the command runs to its own end. A limit short enough
         // to kill it would have to stand below one second, and there is none.
@@ -594,7 +594,7 @@ struct ShellRunnerTests {
     func runRegistersTheChildDuringExecutionAndDeregistersAfterCompletion() async throws {
         let registry = ProcessRegistry()
         let (runner, state, _) = try makeRunner(registry: registry)
-        let token = SessionMailbox.makeCompletionToken()
+        let token = ToolContext.makeCompletionToken()
 
         let runTask = Task {
             try await runner.run(.init(command: "echo one; sleep 0.3", completionToken: token))
@@ -623,7 +623,7 @@ struct ShellRunnerTests {
     @Test("a working directory that is absent finalizes the record instead of leaving it running")
     func nonExistentWorkingDirectoryFinalizesTheRecordInsteadOfLeavingItRunning() async throws {
         let (runner, state, directory) = try makeRunner()
-        let token = SessionMailbox.makeCompletionToken()
+        let token = ToolContext.makeCompletionToken()
         let missing = directory.appendingPathComponent("does-not-exist", isDirectory: true)
 
         await #expect(throws: (any Error).self) {
@@ -644,7 +644,7 @@ struct ShellRunnerTests {
     @Test("a failed log write finalizes the record instead of leaving it running")
     func appendLinesFailureMidRunFinalizesTheRecordInsteadOfLeavingItRunning() async throws {
         let (runner, state, _) = try makeRunner()
-        let token = SessionMailbox.makeCompletionToken()
+        let token = ToolContext.makeCompletionToken()
 
         // `ShellState.init` makes the log file. Removing it makes the next
         // `FileHandle(forWritingTo:)` of `appendLines` throw.
@@ -670,7 +670,7 @@ struct ShellRunnerTests {
         var (runner, _, _) = try makeRunner()
         let sandbox = RecordingSandbox()
         runner.sandbox = sandbox
-        let token = SessionMailbox.makeCompletionToken()
+        let token = ToolContext.makeCompletionToken()
 
         _ = try await runner.run(
             .init(command: "echo hi", completionToken: token, workingDirectory: "/tmp"))
@@ -703,7 +703,7 @@ struct ShellRunnerTests {
         runner.sandbox = RecordingSandbox(
             returning: SandboxedInvocation(
                 executable: "/bin/sh", arguments: ["-c", "echo decorated"]))
-        let token = SessionMailbox.makeCompletionToken()
+        let token = ToolContext.makeCompletionToken()
 
         let outcome = try await runner.run(.init(command: "echo hi", completionToken: token))
 
@@ -719,7 +719,7 @@ struct ShellRunnerTests {
     func nilSandboxSpawnsShellDirectly() async throws {
         let (runner, state, _) = try makeRunner()
         #expect(runner.sandbox == nil)
-        let token = SessionMailbox.makeCompletionToken()
+        let token = ToolContext.makeCompletionToken()
 
         let outcome = try await runner.run(.init(command: "echo plain", completionToken: token))
 
@@ -739,7 +739,7 @@ struct ShellRunnerTests {
         let sandbox = RecordingSandbox(throwing: .refused)
         runner.sandbox = sandbox
         let marker = directory.appendingPathComponent("spawned.marker")
-        let token = SessionMailbox.makeCompletionToken()
+        let token = ToolContext.makeCompletionToken()
 
         await #expect(throws: RecordingSandboxError.refused) {
             _ = try await runner.run(
@@ -758,7 +758,7 @@ struct ShellRunnerTests {
     func throwingSandboxFinalizesRecord() async throws {
         var (runner, state, _) = try makeRunner()
         runner.sandbox = RecordingSandbox(throwing: .refused)
-        let token = SessionMailbox.makeCompletionToken()
+        let token = ToolContext.makeCompletionToken()
 
         await #expect(throws: RecordingSandboxError.refused) {
             _ = try await runner.run(.init(command: "echo hi", completionToken: token))
@@ -775,7 +775,7 @@ struct ShellRunnerTests {
     /// silently.
     @Test("the resolved sandbox directories follow symbolic links")
     func resolvedSandboxDirectoriesResolvesSymlinks() {
-        let token = SessionMailbox.makeCompletionToken()
+        let token = ToolContext.makeCompletionToken()
         let directories = ShellRunner.resolvedSandboxDirectories(
             request: .init(
                 command: "echo hi", completionToken: token, workingDirectory: "/tmp"))
@@ -809,7 +809,7 @@ struct ShellRunnerTests {
     /// at the boundary.
     @Test("the resolved sandbox directories fall back to the current directory")
     func resolvedSandboxDirectoriesFallsBackToCurrentDirectory() {
-        let token = SessionMailbox.makeCompletionToken()
+        let token = ToolContext.makeCompletionToken()
         let directories = ShellRunner.resolvedSandboxDirectories(
             request: .init(command: "echo hi", completionToken: token))
 

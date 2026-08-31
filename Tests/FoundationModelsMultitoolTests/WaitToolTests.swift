@@ -120,10 +120,10 @@ struct WaitToolTests {
     ///
     /// - Parameters:
     ///   - arguments: the call's arguments.
-    ///   - mailbox: the session mailbox whose background runs are read.
+    ///   - context: the session context whose background runs are read.
     /// - Returns: the tool's rendered report.
     private static func waitCall(
-        _ arguments: WaitArguments, against mailbox: SessionMailbox
+        _ arguments: WaitArguments, against context: ToolContext
     ) async throws -> String {
         try await ToolContext.$current.withValue(context) {
             try await WaitTool().call(arguments: arguments)
@@ -132,6 +132,7 @@ struct WaitToolTests {
 
     @Test("wait blocks until a background run finishes, and answers with its terminal detail")
     func waitBlocksUntilTheRunSettles() async throws {
+        let context = try await makeOuterRunContext()
         let run = try await startScriptedRun(on: context, detail: "the-collected-result")
         let heldOpen = Duration.milliseconds(300)
 
@@ -145,7 +146,7 @@ struct WaitToolTests {
         }
         let start = ContinuousClock.now
         let finished = try await Self.waitCall(
-            WaitArguments(completionToken: run.completionToken), against: mailbox
+            WaitArguments(completionToken: run.completionToken), against: context
         )
         let elapsed = start.duration(to: .now)
         try await settling.value
@@ -160,12 +161,13 @@ struct WaitToolTests {
 
     @Test("a run that settles early returns early — the bound is not a floor")
     func anEarlySettlementReturnsEarly() async throws {
+        let context = try await makeOuterRunContext()
         let run = try await startScriptedRun(on: context)
         let generousBound: Double = 600
 
         let start = ContinuousClock.now
         async let report = Self.waitCall(
-            WaitArguments(completionToken: run.completionToken, timeout: generousBound), against: mailbox
+            WaitArguments(completionToken: run.completionToken, timeout: generousBound), against: context
         )
         await settle(run, on: context)
         _ = try await report
@@ -178,12 +180,13 @@ struct WaitToolTests {
 
     @Test("a run still going at the caller's bound reports a timeout, not failure")
     func aRunStillGoingAtTheBoundReportsATimeout() async throws {
+        let context = try await makeOuterRunContext()
         let run = try await startScriptedRun(on: context)
 
         // Never settled: the gate stays closed for the whole test, so the bound
         // is what ends the wait. Deterministic — nothing races the clock.
         let report = try await Self.waitCall(
-            WaitArguments(completionToken: run.completionToken, timeout: 0.2), against: mailbox
+            WaitArguments(completionToken: run.completionToken, timeout: 0.2), against: context
         )
 
         #expect(report.contains(CallResult.timeout))
@@ -194,6 +197,7 @@ struct WaitToolTests {
 
     @Test("a finished run is told to answer with the detail this call just delivered")
     func aFinishedRunCarriesTheAnswerDirective() async throws {
+        let context = try await makeOuterRunContext()
         // The answer-level half of task `wnfzwxg`. A model that collected the
         // value and then replied that it would arrive later did everything
         // mechanical right: it spent the wait, the run finished, nothing was
@@ -203,7 +207,7 @@ struct WaitToolTests {
         await settle(run, on: context)
 
         let finished = try await Self.waitCall(
-            WaitArguments(completionToken: run.completionToken), against: mailbox
+            WaitArguments(completionToken: run.completionToken), against: context
         )
 
         #expect(finished.contains("the-collected-result"))
@@ -212,12 +216,13 @@ struct WaitToolTests {
 
     @Test("a run still going carries no answer directive, because it delivered no result")
     func aDeadlineThatElapsedCarriesNoAnswerDirective() async throws {
+        let context = try await makeOuterRunContext()
         // The directive names a `detail` this report carries. A report that
         // carries none would be telling the model to answer with nothing.
         let run = try await startScriptedRun(on: context)
 
         let report = try await Self.waitCall(
-            WaitArguments(completionToken: run.completionToken, timeout: 0.2), against: mailbox
+            WaitArguments(completionToken: run.completionToken, timeout: 0.2), against: context
         )
 
         #expect(report.contains(CallResult.timeout))
@@ -226,6 +231,7 @@ struct WaitToolTests {
 
     @Test("waiting with no token waits for every pending run")
     func waitingWithNoTokenWaitsForEveryPendingRun() async throws {
+        let context = try await makeOuterRunContext()
         let first = try await startScriptedRun(on: context, tool: "first", detail: "first-result")
         let second = try await startScriptedRun(on: context, tool: "second", detail: "second-result")
 
@@ -238,7 +244,7 @@ struct WaitToolTests {
             await settle(first, on: context)
             await settle(second, on: context)
         }
-        let collected = try await Self.waitCall(WaitArguments(), against: mailbox)
+        let collected = try await Self.waitCall(WaitArguments(), against: context)
         try await settling.value
         #expect(collected.contains("first-result"))
         #expect(collected.contains("second-result"))
@@ -246,10 +252,11 @@ struct WaitToolTests {
 
     @Test("a session whose runs have all finished says so, and points at the answer")
     func aSessionWithNothingPendingSaysSo() async throws {
+        let context = try await makeOuterRunContext()
         let run = try await startScriptedRun(on: context)
         await settle(run, on: context)
 
-        let report = try await Self.waitCall(WaitArguments(), against: mailbox)
+        let report = try await Self.waitCall(WaitArguments(), against: context)
 
         // Not an error and not an empty wait: the runs are done, so the answer
         // is already in hand and the report says that rather than inviting
@@ -262,19 +269,15 @@ struct WaitToolTests {
 
     @Test("a wait call never backgrounds itself, whatever mount the site puts it under")
     func waitNeverBackgroundsItself() async throws {
+        let context = try await makeOuterRunContext()
         let run = try await startScriptedRun(on: context)
 
         // The harshest site mount there is: background, no clock. The tool
         // declares `synchronousUnbounded` itself, and a declaration wins over
         // the site, so the wait runs to its own conclusion.
         let mounted = try #require(
-            ToolMounting.makeWrapped(
-                tool: WaitTool(),
-                sessionID: ULID(),
-                mailbox: mailbox,
-                sink: RecordingEventSink(),
-                configuration: ToolMount(mode: .background, timeout: nil)
-            ) as? any Tool<WaitArguments, String>
+            context.mount(WaitTool(), as: ToolMount(mode: .background, timeout: nil))
+                as? any Tool<WaitArguments, String>
         )
 
         let report = try await ToolContext.$current.withValue(context) {

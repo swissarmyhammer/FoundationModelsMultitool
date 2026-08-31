@@ -19,7 +19,7 @@ import Testing
 /// are independent, and they run in parallel safely.
 ///
 /// Each run stands under a completion token that
-/// `SessionMailbox.makeCompletionToken()` mints. eventplan.md § "Consolidation
+/// `ToolContext.makeCompletionToken()` mints. eventplan.md § "Consolidation
 /// of the siblings" makes the `commandID` of a shell run its `correlationID`
 /// and its `completionToken` — one string on two planes — thus a test mints a
 /// token exactly as the background engine does.
@@ -114,7 +114,7 @@ struct ShellHistoryOpsTests {
     private func recordCompletedCommand(
         in state: ShellState, lines: [String]
     ) async throws -> String {
-        let token = SessionMailbox.makeCompletionToken()
+        let token = ToolContext.makeCompletionToken()
         await state.startCommand(Self.storedLines.joined(separator: " "), commandID: token)
         try await state.appendLines(commandID: token, stdout: lines)
         await state.completeCommand(commandID: token)
@@ -132,7 +132,7 @@ struct ShellHistoryOpsTests {
         in state: ShellState
     ) -> (token: String, run: Task<ShellRunner.Outcome, Error>) {
         let runner = ShellRunner(state: state, registry: ProcessRegistry())
-        let token = SessionMailbox.makeCompletionToken()
+        let token = ToolContext.makeCompletionToken()
         let run = Task {
             try await runner.run(
                 .init(
@@ -262,7 +262,7 @@ struct ShellHistoryOpsTests {
     func getLinesCorrectsATokenNoCommandRanUnder() async throws {
         let state = try makeState()
         _ = try await recordCompletedCommand(in: state, lines: Self.storedLines)
-        let unknown = SessionMailbox.makeCompletionToken()
+        let unknown = ToolContext.makeCompletionToken()
 
         let result = try await GetLines(state: state)
             .call(arguments: GetLinesArguments(commandID: unknown))
@@ -401,7 +401,7 @@ struct ShellHistoryOpsTests {
     func grepHistoryCorrectsATokenNoCommandRanUnder() async throws {
         let state = try makeState()
         _ = try await recordCompletedCommand(in: state, lines: Self.storedLines)
-        let unknown = SessionMailbox.makeCompletionToken()
+        let unknown = ToolContext.makeCompletionToken()
 
         let result = try await GrepHistory(state: state).call(
             arguments: GrepHistoryArguments(pattern: "beta", commandID: unknown))

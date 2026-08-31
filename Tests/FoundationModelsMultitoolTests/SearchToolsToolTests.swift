@@ -309,14 +309,10 @@ struct SearchToolsToolTests {
         // the site, so discovery still blocks. Asserted against a mount rather
         // than by timing a real search: "however long it takes" is a property
         // of the mount, not of a stopwatch.
+        let context = try await makeOuterRunContext()
         let mounted = try #require(
-            ToolMounting.makeWrapped(
-                tool: tool,
-                sessionID: ULID(),
-                mailbox: SessionMailbox(),
-                sink: RecordingEventSink(),
-                configuration: ToolMount(mode: .background, timeout: nil)
-            ) as? any Tool<SearchToolsArguments, String>
+            context.mount(tool, as: ToolMount(mode: .background, timeout: nil))
+                as? any Tool<SearchToolsArguments, String>
         )
 
         let feedback = try await mounted.call(arguments: SearchToolsArguments(task: "list the cities"))
@@ -332,18 +328,14 @@ struct SearchToolsToolTests {
             items: surface.entries,
             mode: .auto,
             selection: SelectionConfig(
-                model: { _, _ in FailingSelectionRootSession() }, capacityCharacterLimit: .max
+                model: { _ in FailingSelectionRootSession() }, capacityCharacterLimit: .max
             )
         )
         let tool = SearchToolsTool(searcher: searcher, limit: surface.entries.count)
+        let context = try await makeOuterRunContext()
         let mounted = try #require(
-            ToolMounting.makeWrapped(
-                tool: tool,
-                sessionID: ULID(),
-                mailbox: SessionMailbox(),
-                sink: RecordingEventSink(),
-                configuration: ToolMount(mode: .background, timeout: nil)
-            ) as? any Tool<SearchToolsArguments, String>
+            context.mount(tool, as: ToolMount(mode: .background, timeout: nil))
+                as? any Tool<SearchToolsArguments, String>
         )
 
         // Slow is not broken, and broken is not slow: a real failure reaches the

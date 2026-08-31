@@ -325,3 +325,27 @@ func settledEvents(
     }
     return settled
 }
+
+/// Every `OperationEvent` the runs of `run` recorded, read off the session's
+/// own recorded transcript.
+///
+/// This is the only public route to a `.progress` or `.elicitation` event. A
+/// host cannot inject an `OperationEventSink` — nothing public of Router
+/// accepts one — and `SessionEvent` carries only the terminal event, as
+/// `runSettled`. What the transcript carries instead is every drained event,
+/// as structured segments, and `TranscriptEvent.operationEvents` is the public
+/// reader for them.
+///
+/// - Parameters:
+///   - run: The stub run whose transcript to read.
+///   - kind: The one event kind to keep, or `nil` for every kind.
+/// - Returns: The recorded events, in transcript order.
+func recordedOperationEvents(
+    of run: StubRun, ofKind kind: OperationEventKind? = nil
+) async -> [OperationEvent] {
+    let directory = await run.session.recordingDirectory
+    let merged = (try? TranscriptEvent.merged(under: directory)) ?? []
+    let events = merged.flatMap(\.operationEvents)
+    guard let kind else { return events }
+    return events.filter { $0.kind == kind }
+}

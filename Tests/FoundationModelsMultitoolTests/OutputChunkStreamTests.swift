@@ -32,7 +32,7 @@ struct OutputChunkStreamTests {
 
     /// The completion token of the one run of a test that runs one command.
     ///
-    /// A ULID, as `SessionMailbox.makeCompletionToken()` mints. The tests state
+    /// A ULID, as `ToolContext.makeCompletionToken()` mints. The tests state
     /// the token themselves, thus each expectation names the token it examines.
     private static let firstToken = "01M0NAGFZW81T7W42D3WT1T8MC"
 

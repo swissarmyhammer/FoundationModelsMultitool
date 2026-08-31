@@ -33,8 +33,8 @@ struct RunBindingTests {
     @Test("a slow inner call still returns its real value, and never goes to the background")
     func slowInnerCallReturnsItsRealValueWithoutBackgrounding() async throws {
         let slowTool = WindowRecordingTool(name: "slow", delayNanoseconds: innerCallDelayNanoseconds)
-        let sink = RecordingEventSink()
-        let binding = RunBinding(context: makeOuterRunContext(mailbox: mailbox, sink: sink))
+        let context = try await makeOuterRunContext()
+        let binding = RunBinding(context: context)
 
         let output = try await binding.invoke(slowTool, arguments: NoArguments(unused: nil))
 
@@ -54,8 +54,8 @@ struct RunBindingTests {
             .addTool(beta)
             .buildRegistry()
         let multiTool = MultiTool(registry: registry)
-        let sink = RecordingEventSink()
-        let context = makeOuterRunContext(mailbox: SessionMailbox(), sink: sink)
+        let run = try await makeStubRun()
+        let context = run.context
 
         let output = try await ToolContext.$current.withValue(context) {
             try await multiTool.call(
@@ -69,7 +69,7 @@ struct RunBindingTests {
         #expect(Set(observations.compactMap(\.completionToken)).count == 2)
         #expect(observations.allSatisfy { $0.completionToken != context.completionToken })
         #expect(observations.allSatisfy { $0.sessionID == context.sessionID })
-        #expect(Set(await sink.details(ofKind: .progress)) == ["alpha ran", "beta ran"])
+        #expect(Set(await recordedOperationEvents(of: run, ofKind: .progress).map(\.detail)) == ["alpha ran", "beta ran"])
     }
 
     // MARK: - Binding capture, not inheritance
@@ -80,8 +80,10 @@ struct RunBindingTests {
         let registry = try MultiTool.Builder().addTool(shared).buildRegistry()
         let firstSink = RecordingEventSink()
         let secondSink = RecordingEventSink()
-        let firstContext = makeOuterRunContext(mailbox: SessionMailbox(), sink: firstSink)
-        let secondContext = makeOuterRunContext(mailbox: SessionMailbox(), sink: secondSink)
+        let firstRun = try await makeStubRun()
+        let secondRun = try await makeStubRun()
+        let firstContext = firstRun.context
+        let secondContext = secondRun.context
         let code = "return await tools.shared();"
         let first = MultiTool(registry: registry)
         let second = MultiTool(registry: registry)
@@ -94,8 +96,8 @@ struct RunBindingTests {
         }
         _ = try await (firstOutput, secondOutput)
 
-        for (sink, context) in [(firstSink, firstContext), (secondSink, secondContext)] {
-            let events = await sink.events
+        for (run, context) in [(firstRun, firstContext), (secondRun, secondContext)] {
+            let events = await recordedOperationEvents(of: run)
             #expect(!events.isEmpty)
             #expect(events.allSatisfy { $0.correlationID == context.completionToken })
         }

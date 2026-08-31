@@ -93,8 +93,10 @@ struct ShellSessionSweepTests {
     /// live process tree this test spawned.
     private struct BackgroundSession {
 
-        /// The mailbox the runs are tracked in, whose `sweep()` is the teardown.
-        let mailbox: SessionMailbox
+        /// The stub run the runs are tracked on. `RoutedSession.close()` is
+        /// the teardown: it runs the mailbox's own sweep and journals the
+        /// terminal events, and a consumer cannot call that sweep directly.
+        let stub: StubRun
 
         /// The ambient context of the outer run, which reports the run plane.
         let context: ToolContext
@@ -131,7 +133,8 @@ struct ShellSessionSweepTests {
         let state = try ShellState(
             preferredDirectory: directory.appendingPathComponent(Self.shellStoreDirectoryName))
         let registry = ProcessRegistry()
-        let context = try await makeOuterRunContext()
+        let run = try await makeStubRun()
+        let context = run.context
         let engine = try ShellRunPlane.mounted(
             Execute(runner: ShellRunner(state: state, registry: registry)), inheriting: context)
 
@@ -145,7 +148,7 @@ struct ShellSessionSweepTests {
             groups.append(try await Self.processGroup(of: run.completionToken, in: state))
         }
         return BackgroundSession(
-            mailbox: mailbox,
+            stub: run,
             context: context,
             state: state,
             registry: registry,
@@ -222,7 +225,7 @@ struct ShellSessionSweepTests {
             #expect(Self.processGroupStands(group), "the process group \(group) never came up")
         }
 
-        _ = await session.mailbox.sweep()
+        await session.stub.session.close()
 
         for group in session.groups {
             let gone = await TestPoll.holds { !Self.processGroupStands(group) }
@@ -246,7 +249,9 @@ struct ShellSessionSweepTests {
         let session = try await makeBackgroundSession(runCount: Self.oneBackgroundRun)
         let run = try #require(session.runs.first)
 
-        let terminals = await session.mailbox.sweep()
+        await session.stub.session.close()
+        let terminals = await recordedOperationEvents(
+            of: session.stub, ofKind: .completed)
 
         #expect(terminals.count == Self.terminalEventsPerRun)
         let terminal = try #require(terminals.first)
@@ -268,7 +273,9 @@ struct ShellSessionSweepTests {
     func eachOfTwoBackgroundShellRunsGetsItsOwnTerminalEvent() async throws {
         let session = try await makeBackgroundSession(runCount: Self.twoBackgroundRuns)
 
-        let terminals = await session.mailbox.sweep()
+        await session.stub.session.close()
+        let terminals = await recordedOperationEvents(
+            of: session.stub, ofKind: .completed)
 
         #expect(terminals.count == Self.twoBackgroundRuns)
         #expect(terminals.map(\.correlationID) == session.runs.map(\.completionToken))
@@ -293,7 +300,7 @@ struct ShellSessionSweepTests {
         let registry = session.registry
         #expect(registry.registeredPids == Set(session.groups))
 
-        _ = await session.mailbox.sweep()
+        await session.stub.session.close()
 
         let drained = await TestPoll.holds { registry.registeredPids.isEmpty }
         #expect(drained, "the registry still held \(registry.registeredPids)")

@@ -137,24 +137,28 @@ struct MCPElicitationTests {
         }
     }
 
-    /// The pieces of one run bound around a call: the mailbox the test
-    /// answers through, the sink it reads the elicitation event from, and
-    /// the context it binds.
+    /// The pieces of one run bound around a call: the session the test answers
+    /// through, and the context it binds.
+    ///
+    /// A test cannot own a mailbox or inject a sink — both are internal to
+    /// Router — so it owns a stub session instead. The elicitation event is
+    /// read off that session's recorded transcript, and the answer is
+    /// delivered through `RoutedSession.respond(elicitationId:response:)`.
     private struct BoundRun {
-        /// The mailbox the elicitation suspends in.
-        let mailbox: SessionMailbox
-
-        /// The sink the elicitation event rides.
-        let sink: RecordingEventSink
+        /// The stub run the elicitation suspends in.
+        let stub: StubRun
 
         /// The context bound around the call.
-        let context: ToolContext
+        var context: ToolContext { stub.context }
+
+        /// The session the answer is delivered through.
+        var session: RoutedSession { stub.session }
 
         /// Builds a fresh run.
-        init() {
-            mailbox = SessionMailbox()
-            sink = RecordingEventSink()
-            context = makeOuterRunContext(mailbox: mailbox, sink: sink)
+        ///
+        /// - Throws: whatever standing up the stub session throws.
+        init() async throws {
+            stub = try await makeStubRun()
         }
     }
 
@@ -194,23 +198,24 @@ struct MCPElicitationTests {
 
     /// Waits for the elicitation event of the run on `sink`, and returns it.
     ///
-    /// - Parameter sink: The sink of the run.
+    /// - Parameter run: The run to read.
     /// - Returns: The event.
     /// - Throws: When no elicitation event arrives.
-    private static func elicitationEvent(on sink: RecordingEventSink) async throws -> OperationEvent {
+    private static func elicitationEvent(on run: BoundRun) async throws -> OperationEvent {
         try await TestPoll.waitUntil("the elicitation event") {
-            await sink.events.contains { $0.kind == .elicitation }
+            await !recordedOperationEvents(of: run.stub, ofKind: .elicitation).isEmpty
         }
-        return try #require(await sink.events.first { $0.kind == .elicitation })
+        return try #require(
+            await recordedOperationEvents(of: run.stub, ofKind: .elicitation).first)
     }
 
-    /// The request the elicitation event of the run on `sink` carries.
+    /// The request the elicitation event of `run` carries.
     ///
-    /// - Parameter sink: The sink of the run.
+    /// - Parameter run: The run to read.
     /// - Returns: The request.
     /// - Throws: When no elicitation event arrives, or it carries no request.
-    private static func elicitationRequest(on sink: RecordingEventSink) async throws -> ElicitationRequest {
-        try #require(await elicitationEvent(on: sink).elicitation)
+    private static func elicitationRequest(on run: BoundRun) async throws -> ElicitationRequest {
+        try #require(await elicitationEvent(on: run).elicitation)
     }
 
     /// The verb of `server` for the tool named `name`.
@@ -256,16 +261,16 @@ struct MCPElicitationTests {
     func theMailboxAnswerReachesTheTool(kind: MCPTransportKind) async throws {
         let (scripted, server) = try await Self.connected(over: kind)
         defer { Task { await server.disconnect() } }
-        let run = BoundRun()
+        let run = (try await BoundRun())
 
         let call = Self.startCall(server, tool: ScriptedServer.elicitEchoToolName, under: run.context)
-        let event = try await Self.elicitationEvent(on: run.sink)
+        let event = try await Self.elicitationEvent(on: run)
         let request = try #require(event.elicitation)
         #expect(request.mode == .form)
         #expect(request.message == ScriptedServer.elicitEchoMessage)
         #expect(request.requestedSchema?.properties.keys.contains(ScriptedServer.elicitEchoAnswerField) == true)
         #expect(event.correlationID == run.context.completionToken)
-        await run.mailbox.respond(elicitationId: request.elicitationId, Self.scriptedAccept)
+        await run.session.respond(elicitationId: request.elicitationId.description, response: Self.scriptedAccept)
         let result = try await call.value
 
         #expect(Self.answer(in: result) == Self.scriptedAnswer)
@@ -277,17 +282,17 @@ struct MCPElicitationTests {
     func aURLAcceptHoldsTheCallUntilTheMailboxCompletes(kind: MCPTransportKind) async throws {
         let (scripted, server) = try await Self.connected(over: kind)
         defer { Task { await server.disconnect() } }
-        let run = BoundRun()
+        let run = (try await BoundRun())
 
         let call = Self.startCall(server, tool: ScriptedServer.elicitURLToolName, under: run.context)
-        let request = try await Self.elicitationRequest(on: run.sink)
+        let request = try await Self.elicitationRequest(on: run)
         #expect(request.mode == .url)
         #expect(request.message == ScriptedServer.elicitURLMessage)
         #expect(request.url?.absoluteString == ScriptedServer.elicitURLLink)
-        let delivery = await run.mailbox.respond(elicitationId: request.elicitationId, Self.urlAccept)
+        let delivery = await run.session.respond(elicitationId: request.elicitationId.description, response: Self.urlAccept)
         #expect(delivery == .acceptedAwaitingCompletion)
         #expect(await server.inFlightCalls.count == Self.oneCallInFlight)
-        await run.mailbox.complete(elicitationId: request.elicitationId)
+        await run.session.complete(elicitationId: request.elicitationId.description)
         let result = try await call.value
 
         #expect(Self.rendered(result).contains(Self.acceptText))
@@ -300,15 +305,15 @@ struct MCPElicitationTests {
         defer { Task { await server.disconnect() } }
         let registry = try await MultiTool.Builder().withMCP(servers: [server]).buildRegistry()
         let multiTool = MultiTool(registry: registry)
-        let run = BoundRun()
+        let run = (try await BoundRun())
 
         let snippet = Task {
             try await ToolContext.$current.withValue(run.context) {
                 try await multiTool.call(arguments: RunCodeArguments(code: Self.elicitEchoSnippet))
             }
         }
-        let request = try await Self.elicitationRequest(on: run.sink)
-        await run.mailbox.respond(elicitationId: request.elicitationId, Self.scriptedAccept)
+        let request = try await Self.elicitationRequest(on: run)
+        await run.session.respond(elicitationId: request.elicitationId.description, response: Self.scriptedAccept)
         let output = try await snippet.value
 
         let returned = try JSONDecoder().decode(String.self, from: Data(output.utf8))
@@ -373,11 +378,11 @@ struct MCPElicitationTests {
     func theContextWinsOverTheHandler() async throws {
         let probe = HandlerProbe(responding: Self.urlAccept)
         let (scripted, server) = try await Self.connected(over: .inMemory, elicitationHandler: probe.handler)
-        let run = BoundRun()
+        let run = (try await BoundRun())
 
         let call = Self.startCall(server, tool: ScriptedServer.elicitEchoToolName, under: run.context)
-        let request = try await Self.elicitationRequest(on: run.sink)
-        await run.mailbox.respond(elicitationId: request.elicitationId, Self.scriptedAccept)
+        let request = try await Self.elicitationRequest(on: run)
+        await run.session.respond(elicitationId: request.elicitationId.description, response: Self.scriptedAccept)
         let result = try await call.value
 
         #expect(Self.answer(in: result) == Self.scriptedAnswer)
@@ -390,11 +395,11 @@ struct MCPElicitationTests {
     @Test("decline and cancel reach the server as those actions, and neither cancels the run", arguments: refusals)
     func aRefusalReachesTheServerAndKeepsTheRun(refusal: (response: ElicitationResponse, text: String)) async throws {
         let (scripted, server) = try await Self.connected(over: .inMemory)
-        let run = BoundRun()
+        let run = (try await BoundRun())
 
         let call = Self.startCall(server, tool: ScriptedServer.elicitEchoToolName, under: run.context)
-        let request = try await Self.elicitationRequest(on: run.sink)
-        await run.mailbox.respond(elicitationId: request.elicitationId, refusal.response)
+        let request = try await Self.elicitationRequest(on: run)
+        await run.session.respond(elicitationId: request.elicitationId.description, response: refusal.response)
         let result = try await call.value
 
         #expect(result.isError != true)
@@ -420,14 +425,14 @@ struct MCPElicitationTests {
                 properties: [Self.nestedFieldName: .object(["type": .string(Self.objectTypeName)])]))
         let server = try await MCPTestSupport.connectedMCPServer(
             to: scripted, over: .inMemory, name: Self.serverName)
-        let run = BoundRun()
+        let run = (try await BoundRun())
 
         let result = try await ToolContext.$current.withValue(run.context) {
             try await server.call(name: Self.nestedToolName, arguments: nil)
         }
 
         #expect(Self.rendered(result).contains(Self.declineText))
-        #expect(await run.sink.events.isEmpty)
+        #expect(await recordedOperationEvents(of: run.stub).isEmpty)
         withExtendedLifetime(scripted) {}
     }
 

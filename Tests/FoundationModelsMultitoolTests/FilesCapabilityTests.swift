@@ -127,14 +127,10 @@ struct FilesCapabilityTests {
         let capability = FilesCapability(root: root)
         let path = root.appendingPathComponent("note.txt", isDirectory: false).path
         try Self.sharedContextContent.write(toFile: path, atomically: true, encoding: .utf8)
+        let context = try await makeOuterRunContext()
         let read = try #require(
-            ToolMounting.makeWrapped(
-                tool: try Self.verb(Read.self, in: capability),
-                sessionID: ULID(),
-                mailbox: mailbox,
-                sink: RecordingEventSink(),
-                configuration: .synchronous
-            ) as? any Tool<ReadArguments, ReadResult>
+            context.mount(try Self.verb(Read.self, in: capability), as: .synchronous)
+                as? any Tool<ReadArguments, ReadResult>
         )
 
         let result = try await read.call(
