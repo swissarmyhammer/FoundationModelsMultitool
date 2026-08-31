@@ -248,6 +248,16 @@ actor CollectingTranscriptRecorder: TranscriptRecorder {
         partials.append(partial)
     }
 
+    /// Drops everything recorded so far.
+    ///
+    /// Called once the stub run is stood up: capturing the context takes a real
+    /// tool call, and that call posts operation events of its own. A test that
+    /// read them would see the setup's terminal event ahead of its own, which
+    /// is what made four correlation assertions fail.
+    func reset() {
+        partials.removeAll()
+    }
+
     /// Every `OperationEvent` the recorded entries carry, in arrival order.
     ///
     /// A structure segment that is not an operation event fails to decode and
@@ -299,6 +309,9 @@ func makeStubRun(in directory: URL = FileManager.default.temporaryDirectory
     guard let context = box.context else {
         throw StubRunFailure.noContextCaptured
     }
+    // The capture call above is real, and it posted its own events. Drop them
+    // so a test reads only what it caused.
+    await recorder.reset()
     return StubRun(session: session, context: context, recorder: recorder)
 }
 
@@ -352,13 +365,31 @@ struct StubMetadata: MetadataSource {
 func settledEvents(
     on session: RoutedSession, count: Int, seconds: Double = 10
 ) async -> [OperationEvent] {
-    var settled: [OperationEvent] = []
-    let deadline = ContinuousClock.now.advanced(by: .seconds(seconds))
-    for await event in await session.streamSessionEvents() {
-        if case .runSettled(let operation) = event { settled.append(operation) }
-        if settled.count >= count || ContinuousClock.now >= deadline { break }
+    // The deadline races the stream rather than being checked inside it. A
+    // `for await` over `streamSessionEvents()` suspends until the next event,
+    // and the stream does not end on its own, so a deadline tested in the loop
+    // body is never reached when no event arrives — the call blocks forever.
+    await withTaskGroup(of: [OperationEvent]?.self) { group in
+        group.addTask {
+            var settled: [OperationEvent] = []
+            for await event in await session.streamSessionEvents() {
+                if case .runSettled(let operation) = event { settled.append(operation) }
+                if settled.count >= count { break }
+            }
+            return settled
+        }
+        group.addTask {
+            try? await Task.sleep(for: .seconds(seconds))
+            return nil
+        }
+        var collected: [OperationEvent] = []
+        for await result in group {
+            if let result { collected = result }
+            group.cancelAll()
+            break
+        }
+        return collected
     }
-    return settled
 }
 
 /// Every `OperationEvent` the runs of `run` recorded, read off the session's
@@ -380,4 +411,47 @@ func recordedOperationEvents(
     let events = await run.recorder.operationEvents
     guard let kind else { return events }
     return events.filter { $0.kind == kind }
+}
+
+/// The terminal `OperationEvent`s of `session` that carry `correlationID`.
+///
+/// A snippet that makes an inner call settles more than one run, and the
+/// stream carries each. A test that wants one run's terminal asks for it by
+/// correlation rather than by arrival position.
+///
+/// Subscribe BEFORE the run settles: `streamSessionEvents()` is live and has
+/// no replay.
+///
+/// - Parameters:
+///   - session: The session whose runs to read.
+///   - correlationID: The run whose terminal to keep.
+///   - count: How many matching terminals to wait for.
+///   - seconds: How long to wait before giving up.
+/// - Returns: The matching terminal events, in arrival order.
+func settledEvents(
+    on session: RoutedSession, correlationID: String, count: Int = 1, seconds: Double = 10
+) async -> [OperationEvent] {
+    await withTaskGroup(of: [OperationEvent]?.self) { group in
+        group.addTask {
+            var settled: [OperationEvent] = []
+            for await event in await session.streamSessionEvents() {
+                guard case .runSettled(let operation) = event else { continue }
+                guard operation.correlationID == correlationID else { continue }
+                settled.append(operation)
+                if settled.count >= count { break }
+            }
+            return settled
+        }
+        group.addTask {
+            try? await Task.sleep(for: .seconds(seconds))
+            return nil
+        }
+        var collected: [OperationEvent] = []
+        for await result in group {
+            if let result { collected = result }
+            group.cancelAll()
+            break
+        }
+        return collected
+    }
 }

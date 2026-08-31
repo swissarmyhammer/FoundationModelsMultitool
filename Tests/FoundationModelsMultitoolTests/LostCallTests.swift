@@ -110,6 +110,11 @@ struct LostCallTests {
         try await TestPoll.waitUntil("the server noticed the drop") {
             await server.isTransportDropped
         }
+        // Subscribed BEFORE the call. `streamSessionEvents()` is live and has
+        // no replay, so a stream opened after the run settled sees nothing.
+        let collecting = Task {
+            await settledEvents(on: run.session, count: Self.terminalEventCount)
+        }
         let thrown = await MCPCallProbe.thrownError {
             _ = try await engine.call(arguments: NoArguments())
         }
@@ -118,11 +123,9 @@ struct LostCallTests {
             Issue.record("expected MCPServerError.lost, got \(String(describing: thrown))")
             return
         }
-        // The terminal event is read off the session's own event stream:
         // `SessionEvent.runSettled` carries a run's one terminal
         // `OperationEvent`, and a host cannot inject a sink of its own.
-        let completed = await settledEvents(
-            on: run.session, count: Self.terminalEventCount)
+        let completed = await collecting.value
         #expect(completed.count == Self.terminalEventCount)
         // `.lost` must never flatten into `.failed` in the shared envelope
         // vocabulary — the outcome is unknowable, not a reported failure.

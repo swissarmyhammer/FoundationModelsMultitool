@@ -117,11 +117,24 @@ struct SuspendedContextTests {
         #expect(!harness.gated.wasCancelled)
 
         let token = try Self.completionToken(of: rendered)
+        // Subscribed BEFORE the latch releases the run; the stream is live and
+        // has no replay.
+        let collecting = Task {
+            // By correlation, not by arrival position: the snippet's inner call
+            // settles its own run too, and its terminal reaches the stream
+            // first. This assertion is about the OUTER run.
+            await settledEvents(on: harness.run.session, correlationID: token)
+        }
         harness.latch.release()
         let terminal = try await Self.settledTerminal(of: token, on: harness.run.context)
 
         #expect(terminal.detail == Self.renderedGatedResult)
-        let completions = await recordedOperationEvents(of: harness.run, ofKind: .completed)
+        // The terminal event is read off the session outbox rather than the
+        // journal. `ToolContext.post` re-stamps what it forwards with the
+        // mounting run's identity, so the outbox carries the OUTER run's
+        // correlation; the journal keeps each run's own. This assertion is
+        // about the re-stamped view.
+        let completions = await collecting.value
         #expect(completions.count == 1)
         #expect(completions.first?.correlationID == token)
         #expect(completions.first?.detail == Self.renderedGatedResult)

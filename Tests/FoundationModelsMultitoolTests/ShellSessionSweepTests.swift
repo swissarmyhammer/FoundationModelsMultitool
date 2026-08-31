@@ -249,9 +249,14 @@ struct ShellSessionSweepTests {
         let session = try await makeBackgroundSession(runCount: Self.oneBackgroundRun)
         let run = try #require(session.runs.first)
 
+        // Subscribed BEFORE the sweep. `streamSessionEvents()` is live and has
+        // no replay, and `close()` finishes every open subscription, so a
+        // stream opened after the sweep sees nothing at all.
+        let collecting = Task {
+            await settledEvents(on: session.stub.session, count: Self.terminalEventsPerRun)
+        }
         await session.stub.session.close()
-        let terminals = await recordedOperationEvents(
-            of: session.stub, ofKind: .completed)
+        let terminals = await collecting.value
 
         #expect(terminals.count == Self.terminalEventsPerRun)
         let terminal = try #require(terminals.first)
@@ -273,9 +278,12 @@ struct ShellSessionSweepTests {
     func eachOfTwoBackgroundShellRunsGetsItsOwnTerminalEvent() async throws {
         let session = try await makeBackgroundSession(runCount: Self.twoBackgroundRuns)
 
+        // Subscribed BEFORE the sweep; see the sibling test for why.
+        let collecting = Task {
+            await settledEvents(on: session.stub.session, count: Self.twoBackgroundRuns)
+        }
         await session.stub.session.close()
-        let terminals = await recordedOperationEvents(
-            of: session.stub, ofKind: .completed)
+        let terminals = await collecting.value
 
         #expect(terminals.count == Self.twoBackgroundRuns)
         #expect(terminals.map(\.correlationID) == session.runs.map(\.completionToken))

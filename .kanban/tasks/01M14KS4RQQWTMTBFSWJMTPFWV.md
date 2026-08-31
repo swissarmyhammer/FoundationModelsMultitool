@@ -14,6 +14,28 @@ comments:
     - Asked the `foundationmodelsrouter-46` session which way to go: make `ToolMounting.makeWrapped` public again, or name a supported API to call instead. This package cannot decide it, because the symbol belongs to the other package.
     - next: wait for that answer. Do not remove the edit link yet — removing it hides the break behind the stale pin and leaves the pin unable to move.
   timestamp: 2026-08-29T15:53:21.366439+00:00
+- actor: claude-code
+  id: 01m1avp7jz54m0j1b2yv9d5e27
+  text: |-
+    ### implement — changed
+
+    The nested package builds. Commit `8df2ccf`.
+
+    - **Criterion 1 met.** `swift build --package-path IntegrationTests --build-tests` gives "Build complete!".
+    - **Criterion 2 met.** The edit link is removed with `swift package unedit`, the `IntegrationTests/Packages/` directory is gone, and `IntegrationTests/Package.resolved` holds `foundationmodelsrouter` at branch `main`, revision `475befba6`.
+    - **Criterion 3 not attempted.** The gated suite drives real models. It is expensive, and running it is a separate decision from making the package build.
+
+    Four changes were needed, each against a published API of the Router:
+
+    1. `swift package unedit FoundationModelsRouter`, then `update`. The nested package had also pinned an older Router (`f31f453`) and a stale `FoundationModelsExtras`, which made the Router itself fail to compile; a full nested `update` fixed both.
+    2. `ShellBackgroundRunner.swift` reads `TranscriptEvent.operationEvents`, which the Router published in `b000a32` for this fixture. It names neither `OperationEventSegment` nor the case shape of a segment now.
+    3. `LiveRouterFixture.swift` reads `TranscriptEvent.merged(under:)`, published in `1680422`, in place of the internal `MergedTranscript`.
+    4. The resolve diagnostic drops the context window and the per-candidate charge, because `RoutedLLM.resolution` is `package`-protected now. That line is a diagnostic and never an assertion. It is also built in named pieces, because one chained interpolation of that length times the type checker out.
+
+    The task description said the cause was local machine state and not a file of this repository. That was wrong, and the correction is recorded in the earlier comment: the Router had demoted symbols this package named, and the edit link only made the break visible early.
+
+    next: nothing on this card. Criterion 3 is a separate decision for a person.
+  timestamp: 2026-08-31T02:52:01.503741+00:00
 position_column: todo
 position_ordinal: '9980'
 title: The nested IntegrationTests package builds against an edited Router working copy, and cannot compile
