@@ -78,8 +78,6 @@ struct RunBindingTests {
     func concurrentInstancesOverOneRegistryNeverCrossRoute() async throws {
         let shared = AmbientRecordingTool(name: "shared")
         let registry = try MultiTool.Builder().addTool(shared).buildRegistry()
-        let firstSink = RecordingEventSink()
-        let secondSink = RecordingEventSink()
         let firstRun = try await makeStubRun()
         let secondRun = try await makeStubRun()
         let firstContext = firstRun.context

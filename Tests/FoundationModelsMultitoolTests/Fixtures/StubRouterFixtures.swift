@@ -455,3 +455,30 @@ func settledEvents(
         return collected
     }
 }
+
+/// The recorded `OperationEvent`s of `run` of one kind, waited for until at
+/// least `count` of them have been journaled.
+///
+/// A single read races the journal. `RoutedSession.close()` sweeps and journals
+/// the terminal events it produces, but the write reaches the recorder on its
+/// own task, so a read taken the instant `close()` returns can see fewer than
+/// the sweep produced. It passed on a warm machine and failed on CI, which is
+/// the shape of that race exactly.
+///
+/// - Parameters:
+///   - run: The stub run whose journal to read.
+///   - kind: The event kind to keep.
+///   - count: How many to wait for.
+/// - Returns: The events, once `count` of them are there, or whatever was
+///   journaled when the deadline passed.
+func recordedOperationEvents(
+    of run: StubRun, ofKind kind: OperationEventKind, awaiting count: Int
+) async -> [OperationEvent] {
+    let deadline = ContinuousClock.now.advanced(by: TestPoll.deadline)
+    var events = await recordedOperationEvents(of: run, ofKind: kind)
+    while events.count < count, ContinuousClock.now < deadline {
+        try? await Task.sleep(for: TestPoll.interval)
+        events = await recordedOperationEvents(of: run, ofKind: kind)
+    }
+    return events
+}

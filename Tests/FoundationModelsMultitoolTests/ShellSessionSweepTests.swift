@@ -267,7 +267,8 @@ struct ShellSessionSweepTests {
         // there is no re-stamping layer, so the journaled terminal carries the
         // run's own token — measured.
         await session.stub.session.close()
-        let terminals = await recordedOperationEvents(of: session.stub, ofKind: .completed)
+        let terminals = await recordedOperationEvents(
+            of: session.stub, ofKind: .completed, awaiting: Self.terminalEventsPerRun)
         #expect(terminals.count == Self.terminalEventsPerRun)
         let terminal = try #require(terminals.first)
         #expect(terminal.correlationID == run.completionToken)
@@ -295,7 +296,8 @@ struct ShellSessionSweepTests {
         // there is no re-stamping layer, so the journaled terminal carries the
         // run's own token — measured.
         await session.stub.session.close()
-        let terminals = await recordedOperationEvents(of: session.stub, ofKind: .completed)
+        let terminals = await recordedOperationEvents(
+            of: session.stub, ofKind: .completed, awaiting: Self.twoBackgroundRuns)
 
         #expect(terminals.count == Self.twoBackgroundRuns)
         #expect(terminals.map(\.correlationID) == session.runs.map(\.completionToken))

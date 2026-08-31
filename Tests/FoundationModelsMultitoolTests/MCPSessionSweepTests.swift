@@ -228,7 +228,8 @@ struct MCPSessionSweepTests {
         // events before it returns. A consumer cannot call the mailbox's own
         // sweep, so this is the public route to the same behaviour.
         await run.session.close()
-        let terminals = await recordedOperationEvents(of: run, ofKind: .completed)
+        let terminals = await recordedOperationEvents(
+            of: run, ofKind: .completed, awaiting: Self.terminalEventsPerRun)
         await ground.wire.mark(as: Self.terminalMarker)
         await ground.pool.shutdownAll()
 

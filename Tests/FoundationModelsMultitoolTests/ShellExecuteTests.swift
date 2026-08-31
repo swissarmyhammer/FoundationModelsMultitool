@@ -431,7 +431,7 @@ struct ShellExecuteTests {
     func aMountedCallAlwaysAnswersWithThePendingEnvelope() async throws {
         let state = try makeState()
         let context = try await makeOuterRunContext()
-        let engine = try ShellRunPlane.mounted(makeVerb(over: state), inheriting: context)
+        let engine = ShellRunPlane.mounted(makeVerb(over: state), inheriting: context)
 
         let output = try await engine.call(
             arguments: ExecuteArguments(command: "echo \(Self.inlineMarker)"))
@@ -467,7 +467,7 @@ struct ShellExecuteTests {
     func aMountedCallAnswersWithTheIdentifierAndDoesNotBlock() async throws {
         let state = try makeState()
         let context = try await makeOuterRunContext()
-        let engine = try ShellRunPlane.mounted(makeVerb(over: state), inheriting: context)
+        let engine = ShellRunPlane.mounted(makeVerb(over: state), inheriting: context)
 
         let started = ContinuousClock.now
         let output = try await engine.call(
@@ -493,7 +493,7 @@ struct ShellExecuteTests {
     func aBackgroundRunStandsInTheRunPlaneAsAProcess() async throws {
         let state = try makeState()
         let context = try await makeOuterRunContext()
-        let engine = try ShellRunPlane.mounted(makeVerb(over: state), inheriting: context)
+        let engine = ShellRunPlane.mounted(makeVerb(over: state), inheriting: context)
 
         _ = try await engine.call(
             arguments: ExecuteArguments(command: "sleep \(Self.backgroundRunSleepSeconds)"))
@@ -519,7 +519,7 @@ struct ShellExecuteTests {
     func cancelOfABackgroundRunReportsStopped() async throws {
         let state = try makeState()
         let context = try await makeOuterRunContext()
-        let engine = try ShellRunPlane.mounted(makeVerb(over: state), inheriting: context)
+        let engine = ShellRunPlane.mounted(makeVerb(over: state), inheriting: context)
 
         _ = try await engine.call(
             arguments: ExecuteArguments(command: "sleep \(Self.backgroundRunSleepSeconds)"))

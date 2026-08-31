@@ -286,7 +286,7 @@ struct SuspendedContextTests {
         return Harness(
             gated: gated,
             latch: latch,
-            mounted: try #require(mounted as? any Tool<RunCodeArguments, String>),
+            mounted: mounted,
             run: run,
             sink: sink
         )

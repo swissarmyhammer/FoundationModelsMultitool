@@ -150,7 +150,8 @@ struct SandboxGlobalsTests {
     func theGlobalsPageMatchesTheElicitationAnswerItDocuments() async throws {
         let stub = try await makeStubRun()
         let context = stub.context
-        let sink = ScriptedElicitationSink(run: stub, answering: .accept(content: ["repo": .string("sah")]))
+        // Constructed for its effect: answering the snippet's elicitation.
+        _ = ScriptedElicitationSink(run: stub, answering: .accept(content: ["repo": .string("sah")]))
 
         let output = try await runSnippet(
             "return Object.keys(await elicit(\"Which repository?\")).sort();",
@@ -490,7 +491,8 @@ struct SandboxGlobalsTests {
     func elicitSurfacesADeclineDistinctly() async throws {
         let stub = try await makeStubRun()
         let context = stub.context
-        let sink = ScriptedElicitationSink(run: stub, answering: .decline)
+        // Constructed for its effect: answering the snippet's elicitation.
+        _ = ScriptedElicitationSink(run: stub, answering: .decline)
 
         let output = try await runSnippet(
             """
@@ -507,7 +509,8 @@ struct SandboxGlobalsTests {
     func elicitSurfacesACancelDistinctly() async throws {
         let stub = try await makeStubRun()
         let context = stub.context
-        let sink = ScriptedElicitationSink(run: stub, answering: .cancel)
+        // Constructed for its effect: answering the snippet's elicitation.
+        _ = ScriptedElicitationSink(run: stub, answering: .cancel)
 
         let output = try await runSnippet(
             """
