@@ -23,7 +23,7 @@ import Testing
 @Suite(
     "Gated async fan-out scenario (phase-1 exit)",
     .serialized,
-    .timeLimit(.minutes(30))
+    .timeLimit(.minutes(10))
 )
 struct AsyncFanOutTests {
     /// The total the two stock fixtures combine to — derived from the fixtures

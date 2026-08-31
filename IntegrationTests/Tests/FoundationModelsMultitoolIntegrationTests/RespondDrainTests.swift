@@ -46,7 +46,7 @@ import Testing
 @Suite(
     "Gated respond self-drain (phase-1 exit)",
     .serialized,
-    .timeLimit(.minutes(30))
+    .timeLimit(.minutes(10))
 )
 struct RespondDrainTests {
     @Test("respond answers from what the backgrounded run returned, matches the stream, and leaves nothing running")

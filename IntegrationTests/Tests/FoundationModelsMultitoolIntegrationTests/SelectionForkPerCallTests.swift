@@ -99,7 +99,7 @@ private let selectionCallCount = 2
 @Suite(
     "Gated selection tier fork()-per-call trace (prefix reuse itself unmeasured)",
     .serialized,
-    .timeLimit(.minutes(30))
+    .timeLimit(.minutes(10))
 )
 struct SelectionForkPerCallTests {
     @Test(

@@ -54,7 +54,7 @@ import Testing
 @Suite(
     "Gated search-then-call scenarios (M6.5a)",
     .serialized,
-    .timeLimit(.minutes(30))
+    .timeLimit(.minutes(12))
 )
 struct SearchThenCallTests {
     // MARK: - Scenario 1: single-call `getWeather`

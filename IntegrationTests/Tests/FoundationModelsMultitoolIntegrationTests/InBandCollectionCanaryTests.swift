@@ -206,7 +206,7 @@ import Testing
     // The limit applies to each test in this suite. The mechanism test has no
     // recorded runs yet; when its times exist, derive its own tighter ceiling
     // from them rather than guessing one here.
-    .timeLimit(.minutes(62))
+    .timeLimit(.minutes(15))
 )
 struct InBandCollectionCanaryTests {
     @Test("the delayed echo's value comes back through its handle, collected in band")
