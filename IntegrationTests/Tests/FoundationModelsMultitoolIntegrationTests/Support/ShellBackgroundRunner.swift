@@ -553,27 +553,16 @@ private func journaledRunEvents(
 
 /// Every `OperationEvent` the recorded transcript carries.
 ///
-/// The typed payload is what the run journal writes, and it is the only place a
-/// run's own identity survives: a `.toolOutput` entry's id is a fresh ULID by
-/// design, and the `correlationID` travels inside the segment.
-///
-/// Read off every entry rather than off `.toolOutput` entries alone, because
-/// Router writes the same segment two ways — the run journal's own entry, and
-/// the segments a drained event rides onto the turn's prompt entry.
+/// `TranscriptEvent.operationEvents` is Router's own reader for this, and it
+/// already reads every entry rather than `.toolOutput` entries alone — Router
+/// writes the same segment two ways, and the knowledge of that belongs on the
+/// side that makes both writes. This fixture used to destructure the segment
+/// itself and name the internal `OperationEventSegment`; it names neither now.
 ///
 /// - Parameter events: the merged transcript.
 /// - Returns: the operation events, in transcript order.
 private func journaledOperationEvents(in events: [TranscriptEvent]) -> [OperationEvent] {
-    events.flatMap { event in
-        (event.entry?.segments ?? []).compactMap { segment -> OperationEvent? in
-            guard case .structure(let id, let schemaName, let contentJSON) = segment else {
-                return nil
-            }
-            return try? OperationEventSegment(
-                schemaName: schemaName, contentJSON: contentJSON, id: id
-            )?.content
-        }
-    }
+    events.flatMap(\.operationEvents)
 }
 
 /// The journaled terminal events of one run.

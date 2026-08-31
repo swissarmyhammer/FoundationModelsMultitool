@@ -543,12 +543,20 @@ struct LiveRouterFixture {
             // `^8hs4wrw` fix changed: `flash` naming an already-reserved
             // reference must cost its own session's KV cache and no second copy
             // of the weights.
+            // `RoutedLLM.resolution` is `package`-protected, so a consumer
+            // reads neither the context window nor the per-candidate charge.
+            // This line is a diagnostic and never an assertion, thus it reports
+            // what is public and drops what is not. Built in named pieces
+            // because one chained interpolation of this length times the type
+            // checker out.
+            let standardLine =
+                "standard=\(profile.standard.chosen.stringValue) "
+                + "footprint=\(profile.standard.footprintBytes)B"
+            let flashLine =
+                "flash=\(profile.flash.chosen.stringValue) "
+                + "footprint=\(profile.flash.footprintBytes)B"
             print(
-                "RESOLVED [\(definition.name)] context=\(profile.standard.resolution.contextTokens) tokens"
-                    + " standard=\(profile.standard.chosen.stringValue)"
-                    + " footprint=\(profile.standard.footprintBytes)B charged=\(Self.chargedBytes(of: profile.standard))"
-                    + " | flash=\(profile.flash.chosen.stringValue)"
-                    + " footprint=\(profile.flash.footprintBytes)B charged=\(Self.chargedBytes(of: profile.flash))"
+                "RESOLVED [\(definition.name)] \(standardLine) | \(flashLine)"
                     // The recordings directory of THIS resolution, printed so a
                     // log reader — a person over a CI log above all — can pair
                     // each scenario with the transcript directory that recorded
@@ -574,13 +582,13 @@ struct LiveRouterFixture {
     }
 
     /// Reads back this fixture's whole recorded run as a totally-ordered
-    /// event stream — `MergedTranscript.merged(under:)` over this router's
+    /// event stream — `TranscriptEvent.merged(under:)` over this router's
     /// own recording root (`recordings/<routerId>/`).
     ///
     /// - Returns: every recorded event, ordered by `(ts, seq)`.
     /// - Throws: if a transcript file can't be read or decoded.
     func transcriptEvents() throws -> [TranscriptEvent] {
-        try MergedTranscript.merged(under: recordingsDir.appendingPathComponent(router.id.description))
+        try TranscriptEvent.merged(under: recordingsDir.appendingPathComponent(router.id.description))
     }
 
     /// What the shared budget was actually charged for a resolved slot, as
@@ -597,19 +605,6 @@ struct LiveRouterFixture {
     /// Printing only the footprint would show a number the fix never touches.
     ///
     /// - Parameter model: the resolved slot to read.
-    /// - Returns: the charge in bytes, or `"n/a"` when the resolution recorded
-    ///   no charge for the chosen candidate — a shape change on Router's side
-    ///   rather than something to assert on, so it is reported rather than
-    ///   forced.
-    private static func chargedBytes(of model: RoutedLLM) -> String {
-        guard
-            let report = model.resolution.considered.first(where: { $0.ref == model.chosen }),
-            let charged = report.chargedBytes
-        else {
-            return "n/a"
-        }
-        return "\(charged)B"
-    }
 
     /// The durable root every fixture's recordings directory stands under:
     /// `<IntegrationTests package>/.build/recordings`, derived from this
