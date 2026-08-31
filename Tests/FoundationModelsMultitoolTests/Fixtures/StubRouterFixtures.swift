@@ -229,6 +229,39 @@ struct StubRun {
 
     /// A real context over that session's mailbox.
     let context: ToolContext
+
+    /// Where every recorded transcript event of this session is kept.
+    let recorder: CollectingTranscriptRecorder
+}
+
+/// A `TranscriptRecorder` that keeps every partial in memory.
+///
+/// The stub router is given one because `Router.init(recorder:)` defaults to
+/// `nil`, and with no recorder nothing is journaled at all — which makes
+/// `TranscriptEvent.merged(under:)` read an empty set and every event
+/// assertion silently observe nothing.
+actor CollectingTranscriptRecorder: TranscriptRecorder {
+    /// Every partial this recorder was handed, in arrival order.
+    private(set) var partials: [TranscriptEvent.Partial] = []
+
+    func append(_ partial: TranscriptEvent.Partial, to directory: URL?) async {
+        partials.append(partial)
+    }
+
+    /// Every `OperationEvent` the recorded entries carry, in arrival order.
+    ///
+    /// A structure segment that is not an operation event fails to decode and
+    /// is dropped, so this never names Router's internal segment type or its
+    /// schema name.
+    var operationEvents: [OperationEvent] {
+        partials.flatMap { partial in
+            (partial.entry?.segments ?? []).compactMap { segment -> OperationEvent? in
+                guard case .structure(_, _, let contentJSON) = segment else { return nil }
+                return try? JSONDecoder().decode(
+                    OperationEvent.self, from: Data(contentJSON.utf8))
+            }
+        }
+    }
 }
 
 /// Stands up a router over the stub model and takes a real ``ToolContext``
@@ -241,8 +274,10 @@ struct StubRun {
 func makeStubRun(in directory: URL = FileManager.default.temporaryDirectory
     .appendingPathComponent("multitool-stub-\(ULID.generate())")) async throws -> StubRun
 {
+    let recorder = CollectingTranscriptRecorder()
     let router = Router(
         cacheDir: directory,
+        recorder: recorder,
         probe: StubMachine(),
         metadataSource: StubMetadata(),
         loader: StubModelLoader()
@@ -264,7 +299,7 @@ func makeStubRun(in directory: URL = FileManager.default.temporaryDirectory
     guard let context = box.context else {
         throw StubRunFailure.noContextCaptured
     }
-    return StubRun(session: session, context: context)
+    return StubRun(session: session, context: context, recorder: recorder)
 }
 
 /// What standing up a stub run could not do.
@@ -329,12 +364,11 @@ func settledEvents(
 /// Every `OperationEvent` the runs of `run` recorded, read off the session's
 /// own recorded transcript.
 ///
-/// This is the only public route to a `.progress` or `.elicitation` event. A
-/// host cannot inject an `OperationEventSink` — nothing public of Router
-/// accepts one — and `SessionEvent` carries only the terminal event, as
-/// `runSettled`. What the transcript carries instead is every drained event,
-/// as structured segments, and `TranscriptEvent.operationEvents` is the public
-/// reader for them.
+/// This is the route to a `.progress` or `.elicitation` event. A host cannot
+/// inject an `OperationEventSink` — nothing public of Router accepts one — and
+/// `SessionEvent` carries only the terminal event, as `runSettled`. What a host
+/// CAN supply is a `TranscriptRecorder`, and every drained event is journaled
+/// through it as a structured segment.
 ///
 /// - Parameters:
 ///   - run: The stub run whose transcript to read.
@@ -343,9 +377,7 @@ func settledEvents(
 func recordedOperationEvents(
     of run: StubRun, ofKind kind: OperationEventKind? = nil
 ) async -> [OperationEvent] {
-    let directory = await run.session.recordingDirectory
-    let merged = (try? TranscriptEvent.merged(under: directory)) ?? []
-    let events = merged.flatMap(\.operationEvents)
+    let events = await run.recorder.operationEvents
     guard let kind else { return events }
     return events.filter { $0.kind == kind }
 }
