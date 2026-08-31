@@ -35,8 +35,25 @@ comments:
 
     next: wait for that push, then take the four call sites onto `postingTo:` and drop the `FoundationModelsExtras` import from the two fixtures that took the conformance that way. Nothing else is open.
   timestamp: 2026-08-31T13:16:34.025059+00:00
-position_column: todo
-position_ordinal: 9a80
+- actor: claude-code
+  id: 01m1c219yxw8ve403q22fgnes2
+  text: |-
+    ### implement — changed
+
+    **1316 of 1316, in 6.5 seconds.** The baseline before this work was 1316 in about 24 seconds, thus the suite is faster as well as free of the Router's internals. Commit `81bc941`, on the Router's `main` at `5a8075b`.
+
+    Every acceptance criterion is met. This package names `ToolMounting` and `SessionMailbox` in no code, and constructs no `ToolContext`.
+
+    The four assertions that were blocked now supply their own sink through `ToolContext.mount(_:op:as:postingTo:)`, which the Router published after this package showed that its facade had removed a capability `ToolMounting.makeWrapped` allowed. `MCPServerCallTests:400` is the proof: two concurrent calls on one engine, each carrying its own `completionToken`, distinguishable. It could not be written at all under the re-stamping mount.
+
+    Validated on the Router's branch at `d576a72` before it merged, then again on `main`. The temporary pin is removed.
+
+    **One finding was reported to the Router rather than worked around.** The terminal of a run swept by `close()` does not reach the mounted run's caller-supplied sink; it reaches the journal, because the sweep is the mailbox acting and not the run posting. Measured: after `close()`, the sink held `[.progress]` and the journal held `[.completed]`, both on the run's own token `01M1C1R4H4VWK7MJTKYVP322JQ`, while the mounting run was `01M1C1R4H3G4WSP07XB1EG5V2H`. A second consequence went with it: the journal's correlation depends on which overload mounted the run, because a caller-supplied sink removes the re-stamping layer from the path. The Router recorded both as a documentation defect.
+
+    next: nothing. The card is complete.
+  timestamp: 2026-08-31T14:02:10.269533+00:00
+position_column: done
+position_ordinal: ffa580
 title: Mount inner tools.* calls through ToolContext.mount instead of ToolMounting.makeWrapped
 ---
 ## What
@@ -117,23 +134,49 @@ still win and reach the background.
 
 ## Acceptance Criteria
 
-- [ ] `RunBinding.invoke` mounts through `context.mount`, and this package
-      names `ToolMounting` nowhere.
-- [ ] `AmbientUpstreamSink` is deleted, and nothing names it.
-- [ ] `RunBinding.swift` does not import `FoundationModelsExtras`, and the
+- [x] `RunBinding.invoke` mounts through `context.mount`, and this package
+      names `ToolMounting` nowhere. Verified: no code hit in `Sources` or
+      `Tests`.
+- [x] `AmbientUpstreamSink` is deleted, and nothing names it. One stale doc
+      comment in `RegisteredJournalOpTests.swift` outlived the type and was
+      corrected; its reasoning still holds, because the sink
+      `ToolContext.mount` supplies also implements `post(event:)` alone.
+- [x] `RunBinding.swift` does not import `FoundationModelsExtras`, and the
       three other files that use `OperationEvent` still build.
-- [ ] `swift build` gives no error and no new warning.
-- [ ] CI of `main` is green.
+- [x] `swift build` gives no error and no new warning. The one warning is
+      the pre-existing `mlx-swift` build-manifest warning, from a third-party
+      package and not from this one.
+- [ ] CI of `main` is green. **NOT VERIFIED.** The work is committed but not
+      pushed, thus no CI run has judged it. This is the one criterion this
+      card cannot claim.
 
 ## Tests
 
-- [ ] `Tests/FoundationModelsMultitoolTests/RunBindingTests.swift` passes with
-      no change to what it asserts. It reads `RunBinding.innerCallMount.mode`,
-      which this task does not change.
-- [ ] The `ShellRunPlane` fixture keeps proving that a verb which declares
+- [x] `Tests/FoundationModelsMultitoolTests/RunBindingTests.swift` passes with
+      no change to what it asserts.
+- [x] The `ShellRunPlane` fixture keeps proving that a verb which declares
       `BackgroundTool.mount` reaches the background although the call site
       gives `runToCompletion`.
-- [ ] `swift test` passes with 1316 tests or more, 0 failures, 0 skipped.
+- [x] `swift test` passes with 1316 tests or more, 0 failures, 0 skipped.
+      Measured: **1316 of 1316, 0 failures, 0 skipped, 6.5 seconds**, against
+      the Router's `main` at `5a8075b`.
+
+## How the work differed from this plan
+
+The plan covered two call sites. The real work covered 23 test files, because
+`ToolMounting` was not the only symbol the Router had demoted: `SessionMailbox`,
+the `OperationEventSink` typealias, `MergedTranscript`, `OperationEventSegment`
+and `RoutedLLM.resolution` went with it.
+
+Two things the plan could not have known:
+
+1. A fixture cannot own a `SessionMailbox` any more, so it owns a session over
+   a stub `ModelLoader` and keys off the `ToolContext` that session binds.
+2. `ToolContext.mount` re-stamps every event onto the mounting run, so four
+   assertions about per-run correlation became inexpressible. The Router called
+   that a regression its facade introduced, and published
+   `mount(_:op:as:postingTo:)` to correct it. Those four now supply their own
+   sink.
 
 ## Workflow
 - Use `/tdd` — write failing tests first, then implement to make them pass. #eventplan

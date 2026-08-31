@@ -27,9 +27,10 @@ import Testing
 /// on the `ToolInvocationRecord` built from that same field, and nowhere in the
 /// snippet's own journal.
 ///
-/// `ToolInvocationRecord` is not readable from this package: `RunBinding` hands
-/// the engine an `AmbientUpstreamSink`, which implements `post(event:)` alone,
-/// so an inner run's record takes `OperationEventSink`'s no-op default. The two
+/// `ToolInvocationRecord` is not readable from this package: `RunBinding`
+/// mounts through `ToolContext.mount`, whose own sink implements
+/// `post(event:)` alone, so an inner run's record takes
+/// `OperationEventSink`'s no-op default. The two
 /// readings below are therefore `BackgroundRun.op` and the `op` a called verb
 /// reads out of its own `ToolContext.current` — the one stamp both records are
 /// made from.
