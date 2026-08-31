@@ -72,10 +72,7 @@ let package = Package(
     ],
     dependencies: [
         .package(path: ".."),
-        // TEMPORARY, VALIDATION ONLY — see the root manifest.
-        .package(
-            url: "git@github.com:swissarmyhammer/\(routerDependencyName).git",
-            revision: "d576a724228b73978f53b9b5568345644f3c0b03"),
+        .package(url: "git@github.com:swissarmyhammer/\(routerDependencyName).git", branch: "main"),
         .package(url: "git@github.com:swissarmyhammer/\(metadataRegistryDependencyName).git", branch: "main"),
         .package(url: "git@github.com:swissarmyhammer/\(mlxPackage).git", branch: "stable"),
         .package(url: "https://github.com/huggingface/\(huggingFacePackage)", from: "0.9.0"),
