@@ -223,8 +223,43 @@ comments:
 
     `swiftlint` with its **default** rule set reports four other results on this file — `file_length` (1028 lines), one `large_tuple`, one `line_length` and three `trailing_comma`. None is in the review's validator set, none is on a line this correction wrote, and each was present before it. The file was already over 1000 lines before these 18 lines were added.
   timestamp: 2026-09-01T00:10:57.194484+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m1d54raj1hnk092eb20awnxd
+  text: |-
+    ### commit — changed
+    - evidence: 355ae83 fix(tests): remove magic numbers from ScenarioTools.swift (3 files changed, 146 insertions(+), 7 deletions(-))
+    - next: none
+  timestamp: 2026-09-01T00:15:43.442983+00:00
+- actor: claude-code
+  id: 01m1d5atzd1hqetr13amjd6sp0
+  text: |-
+    ### review — clean
+
+    - evidence: `review sha HEAD~1..HEAD` on commit `355ae83`. The engine attempted 7 validators. 0 failed. 0 skipped. It read 1 file and found 0 findings. The 2 files it did not read are `.kanban` data files, which an ignore rule excludes.
+    - prior finding: closed. The finding was `Tests/Support/ScenarioGrading/ScenarioTools.swift:571` `code-hygiene/magic-numbers-swift`. The commit removes the cause from the whole file. Five named constants at lines 50, 54, 58, 84 and 584 replace the five number literals. Each constant keeps the value it replaces. Each constant has a doc comment. Each constant stays `internal`. The three temperature constants declare the type `Double`, because `IntegrationCityWeather.tempC` is a `Double`.
+    - swiftlint results are not findings. `swiftlint` with its default rules reports `file_length`, `large_tuple`, `line_length` and `trailing_comma` for this file. No rule with these names is in the validator set. The `code-hygiene` validator has these Swift rules only: `data-driven`, `dead-code-swift`, `function-length-swift`, `magic-numbers-swift`, `missing-docs-swift` and `no-commented-code`. The `swift` validator has these rules only: `access-control`, `casing`, `concurrency`, `doc-parameter-naming`, `error-handling`, `fluent-usage`, `idioms`, `naming-clarity`, `optionals`, `state-modeling` and `value-semantics`. Neither validator has a rule for file length, for line length, for tuple size or for commas.
+    - renames: none. The commit changes 3 files and renames 0 files. Thus the rename blind spot of the last review does not apply to this commit.
+    - next: none. The card moves to done.
+  timestamp: 2026-09-01T00:19:02.765676+00:00
+- actor: claude-code
+  id: 01m1d5bvyy5msrwd9btx30zvsp
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — 1 code file, `Tests/Support/ScenarioGrading/ScenarioTools.swift`. The magic-number finding is corrected, and the cause is removed from the whole file rather than the one line named: `swiftlint` with the review's own `no_magic_numbers` setting measured five results in the file, at lines 65, 66, 67, 85 and 571, and the file now measures 0. Five `internal` constants replace them, each with a doc comment and each carrying its value across unchanged: `integrationAustinTempC` 31, `integrationSanFranciscoTempC` 34, `integrationNewYorkTempC` 22, `integrationWarmestCityMinimumReadings` 2, `integrationDeepScanSeconds` 8. The three temperatures declare `Double` explicitly, because `IntegrationCityWeather.tempC` is a `Double` and a bare integer literal infers `Int`.
+    - test: green — `swift test`, 1366 tests in 104 suites, 0 failures, 0 skipped, 6.3 seconds. A forced rebuild of both packages gave no error and no warning except the pre-existing third-party `mlx-swift` one.
+    - commit: `355ae83` — 3 files, 146 insertions, 7 deletions.
+    - review: clean — `review sha HEAD~1..HEAD`. 7 validators attempted, 0 failed, 0 skipped, 0 findings. The finding of iteration 1 is confirmed closed.
+
+    **Two things the reviewer judged rather than inherited.**
+
+    The implementer reported that `swiftlint` with its default rule set gives other results on this file: `file_length` at 1028 lines, one `large_tuple`, one `line_length` and three `trailing_comma`. The reviewer listed the rules of both validators that match Swift files and confirmed that none of the four is among them. They are `swiftlint` defaults outside the review contract, thus none is a finding.
+
+    This commit renames no file, thus the rename blind spot of iteration 1 does not apply. The reviewer confirmed it with `git show --name-status`: three modified entries and no renamed entry.
+
+    - next: nothing on this card from the loop. One box stays unchecked under `## Tests`, the gated integration suite, which the card reserves for a person because it drives real models.
+  timestamp: 2026-09-01T00:19:36.542971+00:00
+position_column: done
+position_ordinal: ffa880
 title: Split ScenarioRunner so the 50 model-free integration tests join the fast suite
 ---
 ## What
