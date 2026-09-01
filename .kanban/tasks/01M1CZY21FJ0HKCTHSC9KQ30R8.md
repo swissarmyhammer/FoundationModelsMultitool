@@ -168,6 +168,61 @@ comments:
     - next: `/review`. Re-run it file-scoped at the new paths — a diff-scoped
       review leaves three hygiene rules unread on a renamed file.
   timestamp: 2026-08-31T23:38:45.311770+00:00
+- actor: claude-code
+  id: 01m1d4gd3a7ay5yrk5j2hf7a1v
+  text: |-
+    ### review — findings
+    - evidence: `review sha HEAD~1..HEAD` (commit d6e05ca) — 14 validators attempted, 0 failed, 0 skipped. 1 finding, 1 confirmed, 0 refuted: `Tests/Support/ScenarioGrading/ScenarioTools.swift:571`. Two file-scoped runs closed the renamed-file gap — 7 validators attempted, 0 failed, 0 skipped on each — and found no more findings on changed lines.
+    - next: replace the magic number at `ScenarioTools.swift:571` with a named constant. Remove the same cause from the whole file. The task stays in Review.
+  timestamp: 2026-09-01T00:04:36.586110+00:00
+- actor: claude-code
+  id: 01m1d4hcspg1c9sx58ermz5vth
+  text: |-
+    ### finish iteration 1 — findings
+    - implement: changed — 20 files. New `ScenarioGrading` test-support target and product in `Package.swift`, beside `MCPTestServer` and `TestConcurrency`, linked by both packages. Five files moved into `Tests/Support/ScenarioGrading/`, three suites moved into the root test target. `ScenarioRunner.swift` 1704 to 1344 lines. `IntegrationNestedGenerationTool` stayed gated: it records a `CallTrace` span, `CallTrace` is internal to the shipped library, a support library cannot carry `@testable`, and widening it would grow the shipped API for a fixture.
+    - test: green — `swift test`, **1366 tests in 104 suites, 0 failures, 0 skipped, 9.1 seconds**, against a baseline of 1316. `HardeningTests` 15 of 15, including the README-globals set-equality test. A forced rebuild of both packages gave no error and no warning except the pre-existing third-party `mlx-swift` one.
+    - commit: `d6e05ca` — 26 files, 1347 insertions, 685 deletions. It also carries a README correction: an earlier rewrite deleted the `### Injected globals` section, which `HardeningTests` parses and asserts set-equality against the runtime globals, so deleting it broke the suite.
+    - review: findings — `Tests/Support/ScenarioGrading/ScenarioTools.swift:571`, `code-hygiene/magic-numbers-swift`.
+
+    **The review is trustworthy, and it was checked rather than assumed.** Three runs, 14 then 7 then 7 validators attempted, 0 failed and 0 skipped in each. The seven files not reviewed in the diff run are the six `.kanban` files that `.reviewignore` excludes and `README.md`, which no validator matches.
+
+    **The rename blind spot appeared and was closed.** This commit renames seven files, and `function-length-swift`, `magic-numbers-swift` and `missing-docs-swift` each declined all seven, because a diff-scoped run reads the paths from before the rename. The reviewer re-ran that validator file-scoped at the new paths. The only extra magic-number hits are at lines 65, 66, 67 and 85 of `ScenarioTools.swift`, which this commit does not touch, thus the diff contract excludes them.
+
+    - next: correct the magic number at `ScenarioTools.swift:571`. Remove the cause from the whole file, and not the one line in the finding.
+  timestamp: 2026-09-01T00:05:09.046538+00:00
+- actor: claude-code
+  id: 01m1d4w0saqdr4cngv3bxa9ed5
+  text: |
+    ### implement — changed
+
+    The open finding is corrected: `Tests/Support/ScenarioGrading/ScenarioTools.swift:571`, `code-hygiene/magic-numbers-swift` — Magic numbers should be replaced by named constants.
+
+    The cause is removed from the whole file, and not from line 571 alone. `swiftlint` with the review's own `no_magic_numbers` setting measured five results in this file — lines 65, 66, 67, 85 and 571 — and all five are corrected. Five new file-scope constants, each with a doc comment, each named for which fixture reading it is:
+
+    | new constant | value | in place of |
+    | --- | --- | --- |
+    | `integrationAustinTempC` | `31` | `tempC: 31` in `integrationCityWeather` |
+    | `integrationSanFranciscoTempC` | `34` | `tempC: 34` in `integrationCityWeather` |
+    | `integrationNewYorkTempC` | `22` | `tempC: 22` in `integrationCityWeather` |
+    | `integrationWarmestCityMinimumReadings` | `2` | `count >= 2` in `integrationWarmestCity` |
+    | `integrationDeepScanSeconds` | `8` | `.seconds(8)` in `integrationDeepScanDuration` |
+
+    Every value carries across unchanged. The three temperature constants declare `Double` explicitly, because `IntegrationCityWeather.tempC` is a `Double` and a bare integer literal infers `Int`.
+
+    All five stay `internal`. No caller outside `ScenarioGrading` names them, which is the rule this target already applies to each tool's `log` and to the `IntegrationDistractorTool` family. The `public` constants they build — `integrationCityWeather`, `integrationWarmestCity` and `integrationDeepScanDuration` — are unchanged, thus both test targets and the gated package read the same values as before.
+
+    ### Measured
+
+    - `swiftlint --config <no_magic_numbers, missing_docs>` on this file: **5 results before, 0 after**. `missing_docs` is 0 before and after.
+    - `swift test` at the root: **1366 tests in 104 suites, 0 failures, 0 skipped, 6.3 s**. The count is unchanged, as it must be for a correction that changes no value.
+    - `swift build --build-tests` after a `touch` of the changed file: no error, and no warning other than the third-party `mlx-swift` "missing creator for mutated node" one that is present on `main`.
+    - `swift build --package-path IntegrationTests --build-tests`: succeeds, with the same single third-party warning.
+    - The gated suite was not run.
+
+    ### One thing to know for the next agent
+
+    `swiftlint` with its **default** rule set reports four other results on this file — `file_length` (1028 lines), one `large_tuple`, one `line_length` and three `trailing_comma`. None is in the review's validator set, none is on a line this correction wrote, and each was present before it. The file was already over 1000 lines before these 18 lines were added.
+  timestamp: 2026-09-01T00:10:57.194484+00:00
 position_column: doing
 position_ordinal: '80'
 title: Split ScenarioRunner so the 50 model-free integration tests join the fast suite
@@ -252,7 +307,8 @@ Neither is in scope here and neither should be "tidied" while nearby:
 - [x] `swift test` at the root passes, with 1366 tests or more — the current
       1316 plus the 50 that moved — and the run time recorded on this card.
       Measured: **1366 tests in 104 suites, 11.1 s**; three runs read 8.8 s to
-      11.1 s.
+      11.1 s. After the magic-number correction: **1366 tests in 104 suites,
+      0 failures, 0 skipped, 6.3 s**.
 - [ ] `swift test --package-path IntegrationTests --no-parallel` passes with
       the remaining tests, and its time recorded. **Not run by this step**: it
       drives real models for about 14 minutes, and the orchestrator decides
@@ -267,4 +323,60 @@ Neither is in scope here and neither should be "tidied" while nearby:
 
 Task `^jmtpfwv`, which ran the gated suite on 2026-08-31 and counted which of
 its tests need a model.
-#eventplan
+
+
+## Review Findings (2026-08-31 18:43)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 26 file(s) reviewed, 7 not reviewed.
+
+> 6 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 6 file(s)
+
+> 1 file(s) not reviewed — no validator matched:
+> - `README.md` — no validator matches this file
+
+> The tool rule `code-hygiene/function-length-swift` declined 7 items. It read the other code. It could not read these files, because it looked at the path each file had BEFORE the commit renamed it: `Fixtures/ScenarioCallLog.swift`, `Fixtures/ScenarioTools.swift`, `ScenarioFailureModeTests.swift`, `ScenarioFixtureTests.swift`, `ScenarioGradingTests.swift`, `Support/NativeTranscript.swift`, `Support/ScenarioFailureModes.swift`.
+
+> The tool rule `code-hygiene/magic-numbers-swift` declined the same 7 items, for the same cause.
+
+> The tool rule `code-hygiene/missing-docs-swift` declined the same 7 items, for the same cause.
+
+- [x] `Tests/Support/ScenarioGrading/ScenarioTools.swift:571` `code-hygiene/magic-numbers-swift` — Magic numbers should be replaced by named constants.
+
+### Note on the renamed files
+
+The commit renames 7 files. A diff-scoped review reads a renamed file at its
+old path, thus 3 hygiene rules could not read those 7 files. To close this
+gap, the same validator ran again, file-scoped, at the new paths:
+
+- `review file Tests/Support/ScenarioGrading/*.swift` — 5 files, 7 validators
+  attempted, 0 failed, 0 skipped.
+- `review file Tests/FoundationModelsMultitoolTests/Scenario*.swift` — 3
+  files, 7 validators attempted, 0 failed, 0 skipped, 0 findings.
+
+A file-scoped run reads every line of a file, but this review grades only the
+lines the commit changed. Of the hygiene results from the second run, only
+line 571 of `ScenarioTools.swift` is on a changed line, and the diff run
+already found it. The other magic-number results are at lines 65, 66, 67 and
+85 of the same file, which the commit does not touch.
+
+### How the finding was corrected
+
+A finding shows one example of a cause, thus the correction removes that cause
+from the whole file, and not from the line the finding names. All five results
+in `ScenarioTools.swift` — lines 65, 66, 67, 85 and 571 — are corrected. Each
+literal moves into a named constant that says which fixture reading it is,
+after the pattern of `integrationDeepScanReportCode` and
+`integrationWarehouseStockUnits`. Every value carries across unchanged:
+
+| new constant | value | in place of |
+| --- | --- | --- |
+| `integrationAustinTempC` | `31` | line 65 |
+| `integrationSanFranciscoTempC` | `34` | line 66 |
+| `integrationNewYorkTempC` | `22` | line 67 |
+| `integrationWarmestCityMinimumReadings` | `2` | line 85 |
+| `integrationDeepScanSeconds` | `8` | line 571 |
+
+`swiftlint` with the review's own `no_magic_numbers` setting reports 5 results
+for this file before the correction and **0** after it. `missing_docs` reports
+0 both before and after: each new constant carries a doc comment. #eventplan

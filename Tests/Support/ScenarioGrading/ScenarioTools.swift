@@ -45,6 +45,18 @@ public struct IntegrationCityWeather: Sendable {
     public let tempC: Double
 }
 
+/// Austin's fixture temperature, in °C. `integrationCityWeather` gives the
+/// reason the three readings are different from each other.
+let integrationAustinTempC: Double = 31
+
+/// San Francisco's fixture temperature, in °C. It is the highest of the three
+/// readings, thus San Francisco is the warmest trip city.
+let integrationSanFranciscoTempC: Double = 34
+
+/// New York's fixture temperature, in °C. It is the lowest of the three
+/// readings.
+let integrationNewYorkTempC: Double = 22
+
 /// The trip cities' fixture weather readings, in itinerary order.
 ///
 /// Distinct per city, deliberately. One constant reading for every city leaves
@@ -62,10 +74,14 @@ public struct IntegrationCityWeather: Sendable {
 /// another city instead of leaving it grading a reading that stopped being
 /// the one it asks about.
 public let integrationCityWeather: [IntegrationCityWeather] = [
-    IntegrationCityWeather(code: "ATX", name: "Austin", tempC: 31),
-    IntegrationCityWeather(code: "SFO", name: "San Francisco", tempC: 34),
-    IntegrationCityWeather(code: "NYC", name: "New York", tempC: 22),
+    IntegrationCityWeather(code: "ATX", name: "Austin", tempC: integrationAustinTempC),
+    IntegrationCityWeather(code: "SFO", name: "San Francisco", tempC: integrationSanFranciscoTempC),
+    IntegrationCityWeather(code: "NYC", name: "New York", tempC: integrationNewYorkTempC),
 ]
+
+/// How many readings `integrationCityWeather` must hold before "which city is
+/// warmest?" is a question. With only one reading there is nothing to compare.
+let integrationWarmestCityMinimumReadings = 2
 
 /// The single warmest trip city — the one correct answer to the compose/chain
 /// and discovery scenarios' shared question.
@@ -82,7 +98,7 @@ public let integrationCityWeather: [IntegrationCityWeather] = [
 public let integrationWarmestCity: IntegrationCityWeather = {
     let byDescendingTemperature = integrationCityWeather.sorted { $0.tempC > $1.tempC }
     precondition(
-        byDescendingTemperature.count >= 2,
+        byDescendingTemperature.count >= integrationWarmestCityMinimumReadings,
         "integrationCityWeather needs at least two readings for \"which is warmest?\" to be a question"
     )
     precondition(
@@ -563,12 +579,16 @@ public struct IntegrationDeepScanOutput {
     public var reportCode: Int
 }
 
+/// The length of `integrationDeepScanDuration`, in seconds. That constant
+/// gives the reason for this length.
+let integrationDeepScanSeconds = 8
+
 /// How long `IntegrationDeepScanTool` works before it reports.
 ///
 /// Far shorter than `MultiToolConfiguration.executionTimeLimit`, the sandbox
 /// watchdog's absolute ceiling, so the background run settles on its own while
 /// the model is still composing the follow-up that collects it.
-public let integrationDeepScanDuration: Duration = .seconds(8)
+public let integrationDeepScanDuration: Duration = .seconds(integrationDeepScanSeconds)
 
 /// The report code `IntegrationDeepScanTool` always returns.
 ///
