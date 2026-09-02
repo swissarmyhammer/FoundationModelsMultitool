@@ -119,9 +119,49 @@ import Testing
     /// - Returns: the encoded object's keys, in sorted order.
     /// - Throws: rethrows a JSON-reading failure.
     private static func encodedKeys(of output: some ConvertibleToGeneratedContent) throws -> [String] {
-        let data = Data(output.generatedContent.jsonString.utf8)
-        let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
-        return object.keys.sorted()
+        try jsonObject(output.generatedContent.jsonString).keys.sorted()
+    }
+
+    /// The JSON object a text encodes.
+    ///
+    /// - Parameter text: the JSON text to read.
+    /// - Returns: the top-level object, or an empty one when the text encodes
+    ///   no object.
+    /// - Throws: rethrows a JSON-reading failure.
+    private static func jsonObject(_ text: String) throws -> [String: Any] {
+        try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any] ?? [:]
+    }
+
+    /// A change set with an add, a modify and a move, rooted at a canonical directory.
+    ///
+    /// The root comes from `FileWalker.canonicalDirectory(_:)`, the same call
+    /// `FileChangeJournal` roots a drained set with, thus the round trip proves
+    /// the shape a host receives.
+    ///
+    /// - Returns: the change set.
+    private static func makeEnvelopeSet() -> FileChangeSet {
+        let root = FileWalker.canonicalDirectory(
+            TestSupport.makeTemporaryDirectory(named: "FileChangeSetTests"))
+        return FileChangeSet(
+            root: root,
+            changes: [
+                FileChange(
+                    kind: .add, path: TestSupport.path("added.txt", in: root), newContent: "added\n"),
+                FileChange(
+                    kind: .modify,
+                    path: TestSupport.path("code.txt", in: root),
+                    oldContent: "one\ntwo\n",
+                    newContent: "one\nTWO\n"
+                ),
+                FileChange(
+                    kind: .move,
+                    path: TestSupport.path("source.txt", in: root),
+                    destinationPath: TestSupport.path("dest.txt", in: root),
+                    oldContent: "keep me\n",
+                    newContent: "keep me\n"
+                ),
+            ]
+        )
     }
 
     /// Run one write, one edit, and one patch, returning their encoded results with the root elided.
@@ -518,6 +558,47 @@ import Testing
         let notRecording = try await Self.encodedMutationResults(recordsChanges: false)
 
         #expect(recording == notRecording)
+    }
+
+    // MARK: The OperationEvent detail envelope
+
+    @Test func encodedOperationEventDetailRoundTrips() throws {
+        let set = Self.makeEnvelopeSet()
+
+        let text = set.encodedOperationEventDetail()
+        let decoded = try #require(FileChangeSet(operationEventDetail: text))
+
+        #expect(try Self.jsonObject(text).keys.sorted() == [FileChangeSet.operationEventDetailKey])
+        #expect(decoded == set)
+        #expect(decoded.root == set.root)
+        #expect(decoded.changes == set.changes)
+    }
+
+    @Test func operationEventDetailRejectsForeignText() {
+        #expect(FileChangeSet(operationEventDetail: "starting the sweep") == nil)
+        #expect(FileChangeSet(operationEventDetail: "{}") == nil)
+        #expect(FileChangeSet(operationEventDetail: "{\"fileChanges\": 1}") == nil)
+    }
+
+    @Test func encodedOperationEventDetailCarriesThePatch() throws {
+        let set = Self.makeEnvelopeSet()
+
+        let envelope = try Self.jsonObject(set.encodedOperationEventDetail())
+        let encodedSet = envelope[FileChangeSet.operationEventDetailKey] as? [String: Any] ?? [:]
+
+        #expect(encodedSet["patch"] as? String == set.patch)
+
+        // A decode reads `root` and `changes` and ignores `patch`: the patch is
+        // rendered from the changes, never read back, thus a foreign patch text
+        // changes nothing about the decoded set.
+        var foreign = encodedSet
+        foreign["patch"] = "not a patch"
+        let foreignText = try JSONSerialization.data(
+            withJSONObject: [FileChangeSet.operationEventDetailKey: foreign])
+        let decoded = try #require(
+            FileChangeSet(operationEventDetail: String(decoding: foreignText, as: UTF8.self)))
+        #expect(decoded == set)
+        #expect(decoded.patch == set.patch)
     }
 
     // MARK: Partially applied patches

@@ -4,8 +4,10 @@
 // A behavioral port of `../FoundationModelsFileTool/Sources/FileTool/
 // FileChangeJournal.swift`, unchanged in behavior. The sibling declares the
 // type `public`; this package keeps it internal, the same way `PathGuard`
-// and `FileChangeSet` beside it do. Until the mutating verb tasks land, the
-// callers of `record` are the ported test suites.
+// beside it is. The values it collects — `FileChange` and `FileChangeSet` —
+// are public (UPSTREAM_ASKS.md, ask 4), because a host reads the change set
+// off an `OperationEvent.detail`, never off the journal. The callers of
+// `record` are the mutating verbs `Write`, `Edit` and `Patch`.
 //
 // eventplan.md § "Consolidation of the siblings": the journal collects one
 // `FileChange` per mutating file verb into a `FileChangeSet`, and a host

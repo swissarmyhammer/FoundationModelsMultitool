@@ -3,14 +3,17 @@
 //
 // A behavioral port of `../FoundationModelsFileTool/Sources/FileTool/
 // FileChangeSet.swift`. The sibling declares the types `public` for its own
-// module surface; this package keeps them internal, the same way `PathGuard`
-// and `Hashline` beside them do.
+// module surface, and this package does too (UPSTREAM_ASKS.md, ask 4): a host
+// such as FoundationModelsACPAgent reads the change record as values, thus
+// the three types here are the public, `Codable` half of that record. The
+// journal that collects them (`FileChangeJournal`) stays internal, the same
+// way `PathGuard` and `Hashline` beside it do.
 //
 // eventplan.md § "Consolidation of the siblings": the file-change journal
-// (task ^zcr6qz8) collects one `FileChange` per mutating file verb into a
-// `FileChangeSet`, and a host renders that set as a reviewable diff. Until
-// the journal lands, `GitPatchTests` is the one caller; the ported
-// change-set suite arrives on task ^7r99xf5.
+// collects one `FileChange` per mutating file verb into a `FileChangeSet`,
+// and a host renders that set as a reviewable diff. The host reads the set
+// off an `OperationEvent.detail` through the envelope at the end of this
+// file, never off the journal.
 
 import Foundation
 
@@ -19,7 +22,8 @@ import Foundation
 /// The vocabulary a host projects a mutating operation into — the Agent
 /// Client Protocol's diff-content `changes` vocabulary, whose entries name an
 /// operation on an absolute path. A `String`-raw-valued enum, thus the names
-/// live as data read via the non-optional `rawValue`.
+/// live as data read via the non-optional `rawValue`, and the `Codable`
+/// conformance is the synthesized one over that raw value.
 ///
 /// ``move`` and ``copy`` are deliberately distinct from an ``add`` plus a
 /// ``delete``: a rename carries both endpoints on one entry
@@ -32,7 +36,7 @@ import Foundation
 ///   thus a ``FileChange`` a host assembles for a copy it made by other means
 ///   (its own shell tool, say) has a name here rather than a false report as
 ///   an add.
-enum FileChangeKind: String, Equatable, Sendable {
+public enum FileChangeKind: String, Equatable, Sendable, Codable {
     /// A file that did not exist was created.
     case add
 
@@ -63,21 +67,24 @@ enum FileChangeKind: String, Equatable, Sendable {
 /// text could not be captured — an unreadable or binary (undecodable) file —
 /// in which case the rendered patch reports the file as binary rather than
 /// an invented diff.
-struct FileChange: Equatable, Sendable {
+///
+/// The `Codable` conformance is the synthesized one: each stored property is
+/// one key of the same name, and a `nil` side is omitted.
+public struct FileChange: Equatable, Sendable, Codable {
     /// What happened to the file.
-    let kind: FileChangeKind
+    public let kind: FileChangeKind
 
     /// The absolute path acted on; the source path for a ``FileChangeKind/move`` or ``FileChangeKind/copy``.
-    let path: String
+    public let path: String
 
     /// The absolute destination path of a ``FileChangeKind/move`` or ``FileChangeKind/copy``; `nil` otherwise.
-    let destinationPath: String?
+    public let destinationPath: String?
 
     /// The whole-file text before the change; `nil` for an add, or when the text could not be captured.
-    let oldContent: String?
+    public let oldContent: String?
 
     /// The whole-file text after the change; `nil` for a delete, or when the text could not be captured.
-    let newContent: String?
+    public let newContent: String?
 
     /// Creates a file change.
     ///
@@ -90,7 +97,7 @@ struct FileChange: Equatable, Sendable {
     ///     defaults to `nil`.
     ///   - newContent: the whole-file text after the change, or `nil`;
     ///     defaults to `nil`.
-    init(
+    public init(
         kind: FileChangeKind,
         path: String,
         destinationPath: String? = nil,
@@ -115,12 +122,23 @@ struct FileChange: Equatable, Sendable {
 /// ``root`` is the session root the patch's paths are rendered relative to,
 /// the way a git patch's paths are relative to the repository it applies in;
 /// the ``FileChange/path`` values themselves stay absolute.
-struct FileChangeSet: Equatable, Sendable {
+public struct FileChangeSet: Equatable, Sendable {
     /// The session root the ``patch``'s paths are relative to.
-    let root: URL
+    public let root: URL
 
     /// The changes, one per affected file, in the order they were made.
-    let changes: [FileChange]
+    public let changes: [FileChange]
+
+    /// Creates a change set.
+    ///
+    /// - Parameters:
+    ///   - root: the session root the ``patch``'s paths are relative to.
+    ///   - changes: the changes, one per affected file, in the order they
+    ///     were made.
+    public init(root: URL, changes: [FileChange]) {
+        self.root = root
+        self.changes = changes
+    }
 
     /// The change set as a patch in git's format, one section per change.
     ///
@@ -143,5 +161,96 @@ struct FileChangeSet: Equatable, Sendable {
     ///   patch as appliable — the structured ``changes`` still describe every
     ///   affected file faithfully, thus nothing is lost when the diff renders
     ///   from those instead.
-    var patch: String { GitPatch.render(changes, relativeTo: root) }
+    public var patch: String { GitPatch.render(changes, relativeTo: root) }
+}
+
+// MARK: - Codable
+
+extension FileChangeSet: Codable {
+    /// The keys of the encoded object.
+    ///
+    /// `patch` is written and never read: it is a computed property rendered
+    /// from ``changes``, thus a decode takes ``root`` and ``changes`` and
+    /// renders the patch again.
+    private enum CodingKeys: String, CodingKey {
+        case root
+        case changes
+        case patch
+    }
+
+    /// Creates a change set from its encoded object, ignoring the `patch` key.
+    ///
+    /// `root` is read as an absolute path and rebuilt with
+    /// `URL(fileURLWithPath:isDirectory:)`, `isDirectory: true`. That is the
+    /// initializer `FileWalker.canonicalDirectory(_:)` builds a session root
+    /// with, thus a set the journal drained and a set decoded from its
+    /// encoding compare equal: the two-argument `URL(fileURLWithPath:)` gives
+    /// a URL without the trailing separator, and `==` on `URL` tells the two
+    /// spellings apart.
+    ///
+    /// - Parameter decoder: the decoder to read the object from.
+    /// - Throws: `DecodingError` when the object lacks `root` or `changes`, or
+    ///   when either has the wrong shape.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let path = try container.decode(String.self, forKey: .root)
+        root = URL(fileURLWithPath: path, isDirectory: true)
+        changes = try container.decode([FileChange].self, forKey: .changes)
+    }
+
+    /// Encodes the change set as an object with `root`, `changes` and `patch`.
+    ///
+    /// `root` is written as its absolute path (`root.path`, no trailing
+    /// separator); `patch` is the rendered ``patch`` text, carried so a host
+    /// that only shows a diff need not render one.
+    ///
+    /// - Parameter encoder: the encoder to write the object to.
+    /// - Throws: `EncodingError` when the underlying container fails to encode
+    ///   a value.
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(root.path, forKey: .root)
+        try container.encode(changes, forKey: .changes)
+        try container.encode(patch, forKey: .patch)
+    }
+}
+
+// MARK: - The OperationEvent detail envelope
+
+extension FileChangeSet {
+    /// The one top-level key of the envelope ``encodedOperationEventDetail()`` writes.
+    ///
+    /// A host reads an `OperationEvent.detail` and asks whether it is a change
+    /// set or a plain notice; the presence of this key, over an object of this
+    /// type, is the answer. ``init(operationEventDetail:)`` makes that test.
+    public static let operationEventDetailKey = "fileChanges"
+
+    /// The JSON text of the envelope `{"fileChanges": <encoded change set>}`.
+    ///
+    /// The text a tool posts as an `OperationEvent.detail` at the end of a
+    /// call, and the text ``init(operationEventDetail:)`` reads back. The keys
+    /// are sorted, thus the same set always encodes to the same text.
+    ///
+    /// - Returns: the envelope's JSON text.
+    public func encodedOperationEventDetail() -> String {
+        EditOutcomeProjection.encodedText([Self.operationEventDetailKey: self])
+    }
+
+    /// Creates a change set from the envelope ``encodedOperationEventDetail()`` wrote.
+    ///
+    /// Returns `nil` for any text that is not that envelope: a plain
+    /// `notify()` detail such as `starting the sweep`, an object without the
+    /// key (`{}`), or an object whose value under the key is not an encoded
+    /// change set (`{"fileChanges": 1}`). Never throws, thus a host can try
+    /// every detail it receives.
+    ///
+    /// - Parameter operationEventDetail: the `OperationEvent.detail` text.
+    public init?(operationEventDetail: String) {
+        let data = Data(operationEventDetail.utf8)
+        guard
+            let envelope = try? JSONDecoder().decode([String: FileChangeSet].self, from: data),
+            let set = envelope[Self.operationEventDetailKey]
+        else { return nil }
+        self = set
+    }
 }
