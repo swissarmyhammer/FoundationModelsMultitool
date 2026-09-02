@@ -160,11 +160,7 @@ struct FileChangeEventAbsenceTests {
 
     /// The snippet that writes ``writtenFileName`` and answers the byte count.
     private static var writeSnippet: String {
-        """
-        const written = await tools.files.write({ path: "\(writtenFileName)", content: `\(writtenContent)` });
-        if (written.correction) { return written.correction; }
-        return written.bytesWritten;
-        """
+        writeVerbSnippet(writing: writtenFileName, content: writtenContent)
     }
 
     // MARK: - A snippet that only reads

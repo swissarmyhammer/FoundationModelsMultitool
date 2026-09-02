@@ -456,6 +456,27 @@ func settledEvents(
     }
 }
 
+/// The recorded `OperationEvent`s of `run` of one kind, on the runs
+/// `correlationIDs` name, read one time with no wait.
+///
+/// A `.progress` event a verb posts through `ToolContext.post(_:)` is
+/// journaled before `post` returns: `SessionOutbox.post(event:)` awaits its
+/// own journal write. Thus a test that reads right after the call that posted
+/// the event needs no poll, and a read here that comes back short is a fault
+/// in the route and not a race in the test. The polling variant below is for
+/// the sweep `RoutedSession.close()` runs on a task of its own.
+///
+/// - Parameters:
+///   - run: The stub run whose transcript to read.
+///   - kind: The one event kind to keep.
+///   - correlationIDs: The runs to keep, by `correlationID`.
+/// - Returns: The matching events, in transcript order.
+func recordedOperationEvents(
+    of run: StubRun, ofKind kind: OperationEventKind, correlatedTo correlationIDs: Set<String>
+) async -> [OperationEvent] {
+    await recordedOperationEvents(of: run, ofKind: kind).filter { correlationIDs.contains($0.correlationID) }
+}
+
 /// The recorded `OperationEvent`s of `run` of one kind, waited for until at
 /// least `count` of them have been journaled.
 ///
@@ -488,9 +509,8 @@ func recordedOperationEvents(
     awaiting count: Int
 ) async -> [OperationEvent] {
     func matching() async -> [OperationEvent] {
-        let events = await recordedOperationEvents(of: run, ofKind: kind)
-        guard let correlationIDs else { return events }
-        return events.filter { correlationIDs.contains($0.correlationID) }
+        guard let correlationIDs else { return await recordedOperationEvents(of: run, ofKind: kind) }
+        return await recordedOperationEvents(of: run, ofKind: kind, correlatedTo: correlationIDs)
     }
     let deadline = ContinuousClock.now.advanced(by: TestPoll.deadline)
     var events = await matching()
