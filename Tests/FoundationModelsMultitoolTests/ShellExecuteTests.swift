@@ -96,16 +96,70 @@ struct ShellExecuteTests {
     /// and at twice the cap in bytes.
     private static let multiByteCommandCharacterCount = Execute.maximumCommandLengthBytes / 2
 
+    /// The command that prints the directory it runs in.
+    ///
+    /// `/bin/pwd` prints the physical directory (`/var` becomes `/private/var`
+    /// on macOS), thus a test compares the result against
+    /// `ShellRunner.resolvedDirectory(path:)` of the directory it expects — the
+    /// one directory resolver, and never a second spelling of that step.
+    private static let printWorkingDirectoryCommand = "/bin/pwd"
+
+    /// The words the rendered surface uses for the directory a call that omits
+    /// `workingDirectory` runs in — UPSTREAM_ASKS.md Ask 6.
+    private static let sessionDirectoryPhrase = "session's working directory"
+
+    /// The words the surface used before Ask 6, which sent a model to the
+    /// directory of the host process and thus to a refused run.
+    private static let formerFallbackPhrase = "run in the current directory"
+
     // MARK: - The ground of one test
+
+    /// A store directory inside a temporary directory this test owns.
+    ///
+    /// - Returns: A directory no other test shares.
+    /// - Throws: When the temporary directory does not create.
+    private func makeStoreDirectory() throws -> URL {
+        try scratch.makeDirectory(prefix: Self.testDirectoryNamePrefix)
+            .appendingPathComponent(Self.shellStoreDirectoryName)
+    }
 
     /// Makes a store in a temporary directory this test owns.
     ///
     /// - Returns: A store that no other test shares.
     /// - Throws: When the directory or the store does not prepare.
     private func makeState() throws -> ShellState {
-        let directory = try scratch.makeDirectory(prefix: Self.testDirectoryNamePrefix)
-        return try ShellState(
-            preferredDirectory: directory.appendingPathComponent(Self.shellStoreDirectoryName))
+        try ShellState(preferredDirectory: makeStoreDirectory())
+    }
+
+    /// A whole capability over a store this test owns.
+    ///
+    /// - Parameters:
+    ///   - outputChunkStream: The live view a host subscribes to, or `nil` for
+    ///     none.
+    ///   - defaultWorkingDirectory: The directory a call that omits
+    ///     `workingDirectory` runs in, or `nil` for the current directory of
+    ///     this process.
+    /// - Returns: The capability.
+    /// - Throws: When the directory, the store or the capability does not
+    ///   prepare.
+    private func makeCapability(
+        outputChunkStream: ShellOutputChunkStream? = nil, defaultWorkingDirectory: URL? = nil
+    ) throws -> ShellCapability {
+        try ShellCapability(
+            storeDirectory: makeStoreDirectory(),
+            outputChunkStream: outputChunkStream,
+            defaultWorkingDirectory: defaultWorkingDirectory)
+    }
+
+    /// The surface the builder renders for the shell noun over one verb.
+    ///
+    /// - Parameter state: The store the verb records into.
+    /// - Returns: The rendered surface.
+    /// - Throws: When the surface does not render.
+    private func renderedSurface(over state: ShellState) throws -> APISurface {
+        try MultiTool.Builder()
+            .addGroup(named: Self.shellNoun, [makeVerb(over: state)])
+            .build()
     }
 
     /// The verb over a store, with a process-group registry private to this
@@ -128,25 +182,15 @@ struct ShellExecuteTests {
     /// passes to the chunks that host reads, and the capability is the first
     /// step of it.
     ///
-    /// The registry of the runner is replaced with a private one. The
-    /// capability takes `ProcessRegistry.global`, and an ordinary test must not
-    /// touch the process-wide instance — see the doc comment of that property.
-    /// Nothing else of the configured runner is touched, thus the store, the
-    /// live view and the confinement stay the ones the capability built.
+    /// The registry of the runner is replaced with a private one — see
+    /// `ShellExecuteVerb.configured(in:)`.
     ///
     /// - Parameter stream: The live view the host subscribes to.
     /// - Returns: The verb of that capability.
     /// - Throws: When the directory, the store or the capability does not
     ///   prepare, or when the capability holds no `execute` verb.
     private func makeVerb(teeing stream: ShellOutputChunkStream) throws -> Execute {
-        let directory = try scratch.makeDirectory(prefix: Self.testDirectoryNamePrefix)
-        let capability = try ShellCapability(
-            storeDirectory: directory.appendingPathComponent(Self.shellStoreDirectoryName),
-            outputChunkStream: stream)
-        let configured = try #require(capability.tools.compactMap { $0 as? Execute }.first)
-        var runner = configured.runner
-        runner.registry = ProcessRegistry()
-        return Execute(runner: runner)
+        try ShellExecuteVerb.configured(in: makeCapability(outputChunkStream: stream))
     }
 
     /// Every event a host stream holds, read back after the run that fed it
@@ -185,18 +229,14 @@ struct ShellExecuteTests {
         return String(decoding: bytes, as: UTF8.self)
     }
 
-    /// The report one rendered answer carries, read back as a JSON object.
-    ///
-    /// The verb answers `String`, because only a `String`-output tool reaches
-    /// `BackgroundToolRunner` and thus the run plane. So a test reads the answer the
-    /// way the model does: as the JSON object `ResultRenderer` serialized.
+    /// The report one rendered answer carries, read back as a JSON object —
+    /// see `ShellExecuteVerb.report(of:)`.
     ///
     /// - Parameter output: The rendered answer of one call.
     /// - Returns: The fields of the report.
     /// - Throws: When the answer is not a JSON object.
     private static func report(_ output: String) throws -> [String: Any] {
-        let data = try #require(output.data(using: .utf8))
-        return try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        try ShellExecuteVerb.report(of: output)
     }
 
     /// Runs one call of the verb under a bound ambient context, the way the
@@ -277,9 +317,7 @@ struct ShellExecuteTests {
     @Test("tools.shell.execute renders with an @example line that runs as written")
     func executeRendersWithARunnableExampleLine() throws {
         let state = try makeState()
-        let surface = try MultiTool.Builder()
-            .addGroup(named: Self.shellNoun, [makeVerb(over: state)])
-            .build()
+        let surface = try renderedSurface(over: state)
 
         #expect(surface.entries.map(\.path) == [Self.executePath])
 
@@ -291,6 +329,21 @@ struct ShellExecuteTests {
         #expect(
             entry.qualifiedExample.contains("command:"),
             "example was: \(entry.qualifiedExample)")
+    }
+
+    /// UPSTREAM_ASKS.md Ask 6: the text the model reads names the directory a
+    /// plain command runs in, and it no longer names the directory of this
+    /// process — a directory the model cannot see, and one the sandbox
+    /// refuses. The `@Guide` text of `workingDirectory` is the one place that
+    /// text stands, and the rendered entry carries it as an `@param` line.
+    @Test("the execute surface names the session's working directory")
+    func theExecuteSurfaceNamesTheSessionWorkingDirectory() throws {
+        let state = try makeState()
+        let surface = try renderedSurface(over: state)
+
+        let entry = try #require(surface.entries.first { $0.path == Self.executePath })
+        #expect(entry.block.contains(Self.sessionDirectoryPhrase), "block was: \(entry.block)")
+        #expect(!entry.block.contains(Self.formerFallbackPhrase), "block was: \(entry.block)")
     }
 
     // MARK: - The inline answer
@@ -589,6 +642,32 @@ struct ShellExecuteTests {
         #expect(
             stored.lines.contains { $0.contains(Self.inlineMarker) },
             "getLines read: \(stored.lines)")
+    }
+
+    // MARK: - The default working directory
+
+    /// UPSTREAM_ASKS.md Ask 6: a call that omits `workingDirectory` runs in
+    /// the default the capability was built with, and not in the current
+    /// directory of this process. The default is a temporary directory, thus
+    /// it cannot be the process directory by accident. A bare call, with no
+    /// session: the report is the whole answer.
+    @Test("execute with no workingDirectory runs in the default of the capability")
+    func executeWithNoWorkingDirectoryRunsInTheCapabilityDefault() async throws {
+        let root = try scratch.makeDirectory(prefix: Self.testDirectoryNamePrefix)
+        let verb = try ShellExecuteVerb.configured(
+            in: makeCapability(defaultWorkingDirectory: root))
+
+        let output = try await verb.call(
+            arguments: ExecuteArguments(command: Self.printWorkingDirectoryCommand))
+        let report = try Self.report(output)
+
+        #expect(report["status"] as? String == CommandStatus.completed.rawValue)
+        let lines = try #require(report["output"] as? [String])
+        // Each line of the report carries its line number in front of the
+        // text, thus the test reads the end of the line.
+        let expected = ShellRunner.resolvedDirectory(path: root.path)
+        #expect(
+            lines.contains { $0.hasSuffix(expected) }, "pwd printed \(lines); expected \(expected)")
     }
 
     // MARK: - The caps that stand in front of E2BIG

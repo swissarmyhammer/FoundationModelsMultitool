@@ -132,6 +132,31 @@ struct SeatbeltSandboxTests {
     /// The number of writable roots the profile-grant count test configures.
     private static let countedRoots = [firstRoot, secondRoot, thirdRoot]
 
+    /// The name prefix of the root the Ask 6 scenario confines a capability to.
+    private static let defaultRootPrefix = "seatbelt-default-root"
+
+    /// The name prefix of the directory that holds the store of that
+    /// capability. It stands apart from the root, thus the root holds nothing
+    /// but what the command writes.
+    private static let defaultRootStorePrefix = "seatbelt-default-root-store"
+
+    /// The name of the store folder inside that directory.
+    private static let shellStoreDirectoryName = ".shell"
+
+    /// The command that prints the directory it runs in.
+    ///
+    /// `/bin/pwd` prints the physical directory (`/var` becomes `/private/var`
+    /// on macOS), thus a test compares the result against
+    /// `ShellRunner.resolvedDirectory(path:)` of the directory it expects — the
+    /// one directory resolver, and never a second spelling of that step.
+    private static let printWorkingDirectoryCommand = "/bin/pwd"
+
+    /// The key under which a refused call carries its correction.
+    private static let correctionKey = "correction"
+
+    /// The words the correction of a refused working directory carries.
+    private static let outsideRootsPhrase = "outside the configured roots"
+
     /// The configuration whose profile one test holds byte for byte: one
     /// writable root, and one extra write path.
     private static let fixedOptions = SeatbeltSandbox.Options(
@@ -616,6 +641,40 @@ struct SeatbeltSandboxTests {
         }
 
         #expect(counter.count == 0)
+    }
+
+    // MARK: - The default working directory of a capability
+
+    /// UPSTREAM_ASKS.md Ask 6: a host roots the sandbox at the session root and
+    /// gives the capability that root as its default working directory. A
+    /// plain command — one that names no `workingDirectory` — then runs inside
+    /// the root, and the preflight examines the root and not the directory of
+    /// this process, which stands outside every configured root. The run goes
+    /// through the whole verb, thus the correction path and the spawn path are
+    /// both exercised, with the real wrapper.
+    @Test("a plain command under a sandbox rooted at the default is not refused")
+    func aPlainCommandUnderASandboxRootedAtTheDefaultIsNotRefused() async throws {
+        let root = try makeResolvedDirectory(prefix: Self.defaultRootPrefix)
+        let store = try scratch.makeDirectory(prefix: Self.defaultRootStorePrefix)
+        let capability = try ShellCapability(
+            storeDirectory: store.appendingPathComponent(Self.shellStoreDirectoryName),
+            sandbox: SeatbeltSandbox(options: .init(writableRoots: [root])),
+            defaultWorkingDirectory: URL(fileURLWithPath: root, isDirectory: true))
+        let verb = try ShellExecuteVerb.configured(in: capability)
+
+        let output = try await verb.call(
+            arguments: ExecuteArguments(command: Self.printWorkingDirectoryCommand))
+        let report = try ShellExecuteVerb.report(of: output)
+
+        #expect(report[Self.correctionKey] == nil, "the call was refused: \(output)")
+        #expect(!output.contains(Self.outsideRootsPhrase), "the call was refused: \(output)")
+        #expect(report["status"] as? String == CommandStatus.completed.rawValue)
+        let lines = try #require(report["output"] as? [String])
+        // Each line of the report carries its line number in front of the
+        // text, thus the test reads the end of the line.
+        let expected = ShellRunner.resolvedDirectory(path: root)
+        #expect(
+            lines.contains { $0.hasSuffix(expected) }, "pwd printed \(lines); expected \(expected)")
     }
 }
 

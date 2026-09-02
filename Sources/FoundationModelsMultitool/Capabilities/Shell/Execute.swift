@@ -85,11 +85,19 @@ struct ExecuteArguments {
             + "limit.")
     var timeout: Int?
 
-    /// The directory the command runs in, or `nil` for the current directory of
-    /// this process.
+    /// The directory the command runs in, or `nil` for the default working
+    /// directory of the runner — the session root a host gave the capability —
+    /// and, when the runner has no default, the current directory of this
+    /// process.
+    ///
+    /// The `@Guide` text below names the session and not the process on
+    /// purpose. The model cannot see the directory of the host process, and a
+    /// sandbox rooted at the session refuses a run there — UPSTREAM_ASKS.md
+    /// Ask 6.
     @Guide(
         description:
-            "The directory the command runs in. Omit it to run in the current directory.")
+            "The directory the command runs in. Omit it to run in the session's working "
+            + "directory.")
     var workingDirectory: String?
 
     /// The extra environment variables as JSON text, or `nil` for none.
