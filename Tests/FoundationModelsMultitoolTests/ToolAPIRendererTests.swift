@@ -292,6 +292,20 @@ struct ToolAPIRendererTests {
     // trusted to be safe TS/JS/comment syntax before being spliced into the
     // generated declaration and doc comment)
 
+    /// A text that holds each character `jsStringLiteral` must neutralize: a
+    /// quote, a backslash, a newline, a carriage return, and the two Unicode
+    /// line terminators.
+    private static let hostileText = "say \"hi\"\\ now\n\r\u{2028}\u{2029}"
+
+    /// The literal `jsStringLiteral` renders ``hostileText`` as: each special
+    /// character escaped, between double quotes.
+    private static let hostileLiteral = "\"say \\\"hi\\\"\\\\ now\\n\\r\\u2028\\u2029\""
+
+    @Test("jsStringLiteral quotes a text and escapes its quotes, backslashes, and line terminators")
+    func jsStringLiteralEscapesEveryQuoteBackslashAndLineTerminator() {
+        #expect(ToolAPIRenderer.jsStringLiteral(Self.hostileText) == Self.hostileLiteral)
+    }
+
     @Test("a tool description containing \"*/\" is escaped, not left to terminate the JSDoc block early")
     func toolDescriptionWithCommentTerminatorIsEscaped() throws {
         let descriptor = try ToolAPIRenderer.render(

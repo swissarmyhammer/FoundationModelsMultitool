@@ -447,6 +447,31 @@ public enum ToolAPIRenderer {
             .replacingOccurrences(of: "\"", with: "\\\"")
     }
 
+    /// Renders `text` as a complete JavaScript double-quoted string literal.
+    ///
+    /// Builds on ``escapeForJSStringLiteral(_:)`` — which neutralizes the
+    /// backslashes and the quotes — and additionally neutralizes the line
+    /// terminators JavaScript forbids inside a string literal, then puts the
+    /// result between double quotes. No text can close the literal or open
+    /// code of its own.
+    ///
+    /// Internal (not `private`), rather than duplicated, so `TypedMockDryRun`
+    /// splices a rendered declared type into its harness through it, and the
+    /// test fixtures splice a path or a file content into a snippet through
+    /// it — the same posture this file takes toward sharing
+    /// `escapeForJSStringLiteral`.
+    ///
+    /// - Parameter text: the text to render.
+    /// - Returns: the quoted, escaped JavaScript string literal.
+    static func jsStringLiteral(_ text: String) -> String {
+        let escaped = escapeForJSStringLiteral(text)
+            .replacingOccurrences(of: "\n", with: "\\n")
+            .replacingOccurrences(of: "\r", with: "\\r")
+            .replacingOccurrences(of: "\u{2028}", with: "\\u2028")
+            .replacingOccurrences(of: "\u{2029}", with: "\\u2029")
+        return "\"\(escaped)\""
+    }
+
     /// Renders `key` as an object-literal key for the auto-generated
     /// `@example` call: bare (`field`) when it's a legal TS identifier, or
     /// a quoted, escaped string-literal key (`"field\"x\""`) otherwise.

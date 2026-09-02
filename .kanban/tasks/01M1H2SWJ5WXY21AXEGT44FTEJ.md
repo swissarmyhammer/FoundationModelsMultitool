@@ -30,6 +30,45 @@ comments:
     - evidence: `swift test` — 1388 tests in 108 suites passed, 0 failed, 0 skipped. No compiler warning in the changed files. The one build line, `warning: missing creator for mutated node` for `.build/out/Products/Debug/mlx-swift_Cmlx.bundle`, is a SwiftPM note about a dependency bundle, present before this change.
     - next: commit, then review.
   timestamp: 2026-09-02T15:10:47.786850+00:00
+- actor: claude-code
+  id: 01m1hasexr24rf1bydxfqkv9r1
+  text: |-
+    ### commit — changed
+    - evidence: d171d83 test(files): prove the fileChanges event end to end through runCode
+    - next: review HEAD~1..HEAD.
+  timestamp: 2026-09-02T15:11:22.552727+00:00
+- actor: claude-code
+  id: 01m1hb8as41shw3tm502anmajf
+  text: |-
+    ### review — findings
+    - evidence: `review sha HEAD~1..HEAD` — 1 finding, 1 confirmed, 1 refuted — Tests/FoundationModelsMultitoolTests/Fixtures/FilesRunFixtures.swift:135 `code-security/injection`: `fileName` and `content` are interpolated into JavaScript with no escaping.
+    - next: implement works the open `## Review Findings` item, then test, commit, and review again.
+  timestamp: 2026-09-02T15:19:29.828499+00:00
+- actor: claude-code
+  id: 01m1hb9kp9ndsr51xqabpnb8dc
+  text: |-
+    ### finish iteration 1 — findings
+    - implement: changed — 5 files (FileChangeRunCodeTests.swift, Support/Rendezvous.swift, Fixtures/FilesRunFixtures.swift, Fixtures/StubRouterFixtures.swift, FileChangeEventAbsenceTests.swift); `swift test --filter "FileChangeRunCode|FileChangeEvent"` 15 passed
+    - test: green — `swift test` 1388 tests in 108 suites passed, 0 failed, 0 skipped
+    - commit: d171d83
+    - review: findings — Tests/FoundationModelsMultitoolTests/Fixtures/FilesRunFixtures.swift:135 `code-security/injection`: `fileName` and `content` are interpolated into JavaScript with no escaping
+  timestamp: 2026-09-02T15:20:11.721467+00:00
+- actor: claude-code
+  id: 01m1hbemkgvnjns1n9xgvvj0ft
+  text: |-
+    ### implement — changed
+    - Works the open finding `FilesRunFixtures.swift:135 code-security/injection`. The reuse rule applies: `TypedMockDryRun.quoted` was the complete JavaScript string-literal builder (quotes, backslashes, and the four line terminators), so it is promoted to the shared `ToolAPIRenderer.jsStringLiteral(_:)` beside `escapeForJSStringLiteral(_:)`. The three `TypedMockDryRun` call sites call it, and the private `quoted` is deleted. `writeVerbCall(writing:content:)` renders `path` and `content` through it, and no argument can close its literal or open code of its own. This is a moved helper, not new route behavior.
+    - evidence: 4 files — Sources/FoundationModelsMultitool/Surface/ToolAPIRenderer.swift (`jsStringLiteral`), Sources/FoundationModelsMultitool/Discovery/TypedMockDryRun.swift (calls it, `quoted` deleted), Tests/FoundationModelsMultitoolTests/Fixtures/FilesRunFixtures.swift (`writeVerbCall` escapes both arguments), Tests/FoundationModelsMultitoolTests/ToolAPIRendererTests.swift (one test pins the literal for a text with a quote, a backslash, LF, CR, U+2028, U+2029).
+    - `swift test --filter "FileChangeRunCode|FileChangeEvent|ToolAPIRenderer|TypedMockDryRun"`: 69 tests in 5 suites passed.
+    - next: test, commit, review.
+  timestamp: 2026-09-02T15:22:56.496600+00:00
+- actor: claude-code
+  id: 01m1hbfnte50fb9s9zwvrfxx7e
+  text: |-
+    ### test — green
+    - evidence: `swift test` — 1389 tests in 108 suites passed, 0 failed, 0 skipped. No compiler warning in the changed files; the one build line is the pre-existing SwiftPM note for `mlx-swift_Cmlx.bundle`.
+    - next: commit, then review HEAD~1..HEAD.
+  timestamp: 2026-09-02T15:23:30.510650+00:00
 depends_on:
 - 01M1H2RGWFM5DE6BRJFGB7YXNF
 position_column: doing
@@ -52,3 +91,12 @@ Ask 4, part 3 (UPSTREAM_ASKS.md). The verb-level post (task "Post each mutating 
 
 ## Workflow
 - Use `/tdd` — write failing tests first, then implement to make them pass. #ask-4 #upstream-asks
+
+## Review Findings (2026-09-02 10:11)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 5 file(s) reviewed, 2 not reviewed.
+
+> 2 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 2 file(s)
+
+- [ ] `Tests/FoundationModelsMultitoolTests/Fixtures/FilesRunFixtures.swift:135` `code-security/injection` — JavaScript code injection via unescaped string interpolation — `fileName` and `content` parameters are interpolated into executable JavaScript code without escaping, allowing injection if the parameters contain special characters. Escape special characters in both parameters before interpolation. Use a JavaScript string escaping function (e.g., replace backslashes and quotes) or validate that inputs contain only safe characters (alphanumerics, dots, hyphens for filenames).

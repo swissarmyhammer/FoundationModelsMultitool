@@ -126,13 +126,19 @@ func runSnippet(
 /// The one JavaScript statement that calls `tools.files.write` and binds the
 /// result to `written`.
 ///
+/// Each argument is rendered with `ToolAPIRenderer.jsStringLiteral(_:)`,
+/// thus a quote, a backslash, or a line terminator in the path or in the
+/// content stands as an escaped character inside its literal, and no text
+/// can close the literal or open code of its own.
+///
 /// - Parameters:
 ///   - fileName: the path of the file to write, as the snippet passes it.
-///   - content: the content to write. It stands in a JS template literal,
-///     thus a newline in it stands as itself.
+///   - content: the content to write.
 /// - Returns: the statement.
 func writeVerbCall(writing fileName: String, content: String) -> String {
-    "const written = await tools.files.write({ path: \"\(fileName)\", content: `\(content)` });"
+    let path = ToolAPIRenderer.jsStringLiteral(fileName)
+    let literal = ToolAPIRenderer.jsStringLiteral(content)
+    return "const written = await tools.files.write({ path: \(path), content: \(literal) });"
 }
 
 /// The snippet that writes one file through `tools.files.write` and answers

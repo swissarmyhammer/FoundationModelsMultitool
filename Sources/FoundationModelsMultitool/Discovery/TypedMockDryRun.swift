@@ -110,7 +110,7 @@ enum TypedMockDryRun {
             }
             let signature = entry.descriptor.signature
             lines.append(
-                "tools.\(entry.path) = __mockTool({ call: \(quoted("tools.\(entry.path)")), "
+                "tools.\(entry.path) = __mockTool({ call: \(ToolAPIRenderer.jsStringLiteral("tools.\(entry.path)")), "
                     + "arguments: \(literal(for: .object(signature.arguments))), "
                     + "result: \(literal(for: signature.result)) });"
             )
@@ -130,7 +130,7 @@ enum TypedMockDryRun {
     /// - Parameter shape: the declared shape to render.
     /// - Returns: the JavaScript object literal describing `shape`.
     private static func literal(for shape: ToolValueShape) -> String {
-        let common = "kind: '\(kind(of: shape))', declared: \(quoted(shape.declaredType))"
+        let common = "kind: '\(kind(of: shape))', declared: \(ToolAPIRenderer.jsStringLiteral(shape.declaredType))"
         switch shape {
         case .string, .number, .boolean, .any:
             return "{ \(common) }"
@@ -138,7 +138,7 @@ enum TypedMockDryRun {
             return "{ \(common), element: \(literal(for: element)) }"
         case .object(let object):
             let properties = object.properties.map { property in
-                "{ name: \(quoted(property.name)), required: \(property.isRequired), "
+                "{ name: \(ToolAPIRenderer.jsStringLiteral(property.name)), required: \(property.isRequired), "
                     + "shape: \(literal(for: property.shape)) }"
             }
             return "{ \(common), properties: [\(properties.joined(separator: ", "))] }"
@@ -168,26 +168,6 @@ enum TypedMockDryRun {
         case .any:
             return "any"
         }
-    }
-
-    /// Renders `text` as a JavaScript double-quoted string literal.
-    ///
-    /// Builds on `ToolAPIRenderer.escapeForJSStringLiteral` — which already
-    /// neutralizes backslashes and quotes for every other generated-source
-    /// splice site — and additionally neutralizes the line terminators
-    /// JavaScript forbids inside a string literal. A rendered declared type
-    /// can carry an author-supplied enum choice verbatim, so it can carry a
-    /// newline.
-    ///
-    /// - Parameter text: the schema-derived text to render.
-    /// - Returns: the quoted, escaped JavaScript string literal.
-    private static func quoted(_ text: String) -> String {
-        let escaped = ToolAPIRenderer.escapeForJSStringLiteral(text)
-            .replacingOccurrences(of: "\n", with: "\\n")
-            .replacingOccurrences(of: "\r", with: "\\r")
-            .replacingOccurrences(of: "\u{2028}", with: "\\u2028")
-            .replacingOccurrences(of: "\u{2029}", with: "\\u2029")
-        return "\"\(escaped)\""
     }
 
     /// The fixed JavaScript the harness's per-entry mock installs call into.
