@@ -28,8 +28,24 @@ comments:
     - evidence: 5 files — Sources/FoundationModelsMultitool/Capabilities/Files/FileChangeSet.swift (public `FileChangeKind`, `FileChange`, `FileChangeSet`; `Codable`; `operationEventDetailKey`, `encodedOperationEventDetail()`, `init?(operationEventDetail:)`; header comment), Sources/FoundationModelsMultitool/Capabilities/Files/FileChangeJournal.swift (header comment), Sources/FoundationModelsMultitool/Capabilities/Files/EditOutcomeProjection.swift (doc comment of `encodedText(_:)`, which the envelope reuses), Tests/FoundationModelsMultitoolTests/FileChangeSetTests.swift (three envelope tests and two helpers), Tests/FoundationModelsMultitoolTests/FileChangeSetPublicSurfaceTests.swift (new, plain `import`). TDD: the tests were written first and failed to compile; then the implementation made `swift test --filter FileChangeSet` pass — 30 tests in 3 suites.
     - next: `/test`, then `/commit`, then `/review`.
   timestamp: 2026-09-02T14:09:16.336276+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m1h7ghgq601312gwymzbq98s
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit 9ec33f6) — 0 findings, 7 validator runs attempted, 0 failed; 5 files reviewed. `.kanban/` was excluded by `.reviewignore`, and no validator matches `UPSTREAM_ASKS.md`. The description has no prior `## Review Findings` section.
+    - next: the task moves to `done`.
+  timestamp: 2026-09-02T14:14:04.567379+00:00
+- actor: claude-code
+  id: 01m1h7ha0q1kcatn7awcv2cp8m
+  text: |-
+    ### finish iteration 1 — review clean, task done
+    - implement: changed — 5 files (FileChangeSet.swift, FileChangeJournal.swift, EditOutcomeProjection.swift, FileChangeSetTests.swift, FileChangeSetPublicSurfaceTests.swift); `swift test --filter FileChangeSet` 30 tests in 3 suites passed
+    - test: green — `swift test` 1373 tests in 105 suites passed, 0 failed, 0 skipped
+    - commit: 9ec33f6
+    - review: clean — `review sha HEAD~1..HEAD`, 0 findings
+  timestamp: 2026-09-02T14:14:29.655548+00:00
+position_column: done
+position_ordinal: ffaa80
 title: Make FileChange, FileChangeKind and FileChangeSet public and Codable
 ---
 ## What
