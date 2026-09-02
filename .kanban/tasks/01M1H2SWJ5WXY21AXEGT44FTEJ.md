@@ -69,10 +69,33 @@ comments:
     - evidence: `swift test` — 1389 tests in 108 suites passed, 0 failed, 0 skipped. No compiler warning in the changed files; the one build line is the pre-existing SwiftPM note for `mlx-swift_Cmlx.bundle`.
     - next: commit, then review HEAD~1..HEAD.
   timestamp: 2026-09-02T15:23:30.510650+00:00
+- actor: claude-code
+  id: 01m1hbg3rjt10jeaxm4x1kmg4c
+  text: |-
+    ### commit — changed
+    - evidence: d47b432 fix(fixtures): render snippet arguments as escaped JavaScript literals
+    - next: review HEAD~1..HEAD.
+  timestamp: 2026-09-02T15:23:44.786309+00:00
+- actor: claude-code
+  id: 01m1hbnmgy8zg8p7jm7eyghwgz
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (d47b432) — 0 findings, 0 confirmed, 0 refuted, 7 attempted. The one prior item (`FilesRunFixtures.swift:135 code-security/injection`) is worked in d47b432 and checked. Task moved review → done.
+    - next: none.
+  timestamp: 2026-09-02T15:26:45.790832+00:00
+- actor: claude-code
+  id: 01m1hbp36rmp3p3we750pr6sg5
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — 4 files (Sources/FoundationModelsMultitool/Surface/ToolAPIRenderer.swift, Sources/FoundationModelsMultitool/Discovery/TypedMockDryRun.swift, Tests/FoundationModelsMultitoolTests/Fixtures/FilesRunFixtures.swift, Tests/FoundationModelsMultitoolTests/ToolAPIRendererTests.swift); `swift test --filter "FileChangeRunCode|FileChangeEvent|ToolAPIRenderer|TypedMockDryRun"` 69 passed
+    - test: green — `swift test` 1389 tests in 108 suites passed, 0 failed, 0 skipped
+    - commit: d47b432
+    - review: clean — 0 findings on HEAD~1..HEAD; the prior finding FilesRunFixtures.swift:135 is checked; task moved to done
+  timestamp: 2026-09-02T15:27:00.824298+00:00
 depends_on:
 - 01M1H2RGWFM5DE6BRJFGB7YXNF
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffad80
 title: Prove the file-change event end to end through runCode, with concurrent calls
 ---
 ## What
@@ -99,4 +122,4 @@ Ask 4, part 3 (UPSTREAM_ASKS.md). The verb-level post (task "Post each mutating 
 > 2 file(s) not reviewed — excluded by an ignore rule:
 > - `.kanban/ (from .reviewignore)` — 2 file(s)
 
-- [ ] `Tests/FoundationModelsMultitoolTests/Fixtures/FilesRunFixtures.swift:135` `code-security/injection` — JavaScript code injection via unescaped string interpolation — `fileName` and `content` parameters are interpolated into executable JavaScript code without escaping, allowing injection if the parameters contain special characters. Escape special characters in both parameters before interpolation. Use a JavaScript string escaping function (e.g., replace backslashes and quotes) or validate that inputs contain only safe characters (alphanumerics, dots, hyphens for filenames).
+- [x] `Tests/FoundationModelsMultitoolTests/Fixtures/FilesRunFixtures.swift:135` `code-security/injection` — JavaScript code injection via unescaped string interpolation — `fileName` and `content` parameters are interpolated into executable JavaScript code without escaping, allowing injection if the parameters contain special characters. Escape special characters in both parameters before interpolation. Use a JavaScript string escaping function (e.g., replace backslashes and quotes) or validate that inputs contain only safe characters (alphanumerics, dots, hyphens for filenames).
