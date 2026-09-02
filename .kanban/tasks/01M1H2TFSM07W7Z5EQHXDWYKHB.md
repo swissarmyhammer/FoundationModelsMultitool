@@ -19,10 +19,26 @@ comments:
     - tests: `swift test --filter "ShellCapabilityTests|ShellExecuteTests|ShellRunnerTests"` — 66 tests in 3 suites passed. The one build warning is the pre-existing SwiftPM note for `mlx-swift_Cmlx.bundle`.
     - next: `/test` over the whole suite, then `/commit`, then `/review`.
   timestamp: 2026-09-02T15:46:53.919722+00:00
+- actor: claude-code
+  id: 01m1hd2n6fhv9a1q14hcswfven
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (a2ce987) — 0 findings, 0 confirmed, 0 refuted, 7 validator runs attempted, 0 failed. 4 files reviewed; the 2 `.kanban/` files are excluded by `.reviewignore`. No prior `## Review Findings` section on the card.
+    - next: the task is done. The orchestrator writes the ledger and commits the kanban state.
+  timestamp: 2026-09-02T15:51:21.039304+00:00
+- actor: claude-code
+  id: 01m1hd35z2bwd5gh3v693ss6mc
+  text: |-
+    ### finish iteration 1 — review clean, task done
+    - implement: changed — 4 files: ShellCapability.swift, MultiToolBuilder.swift, ShellCapabilityTests.swift (3 new tests), ShellRunContextProbe.swift (comment)
+    - test: green — `swift test` — 1396 tests in 108 suites passed, 0 failed, 0 skipped; the one warning is the pre-existing SwiftPM note for `mlx-swift_Cmlx.bundle`
+    - commit: a2ce987
+    - review: clean — `review sha HEAD~1..HEAD`, 0 findings
+  timestamp: 2026-09-02T15:51:38.210270+00:00
 depends_on:
 - 01M1H2RZYD71QYG972YGKQ122C
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffaf80
 title: Add defaultWorkingDirectory to ShellCapability.init and withShell
 ---
 ## What
