@@ -26,8 +26,31 @@ comments:
     - evidence: `swift test` — 1393 tests in 108 suites passed, 0 failed, 0 skipped. The one build warning is the pre-existing SwiftPM note for `mlx-swift_Cmlx.bundle`, which is not from this repository.
     - next: `/commit` (local only), then `/review`.
   timestamp: 2026-09-02T15:36:24.280388+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m1hc87xewxprc4234fwk9b40
+  text: |-
+    ### commit — changed
+    - evidence: d860128 feat(shell): add a default working directory to ShellRunner (local commit, not pushed; the two `.kanban/` files travel in it)
+    - next: `/review 01M1H2RZYD71QYG972YGKQ122C HEAD~1..HEAD`.
+  timestamp: 2026-09-02T15:36:55.470825+00:00
+- actor: claude-code
+  id: 01m1hcf4794wt08yzb332755rd
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (d860128) — counts: 0 findings, 0 confirmed, 0 refuted, 7 attempted, 0 failed. 3 files reviewed; the 2 `.kanban/` files are excluded by `.reviewignore`. No prior `## Review Findings` section on the card.
+    - next: the card moves `review → done`.
+  timestamp: 2026-09-02T15:40:41.065231+00:00
+- actor: claude-code
+  id: 01m1hcfw1eg2r86qe3hd2r58wc
+  text: |-
+    ### finish iteration 1 — review clean, task done
+    - implement: changed — 3 files (ShellRunner.swift, Execute.swift, ShellRunnerTests.swift); red first on the missing API, then `swift test --filter ShellRunnerTests` passed 31 tests
+    - test: green — `swift test` passed 1393 tests in 108 suites, 0 failed, 0 skipped; the one warning is the pre-existing `mlx-swift_Cmlx.bundle` note
+    - commit: d860128
+    - review: clean — `review sha HEAD~1..HEAD`, 0 findings, 7 validators attempted, 0 failed; the card moved review → done
+  timestamp: 2026-09-02T15:41:05.454375+00:00
+position_column: done
+position_ordinal: ffae80
 title: Add a default working directory to ShellRunner
 ---
 ## What
