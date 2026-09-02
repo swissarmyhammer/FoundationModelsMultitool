@@ -37,10 +37,33 @@ comments:
     - commit: b071b9a
     - review: findings — FileChangeEventAbsenceTests.swift:126 reuse `makeGround(recordsChanges:)`; :142 reuse `seed(_:)`; :160 reuse `run(_:under:)`
   timestamp: 2026-09-02T14:48:23.912823+00:00
+- actor: claude-code
+  id: 01m1h9prj0sek95y3er3twnhzn
+  text: |-
+    ### implement — changed
+    - evidence: 3 files — Tests/FoundationModelsMultitoolTests/Fixtures/FilesRunFixtures.swift (new: `FilesRun`, `makeFilesRun(named:recordsChanges:)`, `runSnippet(_:over:under:)`), Tests/FoundationModelsMultitoolTests/TestSupport.swift (`makeCanonicalTemporaryDirectory(named:)`, `seed(_:contents:in:)`), Tests/FoundationModelsMultitoolTests/FileChangeEventAbsenceTests.swift (calls the shared helpers). This answers the three reuse findings of the 2026-09-02 09:43 review. `swift test`: 1383 tests in 107 suites passed.
+    - next: commit, then review `HEAD~1..HEAD`.
+  timestamp: 2026-09-02T14:52:25.536626+00:00
+- actor: claude-code
+  id: 01m1h9wz3vgxz5mjf7zg8e4ek7
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit 1d5f5da) — 0 findings, 3 files reviewed. The three items of the 2026-09-02 09:43 section are checked: the shared helpers in Fixtures/FilesRunFixtures.swift and TestSupport.swift answer them.
+    - next: the task moves to `done`.
+  timestamp: 2026-09-02T14:55:48.859673+00:00
+- actor: claude-code
+  id: 01m1h9xd2kkjgcxhv8z48510hk
+  text: |-
+    ### finish iteration 2 — review clean, task done
+    - implement: changed — Fixtures/FilesRunFixtures.swift (new), TestSupport.swift (`makeCanonicalTemporaryDirectory(named:)`, `seed(_:contents:in:)`), FileChangeEventAbsenceTests.swift now calls the shared helpers
+    - test: green — `swift test` 1383 tests in 107 suites passed, 0 failed, 0 skipped
+    - commit: 1d5f5da
+    - review: clean — 0 findings on `HEAD~1..HEAD`; the 3 items of the 09:43 section are checked
+  timestamp: 2026-09-02T14:56:03.155976+00:00
 depends_on:
 - 01M1H2RGWFM5DE6BRJFGB7YXNF
-position_column: review
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffac80
 title: Pin the cases where no file-change event is posted
 ---
 ## What
@@ -67,6 +90,6 @@ Ask 4, part 4 (UPSTREAM_ASKS.md). The negative half of the contract of `FileChan
 > 2 file(s) not reviewed — excluded by an ignore rule:
 > - `.kanban/ (from .reviewignore)` — 2 file(s)
 
-- [ ] `Tests/FoundationModelsMultitoolTests/FileChangeEventAbsenceTests.swift:126` `reuse/reuse` — The `makeGround(recordsChanges:)` function reimplements shared test-ground construction logic. Per `similar`: 0.91 similarity at `FileChangeEventTests.swift:72`. This same setup pattern is duplicated across multiple test suites building MultiTool registries over file capabilities. Extract `makeGround(recordsChanges:)` to a shared test utility that can be called by all test suites, or extend an existing shared helper if one already exists.
-- [ ] `Tests/FoundationModelsMultitoolTests/FileChangeEventAbsenceTests.swift:142` `reuse/reuse` — The `seed(_:)` function reimplements file-seeding logic duplicated across test suites. Per `similar`: 0.86–0.94 similarity at `FilesCrossOpFlowTests.swift:170`, `PlainToolContractTests.swift:96`, and others. Writing a file to a test root is a common utility that appears identically in many test files. Move `seed(_:)` to a shared test utility module (e.g., `TestSupport` extension or a dedicated test helpers file) so all test suites reuse the same implementation.
-- [ ] `Tests/FoundationModelsMultitoolTests/FileChangeEventAbsenceTests.swift:160` `reuse/reuse` — The `run(_:under:)` function reimplements code that already exists in multiple test files. Per `similar`: 0.91–0.94 similarity across `FilesCrossOpFlowTests.swift:199`, `PlainToolContractTests.swift`, and others. Running a snippet through MultiTool with an ambient context is a common test pattern that should be unified. Extract `run(_:under:)` to a shared test utility module so all test suites call the same implementation.
+- [x] `Tests/FoundationModelsMultitoolTests/FileChangeEventAbsenceTests.swift:126` `reuse/reuse` — The `makeGround(recordsChanges:)` function reimplements shared test-ground construction logic. Per `similar`: 0.91 similarity at `FileChangeEventTests.swift:72`. This same setup pattern is duplicated across multiple test suites building MultiTool registries over file capabilities. Extract `makeGround(recordsChanges:)` to a shared test utility that can be called by all test suites, or extend an existing shared helper if one already exists.
+- [x] `Tests/FoundationModelsMultitoolTests/FileChangeEventAbsenceTests.swift:142` `reuse/reuse` — The `seed(_:)` function reimplements file-seeding logic duplicated across test suites. Per `similar`: 0.86–0.94 similarity at `FilesCrossOpFlowTests.swift:170`, `PlainToolContractTests.swift:96`, and others. Writing a file to a test root is a common utility that appears identically in many test files. Move `seed(_:)` to a shared test utility module (e.g., `TestSupport` extension or a dedicated test helpers file) so all test suites reuse the same implementation.
+- [x] `Tests/FoundationModelsMultitoolTests/FileChangeEventAbsenceTests.swift:160` `reuse/reuse` — The `run(_:under:)` function reimplements code that already exists in multiple test files. Per `similar`: 0.91–0.94 similarity across `FilesCrossOpFlowTests.swift:199`, `PlainToolContractTests.swift`, and others. Running a snippet through MultiTool with an ambient context is a common test pattern that should be unified. Extract `run(_:under:)` to a shared test utility module so all test suites call the same implementation.
