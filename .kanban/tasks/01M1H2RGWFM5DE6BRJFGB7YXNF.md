@@ -28,10 +28,33 @@ comments:
     - The first full run failed one test: `PlainToolContractTests.filesVerbsReadNoAmbientContext` scanned `Capabilities/Files` for the literal `ToolContext.current` and required zero sightings. The card orders that read (one time, at the top of `call`). The behavioral bare-session cases of that suite still passed, so the guard was reworked, not dropped: every sighting must be the one-time capture `let toolContext = ToolContext.current`, and exactly `Edit.swift`, `Patch.swift` and `Write.swift` carry one each (`filesVerbsReadTheAmbientContextOneTimeAtTheStart`). The three doc comments that spelled the literal were reworded so the scan reads code, not prose.
     - next: `commit`, then `review`.
   timestamp: 2026-09-02T14:28:59.147632+00:00
+- actor: claude-code
+  id: 01m1h8cmky9kptm60098gc8mwq
+  text: |-
+    ### commit — changed
+    - evidence: 021f973 feat(files): post each mutating verb's change set through the ambient ToolContext (10 files: 6 sources, 2 tests, 2 kanban)
+    - next: `review 01M1H2RGWFM5DE6BRJFGB7YXNF HEAD~1..HEAD`
+  timestamp: 2026-09-02T14:29:25.246536+00:00
+- actor: claude-code
+  id: 01m1h8jxe668m9hgf7b2frs5v6
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (021f973) — counts: 0 findings, 0 confirmed, 0 refuted, 7 attempted; 8 files reviewed, 2 `.kanban` files excluded by `.reviewignore`. No prior `## Review Findings` section on the card.
+    - next: move the task `review → done`.
+  timestamp: 2026-09-02T14:32:50.886383+00:00
+- actor: claude-code
+  id: 01m1h8kvngh73psdpvzh2pxp3e
+  text: |-
+    ### finish iteration 1 — done
+    - implement: changed — 7 files (FileChangeJournal.swift `commit(_:through:)`; Write/Edit/Patch read `ToolContext.current` one time at the top of `call` and commit through it; `recordsChanges` docs in FilesCapability.swift and MultiToolBuilder.swift; new FileChangeEventTests.swift with 5 tests, red then green). The test step reworked the reflective guard in PlainToolContractTests.swift to the new one-time-capture contract.
+    - test: green — `swift test` 1378 tests in 106 suites passed, 0 failed, 0 skipped; the one `warning:` line is a pre-existing mlx-swift dependency build message.
+    - commit: 021f973
+    - review: clean — `review sha HEAD~1..HEAD`, 0 findings; task moved review → done.
+  timestamp: 2026-09-02T14:33:21.840973+00:00
 depends_on:
 - 01M1H2QRY6PPQSS4ZKY7Q32M6H
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffab80
 title: Post each mutating file verb's change set through the ambient ToolContext
 ---
 ## What
