@@ -10,8 +10,8 @@ import FoundationModels
 /// `build()`. That is why the fluent chain needs `try` only on its final
 /// call.
 ///
-/// `withShell(storeDirectory:sandbox:outputChunkStream:)` and
-/// `withMCP(servers:)` are the two registration methods that throw, and
+/// `withShell(storeDirectory:sandbox:outputChunkStream:defaultWorkingDirectory:)`
+/// and `withMCP(servers:)` are the two registration methods that throw, and
 /// neither throws THIS error: the first prepares the store of the shell on
 /// disk, and the second waits for each server to be ready, which is resource
 /// acquisition rather than validation. The single leading `try` of the chain
@@ -228,19 +228,25 @@ extension MultiTool {
         ///     no confinement at all.
         ///   - outputChunkStream: the live view of the output a subscribed host
         ///     reads. Defaults to teeing nothing.
+        ///   - defaultWorkingDirectory: the directory a `tools.shell.execute`
+        ///     call runs in when it omits `workingDirectory`. Defaults to the
+        ///     current directory of this process. A host with a session root
+        ///     passes that root.
         /// - Throws: what
-        ///   `ShellCapability.init(storeDirectory:sandbox:outputChunkStream:)`
+        ///   `ShellCapability.init(storeDirectory:sandbox:outputChunkStream:defaultWorkingDirectory:)`
         ///   throws when the store cannot prepare.
         @discardableResult
         public func withShell(
             storeDirectory: URL? = nil,
             sandbox: (any CommandSandbox)? = nil,
-            outputChunkStream: ShellOutputChunkStream? = nil
+            outputChunkStream: ShellOutputChunkStream? = nil,
+            defaultWorkingDirectory: URL? = nil
         ) throws -> Self {
             let capability = try ShellCapability(
                 storeDirectory: storeDirectory,
                 sandbox: sandbox,
-                outputChunkStream: outputChunkStream
+                outputChunkStream: outputChunkStream,
+                defaultWorkingDirectory: defaultWorkingDirectory
             )
             return withCapability(capability)
         }

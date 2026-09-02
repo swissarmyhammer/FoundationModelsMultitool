@@ -43,9 +43,9 @@ import FoundationModels
 ///     .build()
 /// ```
 ///
-/// `MultiTool.Builder.withShell(storeDirectory:sandbox:outputChunkStream:)` is
-/// the short form of `withCapability(ShellCapability(...))`, and it takes the
-/// same three arguments. Register this type directly where a host builds the
+/// `MultiTool.Builder.withShell(storeDirectory:sandbox:outputChunkStream:defaultWorkingDirectory:)`
+/// is the short form of `withCapability(ShellCapability(...))`, and it takes the
+/// same four arguments. Register this type directly where a host builds the
 /// capability once and hands it on.
 ///
 /// The three verbs render in the order they are listed:
@@ -71,8 +71,8 @@ public struct ShellCapability: Capability {
     /// array and the noun above are the whole of what the surface needs.
     public let tools: [any Tool]
 
-    /// Makes the shell capability over one store, one confinement, and one live
-    /// view of the output.
+    /// Makes the shell capability over one store, one confinement, one live view
+    /// of the output, and one default working directory.
     ///
     /// **This initializer throws, and `MultiTool.Builder.withShell(...)` throws
     /// with it.** That is resource acquisition rather than validation: the
@@ -94,12 +94,19 @@ public struct ShellCapability: Capability {
     ///     which states why that is not `UnconfinedSandbox`.
     ///   - outputChunkStream: The live view of the output a subscribed host
     ///     reads. The default, `nil`, tees nothing.
+    ///   - defaultWorkingDirectory: The directory a `tools.shell.execute` call
+    ///     runs in when it omits `workingDirectory`. The default, `nil`, keeps
+    ///     the current directory of this process. A host with a session root
+    ///     passes that root, thus a plain command runs where the session
+    ///     stands and not where the host process happens to stand — see
+    ///     `ShellRunner.defaultWorkingDirectory`.
     /// - Throws: What `ShellState` throws when neither the store directory nor
     ///   the temporary fallback prepares.
     public init(
         storeDirectory: URL? = nil,
         sandbox: (any CommandSandbox)? = nil,
-        outputChunkStream: ShellOutputChunkStream? = nil
+        outputChunkStream: ShellOutputChunkStream? = nil,
+        defaultWorkingDirectory: URL? = nil
     ) throws {
         let state: ShellState
         if let storeDirectory {
@@ -108,12 +115,14 @@ public struct ShellCapability: Capability {
             state = try ShellState()
         }
 
-        // The runner carries the store, the confinement and the live view to
-        // the run plane. `Execute` is configured with a runner and with nothing
-        // else, which is why the two content-plane verbs take the store
-        // straight from here rather than reaching through one.
-        let runner = ShellRunner(
+        // The runner carries the store, the confinement, the live view and the
+        // default directory to the run plane. `Execute` is configured with a
+        // runner and with nothing else, which is why the two content-plane
+        // verbs take the store straight from here rather than reaching through
+        // one.
+        var runner = ShellRunner(
             state: state, outputChunkStream: outputChunkStream, sandbox: sandbox)
+        runner.defaultWorkingDirectory = defaultWorkingDirectory?.path
 
         self.tools = [
             Execute(runner: runner),

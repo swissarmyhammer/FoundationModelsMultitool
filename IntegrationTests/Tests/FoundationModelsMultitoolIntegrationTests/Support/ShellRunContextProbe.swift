@@ -21,7 +21,7 @@ import Synchronization
 // same seam, with the same shape of probe.
 //
 // The seam is the shipped configuration and not a back door:
-// `MultiTool.Builder.withShell(storeDirectory:sandbox:outputChunkStream:)` takes
+// `MultiTool.Builder.withShell(storeDirectory:sandbox:outputChunkStream:defaultWorkingDirectory:)` takes
 // the sandbox a host configures, so a scenario that passes this probe is running
 // the surface a host runs, with the confinement a host chose — here, none.
 

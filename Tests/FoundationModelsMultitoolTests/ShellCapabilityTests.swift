@@ -42,13 +42,20 @@ struct ShellCapabilityTests {
     /// The one noun this capability owns.
     private static let shellNoun = "shell"
 
+    /// The verb of the run plane, which is the one verb `Execute` renders as.
+    private static let executeVerb = "execute"
+
     /// The verbs the capability holds, in the order they render. Each one is a
     /// `Tool.name`, which is the second segment of `tools.<noun>.<verb>`.
-    private static let shellVerbs = ["execute", "getLines", "grepHistory"]
+    private static let shellVerbs = [executeVerb, "getLines", "grepHistory"]
 
     /// The rendered call path of each verb, built from the two segments rather
     /// than written out again, thus the noun and the verbs have one home here.
     private static let shellPaths = shellVerbs.map { "\(shellNoun).\($0)" }
+
+    /// The rendered call path of the run-plane verb, which is the key a registry
+    /// holds the live `Execute` under.
+    private static let executePath = "\(shellNoun).\(executeVerb)"
 
     /// How many verbs the capability renders. eventplan.md § "Consolidation of
     /// the siblings" fixes the count at three: it folds the siblings' run-plane
@@ -173,6 +180,49 @@ struct ShellCapabilityTests {
         let execute = try Self.verb(Execute.self, in: capability)
         #expect(execute.runner.sandbox is UnconfinedSandbox)
         #expect(execute.runner.outputChunkStream === stream)
+    }
+
+    // MARK: - The default working directory
+
+    /// UPSTREAM_ASKS.md Ask 6: a host with a session root gives it one time, at
+    /// the composition, and the runner carries it to each run that names no
+    /// directory of its own. The runner keeps a path, so the URL becomes one.
+    @Test("the default working directory reaches the runner of the run-plane verb")
+    func theDefaultWorkingDirectoryReachesTheRunner() throws {
+        let sessionRoot = try scratch.makeDirectory(prefix: Self.testDirectoryNamePrefix)
+
+        let capability = try ShellCapability(
+            storeDirectory: makeStoreDirectory(), defaultWorkingDirectory: sessionRoot)
+
+        let execute = try Self.verb(Execute.self, in: capability)
+        #expect(execute.runner.defaultWorkingDirectory == sessionRoot.path)
+    }
+
+    /// A host that gives no root keeps the current directory of this process,
+    /// which is what `nil` means to the runner. Thus a host that opts in to
+    /// nothing runs exactly the code it ran before.
+    @Test("the default working directory is nil when the host gives none")
+    func theDefaultWorkingDirectoryIsNilWhenNotGiven() throws {
+        let capability = try makeCapability()
+
+        let execute = try Self.verb(Execute.self, in: capability)
+        #expect(execute.runner.defaultWorkingDirectory == nil)
+    }
+
+    /// `withShell(...)` is the short form of `withCapability(ShellCapability(...))`,
+    /// so its fourth argument reaches the same runner by the same path, and the
+    /// surface it renders is the same three verbs.
+    @Test("withShell passes the default working directory through to the live verb")
+    func withShellPassesTheDefaultWorkingDirectoryThrough() throws {
+        let sessionRoot = try scratch.makeDirectory(prefix: Self.testDirectoryNamePrefix)
+
+        let registry = try MultiTool.Builder()
+            .withShell(storeDirectory: makeStoreDirectory(), defaultWorkingDirectory: sessionRoot)
+            .buildRegistry()
+
+        #expect(registry.surface.entries.map(\.path) == Self.shellPaths)
+        let execute = try #require(registry.tools[Self.executePath] as? Execute)
+        #expect(execute.runner.defaultWorkingDirectory == sessionRoot.path)
     }
 
     // MARK: - The rendered surface
