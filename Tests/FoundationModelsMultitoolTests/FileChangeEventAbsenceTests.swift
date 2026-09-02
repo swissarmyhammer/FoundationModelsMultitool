@@ -12,11 +12,11 @@
 // `.progress` event apart by the envelope alone: a `notify()` detail is plain
 // text, and `FileChangeSet(operationEventDetail:)` answers `nil` for it.
 //
-// Each test runs one JavaScript snippet through a `MultiTool` over a registry
-// built with `MultiTool.Builder().withFiles(root:recordsChanges:)`, the way a
-// model drives the verbs, and it reads the delivered events off a stub run
-// from `makeStubRun()` with `recordedOperationEvents(of:ofKind:correlatedTo:)`.
-// The journal is reached through the `Write` verb of the registry.
+// Each test runs one JavaScript snippet through a `MultiTool` over the files
+// registry of a `FilesRun` (see `Fixtures/FilesRunFixtures.swift`), the way a
+// model drives the verbs, and it reads the delivered events off the run's stub
+// session with `recordedOperationEvents(of:ofKind:correlatedTo:)`. The journal
+// is the one the `Write` verb of that registry holds.
 
 import Foundation
 import FoundationModels
@@ -42,9 +42,6 @@ struct FileChangeEventAbsenceTests {
     /// The name of the directory that stands outside every session root. The
     /// refused write aims at a file in it.
     private static let outsideDirectoryName = "FileChangeEventAbsenceTests-outside"
-
-    /// The registry path of the write verb, which gives the suite its journal.
-    private static let writeVerbPath = "files.write"
 
     /// The file the read-only snippet and the unresolved edit read.
     private static let seededFileName = "seed.txt"
@@ -100,38 +97,14 @@ struct FileChangeEventAbsenceTests {
 
     // MARK: - The ground of one test
 
-    /// A stub run beside a files registry rooted in a directory this test
-    /// owns, and the journal the registry's verbs share.
-    private struct Ground {
-        /// The stub session and its context.
-        let run: StubRun
-
-        /// The registry that holds the six files verbs.
-        let registry: MultiTool.Registry
-
-        /// The canonical session root.
-        let root: URL
-
-        /// The change journal the registry's verbs share.
-        let journal: FileChangeJournal
-    }
-
-    /// Builds the ground: a canonical root, a files registry over it, the
-    /// journal of that registry, and a stub run.
+    /// Builds the files run of one test: a canonical root named for this
+    /// suite, a files registry over it, its journal, and a stub run.
     ///
     /// - Parameter recordsChanges: whether the capability records changes.
-    /// - Returns: the ground.
-    /// - Throws: when the registry does not build, holds no write verb, or
-    ///   standing up the stub run throws.
-    private static func makeGround(recordsChanges: Bool) async throws -> Ground {
-        let root = TestSupport.canonicalDirectory(
-            TestSupport.makeTemporaryDirectory(named: testDirectoryName))
-        let registry = try MultiTool.Builder()
-            .withFiles(root: root, recordsChanges: recordsChanges)
-            .buildRegistry()
-        let write = try #require(registry.tools[writeVerbPath] as? Write)
-        let run = try await makeStubRun()
-        return Ground(run: run, registry: registry, root: root, journal: write.context.changes)
+    /// - Returns: the files run.
+    /// - Throws: whatever `makeFilesRun(named:recordsChanges:)` throws.
+    private static func makeGround(recordsChanges: Bool) async throws -> FilesRun {
+        try await makeFilesRun(named: testDirectoryName, recordsChanges: recordsChanges)
     }
 
     /// Puts the seeded file under the root of a ground.
@@ -139,29 +112,21 @@ struct FileChangeEventAbsenceTests {
     /// - Parameter ground: the ground whose root to seed.
     /// - Returns: the absolute path of the seeded file.
     /// - Throws: rethrows a seed-write failure.
-    private static func seed(_ ground: Ground) throws -> String {
-        let path = TestSupport.path(seededFileName, in: ground.root)
-        try Data(seededContent.utf8).write(to: URL(fileURLWithPath: path))
-        return path
+    @discardableResult
+    private static func seed(_ ground: FilesRun) throws -> String {
+        try TestSupport.seed(seededFileName, contents: seededContent, in: ground.root)
     }
 
-    /// Runs one snippet through a `MultiTool` over the ground's registry,
-    /// under the stub run's ambient context.
-    ///
-    /// The call goes through `MultiTool.call(arguments:)`, thus through the
-    /// JSC interpreter, the `tools.*` bindings, and `RunBinding.invoke`,
-    /// which binds the context around each inner verb call.
+    /// Runs one snippet over the ground's registry, under the stub run's
+    /// ambient context.
     ///
     /// - Parameters:
     ///   - code: the snippet to run.
     ///   - ground: the ground whose registry and context to use.
     /// - Returns: the rendered output, as the model would read it.
     /// - Throws: whatever `MultiTool.call(arguments:)` throws.
-    private static func run(_ code: String, under ground: Ground) async throws -> String {
-        let multiTool = MultiTool(registry: ground.registry)
-        return try await ToolContext.$current.withValue(ground.run.context) {
-            try await multiTool.call(arguments: RunCodeArguments(code: code))
-        }
+    private static func run(_ code: String, under ground: FilesRun) async throws -> String {
+        try await runSnippet(code, over: ground.registry, under: ground.run.context)
     }
 
     /// Decodes the JSON value one run returned.
@@ -219,7 +184,7 @@ struct FileChangeEventAbsenceTests {
     @Test("a snippet that only reads under a recording capability leaves no fileChanges event")
     func readsLeaveNoFileChangesEvent() async throws {
         let ground = try await Self.makeGround(recordsChanges: true)
-        _ = try Self.seed(ground)
+        try Self.seed(ground)
 
         let output = try await Self.run(
             """
@@ -310,8 +275,7 @@ struct FileChangeEventAbsenceTests {
         let ground = try await Self.makeGround(recordsChanges: true)
         let path = TestSupport.path(Self.writtenFileName, in: ground.root)
 
-        let output = try await MultiTool(registry: ground.registry)
-            .call(arguments: RunCodeArguments(code: Self.writeSnippet))
+        let output = try await runSnippet(Self.writeSnippet, over: ground.registry)
         let bytesWritten = try Self.decoded(Int.self, from: output)
         let events = await recordedOperationEvents(of: ground.run, ofKind: .progress)
         let drained = await ground.journal.drain()

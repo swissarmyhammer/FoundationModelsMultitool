@@ -61,6 +61,19 @@ enum TestSupport {
         }
     }
 
+    /// Create a fresh temporary directory and return its canonical URL.
+    ///
+    /// The composition of `makeTemporaryDirectory(named:)` and
+    /// `canonicalDirectory(_:)`: the directory a suite roots a session in when
+    /// it compares the paths the verbs report against paths it builds itself.
+    ///
+    /// - Parameter name: a human-readable prefix, typically the name of the
+    ///   calling suite, prepended to the unique directory name.
+    /// - Returns: the canonicalized URL of the freshly created directory.
+    static func makeCanonicalTemporaryDirectory(named name: String) -> URL {
+        canonicalDirectory(makeTemporaryDirectory(named: name))
+    }
+
     /// Whether `candidate` resolves to a path *contained within* `root` — the
     /// root itself, or a genuine descendant of it — rather than merely
     /// sharing the string prefix of the root.
@@ -94,6 +107,21 @@ enum TestSupport {
     // periphery:ignore
     static func path(_ name: String, in root: URL) -> String {
         root.appendingPathComponent(name, isDirectory: false).path
+    }
+
+    /// Put one UTF-8 file under a directory before a test runs.
+    ///
+    /// - Parameters:
+    ///   - name: the file name within `root`.
+    ///   - contents: the file's UTF-8 content.
+    ///   - root: the directory to put the file in.
+    /// - Returns: the absolute path of the seeded file.
+    /// - Throws: an error when the file cannot be written.
+    @discardableResult
+    static func seed(_ name: String, contents: String, in root: URL) throws -> String {
+        let seeded = path(name, in: root)
+        try Data(contents.utf8).write(to: URL(fileURLWithPath: seeded))
+        return seeded
     }
 
     /// Read the raw on-disk bytes of a file.

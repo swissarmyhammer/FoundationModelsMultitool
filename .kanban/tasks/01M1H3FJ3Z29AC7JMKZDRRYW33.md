@@ -21,9 +21,25 @@ comments:
     - evidence: 1 file — Tests/FoundationModelsMultitoolTests/FileChangeEventAbsenceTests.swift (new, 5 tests, one for each criterion). `swift test --filter "FileChangeEventAbsence"`: 5 tests in 1 suite passed. No production change: each negative case already has a guard, and the tests prove it. The one build warning is the pre-existing mlx bundle "missing creator" line, not from this change.
     - next: run the full `swift test`, then commit, then review.
   timestamp: 2026-09-02T14:42:19.982808+00:00
+- actor: claude-code
+  id: 01m1h9etwwtfd05ajbymy5s1hd
+  text: |-
+    ### review — findings
+    - evidence: `review sha HEAD~1..HEAD` — 3 findings (3 confirmed, 2 refuted): Tests/FoundationModelsMultitoolTests/FileChangeEventAbsenceTests.swift:126 (reuse: `makeGround(recordsChanges:)`), :142 (reuse: `seed(_:)`), :160 (reuse: `run(_:under:)`)
+    - next: implement works the three unchecked `## Review Findings` items — move the three helpers to a shared test utility.
+  timestamp: 2026-09-02T14:48:05.788955+00:00
+- actor: claude-code
+  id: 01m1h9fck8f637m5dz9bvd1kvf
+  text: |-
+    ### finish iteration 1 — review found 3 items
+    - implement: changed — Tests/FoundationModelsMultitoolTests/FileChangeEventAbsenceTests.swift added (5 tests); `swift test --filter "FileChangeEventAbsence"` 5 passed
+    - test: green — `swift test` 1383 tests in 107 suites passed, 0 failed, 0 skipped
+    - commit: b071b9a
+    - review: findings — FileChangeEventAbsenceTests.swift:126 reuse `makeGround(recordsChanges:)`; :142 reuse `seed(_:)`; :160 reuse `run(_:under:)`
+  timestamp: 2026-09-02T14:48:23.912823+00:00
 depends_on:
 - 01M1H2RGWFM5DE6BRJFGB7YXNF
-position_column: doing
+position_column: review
 position_ordinal: '80'
 title: Pin the cases where no file-change event is posted
 ---
@@ -43,3 +59,14 @@ Ask 4, part 4 (UPSTREAM_ASKS.md). The negative half of the contract of `FileChan
 
 ## Workflow
 - Use `/tdd` — write failing tests first, then implement to make them pass. #upstream-asks #ask-4
+
+## Review Findings (2026-09-02 09:43)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 1 file(s) reviewed, 2 not reviewed.
+
+> 2 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 2 file(s)
+
+- [ ] `Tests/FoundationModelsMultitoolTests/FileChangeEventAbsenceTests.swift:126` `reuse/reuse` — The `makeGround(recordsChanges:)` function reimplements shared test-ground construction logic. Per `similar`: 0.91 similarity at `FileChangeEventTests.swift:72`. This same setup pattern is duplicated across multiple test suites building MultiTool registries over file capabilities. Extract `makeGround(recordsChanges:)` to a shared test utility that can be called by all test suites, or extend an existing shared helper if one already exists.
+- [ ] `Tests/FoundationModelsMultitoolTests/FileChangeEventAbsenceTests.swift:142` `reuse/reuse` — The `seed(_:)` function reimplements file-seeding logic duplicated across test suites. Per `similar`: 0.86–0.94 similarity at `FilesCrossOpFlowTests.swift:170`, `PlainToolContractTests.swift:96`, and others. Writing a file to a test root is a common utility that appears identically in many test files. Move `seed(_:)` to a shared test utility module (e.g., `TestSupport` extension or a dedicated test helpers file) so all test suites reuse the same implementation.
+- [ ] `Tests/FoundationModelsMultitoolTests/FileChangeEventAbsenceTests.swift:160` `reuse/reuse` — The `run(_:under:)` function reimplements code that already exists in multiple test files. Per `similar`: 0.91–0.94 similarity across `FilesCrossOpFlowTests.swift:199`, `PlainToolContractTests.swift`, and others. Running a snippet through MultiTool with an ambient context is a common test pattern that should be unified. Extract `run(_:under:)` to a shared test utility module so all test suites call the same implementation.
