@@ -25,6 +25,7 @@
 
 import Foundation
 import FoundationModels
+import FoundationModelsRouter
 
 /// The arguments of `tools.files.write`: the file to write and the content
 /// to put in it.
@@ -166,14 +167,22 @@ extension Write {
     /// the path via the context's ``PathGuard`` for a write, then writes
     /// the UTF-8 content through ``AtomicWriter``. When the session's
     /// ``FileChangeJournal`` records, the change is captured before the
-    /// write (the overwritten text is gone afterward) and recorded once the
-    /// write commits. Each recoverable failure comes back as the
-    /// `correction` field of the result; nothing here throws for an
-    /// over-cap content, a bad path, or a failed write.
+    /// write (the overwritten text is gone afterward) and committed once the
+    /// write lands: delivered to the session as one `.progress` event, or
+    /// kept for a drain on a bare session. Each recoverable failure comes
+    /// back as the `correction` field of the result; nothing here throws for
+    /// an over-cap content, a bad path, or a failed write.
+    ///
+    /// **The ambient context is read one time, at the start.** eventplan.md
+    /// § "The ambient context" makes that rule mandatory: work that inherits
+    /// no task local sees none, so a second read of the ambient context
+    /// after an `await` would find `nil`. The value captured here is what
+    /// the commit posts through.
     ///
     /// - Parameter arguments: What to write and where.
     /// - Returns: The written envelope, or the correction.
     func call(arguments: WriteArguments) async throws -> WriteResult {
+        let toolContext = ToolContext.current
         if context.readOnly { return Self.corrective(Self.readOnlySessionMessage) }
         if let message = Self.contentSizeViolation(content: arguments.content) {
             return Self.corrective(message)
@@ -189,7 +198,7 @@ extension Write {
                 } catch {
                     return Self.corrective(Self.writeFailureMessage(path: arguments.path))
                 }
-                if let change { await context.changes.record(change) }
+                if let change { await context.changes.commit([change], through: toolContext) }
 
                 return WriteResult(
                     path: url.path,
@@ -222,8 +231,8 @@ extension Write {
 /// `N:HH|text` anchors, both exactly as a subsequent read of the same path
 /// computes them, thus a chained edit resolves anchors without an
 /// intervening read. The path is bounded through the session's
-/// ``PathGuard``, and the session's ``FileChangeJournal`` records the
-/// change when it is recording. Content over the 10 MiB cap, a path
+/// ``PathGuard``, and the session's ``FileChangeJournal`` delivers the
+/// change to the session when it is recording. Content over the 10 MiB cap, a path
 /// outside the root, a read-only target, a read-only session, and a
 /// failed write each come back as a `correction` rather than as an error.
 ///

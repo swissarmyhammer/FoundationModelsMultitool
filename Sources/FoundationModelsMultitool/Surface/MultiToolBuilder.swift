@@ -268,8 +268,13 @@ extension MultiTool {
         ///   - allowSymlinks: whether the path guard resolves symlinks rather
         ///     than rejecting them. Defaults to rejecting them.
         ///   - recordsChanges: whether the mutating verbs record what they
-        ///     changed into the session's change journal. Defaults to
-        ///     recording nothing.
+        ///     changed. When `true`, each `write`, `edit` and `patch` call
+        ///     that lands delivers its changes to the session as one
+        ///     `.progress` `OperationEvent` whose `detail` is the
+        ///     `fileChanges` envelope; a host reads it with
+        ///     `FileChangeSet.init(operationEventDetail:)`. A verb called
+        ///     with no session keeps them in the change journal for a drain.
+        ///     Defaults to recording nothing.
         @discardableResult
         public func withFiles(
             root: URL,

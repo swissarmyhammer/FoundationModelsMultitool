@@ -29,6 +29,7 @@
 
 import Foundation
 import FoundationModels
+import FoundationModelsRouter
 
 /// The arguments of `tools.files.patch`: the whole patch envelope.
 @Generable
@@ -152,15 +153,24 @@ extension Patch {
     ///
     /// Content capture is asked for only when the session records changes,
     /// so a non-recording patch does exactly the IO it always did. A
-    /// failure records too: a patch that fails after some of its writes
+    /// failure commits too: a patch that fails after some of its writes
     /// have committed carries those files on
-    /// ``PatchEngine/Failure/committedOutcomes``, and they are recorded
+    /// ``PatchEngine/Failure/committedOutcomes``, and they are committed
     /// before the correction is returned, so the change set never
-    /// under-reports a mutation that landed.
+    /// under-reports a mutation that landed. Every change of every outcome
+    /// goes in ONE commit, thus a patch that touches four files delivers one
+    /// event with four changes.
+    ///
+    /// **The ambient context is read one time, at the start.** eventplan.md
+    /// § "The ambient context" makes that rule mandatory: work that inherits
+    /// no task local sees none, so a second read of the ambient context
+    /// after an `await` would find `nil`. The value captured here is what
+    /// the commit posts through.
     ///
     /// - Parameter arguments: The patch envelope to apply.
     /// - Returns: The patch status with its per-file results, or the correction.
     func call(arguments: PatchArguments) async throws -> PatchResult {
+        let toolContext = ToolContext.current
         if context.readOnly { return Self.corrective(Self.readOnlySessionMessage) }
 
         return await PatchParser.parse(arguments.patch)
@@ -168,10 +178,10 @@ extension Patch {
                 let capturingContent = context.changes.isRecording
                 switch PatchEngine.apply(hunks, using: context.pathGuard, capturingContent: capturingContent) {
                 case .success(let outcomes):
-                    await Self.record(outcomes, in: context)
+                    await Self.commit(outcomes, in: context, through: toolContext)
                     return Self.appliedResult(from: outcomes)
                 case .failure(let failure):
-                    await Self.record(failure.committedOutcomes, in: context)
+                    await Self.commit(failure.committedOutcomes, in: context, through: toolContext)
                     return Self.result(for: failure)
                 }
             }
@@ -255,24 +265,26 @@ extension Patch {
         return [rename, destroyed]
     }
 
-    /// Record every per-file outcome that landed on disk into the session's change set.
+    /// Commit every per-file outcome that landed on disk to the session's journal, in one call.
     ///
     /// Shared by the applied path and the partially-applied one, so a file
     /// the patch rewrote is reported the same way whether or not the patch
-    /// as a whole succeeded. A non-recording session drops the records.
+    /// as a whole succeeded. The changes of every outcome are collected into
+    /// one array and committed one time, thus the session receives ONE
+    /// `fileChanges` event for the whole patch. A non-recording session
+    /// drops them.
     ///
     /// - Parameters:
     ///   - outcomes: the per-file outcomes whose mutations committed.
-    ///   - context: the session context whose journal to record into.
-    private static func record(
+    ///   - context: the session context whose journal to commit to.
+    ///   - toolContext: the ambient context the verb read at the start of
+    ///     its call, or `nil` on a bare session.
+    private static func commit(
         _ outcomes: [PatchEngine.FileOutcome],
-        in context: FileContext
+        in context: FileContext,
+        through toolContext: ToolContext?
     ) async {
-        for outcome in outcomes {
-            for change in changes(for: outcome) {
-                await context.changes.record(change)
-            }
-        }
+        await context.changes.commit(outcomes.flatMap(changes(for:)), through: toolContext)
     }
 
     // MARK: Result projection
@@ -314,7 +326,7 @@ extension Patch {
     /// Map an engine ``PatchEngine/Failure`` to its ``PatchResult``.
     ///
     /// A ``PatchEngine/Failure/corrective(_:committed:)`` rides straight
-    /// through as a correction — its committed outcomes are recorded by
+    /// through as a correction — its committed outcomes are committed by
     /// ``call(arguments:)`` and deliberately absent from the model-facing
     /// result, which reports a rejected patch as a message and nothing
     /// else; a ``PatchEngine/Failure/unresolved(path:pair:resolution:)``
@@ -386,9 +398,9 @@ extension Patch {
 /// (`ambiguous`, `nearMiss`, `alreadyApplied`, `consumedTarget`) with the
 /// failing file's `path` and its JSON `outcome` — the same candidates and
 /// near-miss diffs the `edit` verb reports — says how to retry. The
-/// session's ``FileChangeJournal`` records every committed mutation when
-/// it is recording, a partially-committed failure's landed writes
-/// included. An envelope that cannot parse, a path outside the root, an
+/// session's ``FileChangeJournal`` delivers every committed mutation to the
+/// session as one event when it is recording, a partially-committed
+/// failure's landed writes included. An envelope that cannot parse, a path outside the root, an
 /// add onto an existing file, a delete of a missing file, a binary update
 /// target, a cross-file conflict, a read-only session, and a failed
 /// stage/commit/unlink each come back as a `correction` rather than as an

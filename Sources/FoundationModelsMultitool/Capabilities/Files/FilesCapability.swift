@@ -89,8 +89,12 @@ public struct FilesCapability: Capability {
     ///   - allowSymlinks: Whether the path guard resolves symlinks rather
     ///     than rejecting them. The default, `false`, is the secure default.
     ///   - recordsChanges: Whether the mutating verbs record what they
-    ///     changed into the session's change journal. The default, `false`,
-    ///     records nothing.
+    ///     changed. When `true`, each `write`, `edit` and `patch` call that
+    ///     lands delivers its changes to the session as one `.progress`
+    ///     `OperationEvent` whose `detail` is the `fileChanges` envelope; a
+    ///     host reads it with `FileChangeSet.init(operationEventDetail:)`.
+    ///     A verb called with no session keeps them in the change journal
+    ///     for a drain. The default, `false`, records nothing.
     public init(
         root: URL,
         additionalRoots: Set<URL> = [],

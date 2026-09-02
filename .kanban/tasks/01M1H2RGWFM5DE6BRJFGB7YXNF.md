@@ -1,10 +1,37 @@
 ---
 assignees:
 - claude-code
+comments:
+- actor: claude-code
+  id: 01m1h7xwpz2nbh88cy148vmmz1
+  text: |-
+    ### research
+    - `ToolContext.post(_:)` (Router `Hosting/ToolContext.swift:131`) re-stamps `tool`, `op` and `correlationID` with the run that owns the context. `RunBinding.swift:110-126` states the mount contract: a mounted inner call gets a fresh inner context whose sink forwards through the OUTER context, so the recorded event carries the outer `completionToken`. The test can read the event with `recordedOperationEvents(of:ofKind:correlatedTo:awaiting:)` (StubRouterFixtures.swift:484).
+    - `OperationEvent(tool:op:correlationID:kind:detail:)` is the initializer `ToolContext.progress(_:)` uses, so `outcome` and `elicitation` have defaults.
+    - `Shell/Execute.swift:217` reads `ToolContext.current` one time at the top of `call`. `Execute.postTerminal` (line 409) is the precedent for a post through an optional context.
+    - `FileContextTests.swift:60` calls `changes.record(_:)` directly, so `record` keeps a caller. `commit` will route its no-context path through `record`, so the two paths share one append.
+    - Plan: `FileChangeJournal.commit(_:through:)`; `Write`, `Edit`, `Patch` read `ToolContext.current` one time at the top of `call` and commit through it; `Patch` commits every change of every outcome in one call. New tests in `Tests/FoundationModelsMultitoolTests/FileChangeEventTests.swift`, written first (TDD).
+  timestamp: 2026-09-02T14:21:22.015017+00:00
+- actor: claude-code
+  id: 01m1h8495mqw8chzcekxvgqg5v
+  text: |-
+    ### implement — changed
+    - evidence: 7 files — Sources/FoundationModelsMultitool/Capabilities/Files/FileChangeJournal.swift (new `commit(_:through:)`, docs), Write.swift, Edit.swift, Patch.swift (read `ToolContext.current` one time at the top of `call`, commit through it; Patch commits every change in one call), FilesCapability.swift and Surface/MultiToolBuilder.swift (`recordsChanges` docs), Tests/FoundationModelsMultitoolTests/FileChangeEventTests.swift (5 new tests, written first: red with `events → []`, then green).
+    - `swift test --filter "FileChangeEvent|FileChangeSet|FilesWrite|FilesEdit|FilesPatch|FileContext|FilesCapability"`: 114 tests in 10 suites passed.
+    - next: `test` (full suite), then `commit`, then `review`.
+  timestamp: 2026-09-02T14:24:51.380389+00:00
+- actor: claude-code
+  id: 01m1h8bv4bmk8t1ef7vycmqwhz
+  text: |-
+    ### test — green
+    - evidence: `swift test` — 1378 tests in 106 suites passed, 0 failed, 0 skipped. The one `warning:` line (`missing creator for mutated node` on the `mlx-swift_Cmlx.bundle`) is a SwiftPM build-graph message from the mlx-swift dependency; it is present with this change stashed (count 1), so it is not from this package's code.
+    - The first full run failed one test: `PlainToolContractTests.filesVerbsReadNoAmbientContext` scanned `Capabilities/Files` for the literal `ToolContext.current` and required zero sightings. The card orders that read (one time, at the top of `call`). The behavioral bare-session cases of that suite still passed, so the guard was reworked, not dropped: every sighting must be the one-time capture `let toolContext = ToolContext.current`, and exactly `Edit.swift`, `Patch.swift` and `Write.swift` carry one each (`filesVerbsReadTheAmbientContextOneTimeAtTheStart`). The three doc comments that spelled the literal were reworded so the scan reads code, not prose.
+    - next: `commit`, then `review`.
+  timestamp: 2026-09-02T14:28:59.147632+00:00
 depends_on:
 - 01M1H2QRY6PPQSS4ZKY7Q32M6H
-position_column: todo
-position_ordinal: '8180'
+position_column: doing
+position_ordinal: '80'
 title: Post each mutating file verb's change set through the ambient ToolContext
 ---
 ## What

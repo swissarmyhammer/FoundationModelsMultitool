@@ -31,6 +31,7 @@
 
 import Foundation
 import FoundationModels
+import FoundationModelsRouter
 
 /// The arguments of `tools.files.edit`: the file to edit and the
 /// find/replace batch to apply.
@@ -213,9 +214,16 @@ extension Edit {
     /// `correction` field of the result; nothing here throws for a bad
     /// payload, path, file, or commit.
     ///
+    /// **The ambient context is read one time, at the start.** eventplan.md
+    /// § "The ambient context" makes that rule mandatory: work that inherits
+    /// no task local sees none, so a second read of the ambient context
+    /// after an `await` would find `nil`. The value captured here is what
+    /// the commit posts through.
+    ///
     /// - Parameter arguments: What to edit and the find/replace batch.
     /// - Returns: The batch status with its envelope, or the correction.
     func call(arguments: EditArguments) async throws -> EditResult {
+        let toolContext = ToolContext.current
         if context.readOnly { return Self.corrective(Self.readOnlySessionMessage) }
 
         return await context.pathGuard.validate(arguments.path, for: .edit)
@@ -241,7 +249,8 @@ extension Edit {
                         case .applied(let content, let edits):
                             return await Self.commit(
                                 content: content, edits: edits, to: url, decoded: decoded,
-                                lineEnding: lineEnding, path: arguments.path, context: context)
+                                lineEnding: lineEnding, path: arguments.path, context: context,
+                                through: toolContext)
                         case .failed(_, let pair, let resolution):
                             return Self.unresolvedResult(path: url.path, pair: pair, resolution: resolution)
                         }
@@ -277,11 +286,13 @@ extension Edit {
     /// (``AtomicWriter/encode(_:as:)``, the inverse of the decode that
     /// read it) and writes it through ``AtomicWriter/write(_:to:)``, which
     /// preserves the existing permission bits and removes its temporary
-    /// file on any failure. A landed commit is recorded on the context's
+    /// file on any failure. A landed commit is committed on the context's
     /// ``FileContext/changes`` journal as a ``FileChangeKind/modify``
     /// carrying the text on both sides — only here, after the write, thus
-    /// an unresolved batch (which commits nothing) records nothing. The
-    /// journal itself drops the record when the session is not recording.
+    /// an unresolved batch (which commits nothing) delivers nothing. The
+    /// journal delivers the change to the session through `toolContext`, or
+    /// keeps it for a drain when there is none, and it drops the change when
+    /// the session is not recording.
     ///
     /// - Parameters:
     ///   - content: the fully rewritten content to commit.
@@ -290,7 +301,9 @@ extension Edit {
     ///   - decoded: the decoded original, supplying the encoding to re-apply.
     ///   - lineEnding: the detected line-ending convention to report, or `nil`.
     ///   - path: the requested path, for a corrective message.
-    ///   - context: the session context whose journal records the change.
+    ///   - context: the session context whose journal commits the change.
+    ///   - toolContext: the ambient context the verb read at the start of
+    ///     its call, or `nil` on a bare session.
     /// - Returns: the applied ``EditResult``, or the corrective one when
     ///   the atomic write fails.
     private static func commit(
@@ -300,7 +313,8 @@ extension Edit {
         decoded: AtomicWriter.DecodedText,
         lineEnding: AtomicWriter.LineEnding?,
         path: String,
-        context: FileContext
+        context: FileContext,
+        through toolContext: ToolContext?
     ) async -> EditResult {
         let data = AtomicWriter.encode(content, as: decoded.encoding)
         do {
@@ -309,8 +323,9 @@ extension Edit {
             return corrective(
                 PathCorrective.pathErrorMessage(description: commitFailureDescription, path: path))
         }
-        await context.changes.record(
-            FileChange(kind: .modify, path: url.path, oldContent: decoded.text, newContent: content)
+        await context.changes.commit(
+            [FileChange(kind: .modify, path: url.path, oldContent: decoded.text, newContent: content)],
+            through: toolContext
         )
         return EditResult(
             path: url.path,
@@ -381,8 +396,8 @@ extension Edit {
 /// byte-identical and the `status` (`ambiguous`, `nearMiss`,
 /// `alreadyApplied`, `consumedTarget`) with its JSON `outcomes` says how
 /// to retry. The path is bounded through the session's ``PathGuard``, and
-/// the session's ``FileChangeJournal`` records a landed commit when it is
-/// recording. A payload that cannot normalize, a path outside the root, a
+/// the session's ``FileChangeJournal`` delivers a landed commit to the
+/// session when it is recording. A payload that cannot normalize, a path outside the root, a
 /// missing or binary file, a read-only target, a read-only session, and a
 /// failed commit each come back as a `correction` rather than as an error.
 ///
