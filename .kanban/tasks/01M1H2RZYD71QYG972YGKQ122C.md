@@ -1,8 +1,33 @@
 ---
 assignees:
 - claude-code
-position_column: todo
-position_ordinal: '8280'
+comments:
+- actor: claude-code
+  id: 01m1hbxx7qmzgt02pygk30yawv
+  text: |-
+    ### research
+    - `resolvedSandboxDirectories(request:)` has two production callers: `ShellRunner.configuration(for:)` (ShellRunner.swift:443) and `Execute.confinementRefusal(for:)` (Execute.swift:279). Two tests call it: `resolvedSandboxDirectoriesResolvesSymlinks` and `resolvedSandboxDirectoriesFallsBackToCurrentDirectory`.
+    - Every `ShellRunner(...)` call uses argument labels (ShellCapability.swift:115, five test files). A new stored property after `sandbox` keeps the label order, so no caller changes.
+    - `runsInRequestedWorkingDirectory` (ShellRunnerTests.swift:351) already runs `/bin/pwd` and compares resolved paths. The two new `pwd` tests share that shape, so the shape moves into two helpers (`makeWorkDirectory(named:in:)`, `printedWorkingDirectory(of:in:workingDirectory:)`) and all three tests call them. This keeps the duplication validator clean.
+    - Plan: tests first, then `defaultWorkingDirectory`, `effectiveWorkingDirectory(for:defaultWorkingDirectory:)`, the new parameter on `resolvedSandboxDirectories`, the `Configuration.workingDirectory` change, and the two doc-comment updates.
+  timestamp: 2026-09-02T15:31:16.855827+00:00
+- actor: claude-code
+  id: 01m1hc60mywzgeq4eqxfk42r6d
+  text: |-
+    ### implement — changed
+    - evidence: 3 files — Sources/FoundationModelsMultitool/Capabilities/Shell/ShellRunner.swift (new `defaultWorkingDirectory`, new `effectiveWorkingDirectory(for:defaultWorkingDirectory:)`, `resolvedSandboxDirectories(request:defaultWorkingDirectory:)`, `Configuration.workingDirectory` always stated, three doc comments), Sources/FoundationModelsMultitool/Capabilities/Shell/Execute.swift (`confinementRefusal` passes `runner.defaultWorkingDirectory`), Tests/FoundationModelsMultitoolTests/ShellRunnerTests.swift (two tests take `defaultWorkingDirectory: nil`, four new tests, two shared helpers `makeWorkDirectory(named:in:)` and `printedWorkingDirectory(of:in:workingDirectory:)`).
+    - TDD: `swift build --build-tests` was red first (`type 'ShellRunner' has no member 'effectiveWorkingDirectory'`, `extra argument 'defaultWorkingDirectory'`). After the implementation `swift test --filter ShellRunnerTests` passed 31 tests in 1 suite. The only build warning is the pre-existing SwiftPM note for `mlx-swift_Cmlx.bundle`.
+    - next: `/test` over the whole suite, then `/commit`, then `/review`.
+  timestamp: 2026-09-02T15:35:42.494997+00:00
+- actor: claude-code
+  id: 01m1hc79ergtfkbp2zzqrgchvg
+  text: |-
+    ### test — green
+    - evidence: `swift test` — 1393 tests in 108 suites passed, 0 failed, 0 skipped. The one build warning is the pre-existing SwiftPM note for `mlx-swift_Cmlx.bundle`, which is not from this repository.
+    - next: `/commit` (local only), then `/review`.
+  timestamp: 2026-09-02T15:36:24.280388+00:00
+position_column: doing
+position_ordinal: '80'
 title: Add a default working directory to ShellRunner
 ---
 ## What
@@ -18,17 +43,17 @@ Change `Sources/FoundationModelsMultitool/Capabilities/Shell/ShellRunner.swift`:
 Do not change `ShellCapability` or `withShell` here. That is the next task.
 
 ## Acceptance Criteria
-- [ ] A runner with `defaultWorkingDirectory` set runs a request with `workingDirectory == nil` in that directory: `pwd` prints `ShellRunner.resolvedDirectory(path:)` of the default.
-- [ ] A request with a `workingDirectory` wins over the runner default.
-- [ ] A runner with no default runs a request with no directory in the current directory of the process (the existing behavior).
-- [ ] `effectiveWorkingDirectory(for:defaultWorkingDirectory:)` gives the request directory, then the default, then the process directory, in that order.
-- [ ] `resolvedSandboxDirectories(request:defaultWorkingDirectory:)` gives `work` equal to the resolved default when the request names no directory.
-- [ ] `swift build` gives no new warning.
+- [x] A runner with `defaultWorkingDirectory` set runs a request with `workingDirectory == nil` in that directory: `pwd` prints `ShellRunner.resolvedDirectory(path:)` of the default.
+- [x] A request with a `workingDirectory` wins over the runner default.
+- [x] A runner with no default runs a request with no directory in the current directory of the process (the existing behavior).
+- [x] `effectiveWorkingDirectory(for:defaultWorkingDirectory:)` gives the request directory, then the default, then the process directory, in that order.
+- [x] `resolvedSandboxDirectories(request:defaultWorkingDirectory:)` gives `work` equal to the resolved default when the request names no directory.
+- [x] `swift build` gives no new warning.
 
 ## Tests
-- [ ] Update `Tests/FoundationModelsMultitoolTests/ShellRunnerTests.swift`: the two tests `resolvedSandboxDirectoriesResolvesSymlinks` (line 777) and `resolvedSandboxDirectoriesFallsBackToCurrentDirectory` (line 811) pass `defaultWorkingDirectory: nil`. They stay pure: no `throws`, no runner.
-- [ ] Add to `ShellRunnerTests.swift`: `effectiveWorkingDirectoryPrefersTheRequestThenTheDefault` (pure, three cases), `resolvedSandboxDirectoriesTakesTheRunnerDefault` (pure, a symlinked default such as `/tmp` resolves to `/private/tmp`), `aRequestWithNoDirectoryRunsInTheRunnerDefault` (make a runner with `makeRunner(...)` at line 123, set `runner.defaultWorkingDirectory` to a temporary directory, run `pwd`, read the stored lines), `aRequestDirectoryWinsOverTheRunnerDefault`.
-- [ ] Run `swift test --filter ShellRunnerTests` and expect every test to pass.
+- [x] Update `Tests/FoundationModelsMultitoolTests/ShellRunnerTests.swift`: the two tests `resolvedSandboxDirectoriesResolvesSymlinks` (line 777) and `resolvedSandboxDirectoriesFallsBackToCurrentDirectory` (line 811) pass `defaultWorkingDirectory: nil`. They stay pure: no `throws`, no runner.
+- [x] Add to `ShellRunnerTests.swift`: `effectiveWorkingDirectoryPrefersTheRequestThenTheDefault` (pure, three cases), `resolvedSandboxDirectoriesTakesTheRunnerDefault` (pure, a symlinked default such as `/tmp` resolves to `/private/tmp`), `aRequestWithNoDirectoryRunsInTheRunnerDefault` (make a runner with `makeRunner(...)` at line 123, set `runner.defaultWorkingDirectory` to a temporary directory, run `pwd`, read the stored lines), `aRequestDirectoryWinsOverTheRunnerDefault`.
+- [x] Run `swift test --filter ShellRunnerTests` and expect every test to pass.
 
 ## Workflow
 - Use `/tdd` — write failing tests first, then implement to make them pass. #ask-6 #upstream-asks

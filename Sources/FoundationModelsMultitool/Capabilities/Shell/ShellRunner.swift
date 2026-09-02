@@ -163,6 +163,17 @@ struct ShellRunner {
     /// the record and throws again instead of a quiet spawn with no confinement.
     var sandbox: (any CommandSandbox)?
 
+    /// The directory a request runs in when it names none, or `nil` — the
+    /// default — to keep the current directory of this process.
+    ///
+    /// The composition supplies it. A host whose session has a root of its own
+    /// gives that root here, thus a request that omits `workingDirectory` runs
+    /// in the session root, and not in the directory the host process happens
+    /// to stand in. `effectiveWorkingDirectory(for:defaultWorkingDirectory:)`
+    /// is the one place that reads it, thus the spawn and the sandbox see the
+    /// same directory.
+    var defaultWorkingDirectory: String?
+
     /// One request to run a command.
     struct Request: Sendable {
 
@@ -180,8 +191,9 @@ struct ShellRunner {
         /// for it.
         var completionToken: String
 
-        /// The directory the command runs in, or `nil` to take the current
-        /// directory of this process.
+        /// The directory the command runs in, or `nil` to take the default
+        /// working directory of the runner, or the current directory of this
+        /// process when the runner has none.
         var workingDirectory: String?
 
         /// The environment variables that stand on top of the environment this
@@ -197,7 +209,8 @@ struct ShellRunner {
         ///   - command: The command line that goes to `sh -c`.
         ///   - completionToken: The completion token of the run.
         ///   - workingDirectory: The directory the command runs in, or `nil` to
-        ///     take the current directory of this process.
+        ///     take the default working directory of the runner, or the current
+        ///     directory of this process when the runner has none.
         ///   - environment: The environment variables that stand on top of the
         ///     environment this process gives the child.
         ///   - timeout: The time limit on the wall clock, or `nil` for no limit.
@@ -419,9 +432,16 @@ struct ShellRunner {
     /// The configuration to spawn for `request`, which `sandbox` decorates when
     /// this runner carries one.
     ///
-    /// With no sandbox this is exactly the configuration the runner always
-    /// built — `/bin/sh` with `["-c", command]` — and it reads nothing else,
-    /// thus the path with no confinement carries no code of confinement at all.
+    /// With no sandbox this is the configuration the runner always built —
+    /// `/bin/sh` with `["-c", command]`, in the effective working directory —
+    /// and it reads no sandbox at all, thus the path with no confinement
+    /// carries no code of confinement.
+    ///
+    /// The working directory is always stated, and never left to
+    /// `Configuration` as `nil`: `effectiveWorkingDirectory(for:defaultWorkingDirectory:)`
+    /// decides it, thus a request that names none runs in the default of the
+    /// runner, and the child inherits the directory of this process only when
+    /// the runner has no default either.
     ///
     /// With a sandbox the executable and the arguments come from `wrap`, and
     /// nothing else changes. The environment, the working directory and the
@@ -440,7 +460,8 @@ struct ShellRunner {
         var arguments = [Self.shellCommandFlag, request.command]
 
         if let sandbox {
-            let directories = Self.resolvedSandboxDirectories(request: request)
+            let directories = Self.resolvedSandboxDirectories(
+                request: request, defaultWorkingDirectory: defaultWorkingDirectory)
             let invocation = try sandbox.wrap(
                 shellPath: executable,
                 shellArguments: arguments,
@@ -455,9 +476,38 @@ struct ShellRunner {
             executable: .path(FilePath(executable)),
             arguments: Arguments(arguments),
             environment: environment(overriding: request.environment),
-            workingDirectory: request.workingDirectory.map { FilePath($0) },
+            workingDirectory: FilePath(
+                Self.effectiveWorkingDirectory(
+                    for: request, defaultWorkingDirectory: defaultWorkingDirectory)),
             platformOptions: ownProcessGroupOptions()
         )
+    }
+
+    /// The directory `request` runs in: the directory the request names, else
+    /// `defaultWorkingDirectory`, else the current directory of this process.
+    ///
+    /// This is the ONE place that spells that fallback. `configuration(for:)`
+    /// gives the result to the spawn, and `resolvedSandboxDirectories` gives
+    /// it to the sandbox, thus the directory the child runs in and the
+    /// directory the confinement grants cannot disagree.
+    ///
+    /// The result is not resolved: a symbolic link stays as it came in, and a
+    /// caller that needs the resolved form puts it through
+    /// `resolvedDirectory(path:)`, as `resolvedSandboxDirectories` does.
+    ///
+    /// It is `static` for the reason `resolvedSandboxDirectories` is: a test
+    /// proves the order of the fallback with no runner and no spawn.
+    ///
+    /// - Parameters:
+    ///   - request: The command whose directory to decide.
+    ///   - defaultWorkingDirectory: The default of the runner, or `nil` for
+    ///     none.
+    /// - Returns: The directory the command runs in.
+    static func effectiveWorkingDirectory(
+        for request: Request, defaultWorkingDirectory: String?
+    ) -> String {
+        request.workingDirectory ?? defaultWorkingDirectory
+            ?? FileManager.default.currentDirectoryPath
     }
 
     /// The working directory and the temporary directory to give a
@@ -470,19 +520,28 @@ struct ShellRunner {
     /// `/private/tmp` or the `/private/var/folders/…` the kernel sees, and the
     /// sandbox then refuses in silence what it appears to permit.
     ///
-    /// The working directory falls back to the current directory of this
-    /// process, which is what `Configuration` takes for a `workingDirectory` of
-    /// `nil`, thus the sandbox learns the directory the command truly runs in.
+    /// The working directory is
+    /// `effectiveWorkingDirectory(for:defaultWorkingDirectory:)`, the same
+    /// value `configuration(for:)` gives the spawn, thus the sandbox learns the
+    /// directory the command truly runs in — the default of the runner for a
+    /// request that names none, and the current directory of this process only
+    /// when the runner has no default either.
     ///
     /// It is `static` because a test proves the resolution on its own, with no
     /// runner and no spawn.
     ///
-    /// - Parameter request: The command whose directories to resolve.
+    /// - Parameters:
+    ///   - request: The command whose directories to resolve.
+    ///   - defaultWorkingDirectory: The default of the runner, or `nil` for
+    ///     none.
     /// - Returns: The resolved working directory and temporary directory.
-    static func resolvedSandboxDirectories(request: Request) -> (work: String, tmp: String) {
+    static func resolvedSandboxDirectories(
+        request: Request, defaultWorkingDirectory: String?
+    ) -> (work: String, tmp: String) {
         (
             work: resolvedDirectory(
-                path: request.workingDirectory ?? FileManager.default.currentDirectoryPath),
+                path: effectiveWorkingDirectory(
+                    for: request, defaultWorkingDirectory: defaultWorkingDirectory)),
             tmp: resolvedDirectory(path: NSTemporaryDirectory())
         )
     }

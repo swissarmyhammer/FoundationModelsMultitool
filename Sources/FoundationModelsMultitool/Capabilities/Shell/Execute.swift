@@ -275,8 +275,10 @@ extension Execute {
     private func confinementRefusal(for request: ShellRunner.Request) async -> String? {
         guard let sandbox = runner.sandbox else { return nil }
         // The runner's own resolution, reused rather than spelled again, thus
-        // the directories examined here are the ones it confines.
-        let directories = ShellRunner.resolvedSandboxDirectories(request: request)
+        // the directories examined here are the ones it confines — the default
+        // of the runner included, for a request that names no directory.
+        let directories = ShellRunner.resolvedSandboxDirectories(
+            request: request, defaultWorkingDirectory: runner.defaultWorkingDirectory)
         do {
             try await sandbox.preflight(
                 workingDirectory: directories.work, temporaryDirectory: directories.tmp)

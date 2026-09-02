@@ -108,6 +108,21 @@ struct ShellRunnerTests {
     /// `NSTemporaryDirectory()` carries and that a Seatbelt grant must not.
     private static let absentDirectoryWithSeparator = absentDirectory + "/"
 
+    /// The directory a request of the fallback test names. It need not exist:
+    /// `effectiveWorkingDirectory(for:defaultWorkingDirectory:)` picks a value
+    /// and resolves nothing.
+    private static let requestedDirectory = "/requested-shellrunner-tests-directory"
+
+    /// The default a runner of the fallback test carries. It need not exist
+    /// either, for the same reason.
+    private static let defaultDirectory = "/default-shellrunner-tests-directory"
+
+    /// The name of the directory a test gives a runner as its default.
+    private static let defaultDirectoryName = "default"
+
+    /// The name of the directory a test names in a request.
+    private static let requestedDirectoryName = "requested"
+
     /// A `ShellRunner` over a `ShellState` that a new temporary directory roots.
     ///
     /// `scratch` owns that directory from the moment it exists, thus a throw
@@ -231,6 +246,49 @@ struct ShellRunnerTests {
         return try await state.getLines(commandID: commandID)
     }
 
+    /// Makes a directory named `name` inside the directory of one test, thus a
+    /// test has a working directory that is not the current directory of this
+    /// process.
+    ///
+    /// - Parameters:
+    ///   - name: The name of the new directory.
+    ///   - directory: The directory of the test that holds it.
+    /// - Returns: The new directory.
+    /// - Throws: What `FileManager.createDirectory` throws.
+    private func makeWorkDirectory(named name: String, in directory: URL) throws -> URL {
+        let workDirectory = directory.appendingPathComponent(name, isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: workDirectory, withIntermediateDirectories: true)
+        return workDirectory
+    }
+
+    /// Runs `/bin/pwd` through `runner` and gives back the directory it printed.
+    ///
+    /// `/bin/pwd` prints the physical directory (`/var` becomes `/private/var`
+    /// on macOS), thus a caller compares the result against
+    /// `ShellRunner.resolvedDirectory(path:)` of the directory it expects — the
+    /// one directory resolver, and never a second spelling of that step.
+    ///
+    /// - Parameters:
+    ///   - runner: The runner that starts the command.
+    ///   - state: The store the runner writes the output into.
+    ///   - workingDirectory: The directory the request names, or `nil` for a
+    ///     request that names none.
+    /// - Returns: The one line the command printed.
+    /// - Throws: What `ShellRunner.run` or `ShellState.getLines` throws, or a
+    ///   failed `#require` when the command printed nothing.
+    private func printedWorkingDirectory(
+        of runner: ShellRunner, in state: ShellState, workingDirectory: String?
+    ) async throws -> String {
+        let token = ToolContext.makeCompletionToken()
+        _ = try await runner.run(
+            .init(
+                command: "/bin/pwd", completionToken: token,
+                workingDirectory: workingDirectory))
+        let lines = try await state.getLines(commandID: token)
+        return try #require(lines.first?.text, "pwd printed nothing")
+    }
+
     // MARK: - The kill of a process group takes down the whole tree
 
     /// The load-bearing test: a `sh -c 'sleep N & sleep N'` tree that the
@@ -350,23 +408,45 @@ struct ShellRunnerTests {
     @Test("the command runs in the requested working directory")
     func runsInRequestedWorkingDirectory() async throws {
         let (runner, state, directory) = try makeRunner()
-        let token = ToolContext.makeCompletionToken()
-        let workDirectory = directory.appendingPathComponent("work", isDirectory: true)
-        try FileManager.default.createDirectory(
-            at: workDirectory, withIntermediateDirectories: true)
+        let requested = try makeWorkDirectory(named: Self.requestedDirectoryName, in: directory)
 
-        _ = try await runner.run(
-            .init(
-                command: "/bin/pwd", completionToken: token,
-                workingDirectory: workDirectory.path))
+        let printed = try await printedWorkingDirectory(
+            of: runner, in: state, workingDirectory: requested.path)
 
-        let lines = try await state.getLines(commandID: token)
-        let printed = lines.first?.text ?? "<none>"
-        // `/bin/pwd` prints the physical directory (`/var` becomes
-        // `/private/var` on macOS), thus the two sides compare resolved.
-        let expected = workDirectory.resolvingSymlinksInPath().path
-        let actual = URL(fileURLWithPath: printed).resolvingSymlinksInPath().path
-        #expect(actual == expected, "pwd printed \(printed); expected \(expected)")
+        let expected = ShellRunner.resolvedDirectory(path: requested.path)
+        #expect(printed == expected, "pwd printed \(printed); expected \(expected)")
+    }
+
+    /// The composition supplies the default: a request that names no directory
+    /// runs in `defaultWorkingDirectory`, and not in the current directory of
+    /// this process. The default is a temporary directory, thus it cannot be
+    /// the process directory by accident.
+    @Test("a request with no directory runs in the runner default")
+    func aRequestWithNoDirectoryRunsInTheRunnerDefault() async throws {
+        var (runner, state, directory) = try makeRunner()
+        let fallback = try makeWorkDirectory(named: Self.defaultDirectoryName, in: directory)
+        runner.defaultWorkingDirectory = fallback.path
+
+        let printed = try await printedWorkingDirectory(
+            of: runner, in: state, workingDirectory: nil)
+
+        let expected = ShellRunner.resolvedDirectory(path: fallback.path)
+        #expect(printed == expected, "pwd printed \(printed); expected \(expected)")
+    }
+
+    /// A directory the request names wins over the default of the runner.
+    @Test("a request directory wins over the runner default")
+    func aRequestDirectoryWinsOverTheRunnerDefault() async throws {
+        var (runner, state, directory) = try makeRunner()
+        let fallback = try makeWorkDirectory(named: Self.defaultDirectoryName, in: directory)
+        let requested = try makeWorkDirectory(named: Self.requestedDirectoryName, in: directory)
+        runner.defaultWorkingDirectory = fallback.path
+
+        let printed = try await printedWorkingDirectory(
+            of: runner, in: state, workingDirectory: requested.path)
+
+        let expected = ShellRunner.resolvedDirectory(path: requested.path)
+        #expect(printed == expected, "pwd printed \(printed); expected \(expected)")
     }
 
     // MARK: - The cap cuts at a line boundary, and it marks the cut
@@ -778,7 +858,8 @@ struct ShellRunnerTests {
         let token = ToolContext.makeCompletionToken()
         let directories = ShellRunner.resolvedSandboxDirectories(
             request: .init(
-                command: "echo hi", completionToken: token, workingDirectory: "/tmp"))
+                command: "echo hi", completionToken: token, workingDirectory: "/tmp"),
+            defaultWorkingDirectory: nil)
 
         // The one directory resolver again, and never `resolvedPath` alone: the
         // trim of the trailing separator belongs to that step, thus a test that
@@ -792,10 +873,49 @@ struct ShellRunnerTests {
         #expect(!directories.tmp.hasSuffix("/"))
     }
 
-    /// With no working directory in the request, the command runs in the current
-    /// directory of this process, thus that is what the sandbox must be told
-    /// about — put through the same resolution the named case takes, thus both
-    /// branches meet the path precondition of `CommandSandbox`.
+    /// The default of the runner goes through the same resolution the named
+    /// case takes: a default that is a symbolic link reaches the sandbox in its
+    /// resolved form, thus the grant matches the vnode the kernel sees.
+    @Test("the resolved sandbox directories take the runner default when the request names none")
+    func resolvedSandboxDirectoriesTakesTheRunnerDefault() {
+        let token = ToolContext.makeCompletionToken()
+        let directories = ShellRunner.resolvedSandboxDirectories(
+            request: .init(command: "echo hi", completionToken: token),
+            defaultWorkingDirectory: "/tmp")
+
+        #expect(directories.work == "/private/tmp")
+    }
+
+    /// The one place that spells the fallback, proved with no runner and no
+    /// spawn: the request first, then the default of the runner, then the
+    /// current directory of this process. No path here is resolved, thus none
+    /// of them has to exist.
+    @Test("the effective working directory prefers the request, then the default, then the process directory")
+    func effectiveWorkingDirectoryPrefersTheRequestThenTheDefault() {
+        let token = ToolContext.makeCompletionToken()
+        let named = ShellRunner.Request(
+            command: "echo hi", completionToken: token,
+            workingDirectory: Self.requestedDirectory)
+        let unnamed = ShellRunner.Request(command: "echo hi", completionToken: token)
+
+        #expect(
+            ShellRunner.effectiveWorkingDirectory(
+                for: named, defaultWorkingDirectory: Self.defaultDirectory)
+                == Self.requestedDirectory)
+        #expect(
+            ShellRunner.effectiveWorkingDirectory(
+                for: unnamed, defaultWorkingDirectory: Self.defaultDirectory)
+                == Self.defaultDirectory)
+        #expect(
+            ShellRunner.effectiveWorkingDirectory(for: unnamed, defaultWorkingDirectory: nil)
+                == FileManager.default.currentDirectoryPath)
+    }
+
+    /// With no working directory in the request and no default on the runner,
+    /// the command runs in the current directory of this process, thus that is
+    /// what the sandbox must be told about — put through the same resolution
+    /// the named case takes, thus both branches meet the path precondition of
+    /// `CommandSandbox`.
     ///
     /// The test states the resolved form, and the absence of a trailing
     /// separator, and it does not compare against the raw
@@ -811,7 +931,8 @@ struct ShellRunnerTests {
     func resolvedSandboxDirectoriesFallsBackToCurrentDirectory() {
         let token = ToolContext.makeCompletionToken()
         let directories = ShellRunner.resolvedSandboxDirectories(
-            request: .init(command: "echo hi", completionToken: token))
+            request: .init(command: "echo hi", completionToken: token),
+            defaultWorkingDirectory: nil)
 
         let resolvedCurrent = ShellRunner.resolvedDirectory(
             path: FileManager.default.currentDirectoryPath)
