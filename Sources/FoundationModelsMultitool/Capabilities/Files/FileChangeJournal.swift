@@ -17,6 +17,16 @@
 // mutating verb call, and `FileChangeSet.init(operationEventDetail:)` is how
 // the host reads it back.
 //
+// **The same envelope also rides `ToolContext.attach(_:)`, and that is the
+// LIVE half.** The Router keeps a `.progress` event off its live surface: the
+// event is the model-facing preamble and the durable recording, so a host that
+// must show a diff DURING the turn cannot wait for it. A record attached to a
+// call makes ONE `SessionEvent.toolCallReport` when that call closes, under the
+// run's own correlation, which is the carrier the Router built for exactly this
+// (UPSTREAM_ASKS.md, ask 4). The record's `schemaName` is
+// `FileChangeSet.operationEventDetailKey`, so a host matches it against the
+// same public name it already reads a `detail` by.
+//
 // **Why each verb delivers its own changes, and no drain at the end of a
 // `runCode` call does.** `FilesCapability.init` makes ONE `FileContext`, thus
 // ONE journal, for the whole registry, and `MultiToolConfiguration.
@@ -31,7 +41,8 @@ import Foundation
 import FoundationModelsRouter
 
 /// The session-scoped record of what the mutating verbs changed: delivered to
-/// the session as a `.progress` event, or kept for a host to drain.
+/// the session as a `.progress` event and an attached record, or kept for a
+/// host to drain.
 ///
 /// The verbs report their results to the *model* as encoded JSON, which is
 /// all a host driving them ever sees. A host that must also tell its
@@ -40,12 +51,14 @@ import FoundationModelsRouter
 /// re-parse. The journal is that side channel. Each mutating verb commits
 /// the ``FileChange`` values of one call through ``commit(_:through:)``:
 ///
-/// - Under a session, the changes leave at once as ONE `.progress`
-///   `OperationEvent` whose `detail` is the `fileChanges` envelope
-///   (``FileChangeSet/encodedOperationEventDetail()``), posted through the
-///   ambient `ToolContext` of the call. A host reads the set back with
+/// - Under a session, the changes leave at once as ONE `fileChanges` envelope
+///   (``FileChangeSet/encodedOperationEventDetail()``), carried two ways
+///   through the ambient `ToolContext` of the call: as the `detail` of a
+///   `.progress` `OperationEvent`, which the session records, and as a
+///   `ToolCallAttachment`, which reaches a host live on
+///   `SessionEvent.toolCallReport`. A host reads the set back from either with
 ///   ``FileChangeSet/init(operationEventDetail:)``. One verb call makes one
-///   event, whatever the number of files it touched.
+///   event and one record, whatever the number of files it touched.
 /// - With no ambient context (a verb on a bare `LanguageModelSession`, or a
 ///   direct call in a test), the changes are kept, and ``drain()`` takes them.
 ///
@@ -119,10 +132,17 @@ actor FileChangeJournal {
     /// patch is reported as what it changed rather than as nothing at all.
     ///
     /// Returns at once when the journal is disabled or `changes` is empty.
-    /// When `context` is not `nil`, posts ONE `.progress` event whose
-    /// `detail` is the `fileChanges` envelope of a ``FileChangeSet`` rooted
-    /// at ``root``, and keeps nothing. When `context` is `nil`, keeps the
-    /// changes for ``drain()``. A change is delivered or kept, never both.
+    /// When `context` is not `nil`, delivers the changes both ways and keeps
+    /// nothing: ONE `.progress` event whose `detail` is the `fileChanges`
+    /// envelope of a ``FileChangeSet`` rooted at ``root``, and ONE
+    /// `ToolCallAttachment` carrying that same envelope. When `context` is
+    /// `nil`, keeps the changes for ``drain()``. A change is delivered or kept,
+    /// never both.
+    ///
+    /// The two deliveries carry the same text and reach different readers, so
+    /// neither replaces the other. The order they are made in decides nothing:
+    /// the Router posts a run's report after that run's close record, whatever
+    /// order the tool wrote the two calls in.
     ///
     /// - Parameters:
     ///   - changes: the committed changes of one verb call.
@@ -134,15 +154,21 @@ actor FileChangeJournal {
             for change in changes { record(change) }
             return
         }
+        // Encoded one time and read two ways. The envelope renders the whole
+        // git patch of the set, so a second encoding would render it again.
+        let envelope = FileChangeSet(root: root, changes: changes).encodedOperationEventDetail()
         await context.post(
             OperationEvent(
                 tool: context.tool,
                 op: context.op,
                 correlationID: context.completionToken,
                 kind: .progress,
-                detail: FileChangeSet(root: root, changes: changes).encodedOperationEventDetail()
+                detail: envelope
             )
         )
+        context.attach(
+            ToolCallAttachment(
+                schemaName: FileChangeSet.operationEventDetailKey, contentJSON: envelope))
     }
 
     // MARK: Recording

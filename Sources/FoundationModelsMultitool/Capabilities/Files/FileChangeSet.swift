@@ -223,6 +223,10 @@ extension FileChangeSet {
     /// A host reads an `OperationEvent.detail` and asks whether it is a change
     /// set or a plain notice; the presence of this key, over an object of this
     /// type, is the answer. ``init(operationEventDetail:)`` makes that test.
+    ///
+    /// It is the `schemaName` of the `ToolCallAttachment` a mutating verb call
+    /// attaches as well, so one public name answers both carriers of the
+    /// envelope and a host matches on it rather than on a literal of its own.
     public static let operationEventDetailKey = "fileChanges"
 
     /// The JSON text of the envelope `{"fileChanges": <encoded change set>}`.

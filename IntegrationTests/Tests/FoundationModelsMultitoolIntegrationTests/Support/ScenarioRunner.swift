@@ -610,14 +610,20 @@ func streamTurn(of session: RoutedSession, prompt: String) async throws -> Strea
         case .turnEnded(let usage):
             // Output only, and the input half relabelled — see `tokenUsage`.
             turn.tokenUsage = usageForDisplay(usage)
-        case .toolStatus, .reasoningDelta, .toolInvocation, .entryRecorded, .runSettled:
+        case .toolStatus, .reasoningDelta, .toolInvocation, .toolCallReport, .entryRecorded,
+            .elicitationRequested, .runSettled:
             // `.toolStatus` here is the residue of the three status cases
             // handled above. `.toolInvocation` carries the open/close record
             // of each call, and `.entryRecorded` announces a transcript entry;
             // both restate what `.toolCall`/`.toolStatus` already gave this
             // runner, which grades a scenario on its calls and its answer.
-            // `.runSettled` announces a background run's terminal event, which
-            // the journal readings below already grade.
+            // `.toolCallReport` carries the structured records a call attached
+            // — the file-change set of a mutating `tools.files` call — which
+            // `FileChangeAttachmentTests` grades with no model at all.
+            // `.elicitationRequested` announces a question a run raised, and no
+            // tool of these scenarios raises one. `.runSettled` announces a
+            // background run's terminal event, which the journal readings below
+            // already grade.
             break
         }
     }

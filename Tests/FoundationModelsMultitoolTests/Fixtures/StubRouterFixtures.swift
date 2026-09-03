@@ -274,16 +274,26 @@ actor CollectingTranscriptRecorder: TranscriptRecorder {
     }
 }
 
-/// Stands up a router over the stub model and takes a real ``ToolContext``
-/// out of a tool call on it.
+/// Stands up a router over the stub model and makes a session that mounts `tools`.
 ///
-/// - Parameter directory: Where the router caches and records. A fresh
-///   temporary directory per call keeps runs of one suite apart.
-/// - Returns: The session and its context.
+/// The session is the whole seam a host holds. ``ToolCallingBackend`` calls the
+/// first tool of the list that takes ``CaptureArguments``, thus a test drives
+/// one REAL tool call — a live run, with a live ``ToolContext`` bound around it
+/// — by asking the session to respond. ``makeStubRun(in:)`` below is one caller,
+/// and a test that must read a run's own `SessionEvent` stream is the other:
+/// `ToolCallReport` reaches a host on that stream alone.
+///
+/// - Parameters:
+///   - tools: The tools the session mounts.
+///   - directory: Where the router caches and records. A fresh temporary
+///     directory per call keeps runs of one suite apart.
+/// - Returns: The session, and the recorder of its transcript.
 /// - Throws: Whatever resolving the profile throws.
-func makeStubRun(in directory: URL = FileManager.default.temporaryDirectory
-    .appendingPathComponent("multitool-stub-\(ULID.generate())")) async throws -> StubRun
-{
+func makeStubSession(
+    mounting tools: [any Tool],
+    in directory: URL = FileManager.default.temporaryDirectory
+        .appendingPathComponent("multitool-stub-\(ULID.generate())")
+) async throws -> (session: RoutedSession, recorder: CollectingTranscriptRecorder) {
     let recorder = CollectingTranscriptRecorder()
     let router = Router(
         cacheDir: directory,
@@ -302,17 +312,29 @@ func makeStubRun(in directory: URL = FileManager.default.temporaryDirectory
         ),
         reporting: ResolutionProgress()
     )
+    return (profile.standard.makeSession(instructions: nil, tools: tools), recorder)
+}
+
+/// Stands up a router over the stub model and takes a real ``ToolContext``
+/// out of a tool call on it.
+///
+/// - Parameter directory: Where the router caches and records. A fresh
+///   temporary directory per call keeps runs of one suite apart.
+/// - Returns: The session and its context.
+/// - Throws: Whatever resolving the profile throws.
+func makeStubRun(in directory: URL = FileManager.default.temporaryDirectory
+    .appendingPathComponent("multitool-stub-\(ULID.generate())")) async throws -> StubRun
+{
     let box = CapturedContextBox()
-    let session = profile.standard.makeSession(
-        instructions: nil, tools: [ContextCaptureTool(box: box)])
-    _ = try await session.respond(to: "capture", maxTokens: nil)
+    let stub = try await makeStubSession(mounting: [ContextCaptureTool(box: box)], in: directory)
+    _ = try await stub.session.respond(to: "capture", maxTokens: nil)
     guard let context = box.context else {
         throw StubRunFailure.noContextCaptured
     }
     // The capture call above is real, and it posted its own events. Drop them
     // so a test reads only what it caused.
-    await recorder.reset()
-    return StubRun(session: session, context: context, recorder: recorder)
+    await stub.recorder.reset()
+    return StubRun(session: stub.session, context: context, recorder: stub.recorder)
 }
 
 /// What standing up a stub run could not do.
