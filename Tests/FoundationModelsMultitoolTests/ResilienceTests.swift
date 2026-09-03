@@ -123,16 +123,36 @@ struct ResilienceTests {
     /// the short constant and not the long one.
     private static let disconnectStragglerHasProceededCheckDelay = Duration.milliseconds(600)
 
-    /// The per-attempt timeout of the in-flight reconnect test: long enough
-    /// for the explicit connect to bump the generation before the hung
-    /// reconnect attempt is timed out, short enough for the test to run
-    /// fast.
-    private static let hungReconnectConnectTimeout = Duration.milliseconds(300)
+    /// The per-attempt timeout of the in-flight reconnect test — shared by
+    /// the FIRST connect (which must really succeed against a scripted
+    /// transport that does not hang) and, because `reconnect()` reuses the
+    /// policy of the connect it followed, the hung second attempt too.
+    ///
+    /// Only two values of this bound are safe, because the reconnect's own
+    /// perceived timeout bumps `connectGeneration` a second time with no
+    /// state transition attached to it: that bump must land either before
+    /// the explicit `connect(via:)` captures its own generation — a bound
+    /// under `MCPServer.clientDisconnectGracePeriod`, too tight to also
+    /// absorb real scheduling jitter on a busy machine — or after the
+    /// explicit connect has already finished applying its success, so
+    /// there is no in-flight generation for the extra bump to invalidate.
+    /// The explicit connect's own completion is bounded by
+    /// `MCPServer.clientConnectStragglerGracePeriod` (5 seconds) plus a
+    /// real (fast, in-memory) connect and tool discovery, so this timeout
+    /// is set comfortably past that — which doubles as a generous budget
+    /// for the first connect to tolerate contention (a concurrent build, a
+    /// background indexer) instead of a tight one that can itself time out
+    /// under load.
+    private static let hungReconnectConnectTimeout = Duration.seconds(10)
 
     /// How long the in-flight reconnect test waits after the explicit
     /// connect, so the hung reconnect attempt hits its own timeout and is
-    /// discarded in the background.
-    private static let hungReconnectDiscardDelay = Duration.milliseconds(600)
+    /// discarded in the background. Measured from when the explicit
+    /// connect already returned — itself up to about
+    /// `MCPServer.clientConnectStragglerGracePeriod` after the reconnect
+    /// started — so the total, plus this delay, clears
+    /// ``hungReconnectConnectTimeout`` with margin.
+    private static let hungReconnectDiscardDelay = Duration.seconds(6)
 
     /// The attempt count a respawning transport reaches once its reconnect
     /// started: the first connect, plus one reconnect attempt.
