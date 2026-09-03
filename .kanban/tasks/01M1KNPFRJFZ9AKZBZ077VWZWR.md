@@ -44,8 +44,24 @@ comments:
     - evidence: 1 file — UPSTREAM_ASKS.md (+27, -2); `swift build` exit 0
     - next: `/review`
   timestamp: 2026-09-03T13:14:37.577300+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m1ky3a7dgtpendz6j9cpsw7x
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` — zero findings (findings 0, confirmed 0, refuted 0, attempted 7). The one changed file, `UPSTREAM_ASKS.md`, matched no validator; the four `.kanban/` files are excluded by `.reviewignore`.
+    - next: task moved to `done`. No open findings.
+  timestamp: 2026-09-03T15:27:17.229320+00:00
+- actor: claude-code
+  id: 01m1ky3x37da29henvwgz4cetd
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 1 file, UPSTREAM_ASKS.md (+27, -2)
+    - test: green — swift test, 1401 tests, 0 failed, 0 skipped, 0 warnings (6 full-suite runs); the gate also repaired an intermittent timing failure in ResilienceTests.swift
+    - commit: 80a916f
+    - review: clean — zero findings, 7 validator passes, task moved to done
+  timestamp: 2026-09-03T15:27:36.551969+00:00
+position_column: done
+position_ordinal: ffb280
 title: Record Ask 4 as answered in UPSTREAM_ASKS.md, and name the carrier that answered it
 ---
 ## What
