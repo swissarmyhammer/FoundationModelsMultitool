@@ -29,8 +29,25 @@ comments:
     - follow-up: none filed. The chain closes here.
     - next: /review
   timestamp: 2026-09-07T19:52:51.069188+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m1yq2q0kpm29bp1kb0gmfbsm
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (c4b37a7) — 0 findings, 0 confirmed, 0 refuted, 7 validator passes attempted, 0 failed. 2 files reviewed; 4 `.kanban/` files excluded by `.reviewignore`.
+    - next: task moved to `done`.
+  timestamp: 2026-09-07T19:56:16.275244+00:00
+- actor: claude-code
+  id: 01m1yq333shw9nqfsg80v088b1
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 2 files (SearchThenCallTests.swift, Support/LiveRouterFixture.swift); the docs now name liveProfileTurnstile as the cause, and every requirement stays
+    - test: green — swift build, swift build --package-path IntegrationTests --build-tests, and swift test 1401/1401 all clean
+    - commit: c4b37a7
+    - review: clean — zero new findings; task moved to done
+    - A whole-repository grep shows no stale residency claim. The chain closes here.
+  timestamp: 2026-09-07T19:56:28.665629+00:00
+position_column: done
+position_ordinal: ffb780
 title: SearchThenCallTests and LiveRouterFixture still quote "only one profile is resident at a time per Router"
 ---
 ## What
