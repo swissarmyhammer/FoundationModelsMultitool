@@ -22,8 +22,25 @@ comments:
     - new work: `^` new card 01M1YNW6M4VHYNEMFV7GZ6MQJ1 for the same stale claim in `IntegrationTests/Package.swift`, which this card forbids me to touch.
     - next: /review
   timestamp: 2026-09-07T19:35:24.494882+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m1yp2aa6yrq6ag2rdm8q1h6s
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit 93fa29a) — zero new findings; 0 confirmed, 0 refuted. No prior Review Findings section. `plan.md` matched no validator; `.kanban/` files excluded by `.reviewignore`.
+    - acceptance: the change corrects all three passages. A grep of `plan.md` for "one resident", "resident at a time" and "the one resident" gives no match, so no claim of one resident profile is left. The `--no-parallel` paragraph now gives a reason that is true for pooled residency: the scenarios queue behind the suite's own `liveProfileTurnstile`, and the text states the turnstile is a test-suite rule, not a Router limit. The change touches `plan.md` only, so there is no Swift code change.
+    - next: task moved to done.
+  timestamp: 2026-09-07T19:38:34.694922+00:00
+- actor: claude-code
+  id: 01m1yp32dje8n9pwznzdq6wkt0
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 1 file (plan.md); the three remaining single-residency claims are corrected, and the --no-parallel requirement stays with a true reason
+    - test: green — swift test 1401 tests in 109 suites passed; the integration package was not run, because the change touches only plan.md
+    - commit: 93fa29a
+    - review: clean — zero new findings; task moved to done
+  timestamp: 2026-09-07T19:38:59.378246+00:00
+position_column: done
+position_ordinal: ffb580
 title: plan.md still claims one profile is resident at a time, but residency is pooled
 ---
 ## What

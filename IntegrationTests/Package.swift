@@ -40,10 +40,11 @@ private let transformersPackage = "swift-transformers"
 ///     swift test                                                  # unit tests
 ///     swift test --package-path IntegrationTests --no-parallel    # this suite
 ///
-/// `--no-parallel` is not a preference. Swift Testing runs suites concurrently
-/// and starts a test's `.timeLimit` when the test starts, while every scenario
-/// here queues behind `liveProfileTurnstile` for the one resident live profile,
-/// so a parallel run spends the limit on queue time and a queued suite fails in
+/// `--no-parallel` is not a preference. Every scenario here queues behind
+/// `liveProfileTurnstile`, which admits one live scenario at a time because
+/// concurrent generation destroys grounding. Swift Testing runs suites
+/// concurrently and starts a test's `.timeLimit` when the test starts, so a
+/// parallel run spends the limit on queue time and a queued suite fails in
 /// the same way as a hang. `LiveRouterFixture.swift` records the measurement.
 ///
 /// **The compile coupling this package owes CI.** While the suite was a target
@@ -114,7 +115,7 @@ let package = Package(
                 // The shared gate of the test support code, another test-support
                 // product of the root package — `../Package.swift`'s
                 // `testConcurrencyTargetName`. `liveProfileTurnstile` is one of
-                // them, and it holds this target to one resident live profile.
+                // them, and it holds this target to one live scenario at a time.
                 .product(name: "TestConcurrency", package: productPackageName),
                 // The model-free half of this suite's own harness, a third
                 // test-support product of the root package —
