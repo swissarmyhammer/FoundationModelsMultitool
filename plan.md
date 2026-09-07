@@ -517,8 +517,8 @@ Discovery is `SearchToolsTool` — `searchTools` as its own real `FoundationMode
 The main session runs on the profile's `standard` slot; discovery's
 **selection tier** — the model-backed "librarian" role, still literally named
 `librarian:` in `SearchToolsTool(registry:librarian:)` — runs on the **same
-resolved profile's `flash` slot**, the cheaper/faster generation model of the
-one resident profile, as separate Router-backed sessions, so the full
+resolved profile's `flash` slot**, the cheaper/faster generation model of that
+same profile, as separate Router-backed sessions, so the full
 generated surface stays out of the main session's working context.
 
 Internally, every `searchTools(task)` call forwards to a
@@ -932,8 +932,11 @@ search-then-code loop actually work?"
   manifest declares no integration target for it to find — a structural split
   rather than a remembered flag, and nothing reads the environment to decide
   which suite runs. `--no-parallel` is required: Swift Testing starts a test's
-  `.timeLimit` when the test starts, while every scenario queues for the one
-  resident live profile, so a parallel run spends the limit on queue time.
+  `.timeLimit` when the test starts, while every scenario queues behind the
+  suite's own `liveProfileTurnstile` — the gate that admits one live scenario
+  at a time, because concurrent generation measurably destroys grounding — so
+  a parallel run spends the limit on queue time. The turnstile is a test-suite
+  rule, not a Router limit: Router residency is pooled.
 
   The suite resolves a `ProfileDefinition` of tool-calling-capable models —
   `CLIRunner.demoProfile`, the value the shipped CLI uses, so a graded run
@@ -1048,11 +1051,13 @@ a supported subject.)*
    it vends its own session type — not Apple's.** Confirmed against the package
    source: `Router` is an `actor`; `resolve(_:reporting:)` turns a
    `ProfileDefinition` into a resident `LanguageModelProfile` with `standard`/`flash`
-   `RoutedLLM` slots (one profile resident at a time); `RoutedLLM.makeSession(…)`
-   vends a `RoutedSession` whose surface is `respond(to:) -> String` + guided
-   generation (`respond(to:following:)`, `respond(to:matching:)`, and typed
-   `respond(to:generating:)`). **There was, at the time, no `tools:` parameter
-   on a vended session, no `SystemLanguageModel`, and no built-in tool-calling
+   `RoutedLLM` slots (residency is pooled and reference-counted, so more than one
+   profile can be resident — see the Router surface summary above);
+   `RoutedLLM.makeSession(…)` vends a `RoutedSession` whose surface is
+   `respond(to:) -> String` + guided generation (`respond(to:following:)`,
+   `respond(to:matching:)`, and typed `respond(to:generating:)`). **There was,
+   at the time, no `tools:` parameter on a vended session, no
+   `SystemLanguageModel`, and no built-in tool-calling
    loop** — so `runCode`/`findAPIs` were dispatched by *our* `MultiToolAgent`
    loop, with `findAPIs`'s constrained output produced by Router guided
    generation (xgrammar). (That hand-rolled loop was later retired: a
