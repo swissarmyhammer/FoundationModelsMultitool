@@ -38,8 +38,24 @@ comments:
     - rules: the full validator dump for `.swift` was read end to end. No rule is touched. Two completeness validators state that a comment or doc edit is not a finding. `no-commented-code` cannot fire because the new text reads as English prose. This manifest carries no `swiftlint:disable` or `periphery:ignore` directive, so the placement hazard (a doc line between a directive and its declaration) does not exist here.
     - next: `/review`. Follow-up card `^phe0b2q` holds the three remaining sites outside this card's scope.
   timestamp: 2026-09-07T19:47:37.875869+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m1ypq5g1ym3cbwv3gem2jt86
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (6530660) — zero new findings; 7 validator runs, 0 failed, 0 skipped; no prior findings section
+    - next: task moved to done
+  timestamp: 2026-09-07T19:49:57.889978+00:00
+- actor: claude-code
+  id: 01m1ypqfm2d8aky6q9vvxgfzyv
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 1 file (IntegrationTests/Package.swift); both doc comments now give the true cause of --no-parallel
+    - test: green — swift build, swift build --package-path IntegrationTests, and --build-tests all exit 0; LSP 0 errors 0 warnings. The 25-minute integration suite was not run, because the change is a comment.
+    - commit: 6530660
+    - review: clean — zero new findings; task moved to done
+  timestamp: 2026-09-07T19:50:08.258392+00:00
+position_column: done
+position_ordinal: ffb680
 title: IntegrationTests/Package.swift doc comment still claims one resident live profile
 ---
 ## What

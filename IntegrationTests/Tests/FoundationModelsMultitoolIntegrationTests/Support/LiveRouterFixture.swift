@@ -416,11 +416,13 @@ let plumbingProbeProfile = ProfileDefinition(
 /// run was measured, real fixture names since the 2026-08-07 rename recorded on
 /// task `tkrdwb8`), and the replies came back fluent but ungrounded. The
 /// same suites run three-at-once, or one at a time, called the real fixtures
-/// and answered from them. One resident profile at a time is
+/// and answered from them. One live scenario at a time is
 /// therefore a correctness requirement of this target, not a courtesy — and it
-/// is the same property `SearchThenCallTests`' own `.serialized` documents
-/// ("only one profile is resident at a time per `Router`"), extended across
-/// suite boundaries where a suite trait cannot reach.
+/// is a rule of the target rather than a limit of `Router`, whose residency is
+/// pooled and reference-counted and holds more than one profile resident quite
+/// happily. It is the same requirement `SearchThenCallTests`' own
+/// `.serialized` holds inside one suite, extended across suite boundaries
+/// where a suite trait cannot reach.
 ///
 /// One ``ConcurrencyGate``, the shared gate of the test support code. The unit
 /// test process holds its HTTP loopbacks with another one of them.

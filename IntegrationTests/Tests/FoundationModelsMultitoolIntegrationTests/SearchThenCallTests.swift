@@ -47,11 +47,16 @@ import ScenarioGrading
 /// zero downloads, zero live inference — and stays green on a network/GPU-less
 /// box (the default posture of this environment). The command that runs this
 /// suite is `swift test --package-path IntegrationTests --no-parallel`.
-/// `.serialized` mirrors
-/// Router's own gated suite: only one profile is resident at a time per
-/// `Router`, and real weight loading is heavy enough that running the four
-/// scenarios one at a time, under a generous `.timeLimit`, is the sane
-/// default even though each test resolves its own fresh `Router`.
+/// `.serialized` holds the four scenarios to one at a time inside this suite,
+/// which is what `liveProfileTurnstile` (`Support/LiveRouterFixture.swift`)
+/// holds across suite boundaries: concurrent live scenarios come back fluent
+/// but ungrounded, so one live scenario at a time is a correctness
+/// requirement of this target. That is a rule of the target and not a limit of
+/// `Router` — Router's residency is pooled and reference-counted, so it holds
+/// more than one profile resident quite happily. Real weight loading is heavy
+/// enough that one scenario at a time, under a generous `.timeLimit`, is the
+/// sane default anyway, even though each test resolves its own fresh
+/// `Router`.
 @Suite(
     "Gated search-then-call scenarios (M6.5a)",
     .serialized,
