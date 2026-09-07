@@ -836,14 +836,6 @@ public enum CLIRunner {
             throw CLIRouterUnavailableError(underlying: error)
         }
 
-        // `profile.release()` is async, so it can't run in a synchronous
-        // `defer`; explicitly release on every exit path instead — success
-        // or thrown error alike — mirroring
-        // `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Support/ScenarioRunner.swift`'s
-        // own `LiveRouterFixture.tearDown()` calls, rather than an
-        // unstructured, un-awaited cleanup `Task` that `main.swift`'s
-        // immediate `exit(_:)` after `run(...)` returns would likely never
-        // let finish.
         do {
             // The registry vends its own mounted tools, in the order the
             // model reads them — `searchTools`, then `runCode`, then `wait`,
@@ -945,9 +937,7 @@ public enum CLIRunner {
 
             output("")
             output("Answer: \(answer)")
-            await profile.release()
         } catch {
-            await profile.release()
             throw error
         }
     }

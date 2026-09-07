@@ -470,7 +470,9 @@ struct LiveRouterFixture {
     /// The router that resolved `profile` — its `id` roots the recording
     /// tree `transcriptEvents()` reads back.
     let router: Router
-    /// The resolved, resident profile — release via `tearDown()`.
+    /// The resolved, resident profile. Router owns its residency by ARC, so
+    /// the models it holds are freed once this fixture and every handle taken
+    /// from it are unreferenced; see ``tearDown()``.
     let profile: LanguageModelProfile
     /// The durable transcripts root passed to `Router.init(recordingsDir:)`.
     /// Stands under ``recordingsRoot`` — inside the workspace, never under the
@@ -572,12 +574,18 @@ struct LiveRouterFixture {
         }
     }
 
-    /// Releases the resolved profile, evicting its three resident models, and
-    /// gives ``liveProfileTurnstile`` back to the next waiting scenario.
+    /// Gives ``liveProfileTurnstile`` back to the next waiting scenario.
     /// Call once a scenario is done with this fixture, on every exit path
     /// (success, assertion failure, or thrown error).
+    ///
+    /// The three resident models are not evicted here, because Router owns
+    /// their residency by ARC: each handle holds the residency claim, and the
+    /// models are freed once this fixture and every handle taken from it are
+    /// unreferenced. The next `Router.resolve` drains those pending evictions
+    /// before it measures the host budget, so the next scenario still fits.
+    /// A scenario must therefore keep no handle and no session past its own
+    /// test function.
     func tearDown() async {
-        await profile.release()
         await liveProfileTurnstile.release()
     }
 
