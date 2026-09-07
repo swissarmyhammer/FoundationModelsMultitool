@@ -337,15 +337,22 @@ surface is:
 
 - **`Router`** — an `actor` (not a shared singleton). You construct one and call
   `resolve(_ def: ProfileDefinition, reporting: ResolutionProgress) async throws ->
-  LanguageModelProfile`. One profile is resident at a time (RAM budget); release
-  before resolving another.
+  LanguageModelProfile`. Residency is pooled and owned by ARC: the router
+  reference-counts each resident model, and it frees a model when the last
+  reference to that model goes away. Each `resolve` first drains the models that
+  wait for eviction, under the pool lock, and then measures the host budget — so
+  it prices against the bytes it just made free.
 - **`ProfileDefinition`** — an authored, value-type profile: `name`, `description`,
   candidate `[ModelRef]` lists for the `standard`/`flash`/`embedding` slots (in
   preference order), and a `context` token budget (default 8192). Resolution picks,
   per slot, the first candidate that co-fits this machine's budget.
 - **`LanguageModelProfile`** — the resolved handle set: `.standard` and `.flash`
-  are `RoutedLLM`, `.embedding` is a `RoutedEmbedder`; `release()` evicts them. The
-  two generation slots share one resident profile — you do **not** get two
+  are `RoutedLLM`, `.embedding` is a `RoutedEmbedder`. The three handles share one
+  `ResidencyHold`, and each handle keeps that hold strongly, so a tool that keeps
+  only `profile.flash` keeps that model resident, and a live session keeps the
+  profile reachable. No call evicts them: when the last reference goes away, ARC
+  frees the models, and the next `resolve` drains them before it measures. The
+  two generation slots share one resolved profile — you do **not** get two
   independently-selected models, you get one profile with a stronger `standard`
   slot and a cheaper/faster `flash` slot.
 - **`RoutedLLM.makeSession(instructions:tools:…) -> RoutedSession`** and

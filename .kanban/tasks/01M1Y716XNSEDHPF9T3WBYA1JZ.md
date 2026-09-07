@@ -53,8 +53,24 @@ comments:
     - evidence: 2 files — Sources/MultitoolCLI/CLIRunner.swift, IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Support/LiveRouterFixture.swift. `swift build` complete with no new warning; `swift test` 1401 tests in 109 suites passed; `swift test --package-path IntegrationTests --no-parallel` 21 tests in 14 suites passed in 1546.9s, 0 skipped, 12 live resolves in the one process.
     - next: /review
   timestamp: 2026-09-07T19:21:18.238746+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m1ynbw1mjzax7scr6wnj1v5f
+  text: |
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (275ab91) — 0 findings, 0 confirmed, 0 refuted, 7 attempted; zero new findings
+    - next: task moved to done
+  timestamp: 2026-09-07T19:26:19.188635+00:00
+- actor: claude-code
+  id: 01m1ync8wy732emrn7c3bcqp89
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 2 files (CLIRunner.swift, LiveRouterFixture.swift); upstream router pickup made the blocker not applicable
+    - test: green — swift test 1401/1401 passed; swift test --package-path IntegrationTests --no-parallel 21/21 passed with 12 live resolves
+    - commit: 275ab91
+    - review: clean — zero new findings; task moved to done
+  timestamp: 2026-09-07T19:26:32.350014+00:00
+position_column: done
+position_ordinal: ffb380
 title: Drop the profile.release() calls once router residency is ARC-owned
 ---
 ## What
