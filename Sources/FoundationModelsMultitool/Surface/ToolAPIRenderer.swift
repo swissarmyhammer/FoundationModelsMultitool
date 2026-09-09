@@ -257,6 +257,7 @@ public enum ToolAPIRenderer {
 
         return ToolDescriptor(
             name: name,
+            description: description,
             declaration: declaration,
             doc: doc,
             example: "\(exampleCall);",

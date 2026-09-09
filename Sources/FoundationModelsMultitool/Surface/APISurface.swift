@@ -88,7 +88,35 @@ public struct APISurface: Sendable, Equatable {
         /// newline or another character that could break out of a single-line
         /// comment.
         public var block: String {
-            "// tools.\(path)\n\(qualify(descriptor.source))"
+            "\(banner)\n\(qualify(descriptor.source))"
+        }
+
+        /// The short text block that seeds the registry-backed selection
+        /// tier's prompt for this entry: the same `// tools.<path>` banner
+        /// ``block`` opens with, then `descriptor.description` alone —
+        /// no `@param`, `@returns` or `@example` line and no
+        /// `declare function` line.
+        ///
+        /// The selection model chooses BETWEEN tools, so the description is
+        /// what it needs; the signature is what the main session needs once
+        /// a tool is chosen, and `SearchToolsTool` splices ``block`` for
+        /// that. Measured on 2026-09-09 over the agent's nine-entry
+        /// files-and-shell surface: the full blocks made a 17,263-character
+        /// prefix, and the description-only blocks make one of 7,600.
+        ///
+        /// The description passes through `qualify(_:)` exactly as it does
+        /// inside ``block``, so a `tools.<name>(` call an author wrote in the
+        /// prose reads the same in both texts.
+        public var summaryBlock: String {
+            "\(banner)\n\(qualify(descriptor.description))"
+        }
+
+        /// The `// tools.<path>` line that opens ``block`` and
+        /// ``summaryBlock``, so the two texts name the entry the same way and
+        /// a reader of either finds the fully-qualified call path on its
+        /// first line.
+        private var banner: String {
+            "// tools.\(path)"
         }
 
         /// `descriptor.example` — the auto-generated, runnable example call —
@@ -144,11 +172,12 @@ public struct APISurface: Sendable, Equatable {
     }
 
     /// The full rendered surface — every entry's ``Entry/block``, in catalog
-    /// order, separated by a blank line. It backs the instruction prefix of
-    /// `FoundationModelsMetadataRegistry`'s registry-backed selection tier
+    /// order, separated by a blank line. It backs the in-snippet
+    /// `help()`/`docs()` globals. The registry-backed selection tier
     /// (`MetadataSearcher`/`SelectionTier`, prefix-cached per plan.md
-    /// § "Discovery: a prefix-cached 'librarian' agent") and the in-snippet
-    /// `help()`/`docs()` globals.
+    /// § "Discovery: a prefix-cached 'librarian' agent") does not read it:
+    /// that tier assembles its prefix from each entry's
+    /// ``Entry/summaryBlock``.
     public var source: String {
         entries.map(\.block).joined(separator: "\n\n")
     }

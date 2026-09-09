@@ -247,8 +247,32 @@ comments:
     - evidence: `swift test` at the root: 1407 tests in 110 suites, 0 failures, 0 skipped tests. `swift build --package-path IntegrationTests`: build complete, 0 errors. `swift test --package-path IntegrationTests --no-parallel --filter AgentSurfaceDiscoveryTests`: 1 test in 1 suite passed. Queries 4 to 9 each found the write, edit, or shell entry, as the task requires.\n\nOne build message showed on each run, at the root and in the nested package: `warning: missing creator for mutated node: ('.../mlx-swift_Cmlx.bundle/Contents/MacOS')`. This message comes from the build tool (SwiftPM/llbuild), not from a Swift or C++ file. It names the `Cmlx` resource folder of the `mlx-swift` dependency. This dependency is a checkout under `.build/checkouts`. A person on this project told this session not to edit a package checkout; a change to `.build/checkouts` also does not stay, because a fresh package resolve replaces it. No file in this package, and no file in `IntegrationTests`, can remove this message. The message showed before this task's code changes too, since it comes from a dependency the code changes did not touch. No test failed, and no test result changed because of it.
     - next: Tell a person about this build message and ask if the project should accept it as known, or open a task with the `mlx-swift` project to fix it. Until then, treat it as expected, not as a new defect.
   timestamp: 2026-09-09T21:27:57.796863+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m2415mhqkzb2gna3vk4wd3py
+  text: |-
+    ### commit — changed
+    - evidence: 33ff1d6 — 26 files changed, 1114 insertions(+), 64 deletions(-)
+    - next: send the task to review.
+  timestamp: 2026-09-09T21:28:49.975369+00:00
+- actor: claude-code
+  id: 01m241yx3qfg5h22n9tkhsnjdq
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit 33ff1d6, local backend). 0 findings over HEAD~1..HEAD. 16 files reviewed, 14 validator runs attempted, 0 failed. 10 files under `.kanban/` were not reviewed because `.reviewignore` excludes them. The card holds no earlier `## Review Findings` section, so no earlier finding is open. The task moved from `review` to `done`.
+    - next: No work is open on this card in this package. Done-when items 4 and 5 stay unchecked on purpose; task `^fksm5k5` in `FoundationModelsACPAgent` closes them. Ranker tasks `^kqp9e5e` and `^zxm99zs`, registry task `^8c4wtra`, and task `^0z0te3n` on this board carry the follow-on work.
+  timestamp: 2026-09-09T21:42:37.943856+00:00
+- actor: claude-code
+  id: 01m2420055hg147vqqyzsn95qe
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 9 source files changed, 5 new files (CatalogSearcher.swift, RoutedTextEmbedding.swift, DiscoveryEmbedderTests.swift, EmbeddingFixtures.swift, AgentSurfaceDiscoveryTests.swift); 10 of 10 queries answered on Qwen3-4B-4bit (was 2 of 10)
+    - test: green — swift test 1407 passed, 0 failed, 0 skipped; IntegrationTests build complete; AgentSurfaceDiscoveryTests 1 passed
+    - commit: 33ff1d6
+    - review: clean — 0 findings over HEAD~1..HEAD; task moved to done
+    - open: Done-when items 4 and 5 need FoundationModelsACPAgent task ^fksm5k5. Follow-on tasks: ranker ^kqp9e5e and ^zxm99zs, registry ^8c4wtra, this board ^0z0te3n.
+  timestamp: 2026-09-09T21:43:13.829386+00:00
+position_column: done
+position_ordinal: ffb880
 title: 'searchTools finds no write, edit or shell tool: the discovery searcher has no embedder and the selection tier answers empty'
 ---
 ## What happened

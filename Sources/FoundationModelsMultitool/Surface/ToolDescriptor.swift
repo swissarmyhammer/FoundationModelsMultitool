@@ -20,6 +20,18 @@ public struct ToolDescriptor: Sendable, Equatable {
     /// later milestone; M2 always renders a flat, unqualified `name`.
     public let name: String
 
+    /// The author-supplied description of the tool (`Tool.description`),
+    /// verbatim — the prose the doc comment opens with, before any `@param`,
+    /// `@returns` or `@example` line.
+    ///
+    /// Kept as its own field because the selection prompt needs it alone:
+    /// `APISurface.Entry.summaryBlock` puts this text, and no signature text,
+    /// under the `// tools.<path>` banner that seeds the registry-backed
+    /// selection tier. `doc` carries the same text again, escaped for
+    /// comment safety and wrapped in the `/** … */` block, so no caller has
+    /// to parse the JSDoc to get the description back.
+    public let description: String
+
     /// The bare `declare function …` signature line, with no doc comment —
     /// e.g. `declare function getWeather(args: { city: string }): Promise<string>;`.
     ///
@@ -43,8 +55,9 @@ public struct ToolDescriptor: Sendable, Equatable {
     public let example: String
 
     /// The full renderable text block — `doc` followed by `declaration` —
-    /// exactly what's spliced into `searchTools` results, the registry-backed
-    /// selection tier's instruction prefix, and `help()`/`docs()`.
+    /// exactly what's spliced into `searchTools` results and `help()`/`docs()`,
+    /// and what the retrieval tier indexes. The selection tier's prefix
+    /// takes `description` alone (see `APISurface.Entry.summaryBlock`).
     public let source: String
 
     /// The same signature `declaration` states, as structure rather than
@@ -69,6 +82,7 @@ public struct ToolDescriptor: Sendable, Equatable {
     ///
     /// - Parameters:
     ///   - name: the identifier the snippet calls this function by.
+    ///   - description: the author-supplied description of the tool.
     ///   - declaration: the bare `declare function …` signature line.
     ///   - doc: the JSDoc doc comment block rendered for `declaration`.
     ///   - example: the auto-generated, runnable example call.
@@ -76,6 +90,7 @@ public struct ToolDescriptor: Sendable, Equatable {
     ///   - signature: the same signature `declaration` states, as structure.
     public init(
         name: String,
+        description: String,
         declaration: String,
         doc: String,
         example: String,
@@ -83,6 +98,7 @@ public struct ToolDescriptor: Sendable, Equatable {
         signature: ToolSignature
     ) {
         self.name = name
+        self.description = description
         self.declaration = declaration
         self.doc = doc
         self.example = example

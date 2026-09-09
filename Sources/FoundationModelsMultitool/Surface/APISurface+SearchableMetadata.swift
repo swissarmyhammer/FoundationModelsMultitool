@@ -13,10 +13,14 @@ import FoundationModelsMetadataRegistry
 /// `descriptor.source` with its embedded `@example` call qualified to the
 /// entry's fully-qualified `path` (see `Entry.block`/`Entry.qualify(_:)`)
 /// — the same text `SearchToolsTool` splices, verbatim, into the main agent's
-/// transcript for every selected entry.
-/// `renderSummaryBlock()` is left at the protocol's default (identical to
-/// `renderBlock()`): descriptor blocks are already compact, so there's no
-/// shorter summary to offer.
+/// transcript for every selected entry, and the text the retrieval tier
+/// tokenizes and embeds.
+///
+/// `renderSummaryBlock()` is `summaryBlock`: the same banner, then the
+/// tool's description alone. The registry seeds the selection tier's prefix
+/// from this text (`MetadataIndex.summaryBlock(forID:)`), so the forked
+/// selection session reads one description per tool and no signature text,
+/// while the main session still gets the full block of each selected id.
 extension APISurface.Entry: SearchableMetadata {
     /// This entry's fully-qualified `tools.*` call path, used as its
     /// unique identifier within the catalog.
@@ -24,4 +28,8 @@ extension APISurface.Entry: SearchableMetadata {
 
     /// The rendered content block for this entry.
     public func renderBlock() -> String { block }
+
+    /// The banner and the description of this entry, for the selection
+    /// prompt.
+    public func renderSummaryBlock() -> String { summaryBlock }
 }
