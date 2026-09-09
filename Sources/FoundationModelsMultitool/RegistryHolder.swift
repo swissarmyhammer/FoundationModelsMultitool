@@ -16,7 +16,7 @@ import Synchronization
 
 /// The half of a mounted `runCode` a refresher stages a rebuilt registry on.
 ///
-/// `MultiTool.Registry.makeSessionToolsAndStaging(librarian:sampleGenerator:)`
+/// `MultiTool.Registry.makeSessionToolsAndStaging(librarian:embedder:sampleGenerator:)`
 /// vends one beside the tools it mounts. A staged registry is applied at the
 /// next turn boundary, by `MultiTool.turnWillBegin()`.
 public protocol RegistryStaging: Sendable {

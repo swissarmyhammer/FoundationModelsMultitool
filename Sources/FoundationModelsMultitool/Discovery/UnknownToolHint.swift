@@ -44,8 +44,9 @@ import FoundationModelsMetadataRegistry
 ///
 /// Tier 2 runs only when tier 1 finds nothing, so every guess that already
 /// resolved by name resolves identically, and it runs retrieval-only — no
-/// selection tier, no embedder — so repairing a wrong guess costs no model
-/// call and no tokens.
+/// selection tier, so repairing a wrong guess costs no generation. It ranks
+/// with the bundle's embedder when the host gave one, one query embed per
+/// hint.
 ///
 /// Alongside the suggestions, a resolution carries a ``RepairDirective`` —
 /// what the error's closing line should tell the model to do next. The
@@ -185,7 +186,7 @@ enum UnknownToolHint {
         message: String,
         snippet: String,
         surface: APISurface,
-        searcher: MetadataSearcher<APISurface.Entry>
+        searcher: CatalogSearcher
     ) async -> Resolution? {
         // The two sibling paths are real bindings the preamble installs, not
         // catalog entries, so the surface alone does not know them. Without
@@ -325,7 +326,7 @@ enum UnknownToolHint {
     private static func closestEntries(
         to failedPath: String,
         in surface: APISurface,
-        using searcher: MetadataSearcher<APISurface.Entry>
+        using searcher: CatalogSearcher
     ) async -> (tier: SuggestionTier, entries: [APISurface.Entry]) {
         let byName = entriesResemblingName(of: failedPath, in: surface)
         guard byName.isEmpty else { return (.nameResemblance, byName) }
@@ -390,7 +391,7 @@ enum UnknownToolHint {
     /// - Returns: the `relevanceSuggestionLimit` best-ranked entries.
     private static func entriesRelevantTo(
         _ failedPath: String,
-        using searcher: MetadataSearcher<APISurface.Entry>
+        using searcher: CatalogSearcher
     ) async -> [APISurface.Entry] {
         let intent = intent(spelling: failedPath)
         let matches = try? await searcher.search(intent: intent, limit: relevanceSuggestionLimit)

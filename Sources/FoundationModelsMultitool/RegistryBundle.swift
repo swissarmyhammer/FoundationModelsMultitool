@@ -34,6 +34,12 @@ extension MultiTool {
 
         /// How the bundle builds its discovery searcher.
         let discovery: DiscoverySearch
+
+        /// The embedder both searchers of the bundle rank with, or `nil` for
+        /// keyword-only ranking. The host's resolved profile carries one, and
+        /// `makeSessionToolsAndStaging(librarian:embedder:sampleGenerator:)`
+        /// is where the host hands it over.
+        let embedder: (any TextEmbedding)?
     }
 
     /// The catalog, the live tools, and every value `runCode` precomputes
@@ -63,13 +69,14 @@ extension MultiTool {
 
         /// The catalog ranker `UnknownToolHint` resolves an invented `tools.*`
         /// name against when no real path resembles its spelling. In
-        /// `.retrieval` mode: no selection tier and no embedder, so repairing
-        /// a wrong guess costs no model call and no tokens.
-        let hintSearcher: MetadataSearcher<APISurface.Entry>
+        /// `.retrieval` mode: no selection tier, so repairing a wrong guess
+        /// costs no generation. It ranks with ``shape``'s embedder when the
+        /// host gave one, which costs one query embed per hint.
+        let hintSearcher: CatalogSearcher
 
         /// The searcher `searchTools` forwards every call to, or `nil` when
         /// ``shape``'s discovery is `.none`.
-        let discoverySearcher: MetadataSearcher<APISurface.Entry>?
+        let discoverySearcher: CatalogSearcher?
 
         /// The shape this bundle was built in, kept so the next bundle of the
         /// same holder is built the same way.
@@ -87,13 +94,14 @@ extension MultiTool {
             self.hostFunctions = MultiTool.makeHelpDocsHostFunctions(for: registry)
             self.liveTools = MultiTool.makeLiveTools(for: registry)
             self.preamble = MultiTool.makePreamble(for: registry, bindsSearchTools: shape.bindsSearchTools)
-            self.hintSearcher = MetadataSearcher(items: registry.surface.entries, mode: .retrieval)
+            self.hintSearcher = CatalogSearcher(
+                over: registry.surface.entries, mode: .retrieval, embedder: shape.embedder, selection: nil)
             switch shape.discovery {
             case .none:
                 self.discoverySearcher = nil
             case .configured(let selection):
                 self.discoverySearcher = SearchToolsTool.makeSearcher(
-                    over: registry.surface.entries, selection: selection)
+                    over: registry.surface.entries, selection: selection, embedder: shape.embedder)
             }
         }
     }

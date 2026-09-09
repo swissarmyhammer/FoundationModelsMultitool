@@ -848,16 +848,22 @@ public enum CLIRunner {
             // so that tier and the main session below share one resident
             // container. See `demoProfile` for what that costs.
             //
+            // `profile.embedding` is the embedder both searchers rank with —
+            // the same profile that names `embeddingModel`. Without it the
+            // registry reports `no embedder configured` on every search and
+            // ranks by keyword alone (card `^zqz1zan`).
+            //
             // The staging half of the same call is what a rebuilt registry is
             // handed to, and it is vended here rather than made by a factory:
-            // `makeSessionToolsAndStaging(librarian:)` starts nothing of its
-            // own, so a host that mounts a session leaves no task behind.
+            // `makeSessionToolsAndStaging(librarian:embedder:)` starts nothing
+            // of its own, so a host that mounts a session leaves no task
+            // behind. The catalog is embedded at the first search.
             //
             // Explicitly typed, so the element type a host mounts is stated
             // where a reader meets it rather than inferred from a call in
             // another module.
             let mounted: (tools: [any FoundationModels.Tool], staging: any RegistryStaging) =
-                try demo.registry.makeSessionToolsAndStaging(librarian: profile.flash)
+                try demo.registry.makeSessionToolsAndStaging(librarian: profile.flash, embedder: profile.embedding)
 
             // The refresher starts AFTER the session tools, and the pool stops
             // it BEFORE it closes any server — the two halves of the MCP

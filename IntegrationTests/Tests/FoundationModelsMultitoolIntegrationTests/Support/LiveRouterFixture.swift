@@ -403,6 +403,40 @@ let plumbingProbeProfile = ProfileDefinition(
     context: nil
 )
 
+/// The flash model of the `acp-agent` default profile — `AgentConfiguration
+/// .defaultFlash` in `FoundationModelsACPAgent` — which is the model that
+/// answered eight of ten `searchTools` calls with an empty selection on the
+/// SWE-bench run card `^zqz1zan` records.
+///
+/// **Not a third generation pin.** `CLIRunner.generationModel` names the model
+/// a host runs, and `plumbingProbeModel` names the model the plumbing probes
+/// resolve. This constant names the model one suite grades the *selection
+/// tier* on: `AgentSurfaceDiscoveryTests` asks whether that tier, given the
+/// whole files-and-shell catalog and the agent's own ten queries, selects the
+/// write, edit and shell entries. That is a capability claim about this one
+/// model, so no other suite may take this constant, and this suite may take no
+/// other model — a pass on the 27B says nothing about the 4B the agent ships.
+///
+/// No `@revision`, exactly as the two constants above carry none — a model
+/// choice, not a version lock.
+let agentFlashModel: ModelRef = "mlx-community/Qwen3-4B-4bit"
+
+/// The profile `AgentSurfaceDiscoveryTests` resolves, built over
+/// `agentFlashModel`.
+///
+/// One model in both generation slots, so one container is resident, and the
+/// shared embedding model, so the profile names an embedder the way the
+/// agent's profile does. `nil` context so the model's own window is resolved,
+/// the same shape `multitoolTinyProfile` and `plumbingProbeProfile` take.
+let agentDiscoveryProfile = ProfileDefinition(
+    name: "multitool-agent-discovery",
+    description: "The acp-agent flash model, for the suite that grades the selection tier on it.",
+    standard: [agentFlashModel],
+    flash: [agentFlashModel],
+    embedding: [CLIRunner.embeddingModel],
+    context: nil
+)
+
 /// The one-at-a-time turnstile every integration scenario passes through before it
 /// puts a live profile on the GPU.
 ///

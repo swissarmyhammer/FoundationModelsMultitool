@@ -278,7 +278,7 @@ struct UnknownToolHintTests {
             message: "tools.\(failedPath) is not a function",
             snippet: "return tools.\(failedPath)();",
             surface: registry.surface,
-            searcher: MetadataSearcher(items: registry.surface.entries, mode: .retrieval)
+            searcher: CatalogSearcher(searcher: MetadataSearcher(items: registry.surface.entries, mode: .retrieval))
         )
     }
 
@@ -321,7 +321,7 @@ struct UnknownToolHintTests {
                 message: "tools.sendEmail is not a function",
                 snippet: "return tools.sendEmail({ to: 'a@b.c' });",
                 surface: registry.surface,
-                searcher: MetadataSearcher(items: registry.surface.entries, mode: .retrieval)
+                searcher: CatalogSearcher(searcher: MetadataSearcher(items: registry.surface.entries, mode: .retrieval))
             )
         )
 

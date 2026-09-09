@@ -1,0 +1,1 @@
+{"id":"01M23XFQHYQGJM3AP7Z88H96B3","timestamp":"2026-09-09T20:24:26.430643Z","op":"create","item_id":"01M23XFQHYXVS84DA16460WXWR","forward_patch":"--- original\n+++ modified\n@@ -0,0 +1,2 @@\n+color: 1d76db\n+tag_name: discovery\n","reverse_patch":"--- original\n+++ modified\n@@ -1,2 +0,0 @@\n-color: 1d76db\n-tag_name: discovery\n","transaction_id":null}

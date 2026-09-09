@@ -27,8 +27,8 @@ public struct SearchToolsArguments: Sendable {
 /// The discovery tool a session searches for its mounted functions.
 ///
 /// A host mounts this tool with
-/// `MultiTool.Registry.makeSessionTools(librarian:sampleGenerator:)`, which
-/// presents it before `runCode`.
+/// `MultiTool.Registry.makeSessionTools(librarian:embedder:sampleGenerator:)`,
+/// which presents it before `runCode`.
 ///
 /// The selection tier, when one is configured, answers only *what* is
 /// relevant — ids, held to the current candidate set by a grammar.
@@ -73,7 +73,7 @@ public struct SearchToolsTool: Tool {
     /// Where this tool reads the catalog it searches.
     private enum Catalog: Sendable {
         /// One searcher, built before this tool, that never changes.
-        case fixed(searcher: MetadataSearcher<APISurface.Entry>, limit: Int)
+        case fixed(searcher: CatalogSearcher, limit: Int)
 
         /// The holder this tool shares with the `runCode` mounted beside it.
         /// Each call reads the holder's current bundle, so a swap at the turn
@@ -112,6 +112,19 @@ public struct SearchToolsTool: Tool {
         limit: Int,
         sample: SampleSnippetConfig? = nil
     ) {
+        self.init(searcher: CatalogSearcher(searcher: searcher), limit: limit, sample: sample)
+    }
+
+    /// Creates a `searchTools` tool over a catalog searcher, embedding
+    /// included — the searcher `makeSearcher(over:selection:embedder:)`
+    /// builds for `init(registry:librarian:embedder:limit:sampleGenerator:)`.
+    ///
+    /// - Parameters:
+    ///   - searcher: the searcher to forward every `searchTools(task)` call to.
+    ///   - limit: the maximum number of matches to request per call.
+    ///   - sample: how to generate and validate the runnable sample snippet,
+    ///     or `nil` for the signatures-only result.
+    init(searcher: CatalogSearcher, limit: Int, sample: SampleSnippetConfig?) {
         self.catalog = .fixed(searcher: searcher, limit: limit)
         self.sample = sample
     }
@@ -148,11 +161,26 @@ public struct SearchToolsTool: Tool {
     /// - Parameters:
     ///   - entries: the catalog to index.
     ///   - selection: the selection tier, or `nil` for retrieval alone.
+    ///   - embedder: the embedder the searcher ranks with from its first
+    ///     search on, or `nil` for keyword-only ranking — see
+    ///     `CatalogSearcher`.
     /// - Returns: the searcher.
     static func makeSearcher(
-        over entries: [APISurface.Entry], selection: SelectionConfig?
-    ) -> MetadataSearcher<APISurface.Entry> {
-        MetadataSearcher(items: entries, mode: .auto, selection: selection)
+        over entries: [APISurface.Entry], selection: SelectionConfig?, embedder: (any TextEmbedding)?
+    ) -> CatalogSearcher {
+        CatalogSearcher(over: entries, mode: .auto, embedder: embedder, selection: selection)
+    }
+
+    /// The registry's embedding seam over a host's Router embedding handle,
+    /// or `nil` for no handle.
+    ///
+    /// The one place a `RoutedEmbedder` is adapted. `init(registry:...)` and
+    /// `makeSessionToolsAndStaging` both come through here.
+    ///
+    /// - Parameter embedder: the resolved handle, or `nil`.
+    /// - Returns: the handle presented as a `TextEmbedding`, or `nil`.
+    static func makeEmbedding(from embedder: RoutedEmbedder?) -> (any TextEmbedding)? {
+        embedder.map { RoutedTextEmbedding(embedder: $0) }
     }
 
     /// The searcher and the limit one call uses, read at the call.
@@ -161,7 +189,7 @@ public struct SearchToolsTool: Tool {
     ///   matches to request.
     /// - Throws: ``DiscoverySearcherMissing`` when a shared holder's bundle
     ///   carries no discovery searcher.
-    private func resolveCatalog() throws -> (searcher: MetadataSearcher<APISurface.Entry>, limit: Int) {
+    private func resolveCatalog() throws -> (searcher: CatalogSearcher, limit: Int) {
         switch catalog {
         case .fixed(let searcher, let limit):
             return (searcher, limit)
@@ -199,6 +227,12 @@ public struct SearchToolsTool: Tool {
     ///   - librarian: the resolved `RoutedLLM` every selection session runs
     ///     on, or `nil` to leave the selection tier unconfigured — `.auto`
     ///     then always answers via retrieval alone.
+    ///   - embedder: the resolved `RoutedEmbedder` the searcher ranks with —
+    ///     the profile's `embedding` handle — or `nil` (the default) for
+    ///     keyword-only ranking, which the registry reports on every search
+    ///     as `no embedder configured`. A host that resolved a profile has
+    ///     one and passes it; the catalog is embedded at the first search,
+    ///     never at this call (see `CatalogSearcher`).
     ///   - limit: the maximum number of matches to request per call. Defaults
     ///     to `nil`, which resolves to `registry.surface.entries.count` — so
     ///     nothing the searcher legitimately matched is ever truncated.
@@ -217,6 +251,7 @@ public struct SearchToolsTool: Tool {
     public init(
         registry: MultiTool.Registry,
         librarian: RoutedLLM?,
+        embedder: RoutedEmbedder? = nil,
         limit: Int? = nil,
         sampleGenerator: RoutedLLM? = nil
     ) throws {
@@ -224,17 +259,64 @@ public struct SearchToolsTool: Tool {
             searcher: Self.makeSearcher(
                 over: registry.surface.entries,
                 selection: try Self.makeSelection(
-                    librarian: librarian, ids: registry.surface.entries.map(\.path))),
+                    librarian: librarian, ids: registry.surface.entries.map(\.path)),
+                embedder: Self.makeEmbedding(from: embedder)),
             limit: limit ?? registry.surface.entries.count,
             sample: Self.makeSample(generator: sampleGenerator)
         )
     }
 
+    /// The guidance the selection session's instructions open with, above
+    /// the `# Candidates` list the tier assembles from the catalog.
+    ///
+    /// **This text is the difference between a selection and an empty
+    /// answer on a small model, and it was measured.** The registry's
+    /// `SelectionConfig` defaults its preamble to `.selectionDefault`, a
+    /// neutral wording that speaks of "items" and closes on "return an empty
+    /// list if nothing fits". Driven through this tool over the files-and-shell
+    /// catalog with the agent's own ten queries (`AgentSurfaceDiscoveryTests`,
+    /// card `^zqz1zan`), `mlx-community/Qwen3-4B-4bit` answered eight of the
+    /// ten with `{"ids":[]}` under that default — every query for a way to
+    /// write, edit or run — and the run ended with an empty patch. Under this
+    /// preamble, which says what the candidates are (functions a program
+    /// calls) and what an answer is (the ids the program calls, the closest
+    /// ones ahead of an empty list), the same model answered all ten, with
+    /// `shell.execute` alone for "run pytest tests" and `files.write`,
+    /// `files.edit`, `files.read` for "write file, edit file, create file".
+    /// The grammar, the prompt shape and the catalog blocks were the same in
+    /// both runs; the instructions are the whole cause.
+    ///
+    /// The registry's API-librarian preamble, `.librarianDefault`, answered
+    /// all ten as well, but it over-selected: nine of nine entries for "run
+    /// pytest tests" and for "file operations: create, write, append, delete,
+    /// move". This wording keeps the "fewest that suffice, in call order"
+    /// rule that both registry preambles carry, and adds the one sentence
+    /// that decides the empty case.
+    ///
+    /// An empty answer stays legal, on purpose: an off-topic task in a catalog
+    /// that holds nothing for it must come back empty, so the model is told to
+    /// say so, and `description` tells the model what to do when it does.
+    ///
+    /// This text goes through `SelectionConfig(model:preamble:)`, the seam
+    /// the ranker offers a consumer whose candidates are not generic "items".
+    /// It is not a copy of a ranker or registry preamble. The measurement
+    /// behind it is on ranker card `^zxm99zs`, which asks the ranker to make
+    /// its default answer on a small model as well; when that lands, this
+    /// constant can go and the default can take its place.
+    static let selectionPreamble = """
+        The candidates below are the functions a program can call, each under its id. Given a \
+        task, answer with the ids of the candidates the program calls to do that task — the \
+        fewest that suffice, in call order when order matters. Prefer the closest candidates \
+        over an empty answer; answer with an empty list only when no candidate is related to \
+        the task at all.
+        """
+
     /// The selection tier over `librarian`, or `nil` when there is no
     /// librarian and discovery answers by retrieval alone.
     ///
     /// The one place the selection tier is wired. `init(registry:...)` and
-    /// `makeSessionToolsAndStaging` both build it here.
+    /// `makeSessionToolsAndStaging` both build it here. The tier's
+    /// instructions open with ``selectionPreamble``.
     ///
     /// - Parameters:
     ///   - librarian: the resolved `RoutedLLM` every selection session runs
@@ -290,25 +372,28 @@ public struct SearchToolsTool: Tool {
         // simplification — one session, one transcript, no second handle to
         // thread. It is the one change this factory must never take.
         return librarian.map { librarian in
-            SelectionConfig(model: { instructions in
-                // Traced, and traced *here*, because both ends of this
-                // factory are opaque from outside. The call itself is
-                // synchronous but not cheap — a grammar-constrained session
-                // compiles its grammar — and everything the tier then does
-                // with the session it returns happens behind the
-                // `AgentSession` seam. See `TracedAgentSession`.
-                Self.trace.span(
-                    "SearchToolsTool.makeSelectionSession",
-                    detail: "instructionCharacters=\(instructions.count)"
-                ) {
-                    TracedAgentSession(
-                        wrapped: RoutedAgentSession(
-                            session: librarian.makeGuidedSession(grammar: grammar, instructions: instructions)
-                        ),
-                        role: TracedAgentSession.selectionRole
-                    )
-                }
-            })
+            SelectionConfig(
+                model: { instructions in
+                    // Traced, and traced *here*, because both ends of this
+                    // factory are opaque from outside. The call itself is
+                    // synchronous but not cheap — a grammar-constrained session
+                    // compiles its grammar — and everything the tier then does
+                    // with the session it returns happens behind the
+                    // `AgentSession` seam. See `TracedAgentSession`.
+                    Self.trace.span(
+                        "SearchToolsTool.makeSelectionSession",
+                        detail: "instructionCharacters=\(instructions.count)"
+                    ) {
+                        TracedAgentSession(
+                            wrapped: RoutedAgentSession(
+                                session: librarian.makeGuidedSession(grammar: grammar, instructions: instructions)
+                            ),
+                            role: TracedAgentSession.selectionRole
+                        )
+                    }
+                },
+                preamble: Self.selectionPreamble
+            )
         }
     }
 

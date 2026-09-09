@@ -295,6 +295,31 @@ func makeStubSession(
         .appendingPathComponent("multitool-stub-\(ULID.generate())")
 ) async throws -> (session: RoutedSession, recorder: CollectingTranscriptRecorder) {
     let recorder = CollectingTranscriptRecorder()
+    let profile = try await makeStubProfile(recorder: recorder, in: directory)
+    return (profile.standard.makeSession(instructions: nil, tools: tools), recorder)
+}
+
+/// Stands up a router over the stub model and resolves the stub profile on it.
+///
+/// The profile is the whole seam a host resolves: its `standard` and `flash`
+/// handles vend sessions over ``ToolCallingBackend``, and its `embedding`
+/// handle answers ``StubEmbeddingContainer``'s constant vector. A test that
+/// needs a real `RoutedLLM` or `RoutedEmbedder` — a `librarian:` or an
+/// `embedder:` argument of the production factories — takes one from here
+/// with no model and no download.
+///
+/// - Parameters:
+///   - recorder: Where the router journals every transcript event. Defaults
+///     to a fresh recorder no test reads.
+///   - directory: Where the router caches. A fresh temporary directory per
+///     call keeps runs of one suite apart.
+/// - Returns: The resolved profile.
+/// - Throws: Whatever resolving the profile throws.
+func makeStubProfile(
+    recorder: CollectingTranscriptRecorder = CollectingTranscriptRecorder(),
+    in directory: URL = FileManager.default.temporaryDirectory
+        .appendingPathComponent("multitool-stub-\(ULID.generate())")
+) async throws -> LanguageModelProfile {
     let router = Router(
         cacheDir: directory,
         recorder: recorder,
@@ -302,7 +327,7 @@ func makeStubSession(
         metadataSource: StubMetadata(),
         loader: StubModelLoader()
     )
-    let profile = try await router.resolve(
+    return try await router.resolve(
         profile: ProfileDefinition(
             name: "stub",
             description: "the stub profile these fixtures run on",
@@ -312,7 +337,6 @@ func makeStubSession(
         ),
         reporting: ResolutionProgress()
     )
-    return (profile.standard.makeSession(instructions: nil, tools: tools), recorder)
 }
 
 /// Stands up a router over the stub model and takes a real ``ToolContext``

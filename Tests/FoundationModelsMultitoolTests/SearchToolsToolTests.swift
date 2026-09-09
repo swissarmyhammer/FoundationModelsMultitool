@@ -189,6 +189,26 @@ struct SearchToolsToolTests {
         #expect(searchToolsTool.name == "searchTools")
     }
 
+    // MARK: - The selection preamble (^zqz1zan)
+
+    @Test("the selection tier is seeded with a preamble that frames the candidates as functions a program calls, never the registry's neutral default")
+    func selectionTierIsSeededWithTheFunctionPreamble() async throws {
+        // A real `RoutedLLM`, because `makeSelection` wires nothing for a `nil`
+        // librarian, and the preamble is only observable on the configuration
+        // it builds for a real one.
+        let profile = try await makeStubProfile()
+
+        let config = try #require(try SearchToolsTool.makeSelection(librarian: profile.flash, ids: ["getTrip"]))
+
+        // Measured on the agent's flash model (`AgentSurfaceDiscoveryTests`):
+        // under `.selectionDefault`, which speaks of "items", the 4B answered
+        // eight of the agent's ten queries with an empty selection; under a
+        // preamble that says the candidates are functions a program calls, it
+        // answered every one of them. `selectionPreamble` carries the record.
+        #expect(config.preamble == SearchToolsTool.selectionPreamble)
+        #expect(config.preamble != String.selectionDefault)
+    }
+
     // MARK: - The generated sample leads the output
 
     /// A candidate snippet that clears every gate against a

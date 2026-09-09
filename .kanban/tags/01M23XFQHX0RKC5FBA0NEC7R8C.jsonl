@@ -1,0 +1,1 @@
+{"id":"01M23XFQHYGTTKD0YB7SAMCT03","timestamp":"2026-09-09T20:24:26.430097Z","op":"create","item_id":"01M23XFQHX0RKC5FBA0NEC7R8C","forward_patch":"--- original\n+++ modified\n@@ -0,0 +1,2 @@\n+color: 006b75\n+tag_name: defect\n","reverse_patch":"--- original\n+++ modified\n@@ -1,2 +0,0 @@\n-color: 006b75\n-tag_name: defect\n","transaction_id":null}
