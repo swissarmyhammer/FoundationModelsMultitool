@@ -271,6 +271,21 @@ comments:
     - review: clean — 0 findings over HEAD~1..HEAD; task moved to done
     - open: Done-when items 4 and 5 need FoundationModelsACPAgent task ^fksm5k5. Follow-on tasks: ranker ^kqp9e5e and ^zxm99zs, registry ^8c4wtra, this board ^0z0te3n.
   timestamp: 2026-09-09T21:43:13.829386+00:00
+- actor: wballard
+  id: 01m24k3n2ne5gqh6nkt17ggvze
+  text: |-
+    SWE-bench rerun of `astropy__astropy-12907` from FoundationModelsACPAgent card ^fksm5k5 (2026-09-09 20:38 to 21:29), with the Multitool at `33ff1d6`, `embedder: context.profile.embedding` on the mount, and mlx-swift-lm at `1988c3f` (the prompt-cache fix).
+
+    **Outcome**: `done -- 2 file(s) +22/-1 . 3076s`. The patch is the correct fix of `separable.py` (`cright[...] = right`) plus a regression test. The earlier run on the old mlx-swift-lm pin was TOO SLOW at 3622 s with an empty patch.
+
+    **searchTools table** (one call in the whole run):
+
+    | # | time | searchTools task | generateSample # | matches |
+    |---|---|---|---|---|
+    | 1 | 20:38:39.208 | Explore the codebase, find files, read files, and run code in the astropy project | 6 | 3 |
+
+    The three matches: `files.glob`, `files.read`, `shell.execute`. `no embedder configured` lines: 0; the log shows `embedding catch-up: 9/9 item(s) pending` at the first search. Bindings that ran: glob 4, read 16, execute 36; write 0, edit 0. The agent edited the two files through `shell.execute` with `python3 - <<'PYEOF'` scripts, not through a write or edit binding.
+  timestamp: 2026-09-10T02:42:19.349865+00:00
 position_column: done
 position_ordinal: ffb880
 title: 'searchTools finds no write, edit or shell tool: the discovery searcher has no embedder and the selection tier answers empty'
