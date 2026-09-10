@@ -63,10 +63,34 @@ comments:
     - evidence: 4 files — Tests/Support/MCPTestServer/LargeCatalogSurface.swift (new; holds `LargeCatalogSurface` and `makeLargeCatalogSurface(root:shellStoreDirectoryName:)`), Package.swift (`MCPTestServer` now links the `FoundationModelsMultitool` target), Tests/FoundationModelsMultitoolTests/OverBudgetSelectionOrderTests.swift (its type and its builder body are gone; a three-line wrapper calls the shared builder), IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/OverBudgetSurfaceDiscoveryTests.swift (its type and its whole builder are gone; it calls the shared builder at its one use site). Both `reuse` findings are `- [x]`. Runs: `swift test` gives 1,414 tests in 111 suites passed, 0 fail, 0 warning; `swift build --package-path IntegrationTests` gives Build complete; `swift test --package-path IntegrationTests --no-parallel --filter "OverBudgetSurfaceDiscoveryTests|AgentSurfaceDiscoveryTests"` gives 2 tests in 2 suites passed. Readings: over-budget entries=49, prefixCharacters=34,181, budget=32,000, slices=2 for each call, elapsed 3.483 s and 2.011 s; agent surface entries=9, prefixCharacters=7,601.
     - next: review
   timestamp: 2026-09-10T14:44:38.633550+00:00
+- actor: claude-code
+  id: 01m25wgyyeg733d3yxrzsq5pkn
+  text: |-
+    ### commit — changed
+    - evidence: edb1646e9ff0fae892fc0889fb00e3bee2c123a8, 6 files changed
+    - next: send the task to review
+  timestamp: 2026-09-10T14:46:07.054949+00:00
+- actor: claude-code
+  id: 01m25wnnsemhyya1kkv052xzep
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` gave 0 findings over 4 files. The 2 prior findings of the 2026-09-10 09:21 section are checked.
+    - next: The card moves to done. No work stays open.
+  timestamp: 2026-09-10T14:48:41.518750+00:00
+- actor: claude-code
+  id: 01m25wp7vhyrchktsetg7546h5
+  text: |-
+    ### finish iteration 2 — clean
+
+    - implement: changed. Both `reuse` findings are corrected. The surface type and the registry builder now live one time, in `Tests/Support/MCPTestServer/LargeCatalogSurface.swift`, which both test packages read. The root manifest links the `FoundationModelsMultitool` target into the `MCPTestServer` target, thus the shared file calls the public builder and needs no `@testable` import. No test was deleted. No assertion is weaker. The budget stays at 32,000 characters.
+    - test: green. `swift test` gives 1414 pass in 111 suites, 0 fail, 0 warning. `swift build --package-path IntegrationTests` gives 0 error. Both gated suites pass. The over-budget surface stays at 49 entries and 34,181 characters, with 2 slices.
+    - commit: edb1646, 6 files.
+    - review: clean. 0 finding over `HEAD~1..HEAD`. Both prior findings are checked. The task moved to done.
+  timestamp: 2026-09-10T14:49:00.017528+00:00
 depends_on:
 - 01M25KGJZVPVF5XW0WQ46J5HQW
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffbb80
 title: searchTools has no test above the selection budget, where the ranker splits the catalog into slices
 ---
 ## What happened

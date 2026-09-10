@@ -103,7 +103,7 @@ struct OverBudgetSurfaceDiscoveryTests {
             )
             reportOverBudgetCatalogSize(of: mounted.registry)
             #expect(
-                overBudgetPrefix(of: mounted.registry).count > SelectionConfig.defaultCapacityCharacterLimit,
+                selectionPrefix(of: mounted.registry).count > SelectionConfig.defaultCapacityCharacterLimit,
                 "the surface is at or under the budget, so this suite measures the under-budget path"
             )
 
@@ -137,16 +137,6 @@ struct OverBudgetSurfaceDiscoveryTests {
     }
 }
 
-/// The prefix the selection tier assembles over the surface of `registry` —
-/// the text whose size decides which path a search takes.
-///
-/// - Parameter registry: the registry whose surface is assembled.
-/// - Returns: the assembled prefix.
-private func overBudgetPrefix(of registry: MultiTool.Registry) -> String {
-    SelectionTier.assemblePrefix(
-        preamble: .selectionDefault, catalog: MetadataIndex(items: registry.surface.entries))
-}
-
 /// Prints the size of the catalog the selection model holds, against the
 /// budget it is measured by.
 ///
@@ -155,7 +145,7 @@ private func overBudgetPrefix(of registry: MultiTool.Registry) -> String {
 private func reportOverBudgetCatalogSize(of registry: MultiTool.Registry) {
     let entries = registry.surface.entries
     reportOverBudgetLine(
-        "entries=\(entries.count) prefixCharacters=\(overBudgetPrefix(of: registry).count) "
+        "entries=\(entries.count) prefixCharacters=\(selectionPrefix(of: registry).count) "
             + "budget=\(SelectionConfig.defaultCapacityCharacterLimit)"
     )
 }

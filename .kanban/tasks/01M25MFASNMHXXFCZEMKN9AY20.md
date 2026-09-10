@@ -1,10 +1,102 @@
 ---
 assignees:
 - claude-code
+comments:
+- actor: claude-code
+  id: 01m25wvk6cax6gbde3xz1jp1qb
+  text: |
+    Research, before any edit.
+
+    The surface holds nine entries, and this list is the ground of the correct-tool
+    declarations below:
+
+    - `files.glob` — finds files whose relative path matches a pattern, newest first.
+    - `files.read` — reads a file, whole or by line range.
+    - `files.grep` — searches file text with a regular expression.
+    - `files.write` — writes content to a file whole, atomically.
+    - `files.edit` — changes lines of an existing file.
+    - `files.patch` — one envelope that adds, updates, deletes or renames files.
+    - `shell.execute` — runs a command.
+    - `shell.getLines` — reads the captured output of one run, by line number.
+    - `shell.grepHistory` — searches the captured output of this session's runs.
+
+    How the held-out queries were written. A separate model wrote them, in its own
+    context, with no file and no repository and no tool call at all. It was given a
+    task description only: an autonomous coding agent works on a checkout of a
+    Python library, must find a defect, read the code, change the source, run the
+    test suite, and clean up after itself; it holds no fixed tool list and must ask
+    a discovery service in a short phrase. The instruction told it to write from the
+    work, and forbade any dotted identifier, camelCase name or brand name. It
+    returned fifteen phrases and nothing else. No tool name of this surface was in
+    its context, so no phrase can copy one.
+
+    The correct tools of each query were declared after the phrases were fixed, by
+    reading the nine descriptions above. The declaration therefore cannot have
+    steered the wording.
+  timestamp: 2026-09-10T14:51:55.468214+00:00
+- actor: claude-code
+  id: 01m25xs4h1d5pep23kt0pe1v3e
+  text: |
+    The counts of each round, and the run time. Measured 2026-09-10 on a warm
+    machine, model `mlx-community/Qwen3-4B-4bit`, nine-entry files-and-shell
+    surface, prefix 7,601 characters against a 32,000-character budget.
+
+    Group one — the ten queries of card `^zqz1zan`. They declare 25 correct paths
+    in all.
+
+    | round | correct found | wrong returned |
+    | --- | --- | --- |
+    | 1 | 19 | 3 |
+    | 2 | 19 | 3 |
+    | 3 | 19 | 3 |
+
+    Group two — the fifteen held-out queries. They declare 22 correct paths in all.
+
+    | round | correct found | wrong returned |
+    | --- | --- | --- |
+    | 1 | 9 | 8 |
+    | 2 | 9 | 8 |
+    | 3 | 9 | 8 |
+
+    The three rounds of each group answered identically, query by query. The tier
+    decodes under a grammar, so it is deterministic here. That is why the level of
+    group one sits at the measurement (19) and not under it.
+
+    Run time. Group one takes 26.4 s for the model load plus thirty calls. Group
+    two takes 35.0 s for the model load plus forty-five calls. The two suites
+    together take 61.4 s of test time, and 1 m 6 s of wall time with the build. The
+    time limits are 5 minutes and 6 minutes, each far over a cold model load.
+
+    Six of the fifteen held-out queries find no declared path in any round, so the
+    new suite is red. The reading and the six queries are on card `^p06rh7z`.
+  timestamp: 2026-09-10T15:08:03.489539+00:00
+- actor: claude-code
+  id: 01m25xsgkctbc7th86n8m0vtj8
+  text: |
+    ### implement — stuck
+
+    - evidence: 5 files. New `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/HeldOutSurfaceDiscoveryTests.swift` (fifteen held-out queries, three rounds, declared correct paths, level 15). New `Support/DiscoveryGrading.swift` (the graded query, the grade, the round, the three-round runner, the per-query floor). New `Support/FilesAndShellSurface.swift` (the shared nine-entry mount and the catalog-size line). `AgentSurfaceDiscoveryTests.swift` now runs three rounds, declares the correct paths of its ten queries, keeps every assertion of card `^zqz1zan` whole, and holds a level of 19. `Support/CatalogFeedback.swift` gains `selectionPrefix(of:)`, which `OverBudgetSurfaceDiscoveryTests.swift` now takes in place of its own copy. The held-out queries were written by a separate model from a task description alone, with no file, no repository and no tool call, and no tool name in its context; the correct paths were declared afterwards by a reader of the nine tool descriptions. Counts: group one 19/19/19 correct and 3/3/3 wrong over three rounds; group two 9/9/9 correct and 8/8/8 wrong over three rounds. Run time 26.4 s and 35.0 s, 61.4 s for both suites. `swift test` at the root passed 1,414 tests in 111 suites. `swift build --package-path IntegrationTests --build-tests` is clean. `OverBudgetSurfaceDiscoveryTests` still passes.
+    - next: a person decides. Every acceptance criterion of this card is met, but the new suite is red, and it is red on the defect it was written to look for: six of the fifteen held-out queries find no declared path in any round, and one gets an empty answer. The rules of this card forbid both ways to make it green, so the level stays at 15 and the defect is card `^p06rh7z`. Either fix `^p06rh7z` first, or say that the held-out suite may stand red until it is fixed.
+  timestamp: 2026-09-10T15:08:15.852426+00:00
+- actor: claude-code
+  id: 01m25xw3g18j347gqcj32a6wgg
+  text: |-
+    ### finish iteration 1 — stuck
+
+    - implement: changed, then stuck. The held-out suite, the three-round runner and the level grade are all in the tree. Six of the fifteen held-out queries find no declared path, thus the suite is red.
+    - test: the root suite gives 1414 pass, 0 fail. The nested package builds. `OverBudgetSurfaceDiscoveryTests` and `AgentSurfaceDiscoveryTests` pass. `HeldOutSurfaceDiscoveryTests` is red.
+    - review: not run this iteration.
+
+    **The suite is red because it found the defect it was made to look for.** That is the correct result of this card, not a failure of it. The card forbids the two ways to make it green: do not lower the level, and do not change a held-out query to match what the tier answers.
+
+    The defect has its own card, `^p06rh7z`. The finish loop goes to that card next. When the tier finds the shell verbs and answers the test-suite query, this suite goes green and this card closes.
+
+    Nothing is pushed. The commit is local, thus no CI run sees the red suite before a person pushes.
+  timestamp: 2026-09-10T15:09:40.737431+00:00
 depends_on:
 - 01M25KGJZVPVF5XW0WQ46J5HQW
-position_column: todo
-position_ordinal: '8280'
+position_column: doing
+position_ordinal: '80'
 title: The gated discovery suite is graded on the ten queries its own preamble was chosen with
 ---
 ## What happened
@@ -37,15 +129,23 @@ So the suite grades the answer against its own answer key. It shows that the wor
 
 ## Acceptance Criteria
 
-- [ ] A held-out query set is in the suite, and this card records how it was written.
-- [ ] The two groups are reported apart.
-- [ ] Each group runs three rounds, and the counts of each round are on this card.
-- [ ] The correct tools of each query are declared, and the suite asserts on the count found.
-- [ ] The count of wrong tools is printed for each query.
-- [ ] This card states the run time of the new suite.
+- [x] A held-out query set is in the suite, and this card records how it was written.
+- [x] The two groups are reported apart.
+- [x] Each group runs three rounds, and the counts of each round are on this card.
+- [x] The correct tools of each query are declared, and the suite asserts on the count found.
+- [x] The count of wrong tools is printed for each query.
+- [x] This card states the run time of the new suite.
 
 ## Tests
 
 - [ ] `swift test --package-path IntegrationTests --no-parallel`, for the new suite and for `AgentSurfaceDiscoveryTests`.
+
+  Both suites were run three times. `AgentSurfaceDiscoveryTests` passes.
+  `HeldOutSurfaceDiscoveryTests` fails, and it fails on the defect it was
+  written to look for: 9 correct paths of 22 in every round, and six of the
+  fifteen queries find no declared path at all. The rules of this card forbid
+  the two ways to make it green — lowering the level to the measurement, and
+  making an assertion weaker — so the item stays unchecked and the defect is
+  card `^p06rh7z`.
 
 #discovery #search-tools #test-coverage

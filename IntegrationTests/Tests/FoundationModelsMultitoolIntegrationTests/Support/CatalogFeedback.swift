@@ -1,4 +1,21 @@
 import Foundation
+import FoundationModelsMetadataRegistry
+
+@testable import FoundationModelsMultitool
+
+/// The prefix the selection tier assembles over the surface of `registry` —
+/// the text the selection model holds in its instructions, and whose size
+/// decides whether a search takes the under-budget path or the sliced one.
+///
+/// One reader for every gated suite that reports or asserts on that size, so
+/// no suite assembles the prefix its own way.
+///
+/// - Parameter registry: the registry whose surface is assembled.
+/// - Returns: the assembled prefix.
+func selectionPrefix(of registry: MultiTool.Registry) -> String {
+    SelectionTier.assemblePrefix(
+        preamble: .selectionDefault, catalog: MetadataIndex(items: registry.surface.entries))
+}
 
 /// The banner line every spliced catalog block opens with, up to the path.
 ///
