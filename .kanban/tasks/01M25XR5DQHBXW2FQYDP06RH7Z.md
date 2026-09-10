@@ -68,10 +68,24 @@ comments:
     - evidence: cause — `APISurface.Entry.summaryBlock` gives the selection model the tool description alone (card `^0z0te3n`), and every description said what the verb does to its own data, never the work a person brings; the words "test suite", "build", "script", "printed" and "log" stood nowhere in the nine-entry prefix, thus the empty answer and the invisible shell verbs. Fix — a leading work sentence, and a boundary sentence where one verb was taking another's work, in all nine descriptions: `Sources/FoundationModelsMultitool/Capabilities/Shell/Execute.swift`, `GetLines.swift`, `GrepHistory.swift`, `Sources/FoundationModelsMultitool/Capabilities/Files/Read.swift`, `Write.swift`, `Edit.swift`, `Patch.swift`, `Glob.swift`, `Grep.swift`, plus the new guard `Tests/FoundationModelsMultitoolTests/SelectionWordingTests.swift`. Held-out counts, three rounds each: 9 of 22 correct with 8 undeclared and 6 queries answering nothing declared, before; 16 of 22 correct with 2 undeclared and 0 such queries, after. Agent surface: 19 of 25 with 3 undeclared, before and after, unchanged. `swift test` at the root: 1415 tests in 112 suites passed. `swift build --package-path IntegrationTests`: complete. `swift test --package-path IntegrationTests --no-parallel`: 24 tests in 17 suites passed, all three discovery suites among them; the one warning is SwiftPM's known `missing creator for mutated node` on the mlx-swift Cmlx bundle. No level lowered, no query changed, no package checkout edited.
     - next: review.
   timestamp: 2026-09-10T15:37:35.927923+00:00
+- actor: claude-code
+  id: 01m260bewc3zt3dtsa5vhxy9pf
+  text: |-
+    ### commit — changed
+    - evidence: f5e895c, 14 files changed (9 tool description files, 1 new test file, 2 kanban task files, 288 insertions, 34 deletions)
+    - next: run test and review on the change
+  timestamp: 2026-09-10T15:53:01.068231+00:00
+- actor: claude-code
+  id: 01m260q56227bwymjh84qqrc4x
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` with the local backend. 0 findings, 0 confirmed, 0 refuted, over 7 tries. The engine read 10 files. It did not read 4 kanban files, because a rule tells it to ignore them. No earlier `## Review Findings` list is on this card.
+    - next: The card goes to done. No work stays open.
+  timestamp: 2026-09-10T15:59:24.354457+00:00
 depends_on:
 - 01M25MFASNMHXXFCZEMKN9AY20
-position_column: doing
-position_ordinal: '8180'
+position_column: done
+position_ordinal: ffbc80
 title: The selection tier misses the shell verbs on held-out queries, and answers nothing for one of them
 ---
 ## What the held-out suite found

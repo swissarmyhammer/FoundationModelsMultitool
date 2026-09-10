@@ -100,6 +100,61 @@ comments:
     - evidence: c940b21, 14 files changed
     - next: none. The commit is local and not pushed. The commit message states that HeldOutSurfaceDiscoveryTests is RED on purpose and names card ^p06rh7z as the defect it measures.
   timestamp: 2026-09-10T15:10:21.460033+00:00
+- actor: claude-code
+  id: 01m2610gpd1mq1c98ha69qmbxv
+  text: |
+    This card is no longer stuck.
+
+    The held-out suite was red when it was written. That redness was the defect the
+    suite was built to find. Card `^p06rh7z` corrected the cause at commit f5e895c:
+    it added the missing work-words to the descriptions of nine tools. It did not
+    correct the queries.
+
+    No held-out query was changed. No level was lowered.
+
+    I compared the two test files with commit c940b21. Both are byte for byte the
+    same:
+
+    - `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/HeldOutSurfaceDiscoveryTests.swift`
+      — SHA-1 316b204b6afe6d512387bfebcb49631f1741274b at c940b21 and in the tree.
+      Thus `heldOutRoundCorrectLevel` stays at 15.
+    - `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/AgentSurfaceDiscoveryTests.swift`
+      — SHA-1 11525c88d7ef2501d61676dde86a95a9bc76af9e at c940b21 and in the tree.
+      Thus the ten query strings of card `^zqz1zan` stay as they were.
+
+    The current measurement, on the real flash model, three rounds of each group:
+
+    | group | declared correct paths | correct found, each round | undeclared returned, each round |
+    | --- | --- | --- | --- |
+    | held-out queries | 22 | 16 | 2 |
+    | the ten queries of `^zqz1zan` | 25 | 19 | 3 |
+
+    The root suite passes 1415 tests in 112 suites. The full gated bundle passes 24
+    tests in 17 suites in 845 seconds.
+
+    The description now shows the Tests item as done, and it holds this measurement.
+  timestamp: 2026-09-10T16:04:31.053217+00:00
+- actor: claude-code
+  id: 01m2610tmxy0gb8mbd3q47zwqb
+  text: |
+    ### implement — changed
+
+    - evidence: The card description only. No source file and no test file was
+      changed. The Tests item is now `- [x]`, and all six acceptance criteria stay
+      `- [x]`. The description holds two new parts: "The measurement" and "Why the
+      suite was red, and what made it green". `heldOutRoundCorrectLevel` and the ten
+      query strings of card `^zqz1zan` are unchanged since commit c940b21: both test
+      files are byte for byte the same as at that commit (SHA-1
+      316b204b6afe6d512387bfebcb49631f1741274b and
+      11525c88d7ef2501d61676dde86a95a9bc76af9e). `swift test` at the root: 1415
+      tests in 112 suites, pass. `swift test --package-path IntegrationTests
+      --no-parallel --filter "HeldOutSurfaceDiscoveryTests|AgentSurfaceDiscoveryTests"`:
+      2 tests in 2 suites, pass. The held-out group gave 16 correct of 22 declared
+      with 2 undeclared, in each of three rounds. The ten recorded queries gave 19
+      correct of 25 with 3 undeclared, in each of three rounds. The full gated
+      bundle passes 24 tests in 17 suites in 845 seconds.
+    - next: the card is ready for `/review`. It stays in the doing column.
+  timestamp: 2026-09-10T16:04:41.245068+00:00
 depends_on:
 - 01M25KGJZVPVF5XW0WQ46J5HQW
 position_column: doing
@@ -143,16 +198,39 @@ So the suite grades the answer against its own answer key. It shows that the wor
 - [x] The count of wrong tools is printed for each query.
 - [x] This card states the run time of the new suite.
 
+## The measurement
+
+This is the current measurement, on the real flash model. The three rounds gave
+the same counts.
+
+| group | declared correct paths | correct found, each round | undeclared returned, each round |
+| --- | --- | --- | --- |
+| held-out queries | 22 | 16 | 2 |
+| the ten queries of `^zqz1zan` | 25 | 19 | 3 |
+
+The root suite passes 1415 tests in 112 suites. The full gated bundle passes 24
+tests in 17 suites in 845 seconds.
+
+## Why the suite was red, and what made it green
+
+The suite was red when it was written. That redness was the defect the suite was
+built to find, not a fault of the suite.
+
+Card `^p06rh7z` corrected the cause at commit f5e895c. It added the missing
+work-words to the descriptions of nine tools. It did not correct the queries.
+
+No held-out query was changed. No level was lowered. The file
+`HeldOutSurfaceDiscoveryTests.swift` and the file `AgentSurfaceDiscoveryTests.swift`
+are byte for byte the same as at commit c940b21, thus `heldOutRoundCorrectLevel`
+stays at 15 and the ten query strings of card `^zqz1zan` stay as they were.
+
 ## Tests
 
-- [ ] `swift test --package-path IntegrationTests --no-parallel`, for the new suite and for `AgentSurfaceDiscoveryTests`.
+- [x] `swift test --package-path IntegrationTests --no-parallel`, for the new suite and for `AgentSurfaceDiscoveryTests`.
 
-  Both suites were run three times. `AgentSurfaceDiscoveryTests` passes.
-  `HeldOutSurfaceDiscoveryTests` fails, and it fails on the defect it was
-  written to look for: 9 correct paths of 22 in every round, and six of the
-  fifteen queries find no declared path at all. The rules of this card forbid
-  the two ways to make it green — lowering the level to the measurement, and
-  making an assertion weaker — so the item stays unchecked and the defect is
-  card `^p06rh7z`.
+  Both suites pass. `HeldOutSurfaceDiscoveryTests` finds 16 correct paths of 22
+  in each of three rounds, which is over the level of 15.
+  `AgentSurfaceDiscoveryTests` finds 19 correct paths of 25 in each of three
+  rounds.
 
 #discovery #search-tools #test-coverage
