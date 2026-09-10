@@ -47,8 +47,32 @@ comments:
     - evidence: The trigram signal carries the miss. It is a Dice overlap over the whole rendered block, so for a spelled-out intent it becomes an order by block size: `shell.execute` has the largest block of the nine (703 trigrams) and `shell.getLines` the smallest (473). BM25 and cosine each named `shell.execute` first for all three guesses; the trigram list outvoted them in the fusion. Fix: `MultiTool.hintSearchWeights` in `Sources/FoundationModelsMultitool/RegistryBundle.swift` drops the trigram weight for the hint searcher alone, because tier 1 of `UnknownToolHint` already answers a wrong spelling and `searchTools` keeps every signal. Files: `Sources/FoundationModelsMultitool/RegistryBundle.swift`, `Tests/FoundationModelsMultitoolTests/HintRankingTests.swift` (new fast guard, red before the fix and green after), `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/UnknownToolHintLiveTests.swift` (three cases added, no assertion weakened). The three guesses each answer `shell.execute` now: `terminal.runCommand` shell.execute, `bash.run` shell.execute, `terminal.runTests` shell.execute. `process.spawn` still answers shell.execute and `weather.getForecast` still answers shell.getLines. `swift test` at the root: 1423 tests in 114 suites passed, no warning. `swift build --package-path IntegrationTests`: clean. Gated suites, 6 tests in 6 suites passed: agentSurfaceDiscovery 19 correct and 3 wrong in each of 3 rounds; heldOutSurfaceDiscovery 16 and 2 in each of 3 rounds; retrievalTextChoice unchanged (agentSurface declaredTopThree 19, heldOut 16); noDescription and overBudget pass.
     - next: review
   timestamp: 2026-09-10T22:46:51.597483+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m26r3js03861g2n7fkzxrxfb
+  text: |-
+    ### commit — changed
+    - evidence: c4d586c fix(hint): stop the trigram signal from naming shell.getLines — 7 files changed
+    - next: none. The task is ready for review.
+  timestamp: 2026-09-10T22:48:08.736349+00:00
+- actor: claude-code
+  id: 01m26re6rfzb7cphszmnfb17r9
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` with the local engine over commit c4d586c. 0 findings, 0 confirmed, 0 refuted, 7 tries. The engine read RegistryBundle.swift, HintRankingTests.swift and UnknownToolHintLiveTests.swift. It did not read the four .kanban files, because an ignore rule holds them out. No earlier Review Findings list is on this card.
+    - next: The card goes to done.
+  timestamp: 2026-09-10T22:53:56.879751+00:00
+- actor: claude-code
+  id: 01m26resx6q40m151md8vjt58z
+  text: |-
+    ### finish iteration 1 — clean
+
+    - implement: changed. The card named the wrong cause, and the measurement refuted it: `shell.execute` holds more of each word than `shell.getLines`. The true cause is the character-trigram signal. It is a Dice overlap over the whole rendered block, thus for a spelled-out intent the score falls to the reciprocal of the block size, and `shell.execute` renders the largest block of the nine. The keyword signal and the embedding signal each named `shell.execute` first, and the trigram list outvoted both. The fix drops the trigram weight for the hint searcher alone. A wording fix was written, measured and thrown away, and that dead end is on the card.
+    - test: green. `swift test` gives 1423 pass in 114 suites, no warning. `swift build --package-path IntegrationTests` is clean. Six gated suites pass, and every count stays where it was.
+    - commit: c4d586c, 7 files.
+    - review: clean. 0 finding over `HEAD~1..HEAD`. The task moved to done.
+  timestamp: 2026-09-10T22:54:16.486932+00:00
+position_column: done
+position_ordinal: ffc180
 title: The did-you-mean hint names the wrong shell verb for a run-a-command guess
 ---
 ## What happened

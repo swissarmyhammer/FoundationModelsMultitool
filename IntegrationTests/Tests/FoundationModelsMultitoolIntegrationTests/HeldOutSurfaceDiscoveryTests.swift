@@ -8,9 +8,9 @@ import Testing
 /// The test resolves a 4B model and makes fifteen `searchTools` calls in each
 /// of ``discoveryRoundCount`` rounds, and each call is one grammar-constrained
 /// generation of a few tokens. Measured on a warm machine on 2026-09-10, the
-/// model load plus forty-five such calls took 32.6 s. Six minutes stands far
-/// over that and over a cold load, and a run that reaches it is parked rather
-/// than slow.
+/// whole test — the model load plus forty-five such calls — took 40.3 s. Six
+/// minutes stands far over that and over a cold load, and a run that reaches
+/// it is parked rather than slow.
 private let heldOutTimeLimitMinutes = 6
 
 /// The label the printed result and skip lines carry.
@@ -95,15 +95,34 @@ let heldOutQueries = [
 /// at least one correct path — and a run that answered one correct path for
 /// every query while burying it under wrong ones would clear it.
 ///
-/// **This level is the standard the surface owes a host, and the model does
-/// not meet it today.** It is set at one declared path for each of the fifteen
+/// **This level is the standard the surface owes a host, and the model meets
+/// it today.** It is set at one declared path for each of the fifteen
 /// queries, which is the least a group of this shape can score while every
-/// query is still answered. Measured on 2026-09-10, all three rounds scored 9
-/// of the 22 declared paths and returned 8 undeclared ones, and six queries
-/// found no declared path at all in any round. The suite is therefore red on a
-/// real, repeating defect, recorded on card `^kn9ay20`, and the level is not
-/// lowered to the measurement to make it green: a number set to 9 would
-/// enshrine the defect as the standard.
+/// query is still answered. Measured on 2026-09-10, all three rounds scored
+/// 16 of the 22 declared paths, which is over this level, and each round
+/// returned 2 undeclared paths. Every query found a declared path, and the
+/// suite passes.
+///
+/// **The history, because it is why this group exists.** When card `^kn9ay20`
+/// wrote this group, all three rounds scored 9 of the 22 declared paths and
+/// returned 8 undeclared ones, and six queries found no declared path in any
+/// round. That red result was the defect the group was written to find. The
+/// level was not lowered to 9, because a level at 9 makes the defect the
+/// standard. Card `^p06rh7z` then wrote the nine tool descriptions again, so
+/// that each one names the work a person brings and not the mechanism of the
+/// verb, and that text is what the selection prompt and the retrieval tier
+/// read. The queries, the declared paths and this level did not change: the
+/// card corrected the cause, and not the measurement.
+///
+/// **Why this level stays at 15 while the measurement is 16.** The number
+/// comes from the shape of the group, and not from the score of one model on
+/// one day. ``agentSurfaceRoundCorrectLevel`` can stand at its measurement,
+/// because those ten queries are the record of one failure that is now
+/// corrected. These fifteen queries are held out, so a level at the score of
+/// today makes a later, honest change of model or of wording look like a
+/// defect. Two runs on 2026-09-10 scored 16 in each of their rounds, and a
+/// later card can lift this level to 16 on that record. The level is never
+/// lowered to make a run green. Card `^fdaxnjw` holds this decision.
 let heldOutRoundCorrectLevel = 15
 
 /// The gated discovery test over queries nobody chose the preamble with.

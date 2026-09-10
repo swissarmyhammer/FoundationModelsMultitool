@@ -35,10 +35,14 @@ private let overBudgetQueries = [
 /// The gated discovery test over a surface above the selection budget.
 ///
 /// **What this suite establishes.** `AgentSurfaceDiscoveryTests` drives a
-/// nine-entry surface, whose assembled prefix is about 7,600 characters
-/// against a 32,000-character budget, so every run of it takes the
-/// under-budget path of `SelectionTier.search(intent:limit:)`. This suite
-/// takes the other path. It mounts the files and shell capabilities beside
+/// nine-entry surface, whose assembled prefix measured about 7,600 characters
+/// against a 32,000-character budget when card `^46j5hqw` read it. Card
+/// `^p06rh7z` wrote the nine tool descriptions again after that reading, so
+/// the size today is not that number; each under-budget run prints the size
+/// it assembled, and the surface stays far under the budget. Every run of it
+/// therefore takes the under-budget path of
+/// `SelectionTier.search(intent:limit:)`. This suite takes the other path.
+/// It mounts the files and shell capabilities beside
 /// four connected MCP servers of ten verbs each — the shape a host builds
 /// when it connects an issue tracker, a database, an observability stack and
 /// a delivery pipeline — and that catalog assembles a prefix above the
