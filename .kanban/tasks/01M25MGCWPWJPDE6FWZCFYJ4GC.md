@@ -98,8 +98,32 @@ comments:
 
     - next: review.
   timestamp: 2026-09-10T21:47:00.636888+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m26mnz8dcasys0f76fwpmkh2
+  text: |-
+    ### commit — changed
+    - evidence: 1a3f304 — 3 files changed, 126 insertions(+), 25 deletions(-)
+    - next: send the task on to the review step.
+  timestamp: 2026-09-10T21:48:17.037411+00:00
+- actor: claude-code
+  id: 01m26mtz2920v1m3djkarwhh1w
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` gives 0 findings. The two findings of the section `## Review Findings (2026-09-10 17:32)` are checked.
+    - next: The card goes to the column done. No work stays open.
+  timestamp: 2026-09-10T21:51:00.681766+00:00
+- actor: claude-code
+  id: 01m26mvhy9bafgmja1d7ckhhc2
+  text: |-
+    ### finish iteration 2 — clean
+
+    - implement: changed, in one test file. The `swift/immutability` cause stood in three places, not the two the review named: a dictionary, an array and a tuple were each built with a `var` accumulator in a loop. All three are gone. No test was removed. No assertion is weaker. No production source changed.
+    - test: green. `swift test` gives 1422 pass in 113 suites. `swift build --package-path IntegrationTests` gives 0 error. The gated suite reports the same counts as before the fix.
+    - commit: 1a3f304, 3 files.
+    - review: clean. 0 finding over `HEAD~1..HEAD`. Both prior findings are checked. The task moved to done.
+  timestamp: 2026-09-10T21:51:20.009719+00:00
+position_column: done
+position_ordinal: ffbf80
 title: An MCP tool description goes into the selection prompt with no cap, and an empty one makes the tool unpickable
 ---
 ## What happened

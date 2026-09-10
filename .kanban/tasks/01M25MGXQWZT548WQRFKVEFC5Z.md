@@ -1,8 +1,99 @@
 ---
 assignees:
 - claude-code
-position_column: todo
-position_ordinal: '8580'
+comments:
+- actor: claude-code
+  id: 01m26ns8fzrnzb080sgsv7nyfk
+  text: |-
+    Research done, and it changes the shape of the question the card asks.
+
+    `renderBlock()` does three jobs in the registry, not two:
+
+    - `MetadataIndex.buildEntry(item:)` tokenizes and trigrams it (`Catalog/MetadataIndex.swift`).
+    - `MetadataIndex.pendingEmbeddings()` hands it to the embedder (`Catalog/MetadataIndex+Embedding.swift`).
+    - `MetadataSearcher.matches(fromHits:in:)` gives it back as `Match.block`, which `SearchToolsTool` splices verbatim into the main session.
+
+    So the third job holds the other two. A consumer cannot make the keyword half read the description without also taking the signature away from the text the main model reads to write the call. That rules out the description-for-both setting as something this package could ship, whatever it measures.
+
+    The registry gives no way to use one text for keyword ranking and another for the embedder, exactly as the card expects. The measurement therefore uses an instrument in the integration target and not a mechanism here: a `TextEmbedding` that swaps the block for the summary block on the way in. The registry hands the embedder the same text it indexes, so a swap at that door is the only way to read the split, and a query never matches a block, so a query travels unchanged.
+
+    The measurement runs on `plumbingProbeProfile`, not on `agentDiscoveryProfile`. Nothing generates: the selection tier is off, so the reading is the embedder's, and every profile of this target names the same `CLIRunner.embeddingModel`. That is the test `plumbingProbeProfile` states for which suites may take it, and `UnknownToolHintLiveTests` takes it for the same reason.
+
+    The queries and the grading types come from the two suites that own them. The new suite reads `agentSurfaceQueries`, `heldOutQueries` and `GradedDiscoveryQuery` and writes no query of its own.
+  timestamp: 2026-09-10T22:07:33.375851+00:00
+- actor: claude-code
+  id: 01m26nt92hnxevkk0gj0c7qd31
+  text: |-
+    ## The measurement
+
+    `RetrievalTextSurfaceDiscoveryTests`, in the nested `IntegrationTests` package. Three settings over the same nine-entry files-and-shell surface, the same embedder and the same twenty-five queries, with the selection tier switched off — `.retrieval` mode, no `SelectionConfig` — so only retrieval answers. Each query asks for the whole catalog, so every declared path has a place to report. Run 2026-09-10 on `plumbingProbeProfile`. Two runs printed the same numbers to the digit: nothing on this path samples.
+
+    Surface size: 9 entries, 18,720 characters of block against 9,057 characters of summary block.
+
+    ### Where the correct tool ranks, for each query, in each setting
+
+    Each cell holds every path a reader declared correct for that query, with the place it took. A dash would mean no signal ranked it; there is no dash, so every declared path ranked in every setting.
+
+    | query | text | block/block | description/description | block/description |
+    |---|---|---|---|---|
+    | agentSurface q1 | Search the astropy codebase for files, read code, and run tests | files.glob:2 files.grep:1 files.read:6 shell.execute:3 | files.glob:2 files.grep:1 files.read:5 shell.execute:4 | files.glob:2 files.grep:1 files.read:6 shell.execute:4 |
+    | agentSurface q2 | list files and read file contents | files.glob:4 files.read:2 | files.glob:3 files.read:1 | files.glob:4 files.read:1 |
+    | agentSurface q3 | grep search for text pattern in files | files.grep:1 | files.grep:1 | files.grep:1 |
+    | agentSurface q4 | run a shell command or python script, execute code | shell.execute:1 | shell.execute:1 | shell.execute:1 |
+    | agentSurface q5 | run pytest tests, execute | shell.execute:1 | shell.execute:1 | shell.execute:1 |
+    | agentSurface q6 | write file, edit file, create file | files.edit:3 files.patch:2 files.write:1 | files.edit:2 files.patch:3 files.write:1 | files.edit:2 files.patch:3 files.write:1 |
+    | agentSurface q7 | edit code, modify source file, patch | files.edit:4 files.patch:1 | files.edit:2 files.patch:1 | files.edit:2 files.patch:1 |
+    | agentSurface q8 | apply changes to a file, save file contents | files.edit:5 files.patch:1 files.write:3 | files.edit:1 files.patch:2 files.write:3 | files.edit:1 files.patch:2 files.write:3 |
+    | agentSurface q9 | file operations: create, write, append, delete, move | files.edit:6 files.patch:1 files.write:2 shell.execute:5 | files.edit:4 files.patch:1 files.write:2 shell.execute:5 | files.edit:3 files.patch:1 files.write:2 shell.execute:5 |
+    | agentSurface q10 | create a new text file with given content on disk | files.patch:2 files.write:1 | files.patch:2 files.write:3 | files.patch:1 files.write:3 |
+    | heldOut q1 | show me the files and folders in this checkout | files.glob:4 shell.execute:3 | files.glob:1 shell.execute:7 | files.glob:2 shell.execute:8 |
+    | heldOut q2 | i need to read the source file where the defect lives | files.read:1 | files.read:1 | files.read:1 |
+    | heldOut q3 | find every place in the code that mentions this function name | files.grep:3 | files.grep:2 | files.grep:4 |
+    | heldOut q4 | open a file and look at one region of it closely | files.read:1 | files.read:1 | files.read:1 |
+    | heldOut q5 | change a few lines in an existing source file | files.edit:6 files.patch:3 | files.edit:5 files.patch:3 | files.edit:5 files.patch:3 |
+    | heldOut q6 | rewrite the whole contents of a module | files.patch:4 files.write:1 | files.patch:5 files.write:1 | files.patch:3 files.write:2 |
+    | heldOut q7 | create a new file to hold a regression test | files.patch:3 files.write:1 | files.patch:2 files.write:1 | files.patch:2 files.write:1 |
+    | heldOut q8 | i want to run the project test suite now | shell.execute:1 | shell.execute:2 | shell.execute:2 |
+    | heldOut q9 | run only the one test that reproduces the bug | shell.execute:4 | shell.execute:3 | shell.execute:4 |
+    | heldOut q10 | i need to see what the failing test printed | shell.getLines:1 shell.grepHistory:2 | shell.getLines:1 shell.grepHistory:2 | shell.getLines:1 shell.grepHistory:2 |
+    | heldOut q11 | run a shell command in the project directory | shell.execute:1 | shell.execute:2 | shell.execute:2 |
+    | heldOut q12 | read the log file that the last run wrote | files.read:1 shell.getLines:3 | files.read:1 shell.getLines:2 | files.read:1 shell.getLines:2 |
+    | heldOut q13 | delete a leftover temporary directory | shell.execute:1 | shell.execute:2 | shell.execute:2 |
+    | heldOut q14 | remove a scratch file i made earlier | files.patch:1 shell.execute:7 | files.patch:1 shell.execute:8 | files.patch:1 shell.execute:9 |
+    | heldOut q15 | check which source files i have changed so far | shell.execute:5 | shell.execute:5 | shell.execute:5 |
+
+    ### The totals of each setting
+
+    | setting | group | rank 1 | top 3 | mean best rank | declared paths in the top 3 |
+    |---|---|---|---|---|---|
+    | block/block | agentSurface | 9/10 | 10/10 | 1.10 | 17/23 |
+    | block/block | heldOut | 10/15 | 13/15 | 1.87 | 16/22 |
+    | description/description | agentSurface | 9/10 | 10/10 | 1.10 | 19/23 |
+    | description/description | heldOut | 8/15 | 14/15 | 1.80 | 17/22 |
+    | block/description | agentSurface | 10/10 | 10/10 | 1.00 | 19/23 |
+    | block/description | heldOut | 6/15 | 12/15 | 2.13 | 16/22 |
+
+    ## The choice: the full block, for the keyword index and the embedder alike
+
+    The card thought the embedder was the weak half. The held-out group says the opposite. Give the embedder the description alone and it becomes the worst of the three settings there, on all three counts: 6 against 10 at rank one, 12 against 13 in the top three, a mean of 2.13 against 1.87. It wins only on the ten queries a coding agent wrote while it hunted for these tools, and those queries are full of the words the signature carries.
+
+    The description-for-both setting reads a little better on the held-out group (14 in the top three against 13, a mean of 1.80 against 1.87) and costs half as much to embed. It is still not taken, because `renderBlock()` also gives the main session the text it reads to write the call. The gain is inside one rank place; the loss would be the call site.
+
+    So the shipped conformance does not change, and it is now a measured choice instead of a default. The choice and these numbers stand in the doc comment of `Sources/FoundationModelsMultitool/Surface/APISurface+SearchableMetadata.swift`.
+
+    ## The registry card
+
+    `^kh2ttmm`, in `FoundationModelsMetadataRegistry`, at `.kanban/tasks/01M26P0000R9VXQ7B3DKH2TTMM.md`. It asks for `renderIndexedText()` and `renderEmbeddedText()`, each defaulting to `renderBlock()`, so a consumer can narrow either retrieval half without touching the verbatim block. It carries this measurement as its reason, and it names the point that `Entry.blockHash` must then key on the embedded text or a changed embedded text keeps a stale vector.
+  timestamp: 2026-09-10T22:08:06.737074+00:00
+- actor: claude-code
+  id: 01m26nxb1y60ck6gthfmzz7tbj
+  text: |-
+    ### implement — changed
+    - evidence: three settings measured with the selection tier off, over the ten queries of `^zqz1zan` and the fifteen held-out queries of `^kn9ay20`, on 2026-09-10, and repeated to the digit. block/block: agentSurface 9/10 at rank one, 10/10 in the top three, mean best rank 1.10; heldOut 10/15, 13/15, 1.87. description/description: agentSurface 9/10, 10/10, 1.10; heldOut 8/15, 14/15, 1.80. block/description: agentSurface 10/10, 10/10, 1.00; heldOut 6/15, 12/15, 2.13. Every declared path of every query ranked in every setting. Surface size 9 entries, 18,720 block characters against 9,057 summary characters. Choice: keep the full block for the keyword index and the embedder alike, because the split the card suspected would help is the worst of the three on the held-out group, and because the description-for-both setting cannot be taken at all — `renderBlock()` also gives the main session the text it reads to write the call. Registry card `^kh2ttmm` asks for the two seams that would open that door. Files: `Sources/FoundationModelsMultitool/Surface/APISurface+SearchableMetadata.swift` (doc comment: the choice and the numbers), new `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/RetrievalTextSurfaceDiscoveryTests.swift`, new `FoundationModelsMetadataRegistry/.kanban/tasks/01M26P0000R9VXQ7B3DKH2TTMM.md` and its ledger. Tests: root `swift test` 1,422 tests in 113 suites, all green, no warning; `swift build --package-path IntegrationTests` clean; the five gated discovery suites 5 tests in 5 suites, all green (agentSurface 19 correct and 3 undeclared in each of three rounds; heldOut 16 correct and 2 undeclared in each of three rounds; no-description, over-budget and the new retrieval-text suite green). No production behavior changed: the shipped conformance is the same code, and the card is now a measured decision instead of a default.
+    - next: review. One thing found on the way and put on its own card `^fdaxnjw`: the doc comment of `HeldOutSurfaceDiscoveryTests` says the suite is red at 9 of 22, and it now scores 16 in every round and passes, most likely because card `^p06rh7z` rewrote the nine descriptions.
+  timestamp: 2026-09-10T22:09:47.070147+00:00
+position_column: doing
+position_ordinal: '80'
 title: Decide whether the retrieval index and the embedder read the full block or the description
 ---
 ## What happened
@@ -42,16 +133,22 @@ This is not stated anywhere as a decision. It is what the default of the protoco
 - Do not edit a package checkout under `.build/checkouts`.
 - A setting that is not measured is not a result.
 
+## The answer
+
+Measured by `RetrievalTextSurfaceDiscoveryTests` on 2026-09-10, and repeated to the digit. The choice is **the full block, for the keyword index and the embedder alike** — the shipped conformance, unchanged, and now a measured choice instead of a default. Giving the embedder the description alone is the worst of the three settings on the held-out group. The description-for-both setting reads a little better there, but `renderBlock()` also gives the main session the text it reads to write the call, so a consumer cannot take it. The registry card that would open that door is `^kh2ttmm`.
+
+The per-query ranks of every setting, the totals, and the reasoning stand in the comments of this card, and in the doc comment of `APISurface+SearchableMetadata.swift`.
+
 ## Acceptance Criteria
 
-- [ ] The rank of the correct tool for each query, in each of the three settings, is on this card.
-- [ ] The choice is made and written in the doc comment of `APISurface+SearchableMetadata.swift`.
-- [ ] If the registry must change, a card exists there and this card names its short id.
-- [ ] The gated discovery suite passes after the change, with its counts on this card.
+- [x] The rank of the correct tool for each query, in each of the three settings, is on this card.
+- [x] The choice is made and written in the doc comment of `APISurface+SearchableMetadata.swift`.
+- [x] If the registry must change, a card exists there and this card names its short id. — `^kh2ttmm`, at `FoundationModelsMetadataRegistry/.kanban/tasks/01M26P0000R9VXQ7B3DKH2TTMM.md`.
+- [x] The gated discovery suite passes after the change, with its counts on this card.
 
 ## Tests
 
-- [ ] `swift test` at the root: no failure, no warning.
-- [ ] `swift test --package-path IntegrationTests --no-parallel --filter AgentSurfaceDiscoveryTests`: passes.
+- [x] `swift test` at the root: no failure, no warning. — 1,422 tests in 113 suites, all green.
+- [x] `swift test --package-path IntegrationTests --no-parallel --filter AgentSurfaceDiscoveryTests`: passes. — 3 rounds, 19 correct paths and 3 undeclared in each.
 
 #discovery #search-tools #metadata
