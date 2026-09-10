@@ -175,14 +175,16 @@ struct NoDescriptionSurfaceDiscoveryTests {
                 line: "entries=\(entries.count) domain=\(noDescriptionDomain.serverName) "
                     + "queries=\(noDescriptionQueries.count) rounds=\(discoveryRoundCount)")
 
-            var totals: [NoDescriptionCandidate: (correct: Int, wrong: Int)] = [:]
-            for candidate in NoDescriptionCandidate.allCases {
+            let readings = try await NoDescriptionCandidate.allCases.mappedInOrder {
+                candidate in
                 let items = entries.map { NoDescriptionItem(entry: $0, candidate: candidate) }
                 let searcher = await MetadataSearcher(
                     items: items, mode: .selection, embedder: nil, selection: selection)
-                totals[candidate] = try await measure(
+                let total = try await measure(
                     candidate: candidate, through: searcher, limit: entries.count)
+                return (candidate, total)
             }
+            let totals = Dictionary(uniqueKeysWithValues: readings)
 
             let shipped = totals[.arguments]?.correct ?? 0
             reportGatedResult(
@@ -226,30 +228,76 @@ private func measure(
     through searcher: MetadataSearcher<NoDescriptionItem>,
     limit: Int
 ) async throws -> (correct: Int, wrong: Int) {
-    var total = (correct: 0, wrong: 0)
-    for number in 1...discoveryRoundCount {
-        var grades: [DiscoveryGrade] = []
-        for query in noDescriptionQueries {
-            let matches = try await searcher.search(
-                intent: query.task, limit: limit)
-            let grade = DiscoveryGrade(query: query, matchedPaths: matches.map(\.id))
-            grades.append(grade)
-            reportGatedResult(
-                scenario: noDescriptionScenarioName,
-                line: "candidate=\(candidate.rawValue) round=\(number) "
-                    + "matches=\(grade.matchedPaths.count) correct=\(grade.correctCount) "
-                    + "wrong=\(grade.wrongCount) paths=\(grade.matchedPaths) "
-                    + "query=\"\(query.task)\"")
-        }
-        let round = (
-            correct: grades.reduce(0) { $0 + $1.correctCount },
-            wrong: grades.reduce(0) { $0 + $1.wrongCount }
-        )
-        total = (total.correct + round.correct, total.wrong + round.wrong)
+    let rounds = try await (1...discoveryRoundCount).mappedInOrder { number in
+        try await measureOneRound(
+            number: number, candidate: candidate, through: searcher, limit: limit)
+    }
+    return (
+        correct: rounds.reduce(0) { $0 + $1.correctCount },
+        wrong: rounds.reduce(0) { $0 + $1.wrongCount }
+    )
+}
+
+/// Drives every query of this suite through `searcher` one time, prints one
+/// line for each query and one line for the round, and answers the graded
+/// round.
+///
+/// - Parameters:
+///   - number: the one-based number of this round, which labels each printed
+///     line.
+///   - candidate: the text under measurement, which labels each printed line.
+///   - searcher: the searcher over that text.
+///   - limit: how many matches each search asks for.
+/// - Returns: the grade of each query of this round, in the order this suite
+///   lists them.
+/// - Throws: what the search throws.
+private func measureOneRound(
+    number: Int,
+    candidate: NoDescriptionCandidate,
+    through searcher: MetadataSearcher<NoDescriptionItem>,
+    limit: Int
+) async throws -> DiscoveryRound {
+    let grades = try await noDescriptionQueries.mappedInOrder { query in
+        let matches = try await searcher.search(
+            intent: query.task, limit: limit)
+        let grade = DiscoveryGrade(query: query, matchedPaths: matches.map(\.id))
         reportGatedResult(
             scenario: noDescriptionScenarioName,
             line: "candidate=\(candidate.rawValue) round=\(number) "
-                + "correctTotal=\(round.correct) wrongTotal=\(round.wrong)")
+                + "matches=\(grade.matchedPaths.count) correct=\(grade.correctCount) "
+                + "wrong=\(grade.wrongCount) paths=\(grade.matchedPaths) "
+                + "query=\"\(query.task)\"")
+        return grade
     }
-    return total
+    let round = DiscoveryRound(number: number, grades: grades)
+    reportGatedResult(
+        scenario: noDescriptionScenarioName,
+        line: "candidate=\(candidate.rawValue) round=\(number) "
+            + "correctTotal=\(round.correctCount) wrongTotal=\(round.wrongCount)")
+    return round
+}
+
+private extension Sequence {
+
+    /// Maps every element with an asynchronous transform, one element at a
+    /// time and in the order the sequence lists them.
+    ///
+    /// `map` takes no asynchronous transform, and a task group would run the
+    /// elements together. Each element here is one model call over one shared
+    /// searcher, and the printed lines must stand in query order, so this
+    /// walks the head and then the tail and joins the two answers. It builds
+    /// the array from those answers, and never by mutating an empty one.
+    ///
+    /// - Parameter transform: what to make of one element.
+    /// - Returns: what `transform` answered for each element, in sequence
+    ///   order.
+    /// - Throws: whatever `transform` throws, unchanged.
+    func mappedInOrder<Transformed>(
+        _ transform: (Element) async throws -> Transformed
+    ) async rethrows -> [Transformed] {
+        let elements = Array(self)
+        guard let head = elements.first else { return [] }
+        let tail = elements.dropFirst()
+        return try await [transform(head)] + tail.mappedInOrder(transform)
+    }
 }

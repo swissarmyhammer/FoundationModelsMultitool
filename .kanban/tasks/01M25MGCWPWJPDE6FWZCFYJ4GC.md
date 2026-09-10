@@ -63,6 +63,41 @@ comments:
     1. The first reading of the gated run was wrong, and the numbers it gave (banner 0, name 6, arguments 6) must not be read. It rewrote the summary of EVERY entry under each candidate, thus the described files and shell entries were measured beside the empty ones. `NoDescriptionCandidate.summaryBlock(of:)` now changes an entry with no description alone.
     2. `agentFlashModel` carries a written rule that no other suite may take it, so the new gated suite reads the flash slot of `plumbingProbeProfile`. The card asks for "the flash model"; this is a flash slot, but it is not the agent's pinned 4B.
   timestamp: 2026-09-10T21:28:35.404266+00:00
+- actor: claude-code
+  id: 01m26kqqh4sq5y3snnehasnj61
+  text: |-
+    ### commit — changed
+    - evidence: efb84b5 — 9 files changed, 685 insertions(+), 19 deletions(-)
+    - next: send the task on to the review step.
+  timestamp: 2026-09-10T21:31:46.084834+00:00
+- actor: claude-code
+  id: 01m26mbtbgvp62vy383dgge8bv
+  text: |-
+    ### review — findings
+    - evidence: 2 findings over HEAD~1..HEAD — IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/NoDescriptionSurfaceDiscoveryTests.swift:178, IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/NoDescriptionSurfaceDiscoveryTests.swift:231. Both are the rule swift/immutability on the new gated suite.
+    - next: Build the dictionary and the array without a var accumulator. Remove that cause from the full file, then run the review again.
+  timestamp: 2026-09-10T21:42:44.336231+00:00
+- actor: claude-code
+  id: 01m26mcezfacy8zm86hx31ykgd
+  text: |-
+    ### finish iteration 1 — findings
+
+    - implement: changed. The cap stands in `APISurface`, thus a native tool obeys it too. The limit is 2000 characters, over the longest description this package writes, which is 1663. An empty description now gives the verb name and its argument names. The measured sizes are on this card.
+    - test: green. `swift test` gives 1422 pass in 113 suites. `swift build --package-path IntegrationTests` gives 0 error. The gated discovery suites pass. The new gated suite shows the argument-name text gives 2 correct per round, where the banner alone gives 1.
+    - commit: efb84b5, 9 files.
+    - review: findings. 2 open findings over `HEAD~1..HEAD`, both `swift/immutability`, both in the new file `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/NoDescriptionSurfaceDiscoveryTests.swift`, at line 178 and line 231. Each builds a collection with a `var` accumulator in a loop.
+  timestamp: 2026-09-10T21:43:05.455962+00:00
+- actor: claude-code
+  id: 01m26mkmmwjdq72j6t0g4knxbj
+  text: |
+    ### implement — changed
+
+    - evidence: 1 file — `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/NoDescriptionSurfaceDiscoveryTests.swift`. The rule `swift/immutability` stood in three places of that file, and not only in the two the review named: the `totals` dictionary of the test body, the `grades` array of the round loop, and the `total` tuple that the round loop added to. All three are gone. A new fileprivate `Sequence.mappedInOrder(_:)` maps with an asynchronous transform, one element at a time and in sequence order, because `map` takes no asynchronous transform and a task group would run the model calls together. It walks the head and then the tail and joins the two answers, thus it builds the array and never mutates an empty one. The dictionary is now `Dictionary(uniqueKeysWithValues:)` over the mapped `(candidate, total)` pairs. The round is now `DiscoveryRound`, the same type the other gated discovery suites read, and its `correctCount` and `wrongCount` give the same two numbers the local tuple gave. No test was removed, no assertion was made weaker, and no production source was changed.
+
+      Tests: `swift test` at the root — 1422 tests in 113 suites passed, no failure, no warning. `swift build --package-path IntegrationTests` — Build complete. `swift test --package-path IntegrationTests --no-parallel --filter NoDescriptionSurfaceDiscoveryTests` — 1 test in 1 suite passed in 33.5 s, with the same counts as before: banner=3/33, name=3/39, arguments=6/45, which is 1 correct per round for the banner text, 1 for the name text and 2 for the argument text. The only message in the output is the known SwiftPM line about the mlx-swift Cmlx bundle.
+
+    - next: review.
+  timestamp: 2026-09-10T21:47:00.636888+00:00
 position_column: doing
 position_ordinal: '80'
 title: An MCP tool description goes into the selection prompt with no cap, and an empty one makes the tool unpickable
@@ -111,4 +146,13 @@ Two defects follow.
 - [x] `swift test` at the root: no failure, no warning.
 - [x] `swift test --package-path IntegrationTests --no-parallel --filter AgentSurfaceDiscoveryTests`: passes, with counts on this card.
 
+## Review Findings (2026-09-10 17:32)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 5 file(s) reviewed, 4 not reviewed.
+
+> 4 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 4 file(s)
+
+- [x] `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/NoDescriptionSurfaceDiscoveryTests.swift:178` `swift/immutability` — Building a dictionary via a var accumulator in a loop. Mutable collection should be built functionally with map/compactMap or similar, not by initializing an empty collection and mutating it in a loop. Refactor to build the dictionary functionally, possibly by collecting (candidate, result) pairs and converting with Dictionary(uniqueKeysWithValues:), once async/await patterns allow.
+- [x] `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/NoDescriptionSurfaceDiscoveryTests.swift:231` `swift/immutability` — Building an array via a var accumulator in a loop. Mutable collection should be built functionally with map/compactMap or similar, not by initializing an empty collection and appending to it in a loop. Refactor to build the array functionally, such as by collecting grades first and then performing side effects, or by using map/flatMap if async composition can be achieved.
 #discovery #search-tools #mcp #defect
