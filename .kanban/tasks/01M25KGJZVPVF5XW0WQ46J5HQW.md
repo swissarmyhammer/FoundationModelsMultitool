@@ -158,6 +158,63 @@ comments:
     - evidence: `swift test` — 1410 tests, 110 suites, 0 failed, 0 warnings. `swift build --package-path IntegrationTests` — build complete, 0 errors, 0 warnings (only the known dependency message `warning: missing creator for mutated node` for the mlx-swift Cmlx bundle, recorded on card ^zqz1zan, not counted as red). `swift test --package-path IntegrationTests --no-parallel --filter AgentSurfaceDiscoveryTests` — 1 test, 1 suite, 0 failed. Name check: no file under Sources, Tests or IntegrationTests names `CatalogSearcher` or `CatalogEmbedding`. One mention of `selectionPreamble` remains, in a doc comment in `AgentSurfaceDiscoveryTests.swift`, as a historical note that the wording "lived in this package as `SearchToolsTool.selectionPreamble` until card `^46j5hqw`" — this is prose about history, not a live code reference, and is not a failure or a warning. `PreambleMeasurementScratch.swift` is confirmed gone.
     - next: none. The build is clean.
   timestamp: 2026-09-10T13:43:13.283546+00:00
+- actor: claude-code
+  id: 01m25rzbkh01bk7tzhsdq8vkhm
+  text: |-
+    ### commit — changed
+    - evidence: b392807 chore(kanban): add the commit and test ledger notes for task ^46j5hqw (2 files)
+    - next: none
+  timestamp: 2026-09-10T13:44:04.465450+00:00
+- actor: claude-code
+  id: 01m25s2yk8c2grd1kpg1ax2qss
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD`, 9 files read, 0 findings, 0 confirmed, 0 refuted. Five code-hygiene rules declined one item each, because `Sources/FoundationModelsMultitool/Discovery/CatalogSearcher.swift` is deleted by this change.
+    - next: none. The task moves to done.
+  timestamp: 2026-09-10T13:46:02.216188+00:00
+- actor: claude-code
+  id: 01m25s3ee0bgcrvkgy6zv10h1m
+  text: |
+    ### finish iteration 1 — clean
+
+    - implement: changed. `CatalogSearcher.swift` is deleted. Each signature now takes `MetadataSearcher<APISurface.Entry>`. The local `selectionPreamble` is deleted, because the three-round measurement on `mlx-community/Qwen3-4B-4bit` permits it. A new test holds the failed-embed path. A new test holds the empty-answer guard.
+    - test: green. `swift test` gives 1410 pass, 0 fail, 0 warning. `swift build --package-path IntegrationTests` gives 0 error. `swift test --package-path IntegrationTests --no-parallel --filter AgentSurfaceDiscoveryTests` gives 1 pass. The message `missing creator for mutated node` comes from the mlx-swift Cmlx checkout. Card ^zqz1zan records it. It is not a failure.
+    - commit: 8a8e4ba refactor(discovery): delete CatalogSearcher and the local selection preamble
+    - review: clean. 0 finding over `HEAD~1..HEAD`, on 9 files. The task moved to done.
+  timestamp: 2026-09-10T13:46:18.432489+00:00
+- actor: claude-code
+  id: 01m25spvx4hkg47047d8w2rqty
+  text: |-
+    ### review — findings
+    - evidence: 1 open finding — Tests/FoundationModelsMultitoolTests/UnknownToolHintTests.swift:324. Scope: review sha HEAD~2..HEAD, local backend. Counts: 1 finding, 1 confirmed, 1 refuted.
+    - next: Build the searcher in that test the same way the source code builds it: MetadataSearcher(index: MetadataIndex(items:), mode:, embedder:, selection:). Remove the same cause from the full file. Then run the review again.
+  timestamp: 2026-09-10T13:56:54.820859+00:00
+- actor: claude-code
+  id: 01m25sxktyhmwa7mew08g4awc6
+  text: |-
+    ### The cause, removed from the full file
+
+    The finding named line 324, and named line 281 as the same cause. A search of `Tests/FoundationModelsMultitoolTests/UnknownToolHintTests.swift` for a searcher build finds those two places, and no other. No helper of the file builds a searcher, and no other test in the file builds one.
+
+    Both now build the searcher the way `RegistryBundle.init` builds `hintSearcher`:
+
+    ```swift
+    MetadataSearcher(
+        index: MetadataIndex(items: registry.surface.entries), mode: .retrieval,
+        embedder: nil, selection: nil)
+    ```
+
+    The behavior does not change. `init(items:mode:)` forwards to this same designated initializer with `MetadataIndex(items:)`, a nil embedder and a nil selection. The test now shows that shape, so a reader sees the same four inputs the source code gives.
+
+    No test is deleted. No assertion is weaker. No production source is changed. No dependency pin is changed. No file under `.build/checkouts` is touched.
+  timestamp: 2026-09-10T14:00:35.934834+00:00
+- actor: claude-code
+  id: 01m25sxtvg969efqghrrtmj0rm
+  text: |-
+    ### implement — changed
+    - evidence: 1 file — Tests/FoundationModelsMultitoolTests/UnknownToolHintTests.swift. The cause: the file built `MetadataSearcher(items:mode:)`, where the source code builds `MetadataSearcher(index: MetadataIndex(items:), mode:, embedder:, selection:)`. Both places of the file (the `resolve(_:)` helper, and the no-tier test) now build it the way `RegistryBundle.init` does. `swift test` — 1410 tests, 110 suites, 0 failed, 0 warnings. `swift build --package-path IntegrationTests` — build complete, 0 errors (only the known dependency message `warning: missing creator for mutated node` for the mlx-swift Cmlx bundle). `swift test --package-path IntegrationTests --no-parallel --filter AgentSurfaceDiscoveryTests` — 1 test, 1 suite, 0 failed, entries=9, prefixCharacters=7601, all ten queries answered.
+    - next: `/review`
+  timestamp: 2026-09-10T14:00:43.120769+00:00
 position_column: doing
 position_ordinal: '80'
 title: 'Remove the two discovery workarounds: CatalogSearcher, and the local selection preamble'
@@ -250,3 +307,27 @@ If the default fails any one of them, keep the constant. Then correct its doc co
 - [x] A test holds the empty-answer guard of step 2.
 
 #discovery #search-tools #cleanup
+
+## Review Findings (2026-09-10 08:44)
+
+> Scope: `review sha HEAD~2..HEAD` — reviewed the diffs only — lines this change added or modified. 9 file(s) reviewed, 2 not reviewed.
+
+> 2 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 2 file(s)
+
+> ⚠️ tool rule 'code-hygiene/disallowed-constructs-swift' declined an item — it judged the rest of the code, and this it could not judge:
+> disallowed-constructs-swift found no file at Sources/FoundationModelsMultitool/Discovery/CatalogSearcher.swift, so its constructs are unread
+
+> ⚠️ tool rule 'code-hygiene/function-length-swift' declined an item — it judged the rest of the code, and this it could not judge:
+> function-length-swift found no file at Sources/FoundationModelsMultitool/Discovery/CatalogSearcher.swift, so its bodies are unread
+
+> ⚠️ tool rule 'code-hygiene/idioms-swift' declined an item — it judged the rest of the code, and this it could not judge:
+> idioms-swift found no file at Sources/FoundationModelsMultitool/Discovery/CatalogSearcher.swift, so its declarations are unread
+
+> ⚠️ tool rule 'code-hygiene/magic-numbers-swift' declined an item — it judged the rest of the code, and this it could not judge:
+> magic-numbers-swift found no file at Sources/FoundationModelsMultitool/Discovery/CatalogSearcher.swift, so its literals are unread
+
+> ⚠️ tool rule 'code-hygiene/missing-docs-swift' declined an item — it judged the rest of the code, and this it could not judge:
+> missing-docs-swift found no file at Sources/FoundationModelsMultitool/Discovery/CatalogSearcher.swift, so its declarations are unread
+
+- [x] `Tests/FoundationModelsMultitoolTests/UnknownToolHintTests.swift:324` `completeness/invariant-propagation` — Same inconsistency as line 281: the test creates `MetadataSearcher(items:, mode:)` while production code uses `MetadataSearcher(index: MetadataIndex(items:), mode:, embedder:, selection:)`. Create the searcher consistently: `MetadataSearcher(index: MetadataIndex(items: registry.surface.entries), mode: .retrieval, embedder: nil, selection: nil)`.
