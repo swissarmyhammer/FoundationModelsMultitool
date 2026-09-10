@@ -22,6 +22,47 @@ comments:
     - evidence: 6 files — Tests/Support/MCPTestServer/LargeCatalogToolKit.swift (new, 40 verbs on 4 servers), Tests/FoundationModelsMultitoolTests/OverBudgetSelectionOrderTests.swift (new, 4 tests), IntegrationTests/.../OverBudgetSurfaceDiscoveryTests.swift (new, 1 gated test), IntegrationTests/.../Support/CatalogFeedback.swift (new, shared readers), Sources/FoundationModelsMultitool/Discovery/SearchToolsTool.swift (the order rule in the doc comment of format(task:matches:sample:)), IntegrationTests/.../AgentSurfaceDiscoveryTests.swift and Support/LiveRouterFixture.swift (use the shared readers; name the new suite as a taker of the plumbing probe model). The large surface: 49 entries, 34,181 characters, budget 32,000, 2 slices, elapsed 2.949 s and 1.292 s. Runs: `swift test` 1,414 tests in 111 suites passed; `swift build --package-path IntegrationTests` complete; the new gated suite passed in 7.156 s; AgentSurfaceDiscoveryTests passed in 10.124 s with 9 entries and 7,601 characters.
     - next: review
   timestamp: 2026-09-10T14:18:55.102305+00:00
+- actor: claude-code
+  id: 01m25v2734j8dz2qbf287y1gge
+  text: |-
+    ### commit — changed
+    - evidence: b382d9c, 11 files changed, 1214 insertions, 50 deletions
+    - next: run the review step over HEAD~1..HEAD
+  timestamp: 2026-09-10T14:20:35.300187+00:00
+- actor: claude-code
+  id: 01m25vxwz1ww3ttxejye9ev0vp
+  text: |-
+    ### review — findings
+    - evidence: 2 findings over HEAD~1..HEAD — Tests/FoundationModelsMultitoolTests/OverBudgetSelectionOrderTests.swift:155, Tests/FoundationModelsMultitoolTests/OverBudgetSelectionOrderTests.swift:176
+    - next: Make the shared surface struct and the shared registry builder. Then run the review again.
+  timestamp: 2026-09-10T14:35:42.433363+00:00
+- actor: claude-code
+  id: 01m25vyryqssgsn7tnsqwk91zq
+  text: |-
+    ### finish iteration 1 — findings
+
+    - implement: changed. A new tool kit of four scripted servers gives a surface of 49 entries and 34,181 prefix characters, against a budget of 32,000, thus the ranker uses 2 slices. A new gated suite and a new unit suite hold the rules. The order rule is now in the doc comment of `format(task:matches:sample:)`. No card was necessary in the ranker.
+    - test: green. `swift test` gives 1414 pass in 111 suites, 0 fail, 0 warning. `swift build --package-path IntegrationTests` gives 0 error. The new gated suite and `AgentSurfaceDiscoveryTests` both pass.
+    - commit: b382d9c, 11 files.
+    - review: findings. 2 open findings over `HEAD~1..HEAD`, both `reuse`. `Tests/FoundationModelsMultitoolTests/OverBudgetSelectionOrderTests.swift:155` and `:176`. The two new test files each hold a copy of the same surface type and the same registry builder.
+  timestamp: 2026-09-10T14:36:11.095194+00:00
+- actor: claude-code
+  id: 01m25we0cpzpwfgd5pj7zzmp1v
+  text: |
+    What the correction of the two `reuse` findings did.
+
+    - The one home. `Tests/Support/MCPTestServer/LargeCatalogSurface.swift` holds the `LargeCatalogSurface` type and the `makeLargeCatalogSurface(root:shellStoreDirectoryName:)` builder. That target already held `LargeCatalogToolKit.swift`, and it is a product both packages link, thus it is the correct home. The check before the move: the root manifest declares `MCPTestServer` as a library product, and `IntegrationTests/Package.swift` names that product.
+    - The one manifest change the move needs. `MCPTestServer` now links the `FoundationModelsMultitool` target, because the mount calls `MultiTool.Builder`, `MCPServer` and `MultiTool.Registry`. Each of those is `public`, thus the file needs no `@testable` import. The edge makes no cycle: the library target names no target of this package.
+    - The cause is gone from both files, and not only from the two lines. `OverBudgetSurfaceDiscoveryTests.swift` lost its `OverBudgetSurface` type and its whole `makeOverBudgetRegistry` builder; it calls the shared builder at its one use site. `OverBudgetSelectionOrderTests.swift` lost its `MountedSurface` type and the body of its builder; it keeps a three-line wrapper, because four tests call it and each one needs the temporary directory of the suite.
+    - Nothing else moved. No test was deleted, no assertion was weakened, and the budget stands at 32,000 characters. The surface is still 49 entries and 34,181 prefix characters, thus the tier still uses 2 slices.
+  timestamp: 2026-09-10T14:44:30.230291+00:00
+- actor: claude-code
+  id: 01m25we8k984792x8nbh0nyqh3
+  text: |
+    ### implement — changed
+    - evidence: 4 files — Tests/Support/MCPTestServer/LargeCatalogSurface.swift (new; holds `LargeCatalogSurface` and `makeLargeCatalogSurface(root:shellStoreDirectoryName:)`), Package.swift (`MCPTestServer` now links the `FoundationModelsMultitool` target), Tests/FoundationModelsMultitoolTests/OverBudgetSelectionOrderTests.swift (its type and its builder body are gone; a three-line wrapper calls the shared builder), IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/OverBudgetSurfaceDiscoveryTests.swift (its type and its whole builder are gone; it calls the shared builder at its one use site). Both `reuse` findings are `- [x]`. Runs: `swift test` gives 1,414 tests in 111 suites passed, 0 fail, 0 warning; `swift build --package-path IntegrationTests` gives Build complete; `swift test --package-path IntegrationTests --no-parallel --filter "OverBudgetSurfaceDiscoveryTests|AgentSurfaceDiscoveryTests"` gives 2 tests in 2 suites passed. Readings: over-budget entries=49, prefixCharacters=34,181, budget=32,000, slices=2 for each call, elapsed 3.483 s and 2.011 s; agent surface entries=9, prefixCharacters=7,601.
+    - next: review
+  timestamp: 2026-09-10T14:44:38.633550+00:00
 depends_on:
 - 01M25KGJZVPVF5XW0WQ46J5HQW
 position_column: doing
@@ -95,3 +136,15 @@ The score cannot be the order key: a match is scored `1 / rank` inside its own s
 - [x] `swift test --package-path IntegrationTests --no-parallel`, for the new suite and for `AgentSurfaceDiscoveryTests`. Both passed.
 
 #discovery #search-tools #test-coverage
+
+## Review Findings (2026-09-10 09:21)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 7 file(s) reviewed, 4 not reviewed.
+
+> 4 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 4 file(s)
+
+- [x] `Tests/FoundationModelsMultitoolTests/OverBudgetSelectionOrderTests.swift:155` `reuse/reuse` — MountedSurface struct is 0.93 identical to OverBudgetSurface defined in OverBudgetSurfaceDiscoveryTests.swift:137 (also added in this change). Both structs have identical shape and purpose — holding a registry and servers together — and should share a single definition extracted to a common location. Extract a shared surface struct (or make one parameterized) to a location both test packages can access (e.g., Tests/Support/), rather than maintaining two identically-shaped structs across packages.
+- [x] `Tests/FoundationModelsMultitoolTests/OverBudgetSelectionOrderTests.swift:176` `reuse/reuse` — makeOverBudgetRegistry is 0.97 similar to makeOverBudgetRegistry in OverBudgetSurfaceDiscoveryTests.swift:156 (also added in this change). Both iterate LargeCatalogDomain.allCases, create servers identically, build the same registry structure, and return only the directory source and shell store name as parameters — a pattern that should be extracted once. Extract a shared registry builder function parameterized by directory source and shell store directory name, which both makeOverBudgetRegistry and makeOverBudgetSurface can call, rather than maintaining two nearly-identical builder functions across packages.
+
+Both findings are corrected. `Tests/Support/MCPTestServer/LargeCatalogSurface.swift` holds one `LargeCatalogSurface` type and one `makeLargeCatalogSurface(root:shellStoreDirectoryName:)` builder, parameterized by the session root and the shell store directory name. The `MCPTestServer` target now links the library target, thus that product can mount. The copy in the integration suite is gone: the suite calls the shared builder directly and holds no surface type and no builder of its own. The root suite keeps one three-line wrapper that gives the shared builder its own temporary directory.

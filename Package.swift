@@ -468,7 +468,7 @@ let package = Package(
             // the built binary directly.
         ),
         // The scripted MCP test server — see `testServerTargetName`. Links
-        // `mcpProducts` alone: the sdk's `Server` is what it wraps. It does
+        // `mcpProducts` for the sdk's `Server`, which is what it wraps. It does
         // NOT declare `swift-log`, on purpose: `FlakyConnectTransport` names
         // `Logging.Logger` because the `Transport` protocol requires the
         // property, and the transitive `swift-log` the sdk brings satisfies
@@ -477,10 +477,20 @@ let package = Package(
         //
         // It links `testConcurrencyTargetName` for the one gate
         // `LoopbackHTTPServer` holds the loopbacks of the process with.
+        //
+        // It links the library target above for one file:
+        // `LargeCatalogSurface.swift` mounts the large catalog through
+        // `MultiTool.Builder`, so that the two suites which measure a catalog
+        // above the selection budget — one in each package — read one mount
+        // rather than a copy each. A package can import the products of
+        // another package only, so a mount both of them read must stand in a
+        // product, and this is the product both of them already link. The edge
+        // makes no cycle: the library target names no target of this package.
         .target(
             name: testServerTargetName,
             dependencies: [
-                .target(name: testConcurrencyTargetName)
+                .target(name: packageName),
+                .target(name: testConcurrencyTargetName),
             ] + mcpProducts,
             path: "\(testSupportPath)\(testServerTargetName)"
         ),

@@ -84,7 +84,12 @@ struct OverBudgetSurfaceDiscoveryTests {
     @Test("a surface above the budget answers spliced-once, unique, in-limit matches from its slices")
     func anOverBudgetSurfaceAnswersUsableMatches() async throws {
         try await withLiveRouterFixture(name: overBudgetScenarioName, profile: plumbingProbeProfile) { fixture in
-            let mounted = try await makeOverBudgetRegistry()
+            // The mount stands in the `MCPTestServer` product, which the root
+            // package's `OverBudgetSelectionOrderTests` calls too — see
+            // `makeLargeCatalogSurface(root:shellStoreDirectoryName:)`.
+            let mounted = try await makeLargeCatalogSurface(
+                root: LiveRouterFixture.makeTempDir(),
+                shellStoreDirectoryName: overBudgetShellStoreDirectoryName)
             let entries = mounted.registry.surface.entries
             let catalogPathSet = Set(entries.map(\.path))
             // The production mount, never a reimplementation of its wiring:
@@ -130,48 +135,6 @@ struct OverBudgetSurfaceDiscoveryTests {
             withExtendedLifetime(mounted.servers) {}
         }
     }
-}
-
-/// A registry over the large surface, beside the scripted servers behind it,
-/// which the caller keeps alive for the length of its test.
-private struct OverBudgetSurface {
-    /// The built registry, whose surface `searchTools` searches.
-    let registry: MultiTool.Registry
-
-    /// The scripted servers the registry's MCP verbs are served by.
-    let servers: [ScriptedServer]
-}
-
-/// Mounts the large surface: the files and shell capabilities of a host,
-/// plus one connected MCP server for each `LargeCatalogDomain`.
-///
-/// The same shape `OverBudgetSelectionOrderTests` builds in the root
-/// package, where the order rule is held with a scripted model. A package
-/// cannot import another package's test target, so the shared half is the
-/// verbs, which live in the `MCPTestServer` product both targets link.
-///
-/// - Returns: the registry and the servers behind it.
-/// - Throws: what the connect, the capability mounts or `buildRegistry()`
-///   throws.
-private func makeOverBudgetRegistry() async throws -> OverBudgetSurface {
-    let root = LiveRouterFixture.makeTempDir()
-    var scriptedServers: [ScriptedServer] = []
-    var connectedServers: [MCPServer] = []
-    for domain in LargeCatalogDomain.allCases {
-        let scripted = ScriptedServer(name: domain.serverName)
-        await scripted.addLargeCatalogTools(of: domain)
-        let connected = MCPServer(name: domain.serverName)
-        try await connected.connect(via: scripted.startOnInMemoryPair())
-        scriptedServers.append(scripted)
-        connectedServers.append(connected)
-    }
-    let registry = try await MultiTool.Builder()
-        .withFiles(root: root, readOnly: false)
-        .withShell(
-            storeDirectory: root.appendingPathComponent(overBudgetShellStoreDirectoryName, isDirectory: true))
-        .withMCP(servers: connectedServers)
-        .buildRegistry()
-    return OverBudgetSurface(registry: registry, servers: scriptedServers)
 }
 
 /// The prefix the selection tier assembles over the surface of `registry` —

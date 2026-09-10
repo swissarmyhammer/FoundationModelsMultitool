@@ -150,47 +150,22 @@ struct OverBudgetSelectionOrderTests {
 
     // MARK: - The ground of one test
 
-    /// A registry over the large surface, beside the scripted servers behind
-    /// it, which the caller keeps alive for the length of its test.
-    private struct MountedSurface {
-        /// The built registry, whose surface the searcher indexes.
-        let registry: MultiTool.Registry
-
-        /// The scripted servers the registry's MCP verbs are served by.
-        let servers: [ScriptedServer]
-    }
-
-    /// Mounts the large surface: the files and shell capabilities of a host,
-    /// plus one connected MCP server for each ``LargeCatalogDomain``.
+    /// Mounts the large surface under a temporary directory this suite owns.
     ///
-    /// The production mount, never a reimplementation of its wiring — the
-    /// same `MultiTool.Builder` chain a host writes. The gated
-    /// `OverBudgetSurfaceDiscoveryTests` builds the same shape in the nested
-    /// `IntegrationTests` package: a package cannot import another package's
-    /// test target, so the shared half is the verbs, which live in the
-    /// `MCPTestServer` product both targets link.
+    /// The mount itself is
+    /// ``makeLargeCatalogSurface(root:shellStoreDirectoryName:)`` in the
+    /// `MCPTestServer` product, which the gated
+    /// `OverBudgetSurfaceDiscoveryTests` in the nested `IntegrationTests`
+    /// package calls too. A package cannot import another package's test
+    /// target, so a mount both suites read stands in a product, and that
+    /// product already holds the verbs the mount connects.
     ///
     /// - Returns: the registry and the servers behind it.
-    /// - Throws: what the connect, the capability mounts or `buildRegistry()`
-    ///   throws.
-    private func makeOverBudgetSurface() async throws -> MountedSurface {
-        let root = try scratch.makeDirectory(prefix: Self.testDirectoryNamePrefix)
-        var scriptedServers: [ScriptedServer] = []
-        var connectedServers: [MCPServer] = []
-        for domain in LargeCatalogDomain.allCases {
-            let scripted = ScriptedServer(name: domain.serverName)
-            await scripted.addLargeCatalogTools(of: domain)
-            let connected = MCPServer(name: domain.serverName)
-            try await connected.connect(via: scripted.startOnInMemoryPair())
-            scriptedServers.append(scripted)
-            connectedServers.append(connected)
-        }
-        let registry = try await MultiTool.Builder()
-            .withFiles(root: root, readOnly: false)
-            .withShell(storeDirectory: root.appendingPathComponent(Self.shellStoreDirectoryName, isDirectory: true))
-            .withMCP(servers: connectedServers)
-            .buildRegistry()
-        return MountedSurface(registry: registry, servers: scriptedServers)
+    /// - Throws: what `makeDirectory(prefix:)` or the mount throws.
+    private func makeOverBudgetSurface() async throws -> LargeCatalogSurface {
+        try await makeLargeCatalogSurface(
+            root: scratch.makeDirectory(prefix: Self.testDirectoryNamePrefix),
+            shellStoreDirectoryName: Self.shellStoreDirectoryName)
     }
 
     /// Runs one `searchTools` call over `registry` through a selection tier
