@@ -144,6 +144,20 @@ comments:
     - evidence: `swift test` 1410 tests pass, 0 failures, 0 warnings; `swift build --package-path IntegrationTests` no error; `swift test --package-path IntegrationTests --no-parallel --filter AgentSurfaceDiscoveryTests` passes. 8 files — Sources/FoundationModelsMultitool/Discovery/CatalogSearcher.swift (deleted), Sources/FoundationModelsMultitool/Discovery/SearchToolsTool.swift, Sources/FoundationModelsMultitool/Discovery/UnknownToolHint.swift, Sources/FoundationModelsMultitool/RegistryBundle.swift, Tests/FoundationModelsMultitoolTests/DiscoveryEmbedderTests.swift, Tests/FoundationModelsMultitoolTests/Fixtures/EmbeddingFixtures.swift, Tests/FoundationModelsMultitoolTests/SearchToolsToolTests.swift, Tests/FoundationModelsMultitoolTests/UnknownToolHintTests.swift, IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/AgentSurfaceDiscoveryTests.swift.
     - next: `/review`
   timestamp: 2026-09-10T13:40:39.509772+00:00
+- actor: claude-code
+  id: 01m25rxgrkatn7fd9817cdekxn
+  text: |-
+    ### commit — changed
+    - evidence: 8a8e4ba refactor(discovery): delete CatalogSearcher and the local selection preamble
+    - next: none
+  timestamp: 2026-09-10T13:43:04.211001+00:00
+- actor: claude-code
+  id: 01m25rxsm3kvy123n569xke397
+  text: |-
+    ### test — green
+    - evidence: `swift test` — 1410 tests, 110 suites, 0 failed, 0 warnings. `swift build --package-path IntegrationTests` — build complete, 0 errors, 0 warnings (only the known dependency message `warning: missing creator for mutated node` for the mlx-swift Cmlx bundle, recorded on card ^zqz1zan, not counted as red). `swift test --package-path IntegrationTests --no-parallel --filter AgentSurfaceDiscoveryTests` — 1 test, 1 suite, 0 failed. Name check: no file under Sources, Tests or IntegrationTests names `CatalogSearcher` or `CatalogEmbedding`. One mention of `selectionPreamble` remains, in a doc comment in `AgentSurfaceDiscoveryTests.swift`, as a historical note that the wording "lived in this package as `SearchToolsTool.selectionPreamble` until card `^46j5hqw`" — this is prose about history, not a live code reference, and is not a failure or a warning. `PreambleMeasurementScratch.swift` is confirmed gone.
+    - next: none. The build is clean.
+  timestamp: 2026-09-10T13:43:13.283546+00:00
 position_column: doing
 position_ordinal: '80'
 title: 'Remove the two discovery workarounds: CatalogSearcher, and the local selection preamble'
