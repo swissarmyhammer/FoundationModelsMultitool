@@ -43,18 +43,26 @@ public struct LargeCatalogSurface: Sendable {
 ///     The caller owns that directory and removes it when its test ends.
 ///   - shellStoreDirectoryName: the name of the shell store directory the
 ///     shell capability keeps its state in, inside `root`.
+///   - domains: the domains to connect a server for. Every domain, the
+///     default, is the catalog above the selection budget. A caller that
+///     measures something other than the size names fewer.
+///   - describing: whether each connected verb publishes a description —
+///     see ``ScriptedServer/addLargeCatalogTools(of:describing:)``. `false`
+///     builds the surface of a server that gives none.
 /// - Returns: the registry and the servers behind it.
 /// - Throws: what the connect, the capability mounts or `buildRegistry()`
 ///   throws.
 public func makeLargeCatalogSurface(
     root: URL,
-    shellStoreDirectoryName: String
+    shellStoreDirectoryName: String,
+    domains: [LargeCatalogDomain] = LargeCatalogDomain.allCases,
+    describing: Bool = true
 ) async throws -> LargeCatalogSurface {
     var scriptedServers: [ScriptedServer] = []
     var connectedServers: [MCPServer] = []
-    for domain in LargeCatalogDomain.allCases {
+    for domain in domains {
         let scripted = ScriptedServer(name: domain.serverName)
-        await scripted.addLargeCatalogTools(of: domain)
+        await scripted.addLargeCatalogTools(of: domain, describing: describing)
         let connected = MCPServer(name: domain.serverName)
         try await connected.connect(via: scripted.startOnInMemoryPair())
         scriptedServers.append(scripted)

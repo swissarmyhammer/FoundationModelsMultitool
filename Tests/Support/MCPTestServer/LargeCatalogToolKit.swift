@@ -490,7 +490,7 @@ public enum LargeCatalogDomain: String, CaseIterable, Sendable {
 ///
 /// The description a server publishes for the verb is the ``purpose`` and
 /// the domain's operating notes together — see
-/// ``ScriptedServer/addLargeCatalogTools(of:)``.
+/// ``ScriptedServer/addLargeCatalogTools(of:describing:)``.
 struct LargeCatalogVerb: Sendable {
     /// The tool name, and so the last segment of the rendered call path.
     let name: String
@@ -522,12 +522,23 @@ extension ScriptedServer {
     /// operating notes of its domain, which is how a platform server writes
     /// one: the model reads a verb alone, never the server's front page.
     ///
-    /// - Parameter domain: the server's worth of verbs to register.
-    public func addLargeCatalogTools(of domain: LargeCatalogDomain) {
+    /// A server is permitted to publish no description at all, and
+    /// `describing: false` builds that server: every verb keeps its name and
+    /// its schema, and each one declares the empty description. It is the
+    /// surface `NoDescriptionSurfaceDiscoveryTests` measures, because the
+    /// rule under measurement reads what a summary block holds when the
+    /// description is gone.
+    ///
+    /// - Parameters:
+    ///   - domain: the server's worth of verbs to register.
+    ///   - describing: whether each verb publishes a description. `true`, the
+    ///     default, keeps the purpose and the operating notes every other
+    ///     caller reads.
+    public func addLargeCatalogTools(of domain: LargeCatalogDomain, describing: Bool = true) {
         for verb in domain.verbs {
             addScriptedTool(
                 name: verb.name,
-                description: "\(verb.purpose)\n\n\(domain.operatingNotes)",
+                description: describing ? "\(verb.purpose)\n\n\(domain.operatingNotes)" : "",
                 inputSchema: Self.largeCatalogSchema(for: verb)
             ) { params in
                 CallTool.Result(

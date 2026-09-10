@@ -1,8 +1,70 @@
 ---
 assignees:
 - claude-code
-position_column: todo
-position_ordinal: '8480'
+comments:
+- actor: claude-code
+  id: 01m26k19s2scf2pggjq28hgh80
+  text: |-
+    ### Step 1 — the measurement
+
+    Measured on 2026-09-10 with a temporary test over two surfaces. The test built each surface through the production chain and read `entry.block.count`, `entry.summaryBlock.count` and `entry.descriptor.description.count`. The test is removed again; the numbers stand here and in the doc comment of `APISurface.Entry.summaryDescriptionCharacterLimit`.
+
+    **The native nine-entry files-and-shell surface** (`withFiles(root:readOnly:false)` and `withShell(storeDirectory:)`):
+
+    | path | block | summaryBlock | description |
+    |---|---|---|---|
+    | files.read | 1838 | 860 | 840 |
+    | files.write | 1498 | 811 | 790 |
+    | files.edit | 2411 | 973 | 953 |
+    | files.patch | 2487 | 1684 | 1663 |
+    | files.glob | 2011 | 838 | 818 |
+    | files.grep | 2916 | 1094 | 1074 |
+    | shell.execute | 2164 | 1372 | 1349 |
+    | shell.getLines | 1551 | 706 | 682 |
+    | shell.grepHistory | 1844 | 719 | 692 |
+    | **total (9)** | **18720** | **9057** | — |
+
+    **The three-verb loopback MCP surface** (`withMCP(servers:)` over the scripted server):
+
+    | path | block | summaryBlock | description |
+    |---|---|---|---|
+    | loopback.echo | 288 | 62 | 39 |
+    | loopback.elicitEcho | 230 | 76 | 47 |
+    | loopback.elicitURL | 237 | 85 | 57 |
+    | **total (3)** | **755** | **223** | — |
+
+    What the numbers say:
+
+    - A `summaryBlock` is the banner plus the description. The banner is 21 characters at most on these two surfaces, thus the description is nearly the whole of the selection prompt.
+    - The longest description this package writes is `files.patch` at 1663 characters. A cap must stand above it, or the wording that `SelectionWordingTests` holds goes away.
+    - An MCP description is 39 to 57 characters here, because the scripted server is small. Nothing limits it: the size comes from the server.
+  timestamp: 2026-09-10T21:19:31.106797+00:00
+- actor: claude-code
+  id: 01m26khxacv73vyv3kp0f1pc0s
+  text: |-
+    ### implement — changed
+
+    - evidence: 5 files. `Sources/FoundationModelsMultitool/Surface/APISurface.swift` (the cap, the empty-description sentence, and the rule in the doc comment of `summaryBlock`); `Tests/FoundationModelsMultitoolTests/SummaryBlockCapTests.swift` (7 unit tests, new); `Tests/Support/MCPTestServer/LargeCatalogToolKit.swift` and `LargeCatalogSurface.swift` (a `describing:` flag and a `domains:` list, both with defaults, so the two suites that read the mount are unchanged); `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/NoDescriptionSurfaceDiscoveryTests.swift` (the gated run, new).
+
+      **The measurement.** Native surface: description 682 to 1663 characters, `summaryBlock` 706 to 1684, `block` 1498 to 2916, nine entries. MCP loopback surface: description 39 to 57, `summaryBlock` 62 to 85, `block` 230 to 288, three entries. The full table stands in the comment above.
+
+      **The cap.** `APISurface.Entry.summaryDescriptionCharacterLimit = 2000`, and the cut stands in `APISurface`, thus a native tool obeys it too. 2000 stands over the longest description this package writes (`files.patch`, 1663) with room for about a fifth more, so no shipped description is cut and `SelectionWordingTests` is untouched. The cut keeps the head back to the last space and closes with a `[cut <n> characters]` line of its own; room for that line is reserved against the largest count it could name, thus the text never goes over the cap.
+
+      **An empty description.** The summary now reads `<verb> takes <argument names>.` — `run_query takes connection, sql and parameters.` A verb with no argument reads `<verb> takes no argument.` A description of spaces alone counts as no description.
+
+      **What the flash model picks, before and after.** 3 rounds of 3 queries over a 19-entry surface (files, shell, and a database server of ten verbs that publish no description), on the flash slot of `plumbingProbeProfile`. Only the entries with no description change between the readings; a described entry keeps its own text, so the three readings differ in one text alone. Correct/wrong paths over the whole run: banner alone 3/33; the name of the tool alone 3/39; the argument-name sentence 6/45. The sentence doubles the correct count and it answers 2 of 3 queries each round where the other two answer 1, so the card keeps it.
+
+      Tests: `swift test` at the root — 1422 tests in 113 suites passed, no failure, no warning. `swift build --package-path IntegrationTests` — Build complete. Gated: `AgentSurfaceDiscoveryTests` 1 test passed, 19 correct and 3 wrong in each of 3 rounds of 10 queries; `NoDescriptionSurfaceDiscoveryTests` 1 test passed; `OverBudgetSurfaceDiscoveryTests` 1 test passed; `HeldOutSurfaceDiscoveryTests` 1 test passed; `UnknownToolHintLiveTests` 1 test passed.
+
+    - next: review.
+
+    **Two notes for the next agent.**
+
+    1. The first reading of the gated run was wrong, and the numbers it gave (banner 0, name 6, arguments 6) must not be read. It rewrote the summary of EVERY entry under each candidate, thus the described files and shell entries were measured beside the empty ones. `NoDescriptionCandidate.summaryBlock(of:)` now changes an entry with no description alone.
+    2. `agentFlashModel` carries a written rule that no other suite may take it, so the new gated suite reads the flash slot of `plumbingProbeProfile`. The card asks for "the flash model"; this is a flash slot, but it is not the agent's pinned 4B.
+  timestamp: 2026-09-10T21:28:35.404266+00:00
+position_column: doing
+position_ordinal: '80'
 title: An MCP tool description goes into the selection prompt with no cap, and an empty one makes the tool unpickable
 ---
 ## What happened
@@ -38,15 +100,15 @@ Two defects follow.
 
 ## Acceptance Criteria
 
-- [ ] The sizes of `block` and `summaryBlock` for an MCP tool and for a native tool are on this card.
-- [ ] A description over the cap is cut, and a unit test holds the cap.
-- [ ] A tool with no description gets a summary that holds more than its banner, and a unit test holds it.
-- [ ] The rule is in the doc comment of `APISurface.summaryBlock`.
-- [ ] A gated run over a surface of tools with no description records what the flash model picks, before and after.
+- [x] The sizes of `block` and `summaryBlock` for an MCP tool and for a native tool are on this card.
+- [x] A description over the cap is cut, and a unit test holds the cap.
+- [x] A tool with no description gets a summary that holds more than its banner, and a unit test holds it.
+- [x] The rule is in the doc comment of `APISurface.summaryBlock`.
+- [x] A gated run over a surface of tools with no description records what the flash model picks, before and after.
 
 ## Tests
 
-- [ ] `swift test` at the root: no failure, no warning.
-- [ ] `swift test --package-path IntegrationTests --no-parallel --filter AgentSurfaceDiscoveryTests`: passes, with counts on this card.
+- [x] `swift test` at the root: no failure, no warning.
+- [x] `swift test --package-path IntegrationTests --no-parallel --filter AgentSurfaceDiscoveryTests`: passes, with counts on this card.
 
 #discovery #search-tools #mcp #defect

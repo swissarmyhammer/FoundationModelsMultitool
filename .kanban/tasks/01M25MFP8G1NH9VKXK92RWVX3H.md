@@ -39,10 +39,38 @@ comments:
 
     The wrong-noun case is `process.spawn` — right work, a noun the catalog never uses, no trigram shared with any entry. It is the shape the card asks for and it holds today.
   timestamp: 2026-09-10T16:17:22.385324+00:00
+- actor: claude-code
+  id: 01m26j94cvmw09vtv8pftpdrg2
+  text: |-
+    ### commit — changed
+    - evidence: ae42d58 test(integration-tests): add a live test for the did-you-mean hint path — 9 files changed
+    - next: send the task for review
+  timestamp: 2026-09-10T21:06:19.163866+00:00
+- actor: claude-code
+  id: 01m26jpewbccfvjwj7mfq7a3yy
+  text: |
+    ### review — clean
+    - evidence: local review engine over HEAD~1..HEAD; 0 findings, 0 confirmed, 0 refuted; 3 files read, 6 kanban files not read because of an ignore rule
+    - next: no work is open; the card moves to done
+  timestamp: 2026-09-10T21:13:35.883253+00:00
+- actor: claude-code
+  id: 01m26jq2cp9rmjzw708rxqshkc
+  text: |-
+    ### finish iteration 1 — clean
+
+    - implement: changed. `UnknownToolHintLiveTests.swift` drives the hint path with a live model and a live embedder, over the three shapes of wrong path the card names. The first implement agent stopped before it wrote its own step record, but the work was complete in the tree and the card was already 6 of 6.
+    - test: green. `swift test` gives 1415 pass in 112 suites. `swift build --package-path IntegrationTests` gives 0 error. The new gated suite gives 1 pass in 2.6 s.
+    - commit: ae42d58, 9 files.
+    - review: clean. 0 finding over `HEAD~1..HEAD`. The task moved to done.
+
+    **What the measurement showed.** A spelling mistake, `files.raed`, is answered by the resemblance tier. A correct request under a noun the catalog never uses, `process.spawn`, is answered by the relevance tier with `shell.execute`. A request unrelated to the surface, `weather.getForecast`, is still answered with a tool, because the retrieval tier carries no floor. The suite records that as a reading, and does not assert a floor the code does not have.
+
+    A separate miss became card `^pwn02m4`: several requests to run a command are answered with `shell.getLines`, the verb that reads what a command printed.
+  timestamp: 2026-09-10T21:13:55.862333+00:00
 depends_on:
 - 01M25KGJZVPVF5XW0WQ46J5HQW
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffbe80
 title: The did-you-mean hint path has no live test
 ---
 ## What happened

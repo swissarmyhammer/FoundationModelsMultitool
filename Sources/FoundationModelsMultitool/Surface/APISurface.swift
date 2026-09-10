@@ -107,8 +107,125 @@ public struct APISurface: Sendable, Equatable {
         /// The description passes through `qualify(_:)` exactly as it does
         /// inside ``block``, so a `tools.<name>(` call an author wrote in the
         /// prose reads the same in both texts.
+        ///
+        /// **Two rules apply to the description, and they apply here.** The
+        /// description of a tool is not always text this package wrote. An
+        /// MCP tool carries the description its server gave, word for word
+        /// (`MCPTool.description`), so a third party writes part of the
+        /// selection prompt. The rules stand at this one place, and not in
+        /// the MCP capability, thus a native tool with the same fault obeys
+        /// them too:
+        ///
+        /// 1. **A description longer than
+        ///    ``summaryDescriptionCharacterLimit`` is cut**, on a word
+        ///    boundary, and the cut is visible: the text ends with a
+        ///    `[cut <n> characters]` line of its own that names how many
+        ///    characters it does not show. Without the cap, a server that
+        ///    declares forty tools of several thousand characters each sets
+        ///    the size of the prompt, the number of model calls and the time
+        ///    of one `searchTools` call.
+        /// 2. **A description that is empty, or spaces alone, is replaced**
+        ///    by a sentence that names the verb and the names of its
+        ///    arguments — `"read takes path and encoding."` A server is
+        ///    permitted to give no description, and such a tool must stay
+        ///    callable, but a banner with nothing under it leaves the
+        ///    selection model a path and nothing more to read.
+        ///
+        /// Neither rule reaches ``block``, which the main session reads after
+        /// a tool is chosen, and neither rule reaches the tool itself, which
+        /// keeps the name, the description and the schema the server gave.
         public var summaryBlock: String {
-            "\(banner)\n\(qualify(descriptor.description))"
+            "\(banner)\n\(summaryDescription)"
+        }
+
+        /// The greatest number of characters of description ``summaryBlock``
+        /// carries, the cut marker counted in.
+        ///
+        /// Measured on 2026-09-10 over the two surfaces this package renders.
+        /// The nine-entry files-and-shell surface: a description of 682 to
+        /// 1,663 characters (the longest is `files.patch`), a `summaryBlock`
+        /// of 706 to 1,684 characters, and a `block` of 1,498 to 2,916. The
+        /// three-verb loopback MCP surface: a description of 39 to 57
+        /// characters, a `summaryBlock` of 62 to 85, and a `block` of 230 to
+        /// 288.
+        ///
+        /// The limit stands above the longest description this package
+        /// writes, with room for that description to grow by about a fifth,
+        /// thus no shipped description is cut today and the rule bites only
+        /// on text that is far outside what a description is for.
+        public static let summaryDescriptionCharacterLimit = 2_000
+
+        /// The text ``summaryBlock`` puts under the banner: the description,
+        /// cut to ``summaryDescriptionCharacterLimit``, or the sentence that
+        /// stands in for a description the tool does not give.
+        private var summaryDescription: String {
+            let described = qualify(descriptor.description)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !described.isEmpty else { return argumentSentence }
+            return Self.cut(described)
+        }
+
+        /// What ``summaryDescription`` reads when the tool gives no
+        /// description: one sentence that names the verb and the names of the
+        /// arguments its schema declares.
+        ///
+        /// The argument names are the only other words the entry holds that a
+        /// person wrote. They are what the block carried before the selection
+        /// prompt narrowed to the description alone, and they are what a
+        /// reader of the tool would match a request against.
+        private var argumentSentence: String {
+            let names = descriptor.signature.arguments.properties.map(\.name)
+            guard !names.isEmpty else {
+                return "\(descriptor.name) takes no argument."
+            }
+            return "\(descriptor.name) takes \(Self.sentenceList(of: names))."
+        }
+
+        /// Cuts `description` to ``summaryDescriptionCharacterLimit`` on a
+        /// word boundary, and marks the cut.
+        ///
+        /// The head is kept, and the tail goes away. `ToolContentRenderer`
+        /// elides the MIDDLE of a tool result, because the tail of a result
+        /// often holds the answer; a description opens with what the tool is
+        /// for, so the head is the half a selection model must read.
+        ///
+        /// Room for the marker is reserved against the largest count the
+        /// marker could name, thus the result never goes over the limit.
+        ///
+        /// - Parameter description: The description to cut.
+        /// - Returns: `description` unchanged when it is inside the limit;
+        ///   otherwise its head, back to the last space, and the marker.
+        private static func cut(_ description: String) -> String {
+            guard description.count > summaryDescriptionCharacterLimit else {
+                return description
+            }
+            let worstCaseMarker = summaryCutMarker(cutCount: description.count)
+            let keptLimit = max(summaryDescriptionCharacterLimit - worstCaseMarker.count, 0)
+            let head = description.prefix(keptLimit)
+            let boundary = head.lastIndex { $0.isWhitespace } ?? head.endIndex
+            let kept = head[head.startIndex..<boundary]
+            return kept + summaryCutMarker(cutCount: description.count - kept.count)
+        }
+
+        /// The marker that closes a cut description, on a line of its own, and
+        /// names how many characters of the description are not shown.
+        ///
+        /// - Parameter cutCount: The number of characters the marker reports
+        ///   as cut.
+        /// - Returns: A standalone `"[cut <cutCount> characters]"` line.
+        static func summaryCutMarker(cutCount: Int) -> String {
+            "\n[cut \(cutCount) characters]"
+        }
+
+        /// Joins `names` the way a sentence does — `"path"`, `"path and
+        /// encoding"`, `"path, encoding and count"`.
+        ///
+        /// - Parameter names: The names to join, in declared order.
+        /// - Returns: The joined text, or the empty string for no name.
+        private static func sentenceList(of names: [String]) -> String {
+            guard let last = names.last else { return "" }
+            guard names.count > 1 else { return last }
+            return "\(names.dropLast().joined(separator: ", ")) and \(last)"
         }
 
         /// The `// tools.<path>` line that opens ``block`` and
