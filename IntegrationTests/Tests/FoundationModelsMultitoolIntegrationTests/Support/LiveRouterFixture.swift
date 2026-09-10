@@ -371,10 +371,14 @@ let multitoolTinyProfile = CLIRunner.demoProfile
 /// is architecture-specific, so a different model there measures a different
 /// thing. None of them may take this constant.
 ///
-/// `NestedGenerationProbeTests` is the one suite that passes the test today. It
-/// asks whether a nested generation on a held container comes back — a question
-/// about Router's `generationGate`, answered identically by any model that gets
-/// as far as calling the tool.
+/// Two suites pass the test today. `NestedGenerationProbeTests` asks whether a
+/// nested generation on a held container comes back — a question about Router's
+/// `generationGate`, answered identically by any model that gets as far as
+/// calling the tool. `OverBudgetSurfaceDiscoveryTests` asks whether a catalog
+/// above the selection budget answers matches that are spliced one time, are
+/// unique, stand inside the limit and name real paths — properties of this
+/// package's own splice, which hold whatever the model picks; that suite grades
+/// no pick and asserts on no answer.
 ///
 /// Qwen3-1.7B rather than a smaller model of another family: the shipped pin is
 /// Qwen3.8, so this exercises the same chat/tool template shape the product

@@ -20,16 +20,6 @@ private let agentSurfaceScenarioName = "agentSurfaceDiscovery"
 /// The name of the shell store directory inside the session root.
 private let shellStoreDirectoryName = ".shell"
 
-/// The banner line every spliced catalog block opens with, up to the path.
-///
-/// `SearchToolsTool.format(task:matches:sample:)` splices each matched
-/// entry's `APISurface.Entry.block` verbatim, and that block opens with
-/// `// tools.<path>` — so the paths the model was handed are readable off
-/// the banner lines and off nothing else. The same prefix stands inside the
-/// entry descriptions ("pass it to tools.shell.getLines"), which is why this
-/// reads a whole line and never a substring.
-private let catalogBannerPrefix = "// tools."
-
 /// The ten `task` strings the `acp-agent` gave to `searchTools` on the
 /// SWE-bench instance `astropy__astropy-12907`, in the order it gave them.
 ///
@@ -152,19 +142,6 @@ struct AgentSurfaceDiscoveryTests {
     }
 }
 
-/// The catalog paths a `searchTools` result handed the model, in the order
-/// the result lists them — one for each spliced block's banner line.
-///
-/// - Parameter feedback: the text `SearchToolsTool.call(arguments:)` answered.
-/// - Returns: the `tools.*` paths of the matched entries, without the
-///   `tools.` prefix; empty for the "found no matching functions" answer.
-private func catalogPaths(in feedback: String) -> [String] {
-    feedback
-        .split(separator: "\n", omittingEmptySubsequences: true)
-        .filter { $0.hasPrefix(catalogBannerPrefix) }
-        .map { String($0.dropFirst(catalogBannerPrefix.count)) }
-}
-
 /// Prints the size of the catalog the selection model holds in its
 /// instructions for `registry` — the number the card asks for.
 ///
@@ -180,13 +157,9 @@ private func reportCatalogSize(of registry: MultiTool.Registry) {
     )
 }
 
-/// Prints one `RESULT` line of this suite, in the shape every gated suite
-/// prints its readings, so a log reader finds them under one label.
+/// Prints one `RESULT` line of this suite under this suite's own label.
 ///
 /// - Parameter line: the reading to print after the label.
 private func reportDiscoveryLine(_ line: String) {
-    // The gated suites report their readings on standard out, where a CI log
-    // reader finds them beside the other `RESULT` lines.
-    // swiftlint:disable:next no_direct_standard_out_logs
-    print("RESULT [\(agentSurfaceScenarioName)] \(line)")
+    reportGatedResult(scenario: agentSurfaceScenarioName, line: line)
 }

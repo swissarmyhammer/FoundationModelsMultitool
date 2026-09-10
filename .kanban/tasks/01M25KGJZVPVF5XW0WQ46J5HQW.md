@@ -215,8 +215,34 @@ comments:
     - evidence: 1 file — Tests/FoundationModelsMultitoolTests/UnknownToolHintTests.swift. The cause: the file built `MetadataSearcher(items:mode:)`, where the source code builds `MetadataSearcher(index: MetadataIndex(items:), mode:, embedder:, selection:)`. Both places of the file (the `resolve(_:)` helper, and the no-tier test) now build it the way `RegistryBundle.init` does. `swift test` — 1410 tests, 110 suites, 0 failed, 0 warnings. `swift build --package-path IntegrationTests` — build complete, 0 errors (only the known dependency message `warning: missing creator for mutated node` for the mlx-swift Cmlx bundle). `swift test --package-path IntegrationTests --no-parallel --filter AgentSurfaceDiscoveryTests` — 1 test, 1 suite, 0 failed, entries=9, prefixCharacters=7601, all ten queries answered.
     - next: `/review`
   timestamp: 2026-09-10T14:00:43.120769+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m25t0mzh3kgxnaxad0b8vx9f
+  text: |-
+    ### commit — changed
+    - evidence: fd3f437 — 3 files changed (source test file + 2 kanban task files)
+    - next: send the change to review.
+  timestamp: 2026-09-10T14:02:15.409578+00:00
+- actor: claude-code
+  id: 01m25t4fyw6m4bcnmtg7eznajp
+  text: |-
+    ### review — clean
+    - evidence: 0 findings over HEAD~1..HEAD (commit fd3f437). 7 validator runs, 0 failures. The one prior finding of the 2026-09-10 08:44 section is checked.
+    - next: none. The card moves to done.
+  timestamp: 2026-09-10T14:04:21.340589+00:00
+- actor: claude-code
+  id: 01m25t52pz3sgsgf5h7sv5vb5z
+  text: |-
+    ### finish iteration 2 — clean
+
+    - implement: changed. The open finding is fixed. `Tests/FoundationModelsMultitoolTests/UnknownToolHintTests.swift` built its searcher with the convenience initializer. Both places in the file now build it the way `RegistryBundle` builds it. No test was deleted. No assertion is weaker.
+    - test: green. `swift test` gives 1410 pass, 0 fail, 0 warning. `swift build --package-path IntegrationTests` gives 0 error. The gated suite gives 1 pass, with `entries=9` and `prefixCharacters=7601`.
+    - commit: fd3f437, 3 files. The source change and the board files are in one commit, so the review reads the code.
+    - review: clean. 0 finding over `HEAD~1..HEAD`. The prior finding is checked. The task moved to done.
+
+    Note on iteration 1: the review of that iteration read `HEAD~1..HEAD`, but the commit step had made two commits, and the last one held only board files. So that review read no code. The review of this iteration reads the code, because the commit step made one commit.
+  timestamp: 2026-09-10T14:04:40.543101+00:00
+position_column: done
+position_ordinal: ffba80
 title: 'Remove the two discovery workarounds: CatalogSearcher, and the local selection preamble'
 ---
 ## What

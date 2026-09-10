@@ -322,12 +322,12 @@ public struct SearchToolsTool: Tool {
         // grammar down, so a grammar scoped to one round's candidates is no
         // longer expressible.
         //
-        // Over budget, the tier selects among the top-M candidates while this
-        // grammar still permits every id in the catalog. That is looser than
-        // the per-call grammar was, and it is safe: the tier's own
-        // `.unknownSelectedId` filter drops an id outside the round's
-        // candidate set. Under `capacityCharacterLimit` the over-budget path
-        // never runs, and the two are identical.
+        // Over budget, the tier prompts one slice of the catalog at a time
+        // while this grammar still permits every id in the catalog. That is
+        // looser than the per-call grammar was, and it is safe: the tier's
+        // own `.unknownSelectedId` filter drops an id outside the slice the
+        // prompt carried. Under `capacityCharacterLimit` the over-budget
+        // path never runs, and the two are identical.
         let grammar = try idEnumGrammar(ids: ids)
         // **The selection session must come from `librarian`, a handle other
         // than the one whose turn is calling this tool. That is a correctness
@@ -520,6 +520,33 @@ public struct SearchToolsTool: Tool {
     /// example, qualified the same way via `Entry.qualifiedExample` so this
     /// trailer never shows a different, bare call than the one `block`'s own
     /// embedded `@example` line just displayed.
+    ///
+    /// **The order of the blocks, and it is a rule.** The blocks stand in the
+    /// order `matches` arrives in, and this function sorts nothing. The model
+    /// reaches for the first tool it reads, so that order is the answer this
+    /// package gives, and it is this:
+    ///
+    /// 1. Under the selection budget, the order the selection model answered
+    ///    in, over the whole catalog.
+    /// 2. Over the budget, where `SelectionTier` splits the catalog into
+    ///    slices and prompts each one, slice by slice in catalog order, and
+    ///    inside each slice the order that slice's model answered in. So a
+    ///    match from an earlier slice stands above a match from a later one,
+    ///    whatever either model thought of its own pick.
+    /// 3. Either way, an id the model repeats is kept at its first place and
+    ///    spliced one time, and the list is cut to the limit of the call
+    ///    after every slice has answered.
+    ///
+    /// **The score is not the order key, and it cannot be.** A tier match is
+    /// scored `1 / rank` by its position *in its own slice*
+    /// (`SelectionTier.orderScore(rank:)`), so the first pick of every slice
+    /// scores `1.0` and a sort by score could not tell the slices apart. The
+    /// order above is the tier's merge order carried through
+    /// `MetadataSearcher`, which maps the tier's matches one for one and
+    /// never re-sorts them. `OverBudgetSelectionOrderTests` holds the rule
+    /// over a real above-budget surface, and no change in the ranker is
+    /// needed for it: catalog order between slices is what the tier already
+    /// does.
     ///
     /// When `sample` is present the runnable snippet **leads**, and the
     /// signature blocks follow it as supporting material: the deliverable is
