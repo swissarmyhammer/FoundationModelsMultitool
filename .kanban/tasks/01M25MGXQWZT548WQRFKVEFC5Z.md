@@ -92,6 +92,42 @@ comments:
     - evidence: three settings measured with the selection tier off, over the ten queries of `^zqz1zan` and the fifteen held-out queries of `^kn9ay20`, on 2026-09-10, and repeated to the digit. block/block: agentSurface 9/10 at rank one, 10/10 in the top three, mean best rank 1.10; heldOut 10/15, 13/15, 1.87. description/description: agentSurface 9/10, 10/10, 1.10; heldOut 8/15, 14/15, 1.80. block/description: agentSurface 10/10, 10/10, 1.00; heldOut 6/15, 12/15, 2.13. Every declared path of every query ranked in every setting. Surface size 9 entries, 18,720 block characters against 9,057 summary characters. Choice: keep the full block for the keyword index and the embedder alike, because the split the card suspected would help is the worst of the three on the held-out group, and because the description-for-both setting cannot be taken at all — `renderBlock()` also gives the main session the text it reads to write the call. Registry card `^kh2ttmm` asks for the two seams that would open that door. Files: `Sources/FoundationModelsMultitool/Surface/APISurface+SearchableMetadata.swift` (doc comment: the choice and the numbers), new `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/RetrievalTextSurfaceDiscoveryTests.swift`, new `FoundationModelsMetadataRegistry/.kanban/tasks/01M26P0000R9VXQ7B3DKH2TTMM.md` and its ledger. Tests: root `swift test` 1,422 tests in 113 suites, all green, no warning; `swift build --package-path IntegrationTests` clean; the five gated discovery suites 5 tests in 5 suites, all green (agentSurface 19 correct and 3 undeclared in each of three rounds; heldOut 16 correct and 2 undeclared in each of three rounds; no-description, over-budget and the new retrieval-text suite green). No production behavior changed: the shipped conformance is the same code, and the card is now a measured decision instead of a default.
     - next: review. One thing found on the way and put on its own card `^fdaxnjw`: the doc comment of `HeldOutSurfaceDiscoveryTests` says the suite is red at 9 of 22, and it now scores 16 in every round and passes, most likely because card `^p06rh7z` rewrote the nine descriptions.
   timestamp: 2026-09-10T22:09:47.070147+00:00
+- actor: claude-code
+  id: 01m26p0c6d0bfhkw9hr55faeb2
+  text: |-
+    ### commit — changed
+    - evidence: 2d3b21ba45b6c01b2e199f80c61f5fd23281ed45, 10 files changed, 723 insertions(+), 10 deletions(-)
+    - next: review
+  timestamp: 2026-09-10T22:11:26.541080+00:00
+- actor: claude-code
+  id: 01m26pdaf9y61r5zpdb6srt25t
+  text: |-
+    ### review — findings
+    - evidence: 2 findings over HEAD~1..HEAD — IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/RetrievalTextSurfaceDiscoveryTests.swift:184, RetrievalTextSurfaceDiscoveryTests.swift:185. Both are `code-hygiene/magic-numbers-swift`: replace the magic numbers with named constants.
+    - next: Correct the cause in the full file, not the two lines alone. Then run the review again. The card stays in review until the findings are closed.
+  timestamp: 2026-09-10T22:18:30.761157+00:00
+- actor: claude-code
+  id: 01m26pkfqb1fx297e72bka9dt0
+  text: |-
+    The card came back to doing to close the two review findings.
+
+    The rule behind both is `swiftlint no_magic_numbers`, with `allowed_numbers: [0, 1, -1, 100]`. I ran that rule over the whole file with its own configuration before I made a change, so I would see every literal it reads and not the two lines of the review alone. The run read exactly two violations, at the two `shippedTopPlaceLevel:` arguments of `retrievalTextGroups`.
+
+    Four numbers now carry a name:
+
+    - `shippedAgentSurfaceTopPlaceLevel` (10) and `shippedHeldOutTopPlaceLevel` (13) — the two levels the review named. Each doc comment says what the level counts and that the 2026-09-10 measurement read it.
+    - `retrievalTextFirstPlace` (1), which `bestRankOne` compares against. The rule carves 1 out, so this one is not a finding; the name makes the count read like the `retrievalTextTopPlaces` count beside it.
+    - `meanBestRankPlacesAfterThePoint` (2), which was inside the `"%.2f"` format string. The rule reads no number in a string, so this one is not a finding either. The rendered mean does not change.
+
+    The rule now reads 0 violations in the file.
+  timestamp: 2026-09-10T22:21:52.747109+00:00
+- actor: claude-code
+  id: 01m26pkrqjtzejzqccckc1wskt
+  text: |-
+    ### implement — changed
+    - evidence: 4 numbers now carry a name in `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/RetrievalTextSurfaceDiscoveryTests.swift`, the one file this step touched: `shippedAgentSurfaceTopPlaceLevel` (10) and `shippedHeldOutTopPlaceLevel` (13), which are the two findings of the review; and `retrievalTextFirstPlace` (1) and `meanBestRankPlacesAfterThePoint` (2), which the rule carves out but which had no name. `swiftlint` with the rule's own configuration (`only_rules: [no_magic_numbers]`, `allowed_numbers: [0, 1, -1, 100]`) read 2 violations over the file before the change and 0 after it. No test was deleted, no assertion was weakened, and no printed line changed. `swift test` at the root: 1,422 tests in 113 suites, all green, and no line holds `warning:` or `error:`. `swift build --package-path IntegrationTests`: clean, and `--build-tests` compiles the whole test target clean as well. I did not run the live measurement suite again, because this change gives names to numbers and changes no value the suite measures or reports; the numbers stand on this card from the 2026-09-10 run.
+    - next: review. The two findings are now `- [x]` on the card. The card stays in doing.
+  timestamp: 2026-09-10T22:22:01.970879+00:00
 position_column: doing
 position_ordinal: '80'
 title: Decide whether the retrieval index and the embedder read the full block or the description
@@ -152,3 +188,17 @@ The per-query ranks of every setting, the totals, and the reasoning stand in the
 - [x] `swift test --package-path IntegrationTests --no-parallel --filter AgentSurfaceDiscoveryTests`: passes. — 3 rounds, 19 correct paths and 3 undeclared in each.
 
 #discovery #search-tools #metadata
+
+## Review Findings (2026-09-10 18:11)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 2 file(s) reviewed, 8 not reviewed.
+
+> 8 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 8 file(s)
+
+- [x] `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/RetrievalTextSurfaceDiscoveryTests.swift:184` `code-hygiene/magic-numbers-swift` — Magic numbers should be replaced by named constants.
+- [x] `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/RetrievalTextSurfaceDiscoveryTests.swift:185` `code-hygiene/magic-numbers-swift` — Magic numbers should be replaced by named constants.
+
+The cause was corrected over the whole file, not on the two lines alone. Four numbers now carry a name: `shippedAgentSurfaceTopPlaceLevel`, `shippedHeldOutTopPlaceLevel`, `retrievalTextFirstPlace` and `meanBestRankPlacesAfterThePoint`. `swiftlint` with the rule's own configuration reads 0 violations in the file.
+
+The live measurement suite was not run again. The change gives names to numbers; it changes no value, no assertion and no printed line, so the numbers this card records stand. `swift test` at the root and `swift build --package-path IntegrationTests --build-tests` are both clean.

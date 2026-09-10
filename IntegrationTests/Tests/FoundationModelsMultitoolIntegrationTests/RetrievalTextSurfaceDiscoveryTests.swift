@@ -25,6 +25,37 @@ private let retrievalTextScenarioName = "retrievalTextChoice"
 /// every count and every level of this suite reads.
 private let retrievalTextTopPlaces = 3
 
+/// The one place at the top of a ranking that the counts read on its own.
+///
+/// `bestRankOne` on each closing line counts the queries whose best declared
+/// path took this place.
+private let retrievalTextFirstPlace = 1
+
+/// How many places after the point each printed mean carries.
+///
+/// Two places separate the settings — the 2026-09-10 measurement read means of
+/// 1.80, 1.87 and 2.13 on the held-out group — and a third place would only
+/// print noise, because the ranks behind the mean are whole numbers.
+private let meanBestRankPlacesAfterThePoint = 2
+
+/// How many of the ten agent-surface queries the shipped setting must answer
+/// with a declared-correct path in the first ``retrievalTextTopPlaces``
+/// places.
+///
+/// The 2026-09-10 measurement read 10 of 10, and this level holds that
+/// reading. See ``GradedDiscoveryGroup/shippedTopPlaceLevel`` for why a level
+/// of this kind may be raised and never lowered.
+private let shippedAgentSurfaceTopPlaceLevel = 10
+
+/// How many of the fifteen held-out queries the shipped setting must answer
+/// with a declared-correct path in the first ``retrievalTextTopPlaces``
+/// places.
+///
+/// The 2026-09-10 measurement read 13 of 15, and this level holds that
+/// reading. See ``GradedDiscoveryGroup/shippedTopPlaceLevel`` for why a level
+/// of this kind may be raised and never lowered.
+private let shippedHeldOutTopPlaceLevel = 13
+
 /// Which text each half of the retrieval tier reads.
 ///
 /// The registry gives one `renderBlock()` to both halves, so a setting that
@@ -181,8 +212,16 @@ private struct GradedDiscoveryGroup: Sendable {
 /// twice. The levels are the 2026-09-10 measurement of the shipped setting,
 /// printed as `bestRankTopThree` on each closing line.
 private let retrievalTextGroups = [
-    GradedDiscoveryGroup(name: "agentSurface", queries: agentSurfaceQueries, shippedTopPlaceLevel: 10),
-    GradedDiscoveryGroup(name: "heldOut", queries: heldOutQueries, shippedTopPlaceLevel: 13),
+    GradedDiscoveryGroup(
+        name: "agentSurface",
+        queries: agentSurfaceQueries,
+        shippedTopPlaceLevel: shippedAgentSurfaceTopPlaceLevel
+    ),
+    GradedDiscoveryGroup(
+        name: "heldOut",
+        queries: heldOutQueries,
+        shippedTopPlaceLevel: shippedHeldOutTopPlaceLevel
+    ),
 ]
 
 /// The gated measurement that decides which text the retrieval tier reads.
@@ -441,7 +480,7 @@ private func groupLine(
     let declared = readings.flatMap(\.ranks)
     let declaredRanks = declared.compactMap(\.rank)
     let counts = "setting=\(setting.rawValue) group=\(group.name) queries=\(readings.count) "
-        + "bestRankOne=\(readings.filter { $0.bestRank == 1 }.count) "
+        + "bestRankOne=\(readings.filter { $0.bestRank == retrievalTextFirstPlace }.count) "
         + "bestRankTopThree=\(readings.filter(\.foundNearTheTop).count)"
     let means = "meanBestRank=\(format(meanBestRank(of: readings))) "
         + "declaredRanked=\(declaredRanks.count)/\(declared.count) "
@@ -449,12 +488,14 @@ private func groupLine(
     return "\(counts) \(means)"
 }
 
-/// Renders one mean to two places, or a dash when there is none.
+/// Renders one mean to ``meanBestRankPlacesAfterThePoint`` places, or a dash
+/// when there is none.
 ///
 /// - Parameter value: the mean to render.
 /// - Returns: the rendered mean.
 private func format(_ value: Double?) -> String {
-    value.map { String(format: "%.2f", $0) } ?? "-"
+    let specifier = "%.\(meanBestRankPlacesAfterThePoint)f"
+    return value.map { String(format: specifier, $0) } ?? "-"
 }
 
 /// Prints how long the two texts of each entry are, over the whole surface.
