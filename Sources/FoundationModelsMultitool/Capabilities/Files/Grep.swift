@@ -230,7 +230,11 @@ struct Grep: Tool {
 
     /// The usage instructions, as the model reads them.
     let description = """
-        grep searches file contents for a regular expression, line by line. A path that names a \
+        grep finds where a word stands inside files — a function name, a message, an identifier \
+        — when you know what to look for and not which file holds it. It searches file contents \
+        for a regular expression, line by line. It reads what a file holds now and never what \
+        you have changed: run git status through tools.shell.execute for that. A path that \
+        names a \
         file searches that file; a path that names a directory walks it git-aware, thus \
         gitignored directories are never searched, and binary files are skipped. glob filters \
         the walked files by name and type filters them by a known file type. Matching is \

@@ -160,8 +160,11 @@ struct Glob: Tool {
 
     /// The usage instructions, as the model reads them.
     let description = """
-        glob finds the files whose relative path matches a glob pattern, newest first. `*`, \
-        `?`, `[...]`, and `**` are supported, and matching is case-insensitive unless \
+        glob finds files by name, for when you know what a file is called and not where it \
+        stands. It answers by name alone and says nothing about which files you have changed: \
+        run git status through tools.shell.execute for that. It finds the files whose relative \
+        path matches a glob pattern, newest first. \
+        `*`, `?`, `[...]`, and `**` are supported, and matching is case-insensitive unless \
         caseSensitive is true. Matches are relative to the session root, capped at 10,000 with \
         an honest capped flag, and inside a git repository the ignore rules apply unless \
         respectGitIgnore is false. A broad pattern such as `*` or `**/*.swift` must give a \

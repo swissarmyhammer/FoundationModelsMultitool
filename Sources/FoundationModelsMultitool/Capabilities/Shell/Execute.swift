@@ -787,11 +787,17 @@ struct Execute: Tool {
 
     /// The usage instructions, as the model reads them.
     let description = """
-        execute starts one shell command in the background and answers at once with its \
-        completion token. When the command ends, its report carries the tail of its output, its \
-        status and its exit code; collect it with the wait tool. commandID in the report is the \
-        run's completion token: pass it to tools.shell.getLines to read the whole output so far, \
-        and to tools.shell.grepHistory to search it. Give timeout to bound the command, \
+        execute runs one command, and it is how you do everything the file verbs cannot. Run the \
+        project's test suite with it, run one failing test, run the build, run a script or any \
+        other program. It is also the whole of the reach this surface has to version control: \
+        run git status through it to see which files you have changed, and git diff to see what \
+        changed in them. Use it as well to delete a file or a whole directory, to move one, and \
+        to copy one. It starts \
+        the command in the background and answers at once with its completion token. When the \
+        command ends, its report carries the tail of its output, its status and its exit code; \
+        collect it with the wait tool. commandID in the report is the run's completion token: \
+        pass it to tools.shell.getLines to read everything the command printed so far, and to \
+        tools.shell.grepHistory to search it. Give timeout to bound the command, \
         workingDirectory to run it somewhere else, and environment as a JSON object of string \
         values to add variables. A command that is empty or longer than 262144 UTF-8 bytes, an \
         environment that is not a JSON object of strings, an environment value longer than 1024 \

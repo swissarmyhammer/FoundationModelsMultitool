@@ -394,7 +394,9 @@ struct Read: Tool {
 
     /// The usage instructions, as the model reads them.
     let description = """
-        read reads a file's contents, windowed by line. offset is the 1-based line to start \
+        read looks at a file that stands on disk — a source file, a note, a log file a run left \
+        behind. What a command printed while it ran is not on disk: tools.shell.getLines reads \
+        that. It reads a file's contents, windowed by line. offset is the 1-based line to start \
         from and limit is the maximum number of lines, thus a large file is read one window \
         at a time. The default hashline format tags each line as N:HH|text with its absolute \
         line number and content hash; format plain returns the raw text instead. The hash in \

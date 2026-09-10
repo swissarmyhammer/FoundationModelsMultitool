@@ -246,10 +246,14 @@ struct Write: Tool {
 
     /// The usage instructions, as the model reads them.
     let description = """
-        write writes content to a file atomically, replacing any existing file whole. The \
-        result carries bytesWritten, the whole-file freshness hash over the written bytes, \
-        and taggedContent — the written lines tagged as N:HH|text, identical to what a \
-        subsequent read returns, thus a chained edit resolves anchors without an intervening \
+        write puts the whole contents of a file in place: use it to create a new file, and to \
+        replace everything an existing file holds. It never removes a file: tools.files.patch \
+        deletes one, and tools.shell.execute removes a file or a whole directory. It writes \
+        content to a file atomically, \
+        replacing any existing file whole. The result carries bytesWritten, the whole-file \
+        freshness hash over the written bytes, and taggedContent — the written lines tagged as \
+        N:HH|text, identical to what a subsequent read returns, thus a chained edit resolves \
+        anchors without an intervening \
         read. Content over 10 MiB, a path outside the session root, a read-only target, a \
         read-only session, and a failed write each come back as a correction rather than as \
         an error — read it, correct the call, and ask again.

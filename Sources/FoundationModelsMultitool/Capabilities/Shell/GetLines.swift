@@ -198,12 +198,14 @@ struct GetLines: Tool {
 
     /// The usage instructions, as the model reads them.
     let description = """
-        getLines reads the captured output of one shell run, by line number. commandID is the \
-        completion token the run answered with. It reads a run that is still going and a run that \
-        ended alike: the status field says which, and `running` means more output is still to \
-        come. Omit start and end to read the whole output. A token no run of this session ran \
-        under, and a range that reads nothing, each come back as a correction rather than as an \
-        error — read it, correct the call, and ask again.
+        getLines shows what a command printed: the output of a run, the log it wrote, the report \
+        a failing test left behind. That output is not a file on disk, thus this verb reads it \
+        and the file verbs cannot. It reads the captured output of one shell run, by line \
+        number. commandID is the completion token the run answered with. It reads a run that is \
+        still going and a run that ended alike: the status field says which, and `running` means \
+        more output is still to come. Omit start and end to read the whole output. A token no run \
+        of this session ran under, and a range that reads nothing, each come back as a correction \
+        rather than as an error — read it, correct the call, and ask again.
         """
 
     /// The store this verb reads, which the shell capability owns.

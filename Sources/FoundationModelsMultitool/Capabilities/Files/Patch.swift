@@ -422,8 +422,9 @@ struct Patch: Tool {
     /// forms, and one worked multi-file example are what let the model
     /// write a valid envelope at all.
     let description = """
-        patch applies a multi-file patch in ONE call. The whole patch is a single text envelope \
-        passed as `patch`.
+        patch changes several files in one call: use it to edit them together, to create a file, \
+        to delete a file, and to rename one. It applies a multi-file patch in ONE call. The \
+        whole patch is a single text envelope passed as `patch`.
 
         Envelope shape (every marker starts with `*** ` at the start of the line):
 

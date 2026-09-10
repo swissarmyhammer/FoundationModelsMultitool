@@ -93,6 +93,13 @@ comments:
 
     Nothing is pushed. The commit is local, thus no CI run sees the red suite before a person pushes.
   timestamp: 2026-09-10T15:09:40.737431+00:00
+- actor: claude-code
+  id: 01m25xxb8m106jdk5r8d6an9vm
+  text: |-
+    ### commit — changed
+    - evidence: c940b21, 14 files changed
+    - next: none. The commit is local and not pushed. The commit message states that HeldOutSurfaceDiscoveryTests is RED on purpose and names card ^p06rh7z as the defect it measures.
+  timestamp: 2026-09-10T15:10:21.460033+00:00
 depends_on:
 - 01M25KGJZVPVF5XW0WQ46J5HQW
 position_column: doing

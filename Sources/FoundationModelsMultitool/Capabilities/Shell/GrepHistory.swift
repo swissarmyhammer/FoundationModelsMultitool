@@ -180,8 +180,10 @@ struct GrepHistory: Tool {
 
     /// The usage instructions, as the model reads them.
     let description = """
-        grepHistory searches the captured output of this session's shell runs, line by line, with \
-        a regular expression — or with exact text when literal is true. Give commandID to search \
+        grepHistory finds a line in what the commands of this session printed — an error message, \
+        the name of a failing test, a warning — over one run or over every run at once. It \
+        searches the captured output of this session's shell runs, line by line, with a regular \
+        expression — or with exact text when literal is true. Give commandID to search \
         inside one run, and omit it to search every run. shown is how many matches came back and \
         total is how many there are, thus a total over shown means a higher limit shows more. A \
         pattern that does not compile, and a token no run of this session ran under, each come \
