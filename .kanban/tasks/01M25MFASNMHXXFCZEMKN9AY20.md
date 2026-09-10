@@ -155,10 +155,38 @@ comments:
       bundle passes 24 tests in 17 suites in 845 seconds.
     - next: the card is ready for `/review`. It stays in the doing column.
   timestamp: 2026-09-10T16:04:41.245068+00:00
+- actor: claude-code
+  id: 01m2612yg978kc7wek0r1apag8
+  text: |-
+    ### commit — changed
+    - evidence: 7815680, 4 files changed (2 kanban task files for this card, 2 kanban task files for card ^p06rh7z, 109 insertions, 10 deletions)
+    - next: run review on the change
+  timestamp: 2026-09-10T16:05:50.729770+00:00
+- actor: claude-code
+  id: 01m2614p4h29crapxkh32pkw9n
+  text: |-
+    ### review — clean
+    - evidence: 0 findings over HEAD~1..HEAD. The local review engine read commit 7815680. That commit holds kanban card files only, and the ignore rule for .kanban excluded all 4 files. No prior `## Review Findings` section is on this card, and all acceptance items and test items are checked.
+    - next: The card moves from review to done. No work is open.
+  timestamp: 2026-09-10T16:06:47.697588+00:00
+- actor: claude-code
+  id: 01m2615drycm82wpvc3dqentpa
+  text: |-
+    ### finish iteration 2 — clean
+
+    - implement: changed, on the card only. No source file and no test file changed. The one open test item is now checked, thus the card is 7 of 7. The measurement is on the card.
+    - test: green. `swift test` gives 1415 pass in 112 suites. The gated filter gives 2 pass. The full gated bundle gives 24 pass in 17 suites.
+    - commit: 7815680, 4 files.
+    - review: clean. 0 finding over `HEAD~1..HEAD`. The task moved to done.
+
+    **The record of this card.** The held-out suite was red when it was written. That was the correct result, not a failure: the suite found a real defect. Card `^p06rh7z` found the cause and corrected it at commit f5e895c. The cause was the tool descriptions. Each description named the mechanism of its verb, and never the work a person brings, thus a query that named a test suite matched no candidate at all.
+
+    No held-out query was changed, and no level was lowered. Both test files are byte identical to commit c940b21, and the two SHA-1 values on this card prove it.
+  timestamp: 2026-09-10T16:07:11.902701+00:00
 depends_on:
 - 01M25KGJZVPVF5XW0WQ46J5HQW
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffbd80
 title: The gated discovery suite is graded on the ten queries its own preamble was chosen with
 ---
 ## What happened
