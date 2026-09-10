@@ -191,8 +191,27 @@ struct SearchToolsToolTests {
 
     // MARK: - The selection preamble (^zqz1zan)
 
-    @Test("the selection tier is seeded with a preamble that frames the candidates as functions a program calls, never the registry's neutral default")
-    func selectionTierIsSeededWithTheFunctionPreamble() async throws {
+    /// The sentence that decides the empty case, written out here on purpose.
+    ///
+    /// **Why a copy, when this file reads every other shipped string off the
+    /// declaration that owns it.** This is the guard card `^zqz1zan` left
+    /// behind. Measured on the agent's flash model: under the ranker default
+    /// that shipped before this sentence, `mlx-community/Qwen3-4B-4bit`
+    /// answered eight of the agent's ten queries with `{"ids":[]}` — every
+    /// query for a way to write, edit or run — and the bench run ended with an
+    /// empty patch. The ranker's `String.selectionDefault` now carries the
+    /// sentence itself (ranker card `^zxm99zs`), so this package passes no
+    /// preamble of its own.
+    ///
+    /// A test that read the sentence off `String.selectionDefault` would hold
+    /// whatever that constant said, which is the one thing this guard must not
+    /// do. A copy fails loudly if a later ranker default drops the sentence.
+    private static let emptyAnswerSentence =
+        "Prefer the closest candidates over an empty answer; answer with an empty list only when "
+        + "no candidate is related to the task at all."
+
+    @Test("the selection tier is seeded with a preamble that tells the model to prefer the closest candidates over an empty answer")
+    func selectionTierIsSeededWithTheEmptyAnswerGuidance() async throws {
         // A real `RoutedLLM`, because `makeSelection` wires nothing for a `nil`
         // librarian, and the preamble is only observable on the configuration
         // it builds for a real one.
@@ -200,13 +219,7 @@ struct SearchToolsToolTests {
 
         let config = try #require(try SearchToolsTool.makeSelection(librarian: profile.flash, ids: ["getTrip"]))
 
-        // Measured on the agent's flash model (`AgentSurfaceDiscoveryTests`):
-        // under `.selectionDefault`, which speaks of "items", the 4B answered
-        // eight of the agent's ten queries with an empty selection; under a
-        // preamble that says the candidates are functions a program calls, it
-        // answered every one of them. `selectionPreamble` carries the record.
-        #expect(config.preamble == SearchToolsTool.selectionPreamble)
-        #expect(config.preamble != String.selectionDefault)
+        #expect(config.preamble.contains(Self.emptyAnswerSentence))
     }
 
     // MARK: - The generated sample leads the output

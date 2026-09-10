@@ -73,7 +73,7 @@ public struct SearchToolsTool: Tool {
     /// Where this tool reads the catalog it searches.
     private enum Catalog: Sendable {
         /// One searcher, built before this tool, that never changes.
-        case fixed(searcher: CatalogSearcher, limit: Int)
+        case fixed(searcher: MetadataSearcher<APISurface.Entry>, limit: Int)
 
         /// The holder this tool shares with the `runCode` mounted beside it.
         /// Each call reads the holder's current bundle, so a swap at the turn
@@ -101,6 +101,11 @@ public struct SearchToolsTool: Tool {
     /// Creates a `searchTools` tool over an already-built `searcher`, in
     /// whatever mode that searcher was assembled in.
     ///
+    /// The searcher `makeSearcher(over:selection:embedder:)` builds for
+    /// `init(registry:librarian:embedder:limit:sampleGenerator:)` comes
+    /// through here as well, and a test's scripted or keyword-only searcher
+    /// comes through here too.
+    ///
     /// - Parameters:
     ///   - searcher: the searcher to forward every `searchTools(task)` call to.
     ///   - limit: the maximum number of matches to request per call.
@@ -112,19 +117,6 @@ public struct SearchToolsTool: Tool {
         limit: Int,
         sample: SampleSnippetConfig? = nil
     ) {
-        self.init(searcher: CatalogSearcher(searcher: searcher), limit: limit, sample: sample)
-    }
-
-    /// Creates a `searchTools` tool over a catalog searcher, embedding
-    /// included — the searcher `makeSearcher(over:selection:embedder:)`
-    /// builds for `init(registry:librarian:embedder:limit:sampleGenerator:)`.
-    ///
-    /// - Parameters:
-    ///   - searcher: the searcher to forward every `searchTools(task)` call to.
-    ///   - limit: the maximum number of matches to request per call.
-    ///   - sample: how to generate and validate the runnable sample snippet,
-    ///     or `nil` for the signatures-only result.
-    init(searcher: CatalogSearcher, limit: Int, sample: SampleSnippetConfig?) {
         self.catalog = .fixed(searcher: searcher, limit: limit)
         self.sample = sample
     }
@@ -158,17 +150,35 @@ public struct SearchToolsTool: Tool {
     /// builds one here for a fixed catalog, and `MultiTool.RegistryBundle`
     /// builds one here for each bundle of a shared holder.
     ///
+    /// **Why the catalog is not embedded here.** A bundle is built
+    /// synchronously: `RegistryBundle.init` runs under the holder's lock at
+    /// every surface swap, and `makeSessionToolsAndStaging` starts no task of
+    /// its own (`SurfaceRefresher.swift` states that rule). Embedding a
+    /// catalog is an `async` call on a model. The registry reconciles the two
+    /// itself: a `MetadataSearcher` built synchronously with an embedder
+    /// embeds every not-yet-embedded entry inside its **first** `search`, one
+    /// time, and every later search finds the work done. Until that first
+    /// search the catalog is keyword-searchable, which is what the registry
+    /// promises of an index that is still catching up.
+    ///
+    /// A searcher built with no embedder skips the step and stays what it
+    /// was: BM25 and trigram alone, with the registry reporting
+    /// `.embeddingUnavailable` on each search. A transient embed failure
+    /// leaves the searcher keyword-only for the life of its bundle — the
+    /// registry marks the catch-up done on every exit — and the next surface
+    /// swap builds a fresh bundle that embeds again.
+    ///
     /// - Parameters:
     ///   - entries: the catalog to index.
     ///   - selection: the selection tier, or `nil` for retrieval alone.
     ///   - embedder: the embedder the searcher ranks with from its first
-    ///     search on, or `nil` for keyword-only ranking — see
-    ///     `CatalogSearcher`.
+    ///     search on, or `nil` for keyword-only ranking.
     /// - Returns: the searcher.
     static func makeSearcher(
         over entries: [APISurface.Entry], selection: SelectionConfig?, embedder: (any TextEmbedding)?
-    ) -> CatalogSearcher {
-        CatalogSearcher(over: entries, mode: .auto, embedder: embedder, selection: selection)
+    ) -> MetadataSearcher<APISurface.Entry> {
+        MetadataSearcher(
+            index: MetadataIndex(items: entries), mode: .auto, embedder: embedder, selection: selection)
     }
 
     /// The registry's embedding seam over a host's Router embedding handle,
@@ -189,7 +199,7 @@ public struct SearchToolsTool: Tool {
     ///   matches to request.
     /// - Throws: ``DiscoverySearcherMissing`` when a shared holder's bundle
     ///   carries no discovery searcher.
-    private func resolveCatalog() throws -> (searcher: CatalogSearcher, limit: Int) {
+    private func resolveCatalog() throws -> (searcher: MetadataSearcher<APISurface.Entry>, limit: Int) {
         switch catalog {
         case .fixed(let searcher, let limit):
             return (searcher, limit)
@@ -232,7 +242,8 @@ public struct SearchToolsTool: Tool {
     ///     keyword-only ranking, which the registry reports on every search
     ///     as `no embedder configured`. A host that resolved a profile has
     ///     one and passes it; the catalog is embedded at the first search,
-    ///     never at this call (see `CatalogSearcher`).
+    ///     never at this call — see
+    ///     ``makeSearcher(over:selection:embedder:)``.
     ///   - limit: the maximum number of matches to request per call. Defaults
     ///     to `nil`, which resolves to `registry.surface.entries.count` — so
     ///     nothing the searcher legitimately matched is ever truncated.
@@ -266,57 +277,33 @@ public struct SearchToolsTool: Tool {
         )
     }
 
-    /// The guidance the selection session's instructions open with, above
-    /// the `# Candidates` list the tier assembles from the catalog.
-    ///
-    /// **This text is the difference between a selection and an empty
-    /// answer on a small model, and it was measured.** The registry's
-    /// `SelectionConfig` defaults its preamble to `.selectionDefault`, a
-    /// neutral wording that speaks of "items" and closes on "return an empty
-    /// list if nothing fits". Driven through this tool over the files-and-shell
-    /// catalog with the agent's own ten queries (`AgentSurfaceDiscoveryTests`,
-    /// card `^zqz1zan`), `mlx-community/Qwen3-4B-4bit` answered eight of the
-    /// ten with `{"ids":[]}` under that default — every query for a way to
-    /// write, edit or run — and the run ended with an empty patch. Under this
-    /// preamble, which says what the candidates are (functions a program
-    /// calls) and what an answer is (the ids the program calls, the closest
-    /// ones ahead of an empty list), the same model answered all ten, with
-    /// `shell.execute` alone for "run pytest tests" and `files.write`,
-    /// `files.edit`, `files.read` for "write file, edit file, create file".
-    /// The grammar, the prompt shape and the catalog blocks were the same in
-    /// both runs; the instructions are the whole cause.
-    ///
-    /// The registry's API-librarian preamble, `.librarianDefault`, answered
-    /// all ten as well, but it over-selected: nine of nine entries for "run
-    /// pytest tests" and for "file operations: create, write, append, delete,
-    /// move". This wording keeps the "fewest that suffice, in call order"
-    /// rule that both registry preambles carry, and adds the one sentence
-    /// that decides the empty case.
-    ///
-    /// An empty answer stays legal, on purpose: an off-topic task in a catalog
-    /// that holds nothing for it must come back empty, so the model is told to
-    /// say so, and `description` tells the model what to do when it does.
-    ///
-    /// This text goes through `SelectionConfig(model:preamble:)`, the seam
-    /// the ranker offers a consumer whose candidates are not generic "items".
-    /// It is not a copy of a ranker or registry preamble. The measurement
-    /// behind it is on ranker card `^zxm99zs`, which asks the ranker to make
-    /// its default answer on a small model as well; when that lands, this
-    /// constant can go and the default can take its place.
-    static let selectionPreamble = """
-        The candidates below are the functions a program can call, each under its id. Given a \
-        task, answer with the ids of the candidates the program calls to do that task — the \
-        fewest that suffice, in call order when order matters. Prefer the closest candidates \
-        over an empty answer; answer with an empty list only when no candidate is related to \
-        the task at all.
-        """
-
     /// The selection tier over `librarian`, or `nil` when there is no
     /// librarian and discovery answers by retrieval alone.
     ///
     /// The one place the selection tier is wired. `init(registry:...)` and
-    /// `makeSessionToolsAndStaging` both build it here. The tier's
-    /// instructions open with ``selectionPreamble``.
+    /// `makeSessionToolsAndStaging` both build it here.
+    ///
+    /// **No `preamble:` argument, and that is a decision this package
+    /// measured.** This tool used to seed the tier with a wording of its own,
+    /// because the ranker default that shipped then spoke of "items" and
+    /// closed on "return an empty list if nothing fits": driven over the
+    /// files-and-shell catalog with the agent's own ten queries
+    /// (`AgentSurfaceDiscoveryTests`, card `^zqz1zan`),
+    /// `mlx-community/Qwen3-4B-4bit` answered eight of the ten with
+    /// `{"ids":[]}` — every query for a way to write, edit or run — and the
+    /// bench run ended with an empty patch. Ranker card `^zxm99zs` moved the
+    /// deciding sentence into `String.selectionDefault` itself: "Prefer the
+    /// closest candidates over an empty answer; answer with an empty list only
+    /// when no candidate is related to the task at all."
+    ///
+    /// Card `^46j5hqw` then measured the two wordings against each other on
+    /// the same model, the same catalog and the same grammar, three rounds of
+    /// the ten queries each. The ranker default answered 30 of 30, held the
+    /// write, edit or shell verb in every one of queries 4 to 9 in all three
+    /// rounds, and assembled a 7,601-character prefix against the local
+    /// wording's 7,600. So the local constant was deleted and the default
+    /// takes its place. `SearchToolsToolTests` holds the deciding sentence as
+    /// the guard the old constant carried.
     ///
     /// - Parameters:
     ///   - librarian: the resolved `RoutedLLM` every selection session runs
@@ -391,8 +378,7 @@ public struct SearchToolsTool: Tool {
                             role: TracedAgentSession.selectionRole
                         )
                     }
-                },
-                preamble: Self.selectionPreamble
+                }
             )
         }
     }

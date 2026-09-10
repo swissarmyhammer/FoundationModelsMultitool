@@ -79,10 +79,16 @@ let agentSurfaceMutatingPaths: Set<String> = ["files.write", "files.edit", "shel
 /// suite reproduced the agent's log exactly: two of ten queries answered,
 /// eight `{"ids":[]}`. The catalog, the grammar and the prompt shape were the
 /// same in both runs; the one change between RED and GREEN is the selection
-/// preamble, `SearchToolsTool.selectionPreamble`, which frames the
-/// candidates as functions a program calls and tells the model to prefer
-/// the closest candidates over an empty answer. With it, the same model
-/// answers all ten.
+/// preamble, which tells the model to prefer the closest candidates over an
+/// empty answer. With it, the same model answers all ten.
+///
+/// That wording lived in this package as `SearchToolsTool.selectionPreamble`
+/// until card `^46j5hqw`. Ranker card `^zxm99zs` moved the deciding sentence
+/// into `String.selectionDefault`, and `^46j5hqw` measured the two wordings
+/// against each other here — three rounds of the ten queries each, on the
+/// same model and the same catalog. The ranker default answered 30 of 30 and
+/// held the write, edit or shell verb in every one of queries 4 to 9, so the
+/// local constant is gone and the tier takes the default.
 ///
 /// **What it prints.** One line per query with the matched paths and the raw
 /// ids the selection model answered, read off the Router recording the same
@@ -167,7 +173,7 @@ private func catalogPaths(in feedback: String) -> [String] {
 private func reportCatalogSize(of registry: MultiTool.Registry) {
     let entries = registry.surface.entries
     let prefix = SelectionTier.assemblePrefix(
-        preamble: SearchToolsTool.selectionPreamble, catalog: MetadataIndex(items: entries))
+        preamble: .selectionDefault, catalog: MetadataIndex(items: entries))
     reportDiscoveryLine(
         "entries=\(entries.count) prefixCharacters=\(prefix.count) "
             + "budget=\(SelectionConfig.defaultCapacityCharacterLimit) ids=\(entries.map(\.path))"

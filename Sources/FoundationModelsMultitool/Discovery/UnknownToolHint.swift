@@ -186,7 +186,7 @@ enum UnknownToolHint {
         message: String,
         snippet: String,
         surface: APISurface,
-        searcher: CatalogSearcher
+        searcher: MetadataSearcher<APISurface.Entry>
     ) async -> Resolution? {
         // The two sibling paths are real bindings the preamble installs, not
         // catalog entries, so the surface alone does not know them. Without
@@ -326,7 +326,7 @@ enum UnknownToolHint {
     private static func closestEntries(
         to failedPath: String,
         in surface: APISurface,
-        using searcher: CatalogSearcher
+        using searcher: MetadataSearcher<APISurface.Entry>
     ) async -> (tier: SuggestionTier, entries: [APISurface.Entry]) {
         let byName = entriesResemblingName(of: failedPath, in: surface)
         guard byName.isEmpty else { return (.nameResemblance, byName) }
@@ -391,7 +391,7 @@ enum UnknownToolHint {
     /// - Returns: the `relevanceSuggestionLimit` best-ranked entries.
     private static func entriesRelevantTo(
         _ failedPath: String,
-        using searcher: CatalogSearcher
+        using searcher: MetadataSearcher<APISurface.Entry>
     ) async -> [APISurface.Entry] {
         let intent = intent(spelling: failedPath)
         let matches = try? await searcher.search(intent: intent, limit: relevanceSuggestionLimit)

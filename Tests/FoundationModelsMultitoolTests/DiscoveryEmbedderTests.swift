@@ -18,6 +18,8 @@ import Testing
 ///    and through the hint searcher alike.
 /// 2. The host-facing factories take a Router `RoutedEmbedder` and adapt it
 ///    to the registry's `TextEmbedding` seam.
+/// 3. A catalog embed that fails leaves the searcher answering keyword-only
+///    for the life of its bundle, and the next bundle embeds again.
 ///
 /// No search here reaches a model: the searchers run in retrieval alone, and
 /// the embedder is `RecordingEmbedder`, so the reading is the list of batches
@@ -71,6 +73,34 @@ struct DiscoveryEmbedderTests {
         let matches = try await searcher.search(intent: "trip cities", limit: 1)
 
         #expect(matches.map(\.item.path) == [entry.path])
+    }
+
+    @Test("a failed catalog embed leaves the searcher answering, and the next bundle embeds again")
+    func failedCatalogEmbedLeavesTheSearcherAnsweringAndTheNextBundleRetries() async throws {
+        let registry = try Self.makeRegistry()
+        let entry = try #require(registry.surface.entries.first { $0.path == "getCities" })
+        let embedder = RecordingEmbedder(alwaysFails: true)
+        let bundle = MultiTool.RegistryBundle(registry: registry, shape: Self.makeShape(embedder: embedder))
+        let searcher = try #require(bundle.discoverySearcher)
+
+        // The searcher is still usable: the failed embed leaves it
+        // keyword-only, and keyword-only still answers.
+        let matches = try await searcher.search(intent: "trip cities", limit: 1)
+        #expect(matches.map(\.item.path) == [entry.path])
+
+        // And the failed catch-up runs one time for the life of this bundle:
+        // the registry marks it done on every exit, a failure included.
+        _ = try await searcher.search(intent: "trip cities", limit: 1)
+
+        // A surface swap builds a fresh bundle, and that bundle embeds again.
+        let nextBundle = MultiTool.RegistryBundle(registry: registry, shape: Self.makeShape(embedder: embedder))
+        _ = try await #require(nextBundle.discoverySearcher).search(intent: "trip cities", limit: 1)
+
+        // The catalog block batch, two times and never three: one per bundle.
+        // No query batch at all — with no entry embedded, the retrieval tier
+        // skips the cosine signal instead of embedding a query it cannot use.
+        let blocks = registry.surface.entries.map(\.block)
+        #expect(embedder.batches == [blocks, blocks])
     }
 
     @Test("the host's routed embedder is adapted to the registry's embedding seam unchanged")

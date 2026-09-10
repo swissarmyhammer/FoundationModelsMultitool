@@ -1,7 +1,150 @@
 ---
 assignees:
 - claude-code
-position_column: todo
+comments:
+- actor: claude-code
+  id: 01m25rqnn2d5q98vszes7dcyth
+  text: |-
+    ### Research
+
+    The pins are already correct in the tree: ranker `2f0bd16835d4773ed8ac842682030bd984aac34a`, registry `54517141895e20bd04f9a0b01c53ff165294b883`, in `Package.resolved` and in `IntegrationTests/Package.resolved`. The registry commit is later than the `9a8f6c4` the card names, which the first acceptance criterion permits.
+
+    `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/PreambleMeasurementScratch.swift` was NOT in the tree, and no commit ever held it. So the measurement was written new, as the card permits.
+
+    The registry catch-up embeds `entry.block` for each entry with no vector, one batch, in catalog order (`MetadataIndex+Embedding.swift`, `pendingEmbeddings()`). That is the same text and the same grouping the old `update(items:)` path embedded. So the embedder call counts of `DiscoveryEmbedderTests` do not change.
+
+    The retrieval tier asks for a query embed only when at least one entry carries a vector (`computeCosineScores`). So a searcher whose catalog embed failed makes no query-embed call at all — it reports `.embeddingUnavailable` and ranks by BM25 and trigram.
+  timestamp: 2026-09-10T13:39:52.610886+00:00
+- actor: claude-code
+  id: 01m25rr31ka4k7wakz59a1pq1s
+  text: |-
+    ### Step 1 — CatalogSearcher deleted
+
+    `Sources/FoundationModelsMultitool/Discovery/CatalogSearcher.swift` is gone. Each signature the card names now takes `MetadataSearcher<APISurface.Entry>`. The two `SearchToolsTool` initializers over a searcher became one, because they had the same signature after the change.
+
+    **Embedder call counts: no change.** The three counting tests of `DiscoveryEmbedderTests` pass with the same expectations they held before:
+
+    - the discovery searcher over two entries, two searches: `[[block1, block2], ["trip cities"], ["temperature"]]` — one catalog batch, then one query batch per search.
+    - the hint searcher, one search: `[[block1, block2], ["get itinerary"]]`.
+    - a bundle with no embedder: no batch at all, and the search still answers.
+
+    **Failed-embed path, new test.** `failedCatalogEmbedLeavesTheSearcherAnsweringAndTheNextBundleRetries` in `DiscoveryEmbedderTests`. `RecordingEmbedder(alwaysFails: true)` records each batch and then throws. The readings:
+
+    - the first search of the bundle answers `getCities` — the searcher stays usable, keyword-only.
+    - the second search of the same bundle makes no new embedder call — the registry marks the catch-up done on every exit, a failure included.
+    - a fresh bundle over the same registry embeds again.
+    - `embedder.batches == [blocks, blocks]`: the catalog batch two times, one per bundle, and no query batch at all.
+
+    **Gated suite before and after step 1: pass, with the same counts.** Ten queries, `prefixCharacters=7600`, `entries=9`:
+
+    ```
+    q1 matches=3 paths=["files.glob", "files.read", "shell.execute"]
+    q2 matches=2 paths=["files.glob", "files.read"]
+    q3 matches=1 paths=["files.grep"]
+    q4 matches=1 paths=["shell.execute"]
+    q5 matches=1 paths=["shell.execute"]
+    q6 matches=3 paths=["files.write", "files.edit", "files.read"]
+    q7 matches=2 paths=["files.edit", "files.patch"]
+    q8 matches=1 paths=["files.edit"]
+    q9 matches=6 paths=["files.write", "files.edit", "files.patch", "files.glob", "files.grep", "shell.execute"]
+    q10 matches=1 paths=["files.write"]
+    ```
+
+    Root suite: 1,410 tests pass, no warning.
+  timestamp: 2026-09-10T13:40:06.323091+00:00
+- actor: claude-code
+  id: 01m25rrgj53h1526s8vxf6azyq
+  text: |-
+    ### Step 2 — the three-round measurement
+
+    Model `mlx-community/Qwen3-4B-4bit` (the flash slot of `agentDiscoveryProfile`), the nine-entry files-and-shell surface, the production `searchTools` path, the same grammar for both wordings. Three rounds of the ten queries for each wording, sixty selection calls, one run of 45.5 s.
+
+    Prefix size: local `7600` characters, ranker default `7601` characters, budget `32000`.
+
+    **Local `selectionPreamble`** — the raw ids the selection model answered. Rounds 1, 2 and 3 are the same, id for id:
+
+    ```
+    q1  ["files.glob", "files.read", "shell.execute"]
+    q2  ["files.glob", "files.read"]
+    q3  ["files.grep"]
+    q4  ["shell.execute"]
+    q5  ["shell.execute"]
+    q6  ["files.write", "files.edit", "files.read", "files.write"]
+    q7  ["files.edit", "files.patch"]
+    q8  ["files.edit"]
+    q9  ["files.write", "files.edit", "files.patch", "files.glob", "files.grep", "shell.execute"]
+    q10 ["files.write"]
+    ```
+
+    **Ranker `String.selectionDefault`** — rounds 1, 2 and 3 are the same, id for id:
+
+    ```
+    q1  ["files.glob", "files.read", "shell.execute"]
+    q2  ["files.glob", "files.read"]
+    q3  ["files.grep"]
+    q4  ["shell.execute"]
+    q5  ["shell.execute"]
+    q6  ["files.write", "files.edit", "files.read"]
+    q7  ["files.edit", "files.patch"]
+    q8  ["files.edit", "files.write"]
+    q9  ["files.write", "files.edit", "files.patch", "files.glob", "files.grep", "shell.execute"]
+    q10 ["files.write"]
+    ```
+
+    **The decision rule, applied to the ranker default:**
+
+    1. All ten queries answer with at least one match — true in each of the three rounds. 30 of 30.
+    2. Queries 4 to 9 each hold `shell.execute`, `files.write` or `files.edit` — true in each of the three rounds: q4 and q5 `shell.execute`, q6 `files.write`, q7 `files.edit`, q8 `files.edit`, q9 `files.write`.
+    3. The prefix stays under 9,000 characters — 7,601.
+
+    All three hold. **So the local constant is deleted, and the tier takes `String.selectionDefault`.**
+
+    The one difference between the two wordings is a small one, and it favors the default: the default answers q8 with `files.edit` and `files.write`, where the local wording answered `files.edit` alone; and the default never repeated an id, where the local wording answered `files.write` two times in q6.
+
+    `PreambleMeasurementScratch.swift` is deleted, as the last acceptance criterion asks.
+  timestamp: 2026-09-10T13:40:20.165267+00:00
+- actor: claude-code
+  id: 01m25rrwgf443q75qdh54dkr24
+  text: |-
+    ### Step 2 — the constant removed, and the gated suite after it
+
+    `SearchToolsTool.selectionPreamble` is deleted. `makeSelection(librarian:ids:)` no longer passes a `preamble:` argument, so `SelectionConfig` takes `String.selectionDefault`. The doc comment of `makeSelection` now carries the record of both measurements.
+
+    The guard of `SearchToolsToolTests` is replaced, not deleted. The new test `selectionTierIsSeededWithTheEmptyAnswerGuidance` asserts that the preamble the tier gets holds the deciding sentence, written out in the test file:
+
+    > Prefer the closest candidates over an empty answer; answer with an empty list only when no candidate is related to the task at all.
+
+    The test file states why that sentence is a copy and not a read of `String.selectionDefault`: a test that read the sentence off the same constant it grades would hold whatever that constant said, and a later ranker default that dropped the sentence would pass.
+
+    `AgentSurfaceDiscoveryTests` now assembles its prefix with `.selectionDefault`, and its doc comment records the change.
+
+    **Gated suite after step 2: pass.** `entries=9`, `prefixCharacters=7601`, `budget=32000`:
+
+    ```
+    q1  matches=3 paths=["files.glob", "files.read", "shell.execute"]
+    q2  matches=2 paths=["files.glob", "files.read"]
+    q3  matches=1 paths=["files.grep"]
+    q4  matches=1 paths=["shell.execute"]
+    q5  matches=1 paths=["shell.execute"]
+    q6  matches=3 paths=["files.write", "files.edit", "files.read"]
+    q7  matches=2 paths=["files.edit", "files.patch"]
+    q8  matches=2 paths=["files.edit", "files.write"]
+    q9  matches=6 paths=["files.write", "files.edit", "files.patch", "files.glob", "files.grep", "shell.execute"]
+    q10 matches=1 paths=["files.write"]
+    ```
+
+    Root suite after step 2: 1,410 tests pass, no warning. `swift build --package-path IntegrationTests`: no error.
+
+    The bundle build stays synchronous: `RegistryBundle.init` builds each `MetadataSearcher` with the synchronous designated initializer and starts no task. The embed happens inside the first `search`, which the registry owns.
+  timestamp: 2026-09-10T13:40:32.399548+00:00
+- actor: claude-code
+  id: 01m25rs3enstf88pje3ma1n50b
+  text: |-
+    ### implement — changed
+    - evidence: `swift test` 1410 tests pass, 0 failures, 0 warnings; `swift build --package-path IntegrationTests` no error; `swift test --package-path IntegrationTests --no-parallel --filter AgentSurfaceDiscoveryTests` passes. 8 files — Sources/FoundationModelsMultitool/Discovery/CatalogSearcher.swift (deleted), Sources/FoundationModelsMultitool/Discovery/SearchToolsTool.swift, Sources/FoundationModelsMultitool/Discovery/UnknownToolHint.swift, Sources/FoundationModelsMultitool/RegistryBundle.swift, Tests/FoundationModelsMultitoolTests/DiscoveryEmbedderTests.swift, Tests/FoundationModelsMultitoolTests/Fixtures/EmbeddingFixtures.swift, Tests/FoundationModelsMultitoolTests/SearchToolsToolTests.swift, Tests/FoundationModelsMultitoolTests/UnknownToolHintTests.swift, IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/AgentSurfaceDiscoveryTests.swift.
+    - next: `/review`
+  timestamp: 2026-09-10T13:40:39.509772+00:00
+position_column: doing
 position_ordinal: '80'
 title: 'Remove the two discovery workarounds: CatalogSearcher, and the local selection preamble'
 ---
@@ -76,20 +219,20 @@ If the default fails any one of them, keep the constant. Then correct its doc co
 
 ## Acceptance Criteria
 
-- [ ] The pins of the root package and of the `IntegrationTests` package name ranker `2f0bd16` and registry `9a8f6c4`, or a later commit of each.
-- [ ] `CatalogSearcher.swift` is deleted, and no file names `CatalogSearcher` or `CatalogEmbedding`.
-- [ ] The gated suite passes after step 1, and the counts of the ten queries are on this card.
-- [ ] The three-round measurement of the two preambles is on this card, with the raw ids of each query.
-- [ ] The constant is deleted, or it is kept with the measurement that says why. This card states which.
-- [ ] The gated suite passes after step 2, and the counts and the prefix size are on this card.
-- [ ] `PreambleMeasurementScratch.swift` is deleted when the measurement is recorded.
+- [x] The pins of the root package and of the `IntegrationTests` package name ranker `2f0bd16` and registry `9a8f6c4`, or a later commit of each.
+- [x] `CatalogSearcher.swift` is deleted, and no file names `CatalogSearcher` or `CatalogEmbedding`.
+- [x] The gated suite passes after step 1, and the counts of the ten queries are on this card.
+- [x] The three-round measurement of the two preambles is on this card, with the raw ids of each query.
+- [x] The constant is deleted, or it is kept with the measurement that says why. This card states which. **The constant is deleted.**
+- [x] The gated suite passes after step 2, and the counts and the prefix size are on this card.
+- [x] `PreambleMeasurementScratch.swift` is deleted when the measurement is recorded.
 
 ## Tests
 
-- [ ] `swift test` at the root: no failure, no warning.
-- [ ] `swift build --package-path IntegrationTests`: no error.
-- [ ] `swift test --package-path IntegrationTests --no-parallel --filter AgentSurfaceDiscoveryTests`: passes.
-- [ ] A test holds the failed-embed path of step 1.
-- [ ] A test holds the empty-answer guard of step 2.
+- [x] `swift test` at the root: no failure, no warning.
+- [x] `swift build --package-path IntegrationTests`: no error.
+- [x] `swift test --package-path IntegrationTests --no-parallel --filter AgentSurfaceDiscoveryTests`: passes.
+- [x] A test holds the failed-embed path of step 1.
+- [x] A test holds the empty-answer guard of step 2.
 
 #discovery #search-tools #cleanup

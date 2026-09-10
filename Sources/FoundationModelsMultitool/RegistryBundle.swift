@@ -71,12 +71,15 @@ extension MultiTool {
         /// name against when no real path resembles its spelling. In
         /// `.retrieval` mode: no selection tier, so repairing a wrong guess
         /// costs no generation. It ranks with ``shape``'s embedder when the
-        /// host gave one, which costs one query embed per hint.
-        let hintSearcher: CatalogSearcher
+        /// host gave one, which costs one catalog embed at the first hint and
+        /// one query embed per hint after it — see
+        /// ``SearchToolsTool/makeSearcher(over:selection:embedder:)`` for who
+        /// pays that first embed.
+        let hintSearcher: MetadataSearcher<APISurface.Entry>
 
         /// The searcher `searchTools` forwards every call to, or `nil` when
         /// ``shape``'s discovery is `.none`.
-        let discoverySearcher: CatalogSearcher?
+        let discoverySearcher: MetadataSearcher<APISurface.Entry>?
 
         /// The shape this bundle was built in, kept so the next bundle of the
         /// same holder is built the same way.
@@ -94,8 +97,9 @@ extension MultiTool {
             self.hostFunctions = MultiTool.makeHelpDocsHostFunctions(for: registry)
             self.liveTools = MultiTool.makeLiveTools(for: registry)
             self.preamble = MultiTool.makePreamble(for: registry, bindsSearchTools: shape.bindsSearchTools)
-            self.hintSearcher = CatalogSearcher(
-                over: registry.surface.entries, mode: .retrieval, embedder: shape.embedder, selection: nil)
+            self.hintSearcher = MetadataSearcher(
+                index: MetadataIndex(items: registry.surface.entries), mode: .retrieval,
+                embedder: shape.embedder, selection: nil)
             switch shape.discovery {
             case .none:
                 self.discoverySearcher = nil
