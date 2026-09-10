@@ -128,8 +128,34 @@ comments:
     - evidence: 4 numbers now carry a name in `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/RetrievalTextSurfaceDiscoveryTests.swift`, the one file this step touched: `shippedAgentSurfaceTopPlaceLevel` (10) and `shippedHeldOutTopPlaceLevel` (13), which are the two findings of the review; and `retrievalTextFirstPlace` (1) and `meanBestRankPlacesAfterThePoint` (2), which the rule carves out but which had no name. `swiftlint` with the rule's own configuration (`only_rules: [no_magic_numbers]`, `allowed_numbers: [0, 1, -1, 100]`) read 2 violations over the file before the change and 0 after it. No test was deleted, no assertion was weakened, and no printed line changed. `swift test` at the root: 1,422 tests in 113 suites, all green, and no line holds `warning:` or `error:`. `swift build --package-path IntegrationTests`: clean, and `--build-tests` compiles the whole test target clean as well. I did not run the live measurement suite again, because this change gives names to numbers and changes no value the suite measures or reports; the numbers stand on this card from the 2026-09-10 run.
     - next: review. The two findings are now `- [x]` on the card. The card stays in doing.
   timestamp: 2026-09-10T22:22:01.970879+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m26pnr95dy547tvbnzme8fvx
+  text: |-
+    ### commit — changed
+    - evidence: 59493a4 fix(integration-tests): name the four numbers in the discovery test — 3 files changed
+    - next: none. The task is ready for review.
+  timestamp: 2026-09-10T22:23:07.045580+00:00
+- actor: claude-code
+  id: 01m26prexsg476p7gn8ff3tx2g
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` gives 0 findings over 1 file. The two findings of the section of 2026-09-10 18:11 are checked.
+    - next: The card moves to done. No work stays open.
+  timestamp: 2026-09-10T22:24:35.769931+00:00
+- actor: claude-code
+  id: 01m26ps21e38jr5wt7n4t5g8cq
+  text: |-
+    ### finish iteration 2 — clean
+
+    - implement: changed, in one test file. Four numbers now carry a name. The linter read 2 violations before and reads 0 after. No test was deleted, no assertion is weaker, and no printed line changed. The live measurement suite was not run again, because a name change alters no measured value.
+    - test: green. `swift test` gives 1422 pass in 113 suites, no warning. `swift build --package-path IntegrationTests` is clean, and the test target compiles.
+    - commit: 59493a4, 3 files.
+    - review: clean. 0 finding over `HEAD~1..HEAD`. Both prior findings are checked. The task moved to done.
+
+    **The answer of this card, in one sentence.** Keep the full block for the keyword index and for the embedder. The held-out queries refute the guess that the embedder is the weak half: the split setting is the worst of the three on that group. The description-only setting reads a little better and costs half as much, but it cannot be taken here, because the same text gives the main session what it reads to write the call.
+  timestamp: 2026-09-10T22:24:55.342165+00:00
+position_column: done
+position_ordinal: ffc080
 title: Decide whether the retrieval index and the embedder read the full block or the description
 ---
 ## What happened

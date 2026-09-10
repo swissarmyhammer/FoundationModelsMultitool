@@ -11,6 +11,56 @@
 import FoundationModelsMetadataRegistry
 
 extension MultiTool {
+    /// The weight of a signal ``hintSearchWeights`` keeps whole.
+    private static let wholeHintSignalWeight = 1.0
+
+    /// The weight of a signal ``hintSearchWeights`` drops.
+    private static let droppedHintSignalWeight = 0.0
+
+    /// The per-signal fusion weights ``RegistryBundle/hintSearcher`` ranks
+    /// with: BM25 and cosine whole, and the character-trigram signal dropped.
+    ///
+    /// **Why this searcher alone drops the trigram signal.** The trigram
+    /// signal is a signal of SPELLING: it is the Dice overlap of the
+    /// character trigrams of the query with the character trigrams of the
+    /// whole rendered block. `UnknownToolHint` already answers a wrong
+    /// spelling one tier earlier, with the trigram overlap of the guessed
+    /// NAME against the catalog names, and it reaches this searcher only when
+    /// that tier rejects the guess. What is left to rank is a guess that
+    /// resembles no name — a plain-language intent against nine blocks of
+    /// prose — and over that input the trigram signal measures the length of
+    /// a block and nothing else.
+    ///
+    /// **Measured on 2026-09-10, over the nine-entry files-and-shell
+    /// surface.** A three-word intent shares its trigrams with every block
+    /// that holds the words, so the count of shared trigrams saturates and
+    /// `2·|shared| / (|query| + |block|)` falls to the reciprocal of the size
+    /// of the block. `shell.execute` renders the largest block of the nine
+    /// (703 trigrams) and `shell.getLines` the smallest (480), thus the
+    /// trigram list ranked the reader over the runner for every guess that
+    /// asks to run a command:
+    ///
+    ///     intent                 bm25            cosine          trigram
+    ///     terminal run command   shell.execute   shell.execute   shell.getLines
+    ///     bash run               shell.execute   shell.execute   shell.getLines
+    ///     terminal run tests     shell.execute   shell.execute   shell.getLines
+    ///
+    /// The two signals that read what an entry MEANS both named
+    /// `shell.execute` first, and the reciprocal-rank fusion of three lists
+    /// still answered `shell.getLines`, because `shell.execute` stood sixth
+    /// and ninth on the trigram list. No wording of the descriptions repairs
+    /// that: the ranking follows the size of the block. Card `^pwn02m4`
+    /// measured it and dropped the signal here.
+    ///
+    /// **`searchTools` keeps every signal.** That searcher ranks the words a
+    /// person really wrote, where a near-spelling of a tool name is evidence
+    /// rather than noise, and `SearchToolsTool.makeSearcher(over:selection:
+    /// embedder:)` therefore takes the default weights.
+    static let hintSearchWeights = Weights(
+        bm25: wholeHintSignalWeight,
+        trigram: droppedHintSignalWeight,
+        cosine: wholeHintSignalWeight)
+
     /// How a bundle builds the searcher `searchTools` reads over its entries.
     enum DiscoverySearch: Sendable {
         /// No `searchTools` reads this bundle, so no discovery searcher is
@@ -74,7 +124,9 @@ extension MultiTool {
         /// host gave one, which costs one catalog embed at the first hint and
         /// one query embed per hint after it — see
         /// ``SearchToolsTool/makeSearcher(over:selection:embedder:)`` for who
-        /// pays that first embed.
+        /// pays that first embed. It ranks with ``MultiTool/hintSearchWeights``
+        /// rather than with the default weights, which is where the reason
+        /// stands.
         let hintSearcher: MetadataSearcher<APISurface.Entry>
 
         /// The searcher `searchTools` forwards every call to, or `nil` when
@@ -99,7 +151,7 @@ extension MultiTool {
             self.preamble = MultiTool.makePreamble(for: registry, bindsSearchTools: shape.bindsSearchTools)
             self.hintSearcher = MetadataSearcher(
                 index: MetadataIndex(items: registry.surface.entries), mode: .retrieval,
-                embedder: shape.embedder, selection: nil)
+                weights: MultiTool.hintSearchWeights, embedder: shape.embedder, selection: nil)
             switch shape.discovery {
             case .none:
                 self.discoverySearcher = nil

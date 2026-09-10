@@ -6,12 +6,12 @@ import Testing
 /// The time limit of the did-you-mean hint test, in minutes.
 ///
 /// The test resolves the plumbing probe profile, embeds the nine-entry catalog
-/// one time, and resolves three wrong paths. It generates nothing at all: the
+/// one time, and resolves six wrong paths. It generates nothing at all: the
 /// hint searcher runs in `.retrieval` mode with no selection tier, so the only
 /// model work is the catalog embed and one query embed for each guess that
 /// reaches tier 2. Measured on a warm machine on 2026-09-10, the whole suite
-/// took 2.7 s, and eight cases took the same 2.7 s — the resolution is the
-/// cost, and the cases are free beside it. Four minutes stands far over that
+/// took 2.7 s with three cases, and the same 2.7 s with six — the resolution
+/// is the cost, and the cases are free beside it. Four minutes stands far over that
 /// and over a cold load, which is the one slow part, and a run that reaches it
 /// is parked rather than slow.
 private let unknownToolHintTimeLimitMinutes = 4
@@ -45,11 +45,12 @@ struct ImaginedToolPath: Sendable {
     let bestPath: String?
 }
 
-/// The three shapes of wrong path card `^2rwvx3h` asks for, each beside the
-/// tier that must answer it and the entry it must name.
+/// The three shapes of wrong path card `^2rwvx3h` asks for, and the three
+/// run-a-command guesses card `^pwn02m4` holds beside them, each with the tier
+/// that must answer it and the entry it must name.
 ///
-/// **Why exactly these three.** A model gets a `tools.*` name wrong in three
-/// ways, and the two tiers of `UnknownToolHint` divide them:
+/// **Why exactly these three shapes.** A model gets a `tools.*` name wrong in
+/// three ways, and the two tiers of `UnknownToolHint` divide them:
 ///
 /// 1. **A spelling mistake.** `files.raed` shares its stem with `files.read`,
 ///    so tier 1's trigram overlap settles it with no model at all. This case
@@ -68,25 +69,36 @@ struct ImaginedToolPath: Sendable {
 ///    promises here is that the hint invents no name, and every case asserts
 ///    that.
 ///
+/// **Why the three run-a-command guesses stand here too.** Card `^pwn02m4`
+/// added them. Each one asks to run a command under a noun the catalog never
+/// uses, and each one was answered with `shell.getLines` — the verb that READS
+/// what a command printed. A model that reads such a hint calls
+/// `tools.shell.getLines` with no completion token, and the repair fails a
+/// second time. They are wrong-noun cases like `process.spawn`, and they are
+/// listed apart because each one holds the fix of that card.
+///
 /// **What the tier-2 ranking answered, measured 2026-09-10 on the shipped
 /// embedder.** Eight guesses were driven to choose the wrong-noun case, and
-/// the readings are recorded here rather than thrown away:
+/// the readings are recorded here rather than thrown away. The middle column
+/// is what the searcher answered while it fused three signals, and the right
+/// column is what it answers now that `MultiTool.hintSearchWeights` drops the
+/// trigram signal:
 ///
-///     guess                       named
-///     process.spawn               shell.execute
-///     terminal.runShellCommand    shell.execute
-///     terminal.runCommand         shell.getLines
-///     bash.run                    shell.getLines
-///     terminal.runTests           shell.getLines
-///     document.fetchText          files.patch
-///     weather.getForecast         shell.getLines
+///     guess                       named before    names now
+///     process.spawn               shell.execute   shell.execute
+///     terminal.runShellCommand    shell.execute   (not driven)
+///     terminal.runCommand         shell.getLines  shell.execute
+///     bash.run                    shell.getLines  shell.execute
+///     terminal.runTests           shell.getLines  shell.execute
+///     document.fetchText          files.patch     (not driven)
+///     weather.getForecast         shell.getLines  shell.getLines
 ///
-/// Every one of the seven named a real entry, which is the promise this suite
-/// holds. Three of them named the wrong entry of the right capability:
-/// `terminal.runCommand` asks to run a command and is answered with the verb
-/// that reads what a command printed. Card `^pwn02m4` owns that miss. This
-/// suite prints each answer and asserts nothing about it beyond the declared
-/// cases, so a later fix is measured here rather than argued.
+/// Every one named a real entry, which is the promise this suite holds. Three
+/// of them named the wrong entry of the right capability, and card `^pwn02m4`
+/// measured why: the trigram list ranked the shortest block first, and it
+/// outvoted the BM25 list and the cosine list, which both named
+/// `shell.execute`. See ``MultiTool/hintSearchWeights`` for the reading of
+/// each signal.
 let imaginedToolPaths = [
     ImaginedToolPath(
         shape: "a spelling mistake",
@@ -96,6 +108,21 @@ let imaginedToolPaths = [
     ImaginedToolPath(
         shape: "a wrong noun",
         imaginedPath: "process.spawn",
+        tier: .catalogRelevance,
+        bestPath: "shell.execute"),
+    ImaginedToolPath(
+        shape: "a wrong noun that asks to run a command",
+        imaginedPath: "terminal.runCommand",
+        tier: .catalogRelevance,
+        bestPath: "shell.execute"),
+    ImaginedToolPath(
+        shape: "a wrong noun that asks to run a command",
+        imaginedPath: "bash.run",
+        tier: .catalogRelevance,
+        bestPath: "shell.execute"),
+    ImaginedToolPath(
+        shape: "a wrong noun that asks to run a command",
+        imaginedPath: "terminal.runTests",
         tier: .catalogRelevance,
         bestPath: "shell.execute"),
     ImaginedToolPath(
@@ -114,7 +141,7 @@ let imaginedToolPaths = [
 /// exactly where a scripted searcher says nothing. This suite mounts the
 /// nine-entry files-and-shell surface through the production call, takes the
 /// bundle's own `hintSearcher` off the holder that mount vends, and resolves
-/// three wrong paths against it.
+/// six wrong paths against it.
 ///
 /// **It never goes through `searchTools`.** That tool forwards to the other
 /// searcher of the bundle — `.auto` mode with a selection tier — and the two
@@ -123,11 +150,11 @@ let imaginedToolPaths = [
 /// a repair costs, and it is reached the one way a run reaches it:
 /// `UnknownToolHint.hint(message:snippet:surface:searcher:)`.
 ///
-/// **What it holds.** For each of the three shapes: the tier that answered,
+/// **What it holds.** For each case: the tier that answered,
 /// every path the hint named, and every path the hint *text* named are all
 /// checked. A named path must be a path the surface really defines, in the
-/// resolution and in the text a model reads alike; the two shapes that declare
-/// a right answer must name it first; and a tier that answers nothing must
+/// resolution and in the text a model reads alike; every case that declares a
+/// right answer must name it first; and a tier that answers nothing must
 /// name nothing, which is the promise that a guess resembling no entry gets no
 /// wrong name.
 ///
@@ -147,7 +174,7 @@ let imaginedToolPaths = [
 /// cheapest generation weights to resolve. See `plumbingProbeModel` for the
 /// plumbing-versus-intelligence test a suite must pass to take it.
 ///
-/// **What it prints.** One line for each shape with the imagined path, the
+/// **What it prints.** One line for each case with the imagined path, the
 /// tier that answered, the paths the hint named and the paths its text named,
 /// and one line with the size of the catalog behind them.
 ///
@@ -162,7 +189,7 @@ let imaginedToolPaths = [
     .timeLimit(.minutes(unknownToolHintTimeLimitMinutes))
 )
 struct UnknownToolHintLiveTests {
-    @Test("three shapes of wrong tools.* path each answer with a tool the surface really defines")
+    @Test("every wrong tools.* path answers with a tool the surface really defines")
     func wrongPathsAnswerWithRealTools() async throws {
         try await withLiveRouterFixture(name: unknownToolHintScenarioName, profile: plumbingProbeProfile) { fixture in
             let surface = try makeFilesAndShellSurface(over: fixture)
