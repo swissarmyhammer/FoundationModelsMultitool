@@ -425,7 +425,13 @@ enum EditEngine {
     /// The rungs are tried in order, and a resolving anchor takes precedence over
     /// a literal, which takes precedence over the recovery ladder:
     ///
-    /// 1. **Anchor** — when `find` parses as a hashline anchor, it is resolved via
+    /// 0. **Tagged block** — when `find` is several `N:HH|text` lines pasted back
+    ///    out of a read, it names a span of consecutive lines rather than one
+    ///    anchor; ``Hashline/resolveBlock(_:in:)`` locates that span and the whole
+    ///    span is the edit site. Every rung below this one sees the block's
+    ///    untagged text, so a block the line numbers no longer locate still
+    ///    resolves by its text.
+    /// 1. **Anchor** — when `find` is one line that parses as a hashline anchor, it is resolved via
     ///    ``Hashline/resolveAnchor(_:in:)`` (±``Hashline/proximityWindow`` drift,
     ///    optional `|text` verification). If it resolves *and* the anchor's
     ///    `|text` payload also matches literally on a **different** line, the two
@@ -449,8 +455,13 @@ enum EditEngine {
     ///   - working: the current working copy to resolve against.
     /// - Returns: the ``Resolution`` locating the edit site, or surfacing candidates or near-misses.
     static func resolve(_ pair: Pair, in working: String) -> Resolution {
-        let literalRanges = literalSearchString(for: pair.find).map { literalByteRanges(of: $0, in: working) } ?? []
-        if let anchorLine = anchorLine(for: pair.find, in: working) {
+        if let range = taggedBlockRange(for: pair, in: working) {
+            return .literal(range: range)
+        }
+        let searched = untagged(pair, in: working)
+        let literalRanges =
+            literalSearchString(for: searched.find).map { literalByteRanges(of: $0, in: working) } ?? []
+        if let anchorLine = anchorLine(for: searched.find, in: working) {
             let competing = literalRanges.filter { lineNumber(ofByteOffset: $0.lowerBound, in: working) != anchorLine }
             if competing.isEmpty {
                 return .anchor(line: anchorLine)
@@ -458,9 +469,9 @@ enum EditEngine {
             return .ambiguous(competingCandidates(anchorLine: anchorLine, literalRanges: competing, in: working))
         }
         if !literalRanges.isEmpty {
-            return literalResolution(pair, ranges: literalRanges, in: working)
+            return literalResolution(searched, ranges: literalRanges, in: working)
         }
-        return ladderResolution(pair, in: working)
+        return ladderResolution(searched, in: working)
     }
 
     /// The 1-based line a `find` resolves to as a hashline anchor, or `nil` when it is not a resolving anchor.
@@ -471,8 +482,92 @@ enum EditEngine {
     /// - Returns: the resolved 1-based line, or `nil` when `find` is not a
     ///   well-formed anchor or does not resolve.
     private static func anchorLine(for find: String, in working: String) -> Int? {
-        guard Hashline.parseAnchor(find) != nil else { return nil }
+        guard isAnchor(find) else { return nil }
         return Hashline.resolveAnchor(find, in: working)
+    }
+
+    /// Whether a `find` is a lone hashline anchor: one physical line, in the `N:HH` dialect.
+    ///
+    /// A hashline anchor tags exactly one line, thus a `find` that spans several
+    /// lines is never one — even when its first line parses as an anchor. Without
+    /// this guard, a paste of several tagged lines would resolve to the first
+    /// line alone and rewrite only that line, silently dropping the rest of the
+    /// span the caller described. ``taggedBlockRange(for:in:)`` and
+    /// ``untagged(_:in:)`` take such a paste instead.
+    ///
+    /// - Parameter find: the pair's find text.
+    /// - Returns: `true` when `find` is a single-line, well-formed anchor.
+    private static func isAnchor(_ find: String) -> Bool {
+        !find.contains(where: \.isNewline) && Hashline.parseAnchor(find) != nil
+    }
+
+    // MARK: Tagged blocks
+
+    /// The byte range a pasted-back block of tagged lines resolves to, or `nil` when there is none.
+    ///
+    /// A caller that copies several `N:HH|text` lines out of a read describes a
+    /// span of consecutive lines. ``Hashline/resolveBlock(_:in:)`` locates that
+    /// span by its line numbers and per-line hashes, tolerating the same drift a
+    /// lone anchor tolerates, and the span's whole-line byte range is the edit
+    /// site — so the replacement rewrites every line the caller named, not only
+    /// the first.
+    ///
+    /// The rung stands down for a `replaceAll` or `occurrence` pair: both
+    /// disambiguators speak about repeated occurrences of a text, which a block
+    /// pinned to one span cannot answer, thus those pairs go on to the literal
+    /// rung against the block's untagged text.
+    ///
+    /// - Parameters:
+    ///   - pair: the pair being resolved.
+    ///   - working: the working copy to resolve against.
+    /// - Returns: the span's UTF-8 byte range, or `nil` when the pair is not a
+    ///   resolving tagged block.
+    private static func taggedBlockRange(for pair: Pair, in working: String) -> Range<Int>? {
+        guard !pair.replaceAll, pair.occurrence == nil,
+            let entries = taggedBlock(of: pair.find, in: working),
+            let lines = Hashline.resolveBlock(entries, in: working)
+        else { return nil }
+        return byteRange(ofLines: lines, in: working)
+    }
+
+    /// The pair as the cascade searches for it, with a pasted-back tagged block reduced to its untagged text.
+    ///
+    /// Every rung below the block rung compares the `find` against the file's own
+    /// text, where the `N:HH|` prefixes are not present. Stripping them lets a
+    /// block the line numbers no longer locate — the file drifted further than
+    /// the proximity window, or its lines changed — still resolve literally or
+    /// through the recovery ladder, and it makes the near-miss diff of a
+    /// no-match read as the file reads.
+    ///
+    /// - Parameters:
+    ///   - pair: the pair being resolved.
+    ///   - working: the working copy to resolve against.
+    /// - Returns: the pair with its `find` untagged, or the pair unchanged.
+    private static func untagged(_ pair: Pair, in working: String) -> Pair {
+        guard let entries = taggedBlock(of: pair.find, in: working) else { return pair }
+        return Pair(
+            find: Hashline.untaggedText(of: entries),
+            replace: pair.replace,
+            replaceAll: pair.replaceAll,
+            occurrence: pair.occurrence
+        )
+    }
+
+    /// The tagged-block entries of a `find`, or `nil` when it is not one to reinterpret.
+    ///
+    /// A `find` the working copy already holds verbatim is taken at face value,
+    /// however much it looks like a block: a file of tagged sample lines is
+    /// edited by naming its lines as they stand, and reinterpreting them would
+    /// edit somewhere else entirely.
+    ///
+    /// - Parameters:
+    ///   - find: the pair's find text.
+    ///   - working: the working copy to resolve against.
+    /// - Returns: the block entries, or `nil` when `find` is not a block, or is
+    ///   text the working copy holds verbatim.
+    private static func taggedBlock(of find: String, in working: String) -> [Hashline.BlockEntry]? {
+        guard let entries = Hashline.parseBlock(find), !working.contains(find) else { return nil }
+        return entries
     }
 
     /// Resolve the literal rung from a pair's literal occurrence ranges.
@@ -554,7 +649,7 @@ enum EditEngine {
             case .literal(let range):
                 working =
                     pair.replaceAll
-                    ? replacingAllLiteral(for: pair.find, with: pair.replace, in: working)
+                    ? replacingAllLiteral(for: untagged(pair, in: working).find, with: pair.replace, in: working)
                     : replacingBytes(range, with: pair.replace, in: working)
             case .recovered(let range):
                 working = replacingBytes(range, with: pair.replace, in: working)
@@ -577,7 +672,8 @@ enum EditEngine {
     private static func batchResolution(for pair: Pair, working: String, original: String) -> Resolution {
         let resolution = resolve(pair, in: working)
         guard case .noMatch = resolution else { return resolution }
-        return reclassifiedNoMatch(for: pair, working: working, original: original) ?? resolution
+        return reclassifiedNoMatch(for: untagged(pair, in: working), working: working, original: original)
+            ?? resolution
     }
 
     /// Reclassify a bare no-match into a consumed-target or already-applied outcome, or `nil` to keep it.
@@ -617,7 +713,7 @@ enum EditEngine {
     /// - Parameter find: the pair's find text.
     /// - Returns: the literal search string, or `nil` for a pure anchor.
     private static func literalSearchString(for find: String) -> String? {
-        guard Hashline.parseAnchor(find) != nil else { return find }
+        guard isAnchor(find) else { return find }
         return anchorTextSuffix(of: find)
     }
 
@@ -991,6 +1087,31 @@ enum EditEngine {
     private static func lineNumber(ofByteOffset offset: Int, in content: String) -> Int {
         let bytes = Array(content.utf8)
         return EditMatch.lineNumber(in: bytes, at: min(offset, bytes.count))
+    }
+
+    /// The UTF-8 byte range a 1-based closed line range covers, its last terminator excluded.
+    ///
+    /// The range runs from the first byte of the first line to the last byte of
+    /// the last line, leaving that final terminator outside the span — so
+    /// replacing the range rewrites the lines' text and keeps the line break
+    /// after them, exactly as ``replacingLine(_:with:in:)`` does for one line.
+    ///
+    /// - Parameters:
+    ///   - lines: the 1-based closed line range to cover.
+    ///   - working: the working copy the range indexes.
+    /// - Returns: the byte range, or `nil` when the line range falls outside the content.
+    private static func byteRange(ofLines lines: ClosedRange<Int>, in working: String) -> Range<Int>? {
+        let physical = Hashline.splitLines(working)
+        guard lines.lowerBound >= 1, lines.upperBound <= physical.count else { return nil }
+
+        func byteLength(of line: Hashline.Line) -> Int {
+            line.text.utf8.count + line.terminator.utf8.count
+        }
+
+        let start = physical[0..<(lines.lowerBound - 1)].reduce(0) { $0 + byteLength(of: $1) }
+        let covered = physical[(lines.lowerBound - 1)...(lines.upperBound - 1)]
+        let end = covered.reduce(start) { $0 + byteLength(of: $1) } - (covered.last?.terminator.utf8.count ?? 0)
+        return start..<end
     }
 
     // MARK: Corrective messages

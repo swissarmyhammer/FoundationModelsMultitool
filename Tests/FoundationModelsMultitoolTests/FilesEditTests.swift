@@ -532,6 +532,26 @@ import Testing
         #expect(try TestSupport.readBytes(at: url.path) == Data("alpha\nBETA\ngamma\n".utf8))
     }
 
+    @Test func aRunOfTaggedLinesPastedBackRewritesTheWholeSpan() async throws {
+        // What a model does after a read: it copies two tagged lines straight
+        // into one find. Both lines must be rewritten. Reading only the first
+        // prefix would rewrite line 1 and leave line 2 duplicated below the
+        // replacement.
+        let root = TestSupport.makeTemporaryDirectory(named: "FilesEditTests")
+        let url = root.appendingPathComponent("span.txt", isDirectory: false)
+        let context = FileContext(root: root)
+
+        let writeResult = try await Write(context: context)
+            .call(arguments: WriteArguments(path: url.path, content: "alpha\nbeta\ngamma\n"))
+        #expect(writeResult.correction == nil)
+        let span = writeResult.taggedContent[0...1].joined(separator: "\n")
+
+        let result = try await Self.edit(path: url.path, find: [span], replace: ["ONE\nTWO"], in: context)
+
+        #expect(result.status == "applied")
+        #expect(try TestSupport.readBytes(at: url.path) == Data("ONE\nTWO\ngamma\n".utf8))
+    }
+
     // MARK: Change recording
 
     /// An applied edit on a recording context records one modify change

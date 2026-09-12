@@ -281,6 +281,124 @@ enum Hashline {
         return nearestText ?? nearestHash
     }
 
+    // MARK: Tagged blocks
+
+    /// One line of a tagged block: the anchor it carried and the line text that anchor tagged.
+    ///
+    /// A block entry is one `N:HH|text` line of ``parseBlock(_:)``'s input, held
+    /// apart so a caller can resolve the whole block against content
+    /// (``resolveBlock(_:in:)``) or recover the untagged text the block describes
+    /// (``untaggedText(of:)``).
+    struct BlockEntry: Equatable, Sendable {
+        /// The anchor's 1-based line number.
+        let line: Int
+
+        /// The anchor's line-content hash.
+        let hash: UInt8
+
+        /// The line text the anchor tagged, terminator excluded.
+        let text: String
+    }
+
+    /// The smallest number of lines a tagged block holds.
+    ///
+    /// One tagged line is an ordinary anchor, which ``parseAnchor(_:)`` already
+    /// covers, thus a block starts at two lines.
+    private static let minimumBlockLineCount = 2
+
+    /// Parse a run of tagged lines as one multi-line block.
+    ///
+    /// A *block* is what a caller pastes back after it copies several tagged lines
+    /// out of a read: every physical line carries its own `N:HH|text` prefix and
+    /// the line numbers ascend one at a time. Such a paste describes a span of
+    /// consecutive lines, not one anchor, thus the caller must resolve it as a
+    /// span. ``parseAnchor(_:)`` cannot do that job: it reads only the first
+    /// prefix and mistakes every line after it for that one anchor's text.
+    ///
+    /// The rule is deliberately strict — two lines or more, a well-formed prefix
+    /// on every one of them, and line numbers that ascend by exactly one — so that
+    /// ordinary text which merely holds a line shaped like an anchor is never
+    /// mistaken for a block.
+    ///
+    /// - Parameter text: the candidate block, terminators intact.
+    /// - Returns: the entries in order, or `nil` when `text` is not a block.
+    static func parseBlock(_ text: String) -> [BlockEntry]? {
+        let lines = splitLines(text).map(\.text)
+        guard lines.count >= minimumBlockLineCount else { return nil }
+        var entries: [BlockEntry] = []
+        for line in lines {
+            guard let delimiter = line.firstIndex(of: anchorTextDelimiter),
+                let anchor = parseAnchor(line)
+            else { return nil }
+            if let previous = entries.last, anchor.line != previous.line + 1 { return nil }
+            entries.append(
+                BlockEntry(
+                    line: anchor.line,
+                    hash: anchor.hash,
+                    text: String(line[line.index(after: delimiter)...])
+                )
+            )
+        }
+        return entries
+    }
+
+    /// The untagged text a block describes: each entry's line text, joined by a line feed.
+    ///
+    /// The join is always a line feed, because a block carries no record of the
+    /// content's own line endings. A caller that searches for this text literally
+    /// therefore misses a CRLF file, and falls through to a
+    /// whitespace-normalized comparison that does not.
+    ///
+    /// - Parameter entries: the block entries, in order.
+    /// - Returns: the entries' texts joined by a line feed, with no trailing terminator.
+    static func untaggedText(of entries: [BlockEntry]) -> String {
+        entries.map(\.text).joined(separator: "\n")
+    }
+
+    /// Resolve a tagged block to the **1-based** line range it covers, tolerating small drift.
+    ///
+    /// The search expands symmetrically outward from the first entry's line
+    /// (`+1, -1, +2, -2, …` up to ``proximityWindow`` lines on each side), the same
+    /// way ``resolveAnchorIn(_:line:hash:text:)`` searches for a lone anchor, and
+    /// takes the first position where **every** entry hashes to the consecutive
+    /// line that sits under it. Requiring the whole block to agree, rather than
+    /// only its first line, keeps a block whose first line is common (an empty
+    /// line, a closing brace) from landing on the wrong span.
+    ///
+    /// A block that resolves nowhere in the window is stale: the result is `nil`
+    /// and the caller falls back to interpreting the block's
+    /// ``untaggedText(of:)``. Performs no IO.
+    ///
+    /// - Parameters:
+    ///   - entries: the block entries, in order.
+    ///   - content: the text to resolve the block against.
+    /// - Returns: the **1-based** closed line range the block covers, or `nil` when
+    ///   nothing in the proximity window matches it.
+    static func resolveBlock(_ entries: [BlockEntry], in content: String) -> ClosedRange<Int>? {
+        guard let first = entries.first else { return nil }
+        let lines = splitLines(content).map(\.text)
+
+        func blockMatches(_ start: Int) -> Bool {
+            guard start >= 0, start + entries.count <= lines.count else { return false }
+            return entries.enumerated().allSatisfy { offset, entry in
+                hashLine(lines[start + offset]) == entry.hash
+            }
+        }
+
+        // The first entry's line as a 0-based index; a non-positive line number
+        // has no exact candidate and the search starts from the first line.
+        let center = first.line >= 1 ? first.line - 1 : 0
+        if blockMatches(center) {
+            return (center + 1)...(center + entries.count)
+        }
+        for delta in 1...proximityWindow {
+            for candidate in [center + delta, center - delta] where blockMatches(candidate) {
+                return (candidate + 1)...(candidate + entries.count)
+            }
+        }
+        return nil
+    }
+
     // MARK: Line splitting
 
     /// A single line of content paired with its original terminator.

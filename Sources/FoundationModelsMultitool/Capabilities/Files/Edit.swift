@@ -48,7 +48,8 @@ struct EditArguments {
     @Guide(
         description:
             "The find values to locate: one for a single edit, several for a batch. Each value "
-            + "is a literal text or an N:HH|text hashline anchor from a prior read or write.")
+            + "is a literal text, one N:HH|text hashline anchor from a prior read or write, or a "
+            + "run of tagged lines pasted back as one value, which names that whole span.")
     var find: [String]?
 
     /// The `replace` values: one per `find`, or a single value broadcast
@@ -414,8 +415,9 @@ struct Edit: Tool {
         edit changes part of a file that already exists, and leaves the rest of it as it stands. \
         To put a whole new contents in place instead, use write. It rewrites a file by a batch \
         of find/replace pairs, committed in one atomic write that preserves the file's encoding, \
-        line endings, and permission bits. Each find is a literal text or an N:HH|text hashline \
-        anchor from a prior read or write, thus a chained edit needs no intervening read. \
+        line endings, and permission bits. Each find is a literal text, one N:HH|text hashline \
+        anchor from a prior read or write, or a run of tagged lines pasted back as one find, \
+        which names that whole span; thus a chained edit needs no intervening read. \
         replacesAll rewrites every occurrence and occurrence \
         selects one site among several matches. An unresolved find commits nothing: the status \
         (ambiguous, nearMiss, alreadyApplied, consumedTarget) and the JSON outcomes say how to \
