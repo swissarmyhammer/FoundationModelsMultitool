@@ -113,7 +113,114 @@ comments:
     task: ^dcmv774
     ```
   timestamp: 2026-09-12T13:43:24.158932+00:00
-position_column: review
+- actor: claude-code
+  id: 01m2axtjc57qnjd0rv7hw0xay2
+  text: |-
+    ### commit — changed
+    - evidence: d054d49 fix(files-edit): treat a pasted multi-line tagged block in find as one span
+    - next: none. The commit is local only. It is not pushed.
+  timestamp: 2026-09-12T13:45:02.597687+00:00
+- actor: claude-code
+  id: 01m2aykkmnsx9sm92qab1mc9kj
+  text: |
+    ### review — findings
+
+    - evidence: 8 findings (8 confirmed, 5 refuted, 14 attempted) from `review sha HEAD~1..HEAD` — EditEngineTests.swift:446, :501, :526, :552, :565, :581, :594 (`swift/optionals`), HashlineTests.swift:272 (`reuse/reuse`). The `.kanban` files of the commit are out of scope by `.reviewignore`.
+    - environment checks, done in this pass and not accepted from the card:
+      - `Package.resolved` is git-ignored (`.gitignore` line 18). The checkout of FoundationModelsRouter stands at d469aa0. `ToolCallAttachment.swift` is absent at 5a8075b and present at d469aa0, and `FileChangeJournal.swift` and `FileChangeSet.swift` name that type. `swift build` is clean.
+      - `swift test` gives 1445 tests with 7 issues: DiscoveryEmbedderTests (3), SearchToolsToolTests (1), OverBudgetSelectionOrderTests (3 issues over 2 tests). None of those three test files name `Hashline`, `EditEngine` or `files.edit`, and the commit changes only those three source files and their three test files. The 7 failures are not this card's work.
+    - the open question on the card (a resolved block reports `matchedBy: "literal"` and no line number) is not raised as a finding. `Hashline.resolveBlock` accepts a position only when every entry hashes to the line under it, thus the resolved span holds the untagged text, thus `literal` is a true report. Only the start line is left out. This is a deferred improvement, not a defect.
+    - next: correct the 8 findings, then re-run `/review ^dcmv774`.
+  timestamp: 2026-09-12T13:58:43.093065+00:00
+- actor: claude-code
+  id: 01m2aymtd01eavgrnrt8gz6b3g
+  text: |-
+    ### finish iteration 1 — findings
+    - implement: no-change — all five fix items already in the working tree over 6 files; only the card description changed, to correct a stale test count
+    - test: green — swift test, 1445 tests, 1438 passed, 7 failed (pre-existing router-bump failures, proven identical by a stash of the 6 card files and a re-run), 0 skipped
+    - commit: d054d49
+    - review: findings — Tests/FoundationModelsMultitoolTests/EditEngineTests.swift:446, :501, :526, :552, :565, :581, :594 (swift/optionals); Tests/FoundationModelsMultitoolTests/HashlineTests.swift:272 (reuse/reuse)
+  timestamp: 2026-09-12T13:59:22.784389+00:00
+- actor: claude-code
+  id: 01m2az59dpg7mg6p9rp7erhsc4
+  text: |
+    ## The eight findings, corrected
+
+    ### `swift/optionals` — every case this commit added, not only the seven lines
+
+    The rule says a test must fail when an unwrap fails. `git show d054d49` names
+    the cases this commit added. Twelve of the thirteen new `EditEngineTests` cases
+    carried `guard case ... else { Issue.record(...); return }`; the seven lines the
+    review named are seven of those twelve. All twelve now unwrap with
+    `try #require`, and each case is `throws`. The thirteenth,
+    `multiLineFindWithOnePrefixedLineIsNeverAnAnchor`, holds no `guard`, thus it
+    stands as written.
+
+    `try #require` needs an optional, thus the file gained three readers at the
+    foot, out of the suite and `fileprivate` to the file:
+
+    - `EditEngine.BatchOutcome.appliedContent` — the rewritten content, or `nil`.
+    - `EditEngine.BatchOutcome.failureResolution` — the failing pair's resolution,
+      or `nil`.
+    - `EditEngine.Resolution.nearMisses` — the near misses of a no-match, or `nil`.
+
+    Each is one `if case` expression, thus no `guard` stands anywhere in the cases
+    this commit added.
+
+    The pre-existing cases of both suites keep their `guard`. The review skill drops
+    a finding that asks to refactor a test that already existed, and none of the
+    eight findings names one.
+
+    ### Proof the new shape fails loudly
+
+    A temporary break in `taggedBlockAtTheEndOfAFileWithNoFinalTerminator` (the find
+    replaced by a string the file does not hold) made the case FAIL, not pass:
+
+    ```
+    ✘ Test taggedBlockAtTheEndOfAFileWithNoFinalTerminator() recorded an issue at
+      EditEngineTests.swift:492:26: Expectation failed:
+      EditEngine.apply([pair], to: content).appliedContent
+      ↳ EditEngine.apply([pair], to: content) → .failed(index: 0, ...)
+    ✘ Test run with 41 tests in 1 suite failed after 0.006 seconds with 1 issue.
+    ```
+
+    The old `guard` shape would have reported a pass. The break is reverted.
+
+    ### `reuse/reuse` — the block helper
+
+    `block(forLines:in:)` stood in both `EditEngineTests` and `HashlineTests`. It
+    now stands one time, as `TestSupport.taggedBlock(forLines:in:)`. `TestSupport`
+    is the shared test-utility namespace of this target, and its own doc names that
+    purpose. Both suites call it; neither carries a copy.
+
+    ## Files changed
+
+    - `Tests/FoundationModelsMultitoolTests/EditEngineTests.swift`
+    - `Tests/FoundationModelsMultitoolTests/HashlineTests.swift`
+    - `Tests/FoundationModelsMultitoolTests/TestSupport.swift`
+
+    No source file changed. The behavior under test is the same.
+
+    ## The environment, checked in this pass and not accepted from the card
+
+    - `swift build --build-tests` — clean. The one warning is SwiftPM's
+      `missing creator for mutated node` for the `mlx-swift_Cmlx` bundle, which is
+      not this card's code. The router update the card names is in place, thus the
+      build stands.
+    - `swift test` — 1445 tests, 7 issues: `DiscoveryEmbedderTests` (3),
+      `SearchToolsTool` (1), `OverBudgetSelectionOrderTests` (3 issues over 2
+      tests). The same 7 as before this pass, in suites this card does not touch.
+    - `swift test --filter 'FilesEditTests|HashlineTests|EditEngineTests'` — 95
+      tests pass, the same count as before this pass.
+  timestamp: 2026-09-12T14:08:22.454627+00:00
+- actor: claude-code
+  id: 01m2az5ga3se9xqe5v70s2ygs0
+  text: |
+    ### implement — changed
+    - evidence: 3 files — Tests/FoundationModelsMultitoolTests/EditEngineTests.swift, Tests/FoundationModelsMultitoolTests/HashlineTests.swift, Tests/FoundationModelsMultitoolTests/TestSupport.swift. All 8 review findings are corrected and checked on the card. `swift build --build-tests` clean; `swift test --filter 'FilesEditTests|HashlineTests|EditEngineTests'` — 95 tests pass; `swift test` — 1445 tests, 7 issues, all pre-existing and outside this card.
+    - next: /review
+  timestamp: 2026-09-12T14:08:29.507202+00:00
+position_column: doing
 position_ordinal: '80'
 title: Edit a run of tagged lines pasted back into find as one span
 ---
@@ -184,4 +291,20 @@ d469aa0) because `FileChangeJournal` calls `ToolCallAttachment`, which the
 pinned revision lacks. `Package.resolved` is git-ignored, thus no repository
 state changed. On that newer router, 7 tests fail in `DiscoveryEmbedderTests`,
 `SearchToolsTool` and `OverBudgetSelectionOrderTests`. They fail the same way on
-a clean tree and belong to a separate card. #defect #filetool-pure-edit
+a clean tree and belong to a separate card.
+
+## Review Findings (2026-09-12 08:45)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 6 file(s) reviewed, 2 not reviewed.
+
+> 2 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 2 file(s)
+
+- [x] `Tests/FoundationModelsMultitoolTests/EditEngineTests.swift:446` `swift/optionals` — Test uses `guard` with early `return`, preventing the assertions on line 450 from running if the guard fails. Use `try #require` to unwrap with a failing assertion instead of silent early return.
+- [x] `Tests/FoundationModelsMultitoolTests/EditEngineTests.swift:501` `swift/optionals` — Test uses `guard` with early `return`, preventing the assertion on line 505 from running. Use `try #require` to make test failure explicit.
+- [x] `Tests/FoundationModelsMultitoolTests/EditEngineTests.swift:526` `swift/optionals` — Test uses `guard` with early `return`, preventing assertions on line 530 from running if the guard fails. Use `try #require` instead of `guard` with early return.
+- [x] `Tests/FoundationModelsMultitoolTests/EditEngineTests.swift:552` `swift/optionals` — Test uses `guard` with early `return`, preventing the assertion on line 556 from running if the guard fails. Use `try #require` instead.
+- [x] `Tests/FoundationModelsMultitoolTests/EditEngineTests.swift:565` `swift/optionals` — Test uses `guard` with early `return`, preventing the assertion on line 572 from running if the guard fails. Use `try #require` to unwrap with an assertion instead of silent early return.
+- [x] `Tests/FoundationModelsMultitoolTests/EditEngineTests.swift:581` `swift/optionals` — Test uses `guard` with early `return`, preventing the assertion on line 585 from running if the guard fails. Use `try #require` instead of `guard` with early return.
+- [x] `Tests/FoundationModelsMultitoolTests/EditEngineTests.swift:594` `swift/optionals` — Test uses `guard` with early `return`, silently exiting before the assertion on line 598 if the guard fails. Use `try #require` to make test failure explicit.
+- [x] `Tests/FoundationModelsMultitoolTests/HashlineTests.swift:272` `reuse/reuse` — The block helper function reimplements an identical function that already exists elsewhere, duplicating code that should be unified. Extract the block helper to a shared test utilities module, or import and call the existing block function from EditEngineTests instead of duplicating it. #defect #filetool-pure-edit

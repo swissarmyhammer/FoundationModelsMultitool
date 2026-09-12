@@ -259,26 +259,12 @@ import Testing
 
     // MARK: Tagged blocks — several tagged lines pasted back as one find
 
-    /// The tagged lines of `content` over the 1-based closed line range, rejoined as one block.
-    ///
-    /// This is what a caller produces when it copies a run of lines out of a
-    /// read and pastes them back, thus the fixture is built the way the tool
-    /// renders rather than written by hand.
-    ///
-    /// - Parameters:
-    ///   - lines: the 1-based closed line range to lift.
-    ///   - content: the content to tag.
-    /// - Returns: the tagged lines, joined by a line feed.
-    private func block(forLines lines: ClosedRange<Int>, in content: String) -> String {
-        let tagged = Hashline.taggedLines(of: content)
-        return tagged[(lines.lowerBound - 1)...(lines.upperBound - 1)].joined(separator: "\n")
-    }
-
     @Test func parseBlockReadsEveryTaggedLine() {
         let content = "one\ntwo\nthree\n"
         let firstLine = 2
         let lastLine = 3
-        let entries = Hashline.parseBlock(block(forLines: firstLine...lastLine, in: content))
+        let entries = Hashline.parseBlock(
+            TestSupport.taggedBlock(forLines: firstLine...lastLine, in: content))
         #expect(entries?.map(\.line) == [firstLine, lastLine])
         #expect(entries?.map(\.text) == ["two", "three"])
     }
@@ -301,7 +287,7 @@ import Testing
 
     @Test func untaggedTextRebuildsTheLinesTheBlockTagged() {
         let content = "one\ntwo\nthree\n"
-        let entries = Hashline.parseBlock(block(forLines: 1...3, in: content))
+        let entries = Hashline.parseBlock(TestSupport.taggedBlock(forLines: 1...3, in: content))
         #expect(entries.map(Hashline.untaggedText(of:)) == "one\ntwo\nthree")
     }
 
@@ -309,7 +295,8 @@ import Testing
         let content = "one\ntwo\nthree\nfour\n"
         let firstLine = 2
         let lastLine = 3
-        let entries = Hashline.parseBlock(block(forLines: firstLine...lastLine, in: content))
+        let entries = Hashline.parseBlock(
+            TestSupport.taggedBlock(forLines: firstLine...lastLine, in: content))
         #expect(entries.flatMap { Hashline.resolveBlock($0, in: content) } == firstLine...lastLine)
     }
 
@@ -317,7 +304,7 @@ import Testing
         // The block comes from the original; the content then drifted by one
         // inserted line, so the span sits one line lower.
         let original = "one\ntwo\nthree\nfour\n"
-        let entries = Hashline.parseBlock(block(forLines: 2...3, in: original))
+        let entries = Hashline.parseBlock(TestSupport.taggedBlock(forLines: 2...3, in: original))
         let drifted = "INSERTED\none\ntwo\nthree\nfour\n"
         #expect(entries.flatMap { Hashline.resolveBlock($0, in: drifted) } == 3...4)
     }
@@ -326,7 +313,7 @@ import Testing
         // The second line of the span no longer hashes to its entry, and no
         // other position in the window carries the whole block.
         let original = "one\ntwo\nthree\nfour\n"
-        let entries = Hashline.parseBlock(block(forLines: 2...3, in: original))
+        let entries = Hashline.parseBlock(TestSupport.taggedBlock(forLines: 2...3, in: original))
         let changed = "one\ntwo\nCHANGED\nfour\n"
         #expect(entries.flatMap { Hashline.resolveBlock($0, in: changed) } == nil)
     }

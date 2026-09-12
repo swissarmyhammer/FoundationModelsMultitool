@@ -411,46 +411,30 @@ import Testing
 
     // MARK: resolve — a block of tagged lines pasted back as one find
 
-    /// The tagged lines of `content` over the 1-based closed line range, rejoined as one find.
-    ///
-    /// This is the shape a caller sends when it copies a run of lines out of a
-    /// read and pastes them straight into `find`, thus the fixture is built the
-    /// way the tool renders rather than written by hand.
-    ///
-    /// - Parameters:
-    ///   - lines: the 1-based closed line range to lift.
-    ///   - content: the content to tag.
-    /// - Returns: the tagged lines, joined by a line feed.
-    private func block(forLines lines: ClosedRange<Int>, in content: String) -> String {
-        let tagged = Hashline.taggedLines(of: content)
-        return tagged[(lines.lowerBound - 1)...(lines.upperBound - 1)].joined(separator: "\n")
-    }
-
-    @Test func taggedBlockSpansEveryLineItNames() {
+    @Test func taggedBlockSpansEveryLineItNames() throws {
         // The regression this rung exists for: read the first two lines back as
         // `N:HH|text` and edit them as one span. Reading only the first prefix
         // would rewrite line 1 alone and leave line 2 standing.
         let content = "alpha\nbeta\ngamma\n"
-        let pair = EditEngine.Pair(find: block(forLines: 1...2, in: content), replace: "X")
-        guard case .applied(let edited, _) = EditEngine.apply([pair], to: content) else {
-            Issue.record("expected applied")
-            return
-        }
+        let pair = EditEngine.Pair(
+            find: TestSupport.taggedBlock(forLines: 1...2, in: content), replace: "X")
+        let edited = try #require(
+            EditEngine.apply([pair], to: content).appliedContent, "expected applied")
         #expect(edited == "X\ngamma\n")
     }
 
-    @Test func taggedBlockRelocatesUnderDrift() {
+    @Test func taggedBlockRelocatesUnderDrift() throws {
         // The block was read before an insertion moved the span down one line.
         let original = "alpha\nbeta\ngamma\n"
-        let pair = EditEngine.Pair(find: block(forLines: 1...2, in: original), replace: "X")
-        guard case .applied(let edited, _) = EditEngine.apply([pair], to: "INSERTED\n" + original) else {
-            Issue.record("expected applied")
-            return
-        }
+        let pair = EditEngine.Pair(
+            find: TestSupport.taggedBlock(forLines: 1...2, in: original), replace: "X")
+        let edited = try #require(
+            EditEngine.apply([pair], to: "INSERTED\n" + original).appliedContent,
+            "expected applied")
         #expect(edited == "INSERTED\nX\ngamma\n")
     }
 
-    @Test func staleTaggedBlockStillResolvesByItsUntaggedText() {
+    @Test func staleTaggedBlockStillResolvesByItsUntaggedText() throws {
         // The line numbers are far out of the proximity window, so the block
         // rung declines; the untagged text still locates the span literally.
         let content = "alpha\nbeta\ngamma\n"
@@ -458,10 +442,8 @@ import Testing
             .map { "9\($0)" }
             .joined(separator: "\n")
         let pair = EditEngine.Pair(find: staleNumbers, replace: "X")
-        guard case .applied(let edited, _) = EditEngine.apply([pair], to: content) else {
-            Issue.record("expected applied")
-            return
-        }
+        let edited = try #require(
+            EditEngine.apply([pair], to: content).appliedContent, "expected applied")
         #expect(edited == "X\ngamma\n")
     }
 
@@ -477,124 +459,139 @@ import Testing
         }
     }
 
-    @Test func taggedBlockOverCRLFKeepsTheTerminatorAfterTheSpan() {
+    @Test func taggedBlockOverCRLFKeepsTheTerminatorAfterTheSpan() throws {
         // A block carries no record of the file's line endings, thus its
         // untagged text joins with a line feed. The span must still be located
         // in a CRLF file, and the terminator after the span must survive.
         let content = "alpha\r\nbeta\r\ngamma\r\n"
-        let pair = EditEngine.Pair(find: block(forLines: 1...2, in: content), replace: "X")
-        guard case .applied(let edited, _) = EditEngine.apply([pair], to: content) else {
-            Issue.record("expected applied")
-            return
-        }
+        let pair = EditEngine.Pair(
+            find: TestSupport.taggedBlock(forLines: 1...2, in: content), replace: "X")
+        let edited = try #require(
+            EditEngine.apply([pair], to: content).appliedContent, "expected applied")
         #expect(edited == "X\r\ngamma\r\n")
     }
 
-    @Test func taggedBlockSpansAnEmptyInteriorLine() {
+    @Test func taggedBlockSpansAnEmptyInteriorLine() throws {
         // The shape a caller sends when it lifts a run across a blank line: the
         // middle entry tags an empty line, whose hash is the commonest of all.
         // The whole-block agreement, not that one line, pins the span.
         let content = "alpha\n\nbeta\ngamma\n"
         let firstLine = 1
         let lastLine = 3
-        let pair = EditEngine.Pair(find: block(forLines: firstLine...lastLine, in: content), replace: "X")
-        guard case .applied(let edited, _) = EditEngine.apply([pair], to: content) else {
-            Issue.record("expected applied")
-            return
-        }
+        let pair = EditEngine.Pair(
+            find: TestSupport.taggedBlock(forLines: firstLine...lastLine, in: content),
+            replace: "X")
+        let edited = try #require(
+            EditEngine.apply([pair], to: content).appliedContent, "expected applied")
         #expect(edited == "X\ngamma\n")
     }
 
-    @Test func taggedBlockAtTheEndOfAFileWithNoFinalTerminator() {
+    @Test func taggedBlockAtTheEndOfAFileWithNoFinalTerminator() throws {
         let content = "alpha\nbeta"
-        let pair = EditEngine.Pair(find: block(forLines: 1...2, in: content), replace: "X")
-        guard case .applied(let edited, _) = EditEngine.apply([pair], to: content) else {
-            Issue.record("expected applied")
-            return
-        }
+        let pair = EditEngine.Pair(
+            find: TestSupport.taggedBlock(forLines: 1...2, in: content), replace: "X")
+        let edited = try #require(
+            EditEngine.apply([pair], to: content).appliedContent, "expected applied")
         #expect(edited == "X")
     }
 
-    @Test func taggedBlockRelocatesAfterAnEarlierPairShiftedTheLines() {
+    @Test func taggedBlockRelocatesAfterAnEarlierPairShiftedTheLines() throws {
         // The block was read against the original; the pair before it removed a
         // line, thus the span sits one line higher by the time it resolves.
         let content = "drop\nalpha\nbeta\ngamma\n"
         let pairs = [
             EditEngine.Pair(find: "drop\n", replace: ""),
-            EditEngine.Pair(find: block(forLines: 2...3, in: content), replace: "X"),
+            EditEngine.Pair(
+                find: TestSupport.taggedBlock(forLines: 2...3, in: content), replace: "X"),
         ]
-        guard case .applied(let edited, _) = EditEngine.apply(pairs, to: content) else {
-            Issue.record("expected applied")
-            return
-        }
+        let edited = try #require(
+            EditEngine.apply(pairs, to: content).appliedContent, "expected applied")
         #expect(edited == "X\ngamma\n")
     }
 
-    @Test func replaceAllOverATaggedBlockRewritesEveryOccurrenceOfItsText() {
+    @Test func replaceAllOverATaggedBlockRewritesEveryOccurrenceOfItsText() throws {
         // `replaceAll` speaks about repeated occurrences of a text, which a
         // block pinned to one span cannot answer, thus the block rung stands
         // down and the untagged text drives the global rewrite.
         let content = "alpha\nbeta\nalpha\nbeta\n"
-        let find = block(forLines: 1...2, in: content)
+        let find = TestSupport.taggedBlock(forLines: 1...2, in: content)
         let pair = EditEngine.Pair(find: find, replace: "X", replaceAll: true)
-        guard case .applied(let edited, _) = EditEngine.apply([pair], to: content) else {
-            Issue.record("expected applied")
-            return
-        }
+        let edited = try #require(
+            EditEngine.apply([pair], to: content).appliedContent, "expected applied")
         #expect(edited == "X\nX\n")
     }
 
-    @Test func occurrenceSelectsAmongTheSitesOfATaggedBlocksText() {
+    @Test func occurrenceSelectsAmongTheSitesOfATaggedBlocksText() throws {
         // The same stand-down: `occurrence` counts sites of the untagged text.
         let content = "alpha\nbeta\nalpha\nbeta\n"
-        let find = block(forLines: 1...2, in: content)
+        let find = TestSupport.taggedBlock(forLines: 1...2, in: content)
         let pair = EditEngine.Pair(find: find, replace: "X", occurrence: Self.secondOccurrence)
-        guard case .applied(let edited, _) = EditEngine.apply([pair], to: content) else {
-            Issue.record("expected applied")
-            return
-        }
+        let edited = try #require(
+            EditEngine.apply([pair], to: content).appliedContent, "expected applied")
         #expect(edited == "alpha\nbeta\nX\n")
     }
 
-    @Test func aTaggedBlockThatMatchesNothingDiffsItsUntaggedLines() {
+    @Test func aTaggedBlockThatMatchesNothingDiffsItsUntaggedLines() throws {
         // The diff is what the caller reads before it tries again. It must show
         // the lines as the file would show them, not the `N:HH|` prefixes the
         // caller pasted, or the caller cannot see what actually differs.
         let original = "alpha\nbeta\n"
-        let find = block(forLines: 1...2, in: original)
-        guard case .noMatch(let nearMisses) = EditEngine.resolve(
+        let find = TestSupport.taggedBlock(forLines: 1...2, in: original)
+        let resolution = EditEngine.resolve(
             EditEngine.Pair(find: find, replace: "X"), in: "totally\nother\n")
-        else {
-            Issue.record("expected noMatch")
-            return
-        }
+        let nearMisses = try #require(resolution.nearMisses, "expected noMatch")
         let expected = nearMisses.flatMap(\.lines).filter { $0.change == .expected }.map(\.text)
         #expect(expected.allSatisfy { Hashline.parseAnchor($0) == nil }, "the diff must carry untagged lines")
         #expect(expected.contains("alpha") || expected.contains("beta"))
     }
 
-    @Test func aTaggedBlockResentAfterItsEditIsReportedAsAlreadyApplied() {
+    @Test func aTaggedBlockResentAfterItsEditIsReportedAsAlreadyApplied() throws {
         // The idempotent re-run: the caller sends the same block again after the
         // edit landed. The batch context must name that, not a bare no-match.
         let original = "alpha\nbeta\ngamma\n"
-        let pair = EditEngine.Pair(find: block(forLines: 1...2, in: original), replace: "X")
-        guard case .failed(_, _, let resolution) = EditEngine.apply([pair], to: "X\ngamma\n") else {
-            Issue.record("expected failed")
-            return
-        }
+        let pair = EditEngine.Pair(
+            find: TestSupport.taggedBlock(forLines: 1...2, in: original), replace: "X")
+        let resolution = try #require(
+            EditEngine.apply([pair], to: "X\ngamma\n").failureResolution, "expected failed")
         #expect(resolution == .alreadyApplied)
     }
 
-    @Test func taggedTextTheFileHoldsVerbatimIsEditedWhereItStands() {
+    @Test func taggedTextTheFileHoldsVerbatimIsEditedWhereItStands() throws {
         // A file of tagged sample lines is edited by naming its lines as they
         // stand; reinterpreting them as a block would edit somewhere else.
         let content = "1:a3|one\n2:b4|two\nplain\n"
         let find = "1:a3|one\n2:b4|two"
         let pair = EditEngine.Pair(find: find, replace: "REPLACED")
-        guard case .applied(let edited, _) = EditEngine.apply([pair], to: content) else {
-            Issue.record("expected applied")
-            return
-        }
+        let edited = try #require(
+            EditEngine.apply([pair], to: content).appliedContent, "expected applied")
         #expect(edited == "REPLACED\nplain\n")
+    }
+}
+
+// MARK: - Readers that let a case unwrap an engine result with `try #require`
+
+/// Optional readers of a batch outcome.
+///
+/// A `guard` that returns takes a case out before its assertions run, thus a
+/// broken engine would read as a pass. Each reader answers `nil` for the case
+/// the test does not expect, thus `try #require` fails the case where the
+/// expectation stands.
+extension EditEngine.BatchOutcome {
+    /// The rewritten content when every pair applied, and `nil` when the batch failed.
+    fileprivate var appliedContent: String? {
+        if case .applied(let content, _) = self { content } else { nil }
+    }
+
+    /// The resolution of the pair that failed, and `nil` when the batch applied.
+    fileprivate var failureResolution: EditEngine.Resolution? {
+        if case .failed(_, _, let resolution) = self { resolution } else { nil }
+    }
+}
+
+/// An optional reader of a resolution, for the reason the readers above state.
+extension EditEngine.Resolution {
+    /// The near misses a no-match resolution carries, and `nil` in each other case.
+    fileprivate var nearMisses: [EditEngine.NearMiss]? {
+        if case .noMatch(let nearMisses) = self { nearMisses } else { nil }
     }
 }

@@ -216,4 +216,22 @@ enum TestSupport {
         let names = (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
         return names.filter { $0.contains(stagingFileInfix) }
     }
+
+    /// The tagged lines (`N:HH|text`) of `content` over the 1-based closed line
+    /// range, rejoined as one block.
+    ///
+    /// This is the shape a caller sends when it copies a run of lines out of a
+    /// read and pastes them straight into `find`, thus the fixture is built the
+    /// way the tool renders rather than written by hand. The hashline suite and
+    /// the edit-engine suite both send that shape, thus one implementation
+    /// builds it and no suite carries a near-identical copy.
+    ///
+    /// - Parameters:
+    ///   - lines: the 1-based closed line range to lift.
+    ///   - content: the content to tag.
+    /// - Returns: the tagged lines, joined by a line feed.
+    static func taggedBlock(forLines lines: ClosedRange<Int>, in content: String) -> String {
+        let tagged = Hashline.taggedLines(of: content)
+        return tagged[(lines.lowerBound - 1)...(lines.upperBound - 1)].joined(separator: "\n")
+    }
 }
