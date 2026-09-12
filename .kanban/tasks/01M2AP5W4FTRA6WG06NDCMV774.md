@@ -220,8 +220,44 @@ comments:
     - evidence: 3 files — Tests/FoundationModelsMultitoolTests/EditEngineTests.swift, Tests/FoundationModelsMultitoolTests/HashlineTests.swift, Tests/FoundationModelsMultitoolTests/TestSupport.swift. All 8 review findings are corrected and checked on the card. `swift build --build-tests` clean; `swift test --filter 'FilesEditTests|HashlineTests|EditEngineTests'` — 95 tests pass; `swift test` — 1445 tests, 7 issues, all pre-existing and outside this card.
     - next: /review
   timestamp: 2026-09-12T14:08:29.507202+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m2azrj9w63j8rq9paa719860
+  text: |
+    ### review — clean
+
+    - evidence: `review sha HEAD~1..HEAD` (commit 272fc1e) — 0 findings, 0 confirmed, 0 refuted, 7 validators attempted, 0 failed. 3 files reviewed; the 2 `.kanban` files are out of scope by `.reviewignore`. All 8 prior findings of the 2026-09-12 08:45 section are checked and were each verified in the code, not accepted from the mark. Card moved to `done`.
+
+    #### The eight prior findings, checked in the code
+
+    - `swift/optionals` (7 findings) — the tagged-block region of `EditEngineTests.swift` carries no `guard case ... else { Issue.record(...); return }`. Every case there unwraps with `try #require` over the three `fileprivate` readers at the foot of the file (`BatchOutcome.appliedContent`, `BatchOutcome.failureResolution`, `Resolution.nearMisses`). `git show HEAD | grep '^+'` adds no `guard` and no `Issue.record` line; the one added line that names `guard` is the doc comment that states why the shape changed.
+    - The `guard`-with-return blocks that remain in `EditEngineTests.swift` are pre-existing. `git blame` over that span names one commit for all 316 lines: `feat(files): add EditEngine and EditOutcomeProjection with tests` (^87tzkdp). The review skill drops a finding that asks to refactor a test that already existed, and a diff-scoped op does not reach those lines.
+    - `Issue.record` in `multiLineFindWithOnePrefixedLineIsNeverAnAnchor` is a negative assertion inside `if case .anchor`, not a guard with an early return. No assertion follows it, thus nothing is skipped.
+    - `reuse/reuse` (1 finding) — `rg 'func (block|taggedBlock)\(' Tests/` returns one definition: `TestSupport.taggedBlock(forLines:in:)`. `HashlineTests` and `EditEngineTests` both call it; neither carries a copy. `git show HEAD -- TestSupport.swift` is purely additive — no symbol removed, renamed, or changed in signature.
+
+    #### The environment, checked in this pass and not accepted from the card
+
+    - `swift build --build-tests` — `Build complete!`, exit 0. The one warning is SwiftPM's `missing creator for mutated node` for the `mlx-swift_Cmlx` bundle. It is a build-system warning of a dependency, not a Swift diagnostic on this card's code.
+    - `swift test --filter 'FilesEditTests|HashlineTests|EditEngineTests'` — 95 tests in 3 suites pass, 0 failures. This matches the count the card states.
+    - `swift test` — 1445 tests in 114 suites, 7 issues, 0 skipped. Every issue sits in `DiscoveryEmbedderTests` (3), `SearchToolsToolTests` (1) or `OverBudgetSelectionOrderTests` (3). No other suite fails.
+    - The 7 are not this card's work. The three failing suites name neither `TestSupport.taggedBlock` nor the new readers, and the readers are `fileprivate` to `EditEngineTests.swift`, thus another file cannot call them. The last commit to touch those three suite files is edb1646, older than this card.
+
+    #### One correction to the card wording
+
+    The card and the earlier notes say "7 tests fail". The run reports **7 issues over 6 failing test functions** — `the surface four connected platform servers build stands above the budget, and every entry reaches exactly one slice` records two issues on its own. The suite set and the out-of-scope judgement are unchanged. This is a count in prose, not a defect in code, thus it is not raised as a finding.
+
+    - next: none. The card is done. The commit is local only; it is not pushed.
+  timestamp: 2026-09-12T14:18:54.140126+00:00
+- actor: claude-code
+  id: 01m2azsvm8xmw6vxw1rzza9m5t
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — 3 test files; 8 of 8 findings corrected and checked; 12 new cases now unwrap with `try #require` over three fileprivate readers, and `block(forLines:in:)` moved to `TestSupport.taggedBlock(forLines:in:)`
+    - test: green — swift test, 1445 tests, 7 pre-existing issues over 6 tests outside this card; EditEngineTests 41 of 41 and HashlineTests 24 of 24 cases preserved
+    - commit: 272fc1e
+    - review: clean — 0 findings over 7 validators; card moved to done
+  timestamp: 2026-09-12T14:19:36.456172+00:00
+position_column: done
+position_ordinal: ffc380
 title: Edit a run of tagged lines pasted back into find as one span
 ---
 ## Problem
