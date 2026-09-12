@@ -150,9 +150,11 @@ public struct WaitTool: Tool {
     /// optional and the host has one, so a model reading this has no reason to
     /// invent a duration.
     public let description = """
-        wait collects the result of a background run. When runCode answers with a completionToken,
-        the run is still going and that token is not the result. Call wait to collect the result.
-        This is the normal way to read a runCode result, and not an exception. With no arguments it
+        wait collects the result of a background run. When runCode answers with `pending` true, the
+        run is still going and the completionToken is not the result. Call wait to collect the
+        result. When runCode answers with `pending` false, the result is already in the detail
+        field beside it: answer from that result and do not call wait for that completionToken.
+        With no arguments it
         collects every call this session still has running; with a completionToken it collects that
         one. Each finished call comes back with a `state` — `\(RunState.complete)` when it delivered
         its result and `\(RunState.error)` when it did not — and a `detail`, which is the result and

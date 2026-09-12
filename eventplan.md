@@ -102,6 +102,15 @@ once, on every call. The wrapper's `Output` is the rendered value. As a
 result, a typed wrapped `Output` does not need to represent the pending case.
 The model reads text on the wire in each case.
 
+A call waits a short time for its own run before it answers.
+`MultiToolConfiguration.inlineSettleGrace` sets how long, and the default is
+two seconds. A run that settles inside that time answers with the same
+envelope, but with `pending: false`, the run's `outcome`, and its `detail`.
+The model reads the result in the tool output it already has, and makes no
+`wait` call. A run that is still going answers with the pending envelope, as
+before. There is one envelope. Only the `pending` field changes what the model
+does.
+
 A background run speaks to its calling model with five signals:
 
 1. "I started" — the pending envelope with the `completionToken`.

@@ -58,6 +58,25 @@ public struct MultiToolConfiguration: Sendable, Equatable {
     /// `cancel()` — instead of starting another.
     public let liveContextLimit: Int
 
+    /// How long a `runCode` call waits for its own snippet before it answers
+    /// with a completion token.
+    ///
+    /// **Why a `runCode` call waits at all.** Every mounted call goes to the
+    /// background (`MultiTool.mount`), so the model gets a token and pays one
+    /// more round trip to collect the result. Most snippets are short — one
+    /// file read, one small edit, one `tools.*` call — and for those the token
+    /// costs more than the work. A short wait here gives the model the result
+    /// in the tool output it already has, and it makes no `wait` call at all.
+    ///
+    /// A snippet still running when this elapses is not affected. The call
+    /// answers with the pending envelope, the snippet goes on in the
+    /// background, and `wait` collects it as before. So the cost of a long
+    /// snippet is this delay, one time, and nothing else.
+    ///
+    /// The wait is not a second work clock. It never cancels a snippet and it
+    /// never shortens ``executionTimeLimit``.
+    public let inlineSettleGrace: TimeInterval
+
     /// Maximum length, in characters, of a snippet's serialized return value
     /// — see `ResultRendererLimits.returnValueCharacterLimit`.
     public let returnValueCharacterLimit: Int
@@ -65,6 +84,13 @@ public struct MultiToolConfiguration: Sendable, Equatable {
     /// Maximum length, in characters, of a snippet's joined `console.log`
     /// output — see `ResultRendererLimits.consoleCharacterLimit`.
     public let consoleCharacterLimit: Int
+
+    /// The stock wait before a `runCode` call answers — see
+    /// ``inlineSettleGrace``.
+    ///
+    /// Two seconds. It is long enough for the short snippets that are the
+    /// common case, and short enough that a long snippet loses little by it.
+    public static let defaultInlineSettleGrace: TimeInterval = 2
 
     /// The stock number of live `runCode` contexts — see ``liveContextLimit``
     /// for why a handful, rather than an unbounded set, is the right shape.
@@ -85,11 +111,13 @@ public struct MultiToolConfiguration: Sendable, Equatable {
     public init(
         executionTimeLimit: TimeInterval = ToolMount.defaultTimeoutSeconds,
         liveContextLimit: Int = MultiToolConfiguration.defaultLiveContextLimit,
+        inlineSettleGrace: TimeInterval = MultiToolConfiguration.defaultInlineSettleGrace,
         returnValueCharacterLimit: Int = ResultRendererLimits.default.returnValueCharacterLimit,
         consoleCharacterLimit: Int = ResultRendererLimits.default.consoleCharacterLimit
     ) {
         self.executionTimeLimit = max(0, executionTimeLimit)
         self.liveContextLimit = max(1, liveContextLimit)
+        self.inlineSettleGrace = max(0, inlineSettleGrace)
         self.returnValueCharacterLimit = max(0, returnValueCharacterLimit)
         self.consoleCharacterLimit = max(0, consoleCharacterLimit)
     }

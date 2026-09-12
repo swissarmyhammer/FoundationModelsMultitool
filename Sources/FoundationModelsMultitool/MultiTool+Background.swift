@@ -42,6 +42,48 @@ extension MultiTool: BackgroundTool {
             + "call the wait tool again with the same completionToken."
     }
 
+    /// The `next` sentence of the envelope a `runCode` call hands the model
+    /// when the snippet settled inside ``inlineSettleGrace``: the result is
+    /// beside the sentence, so answer from it and collect nothing.
+    ///
+    /// It is the counterpart of ``collectInstruction(forCompletionToken:)``,
+    /// and it says the opposite thing for the opposite condition. The pending
+    /// sentence sends the model to the `wait` tool. This one keeps it away
+    /// from that tool, because the value it would wait for is already in the
+    /// same tool output.
+    ///
+    /// The last clause repeats what `WaitTool.finishedRunDirective` says at
+    /// the end of a real wait, and for the same reason: a model that holds the
+    /// result has still answered "it will come back to me later" (task
+    /// `wnfzwxg`).
+    public func resultInstruction(forCompletionToken completionToken: String) -> String {
+        "The snippet is complete and its result is the detail field above. "
+            + "Answer from that result now. "
+            + "Do not call the wait tool with completionToken \"\(completionToken)\", "
+            + "and never reply that the result will arrive later."
+    }
+
+    /// How long a `runCode` call waits for its own snippet before it answers
+    /// with a completion token: `configuration.inlineSettleGrace`.
+    ///
+    /// **Most snippets are short, and a token for a short snippet is pure
+    /// cost.** One file read, one small edit, one `tools.*` call: each is over
+    /// in well under a second, and the model used to pay a whole round trip to
+    /// collect what was already done. With this wait the common snippet
+    /// answers with its own result, and the `wait` tool is left for the
+    /// snippet that really is long.
+    ///
+    /// A snippet still running when the wait elapses answers with the pending
+    /// envelope, exactly as every `runCode` call did before. Nothing is
+    /// cancelled and no work is lost, so the cost of the wait is the delay
+    /// itself.
+    ///
+    /// The host sets the value, or takes
+    /// `MultiToolConfiguration.defaultInlineSettleGrace`.
+    public var inlineSettleGrace: TimeInterval? {
+        configuration.inlineSettleGrace
+    }
+
     /// The mount every `runCode` call carries. It is always background.
     ///
     /// **A snippet can run for hours, so the tool states this itself.** A

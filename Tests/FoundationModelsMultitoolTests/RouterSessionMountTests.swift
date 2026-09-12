@@ -50,9 +50,16 @@ struct RouterSessionMountTests {
 
         // Transparency through the mount can never hold again, and this is the
         // rule that replaced it: mounted, `runCode` always backgrounds and
-        // always hands back a completion token, whatever the mount's own wait
-        // clock says (task ^cv98vff). It is the stronger claim — it defines the
-        // mount, where the old one only said the mount changed nothing.
+        // always hands back an envelope carrying a completion token, whatever
+        // the mount's own wait clock says (task ^cv98vff). It is the stronger
+        // claim — it defines the mount, where the old one only said the mount
+        // changed nothing.
+        //
+        // This snippet is over at once, so the envelope is the settled one:
+        // it carries the same value the direct call returned, in its `detail`
+        // field, and the model needs no `wait` call to read it (see
+        // `InlineSettleGraceTests`). The envelope is still the answer, and
+        // that is what this test holds.
         #expect(PendingRunEnvelope.isRendered(text: throughMount))
         #expect(throughMount != direct)
         // Called directly, with no session and no background runs to post into,
