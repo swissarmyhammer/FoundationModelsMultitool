@@ -256,6 +256,38 @@ comments:
     - commit: 272fc1e
     - review: clean — 0 findings over 7 validators; card moved to done
   timestamp: 2026-09-12T14:19:36.456172+00:00
+- actor: claude-code
+  id: 01m2b208gaw8s9yr20c7s6kw32
+  text: |-
+    ## Correction: the seven failures were stale local pins, not the router
+
+    The card's "Out of scope" section, and four agents in this run, said that 7
+    tests failed in `DiscoveryEmbedderTests`, `SearchToolsToolTests` and
+    `OverBudgetSelectionOrderTests` because of the local
+    `swift package update FoundationModelsRouter`, and that they belonged to a
+    separate card. **That is wrong. Ignore it.** There is no separate card to write.
+
+    What actually happened:
+
+    - CI run 34699524309 on `579730c` passed its `Build & test` job. That job runs
+      the same `swift test`, so the suite is green on a fresh resolve.
+    - The router revision `d469aa0` landed on 2026-09-08, before the last green CI
+      run (`037e778`, 2026-09-10). It therefore cannot be the cause.
+    - `Package.resolved` is git-ignored, so CI resolves every branch-tracked
+      dependency to its tip while a working copy keeps whatever it last resolved.
+      This working copy held stale pins for the ranker (`5ab7b1a`) and one other
+      family package (`1104721`), among others.
+    - `swift package update` moved them, and the three suites then passed all 24
+      tests. The whole suite now passes 1445 tests with zero failures.
+
+    The stash tests that "proved" the failures were not this card's work were sound
+    about attribution. They only ever showed the failures were not caused by these
+    six files, which was true. Nobody checked the other direction — whether the
+    failures were real at all — until CI disagreed.
+
+    Lesson for the next agent: a red suite in a working copy whose `Package.resolved`
+    is git-ignored is not evidence of a defect until `swift package update` has run.
+  timestamp: 2026-09-12T14:58:03.402077+00:00
 position_column: done
 position_ordinal: ffc380
 title: Edit a run of tagged lines pasted back into find as one span
