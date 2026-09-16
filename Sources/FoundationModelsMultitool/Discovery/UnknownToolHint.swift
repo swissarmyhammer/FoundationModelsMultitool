@@ -48,6 +48,17 @@ import FoundationModelsMetadataRegistry
 /// with the bundle's embedder when the host gave one, one query embed per
 /// hint.
 ///
+/// One failure stands before both tiers. A model that knows an operation
+/// tool by its fused form calls the group object itself —
+/// `tools.notes({ op: "tag note", ... })` — and JavaScriptCore answers that
+/// `tools.notes` is not a function. The path is real: it is the group the
+/// registry mounts the verbs under. Neither tier is the right answer for it.
+/// Tier 1 would say the group does not exist and score every verb under it
+/// alike, because each verb path contains the group name. So `hint(...)`
+/// reads the group off the surface first and lists its verbs as
+/// `tools.<group>.<verb>`, the first ``groupVerbLimit`` at most — see
+/// ``groupCallResolution(forGroup:in:snippet:knownPaths:)``.
+///
 /// Alongside the suggestions, a resolution carries a ``RepairDirective`` —
 /// what the error's closing line should tell the model to do next. The
 /// suggestions answer "which function did you mean"; the directive answers
@@ -65,7 +76,16 @@ enum UnknownToolHint {
     /// the same trap this file already documents for the two closing lines.
     static let missingPathPhrase = "does not exist"
 
-    /// Which of the two ranking tiers answered a guess.
+    /// How a hint says a `tools.*` path is a group of functions, and not a
+    /// function a snippet can call.
+    ///
+    /// The only place the phrase is written, for the reason
+    /// ``missingPathPhrase`` gives. The two phrases never stand in one hint:
+    /// a group exists, so a hint about a group must not say that its path
+    /// does not.
+    static let groupCallPhrase = "is a group of functions, not a function"
+
+    /// Which of the ranking tiers answered a guess.
     enum SuggestionTier: String {
         /// Tier 1 answered it — some catalog name resembles the guess.
         case nameResemblance = "resemblance"
@@ -76,6 +96,10 @@ enum UnknownToolHint {
 
         /// Neither tier answered it, so the hint steers back to `searchTools`.
         case noMatch = "none"
+
+        /// No tier ran: the path is a group of the surface, and the snippet
+        /// called the group object instead of one of its functions.
+        case groupCall = "group"
     }
 
     /// One unknown-`tools.*`-path detection: what the model reached for,
@@ -106,7 +130,7 @@ enum UnknownToolHint {
         /// token, then `key=value` fields in a fixed order. Every value is
         /// delimiter-free by construction — a `tools.*` path is identifier
         /// characters and dots (`referencedToolPaths(in:)`'s pattern), a
-        /// catalog path is the same, and a tier is one of three
+        /// catalog path is the same, and a tier is one of four
         /// fixed words — so a reader can split on spaces and `=` and get
         /// `(imagined, suggested, tier)` back without a regex. The
         /// suggestion list is bracketed so that "no suggestion" reads as an
@@ -142,6 +166,15 @@ enum UnknownToolHint {
     /// them hands a model that just guessed a function name more names to
     /// guess.
     private static let relevanceSuggestionLimit = 1
+
+    /// The greatest number of verbs a group-call hint names.
+    ///
+    /// A group lists paths and no blocks, so it can afford more names than
+    /// tier 1 shows, and a model that called the group holds the right group
+    /// already; what it lacks is the verb. Past this count the hint names
+    /// how many verbs it does not show and points at `searchTools`, so a
+    /// wide group never floods the error and the cut is never silent.
+    private static let groupVerbLimit = 8
 
     /// The minimum name-resemblance score for an entry to count as a close
     /// match at all — below this, tier 1 has nothing and ranking falls
@@ -197,6 +230,9 @@ enum UnknownToolHint {
         guard let failedPath = firstUnknownPath(in: message, knownPaths: knownPaths) else {
             return nil
         }
+        if let groupCall = groupCallResolution(forGroup: failedPath, in: surface, snippet: snippet, knownPaths: knownPaths) {
+            return groupCall
+        }
 
         let ranked = await closestEntries(to: failedPath, in: surface, using: searcher)
         let directive = repairDirective(tier: ranked.tier, snippet: snippet, knownPaths: knownPaths)
@@ -207,6 +243,59 @@ enum UnknownToolHint {
             directive: directive,
             text: text(forFailed: failedPath, suggesting: ranked.entries, directive: directive)
         )
+    }
+
+    /// Resolves a call on a group object, or nil when `group` is no group of
+    /// `surface`.
+    ///
+    /// A bare group path reaches the failure text only when the snippet
+    /// called the group itself, so the surface is the whole test: the path
+    /// is a group when some entry stands under it. The suggestions are the
+    /// verb paths of the group in catalog order, the first ``groupVerbLimit``
+    /// at most, and the text lists them as `tools.<group>.<verb>`.
+    ///
+    /// - Parameters:
+    ///   - group: the unknown dotted path the snippet called.
+    ///   - surface: the catalog whose entries may stand under `group`.
+    ///   - snippet: the model's own `runCode` source, read to decide the
+    ///     directive.
+    ///   - knownPaths: every valid `APISurface.Entry.path`.
+    /// - Returns: the resolution, or nil when no entry stands under `group`.
+    private static func groupCallResolution(
+        forGroup group: String,
+        in surface: APISurface,
+        snippet: String,
+        knownPaths: Set<String>
+    ) -> Resolution? {
+        let verbPaths = surface.entries.filter { $0.group == group }.map(\.path)
+        guard !verbPaths.isEmpty else { return nil }
+        let shown = Array(verbPaths.prefix(groupVerbLimit))
+        return Resolution(
+            imaginedPath: group,
+            tier: .groupCall,
+            suggestedPaths: shown,
+            directive: repairDirective(tier: .groupCall, snippet: snippet, knownPaths: knownPaths),
+            text: groupCallText(forGroup: group, showing: shown, leavingOut: verbPaths.count - shown.count)
+        )
+    }
+
+    /// Renders the hint text for a call on a group object.
+    ///
+    /// - Parameters:
+    ///   - group: the group the snippet called.
+    ///   - shown: the verb paths the hint names, in catalog order.
+    ///   - hiddenCount: the number of verbs of the group the hint does not
+    ///     name. A count above zero adds a closing line that states it, so
+    ///     the cut is visible and the model knows where the rest stands.
+    /// - Returns: the hint text.
+    private static func groupCallText(forGroup group: String, showing shown: [String], leavingOut hiddenCount: Int) -> String {
+        let opening = "tools.\(group) \(groupCallPhrase). Call one of its functions instead:"
+        let lines = shown.map { "tools.\($0)" }
+        let closing =
+            hiddenCount > 0
+            ? ["and \(hiddenCount) more. Call searchTools to see every function of tools.\(group)."]
+            : []
+        return ([opening] + lines + closing).joined(separator: "\n")
     }
 
     /// Decides what the repairable error should tell the model to do next.

@@ -260,13 +260,35 @@ struct UnknownToolHintTests {
 
     // MARK: - Imagined names reach the system log
 
-    /// Ranks `failedPath` against `travelCatalog()` the way `MultiTool` does.
+    /// Resolves `message` against `registry` the way `MultiTool` does, with
+    /// no `runCode` round trip.
     ///
     /// `hint(message:snippet:surface:searcher:)` documents that its searcher
     /// must be indexing exactly `surface.entries`, which is the pairing
-    /// `MultiTool.init` builds; these tier tests need the same pairing
-    /// without a `runCode` round trip, so they can name a tier directly
-    /// rather than inferring it from rendered text.
+    /// `MultiTool.init` builds. Every direct call in this file comes through
+    /// here, thus the pairing is spelled one time, and a test can name a tier
+    /// directly rather than inferring it from rendered text.
+    ///
+    /// - Parameters:
+    ///   - message: the thrown JS exception's message text.
+    ///   - snippet: the snippet the message came from.
+    ///   - registry: the catalog to rank against.
+    /// - Returns: the resolution, or nil when the message names no unknown
+    ///   path.
+    private static func hint(
+        message: String, snippet: String, over registry: MultiTool.Registry
+    ) async -> UnknownToolHint.Resolution? {
+        await UnknownToolHint.hint(
+            message: message,
+            snippet: snippet,
+            surface: registry.surface,
+            searcher: MetadataSearcher(
+                index: MetadataIndex(items: registry.surface.entries), mode: .retrieval,
+                embedder: nil, selection: nil)
+        )
+    }
+
+    /// Ranks `failedPath` against `travelCatalog()` the way `MultiTool` does.
     ///
     /// - Parameter failedPath: the invented dotted path to resolve.
     /// - Returns: the resolution, or nil when the message names no unknown
@@ -274,13 +296,10 @@ struct UnknownToolHintTests {
     /// - Throws: whatever `MultiTool.Builder.buildRegistry()` throws.
     private static func resolve(_ failedPath: String) async throws -> UnknownToolHint.Resolution? {
         let registry = try MultiTool.Builder().addTools(travelCatalog()).buildRegistry()
-        return await UnknownToolHint.hint(
+        return await hint(
             message: "tools.\(failedPath) is not a function",
             snippet: "return tools.\(failedPath)();",
-            surface: registry.surface,
-            searcher: MetadataSearcher(
-                index: MetadataIndex(items: registry.surface.entries), mode: .retrieval,
-                embedder: nil, selection: nil)
+            over: registry
         )
     }
 
@@ -319,13 +338,10 @@ struct UnknownToolHintTests {
         let registry = try MultiTool.Builder().addTool(CitiesTool()).buildRegistry()
 
         let resolution = try #require(
-            await UnknownToolHint.hint(
+            await Self.hint(
                 message: "tools.sendEmail is not a function",
                 snippet: "return tools.sendEmail({ to: 'a@b.c' });",
-                surface: registry.surface,
-                searcher: MetadataSearcher(
-                    index: MetadataIndex(items: registry.surface.entries), mode: .retrieval,
-                    embedder: nil, selection: nil)
+                over: registry
             )
         )
 
@@ -398,5 +414,115 @@ struct UnknownToolHintTests {
         let records = try await imaginedToolLogRecords(since: start, waitingFor: 1)
         #expect(records.contains { $0.imagined == Self.controlGuess })
         #expect(!records.contains { $0.imagined == "getTemperature" })
+    }
+
+    // MARK: - A call on a group, not on one of its functions (^zhrjrax)
+
+    /// The five-verb operation fixture, mounted standalone, so its verbs
+    /// stand under `tools.notes` and `notes` is a group of the surface.
+    ///
+    /// - Returns: the registry.
+    /// - Throws: whatever `MultiTool.Builder.buildRegistry()` throws.
+    private static func notesRegistry() throws -> MultiTool.Registry {
+        try MultiTool.Builder().addTool(NotesOperationTool()).buildRegistry()
+    }
+
+    /// The uncaught form of the namespace call: no `try`, so the `TypeError`
+    /// fails the whole run and the hint runs.
+    private static let uncaughtNamespaceCall = "return await \(NotesOperationTool.namespaceCallSnippet);"
+
+    /// A path that is neither an entry nor a group of the notes surface.
+    private static let noGroupPath = "nothing"
+
+    /// The greatest number of verbs a group-call hint names, written out
+    /// here on purpose. A test that read the limit off `UnknownToolHint`
+    /// would hold whatever that constant said, which is the one thing this
+    /// guard must not do.
+    private static let groupVerbLimit = 8
+
+    /// The group name of the catalog the limit test builds, which holds one
+    /// verb more than the limit.
+    private static let wideGroup = "wide"
+
+    @Test("the exact TypeError of a call on tools.notes names every verb of the group as tools.notes.<verb>")
+    func groupCallHintNamesEveryVerbOfTheGroup() async throws {
+        let registry = try Self.notesRegistry()
+        let group = try #require(registry.surface.entries.first?.group)
+        let verbPaths = registry.surface.entries.map(\.path)
+
+        let resolution = try #require(
+            await Self.hint(
+                message: NotesOperationTool.namespaceCallTypeErrorMessage,
+                snippet: Self.uncaughtNamespaceCall,
+                over: registry
+            )
+        )
+
+        #expect(resolution.imaginedPath == group)
+        #expect(resolution.suggestedPaths == verbPaths)
+        #expect(verbPaths.allSatisfy { resolution.text.contains("tools.\($0)") }, "text was: \(resolution.text)")
+        #expect(resolution.text.contains("tools.notes.addNote"))
+        #expect(resolution.text.contains("tools.notes.tagNote"))
+        // `tools.notes` exists, it is the group, so the hint must not say
+        // that it does not.
+        #expect(!resolution.text.contains(Self.missingPathPhrase), "text was: \(resolution.text)")
+        #expect(resolution.directive == .repairSnippet)
+        #expect(
+            resolution.logMessage
+                == "imaginedTool imagined=\(group) tier=group suggested=[\(verbPaths.joined(separator: ","))]"
+        )
+    }
+
+    @Test("an uncaught call on tools.notes fails the run, and the rendered error lists the verbs under JavaScriptCore's own text")
+    func uncaughtGroupCallReachesTheHint() async throws {
+        let registry = try Self.notesRegistry()
+        let multiTool = MultiTool(registry: registry)
+
+        let output = try await multiTool.call(arguments: RunCodeArguments(code: Self.uncaughtNamespaceCall))
+
+        #expect(output.contains(NotesOperationTool.namespaceCallTypeErrorMessage), "output was: \(output)")
+        #expect(registry.surface.entries.allSatisfy { output.contains("tools.\($0.path)") }, "output was: \(output)")
+        #expect(!output.contains(Self.missingPathPhrase), "output was: \(output)")
+        #expect(output.contains(Self.repairClosing))
+    }
+
+    @Test("a call on a path that is no group keeps the does-not-exist hint the code gives today")
+    func callOnNoGroupKeepsTheMissingPathHint() async throws {
+        let registry = try Self.notesRegistry()
+
+        let resolution = try #require(
+            await Self.hint(
+                message: "tools.\(Self.noGroupPath) is not a function. (In 'tools.\(Self.noGroupPath)({})', 'tools.\(Self.noGroupPath)' is undefined)",
+                snippet: "return await tools.\(Self.noGroupPath)({});",
+                over: registry
+            )
+        )
+
+        #expect(resolution.imaginedPath == Self.noGroupPath)
+        #expect(resolution.text.hasPrefix("tools.\(Self.noGroupPath) \(Self.missingPathPhrase)"), "text was: \(resolution.text)")
+        #expect(!resolution.logMessage.contains("tier=group"))
+    }
+
+    @Test("a group-call hint names the first eight verbs at most, and says how many it does not show")
+    func groupCallHintNamesAtMostEightVerbs() async throws {
+        let verbCount = Self.groupVerbLimit + 1
+        let tools: [any Tool] = (1...verbCount).map { number in
+            CatalogEntryTool(name: "verb\(number)", description: "Verb \(number) of the wide group.")
+        }
+        let registry = try MultiTool.Builder().addGroup(named: Self.wideGroup, tools).buildRegistry()
+        let verbPaths = registry.surface.entries.map(\.path)
+        let hiddenPath = try #require(verbPaths.last)
+
+        let resolution = try #require(
+            await Self.hint(
+                message: "tools.\(Self.wideGroup) is not a function",
+                snippet: "return tools.\(Self.wideGroup)();",
+                over: registry
+            )
+        )
+
+        #expect(resolution.suggestedPaths == Array(verbPaths.prefix(Self.groupVerbLimit)))
+        #expect(!resolution.text.contains("tools.\(hiddenPath)"), "text was: \(resolution.text)")
+        #expect(resolution.text.contains("\(verbCount - Self.groupVerbLimit) more"), "text was: \(resolution.text)")
     }
 }

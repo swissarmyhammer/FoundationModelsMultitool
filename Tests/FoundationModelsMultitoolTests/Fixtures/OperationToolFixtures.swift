@@ -145,6 +145,20 @@ final class NotesOperationTool: OperationDescribing, Sendable {
     /// The noun of every operation of this fixture.
     static let noun = "note"
 
+    /// The call a model that knows the fused Tool form writes on this
+    /// fixture: an `op` key and the arguments, on `tools.notes` itself and
+    /// not on one of its verbs. In JavaScript `tools.notes` is an object, so
+    /// the call throws a `TypeError`.
+    static let namespaceCallSnippet = #"tools.notes({ op: "add note", title: "x" })"#
+
+    /// The exact `TypeError` text JavaScriptCore gives for
+    /// ``namespaceCallSnippet``, byte for byte. `OperationRunCodeTests` read
+    /// it from a run, and card `^sza6zja` records it. `UnknownToolHintTests`
+    /// takes it as the input of the group-call hint, thus the two suites
+    /// read one text.
+    static let namespaceCallTypeErrorMessage =
+        #"tools.notes is not a function. (In 'tools.notes({ op: "add note", title: "x" })', 'tools.notes' is an instance of Object)"#
+
     /// The prefix of every note id; the store appends a counter.
     private static let noteIDPrefix = "n"
 

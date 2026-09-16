@@ -61,11 +61,6 @@ struct OperationRunCodeTests {
         ("Standup", "Friday agenda"),
     ]
 
-    /// The exact `TypeError` text JavaScriptCore gives for a call on the
-    /// `tools.notes` namespace. The search-and-hints card reads this text.
-    private static let namespaceCallTypeErrorMessage =
-        #"tools.notes is not a function. (In 'tools.notes({ op: "add note", title: "x" })', 'tools.notes' is an instance of Object)"#
-
     // MARK: - What a snippet reports back
 
     /// What the list snippet reports about the value `listNote` gave it.
@@ -308,7 +303,7 @@ struct OperationRunCodeTests {
         let output = try await Self.run(
             """
             try {
-              await tools.notes({ op: "add note", title: "x" });
+              await \(NotesOperationTool.namespaceCallSnippet);
               return "\(Self.unreachableMarker)";
             } catch (e) {
               return { name: e.name, isTypeError: e instanceof TypeError, message: e.message };
@@ -319,7 +314,7 @@ struct OperationRunCodeTests {
         let caught = try Self.decode(CaughtError.self, from: output)
         #expect(caught.isTypeError)
         #expect(caught.name == "TypeError")
-        #expect(caught.message == Self.namespaceCallTypeErrorMessage)
+        #expect(caught.message == NotesOperationTool.namespaceCallTypeErrorMessage)
         #expect(parent.recordedCalls.isEmpty)
     }
 
