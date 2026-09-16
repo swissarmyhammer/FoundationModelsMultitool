@@ -1,0 +1,48 @@
+// tools.notes.addNote
+/**
+ * Adds a note and returns it.
+ * @param args.title — the note title. (required)
+ * @param args.body — the note body. (optional)
+ * @param args.tags — tags to attach. (optional)
+ * @returns Promise<object> — JSON result, parsed.
+ * @example const r = await tools.notes.addNote({ title: "title" });
+ */
+declare function addNote(args: { title: string; body?: string; tags?: string[] }): Promise<object>;
+
+// tools.notes.getNote
+/**
+ * Returns one note.
+ * @param args.id — the note id. (required)
+ * @returns Promise<object> — JSON result, parsed.
+ * @example const r = await tools.notes.getNote({ id: "id" });
+ */
+declare function getNote(args: { id: string }): Promise<object>;
+
+// tools.notes.listNote
+/**
+ * Lists the notes, all of them or those with one tag.
+ * @param args.tag — keep only notes with this tag. (optional)
+ * @returns Promise<object> — JSON result, parsed.
+ * @example const r = await tools.notes.listNote({});
+ */
+declare function listNote(args: { tag?: string }): Promise<object>;
+
+// tools.notes.deleteNote
+/**
+ * Deletes one note.
+ * @param args.id — the note id. (required)
+ * @returns Promise<object> — JSON result, parsed.
+ * @example const r = await tools.notes.deleteNote({ id: "id" });
+ */
+declare function deleteNote(args: { id: string }): Promise<object>;
+
+// tools.notes.tagNote
+/**
+ * Adds a tag to one note.
+ * @param args.id — the note id. (required)
+ * @param args.tag — the tag to add. (required)
+ * @param args.priority — the priority of the tag.; one of "low" | "medium" | "high". (optional)
+ * @returns Promise<object> — JSON result, parsed.
+ * @example const r = await tools.notes.tagNote({ id: "id", tag: "tag" });
+ */
+declare function tagNote(args: { id: string; tag: string; priority?: "low" | "medium" | "high" }): Promise<object>;

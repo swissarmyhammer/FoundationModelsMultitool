@@ -10,8 +10,15 @@
 // record as it stands. `rebuildRegistry()` reads the catalog of each MCP
 // server again first, and then renders. Neither touches a `Registry` that
 // exists: "The surface never changes in place."
+//
+// An `OperationDescribing` tool (`FoundationModelsExtras`) is one registration
+// and many verbs. The expansion replaces it with one `OperationVerbTool` for
+// each operation, under the group the registration gives: the tool name for a
+// standalone tool, the group for a grouped tool, the noun for a capability's
+// tool. No fused `tools.<name>({op})` entry is mounted beside the verbs.
 
 import FoundationModels
+import FoundationModelsExtras
 
 extension MultiTool {
     /// The recorded registrations of a `MultiTool.Builder`, from which a
@@ -51,7 +58,8 @@ extension MultiTool {
         }
 
         /// One tool queued for rendering, after the capabilities of
-        /// ``registrations`` are expanded into their tools.
+        /// ``registrations`` are expanded into their tools, and each
+        /// `OperationDescribing` tool into its verbs.
         private enum PendingTool {
             case standalone(any Tool)
             case grouped(group: String, tool: any Tool)
@@ -113,6 +121,13 @@ extension MultiTool {
         /// Validates one rule more: a noun a capability claims is owned whole,
         /// so nothing else may register under it.
         ///
+        /// An `OperationDescribing` tool renders as one verb for each of its
+        /// operations, under the group its registration gives — see
+        /// ``expanded()``. Each verb renders through its own
+        /// `OperationVerbTool.render()`, and the live tool of each verb path
+        /// is the verb itself, so a `tools.<group>.<verb>` call goes through
+        /// the verb to the parent.
+        ///
         /// - Returns: the rendered catalog paired with its live tool
         ///   instances, in `.directMode() == false` (both `runCode` and
         ///   `searchTools` surfaced).
@@ -120,13 +135,15 @@ extension MultiTool {
         ///   wrapped — the same posture `ToolInvoker` takes toward a tool's
         ///   own thrown error — when a queued tool cannot be fully rendered.
         ///   A tool that cannot be fully rendered fails loudly here rather
-        ///   than emit a lossy stub. `MultiToolBuilderError` when a group
-        ///   name isn't a legal TypeScript identifier, when two tools would
-        ///   collide at the same top-level snippet call path, or when
-        ///   anything other than the owning capability registers under a noun
-        ///   a capability claimed.
+        ///   than emit a lossy stub. What `OperationVerbTool.init` throws,
+        ///   propagated unchanged in the same way, when the parameters of an
+        ///   operation do not make a valid schema. `MultiToolBuilderError`
+        ///   when a group name isn't a legal TypeScript identifier, when two
+        ///   tools would collide at the same top-level snippet call path, or
+        ///   when anything other than the owning capability registers under a
+        ///   noun a capability claimed.
         public func buildRegistry() throws -> MultiTool.Registry {
-            let expansion = expanded()
+            let expansion = try expanded()
             var entries: [APISurface.Entry] = []
             var toolsByPath: [String: any Tool] = [:]
             var standaloneNames: Set<String> = []
@@ -136,7 +153,7 @@ extension MultiTool {
             for item in expansion.pending {
                 switch item {
                 case .standalone(let tool):
-                    let descriptor = try ToolAPIRenderer.render(tool)
+                    let descriptor = try Self.descriptor(of: tool)
                     guard standaloneNames.insert(descriptor.name).inserted else {
                         throw MultiToolBuilderError(
                             kind: .duplicateName,
@@ -160,7 +177,7 @@ extension MultiTool {
                                 + "tools.\(group).<name> namespace for it."
                         )
                     }
-                    let descriptor = try ToolAPIRenderer.render(tool)
+                    let descriptor = try Self.descriptor(of: tool)
                     var namesInGroup = namesByGroup[group] ?? []
                     guard namesInGroup.insert(descriptor.name).inserted else {
                         throw MultiToolBuilderError(
@@ -213,7 +230,9 @@ extension MultiTool {
         /// - Throws: what `MCPCapability.init(server:)` throws when a server
         ///   cannot reach `.ready`, and what ``buildRegistry()`` throws when
         ///   the current catalogs no longer render — a verb that is not a
-        ///   legal identifier, or two tools at one path.
+        ///   legal identifier, two tools at one path, or an operation of an
+        ///   `OperationDescribing` tool whose parameters do not make a valid
+        ///   schema. Each error propagates unchanged.
         public func rebuildRegistry() async throws -> MultiTool.Registry {
             try await refreshed().buildRegistry()
         }
@@ -247,20 +266,29 @@ extension MultiTool {
         /// tell the capability's own entries from an entry another
         /// registration put under the same noun.
         ///
+        /// An `OperationDescribing` tool is queued as one `OperationVerbTool`
+        /// for each of its `operationDescriptors`, in descriptor order. A
+        /// standalone operation tool becomes a group named for the tool, so
+        /// `notes` gives `tools.notes.addNote`; a grouped one flattens its
+        /// verbs into its group; a capability's one flattens its verbs under
+        /// the noun, inside the positions the claim covers.
+        ///
         /// - Returns: the queue and the claims.
-        private func expanded() -> Expansion {
+        /// - Throws: what `OperationVerbTool.init` throws when the parameters
+        ///   of an operation do not make a valid schema.
+        private func expanded() throws -> Expansion {
             var pending: [PendingTool] = []
             var claims: [CapabilityClaim] = []
             for registration in registrations {
                 switch registration {
                 case .standalone(let tool):
-                    pending.append(.standalone(tool))
+                    pending.append(contentsOf: try Self.standalonePendingTools(for: tool))
                 case .grouped(let group, let tool):
-                    pending.append(.grouped(group: group, tool: tool))
+                    pending.append(contentsOf: try Self.groupedPendingTools(for: tool, under: group))
                 case .capability(let capability):
                     let firstPosition = pending.count
                     for tool in capability.tools {
-                        pending.append(.grouped(group: capability.noun, tool: tool))
+                        pending.append(contentsOf: try Self.groupedPendingTools(for: tool, under: capability.noun))
                     }
                     claims.append(
                         CapabilityClaim(
@@ -272,6 +300,73 @@ extension MultiTool {
                 }
             }
             return Expansion(pending: pending, claims: claims)
+        }
+
+        /// The queue items of one standalone registration.
+        ///
+        /// A plain tool is one `.standalone` item. An `OperationDescribing`
+        /// tool is one `.grouped` item for each verb, under the group that is
+        /// the tool's name, so the group-name rule of ``buildRegistry()``
+        /// checks that name and the standalone-name rule sees the group.
+        ///
+        /// - Parameter tool: the registered tool.
+        /// - Returns: the items, in the order they render.
+        /// - Throws: what ``verbs(of:)`` throws.
+        private static func standalonePendingTools(for tool: any Tool) throws -> [PendingTool] {
+            guard let operationTool = tool as? any OperationDescribing else {
+                return [.standalone(tool)]
+            }
+            return try groupedPendingTools(for: operationTool, under: operationTool.name)
+        }
+
+        /// The queue items of one tool under `group`.
+        ///
+        /// A plain tool is one `.grouped` item. An `OperationDescribing` tool
+        /// is one `.grouped` item for each verb, so the verbs flatten into the
+        /// group with no level named for the tool.
+        ///
+        /// - Parameters:
+        ///   - tool: the registered tool.
+        ///   - group: the group the tool renders under.
+        /// - Returns: the items, in the order they render.
+        /// - Throws: what ``verbs(of:)`` throws.
+        private static func groupedPendingTools(for tool: any Tool, under group: String) throws -> [PendingTool] {
+            try verbs(of: tool).map { .grouped(group: group, tool: $0) }
+        }
+
+        /// The tools that stand for `tool` in the queue: one
+        /// `OperationVerbTool` for each operation of an `OperationDescribing`
+        /// tool, in descriptor order, else the tool itself.
+        ///
+        /// - Parameter tool: the registered tool.
+        /// - Returns: the tools to render.
+        /// - Throws: what `OperationVerbTool.init` throws when the parameters
+        ///   of an operation do not make a valid schema.
+        private static func verbs(of tool: any Tool) throws -> [any Tool] {
+            guard let operationTool = tool as? any OperationDescribing else { return [tool] }
+            return try operationTool.operationDescriptors.map { descriptor in
+                try OperationVerbTool(parent: operationTool, descriptor: descriptor)
+            }
+        }
+
+        // MARK: - Rendering
+
+        /// The rendered descriptor of one queued tool.
+        ///
+        /// An `OperationVerbTool` renders from its operation descriptor
+        /// through its own `render()`, so the parameters keep descriptor
+        /// order and their choices. Every other tool renders through
+        /// `ToolAPIRenderer.render(_:)`.
+        ///
+        /// - Parameter tool: the queued tool.
+        /// - Returns: the descriptor.
+        /// - Throws: `ToolAPIRendererError` when the tool cannot be fully
+        ///   rendered.
+        private static func descriptor(of tool: any Tool) throws -> ToolDescriptor {
+            guard let verb = tool as? OperationVerbTool else {
+                return try ToolAPIRenderer.render(tool)
+            }
+            return try verb.render()
         }
 
         // MARK: - Validation

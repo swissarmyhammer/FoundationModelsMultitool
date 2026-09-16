@@ -347,3 +347,32 @@ final class NotesOperationTool: OperationDescribing, Sendable {
             aliases: [], allowedValues: allowedValues)
     }
 }
+
+// MARK: - `RenamedNotesOperationTool` — the notes operations under a name a test picks
+
+/// An `OperationDescribing` tool with the five operations of
+/// ``NotesOperationTool``, under a name the test gives.
+///
+/// The registry makes the tool name the group of the verbs, and it checks
+/// that name with the group-name rule. `OperationMountTests` uses this
+/// fixture to give an operation tool a name that is not a legal identifier.
+/// Every call goes to the wrapped ``NotesOperationTool``.
+struct RenamedNotesOperationTool: OperationDescribing {
+    /// The name the registry reads as the group of the verbs.
+    let name: String
+
+    /// The tool that holds the operations and the store.
+    let notes = NotesOperationTool()
+
+    var description: String { notes.description }
+
+    var operationDescriptors: [OperationDescriptor] { notes.operationDescriptors }
+
+    func call(arguments: NotesCallArguments) async throws -> String {
+        try await notes.call(arguments: arguments)
+    }
+
+    func perform(_ arguments: GeneratedContent) async throws -> String {
+        try await notes.perform(arguments)
+    }
+}
