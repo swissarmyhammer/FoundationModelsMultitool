@@ -23,10 +23,27 @@ comments:
     - New card `01M2NPWYMVR0SSWM73E9WWTGV1`: `TypedMockDryRun` mocks a `.json` result as a plain `{}`, so a snippet that iterates a JSON array result in the natural way fails the dry run. That is a false failure of the gate, and it is out of scope here.
     - next: `/review`. The card stays in `doing`.
   timestamp: 2026-09-16T18:16:51.378326+00:00
+- actor: claude-code
+  id: 01m2nqkdxayb4dwv25k3yryw8k
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~2..HEAD` on the local backend, iteration 1. Zero findings. Counts: findings 0, confirmed 0, refuted 1, attempted 7, failed 0. The engine reviewed the two Swift test files, `Tests/FoundationModelsMultitoolTests/ExamplesTests.swift` and `Tests/FoundationModelsMultitoolTests/ReadmeOperationSectionTests.swift`. No validator matches `README.md` or `plan.md`, and `.reviewignore` excludes the six `.kanban/` files. No earlier `## Review Findings` section is on the card, so no item is open.
+    - next: none. The card moves from `review` to `done`.
+  timestamp: 2026-09-16T18:27:55.946824+00:00
+- actor: claude-code
+  id: 01m2nqm3ebees6x1mcjsmctp2z
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 4 files (README.md `## Operation tools`; plan.md status line; ExamplesTests.swift; ReadmeOperationSectionTests.swift)
+    - test: green — swift test, 1505 tests in 121 suites passed, 0 failed, 0 skipped; the one `mlx-swift_Cmlx.bundle` build note is pre-existing and not from this package
+    - commit: aa66e89 (docs), ee26905 (kanban)
+    - review: clean — zero findings; card moved to done
+    - follow-up: ^9wwtgv1 (dry-run mock of a `.json` result rejects an array read)
+  timestamp: 2026-09-16T18:28:17.995066+00:00
 depends_on:
 - 01M2N24ZEPMS79PQH5B58FF2SF
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffcb80
 title: Document operation tools in the README and ExamplesTests
 ---
 ## What
