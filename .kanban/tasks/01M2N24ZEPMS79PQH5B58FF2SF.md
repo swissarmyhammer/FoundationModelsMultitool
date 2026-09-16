@@ -44,10 +44,26 @@ comments:
     - evidence: 4 files — Sources/FoundationModelsMultitool/Surface/RegistrySource.swift (modified), Tests/FoundationModelsMultitoolTests/OperationMountTests.swift (new), Tests/FoundationModelsMultitoolTests/Goldens/OperationSurface.ts.txt (new), Tests/FoundationModelsMultitoolTests/Fixtures/OperationToolFixtures.swift (modified). `swift test --filter OperationMountTests`: 8 tests, 8 passed. `swift test --filter BuilderSurfaceTests`: 11 tests, 11 passed, no change. `swift test`: 1485 tests in 118 suites passed, 0 failures.
     - next: /review
   timestamp: 2026-09-16T15:56:27.316571+00:00
+- actor: claude-code
+  id: 01m2nfn6vsezx82jq5rp3v4h31
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~2..HEAD` (local backend), zero findings. Counts: findings 0, confirmed 0, refuted 1, attempted 7. The engine reviewed 3 files. It did not review the 4 files under `.kanban/` (the `.reviewignore` rule) and `Goldens/OperationSurface.ts.txt` (no validator matches a `.txt` file).
+    - next: none. The card moved from `review` to `done`.
+  timestamp: 2026-09-16T16:09:05.657420+00:00
+- actor: claude-code
+  id: 01m2nfp071ywzg6z2avc38rke8
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 4 files (Surface/RegistrySource.swift; OperationMountTests.swift; Goldens/OperationSurface.ts.txt; Fixtures/OperationToolFixtures.swift)
+    - test: green — swift test, 1485 tests in 118 suites passed, 0 failed, 0 skipped
+    - commit: 3986731 (code), 597e913 (kanban)
+    - review: clean — zero findings; card moved to done
+  timestamp: 2026-09-16T16:09:31.617373+00:00
 depends_on:
 - 01M2N245TZ7KAS9VJNEM3VDM0J
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffc780
 title: Expand an OperationDescribing tool into its verbs in RegistrySource.buildRegistry
 ---
 ## What
