@@ -21,6 +21,19 @@ struct RecordedOperationCall: Sendable {
     /// The `op` of the ambient `ToolContext` at the time of the call, or `nil`
     /// when no context was bound.
     let contextOp: String?
+
+    /// The string under `key` in the payload, or `nil` when the payload has
+    /// no such string.
+    ///
+    /// A test that reads the `op`, the `id` or the `tag` of a recorded call
+    /// reads it here, thus one implementation reads the payload and no suite
+    /// carries a near-identical copy.
+    ///
+    /// - Parameter key: The key to read.
+    /// - Returns: The string.
+    func string(_ key: String) -> String? {
+        NotesOperationTool.string(key, in: payload)
+    }
 }
 
 /// The refusal ``NotesOperationTool/perform(_:)`` throws.
@@ -203,6 +216,19 @@ final class NotesOperationTool: OperationDescribing, Sendable {
         state.withLock { $0.calls }
     }
 
+    /// The calls `perform(_:)` received whose `op` is `op`, in call order.
+    ///
+    /// A test that seeds the store through one operation and then checks the
+    /// calls of another operation reads the second set here, thus the seed
+    /// calls do not mix with the calls under test, and no suite carries a
+    /// near-identical filter.
+    ///
+    /// - Parameter op: The op string to keep.
+    /// - Returns: The calls with that op.
+    func recordedCalls(withOp op: String) -> [RecordedOperationCall] {
+        recordedCalls.filter { $0.string(Self.opParameter) == op }
+    }
+
     /// The notes in the store, in id order.
     var notes: [Note] {
         state.withLock { $0.notes.values.sorted { $0.id < $1.id } }
@@ -324,7 +350,10 @@ final class NotesOperationTool: OperationDescribing, Sendable {
 
     /// The string under `key` in `payload`, or `nil` when the key is absent,
     /// `null`, or not a string.
-    private static func string(_ key: String, in payload: GeneratedContent) -> String? {
+    ///
+    /// ``RecordedOperationCall/string(_:)`` calls this for a recorded payload,
+    /// so the read stays in one place.
+    static func string(_ key: String, in payload: GeneratedContent) -> String? {
         try? payload.value(String.self, forProperty: key)
     }
 

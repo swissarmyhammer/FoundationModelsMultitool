@@ -1,10 +1,11 @@
 import Darwin
 import Foundation
+import FoundationModels
 import Testing
 
 @testable import FoundationModelsMultitool
 
-/// Shared scaffolding for the file-capability suites of this test target.
+/// Shared scaffolding for the suites of this test target.
 ///
 /// Collects the helpers those suites share, thus one implementation governs
 /// the behavior each suite depends on. Each suite calls into this namespace
@@ -233,5 +234,21 @@ enum TestSupport {
     static func taggedBlock(forLines lines: ClosedRange<Int>, in content: String) -> String {
         let tagged = Hashline.taggedLines(of: content)
         return tagged[(lines.lowerBound - 1)...(lines.upperBound - 1)].joined(separator: "\n")
+    }
+
+    /// The property names of `content`, in the order `content` holds them,
+    /// or `nil` when `content` is not a structure.
+    ///
+    /// A suite that pins the keys of a tool payload, or the fields of an
+    /// encoded result, reads them here, thus one implementation reads the
+    /// structure and no suite carries a near-identical copy. A `@Generable`
+    /// result and a `GeneratedContent` payload both fit the parameter.
+    ///
+    /// - Parameter content: the content to read.
+    /// - Returns: the property names in order, or `nil` for a value that is
+    ///   not a structure.
+    static func propertyNames(of content: some ConvertibleToGeneratedContent) -> [String]? {
+        guard case .structure(_, let orderedKeys) = content.generatedContent.kind else { return nil }
+        return orderedKeys
     }
 }

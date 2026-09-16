@@ -93,15 +93,6 @@ struct OperationVerbToolTests {
             ])
     }
 
-    /// The property names of `content`, or `nil` when `content` is not an object.
-    ///
-    /// - Parameter content: The content to read.
-    /// - Returns: The property names.
-    private static func propertyNames(of content: GeneratedContent) -> Set<String>? {
-        guard case .structure(let properties, _) = content.kind else { return nil }
-        return Set(properties.keys)
-    }
-
     /// The string `content` holds, or `nil` when `content` is not a string.
     ///
     /// - Parameter content: The content to read.
@@ -212,7 +203,6 @@ struct OperationVerbToolTests {
             NotesOperationTool.tagParameter: Self.addedTag,
             NotesOperationTool.priorityParameter: Self.rejectedPriority,
         ])
-        let callsBefore = parent.recordedCalls.count
 
         let error = try await #require(throws: ToolInvokerError.self) {
             try await ToolInvoker.invoke(verb, content: content)
@@ -220,7 +210,8 @@ struct OperationVerbToolTests {
 
         #expect(error.kind == .guideViolation)
         #expect(error.field == NotesOperationTool.priorityParameter)
-        #expect(parent.recordedCalls.count == callsBefore)
+        // The seed call is an `add note`; no `tag note` reached the parent.
+        #expect(parent.recordedCalls(withOp: NotesOperationTool.tagNoteOp).isEmpty)
     }
 
     // MARK: - The call
@@ -234,16 +225,12 @@ struct OperationVerbToolTests {
             arguments: GeneratedContent(properties: [NotesOperationTool.titleParameter: Self.noteTitle]))
 
         let recorded = try #require(parent.recordedCalls.first)
-        let names = try #require(Self.propertyNames(of: recorded.payload))
-        #expect(names == [NotesOperationTool.opParameter, NotesOperationTool.titleParameter])
-        #expect(
-            try recorded.payload.value(String.self, forProperty: NotesOperationTool.opParameter)
-                == NotesOperationTool.addNoteOp)
-        #expect(
-            try recorded.payload.value(String.self, forProperty: NotesOperationTool.titleParameter)
-                == Self.noteTitle)
+        let names = try #require(TestSupport.propertyNames(of: recorded.payload))
+        #expect(Set(names) == [NotesOperationTool.opParameter, NotesOperationTool.titleParameter])
+        #expect(recorded.string(NotesOperationTool.opParameter) == NotesOperationTool.addNoteOp)
+        #expect(recorded.string(NotesOperationTool.titleParameter) == Self.noteTitle)
         #expect(recorded.contextOp == nil)
-        #expect(Self.propertyNames(of: result) != nil, "result was: \(result)")
+        #expect(TestSupport.propertyNames(of: result) != nil, "result was: \(result)")
         #expect(try result.value(String.self, forProperty: NotesOperationTool.titleParameter) == Self.noteTitle)
     }
 
@@ -259,9 +246,8 @@ struct OperationVerbToolTests {
             ]))
 
         let recorded = try #require(parent.recordedCalls.first)
-        #expect(
-            try recorded.payload.value(String.self, forProperty: NotesOperationTool.opParameter)
-                == NotesOperationTool.addNoteOp)
+        #expect(recorded.string(NotesOperationTool.opParameter) == NotesOperationTool.addNoteOp)
+        #expect(parent.recordedCalls(withOp: NotesOperationTool.deleteNoteOp).isEmpty)
     }
 
     @Test("call returns a string when the parent answers text that is not JSON")

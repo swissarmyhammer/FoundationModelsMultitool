@@ -113,13 +113,16 @@ import Testing
         changes.first { $0.path.hasSuffix(suffix) }
     }
 
-    /// The top-level field names of a result's `generatedContent` JSON, sorted.
+    /// The top-level field names of a result's `generatedContent`, sorted.
     ///
-    /// - Parameter output: the flat result to encode.
-    /// - Returns: the encoded object's keys, in sorted order.
-    /// - Throws: rethrows a JSON-reading failure.
+    /// The names come from `TestSupport.propertyNames(of:)`, the one reader
+    /// of a structure's keys in this target; this helper only sorts them.
+    ///
+    /// - Parameter output: the flat result to read.
+    /// - Returns: the result's field names, in sorted order.
+    /// - Throws: when `output` is not a structure.
     private static func encodedKeys(of output: some ConvertibleToGeneratedContent) throws -> [String] {
-        try jsonObject(output.generatedContent.jsonString).keys.sorted()
+        try #require(TestSupport.propertyNames(of: output)).sorted()
     }
 
     /// The JSON object a text encodes.

@@ -149,37 +149,6 @@ struct OperationRunCodeTests {
         }
     }
 
-    /// The keys of the payload of `call`, in the order the payload holds them,
-    /// or an empty array when the payload is not an object.
-    ///
-    /// - Parameter call: One recorded call.
-    /// - Returns: The ordered keys.
-    private static func payloadKeys(of call: RecordedOperationCall) -> [String] {
-        guard case .structure(_, let orderedKeys) = call.payload.kind else { return [] }
-        return orderedKeys
-    }
-
-    /// The string under `key` in the payload of `call`, or `nil` when the
-    /// payload has no such string.
-    ///
-    /// - Parameters:
-    ///   - key: The key to read.
-    ///   - call: One recorded call.
-    /// - Returns: The string.
-    private static func string(_ key: String, in call: RecordedOperationCall) -> String? {
-        try? call.payload.value(String.self, forProperty: key)
-    }
-
-    /// The recorded calls of `parent` whose `op` is `op`.
-    ///
-    /// - Parameters:
-    ///   - op: The op string to keep.
-    ///   - parent: The fixture tool.
-    /// - Returns: The calls, in call order.
-    private static func calls(withOp op: String, on parent: NotesOperationTool) -> [RecordedOperationCall] {
-        parent.recordedCalls.filter { string(NotesOperationTool.opParameter, in: $0) == op }
-    }
-
     /// A snippet that awaits `call`, returns `e.message` when the call
     /// rejects, and returns ``unreachableMarker`` when it does not.
     ///
@@ -216,15 +185,15 @@ struct OperationRunCodeTests {
         // The verb puts `op` first. The keys after it come from the marshaled
         // JavaScript object, whose order the marshaler does not keep, so the
         // rest of the payload is checked as a set.
-        let keys = Self.payloadKeys(of: recorded)
+        let keys = try #require(TestSupport.propertyNames(of: recorded.payload))
         #expect(keys.first == NotesOperationTool.opParameter)
         #expect(
             Set(keys) == [
                 NotesOperationTool.opParameter, NotesOperationTool.titleParameter, NotesOperationTool.bodyParameter,
             ])
-        #expect(Self.string(NotesOperationTool.opParameter, in: recorded) == NotesOperationTool.addNoteOp)
-        #expect(Self.string(NotesOperationTool.titleParameter, in: recorded) == Self.noteTitle)
-        #expect(Self.string(NotesOperationTool.bodyParameter, in: recorded) == Self.noteBody)
+        #expect(recorded.string(NotesOperationTool.opParameter) == NotesOperationTool.addNoteOp)
+        #expect(recorded.string(NotesOperationTool.titleParameter) == Self.noteTitle)
+        #expect(recorded.string(NotesOperationTool.bodyParameter) == Self.noteBody)
     }
 
     // MARK: - Snippet 2: listNote
@@ -269,10 +238,10 @@ struct OperationRunCodeTests {
             over: parent)
 
         #expect(try Self.decode(Int.self, from: output) == hits.count)
-        let tagCalls = Self.calls(withOp: NotesOperationTool.tagNoteOp, on: parent)
+        let tagCalls = parent.recordedCalls(withOp: NotesOperationTool.tagNoteOp)
         #expect(tagCalls.count == hits.count)
-        #expect(tagCalls.map { Self.string(NotesOperationTool.idParameter, in: $0) } == hits.map(\.id))
-        #expect(tagCalls.allSatisfy { Self.string(NotesOperationTool.tagParameter, in: $0) == Self.addedTag })
+        #expect(tagCalls.map { $0.string(NotesOperationTool.idParameter) } == hits.map(\.id))
+        #expect(tagCalls.allSatisfy { $0.string(NotesOperationTool.tagParameter) == Self.addedTag })
         let tagged = parent.notes.filter { $0.tags.contains(Self.addedTag) }
         #expect(tagged.map(\.id) == hits.map(\.id))
     }
@@ -370,7 +339,7 @@ struct OperationRunCodeTests {
                     code: #"return await tools.notes.tagNote({ id: "\#(stored.id)", tag: "\#(Self.addedTag)" });"#))
         }
 
-        let tagCall = try #require(Self.calls(withOp: NotesOperationTool.tagNoteOp, on: parent).first)
+        let tagCall = try #require(parent.recordedCalls(withOp: NotesOperationTool.tagNoteOp).first)
         #expect(tagCall.contextOp == Self.tagNoteJournalOp)
     }
 }
