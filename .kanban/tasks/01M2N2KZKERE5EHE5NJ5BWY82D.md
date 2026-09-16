@@ -25,6 +25,46 @@ comments:
     - note: the shared `.build` now holds products built from the scratch copy path, so the next `swift test` in the real tree recompiles the root package targets (about two minutes).
     - next: bump the Router pin (`^659rdp4`), run `swift test` in full, then `/review`.
   timestamp: 2026-09-16T12:49:18.021038+00:00
+- actor: claude-code
+  id: 01m2n5acckenzefds3wp4smg86
+  text: |-
+    ### review — findings
+    - evidence: 1 finding — Sources/FoundationModelsMultitool/Surface/ToolAPIRenderer.swift:298 (code-security/injection). Scope: review sha HEAD~2..HEAD, local backend. 5 files reviewed, 24 files in .kanban/ not reviewed (.reviewignore).
+    - next: Correct the finding in the new dated section. Make `exampleValue` safe before it goes into the JavaScript example text, and remove the cause from the whole file. Then run `/review ^5bwy82d` again. The card stays in `review`.
+  timestamp: 2026-09-16T13:08:25.107503+00:00
+- actor: claude-code
+  id: 01m2n5bc6adn60an3zhhs7tjde
+  text: |-
+    ### finish iteration 1 — findings
+    - implement: changed — 5 files (stuck on a stale Router checkout under `.build`; `swift package update FoundationModelsRouter` refreshed it, `Package.resolved` unchanged)
+    - test: green — swift test, 1461 tests in 115 suites passed, 0 failed, 0 skipped, 0 warnings; goldens unchanged
+    - commit: dff84cc (code), b4080bc (kanban)
+    - review: findings — Sources/FoundationModelsMultitool/Surface/ToolAPIRenderer.swift:298 (code-security/injection: `exampleValue` spliced into the JS example without validation)
+    - note: the acceptance item `swift test passes in full` is met by the test step above; the implementer checks it in iteration 2.
+  timestamp: 2026-09-16T13:08:57.674269+00:00
+- actor: claude-code
+  id: 01m2n5mswvyhbcwvc3a7csr78m
+  text: |-
+    Picked up again for the open review finding. Moved the card from `review` to `doing`.
+
+    Research:
+    - `RenderedParameter.exampleValue` is read at one place only: the `exampleFields` map in `render(name:description:arguments:returns:onWiden:)`. The schema path fills the value from `exampleLiteral(for:name:context:)`, so that value also goes through the same place. One check at that place covers the whole file.
+    - `Interpreter.checkSyntax(of:)` puts the code in the async IIFE that `run` uses. A check of `(<literal>)` rejects `"x" }); evil(); ({` and `1; 2`, but it accepts `1); evil(); (2` and `1) + evil() + (2`, because the parentheses stay balanced. A syntax check alone does not prove that the text is one literal.
+    - Design: a small recursive-descent recognizer, `JavaScriptLiteralSyntax.isLiteral(_:)`, in a new file `Sources/FoundationModelsMultitool/Surface/JavaScriptLiteralSyntax.swift`. It accepts one string literal (double or single quotes, backslash escapes), one number literal (optional minus, digits, fraction, exponent), `true`, `false`, `null`, an array literal of literals, or an object literal with identifier or string keys and literal values. It accepts nothing else: no identifier, no call, no operator, no second statement. Object keys reuse `ToolAPIRenderer.isLegalTSIdentifier`. The typed path throws `ToolAPIRendererError` for an `exampleValue` that is not one literal. The `exampleValue` doc states the requirement.
+    - Discovery, out of scope for this card: `objectKeyLiteral`, `tsLiteral` and the string placeholder in the example builders use `escapeForJSStringLiteral`, which does not escape a raw line terminator. A property name or an enum choice with a raw newline gives an example and a declaration that do not parse. `jsStringLiteral` already handles the line terminators. Recorded as a new task.
+    - Rules read: the general validators and every Swift section of the rule dump. The Dart, Go, Python, Rust and TypeScript tool sections cannot match a `.swift` file, so they were not read.
+  timestamp: 2026-09-16T13:14:06.619527+00:00
+- actor: claude-code
+  id: 01m2n61qkh86m73424p2kcjhfm
+  text: |-
+    ### implement — changed
+    - evidence: 4 files — `Sources/FoundationModelsMultitool/Surface/JavaScriptLiteralSyntax.swift` (new), `Sources/FoundationModelsMultitool/Surface/ToolAPIRenderer.swift`, `Tests/FoundationModelsMultitoolTests/JavaScriptLiteralSyntaxTests.swift` (new), `Tests/FoundationModelsMultitoolTests/ToolAPIRendererTests.swift`. RED: `swift test --filter "ToolAPIRendererTests|JavaScriptLiteralSyntaxTests"` first did not compile (`cannot find 'JavaScriptLiteralSyntax' in scope`); with the recognizer in place, the render throw test failed with 7 issues (`an error was expected but none was thrown`). GREEN: the same filter — 43 tests in 2 suites passed. Full run: `swift test` — 1465 tests in 116 suites passed, 0 failed, 0 skipped; the only warning is the build-system note about the `mlx-swift_Cmlx.bundle`, which is not from the changed files. Goldens unchanged: `git diff --stat -- Tests/FoundationModelsMultitoolTests/Goldens` is empty.
+    - finding: `ToolAPIRenderer.swift:298 code-security/injection` is corrected. `render(name:description:arguments:returns:onWiden:)` now gets each required parameter's example text from one private helper, `exampleLiteral(for parameter:)`. The helper returns the synthesized literal when `exampleValue` is `nil`, and otherwise accepts `exampleValue` only when `JavaScriptLiteralSyntax.isLiteral(_:)` recognizes it as one JavaScript literal expression; any other text throws `ToolAPIRendererError` with the parameter name, the refused text and the rule. This is the one place `exampleValue` reaches the rendered text, so the schema path's own literals pass through the same check. The `exampleValue` doc, the initializer doc and the `render` `Throws` doc state the requirement. The finding item and the acceptance item `swift test passes in full` are checked in the description.
+    - design: `JavaScriptLiteralSyntax` is a small recursive-descent recognizer: a string in double or single quotes with backslash escapes and no raw line terminator, a decimal number with an optional minus, fraction and exponent, `true`, `false`, `null`, an array literal, and an object literal with identifier keys (through `ToolAPIRenderer.isLegalTSIdentifier`) or string keys. No trailing comma, no identifier, no call, no operator. A `(<literal>)` syntax check through the interpreter was rejected as the guard because `1); evil(); (2` keeps the parentheses balanced and parses; that text is one of the rows the new tests refuse.
+    - note for the next agent: the `files` tool decodes a `\uXXXX` sequence in an edit or write parameter into the raw character. Write a Swift `\u{XXXX}` escape instead when the source must hold one.
+    - discovery: recorded task `01M2N5YX19BAW9Y5R4J54S3GV5` — `objectKeyLiteral`, `tsLiteral` and the string placeholder use `escapeForJSStringLiteral`, which leaves a raw line terminator in place; a property name or enum choice with a raw line feed gives an example and a declaration that do not parse.
+    - next: `/review ^5bwy82d`. The card stays in `doing`. Nothing is committed.
+  timestamp: 2026-09-16T13:21:10.257878+00:00
 position_column: doing
 position_ordinal: '80'
 title: Render a tool surface from typed parameters, with a JSON result shape
@@ -49,7 +89,7 @@ Changes:
 - [x] `Returns.json` gives the `@returns` line `Promise<object> — JSON result, parsed.`
 - [x] Every existing golden (`Goldens/WeatherTool.ts.txt`, `Goldens/BuilderSurface.ts.txt`, `Goldens/MCPSurface.ts.txt`) is unchanged after the refactor.
 - [x] `TypedMockDryRun.apiUsageFailure(in:against:using:)` reports no failure for `const n = await tools.notes.addNote({ title: "x" }); return n.id;` against an entry whose result shape is `.json`.
-- [ ] `swift test` passes in full.
+- [x] `swift test` passes in full.
 
 ## Tests
 
@@ -59,3 +99,12 @@ Changes:
 
 ## Workflow
 - Use `/tdd`: write the failing tests first, then implement to make them pass. #operation-tools
+
+## Review Findings (2026-09-16 07:55)
+
+> Scope: `review sha HEAD~2..HEAD` — reviewed the diffs only — lines this change added or modified. 5 file(s) reviewed, 24 not reviewed.
+
+> 24 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 24 file(s)
+
+- [x] `Sources/FoundationModelsMultitool/Surface/ToolAPIRenderer.swift:298` `code-security/injection` — The exampleValue from user-supplied RenderedParameters is embedded in JavaScript code without validation or escaping, allowing injection of arbitrary code. Validate that exampleValue conforms to JavaScript literal syntax before concatenation, or escape it appropriately. Alternatively, if exampleValue is meant to be a pre-constructed literal, document that requirement and add runtime validation to detect invalid input.
