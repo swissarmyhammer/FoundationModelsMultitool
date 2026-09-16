@@ -813,4 +813,58 @@ struct ToolAPIRendererTests {
         let fromSchema = try ToolAPIRenderer.render(WeatherTool())
         #expect(typed == fromSchema)
     }
+
+    // MARK: - The example literal a typed caller supplies
+
+    /// Renders a `store` surface with one required `payload` parameter whose
+    /// example literal the caller supplies.
+    private static func storeDescriptor(exampleValue: String) throws -> ToolDescriptor {
+        try ToolAPIRenderer.render(
+            name: "store",
+            description: "Stores a value.",
+            arguments: [
+                ToolAPIRenderer.RenderedParameter(
+                    name: "payload",
+                    shape: .json,
+                    isRequired: true,
+                    description: "the value to store.",
+                    exampleValue: exampleValue
+                ),
+            ]
+        )
+    }
+
+    @Test("a typed exampleValue that is one JavaScript literal renders verbatim in the example")
+    func typedExampleValueThatIsOneLiteralRenders() throws {
+        let literal = #"{ street: "Main", "unit no": 4, tags: [1, -2.5, 3e2, true, null], note: 'ok' }"#
+        let descriptor = try Self.storeDescriptor(exampleValue: literal)
+        #expect(descriptor.example == "await tools.store({ payload: \(literal) });")
+    }
+
+    /// Texts a caller could pass as `exampleValue` that are not one
+    /// JavaScript literal: a break-out of the object literal, a second
+    /// statement, a call, an identifier, an unterminated string, and nothing.
+    static let nonLiteralExampleValues: [String] = [
+        #""x" }); evil(); ({"#,
+        "1; 2",
+        "1); evil(); (2",
+        "evil()",
+        "undefined",
+        #""unterminated"#,
+        "",
+    ]
+
+    @Test(
+        "a typed exampleValue that is not one JavaScript literal throws, per the completeness contract",
+        arguments: nonLiteralExampleValues
+    )
+    func typedExampleValueThatIsNotOneLiteralThrows(_ exampleValue: String) throws {
+        #expect {
+            try Self.storeDescriptor(exampleValue: exampleValue)
+        } throws: { error in
+            guard let rendererError = error as? ToolAPIRendererError else { return false }
+            return rendererError.message.contains("\"payload\"")
+                && rendererError.message.contains("JavaScript literal")
+        }
+    }
 }

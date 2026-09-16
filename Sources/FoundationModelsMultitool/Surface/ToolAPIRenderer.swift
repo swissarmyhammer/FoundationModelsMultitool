@@ -138,6 +138,15 @@ public enum ToolAPIRenderer {
         /// `shape`. A schema supplies the literal its guides shape — a range's
         /// minimum, one element for an array that needs at least one — which
         /// the shape alone cannot know.
+        ///
+        /// The value must be exactly one JavaScript literal expression — a
+        /// string, a number, `true`, `false` or `null`, or an array or object
+        /// literal built from those — as `JavaScriptLiteralSyntax` recognizes
+        /// it. The text is spliced into generated code, so
+        /// `render(name:description:arguments:returns:onWiden:)` checks it
+        /// and throws `ToolAPIRendererError` for any other text, rather than
+        /// let a caller's value close the example's object literal or open a
+        /// statement of its own.
         public let exampleValue: String?
 
         /// Creates a rendered parameter.
@@ -153,7 +162,9 @@ public enum ToolAPIRenderer {
         ///   - constraints: the parenthetical constraint clauses; none by
         ///     default.
         ///   - exampleValue: the example literal to show for a required
-        ///     parameter, or `nil` to synthesize one from `shape`.
+        ///     parameter, or `nil` to synthesize one from `shape`. Must be
+        ///     one JavaScript literal expression; `render` refuses any other
+        ///     text.
         public init(
             name: String,
             shape: ToolValueShape,
@@ -268,8 +279,11 @@ public enum ToolAPIRenderer {
     /// - Returns: the rendered name/declaration/doc/example/source.
     /// - Throws: `ToolAPIRendererError` if `name` isn't a legal TypeScript
     ///   identifier (schema-derived text is never trusted to be safe to
-    ///   splice straight into a `declare function` signature), or if a
-    ///   `.schema` return cannot be rendered.
+    ///   splice straight into a `declare function` signature), if a required
+    ///   parameter's `exampleValue` is not one JavaScript literal expression
+    ///   (caller-supplied text is never trusted to be safe to splice into
+    ///   the `@example` call either), or if a `.schema` return cannot be
+    ///   rendered.
     public static func render(
         name: String,
         description: String,
@@ -293,9 +307,9 @@ public enum ToolAPIRenderer {
         let paramLines = arguments.map { paramLine(for: $0) }
         // Optional parameters are never included in the example (plan.md:
         // "optionals are simply omitted... the call site is self-documenting").
-        let exampleFields = arguments.filter(\.isRequired).map { parameter in
-            "\(objectKeyLiteral(parameter.name)): "
-                + (parameter.exampleValue ?? exampleLiteral(for: parameter.shape, name: parameter.name))
+        let exampleFields = try arguments.filter(\.isRequired).map { parameter in
+            let literal = try exampleLiteral(for: parameter)
+            return "\(objectKeyLiteral(parameter.name)): \(literal)"
         }
 
         let result = try resolvedResult(of: returns, name: name, onWiden: onWiden)
@@ -1070,6 +1084,34 @@ public enum ToolAPIRenderer {
             fields.append("\(objectKeyLiteral(key)): \(literal)")
         }
         return "{ \(fields.joined(separator: ", ")) }"
+    }
+
+    /// The example literal for one required typed parameter: the caller's
+    /// `exampleValue` once `JavaScriptLiteralSyntax` accepts it, or a literal
+    /// synthesized from the shape when the caller supplied none.
+    ///
+    /// This is the one place a `RenderedParameter.exampleValue` reaches the
+    /// generated text, so it is the one place the check stands. The schema
+    /// path's own literals come through here too, which holds
+    /// `exampleLiteral(for:name:context:)` to the same grammar.
+    ///
+    /// - Parameter parameter: the required parameter to render.
+    /// - Returns: the JS literal source text for the `@example` call.
+    /// - Throws: `ToolAPIRendererError` when `exampleValue` is present and is
+    ///   not one JavaScript literal expression.
+    private static func exampleLiteral(for parameter: RenderedParameter) throws -> String {
+        guard let exampleValue = parameter.exampleValue else {
+            return exampleLiteral(for: parameter.shape, name: parameter.name)
+        }
+        guard JavaScriptLiteralSyntax.isLiteral(exampleValue) else {
+            throw ToolAPIRendererError(
+                "Parameter \"\(parameter.name)\"'s exampleValue \(exampleValue.debugDescription) is not one "
+                    + "JavaScript literal expression (a string, number, true, false, null, array or object "
+                    + "literal); refusing to splice it into the generated `@example` call rather than risk "
+                    + "breaking out of the generated code."
+            )
+        }
+        return exampleValue
     }
 
     /// Synthesizes the example literal for a typed parameter from its shape
