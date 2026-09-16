@@ -672,7 +672,7 @@ func withLiveRouterFixture(
 
 /// The model-facing tool surface one scenario drives, and the catalog
 /// behind it.
-private struct ScenarioSurface {
+struct ScenarioSurface {
     /// The tools to register with the session, in the mount order the
     /// registry itself vends.
     let tools: [any Tool]
@@ -726,7 +726,7 @@ private struct ScenarioSurface {
 ///   behind them.
 /// - Throws: whatever `MultiTool.Builder.buildRegistry()` or
 ///   `MultiTool.Registry.makeSessionTools(librarian:)` throws.
-private func makeScenarioSurface(
+func makeScenarioSurface(
     over tools: [any Tool],
     on fixture: LiveRouterFixture,
     direct: Bool = false

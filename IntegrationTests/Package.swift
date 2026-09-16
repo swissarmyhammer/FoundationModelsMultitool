@@ -12,6 +12,14 @@ private let routerDependencyName = "FoundationModelsRouter"
 /// The name of the FoundationModelsMetadataRegistry dependency package.
 private let metadataRegistryDependencyName = "FoundationModelsMetadataRegistry"
 
+/// The name of the FoundationModelsExtras dependency package.
+///
+/// The root manifest links its core product for `ProcessRegistry`. This
+/// manifest links its `Operations` product: the `@Operation` macro and
+/// `OperationTool` that `Fixtures/IntegrationNotesOperationTool.swift` builds
+/// the one real operation tool of this suite from.
+private let extrasDependencyName = "FoundationModelsExtras"
+
 /// The MLX-backed model package a live `LiveModelLoader` is built over.
 private let mlxPackage = "mlx-swift-lm"
 
@@ -75,6 +83,7 @@ let package = Package(
         .package(path: ".."),
         .package(url: "git@github.com:swissarmyhammer/\(routerDependencyName).git", branch: "main"),
         .package(url: "git@github.com:swissarmyhammer/\(metadataRegistryDependencyName).git", branch: "main"),
+        .package(url: "git@github.com:swissarmyhammer/\(extrasDependencyName).git", branch: "main"),
         .package(url: "git@github.com:swissarmyhammer/\(mlxPackage).git", branch: "stable"),
         .package(url: "https://github.com/huggingface/\(huggingFacePackage)", from: "0.9.0"),
         .package(url: "https://github.com/huggingface/\(transformersPackage)", from: "1.3.0"),
@@ -126,6 +135,13 @@ let package = Package(
                 // those rules on each commit; this target drives them against
                 // a real model.
                 .product(name: "ScenarioGrading", package: productPackageName),
+                // The `@Operation` macro and `OperationTool` — see
+                // `extrasDependencyName`. The root package expands an
+                // `OperationTool` into one verb for each operation, and the
+                // suite that proves that with a real model builds its fixture
+                // from this product. The core `FoundationModelsExtras` product
+                // is not linked: no file of this target names a symbol of it.
+                .product(name: "Operations", package: extrasDependencyName),
                 .product(name: routerDependencyName, package: routerDependencyName),
                 .product(name: metadataRegistryDependencyName, package: metadataRegistryDependencyName),
                 .product(name: "MLXLMCommon", package: mlxPackage),

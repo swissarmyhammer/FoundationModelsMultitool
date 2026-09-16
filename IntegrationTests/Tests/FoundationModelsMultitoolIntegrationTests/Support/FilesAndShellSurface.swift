@@ -1,4 +1,5 @@
 import Foundation
+import FoundationModels
 import FoundationModelsMetadataRegistry
 import Testing
 
@@ -44,16 +45,23 @@ struct FilesAndShellSurface {
 /// `MultiTool.RegistryHolder` the mounted tools share, and the holder is the
 /// one place a caller reads the bundle a run really gets.
 ///
-/// - Parameter fixture: the resolved fixture whose `flash` slot is the
-///   librarian and whose embedding handle is the embedder.
+/// - Parameters:
+///   - fixture: the resolved fixture whose `flash` slot is the librarian and
+///     whose embedding handle is the embedder.
+///   - tools: standalone tools mounted beside the nine entries, in this
+///     order, so a suite can grade discovery of its own tool among these
+///     distractors. Empty by default, which mounts the nine entries alone.
 /// - Returns: the registry, the mounted tool and the mounted hint searcher.
 /// - Throws: whatever the build throws, and a requirement failure when the
 ///   built session tools hold no `searchTools`.
-func makeFilesAndShellSurface(over fixture: LiveRouterFixture) throws -> FilesAndShellSurface {
+func makeFilesAndShellSurface(
+    over fixture: LiveRouterFixture, adding tools: [any Tool] = []
+) throws -> FilesAndShellSurface {
     let root = LiveRouterFixture.makeTempDir()
     let registry = try MultiTool.Builder()
         .withFiles(root: root, readOnly: false)
         .withShell(storeDirectory: root.appendingPathComponent(filesAndShellStoreDirectoryName, isDirectory: true))
+        .addTools(tools)
         .buildRegistry()
     let mounted = try registry.makeSessionToolsAndStaging(
         librarian: fixture.profile.flash, embedder: fixture.profile.embedding)
