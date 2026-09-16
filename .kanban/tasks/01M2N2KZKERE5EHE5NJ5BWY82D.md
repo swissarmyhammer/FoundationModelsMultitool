@@ -65,8 +65,24 @@ comments:
     - discovery: recorded task `01M2N5YX19BAW9Y5R4J54S3GV5` — `objectKeyLiteral`, `tsLiteral` and the string placeholder use `escapeForJSStringLiteral`, which leaves a raw line terminator in place; a property name or enum choice with a raw line feed gives an example and a declaration that do not parse.
     - next: `/review ^5bwy82d`. The card stays in `doing`. Nothing is committed.
   timestamp: 2026-09-16T13:21:10.257878+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m2n6nx0fvk0bj7kngfjmg3gp
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~2..HEAD` (local backend) — zero findings. 7 validator runs attempted, 0 failed. 4 files reviewed. The 2026-09-16 07:55 finding on `Surface/ToolAPIRenderer.swift` is checked.
+    - next: none. The card is in `done`.
+  timestamp: 2026-09-16T13:32:11.151760+00:00
+- actor: claude-code
+  id: 01m2n6py9x5wf17dkgndhgcqq2
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — 4 files (new `Surface/JavaScriptLiteralSyntax.swift`; `exampleValue` validated through one helper in `ToolAPIRenderer`)
+    - test: green — swift test, 1465 tests in 116 suites passed, 0 failed, 0 skipped, 0 warnings; goldens unchanged
+    - commit: d60fb4d (code), 3157ead (kanban)
+    - review: clean — zero findings; card moved to done
+  timestamp: 2026-09-16T13:32:45.245452+00:00
+position_column: done
+position_ordinal: ffc580
 title: Render a tool surface from typed parameters, with a JSON result shape
 ---
 ## What

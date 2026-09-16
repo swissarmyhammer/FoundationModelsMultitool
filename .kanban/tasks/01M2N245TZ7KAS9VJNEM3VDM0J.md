@@ -6,10 +6,51 @@ comments:
   id: 01m2n2by7n1kkw5qgx3n34qq5x
   text: The precondition cards on the FoundationModelsExtras board are ^rmmv6qv (Add the OperationDescribing protocol and its descriptor types) and ^3jpfqa3 (Conform OperationTool to OperationDescribing with a throwing perform). Extras `main` was at 8ec26d4 when these were made; the two cards land as later commits on `main`. Bump `Package.resolved` to a revision at or after them.
   timestamp: 2026-09-16T12:16:50.421312+00:00
+- actor: claude-code
+  id: 01m2nc3ttsfrhgzfpkk7r1h0vc
+  text: |-
+    Picked up. Research notes:
+
+    - `swift package update FoundationModelsExtras` resolved Extras at `c98ae6b` (c98ae6ba956f82e0d75bcb7583b28e5c88304d23). The checkout carries `Sources/FoundationModelsExtras/OperationEvents/OperationDescribing.swift` with `OperationDescribing`, `OperationDescriptor`, `OperationParameterDescriptor`, `OperationParameterType` in the core module. The precondition is met.
+    - `Package.resolved` is in `.gitignore` (line 18). The new pin is on disk only. A commit cannot carry it. `Package.swift` takes Extras from `main`, so a new clone resolves the same revision.
+    - `ToolInvoker.validate` is `private static`. A test reaches it through `ToolInvoker.invoke(_:content:)`, the same way `ToolInvokerTests` does. A missing required field gives `ToolInvokerError` with kind `.missingRequiredField` and `field` set.
+    - `ToolAPIRenderer.render(name:description:arguments:returns:onWiden:)` is the typed path. `RenderedParameter(name:shape:isRequired:description:)` with `constraints` and `exampleValue` at their defaults. `ToolValueShape.string(choices: [InterpreterValue])`, `.number`, `.boolean`, `.array(element:)`. The renderer test `addNoteDescriptor()` in `ToolAPIRendererTests` gives the exact declaration text the card expects.
+    - `MCPTool` is the model for the type: internal `struct`, `Arguments = GeneratedContent`, `let includesSchemaInInstructions = true`.
+    - `SchemaConverter.dynamicSchema(for:)` shows the `DynamicGenerationSchema` forms: `DynamicGenerationSchema(type: String.self)`, `(arrayOf:)`, `(name:description:anyOf:)`, and `DynamicGenerationSchema.Property(name:description:schema:isOptional:)`.
+    - `ToolContext.current` is a `@TaskLocal` in Router; its `init` is internal to Router, so a unit test here cannot bind a context. The fixture reads `ToolContext.current?.op` and records `nil` outside a session.
+    - A `GeneratedContent` object is built with `GeneratedContent(kind: .structure(properties:orderedKeys:))`, as `ArgumentMarshaler.content(from:)` does.
+  timestamp: 2026-09-16T15:07:10.553919+00:00
+- actor: claude-code
+  id: 01m2nct0hkhytsnftagb0yk921
+  text: |-
+    Implementation landed, with `/tdd`.
+
+    RED: `Tests/FoundationModelsMultitoolTests/OperationVerbToolTests.swift` (12 cases) and `Tests/FoundationModelsMultitoolTests/Fixtures/OperationToolFixtures.swift` were written first. `swift build --build-tests` failed on `cannot find 'OperationVerbTool' in scope` and on nothing else; the fixture compiled.
+
+    GREEN: `Sources/FoundationModelsMultitool/Surface/OperationVerbTool.swift`. `swift test --filter OperationVerbToolTests` passes 12 tests in 1 suite. The whole unit suite passes: 1477 tests in 117 suites, exit 0.
+
+    REFACTOR: `payload(from:op:)` and `output(from:)` became `private static`; no caller outside the type.
+
+    Discoveries:
+    - The `anyOf` of string constants that `DynamicGenerationSchema(name:description:anyOf:)` builds encodes as an `enum`, so `ToolInvoker.validate` rejects a value outside `allowedValues` with `.guideViolation` and the field name, before the parent sees the payload. The test `invokerRejectsAValueOutsideAllowedValues` records that outcome.
+    - The fixture defines `NotesOperationError` for its refusals. `OperationError` lives in the `Operations` module of Extras, not in the core module the card allows.
+    - The fixture records `ToolContext.current?.op`; it is `nil` in these unit tests because `ToolContext.init` is internal to Router, so no unit test here can bind a context. The `callSendsTheOpAndParsesAJSONAnswer` case asserts that `nil`.
+    - `Package.resolved` is gitignored, so the Extras pin `c98ae6b` is on disk only.
+    - Two behaviors beyond the eight criteria have tests: the `op` key of the verb wins over an `op` the caller sent, and `name`/`description` come from the descriptor.
+
+    Not committed. The card stays in `doing` for `/review`.
+  timestamp: 2026-09-16T15:19:17.299512+00:00
+- actor: claude-code
+  id: 01m2nct424g3hdz0tm5w12brty
+  text: |-
+    ### implement — changed
+    - evidence: 3 files — Sources/FoundationModelsMultitool/Surface/OperationVerbTool.swift, Tests/FoundationModelsMultitoolTests/Fixtures/OperationToolFixtures.swift, Tests/FoundationModelsMultitoolTests/OperationVerbToolTests.swift; `swift test --filter OperationVerbToolTests` → 12 tests in 1 suite passed; `swift test` → 1477 tests in 117 suites passed, exit 0; Package.resolved (gitignored) pins FoundationModelsExtras at c98ae6ba956f82e0d75bcb7583b28e5c88304d23
+    - next: `/review`
+  timestamp: 2026-09-16T15:19:20.900998+00:00
 depends_on:
 - 01M2N2KZKERE5EHE5NJ5BWY82D
-position_column: todo
-position_ordinal: '8280'
+position_column: doing
+position_ordinal: '80'
 title: 'Add OperationVerbTool: one Tool per operation with a per-operation schema'
 ---
 ## Precondition, in another repository
@@ -42,20 +83,20 @@ Create `Sources/FoundationModelsMultitool/Surface/OperationVerbTool.swift`:
 
 ## Acceptance Criteria
 
-- [ ] `verbName(for:)` gives `addNote`, `listNote`, `getTypeDefinition`, `getCallgraph` for `add note`, `list note`, `get type_definition`, `get callgraph`.
-- [ ] `render()` for a descriptor with `title` required and `body`, `tags` optional, in that order, gives `declare function addNote(args: { title: string; body?: string; tags?: string[] }): Promise<object>;` and the `@example` names only `title`.
-- [ ] `render()` for a descriptor with `allowedValues: ["c", "f"]` gives `"c" | "f"`.
-- [ ] `includesSchemaInInstructions` is `true`.
-- [ ] `ToolInvoker.validate` against `parameters` rejects a payload with `title` missing, and the error names `title`. Record in a test what it does with a value outside `allowedValues`; either outcome is accepted, because the parent checks allowed values at dispatch.
-- [ ] `call` sends `{"op": "add note", "title": "x"}` to the parent, in that shape, and returns a parsed object when the parent answers JSON text.
-- [ ] `call` returns a string when the parent answers text that is not JSON.
-- [ ] An error thrown by `perform` propagates out of `call` unchanged.
+- [x] `verbName(for:)` gives `addNote`, `listNote`, `getTypeDefinition`, `getCallgraph` for `add note`, `list note`, `get type_definition`, `get callgraph`.
+- [x] `render()` for a descriptor with `title` required and `body`, `tags` optional, in that order, gives `declare function addNote(args: { title: string; body?: string; tags?: string[] }): Promise<object>;` and the `@example` names only `title`.
+- [x] `render()` for a descriptor with `allowedValues: ["c", "f"]` gives `"c" | "f"`.
+- [x] `includesSchemaInInstructions` is `true`.
+- [x] `ToolInvoker.validate` against `parameters` rejects a payload with `title` missing, and the error names `title`. Record in a test what it does with a value outside `allowedValues`; either outcome is accepted, because the parent checks allowed values at dispatch.
+- [x] `call` sends `{"op": "add note", "title": "x"}` to the parent, in that shape, and returns a parsed object when the parent answers JSON text.
+- [x] `call` returns a string when the parent answers text that is not JSON.
+- [x] An error thrown by `perform` propagates out of `call` unchanged.
 
 ## Tests
 
-- [ ] `Tests/FoundationModelsMultitoolTests/Fixtures/OperationToolFixtures.swift`: a hand-conformed `OperationDescribing` fixture with five notes-like operations (`add note`, `get note`, `list note`, `delete note`, `tag note`) over an in-memory store. Inside `perform(_:)` it records every payload it receives and the value of `ToolContext.current?.op` beside it, and it throws for a bad op or a missing id. Import `FoundationModelsExtras` and `FoundationModelsRouter` only; do not use the `Operations` macros here.
-- [ ] `Tests/FoundationModelsMultitoolTests/OperationVerbToolTests.swift`: the eight criteria above.
-- [ ] Run `swift test --filter OperationVerbToolTests`; expect all pass.
+- [x] `Tests/FoundationModelsMultitoolTests/Fixtures/OperationToolFixtures.swift`: a hand-conformed `OperationDescribing` fixture with five notes-like operations (`add note`, `get note`, `list note`, `delete note`, `tag note`) over an in-memory store. Inside `perform(_:)` it records every payload it receives and the value of `ToolContext.current?.op` beside it, and it throws for a bad op or a missing id. Import `FoundationModelsExtras` and `FoundationModelsRouter` only; do not use the `Operations` macros here.
+- [x] `Tests/FoundationModelsMultitoolTests/OperationVerbToolTests.swift`: the eight criteria above.
+- [x] Run `swift test --filter OperationVerbToolTests`; expect all pass.
 
 ## Workflow
 - Use `/tdd`: write the failing tests first, then implement to make them pass. #operation-tools
