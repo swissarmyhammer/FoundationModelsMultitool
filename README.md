@@ -113,13 +113,14 @@ These are the rules of the surface:
 
 The snippet below lists the notes, keeps the notes whose body names Friday, and
 tags each one. The declared type `object` says nothing about the shape of the
-list, so the snippet reads the list through `Object.values`. `TypedMockDryRun`
-accepts this snippet over the verbs above, so a sample snippet from
-`searchTools` can have the same shape:
+list. `TypedMockDryRun` mocks a `.json` result as a value that reads as an
+object and as an array, so the snippet reads the list as an array, and the dry
+run accepts it over the verbs above. A sample snippet from `searchTools` can
+have the same shape:
 
 ```js
 const notes = await tools.notes.listNote({});
-const hits = Object.values(notes).filter((note) => note.body.includes("Friday"));
+const hits = notes.filter((note) => note.body.includes("Friday"));
 for (const note of hits) {
   await tools.notes.tagNote({ id: note.id, tag: "due" });
 }

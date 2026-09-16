@@ -19,10 +19,21 @@ import Foundation
 ///
 /// A widened `any` in a signature (see `ToolValueShape.any`) is mocked as an
 /// empty object and accepted as any argument, since the declared type
-/// constrains nothing. A parsed JSON value (`ToolValueShape.json`) is mocked
-/// as an empty object too, so a snippet that reads a field of it gets
-/// `undefined` and runs on, and it is accepted as any non-null object, since
-/// its declared type is `object`.
+/// constrains nothing.
+///
+/// A parsed JSON value (`ToolValueShape.json`) is an object or an array, and
+/// the dry run cannot know which. It is mocked as one value that answers
+/// both reads without a throw: `for...of`, `.length`, an index, and each
+/// `Array.prototype` method see two elements of the same kind; a read of any
+/// other field gives another such value; a call on it gives another such
+/// value; and every argument check accepts such a value for every declared
+/// type, because the surface knows nothing about the field. So `n.id`,
+/// `notes.filter(...)`, `for (const note of notes)` and
+/// `tagNote({ id: note.id })` all pass clean, and a snippet that reads a
+/// `.json` list the natural way is not "repaired" into `Object.values`. The
+/// `__mockJSON` function of `runtime` records the whole shape. A `.json`
+/// argument accepts any non-null object, since its declared type is
+/// `object`.
 ///
 /// ## Why mocks rather than a checker
 ///
@@ -181,8 +192,20 @@ enum TypedMockDryRun {
     /// fragment of it needs escaping on the way through a Swift literal, and
     /// what a reader sees here is exactly what the sandbox parses.
     ///
-    /// The two `Proxy` handlers are the whole substance:
+    /// The three `Proxy` handlers are the whole substance:
     ///
+    /// - `__mockJSON` builds the mock of a parsed JSON value. The target is a
+    ///   function, so a field read is callable (`note.body.includes(...)`).
+    ///   The trap answers `Symbol.iterator`, `length`, an index key and each
+    ///   `Array.prototype` method with two lazily built child mocks of the
+    ///   same kind; `then`, `catch` and `finally` with `undefined`, so `await`
+    ///   passes the value through; `toJSON` with `{}`; primitive coercion with
+    ///   `''` or `0`; and every other string key with another such mock. A
+    ///   call gives another such mock, and an assignment is a no-op. The
+    ///   hidden `__mockJSON` key marks the value, and `__mockCheck` accepts a
+    ///   marked value for every declared shape. Nothing here throws: a `.json`
+    ///   value has no declared structure, so there is no wrong read to report,
+    ///   and a false failure is worse than no check.
     /// - `__mockProxy` traps reads of undeclared data fields on a resolved
     ///   value. It forwards symbol keys, own properties (the declared fields
     ///   and the hidden tag), anything reachable on `Object.prototype`, an
@@ -215,7 +238,7 @@ enum TypedMockDryRun {
           if (shape.kind === 'number') { return 0; }
           if (shape.kind === 'boolean') { return false; }
           if (shape.kind === 'any') { return {}; }
-          if (shape.kind === 'json') { return {}; }
+          if (shape.kind === 'json') { return __mockJSON(); }
           if (shape.kind === 'array') {
             var elements = [__mockValue(shape.element, label + '[]'), __mockValue(shape.element, label + '[]')];
             return __mockProxy(elements, shape, label);
@@ -247,6 +270,36 @@ enum TypedMockDryRun {
             }
           });
         }
+        var __mockJSONKey = '__mockJSON';
+        function __mockIsJSON(value) {
+          return typeof value === 'function' && value[__mockJSONKey] === true;
+        }
+        function __mockJSON() {
+          var elements = null;
+          function children() {
+            if (elements === null) { elements = [__mockJSON(), __mockJSON()]; }
+            return elements;
+          }
+          function primitive(hint) { return hint === 'number' ? 0 : ''; }
+          return new Proxy(function () {}, {
+            get: function (holder, key) {
+              if (key === __mockJSONKey) { return true; }
+              if (key === Symbol.iterator) { return function () { return children()[Symbol.iterator](); }; }
+              if (key === Symbol.toPrimitive) { return primitive; }
+              if (typeof key === 'symbol') { return holder[key]; }
+              if (key === 'then' || key === 'catch' || key === 'finally') { return undefined; }
+              if (key === 'toJSON') { return function () { return {}; }; }
+              if (key === 'toString' || key === 'toLocaleString') { return function () { return ''; }; }
+              if (key === 'valueOf') { return function () { return 0; }; }
+              if (key === 'length') { return children().length; }
+              if (String(Number(key)) === key) { return children()[key]; }
+              if (typeof Array.prototype[key] === 'function') { return Array.prototype[key].bind(children()); }
+              return __mockJSON();
+            },
+            set: function () { return true; },
+            apply: function () { return __mockJSON(); }
+          });
+        }
         function __mockPending(call, promise) {
           return new Proxy(promise, {
             get: function (holder, key) {
@@ -263,7 +316,7 @@ enum TypedMockDryRun {
           return new Error(where + ' must be ' + shape.declared + ', but received ' + __mockDescribe(value) + '.');
         }
         function __mockCheck(value, shape, where) {
-          if (shape.kind === 'any') { return; }
+          if (shape.kind === 'any' || __mockIsJSON(value)) { return; }
           if (shape.kind === 'string' || shape.kind === 'number' || shape.kind === 'boolean') {
             if (typeof value !== shape.kind) { throw __mockTypeFailure(where, shape, value); }
             return;

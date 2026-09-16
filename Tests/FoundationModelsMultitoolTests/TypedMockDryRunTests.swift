@@ -76,6 +76,16 @@ struct TypedMockDryRunTests {
         ]
     }
 
+    /// The verb entries of the notes fixture
+    /// (`Fixtures/OperationToolFixtures.swift`). Each verb returns a parsed
+    /// JSON value, and `listNote` returns a JSON array.
+    static func notesEntries() throws -> [APISurface.Entry] {
+        try MultiTool.Builder()
+            .addTool(NotesOperationTool())
+            .build()
+            .entries
+    }
+
     // MARK: - False failures: idioms a correct snippet uses, which must pass clean
 
     @Test("a chained call passing one tool's returned field as the next tool's argument passes clean")
@@ -335,14 +345,51 @@ struct TypedMockDryRunTests {
 
     // MARK: - Parsed JSON values, which carry no declared structure
 
-    @Test("a parsed JSON result mocks as an empty object, so reading a field of it passes clean")
-    func jsonResultMocksAsAnEmptyObject() throws {
+    @Test("reading a field of a parsed JSON result passes clean")
+    func jsonResultFieldReadPassesClean() throws {
         let failure = try Self.failure(
             for: """
             const n = await tools.notes.addNote({ title: "x" });
             return n.id;
             """,
             against: Self.jsonEntries()
+        )
+        #expect(failure == nil)
+    }
+
+    @Test("filtering a parsed JSON result as an array, and reading its length, passes clean")
+    func jsonResultFiltersAsAnArray() throws {
+        let failure = try Self.failure(
+            for: """
+            const notes = await tools.notes.listNote({});
+            return notes.filter((n) => n.id).length;
+            """,
+            against: Self.notesEntries()
+        )
+        #expect(failure == nil)
+    }
+
+    @Test("iterating a parsed JSON result with for...of, and passing a field of each element to a verb, passes clean")
+    func jsonResultIteratesAsAnArray() throws {
+        let failure = try Self.failure(
+            for: """
+            const notes = await tools.notes.listNote({});
+            for (const note of notes) { await tools.notes.tagNote({ id: note.id, tag: "due" }); }
+            """,
+            against: Self.notesEntries()
+        )
+        #expect(failure == nil)
+    }
+
+    @Test("calling a string method on a field of a parsed JSON element passes clean")
+    func jsonElementFieldMethodCallPassesClean() throws {
+        let failure = try Self.failure(
+            for: """
+            const notes = await tools.notes.listNote({});
+            const hits = notes.filter((note) => note.body.includes("Friday"));
+            return hits.map((note) => note.title.toUpperCase());
+            """,
+            against: Self.notesEntries()
         )
         #expect(failure == nil)
     }

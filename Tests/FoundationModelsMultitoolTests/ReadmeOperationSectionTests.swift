@@ -102,12 +102,7 @@ struct ReadmeOperationSectionTests {
 
     @Test("the js snippet of the section passes the typed-mock dry run over the fixture verbs")
     func snippetPassesTheDryRunOverTheFixtureVerbs() throws {
-        let entries = try MultiTool.Builder()
-            .addTool(NotesOperationTool())
-            .build()
-            .entries
-
-        let failure = TypedMockDryRunTests.failure(for: try Self.snippet(), against: entries)
+        let failure = TypedMockDryRunTests.failure(for: try Self.snippet(), against: try TypedMockDryRunTests.notesEntries())
 
         #expect(failure == nil, "dry run failure: \(failure ?? "")")
     }
