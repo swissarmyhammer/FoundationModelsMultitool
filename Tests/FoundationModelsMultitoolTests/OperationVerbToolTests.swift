@@ -17,12 +17,16 @@ struct OperationVerbToolTests {
     // MARK: - Shared test constants
 
     /// The op strings the camelCase rule is checked against, each with the
-    /// verb name the card expects for it.
+    /// verb name the card expects for it. The last two hold upper-case and
+    /// mixed-case words, so the rule must lowercase each word before it
+    /// capitalizes the first letter of the word.
     private static let verbNameCases: [(opString: String, verbName: String)] = [
         ("add note", "addNote"),
         ("list note", "listNote"),
         ("get type_definition", "getTypeDefinition"),
         ("get callgraph", "getCallgraph"),
+        ("GET Type_Definition", "getTypeDefinition"),
+        ("Delete NOTE", "deleteNote"),
     ]
 
     /// The verb name of the `add note` operation.

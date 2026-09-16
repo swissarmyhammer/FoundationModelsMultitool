@@ -87,18 +87,20 @@ struct OperationVerbTool: Tool, Sendable {
 
     /// The camelCase identifier of an op string.
     ///
-    /// The op string is split on spaces, underscores and hyphens. The first
-    /// word is lowercased; each other word gets a capital first letter. So
-    /// `get symbol` gives `getSymbol`, and `get type_definition` gives
-    /// `getTypeDefinition`.
+    /// The op string is split on spaces, underscores and hyphens, and every
+    /// word is lowercased. The first word stays lowercase; each other word
+    /// gets a capital first letter. So `get symbol` gives `getSymbol`,
+    /// `get type_definition` gives `getTypeDefinition`, and the case of the
+    /// input does not reach the identifier: `GET Type_Definition` gives
+    /// `getTypeDefinition` too.
     ///
     /// - Parameter opString: The op string of one operation.
     /// - Returns: The identifier, or an empty string for an op string with no word.
     static func verbName(for opString: String) -> String {
-        let words = opString.split(whereSeparator: wordSeparators.contains).map(String.init)
+        let words = opString.split(whereSeparator: wordSeparators.contains).map { $0.lowercased() }
         guard let first = words.first else { return "" }
         let rest = words.dropFirst().map { word in word.prefix(1).uppercased() + word.dropFirst() }
-        return ([first.lowercased()] + rest).joined()
+        return ([first] + rest).joined()
     }
 
     // MARK: - The schema
