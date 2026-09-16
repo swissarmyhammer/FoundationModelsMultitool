@@ -1,0 +1,61 @@
+---
+assignees:
+- claude-code
+comments:
+- actor: claude-code
+  id: 01m2n3j7hawqqpwnf1gt2jsbdm
+  text: |-
+    Picked up. Research done.
+
+    Blocker found before the first edit: `swift test` does not compile at `652a65d`. `InlineSettleGraceTests.swift` reads `PendingRunEnvelope.detail`, but `Package.resolved` pins `FoundationModelsRouter` at `efe0147`, which has no `detail`. The sibling `../FoundationModelsRouter` on `main` (`7e82607`) has it. The pin is out of scope for this card, and `Package.resolved` must not change here. Recorded as task `01M2N3GZ80QH2635WTG659RDP4`.
+
+    Work plan for this card:
+    - Verify RED and GREEN in a scratch copy of the tree (sources only, shares `.build` through `--scratch-path`). The copy removes the one pre-existing `envelope.detail` assertion so the test target compiles. No tracked file outside this card changes.
+    - Design: `ToolAPIRenderer.RenderedParameter` carries the four fields on the card and two more with defaults: `constraints: [String]` (the guide parentheticals `(integer)`, `(range 1…10)`, `(pattern: /…/)`, `(1…3 items)`) and `exampleValue: String?` (the example literal a schema derives from `minimum` and `minItems`). Without them the typed entry cannot own the text format and keep the schema path byte-identical: the `rendersTableRow` cases need the parentheticals, and the example for a ranged integer would move from the range minimum to `0`.
+    - The name check moves into the typed entry. The schema path decodes, builds `[RenderedParameter]` in `x-order`, and calls the typed entry.
+    - `TypedMockDryRun` learns kind `json` in `kind(of:)`, `literal(for:)`, and in the runtime's `__mockValue` (empty object) and `__mockCheck` (any non-null object), so a `.json` argument does not raise a TypeError inside the harness.
+  timestamp: 2026-09-16T12:37:45.130994+00:00
+- actor: claude-code
+  id: 01m2n47c65f6q0b60dw45t7e9g
+  text: |-
+    ### implement — stuck
+    - evidence: 5 files changed — `Sources/FoundationModelsMultitool/Surface/ToolSignature.swift`, `Sources/FoundationModelsMultitool/Surface/ToolAPIRenderer.swift`, `Sources/FoundationModelsMultitool/Discovery/TypedMockDryRun.swift`, `Tests/FoundationModelsMultitoolTests/ToolAPIRendererTests.swift`, `Tests/FoundationModelsMultitoolTests/TypedMockDryRunTests.swift`. RED: the new tests did not compile against the old API (`RenderedParameter`, `render(name:description:arguments:returns:)` and `Returns.json` missing). GREEN: `swift test --filter "ToolAPIRendererTests|TypedMockDryRunTests|BuilderSurfaceTests"` — 76 tests in 3 suites passed, zero compile warnings from the changed files. Whole suite over the real tree's sources in the scratch copy (minus `InlineSettleGraceTests.swift`, which does not compile at HEAD): 1456 tests in 114 suites passed (`ShellDotfolderTests` needs a `.git` entry beside the package; it passes with one). Goldens unchanged: `git diff --stat -- Tests/FoundationModelsMultitoolTests/Goldens` is empty.
+    - gap: the criterion `swift test` passes in full cannot run on the real tree. The test target does not compile at `652a65d`: `Package.resolved` pins `FoundationModelsRouter` at `efe0147`, whose `PendingRunEnvelope` has no `detail` and no `outcome`, and its `pending` is internal. Task `01M2N3GZ80QH2635WTG659RDP4` (`^659rdp4`) records the pin bump. `Package.resolved` was not changed here.
+    - design: `RenderedParameter` carries the card's four fields and two more with defaults, `constraints: [String]` and `exampleValue: String?`. The schema path fills them from the guides (`(integer)`, ranges, patterns, item counts, and the example literal a `minimum` or `minItems` shapes). Without them the typed entry cannot own the text format and keep the schema path byte-identical; `schemaMinimumSeedsTheExample` pins the example rule.
+    - note: the shared `.build` now holds products built from the scratch copy path, so the next `swift test` in the real tree recompiles the root package targets (about two minutes).
+    - next: bump the Router pin (`^659rdp4`), run `swift test` in full, then `/review`.
+  timestamp: 2026-09-16T12:49:18.021038+00:00
+position_column: doing
+position_ordinal: '80'
+title: Render a tool surface from typed parameters, with a JSON result shape
+---
+## What
+
+Give `ToolAPIRenderer` an entry point that renders from typed parameter values, and add a result shape for a parsed JSON value. The operation verb card builds on this. No Extras dependency; this card can start now.
+
+Today `ToolAPIRenderer.render(name:description:parameters:returns:onWiden:)` in `Sources/FoundationModelsMultitool/Surface/ToolAPIRenderer.swift` encodes the `GenerationSchema` with `JSONEncoder`, decodes it into `SchemaNode`, and builds the doc, declaration, example and `ToolSignature` from the nodes. Property order comes from `x-order` or falls back to alphabetical, and enum choices come from a property-level `enum` array. Nothing proves that a `DynamicGenerationSchema` encodes either, so a verb rendered through the schema path could show fields in the wrong order or lose its choices.
+
+Changes:
+
+1. In `Surface/ToolSignature.swift`, add `case json` to `ToolValueShape`. Its `declaredType` is `object`. Handle it in `ToolAPIRenderer.declaredType(of:)`.
+2. In `Surface/ToolAPIRenderer.swift`, add `case json` to `Returns`. It gives `resultShape = .json` and the `@returns` prose `JSON result, parsed.`, so a declaration ends in `Promise<object>`.
+3. In `Surface/ToolAPIRenderer.swift`, add a public value `RenderedParameter` with `name`, `shape: ToolValueShape`, `isRequired: Bool`, `description: String`, and a public entry `render(name:description:arguments: [RenderedParameter], returns:) throws -> ToolDescriptor`. It builds the doc lines, the declaration, the example and the `ToolSignature` from the list, in list order. Refactor the existing schema-based `render` so that after it decodes the nodes it maps them to `[RenderedParameter]` and calls this entry. One function then owns the text format, and the goldens pin that nothing moved.
+4. In `Discovery/TypedMockDryRun.swift`, handle `.json` in `kind(of:)` and `literal(for:)`. The mock value for a `.json` result is an empty object literal `{}`, so a snippet that reads a property of the result gets `undefined` and does not fail the dry run.
+
+## Acceptance Criteria
+
+- [x] `render(name:description:arguments:returns:)` with `title` required, `body` optional, `tags` optional array, in that order, gives `declare function addNote(args: { title: string; body?: string; tags?: string[] }): Promise<object>;` for `returns: .json`, and the `@example` names only `title`.
+- [x] A `RenderedParameter` with `shape: .string(choices: ["c", "f"])` renders `"c" | "f"` in the declaration and `one of "c" | "f".` in the `@param` line.
+- [x] `Returns.json` gives the `@returns` line `Promise<object> — JSON result, parsed.`
+- [x] Every existing golden (`Goldens/WeatherTool.ts.txt`, `Goldens/BuilderSurface.ts.txt`, `Goldens/MCPSurface.ts.txt`) is unchanged after the refactor.
+- [x] `TypedMockDryRun.apiUsageFailure(in:against:using:)` reports no failure for `const n = await tools.notes.addNote({ title: "x" }); return n.id;` against an entry whose result shape is `.json`.
+- [ ] `swift test` passes in full.
+
+## Tests
+
+- [x] New cases in `Tests/FoundationModelsMultitoolTests/ToolAPIRendererTests.swift` for the three render criteria and for the equality of the schema path and the typed path on the `WeatherTool` fixture.
+- [x] New case in `Tests/FoundationModelsMultitoolTests/TypedMockDryRunTests.swift` for the `.json` mock.
+- [x] Run `swift test --filter "ToolAPIRendererTests|TypedMockDryRunTests|BuilderSurfaceTests"`; expect all pass.
+
+## Workflow
+- Use `/tdd`: write the failing tests first, then implement to make them pass. #operation-tools

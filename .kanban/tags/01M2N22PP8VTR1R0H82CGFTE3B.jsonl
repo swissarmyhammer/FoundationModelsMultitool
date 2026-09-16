@@ -1,0 +1,1 @@
+{"id":"01M2N22PP852QTBGXEZE91ND6M","timestamp":"2026-09-16T12:11:47.784157Z","op":"create","item_id":"01M2N22PP8VTR1R0H82CGFTE3B","forward_patch":"--- original\n+++ modified\n@@ -0,0 +1,2 @@\n+color: d73a4a\n+tag_name: operation-tools\n","reverse_patch":"--- original\n+++ modified\n@@ -1,2 +0,0 @@\n-color: d73a4a\n-tag_name: operation-tools\n","transaction_id":null}
