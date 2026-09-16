@@ -599,16 +599,15 @@ public enum ToolAPIRenderer {
         name.wholeMatch(of: identifierPattern) != nil
     }
 
-    /// Escapes `text` for safe interpolation into a JS/TS double-quoted
-    /// string literal: backslashes first (so a backslash already present
-    /// in `text` isn't re-escaped by the quote-escaping step that
-    /// follows), then double quotes.
+    /// Escapes the backslashes and the double quotes of `text`: backslashes
+    /// first (so a backslash already present in `text` isn't re-escaped by
+    /// the quote-escaping step that follows), then double quotes.
     ///
-    /// Internal (not `private`), rather than duplicated, so `TypedMockDryRun`
-    /// can build on it when it splices a rendered declared type or a property
-    /// name into the JavaScript harness it generates — the same posture this
-    /// file takes toward sharing `isLegalTSIdentifier`.
-    static func escapeForJSStringLiteral(_ text: String) -> String {
+    /// This is one step of ``jsStringLiteral(_:)``, which is the only caller.
+    /// No splice site uses this step on its own, because it leaves the line
+    /// terminators raw and a raw line terminator inside a string literal is
+    /// a syntax error.
+    private static func escapeForJSStringLiteral(_ text: String) -> String {
         text.replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")
     }
@@ -621,11 +620,16 @@ public enum ToolAPIRenderer {
     /// result between double quotes. No text can close the literal or open
     /// code of its own.
     ///
+    /// Every splice site in this file that puts a schema-derived or
+    /// caller-supplied string between double quotes goes through this
+    /// function: `objectKeyLiteral`, `tsLiteral` and the `.string`
+    /// placeholder of both example synthesizers.
+    ///
     /// Internal (not `private`), rather than duplicated, so `TypedMockDryRun`
     /// splices a rendered declared type into its harness through it, and the
     /// test fixtures splice a path or a file content into a snippet through
     /// it — the same posture this file takes toward sharing
-    /// `escapeForJSStringLiteral`.
+    /// `isLegalTSIdentifier`.
     ///
     /// - Parameter text: the text to render.
     /// - Returns: the quoted, escaped JavaScript string literal.
@@ -647,9 +651,10 @@ public enum ToolAPIRenderer {
     /// `render(name:description:parameters:returns:onWiden:)` and
     /// `exampleObjectLiteral`'s nested fields), so a schema-derived
     /// property name can never break out of the generated object-literal
-    /// syntax.
+    /// syntax. The quoted form is `jsStringLiteral`, so a raw line
+    /// terminator in the name is escaped too, and the key parses.
     private static func objectKeyLiteral(_ key: String) -> String {
-        isLegalTSIdentifier(key) ? key : "\"\(escapeForJSStringLiteral(key))\""
+        isLegalTSIdentifier(key) ? key : jsStringLiteral(key)
     }
 
     /// Escapes `text` for safe interpolation into a `/** … */` JSDoc
@@ -1044,7 +1049,7 @@ public enum ToolAPIRenderer {
         }
         switch node.type {
         case typeString:
-            return "\"\(escapeForJSStringLiteral(name))\""
+            return jsStringLiteral(name)
         case typeInteger, typeNumber:
             return formatNumber(node.minimum ?? 0)
         case typeBoolean:
@@ -1133,7 +1138,7 @@ public enum ToolAPIRenderer {
     private static func exampleLiteral(for shape: ToolValueShape, name: String) -> String {
         switch shape {
         case .string(let choices):
-            return choices.first.map(tsLiteral) ?? "\"\(escapeForJSStringLiteral(name))\""
+            return choices.first.map(tsLiteral) ?? jsStringLiteral(name)
         case .number:
             return formatNumber(0)
         case .boolean:
@@ -1182,14 +1187,15 @@ public enum ToolAPIRenderer {
 
     /// Renders one JSON scalar as a TS literal.
     ///
-    /// `.string` is escaped via `escapeForJSStringLiteral`, same as every
-    /// other schema-derived string this renderer wraps in double quotes —
-    /// an enum/default choice containing an embedded quote would
-    /// otherwise break the TS string-literal syntax it's spliced into.
+    /// `.string` is rendered by `jsStringLiteral`, same as every other
+    /// schema-derived string this renderer wraps in double quotes — an
+    /// enum/default choice containing an embedded quote or a raw line
+    /// terminator would otherwise break the TS string-literal syntax it's
+    /// spliced into.
     private static func tsLiteral(_ value: InterpreterValue) -> String {
         switch value {
         case .string(let string):
-            return "\"\(escapeForJSStringLiteral(string))\""
+            return jsStringLiteral(string)
         case .number(let number):
             return formatNumber(number)
         case .bool(let bool):

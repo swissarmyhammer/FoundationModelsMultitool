@@ -440,7 +440,7 @@ struct ToolAPIRendererTests {
             parameters: schema
         )
         // Top-level key (`objectKeyLiteral` in `render`'s `exampleFields`)
-        // and its string-placeholder value (`escapeForJSStringLiteral` in
+        // and its string-placeholder value (`jsStringLiteral` in
         // `exampleLiteral`'s `.string` case) are both escaped.
         #expect(descriptor.example.contains(#""top\"quote": "top\"quote""#), "example was: \(descriptor.example)")
         // Nested key (`objectKeyLiteral` in `exampleObjectLiteral`) is
@@ -572,6 +572,124 @@ struct ToolAPIRendererTests {
             descriptor.doc.components(separatedBy: "*/").count == 2,
             "expected exactly one \"*/\" (the block's own terminator); doc was: \(descriptor.doc)"
         )
+    }
+
+    /// The raw line terminators JavaScript refuses inside a string literal.
+    private static let rawLineTerminators: [Unicode.Scalar] = ["\n", "\r", "\u{2028}", "\u{2029}"]
+
+    /// Expects that `text` holds no raw line terminator.
+    ///
+    /// - Parameters:
+    ///   - text: the rendered text to examine.
+    ///   - label: the name of the rendered text, for the failure message.
+    private static func expectNoRawLineTerminator(in text: String, _ label: String) {
+        for terminator in rawLineTerminators {
+            #expect(
+                !text.unicodeScalars.contains(terminator),
+                "\(label) holds a raw line terminator: \(text.debugDescription)"
+            )
+        }
+    }
+
+    /// A hand-built object schema with one required string property named
+    /// `name`. `JSONSerialization` writes the JSON, so a name that holds a
+    /// quote, a backslash or a line terminator is spelled correctly in it.
+    ///
+    /// - Parameter name: the property name.
+    /// - Returns: the decoded schema.
+    private static func stringPropertySchema(named name: String) throws -> GenerationSchema {
+        let object: [String: Any] = [
+            "type": "object",
+            "title": "LineTerminatorName",
+            "additionalProperties": false,
+            "x-order": [name],
+            "properties": [name: ["type": "string"]],
+            "required": [name],
+        ]
+        let data = try JSONSerialization.data(withJSONObject: object)
+        return try JSONDecoder().decode(GenerationSchema.self, from: data)
+    }
+
+    @Test("a property name with raw line terminators renders as a quoted key with escapes in the declaration and in the example")
+    func propertyNameWithLineTerminatorsIsEscapedInDeclarationAndExample() throws {
+        let descriptor = try ToolAPIRenderer.render(
+            name: "tool",
+            description: "A test tool.",
+            arguments: [
+                ToolAPIRenderer.RenderedParameter(
+                    name: Self.hostileText, shape: .number, isRequired: true, description: "a count."
+                ),
+            ]
+        )
+        #expect(
+            descriptor.declaration.contains("args: { \(Self.hostileLiteral): number }"),
+            "declaration was: \(descriptor.declaration)"
+        )
+        #expect(descriptor.example == "await tools.tool({ \(Self.hostileLiteral): 0 });")
+        Self.expectNoRawLineTerminator(in: descriptor.declaration, "declaration")
+        Self.expectNoRawLineTerminator(in: descriptor.example, "example")
+        #expect(throws: Never.self) {
+            try JSCInterpreter().checkSyntax(of: descriptor.example)
+        }
+    }
+
+    @Test("an enum choice with raw line terminators renders with escapes in the declaration, the @param clause and the example")
+    func enumChoiceWithLineTerminatorsIsEscapedEverywhere() throws {
+        let descriptor = try ToolAPIRenderer.render(
+            name: "tool",
+            description: "A test tool.",
+            arguments: [
+                ToolAPIRenderer.RenderedParameter(
+                    name: "option",
+                    shape: .string(choices: [.string(Self.hostileText), .string("plain")]),
+                    isRequired: true,
+                    description: "the chosen option"
+                ),
+            ]
+        )
+        let union = "\(Self.hostileLiteral) | \"plain\""
+        #expect(descriptor.declaration.contains("option: \(union)"), "declaration was: \(descriptor.declaration)")
+        #expect(
+            descriptor.doc.contains("@param args.option — the chosen option; one of \(union). (required)"),
+            "doc was: \(descriptor.doc)"
+        )
+        #expect(
+            descriptor.doc.contains("@example const r = await tools.tool({ option: \(Self.hostileLiteral) });"),
+            "doc was: \(descriptor.doc)"
+        )
+        #expect(descriptor.example == "await tools.tool({ option: \(Self.hostileLiteral) });")
+        Self.expectNoRawLineTerminator(in: descriptor.declaration, "declaration")
+        Self.expectNoRawLineTerminator(in: descriptor.example, "example")
+        #expect(throws: Never.self) {
+            try JSCInterpreter().checkSyntax(of: descriptor.example)
+        }
+    }
+
+    @Test("the string placeholder for a property name with raw line terminators renders with escapes in the example, on the typed path and on the schema path")
+    func stringPlaceholderWithLineTerminatorsIsEscapedInExample() throws {
+        let typed = try ToolAPIRenderer.render(
+            name: "tool",
+            description: "A test tool.",
+            arguments: [
+                ToolAPIRenderer.RenderedParameter(
+                    name: Self.hostileText, shape: .string(choices: []), isRequired: true, description: "a text."
+                ),
+            ]
+        )
+        let fromSchema = try ToolAPIRenderer.render(
+            name: "tool",
+            description: "A test tool.",
+            parameters: Self.stringPropertySchema(named: Self.hostileText)
+        )
+        let expected = "await tools.tool({ \(Self.hostileLiteral): \(Self.hostileLiteral) });"
+        #expect(typed.example == expected)
+        #expect(fromSchema.example == expected)
+        for example in [typed.example, fromSchema.example] {
+            Self.expectNoRawLineTerminator(in: example, "example")
+            #expect(throws: Never.self) {
+                try JSCInterpreter().checkSyntax(of: example)
+            }
+        }
     }
 
     // MARK: - The structural signature behind the declaration
