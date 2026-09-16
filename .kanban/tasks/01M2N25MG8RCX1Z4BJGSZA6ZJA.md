@@ -122,10 +122,26 @@ comments:
     - evidence: 5 files — Tests/FoundationModelsMultitoolTests/TestSupport.swift, Tests/FoundationModelsMultitoolTests/Fixtures/OperationToolFixtures.swift, Tests/FoundationModelsMultitoolTests/FileChangeSetTests.swift, Tests/FoundationModelsMultitoolTests/OperationVerbToolTests.swift, Tests/FoundationModelsMultitoolTests/OperationRunCodeTests.swift. `swift test --filter "OperationRunCodeTests|OperationVerbToolTests|FileChangeSetTests"`: 45 tests in 3 suites passed. `swift test`: 1493 tests in 119 suites passed, 0 failures, 0 skipped. Both review findings ticked; six acceptance and test boxes ticked.
     - next: /review
   timestamp: 2026-09-16T16:40:42.044735+00:00
+- actor: claude-code
+  id: 01m2nhwycn8mk5xens3b5hn4pw
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~2..HEAD` (local backend), iteration 2. Zero findings. 5 files reviewed, 2 `.kanban/` files skipped by `.reviewignore`. Both findings from the 2026-09-16 11:20 pass are checked.
+    - next: none. The card moved from `review` to `done`.
+  timestamp: 2026-09-16T16:48:16.277570+00:00
+- actor: claude-code
+  id: 01m2nhxt0dpvk8kjv2h3106bjb
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — 5 test files (shared `propertyNames(of:)` in TestSupport.swift; `NotesOperationTool.recordedCalls(withOp:)` on the fixture)
+    - test: green — swift test, 1493 tests in 119 suites passed, 0 failed, 0 skipped, 0 warnings
+    - commit: 210ee85 (tests), 3f571e6 (kanban)
+    - review: clean — zero findings; card moved to done
+  timestamp: 2026-09-16T16:48:44.557151+00:00
 depends_on:
 - 01M2N24ZEPMS79PQH5B58FF2SF
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffc880
 title: Prove runCode calls an operation verb end to end
 ---
 ## What
