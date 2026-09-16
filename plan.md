@@ -14,6 +14,11 @@ that `profile.standard.makeSession(tools:)` returns, and drive one turn by
 draining `streamEvents(to:)`. `Sources/MultitoolCLI/CLIRunner.swift` does
 exactly that, and every integration scenario drives the same wiring.
 
+One shipped feature is not in this plan: an `OperationTool` from the Extras
+`Operations` module mounts as one verb for each operation, at
+`tools.<toolName>.<verbNoun>`. `README.md`, section `## Operation tools`,
+states that contract.
+
 Two names below no longer exist in the code, and are kept only where the text
 says they are retired:
 

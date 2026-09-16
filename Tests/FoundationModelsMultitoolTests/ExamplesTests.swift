@@ -170,6 +170,33 @@ struct ExamplesTests {
         #expect(surface.source.contains("declare function createIssue("))
     }
 
+    @Test("Mount an operation tool: one verb for each operation, under the tool name")
+    func mountAnOperationTool() throws {
+        // An `OperationTool` (Extras `Operations`) is one registration and
+        // many verbs. `addTool` mounts it as it mounts a plain tool. The
+        // registry expands it into one verb for each operation, at
+        // tools.<toolName>.<verbNoun>, and it mounts no fused
+        // tools.notes({op}) entry. README.md `## Operation tools` states
+        // the contract. The fixture here is the hand-conformed notes tool
+        // of Fixtures/OperationToolFixtures.swift.
+        let registry = try MultiTool.Builder()
+            .addTool(NotesOperationTool())
+            .buildRegistry()
+
+        #expect(
+            registry.surface.entries.map(\.path) == [
+                "notes.addNote", "notes.getNote", "notes.listNote", "notes.deleteNote", "notes.tagNote",
+            ])
+        #expect(registry.tools["notes"] == nil)
+
+        // Each verb shows only the fields of its own operation. The `op`
+        // field does not appear, and a result is a parsed JSON value.
+        #expect(
+            registry.surface.source.contains(
+                "declare function tagNote(args: { id: string; tag: string; priority?: \"low\" | \"medium\" | \"high\" }): Promise<object>;"
+            ))
+    }
+
     // MARK: - Register MultiTool directly with a native LanguageModelSession
 
     @Test("Register MultiTool directly with Apple's LanguageModelSession, and show a tool call round-tripping")

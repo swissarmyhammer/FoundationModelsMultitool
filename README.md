@@ -76,6 +76,62 @@ runtime, so a global added to the code and not to this list fails the suite.
 Do not delete or reword the list items. [`docs/SECURITY.md`](docs/SECURITY.md)
 says what each one guarantees.
 
+## Operation tools
+
+An `OperationTool` from the Extras `Operations` module holds many operations
+behind one `call`. The payload of that call carries an `op` string, and the
+string selects the operation. You mount such a tool as you mount a plain tool:
+with `addTool`, with `addGroup(named:_:)`, or inside a `Capability`. No new
+builder method is necessary.
+
+`MultiTool` expands the tool into one verb for each operation. Each verb renders
+at `tools.<toolName>.<verbNoun>`, and the op string `tag note` becomes the verb
+`tagNote`. The notes fixture in
+`Tests/FoundationModelsMultitoolTests/Fixtures/OperationToolFixtures.swift` has
+five operations, and they render as these five declarations:
+
+```ts
+declare function addNote(args: { title: string; body?: string; tags?: string[] }): Promise<object>;
+declare function getNote(args: { id: string }): Promise<object>;
+declare function listNote(args: { tag?: string }): Promise<object>;
+declare function deleteNote(args: { id: string }): Promise<object>;
+declare function tagNote(args: { id: string; tag: string; priority?: "low" | "medium" | "high" }): Promise<object>;
+```
+
+These are the rules of the surface:
+
+- Each verb shows only its own fields, and each required mark is true for that
+  operation. The `op` field does not appear. The fused form `tools.notes({op})`
+  is not mounted, and a call on it is a `TypeError` in the snippet.
+- A result is a parsed JSON value, declared `Promise<object>`. The surface does
+  not know the fields of the result, so a snippet reads them as it reads any
+  JSON. A refusal is a thrown error, and the snippet can catch it.
+- Inside a group or a capability, the verbs flatten into that noun. The verbs
+  of the fixture under `addGroup(named: "code", [notes])` render at
+  `tools.code.<verb>`, with no `notes` level. Two operation tools in one group
+  that share an op string are a build error at `buildRegistry()`.
+
+The snippet below lists the notes, keeps the notes whose body names Friday, and
+tags each one. The declared type `object` says nothing about the shape of the
+list, so the snippet reads the list through `Object.values`. `TypedMockDryRun`
+accepts this snippet over the verbs above, so a sample snippet from
+`searchTools` can have the same shape:
+
+```js
+const notes = await tools.notes.listNote({});
+const hits = Object.values(notes).filter((note) => note.body.includes("Friday"));
+for (const note of hits) {
+  await tools.notes.tagNote({ id: note.id, tag: "due" });
+}
+return hits.map((note) => note.id);
+```
+
+`ReadmeOperationSectionTests` reads this section. Each `declare function` line
+above must be a line of
+`Tests/FoundationModelsMultitoolTests/Goldens/OperationSurface.ts.txt`, and the
+snippet must pass the dry run over the fixture. Do not edit the declarations by
+hand; change the fixture and the golden first.
+
 ## Documentation
 
 - [`docs/SECURITY.md`](docs/SECURITY.md) — the sandbox contract: what a snippet
