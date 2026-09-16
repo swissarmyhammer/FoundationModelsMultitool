@@ -79,11 +79,27 @@ comments:
     - evidence: 5 files — Sources/FoundationModelsMultitool/Discovery/UnknownToolHint.swift, Tests/FoundationModelsMultitoolTests/OperationSearchTests.swift (new), Tests/FoundationModelsMultitoolTests/UnknownToolHintTests.swift, Tests/FoundationModelsMultitoolTests/Fixtures/OperationToolFixtures.swift, Tests/FoundationModelsMultitoolTests/OperationRunCodeTests.swift. `swift test --filter "OperationSearchTests|UnknownToolHintTests"`: 23 tests in 2 suites, 23 passed. `swift test`: 1502 tests in 120 suites passed, 0 failures, 0 skipped; the one build warning is the pre-existing SwiftPM note about the `mlx-swift` bundle. All 4 acceptance boxes and all 3 test boxes ticked. No commit; no change to Package.swift or Package.resolved.
     - next: /review
   timestamp: 2026-09-16T17:06:03.981667+00:00
+- actor: claude-code
+  id: 01m2nkj82sasmwa5jpxdwvy7tm
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~2..HEAD` (local backend), iteration 1. The engine reviewed 5 files and found zero findings (0 confirmed, 1 refuted, 7 attempted). The 4 `.kanban/` files were not reviewed because of `.reviewignore`.
+    - next: none. The card moved from `review` to `done`.
+  timestamp: 2026-09-16T17:17:22.905530+00:00
+- actor: claude-code
+  id: 01m2nkjzs74seg847aaqz6n0ya
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 5 files (Discovery/UnknownToolHint.swift `groupCall` tier; OperationSearchTests.swift; UnknownToolHintTests.swift; Fixtures/OperationToolFixtures.swift; OperationRunCodeTests.swift); one stop for the embedder decision, resolved with lexical unit queries
+    - test: green — swift test, 1502 tests in 120 suites passed, 0 failed, 0 skipped, 0 warnings
+    - commit: dc38f7c (code), 96dada8 (kanban)
+    - review: clean — zero findings; card moved to done
+  timestamp: 2026-09-16T17:17:47.175737+00:00
 depends_on:
 - 01M2N24ZEPMS79PQH5B58FF2SF
 - 01M2N25MG8RCX1Z4BJGSZA6ZJA
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffc980
 title: Search and hints treat each operation verb as its own entry
 ---
 ## What
