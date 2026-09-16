@@ -53,10 +53,26 @@ comments:
     - evidence: 5 files — IntegrationTests/Package.swift, IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Fixtures/IntegrationNotesOperationTool.swift (new), IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/OperationToolLiveTests.swift (new), IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Support/FilesAndShellSurface.swift, IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Support/ScenarioRunner.swift. `swift build --package-path IntegrationTests --build-tests`: Build complete. `swift test --package-path IntegrationTests --no-parallel --filter OperationToolLiveTests`: 2 tests in 1 suite passed (156.9 s). Root `swift test`: 1502 tests in 120 suites passed.
     - next: `/review`. Not committed.
   timestamp: 2026-09-16T17:57:08.688223+00:00
+- actor: claude-code
+  id: 01m2npge7841y5brbqf5q7wq5m
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~2..HEAD` (local backend), iteration 1. Zero findings. 5 files under IntegrationTests/ reviewed, 7 validator runs, 1 candidate refuted. 4 `.kanban/` files not reviewed (`.reviewignore`).
+    - next: none. The card moved from `review` to `done`.
+  timestamp: 2026-09-16T18:08:49.384099+00:00
+- actor: claude-code
+  id: 01m2npgxdm02f3c6tkna32m6xg
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 5 files under IntegrationTests/ (Package.swift; Fixtures/IntegrationNotesOperationTool.swift; OperationToolLiveTests.swift; Support/FilesAndShellSurface.swift; Support/ScenarioRunner.swift); the implementer process ended on a network error after the live run passed and was resumed to record it
+    - test: green — live: 2 tests in 1 suite passed (discovery 5/5 in rounds 1-3; search-then-call PASS, store holds note-1 "Groceries" ["shopping"]); root swift test 1502 passed; nested package builds
+    - commit: 01f4456 (tests), e6db850 (kanban)
+    - review: clean — zero findings; card moved to done
+  timestamp: 2026-09-16T18:09:04.948112+00:00
 depends_on:
 - 01M2N24ZEPMS79PQH5B58FF2SF
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffca80
 title: 'Live integration: a real @Operation tool is found and called through runCode'
 ---
 ## What

@@ -1,10 +1,32 @@
 ---
 assignees:
 - claude-code
+comments:
+- actor: claude-code
+  id: 01m2npr7xxfxd4kcq3gyw4s7k0
+  text: |-
+    Picked up. Research done:
+    - The golden `Goldens/OperationSurface.ts.txt` holds the five `declare function` lines; the README shows those lines, not the design sketch (`tagNote` takes `tag: string`).
+    - `TypedMockDryRun` mocks a `.json` result as a plain `{}` with no Proxy. A `for...of` over that value throws `TypeError: not iterable`, and `.filter` on it is not a function. Thus the README loop reads the list result through `Object.values(notes)`, which gives the elements of a real array and an empty list for the mock. The loop keeps the list, filter, tag shape of `OperationRunCodeTests.loopTagsEachHitThroughTheVerb`.
+    - A snippet the model writes as `for (const note of notes)` over a `.json` result fails the dry run for the same reason. That is a latent gate problem, not a README problem. A new card records it.
+    - `TypedMockDryRunTests.failure(for:against:)` is internal and static, so the new README test calls it and carries no second copy of the dry-run call.
+    - The `## Operation tools` section goes between `### Injected globals` and `## Documentation`. `HardeningTests` reads the globals list up to the next `\n#`, so the new heading ends that section and the list is not changed.
+    - `plan.md` gets one paragraph in `## Status of this document`, after the host-contract paragraph, that names the feature and points to the README section.
+  timestamp: 2026-09-16T18:13:05.085981+00:00
+- actor: claude-code
+  id: 01m2npz4xj63pw8zvawnxe2ht2
+  text: |-
+    ### implement — changed
+    - evidence: 4 files — `README.md` (new `## Operation tools` section between `### Injected globals` and `## Documentation`; the globals list is unchanged), `plan.md` (one status paragraph that names the feature and points to the README section), `Tests/FoundationModelsMultitoolTests/ExamplesTests.swift` (new example `mountAnOperationTool`), `Tests/FoundationModelsMultitoolTests/ReadmeOperationSectionTests.swift` (new suite, 2 tests). No source file, `Package.swift` or `Package.resolved` changed.
+    - TDD: RED — `swift test --filter "ExamplesTests|HardeningTests|ReadmeOperationSectionTests"` failed 2 of 21 with `README.md has no "## Operation tools" section.` (the example passed at once, because it documents shipped behavior). GREEN — the same command: 21 tests in 3 suites passed. Whole unit suite `swift test`: 1505 tests in 121 suites passed, 0 failed, 0 skipped. The one build warning in every run, `missing creator for mutated node: (.../mlx-swift_Cmlx.bundle/Contents/MacOS)`, is a pre-existing build-system note from a dependency product and stood before any change here.
+    - Proof that the snippet test can fail: with the list read as `notes.filter(...)` the dry run reports `notes.filter is not a function. (In 'notes.filter(...)', 'notes.filter' is undefined)`. The README therefore reads the list through `Object.values(notes)`, and the restored snippet passes.
+    - New card `01M2NPWYMVR0SSWM73E9WWTGV1`: `TypedMockDryRun` mocks a `.json` result as a plain `{}`, so a snippet that iterates a JSON array result in the natural way fails the dry run. That is a false failure of the gate, and it is out of scope here.
+    - next: `/review`. The card stays in `doing`.
+  timestamp: 2026-09-16T18:16:51.378326+00:00
 depends_on:
 - 01M2N24ZEPMS79PQH5B58FF2SF
-position_column: todo
-position_ordinal: '8780'
+position_column: doing
+position_ordinal: '80'
 title: Document operation tools in the README and ExamplesTests
 ---
 ## What
@@ -28,17 +50,17 @@ Do not change the `### Injected globals` list; `HardeningTests` parses it, and t
 
 ## Acceptance Criteria
 
-- [ ] `README.md` has the `## Operation tools` section with the rendered declarations, the snippet, and the six statements above.
-- [ ] `HardeningTests` still passes, so the globals list is unchanged.
-- [ ] `ExamplesTests` has the new example and it passes.
-- [ ] The rendered declarations in the README equal the lines in `Goldens/OperationSurface.ts.txt` for the same verbs.
-- [ ] The README snippet passes `TypedMockDryRun.apiUsageFailure(in:against:using:)` over the fixture surface with no failure.
+- [x] `README.md` has the `## Operation tools` section with the rendered declarations, the snippet, and the six statements above.
+- [x] `HardeningTests` still passes, so the globals list is unchanged.
+- [x] `ExamplesTests` has the new example and it passes.
+- [x] The rendered declarations in the README equal the lines in `Goldens/OperationSurface.ts.txt` for the same verbs.
+- [x] The README snippet passes `TypedMockDryRun.apiUsageFailure(in:against:using:)` over the fixture surface with no failure.
 
 ## Tests
 
-- [ ] The new example in `ExamplesTests.swift`.
-- [ ] A new `Tests/FoundationModelsMultitoolTests/ReadmeOperationSectionTests.swift` that reads `README.md` through `RepositoryFile`, checks that every `declare function` line in the `## Operation tools` section also appears in `Goldens/OperationSurface.ts.txt`, and runs the fenced `js` snippet of that section through `TypedMockDryRun` over the fixture surface. The README then cannot drift from the renderer or the dry run.
-- [ ] Run `swift test --filter "ExamplesTests|HardeningTests|ReadmeOperationSectionTests"`; expect all pass.
+- [x] The new example in `ExamplesTests.swift`.
+- [x] A new `Tests/FoundationModelsMultitoolTests/ReadmeOperationSectionTests.swift` that reads `README.md` through `RepositoryFile`, checks that every `declare function` line in the `## Operation tools` section also appears in `Goldens/OperationSurface.ts.txt`, and runs the fenced `js` snippet of that section through `TypedMockDryRun` over the fixture surface. The README then cannot drift from the renderer or the dry run.
+- [x] Run `swift test --filter "ExamplesTests|HardeningTests|ReadmeOperationSectionTests"`; expect all pass.
 
 ## Workflow
 - Use `/tdd`: write the failing tests first, then implement to make them pass. #operation-tools
