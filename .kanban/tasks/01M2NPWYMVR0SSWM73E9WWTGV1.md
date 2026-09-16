@@ -22,8 +22,24 @@ comments:
     - evidence: 4 files — Sources/FoundationModelsMultitool/Discovery/TypedMockDryRun.swift (`__mockJSON`, `__mockIsJSON`, `.json` routed to it, `__mockCheck` accepts a marked value, doc comments of `TypedMockDryRun` and `runtime` record the decision), Tests/FoundationModelsMultitoolTests/TypedMockDryRunTests.swift (helper `notesEntries()`, three new cases, one retitled case), Tests/FoundationModelsMultitoolTests/ReadmeOperationSectionTests.swift (reads the fixture entries through the shared helper), README.md (the `## Operation tools` snippet reads the list without `Object.values`, and the prose says why). `swift test --filter "TypedMockDryRunTests|ReadmeOperationSectionTests|SampleSnippetTests"`: 42 tests in 3 suites passed (the three new cases failed first, then passed). `swift test`: 1508 tests in 121 suites passed, 0 failures. The only `warning:` line is the build system's note about the `mlx-swift` dependency bundle under `.build/out`, not a diagnostic from the changed sources. All four acceptance boxes and both test boxes are ticked. Not committed.
     - next: `/review`. The card stays in `doing`.
   timestamp: 2026-09-16T18:37:52.441256+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m2nrptcxxg1znx26w1f6pqwn
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~2..HEAD` (local backend), 7 validator attempts, zero findings. Reviewed 3 files: `Sources/FoundationModelsMultitool/Discovery/TypedMockDryRun.swift`, `Tests/FoundationModelsMultitoolTests/TypedMockDryRunTests.swift`, `Tests/FoundationModelsMultitoolTests/ReadmeOperationSectionTests.swift`. `README.md` had no validator, and the `.kanban/` files were excluded by `.reviewignore`.
+    - next: none. The card moved to `done`.
+  timestamp: 2026-09-16T18:47:15.613139+00:00
+- actor: claude-code
+  id: 01m2nrqae02tjc9kx5ayattqm4
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 4 files (Discovery/TypedMockDryRun.swift tagged json mock; TypedMockDryRunTests.swift; ReadmeOperationSectionTests.swift; README.md snippet reads the list as an array)
+    - test: green — swift test, 1508 tests in 121 suites passed, 0 failed, 0 skipped
+    - commit: ba28b00 (code), 1c53328 (kanban)
+    - review: clean — zero findings; card moved to done
+  timestamp: 2026-09-16T18:47:32.032905+00:00
+position_column: done
+position_ordinal: ffcc80
 title: TypedMockDryRun rejects a snippet that iterates a `.json` result
 ---
 ## What
