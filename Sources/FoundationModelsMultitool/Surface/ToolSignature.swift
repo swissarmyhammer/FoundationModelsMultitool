@@ -10,7 +10,9 @@
 ///
 /// The cases are exactly the TypeScript types plan.md's type-mapping table
 /// maps a schema onto, and ``any`` is the same widening the table calls for
-/// when the schema holds something no precise type can express.
+/// when the schema holds something no precise type can express. ``json`` is
+/// the one case no schema produces: a typed caller declares it for a result
+/// the binding parses from JSON text.
 public indirect enum ToolValueShape: Sendable, Equatable {
     /// A string, constrained to `choices` when the schema carried an `enum`
     /// and unconstrained when `choices` is empty.
@@ -28,6 +30,11 @@ public indirect enum ToolValueShape: Sendable, Equatable {
 
     /// An object with the given properties.
     case object(ToolObjectShape)
+
+    /// A parsed JSON value with no declared structure — what a tool that
+    /// returns JSON text resolves to once the binding parses it. Declared as
+    /// `object`; a reader learns its fields from the tool's own prose.
+    case json
 
     /// A value the schema described in a way no precise TypeScript type
     /// expresses — a cyclic `$ref`, an `anyOf`, or an unrecognized `type` —
@@ -72,9 +79,9 @@ public struct ToolObjectShape: Sendable, Equatable {
         }
     }
 
-    /// Every declared property, in the schema's own declared order (`x-order`
-    /// when present, alphabetical otherwise) — the same order the rendered
-    /// object type and `@param` lines use.
+    /// Every declared property, in declared order — a schema's `x-order`
+    /// (alphabetical when absent), or a typed caller's list order — the same
+    /// order the rendered object type and `@param` lines use.
     public let properties: [Property]
 
     /// Creates an object shape over the given properties.

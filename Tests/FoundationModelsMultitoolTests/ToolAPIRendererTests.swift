@@ -660,4 +660,157 @@ struct ToolAPIRendererTests {
         let shape = try #require(descriptor.signature.arguments.property(named: "shape"))
         #expect(shape.shape == .any)
     }
+
+    // MARK: - Rendering from typed parameters
+
+    /// The `WeatherTool` fixture's arguments as typed parameters: the same
+    /// names, shapes, descriptions and required marks its `@Generable`
+    /// schema carries, in the schema's `x-order`.
+    private static let weatherArguments = [
+        ToolAPIRenderer.RenderedParameter(
+            name: "city",
+            shape: .string(choices: []),
+            isRequired: true,
+            description: "IATA city code or city name."
+        ),
+        ToolAPIRenderer.RenderedParameter(
+            name: "units",
+            shape: .string(choices: [.string("c"), .string("f")]),
+            isRequired: false,
+            description: "temperature unit"
+        ),
+    ]
+
+    /// Renders an `addNote` surface from typed parameters: a required
+    /// `title`, an optional `body` and an optional `tags` array, in that
+    /// order, with a parsed JSON result.
+    private static func addNoteDescriptor() throws -> ToolDescriptor {
+        try ToolAPIRenderer.render(
+            name: "addNote",
+            description: "Adds a note.",
+            arguments: [
+                ToolAPIRenderer.RenderedParameter(
+                    name: "title", shape: .string(choices: []), isRequired: true, description: "the note title."
+                ),
+                ToolAPIRenderer.RenderedParameter(
+                    name: "body", shape: .string(choices: []), isRequired: false, description: "the note body."
+                ),
+                ToolAPIRenderer.RenderedParameter(
+                    name: "tags",
+                    shape: .array(element: .string(choices: [])),
+                    isRequired: false,
+                    description: "tags to attach."
+                ),
+            ],
+            returns: .json
+        )
+    }
+
+    @Test("typed parameters render the declaration in list order, and a parsed JSON result is declared as object")
+    func typedParametersRenderInListOrder() throws {
+        let descriptor = try Self.addNoteDescriptor()
+        #expect(
+            descriptor.declaration
+                == "declare function addNote(args: { title: string; body?: string; tags?: string[] }): Promise<object>;"
+        )
+    }
+
+    @Test("the typed example names only the required parameters")
+    func typedExampleNamesOnlyTheRequiredParameters() throws {
+        let descriptor = try Self.addNoteDescriptor()
+        #expect(descriptor.example == #"await tools.addNote({ title: "title" });"#)
+        #expect(
+            descriptor.doc.contains(#"@example const r = await tools.addNote({ title: "title" });"#),
+            "doc was: \(descriptor.doc)"
+        )
+    }
+
+    @Test("a typed string with choices renders the union in the declaration and the one-of clause in its @param line")
+    func typedChoicesRenderAsUnionAndOneOfClause() throws {
+        let descriptor = try ToolAPIRenderer.render(
+            name: "getWeather",
+            description: "Current weather for a city.",
+            arguments: Self.weatherArguments
+        )
+        #expect(descriptor.declaration.contains(#"units?: "c" | "f""#), "declaration was: \(descriptor.declaration)")
+        #expect(
+            descriptor.doc.contains(#"@param args.units — temperature unit; one of "c" | "f". (optional)"#),
+            "doc was: \(descriptor.doc)"
+        )
+    }
+
+    @Test("Returns.json declares Promise<object> and documents a parsed JSON result")
+    func jsonReturnsDeclareObjectWithParsedProse() throws {
+        let descriptor = try Self.addNoteDescriptor()
+        #expect(descriptor.doc.contains("@returns Promise<object> — JSON result, parsed."), "doc was: \(descriptor.doc)")
+        #expect(descriptor.signature.result == .json)
+        #expect(ToolValueShape.json.declaredType == "object")
+    }
+
+    @Test("typed constraint clauses render after the description and before the required mark")
+    func typedConstraintsRenderBeforeTheRequiredMark() throws {
+        let descriptor = try ToolAPIRenderer.render(
+            name: "tool",
+            description: "A test tool.",
+            arguments: [
+                ToolAPIRenderer.RenderedParameter(
+                    name: "score",
+                    shape: .number,
+                    isRequired: true,
+                    description: "a score.",
+                    constraints: ["(integer)", "(range 1…10)"]
+                ),
+            ]
+        )
+        #expect(
+            descriptor.doc.contains("@param args.score — a score. (integer) (range 1…10) (required)"),
+            "doc was: \(descriptor.doc)"
+        )
+    }
+
+    @Test("a typed number with no minimum shows zero in the example, and a typed nested object shows its required fields")
+    func typedExampleSynthesizesFromTheShape() throws {
+        let descriptor = try ToolAPIRenderer.render(
+            name: "tool",
+            description: "A test tool.",
+            arguments: [
+                ToolAPIRenderer.RenderedParameter(name: "count", shape: .number, isRequired: true, description: "a count."),
+                ToolAPIRenderer.RenderedParameter(
+                    name: "address",
+                    shape: .object(
+                        ToolObjectShape(properties: [
+                            ToolObjectShape.Property(name: "street", shape: .string(choices: []), isRequired: true),
+                            ToolObjectShape.Property(name: "unit", shape: .string(choices: []), isRequired: false),
+                        ])
+                    ),
+                    isRequired: true,
+                    description: "delivery address."
+                ),
+                ToolAPIRenderer.RenderedParameter(name: "payload", shape: .json, isRequired: true, description: "a value."),
+            ]
+        )
+        #expect(descriptor.example == #"await tools.tool({ count: 0, address: { street: "street" }, payload: {} });"#)
+    }
+
+    @Test("the schema path seeds a ranged integer's example with the range minimum")
+    func schemaMinimumSeedsTheExample() throws {
+        let descriptor = try ToolAPIRenderer.render(
+            name: "tool",
+            description: "A test tool.",
+            parameters: RangedIntegerArgument.generationSchema
+        )
+        #expect(descriptor.example == "await tools.tool({ score: 1 });")
+    }
+
+    @Test("the schema path and the typed path render the WeatherTool fixture to one descriptor")
+    func schemaPathAndTypedPathAgreeOnWeatherTool() throws {
+        let typed = try ToolAPIRenderer.render(
+            name: "getWeather",
+            description: "Current weather for a city.",
+            arguments: Self.weatherArguments,
+            returns: .schema(WeatherResult.generationSchema)
+        )
+        let fromSchema = try ToolAPIRenderer.render(WeatherTool())
+        #expect(typed == fromSchema)
+    }
 }

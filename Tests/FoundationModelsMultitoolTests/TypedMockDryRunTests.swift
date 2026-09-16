@@ -33,11 +33,47 @@ struct TypedMockDryRunTests {
     /// - Returns: the first failure message, or `nil` when the snippet ran
     ///   clean.
     static func failure(for snippet: String) throws -> String? {
-        TypedMockDryRun.apiUsageFailure(
-            in: snippet,
-            against: try surface().entries,
-            using: JSCInterpreter(timeLimit: 5.0)
+        failure(for: snippet, against: try surface().entries)
+    }
+
+    /// Runs `snippet` against the typed mocks of `entries`, under the
+    /// interpreter's stock time limit.
+    ///
+    /// - Parameters:
+    ///   - snippet: the JavaScript to dry-run.
+    ///   - entries: the catalog entries to mock.
+    /// - Returns: the first failure message, or `nil` when the snippet ran
+    ///   clean.
+    static func failure(for snippet: String, against entries: [APISurface.Entry]) -> String? {
+        TypedMockDryRun.apiUsageFailure(in: snippet, against: entries, using: JSCInterpreter())
+    }
+
+    /// Two typed entries: `notes.addNote`, whose result is a parsed JSON
+    /// value, and `store`, whose one argument is a parsed JSON value.
+    static func jsonEntries() throws -> [APISurface.Entry] {
+        let addNote = try ToolAPIRenderer.render(
+            name: "addNote",
+            description: "Adds a note.",
+            arguments: [
+                ToolAPIRenderer.RenderedParameter(
+                    name: "title", shape: .string(choices: []), isRequired: true, description: "the note title."
+                ),
+            ],
+            returns: .json
         )
+        let store = try ToolAPIRenderer.render(
+            name: "store",
+            description: "Stores a value.",
+            arguments: [
+                ToolAPIRenderer.RenderedParameter(
+                    name: "payload", shape: .json, isRequired: true, description: "the value to store."
+                ),
+            ]
+        )
+        return [
+            APISurface.Entry(path: "notes.addNote", group: "notes", descriptor: addNote),
+            APISurface.Entry(path: "store", group: nil, descriptor: store),
+        ]
     }
 
     // MARK: - False failures: idioms a correct snippet uses, which must pass clean
@@ -295,5 +331,36 @@ struct TypedMockDryRunTests {
             )
         )
         #expect(failure.contains("time limit"))
+    }
+
+    // MARK: - Parsed JSON values, which carry no declared structure
+
+    @Test("a parsed JSON result mocks as an empty object, so reading a field of it passes clean")
+    func jsonResultMocksAsAnEmptyObject() throws {
+        let failure = try Self.failure(
+            for: """
+            const n = await tools.notes.addNote({ title: "x" });
+            return n.id;
+            """,
+            against: Self.jsonEntries()
+        )
+        #expect(failure == nil)
+    }
+
+    @Test("passing an object where a parsed JSON argument is declared passes clean")
+    func jsonArgumentAcceptsAnObject() throws {
+        let failure = try Self.failure(
+            for: "return await tools.store({ payload: { a: 1 } });",
+            against: Self.jsonEntries()
+        )
+        #expect(failure == nil)
+    }
+
+    @Test("passing a string where a parsed JSON argument is declared fails, naming the declared type")
+    func jsonArgumentRejectsAScalar() throws {
+        let failure = try #require(
+            try Self.failure(for: "return await tools.store({ payload: \"x\" });", against: Self.jsonEntries())
+        )
+        #expect(failure.contains("must be object"))
     }
 }

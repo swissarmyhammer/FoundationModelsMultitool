@@ -46,13 +46,22 @@ public struct ToolAPIRendererError: Error, Sendable, Equatable, CustomStringConv
 /// executes — this is purely descriptive, build-time surface generation; the
 /// runtime call path (`ToolInvoker`, M3) carries no schema.
 ///
+/// Two entry points share one text format. The schema path,
+/// `render(name:description:parameters:returns:onWiden:)`, decodes a
+/// `GenerationSchema` into `RenderedParameter` values in the schema's own
+/// `x-order`. The typed path, `render(name:description:arguments:returns:onWiden:)`,
+/// takes those values from the caller, in list order. Only the typed path
+/// writes the declaration, the doc comment and the example, so a surface a
+/// caller builds from typed parameters and a surface a schema produces
+/// cannot drift apart.
+///
 /// One thing the rendered surface states that no schema can: a `tools.*`
 /// binding is asynchronous. The declared return type is therefore
 /// `Promise<T>` around the schema's own `T`, and the `@example` call site
 /// awaits it — see
-/// `render(name:description:parameters:returns:onWiden:)`.
+/// `render(name:description:arguments:returns:onWiden:)`.
 public enum ToolAPIRenderer {
-    /// `@usableFromInline` (rather than `private`) because the two `render`
+    /// `@usableFromInline` (rather than `private`) because the three `render`
     /// overloads' default `onWiden` argument references it, and a default
     /// argument expression on a `public` function must be at least as
     /// visible as the function itself.
@@ -88,6 +97,78 @@ public enum ToolAPIRenderer {
         /// "otherwise... type it `string` and document it in `@returns`
         /// prose" — the fallback for Findings #4's worst case.
         case text
+
+        /// `Output` is JSON text the binding parses before it hands the value
+        /// to the snippet, and the JSON carries no declared structure.
+        ///
+        /// Resolves to `object`, documented with the fixed prose
+        /// `JSON result, parsed.`, so a declaration ends in `Promise<object>`.
+        case json
+    }
+
+    /// One parameter of a tool's surface, as a typed caller states it.
+    ///
+    /// The schema path reads one of these from each property of a decoded
+    /// `GenerationSchema`; a typed caller builds them by hand. Either way the
+    /// list, in order, is what `render(name:description:arguments:returns:onWiden:)`
+    /// renders the `args` object type, the `@param` lines and the `@example`
+    /// call from.
+    public struct RenderedParameter: Sendable, Equatable {
+        /// The parameter's name, exactly as the snippet spells the key.
+        public let name: String
+
+        /// The parameter's declared shape.
+        public let shape: ToolValueShape
+
+        /// Whether a call must supply the parameter.
+        public let isRequired: Bool
+
+        /// The author's prose for the `@param` line, or `""` for none.
+        public let description: String
+
+        /// Parenthetical constraint clauses the `@param` line shows after the
+        /// description and the choice clause, before the required mark —
+        /// `(integer)`, `(range 1…10)`, `(pattern: /[A-Z]{3}/)`, `(1…3 items)`.
+        /// A schema derives them from its guides; a typed caller usually has
+        /// none.
+        public let constraints: [String]
+
+        /// The JavaScript literal the `@example` call passes for this
+        /// parameter when it is required, or `nil` to synthesize one from
+        /// `shape`. A schema supplies the literal its guides shape — a range's
+        /// minimum, one element for an array that needs at least one — which
+        /// the shape alone cannot know.
+        public let exampleValue: String?
+
+        /// Creates a rendered parameter.
+        ///
+        /// Explicit for the same reason as `ToolDescriptor.init`: a `public`
+        /// struct's synthesized initializer is only `internal`-accessible.
+        ///
+        /// - Parameters:
+        ///   - name: the parameter's name.
+        ///   - shape: the parameter's declared shape.
+        ///   - isRequired: whether a call must supply the parameter.
+        ///   - description: the author's prose for the `@param` line.
+        ///   - constraints: the parenthetical constraint clauses; none by
+        ///     default.
+        ///   - exampleValue: the example literal to show for a required
+        ///     parameter, or `nil` to synthesize one from `shape`.
+        public init(
+            name: String,
+            shape: ToolValueShape,
+            isRequired: Bool,
+            description: String,
+            constraints: [String] = [],
+            exampleValue: String? = nil
+        ) {
+            self.name = name
+            self.shape = shape
+            self.isRequired = isRequired
+            self.description = description
+            self.constraints = constraints
+            self.exampleValue = exampleValue
+        }
     }
 
     /// Renders `tool` into a `ToolDescriptor`, deriving `returns` from
@@ -127,9 +208,11 @@ public enum ToolAPIRenderer {
 
     /// Renders a tool's raw surface pieces into a `ToolDescriptor`.
     ///
-    /// This is the primary, directly testable entry point —
-    /// `render(_:onWiden:)` above is a thin convenience wrapper over it for
-    /// a real `Tool`.
+    /// This is the schema path: it decodes `parameters`, reads each property
+    /// into a `RenderedParameter` in the schema's own `x-order`, and hands
+    /// the list to `render(name:description:arguments:returns:onWiden:)`,
+    /// which writes the text. `render(_:onWiden:)` above is a thin
+    /// convenience wrapper over this for a real `Tool`.
     ///
     /// - Parameters:
     ///   - name: the function name the snippet calls this tool by.
@@ -154,6 +237,46 @@ public enum ToolAPIRenderer {
         returns: Returns = .text,
         onWiden: @escaping (String) -> Void = { logger.warning("\($0, privacy: .public)") }
     ) throws -> ToolDescriptor {
+        let parametersNode = try decode(parameters, subject: "\"\(name)\"'s parameters")
+        guard parametersNode.type == typeObject else {
+            throw ToolAPIRendererError(
+                "Tool \"\(name)\"'s parameters schema is not an object (found \(parametersNode.type ?? "<none>")); "
+                    + "named arguments require an object schema."
+            )
+        }
+        var context = RenderContext(root: parametersNode, defs: parametersNode.defs ?? [:])
+        let arguments = try renderedParameters(of: parametersNode, context: &context, onWiden: onWiden)
+        return try render(name: name, description: description, arguments: arguments, returns: returns, onWiden: onWiden)
+    }
+
+    /// Renders a tool's surface from typed parameters.
+    ///
+    /// This is the typed path, and the one place that writes the text
+    /// format: every other `render` overload ends here. The parameters
+    /// render in list order — the `args` object type, the `@param` lines and
+    /// the `@example` call (which names the required parameters only) all
+    /// follow it — so a caller that builds its parameters by hand gets the
+    /// same surface a schema would.
+    ///
+    /// - Parameters:
+    ///   - name: the function name the snippet calls this tool by.
+    ///   - description: the tool's leading doc-comment summary.
+    ///   - arguments: the tool's parameters, in the order to render them.
+    ///   - returns: how to render the `@returns` type; defaults to `.text`.
+    ///   - onWiden: called whenever a `.schema` return widens to `any`.
+    ///     Defaults to logging via `os.Logger`.
+    /// - Returns: the rendered name/declaration/doc/example/source.
+    /// - Throws: `ToolAPIRendererError` if `name` isn't a legal TypeScript
+    ///   identifier (schema-derived text is never trusted to be safe to
+    ///   splice straight into a `declare function` signature), or if a
+    ///   `.schema` return cannot be rendered.
+    public static func render(
+        name: String,
+        description: String,
+        arguments: [RenderedParameter],
+        returns: Returns = .text,
+        onWiden: @escaping (String) -> Void = { logger.warning("\($0, privacy: .public)") }
+    ) throws -> ToolDescriptor {
         guard isLegalTSIdentifier(name) else {
             throw ToolAPIRendererError(
                 "Tool name \"\(name)\" is not a legal TypeScript identifier "
@@ -162,70 +285,38 @@ public enum ToolAPIRenderer {
                     + "out of the generated code."
             )
         }
-        let parametersNode = try decode(parameters, subject: "\"\(name)\"'s parameters")
-        guard parametersNode.type == typeObject else {
-            throw ToolAPIRendererError(
-                "Tool \"\(name)\"'s parameters schema is not an object (found \(parametersNode.type ?? "<none>")); "
-                    + "named arguments require an object schema."
-            )
-        }
-
-        var argsContext = RenderContext(root: parametersNode, defs: parametersNode.defs ?? [:])
-        let argumentsShape = try objectShape(parametersNode, context: &argsContext, path: "args", onWiden: onWiden)
-        let argsType = argumentsShape.declaredType
-
-        let order = propertyOrder(of: parametersNode)
-        let required = Set(parametersNode.required ?? [])
-        var paramLines: [String] = []
-        var exampleFields: [String] = []
-        for key in order {
-            guard let propertyNode = parametersNode.properties?[key] else { continue }
-            let isRequired = required.contains(key)
-            let clause = paramClause(for: propertyNode, required: isRequired)
-            // `key` lands directly in the JSDoc `@param args.<key>` line, so
-            // (like every other fragment of `paramLines`) it's escaped for
-            // comment safety — an embedded `*/` could otherwise terminate
-            // the block early.
-            let docKey = escapeForJSDocComment(key)
-            paramLines.append(clause.isEmpty ? "@param args.\(docKey)" : "@param args.\(docKey) — \(clause)")
-            if isRequired {
-                var exampleContext = argsContext
-                let literal = try exampleLiteral(for: propertyNode, name: key, context: &exampleContext)
-                exampleFields.append("\(objectKeyLiteral(key)): \(literal)")
+        let argumentsShape = ToolObjectShape(
+            properties: arguments.map {
+                ToolObjectShape.Property(name: $0.name, shape: $0.shape, isRequired: $0.isRequired)
             }
+        )
+        let paramLines = arguments.map { paramLine(for: $0) }
+        // Optional parameters are never included in the example (plan.md:
+        // "optionals are simply omitted... the call site is self-documenting").
+        let exampleFields = arguments.filter(\.isRequired).map { parameter in
+            "\(objectKeyLiteral(parameter.name)): "
+                + (parameter.exampleValue ?? exampleLiteral(for: parameter.shape, name: parameter.name))
         }
 
-        let resultShape: ToolValueShape
-        let returnsDescription: String?
-        switch returns {
-        case .schema(let schema):
-            let node = try decode(schema, subject: "\"\(name)\"'s return")
-            var returnsContext = RenderContext(root: node, defs: node.defs ?? [:])
-            resultShape = try shape(for: node, context: &returnsContext, path: "returns", onWiden: onWiden)
-            returnsDescription = node.description
-        case .text:
-            resultShape = .string(choices: [])
-            returnsDescription = "plain text result."
-        }
-        let resolvedType = resultShape.declaredType
+        let result = try resolvedResult(of: returns, name: name, onWiden: onWiden)
         // Every `tools.<name>` binding is installed as an `AsyncHostFunction`
         // on the interpreter's promise pump (eventplan.md "Async JavaScript"),
-        // so the call evaluates to a JS `Promise` and the schema-derived
-        // `resolvedType` is only what awaiting it yields. Wrapping once here —
-        // rather than at each of the two splice sites — is what keeps the
+        // so the call evaluates to a JS `Promise` and the declared result
+        // shape is only what awaiting it yields. Wrapping once here — rather
+        // than at each of the two splice sites — is what keeps the
         // `declare function` signature and the `@returns` line (which derives
         // from this same string, via `docReturnsType` below) from ever
         // disagreeing about what a call actually returns.
-        let returnsType = "Promise<\(resolvedType)>"
+        let returnsType = "Promise<\(result.shape.declaredType)>"
         // `returnsType` also backs the real `declare function` return type
         // in `declaration` below, so it's escaped here into a doc-only
         // copy rather than in place — a schema-derived enum choice
-        // embedded in it (via `tsType`'s `typeString` branch) must not be
-        // altered in the type this renderer actually declares. Only this
-        // copy, used in `returnsLine`, needs `*/`-safety, since only this
-        // copy lands inside the JSDoc block.
+        // embedded in it (via `declaredType(of:)`'s `.string` branch) must
+        // not be altered in the type this renderer actually declares. Only
+        // this copy, used in `returnsLine`, needs `*/`-safety, since only
+        // this copy lands inside the JSDoc block.
         let docReturnsType = escapeForJSDocComment(returnsType)
-        let returnsLine = returnsDescription.map {
+        let returnsLine = result.description.map {
             "@returns \(docReturnsType) — \(escapeForJSDocComment($0))"
         } ?? "@returns \(docReturnsType)"
 
@@ -245,15 +336,11 @@ public enum ToolAPIRenderer {
         // enum choice or property name via `exampleLiteral`/`objectKeyLiteral`.
         let exampleLine = "@example const r = \(escapeForJSDocComment(exampleCall));"
 
-        var docLines = ["/**"]
-        docLines.append(contentsOf: commentLines(for: description))
-        docLines.append(contentsOf: paramLines.map { "\(docLinePrefix)\($0)" })
-        docLines.append("\(docLinePrefix)\(returnsLine)")
-        docLines.append("\(docLinePrefix)\(exampleLine)")
-        docLines.append(" */")
+        let docLines = ["/**"] + commentLines(for: description) + paramLines.map { "\(docLinePrefix)\($0)" }
+            + ["\(docLinePrefix)\(returnsLine)", "\(docLinePrefix)\(exampleLine)", " */"]
         let doc = docLines.joined(separator: "\n")
 
-        let declaration = "declare function \(name)(args: \(argsType)): \(returnsType);"
+        let declaration = "declare function \(name)(args: \(argumentsShape.declaredType)): \(returnsType);"
 
         return ToolDescriptor(
             name: name,
@@ -262,8 +349,72 @@ public enum ToolAPIRenderer {
             doc: doc,
             example: "\(exampleCall);",
             source: "\(doc)\n\(declaration)",
-            signature: ToolSignature(arguments: argumentsShape, result: resultShape)
+            signature: ToolSignature(arguments: argumentsShape, result: result.shape)
         )
+    }
+
+    /// Reads a top-level `parameters` object node's properties as typed
+    /// parameters, in declared order, each carrying the guide clauses and the
+    /// example literal only its schema node knows.
+    ///
+    /// - Parameters:
+    ///   - node: the top-level `parameters` object node.
+    ///   - context: the rendering context for `$ref` resolution and cycle
+    ///     detection.
+    ///   - onWiden: called when a property's shape widens to `.any`.
+    /// - Returns: one parameter per declared property, in `x-order`.
+    /// - Throws: whatever `objectShape(_:context:path:onWiden:)` or
+    ///   `exampleLiteral(for:name:context:)` throws for one of the node's
+    ///   properties.
+    private static func renderedParameters(
+        of node: SchemaNode,
+        context: inout RenderContext,
+        onWiden: (String) -> Void
+    ) throws -> [RenderedParameter] {
+        let properties = node.properties ?? [:]
+        let argumentsShape = try objectShape(node, context: &context, path: "args", onWiden: onWiden)
+        return try argumentsShape.properties.compactMap { property -> RenderedParameter? in
+            guard let propertyNode = properties[property.name] else { return nil }
+            var exampleContext = context
+            let exampleValue = try property.isRequired
+                ? exampleLiteral(for: propertyNode, name: property.name, context: &exampleContext)
+                : nil
+            return RenderedParameter(
+                name: property.name,
+                shape: property.shape,
+                isRequired: property.isRequired,
+                description: propertyNode.description ?? "",
+                constraints: constraintClauses(for: propertyNode),
+                exampleValue: exampleValue
+            )
+        }
+    }
+
+    /// Resolves what awaiting a call yields: the result shape, and the prose
+    /// for the `@returns` line when there is any.
+    ///
+    /// - Parameters:
+    ///   - returns: how the tool's `Output` renders.
+    ///   - name: the tool's name, for error messages.
+    ///   - onWiden: called when a `.schema` element widens to `.any`.
+    /// - Returns: the result shape and its `@returns` prose.
+    /// - Throws: `ToolAPIRendererError` when a `.schema` return cannot be
+    ///   rendered.
+    private static func resolvedResult(
+        of returns: Returns,
+        name: String,
+        onWiden: (String) -> Void
+    ) throws -> (shape: ToolValueShape, description: String?) {
+        switch returns {
+        case .schema(let schema):
+            let node = try decode(schema, subject: "\"\(name)\"'s return")
+            var context = RenderContext(root: node, defs: node.defs ?? [:])
+            return (try shape(for: node, context: &context, path: "returns", onWiden: onWiden), node.description)
+        case .text:
+            return (.string(choices: []), "plain text result.")
+        case .json:
+            return (.json, "JSON result, parsed.")
+        }
     }
 
     // MARK: - Raw JSON Schema text
@@ -547,6 +698,8 @@ public enum ToolAPIRenderer {
             return "\(declaredType(of: element))[]"
         case .object(let object):
             return declaredType(ofObject: object)
+        case .json:
+            return typeObject
         case .any:
             return anyTypeName
         }
@@ -694,57 +847,63 @@ public enum ToolAPIRenderer {
             .map { "\(docLinePrefix)\($0)" }
     }
 
-    /// Composes one property's `@param` clause — the text after
-    /// `@param args.<name> — `, or `""` if the property has neither a
-    /// description nor any guide-derived constraint to report.
+    /// The parenthetical an `integer` schema adds to its `@param` line, so a
+    /// reader knows the `number` the declaration shows takes whole values.
+    private static let integerClause = "(integer)"
+
+    /// The guide-derived parenthetical clauses of one property, in the order
+    /// the `@param` line shows them: `(integer)`, a numeric range, a pattern,
+    /// an item count. `GenerationSchema` has no default-value concept (see
+    /// `AppleEncoderParityTests`), so no `default …` clause is ever rendered.
+    ///
+    /// - Parameter node: the property schema node.
+    /// - Returns: the clauses present on `node`, or none.
+    private static func constraintClauses(for node: SchemaNode) -> [String] {
+        [
+            node.type == typeInteger ? integerClause : nil,
+            numericRangeClause(node),
+            patternClause(node),
+            countClause(node),
+        ].compactMap { $0 }
+    }
+
+    /// Composes one parameter's `@param` line.
     ///
     /// Order (matching the worked `WeatherTool` example's `units` param —
     /// `"temperature unit; one of \"c\" | \"f\". (optional)"`): the
-    /// author's `description`, joined to an `enum` clause with `"; "` when
-    /// both are present; then any type-specific constraint parenthetical
-    /// (`(integer)`, numeric range, pattern, or item count); then
-    /// `"(optional)"` for a non-required property, or `"(required)"` for a
+    /// author's `description`, joined to the choice clause with `"; "` when
+    /// both are present; then the constraint parentheticals; then
+    /// `"(optional)"` for a non-required parameter, or `"(required)"` for a
     /// required one — explicit and symmetric, so a reader (including the
     /// small local model that discovers tools via `searchTools`/`help()`/
     /// `docs(name)`) never has to infer required-ness from the *absence* of
-    /// `"(optional)"`. `GenerationSchema` has no default-value concept (see
-    /// `AppleEncoderParityTests`), so no `default …` clause is ever
-    /// rendered. The property's `description` is passed
-    /// through `escapeForJSDocComment`, same as the tool-level description
-    /// in `commentLines`, since this clause lands inside the same `/** …
-    /// */` block via an `@param` line.
+    /// `"(optional)"`.
     ///
-    /// - Parameters:
-    ///   - node: the property schema node.
-    ///   - required: whether the property is required.
-    private static func paramClause(for node: SchemaNode, required: Bool) -> String {
-        var lead = escapeForJSDocComment(node.description ?? "")
-        if let enumValues = node.enumValues, !enumValues.isEmpty {
-            // `enumUnion` (via `tsLiteral`) only escapes each choice for
-            // safe *JS string literal* syntax (`escapeForJSStringLiteral`);
-            // this clause lands inside the JSDoc block itself, so it
-            // additionally needs `escapeForJSDocComment` — an enum choice
-            // containing `*/` would otherwise still terminate the comment
-            // block early, even once the quote/backslash escaping is applied.
-            let clause = escapeForJSDocComment("one of \(enumUnion(enumValues)).")
-            lead = lead.isEmpty ? clause : "\(lead); \(clause)"
-        }
+    /// The name, the description and the choice clause each land inside the
+    /// `/** … */` block, so each passes through `escapeForJSDocComment` — an
+    /// embedded `*/` could otherwise terminate the block early. The choice
+    /// clause needs that pass on top of `enumUnion`'s own, which (via
+    /// `tsLiteral`) only escapes each choice for JS string-literal syntax.
+    ///
+    /// - Parameter parameter: the parameter to document.
+    /// - Returns: the `@param` line, without the doc-line prefix.
+    private static func paramLine(for parameter: RenderedParameter) -> String {
+        let description = escapeForJSDocComment(parameter.description)
+        let choiceClause = choiceClause(of: parameter.shape).map(escapeForJSDocComment)
+        let lead = [description, choiceClause].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: "; ")
+        let requiredMark = parameter.isRequired ? "(required)" : "(optional)"
+        let clause = ([lead] + parameter.constraints + [requiredMark]).filter { !$0.isEmpty }.joined(separator: " ")
+        return "@param args.\(escapeForJSDocComment(parameter.name)) — \(clause)"
+    }
 
-        var clauses: [String] = []
-        if node.type == typeInteger { clauses.append("(integer)") }
-        if let rangeClause = numericRangeClause(node) { clauses.append(rangeClause) }
-        if let patternClause = patternClause(node) { clauses.append(patternClause) }
-        if let countClause = countClause(node) { clauses.append(countClause) }
-        if required {
-            clauses.append("(required)")
-        } else {
-            clauses.append("(optional)")
-        }
-
-        var fragments: [String] = []
-        if !lead.isEmpty { fragments.append(lead) }
-        fragments.append(contentsOf: clauses)
-        return fragments.joined(separator: " ")
+    /// The `one of "a" | "b".` clause for a string constrained to choices, or
+    /// `nil` for every other shape.
+    ///
+    /// - Parameter shape: the parameter's declared shape.
+    /// - Returns: the choice clause, unescaped for the JSDoc block.
+    private static func choiceClause(of shape: ToolValueShape) -> String? {
+        guard case .string(let choices) = shape, !choices.isEmpty else { return nil }
+        return "one of \(enumUnion(choices))."
     }
 
     /// Renders a `(minimum, maximum)` bound pair as a parenthetical clause,
@@ -911,6 +1070,53 @@ public enum ToolAPIRenderer {
             fields.append("\(objectKeyLiteral(key)): \(literal)")
         }
         return "{ \(fields.joined(separator: ", ")) }"
+    }
+
+    /// Synthesizes the example literal for a typed parameter from its shape
+    /// alone: the first choice for a constrained string, the property's own
+    /// name for an unconstrained one, `0` for a number, `true` for a boolean,
+    /// `[]` for an array, the required fields for an object, `{}` for a
+    /// parsed JSON value, and `null` for `any`.
+    ///
+    /// A schema knows more than a shape does — a range's `minimum`, an
+    /// array's `minItems` — so the schema path supplies
+    /// `RenderedParameter.exampleValue` from `exampleLiteral(for:name:context:)`
+    /// instead, and this synthesizer serves the typed path.
+    ///
+    /// - Parameters:
+    ///   - shape: the declared shape to synthesize a literal for.
+    ///   - name: the property's name, the placeholder for an unconstrained
+    ///     string.
+    /// - Returns: the synthesized JS literal source text.
+    private static func exampleLiteral(for shape: ToolValueShape, name: String) -> String {
+        switch shape {
+        case .string(let choices):
+            return choices.first.map(tsLiteral) ?? "\"\(escapeForJSStringLiteral(name))\""
+        case .number:
+            return formatNumber(0)
+        case .boolean:
+            return "true"
+        case .array:
+            return "[]"
+        case .object(let object):
+            return exampleObjectLiteral(of: object)
+        case .json:
+            return "{}"
+        case .any:
+            return "null"
+        }
+    }
+
+    /// Builds `{ field: value, … }` for an object shape's required
+    /// properties, or `{}` when it requires none.
+    ///
+    /// - Parameter object: the object shape to render.
+    /// - Returns: the synthesized JS object literal.
+    private static func exampleObjectLiteral(of object: ToolObjectShape) -> String {
+        let fields = object.properties.filter(\.isRequired).map { property in
+            "\(objectKeyLiteral(property.name)): \(exampleLiteral(for: property.shape, name: property.name))"
+        }
+        return fields.isEmpty ? "{}" : "{ \(fields.joined(separator: ", ")) }"
     }
 
     // MARK: - Literal formatting

@@ -19,7 +19,10 @@ import Foundation
 ///
 /// A widened `any` in a signature (see `ToolValueShape.any`) is mocked as an
 /// empty object and accepted as any argument, since the declared type
-/// constrains nothing.
+/// constrains nothing. A parsed JSON value (`ToolValueShape.json`) is mocked
+/// as an empty object too, so a snippet that reads a field of it gets
+/// `undefined` and runs on, and it is accepted as any non-null object, since
+/// its declared type is `object`.
 ///
 /// ## Why mocks rather than a checker
 ///
@@ -132,7 +135,7 @@ enum TypedMockDryRun {
     private static func literal(for shape: ToolValueShape) -> String {
         let common = "kind: '\(kind(of: shape))', declared: \(ToolAPIRenderer.jsStringLiteral(shape.declaredType))"
         switch shape {
-        case .string, .number, .boolean, .any:
+        case .string, .number, .boolean, .json, .any:
             return "{ \(common) }"
         case .array(let element):
             return "{ \(common), element: \(literal(for: element)) }"
@@ -165,6 +168,8 @@ enum TypedMockDryRun {
             return "array"
         case .object:
             return "object"
+        case .json:
+            return "json"
         case .any:
             return "any"
         }
@@ -210,6 +215,7 @@ enum TypedMockDryRun {
           if (shape.kind === 'number') { return 0; }
           if (shape.kind === 'boolean') { return false; }
           if (shape.kind === 'any') { return {}; }
+          if (shape.kind === 'json') { return {}; }
           if (shape.kind === 'array') {
             var elements = [__mockValue(shape.element, label + '[]'), __mockValue(shape.element, label + '[]')];
             return __mockProxy(elements, shape, label);
@@ -260,6 +266,10 @@ enum TypedMockDryRun {
           if (shape.kind === 'any') { return; }
           if (shape.kind === 'string' || shape.kind === 'number' || shape.kind === 'boolean') {
             if (typeof value !== shape.kind) { throw __mockTypeFailure(where, shape, value); }
+            return;
+          }
+          if (shape.kind === 'json') {
+            if (value === null || typeof value !== 'object') { throw __mockTypeFailure(where, shape, value); }
             return;
           }
           if (value !== null && value !== undefined && value[__mockTagKey] === shape.declared) { return; }
