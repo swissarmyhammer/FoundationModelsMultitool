@@ -86,10 +86,26 @@ comments:
     - evidence: 2 files — Sources/FoundationModelsMultitool/Surface/OperationVerbTool.swift, Tests/FoundationModelsMultitoolTests/OperationVerbToolTests.swift; `swift test --filter OperationVerbToolTests` → 12 tests in 1 suite passed (6 `verbName` cases); `swift test` → 1477 tests in 117 suites passed, 0 failed, 0 skipped, exit 0; the one open `## Review Findings` item is checked
     - next: `/review`
   timestamp: 2026-09-16T15:39:25.949573+00:00
+- actor: claude-code
+  id: 01m2nebkax5n3y2vjcwnr6c3dc
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~2..HEAD` (local backend), iteration 2. Zero findings. 7 validators attempted, 0 failed. 2 files reviewed: Sources/FoundationModelsMultitool/Surface/OperationVerbTool.swift, Tests/FoundationModelsMultitoolTests/OperationVerbToolTests.swift. The one prior finding (2026-09-16 10:22) is checked.
+    - next: none. The card moved from `review` to `done`.
+  timestamp: 2026-09-16T15:46:22.173833+00:00
+- actor: claude-code
+  id: 01m2necb2eccyarjte8ksdje0c
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — 2 files (`verbName(for:)` lowercases each word first; two mixed-case test rows)
+    - test: green — swift test, 1477 tests in 117 suites passed, 0 failed, 0 skipped, 0 warnings
+    - commit: 82e146e (code), 3bfbe99 (kanban)
+    - review: clean — zero findings; card moved to done
+  timestamp: 2026-09-16T15:46:46.478556+00:00
 depends_on:
 - 01M2N2KZKERE5EHE5NJ5BWY82D
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffc680
 title: 'Add OperationVerbTool: one Tool per operation with a per-operation schema'
 ---
 ## Precondition, in another repository
