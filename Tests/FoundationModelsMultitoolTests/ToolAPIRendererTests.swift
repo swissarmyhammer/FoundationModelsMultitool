@@ -582,7 +582,7 @@ struct ToolAPIRendererTests {
     /// - Parameters:
     ///   - text: the rendered text to examine.
     ///   - label: the name of the rendered text, for the failure message.
-    private static func expectNoRawLineTerminator(in text: String, _ label: String) {
+    private static func expectNoRawLineTerminator(in text: String, labeledAs label: String) {
         for terminator in rawLineTerminators {
             #expect(
                 !text.unicodeScalars.contains(terminator),
@@ -626,8 +626,8 @@ struct ToolAPIRendererTests {
             "declaration was: \(descriptor.declaration)"
         )
         #expect(descriptor.example == "await tools.tool({ \(Self.hostileLiteral): 0 });")
-        Self.expectNoRawLineTerminator(in: descriptor.declaration, "declaration")
-        Self.expectNoRawLineTerminator(in: descriptor.example, "example")
+        Self.expectNoRawLineTerminator(in: descriptor.declaration, labeledAs: "declaration")
+        Self.expectNoRawLineTerminator(in: descriptor.example, labeledAs: "example")
         #expect(throws: Never.self) {
             try JSCInterpreter().checkSyntax(of: descriptor.example)
         }
@@ -658,8 +658,8 @@ struct ToolAPIRendererTests {
             "doc was: \(descriptor.doc)"
         )
         #expect(descriptor.example == "await tools.tool({ option: \(Self.hostileLiteral) });")
-        Self.expectNoRawLineTerminator(in: descriptor.declaration, "declaration")
-        Self.expectNoRawLineTerminator(in: descriptor.example, "example")
+        Self.expectNoRawLineTerminator(in: descriptor.declaration, labeledAs: "declaration")
+        Self.expectNoRawLineTerminator(in: descriptor.example, labeledAs: "example")
         #expect(throws: Never.self) {
             try JSCInterpreter().checkSyntax(of: descriptor.example)
         }
@@ -685,7 +685,7 @@ struct ToolAPIRendererTests {
         #expect(typed.example == expected)
         #expect(fromSchema.example == expected)
         for example in [typed.example, fromSchema.example] {
-            Self.expectNoRawLineTerminator(in: example, "example")
+            Self.expectNoRawLineTerminator(in: example, labeledAs: "example")
             #expect(throws: Never.self) {
                 try JSCInterpreter().checkSyntax(of: example)
             }
