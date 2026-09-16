@@ -59,6 +59,69 @@ comments:
     - evidence: 1 file — Tests/FoundationModelsMultitoolTests/OperationRunCodeTests.swift (new). `swift test --filter OperationRunCodeTests`: 8 tests, 8 passed. `swift test`: 1493 tests in 119 suites passed, 0 failures, 0 skipped. No compiler warning from the new file; the one build line is the pre-existing SwiftPM note about the `mlx-swift` bundle. No change to Sources/, Package.swift or Package.resolved.
     - next: /review
   timestamp: 2026-09-16T16:18:39.671299+00:00
+- actor: claude-code
+  id: 01m2nh0cd0mmm97wymertggmtc
+  text: |-
+    ### review — findings
+    - evidence: 2 findings — Tests/FoundationModelsMultitoolTests/OperationRunCodeTests.swift:157 (`reuse/reuse`, `payloadKeys` mirrors `encodedKeys` in FileChangeSetTests.swift), Tests/FoundationModelsMultitoolTests/OperationRunCodeTests.swift:179 (`reuse/reuse`, `calls` duplicates the `RecordedOperationCall` filter in OperationVerbToolTests). Scope `review sha HEAD~2..HEAD`, local backend. Counts: 2 findings, 2 confirmed, 5 refuted. The 4 `.kanban/` files are excluded by `.reviewignore`.
+    - next: /implement. Move `payloadKeys` and `calls` to one shared test helper that the other test files also use. Then tick the two findings and run `/review ^sza6zja` again.
+
+    Checklist boxes. The review skill says that the reviewer does not tick boxes; the implementer owns the marks. The boxes stay unticked. The comments and the tests give this evidence for each box:
+    - "The seven snippets above behave as stated": the implement comment lists one passed test for each snippet. Snippet 4 differs from the card text: the fixture parameter is `tag`, not `tags`, and the test asserts on `NotesOperationTool.tagParameter`. Tick this box only if that difference is accepted.
+    - "The recorded `op` for a verb call is `\"<verb> <group>\"`": test 8 pins `contextOp == "tagNote notes"`.
+    - "The exact `TypeError` text of snippet 7 is a comment on this card": the comment with the JavaScriptCore text is on the card.
+    - "`swift test` passes in full": the implement record shows 1493 tests in 119 suites passed, 0 failures.
+    - "OperationRunCodeTests.swift with one test per snippet and one for the journal op": the file holds 8 tests.
+    - "Run `swift test --filter OperationRunCodeTests`; expect all pass": 8 tests, 8 passed.
+  timestamp: 2026-09-16T16:32:40.352040+00:00
+- actor: claude-code
+  id: 01m2nh220379fjj0j6p5wq2n5b
+  text: |-
+    ### finish iteration 1 — findings
+    - implement: changed — 1 file (Tests/FoundationModelsMultitoolTests/OperationRunCodeTests.swift)
+    - test: green — swift test, 1493 tests in 119 suites passed, 0 failed, 0 skipped, 0 warnings
+    - commit: 84bbcda (tests), ccf8311 (kanban)
+    - review: findings — OperationRunCodeTests.swift:157 (reuse: `payloadKeys` duplicates `encodedKeys` in FileChangeSetTests), OperationRunCodeTests.swift:179 (reuse: `calls` duplicates the filter in OperationVerbToolTests)
+
+    Decision on the card text: snippet 4 says the rejection names `tags`. The fixture `tagNote` operation names its required parameter `tag`, and the test asserts on `NotesOperationTool.tagParameter`. The name is a fixture choice with no contract behind it. Read the card text as "names the missing required parameter of `tagNote`". The box can be ticked on that evidence.
+  timestamp: 2026-09-16T16:33:35.235145+00:00
+- actor: claude-code
+  id: 01m2nha37v83avp902bp669aj4
+  text: |-
+    Picked up again for the two review findings. Card moved to `doing`. Research done.
+
+    Discoveries:
+    - Three test files read the keys of a structured `GeneratedContent`, each with its own helper: `FileChangeSetTests.encodedKeys(of:)` (JSON round trip, sorted keys), `OperationVerbToolTests.propertyNames(of:)` (a `Set` from `.kind`), and `OperationRunCodeTests.payloadKeys(of:)` (ordered keys from `.kind`). No shared helper exists. `TestSupport.swift` is the shared scaffolding file of the target, so the one helper goes there as `TestSupport.propertyNames(of:)`. It takes `some ConvertibleToGeneratedContent`, so a `GeneratedContent` payload and a `@Generable` result both fit.
+    - Two test files filter `RecordedOperationCall` records by `op`. `OperationRunCodeTests.calls(withOp:on:)` filters on the payload string. `OperationVerbToolTests` reads `recordedCalls.first` and compares `op`, and it counts `recordedCalls` before and after a call. The fixture `NotesOperationTool` owns `recordedCalls`, so the filter goes there as `recordedCalls(withOp:)`, and `RecordedOperationCall` gets `string(_:)` for the payload strings the filter and the tests read.
+    - `FileChangeSetTests.jsonObject(_:)` has a second caller (the `OperationEvent` detail test), so it stays.
+    - No production change. This is the REFACTOR step of /tdd: the tests that call the helpers are the tests of the helpers, and they must stay green.
+  timestamp: 2026-09-16T16:37:58.651630+00:00
+- actor: claude-code
+  id: 01m2nhezm0stcghrm1tf382h05
+  text: |-
+    Implementation landed for the two review findings. No production change. The card stays in `doing`.
+
+    Finding 1 (`payloadKeys` mirrors `encodedKeys`): one shared helper, `TestSupport.propertyNames(of:)` in `Tests/FoundationModelsMultitoolTests/TestSupport.swift`, reads the ordered keys of a structured `GeneratedContent`. It takes `some ConvertibleToGeneratedContent`, so a payload and a `@Generable` result both fit. `FileChangeSetTests.encodedKeys(of:)` now calls it and only sorts the result. `OperationRunCodeTests.payloadKeys(of:)` and `OperationVerbToolTests.propertyNames(of:)` are deleted; both suites call the shared helper. `TestSupport.swift` now imports `FoundationModels`, and its doc line covers the suites of the target, not only the file suites.
+
+    Finding 2 (`calls` duplicates the `RecordedOperationCall` filter): the filter is on the fixture as `NotesOperationTool.recordedCalls(withOp:)` in `Fixtures/OperationToolFixtures.swift`. `RecordedOperationCall.string(_:)` reads one payload string, and it calls the fixture's `string(_:in:)`, which is no longer `private`. `OperationRunCodeTests.calls(withOp:on:)` and `OperationRunCodeTests.string(_:in:)` are deleted. `OperationRunCodeTests` calls the fixture filter in the loop test and the journal test. `OperationVerbToolTests` calls it in two places: the guide-violation test asserts that no `tag note` call reached the parent (in place of a before-and-after count), and the op-override test asserts that no `delete note` call reached the parent.
+
+    Discoveries:
+    - The `.kind` ordered keys of a `@Generable` result omit a `nil` optional, the same as the JSON round trip did. The three `FileChangeSetTests` field-list tests pass unchanged with the shared helper.
+    - `FileChangeSetTests.jsonObject(_:)` stays; the `OperationEvent` detail tests still call it.
+
+    Tests: `swift test --filter "OperationRunCodeTests|OperationVerbToolTests|FileChangeSetTests"`: 45 tests in 3 suites passed. `swift test`: 1493 tests in 119 suites passed, 0 failures, 0 skipped. The one build warning is the pre-existing SwiftPM note about the `mlx-swift` bundle.
+
+    Boxes: both `## Review Findings` items are `- [x]`. The six acceptance and test boxes are `- [x]`; the review comment lists the evidence for each. For snippet 4 the missing parameter is `tag`, per the decision comment of finish iteration 1.
+
+    Not done on purpose: no commit, no change to `Package.swift` or `Package.resolved`.
+  timestamp: 2026-09-16T16:40:38.784452+00:00
+- actor: claude-code
+  id: 01m2nhf2swd7qhv2x0639m8kg6
+  text: |-
+    ### implement — changed
+    - evidence: 5 files — Tests/FoundationModelsMultitoolTests/TestSupport.swift, Tests/FoundationModelsMultitoolTests/Fixtures/OperationToolFixtures.swift, Tests/FoundationModelsMultitoolTests/FileChangeSetTests.swift, Tests/FoundationModelsMultitoolTests/OperationVerbToolTests.swift, Tests/FoundationModelsMultitoolTests/OperationRunCodeTests.swift. `swift test --filter "OperationRunCodeTests|OperationVerbToolTests|FileChangeSetTests"`: 45 tests in 3 suites passed. `swift test`: 1493 tests in 119 suites passed, 0 failures, 0 skipped. Both review findings ticked; six acceptance and test boxes ticked.
+    - next: /review
+  timestamp: 2026-09-16T16:40:42.044735+00:00
 depends_on:
 - 01M2N24ZEPMS79PQH5B58FF2SF
 position_column: doing
@@ -83,15 +146,25 @@ Journal op. Under a `RunBinding` with a `ToolContext`, a `tagNote` call reaches 
 
 ## Acceptance Criteria
 
-- [ ] The seven snippets above behave as stated.
-- [ ] The recorded `op` for a verb call is `"<verb> <group>"`.
-- [ ] The exact `TypeError` text of snippet 7 is a comment on this card.
-- [ ] `swift test` passes in full.
+- [x] The seven snippets above behave as stated.
+- [x] The recorded `op` for a verb call is `"<verb> <group>"`.
+- [x] The exact `TypeError` text of snippet 7 is a comment on this card.
+- [x] `swift test` passes in full.
 
 ## Tests
 
-- [ ] `Tests/FoundationModelsMultitoolTests/OperationRunCodeTests.swift` with one test per snippet and one for the journal op.
-- [ ] Run `swift test --filter OperationRunCodeTests`; expect all pass.
+- [x] `Tests/FoundationModelsMultitoolTests/OperationRunCodeTests.swift` with one test per snippet and one for the journal op.
+- [x] Run `swift test --filter OperationRunCodeTests`; expect all pass.
 
 ## Workflow
 - Use `/tdd`: write the failing tests first, then implement to make them pass. #operation-tools
+
+## Review Findings (2026-09-16 11:20)
+
+> Scope: `review sha HEAD~2..HEAD` — reviewed the diffs only — lines this change added or modified. 1 file(s) reviewed, 4 not reviewed.
+
+> 4 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 4 file(s)
+
+- [x] `Tests/FoundationModelsMultitoolTests/OperationRunCodeTests.swift:157` `reuse/reuse` — Helper `payloadKeys` function mirrors logic (0.85 similarity) in FileChangeSetTests.swift with the same name `encodedKeys`. Extracting keys from a structured payload is a generic operation that should exist once in a shared utility, not be redefined in each test file. Move `payloadKeys` to a shared test utility for generic payload inspection, or consolidate similar key-extraction helpers from multiple test files into one canonical implementation.
+- [x] `Tests/FoundationModelsMultitoolTests/OperationRunCodeTests.swift:179` `reuse/reuse` — Helper `calls` function duplicates a filtering pattern (0.89 similarity) found in OperationVerbToolTests. Both filter RecordedOperationCall records by operation — this logic should reside in a shared test utility, not be redefined in each test file. Extract `calls` to a shared test utility for RecordedOperationCall filtering, or generalize it as a reusable helper method that both test suites can access.
