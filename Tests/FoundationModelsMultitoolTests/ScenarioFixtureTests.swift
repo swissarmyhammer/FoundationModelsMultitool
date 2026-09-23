@@ -339,6 +339,30 @@ struct ScenarioFixtureTests {
         #expect(await log.returnedPaths == [IntegrationArchiveRebuildTool.path])
     }
 
+    @Test("the archive-rebuild fixture settles only after its delay, which outlasts runCode's inline settle grace")
+    func theRebuildFixtureOutlastsTheInlineSettleGrace() async throws {
+        // The premise `inBandCollection` rests on: the model gets a pending
+        // envelope, and only then does it have a run to collect with `wait`. A
+        // snippet that settles inside the inline settle grace gives its result
+        // inline, and a correct model then makes no `wait` call (CI run
+        // `35230706285`). Thus the delay must be longer than the grace.
+        #expect(
+            integrationArchiveRebuildDelay
+                > .milliseconds(Int(MultiToolConfiguration.defaultInlineSettleGrace * 1000))
+        )
+
+        let log = ScenarioCallLog()
+        let clock = ContinuousClock()
+
+        let start = clock.now
+        let rebuild = try await IntegrationArchiveRebuildTool(log: log)
+            .call(arguments: IntegrationNoArguments(unused: nil))
+        let elapsed = clock.now - start
+
+        #expect(rebuild.manifestCode == integrationArchiveRebuildManifestCode)
+        #expect(elapsed >= integrationArchiveRebuildDelay)
+    }
+
     @Test("the in-band collection canary's manifest code answers no other scenario's question")
     func theManifestCodeAnswersNoOtherScenarioQuestion() {
         // The same rule `IntegrationScenarioAnswers` enforces between its own

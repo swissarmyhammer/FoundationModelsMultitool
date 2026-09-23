@@ -752,23 +752,52 @@ public struct IntegrationArchiveRebuildOutput {
 /// about the wrong run pass.
 public let integrationArchiveRebuildManifestCode = 58204
 
-/// The tool the in-band collection canary drives: it reports the manifest code
-/// at once, and the canary's whole reading still holds.
+/// The count of seconds in `integrationArchiveRebuildDelay`.
 ///
-/// **Why it does not have to be slow, which is not obvious.** The canary asks
-/// whether the model collected its own backgrounded run, and a backgrounded run
-/// is not something a slow tool produces. `MultiTool.mount` declares the
-/// background mount for every call, so *every* `runCode` backgrounds
-/// the instant it is made, whatever the snippet awaits. The backgrounding is
-/// what hands the model a `PendingRunEnvelope`, and the envelope's text is what
-/// makes it spend a `wait` call (Router's `^466d38p`). So the graded shape —
-/// background, then collect in band — is produced by the product, and a fixture
-/// that returns immediately produces it just as surely as one that stalls.
+/// This declaration names the number directly, so no call site passes a raw
+/// literal. The reasons for the value stand on `integrationArchiveRebuildDelay`.
+public let integrationArchiveRebuildDelaySeconds = 4
+
+/// How long `IntegrationArchiveRebuildTool` holds its manifest code before it
+/// settles.
+///
+/// **The delay must be longer than `runCode`'s inline settle grace.** A
+/// `runCode` call waits `MultiToolConfiguration.defaultInlineSettleGrace` (two
+/// seconds) for its snippet. When the snippet settles in that time, the call
+/// gives the result inline and tells the model not to call `wait`. Only a
+/// snippet that is still running at the end of the grace gives the model a
+/// `PendingRunEnvelope`. The canary grades a `wait` call, so the run must be
+/// still running at that instant.
+///
+/// CI run `35230706285` shows the failure when the fixture settled at once: the
+/// model wrote `const r = await tools.rebuildArchive({}); return r;`, the
+/// snippet settled inside the grace, the model got the manifest code inline,
+/// and it correctly made no `wait` call. `inBandCollection` failed on a correct
+/// model.
+///
+/// Four seconds is two times the grace, the same value as
+/// `integrationDelayedEchoDelaySeconds`. `ScenarioFixtureTests` makes sure that
+/// this delay stays longer than the grace. Do not make the delay long: the
+/// history on `IntegrationArchiveRebuildTool` tells what a stalled fixture cost
+/// this canary.
+public let integrationArchiveRebuildDelay: Duration = .seconds(integrationArchiveRebuildDelaySeconds)
+
+/// The tool the in-band collection canary drives: it reports the manifest code
+/// `integrationArchiveRebuildDelay` after the call.
+///
+/// **Why it waits a short time.** The canary asks whether the model collected
+/// its own backgrounded run. `MultiTool.mount` declares the background mount
+/// for every call, but a `runCode` call whose snippet settles inside the
+/// inline settle grace gives its result inline, with no `PendingRunEnvelope`.
+/// Only the envelope's text makes the model spend a `wait` call (Router's
+/// `^466d38p`). Thus the fixture must be still running at the end of the
+/// grace, whatever the snippet awaits. `integrationArchiveRebuildDelay` gives
+/// the full reason.
 ///
 /// The contrast with `IntegrationDeepScanTool` is the contrast in what the two
 /// scenarios ask. That fixture is slow so that its background run is still
 /// going when the model collects it, which is the background scenario's own
-/// subject. Nothing here rests on how long anything takes.
+/// subject. This fixture must only outlast the grace.
 ///
 /// **An earlier version was held on a gate, and that cost the canary its
 /// verdict.** The gate was built for the scenario this canary was inverted
@@ -792,10 +821,9 @@ public struct IntegrationArchiveRebuildTool: Tool {
     /// is exactly what the canary measures, so a tool description that answered
     /// the question would be grading itself.
     ///
-    /// "In the background" is true of the call however fast this tool is —
-    /// `runCode` backgrounds every call, so the model is handed a token rather
-    /// than a value either way. What the description no longer claims is that the
-    /// rebuild takes a while, which stopped being true when the gate came off.
+    /// "In the background" is true of the call: the tool outlasts `runCode`'s
+    /// inline settle grace, so the model gets a token and not a value. The
+    /// description does not tell how long the rebuild takes.
     public let description = "Rebuilds the user's archive index and returns that rebuild's manifest code. "
         + "The rebuild runs in the background."
 
@@ -813,15 +841,15 @@ public struct IntegrationArchiveRebuildTool: Tool {
         self.log = log
     }
 
-    /// Reports the manifest code.
+    /// Waits `integrationArchiveRebuildDelay`, then reports the manifest code.
     ///
     /// - Parameter arguments: unused — this tool takes nothing.
     /// - Returns: the fixture manifest code.
-    /// - Throws: nothing of its own; the signature is `Tool`'s, and
-    ///   `recordCall(to:_:)` only rethrows what its body throws.
+    /// - Throws: a `CancellationError` if the run is cancelled mid-delay.
     public func call(arguments: IntegrationNoArguments) async throws -> IntegrationArchiveRebuildOutput {
-        await log.recordCall(to: name) {
-            IntegrationArchiveRebuildOutput(manifestCode: integrationArchiveRebuildManifestCode)
+        try await log.recordCall(to: name) {
+            try await Task.sleep(for: integrationArchiveRebuildDelay)
+            return IntegrationArchiveRebuildOutput(manifestCode: integrationArchiveRebuildManifestCode)
         }
     }
 }
@@ -886,9 +914,10 @@ public struct IntegrationDelayedEchoOutput {
 
 /// How long `IntegrationDelayedEchoTool` holds its value before it settles.
 ///
-/// A few seconds, and the few seconds are the point. The rebuild fixture
-/// returns at once, so its background run is complete before the model can
-/// make a `wait` call, and `wait` never has to wait — the deferred path went
+/// A few seconds, and the few seconds are the point. The rebuild fixture's
+/// background run is complete before the model can make a `wait` call — a
+/// model generation takes much longer than its delay — so `wait` never has to
+/// wait there, and the deferred path went
 /// untested (task `^nhxj8hx`). This delay keeps the run in the `running`
 /// state past the instant the snippet's own collect starts, so `wait` must
 /// block and be woken by the settlement.

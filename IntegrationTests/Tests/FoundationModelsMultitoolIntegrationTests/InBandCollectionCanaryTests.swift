@@ -79,15 +79,17 @@ import ScenarioGrading
 /// not how often a real model reaches it (`^466d38p`). Cite no suite here for
 /// "the drain works".
 ///
-/// **The rebuild fixture is fast, and must stay fast.** Nothing the teaching
-/// test asserts is a statement about how long anything took: `runCode`
-/// backgrounds every call whatever the tool does, and that backgrounding is
-/// what produces the envelope, the `wait` call and the empty result alike. A
-/// slow fixture buys no reading there and once cost this suite its verdict
-/// outright — `IntegrationArchiveRebuildTool` records what happened. The
-/// delayed echo is slow for a different, stated reason: its subject is the
-/// deferred settlement itself, and `integrationDelayedEchoDelay` records why
-/// its few seconds are load-bearing where the rebuild's would be waste.
+/// **The rebuild fixture must outlast the inline settle grace, and no more.**
+/// A `runCode` snippet that settles inside `runCode`'s inline settle grace
+/// gives its result inline and tells the model not to call `wait`. Thus a
+/// fixture that settles at once lets a correct model fail `inBandCollection`,
+/// which is what CI run `35230706285` recorded.
+/// `integrationArchiveRebuildDelay` holds the rebuild a few seconds past the
+/// grace, so the model always gets the pending envelope. A long stall once
+/// cost this suite its verdict outright — `IntegrationArchiveRebuildTool`
+/// records what happened — so the delay stays short. The delayed echo is slow
+/// for a different reason: its subject is the deferred settlement itself, and
+/// `integrationDelayedEchoDelay` records why.
 ///
 /// Like every other suite here, this one belongs to the nested
 /// `IntegrationTests` package; the root manifest declares no target for it, so
