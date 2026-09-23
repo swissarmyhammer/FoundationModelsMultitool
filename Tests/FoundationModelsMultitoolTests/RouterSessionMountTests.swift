@@ -119,7 +119,9 @@ struct RouterSessionMountTests {
         #expect(!envelope.next.contains("runCode"))
         #expect(!envelope.next.contains("Call this tool again"))
         #expect(!envelope.next.contains("return await wait"))
-        #expect(rendered.count < ToolContext.terminalDetailTailLimit)
+        // The envelope is a short report: shorter than one capped `runCode`
+        // return value.
+        #expect(rendered.count < MultiToolConfiguration.default.returnValueCharacterLimit)
 
         // Release the run the snippet waits on; the background snippet then
         // finishes, and the token the envelope names resolves to a result.

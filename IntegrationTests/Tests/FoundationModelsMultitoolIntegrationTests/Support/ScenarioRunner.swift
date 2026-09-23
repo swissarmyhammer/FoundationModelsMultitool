@@ -611,7 +611,7 @@ func streamTurn(of session: RoutedSession, prompt: String) async throws -> Strea
             // Output only, and the input half relabelled — see `tokenUsage`.
             turn.tokenUsage = usageForDisplay(usage)
         case .toolStatus, .reasoningDelta, .toolInvocation, .toolCallReport, .entryRecorded,
-            .elicitationRequested, .runSettled:
+            .elicitationRequested, .runSettled, .generationCall:
             // `.toolStatus` here is the residue of the three status cases
             // handled above. `.toolInvocation` carries the open/close record
             // of each call, and `.entryRecorded` announces a transcript entry;
@@ -623,7 +623,8 @@ func streamTurn(of session: RoutedSession, prompt: String) async throws -> Strea
             // `.elicitationRequested` announces a question a run raised, and no
             // tool of these scenarios raises one. `.runSettled` announces a
             // background run's terminal event, which the journal readings below
-            // already grade.
+            // already grade. `.generationCall` reports the usage of one
+            // generation call; `.turnEnded` above already gives the turn's sum.
             break
         }
     }
@@ -1033,8 +1034,8 @@ private let inBandCollectionReplyPreviewCharacters = 120
 /// those two failing together is the drain-reachable reading, and it is the one
 /// to act on. Do not relax either of them.
 ///
-/// **Why "nothing still running" means something although the fixture is
-/// fast.** It is not read alone. `inBandCollection` is graded beside it, and
+/// **Why "nothing still running" means something although the fixture
+/// settles in seconds.** It is not read alone. `inBandCollection` is graded beside it, and
 /// `wait` is the only in-band collector — so a `wait` call, no background run
 /// left, and an answer carrying the manifest code together say the model
 /// collected its own run.

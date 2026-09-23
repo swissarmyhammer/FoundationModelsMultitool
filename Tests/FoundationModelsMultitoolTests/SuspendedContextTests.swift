@@ -53,7 +53,7 @@ struct SuspendedContextTests {
     func everyMountedCallAnswersThePendingEnvelope() async throws {
         // The harshest site there is: run to completion under no clock. The
         // tool's own declaration wins over it.
-        let harness = try await Self.makeHarness(mount: .synchronousUnbounded)
+        let harness = try await Self.makeHarness(mount: .synchronous)
 
         let start = ContinuousClock.now
         let rendered = try await harness.mounted.call(

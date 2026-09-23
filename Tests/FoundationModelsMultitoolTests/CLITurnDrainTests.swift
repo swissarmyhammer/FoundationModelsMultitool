@@ -86,20 +86,20 @@ struct CLITurnDrainTests {
     @Test("a stalled turn says so, so a long run does not read as a stuck one")
     func generationStallIsPrinted() async throws {
         let output = DrainOutputCollector()
+        let stall = GenerationStall(
+            timeWithoutProgress: .seconds(30),
+            timeInFlight: .seconds(45),
+            visibility: .fragments(observed: 12),
+            lastProgress: .fragment
+        )
         _ = try await CLIRunner.drainTurn(
-            scriptedEvents([
-                .generationStalled(
-                    GenerationStall(
-                        timeWithoutProgress: .seconds(30),
-                        timeInFlight: .seconds(45),
-                        visibility: .fragments(observed: 12)
-                    )
-                )
-            ]),
+            scriptedEvents([.generationStalled(stall)]),
             output: output.append
         )
 
-        #expect(output.lines.contains { $0.contains("no fragment") && $0.contains("in flight") })
+        // The CLI prints Router's own one-line report. Compared against that
+        // report, not against its words, so a reword in Router reaches here.
+        #expect(output.lines.contains(stall.description))
     }
 
     @Test("a background run that settles is reported under its tool, its token and its outcome")

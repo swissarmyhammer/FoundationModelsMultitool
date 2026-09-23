@@ -155,6 +155,10 @@ final class ToolCallingBackend: LanguageModelSessionBackend, @unchecked Sendable
 /// All four factories are written out. See the file comment: the public
 /// default of `makeSession(instructions:tools:)` drops `tools`.
 struct StubLLMContainer: LoadedLLMContainer {
+    /// Counts one token per word. Router asks a container for a counter
+    /// since Router's compaction work; the stub model has no tokenizer.
+    let tokenCounter: any TokenCounter = StubWordTokenCounter()
+
     func makeSession(instructions: String?) -> any LanguageModelSessionBackend {
         ToolCallingBackend(tools: [])
     }
@@ -173,6 +177,31 @@ struct StubLLMContainer: LoadedLLMContainer {
         transcript: Transcript, tools: [any Tool]
     ) -> any LanguageModelSessionBackend {
         ToolCallingBackend(tools: tools)
+    }
+}
+
+/// The ``TokenCounter`` of ``StubLLMContainer``: one token per word.
+///
+/// A word is one run of characters between whitespace. A transcript counts
+/// the words of each entry's description. `prefix(of:tokens:)` keeps the
+/// first `limit` words, joined with one space.
+struct StubWordTokenCounter: TokenCounter {
+    func count(_ text: String) -> Int {
+        Self.words(of: text).count
+    }
+
+    func count(_ transcript: Transcript) throws -> Int {
+        transcript.reduce(0) { $0 + count(String(describing: $1)) }
+    }
+
+    func prefix(of text: String, tokens limit: Int) -> String {
+        guard count(text) > limit else { return text }
+        return Self.words(of: text).prefix(max(limit, 0)).joined(separator: " ")
+    }
+
+    /// The runs of characters between whitespace in `text`.
+    private static func words(of text: String) -> [Substring] {
+        text.split(whereSeparator: \.isWhitespace)
     }
 }
 
@@ -387,7 +416,8 @@ struct StubMetadata: MetadataSource {
             configJSON: Data(
                 """
                 {"num_hidden_layers":2,"num_attention_heads":8,\
-                "num_key_value_heads":2,"head_dim":16,"hidden_size":128}
+                "num_key_value_heads":2,"head_dim":16,"hidden_size":128,\
+                "max_position_embeddings":8192}
                 """.utf8),
             treeJSON: Data(
                 """

@@ -17,9 +17,10 @@ public struct MultiToolConfiguration: Sendable, Equatable {
     /// snippet goes on in the background, so the suspended JSC context lives
     /// past the call. This value arms the watchdog of every sandbox
     /// `MultiTool.init` runs (`Interpreter.withTimeLimit(_:)`), and it must
-    /// never be a second clock that races the engine's. The default is thus
-    /// the engine's own stock work clock, `ToolMount.defaultTimeoutSeconds`,
-    /// taken from that one definition so the two cannot drift apart.
+    /// never be a second clock that races the engine's. `runCode` states this
+    /// same value to the engine as its work bound (`MultiTool.timeout(from:)`),
+    /// so the two clocks come from one value. The default is
+    /// ``defaultExecutionTimeLimit``.
     ///
     /// The engine enforces its own bound through the same cancellation path a
     /// cancelled `Task` uses: `MultiTool` wraps the run in a
@@ -85,6 +86,15 @@ public struct MultiToolConfiguration: Sendable, Equatable {
     /// output — see `ResultRendererLimits.consoleCharacterLimit`.
     public let consoleCharacterLimit: Int
 
+    /// The stock ceiling on one `runCode` snippet's work, in seconds — see
+    /// ``executionTimeLimit``.
+    ///
+    /// 120 seconds. This package owns the value. Router's
+    /// `ToolMount.defaultTimeoutSeconds` held the same 120 seconds until Router
+    /// commit `70db984` removed it: a Router tool now has a timeout only when
+    /// the tool states one. `runCode` states this one.
+    public static let defaultExecutionTimeLimit: TimeInterval = 120
+
     /// The stock wait before a `runCode` call answers — see
     /// ``inlineSettleGrace``.
     ///
@@ -109,7 +119,7 @@ public struct MultiToolConfiguration: Sendable, Equatable {
     /// to at least `0`. A stray negative value in a host's configuration thus
     /// cannot disable a bound or crash a `runCode` turn.
     public init(
-        executionTimeLimit: TimeInterval = ToolMount.defaultTimeoutSeconds,
+        executionTimeLimit: TimeInterval = MultiToolConfiguration.defaultExecutionTimeLimit,
         liveContextLimit: Int = MultiToolConfiguration.defaultLiveContextLimit,
         inlineSettleGrace: TimeInterval = MultiToolConfiguration.defaultInlineSettleGrace,
         returnValueCharacterLimit: Int = ResultRendererLimits.default.returnValueCharacterLimit,

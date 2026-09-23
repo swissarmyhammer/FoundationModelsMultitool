@@ -56,7 +56,14 @@ struct RunBinding: Sendable {
     /// constraint boundary, and the escape hatch"): a snippet never receives
     /// a pending envelope in place of a value it awaited, unless the tool it
     /// called declares the background for itself.
-    static let innerCallMount = ToolMount(mode: .runToCompletion)
+    ///
+    /// The timeout is stated here, because Router's `ToolMount(mode:)` has no
+    /// timeout of its own since Router commit `70db984`. The value is
+    /// ``MultiToolConfiguration/defaultExecutionTimeLimit``, the same stock
+    /// clock inner calls had before that commit.
+    static let innerCallMount = ToolMount(
+        mode: .runToCompletion, timeout: MultiToolConfiguration.defaultExecutionTimeLimit
+    )
 
     /// Where each inner `tools.*` dispatch is recorded — see ``CallTrace``.
     ///

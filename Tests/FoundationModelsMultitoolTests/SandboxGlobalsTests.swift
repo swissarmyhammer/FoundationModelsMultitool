@@ -325,12 +325,17 @@ struct SandboxGlobalsTests {
         )
     }
 
-    @Test("wait()'s detail is the mailbox's bounded output tail, never a capability's full store")
-    func waitDetailIsBoundedToTheTerminalTail() async throws {
+    @Test("wait()'s detail is the report the tool returned, whole")
+    func waitDetailIsTheWholeReport() async throws {
+        // Router commit `f3b72f5` deleted the run plane's tail cut: a
+        // background tool's return value is a short report, and the run plane
+        // carries it as it is. A long report must reach `wait()` unchanged,
+        // so no layer of this package cuts it a second time.
         let stub = try await makeStubRun()
         let context = stub.context
-        let overlongDetail = String(repeating: "d", count: ToolContext.terminalDetailTailLimit + 500)
-        let run = try await startScriptedRun(on: context, detail: overlongDetail)
+        let longReportLength = 10_000
+        let longReport = String(repeating: "d", count: longReportLength)
+        let run = try await startScriptedRun(on: context, detail: longReport)
         await settle(run, on: context)
 
         let output = try await runSnippet(
@@ -338,7 +343,7 @@ struct SandboxGlobalsTests {
             under: context
         )
 
-        #expect(try decode(Int.self, from: output) == ToolContext.terminalDetailTailLimit)
+        #expect(try decode(Int.self, from: output) == longReportLength)
     }
 
     @Test("wait() reports a timeout while the run keeps running")

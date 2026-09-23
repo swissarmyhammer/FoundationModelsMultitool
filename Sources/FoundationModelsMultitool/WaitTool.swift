@@ -111,7 +111,8 @@ extension WaitTool: BackgroundTool {
     /// over the site, and this declaration is what keeps the site's choice
     /// away from this tool.
     ///
-    /// The mount is `synchronousUnbounded`, for the same reason
+    /// The mount is `synchronous` — run to completion with no timeout — for
+    /// the same reason
     /// `SearchToolsTool` takes it: neither question a mount answers has a
     /// bounded answer here. The mode asks whether this call hands back a
     /// handle — never, since blocking is the whole point of a `wait`. The
@@ -123,7 +124,7 @@ extension WaitTool: BackgroundTool {
     /// A `wait` that backgrounded itself would be self-defeating in a way
     /// worth stating plainly: the model calls it to collect a token, and a
     /// backgrounding `wait` would answer with a second token to collect.
-    public var mount: ToolMount? { .synchronousUnbounded }
+    public var mount: ToolMount? { .synchronous }
 }
 
 public struct WaitTool: Tool {
@@ -181,10 +182,11 @@ public struct WaitTool: Tool {
     /// - Parameter arguments: the token to wait for, and the bound.
     /// - Returns: the rendered report — one object for a named token, an array
     ///   of them when waiting for everything.
-    /// - Throws: nothing. A session-less call and an unknown token are both
-    ///   reported in band, because both are states a model can act on.
+    /// - Throws: `CancellationError` when the calling task is cancelled while
+    ///   it waits. A session-less call and an unknown token are both reported
+    ///   in band, because both are states a model can act on.
     public func call(arguments: WaitArguments) async throws -> String {
-        await Self.trace.span(
+        try await Self.trace.span(
             "WaitTool.call",
             detail: "completionToken=\(arguments.completionToken ?? CallTrace.absent) "
                 + "timeout=\(arguments.timeout.map { "\($0)" } ?? CallTrace.absent)"
@@ -198,7 +200,7 @@ public struct WaitTool: Tool {
             let bound = Self.bounded(arguments.timeout)
             if let token = arguments.completionToken {
                 return Self.rendered(.object(
-                    await Self.settlement(of: token, in: context, within: bound)
+                    try await Self.settlement(of: token, in: context, within: bound)
                 ))
             }
             let pending = await context.backgroundRuns().map(\.completionToken)
@@ -210,7 +212,7 @@ public struct WaitTool: Tool {
             }
             var reports: [InterpreterValue] = []
             for token in pending {
-                reports.append(.object(await Self.settlement(of: token, in: context, within: bound)))
+                reports.append(.object(try await Self.settlement(of: token, in: context, within: bound)))
             }
             return Self.rendered(.array(reports))
         }
@@ -224,13 +226,15 @@ public struct WaitTool: Tool {
     /// - Parameters:
     ///   - token: the run's completion token.
     ///   - context: the session context the run is read through.
-    ///   - seconds: the bound to wait within.
+    ///   - seconds: the bound to wait within, or `nil` for no bound.
     /// - Returns: the report's fields.
+    /// - Throws: `CancellationError` when the calling task is cancelled while
+    ///   it waits. The run itself goes on; only this wait ends.
     private static func settlement(
         of token: String,
         in context: ToolContext,
-        within seconds: Double
-    ) async -> [String: InterpreterValue] {
+        within seconds: Double?
+    ) async throws -> [String: InterpreterValue] {
         switch await context.wait(completionToken: token, seconds: seconds) {
         case .settled(let terminal):
             var fields = MultiTool.terminalEventFields(of: terminal)
@@ -238,6 +242,8 @@ public struct WaitTool: Tool {
             return fields
         case .deadlineElapsed:
             return MultiTool.tokenOnlyFields(result: CallResult.timeout, token: token)
+        case .cancelled:
+            throw CancellationError()
         case .unknownToken:
             return MultiTool.tokenOnlyFields(result: CallResult.unknown, token: token)
         }
@@ -284,13 +290,9 @@ public struct WaitTool: Tool {
     /// for work that is still running, sending the model back around a loop it
     /// had already decided to stop for.
     ///
-    /// `ToolContext.deadlineSecondsCeiling`, not `.infinity`: the host clamps
-    /// every seconds-valued deadline at that ceiling anyway, so naming it here
-    /// is the same bound it already treats as unbounded rather than a second
-    /// notion of it.
-    static let unboundedSeconds: TimeInterval = ToolContext.deadlineSecondsCeiling
-
-    /// The seconds to wait, given what the call asked for.
+    /// The value is `nil`. `ToolContext.wait(completionToken:seconds:)` sets no
+    /// deadline for `nil`: the wait ends at settlement or at the cancellation
+    /// of the calling task.
     ///
     /// The caller's timeout is honoured as passed — it is the bound the model
     /// chose when it decided to block, and nothing here second-guesses it. Only
@@ -298,9 +300,9 @@ public struct WaitTool: Tool {
     /// finish.
     ///
     /// - Parameter requested: the seconds the call asked for, or `nil`.
-    /// - Returns: the seconds to wait within.
-    static func bounded(_ requested: Double?) -> Double {
-        guard let requested, requested > 0 else { return unboundedSeconds }
+    /// - Returns: the seconds to wait within, or `nil` for no bound.
+    static func bounded(_ requested: Double?) -> Double? {
+        guard let requested, requested > 0 else { return nil }
         return requested
     }
 

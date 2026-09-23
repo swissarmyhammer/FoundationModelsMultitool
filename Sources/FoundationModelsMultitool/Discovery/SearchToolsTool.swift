@@ -612,5 +612,5 @@ extension SearchToolsTool: BackgroundTool {
     /// `runCode` declares the background mount for itself, and this tool
     /// declares run-to-completion. One session, two policies, each stated by
     /// the tool it belongs to.
-    public var mount: ToolMount? { .synchronousUnbounded }
+    public var mount: ToolMount? { .synchronous }
 }

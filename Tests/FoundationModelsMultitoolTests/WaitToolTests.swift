@@ -22,7 +22,7 @@ struct WaitToolTests {
         // passed. A host-side cap would be a third way out, reporting a
         // timeout for work that is still running and sending the model back
         // around a loop it had already decided to stop for.
-        #expect(WaitTool.bounded(nil) == WaitTool.unboundedSeconds)
+        #expect(WaitTool.bounded(nil) == nil)
     }
 
     @Test("a caller's timeout is honoured exactly as passed, short or long")
@@ -39,8 +39,8 @@ struct WaitToolTests {
         // A model that called `wait` has said it cannot proceed. Honouring `0`
         // literally would return immediately with nothing, which is the failure
         // this tool exists to remove.
-        #expect(WaitTool.bounded(0) == WaitTool.unboundedSeconds)
-        #expect(WaitTool.bounded(-30) == WaitTool.unboundedSeconds)
+        #expect(WaitTool.bounded(0) == nil)
+        #expect(WaitTool.bounded(-30) == nil)
     }
 
     // MARK: - Nothing to wait for is reported, never trapped
@@ -273,7 +273,7 @@ struct WaitToolTests {
         let run = try await startScriptedRun(on: context)
 
         // The harshest site mount there is: background, no clock. The tool
-        // declares `synchronousUnbounded` itself, and a declaration wins over
+        // declares `synchronous` itself, and a declaration wins over
         // the site, so the wait runs to its own conclusion.
         let mounted = try #require(
             context.mount(WaitTool(), as: ToolMount(mode: .background, timeout: nil))

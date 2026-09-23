@@ -43,8 +43,10 @@ allows:
 
 - `status()`, `wait()`, and `cancel()` are the **background runs**, which carry
   envelopes and outcomes only. `wait()` resolves to a run's terminal event —
-  a bounded output tail (`SessionMailbox.terminalDetailTailLimit`) plus the
-  run's identifier — never a capability's full store, and `status()` reports
+  the short report the tool returned plus the run's identifier. Router carries
+  that report whole, so each tool keeps its own report short (`BackgroundTool`);
+  `runCode` caps its report at `MultiToolConfiguration.returnValueCharacterLimit`
+  and `consoleCharacterLimit`. `status()` reports
   a running run's token, op, kind, and latest progress, never its output. An
   unknown completion token is a reportable no-op, not a throw: one snippet
   cannot probe another session's tokens, because the mailbox it reaches is
@@ -73,7 +75,7 @@ that one tool's own `call(arguments:)`.
   the interpreter's watchdog (`JSContextGroupSetExecutionTimeLimit`), not left
   to run forever. Under a `MultiTool` the ceiling it terminates at is always
   `MultiToolConfiguration.executionTimeLimit`, which defaults to
-  `ToolMount.defaultTimeoutSeconds` (120 seconds). That holds for
+  `MultiToolConfiguration.defaultExecutionTimeLimit` (120 seconds). That holds for
   the sandbox `MultiTool.init` builds for itself and for one injected through
   its `interpreter:` parameter alike: `MultiTool.init` re-arms whatever
   interpreter it is given from the configured ceiling

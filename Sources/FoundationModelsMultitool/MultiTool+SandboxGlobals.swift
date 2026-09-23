@@ -257,8 +257,8 @@ extension MultiTool {
                 // wait
                 /**
                  * Waits up to `seconds` for one long-running call to finish, then reports its
-                 * terminal event — the run's identifier and its bounded output tail, never a
-                 * tool's whole output. A deadline that passes with the run still going reports
+                 * terminal event — the run's identifier and the short report the tool
+                 * returned. A deadline that passes with the run still going reports
                  * `\(CallResult.timeout)` rather than failing.
                  * @returns Promise<FinishedRun | NoResult>
                  * @example const finished = await wait(token, 30);
@@ -406,8 +406,9 @@ extension MultiTool {
             return .object(terminalEventFields(of: terminal))
         case .unknownToken:
             return .object(tokenOnlyFields(result: CallResult.unknown, token: token))
-        case .deadlineElapsed:
-            // The run registered between the snapshot and the probe. Re-read
+        case .deadlineElapsed, .cancelled:
+            // The run registered between the snapshot and the probe, or the
+            // probe itself was cancelled; either way the run is still going. Re-read
             // it, so the reported row carries the same fields a running run
             // always does rather than a partial one.
             let going = await context.backgroundRuns().first { $0.completionToken == token }
@@ -419,8 +420,10 @@ extension MultiTool {
     }
 
     /// `wait()`'s implementation: awaits one run's settlement with a deadline
-    /// and reports the terminal event — the run's identifier plus its bounded
-    /// output tail — never a capability's full store.
+    /// and reports the terminal event — the run's identifier plus the report
+    /// the tool returned. Router carries that report whole; each tool keeps its
+    /// report short (`BackgroundTool`), and `runCode` caps its own through
+    /// `ResultRenderer`.
     ///
     /// - Parameters:
     ///   - arguments: the call's arguments: a completion-token string and a
@@ -446,6 +449,8 @@ extension MultiTool {
             return .object(terminalEventFields(of: terminal))
         case .deadlineElapsed:
             return .object(tokenOnlyFields(result: CallResult.timeout, token: token))
+        case .cancelled:
+            throw CancellationError()
         case .unknownToken:
             return .object(tokenOnlyFields(result: CallResult.unknown, token: token))
         }
@@ -505,8 +510,7 @@ extension MultiTool {
     }
 
     /// The JS-visible fields of a run's terminal event — its identifier, the
-    /// bounded output tail the mailbox already capped, its ``RunState``, and
-    /// its honest outcome.
+    /// report the tool returned, its ``RunState``, and its honest outcome.
     ///
     /// The state is derived from the event rather than passed in, so no call
     /// site can label a run that failed complete, and a finished run reads

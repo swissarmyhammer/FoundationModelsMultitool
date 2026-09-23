@@ -338,7 +338,7 @@ struct SearchToolsToolTests {
         let tool = SearchToolsTool(searcher: searcher, limit: surface.entries.count)
 
         // The harshest site mount there is: background, no clock. The tool
-        // declares `synchronousUnbounded` itself, and a declaration wins over
+        // declares `synchronous` itself, and a declaration wins over
         // the site, so discovery still blocks. Asserted against a mount rather
         // than by timing a real search: "however long it takes" is a property
         // of the mount, not of a stopwatch.

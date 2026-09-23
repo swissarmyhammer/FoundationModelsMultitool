@@ -129,7 +129,7 @@ final class GatedScriptedTool: Tool, Sendable {
     private let backgrounded: SettlementGate
 
     /// What the call returns once the gate opens; the terminal event's
-    /// bounded output tail. Also the reason it throws, when `fails` is set.
+    /// detail. Also the reason it throws, when `fails` is set.
     private let detail: String
 
     /// The progress detail to post once backgrounded, or `nil` to post none.
@@ -196,8 +196,8 @@ final class GatedScriptedTool: Tool, Sendable {
 /// - Parameters:
 ///   - context: the session context to start the run on.
 ///   - tool: the tool's name that owns the run; also the run's op.
-///   - detail: what the call returns once it finishes — the bounded output
-///     tail a `wait()` resolves to. Also the reason it throws when `failing`.
+///   - detail: what the call returns once it finishes — the detail a `wait()`
+///     resolves to. Also the reason it throws when `failing`.
 ///   - progress: the latest progress detail `status()` should report, or
 ///     `nil` to let the run post none. When given, this returns only once that
 ///     detail has reached the run's status row, so a following assertion never
