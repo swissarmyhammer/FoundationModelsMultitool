@@ -248,6 +248,28 @@ private let mcpProducts: [Target.Dependency] = [
     .product(name: "MCP", package: mcpPackage)
 ]
 
+/// The HTML parser package the web capability reads pages with.
+///
+/// web.md § "Decisions", item 1, selects it. SwiftSoup is pure Swift, has an
+/// MIT license, and parses HTML5 into a DOM that CSS selectors can query.
+/// Foundation `XMLDocument` with `.documentTidyHTML` needs no new dependency,
+/// but its tidy step is not an HTML5 parser, and it changes or drops modern
+/// markup. `HTMLMarkdown` walks the SwiftSoup DOM, and the search providers
+/// that read a results page use its selectors.
+///
+/// The version is a floor at the release that was current when the dependency
+/// was added. SwiftSoup follows semantic versions, thus a floor takes each
+/// compatible release.
+private let htmlParserPackage = "SwiftSoup"
+
+/// The products of `htmlParserPackage`, linked by the library target below.
+///
+/// The web capability is the one consumer. `shellProducts` and `mcpProducts`
+/// group their own products the same way.
+private let webProducts: [Target.Dependency] = [
+    .product(name: "SwiftSoup", package: htmlParserPackage)
+]
+
 /// The name of the scripted MCP test server library target, and of the
 /// product that exports it.
 ///
@@ -419,18 +441,22 @@ let package = Package(
         // movement, change `branch: mainBranch` to `revision:` with the
         // revision that file names.
         .package(url: "https://github.com/swissarmyhammer/\(mcpPackage).git", branch: mainBranch),
+        // The package of `webProducts` — see `htmlParserPackage`. It stands
+        // under an organization of its own, so neither helper above fits it.
+        .package(url: "https://github.com/scinfu/\(htmlParserPackage).git", from: "2.13.9"),
     ],
     targets: [
         // Links `shellProducts` for the shell capability this library takes
         // over from `../FoundationModelsShelltool`, and `mcpProducts` for the
-        // MCP capability it takes over from `../FoundationModelsMCP`.
+        // MCP capability it takes over from `../FoundationModelsMCP`, and
+        // `webProducts` for the HTML parser of the web capability.
         .target(
             name: packageName,
             dependencies: [
                 .product(name: routerDependencyName, package: routerDependencyName),
                 .product(name: metadataRegistryDependencyName, package: metadataRegistryDependencyName),
                 .product(name: extrasDependencyName, package: extrasDependencyName),
-            ] + shellProducts + mcpProducts,
+            ] + shellProducts + mcpProducts + webProducts,
             path: "\(sourcesPath)\(packageName)"
         ),
         // M9: the sample CLI's whole implementation — plan.md "M9 — Sample CLI.
@@ -559,6 +585,11 @@ let package = Package(
                 // load these through `Bundle.module`, as `HashlineTests` loads
                 // its goldens.
                 .copy("MCPFixtures"),
+                // Hand-written HTML pages and the markdown and text that
+                // `HTMLMarkdown` must make from each one. `HTMLMarkdownTests`
+                // loads these through `Bundle.module`, as `HashlineTests`
+                // loads its goldens.
+                .copy("WebGoldens"),
             ]
         ),
     ]

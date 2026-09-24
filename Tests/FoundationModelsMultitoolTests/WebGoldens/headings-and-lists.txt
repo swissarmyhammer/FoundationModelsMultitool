@@ -1,0 +1,18 @@
+Main heading
+
+An intro paragraph that runs over two lines.
+
+Fruit
+
+Apple
+Banana
+  Cavendish
+  Plantain
+Cherry
+
+Steps
+
+3. Open the box.
+4. Read the manual.
+
+Last paragraph.

@@ -1,0 +1,12 @@
+Call greet() to say hello.
+
+func greet() {
+    print("Hello")
+}
+
+Plain block:
+
+line one
+  line two
+
+let x = 1;

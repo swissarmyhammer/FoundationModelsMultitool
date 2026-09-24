@@ -43,8 +43,25 @@ comments:
     - warnings: `swift build` shows one warning: `missing creator for mutated node: (.../mlx-swift_Cmlx.bundle/Contents/MacOS)`. This warning is from the build system for the `mlx-swift` dependency bundle. It is not from this project's Swift sources. It was present before this task's change and is noted as pre-existing on earlier tasks.
     - next: ready for review.
   timestamp: 2026-09-24T16:53:40.776432+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m3a652wcx8e6zrx8n9hrt29m
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (commit 47fcfcb). 0 findings, 0 confirmed, 0 refuted. 7 of 7 review tasks attempted, 0 failed. 6 files reviewed. 2 files under .kanban/ are excluded by .reviewignore. The commit renames no file.
+    - note: The first run had 1 failed review task of 7, so its result was incomplete. A second run completed all 7 tasks. This record uses the second run.
+    - next: None. The task is in done.
+  timestamp: 2026-09-24T17:07:03.180997+00:00
+- actor: claude-code
+  id: 01m3a65gvcvxbfmvq9st1xny10
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 6 files
+    - test: green — swift test, 1544 passed
+    - commit: 47fcfcb
+    - review: clean — 0 findings; the task is in done
+  timestamp: 2026-09-24T17:07:17.484729+00:00
+position_column: done
+position_ordinal: ffce80
 title: 'Web: add WebConfiguration, WebAPIKey, and key redaction'
 ---
 ## What

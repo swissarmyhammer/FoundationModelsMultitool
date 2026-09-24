@@ -1,0 +1,3 @@
+Heading Title
+
+The title comes from og:title.
