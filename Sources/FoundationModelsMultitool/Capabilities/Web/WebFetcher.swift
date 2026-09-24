@@ -140,8 +140,9 @@ final class WebFetcher: Sendable {
     /// read its configuration.
     let session: URLSession
 
-    /// The limits and the user agent of each request.
-    private let policy: WebFetchPolicy
+    /// The limits and the user agent of each request. It is internal, thus
+    /// the search chain reads the time limit of a provider from it.
+    let policy: WebFetchPolicy
 
     /// The guard that checks each URL and each redirect hop.
     private let addressGuard: WebAddressGuard

@@ -89,11 +89,36 @@ comments:
     - blocker: a person must make the build compile again (handle `.repetitionStopped` in `CLIRunner.swift`, or pin the router), then run `/review 01M3A30QSWWD8A4GSMCD3C3DFQ HEAD~1..HEAD` again. The task stays in `review`.
     - next: human decision.
   timestamp: 2026-09-24T19:24:54.544318+00:00
+- actor: claude-code
+  id: 01m3ag1hb29691a50fs7k4j3qf
+  text: |-
+    ### finish iteration 2 — stuck
+    - implement: changed — 1 file (periphery markers)
+    - test: green — swift test, 1611 passed
+    - commit: 3ac0907
+    - review: stuck — the dead-code rule could not build the package (CLIRunner.swift:994, Router added SessionEvent.repetitionStopped). Task ^zf65c6p fixed the build in 4834ac3 and 8613c33. Next: review 3ac0907 again.
+  timestamp: 2026-09-24T19:59:52.674959+00:00
+- actor: claude-code
+  id: 01m3ag6d8ej5wdv5gnf24xy56p
+  text: |-
+    ### review — clean
+    - evidence: `swift build` completes with no error (the CLIRunner.swift build failure is gone). `review sha 3ac0907~1..3ac0907` gives 0 findings, 0 confirmed, 0 refuted; 7 validator runs, 0 failed. The two prior findings (WebPageReader.swift `url` and `format`, `code-hygiene/dead-code-swift`, assignOnlyProperty) are fixed, and their items are checked.
+    - next: none. The task is in done.
+  timestamp: 2026-09-24T20:02:32.334953+00:00
+- actor: claude-code
+  id: 01m3ag6xb5hkyfwabyaq1ftkp3
+  text: |-
+    ### finish iteration 3 — clean
+    - implement: no work (the build fix was on task ^zf65c6p)
+    - test: not run again (1611 passed on 3ac0907; 1612 passed after the build fix)
+    - commit: 3ac0907 (no new commit)
+    - review: clean — 3ac0907~1..3ac0907, 0 findings, 7 validators, 0 failed; the task is in done
+  timestamp: 2026-09-24T20:02:48.805681+00:00
 depends_on:
 - 01M3A30EJ2DG162C1F2CXZXYQ1
 - 01M3A2ZQDDZWJVE2MA3GFABKGY
-position_column: review
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffd380
 title: 'Web: add page conversion, windows, and the page cache'
 ---
 ## What

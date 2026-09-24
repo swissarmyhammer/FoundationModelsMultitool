@@ -106,6 +106,19 @@ public struct WebAPIKey: Sendable, Hashable {
         guard let value, !value.isEmpty else { return nil }
         return value
     }
+
+    /// The name of the environment variable of an `.environment` key, or
+    /// `nil` for a `.literal` key.
+    ///
+    /// The search chain names the variable in the note when the variable is
+    /// not set, for example `BRAVE_SEARCH_API_KEY is not set`. The string
+    /// forms of a key do not show it.
+    var variableName: String? {
+        switch source {
+        case .literal: nil
+        case .environment(let name): name
+        }
+    }
 }
 
 extension WebAPIKey: CustomStringConvertible, CustomDebugStringConvertible, CustomReflectable {

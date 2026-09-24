@@ -81,8 +81,24 @@ comments:
     - The `no_direct_standard_out_logs` finding on `ScenarioRunner.swift` is fixed. All trace lines now go through one function, `reportTraceLine`, in `CatalogFeedback.swift`. That function carries the `swiftlint:disable:next no_direct_standard_out_logs` comment and a reason.
     - next: send the task to review.
   timestamp: 2026-09-24T19:56:04.345943+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m3ag0zpzv6rbnsk62qeg2bdp
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit 8613c33). 0 findings, 0 confirmed, 0 refuted. 2 source files reviewed. 4 `.kanban/` files not reviewed because `.reviewignore` excludes them. The prior finding at `ScenarioRunner.swift` (`no_direct_standard_out_logs`) is fixed. ScenarioRunner.swift has no direct `print` now. The trace line goes through the one reporter in `CatalogFeedback.swift`, which has a `swiftlint:disable:next` line and the reason.
+    - next: none. The task moved to done.
+  timestamp: 2026-09-24T19:59:34.623221+00:00
+- actor: claude-code
+  id: 01m3ag1b3378cq040jy3jrwcgh
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — 2 files
+    - test: green — swift test, 1612 passed; IntegrationTests build passes
+    - commit: 8613c33
+    - review: clean — 0 findings; prior finding checked; the task is in done
+  timestamp: 2026-09-24T19:59:46.275028+00:00
+position_column: done
+position_ordinal: ffd280
 title: 'Deps: handle SessionEvent.repetitionStopped from the current Router'
 ---
 ## What
