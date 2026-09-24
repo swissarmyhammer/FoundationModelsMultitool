@@ -81,8 +81,24 @@ comments:
     - note: `swiftformat --lint` and `swiftlint lint` show many findings in the changed test files. The repository holds no `.swiftformat` file and no `.swiftlint.yml` file. The task text asks to run `swift test` and fix each failure and each warning from that run. This comment does not fix the `swiftformat` and `swiftlint` findings, because those tools sit outside the given scope, and most findings are in pre-existing lines, not new lines. A future review step can check these findings if the team wants that check.
     - next: none from this step. The task can move on.
   timestamp: 2026-09-24T17:46:18.633092+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m3a8mrz621zp9pe23beean8b
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (88710cc). 0 findings, 0 confirmed, 0 refuted. 9 files reviewed. 7 attempts, 0 failed. The two prior findings (HTMLMarkdown.swift reuse, HTMLMarkdownTests.swift reuse) are checked. The commit renames no files.
+    - next: The task is in done. No work remains on this task.
+  timestamp: 2026-09-24T17:50:34.470160+00:00
+- actor: claude-code
+  id: 01m3a8n4q5e0s5t0bnd7mny0d3
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — 9 files (two reuse findings fixed)
+    - test: green — swift test, 1552 passed
+    - commit: 88710cc
+    - review: clean — 0 findings; 2 prior findings checked; the task is in done
+  timestamp: 2026-09-24T17:50:46.501080+00:00
+position_column: done
+position_ordinal: ffcf80
 title: 'Web: add SwiftSoup and HTMLMarkdown converter with goldens'
 ---
 ## What
