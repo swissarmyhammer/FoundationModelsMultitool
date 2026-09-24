@@ -40,7 +40,7 @@ func runBareSessionScenario(
 ) async throws {
     let model = SystemLanguageModel.default
     guard case .available = model.availability else {
-        print("SKIP [\(scenarioName)] the system language model is not available")
+        reportTraceLine("SKIP [\(scenarioName)] the system language model is not available")
         return
     }
 
@@ -50,7 +50,7 @@ func runBareSessionScenario(
     // the root package's `ExamplesTests` does.
     let response: LanguageModelSession.Response<String> = try await session.respond(to: prompt)
 
-    print("RESULT [\(scenarioName)] reply=\"\(response.content)\"")
+    reportGatedResult(scenario: scenarioName, line: "reply=\"\(response.content)\"")
     #expect(
         response.content.contains(marker),
         "expected the answer to carry \(marker), and it was: \(response.content)")

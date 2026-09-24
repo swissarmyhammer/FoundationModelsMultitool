@@ -601,7 +601,7 @@ struct LiveRouterFixture {
             let flashLine =
                 "flash=\(profile.flash.chosen.stringValue) "
                 + "footprint=\(profile.flash.footprintBytes)B"
-            print(
+            reportTraceLine(
                 "RESOLVED [\(definition.name)] \(standardLine) | \(flashLine)"
                     // The recordings directory of THIS resolution, printed so a
                     // log reader — a person over a CI log above all — can pair

@@ -9,6 +9,9 @@ import ScenarioGrading
 /// `fork()`s of the selection tier's cached root it must produce.
 private let selectionCallCount = 2
 
+/// The label the `RESULT` and `SKIP` lines of this suite carry.
+private let selectionForkScenario = "selectionFork"
+
 /// The gated selection-tier `fork()`-per-call trace.
 ///
 /// ## What this suite establishes
@@ -111,7 +114,7 @@ struct SelectionForkPerCallTests {
         do {
             fixture = try await LiveRouterFixture.resolve()
         } catch GenerationError.notWiredForLiveInference {
-            print("SKIP [selectionFork]: Router's live-inference path is not wired up in this environment.")
+            printSkipNote(selectionForkScenario)
             return
         }
 
@@ -150,7 +153,7 @@ struct SelectionForkPerCallTests {
 
             await fixture.tearDown()
         } catch GenerationError.notWiredForLiveInference {
-            print("SKIP [selectionFork]: Router's live-inference path is not wired up in this environment.")
+            printSkipNote(selectionForkScenario)
             await fixture.tearDown()
         } catch {
             await fixture.tearDown()
@@ -263,13 +266,15 @@ private func expectSecondCallNoSlower(first: TimeInterval, second: TimeInterval)
 ///   - first: the first `searchTools` call's wall-clock duration.
 ///   - second: the second call's wall-clock duration.
 private func reportDiagnostics(_ trace: SelectionForkTrace, first: TimeInterval, second: TimeInterval) {
-    print(
-        "RESULT [selectionFork] first=\(first)s second=\(second)s "
+    reportGatedResult(
+        scenario: selectionForkScenario,
+        line: "first=\(first)s second=\(second)s "
             + "children=\(trace.childSessionIds.count) roots=\(trace.rootSessionIds.count)"
     )
     for generation in trace.generations {
-        print(
-            "RESULT [selectionFork] generation seq=\(generation.seq) "
+        reportGatedResult(
+            scenario: selectionForkScenario,
+            line: "generation seq=\(generation.seq) "
                 + "tokensIn=\(String(describing: generation.tokensIn))(asserted on by nothing) "
                 + "tokensOut=\(String(describing: generation.tokensOut)) "
                 + "ms=\(String(describing: generation.ms))"

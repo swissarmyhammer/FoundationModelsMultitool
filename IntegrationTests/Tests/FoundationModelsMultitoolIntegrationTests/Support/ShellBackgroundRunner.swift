@@ -248,8 +248,9 @@ func runShellBackgroundScenario(name: String) async throws {
         )
         grade(scenario: name, checks: shellBackgroundChecks(for: evidence))
 
-        print(
-            "RESULT [\(name)] elapsed=\(elapsed)s toolCalls=\(turn.toolCallCount) "
+        reportGatedResult(
+            scenario: name,
+            line: "elapsed=\(elapsed)s toolCalls=\(turn.toolCallCount) "
                 + "backgroundToken=\(evidence.backgroundRunToken ?? "none") "
                 + "backgroundReports=\(evidence.backgroundReports) "
                 + "background=\(plane.backgroundRun?.description ?? "none") "

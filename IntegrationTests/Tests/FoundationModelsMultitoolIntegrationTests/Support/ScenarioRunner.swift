@@ -793,8 +793,11 @@ func grade(scenario name: String, checks: [ScenarioCheck]) {
 /// Prints the standard note for a scenario skipped because this environment
 /// has no live-inference path wired up.
 ///
+/// Each gated suite that resolves a live fixture writes its skip note through
+/// this function, so the text of the note is in one location.
+///
 /// - Parameter name: the scenario label.
-private func printSkipNote(_ name: String) {
+func printSkipNote(_ name: String) {
     reportTraceLine("SKIP [\(name)]: Router's live-inference path is not wired up in this environment.")
 }
 

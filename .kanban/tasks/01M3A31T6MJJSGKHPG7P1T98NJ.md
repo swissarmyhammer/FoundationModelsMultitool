@@ -60,6 +60,16 @@ comments:
     - note: `swiftformat --lint` with the four stated flags reports format changes on 312 of 357 files across the whole repo, old and new files alike, this step made no source edits. A fix at this scope is not part of the test step. The `/review` code-hygiene check will judge the diff.
     - next: none. The test step is done. The BLOCKER from the implement step (live JSON goldens for the keyed providers need real keys) is still open and is not a test-step matter.
   timestamp: 2026-09-24T22:17:34.691424+00:00
+- actor: claude-code
+  id: 01m3aqywmkpfm6ppz80vve0j00
+  text: |-
+    ### finish iteration 1 — stuck
+    - implement: stuck — code complete (11 files); the item "Record one real JSON response for each" is not done. No API key is set, so no live recording is possible. The three JSON fixtures follow the provider documentation.
+    - test: green — swift test, 1674 passed
+    - commit: ac2e9b4 (checkpoint)
+    - review: not run
+    - decision for a person: (1) supply keys and allow one live call per provider to record the fixtures, or (2) accept the documentation fixtures for this card, because the keyed live tests cover the real services. Then run /finish ^p1t98nj.
+  timestamp: 2026-09-24T22:18:14.547511+00:00
 depends_on:
 - 01M3A310C33P2DWGRX67YFR99X
 - 01M3A2ZQDDZWJVE2MA3GFABKGY
