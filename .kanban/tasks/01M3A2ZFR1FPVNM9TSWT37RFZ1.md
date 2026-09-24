@@ -53,8 +53,24 @@ comments:
     - Files changed: `Sources/FoundationModelsMultitool/Capabilities/Web/WebAddressGuard.swift`, `Sources/FoundationModelsMultitool/Capabilities/Web/IPAddress.swift`, `Sources/FoundationModelsMultitool/Capabilities/Web/BlockedAddresses.swift`, `Sources/FoundationModelsMultitool/Capabilities/Web/HostResolver.swift`, `Tests/FoundationModelsMultitoolTests/WebAddressGuardTests.swift`.
     - Next: `/review`.
   timestamp: 2026-09-24T18:11:59.611903+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m3aa5d5hebvebq23c3qq6bnk
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit c8b144d). The engine reviewed 5 files. It found 0 findings (0 confirmed, 0 refuted, 7 attempted, 0 failed). The commit has no renamed files. The engine did not review the 4 files in `.kanban/` because `.reviewignore` excludes them.
+    - next: None. The task is in `done`.
+  timestamp: 2026-09-24T18:17:08.017142+00:00
+- actor: claude-code
+  id: 01m3aa5v5dwptnhj6kw0z87939
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 2 files (the test step split them into 5 for lint)
+    - test: green — swift test, 1573 passed
+    - commit: c8b144d
+    - review: clean — 0 findings; the task is in done
+  timestamp: 2026-09-24T18:17:22.349404+00:00
+position_column: done
+position_ordinal: ffd080
 title: 'Web: add WebAddressGuard (URL and resolved-address checks)'
 ---
 ## What

@@ -12,11 +12,13 @@
 // connect. A DNS server that gives a different address the second time can
 // pass the guard.
 //
-// This file holds the guard itself (``WebGuardRefusal``, ``WebAddressGuard``).
-// ``IPAddress`` is in `IPAddress.swift`, the blocked ranges are in
-// `BlockedAddresses.swift`, and the resolver is in `HostResolver.swift`.
+// This file holds the guard itself (``WebGuardRefusal``, ``WebAddressGuard``)
+// and its redirect hook (``RedirectCheck``), which `WebFetcher.swift` gives to
+// each request. ``IPAddress`` is in `IPAddress.swift`, the blocked ranges are
+// in `BlockedAddresses.swift`, and the resolver is in `HostResolver.swift`.
 
 import Foundation
+import Synchronization
 
 /// A refusal of the guard, with the correction for the model.
 ///
@@ -95,7 +97,8 @@ struct WebAddressGuard: Sendable {
         }
         guard url.user(percentEncoded: true) == nil, url.password(percentEncoded: true) == nil else {
             return .failure(
-                WebGuardRefusal(reason: "the URL to \(host) has user info (user:pass@). Remove it"))
+                WebGuardRefusal(reason: "the URL to \(host) has user info (user:pass@). Remove it")
+            )
         }
         guard !blockedHosts.contains(host) else {
             return .failure(WebGuardRefusal(reason: "the host \(host) is on the blocklist"))
@@ -143,5 +146,82 @@ struct WebAddressGuard: Sendable {
                 WebGuardRefusal(reason: "\(host) resolves to \(address), \($0.phrase)")
             }
         }.first
+    }
+}
+
+/// The redirect hook of the guard for one request of `WebFetcher`: the guard
+/// checks the URL of each redirect hop, and the hop count must stay at or
+/// below the limit.
+///
+/// A refused hop is not followed, and the check cancels the task. The
+/// fetcher then reads ``failure`` in place of the cancel error.
+final class RedirectCheck: NSObject, URLSessionTaskDelegate, Sendable {
+    /// The guard that checks each hop.
+    private let addressGuard: WebAddressGuard
+
+    /// The maximum number of hops.
+    private let limit: Int
+
+    /// The URL of the first request, for the failure text.
+    private let origin: String
+
+    /// The number of hops so far, and the failure of the first refused hop.
+    private let state = Mutex<(hops: Int, failure: WebFetchFailure?)>((0, nil))
+
+    /// Makes the check for one request.
+    ///
+    /// - Parameters:
+    ///   - addressGuard: The guard that checks each hop.
+    ///   - limit: The maximum number of hops.
+    ///   - origin: The URL of the first request.
+    init(addressGuard: WebAddressGuard, limit: Int, origin: String) {
+        self.addressGuard = addressGuard
+        self.limit = limit
+        self.origin = origin
+    }
+
+    /// The failure of the refused hop, or `nil` when no hop was refused.
+    var failure: WebFetchFailure? {
+        state.withLock { $0.failure }
+    }
+
+    /// Counts the hop, and checks its URL with the guard.
+    ///
+    /// - Parameters:
+    ///   - session: The session of the request.
+    ///   - task: The task of the request.
+    ///   - response: The redirect response.
+    ///   - request: The request of the next hop.
+    /// - Returns: `request` when the hop is allowed, else `nil`.
+    func urlSession(
+        _: URLSession, task: URLSessionTask, willPerformHTTPRedirection _: HTTPURLResponse,
+        newRequest request: URLRequest
+    ) async -> URLRequest? {
+        let hops = state.withLock { state in
+            state.hops += 1
+            return state.hops
+        }
+        guard hops <= limit else {
+            return refuse(.tooManyRedirects(url: origin, limit: limit), task: task)
+        }
+        guard let url = request.url else {
+            return refuse(.refused(WebGuardRefusal(reason: "the redirect has no URL")), task: task)
+        }
+        if let refusal = await addressGuard.check(url) {
+            return refuse(.refused(refusal), task: task)
+        }
+        return request
+    }
+
+    /// Keeps `failure`, stops the redirect, and cancels the task.
+    ///
+    /// - Parameters:
+    ///   - failure: The failure of the hop.
+    ///   - task: The task of the request.
+    /// - Returns: `nil`, which tells the session not to follow the hop.
+    private func refuse(_ failure: WebFetchFailure, task: URLSessionTask) -> URLRequest? {
+        state.withLock { $0.failure = $0.failure ?? failure }
+        task.cancel()
+        return nil
     }
 }
