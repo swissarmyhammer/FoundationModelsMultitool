@@ -142,6 +142,7 @@ The Rust tool has defects. We do not port them.
 | `content` | `String` | The window of the converted content. |
 | `totalCharacters` | `Int` | The length of the full converted content. |
 | `nextOffset` | `Int?` | The `offset` of the next window, or `nil` at the end. |
+| `notes` | `[String]?` | For example, that the download stopped at the byte limit and the page is not complete. |
 | `correction` | `String?` | Set only when the call failed. |
 
 A non-2xx status is not a correction. The model gets `status` and the body,
@@ -192,9 +193,9 @@ public enum WebSearchProvider: Sendable, Hashable {
 | `kagi` | `GET https://kagi.com/api/v0/search?q=…` | `KAGI_API_KEY` |
 | `searxng` | `GET <base>/search?q=…&format=json` | `SEARXNG_URL` (a base URL, not a key) |
 
-Phase 4 must examine each endpoint, header, and response field against the
-current documentation of the provider before it writes the adapter. This table
-comes from memory, not from a check.
+The keyed provider tasks must examine each endpoint, header, and response
+field against the current documentation of the provider before they write the
+adapter. This table comes from memory, not from a check.
 
 Each provider is one type that conforms to an internal protocol:
 
@@ -296,8 +297,10 @@ Each skip adds one line to `notes`. When all providers fail, the result has a
    each address against the lists in "What we copy". It also refuses a URL
    with user info (`user:pass@`).
 3. **Request.** One `URLSession` for each capability, from
-   `sessionConfiguration`. It sends no cookies and has no URL cache. The
-   `User-Agent` comes from `WebFetchPolicy`. The default names this package.
+   `sessionConfiguration`. It sends no cookies and has no URL cache. When the
+   request has no `User-Agent`, it comes from `WebFetchPolicy` (the default
+   names this package). A provider request that sets its own `User-Agent`
+   (the Brave HTML request) keeps it.
 4. **Redirects.** `urlSession(_:task:willPerformHTTPRedirection:...)` sends
    each hop through the guard. The limit is 10 hops.
 5. **Body.** `URLSession.bytes(for:)`. Stop at `WebFetchPolicy.maxBytes`
@@ -310,10 +313,11 @@ Each skip adds one line to `notes`. When all providers fail, the result has a
 7. **Window.** Apply `offset` and `maxCharacters` to the converted text. Set
    `totalCharacters` and `nextOffset`.
 
-The capability keeps a small cache of converted pages for one session. The
-cache key is the final URL. The cache has at most 16 entries (least recently
-used goes first). Thus a snippet that reads a long page window by window
-downloads it one time.
+The capability keeps a small cache of converted pages for one session. Each
+entry is stored under the requested URL and under the final URL, with the
+format. Thus a second window of a URL that redirects also finds the entry.
+The cache has at most 16 pages (least recently used goes first). Thus a
+snippet that reads a long page window by window downloads it one time.
 
 ### HTML to markdown
 
@@ -353,7 +357,10 @@ declare `BackgroundTool`. See "Decisions", item 3.
 ```
 Sources/FoundationModelsMultitool/Capabilities/Web/
   WebCapability.swift          noun "web", two verbs, one WebContext
-  WebContext.swift             URLSession, guard, provider chain, page cache
+  WebContext.swift             one WebFetcher, WebPageReader, and WebSearchChain
+  WebFetcher.swift             URLSession, guard, redirect hook, byte limit, text decode
+  WebPageReader.swift          conversion, windows, page cache
+  WebSearchChain.swift         provider order, fallback, notes, redaction
   WebConfiguration.swift       WebConfiguration, WebSearchProvider, WebAPIKey, WebFetchPolicy
   Search.swift                 SearchArguments, SearchResult, WebHit, struct Search: Tool
   Fetch.swift                  FetchArguments, FetchResult, struct Fetch: Tool
@@ -376,7 +383,7 @@ Package.swift                                                      + SwiftSoup d
 README.md                                                          ## Capabilities: + web
 docs/SECURITY.md                                                   + the web capability section
 WebIntegrationTests/                                               new package (see Testing)
-.github/workflows/ci.yml                                           + web-integration job
+.github/workflows/web.yml                                          new workflow: web-integration job
 ```
 
 ## Testing
@@ -394,7 +401,7 @@ can examine the headers.
 | Suite | What it proves |
 |---|---|
 | `WebCapabilityTests` | The shape of `FilesCapabilityTests`: noun `web`, exactly two verbs, one shared context, `withWeb` renders both, no `web` entries without `withWeb`, `.duplicateNoun`, `searchTools` finds each verb, `help()` and `docs()`. |
-| `WebSearchArgumentTests` | Each bound and each enum value gives the correct correction text. |
+| `WebVerbArgumentTests` | Each bound and each enum value of both verbs gives the correct correction text. |
 | `BraveHTMLProviderTests` | Parse of a recorded Brave page in `WebGoldens/brave-*.html`. Titles, URLs, snippets, entity decode, duplicates, `count` limit, title fallback, snippet fallback, challenge page. |
 | `DuckDuckGoHTMLProviderTests` | Parse of recorded pages. Decode of the `uddg=` redirect links. |
 | `KeyedProviderTests` | For each keyed provider: the request (method, URL, auth header, body) and the parse of a recorded JSON response. The key is in the header and nowhere else. |
@@ -404,7 +411,8 @@ can examine the headers.
 | `WebConfigurationTests` | `fromEnvironment` with a given dictionary: order, `BRAVE_API_KEY` alias, `SEARXNG_URL`, keyless fallback at the end. `.keyless` reads no environment. |
 | `WebAddressGuardTests` | Each blocked host, suffix, and range, IPv6, IPv4-mapped IPv6, user info, bad scheme. A resolver stub gives many addresses, and one private address is sufficient for a refusal. |
 | `WebRedirectGuardTests` | A redirect to `http://127.0.0.1/` is refused. Eleven hops are refused. |
-| `WebFetchTests` | Content types, charset, byte limit, windows (`offset`, `nextOffset`, `totalCharacters`), non-2xx status, timeout correction, page cache hit. |
+| `WebFetcherTests` | Content types, charset, byte limit, non-2xx status, timeout correction, `User-Agent` handling, the unguarded request for host configuration. |
+| `WebPageReaderTests` | Windows (`offset`, `nextOffset`, `totalCharacters`), formats, page cache hit (also after a redirect), eviction. |
 | `HTMLMarkdownTests` | Goldens: `WebGoldens/*.html` to `*.md`. Headings, lists, code fences with language, relative links made absolute, tables, removed elements, title order. |
 | `WebRunCodeTests` | JavaScript snippets through `MultiTool.call`, the shape of `FilesCrossOpFlowTests`: search then fetch; `Promise.all` over three fetches; a correction reaches the snippet as a value, not as an exception; a key value never appears in the return value or the console. |
 
@@ -440,7 +448,7 @@ fails. That failure is the signal that we want.
 | `KeylessChainLiveTests` | `.keyless`: the query gives hits, and `provider` is one of the two keyless names. |
 | `FetchLiveTests` | `https://example.com`: title `Example Domain`, content contains `Example Domain`. `http://github.com`: final `url` starts with `https://github.com`. `https://en.wikipedia.org/wiki/Swift_(programming_language)` with `maxCharacters: 2000`: `nextOffset` is set; a second call with that offset gives the next text and no second download (cache). `https://api.github.com/zen`: `contentType` is `text/plain`, content is not empty. `https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf`: correction for a binary type. |
 | `GuardLiveTests` | `http://localtest.me/` (a public DNS name that resolves to `127.0.0.1`): the correction names the loopback address. This proves that the guard checks the resolved address, not only the host name. `http://169.254.169.254/latest/meta-data/`: correction. |
-| `KeyedProviderLiveTests` | One parameterized test over the keyed providers. Each case builds `WebConfiguration.fromEnvironment()`, takes only that provider, and has `.enabled(if:)` on its variable. Each case: query `swift programming language`, at least 3 hits, `provider` is the name of the case, and the key value is not in the rendered result. A case with no key shows as "skipped" with its name. It does not show as "passed". |
+| `KeyedProviderLiveTests` | Six `@Test` functions, one for each keyed provider, with a shared helper. (A Swift Testing trait applies to a whole test function, not to one argument of a parameterized test.) Each test builds `WebConfiguration.fromEnvironment()`, takes only its provider, and has `.enabled(if:)` on its variable. Each test: query `swift programming language`, at least 3 hits, `provider` is the name of the provider, and the key value is not in the rendered result. A test with no key shows as "skipped" with its name. It does not show as "passed". |
 | `KeyedFallbackLiveTests` | `[.braveAPI(.literal("invalid-key")), .braveHTML]`: `provider` is `braveHTML`, `notes` names `braveAPI` with 401 or 403, and the text `invalid-key` is not in the result. |
 | `ExpectedProvidersTests` | Reads `MULTITOOL_WEB_EXPECTED_PROVIDERS` (for example `braveAPI,tavily`). Each name in it must have its key in `fromEnvironment()`. CI sets this variable, so a secret that is not configured fails CI and does not become a quiet skip. Local runs do not set it. |
 | `WebRunCodeLiveTests` | A real `MultiTool` with `.withWeb(configuration: .keyless)` and no model. The snippet at the top of this document runs, and returns 1 to 3 pages, each with a title and content. |
@@ -459,42 +467,30 @@ fails. That failure is the signal that we want.
 
 ### CI
 
-- A new job `web-integration` in `.github/workflows/ci.yml`. It runs Level 2.
-  It maps the repository secrets `BRAVE_SEARCH_API_KEY`, `TAVILY_API_KEY`,
-  `EXA_API_KEY`, `SERPER_API_KEY`, `KAGI_API_KEY` to environment variables,
-  and sets `MULTITOOL_WEB_EXPECTED_PROVIDERS` to the list of secrets that
-  exist.
-- The unit job must also run
-  `swift build --package-path WebIntegrationTests --build-tests`, for the same
-  compile coupling reason that `IntegrationTests/Package.swift` gives. The
-  shared `swift-ci.yaml` possibly needs a new input for a second package path.
-- A daily scheduled run of `web-integration` finds markup drift in the
-  keyless providers before a user finds it.
+- A new workflow file `.github/workflows/web.yml` with one job
+  `web-integration`. It runs Level 2. Its triggers are `push` to `main`,
+  `pull_request`, `workflow_dispatch`, and a daily `schedule`. The daily run
+  finds markup drift in the keyless providers before a user finds it. A
+  separate file keeps the expensive real-model job of `ci.yml` off the daily
+  schedule.
+- The job has no `needs`. It runs
+  `swift build --package-path WebIntegrationTests --build-tests` and then
+  `swift test --package-path WebIntegrationTests --no-parallel` on each push
+  and pull request. The build step gives the compile coupling that
+  `IntegrationTests/Package.swift` asks for. This is a change from the first
+  design, which put the build step in the unit job of the shared
+  `swift-ci.yaml`: that workflow has only one package-path input.
+- The job maps the repository secrets `BRAVE_SEARCH_API_KEY`,
+  `TAVILY_API_KEY`, `EXA_API_KEY`, `SERPER_API_KEY`, `KAGI_API_KEY` to
+  environment variables. It sets `MULTITOOL_WEB_EXPECTED_PROVIDERS` to the
+  provider names (not the secret names) of the secrets that `gh secret list`
+  shows, for example `braveAPI,tavily`.
 
-## Phases
+## Work items
 
-Each phase ends with a green `swift test`. Each phase is one or more kanban
-cards.
-
-1. **Skeleton.** `WebCapability`, `WebContext`, `WebConfiguration` (keyless
-   only), `withWeb`, the two verbs with argument checks and corrections, the
-   stub `URLProtocol`. Tests: `WebCapabilityTests`, `WebSearchArgumentTests`.
-2. **Fetch.** `WebAddressGuard` with redirect hook, stream with byte limit,
-   content types, `HTMLMarkdown`, windows, page cache. Add the SwiftSoup
-   dependency to `Package.swift` and to `WebIntegrationTests/Package.swift`
-   with the same URL and requirement. Tests: guard, redirect, fetch, markdown goldens.
-3. **Keyless search.** `BraveHTMLProvider` (port from `brave.rs`),
-   `DuckDuckGoHTMLProvider`, fallback, `notes`. Record the golden pages. Tests:
-   the provider suites, `ProviderFallbackTests`, `WebRunCodeTests`.
-4. **Keys and keyed providers.** `WebAPIKey`, `fromEnvironment`, redaction,
-   the six keyed adapters. Examine each provider's documentation first.
-   Tests: `KeyedProviderTests`, `WebAPIKeyTests`, `KeyRedactionTests`,
-   `WebConfigurationTests`.
-5. **Live tests.** The `WebIntegrationTests/` package, all Level 2 suites, the
-   CI job, the build step in the unit job, the daily schedule.
-6. **Model scenario, CLI, and documents.** `WebResearchScenarioTests`, the
-   `--web` flag of `multitool-cli` (with `CLIArgumentTests`), `README.md`,
-   `docs/SECURITY.md`.
+The kanban board of this repository holds the work, as tasks with the tag
+`web`. Their dependencies give the order. Each task ends with a green
+`swift test`.
 
 ## Security
 
@@ -514,13 +510,14 @@ must state:
 - Page content is data from outside. It can contain text that tries to give
   the model instructions. The capability does not remove such text. The host
   must know this.
-- `searxng(URL)` is host configuration. The guard does not check that URL,
-  because a local SearXNG instance is a normal case. The guard checks the
-  result URLs that it gives.
+- `searxng(URL)` is host configuration. The guard does not check the search
+  request to that URL, because a local SearXNG instance is a normal case.
+  The guard still checks each redirect hop of that request, and each result
+  URL that a snippet fetches.
 
 ## Decisions
 
-All five decisions are confirmed. Phase 1 can start.
+All five decisions are confirmed.
 
 1. **DOM parser: add SwiftSoup. (Confirmed, 2026-09-24.)** The package has no HTML parser now. The
    package targets macOS 27 only, thus Foundation `XMLDocument` with
@@ -541,7 +538,7 @@ All five decisions are confirmed. Phase 1 can start.
    often slower than `inlineSettleGrace`, we can declare `BackgroundTool` on
    it later. This is only an addition.
 4. **All six keyed providers. (Confirmed, 2026-09-24.)** Brave API, Tavily,
-   Exa, Serper, Kagi, and SearXNG. Phase 4 builds all six.
+   Exa, Serper, Kagi, and SearXNG. All six are built.
 5. **Default configuration of `withWeb()` is `.fromEnvironment()`. (Confirmed, 2026-09-24.)** A host
    that wants no environment read uses `.keyless` or gives its own list.
 
