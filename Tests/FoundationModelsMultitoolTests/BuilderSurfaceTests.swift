@@ -25,20 +25,6 @@ struct BuilderSurfaceTests {
     /// The rendered call path of the one verb of the MCP golden.
     private static let mcpEchoPath = "\(mcpServerName).\(ScriptedServer.echoToolName)"
 
-    /// Reads the golden file named `name` beside this suite, with its
-    /// trailing newlines trimmed as the rendered source is trimmed.
-    ///
-    /// - Parameter name: The file name under `Goldens/`.
-    /// - Returns: The golden text.
-    /// - Throws: When the file does not read.
-    private static func golden(named name: String) throws -> String {
-        let goldenURL = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .appendingPathComponent("Goldens/\(name)")
-        return try String(contentsOf: goldenURL, encoding: .utf8)
-            .trimmingCharacters(in: .newlines)
-    }
-
     @Test("a builder with a fixture set of standalone and grouped tools renders byte-identical to the golden file")
     func fixtureSetMatchesGoldenFile() throws {
         let surface = try MultiTool.Builder()
@@ -47,7 +33,7 @@ struct BuilderSurfaceTests {
             .addGroup(named: "github", [GithubCreateIssueTool(), GithubSearchTool()])
             .build()
 
-        let golden = try Self.golden(named: Self.builderGoldenName)
+        let golden = try TestResource.surfaceGolden(named: Self.builderGoldenName)
 
         #expect(surface.entries.map(\.path) == ["getWeather", "echoText", "github.createIssue", "github.search"])
         #expect(surface.source.trimmingCharacters(in: .newlines) == golden)
@@ -66,7 +52,7 @@ struct BuilderSurfaceTests {
             .withMCP(servers: [server])
             .build()
 
-        let golden = try Self.golden(named: Self.mcpGoldenName)
+        let golden = try TestResource.surfaceGolden(named: Self.mcpGoldenName)
 
         #expect(surface.entries.map(\.path) == [Self.mcpEchoPath])
         #expect(surface.source.trimmingCharacters(in: .newlines) == golden)

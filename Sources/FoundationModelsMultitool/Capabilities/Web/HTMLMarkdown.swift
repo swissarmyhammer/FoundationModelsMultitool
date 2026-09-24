@@ -3,7 +3,9 @@
 // `fetch` gives a page to the model as markdown or as text (web.md § "HTML to
 // markdown"). SwiftSoup parses the page into a DOM (web.md § "Decisions",
 // item 1). The converter removes the page parts that are not content, selects
-// the content root, and walks it in document order.
+// the content root, and walks it in document order. To split text into lines,
+// the converter uses `Hashline.splitLines(_:)`, the one line model of this
+// package. Thus a carriage return and line feed ends a line, as a line feed does.
 
 import Foundation
 import SwiftSoup
@@ -238,9 +240,8 @@ private struct HTMLBlockRenderer {
     /// The text of a run of inline content: each line with its spaces
     /// collapsed and trimmed, and with no empty line.
     private static func paragraphText(_ inlineRun: String) -> String {
-        inlineRun
-            .split(separator: "\n")
-            .map { $0.replacing(/\ {2,}/, with: " ").trimmingCharacters(in: .whitespaces) }
+        Hashline.splitLines(inlineRun)
+            .map { $0.text.replacing(/\ {2,}/, with: " ").trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
             .joined(separator: "\n")
     }
@@ -299,7 +300,7 @@ private struct HTMLBlockRenderer {
     /// - Returns: The marker and the first line, then each other line under the
     ///   indent of the marker, or `nil` when the item has no text.
     private func listItem(_ item: Element, marker: ListItemMarker) throws -> String? {
-        let lines = try Self.lines(of: blocks(in: item), separator: "\n")
+        let lines = try Hashline.splitLines(blocks(in: item).joined(separator: "\n")).map(\.text)
         guard let first = lines.first, !first.isEmpty else { return nil }
         let rest = lines.dropFirst().map { $0.isEmpty ? "" : marker.indent + $0 }
         return ([marker.text + first] + rest).joined(separator: "\n")
@@ -344,19 +345,9 @@ private struct HTMLBlockRenderer {
     private func quote(_ element: Element) throws -> [String] {
         let quoted = try blocks(in: element)
         guard writesMarks, !quoted.isEmpty else { return quoted }
-        let lines = Self.lines(of: quoted, separator: HTMLMarkdown.blockSeparator)
-            .map { $0.isEmpty ? Self.quoteMark : Self.quoteMark + " " + $0 }
+        let lines = Hashline.splitLines(quoted.joined(separator: HTMLMarkdown.blockSeparator))
+            .map { $0.text.isEmpty ? Self.quoteMark : Self.quoteMark + " " + $0.text }
         return [lines.joined(separator: "\n")]
-    }
-
-    /// The lines of blocks after they are joined.
-    ///
-    /// - Parameters:
-    ///   - blocks: The blocks to join.
-    ///   - separator: The text between two blocks.
-    /// - Returns: Each line of the joined text, with the empty lines kept.
-    private static func lines(of blocks: [String], separator: String) -> [Substring] {
-        blocks.joined(separator: separator).split(separator: "\n", omittingEmptySubsequences: false)
     }
 
     /// The block of a `<table>` element.

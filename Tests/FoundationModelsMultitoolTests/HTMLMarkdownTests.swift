@@ -63,24 +63,6 @@ import Testing
 
     // MARK: Golden loading
 
-    /// Reads one golden file from the test bundle.
-    ///
-    /// - Parameters:
-    ///   - page: The name of the golden page, with no extension.
-    ///   - fileExtension: The extension of the file to read.
-    /// - Returns: The whole content of the file.
-    private static func golden(_ page: String, fileExtension: String) throws -> String {
-        let url = try #require(
-            Bundle.module.url(
-                forResource: page,
-                withExtension: fileExtension,
-                subdirectory: goldenDirectory
-            ),
-            "\(page).\(fileExtension) must be bundled with the test target"
-        )
-        return try String(contentsOf: url, encoding: .utf8)
-    }
-
     /// The extension of the golden file that holds the output in `format`.
     private static func goldenExtension(for format: WebTextFormat) -> String {
         switch format {
@@ -92,7 +74,7 @@ import Testing
     /// Converts one golden page in `format`.
     private static func convert(_ page: String, format: WebTextFormat) throws -> ConvertedPage {
         try HTMLMarkdown.convert(
-            html: golden(page, fileExtension: "html"),
+            html: TestResource.bundledText(named: page, withExtension: "html", in: goldenDirectory),
             baseURL: #require(baseURL),
             format: format
         )
@@ -102,7 +84,11 @@ import Testing
 
     @Test(arguments: goldenPages, [WebTextFormat.markdown, .text])
     func pageConvertsToItsGolden(page: String, format: WebTextFormat) throws {
-        let expected = try Self.golden(page, fileExtension: Self.goldenExtension(for: format))
+        let expected = try TestResource.bundledText(
+            named: page,
+            withExtension: Self.goldenExtension(for: format),
+            in: Self.goldenDirectory
+        )
 
         let converted = try Self.convert(page, format: format)
 
@@ -166,6 +152,25 @@ import Testing
         )
 
         #expect(converted.text == "Before\n\nfirst\n\nlast\n")
+    }
+
+    // MARK: Line terminators
+
+    /// A carriage return and line feed in a code block ends a line, as a line
+    /// feed does. Each line of the code in a list item gets the indent of the
+    /// item, and each line in a quote gets the quote mark.
+    @Test(arguments: [
+        ("<ul><li>Item<pre>first\r\nlast</pre></li></ul>", "- Item\n  ```\n  first\n  last\n  ```\n"),
+        ("<blockquote><pre>first\r\nlast</pre></blockquote>", "> ```\n> first\n> last\n> ```\n"),
+    ])
+    func carriageReturnLineFeedInNestedCodeEndsALine(body: String, expected: String) throws {
+        let converted = try HTMLMarkdown.convert(
+            html: "<html><body>\(body)</body></html>",
+            baseURL: #require(Self.baseURL),
+            format: .markdown
+        )
+
+        #expect(converted.text == expected)
     }
 
     // MARK: Content root

@@ -20,9 +20,6 @@ struct OperationMountTests {
     /// The golden of the five-verb fixture mounted as a standalone tool.
     private static let operationGoldenName = "OperationSurface.ts.txt"
 
-    /// The directory of the goldens, from the repository root.
-    private static let goldensDirectory = "Tests/FoundationModelsMultitoolTests/Goldens"
-
     /// The verb names of the five operations, in descriptor order.
     private static let verbNames = ["addNote", "getNote", "listNote", "deleteNote", "tagNote"]
 
@@ -70,17 +67,6 @@ struct OperationMountTests {
         registry.surface.entries.map(\.path)
     }
 
-    /// Reads the golden file named `name`, with its trailing newlines trimmed
-    /// as the rendered source is trimmed.
-    ///
-    /// - Parameter name: The file name under `Goldens/`.
-    /// - Returns: The golden text.
-    /// - Throws: When the file does not read.
-    private static func golden(named name: String) throws -> String {
-        try RepositoryFile.read(relativePath: "\(goldensDirectory)/\(name)")
-            .trimmingCharacters(in: .newlines)
-    }
-
     /// The elements of `content`, or `nil` when `content` is not an array.
     ///
     /// - Parameter content: The content to read.
@@ -123,7 +109,7 @@ struct OperationMountTests {
             .addTool(NotesOperationTool())
             .buildRegistry()
 
-        let golden = try Self.golden(named: Self.operationGoldenName)
+        let golden = try TestResource.surfaceGolden(named: Self.operationGoldenName)
 
         #expect(registry.surface.source.trimmingCharacters(in: .newlines) == golden)
     }

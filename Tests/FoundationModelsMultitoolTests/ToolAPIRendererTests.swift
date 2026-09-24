@@ -278,11 +278,7 @@ struct ToolAPIRendererTests {
     func weatherToolMatchesGoldenFile() throws {
         let descriptor = try ToolAPIRenderer.render(WeatherTool())
 
-        let goldenURL = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .appendingPathComponent("Goldens/WeatherTool.ts.txt")
-        let golden = try String(contentsOf: goldenURL, encoding: .utf8)
-            .trimmingCharacters(in: .newlines)
+        let golden = try TestResource.surfaceGolden(named: "WeatherTool.ts.txt")
 
         #expect(descriptor.name == "getWeather")
         #expect(descriptor.source.trimmingCharacters(in: .newlines) == golden)

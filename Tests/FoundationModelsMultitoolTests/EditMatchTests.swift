@@ -60,16 +60,7 @@ import Testing
     private static let floatTolerance: Float = 1e-6
 
     private static func loadGolden() throws -> Golden {
-        let url = try #require(
-            Bundle.module.url(
-                forResource: "edit-match-golden",
-                withExtension: "json",
-                subdirectory: "FilesGoldens"
-            ),
-            "edit-match-golden.json fixture must be bundled with the test target"
-        )
-        let data = try Data(contentsOf: url)
-        return try JSONDecoder().decode(Golden.self, from: data)
+        try TestResource.bundledJSON(Golden.self, named: "edit-match-golden", in: "FilesGoldens")
     }
 
     private static func cases(inGroup group: String) throws -> [Golden.Case] {

@@ -54,16 +54,7 @@ import Testing
     }
 
     private static func loadGolden() throws -> Golden {
-        let url = try #require(
-            Bundle.module.url(
-                forResource: "hashline-golden",
-                withExtension: "json",
-                subdirectory: "FilesGoldens"
-            ),
-            "hashline-golden.json fixture must be bundled with the test target"
-        )
-        let data = try Data(contentsOf: url)
-        return try JSONDecoder().decode(Golden.self, from: data)
+        try TestResource.bundledJSON(Golden.self, named: "hashline-golden", in: "FilesGoldens")
     }
 
     // MARK: Golden-vector parity (cross-tool anchor dialect)
