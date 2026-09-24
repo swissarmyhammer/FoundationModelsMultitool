@@ -74,12 +74,11 @@ struct BraveHTMLProvider: SearchProviderAdapter {
     let supports: Set<SearchFeature> = [.freshness, .site, .count]
 
     /// Makes a `GET` request of the results page, with the headers of a
-    /// desktop browser.
+    /// desktop browser. The provider has no key and does not read the key
+    /// value.
     ///
-    /// - Parameters:
-    ///   - query: The query. A site adds a `site:<host>` term to the text. A
-    ///     freshness adds the `tf` item.
-    ///   - key: The key value. The provider has no key and does not read it.
+    /// - Parameter query: The query. A site adds a `site:<host>` term to the
+    ///   text. A freshness adds the `tf` item.
     /// - Returns: The request.
     /// - Throws: ``InvalidProviderEndpoint`` when ``endpoint`` is not a URL.
     func request(for query: SearchQuery, key _: String?) throws -> URLRequest {
@@ -89,11 +88,11 @@ struct BraveHTMLProvider: SearchProviderAdapter {
         return request
     }
 
-    /// Reads the hits of a results page.
+    /// Reads the hits of a results page. The provider does not read the
+    /// response.
     ///
     /// - Parameters:
     ///   - data: The body of the response: the HTML of the page.
-    ///   - response: The response. The provider does not read it.
     ///   - limit: The maximum number of hits, or `nil` for all hits of the
     ///     page.
     /// - Returns: The hits with no duplicate URL, with rank 1 first.

@@ -38,6 +38,46 @@ comments:
     - evidence: swift test — 1701 tests, 134 suites, passed, 0 failed, 0 skipped; no compiler warnings in build output
     - next: ready for review
   timestamp: 2026-09-24T22:45:05.485201+00:00
+- actor: claude-code
+  id: 01m3asz70m9jtqfda2dkxvtqty
+  text: |-
+    ### review — findings
+    - evidence: review sha HEAD~1..HEAD (fb11807). 1 finding (1 confirmed, 1 refuted): Sources/FoundationModelsMultitool/Capabilities/Web/Providers/BraveHTMLProvider.swift:82 swift/doc-parameter-naming.
+    - next: Correct the doc comment. It must not name the external label `key` for the parameter with the internal name `_`. Remove this cause from all of BraveHTMLProvider.swift. Then run the review again. The task stays in review.
+  timestamp: 2026-09-24T22:53:22.324305+00:00
+- actor: claude-code
+  id: 01m3aszpkwd3ytyv5s3nxmg3df
+  text: |-
+    ### finish iteration 1 — findings
+    - implement: changed — 7 files
+    - test: green — swift test, 1701 passed
+    - commit: fb11807
+    - review: findings — Sources/FoundationModelsMultitool/Capabilities/Web/Providers/BraveHTMLProvider.swift:82
+  timestamp: 2026-09-24T22:53:38.300599+00:00
+- actor: claude-code
+  id: 01m3at5a8th235saqya47vs99k
+  text: |-
+    Fix of finding `swift/doc-parameter-naming` done.
+    - Cause: a `- Parameters:` entry names the external label of a parameter whose internal name is `_`. In BraveHTMLProvider.swift, the cause occurs two times: `key` of `request(for:key:)` and `response` of `parse(_:response:limit:)`.
+    - The same cause occurs two times in DuckDuckGoHTMLProvider.swift, at the same two functions. These are fixed also.
+    - Fix: remove the entry for each `_` parameter, and put the fact ("The provider has no key and does not read the key value." / "The provider does not read the response.") in the summary text. The rule lets the prose use the external label. `request` now has only one entry, thus it uses the `- Parameter query:` form.
+    - The other files in Providers/ (BraveAPIProvider, TavilyProvider, ExaProvider, SearchProviderAdapter, SearchProviderSupport) document `key` and `response` where these names are the internal names. They do not have this cause.
+    - No test was added: the change is to doc comments only, and no behavior changed.
+  timestamp: 2026-09-24T22:56:42.266431+00:00
+- actor: claude-code
+  id: 01m3at5chpd6a5e79bpw6j48f3
+  text: |-
+    ### implement — changed
+    - evidence: 2 files — Sources/FoundationModelsMultitool/Capabilities/Web/Providers/BraveHTMLProvider.swift, Sources/FoundationModelsMultitool/Capabilities/Web/Providers/DuckDuckGoHTMLProvider.swift. `swift test`: 1701 tests in 134 suites passed, 0 failures, no compiler warnings. `swiftlint lint` on the two files: 0 violations. Finding 1 of 1 is checked.
+    - next: /review
+  timestamp: 2026-09-24T22:56:44.598827+00:00
+- actor: claude-code
+  id: 01m3atg3e9bzcjn6kds3v8ha0a
+  text: |-
+    ### test — green
+    - evidence: `swift build` first showed a warning about a mutated node for `mlx-swift_Cmlx.bundle`. This warning came from old build files, not from our code. `swift package clean` (not `swift package update`) removed the old build files. After this, `swift build` gave 0 warnings. `swift test` ran 1701 tests in 134 suites. All tests passed. 0 failures. 0 skips. 0 warnings.
+    - next: ready for review
+  timestamp: 2026-09-24T23:02:35.721991+00:00
 depends_on:
 - 01M3A310C33P2DWGRX67YFR99X
 - 01M3A2ZQDDZWJVE2MA3GFABKGY
@@ -64,4 +104,18 @@ Port the keyless search path of swissarmyhammer. Source: `../swissarmyhammer/cra
 - [x] Run `swift test --filter BraveHTMLProviderTests`. All pass. Then run `swift test`.
 
 ## Workflow
-- Use `/tdd` — write failing tests first, then implement to make them pass. #web
+- Use `/tdd` — write failing tests first, then implement to make them pass.
+
+## Review Findings (2026-09-24 17:45)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 4 file(s) reviewed, 11 not reviewed.
+
+> 8 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 8 file(s)
+
+> 3 file(s) not reviewed — no validator matched:
+> - `Tests/FoundationModelsMultitoolTests/WebGoldens/brave-challenge.html` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/WebGoldens/brave-results-past-day.html` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/WebGoldens/brave-results.html` — no validator matches this file
+
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Web/Providers/BraveHTMLProvider.swift:82` `swift/doc-parameter-naming` — The doc comment names the external parameter label `key` instead of the internal parameter name `_`. Documentation must name the internal (local) parameter name, never the external label, as Swift-DocC and Xcode resolve documentation against internal names. Either document the parameter as `- Parameter _:` (uncommon for ignored parameters) or omit it entirely, since the internal name is intentionally `_` to indicate the parameter is unused. #web

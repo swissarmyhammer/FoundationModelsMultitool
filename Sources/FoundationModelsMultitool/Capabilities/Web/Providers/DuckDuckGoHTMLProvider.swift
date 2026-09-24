@@ -57,12 +57,11 @@ struct DuckDuckGoHTMLProvider: SearchProviderAdapter {
     /// term in the query, and the limit of the parse.
     let supports: Set<SearchFeature> = [.freshness, .site, .count]
 
-    /// Makes a `POST` request with the query as a form body.
+    /// Makes a `POST` request with the query as a form body. The provider has
+    /// no key and does not read the key value.
     ///
-    /// - Parameters:
-    ///   - query: The query. A site adds a `site:<host>` term to the text. A
-    ///     freshness adds the `df` field.
-    ///   - key: The key value. The provider has no key and does not read it.
+    /// - Parameter query: The query. A site adds a `site:<host>` term to the
+    ///   text. A freshness adds the `df` field.
     /// - Returns: The request.
     /// - Throws: ``InvalidProviderEndpoint`` when ``endpoint`` is not a URL.
     func request(for query: SearchQuery, key _: String?) throws -> URLRequest {
@@ -73,11 +72,11 @@ struct DuckDuckGoHTMLProvider: SearchProviderAdapter {
         return request
     }
 
-    /// Reads the organic hits of a results page.
+    /// Reads the organic hits of a results page. The provider does not read
+    /// the response.
     ///
     /// - Parameters:
     ///   - data: The body of the response: the HTML of the page.
-    ///   - response: The response. The provider does not read it.
     ///   - limit: The maximum number of hits, or `nil` for all hits of the
     ///     page.
     /// - Returns: The hits with no duplicate URL, with rank 1 first.
