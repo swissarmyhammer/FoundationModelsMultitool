@@ -49,11 +49,27 @@ comments:
     - no commit made.
     - next: ready for review.
   timestamp: 2026-09-24T18:42:37.384528+00:00
+- actor: claude-code
+  id: 01m3abyb7gc0j3ncsg9p64pkjc
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (3267973). 0 findings, 0 confirmed, 0 refuted. The engine examined 5 files. The .reviewignore rule excluded 4 .kanban files. The commit renamed no file.
+    - next: none. The task moved to done.
+  timestamp: 2026-09-24T18:48:13.808485+00:00
+- actor: claude-code
+  id: 01m3abyp7cq60rdqyfh7s4tj8n
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 5 files
+    - test: green — swift test, 1595 passed
+    - commit: 3267973
+    - review: clean — 0 findings; the task is in done
+  timestamp: 2026-09-24T18:48:25.068345+00:00
 depends_on:
 - 01M3A2ZFR1FPVNM9TSWT37RFZ1
 - 01M3A300ZZK58WVM6CX354ETCQ
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffd180
 title: 'Web: add the guarded fetch engine (redirects, byte limit, content types)'
 ---
 ## What

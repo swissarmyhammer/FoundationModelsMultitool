@@ -63,6 +63,9 @@ enum WebFetchFailure: CorrectiveFailure, Equatable, Sendable {
     /// The media type of the response is not text.
     case notText(contentType: String)
 
+    /// The HTML converter could not read the page.
+    case unconvertible(url: String, reason: String)
+
     /// The correction that tells the model what went wrong.
     var correctiveMessage: String {
         switch self {
@@ -76,6 +79,8 @@ enum WebFetchFailure: CorrectiveFailure, Equatable, Sendable {
             "The request to \(url) failed: \(reason)"
         case .notText(let contentType):
             "The content type is not text: \(contentType). fetch reads text, HTML, JSON, and XML."
+        case .unconvertible(let url, let reason):
+            "The page at \(url) could not be converted: \(reason)"
         }
     }
 
