@@ -52,8 +52,21 @@ func catalogPaths(in feedback: String) -> [String] {
 ///   - scenario: the label the printed line carries.
 ///   - line: the reading to print after the label.
 func reportGatedResult(scenario: String, line: String) {
+    reportTraceLine("RESULT [\(scenario)] \(line)")
+}
+
+/// Writes one trace line of a gated suite to standard out, as it is.
+///
+/// A gated suite writes its trace lines through this function, so that the
+/// suite has no direct write to standard out of its own. The `RESULT` lines
+/// and each trace line of the scenario runner (`SCENARIO`, `SKIP`, `STALL`,
+/// `REPEAT`, `CALL` and the other labels) go through it.
+///
+/// - Parameter line: the full line to write, with its label.
+func reportTraceLine(_ line: String) {
     // The gated suites report their readings on standard out, where a CI log
-    // reader finds them beside the other `RESULT` lines.
+    // reader finds them. These lines are the output of a live test run, and a
+    // release build never holds them.
     // swiftlint:disable:next no_direct_standard_out_logs
-    print("RESULT [\(scenario)] \(line)")
+    print(line)
 }

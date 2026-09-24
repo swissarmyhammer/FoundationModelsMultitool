@@ -229,8 +229,9 @@ func runNativeIntegrationScenario(
         // The scenario's declaration is printed beside them, so which of those
         // returns the grade required is readable off the run rather than only
         // off this file.
-        print(
-            "RESULT [\(name)] elapsed=\(elapsed)s toolCalls=\(turn.toolCallCount) "
+        reportGatedResult(
+            scenario: name,
+            line: "elapsed=\(elapsed)s toolCalls=\(turn.toolCallCount) "
                 + "turn=\(turn.turnIdentity ?? "n/a") "
                 + "typed=\(evidence.typedPaths.sorted()) "
                 + "invoked=\(evidence.invokedPaths.sorted()) "
@@ -247,7 +248,7 @@ func runNativeIntegrationScenario(
         // The same run's failure modes, counted. Emitted alongside the
         // `SCENARIO` verdict, never instead of it: nothing below is
         // asserted, and the grade above is unchanged.
-        print(
+        reportTraceLine(
             ScenarioFailureModes(
                 ScenarioObservation(
                     reply: turn.answer,
@@ -369,8 +370,9 @@ func runBackgroundIntegrationScenario(
         )
         grade(scenario: name, checks: checks)
 
-        print(
-            "RESULT [\(name)] elapsed=\(elapsed)s toolCalls=\(turn.toolCallCount) "
+        reportGatedResult(
+            scenario: name,
+            line: "elapsed=\(elapsed)s toolCalls=\(turn.toolCallCount) "
                 + "toolOutputs=\(turn.toolOutputs.count) "
                 + "pendingEnvelopes=\(pendingEnvelopes.count) "
                 + "priming=\(primingLabel(turn)) "
@@ -531,7 +533,7 @@ func streamTurn(of session: RoutedSession, prompt: String) async throws -> Strea
             // achieving nothing, which is the shape `^wnfzwxg` records: every
             // token moves, so no stall is ever reported. If a scenario runs
             // long and this line is absent, that is the reading.
-            print(
+            reportTraceLine(
                 """
                 STALL withoutProgress=\(stall.timeWithoutProgress) \
                 inFlight=\(stall.timeInFlight) visibility=\(stall.visibility)
@@ -544,7 +546,7 @@ func streamTurn(of session: RoutedSession, prompt: String) async throws -> Strea
             // state and reports it. The line is printed and not asserted, for
             // the same reason as the stall line: the stop is Router's recovery,
             // and it is not a failure of the scenario.
-            print("REPEAT \(stop)")
+            reportTraceLine("REPEAT \(stop)")
         case .turnStarted(let start):
             // The frame this turn's later events belong to (Router ^way106d).
             // `promptId` is nil here by design: these scenarios hand the prompt
@@ -570,7 +572,7 @@ func streamTurn(of session: RoutedSession, prompt: String) async throws -> Strea
             turn.calls.append(
                 NativeTranscript.StreamedCall(name: name, argumentsJSON: argumentsJSON, output: nil)
             )
-            print("CALL [\(turn.toolCallCount)] \(name) args=\(traceExcerpt(argumentsJSON))")
+            reportTraceLine("CALL [\(turn.toolCallCount)] \(name) args=\(traceExcerpt(argumentsJSON))")
         // `output` carries the call's full segments; this runner grades on
         // the flattened `summary` alone, so it is bound away here.
         case .toolStatus(let id, .completed, let summary, _):
@@ -579,7 +581,7 @@ func streamTurn(of session: RoutedSession, prompt: String) async throws -> Strea
                 turn.calls[index].output = summary
             }
             let name = turn.callIndexByID[id].map { turn.calls[$0].name } ?? "?"
-            print("DONE \(name) out=\(traceExcerpt(summary ?? ""))")
+            reportTraceLine("DONE \(name) out=\(traceExcerpt(summary ?? ""))")
         // `output` carries the call's full segments; this runner grades on
         // the flattened `summary` alone, so it is bound away here.
         case .toolStatus(let id, .running, let summary, _):
@@ -592,7 +594,7 @@ func streamTurn(of session: RoutedSession, prompt: String) async throws -> Strea
             // run that shows none is evidence, not an absence of evidence.
             let name = turn.callIndexByID[id].map { turn.calls[$0].name } ?? "?"
             turn.progressEvents.append("\(name): \(summary ?? "no detail")")
-            print("RUN  \(name) progress=\(traceExcerpt(summary ?? ""))")
+            reportTraceLine("RUN  \(name) progress=\(traceExcerpt(summary ?? ""))")
         // `output` carries the call's full segments; this runner grades on
         // the flattened `summary` alone, so it is bound away here.
         case .toolStatus(let id, .failed, let summary, _):
@@ -781,7 +783,7 @@ func makeScenarioSurface(
 func grade(scenario name: String, checks: [ScenarioCheck]) {
     let result = checks.allSatisfy(\.held) ? "PASS" : "FAIL"
     let breakdown = checks.map { "\($0.name)=\($0.held ? "pass" : "fail")" }.joined(separator: " ")
-    print("SCENARIO [\(name)] result=\(result) \(breakdown)")
+    reportTraceLine("SCENARIO [\(name)] result=\(result) \(breakdown)")
 
     for check in checks {
         #expect(check.held, "[\(name)] \(check.failureMessage)")
@@ -793,7 +795,7 @@ func grade(scenario name: String, checks: [ScenarioCheck]) {
 ///
 /// - Parameter name: the scenario label.
 private func printSkipNote(_ name: String) {
-    print("SKIP [\(name)]: Router's live-inference path is not wired up in this environment.")
+    reportTraceLine("SKIP [\(name)]: Router's live-inference path is not wired up in this environment.")
 }
 
 /// Drives one scenario through **both** surfaces and holds `respond(to:)` to
@@ -926,7 +928,7 @@ func runRespondDrainScenario(
         let respondAccepted = accepted(answerContainsOneOf, in: respondAnswer)
         let streamAccepted = accepted(answerContainsOneOf, in: streamTurnResult.answer)
 
-        print(
+        reportTraceLine(
             """
             RESPOND-DRAIN \(name) elapsed=\(String(format: "%.1f", respondElapsed))s \
             backgroundRuns=\(backgroundRunsAfterRespond.count) waitCalls=\(waitCalls) \
@@ -970,7 +972,7 @@ func runRespondDrainScenario(
         // The model obeying its own tool is not a drain failure, and an
         // assertion that fires on it would be demanding the model ignore the
         // instruction the product gives it.
-        print("RESPOND-DRAIN \(name) waitCalls=\(waitCalls) (reported, not asserted)")
+        reportTraceLine("RESPOND-DRAIN \(name) waitCalls=\(waitCalls) (reported, not asserted)")
     }
 }
 
@@ -1139,7 +1141,7 @@ func runInBandCollectionCanaryScenario(
             )
         )
 
-        print(
+        reportTraceLine(
             "IN-BAND-CANARY [\(name)] elapsed=\(String(format: "%.1f", elapsed))s "
                 + "backgroundRunsAtAnswer=\(evidence.backgroundRunsAtAnswer) "
                 + "backgroundRunsAfterRespond=\(evidence.backgroundRunsAfterRespond) "
@@ -1233,7 +1235,7 @@ private let nestedGenerationReplyPreviewCharacters = 200
 private func sampleGenerationGate(on slot: RoutedLLM) async {
     while !Task.isCancelled {
         let gate = slot.generationGate
-        print("GATE permits=\(gate.availablePermits) waiters=\(gate.waiterCount)")
+        reportTraceLine("GATE permits=\(gate.availablePermits) waiters=\(gate.waiterCount)")
         try? await Task.sleep(for: generationGateSampleInterval)
     }
 }
@@ -1348,7 +1350,7 @@ func runNestedGenerationProbe(name: String, prompt: String) async throws {
         )
         grade(scenario: name, checks: nestedGenerationChecks(for: evidence))
 
-        print(
+        reportTraceLine(
             "NESTED-GENERATION [\(name)] elapsed=\(String(format: "%.1f", elapsed))s "
                 + "entered=\(evidence.enteredPaths.sorted()) "
                 + "returned=\(evidence.returnedPaths.sorted()) "
