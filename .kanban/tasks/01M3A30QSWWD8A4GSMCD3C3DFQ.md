@@ -41,6 +41,45 @@ comments:
     - No test has a skip mark or a disable mark.
     - next: none.
   timestamp: 2026-09-24T19:04:10.804530+00:00
+- actor: claude-code
+  id: 01m3ad7hrcbs9dy786wttdx4h5
+  text: |-
+    ### review — findings
+    - evidence: review sha HEAD~1..HEAD (d4b1fad). 2 findings (2 confirmed, 1 refuted): Sources/FoundationModelsMultitool/Capabilities/Web/WebPageReader.swift:239, Sources/FoundationModelsMultitool/Capabilities/Web/WebPageReader.swift:242.
+    - next: Remove the assign-only properties `url` and `format` from WebPageReader.swift. Do this for all of the file, not only for these lines. Then do the review again. The task stays in review.
+  timestamp: 2026-09-24T19:10:43.980685+00:00
+- actor: claude-code
+  id: 01m3ad7y5z8xyjytbqqkmgz4qa
+  text: |-
+    ### finish iteration 1 — findings
+    - implement: changed — 3 files
+    - test: green — swift test, 1611 passed
+    - commit: d4b1fad
+    - review: findings — Sources/FoundationModelsMultitool/Capabilities/Web/WebPageReader.swift:239, Sources/FoundationModelsMultitool/Capabilities/Web/WebPageReader.swift:242
+  timestamp: 2026-09-24T19:10:56.703847+00:00
+- actor: claude-code
+  id: 01m3adgv7taff3844j4mw87b0b
+  text: |-
+    Review findings fixed. The cause: `WebPageCacheKey.url` and `WebPageCacheKey.format` have only one reader, the synthesized `Hashable` conformance. Periphery cannot see that reader.
+    - The rule `dead-code-swift` ("`assignOnlyProperty` and the reads periphery cannot see") says: do not delete such a property. Write `// periphery:ignore` above it, with the reason on its own line above the marker. I did this for the two properties. No other property in the file has only a synthesized reader: the tests read the fields of `PageWindow`, and `window(offset:maxCharacters:)` reads the fields of `ConvertedWebPage`.
+    - Discovery: the marker placement that other files use (`MCPToolCatalog.swift`, `SchemaConverter.swift`) puts `// periphery:ignore` between the `///` doc comment and the property. SwiftLint then gives `orphaned_doc_comment`. In this file the reason line and the marker go ABOVE the doc comment. Periphery 3.8.0 accepts the marker there, and SwiftLint gives 0 violations. I proved this with a controlled scan: with the marker on `url` only, periphery reported `format` and not `url`.
+    - No behavior changed, thus no new test. `periphery scan --skip-build --index-store-path .build/out --retain-public --retain-objc-accessible --retain-codable-properties --report-exclude 'Tests/**'`: 0 findings in WebPageReader.swift. `swiftlint lint` on the file: 0 violations. `swift test`: 1611 tests in 129 suites passed.
+    - The other two files have the same `orphaned_doc_comment` warning. They are not in the scope of this task.
+  timestamp: 2026-09-24T19:15:48.602546+00:00
+- actor: claude-code
+  id: 01m3adgx8zvgkze6sad0knpjh7
+  text: |-
+    ### implement — changed
+    - evidence: 1 file — Sources/FoundationModelsMultitool/Capabilities/Web/WebPageReader.swift (a `// periphery:ignore` marker with its reason on `WebPageCacheKey.url` and `WebPageCacheKey.format`). Periphery: 0 findings in the file. SwiftLint: 0 violations. `swift test`: 1611 passed.
+    - next: /test, then /review
+  timestamp: 2026-09-24T19:15:50.687420+00:00
+- actor: claude-code
+  id: 01m3advmjphf10rt6speze5rzp
+  text: |-
+    ### test — green
+    - evidence: `swift test` ran. Result: 1611 tests in 129 suites. 0 tests failed. 0 tests did stop early. `swift build --build-tests` gave 0 warnings from our code. It gave 1 warning from the mlx-swift dependency: "missing creator for mutated node ... mlx-swift_Cmlx.bundle/Contents/MacOS". This warning is old. It is not from this task's code. A past test run on this same board noted the same warning as pre-existing and third-party.
+    - next: the task is ready for review.
+  timestamp: 2026-09-24T19:21:42.230170+00:00
 depends_on:
 - 01M3A30EJ2DG162C1F2CXZXYQ1
 - 01M3A2ZQDDZWJVE2MA3GFABKGY
@@ -72,4 +111,14 @@ Join the fetch engine and the converter into one page reader, and add windows an
 - [x] Run `swift test --filter WebPageReaderTests`. All pass. Then run `swift test`.
 
 ## Workflow
-- Use `/tdd` — write failing tests first, then implement to make them pass. #web
+- Use `/tdd` — write failing tests first, then implement to make them pass.
+
+## Review Findings (2026-09-24 14:05)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 3 file(s) reviewed, 4 not reviewed.
+
+> 4 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 4 file(s)
+
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Web/WebPageReader.swift:239` `code-hygiene/dead-code-swift` — var.instance `url` is assignOnlyProperty.
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Web/WebPageReader.swift:242` `code-hygiene/dead-code-swift` — var.instance `format` is assignOnlyProperty. #web

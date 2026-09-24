@@ -235,9 +235,13 @@ private struct ConvertedWebPage: Sendable {
 
 /// The key of one cache entry: a URL and a format.
 private struct WebPageCacheKey: Hashable, Sendable {
+    // The synthesized `Hashable` conformance reads it; periphery sees no caller.
+    // periphery:ignore
     /// The absolute text of the URL.
     let url: String
 
+    // The synthesized `Hashable` conformance reads it; periphery sees no caller.
+    // periphery:ignore
     /// The form of the content.
     let format: WebPageFormat
 
