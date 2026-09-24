@@ -76,15 +76,17 @@ struct FakeSearchAdapter: SearchProviderAdapter {
     /// - Parameters:
     ///   - data: The body.
     ///   - response: The response. The fake does not read it.
-    /// - Returns: One hit for each line, with rank 1 first.
+    ///   - limit: The maximum number of hits, or `nil` for one hit for each
+    ///     line.
+    /// - Returns: One hit for each line up to `limit`, with rank 1 first.
     /// - Throws: `.challenge`, `.noResults`, or `.parse` as the type comment
     ///   states.
-    func parse(_ data: Data, response _: HTTPURLResponse) throws(ProviderFailure) -> [WebHit] {
+    func parse(_ data: Data, response _: HTTPURLResponse, limit: Int?) throws(ProviderFailure) -> [WebHit] {
         guard let text = String(bytes: data, encoding: .utf8) else { throw .parse("the body is not UTF-8") }
         guard text != Self.challengeMarker else { throw .challenge }
         let lines = text.split(separator: "\n")
         guard !lines.isEmpty else { throw .noResults }
-        return try lines.enumerated().map { index, line throws(ProviderFailure) in
+        return try lines.prefix(limit ?? lines.count).enumerated().map { index, line throws(ProviderFailure) in
             try Self.hit(from: line, rank: index + 1)
         }
     }

@@ -204,12 +204,13 @@ protocol SearchProviderAdapter: Sendable {
     var name: String { get }
     var supports: Set<SearchFeature> { get }   // .freshness, .site, .count
     func request(for query: SearchQuery, key: String?) throws -> URLRequest
-    func parse(_ data: Data, response: HTTPURLResponse) throws(ProviderFailure) -> [WebHit]
+    func parse(_ data: Data, response: HTTPURLResponse, limit: Int?) throws(ProviderFailure) -> [WebHit]
 }
 ```
 
 `request` and `parse` are pure functions. Unit tests call them with fixture
-bytes and no network.
+bytes and no network. The chain gives the query count to `parse` as `limit`,
+thus a provider that reads a whole results page stops at the requested count.
 
 ### Keys
 

@@ -189,9 +189,12 @@ protocol SearchProviderAdapter: Sendable {
     /// - Parameters:
     ///   - data: The body of the response.
     ///   - response: The response.
-    /// - Returns: The hits, with rank 1 first. The list is not empty.
+    ///   - limit: The maximum number of hits, which is the count of the
+    ///     query, or `nil` for all hits of the response.
+    /// - Returns: The hits, with rank 1 first. The list is not empty, and it
+    ///   has not more than `limit` hits.
     /// - Throws: The failure when the response gives no hits.
-    func parse(_ data: Data, response: HTTPURLResponse) throws(ProviderFailure) -> [WebHit]
+    func parse(_ data: Data, response: HTTPURLResponse, limit: Int?) throws(ProviderFailure) -> [WebHit]
 }
 
 extension SearchProviderAdapter {

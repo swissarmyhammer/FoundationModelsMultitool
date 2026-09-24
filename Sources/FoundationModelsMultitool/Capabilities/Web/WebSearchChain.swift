@@ -103,7 +103,7 @@ struct WebSearchChain: Sendable {
         case .failure(let failure):
             return .failure(.fetch(failure))
         case .success(let body):
-            return Self.hits(in: body, adapter: adapter).mapError(ProviderSkip.provider)
+            return Self.hits(in: body, adapter: adapter, limit: query.count).mapError(ProviderSkip.provider)
         }
     }
 
@@ -145,9 +145,11 @@ struct WebSearchChain: Sendable {
     /// - Parameters:
     ///   - body: The body and the facts of the response.
     ///   - adapter: The adapter that reads the body.
+    ///   - limit: The maximum number of hits, which is the count of the
+    ///     query, or `nil` for all hits of the response.
     /// - Returns: The hits, or the failure.
     private static func hits(
-        in body: FetchedBody, adapter: any SearchProviderAdapter
+        in body: FetchedBody, adapter: any SearchProviderAdapter, limit: Int?
     ) -> Result<[WebHit], ProviderFailure> {
         if let failure = ProviderFailure(status: body.status) {
             return .failure(failure)
@@ -156,7 +158,7 @@ struct WebSearchChain: Sendable {
             return .failure(.parse("the response has no HTTP form"))
         }
         do {
-            let hits = try adapter.parse(body.bytes, response: response)
+            let hits = try adapter.parse(body.bytes, response: response, limit: limit)
             return hits.isEmpty ? .failure(.noResults) : .success(hits)
         } catch {
             return .failure(error)

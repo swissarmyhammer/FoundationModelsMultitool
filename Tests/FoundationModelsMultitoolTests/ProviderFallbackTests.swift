@@ -37,6 +37,9 @@ struct ProviderFallbackTests {
     /// The number of hits that a provider with hits gives.
     private static let hitCount = 3
 
+    /// The query count that is less than ``hitCount``, for the limit test.
+    private static let limitedHitCount = 2
+
     /// The URL of the endpoint of the fake provider `name`.
     ///
     /// The host is in lower case, because a session can make a host lower
@@ -259,6 +262,17 @@ struct ProviderFallbackTests {
             .search(SearchQuery(text: "swift"))
         #expect(outcome == .hits(provider: "braveHTML", hits: Self.expectedHits(), notes: []))
         #expect(stub.requestedURLs == [Self.endpoint("braveHTML")])
+    }
+
+    @Test("the adapter gets the query count as the limit of its hits")
+    func adapterGetsCountAsLimit() async throws {
+        let stub = WebStub(routes: [Self.endpoint("braveHTML"): Self.hitsReply()])
+        let provider: (WebSearchProvider, any SearchProviderAdapter) =
+            try (.braveHTML, Self.adapter("braveHTML", supports: [.count]))
+        let outcome = await Self.chain([provider], stub: stub)
+            .search(SearchQuery(text: "swift", count: Self.limitedHitCount))
+        #expect(
+            outcome == .hits(provider: "braveHTML", hits: Self.expectedHits(count: Self.limitedHitCount), notes: []))
     }
 
     @Test("the adapter gets the key value that the environment holds at the time of the call")
