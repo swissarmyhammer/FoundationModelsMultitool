@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<!-- Hand-written. The shape of a Brave Search challenge page: HTTP 200, no
+     [data-pos] result container, and a captcha form in place of the results.
+     No real challenge page was recorded, thus the markup is an example. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Captcha - Brave Search</title>
+</head>
+<body>
+  <main class="captcha-page">
+    <h1>Confirm that you are a human</h1>
+    <p>We saw unusual traffic from your network. Complete the captcha to continue your search.</p>
+    <form id="captcha-form" action="/search/captcha" method="POST">
+      <input type="hidden" name="q" value="swift">
+      <button type="submit">Continue</button>
+    </form>
+  </main>
+</body>
+</html>

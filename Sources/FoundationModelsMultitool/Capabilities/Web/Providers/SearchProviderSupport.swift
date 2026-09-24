@@ -131,6 +131,21 @@ enum SearchProviderSupport {
     /// - Returns: The request.
     /// - Throws: ``InvalidProviderEndpoint`` when the URL cannot be made.
     static func jsonGetRequest(to endpoint: String, items: [(name: String, value: String)]) throws -> URLRequest {
+        try getRequest(to: endpoint, items: items, accepting: jsonMediaType)
+    }
+
+    /// Makes a `GET` request that asks for one media type, with its query
+    /// items percent-encoded.
+    ///
+    /// - Parameters:
+    ///   - endpoint: The text of the endpoint URL.
+    ///   - items: The query items, in order.
+    ///   - mediaType: The media type of the `Accept` header.
+    /// - Returns: The request.
+    /// - Throws: ``InvalidProviderEndpoint`` when the URL cannot be made.
+    static func getRequest(
+        to endpoint: String, items: [(name: String, value: String)], accepting mediaType: String
+    ) throws -> URLRequest {
         var components = URLComponents(url: try endpointURL(endpoint), resolvingAgainstBaseURL: false)
         components?.percentEncodedQuery = items
             .map { "\(percentEncoded($0.name))=\(percentEncoded($0.value))" }
@@ -138,7 +153,7 @@ enum SearchProviderSupport {
         guard let url = components?.url else { throw InvalidProviderEndpoint(endpoint: endpoint) }
         var request = URLRequest(url: url)
         request.httpMethod = getMethod
-        request.setValue(jsonMediaType, forHTTPHeaderField: acceptHeader)
+        request.setValue(mediaType, forHTTPHeaderField: acceptHeader)
         return request
     }
 

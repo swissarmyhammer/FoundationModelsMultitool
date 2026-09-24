@@ -74,6 +74,12 @@ struct SearchQuery: Sendable, Equatable {
         self.site = site
     }
 
+    /// The text with a `site:<host>` term after it when the query has a site,
+    /// else the text. A provider with no site field sends this text.
+    var textWithSiteTerm: String {
+        site.map { "\(text) site:\($0)" } ?? text
+    }
+
     /// The fields that the caller set, in the order of ``SearchFeature``.
     var requestedFeatures: [SearchFeature] {
         SearchFeature.allCases.filter { feature in

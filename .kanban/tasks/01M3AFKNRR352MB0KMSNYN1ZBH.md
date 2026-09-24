@@ -35,8 +35,24 @@ comments:
     - check: `rg -n '\bprint\(' IntegrationTests/Tests` finds one match, the silenced call inside `reportTraceLine(_:)` in `Support/CatalogFeedback.swift`. This matches the task's own acceptance rule.
     - next: review
   timestamp: 2026-09-24T22:27:42.755620+00:00
-position_column: doing
-position_ordinal: '8180'
+- actor: claude-code
+  id: 01m3arqjwpbrbq43ybmkqsbcz2
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit d268902). 0 findings, 0 confirmed, 0 refuted. The engine examined 5 Swift files. The `.reviewignore` file excluded 4 `.kanban/` files.
+    - next: None. The task moved to done.
+  timestamp: 2026-09-24T22:31:43.766760+00:00
+- actor: claude-code
+  id: 01m3arr01rh63mnwfn1n1gvtz4
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 5 files
+    - test: green — swift test, 1674 passed; IntegrationTests build passes
+    - commit: d268902
+    - review: clean — 0 findings; the task is in done
+  timestamp: 2026-09-24T22:31:57.240949+00:00
+position_column: done
+position_ordinal: ffd680
 title: 'IntegrationTests: send the remaining direct print calls through reportTraceLine'
 ---
 ## What
