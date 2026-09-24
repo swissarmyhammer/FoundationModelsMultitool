@@ -1,0 +1,44 @@
+{
+  "requestId": "00000000000000000000000000000000",
+  "resolvedSearchType": "neural",
+  "results": [
+    {
+      "id": "https://www.swift.org/",
+      "title": "Swift.org - Welcome to Swift.org",
+      "url": "https://www.swift.org/",
+      "publishedDate": "2026-09-18T00:00:00.000Z",
+      "author": null,
+      "favicon": "https://www.swift.org/favicon.ico",
+      "highlights": [
+        "Swift is a general-purpose programming language that's approachable for newcomers and powerful for experts.",
+        "It is fast, modern, safe, and a joy to write."
+      ],
+      "highlightScores": [0.61, 0.43]
+    },
+    {
+      "id": "https://en.wikipedia.org/wiki/Swift_(programming_language)",
+      "title": "Swift (programming language) - Wikipedia",
+      "url": "https://en.wikipedia.org/wiki/Swift_(programming_language)",
+      "publishedDate": "2026-09-02T00:00:00.000Z",
+      "author": "Contributors to Wikimedia projects",
+      "highlights": [
+        "Swift is a high-level general-purpose, multi-paradigm, compiled programming language created by Chris Lattner in 2010 for Apple Inc."
+      ],
+      "highlightScores": [0.58]
+    },
+    {
+      "id": "https://developer.apple.com/swift/",
+      "title": "Swift - Apple Developer",
+      "url": "https://developer.apple.com/swift/",
+      "publishedDate": null,
+      "author": null,
+      "highlights": [],
+      "highlightScores": []
+    }
+  ],
+  "costDollars": {
+    "total": 0.006,
+    "search": { "neural": 0.005 },
+    "contents": { "highlights": 0.001 }
+  }
+}

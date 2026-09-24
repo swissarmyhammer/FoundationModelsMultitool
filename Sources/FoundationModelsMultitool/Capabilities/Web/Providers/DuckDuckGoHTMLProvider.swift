@@ -18,9 +18,6 @@ struct DuckDuckGoHTMLProvider: SearchProviderAdapter {
     /// The URL of the HTML results page. The request posts the form to it.
     static let endpoint = "https://html.duckduckgo.com/html/"
 
-    /// The HTTP method of the request.
-    private static let postMethod = "POST"
-
     /// The body type of the request.
     private static let formContentType = "application/x-www-form-urlencoded"
 
@@ -30,14 +27,6 @@ struct DuckDuckGoHTMLProvider: SearchProviderAdapter {
     /// The form field of the age limit. A recorded page proves that the
     /// service obeys it.
     private static let dateField = "df"
-
-    /// The ASCII bytes that the form body keeps with no percent encoding: the
-    /// unreserved characters of RFC 3986.
-    private static let unreservedBytes = Set(
-        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~".utf8)
-
-    /// The format of one percent-encoded byte.
-    private static let percentEncodedByteFormat = "%%%02X"
 
     /// The selector of each organic result container. An ad container also
     /// has the class `result`, and it has the class `result--ad` too.
@@ -61,19 +50,6 @@ struct DuckDuckGoHTMLProvider: SearchProviderAdapter {
     /// The query field of a redirect link that holds the target URL.
     private static let redirectTargetField = "uddg"
 
-    /// The schemes of a hit URL.
-    private static let webSchemes: Set<String> = ["http", "https"]
-
-    /// The scheme of a link that has a host and no scheme, for example
-    /// `//example.com/page`.
-    private static let defaultScheme = "https"
-
-    /// The error of `request` when ``endpoint`` is not a URL.
-    struct InvalidEndpoint: Error, CustomStringConvertible {
-        /// The text of the error.
-        var description: String { "the endpoint is not a URL: \(DuckDuckGoHTMLProvider.endpoint)" }
-    }
-
     /// The name of the provider: `duckDuckGoHTML`.
     let name = WebSearchProvider.duckDuckGoHTML.name
 
@@ -88,11 +64,10 @@ struct DuckDuckGoHTMLProvider: SearchProviderAdapter {
     ///     freshness adds the `df` field.
     ///   - key: The key value. The provider has no key and does not read it.
     /// - Returns: The request.
-    /// - Throws: ``InvalidEndpoint`` when ``endpoint`` is not a URL.
+    /// - Throws: ``InvalidProviderEndpoint`` when ``endpoint`` is not a URL.
     func request(for query: SearchQuery, key _: String?) throws -> URLRequest {
-        guard let url = URL(string: Self.endpoint) else { throw InvalidEndpoint() }
-        var request = URLRequest(url: url)
-        request.httpMethod = Self.postMethod
+        var request = URLRequest(url: try SearchProviderSupport.endpointURL(Self.endpoint))
+        request.httpMethod = SearchProviderSupport.postMethod
         request.setValue(Self.formContentType, forHTTPHeaderField: WebFetcher.contentTypeHeader)
         request.httpBody = Self.formBody(Self.formFields(of: query))
         return request
@@ -110,11 +85,14 @@ struct DuckDuckGoHTMLProvider: SearchProviderAdapter {
     ///   with no results, and `.parse` when the page cannot be read.
     func parse(_ data: Data, response _: HTTPURLResponse, limit: Int?) throws(ProviderFailure) -> [WebHit] {
         guard let html = String(data: data, encoding: .utf8) else { throw .parse("the body is not UTF-8") }
-        let document = try Self.reading { try SwiftSoup.parse(html, Self.endpoint) }
-        let results = try Self.reading { try document.select(Self.organicResultSelector).array() }
-        let hits = Self.hits(from: try Self.reading { try results.compactMap(Self.pageResult(of:)) }, limit: limit)
+        let document = try SearchProviderSupport.reading { try SwiftSoup.parse(html, Self.endpoint) }
+        let results = try SearchProviderSupport.reading { try document.select(Self.organicResultSelector).array() }
+        let pageResults = try SearchProviderSupport.reading { try results.compactMap(Self.pageResult(of:)) }
+        let hits = SearchProviderSupport.rankedHits(from: pageResults, limit: limit)
         guard hits.isEmpty else { return hits }
-        let isChallenge = try Self.reading { try document.select(Self.challengeSelector).first() != nil }
+        let isChallenge = try SearchProviderSupport.reading {
+            try document.select(Self.challengeSelector).first() != nil
+        }
         throw isChallenge ? .challenge : .noResults
     }
 
@@ -136,36 +114,13 @@ struct DuckDuckGoHTMLProvider: SearchProviderAdapter {
     /// - Parameter fields: The fields, in order.
     /// - Returns: The UTF-8 bytes of the body.
     private static func formBody(_ fields: [(name: String, value: String)]) -> Data {
-        let pairs = fields.map { "\(formEncoded($0.name))=\(formEncoded($0.value))" }
+        let pairs = fields.map { field in
+            "\(SearchProviderSupport.percentEncoded(field.name))=\(SearchProviderSupport.percentEncoded(field.value))"
+        }
         return Data(pairs.joined(separator: "&").utf8)
     }
 
-    /// Percent-encodes each UTF-8 byte of a text that is not an unreserved
-    /// character. A space becomes `%20`, and a `+` becomes `%2B`.
-    ///
-    /// - Parameter text: The text of a form name or a form value.
-    /// - Returns: The encoded text.
-    private static func formEncoded(_ text: String) -> String {
-        text.utf8.map { byte in
-            unreservedBytes.contains(byte)
-                ? String(UnicodeScalar(byte)) : String(format: percentEncodedByteFormat, byte)
-        }.joined()
-    }
-
     // MARK: - The parse
-
-    /// Runs a step of the page read, and changes its error to `.parse`.
-    ///
-    /// - Parameter step: The step, which can throw an error of SwiftSoup.
-    /// - Returns: The value of the step.
-    /// - Throws: `.parse` with the text of the error of the step.
-    private static func reading<Value>(_ step: () throws -> Value) throws(ProviderFailure) -> Value {
-        do {
-            return try step()
-        } catch {
-            throw .parse(String(describing: error))
-        }
-    }
 
     /// Reads one organic result container.
     ///
@@ -173,27 +128,12 @@ struct DuckDuckGoHTMLProvider: SearchProviderAdapter {
     /// - Returns: The result, or `nil` when the container has no title link,
     ///   no title, or no `http` or `https` target URL.
     /// - Throws: An error of SwiftSoup.
-    private static func pageResult(of container: Element) throws -> PageResult? {
+    private static func pageResult(of container: Element) throws -> ProviderResult? {
         guard let link = try container.select(titleLinkSelector).first() else { return nil }
         let title = try link.text()
         guard !title.isEmpty, let url = targetURL(of: try link.attr("href")) else { return nil }
         let snippet = try container.select(snippetSelector).first()?.text() ?? ""
-        return PageResult(title: title, url: url, snippet: snippet)
-    }
-
-    /// Makes the hits of the results of a page: the first result of each
-    /// URL, up to the limit, with rank 1 first.
-    ///
-    /// - Parameters:
-    ///   - results: The results, in page order.
-    ///   - limit: The maximum number of hits, or `nil` for all hits.
-    /// - Returns: The hits.
-    private static func hits(from results: [PageResult], limit: Int?) -> [WebHit] {
-        var seenURLs: Set<String> = []
-        let unique = results.filter { seenURLs.insert($0.url).inserted }
-        return unique.prefix(limit ?? unique.count).enumerated().map { index, result in
-            WebHit(rank: index + 1, title: result.title, url: result.url, snippet: result.snippet)
-        }
+        return ProviderResult(title: title, url: url, snippet: snippet)
     }
 
     // MARK: - The links
@@ -205,9 +145,9 @@ struct DuckDuckGoHTMLProvider: SearchProviderAdapter {
     ///   link; `nil` when that URL is not an absolute `http` or `https` URL.
     private static func targetURL(of href: String) -> String? {
         guard let link = URLComponents(string: href) else { return nil }
-        guard isRedirect(link) else { return webURL(of: link) }
+        guard isRedirect(link) else { return SearchProviderSupport.webURL(of: link) }
         let target = link.queryItems?.first { $0.name == redirectTargetField }?.value
-        return target.flatMap(URLComponents.init(string:)).flatMap(webURL(of:))
+        return target.flatMap(SearchProviderSupport.webURL(of:))
     }
 
     /// Tells if a link is a redirect link of DuckDuckGo.
@@ -220,35 +160,6 @@ struct DuckDuckGoHTMLProvider: SearchProviderAdapter {
         let isRedirectHost = host == redirectHost || host.hasSuffix(".\(redirectHost)")
         return isRedirectHost && link.path == redirectPath
     }
-
-    /// The text of an absolute `http` or `https` URL.
-    ///
-    /// - Parameter components: The parts of the URL. A URL with a host and no
-    ///   scheme gets ``defaultScheme``.
-    /// - Returns: The URL text, or `nil` when the URL has no host or another
-    ///   scheme.
-    private static func webURL(of components: URLComponents) -> String? {
-        var absolute = components
-        if absolute.scheme == nil, absolute.host != nil {
-            absolute.scheme = defaultScheme
-        }
-        guard let scheme = absolute.scheme?.lowercased(), webSchemes.contains(scheme),
-            absolute.host?.isEmpty == false
-        else { return nil }
-        return absolute.string
-    }
-}
-
-/// One organic result of a page, before the duplicate check.
-private struct PageResult {
-    /// The text of the title link.
-    let title: String
-
-    /// The absolute `http` or `https` target URL.
-    let url: String
-
-    /// The text of the snippet, or an empty text when the result has none.
-    let snippet: String
 }
 
 private extension SearchFreshness {

@@ -1,0 +1,42 @@
+{
+  "query": "swift programming language",
+  "follow_up_questions": null,
+  "answer": null,
+  "images": [],
+  "results": [
+    {
+      "url": "https://www.swift.org/",
+      "title": "Welcome to Swift.org",
+      "content": "Swift is a general-purpose programming language that's approachable for newcomers and powerful for experts. It is fast, modern, safe, and a joy to write.",
+      "score": 0.87124926,
+      "raw_content": null,
+      "favicon": "https://www.swift.org/favicon.ico"
+    },
+    {
+      "url": "https://en.wikipedia.org/wiki/Swift_(programming_language)",
+      "title": "Swift (programming language) - Wikipedia",
+      "content": "Swift is a high-level general-purpose, multi-paradigm, compiled programming language created by Chris Lattner in 2010 for Apple Inc. and maintained by the open-source community.",
+      "score": 0.83659613,
+      "raw_content": null,
+      "favicon": "https://en.wikipedia.org/static/favicon/wikipedia.ico"
+    },
+    {
+      "url": "https://developer.apple.com/swift/",
+      "title": "Swift - Apple Developer",
+      "content": "Swift is a powerful and intuitive programming language for all Apple platforms. It's easy to get started using Swift, with a concise-yet-expressive syntax and modern features you'll love.",
+      "score": 0.79418564,
+      "raw_content": null,
+      "favicon": "https://developer.apple.com/favicon.ico"
+    },
+    {
+      "url": "https://docs.swift.org/swift-book/documentation/the-swift-programming-language/",
+      "title": "The Swift Programming Language (6.2)",
+      "content": "Understand the high-level goals of the language. Swift is a fantastic way to write software for phones, tablets, desktops, servers, or anything else that runs code.",
+      "score": 0.76302195,
+      "raw_content": null,
+      "favicon": "https://docs.swift.org/favicon.ico"
+    }
+  ],
+  "response_time": 1.14,
+  "request_id": "00000000-0000-0000-0000-000000000000"
+}

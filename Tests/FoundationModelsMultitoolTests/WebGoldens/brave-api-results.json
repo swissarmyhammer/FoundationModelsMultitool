@@ -1,0 +1,137 @@
+{
+  "query": {
+    "original": "swift programming language",
+    "show_strict_warning": false,
+    "is_navigational": false,
+    "is_news_breaking": false,
+    "spellcheck_off": true,
+    "country": "us",
+    "bad_results": false,
+    "should_fallback": false,
+    "postal_code": "",
+    "city": "",
+    "header_country": "",
+    "more_results_available": true,
+    "state": ""
+  },
+  "mixed": {
+    "type": "mixed",
+    "main": [
+      { "type": "web", "index": 0, "all": false },
+      { "type": "web", "index": 1, "all": false },
+      { "type": "web", "index": 2, "all": false },
+      { "type": "web", "index": 3, "all": false }
+    ],
+    "top": [],
+    "side": []
+  },
+  "type": "search",
+  "web": {
+    "type": "search",
+    "results": [
+      {
+        "title": "Swift.org - Welcome to Swift.org",
+        "url": "https://www.swift.org/",
+        "is_source_local": false,
+        "is_source_both": false,
+        "description": "<strong>Swift</strong> is a general-purpose <strong>programming</strong> <strong>language</strong> that&#x27;s approachable for newcomers and powerful for experts.",
+        "page_age": "2026-09-18T10:12:04",
+        "profile": {
+          "name": "Swift",
+          "url": "https://www.swift.org/",
+          "long_name": "swift.org",
+          "img": "https://imgs.search.brave.com/swift-org-favicon.png"
+        },
+        "language": "en",
+        "family_friendly": true,
+        "type": "search_result",
+        "subtype": "generic",
+        "is_live": false,
+        "meta_url": {
+          "scheme": "https",
+          "netloc": "swift.org",
+          "hostname": "www.swift.org",
+          "favicon": "https://imgs.search.brave.com/swift-org-favicon.png",
+          "path": ""
+        },
+        "age": "September 18, 2026"
+      },
+      {
+        "title": "Swift (programming language) - Wikipedia",
+        "url": "https://en.wikipedia.org/wiki/Swift_(programming_language)",
+        "is_source_local": false,
+        "is_source_both": false,
+        "description": "<strong>Swift</strong> is a high-level general-purpose, multi-paradigm, compiled <strong>programming</strong> <strong>language</strong> created by Chris Lattner in 2010 for Apple Inc.",
+        "profile": {
+          "name": "Wikipedia",
+          "url": "https://en.wikipedia.org/wiki/Swift_(programming_language)",
+          "long_name": "en.wikipedia.org",
+          "img": "https://imgs.search.brave.com/wikipedia-favicon.png"
+        },
+        "language": "en",
+        "family_friendly": true,
+        "type": "search_result",
+        "subtype": "generic",
+        "is_live": false,
+        "meta_url": {
+          "scheme": "https",
+          "netloc": "en.wikipedia.org",
+          "hostname": "en.wikipedia.org",
+          "favicon": "https://imgs.search.brave.com/wikipedia-favicon.png",
+          "path": "› wiki › Swift_(programming_language)"
+        }
+      },
+      {
+        "title": "Swift - Apple Developer",
+        "url": "https://developer.apple.com/swift/",
+        "is_source_local": false,
+        "is_source_both": false,
+        "description": "<strong>Swift</strong> is a powerful and intuitive <strong>programming</strong> <strong>language</strong> for all Apple platforms.",
+        "profile": {
+          "name": "Apple Developer",
+          "url": "https://developer.apple.com/swift/",
+          "long_name": "developer.apple.com",
+          "img": "https://imgs.search.brave.com/apple-favicon.png"
+        },
+        "language": "en",
+        "family_friendly": true,
+        "type": "search_result",
+        "subtype": "generic",
+        "is_live": false,
+        "meta_url": {
+          "scheme": "https",
+          "netloc": "developer.apple.com",
+          "hostname": "developer.apple.com",
+          "favicon": "https://imgs.search.brave.com/apple-favicon.png",
+          "path": "› swift"
+        }
+      },
+      {
+        "title": "GitHub - swiftlang/swift: The Swift Programming Language",
+        "url": "https://github.com/swiftlang/swift",
+        "is_source_local": false,
+        "is_source_both": false,
+        "description": null,
+        "profile": {
+          "name": "GitHub",
+          "url": "https://github.com/swiftlang/swift",
+          "long_name": "github.com",
+          "img": "https://imgs.search.brave.com/github-favicon.png"
+        },
+        "language": "en",
+        "family_friendly": true,
+        "type": "search_result",
+        "subtype": "generic",
+        "is_live": false,
+        "meta_url": {
+          "scheme": "https",
+          "netloc": "github.com",
+          "hostname": "github.com",
+          "favicon": "https://imgs.search.brave.com/github-favicon.png",
+          "path": "› swiftlang › swift"
+        }
+      }
+    ],
+    "family_friendly": true
+  }
+}

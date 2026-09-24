@@ -58,11 +58,27 @@ comments:
     - note: `swift build` prints warning lines from the `mlx-swift` package. This package is a pinned, checked-out dependency, not part of this project's own source. The task told the agent not to run `swift package update`. The agent can not change these lines without that command. The agent leaves these lines as a known, out-of-scope item.
     - next: none. The task is ready for the next step.
   timestamp: 2026-09-24T21:40:50.502580+00:00
+- actor: claude-code
+  id: 01m3ap7m9y75crrwhhqvgdk6ga
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit daf1e81) — 0 findings, 0 confirmed, 1 refuted, 7 attempted, 0 failed. The engine reviewed 6 files. It did not review 8 files: 4 `.kanban/` files (from `.reviewignore`), 3 HTML fixture pages and `web.md` (no validator matches these files). The commit renames no file.
+    - next: the task moves to done.
+  timestamp: 2026-09-24T21:48:03.774400+00:00
+- actor: claude-code
+  id: 01m3ap82bma5wpk34nk24mvpb4
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 7 files (second agent; the first agent was stopped when it hung)
+    - test: green — swift test, 1647 passed
+    - commit: daf1e81
+    - review: clean — 0 findings (1 refuted); the task is in done
+  timestamp: 2026-09-24T21:48:18.164015+00:00
 depends_on:
 - 01M3A310C33P2DWGRX67YFR99X
 - 01M3A2ZQDDZWJVE2MA3GFABKGY
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffd580
 title: 'Web: add the DuckDuckGo HTML provider (second keyless fallback)'
 ---
 ## What
