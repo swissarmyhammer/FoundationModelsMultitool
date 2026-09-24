@@ -537,6 +537,14 @@ func streamTurn(of session: RoutedSession, prompt: String) async throws -> Strea
                 inFlight=\(stall.timeInFlight) visibility=\(stall.visibility)
                 """
             )
+        case .repetitionStopped(let stop):
+            // Router stopped a generation call that wrote the same lines again.
+            // This is the third state in the stall note above: the model
+            // generates steadily and gets no result. Router now finds that
+            // state and reports it. The line is printed and not asserted, for
+            // the same reason as the stall line: the stop is Router's recovery,
+            // and it is not a failure of the scenario.
+            print("REPEAT \(stop)")
         case .turnStarted(let start):
             // The frame this turn's later events belong to (Router ^way106d).
             // `promptId` is nil here by design: these scenarios hand the prompt

@@ -1021,6 +1021,14 @@ public enum CLIRunner {
                 // model does. Printed and never acted on — a demo that stayed
                 // silent here reads as stuck while it is working.
                 output("\(stall)")
+            case .repetitionStopped(let stop):
+                // Router stopped a generation call that wrote the same lines
+                // again, and a recovery attempt of the turn follows, or the
+                // turn ends. The report is printed and not acted on. Without
+                // it, a turn that restarts reads as a turn that lost its work.
+                // The event does not change the answer: only `.textDelta` and
+                // `.textReset` change it.
+                output("\(stop)")
             case .runSettled(let terminal):
                 // A background call answered its envelope earlier in the
                 // turn, or in an earlier one; this is the one terminal event

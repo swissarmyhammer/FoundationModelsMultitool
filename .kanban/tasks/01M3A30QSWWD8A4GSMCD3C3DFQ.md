@@ -80,10 +80,19 @@ comments:
     - evidence: `swift test` ran. Result: 1611 tests in 129 suites. 0 tests failed. 0 tests did stop early. `swift build --build-tests` gave 0 warnings from our code. It gave 1 warning from the mlx-swift dependency: "missing creator for mutated node ... mlx-swift_Cmlx.bundle/Contents/MacOS". This warning is old. It is not from this task's code. A past test run on this same board noted the same warning as pre-existing and third-party.
     - next: the task is ready for review.
   timestamp: 2026-09-24T19:21:42.230170+00:00
+- actor: claude-code
+  id: 01m3ae1gcge2rt33mnjytskdt2
+  text: |-
+    ### review — stuck
+    - evidence: `review sha HEAD~1..HEAD` (commit 3ac0907). Counts: 0 findings, 0 confirmed, 0 refuted, 7 attempted. The rule `code-hygiene/dead-code-swift` failed and did not judge the change. This is the rule that made the two prior findings (`WebPageReader.swift` `url` and `format` are assignOnlyProperty). Thus the review cannot show that the prior findings are fixed.
+    - cause: the package build fails. `Sources/MultitoolCLI/CLIRunner.swift:994`: "switch must be exhaustive", missing case `.repetitionStopped(_)`. The case comes from the FoundationModelsRouter branch dependency (`SessionEvent`). This commit does not touch `CLIRunner.swift`.
+    - blocker: a person must make the build compile again (handle `.repetitionStopped` in `CLIRunner.swift`, or pin the router), then run `/review 01M3A30QSWWD8A4GSMCD3C3DFQ HEAD~1..HEAD` again. The task stays in `review`.
+    - next: human decision.
+  timestamp: 2026-09-24T19:24:54.544318+00:00
 depends_on:
 - 01M3A30EJ2DG162C1F2CXZXYQ1
 - 01M3A2ZQDDZWJVE2MA3GFABKGY
-position_column: doing
+position_column: review
 position_ordinal: '80'
 title: 'Web: add page conversion, windows, and the page cache'
 ---

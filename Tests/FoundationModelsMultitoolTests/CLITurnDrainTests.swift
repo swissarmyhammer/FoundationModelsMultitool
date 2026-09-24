@@ -102,6 +102,29 @@ struct CLITurnDrainTests {
         #expect(output.lines.contains(stall.description))
     }
 
+    @Test("a repetition stop is one output line and leaves the answer as it is")
+    func repetitionStopIsPrinted() async throws {
+        let output = DrainOutputCollector()
+        let stop = RepetitionStop(
+            generatedTokens: 3_000,
+            countedLines: 40,
+            newLines: 6,
+            tokensWithoutNewLine: 2_100,
+            detection: RepetitionDetection(),
+            recovery: 1
+        )
+        let answer = try await CLIRunner.drainTurn(
+            scriptedEvents([.textDelta("NYC"), .repetitionStopped(stop), .textDelta(" is warmest")]),
+            output: output.append
+        )
+
+        // The CLI prints the one-line report of Router. The test compares the
+        // line with that report and not with its words, so that a change of
+        // the words in Router gets to this test.
+        #expect(output.lines == [stop.description])
+        #expect(answer == "NYC is warmest")
+    }
+
     @Test("a background run that settles is reported under its tool, its token and its outcome")
     func runSettlementIsPrinted() async throws {
         let output = DrainOutputCollector()
