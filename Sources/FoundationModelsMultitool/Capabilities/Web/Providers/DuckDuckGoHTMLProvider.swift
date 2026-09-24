@@ -103,9 +103,8 @@ struct DuckDuckGoHTMLProvider: SearchProviderAdapter {
     /// - Returns: The `q` field, then the `df` field when the query has a
     ///   freshness.
     private static func formFields(of query: SearchQuery) -> [(name: String, value: String)] {
-        let text = query.site.map { "\(query.text) site:\($0)" } ?? query.text
         let dateFields = query.freshness.map { [(name: dateField, value: $0.duckDuckGoDateValue)] } ?? []
-        return [(name: queryField, value: text)] + dateFields
+        return [(name: queryField, value: query.textWithSiteTerm)] + dateFields
     }
 
     /// The `application/x-www-form-urlencoded` body of form fields.

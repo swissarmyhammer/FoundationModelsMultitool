@@ -78,11 +78,27 @@ comments:
     - evidence: `swift build` first showed a warning about a mutated node for `mlx-swift_Cmlx.bundle`. This warning came from old build files, not from our code. `swift package clean` (not `swift package update`) removed the old build files. After this, `swift build` gave 0 warnings. `swift test` ran 1701 tests in 134 suites. All tests passed. 0 failures. 0 skips. 0 warnings.
     - next: ready for review
   timestamp: 2026-09-24T23:02:35.721991+00:00
+- actor: claude-code
+  id: 01m3atnt0ybnrqazvv30jh8yrb
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (ef1e8ce): 0 findings, 0 confirmed, 0 refuted, 7 attempted, 0 failed. 2 source files reviewed. 2 `.kanban/` files excluded by `.reviewignore`. The prior finding `swift/doc-parameter-naming` at `BraveHTMLProvider.swift` is fixed: the doc comment does not name the `key` label now. All prior items are checked.
+    - next: The task moves to done.
+  timestamp: 2026-09-24T23:05:42.686456+00:00
+- actor: claude-code
+  id: 01m3atp5m646czpnbeb4bw0xpd
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — 2 files (doc comments)
+    - test: green — swift test, 1701 passed
+    - commit: ef1e8ce
+    - review: clean — 0 findings; prior finding checked; the task is in done
+  timestamp: 2026-09-24T23:05:54.566326+00:00
 depends_on:
 - 01M3A310C33P2DWGRX67YFR99X
 - 01M3A2ZQDDZWJVE2MA3GFABKGY
-position_column: doing
-position_ordinal: '8180'
+position_column: done
+position_ordinal: ffd780
 title: 'Web: port the Brave HTML provider from brave.rs'
 ---
 ## What

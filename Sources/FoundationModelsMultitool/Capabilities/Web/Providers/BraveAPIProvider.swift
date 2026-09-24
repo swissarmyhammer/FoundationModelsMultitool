@@ -83,11 +83,10 @@ struct BraveAPIProvider: SearchProviderAdapter {
     /// - Returns: The `q` item, then the `count` item and the `freshness`
     ///   item when the query sets them.
     private static func queryItems(of query: SearchQuery) -> [(name: String, value: String)] {
-        let text = query.site.map { "\(query.text) site:\($0)" } ?? query.text
         let count = SearchProviderSupport.clampedCount(query.count, to: countRange)
         let countItems = count.map { [(name: countItem, value: String($0))] } ?? []
         let freshnessItems = query.freshness.map { [(name: freshnessItem, value: $0.braveFreshnessValue)] } ?? []
-        return [(name: queryItem, value: text)] + countItems + freshnessItems
+        return [(name: queryItem, value: query.textWithSiteTerm)] + countItems + freshnessItems
     }
 
     /// The text of an HTML fragment, with its markup removed and its entities
