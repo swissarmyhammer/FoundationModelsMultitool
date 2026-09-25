@@ -332,7 +332,29 @@ extension MultiTool {
             configuration: WebConfiguration = .fromEnvironment(),
             sessionConfiguration: URLSessionConfiguration = .ephemeral
         ) -> Self {
-            let capability = WebCapability(configuration: configuration, sessionConfiguration: sessionConfiguration)
+            withWeb(
+                configuration: configuration, sessionConfiguration: sessionConfiguration,
+                resolver: SystemHostResolver())
+        }
+
+        /// Queues the web capability, with the resolver of its address guard.
+        /// The rules of `withWeb(configuration:sessionConfiguration:)` apply.
+        ///
+        /// - Parameters:
+        ///   - configuration: the search providers, the fetch policy, and the
+        ///     environment that the API keys come from.
+        ///   - sessionConfiguration: the configuration of the one `URLSession`
+        ///     of the capability.
+        ///   - resolver: the resolver of the address guard. A test gives a
+        ///     stub, thus no lookup goes to the network.
+        @discardableResult
+        func withWeb(
+            configuration: WebConfiguration,
+            sessionConfiguration: URLSessionConfiguration,
+            resolver: any HostResolver
+        ) -> Self {
+            let capability = WebCapability(
+                configuration: configuration, sessionConfiguration: sessionConfiguration, resolver: resolver)
             let earlier = source.registrations.firstIndex { registration in
                 guard case .capability(let registered) = registration else { return false }
                 return registered is WebCapability

@@ -74,9 +74,30 @@ public struct WebCapability: Capability {
         configuration: WebConfiguration = .fromEnvironment(),
         sessionConfiguration: URLSessionConfiguration = .ephemeral
     ) {
+        self.init(
+            configuration: configuration, sessionConfiguration: sessionConfiguration,
+            resolver: SystemHostResolver())
+    }
+
+    /// Makes the web capability over one session context, with the resolver
+    /// of its address guard.
+    ///
+    /// - Parameters:
+    ///   - configuration: The search providers in the order to try, the fetch
+    ///     policy, and the environment that the API keys come from.
+    ///   - sessionConfiguration: The configuration of the one `URLSession` of
+    ///     the capability.
+    ///   - resolver: The resolver of the address guard. A test gives a stub,
+    ///     thus no lookup goes to the network.
+    init(
+        configuration: WebConfiguration,
+        sessionConfiguration: URLSessionConfiguration,
+        resolver: any HostResolver
+    ) {
         // The one context of the session. Each verb holds it, thus the two
         // verbs share one session, one guard and one page cache.
-        let context = WebContext(configuration: configuration, sessionConfiguration: sessionConfiguration)
+        let context = WebContext(
+            configuration: configuration, sessionConfiguration: sessionConfiguration, resolver: resolver)
 
         self.tools = [Search(context: context), Fetch(context: context)]
     }
