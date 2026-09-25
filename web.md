@@ -273,6 +273,8 @@ public func withWeb(
 
 - `withWeb` does not throw, the same as `withFiles`. It gets no resource at
   construction.
+- The last `withWeb` call wins. A second call replaces the earlier web
+  capability and gives no error. See "Mount in code mode".
 - `sessionConfiguration` is the test seam. A unit test gives a configuration
   whose `protocolClasses` has a stub `URLProtocol`. This is the same method as
   `LoopbackHTTPServer` (`Tests/Support/MCPTestServer/LoopbackHTTPServer.swift`).
@@ -346,12 +348,20 @@ The DOM parser is SwiftSoup. See "Decisions", item 1.
 
 ## Mount in code mode
 
-No change to the mount code is necessary. `withWeb` calls
+No change to the registry code is necessary. The first `withWeb` calls
 `withCapability(_:)`, and the existing path does the rest:
 
 - `RegistrySource.expanded()` makes the entries `web.search` and `web.fetch`.
-- `validateNounOwnership` gives the noun `web` to this capability. A second
-  `withWeb` or an MCP server named `web` is `.duplicateNoun`.
+- `validateNounOwnership` gives the noun `web` to this capability. A
+  different owner of the noun — `register(noun: "web")`,
+  `addGroup(named: "web")`, or an MCP server named `web` — is `.duplicateNoun`
+  at `buildRegistry()`.
+- The last `withWeb` call wins. The builder holds at most one web capability.
+  `withWeb` looks for an earlier registration whose capability is a
+  `WebCapability`. If it finds one, it replaces that registration at the same
+  index. Else it appends a new one. Thus a second `withWeb` gives no error, and
+  one `tools.web` namespace renders, with the configuration of the last call,
+  at the position of the first call.
 - `makePreamble` binds `tools.web.search` and `tools.web.fetch`.
 - `searchTools`, `help()`, and `docs()` find the two verbs.
 - The journal operation names are `search web` and `fetch web`.
@@ -407,7 +417,7 @@ can examine the headers.
 
 | Suite | What it proves |
 |---|---|
-| `WebCapabilityTests` | The shape of `FilesCapabilityTests`: noun `web`, exactly two verbs, one shared context, `withWeb` renders both, no `web` entries without `withWeb`, `.duplicateNoun`, `searchTools` finds each verb, `help()` and `docs()`. |
+| `WebCapabilityTests` | The shape of `FilesCapabilityTests`: noun `web`, exactly two verbs, one shared context, `withWeb` renders both, no `web` entries without `withWeb`, a second `withWeb` replaces the first (the last configuration wins, at the position of the first call), `.duplicateNoun` for a different owner of `web`, `searchTools` finds each verb, `help()` and `docs()`. |
 | `WebVerbArgumentTests` | Each bound and each enum value of both verbs gives the correct correction text. |
 | `BraveHTMLProviderTests` | Parse of a recorded Brave page in `WebGoldens/brave-*.html`. Titles, URLs, snippets, entity decode, duplicates, `count` limit, title fallback, snippet fallback, challenge page. |
 | `DuckDuckGoHTMLProviderTests` | Parse of recorded pages. Decode of the `uddg=` redirect links. |

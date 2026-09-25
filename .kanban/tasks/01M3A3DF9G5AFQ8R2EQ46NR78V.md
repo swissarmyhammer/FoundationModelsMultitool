@@ -94,14 +94,31 @@ comments:
     - evidence: command `swift test`. Result: 1762 tests pass. 0 tests fail. 0 tests skip. `swift build --build-tests`: 0 compiler warnings. The build shows one message about the mlx-swift `Cmlx` bundle. This message comes from the SwiftPM build system, not from a compiler check. The message is not new and it does not come from this change. `swiftlint lint` on the changed file (`WebVerbArgumentTests.swift`): 0 violations.
     - next: send the task to the review step.
   timestamp: 2026-09-25T14:26:07.947443+00:00
+- actor: claude-code
+  id: 01m3cffeff7rtnyd10x8yd6qch
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit aed23c4). 0 findings, 0 confirmed, 0 refuted. 7 validator runs, 0 failed. 1 file reviewed. The engine did not review 2 `.kanban/` files because `.reviewignore` excludes them.
+    - prior finding: `Search.swift:149` `completeness/case-sensitivity-coverage` is fixed. The test `upperCaseFreshnessMatchesLowerCase` in `WebVerbArgumentTests.swift` compares an upper-case freshness value with the lower-case value. The item is checked.
+    - next: none. The task moved to done.
+  timestamp: 2026-09-25T14:28:28.783224+00:00
+- actor: claude-code
+  id: 01m3cfg1djqr5896ms0hzsbn19
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — 1 file (uppercase freshness and format tests)
+    - test: green — swift test, 1762 passed
+    - commit: aed23c4
+    - review: clean — 0 findings; prior finding checked; the task is in done
+  timestamp: 2026-09-25T14:28:48.178230+00:00
 depends_on:
 - 01M3A30QSWWD8A4GSMCD3C3DFQ
 - 01M3A31C5CTHXKBHQEWW3VPNK0
 - 01M3A31JYJRQ0Q7DR9VGF9E5NP
 - 01M3A31T6MJJSGKHPG7P1T98NJ
 - 01M3A32AEKXPYAX6SAEGY9KGJE
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffdc80
 title: 'Web: add WebContext and the search and fetch verbs'
 ---
 ## What

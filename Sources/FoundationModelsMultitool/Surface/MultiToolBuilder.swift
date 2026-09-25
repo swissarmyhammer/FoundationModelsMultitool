@@ -103,7 +103,7 @@ extension MultiTool {
     /// style.
     ///
     /// The builder records; ``MultiTool/RegistrySource`` renders. Every
-    /// registration method appends to ``registrySource``, and `build()` and
+    /// registration method records into ``registrySource``, and `build()` and
     /// `buildRegistry()` render that value. A host that must render again
     /// later — after a `tools/list_changed` re-list of an MCP server — keeps
     /// ``registrySource`` and calls its `rebuildRegistry()`, so the builder
@@ -298,6 +298,48 @@ extension MultiTool {
                     recordsChanges: recordsChanges
                 )
             )
+        }
+
+        /// Queues the two verbs of the web capability — `tools.web.search`
+        /// and `tools.web.fetch` — under the noun `web`, through
+        /// `withCapability(_:)`.
+        ///
+        /// **Web is OFF by default.** A builder that never calls this renders
+        /// no `tools.web` namespace.
+        ///
+        /// Like `withFiles(...)`, this method does not throw. The web
+        /// capability gets no resource at construction: it sends no request,
+        /// and each network question is answered per call, as a correction in
+        /// the verb's own result.
+        ///
+        /// **The last call wins.** The builder holds at most one web
+        /// capability. A second call replaces the earlier web capability at
+        /// its position, and gives no error. A different owner of the noun
+        /// `web` — `register(noun:tool:)`, `addGroup(named:_:)`, or an MCP
+        /// server named `web` — is still `.duplicateNoun` at
+        /// `buildRegistry()`.
+        ///
+        /// - Parameters:
+        ///   - configuration: the search providers in the order to try, the
+        ///     fetch policy, and the environment that the API keys come from.
+        ///     Defaults to `.fromEnvironment()`: each keyed provider whose
+        ///     variable is set, then the keyless providers. A host that wants
+        ///     no environment read gives `.keyless` or its own list.
+        ///   - sessionConfiguration: the configuration of the one
+        ///     `URLSession` of the capability. Defaults to `.ephemeral`.
+        @discardableResult
+        public func withWeb(
+            configuration: WebConfiguration = .fromEnvironment(),
+            sessionConfiguration: URLSessionConfiguration = .ephemeral
+        ) -> Self {
+            let capability = WebCapability(configuration: configuration, sessionConfiguration: sessionConfiguration)
+            let earlier = source.registrations.firstIndex { registration in
+                guard case .capability(let registered) = registration else { return false }
+                return registered is WebCapability
+            }
+            guard let earlier else { return withCapability(capability) }
+            source.registrations[earlier] = .capability(capability)
+            return self
         }
 
         /// Queues one MCP capability for each server of `servers`, in order —
