@@ -279,10 +279,11 @@ struct CLIArgumentTests {
     /// `mcp-test-server` in echo mode, exactly as `run(...)` builds it.
     ///
     /// - Returns: the built registry, its servers and its pool.
-    /// - Throws: what the locator or `CLIRunner.makeDemoRegistry(direct:mcpServers:)` throws.
+    /// - Throws: what the locator or `CLIRunner.makeDemoRegistry(direct:web:mcpServers:)` throws.
     private static func makeEchoDemo() async throws -> CLIRunner.DemoRegistry {
         try await CLIRunner.makeDemoRegistry(
             direct: true,
+            web: false,
             mcpServers: [
                 MCPServerSpec(
                     name: mcpServerNoun,

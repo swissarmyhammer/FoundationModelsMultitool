@@ -71,10 +71,28 @@ comments:
     - evidence: `swift test` (clean rebuild via `swift package clean && swift build --build-tests`, then `swift test`) — 1776 tests, 141 suites, 0 failed, 0 skipped. No warnings in project source. 4 pre-existing C++17-extension warnings are in the vendored `mlx-swift` dependency (`.build/checkouts/mlx-swift/...`), not in project code.
     - next: none. The build is clean.
   timestamp: 2026-09-25T15:31:25.802505+00:00
+- actor: claude-code
+  id: 01m3ckbyb487e84wsf21mtnv97
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit cae032c). 0 findings, 0 confirmed, 0 refuted. 7 of 7 validator runs attempted, 0 failed. The engine reviewed 4 Swift files: WebCapability.swift, MultiToolBuilder.swift, CapabilityDiscoveryProbe.swift, WebCapabilityTests.swift. It did not review 5 files: 4 `.kanban/` files (`.reviewignore`) and `web.md` (no validator matches it). The commit renames no file.
+    - next: none. The task moved to `done`.
+  timestamp: 2026-09-25T15:36:28.260930+00:00
+- actor: claude-code
+  id: 01m3ckcd45ya78qdr6r36p8rxg
+  text: |-
+    ### finish iteration 2 — clean
+    - iteration 1: implement stuck (second withWeb gave .duplicateName; the user decided: last call wins, no duplicate)
+    - implement: changed — withWeb replaces an earlier web registration in place; 2 new tests; web.md updated
+    - test: green — swift test, 1776 passed
+    - commit: cae032c
+    - review: clean — 0 findings; the task is in done
+    - open note: MultiToolBuilder.swift is 461 lines, over the swiftlint file_length limit of 400 (419 before this work). No review rule reported it.
+  timestamp: 2026-09-25T15:36:43.397504+00:00
 depends_on:
 - 01M3A3DF9G5AFQ8R2EQ46NR78V
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffdd80
 title: 'Web: mount WebCapability in code mode with withWeb'
 ---
 ## What

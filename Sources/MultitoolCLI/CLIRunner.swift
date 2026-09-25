@@ -43,8 +43,15 @@ struct CLIArguments: Equatable {
     /// Every MCP server the `--mcp` options named, in the order the options stand.
     ///
     /// Each one becomes a spawned subprocess, a connected `MCPServer`, and one
-    /// group of the rendered surface — see `CLIRunner.makeDemoRegistry(direct:mcpServers:)`.
+    /// group of the rendered surface — see `CLIRunner.makeDemoRegistry(direct:web:mcpServers:)`.
     var mcpServers: [MCPServerSpec] = []
+
+    /// Whether to mount the web capability: `tools.web.search` and
+    /// `tools.web.fetch`.
+    ///
+    /// Set by the `--web` flag. The API keys of the providers come from the
+    /// environment — see `CLIRunner.makeDemoRegistry(direct:web:mcpServers:)`.
+    var web = false
 
     /// Whether to print usage text and exit without touching the Router.
     ///
@@ -291,6 +298,28 @@ public enum CLIRunner {
         }
     )
 
+    /// The `--web` flag, for mounting the web capability on the demo.
+    ///
+    /// The flag mounts `tools.web.search` and `tools.web.fetch` with
+    /// `MultiTool.Builder.withWeb()`. That call reads the provider keys from
+    /// the environment variables of web.md § "The provider list".
+    static let webFlag = Flag(
+        names: ["--web"],
+        valueSyntax: nil,
+        descriptionLines: [
+            "Mount the web capability: tools.web.search and tools.web.fetch.",
+            "The API keys come from the environment: BRAVE_SEARCH_API_KEY",
+            "(or BRAVE_API_KEY), TAVILY_API_KEY, EXA_API_KEY, SERPER_API_KEY,",
+            "KAGI_API_KEY, and SEARXNG_URL (a base URL). Each provider with a",
+            "set variable is tried first, in that order. The keyless providers",
+            "are the last fallback.",
+        ],
+        apply: { arguments, _ in
+            arguments.web = true
+            return 0
+        }
+    )
+
     /// The `--mcp` option, for attaching one stdio MCP server to the demo.
     ///
     /// Repeatable: one option for each server. The name is the noun, so the
@@ -329,7 +358,7 @@ public enum CLIRunner {
     ///
     /// The single source of truth `usageText` is generated from, and
     /// `parse(_:)` dispatches against — see `Flag`'s documentation.
-    static let flags: [Flag] = [directFlag, mcpFlag, helpFlag]
+    static let flags: [Flag] = [directFlag, webFlag, mcpFlag, helpFlag]
 
     /// Every spelling ``flags`` recognizes.
     ///
@@ -604,8 +633,8 @@ public enum CLIRunner {
 
         do {
             try await runDemo(
-                direct: parsed.direct, mcpServers: parsed.mcpServers, resolve: resolve,
-                output: output)
+                direct: parsed.direct, web: parsed.web, mcpServers: parsed.mcpServers,
+                resolve: resolve, output: output)
             return ExitCode.success
         } catch let error as CLIMCPStartError {
             // A `--mcp` value that names no runnable server is a bad argument,
@@ -657,7 +686,12 @@ public enum CLIRunner {
     }
 
     /// Starts every server the `--mcp` options name, and renders the registry
-    /// of the demo: the two fixture tools, plus one group for each server.
+    /// of the demo: the two fixture tools, the web capability when `web` is
+    /// set, and one group for each server.
+    ///
+    /// The web capability uses `withWeb()` with no arguments, thus
+    /// `WebConfiguration.fromEnvironment()` selects the providers from the
+    /// environment of this process. The build sends no request.
     ///
     /// The servers connect before the build, which is what eventplan.md asks of
     /// a host: "Servers connect before `buildRegistry()`." A failure after a
@@ -671,6 +705,7 @@ public enum CLIRunner {
     ///
     /// - Parameters:
     ///   - direct: whether the registry vends `runCode` and `wait` alone.
+    ///   - web: whether the registry mounts the web capability.
     ///   - specs: what the `--mcp` options named, in option order.
     /// - Returns: the registry, its servers, and the pool that shuts them down.
     /// - Throws: ``CLIMCPStartError`` when a server does not start, and what
@@ -678,11 +713,14 @@ public enum CLIRunner {
     ///   is not legal — a server name that is no identifier, or a noun another
     ///   registration already owns.
     static func makeDemoRegistry(
-        direct: Bool, mcpServers specs: [MCPServerSpec]
+        direct: Bool, web: Bool, mcpServers specs: [MCPServerSpec]
     ) async throws -> DemoRegistry {
         let builder = MultiTool.Builder()
             .addTool(DemoTripTool())
             .addTool(DemoWeatherTool())
+        if web {
+            builder.withWeb()
+        }
         let started = try await startMCPServers(specs, recordingInto: builder.serverPool)
         do {
             try await builder.withMCP(servers: started.map(\.server))
@@ -776,6 +814,7 @@ public enum CLIRunner {
     ///   - direct: whether to run in direct mode — the registry vends
     ///     `runCode` and `wait`, and `searchToolsTool` is omitted. Direct
     ///     mode takes discovery away, never the background.
+    ///   - web: whether the registry mounts the web capability.
     ///   - mcpServers: what the `--mcp` options named, in option order.
     ///   - resolve: the profile-resolution step.
     ///   - output: where progress/answer lines are written.
@@ -785,11 +824,12 @@ public enum CLIRunner {
     ///   own event stream throws.
     private static func runDemo(
         direct: Bool,
+        web: Bool,
         mcpServers: [MCPServerSpec],
         resolve: ProfileResolver,
         output: @escaping @Sendable (String) -> Void
     ) async throws {
-        let demo = try await Self.makeDemoRegistry(direct: direct, mcpServers: mcpServers)
+        let demo = try await Self.makeDemoRegistry(direct: direct, web: web, mcpServers: mcpServers)
         Self.reportSurface(demo.registry.surface, output: output)
         do {
             try await Self.runTurn(demo, resolve: resolve, output: output)
