@@ -154,15 +154,13 @@ struct GlobEngine: Sendable {
     /// A pre-search rejection, carrying the corrective message to hand back.
     ///
     /// Every pre-search check produces the same thing — one corrective string —
-    /// so they share one error type. Conforming it to ``CorrectiveFailure`` is
-    /// what lets ``run(pattern:path:caseSensitive:respectGitIgnore:in:)`` unwrap
-    /// them through the shared ``Swift/Result/resolve(corrective:then:)`` rather
-    /// than its own `switch`. ``PathViolation`` is deliberately not reused: only
-    /// one of these rejections is about a path.
-    private struct Rejection: CorrectiveFailure {
-        /// The corrective message the model reads and acts on.
-        let correctiveMessage: String
-    }
+    /// so they share one error type, ``CorrectiveRejection``. It conforms to
+    /// ``CorrectiveFailure``, which is what lets
+    /// ``run(pattern:path:caseSensitive:respectGitIgnore:in:)`` unwrap them
+    /// through the shared ``Swift/Result/resolve(corrective:then:)`` rather
+    /// than its own `switch`. ``PathViolation`` is deliberately not reused:
+    /// only one of these rejections is about a path.
+    private typealias Rejection = CorrectiveRejection
 
     /// The validated inputs of one search: the compiled pattern and where to walk.
     private struct PreparedSearch {

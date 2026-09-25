@@ -8,6 +8,7 @@
 // order, and writes the notes.
 
 import Foundation
+import FoundationModels
 
 /// A query field that a provider can send to its service.
 ///
@@ -26,7 +27,7 @@ enum SearchFeature: String, Sendable, Hashable, CaseIterable {
 }
 
 /// The age limit of search results.
-enum SearchFreshness: String, Sendable, Hashable {
+enum SearchFreshness: String, Sendable, Hashable, CaseIterable {
     /// Results from the last day.
     case day
 
@@ -125,6 +126,9 @@ struct SearchQuery: Sendable, Equatable {
 }
 
 /// One search result.
+///
+/// `@Generable` makes the hit a field of the result of `tools.web.search`.
+@Generable(description: "one search hit: its rank, title, URL, and snippet.")
 struct WebHit: Sendable, Equatable {
     // The synthesized `Equatable` conformance reads it; periphery sees no caller.
     // periphery:ignore

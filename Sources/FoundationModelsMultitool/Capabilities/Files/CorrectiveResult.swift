@@ -28,6 +28,16 @@ protocol CorrectiveFailure: Error {
     var correctiveMessage: String { get }
 }
 
+/// A corrective failure that is only its message.
+///
+/// A check whose each failure is one corrective string, and not a richer
+/// type, gives this type as the failure of its `Result`. The glob verb's
+/// pre-search checks and the web verbs' argument checks use it.
+struct CorrectiveRejection: CorrectiveFailure, Equatable, Sendable {
+    /// The corrective message the model reads and acts on.
+    let correctiveMessage: String
+}
+
 extension PathViolation: CorrectiveFailure {
     /// The corrective message that says why the path was rejected.
     var correctiveMessage: String { message }

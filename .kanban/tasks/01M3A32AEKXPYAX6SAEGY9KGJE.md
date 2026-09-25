@@ -98,10 +98,26 @@ comments:
     - evidence: swift package clean; swift test — 1726 tests, 138 suites, 0 failures, 0 skipped. swiftlint lint on the repo — no violations (only a tool-version note: installed 0.65.1, config pins 0.48.0). 5 warnings remain, all from the vendored mlx-swift dependency under .build/checkouts (4 C++17 extension notes plus 1 SwiftPM build-graph note about its Cmlx.bundle resource copy). That code is not part of this repo, is git-ignored, and swift package update did not run, so no fix to it can stay. No warning is in Sources or Tests of this repo.
     - next: none. The task is ready for the next step.
   timestamp: 2026-09-25T13:29:42.967622+00:00
+- actor: claude-code
+  id: 01m3ccd8fty570rx2w5ttpc0ec
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit 36ce533). 0 findings, 0 confirmed, 2 refuted. 11 files reviewed. The 3 prior findings are all checked.
+    - next: The task moved to done.
+  timestamp: 2026-09-25T13:34:51.386001+00:00
+- actor: claude-code
+  id: 01m3ccdqbqytqqyx0nt5t608pw
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — 11 files (shared freshness table, explicit isHostConfiguration)
+    - test: green — swift test, 1726 passed
+    - commit: 36ce533
+    - review: clean — 0 findings (2 refuted); 3 prior findings checked; the task is in done
+  timestamp: 2026-09-25T13:35:06.615033+00:00
 depends_on:
 - 01M3A31T6MJJSGKHPG7P1T98NJ
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffdb80
 title: 'Web: add the Serper, Kagi, and SearXNG providers'
 ---
 ## What

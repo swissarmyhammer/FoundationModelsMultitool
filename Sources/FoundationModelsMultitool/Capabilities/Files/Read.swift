@@ -81,48 +81,6 @@ extension Read {
 
     // MARK: Bounds
 
-    /// A bounded integer parameter: its name, the kind of value it expects,
-    /// and its inclusive range.
-    ///
-    /// Bound checking is data, not control flow: ``offsetBound`` and
-    /// ``limitBound`` are two instances of this one type, and
-    /// ``violation(_:)`` is the single code path that validates a value and
-    /// builds its corrective message. There is no per-parameter validation
-    /// function or message string to keep in lockstep — a parameter's whole
-    /// identity lives in its spec.
-    private struct BoundSpec {
-        /// The parameter name, as it appears in backticks in a corrective message (`offset`).
-        let parameterName: String
-
-        /// The kind of value expected, as it reads in a corrective message (`1-based line number`).
-        let typeDescription: String
-
-        /// The smallest acceptable value.
-        let minimum: Int
-
-        /// The largest acceptable value.
-        let maximum: Int
-
-        /// The corrective message naming this parameter's valid, inclusive range.
-        var correctiveMessage: String {
-            "The `\(parameterName)` parameter must be a \(typeDescription) between \(minimum) and \(maximum)."
-        }
-
-        /// A corrective message when `value` is present and out of range, or `nil` when acceptable.
-        ///
-        /// An absent value is acceptable (the parameter was omitted); an
-        /// in-range value is acceptable; an out-of-range value yields
-        /// ``correctiveMessage``.
-        ///
-        /// - Parameter value: the requested value, or `nil` when the parameter was omitted.
-        /// - Returns: ``correctiveMessage`` when `value` is present and out
-        ///   of range, else `nil`.
-        func violation(_ value: Int?) -> String? {
-            guard let value else { return nil }
-            return (minimum...maximum).contains(value) ? nil : correctiveMessage
-        }
-    }
-
     /// The largest accepted `offset`: the millionth line, matching the Rust `files` tool.
     private static let maximumOffset = 1_000_000
 
@@ -130,7 +88,7 @@ extension Read {
     private static let maximumLimit = 100_000
 
     /// The bound on `offset`: a 1-based line number up to ``maximumOffset``.
-    private static let offsetBound = BoundSpec(
+    private static let offsetBound = BoundParameter(
         parameterName: "offset",
         typeDescription: "1-based line number",
         minimum: 1,
@@ -138,7 +96,7 @@ extension Read {
     )
 
     /// The bound on `limit`: a line count up to ``maximumLimit``.
-    private static let limitBound = BoundSpec(
+    private static let limitBound = BoundParameter(
         parameterName: "limit",
         typeDescription: "line count",
         minimum: 1,

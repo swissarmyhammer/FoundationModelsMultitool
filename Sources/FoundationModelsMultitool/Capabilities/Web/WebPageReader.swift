@@ -15,7 +15,10 @@
 import Foundation
 
 /// The form of the content that the reader gives.
-enum WebPageFormat: Sendable, Hashable {
+///
+/// The raw value is the name of the form in the `format` argument of
+/// `tools.web.fetch`.
+enum WebPageFormat: String, Sendable, Hashable, CaseIterable {
     /// Markdown. An HTML page is converted. Other text is used as is.
     case markdown
 
