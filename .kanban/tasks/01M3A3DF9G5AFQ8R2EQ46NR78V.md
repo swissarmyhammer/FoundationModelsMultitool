@@ -41,6 +41,59 @@ comments:
     - evidence: command `swift test`. Result: 1760 tests pass. 0 tests fail. 0 tests skip. 0 build warnings.
     - next: send the task to the review step.
   timestamp: 2026-09-25T14:07:09.027457+00:00
+- actor: claude-code
+  id: 01m3cewc8frntkx3zbhmwxr61v
+  text: |-
+    ### review — findings
+    - evidence: review sha HEAD~1..HEAD (b882f11). 1 finding (1 confirmed, 1 refuted). Sources/FoundationModelsMultitool/Capabilities/Web/Search.swift:149
+    - next: Add a test that sends mixed-case `freshness` (for example "DAY") and gets the same result as lower case. Then review again.
+  timestamp: 2026-09-25T14:18:03.919817+00:00
+- actor: claude-code
+  id: 01m3cewq60g2wdys4qchnwkfkn
+  text: |-
+    ### finish iteration 1 — findings
+    - implement: changed — 12 files
+    - test: green — swift test, 1760 passed
+    - commit: b882f11
+    - review: findings — Sources/FoundationModelsMultitool/Capabilities/Web/Search.swift:149
+  timestamp: 2026-09-25T14:18:15.104643+00:00
+- actor: claude-code
+  id: 01m3ceze50adbts4e2re3z0xt4
+  text: |-
+    Research for the review finding (Search.swift:149, case-sensitivity-coverage).
+    - The cause: a token match that ignores case (`.lowercased()`), with no test that proves the mixed-case spelling gives the same result as the lower-case spelling.
+    - Search.swift: one such match, `freshness`. The test `freshnessIsAccepted` already sends "DAY" and "Week", but it does not compare the result with the lower-case result.
+    - Fetch.swift: two such matches. `format` (`.lowercased()` before `WebPageFormat(rawValue:)`): the test `formatIsAccepted` sends "RAW" but only checks that there is no correction; it does not prove that the format is raw. The URL scheme (`httpURL`): the test `upperCaseSchemeIsAccepted` sends "HTTPS://" and checks the content against the page text, which is the lower-case result.
+    - WebContext.swift: no token match that ignores case. Nothing to change.
+    - Plan: add one test for `freshness` that compares the upper-case result with the lower-case result, and one test for `format` that compares the "RAW" content with the "raw" content and with the unchanged HTML body. The tests go in WebVerbArgumentTests.swift, where the verb tests are. WebContextTests.swift tests only the context, and WebVerbFixture.swift is a helper, not a test file.
+  timestamp: 2026-09-25T14:19:44.160218+00:00
+- actor: claude-code
+  id: 01m3cf5dr81fa1kftm7nb1qmtx
+  text: |-
+    Review finding fixed (Search.swift:149, completeness/case-sensitivity-coverage). Only the test file changed. The production code did not change.
+    - New test `upperCaseFreshnessMatchesLowerCase`: it sends `freshness` "day" and "DAY" to one fixture. It checks that the lower-case search gives 1 hit, and that the upper-case result has the same correction, provider, hits, and notes.
+    - The same cause in Fetch.swift: `format` is lower-cased before the match, and the old test `formatIsAccepted` ("RAW") only checked that there is no correction. New test `upperCaseFormatMatchesLowerCase`: it fetches one HTML page with "raw" and "RAW". It checks that "RAW" gives no correction, the same content as "raw", and the unchanged HTML body (thus the raw format really took effect, not markdown).
+    - The URL scheme in Fetch.swift (`httpURL`) is also lower-cased. The existing test `upperCaseSchemeIsAccepted` already sends "HTTPS://" and checks the content against the page text. Thus it already proves the mixed-case result.
+    - WebContext.swift: no token match that ignores case. No change.
+    - The HTML body is now the constant `htmlPage`. `fetchResultShape` uses it too, thus the literal is not written two times.
+    - The tests go in WebVerbArgumentTests.swift, not in WebContextTests.swift. WebContextTests.swift tests only the context, and WebVerbFixture.swift is a helper.
+    - TDD proof: both new tests passed on the current code, because the behavior was already there. To prove that they can fail, I removed `.lowercased()` from Search.swift and Fetch.swift for a short time. Both new tests then failed (the upper-case freshness gave provider "" and no hits; "RAW" gave the format correction). Then I restored the two lines. `git diff` shows no change to the source files.
+    - `swift test`: 1762 tests in 140 suites pass (1760 before, plus 2). `swiftlint lint` on WebVerbArgumentTests.swift: 0 violations. The build prints one SwiftPM notice, "missing creator for mutated node" for the mlx-swift_Cmlx bundle. It is from the build system, not from a compiler diagnostic, and it is not related to this change.
+  timestamp: 2026-09-25T14:23:00.360032+00:00
+- actor: claude-code
+  id: 01m3cf5fx980gb2ze5mgknby53
+  text: |-
+    ### implement — changed
+    - evidence: 1 file — Tests/FoundationModelsMultitoolTests/WebVerbArgumentTests.swift (new tests upperCaseFreshnessMatchesLowerCase and upperCaseFormatMatchesLowerCase, new constant htmlPage); swift test: 1762 tests in 140 suites pass; finding Search.swift:149 checked
+    - next: test, then review
+  timestamp: 2026-09-25T14:23:02.569508+00:00
+- actor: claude-code
+  id: 01m3cfb4ybqf0kzwng2wrqjygw
+  text: |-
+    ### test — green
+    - evidence: command `swift test`. Result: 1762 tests pass. 0 tests fail. 0 tests skip. `swift build --build-tests`: 0 compiler warnings. The build shows one message about the mlx-swift `Cmlx` bundle. This message comes from the SwiftPM build system, not from a compiler check. The message is not new and it does not come from this change. `swiftlint lint` on the changed file (`WebVerbArgumentTests.swift`): 0 violations.
+    - next: send the task to the review step.
+  timestamp: 2026-09-25T14:26:07.947443+00:00
 depends_on:
 - 01M3A30QSWWD8A4GSMCD3C3DFQ
 - 01M3A31C5CTHXKBHQEWW3VPNK0
@@ -77,4 +130,13 @@ Add the two verbs as plain `FoundationModels.Tool` conformers over one shared co
 - [x] Run `swift test --filter WebVerbArgumentTests`. All pass. Then run `swift test`.
 
 ## Workflow
-- Use `/tdd` — write failing tests first, then implement to make them pass. #web
+- Use `/tdd` — write failing tests first, then implement to make them pass.
+
+## Review Findings (2026-09-25 09:08)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 12 file(s) reviewed, 4 not reviewed.
+
+> 4 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 4 file(s)
+
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Web/Search.swift:149` `completeness/case-sensitivity-coverage` — The freshness parameter is normalized to lowercase before enum matching (line 149: `.lowercased()`), allowing mixed-case input like "DAY" or "Month" to work. This is intentional but unverified — test files in scope do not exercise non-lowercase input. Add one test case in WebVerbFixture or WebContextTests asserting that mixed-case freshness works, e.g., `try await fixture.search(freshness: "DAY")` produces the same result as lowercase. #web

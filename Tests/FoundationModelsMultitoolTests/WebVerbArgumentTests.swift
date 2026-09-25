@@ -80,6 +80,10 @@ struct WebVerbArgumentTests {
     /// The text of the plain page of the fetch tests.
     private static let pageText = "The page text."
 
+    /// The body of the HTML page of the fetch tests. The markdown form and
+    /// the raw form of it are different.
+    private static let htmlPage = "<html><head><title>Page Title</title></head><body><p>Hello.</p></body></html>"
+
     /// A fixture whose SearXNG instance gives results for one query.
     ///
     /// - Parameters:
@@ -160,6 +164,20 @@ struct WebVerbArgumentTests {
         let result = try await Self.searchFixture(for: query, resultCount: 1).search(freshness: name)
         #expect(result.correction == nil)
         #expect(result.results.count == 1)
+    }
+
+    @Test("an upper-case freshness gives the same result as the lower-case name")
+    func upperCaseFreshnessMatchesLowerCase() async throws {
+        let freshness = SearchFreshness.day
+        let query = SearchQuery(text: WebVerbFixture.query, freshness: freshness)
+        let fixture = try Self.searchFixture(for: query, resultCount: 1)
+        let lowerCase = try await fixture.search(freshness: freshness.rawValue)
+        let upperCase = try await fixture.search(freshness: freshness.rawValue.uppercased())
+        #expect(lowerCase.results.count == 1)
+        #expect(upperCase.correction == lowerCase.correction)
+        #expect(upperCase.provider == lowerCase.provider)
+        #expect(upperCase.results == lowerCase.results)
+        #expect(upperCase.notes == lowerCase.notes)
     }
 
     @Test("an unknown freshness gives the freshness correction")
@@ -244,6 +262,19 @@ extension WebVerbArgumentTests {
         #expect(result.correction == nil)
     }
 
+    @Test("an upper-case format gives the same content as the lower-case name")
+    func upperCaseFormatMatchesLowerCase() async throws {
+        let fixture = try WebVerbFixture(routes: [
+            WebVerbFixture.pageURL: WebVerbFixture.textReply(contentType: "text/html", body: Self.htmlPage)
+        ])
+        let format = WebPageFormat.raw
+        let lowerCase = try await fixture.fetch(format: format.rawValue)
+        let upperCase = try await fixture.fetch(format: format.rawValue.uppercased())
+        #expect(upperCase.correction == nil)
+        #expect(upperCase.content == lowerCase.content)
+        #expect(upperCase.content == Self.htmlPage)
+    }
+
     @Test("an unknown format gives the format correction")
     func badFormatIsCorrected() async throws {
         let result = try await WebVerbFixture().fetch(format: "pdf")
@@ -290,9 +321,9 @@ extension WebVerbArgumentTests {
 
     @Test("a stubbed HTML page gives the URL, the status, the type, the title, and the content")
     func fetchResultShape() async throws {
-        let html = "<html><head><title>Page Title</title></head><body><p>Hello.</p></body></html>"
         let fixture = try WebVerbFixture(routes: [
-            WebVerbFixture.pageURL: WebVerbFixture.textReply(contentType: "text/html; charset=utf-8", body: html)
+            WebVerbFixture.pageURL: WebVerbFixture.textReply(
+                contentType: "text/html; charset=utf-8", body: Self.htmlPage)
         ])
         let result = try await fixture.fetch()
         #expect(result.url == WebVerbFixture.pageURL)
