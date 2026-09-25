@@ -7,8 +7,9 @@ Brave, Tavily) are technical names. They keep their usual form. Words such as
 
 ## Status of this document
 
-This is a design plan. No code for it exists yet. When the code ships, the code
-and `README.md` are correct, and this document is the record of why.
+This document was the design plan. The code of the capability has shipped.
+When this document and the code or `README.md` are different, the code and
+`README.md` are correct, and this document is the record of why.
 
 ## Goal
 
@@ -199,9 +200,10 @@ public enum WebSearchProvider: Sendable, Hashable {
 | `kagi` | `POST https://kagi.com/api/v1/search` | `KAGI_API_KEY` |
 | `searxng` | `GET <base>/search?q=…&format=json` | `SEARXNG_URL` (a base URL, not a key) |
 
-The keyed provider tasks must examine each endpoint, header, and response
-field against the current documentation of the provider before they write the
-adapter. This table comes from memory, not from a check.
+The keyed provider tasks examined each endpoint, header, and response field
+against the current documentation of the provider before they wrote the
+adapter. The doc comment of each adapter in `Providers/` names the page that
+it used. For example, `kagi` uses version 1 of the documented Kagi search API.
 
 Each provider is one type that conforms to an internal protocol:
 
@@ -258,7 +260,8 @@ public struct WebConfiguration: Sendable {
 }
 ```
 
-Builder short form, in `Surface/MultiToolBuilder.swift`, beside `withFiles`:
+Builder short form, in `Surface/MultiToolBuilder+Capabilities.swift`, beside
+`withFiles`:
 
 ```swift
 @discardableResult
@@ -382,10 +385,14 @@ Sources/FoundationModelsMultitool/Capabilities/Web/
   Search.swift                 SearchArguments, SearchResult, WebHit, struct Search: Tool
   Fetch.swift                  FetchArguments, FetchResult, struct Fetch: Tool
   WebAddressGuard.swift        scheme, host, and IP checks; redirect hook
+  HostResolver.swift           host name to addresses (getaddrinfo), the guard's resolver seam
+  BlockedAddresses.swift       the blocked address ranges and the kind of each range
+  IPAddress.swift              an IPv4 or IPv6 address in network byte order
   HTMLMarkdown.swift           DOM to markdown and to text
   KeyRedaction.swift           removes key values from text
   Providers/
     SearchProviderAdapter.swift
+    SearchProviderSupport.swift  request and parse steps that more than one adapter uses
     BraveHTMLProvider.swift
     DuckDuckGoHTMLProvider.swift
     BraveAPIProvider.swift
@@ -394,13 +401,13 @@ Sources/FoundationModelsMultitool/Capabilities/Web/
     SerperProvider.swift
     KagiProvider.swift
     SearXNGProvider.swift
-Sources/FoundationModelsMultitool/Surface/MultiToolBuilder.swift   + withWeb(...)
-Sources/MultitoolCLI/CLIRunner.swift                               + --web flag
-Package.swift                                                      + SwiftSoup dependency (Decision 1)
-README.md                                                          ## Capabilities: + web
-docs/SECURITY.md                                                   + the web capability section
-WebIntegrationTests/                                               new package (see Testing)
-.github/workflows/web.yml                                          new workflow: web-integration job
+Sources/FoundationModelsMultitool/Surface/MultiToolBuilder+Capabilities.swift   + withWeb(...)
+Sources/MultitoolCLI/CLIRunner.swift                                            + --web flag
+Package.swift                                                                   + SwiftSoup dependency (Decision 1)
+README.md                                                                       ## Capabilities: + web
+docs/SECURITY.md                                                                + the web capability section
+WebIntegrationTests/                                                            new package (see Testing)
+.github/workflows/web.yml                                                       new workflow: web-integration job
 ```
 
 ## Testing
@@ -432,6 +439,14 @@ can examine the headers.
 | `WebPageReaderTests` | Windows (`offset`, `nextOffset`, `totalCharacters`), formats, page cache hit (also after a redirect), eviction. |
 | `HTMLMarkdownTests` | Goldens: `WebGoldens/*.html` to `*.md`. Headings, lists, code fences with language, relative links made absolute, tables, removed elements, title order. |
 | `WebRunCodeTests` | JavaScript snippets through `MultiTool.call`, the shape of `FilesCrossOpFlowTests`: search then fetch; `Promise.all` over three fetches; a correction reaches the snippet as a value, not as an exception; a key value never appears in the return value or the console. |
+| `WebContextTests` | Each provider maps to the adapter of the same name. Only `searxng` maps to an adapter of host configuration. The search chain and the fetcher of the context use the stub session and the fetch policy of the configuration. |
+| `KeyedProviderRequestTests` | The documented query fields and values of each keyed provider request, and the response forms that only one provider has. |
+| `SerperKagiRequestTests` | The query fields of the Serper and Kagi requests, and the response forms that only one of the two providers has. |
+| `SearXNGRequestTests` | The documented query items, the search path under a base URL, and that the request sends no key. |
+| `SearXNGChainTests` | A chain with the SearXNG adapter at a loopback base URL sends the search request with no guard check and gives hits. |
+| `SearchFreshnessValuesTests` | The table of the values of one provider field gives the value of each age limit from the field of that age limit. |
+| `CLIArgumentTests` | The `--web` tests in `CLIArgumentTests+Web.swift`: `--web` sets the flag and no other flag, the usage text lists `--web`, and the demo registry renders `web.search` and `web.fetch` only with `--web`. |
+| `WebDocumentationTests` | The `## Capabilities` section of `README.md` names `withWeb`, the two verbs, and each environment variable. The `## The web capability` section of `docs/SECURITY.md` holds each fixed phrase of "Security". |
 
 ### Level 2: live web tests, no model (new package `WebIntegrationTests/`)
 

@@ -69,6 +69,49 @@ it ever reaches the wrapped tool: a malformed call fails with a repairable
 error text fed back to the model, never a crash, and never anything beyond
 that one tool's own `call(arguments:)`.
 
+## The web capability
+
+The web capability (`Sources/FoundationModelsMultitool/Capabilities/Web/`)
+gives a snippet the two verbs `tools.web.search` and `tools.web.fetch`. It does
+not change the sandbox. The sandbox itself has no network access, and it gets
+no new global. A snippet gets network access only from a mounted tool, the same
+as it gets file access from the files capability. The web verbs are such tools.
+
+- **Off by default.** The web capability is off by default. A host that does
+  not call `withWeb` on the builder renders no `tools.web` namespace, thus a
+  snippet has no web verb to call.
+- **The URL guard.** `WebAddressGuard` checks the URL of each request before the
+  request goes out. It refuses a scheme other than `http` and `https`, a URL
+  with user info (`user:pass@`), a blocked host name (for example `localhost`
+  or `metadata.google.internal`), and a blocked host suffix (`.local`,
+  `.localhost`, `.internal`). Then it resolves the host and checks each
+  address. One address in a blocked range (for example a loopback, private,
+  link-local, or multicast address) is sufficient for a refusal. The
+  link-local range includes the cloud metadata address `169.254.169.254`. The
+  guard also checks each redirect hop, and it stops a request after
+  `WebFetchPolicy.maxRedirects` hops (default 10). A refusal is a `correction`
+  value that the snippet reads, not a thrown error.
+- **Known limit: DNS rebinding.** The guard resolves the host, and then
+  `URLSession` resolves it again to connect. A DNS server that gives a
+  different address the second time (DNS rebinding) can pass the guard. A host
+  that must stop this uses a network policy outside the process.
+- **Keys.** Keys stay in Swift. The capability uses a key only to make the
+  `URLRequest` of its provider. `tools.web.*` has no key parameter, thus the
+  sandbox and the model never see a key. `WebAPIKey` shows
+  `WebAPIKey(<redacted>)` in its `description`, its `debugDescription`, and its
+  `dump` output. Before the error text of a provider goes into `notes` or
+  `correction`, the capability replaces each key value in it with
+  `<redacted>`.
+- **Page content is untrusted data.** A fetched page and a search snippet are
+  data from outside. Such text can contain instructions that try to control
+  the model. The capability does not remove that text. The host must know that
+  the model reads it.
+- **SearXNG.** The base URL of a SearXNG instance (`searxng(URL)`, or the
+  `SEARXNG_URL` variable) is host configuration. The guard does not check the
+  search request to that base URL, because a SearXNG instance on the local
+  network is a normal case. The guard still checks each redirect hop of that
+  request, and each result URL that a snippet fetches.
+
 ## What the watchdog and caps bound
 
 - **Execution time** — a runaway/infinite-loop snippet is force-terminated by

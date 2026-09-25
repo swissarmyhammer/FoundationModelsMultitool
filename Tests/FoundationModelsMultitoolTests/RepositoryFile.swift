@@ -35,6 +35,35 @@ enum RepositoryFile {
         try String(contentsOf: url(forRelativePath: relativePath), encoding: .utf8)
     }
 
+    /// The text that opens the next section of a markdown file, which ends the
+    /// section that ``section(headed:inRelativeFile:)`` gives.
+    private static let nextSectionMarker = "\n## "
+
+    /// Reads one section of a repository markdown file.
+    ///
+    /// The section is the text after the heading, up to the next `## `
+    /// heading or to the end of the file. A `### ` subsection stays in the
+    /// section. A document test reads only its own section, thus the same
+    /// text in a different section does not make the test pass.
+    ///
+    /// - Parameters:
+    ///   - heading: the heading that opens the section, for example
+    ///     `"## Capabilities"`.
+    ///   - filePath: the file's path from the repository root, for example
+    ///     `"README.md"`.
+    /// - Returns: the text of the section, without its heading.
+    /// - Throws: `RepositoryFileError.sectionNotFound` when the file has no
+    ///   such heading, or what ``read(relativePath:)`` throws.
+    static func section(headed heading: String, inRelativeFile filePath: String) throws -> Substring {
+        let text = try read(relativePath: filePath)
+        guard let headingRange = text.range(of: heading) else {
+            throw RepositoryFileError.sectionNotFound(heading: heading, filePath: filePath)
+        }
+        let afterHeading = text[headingRange.upperBound...]
+        let end = afterHeading.range(of: nextSectionMarker)?.lowerBound ?? afterHeading.endIndex
+        return afterHeading[..<end]
+    }
+
     /// Walks one repository directory and gives every Swift file under it.
     ///
     /// The walk reaches each level of the tree, not the named directory
@@ -192,6 +221,9 @@ enum RepositoryFileError: Error, CustomStringConvertible {
     /// cannot start.
     case directoryCannotBeWalked(String)
 
+    /// The file has no line with the heading of the section.
+    case sectionNotFound(heading: String, filePath: String)
+
     var description: String {
         switch self {
         case .pathEscapesRepository(let relativePath):
@@ -200,6 +232,8 @@ enum RepositoryFileError: Error, CustomStringConvertible {
         case .directoryCannotBeWalked(let relativePath):
             return "relativePath \"\(relativePath)\" names no directory of the repository, "
                 + "thus there is nothing to walk."
+        case .sectionNotFound(let heading, let filePath):
+            return "\(filePath) has no \"\(heading)\" section."
         }
     }
 }

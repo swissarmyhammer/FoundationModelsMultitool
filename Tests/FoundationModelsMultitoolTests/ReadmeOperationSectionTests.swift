@@ -23,10 +23,6 @@ struct ReadmeOperationSectionTests {
     /// The heading that opens the section under test.
     private static let sectionHeading = "## Operation tools"
 
-    /// The text that opens the next section of the README, which ends the
-    /// section under test.
-    private static let nextSectionMarker = "\n## "
-
     /// The golden of the five-verb fixture, from the repository root.
     private static let goldenPath = "Tests/FoundationModelsMultitoolTests/Goldens/OperationSurface.ts.txt"
 
@@ -51,12 +47,7 @@ struct ReadmeOperationSectionTests {
     /// - Returns: The section text.
     /// - Throws: When the README does not read, or has no such section.
     private static func section() throws -> Substring {
-        let text = try RepositoryFile.read(relativePath: readmePath)
-        let headingRange = try #require(
-            text.range(of: sectionHeading), "\(readmePath) has no \"\(sectionHeading)\" section.")
-        let afterHeading = text[headingRange.upperBound...]
-        let end = afterHeading.range(of: nextSectionMarker)?.lowerBound ?? afterHeading.endIndex
-        return afterHeading[..<end]
+        try RepositoryFile.section(headed: sectionHeading, inRelativeFile: readmePath)
     }
 
     /// The `declare function` lines of the section, with their indentation

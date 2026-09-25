@@ -44,15 +44,57 @@ let response: LanguageModelSession.Response<String> =
 
 ## Capabilities
 
-Three capabilities ship with the package, each a set of ordinary `Tool`s you
+Four capabilities ship with the package, each a set of ordinary `Tool`s you
 add to a catalog like any other: **files** (read, edit, patch, search),
-**shell** (a sandboxed `execute` plus its history verbs), and **MCP** (attach a
-stdio or HTTP server and register its catalog under a noun).
+**shell** (a sandboxed `execute` plus its history verbs), **web** (search the
+web and fetch a page), and **MCP** (attach a stdio or HTTP server and register
+its catalog under a noun).
 
 Every shell command runs under a seatbelt sandbox, and a snippet reaches
 nothing but the tools you gave it. The guarantees and the escape hatches are
 written down in [`docs/SECURITY.md`](docs/SECURITY.md) — read that before
-mounting the shell capability.
+mounting the shell capability or the web capability.
+
+### Web
+
+The web capability is off by default. Call
+`withWeb(configuration:sessionConfiguration:)` on the builder to mount it. The
+capability adds two verbs:
+
+- `tools.web.search` searches the web. It gives ranked hits (title, URL,
+  snippet). It never fetches a page.
+- `tools.web.fetch` fetches one URL. It gives the page as markdown, text, or
+  raw content, in windows.
+
+A snippet searches, and then fetches the pages that it selects, in parallel:
+
+```js
+const hits = await tools.web.search({ query: "swift structured concurrency" });
+const pages = await Promise.all(
+  hits.results.slice(0, 3).map(r => tools.web.fetch({ url: r.url, maxCharacters: 4000 })));
+return pages.map(p => ({ url: p.url, title: p.title, head: p.content.slice(0, 400) }));
+```
+
+`withWeb()` with no arguments uses `WebConfiguration.fromEnvironment()`. That
+configuration puts each keyed provider whose environment variable is set first,
+in this order. The two keyless providers, `braveHTML` and `duckDuckGoHTML`,
+come last. When no variable is set, the search is keyless.
+
+| Provider | Environment variable |
+|---|---|
+| `braveAPI` | `BRAVE_SEARCH_API_KEY` (or `BRAVE_API_KEY`) |
+| `tavily` | `TAVILY_API_KEY` |
+| `exa` | `EXA_API_KEY` |
+| `serper` | `SERPER_API_KEY` |
+| `kagi` | `KAGI_API_KEY` |
+| `searxng` | `SEARXNG_URL` (the base URL of your instance, not a key) |
+
+The capability tries the providers in list order. When a provider fails, the
+capability tries the next provider and adds a line to `notes`. Use
+`withWeb(configuration: .keyless)` to read no environment, or give a
+`WebConfiguration` with your own provider list. A second `withWeb` call
+replaces the first: the last call wins. A key stays in Swift. The sandbox, the
+rendered surface, and each result never show a key value.
 
 ### Injected globals
 
@@ -156,3 +198,6 @@ multitool-cli --mcp echo=.build/debug/mcp-test-server --mode echo
 
 The listing then names `tools.echo.echo` beside the fixture tools, and a
 snippet calls it like any other verb.
+
+The `--web` flag mounts the web capability with `withWeb()`. The provider keys
+come from the environment variables in the table of the `### Web` section.

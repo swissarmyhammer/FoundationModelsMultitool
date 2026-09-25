@@ -12,7 +12,10 @@ import Testing
 /// built on a walk that finds no file passes while it reads nothing. And
 /// `sightings(of:inRelativeFile:skippingCommentLines:)` separates a comment
 /// line from a line of code, because a guard that reads what a file DECLARES
-/// fails wrongly when prose names the banned text.
+/// fails wrongly when prose names the banned text. And
+/// `section(headed:inRelativeFile:)` stops at the next `## ` heading, because
+/// a document test that reads past its section passes on the text of a
+/// different section.
 ///
 /// The comment tests scan this file itself. The three fixture declarations
 /// below give one line of each kind the comment rule separates.
@@ -117,6 +120,35 @@ struct RepositoryFileTests {
         let sightings = try Self.fixtureSightings(skippingCommentLines: true)
         #expect(sightings.contains { $0.hasSuffix(Self.needleAfterCode) })
     }
+
+    @Test("section(headed:inRelativeFile:) gives the text of the section and stops at the next section")
+    func sectionStopsAtTheNextSection() throws {
+        let section = try RepositoryFile.section(headed: Self.installHeading, inRelativeFile: Self.readmePath)
+        #expect(section.contains(Self.installText))
+        #expect(!section.contains(Self.headingAfterInstall))
+    }
+
+    @Test("section(headed:inRelativeFile:) rejects a heading that the file does not have")
+    func sectionRejectsAMissingHeading() {
+        #expect(throws: RepositoryFileError.self) {
+            _ = try RepositoryFile.section(headed: Self.missingHeading, inRelativeFile: Self.readmePath)
+        }
+    }
+
+    /// The README, the file that the section tests read.
+    private static let readmePath = "README.md"
+
+    /// The heading of the README section that the section tests read.
+    private static let installHeading = "## Install"
+
+    /// A text that the `## Install` section of the README holds.
+    private static let installText = ".package(url:"
+
+    /// The heading of the README section after `## Install`.
+    private static let headingAfterInstall = "## Capabilities"
+
+    /// A heading that the README does not have.
+    private static let missingHeading = "## No such section"
 
     /// Scans this file for each fixture needle.
     ///

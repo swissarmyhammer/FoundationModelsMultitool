@@ -23,8 +23,24 @@ comments:
     - lint: `swiftlint lint --strict` on the two changed files (`Sources/FoundationModelsMultitool/Surface/MultiToolBuilder.swift`, `Sources/FoundationModelsMultitool/Surface/MultiToolBuilder+Capabilities.swift`) gave 0 violations. A repo-wide `swiftlint lint --strict Sources Tests` run (the repo has no `.swiftlint.yml`, so the tool used its default rule set) found 739 pre-existing violations in 347 files, all outside the two changed files. These are not new. They are not warnings from `swift build` or `swift test`. They are out of scope for this test step.
     - next: /review
   timestamp: 2026-09-25T18:52:20.579637+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m3cyqhbh9eaz2g05wvg63n4g
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit c6dfba8). 0 findings, 0 confirmed, 0 refuted. 2 files reviewed. 6 files in `.kanban/` were not reviewed because of `.reviewignore`. The commit has no rename. Git shows `MultiToolBuilder+Capabilities.swift` as a new file, thus the diff review read each line of it.
+    - next: none. The task moved to done.
+  timestamp: 2026-09-25T18:55:02.513567+00:00
+- actor: claude-code
+  id: 01m3cyqyx2jw2ncpzearm4mwjx
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 2 files (MultiToolBuilder.swift 325 lines, new MultiToolBuilder+Capabilities.swift 192 lines)
+    - test: green — swift test, 1786 passed
+    - commit: c6dfba8
+    - review: clean — 0 findings; the task is in done
+  timestamp: 2026-09-25T18:55:16.386327+00:00
+position_column: done
+position_ordinal: ffe180
 title: Split MultiToolBuilder.swift under 400 lines
 ---
 ## What
