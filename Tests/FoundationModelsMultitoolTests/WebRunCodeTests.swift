@@ -61,23 +61,6 @@ struct WebRunCodeTests {
 
     // MARK: - Helpers
 
-    /// Decodes the JSON value that one run returned.
-    ///
-    /// - Parameters:
-    ///   - type: The value type to decode.
-    ///   - output: The rendered run output.
-    /// - Returns: The decoded value.
-    /// - Throws: When `output` is not the JSON text of `type`. The raw output
-    ///   is recorded first, thus the failure names what came back.
-    private static func decoded<Value: Decodable>(_ type: Value.Type, from output: String) throws -> Value {
-        do {
-            return try JSONDecoder().decode(type, from: Data(output.utf8))
-        } catch {
-            Issue.record("the output did not decode as \(type): \(output)")
-            throw error
-        }
-    }
-
     /// The routes that serve each page.
     ///
     /// - Parameter pages: The pages.
@@ -124,7 +107,7 @@ struct WebRunCodeTests {
             """)
 
         #expect(!output.contains(ToolReturnLedger.uncarriedReturnNotice), "output was: \(output)")
-        let heads = try Self.decoded([PageHead].self, from: output)
+        let heads = try RunOutput.decoded([PageHead].self, from: output)
         let fetched = pages.prefix(Self.fetchedPageCount)
         let expected = fetched.map { page in
             PageHead(url: page.url, title: page.title, head: String(page.markdown.prefix(Self.headLength)))
@@ -148,7 +131,7 @@ struct WebRunCodeTests {
             return results.map(r => r.correction || r.title);
             """)
 
-        let titles = try Self.decoded([String].self, from: output)
+        let titles = try RunOutput.decoded([String].self, from: output)
         #expect(titles == pages.map(\.title))
     }
 
@@ -180,7 +163,7 @@ struct WebRunCodeTests {
             """)
 
         #expect(!output.contains(Self.thrownMarker), "output was: \(output)")
-        let value = try Self.decoded(CorrectionValue.self, from: output)
+        let value = try RunOutput.decoded(CorrectionValue.self, from: output)
         #expect(value.refused == Self.blockedCorrection)
         #expect(value.invalid == Self.badSchemeCorrection)
         #expect(run.stub.requests.isEmpty)
@@ -223,7 +206,7 @@ struct WebRunCodeTests {
             return JSON.stringify({ hits, page, refused });
             """)
 
-        let value = try Self.decoded(KeyedSearchValue.self, from: searched)
+        let value = try RunOutput.decoded(KeyedSearchValue.self, from: searched)
         #expect(value.provider == WebSearchProvider.braveAPI(.literal(WebRun.testKey)).name)
         #expect(value.urls == [page.url])
         #expect(logged.contains(page.title), "output was: \(logged)")

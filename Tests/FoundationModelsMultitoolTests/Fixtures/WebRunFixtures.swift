@@ -55,17 +55,18 @@ struct WebRun {
 
     /// Runs one `runCode` snippet over the web surface.
     ///
-    /// The call goes through `MultiTool.call(arguments:)`, thus through the
-    /// JSC interpreter, the `tools.*` bindings, and `ToolInvoker`: the same
-    /// path as the snippet of a model. The rendered output holds the return
-    /// value and the console output. The function records an issue when the
-    /// output holds ``testKey``.
+    /// The call goes through the shared `runSnippet(_:through:under:)` of
+    /// `FilesRunFixtures`, with no session context, thus through the JSC
+    /// interpreter, the `tools.*` bindings, and `ToolInvoker`: the same path
+    /// as the snippet of a model. The rendered output holds the return value
+    /// and the console output. The function records an issue when the output
+    /// holds ``testKey``.
     ///
     /// - Parameter code: The snippet to run.
     /// - Returns: The rendered output, as the model reads it.
     /// - Throws: What `MultiTool.call(arguments:)` throws.
     func runSnippet(_ code: String) async throws -> String {
-        let output = try await multiTool.call(arguments: RunCodeArguments(code: code))
+        let output = try await FoundationModelsMultitoolTests.runSnippet(code, through: multiTool, under: nil)
         #expect(!output.contains(Self.testKey), "the output holds the key: \(output)")
         return output
     }
@@ -91,7 +92,7 @@ struct WebRun {
             FixtureResult(title: "Result \(position + 1)", url: url, snippet: "Snippet \(position + 1)")
         }
         let body = KeyedProviderCase.braveAPI.responseBody(results)
-        return .respond(status: WebStub.okStatus, headers: WebVerbFixture.jsonHeaders, body: Data(body.utf8))
+        return WebVerbFixture.textReply(contentType: WebVerbFixture.jsonContentType, body: body)
     }
 }
 

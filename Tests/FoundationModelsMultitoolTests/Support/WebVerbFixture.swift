@@ -20,8 +20,11 @@ struct WebVerbFixture {
     /// The query of the search tests.
     static let query = "swift"
 
+    /// The content type of a JSON response.
+    static let jsonContentType = "application/json"
+
     /// The header of a JSON response.
-    static let jsonHeaders = ["Content-Type": "application/json"]
+    static let jsonHeaders = ["Content-Type": jsonContentType]
 
     /// The stub that answers each request of ``context``.
     let stub: WebStub
