@@ -129,25 +129,6 @@ struct FileChangeEventAbsenceTests {
         try await runSnippet(code, over: ground.registry, under: ground.run.context)
     }
 
-    /// Decodes the JSON value one run returned.
-    ///
-    /// - Parameters:
-    ///   - type: the value type to decode.
-    ///   - output: the rendered run output.
-    /// - Returns: the decoded value.
-    /// - Throws: when `output` is not the JSON text of `type`. The raw
-    ///   output is recorded first, thus the failure names what came back.
-    private static func decoded<Value: Decodable>(
-        _ type: Value.Type, from output: String
-    ) throws -> Value {
-        do {
-            return try JSONDecoder().decode(type, from: Data(output.utf8))
-        } catch {
-            Issue.record("the output did not decode as \(type): \(output)")
-            throw error
-        }
-    }
-
     /// The recorded `.progress` events of a run whose `detail` is the
     /// `fileChanges` envelope.
     ///
@@ -196,7 +177,7 @@ struct FileChangeEventAbsenceTests {
                 matches: grep.matches.filter((m) => m.isMatch).length,
             };
             """, under: ground)
-        let value = try Self.decoded(ReadValue.self, from: output)
+        let value = try RunOutput.decoded(ReadValue.self, from: output)
         let events = await Self.fileChangeEvents(of: ground.run)
 
         #expect(value.lines == Self.seededLineCount)
@@ -212,7 +193,7 @@ struct FileChangeEventAbsenceTests {
         let ground = try await Self.makeGround(recordsChanges: false)
 
         let output = try await Self.run(Self.writeSnippet, under: ground)
-        let bytesWritten = try Self.decoded(Int.self, from: output)
+        let bytesWritten = try RunOutput.decoded(Int.self, from: output)
         let events = await Self.fileChangeEvents(of: ground.run)
         let drained = await ground.journal.drain()
 
@@ -252,7 +233,7 @@ struct FileChangeEventAbsenceTests {
             if (edited.correction) { return edited.correction; }
             return { refusedCorrection: refused.correction, editStatus: edited.status };
             """, under: ground)
-        let value = try Self.decoded(RefusedValue.self, from: output)
+        let value = try RunOutput.decoded(RefusedValue.self, from: output)
         let events = await Self.fileChangeEvents(of: ground.run)
         let drained = await ground.journal.drain()
 
@@ -272,7 +253,7 @@ struct FileChangeEventAbsenceTests {
         let path = TestSupport.path(Self.writtenFileName, in: ground.root)
 
         let output = try await runSnippet(Self.writeSnippet, over: ground.registry)
-        let bytesWritten = try Self.decoded(Int.self, from: output)
+        let bytesWritten = try RunOutput.decoded(Int.self, from: output)
         let events = await recordedOperationEvents(of: ground.run, ofKind: .progress)
         let drained = await ground.journal.drain()
 
@@ -294,7 +275,7 @@ struct FileChangeEventAbsenceTests {
             notify("\(Self.noticeDetail)");
             \(Self.writeSnippet)
             """, under: ground)
-        let bytesWritten = try Self.decoded(Int.self, from: output)
+        let bytesWritten = try RunOutput.decoded(Int.self, from: output)
         let events = await recordedOperationEvents(
             of: ground.run,
             ofKind: .progress,

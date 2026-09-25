@@ -115,17 +115,6 @@ struct OperationRunCodeTests {
         try await makeMultiTool(over: parent).call(arguments: RunCodeArguments(code: code))
     }
 
-    /// The rendered output of `runCode`, decoded as JSON.
-    ///
-    /// - Parameters:
-    ///   - type: The type to decode.
-    ///   - output: The rendered output.
-    /// - Returns: The decoded value.
-    /// - Throws: What `JSONDecoder` throws.
-    private static func decode<Value: Decodable>(_ type: Value.Type, from output: String) throws -> Value {
-        try JSONDecoder().decode(type, from: Data(output.utf8))
-    }
-
     /// Adds `notes` to the store of `parent` through `perform(_:)`, outside
     /// any snippet, so a case starts with notes to list.
     ///
@@ -174,7 +163,7 @@ struct OperationRunCodeTests {
             over: parent)
 
         let stored = try #require(parent.notes.first)
-        #expect(try Self.decode(String.self, from: output) == stored.id)
+        #expect(try RunOutput.decoded(String.self, from: output) == stored.id)
         let recorded = try #require(parent.recordedCalls.first)
         #expect(parent.recordedCalls.count == 1)
         // The verb puts `op` first. The keys after it come from the marshaled
@@ -205,7 +194,7 @@ struct OperationRunCodeTests {
             """,
             over: parent)
 
-        let report = try Self.decode(ListReport.self, from: output)
+        let report = try RunOutput.decoded(ListReport.self, from: output)
         #expect(report.isArray)
         #expect(report.count == Self.seededNotes.count)
     }
@@ -232,7 +221,7 @@ struct OperationRunCodeTests {
             """,
             over: parent)
 
-        #expect(try Self.decode(Int.self, from: output) == hits.count)
+        #expect(try RunOutput.decoded(Int.self, from: output) == hits.count)
         let tagCalls = parent.recordedCalls(withOp: NotesOperationTool.tagNoteOp)
         #expect(tagCalls.count == hits.count)
         #expect(tagCalls.map { $0.string(NotesOperationTool.idParameter) } == hits.map(\.id))
@@ -251,7 +240,7 @@ struct OperationRunCodeTests {
             Self.catchingSnippet(awaiting: #"tools.notes.tagNote({ id: "\#(Self.unreachedNoteID)" })"#),
             over: parent)
 
-        let message = try Self.decode(String.self, from: output)
+        let message = try RunOutput.decoded(String.self, from: output)
         #expect(message != Self.unreachableMarker)
         #expect(message.contains("\"\(NotesOperationTool.tagParameter)\""), "message was: \(message)")
         #expect(parent.recordedCalls.isEmpty)
@@ -267,7 +256,7 @@ struct OperationRunCodeTests {
             Self.catchingSnippet(awaiting: #"tools.notes.getNote({ id: "\#(Self.absentNoteID)" })"#),
             over: parent)
 
-        let message = try Self.decode(String.self, from: output)
+        let message = try RunOutput.decoded(String.self, from: output)
         let fixtureText = String(describing: NotesOperationError.missingNote(id: Self.absentNoteID))
         #expect(message.contains(fixtureText), "message was: \(message)")
         #expect(parent.recordedCalls.count == 1)
@@ -288,7 +277,7 @@ struct OperationRunCodeTests {
             """,
             over: parent)
 
-        let report = try Self.decode(TextReport.self, from: output)
+        let report = try RunOutput.decoded(TextReport.self, from: output)
         #expect(report.kind == "string")
         #expect(report.text == NotesOperationTool.deletionMessage(for: stored.id))
         #expect(parent.notes.isEmpty)
@@ -311,7 +300,7 @@ struct OperationRunCodeTests {
             """,
             over: parent)
 
-        let caught = try Self.decode(CaughtError.self, from: output)
+        let caught = try RunOutput.decoded(CaughtError.self, from: output)
         #expect(caught.isTypeError)
         #expect(caught.name == "TypeError")
         #expect(caught.message == NotesOperationTool.namespaceCallTypeErrorMessage)

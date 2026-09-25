@@ -203,25 +203,6 @@ struct FilesCrossOpFlowTests {
             .call(arguments: RunCodeArguments(code: code))
     }
 
-    /// Decodes the JSON value one run returned.
-    ///
-    /// - Parameters:
-    ///   - type: the value type to decode.
-    ///   - output: the rendered run output.
-    /// - Returns: the decoded value.
-    /// - Throws: When `output` is not the JSON text of `type`. The raw
-    ///   output is recorded first, thus the failure names what came back.
-    private static func decoded<Value: Decodable>(
-        _ type: Value.Type, from output: String
-    ) throws -> Value {
-        do {
-            return try JSONDecoder().decode(type, from: Data(output.utf8))
-        } catch {
-            Issue.record("the output did not decode as \(type): \(output)")
-            throw error
-        }
-    }
-
     // MARK: - Write then read
 
     @Test("a snippet writes a file and reads the same content back")
@@ -239,7 +220,7 @@ struct FilesCrossOpFlowTests {
 
         #expect(
             !output.contains(ToolReturnLedger.uncarriedReturnNotice), "output was: \(output)")
-        let lines = try Self.decoded([String].self, from: output)
+        let lines = try RunOutput.decoded([String].self, from: output)
         #expect(lines == Self.plainLines(of: Self.noteContent))
         #expect(try Self.diskContents(Self.noteFileName, in: root) == Self.noteContent)
     }
@@ -278,7 +259,7 @@ struct FilesCrossOpFlowTests {
 
         #expect(
             !output.contains(ToolReturnLedger.uncarriedReturnNotice), "output was: \(output)")
-        let value = try Self.decoded(GlobGrepValue.self, from: output)
+        let value = try RunOutput.decoded(GlobGrepValue.self, from: output)
         #expect(value.found == [Self.alphaFileName, Self.betaFileName])
         #expect(value.matched == [Self.alphaFileName])
     }
@@ -315,7 +296,7 @@ struct FilesCrossOpFlowTests {
 
         #expect(
             !output.contains(ToolReturnLedger.uncarriedReturnNotice), "output was: \(output)")
-        let value = try Self.decoded(EditValue.self, from: output)
+        let value = try RunOutput.decoded(EditValue.self, from: output)
         #expect(value.status == EditOutcomeProjection.appliedStatus)
         #expect(
             value.outcomes.contains { $0.contains(Self.anchorOutcomeFragment) },
@@ -351,7 +332,7 @@ struct FilesCrossOpFlowTests {
 
         #expect(
             !output.contains(ToolReturnLedger.uncarriedReturnNotice), "output was: \(output)")
-        let lines = try Self.decoded([String].self, from: output)
+        let lines = try RunOutput.decoded([String].self, from: output)
         #expect(lines == Self.plainLines(of: Self.editedThreeLineContent))
         #expect(
             try Self.diskContents(Self.patchFileName, in: root) == Self.editedThreeLineContent)
@@ -381,7 +362,7 @@ struct FilesCrossOpFlowTests {
         #expect(!output.contains(Self.uncorrectedMarker), "output was: \(output)")
         #expect(
             !output.contains(ToolReturnLedger.uncarriedReturnNotice), "output was: \(output)")
-        let lines = try Self.decoded([String].self, from: output)
+        let lines = try RunOutput.decoded([String].self, from: output)
         #expect(lines == Self.plainLines(of: Self.insideContent))
     }
 
@@ -407,7 +388,7 @@ struct FilesCrossOpFlowTests {
 
         #expect(
             !output.contains(ToolReturnLedger.uncarriedReturnNotice), "output was: \(output)")
-        let lines = try Self.decoded([String].self, from: output)
+        let lines = try RunOutput.decoded([String].self, from: output)
         #expect(
             lines == [
                 Self.plainLines(of: Self.firstContent).first,

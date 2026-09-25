@@ -39,7 +39,7 @@ struct SandboxGlobalsTests {
             """
         )
 
-        let kinds = try decode([String].self, from: output)
+        let kinds = try RunOutput.decoded([String].self, from: output)
         #expect(kinds == Array(repeating: "function", count: sandboxGlobalNames.count))
     }
 
@@ -50,7 +50,7 @@ struct SandboxGlobalsTests {
 
         let output = try await multiTool.call(arguments: RunCodeArguments(code: "return help();"))
 
-        let helpPaths = try decode([String].self, from: output)
+        let helpPaths = try RunOutput.decoded([String].self, from: output)
         #expect(helpPaths == ["getCities"])
         let surfacePaths = Set(registry.surface.entries.map(\.path))
         #expect(surfacePaths.isDisjoint(with: sandboxGlobalNames))
@@ -77,7 +77,7 @@ struct SandboxGlobalsTests {
         )
 
         #expect(
-            try decode([String].self, from: output) == [
+            try RunOutput.decoded([String].self, from: output) == [
                 "status:function",
                 "wait:function",
                 "cancel:function",
@@ -95,7 +95,7 @@ struct SandboxGlobalsTests {
     func docsGlobalsDeclaresEveryAmbientGlobal() async throws {
         let output = try await runSnippet("return docs(\"\(MultiTool.sandboxGlobalsDocsTopic)\");")
 
-        let page = try decode(String.self, from: output)
+        let page = try RunOutput.decoded(String.self, from: output)
         for name in sandboxGlobalNames {
             #expect(page.contains("declare function \(name)("))
         }
@@ -105,7 +105,7 @@ struct SandboxGlobalsTests {
     func theGlobalsPageReachesTheSnippetWhole() async throws {
         let output = try await runSnippet("return docs(\"\(MultiTool.sandboxGlobalsDocsTopic)\");")
 
-        #expect(try decode(String.self, from: output) == MultiTool.sandboxGlobalsPage)
+        #expect(try RunOutput.decoded(String.self, from: output) == MultiTool.sandboxGlobalsPage)
     }
 
     @Test("docs(name) resolves each ambient global on its own, returning that one's block alone")
@@ -113,7 +113,7 @@ struct SandboxGlobalsTests {
         for name in sandboxGlobalNames {
             let output = try await runSnippet("return docs(\"\(name)\");")
 
-            let block = try decode(String.self, from: output)
+            let block = try RunOutput.decoded(String.self, from: output)
             #expect(sandboxGlobalNames.filter { block.contains("declare function \($0)(") } == [name])
         }
     }
@@ -141,7 +141,7 @@ struct SandboxGlobalsTests {
             under: context
         )
 
-        let observed = try decode([String].self, from: output)
+        let observed = try RunOutput.decoded([String].self, from: output)
         let documented = try #require(declaredFields(of: "BackgroundRun", in: MultiTool.sandboxGlobalsPage))
         #expect(documented == observed)
     }
@@ -158,7 +158,7 @@ struct SandboxGlobalsTests {
             under: context
         )
 
-        let observed = try decode([String].self, from: output)
+        let observed = try RunOutput.decoded([String].self, from: output)
         let documented = try #require(declaredFields(of: "ElicitationAnswer", in: MultiTool.sandboxGlobalsPage))
         #expect(documented == observed)
     }
@@ -191,7 +191,7 @@ struct SandboxGlobalsTests {
         )
 
         #expect(
-            try decode([[Bool]].self, from: output) == [
+            try RunOutput.decoded([[Bool]].self, from: output) == [
                 [true, false],   // status() on a run that is going
                 [true, false],   // status() on a run that finished
                 [false, true],   // status() on a handle naming no run
@@ -217,7 +217,7 @@ struct SandboxGlobalsTests {
             under: context
         )
 
-        #expect(try decode([[String?]].self, from: output) == [[run.completionToken, run.op, "downloading"]])
+        #expect(try RunOutput.decoded([[String?]].self, from: output) == [[run.completionToken, run.op, "downloading"]])
     }
 
     @Test("status(completionToken) reports a running run as running")
@@ -235,7 +235,7 @@ struct SandboxGlobalsTests {
         )
 
         #expect(
-            try decode([String?].self, from: output) == [
+            try RunOutput.decoded([String?].self, from: output) == [
                 "running", run.completionToken, run.op, "swiftTask", "step one",
             ]
         )
@@ -257,7 +257,7 @@ struct SandboxGlobalsTests {
         )
 
         #expect(
-            try decode([String?].self, from: output) == [
+            try RunOutput.decoded([String?].self, from: output) == [
                 "complete", run.completionToken, "scripted-terminal-detail", "succeeded",
             ]
         )
@@ -279,7 +279,7 @@ struct SandboxGlobalsTests {
         )
 
         #expect(
-            try decode([String?].self, from: output) == [
+            try RunOutput.decoded([String?].self, from: output) == [
                 "error", run.completionToken, OperationOutcome.failed.rawValue,
             ]
         )
@@ -298,7 +298,7 @@ struct SandboxGlobalsTests {
             under: context
         )
 
-        #expect(try decode([String].self, from: output) == ["unknown", "no-such-token"])
+        #expect(try RunOutput.decoded([String].self, from: output) == ["unknown", "no-such-token"])
     }
 
     // MARK: - wait()
@@ -319,7 +319,7 @@ struct SandboxGlobalsTests {
         )
 
         #expect(
-            try decode([String?].self, from: output) == [
+            try RunOutput.decoded([String?].self, from: output) == [
                 "complete", run.completionToken, "scripted-terminal-detail", "succeeded",
             ]
         )
@@ -343,7 +343,7 @@ struct SandboxGlobalsTests {
             under: context
         )
 
-        #expect(try decode(Int.self, from: output) == longReportLength)
+        #expect(try RunOutput.decoded(Int.self, from: output) == longReportLength)
     }
 
     @Test("wait() reports a timeout while the run keeps running")
@@ -360,7 +360,7 @@ struct SandboxGlobalsTests {
             under: context
         )
 
-        #expect(try decode([String].self, from: output) == ["timeout", run.completionToken])
+        #expect(try RunOutput.decoded([String].self, from: output) == ["timeout", run.completionToken])
         #expect(await context.backgroundRuns().map(\.completionToken) == [run.completionToken])
     }
 
@@ -377,7 +377,7 @@ struct SandboxGlobalsTests {
             under: context
         )
 
-        #expect(try decode([String].self, from: output) == ["unknown", "no-such-token"])
+        #expect(try RunOutput.decoded([String].self, from: output) == ["unknown", "no-such-token"])
     }
 
     @Test("wait() called without a seconds deadline rejects with a repairable error naming the shape")
@@ -397,7 +397,7 @@ struct SandboxGlobalsTests {
             under: context
         )
 
-        let message = try decode(String.self, from: output)
+        let message = try RunOutput.decoded(String.self, from: output)
         #expect(message.hasPrefix("wait: "))
         #expect(message.contains("wait(completionToken, seconds)"))
     }
@@ -419,7 +419,7 @@ struct SandboxGlobalsTests {
         )
 
         #expect(
-            try decode([String].self, from: output) == [
+            try RunOutput.decoded([String].self, from: output) == [
                 "cancelled", run.completionToken, scriptedRunCancelOutcome.rawValue,
             ]
         )
@@ -441,7 +441,7 @@ struct SandboxGlobalsTests {
         )
 
         #expect(
-            try decode([String?].self, from: output) == [
+            try RunOutput.decoded([String?].self, from: output) == [
                 "complete", run.completionToken, "scripted-terminal-detail", "succeeded",
             ]
         )
@@ -460,7 +460,7 @@ struct SandboxGlobalsTests {
             under: context
         )
 
-        #expect(try decode([String].self, from: output) == ["unknown", "no-such-token"])
+        #expect(try RunOutput.decoded([String].self, from: output) == ["unknown", "no-such-token"])
     }
 
     // MARK: - elicit()
@@ -484,7 +484,7 @@ struct SandboxGlobalsTests {
             under: context
         )
 
-        #expect(try decode([String].self, from: output) == ["true", "accept", "swissarmyhammer"])
+        #expect(try RunOutput.decoded([String].self, from: output) == ["true", "accept", "swissarmyhammer"])
         let request = try #require(await sink.observedRequest)
         #expect(request.mode == .form)
         #expect(request.message == "Which repository should I target?")
@@ -507,7 +507,7 @@ struct SandboxGlobalsTests {
             under: context
         )
 
-        #expect(try decode([String].self, from: output) == ["decline", "null"])
+        #expect(try RunOutput.decoded([String].self, from: output) == ["decline", "null"])
     }
 
     @Test("a cancelled elicitation surfaces as a cancel, distinct from a decline")
@@ -525,7 +525,7 @@ struct SandboxGlobalsTests {
             under: context
         )
 
-        #expect(try decode([String].self, from: output) == ["cancel", "null"])
+        #expect(try RunOutput.decoded([String].self, from: output) == ["cancel", "null"])
     }
 
     @Test("elicit({ message, requestedSchema }) carries the restricted form schema through unchanged")
@@ -552,7 +552,7 @@ struct SandboxGlobalsTests {
             under: context
         )
 
-        #expect(try decode([String].self, from: output) == ["accept", "multitool"])
+        #expect(try RunOutput.decoded([String].self, from: output) == ["accept", "multitool"])
         let request = try #require(await sink.observedRequest)
         #expect(request.mode == .form)
         #expect(request.requestedSchema?.required == ["repo"])
@@ -577,7 +577,7 @@ struct SandboxGlobalsTests {
             under: context
         )
 
-        #expect(try decode(String.self, from: output) == "accept")
+        #expect(try RunOutput.decoded(String.self, from: output) == "accept")
         let request = try #require(await sink.observedRequest)
         #expect(request.mode == .url)
         #expect(request.url == URL(string: "https://example.com/auth"))
@@ -602,7 +602,7 @@ struct SandboxGlobalsTests {
             under: context
         )
 
-        let message = try decode(String.self, from: output)
+        let message = try RunOutput.decoded(String.self, from: output)
         #expect(message.hasPrefix("elicit: "))
         #expect(message.contains("elicit(\"question\")"))
     }
@@ -623,7 +623,7 @@ struct SandboxGlobalsTests {
             under: context
         )
 
-        #expect(try decode(String.self, from: output) == "done")
+        #expect(try RunOutput.decoded(String.self, from: output) == "done")
         #expect(await recordedOperationEvents(of: stub, ofKind: .progress).map(\.detail) == ["starting the sweep", "half way"])
         #expect(await recordedOperationEvents(of: stub).allSatisfy { $0.correlationID == context.completionToken })
     }
@@ -674,7 +674,7 @@ struct SandboxGlobalsTests {
             """
         )
 
-        let messages = try decode([String].self, from: output)
+        let messages = try RunOutput.decoded([String].self, from: output)
         #expect(messages.count == 4)
         for (name, message) in zip(["status", "wait", "cancel", "elicit"], messages) {
             #expect(message.hasPrefix("\(name): "))
@@ -692,7 +692,7 @@ struct SandboxGlobalsTests {
             """
         )
 
-        #expect(try decode(String.self, from: output) == "done")
+        #expect(try RunOutput.decoded(String.self, from: output) == "done")
     }
 }
 
@@ -722,20 +722,6 @@ private func runSnippet(_ code: String, under context: ToolContext? = nil) async
     return try await ToolContext.$current.withValue(context) {
         try await multiTool.call(arguments: arguments)
     }
-}
-
-/// Decodes a rendered `runCode` result — always JSON, per `ResultRenderer` —
-/// back into the value the snippet returned.
-///
-/// - Parameters:
-///   - type: the value type to decode.
-///   - output: the rendered result.
-/// - Returns: the decoded value.
-/// - Throws: a `DecodingError` when `output` is not the expected shape, which
-///   for a `runCode` result means the snippet failed and the renderer produced
-///   repairable-error text instead.
-private func decode<Value: Decodable>(_ type: Value.Type, from output: String) throws -> Value {
-    try JSONDecoder().decode(type, from: Data(output.utf8))
 }
 
 /// Renders `names` as a JavaScript array literal of string literals, so a
