@@ -4,8 +4,9 @@
 // The provider sends the query to the Brave results page with the headers of
 // a desktop browser, as `swissarmyhammer` does (`brave.rs`). It reads each
 // `[data-pos]` container of the page with SwiftSoup, with the parse rules of
-// `brave.rs`. A page with no container and a challenge marker is a challenge
-// page, and not a page with no results.
+// `brave.rs`. One rule is new: the snippet selector of the current markup
+// comes before the snippet rules of `brave.rs`. A page with no container and
+// a challenge marker is a challenge page, and not a page with no results.
 
 import Foundation
 import SwiftSoup
@@ -48,11 +49,13 @@ struct BraveHTMLProvider: SearchProviderAdapter {
     /// The attribute of the target URL of a link.
     private static let hrefAttribute = "href"
 
-    /// The selector of the snippet in a result container.
-    private static let snippetSelector = ".snippet-description"
+    /// The selectors of the snippet in a result container, in order. The
+    /// first selector reads the current markup of Brave. The second selector
+    /// reads the markup of `brave.rs`.
+    private static let snippetSelectors = [".generic-snippet .content", ".snippet-description"]
 
     /// The selector of a paragraph, for the snippet when the container has
-    /// no ``snippetSelector`` text.
+    /// no ``snippetSelectors`` text.
     private static let paragraphSelector = "p"
 
     /// The number of characters of the longest paragraph that is too short
@@ -152,15 +155,18 @@ struct BraveHTMLProvider: SearchProviderAdapter {
         return targets.lazy.compactMap { target in target.url.map { (element: target.element, url: $0) } }.first
     }
 
-    /// The snippet of a container: the ``snippetSelector`` text, else the
-    /// first paragraph that is longer than ``shortParagraphLength``.
+    /// The snippet of a container: the first text that is not empty of the
+    /// ``snippetSelectors``, in order, else the first paragraph that is
+    /// longer than ``shortParagraphLength``.
     ///
     /// - Parameter container: The result container.
     /// - Returns: The snippet, or an empty text when the container has none.
     /// - Throws: An error of SwiftSoup.
     private static func snippet(of container: Element) throws -> String {
-        let description = try container.select(snippetSelector).first()?.text() ?? ""
-        guard description.isEmpty else { return description }
+        for selector in snippetSelectors {
+            let description = try container.select(selector).first()?.text() ?? ""
+            guard description.isEmpty else { return description }
+        }
         let paragraphs = try container.select(paragraphSelector).array().map { try $0.text() }
         return paragraphs.first { $0.count > shortParagraphLength } ?? ""
     }

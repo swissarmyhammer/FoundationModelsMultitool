@@ -199,12 +199,34 @@ struct BraveHTMLProviderTests {
         #expect(first.url == "https://www.swift.org/")
     }
 
+    @Test("the recorded page gives the .generic-snippet .content text of the first result")
+    func recordedPageGivesFirstSnippet() throws {
+        let first = try #require(try Self.parse(Self.recorded(Self.resultsPage)).first)
+        #expect(
+            first.snippet
+                == "Swift is a general-purpose programming language built using a modern approach to safety, "
+                + "performance, and software design patterns.")
+    }
+
     @Test("the recorded page gives a title with its entity decoded")
     func recordedPageDecodesEntity() throws {
         let hits = try Self.parse(Self.recorded(Self.resultsPage))
         let hit = try #require(hits.first { $0.rank == Self.entityHitRank })
         #expect(hit.title == "Swift Courses & Tutorials | Codecademy")
         #expect(hit.url == "https://www.codecademy.com/catalog/language/swift")
+    }
+
+    @Test("the .generic-snippet .content text comes before the .snippet-description text")
+    func genericSnippetComesFirst() throws {
+        let hits = try Self.parse(
+            page: """
+                <div data-pos="1">
+                    <a href="https://example.com"><span class="title">Example</span></a>
+                    <p class="snippet-description">The description of the old markup.</p>
+                    <div class="generic-snippet"><div class="content">The snippet of the current markup.</div></div>
+                </div>
+                """)
+        #expect(hits.map(\.snippet) == ["The snippet of the current markup."])
     }
 
     @Test("the recorded past-day page gives its hits")

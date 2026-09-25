@@ -57,8 +57,14 @@ The Rust source is in `../swissarmyhammer/crates/`:
   - The title is `a .title`. When there is no title, use the text of the first
     `http` anchor.
   - The URL is the first `a[href]` that starts with `http`.
-  - The snippet is `.snippet-description`. When there is no snippet, use the
-    first `<p>` that has more than 20 characters.
+  - The snippet is the first text that is not empty of these rules, in
+    order:
+    1. `.generic-snippet .content`. This rule is not in `brave.rs`. The
+       current Brave markup keeps the snippet in this element (a page
+       recorded on 2026-09-24 has no `.snippet-description`). Decided
+       2026-09-25.
+    2. `.snippet-description` (`brave.rs`).
+    3. The first `<p>` that has more than 20 characters (`brave.rs`).
   - Skip an entry that has no title or no URL. Remove duplicate URLs. Decode
     HTML entities. Stop at the requested count. No results is a failure of
     kind `noResults`.

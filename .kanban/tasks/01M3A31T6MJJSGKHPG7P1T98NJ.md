@@ -122,11 +122,29 @@ comments:
     - note: `swiftlint lint --quiet` also prints \"warning: Currently running SwiftLint 0.65.1 but configuration specified version 0.48.0.\" This is a tool self-check about the installed SwiftLint version, not a rule finding. Lint findings count is 0.
     - next: none. All tests pass. The build has zero project-source warnings and zero lint findings. Iteration 3 of this task is ready for the next step in the pipeline.
   timestamp: 2026-09-25T12:28:43.348073+00:00
+- actor: claude-code
+  id: 01m3c8ts37xhmcpfzschb84my9
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit e511883) — 0 findings (0 confirmed, 0 refuted). 1 file reviewed: Tests/FoundationModelsMultitoolTests/KeyedProviderTests.swift. 6 `.kanban/` files not reviewed (ignore rule).
+    - prior finding: SearchProviderSupport.swift:254 `completeness/case-sensitivity-coverage` is fixed. The new parameterized test "a result with an upper-case URL scheme gives the same hit as the lower-case URL" parses `HTTPS://good.example/page` for each of the 3 adapters and compares the hits with the lower-case URL hits. The item is checked.
+    - note: The user accepted the JSON fixtures from the provider documentation on 2026-09-25. Thus the missing live recordings are not a finding.
+    - next: none. All prior findings are checked, and this pass has 0 new findings. The task moves to `done`.
+  timestamp: 2026-09-25T12:32:20.071723+00:00
+- actor: claude-code
+  id: 01m3c8v4zh85536c4w3vgp9b5d
+  text: |-
+    ### finish iteration 3 — clean
+    - implement: changed — 1 file (uppercase scheme test)
+    - test: green — swift test, 1702 passed
+    - commit: e511883
+    - review: clean — 0 findings; prior finding checked; the task is in done
+  timestamp: 2026-09-25T12:32:32.241531+00:00
 depends_on:
 - 01M3A310C33P2DWGRX67YFR99X
 - 01M3A2ZQDDZWJVE2MA3GFABKGY
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffd980
 title: 'Web: add the Brave API, Tavily, and Exa keyed providers'
 ---
 ## What
