@@ -39,8 +39,25 @@ comments:
     - checks: No file in `Tests/FoundationModelsMultitoolTests` holds a private JSON decode helper for `runCode` output. Each of the four target files calls `RunOutput.decoded(_:from:)`. No skipped or disabled tests found.
     - next: none. The task is ready for review.
   timestamp: 2026-09-25T18:26:48.494529+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m3cx9xvaebv34z51qnpt7ktf
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (90bd0a4). 0 findings, 0 confirmed, 0 refuted. The engine examined 4 Swift test files. It did not examine 4 .kanban files because of .reviewignore.
+    - next: None. The task is in done.
+  timestamp: 2026-09-25T18:30:07.978857+00:00
+- actor: claude-code
+  id: 01m3cxa789pzq0spmph8kdjgyy
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 4 files
+    - test: green — swift test, 1786 passed
+    - commit: 90bd0a4
+    - review: clean — 0 findings; the task is in done
+    - next: review ^3332gzb again (finding RunOutput.swift:22)
+  timestamp: 2026-09-25T18:30:17.609322+00:00
+position_column: done
+position_ordinal: ffdf80
 title: 'Tests: use RunOutput.decoded in four runCode test files'
 ---
 ## What
