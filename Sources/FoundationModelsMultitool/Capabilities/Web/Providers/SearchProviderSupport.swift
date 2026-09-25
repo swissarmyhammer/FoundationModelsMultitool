@@ -6,9 +6,17 @@
 // only its own field names. The steps that are the same for each provider are
 // here: the endpoint URL, the key check, the percent encoding, the JSON
 // request, the status check and the decode of the response, and the rank of
-// the hits.
+// the hits, the text of an HTML fragment, and the start date of an age limit.
 
 import Foundation
+import SwiftSoup
+
+/// The error of `request` when the calendar cannot make the start date of an
+/// age limit.
+struct InvalidStartDate: Error, CustomStringConvertible {
+    /// The text of the error.
+    var description: String { "the start date of the age limit cannot be made" }
+}
 
 /// The error of `request` when the endpoint of an adapter is not a URL.
 struct InvalidProviderEndpoint: Error, CustomStringConvertible {
@@ -176,7 +184,35 @@ enum SearchProviderSupport {
         return request
     }
 
+    /// The earliest date of an age limit.
+    ///
+    /// - Parameters:
+    ///   - freshness: The age limit.
+    ///   - now: The time of the request.
+    /// - Returns: `now`, less the age limit, in the Gregorian calendar in UTC.
+    /// - Throws: ``InvalidStartDate`` when the calendar cannot make the date.
+    static func startDate(of freshness: SearchFreshness, before now: Date) throws -> Date {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = .gmt
+        let step = freshness.calendarStep
+        guard let start = calendar.date(byAdding: step.component, value: -step.value, to: now) else {
+            throw InvalidStartDate()
+        }
+        return start
+    }
+
     // MARK: - The parse
+
+    /// The text of an HTML fragment, with its markup removed and its entities
+    /// decoded.
+    ///
+    /// - Parameter html: The HTML fragment, for example a title that holds
+    ///   `&amp;` or a description that holds `<strong>` markup.
+    /// - Returns: The text.
+    /// - Throws: `.parse` when SwiftSoup cannot read the fragment.
+    static func text(ofHTML html: String) throws(ProviderFailure) -> String {
+        try reading { try SwiftSoup.parseBodyFragment(html).text() }
+    }
 
     /// Checks the status of a response and decodes its JSON body.
     ///
@@ -270,5 +306,18 @@ enum SearchProviderSupport {
             absolute.host?.isEmpty == false
         else { return nil }
         return absolute.string
+    }
+}
+
+private extension SearchFreshness {
+    /// The calendar step back from the time of a request to the earliest
+    /// date of this age limit.
+    var calendarStep: (component: Calendar.Component, value: Int) {
+        switch self {
+        case .day: (.day, 1)
+        case .week: (.weekOfYear, 1)
+        case .month: (.month, 1)
+        case .year: (.year, 1)
+        }
     }
 }

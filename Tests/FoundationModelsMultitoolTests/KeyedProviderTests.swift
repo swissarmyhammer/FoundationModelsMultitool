@@ -6,8 +6,10 @@ import Testing
 /// parse of the recorded response, and the error map.
 ///
 /// One parameterized suite runs each test over each row of
-/// ``KeyedProviderCase/all``. Each test calls `request` or `parse` directly
-/// with fixture bytes, thus no test uses the network or a real key.
+/// ``KeyedProviderCase/all``, which also holds the SearXNG provider. A test of
+/// the key runs over ``KeyedProviderCase/keyed`` only, because SearXNG sends
+/// no key. Each test calls `request` or `parse` directly with fixture bytes,
+/// thus no test uses the network or a real key.
 @Suite("KeyedProviders")
 struct KeyedProviderTests {
     /// The query of the request tests.
@@ -50,7 +52,7 @@ struct KeyedProviderTests {
 
     // MARK: - The request
 
-    @Test("the request has the documented method, URL, and key header", arguments: KeyedProviderCase.all)
+    @Test("the request has the documented method and URL, and asks for JSON", arguments: KeyedProviderCase.all)
     func requestShape(provider: KeyedProviderCase) throws {
         let request = try Self.request(of: provider)
         let url = try #require(request.url)
@@ -58,12 +60,17 @@ struct KeyedProviderTests {
         components.query = nil
         #expect(request.httpMethod == provider.method)
         #expect(components.string == provider.endpoint)
-        #expect(
-            request.value(forHTTPHeaderField: provider.keyHeader) == provider.keyPrefix + KeyedProviderCase.fakeKey)
         #expect(request.value(forHTTPHeaderField: Self.acceptHeader) == Self.jsonMediaType)
     }
 
-    @Test("the key is in the key header and in no other part of the request", arguments: KeyedProviderCase.all)
+    @Test("the documented key header holds the key", arguments: KeyedProviderCase.keyed)
+    func keyHeaderHoldsKey(provider: KeyedProviderCase) throws {
+        let request = try Self.request(of: provider)
+        #expect(
+            request.value(forHTTPHeaderField: provider.keyHeader) == provider.keyPrefix + KeyedProviderCase.fakeKey)
+    }
+
+    @Test("the key is in the key header and in no other part of the request", arguments: KeyedProviderCase.keyed)
     func keyOnlyInHeader(provider: KeyedProviderCase) throws {
         let request = try Self.request(of: provider)
         let key = KeyedProviderCase.fakeKey
@@ -74,16 +81,18 @@ struct KeyedProviderTests {
         #expect(headersWithKey == [provider.keyHeader])
     }
 
-    @Test("a request with no key is refused", arguments: KeyedProviderCase.all)
+    @Test("a request with no key is refused", arguments: KeyedProviderCase.keyed)
     func requestNeedsKey(provider: KeyedProviderCase) {
         #expect(throws: (any Error).self) { try provider.adapter.request(for: Self.query, key: nil) }
     }
 
-    @Test("the adapter has the provider name and declares the fields it sends", arguments: KeyedProviderCase.all)
+    @Test(
+        "the adapter has the provider name, declares the fields it sends, and tells if its URL is host configuration",
+        arguments: KeyedProviderCase.all)
     func nameAndSupports(provider: KeyedProviderCase) {
         #expect(provider.adapter.name == provider.name)
         #expect(provider.adapter.supports == provider.supports)
-        #expect(!provider.adapter.isHostConfiguration)
+        #expect(provider.adapter.isHostConfiguration == provider.isHostConfiguration)
     }
 
     // MARK: - The recorded response

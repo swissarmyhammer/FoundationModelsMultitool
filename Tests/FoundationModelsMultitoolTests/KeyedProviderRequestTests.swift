@@ -31,9 +31,6 @@ struct KeyedProviderRequestTests {
     /// The fixed time of the Exa freshness tests: 2026-09-24T12:00:00Z.
     private static let fixedNow = Date(timeIntervalSince1970: 1_790_251_200)
 
-    /// The `Content-Type` of a JSON body.
-    private static let jsonMediaType = "application/json"
-
     /// Makes the request of a query with the fake key.
     ///
     /// - Parameters:
@@ -51,9 +48,7 @@ struct KeyedProviderRequestTests {
     /// - Returns: The value of each query item.
     /// - Throws: When the request has no URL.
     private static func braveItems(_ query: SearchQuery) throws -> [String: String] {
-        let url = try #require(request(BraveAPIProvider(), query).url)
-        let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
-        return Dictionary(uniqueKeysWithValues: items.map { ($0.name, $0.value ?? "") })
+        try ProviderRequestReading.queryItems(of: request(BraveAPIProvider(), query))
     }
 
     /// The JSON body of a request, decoded.
@@ -67,9 +62,7 @@ struct KeyedProviderRequestTests {
     private static func body<Body: Decodable>(
         _ type: Body.Type, of adapter: any SearchProviderAdapter, _ query: SearchQuery
     ) throws -> Body {
-        let request = try request(adapter, query)
-        #expect(request.value(forHTTPHeaderField: "Content-Type") == jsonMediaType)
-        return try JSONDecoder().decode(type, from: #require(request.httpBody))
+        try ProviderRequestReading.jsonBody(type, of: request(adapter, query))
     }
 
     // MARK: - Brave

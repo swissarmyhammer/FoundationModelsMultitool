@@ -1,5 +1,6 @@
 // `KeyedProviderCase` — one row of the parameterized suite of the keyed search
-// providers (`KeyedProviderTests`).
+// providers (`KeyedProviderTests`). The suite also has a row for `searxng`,
+// which uses the same JSON steps but sends no key.
 //
 // Each row holds the adapter under test, the documented request shape, the
 // name of the recorded JSON response in `WebGoldens/`, and a function that
@@ -39,6 +40,28 @@ struct KeyedProviderCase: Sendable, CustomTestStringConvertible {
     /// The number of hits in `exa-results.json`.
     private static let exaGoldenHitCount = 3
 
+    /// The number of hits in `serper-results.json`.
+    private static let serperGoldenHitCount = 4
+
+    /// The number of hits in `kagi-results.json`. The related searches of the
+    /// file are not hits.
+    private static let kagiGoldenHitCount = 4
+
+    /// The number of hits in `searxng-results.json`.
+    private static let searxngGoldenHitCount = 4
+
+    /// The base URL of the SearXNG instance of the suite, from the example
+    /// of the SearXNG documentation.
+    static let searxngBase = "https://searx.example.org"
+
+    /// The first hit of `brave-api-results.json`, `serper-results.json`,
+    /// `kagi-results.json`, and `searxng-results.json`: the Swift.org home
+    /// page.
+    private static let swiftOrgFirstHit = WebHit(
+        rank: 1, title: "Swift.org - Welcome to Swift.org", url: "https://www.swift.org/",
+        snippet: "Swift is a general-purpose programming language that's approachable for newcomers "
+            + "and powerful for experts.")
+
     /// The adapter under test.
     let adapter: any SearchProviderAdapter
 
@@ -74,11 +97,19 @@ struct KeyedProviderCase: Sendable, CustomTestStringConvertible {
     /// the provider.
     let responseBody: @Sendable ([FixtureResult]) -> String
 
+    /// `true` when the adapter must declare its request URL as host
+    /// configuration. The default is `false`.
+    var isHostConfiguration = false
+
     /// The name of the provider, which the test output shows.
     var testDescription: String { name }
 
-    /// The three providers of this task, in the order of the provider table.
-    static let all: [KeyedProviderCase] = [braveAPI, tavily, exa]
+    /// The providers that send a key, in the order of the provider table.
+    static let keyed: [KeyedProviderCase] = [braveAPI, tavily, exa, serper, kagi]
+
+    /// Each provider of the suite: the keyed providers, then `searxng`, which
+    /// sends no key.
+    static let all: [KeyedProviderCase] = keyed + [searxng]
 
     /// The row of `braveAPI`.
     static let braveAPI = KeyedProviderCase(
@@ -91,12 +122,7 @@ struct KeyedProviderCase: Sendable, CustomTestStringConvertible {
         supports: [.freshness, .site, .count],
         golden: "brave-api-results",
         goldenHitCount: braveGoldenHitCount,
-        firstHit: WebHit(
-            rank: 1,
-            title: "Swift.org - Welcome to Swift.org",
-            url: "https://www.swift.org/",
-            snippet: "Swift is a general-purpose programming language that's approachable for newcomers "
-                + "and powerful for experts."),
+        firstHit: swiftOrgFirstHit,
         responseBody: { results in
             let items = results.map { result in
                 "{\"title\": \(json(result.title)), \"url\": \(json(result.url)), "
@@ -155,6 +181,75 @@ struct KeyedProviderCase: Sendable, CustomTestStringConvertible {
             }
             return "{\"requestId\": \"r\", \"results\": [" + items.joined(separator: ", ") + "]}"
         })
+
+    /// The row of `serper`.
+    static let serper = KeyedProviderCase(
+        adapter: SerperProvider(),
+        name: WebSearchProvider.serper(.literal(fakeKey)).name,
+        method: "POST",
+        endpoint: "https://google.serper.dev/search",
+        keyHeader: "X-API-KEY",
+        keyPrefix: "",
+        supports: [.freshness, .site, .count],
+        golden: "serper-results",
+        goldenHitCount: serperGoldenHitCount,
+        firstHit: swiftOrgFirstHit,
+        responseBody: { results in
+            let items = results.enumerated().map { index, result in
+                "{\"title\": \(json(result.title)), \"link\": \(json(result.url)), "
+                    + "\"snippet\": \(json(result.snippet)), \"position\": \(index + 1)}"
+            }
+            return "{\"searchParameters\": {\"q\": \"q\"}, \"organic\": [" + items.joined(separator: ", ") + "]}"
+        })
+
+    /// The row of `kagi`.
+    static let kagi = KeyedProviderCase(
+        adapter: KagiProvider(),
+        name: WebSearchProvider.kagi(.literal(fakeKey)).name,
+        method: "POST",
+        endpoint: "https://kagi.com/api/v1/search",
+        keyHeader: "Authorization",
+        keyPrefix: "Bearer ",
+        supports: [.freshness, .site, .count],
+        golden: "kagi-results",
+        goldenHitCount: kagiGoldenHitCount,
+        firstHit: swiftOrgFirstHit,
+        responseBody: { results in
+            let items = results.map { result in
+                "{\"url\": \(json(result.url)), \"title\": \(json(result.title)), "
+                    + "\"snippet\": \(json(result.snippet))}"
+            }
+            return "{\"meta\": {\"trace\": \"t\"}, \"data\": {\"search\": [" + items.joined(separator: ", ") + "]}}"
+        })
+
+    /// The row of `searxng`. SearXNG takes no key, thus the key fields are
+    /// empty, and the row is not in ``keyed``.
+    static let searxng = KeyedProviderCase(
+        adapter: SearXNGProvider(base: searxngBaseURL),
+        name: WebSearchProvider.searxng(searxngBaseURL).name,
+        method: "GET",
+        endpoint: searxngBase + "/search",
+        keyHeader: "",
+        keyPrefix: "",
+        supports: [.freshness, .site, .count],
+        golden: "searxng-results",
+        goldenHitCount: searxngGoldenHitCount,
+        firstHit: swiftOrgFirstHit,
+        responseBody: { results in
+            let items = results.map { result in
+                "{\"url\": \(json(result.url)), \"title\": \(json(result.title)), "
+                    + "\"content\": \(json(result.snippet)), \"engine\": \"e\"}"
+            }
+            return "{\"query\": \"q\", \"results\": [" + items.joined(separator: ", ") + "], \"answers\": []}"
+        },
+        isHostConfiguration: true)
+
+    /// The URL of ``searxngBase``. The text is a literal URL, thus the
+    /// fallback does not occur. If it occurs, the `file:` URL makes each
+    /// request test of the `searxng` row fail.
+    private static var searxngBaseURL: URL {
+        URL(string: searxngBase) ?? URL(filePath: "/")
+    }
 
     /// The bytes of the recorded response of this provider.
     ///

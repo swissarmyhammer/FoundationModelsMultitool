@@ -8,7 +8,6 @@
 // HTML and keeps only its text.
 
 import Foundation
-import SwiftSoup
 
 /// The keyed search provider of the Brave Search API.
 ///
@@ -71,8 +70,8 @@ struct BraveAPIProvider: SearchProviderAdapter {
         let body = try SearchProviderSupport.decodedBody(BraveResponse.self, from: data, response: response)
         let results = try (body.web?.results ?? []).map { result throws(ProviderFailure) in
             ProviderResult(
-                title: try Self.text(ofHTML: result.title), url: result.url,
-                snippet: try Self.text(ofHTML: result.description ?? ""))
+                title: try SearchProviderSupport.text(ofHTML: result.title), url: result.url,
+                snippet: try SearchProviderSupport.text(ofHTML: result.description ?? ""))
         }
         return try SearchProviderSupport.checkedHits(from: results, limit: limit)
     }
@@ -87,16 +86,6 @@ struct BraveAPIProvider: SearchProviderAdapter {
         let countItems = count.map { [(name: countItem, value: String($0))] } ?? []
         let freshnessItems = query.freshness.map { [(name: freshnessItem, value: $0.braveFreshnessValue)] } ?? []
         return [(name: queryItem, value: query.textWithSiteTerm)] + countItems + freshnessItems
-    }
-
-    /// The text of an HTML fragment, with its markup removed and its entities
-    /// decoded.
-    ///
-    /// - Parameter html: The HTML fragment.
-    /// - Returns: The text.
-    /// - Throws: `.parse` when SwiftSoup cannot read the fragment.
-    private static func text(ofHTML html: String) throws(ProviderFailure) -> String {
-        try SearchProviderSupport.reading { try SwiftSoup.parseBodyFragment(html).text() }
     }
 }
 

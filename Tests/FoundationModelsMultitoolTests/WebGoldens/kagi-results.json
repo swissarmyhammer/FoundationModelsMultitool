@@ -1,0 +1,62 @@
+{
+  "meta": {
+    "trace": "00000000000000000000000000000000",
+    "ms": 314,
+    "node": "us-east4"
+  },
+  "data": {
+    "search": [
+      {
+        "url": "https://www.swift.org/",
+        "title": "Swift.org - Welcome to Swift.org",
+        "snippet": "Swift is a general-purpose programming language that&#39;s approachable for newcomers and powerful for experts.",
+        "time": "2026-09-18T07:00:59Z",
+        "props": {
+          "language": "en",
+          "group_id": "swift.org"
+        }
+      },
+      {
+        "url": "https://en.wikipedia.org/wiki/Swift_(programming_language)",
+        "title": "Swift (programming language) - Wikipedia",
+        "snippet": "Swift is a high-level general-purpose, multi-paradigm, compiled programming language created by Chris Lattner in 2010 for Apple Inc.",
+        "time": "2026-09-02T03:54:26Z",
+        "image": {
+          "url": "https://p.kagi.com/proxy/th?c=00000000",
+          "height": 300,
+          "width": 310
+        },
+        "props": {
+          "language": "en",
+          "group_id": "en.wikipedia.org"
+        }
+      },
+      {
+        "url": "https://developer.apple.com/swift/",
+        "title": "Swift - Apple Developer &amp; Documentation",
+        "snippet": "Swift is a powerful and intuitive programming language for all Apple platforms.",
+        "props": {
+          "language": "en",
+          "group_id": "developer.apple.com"
+        }
+      },
+      {
+        "url": "https://github.com/swiftlang/swift",
+        "title": "swiftlang/swift: The Swift Programming Language",
+        "props": {
+          "group_id": "github.com"
+        }
+      }
+    ],
+    "related_search": [
+      {
+        "url": "https://kagi.com/search?q=swift+programming+language+tutorial",
+        "title": "swift programming language tutorial"
+      },
+      {
+        "url": "https://kagi.com/search?q=swift+vs+python",
+        "title": "swift vs python"
+      }
+    ]
+  }
+}

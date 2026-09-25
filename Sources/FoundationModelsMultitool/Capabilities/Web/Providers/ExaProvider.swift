@@ -26,13 +26,6 @@ struct ExaProvider: SearchProviderAdapter {
     /// The text between two highlights of one snippet.
     private static let highlightSeparator = " "
 
-    /// The error of `request` when the calendar cannot make the start date of
-    /// an age limit.
-    struct InvalidStartDate: Error, CustomStringConvertible {
-        /// The text of the error.
-        var description: String { "the start date of the age limit cannot be made" }
-    }
-
     /// The name of the provider: the name of the case `WebSearchProvider.exa`.
     let name = "exa"
 
@@ -102,12 +95,7 @@ struct ExaProvider: SearchProviderAdapter {
     /// - Returns: The time of the request, less the age limit, in UTC.
     /// - Throws: ``InvalidStartDate`` when the calendar cannot make the date.
     private func startPublishedDate(for freshness: SearchFreshness) throws -> String {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = .gmt
-        let step = freshness.calendarStep
-        guard let start = calendar.date(byAdding: step.component, value: -step.value, to: now()) else {
-            throw InvalidStartDate()
-        }
+        let start = try SearchProviderSupport.startDate(of: freshness, before: now())
         return Date.ISO8601FormatStyle(includingFractionalSeconds: true, timeZone: .gmt).format(start)
     }
 }
@@ -153,17 +141,4 @@ private struct ExaResponse: Decodable {
 
     /// The results, in rank order.
     let results: [SearchResult]
-}
-
-private extension SearchFreshness {
-    /// The calendar step back from the time of a request to the earliest
-    /// published date of this age limit.
-    var calendarStep: (component: Calendar.Component, value: Int) {
-        switch self {
-        case .day: (.day, 1)
-        case .week: (.weekOfYear, 1)
-        case .month: (.month, 1)
-        case .year: (.year, 1)
-        }
-    }
 }

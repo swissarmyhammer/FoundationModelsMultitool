@@ -183,7 +183,7 @@ public enum WebSearchProvider: Sendable, Hashable {
     case tavily(WebAPIKey)              // Authorization: Bearer
     case exa(WebAPIKey)                 // x-api-key
     case serper(WebAPIKey)              // X-API-KEY
-    case kagi(WebAPIKey)                // Authorization: Bot <key>
+    case kagi(WebAPIKey)                // Authorization: Bearer <key>
     case searxng(URL)                   // a host-run instance, format=json
 }
 ```
@@ -196,7 +196,7 @@ public enum WebSearchProvider: Sendable, Hashable {
 | `tavily` | `POST https://api.tavily.com/search` | `TAVILY_API_KEY` |
 | `exa` | `POST https://api.exa.ai/search` | `EXA_API_KEY` |
 | `serper` | `POST https://google.serper.dev/search` | `SERPER_API_KEY` |
-| `kagi` | `GET https://kagi.com/api/v0/search?q=…` | `KAGI_API_KEY` |
+| `kagi` | `POST https://kagi.com/api/v1/search` | `KAGI_API_KEY` |
 | `searxng` | `GET <base>/search?q=…&format=json` | `SEARXNG_URL` (a base URL, not a key) |
 
 The keyed provider tasks must examine each endpoint, header, and response

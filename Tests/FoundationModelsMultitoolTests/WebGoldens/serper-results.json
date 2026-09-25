@@ -1,0 +1,55 @@
+{
+  "searchParameters": {
+    "q": "swift programming language",
+    "type": "search",
+    "engine": "google"
+  },
+  "knowledgeGraph": {
+    "title": "Swift",
+    "type": "Programming language",
+    "website": "https://www.swift.org/",
+    "description": "Swift is a high-level general-purpose, multi-paradigm, compiled programming language."
+  },
+  "organic": [
+    {
+      "title": "Swift.org - Welcome to Swift.org",
+      "link": "https://www.swift.org/",
+      "snippet": "Swift is a general-purpose programming language that's approachable for newcomers and powerful for experts.",
+      "sitelinks": [
+        { "title": "Getting Started", "link": "https://www.swift.org/getting-started/" }
+      ],
+      "position": 1
+    },
+    {
+      "title": "Swift (programming language) - Wikipedia",
+      "link": "https://en.wikipedia.org/wiki/Swift_(programming_language)",
+      "snippet": "Swift is a high-level general-purpose, multi-paradigm, compiled programming language created by Chris Lattner in 2010 for Apple Inc.",
+      "date": "Sep 2, 2026",
+      "position": 2
+    },
+    {
+      "title": "Swift - Apple Developer",
+      "link": "https://developer.apple.com/swift/",
+      "snippet": "Swift is a powerful and intuitive programming language for all Apple platforms.",
+      "position": 3
+    },
+    {
+      "title": "swiftlang/swift: The Swift Programming Language - GitHub",
+      "link": "https://github.com/swiftlang/swift",
+      "position": 4
+    }
+  ],
+  "peopleAlsoAsk": [
+    {
+      "question": "Is Swift easy to learn?",
+      "snippet": "Swift is approachable for newcomers.",
+      "title": "Swift.org - Getting Started",
+      "link": "https://www.swift.org/getting-started/"
+    }
+  ],
+  "relatedSearches": [
+    { "query": "swift programming language tutorial" },
+    { "query": "swift vs python" }
+  ],
+  "credits": 1
+}

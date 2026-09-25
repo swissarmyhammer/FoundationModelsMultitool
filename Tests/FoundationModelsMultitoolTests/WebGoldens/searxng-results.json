@@ -1,0 +1,71 @@
+{
+  "query": "swift programming language",
+  "number_of_results": 0,
+  "results": [
+    {
+      "url": "https://www.swift.org/",
+      "title": "Swift.org - Welcome to Swift.org",
+      "content": "Swift is a general-purpose programming language that's approachable for newcomers and powerful for experts.",
+      "publishedDate": null,
+      "thumbnail": "",
+      "engine": "duckduckgo",
+      "template": "default.html",
+      "parsed_url": ["https", "www.swift.org", "/", "", "", ""],
+      "img_src": "",
+      "priority": "",
+      "engines": ["duckduckgo", "brave"],
+      "positions": [1, 1],
+      "score": 4.0,
+      "category": "general"
+    },
+    {
+      "url": "https://en.wikipedia.org/wiki/Swift_(programming_language)",
+      "title": "Swift (programming language) - Wikipedia",
+      "content": "Swift is a high-level general-purpose, multi-paradigm, compiled programming language created by Chris Lattner in 2010 for Apple Inc.",
+      "publishedDate": "2026-09-02T00:00:00",
+      "engine": "wikipedia",
+      "template": "default.html",
+      "parsed_url": ["https", "en.wikipedia.org", "/wiki/Swift_(programming_language)", "", "", ""],
+      "engines": ["wikipedia", "brave"],
+      "positions": [1, 2],
+      "score": 3.0,
+      "category": "general"
+    },
+    {
+      "url": "https://developer.apple.com/swift/",
+      "title": "Swift - Apple Developer",
+      "content": "Swift is a powerful and intuitive programming language for all Apple platforms.",
+      "engine": "brave",
+      "template": "default.html",
+      "parsed_url": ["https", "developer.apple.com", "/swift/", "", "", ""],
+      "engines": ["brave"],
+      "positions": [3],
+      "score": 0.33,
+      "category": "general"
+    },
+    {
+      "url": "https://github.com/swiftlang/swift",
+      "title": "swiftlang/swift: The Swift Programming Language",
+      "engine": "github",
+      "template": "default.html",
+      "parsed_url": ["https", "github.com", "/swiftlang/swift", "", "", ""],
+      "engines": ["github"],
+      "positions": [4],
+      "score": 0.25,
+      "category": "general"
+    }
+  ],
+  "answers": [],
+  "corrections": [],
+  "infoboxes": [
+    {
+      "infobox": "Swift (programming language)",
+      "id": "https://en.wikipedia.org/wiki/Swift_(programming_language)",
+      "content": "Swift is a general-purpose programming language.",
+      "urls": [{ "title": "Official website", "url": "https://www.swift.org/" }],
+      "engine": "wikipedia"
+    }
+  ],
+  "suggestions": ["swift programming language tutorial"],
+  "unresponsive_engines": []
+}

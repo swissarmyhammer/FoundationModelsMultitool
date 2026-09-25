@@ -34,8 +34,24 @@ comments:
     - evidence: Clean rebuild with `swift package clean` then `swift build --build-tests` shows 0 warnings in the `Sources` and `Tests` code. The build log shows 2 warnings. Both warnings come from the vendored `mlx-swift` dependency under `.build/checkouts`. This code is not part of this package. `swift test` runs 1704 tests in 134 suites. All tests pass. No test fails. No test is skipped.
     - next: none.
   timestamp: 2026-09-25T12:41:21.987445+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m3c9g364yj3cb8xabdw3c5vw
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit 8b5dcd8): 0 findings, 0 confirmed, 0 refuted. The engine examined 2 files: `BraveHTMLProvider.swift` and `BraveHTMLProviderTests.swift`. The engine did not examine 5 files: 4 `.kanban/` files (ignore rule in `.reviewignore`), and `web.md` (no validator for this file type). The commit renames no files. The task has no prior review findings.
+    - next: none. The task is in `done`.
+  timestamp: 2026-09-25T12:43:58.532148+00:00
+- actor: claude-code
+  id: 01m3c9ghr0q8n0yw7dmmq1tzc9
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 3 files
+    - test: green — swift test, 1704 passed
+    - commit: 8b5dcd8
+    - review: clean — 0 findings; the task is in done
+  timestamp: 2026-09-25T12:44:13.440195+00:00
+position_column: done
+position_ordinal: ffda80
 title: 'Web: read the snippet of the current Brave results markup'
 ---
 ## What
