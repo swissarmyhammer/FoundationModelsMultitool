@@ -1,10 +1,43 @@
 ---
 assignees:
 - claude-code
+comments:
+- actor: claude-code
+  id: 01m3czqs7576exq1t0yncp0znn
+  text: |-
+    Research notes.
+    - `FilesBareSessionTests` uses `runBareSessionScenario`, which mounts plain tools on a bare `LanguageModelSession` with `SystemLanguageModel.default`. That path does not queue behind `liveProfileTurnstile` and has no call record. The card requires the turnstile and a call record, so the scenario uses the Router path: `withLiveRouterFixture` (it takes `liveProfileTurnstile` in `LiveRouterFixture.resolve`), `registry.makeSessionTools(librarian:)`, a `RoutedSession` from `.standard`, and `streamTurn`. This is the same wiring as `ShellBackgroundRunner` and `OperationToolLiveTests`.
+    - `ScenarioCallLog` records fixture tools only (each fixture tool calls `recordCall(to:)`). The web verbs are product verbs, so they cannot write to it. `OperationToolLiveTests` states the same limit and reads `StreamedTurn.calls` instead. This scenario does the same: the check reads the `tools.*` call paths of each `runCode` snippet in `StreamedTurn.calls` through `NativeTranscript.typedToolPaths(in:)`, and requires `web.search`.
+    - Inner `tools.*` calls post `ToolInvocationRecord` values through Router, but no test of this repository reads them for an inner call, so that path was not used as the grade.
+    - `withWeb(configuration:sessionConfiguration:)` takes a `URLSessionConfiguration`. The scenario gives `.ephemeral` with short request and resource timeouts, so a slow provider cannot use the whole time limit.
+  timestamp: 2026-09-25T19:12:39.141730+00:00
+- actor: claude-code
+  id: 01m3czwqcnfz22y74d0r7cjc8q
+  text: |-
+    Implementation landed in `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/WebResearchScenarioTests.swift` (161 lines).
+    - Mount: `MultiTool.Builder().withWeb(configuration: .keyless, sessionConfiguration:)` with `.ephemeral` and short timeouts (15 s request, 30 s resource), vended through `makeSessionTools(librarian:)` on the `.standard` `RoutedSession` of `withLiveRouterFixture` (queues behind `liveProfileTurnstile`). `.timeLimit(.minutes(12))`, `.serialized`, the same as `OperationToolLiveTests`.
+    - Grade: `searchedTheWeb` (a `runCode` snippet in `StreamedTurn.calls` wrote `tools.web.search`, read with `NativeTranscript.typedToolPaths(in:)`) and `validAnswer` (`answerChecks` with `swift.org`). Trace lines go through `grade(scenario:checks:)` and `reportGatedResult(scenario:line:)` only.
+    - `swift build --package-path IntegrationTests --build-tests`: Build complete. The one warning is the SwiftPM build-system line "missing creator for mutated node ... mlx-swift_Cmlx.bundle/Contents/MacOS". It names the mlx resource bundle output, not a source file of this change. I did not do a build without this change to compare.
+    - `swift test --package-path IntegrationTests --no-parallel --filter WebResearchScenarioTests`: 1 test passed in 41.6 s. Route: searchTools, runCode (`tools.web.search`), wait, runCode (`tools.web.fetch`). Reply "https://www.swift.org/". `SCENARIO [webResearch] result=PASS searchedTheWeb=pass validAnswer=pass`.
+    - `rg -n 'ProcessInfo.processInfo.environment|fromEnvironment' IntegrationTests`: no match.
+    - TDD note: the card's test is an integration scenario. The TDD skill keeps integration tests out of the red-green loop, and no production code changed, so no unit test was added.
+
+    ### implement — changed
+    - evidence: 1 file — IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/WebResearchScenarioTests.swift; build-tests complete; scenario 1/1 passed; rg gives no match
+    - next: review
+  timestamp: 2026-09-25T19:15:21.109649+00:00
+- actor: claude-code
+  id: 01m3d00hvnb2d77jrpbjsr11cb
+  text: |-
+    ### test — green
+    - evidence: `swift test` — 1790 tests, 143 suites, 0 failed, 0 skipped. `swift build --build-tests --package-path IntegrationTests` — build OK, 0 warnings in repo code.
+    - note: one warning is present, `missing creator for mutated node` for `mlx-swift_Cmlx.bundle`. This warning is from the vendored mlx-swift dependency under `.build`. It is not part of this repository's code. It does not change the outcome.
+    - next: none. The build is clean.
+  timestamp: 2026-09-25T19:17:26.517096+00:00
 depends_on:
 - 01M3A32XTTF1JWYSA9GPDZP3KQ
-position_column: todo
-position_ordinal: 8f80
+position_column: doing
+position_ordinal: '80'
 title: 'Web: add the real-model web research scenario (WebResearchScenarioTests)'
 ---
 ## What
@@ -17,15 +50,15 @@ Prove that a real model uses the web capability in one live scenario. Design: `w
 - The scenario queues behind `liveProfileTurnstile` (`Support/LiveRouterFixture.swift:503`), the same as each other scenario, with the same `.timeLimit` pattern.
 
 ## Acceptance Criteria
-- [ ] `swift build --package-path IntegrationTests --build-tests` succeeds.
-- [ ] The scenario passes on a machine that has the demo profile and network access.
-- [ ] No file of `IntegrationTests/` reads the process environment.
+- [x] `swift build --package-path IntegrationTests --build-tests` succeeds.
+- [x] The scenario passes on a machine that has the demo profile and network access.
+- [x] No file of `IntegrationTests/` reads the process environment.
 
 ## Tests
-- [ ] The scenario file above.
-- [ ] Run `swift build --package-path IntegrationTests --build-tests`. It succeeds.
-- [ ] Run `swift test --package-path IntegrationTests --no-parallel --filter WebResearchScenarioTests`. It passes.
-- [ ] Run `rg -n 'ProcessInfo.processInfo.environment|fromEnvironment' IntegrationTests`. It gives no match.
+- [x] The scenario file above.
+- [x] Run `swift build --package-path IntegrationTests --build-tests`. It succeeds.
+- [x] Run `swift test --package-path IntegrationTests --no-parallel --filter WebResearchScenarioTests`. It passes.
+- [x] Run `rg -n 'ProcessInfo.processInfo.environment|fromEnvironment' IntegrationTests`. It gives no match.
 
 ## Workflow
 - Use `/tdd` — write failing tests first, then implement to make them pass. #web
