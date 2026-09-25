@@ -21,8 +21,24 @@ comments:
     - note: the build log shows 5 compiler warnings. All 5 warnings come from the `mlx-swift` dependency, under `.build/checkouts/mlx-swift`. One more warning line, "missing creator for mutated node", also names the `mlx-swift` build bundle. No warning comes from a file under `Sources/` or `Tests/` in this project. The task tells the agent not to run `swift package update`. The agent did not run it, and did not edit the `mlx-swift` dependency.
     - next: none
   timestamp: 2026-09-24T23:13:42.013691+00:00
-position_column: doing
-position_ordinal: '8180'
+- actor: claude-code
+  id: 01m3av9sn3fjxvzjc9egz4bv0d
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit 0d64503). 0 findings, 0 confirmed, 0 refuted. 7 validator runs, 0 failed. 2 files reviewed. 4 `.kanban/` files not reviewed because `.reviewignore` excludes them.
+    - next: The task moved to done. No work remains.
+  timestamp: 2026-09-24T23:16:37.667179+00:00
+- actor: claude-code
+  id: 01m3ava2y1xte1e5yr1eben6ry
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 2 files
+    - test: green — swift test, 1701 passed
+    - commit: 0d64503
+    - review: clean — 0 findings; the task is in done
+  timestamp: 2026-09-24T23:16:47.169132+00:00
+position_column: done
+position_ordinal: ffd880
 title: 'Web: use SearchQuery.textWithSiteTerm in DuckDuckGoHTMLProvider and BraveAPIProvider'
 ---
 ## What

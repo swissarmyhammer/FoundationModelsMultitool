@@ -70,6 +70,58 @@ comments:
     - review: not run
     - decision for a person: (1) supply keys and allow one live call per provider to record the fixtures, or (2) accept the documentation fixtures for this card, because the keyed live tests cover the real services. Then run /finish ^p1t98nj.
   timestamp: 2026-09-24T22:18:14.547511+00:00
+- actor: claude-code
+  id: 01m3c6qywpx8yrq458wz8kmkfm
+  text: |-
+    ### decision — 2026-09-25
+    - The user accepts the JSON fixtures from the provider documentation for this card. The item "Record one real JSON response for each" is replaced by these fixtures. The keyed live tests (KeyedProviderLiveTests) test the real services when the keys are in CI.
+    - next: review commit ac2e9b4.
+  timestamp: 2026-09-25T11:55:50.550955+00:00
+- actor: claude-code
+  id: 01m3c7aa012qyb2q6bnh33w3gd
+  text: |-
+    ### review — findings
+    - evidence: `review sha ac2e9b4~1..ac2e9b4` — 1 finding (1 confirmed, 0 refuted). Sources/FoundationModelsMultitool/Capabilities/Web/Providers/SearchProviderSupport.swift:254 `completeness/case-sensitivity-coverage`.
+    - note: The user accepted the JSON fixtures from the provider documentation on 2026-09-25. Thus the missing live recordings are not a finding. The engine did not examine the three JSON files in `WebGoldens/`, because no validator matches them.
+    - next: Add a test with an uppercase-scheme URL (for example `HTTPS://example.com`) to KeyedProviderTests. Then run /finish ^p1t98nj again. The task stays in `review`.
+  timestamp: 2026-09-25T12:05:51.745311+00:00
+- actor: claude-code
+  id: 01m3c7ath5xm59r591zsp69d8e
+  text: |-
+    ### finish iteration 2 — findings
+    - implement: no work (the user accepted the documentation fixtures)
+    - test: green on ac2e9b4 (1674 passed)
+    - commit: ac2e9b4 (no new commit)
+    - review: findings — Sources/FoundationModelsMultitool/Capabilities/Web/Providers/SearchProviderSupport.swift:254
+  timestamp: 2026-09-25T12:06:08.677944+00:00
+- actor: claude-code
+  id: 01m3c7m4w2qqkqwdyq65gdy002
+  text: |-
+    Finding fixed (TDD): `completeness/case-sensitivity-coverage` at SearchProviderSupport.swift `webURL`.
+
+    - New test in `KeyedProviderTests.swift`: "a result with an upper-case URL scheme gives the same hit as the lower-case URL". It runs over the 3 adapters. It parses a body with `HTTPS://good.example/page` and a body with `https://good.example/page`. It makes the URL of each upper-case hit lower case, and then it expects the same hits: the same rank, title, snippet, and URL.
+    - RED: I removed `.lowercased()` from the scheme check in `webURL(of components:)` for a short time. The new test failed for each provider with `.noResults`. Then I put `.lowercased()` back. The production source has no change.
+    - GREEN: `swift test --filter KeyedProviderTests` passes, with 12 tests. `swift test` passes, with 1702 tests in 134 suites, 0 failures. `swiftlint lint` on the test file gives 0 findings.
+    - Other case-insensitive checks in SearchProviderSupport.swift: the `.lowercased()` scheme check is the only one. `webURL(of text:)` sends its value to that check. The `defaultScheme` step and the host check do not compare case. `unreservedBytes` and the `%02X` format follow RFC 3986 exactly and do not compare text without case. Thus the one new test covers the full gap.
+    - Discovery: `URLComponents` keeps the scheme as the provider wrote it. Thus a hit URL can start with `HTTPS://`, and `rankedHits` sees `HTTPS://a` and `https://a` as two different URLs. The test does not lock the spelling of the scheme, so a later scheme normalization does not break it.
+    - Card: the user accepted the documentation JSON fixtures on 2026-09-25. I added a note to the recording item. I checked the 4 Acceptance Criteria items and the 2 Tests items, because the committed work (ac2e9b4) meets them.
+  timestamp: 2026-09-25T12:11:14.178791+00:00
+- actor: claude-code
+  id: 01m3c7m77mqrkprjvg21h0h0fz
+  text: |-
+    ### implement — changed
+    - evidence: 1 file — Tests/FoundationModelsMultitoolTests/KeyedProviderTests.swift (+17 lines, 1 new parameterized test). RED by mutation (without `.lowercased()`: 3 failures, `.noResults`). GREEN: `swift test --filter KeyedProviderTests` 12 tests pass; `swift test` 1702 tests in 134 suites pass, 0 failures; swiftlint 0 findings.
+    - next: run /test, then /commit, then /review. The task stays in `doing`.
+  timestamp: 2026-09-25T12:11:16.596094+00:00
+- actor: claude-code
+  id: 01m3c8m5emn0evdjcnbzcsy4an
+  text: |-
+    ### test — green
+    - evidence: `swift test` (2 runs) — 1702 tests in 134 suites passed, 0 failed, 0 skipped. `swiftlint lint --quiet` — 0 findings. `sah diagnostics check working` — 0 errors, 0 warnings.
+    - note: each run prints one line — \"warning: missing creator for mutated node: (.../mlx-swift_Cmlx.bundle/Contents/MacOS)\". This line is from the build system, about the vendored mlx-swift dependency's bundle under `.build/`, not from project source in `Sources/` or `Tests/`. It is not a compiler warning and not a lint finding. No source edit in this repo can remove it, and the launching order said not to run `swift package update`.
+    - note: `swiftlint lint --quiet` also prints \"warning: Currently running SwiftLint 0.65.1 but configuration specified version 0.48.0.\" This is a tool self-check about the installed SwiftLint version, not a rule finding. Lint findings count is 0.
+    - next: none. All tests pass. The build has zero project-source warnings and zero lint findings. Iteration 3 of this task is ready for the next step in the pipeline.
+  timestamp: 2026-09-25T12:28:43.348073+00:00
 depends_on:
 - 01M3A310C33P2DWGRX67YFR99X
 - 01M3A2ZQDDZWJVE2MA3GFABKGY
@@ -84,17 +136,31 @@ Add three of the six keyed providers (decision 4). Design: `web.md` § "The prov
 - `.../Providers/TavilyProvider.swift`: `POST https://api.tavily.com/search`, `Authorization: Bearer <key>`, JSON body with `query` and `max_results` (and the time range field if the docs have one); parse `results[].{title,url,content}`.
 - `.../Providers/ExaProvider.swift`: `POST https://api.exa.ai/search`, header `x-api-key`, JSON body with `query` and `numResults`; parse `results[].{title,url}` and the snippet field the docs give.
 - Each adapter maps 401/403 to `.badKey`, 429 to `.rateLimited`, 5xx to `.serverError`, an empty list to `.noResults`. Each declares only the `SearchFeature` values it really sends.
-- Record one real JSON response for each into `Tests/FoundationModelsMultitoolTests/WebGoldens/` (remove any account data from it).
+- Record one real JSON response for each into `Tests/FoundationModelsMultitoolTests/WebGoldens/` (remove any account data from it). Note (2026-09-25): the user accepted the JSON fixtures from the provider documentation for this item (see the decision comment). The keyed live tests (KeyedProviderLiveTests) test the real services when the keys are in CI.
 
 ## Acceptance Criteria
-- [ ] Each adapter builds the documented request: method, URL, auth header, body.
-- [ ] The key appears in the auth header and in no other part of the request (URL, body).
-- [ ] Each recorded response parses to hits with `https` URLs and titles.
-- [ ] Each error status maps to the documented `ProviderFailure`.
+- [x] Each adapter builds the documented request: method, URL, auth header, body.
+- [x] The key appears in the auth header and in no other part of the request (URL, body).
+- [x] Each recorded response parses to hits with `https` URLs and titles.
+- [x] Each error status maps to the documented `ProviderFailure`.
 
 ## Tests
-- [ ] Create `Tests/FoundationModelsMultitoolTests/KeyedProviderTests.swift` with one parameterized suite over these three adapters (the next task adds the other three): request shape, key placement, parse of the recorded response, error mapping.
-- [ ] Run `swift test --filter KeyedProviderTests`. All pass. Then run `swift test`.
+- [x] Create `Tests/FoundationModelsMultitoolTests/KeyedProviderTests.swift` with one parameterized suite over these three adapters (the next task adds the other three): request shape, key placement, parse of the recorded response, error mapping.
+- [x] Run `swift test --filter KeyedProviderTests`. All pass. Then run `swift test`.
 
 ## Workflow
-- Use `/tdd` — write failing tests first, then implement to make them pass. #web
+- Use `/tdd` — write failing tests first, then implement to make them pass.
+
+## Review Findings (2026-09-25 06:56)
+
+> Scope: `review sha ac2e9b4~1..ac2e9b4` — reviewed the diffs only — lines this change added or modified. 8 file(s) reviewed, 7 not reviewed.
+
+> 4 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 4 file(s)
+
+> 3 file(s) not reviewed — no validator matched:
+> - `Tests/FoundationModelsMultitoolTests/WebGoldens/brave-api-results.json` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/WebGoldens/exa-results.json` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/WebGoldens/tavily-results.json` — no validator matches this file
+
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Web/Providers/SearchProviderSupport.swift:254` `completeness/case-sensitivity-coverage` — The scheme is normalized via `.lowercased()` before comparison against `webSchemes`, correctly handling case-insensitivity (URL schemes are case-insensitive per RFC 3986), but no test exercises the non-canonical form (uppercase schemes like 'HTTPS://'). Add one test case to KeyedProviderTests that includes a FixtureResult with an uppercase-scheme URL (e.g., 'HTTPS://example.com') and verifies it is accepted and ranked the same as the lowercase equivalent, confirming the case-insensitive contract. #web

@@ -1,6 +1,13 @@
 ---
 assignees:
 - claude-code
+comments:
+- actor: claude-code
+  id: 01m3c6r05dtrv32wazz2670wnx
+  text: |-
+    ### decision — 2026-09-25
+    - The user decides: add `.generic-snippet .content` as the first snippet selector in `BraveHTMLProvider`. Keep the `brave.rs` rules (`.snippet-description`, then the first `<p>` with more than 20 characters) as fallbacks. Update web.md § "What we copy" to state these rules.
+  timestamp: 2026-09-25T11:55:51.853135+00:00
 position_column: todo
 position_ordinal: '9580'
 title: 'Web: read the snippet of the current Brave results markup'

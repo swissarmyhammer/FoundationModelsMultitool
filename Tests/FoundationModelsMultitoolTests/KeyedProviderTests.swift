@@ -34,6 +34,11 @@ struct KeyedProviderTests {
     private static let goodResult = FixtureResult(
         title: "Good", url: "https://good.example/page", snippet: "A good result.")
 
+    /// ``goodResult`` with its URL scheme in upper case. A URL scheme is not
+    /// case-sensitive (RFC 3986), thus the parse must accept this URL.
+    private static let upperCaseSchemeResult = FixtureResult(
+        title: goodResult.title, url: "HTTPS://good.example/page", snippet: goodResult.snippet)
+
     /// Makes the request of ``query`` with ``KeyedProviderCase/fakeKey``.
     ///
     /// - Parameter provider: The row under test.
@@ -111,6 +116,18 @@ struct KeyedProviderTests {
         let expected = WebHit(
             rank: 1, title: Self.goodResult.title, url: Self.goodResult.url, snippet: Self.goodResult.snippet)
         #expect(hits == [expected])
+    }
+
+    @Test(
+        "a result with an upper-case URL scheme gives the same hit as the lower-case URL",
+        arguments: KeyedProviderCase.all)
+    func upperCaseSchemeIsAccepted(provider: KeyedProviderCase) throws {
+        let upperCaseHits = try provider.parse(Data(provider.responseBody([Self.upperCaseSchemeResult]).utf8))
+        let lowerCaseHits = try provider.parse(Data(provider.responseBody([Self.goodResult]).utf8))
+        let upperCaseHitsWithLowerCaseURL = upperCaseHits.map { hit in
+            WebHit(rank: hit.rank, title: hit.title, url: hit.url.lowercased(), snippet: hit.snippet)
+        }
+        #expect(upperCaseHitsWithLowerCaseURL == lowerCaseHits)
     }
 
     // MARK: - Failures
