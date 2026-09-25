@@ -29,6 +29,10 @@ struct BraveAPIProvider: SearchProviderAdapter {
     /// The query item of the age limit.
     private static let freshnessItem = "freshness"
 
+    /// The value of ``freshnessItem`` for each age limit.
+    private static let freshnessValues = SearchFreshnessValues(
+        day: "pd", week: "pw", month: "pm", year: "py")
+
     /// The counts that the service accepts.
     private static let countRange = 1...20
 
@@ -39,6 +43,10 @@ struct BraveAPIProvider: SearchProviderAdapter {
     /// The query fields that the provider sends: the `freshness` item, a
     /// `site:` term in the query, and the `count` item.
     let supports: Set<SearchFeature> = [.freshness, .site, .count]
+
+    /// `false`: the endpoint is fixed, thus the guard checks the search
+    /// request.
+    let isHostConfiguration = false
 
     /// Makes a `GET` request with the query in the URL and the key in
     /// ``keyHeader``.
@@ -84,7 +92,9 @@ struct BraveAPIProvider: SearchProviderAdapter {
     private static func queryItems(of query: SearchQuery) -> [(name: String, value: String)] {
         let count = SearchProviderSupport.clampedCount(query.count, to: countRange)
         let countItems = count.map { [(name: countItem, value: String($0))] } ?? []
-        let freshnessItems = query.freshness.map { [(name: freshnessItem, value: $0.braveFreshnessValue)] } ?? []
+        let freshnessItems = query.freshness.map { freshness in
+            [(name: freshnessItem, value: freshnessValues.value(for: freshness))]
+        } ?? []
         return [(name: queryItem, value: query.textWithSiteTerm)] + countItems + freshnessItems
     }
 }
@@ -111,17 +121,4 @@ private struct BraveResponse: Decodable {
 
     /// The web results, or `nil` when the service has none.
     let web: Web?
-}
-
-private extension SearchFreshness {
-    /// The value of the `freshness` query item of the Brave Search API for
-    /// this age limit.
-    var braveFreshnessValue: String {
-        switch self {
-        case .day: "pd"
-        case .week: "pw"
-        case .month: "pm"
-        case .year: "py"
-        }
-    }
 }

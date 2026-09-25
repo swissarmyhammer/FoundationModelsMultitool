@@ -51,6 +51,53 @@ comments:
     - evidence: swift package clean; swift test — 1725 tests, 137 suites, 0 failures, 0 skipped. No warning in Sources or Tests. Five warnings remain, all from the vendored mlx-swift dependency (four C++17 extension warnings under .build/checkouts/mlx-swift, plus one SwiftPM build-graph note about its Cmlx.bundle resource copy). That code is not part of this repo, is git-ignored, and swift package update did not run, so no edit to it can persist.
     - next: none. The task is clear for the next step.
   timestamp: 2026-09-25T13:01:24.297316+00:00
+- actor: claude-code
+  id: 01m3cb4ed9rr8wcm81938npbwe
+  text: |-
+    ### review — findings
+    - evidence: review sha HEAD~1..HEAD (628900f). 3 findings (3 confirmed, 1 refuted). SearXNGProvider.swift:124, SerperProvider.swift:119, KeyedProviderTests.swift:95.
+    - next: Do the 3 open items in the "Review Findings (2026-09-25 08:02)" section. Then do the review again. The task stays in review.
+  timestamp: 2026-09-25T13:12:33.961827+00:00
+- actor: claude-code
+  id: 01m3cb4v7tbes2484eav3ntnar
+  text: |-
+    ### finish iteration 1 — findings
+    - implement: changed — 20 files
+    - test: green — swift test, 1725 passed
+    - commit: 628900f
+    - review: findings — Sources/FoundationModelsMultitool/Capabilities/Web/Providers/SearXNGProvider.swift:124, Sources/FoundationModelsMultitool/Capabilities/Web/Providers/SerperProvider.swift:119, Tests/FoundationModelsMultitoolTests/KeyedProviderTests.swift:95
+  timestamp: 2026-09-25T13:12:47.098434+00:00
+- actor: claude-code
+  id: 01m3cbhfb30ntd5mefvq6rg1es
+  text: |-
+    Review findings done (implement pass 2). The task is in doing.
+
+    Finding 1 and 2 (`duplication/duplication`, SearXNGProvider.swift:124 and SerperProvider.swift:119): the cause is one `switch` over `SearchFreshness` for each provider, with only the return values different. The same cause was in 7 places in `Providers/`: SearXNG, Serper, Tavily, DuckDuckGoHTML, BraveAPI, BraveHTML (`private extension SearchFreshness` in each), and the `calendarStep` of `SearchProviderSupport` (Exa and Kagi use it).
+    - New shared type `SearchFreshnessValues<Value: Sendable>` in `SearchProviderAdapter.swift`, beside `SearchFreshness`. It has one field for each age limit and one exhaustive `switch` in `value(for:)`. The compiler checks that each table has all four values.
+    - Each provider now keeps one `private static let` table of its own documented values and calls `value(for:)`. All 7 `switch` copies are deleted.
+    - `SearchProviderSupport.startDate(of:before:)` now reads `ageLimitUnits` (a `SearchFreshnessValues<Calendar.Component>`) and the named constant `ageLimitUnitCount = 1`.
+    - TDD: new `SearchFreshnessValuesTests.swift`. It failed first with "cannot find 'SearchFreshnessValues' in scope", then passed. The existing freshness tests of each provider (Brave API, Brave HTML, DuckDuckGo, Tavily, Serper, SearXNG, Exa, Kagi) cover the table values and stay green.
+
+    Finding 3 (`completeness/public-output-contract`, KeyedProviderTests.swift:95): Serper and Kagi now declare `let isHostConfiguration = false`. The same cause (an adapter that gets the value from the protocol default and does not declare it) was in Tavily, Exa, BraveAPI, BraveHTML, and DuckDuckGoHTML. Each of them now declares `let isHostConfiguration = false`. The protocol default (`extension SearchProviderAdapter { var isHostConfiguration: Bool { false } }`) had no user after that, thus it is deleted as dead code. The compiler now makes each new adapter declare the value. The protocol doc comment tells this.
+
+    Discovery: the finding said that Serper and Kagi "will fail this assertion". That was not true before this change, because the protocol default gave `false`. The fix makes the declaration explicit in all adapters.
+
+    Discovery: the `kanban` `move task` and `update task` ops return the whole board (about 69000 characters). Read the task file under `.kanban/tasks/` to verify the change.
+  timestamp: 2026-09-25T13:19:40.899398+00:00
+- actor: claude-code
+  id: 01m3cbhk9bdshx399dmjdx7479
+  text: |-
+    ### implement — changed
+    - evidence: 11 files — changed: Providers/SearchProviderAdapter.swift, Providers/SearchProviderSupport.swift, Providers/SearXNGProvider.swift, Providers/SerperProvider.swift, Providers/KagiProvider.swift, Providers/TavilyProvider.swift, Providers/ExaProvider.swift, Providers/BraveAPIProvider.swift, Providers/BraveHTMLProvider.swift, Providers/DuckDuckGoHTMLProvider.swift; new: Tests/FoundationModelsMultitoolTests/SearchFreshnessValuesTests.swift (and the two kanban files of this card). 3 of 3 review findings checked. `swift test --filter "KeyedProvider|ProviderFallback|SearXNG|SerperKagi|BraveHTML|DuckDuckGo|SearchFreshnessValues"`: 114 tests in 9 suites passed. `swift test`: 1726 tests in 138 suites passed. `swiftlint lint` on each Swift file of Providers/ and the new test: no violations. The one build warning is the known `missing creator for mutated node` note of the mlx-swift dependency.
+    - next: /review
+  timestamp: 2026-09-25T13:19:44.939263+00:00
+- actor: claude-code
+  id: 01m3cc3v9qf8yw2zv9wxv78aq7
+  text: |-
+    ### test — green
+    - evidence: swift package clean; swift test — 1726 tests, 138 suites, 0 failures, 0 skipped. swiftlint lint on the repo — no violations (only a tool-version note: installed 0.65.1, config pins 0.48.0). 5 warnings remain, all from the vendored mlx-swift dependency under .build/checkouts (4 C++17 extension notes plus 1 SwiftPM build-graph note about its Cmlx.bundle resource copy). That code is not part of this repo, is git-ignored, and swift package update did not run, so no fix to it can stay. No warning is in Sources or Tests of this repo.
+    - next: none. The task is ready for the next step.
+  timestamp: 2026-09-25T13:29:42.967622+00:00
 depends_on:
 - 01M3A31T6MJJSGKHPG7P1T98NJ
 position_column: doing
@@ -79,4 +126,21 @@ Note (2026-09-25): The documentation check changed the Kagi request. The current
 - [x] Run `swift test --filter "KeyedProviderTests|ProviderFallbackTests|SearXNGChainTests"`. All pass. Then run `swift test`.
 
 ## Workflow
-- Use `/tdd` — write failing tests first, then implement to make them pass. #web
+- Use `/tdd` — write failing tests first, then implement to make them pass.
+
+## Review Findings (2026-09-25 08:02)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 13 file(s) reviewed, 8 not reviewed.
+
+> 4 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 4 file(s)
+
+> 4 file(s) not reviewed — no validator matched:
+> - `Tests/FoundationModelsMultitoolTests/WebGoldens/kagi-results.json` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/WebGoldens/searxng-results.json` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/WebGoldens/serper-results.json` — no validator matches this file
+> - `web.md` — no validator matches this file
+
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Web/Providers/SearXNGProvider.swift:124` `duplication/duplication` — The searxngTimeRange property contains the same switch/case structure as SerperProvider.serperTimeFilter, differing only in return values for each case. This is a changed-set duplicate—two blocks pasted into two new files in the same change with identical form and different values only. This pattern should be one function with an argument, not two copies. Extract a shared helper—either a mapping dictionary per API or a generic function that accepts a mapping parameter—so both properties delegate to one implementation. Example: create a method on SearchFreshness that accepts the case-value mapping as an argument, or extract static dictionaries per provider that both properties query.
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Web/Providers/SerperProvider.swift:119` `duplication/duplication` — The serperTimeFilter property contains the same switch/case structure as SearXNGProvider.searxngTimeRange, differing only in return values for each case. This is a changed-set duplicate—two blocks pasted into two new files in the same change with identical form and different values only. This pattern should be one function with an argument, not two copies. Extract a shared helper—either a mapping dictionary per API or a generic function that accepts a mapping parameter—so both properties delegate to one implementation. Example: create a method on SearchFreshness that accepts the case-value mapping as an argument, or extract static dictionaries per provider that both properties query.
+- [x] `Tests/FoundationModelsMultitoolTests/KeyedProviderTests.swift:95` `completeness/public-output-contract` — The test at line 95 asserts that all adapters in KeyedProviderCase.all have an isHostConfiguration property, matching a KeyedProviderCase property of the same name. SearXNGProvider implements this property (line 47: `let isHostConfiguration = true`), but SerperProvider and KagiProvider do not—both providers will fail this assertion when the test runs. Add `let isHostConfiguration = false` to both SerperProvider and KagiProvider struct definitions (they have fixed endpoints, unlike SearXNG which requires host configuration). The property should appear with the other properties near the name and supports declarations. #web

@@ -76,6 +76,14 @@ enum SearchProviderSupport {
     /// The format of one percent-encoded byte.
     private static let percentEncodedByteFormat = "%%%02X"
 
+    /// The calendar unit of each age limit. The earliest date of an age limit
+    /// is ``ageLimitUnitCount`` of its unit before the time of the request.
+    private static let ageLimitUnits = SearchFreshnessValues<Calendar.Component>(
+        day: .day, week: .weekOfYear, month: .month, year: .year)
+
+    /// The number of calendar units in each age limit.
+    private static let ageLimitUnitCount = 1
+
     /// The schemes of a hit URL.
     private static let webSchemes: Set<String> = ["http", "https"]
 
@@ -194,8 +202,8 @@ enum SearchProviderSupport {
     static func startDate(of freshness: SearchFreshness, before now: Date) throws -> Date {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = .gmt
-        let step = freshness.calendarStep
-        guard let start = calendar.date(byAdding: step.component, value: -step.value, to: now) else {
+        let unit = ageLimitUnits.value(for: freshness)
+        guard let start = calendar.date(byAdding: unit, value: -ageLimitUnitCount, to: now) else {
             throw InvalidStartDate()
         }
         return start
@@ -306,18 +314,5 @@ enum SearchProviderSupport {
             absolute.host?.isEmpty == false
         else { return nil }
         return absolute.string
-    }
-}
-
-private extension SearchFreshness {
-    /// The calendar step back from the time of a request to the earliest
-    /// date of this age limit.
-    var calendarStep: (component: Calendar.Component, value: Int) {
-        switch self {
-        case .day: (.day, 1)
-        case .week: (.weekOfYear, 1)
-        case .month: (.month, 1)
-        case .year: (.year, 1)
-        }
     }
 }

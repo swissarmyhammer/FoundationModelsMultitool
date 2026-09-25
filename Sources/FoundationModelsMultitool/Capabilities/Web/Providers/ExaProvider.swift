@@ -33,6 +33,10 @@ struct ExaProvider: SearchProviderAdapter {
     /// `includeDomains`, and `numResults`.
     let supports: Set<SearchFeature> = [.freshness, .site, .count]
 
+    /// `false`: the endpoint is fixed, thus the guard checks the search
+    /// request.
+    let isHostConfiguration = false
+
     /// Gives the time of a request. An age limit counts back from it.
     private let now: @Sendable () -> Date
 

@@ -26,6 +26,10 @@ struct SerperProvider: SearchProviderAdapter {
     /// The counts that the service accepts.
     private static let countRange = 1...100
 
+    /// The value of the `tbs` field for each age limit.
+    private static let timeFilters = SearchFreshnessValues(
+        day: "qdr:d", week: "qdr:w", month: "qdr:m", year: "qdr:y")
+
     /// The name of the provider: the name of the case
     /// `WebSearchProvider.serper`.
     let name = "serper"
@@ -33,6 +37,10 @@ struct SerperProvider: SearchProviderAdapter {
     /// The query fields that the provider sends: `tbs`, a `site:` term in
     /// `q`, and `num`.
     let supports: Set<SearchFeature> = [.freshness, .site, .count]
+
+    /// `false`: the endpoint is fixed, thus the guard checks the search
+    /// request.
+    let isHostConfiguration = false
 
     /// Makes a `POST` request with the query as a JSON body and the key in
     /// ``keyHeader``.
@@ -49,7 +57,7 @@ struct SerperProvider: SearchProviderAdapter {
         let body = SerperRequestBody(
             query: query.textWithSiteTerm,
             num: SearchProviderSupport.clampedCount(query.count, to: Self.countRange),
-            tbs: query.freshness?.serperTimeFilter)
+            tbs: query.freshness.map(Self.timeFilters.value(for:)))
         var request = try SearchProviderSupport.jsonPostRequest(to: Self.endpoint, body: body)
         request.setValue(key, forHTTPHeaderField: Self.keyHeader)
         return request
@@ -111,17 +119,4 @@ private struct SerperResponse: Decodable {
     /// The organic results, in rank order, or `nil` when the response has
     /// none.
     let organic: [OrganicResult]?
-}
-
-private extension SearchFreshness {
-    /// The value of the `tbs` field of the Serper search API for this age
-    /// limit.
-    var serperTimeFilter: String {
-        switch self {
-        case .day: "qdr:d"
-        case .week: "qdr:w"
-        case .month: "qdr:m"
-        case .year: "qdr:y"
-        }
-    }
 }

@@ -40,6 +40,38 @@ enum SearchFreshness: String, Sendable, Hashable {
     case year
 }
 
+/// The values of one provider field for each age limit.
+///
+/// Each provider keeps one table for its age-limit field, and reads the value
+/// of an age limit with ``value(for:)``. The initializer takes a value for
+/// each age limit, thus a table always has all the values.
+struct SearchFreshnessValues<Value: Sendable>: Sendable {
+    /// The value for ``SearchFreshness/day``.
+    let day: Value
+
+    /// The value for ``SearchFreshness/week``.
+    let week: Value
+
+    /// The value for ``SearchFreshness/month``.
+    let month: Value
+
+    /// The value for ``SearchFreshness/year``.
+    let year: Value
+
+    /// The value of an age limit.
+    ///
+    /// - Parameter freshness: The age limit.
+    /// - Returns: The value of the field of that age limit.
+    func value(for freshness: SearchFreshness) -> Value {
+        switch freshness {
+        case .day: day
+        case .week: week
+        case .month: month
+        case .year: year
+        }
+    }
+}
+
 /// One search query, after the verb checked its arguments.
 ///
 /// A field that the caller did not set is `nil`. The chain adds an "is not
@@ -178,7 +210,8 @@ protocol SearchProviderAdapter: Sendable {
 
     /// `true` when the request URL is host configuration, for example the
     /// base URL of a SearXNG instance. The guard then does not check the
-    /// request URL. The default is `false`.
+    /// request URL. Each adapter declares the value, thus no adapter gets
+    /// `false` by accident.
     var isHostConfiguration: Bool { get }
 
     /// Makes the request of a query.
@@ -201,9 +234,4 @@ protocol SearchProviderAdapter: Sendable {
     ///   has not more than `limit` hits.
     /// - Throws: The failure when the response gives no hits.
     func parse(_ data: Data, response: HTTPURLResponse, limit: Int?) throws(ProviderFailure) -> [WebHit]
-}
-
-extension SearchProviderAdapter {
-    /// `false`: the guard checks the request URL of a provider.
-    var isHostConfiguration: Bool { false }
 }

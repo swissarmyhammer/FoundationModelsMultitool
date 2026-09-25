@@ -37,6 +37,10 @@ struct BraveHTMLProvider: SearchProviderAdapter {
     /// service obeys it.
     private static let timeFilterItem = "tf"
 
+    /// The value of ``timeFilterItem`` for each age limit.
+    private static let timeFilterValues = SearchFreshnessValues(
+        day: "pd", week: "pw", month: "pm", year: "py")
+
     /// The selector of each result container.
     private static let containerSelector = "[data-pos]"
 
@@ -75,6 +79,10 @@ struct BraveHTMLProvider: SearchProviderAdapter {
     /// The query fields that the provider sends: the `tf` item, a `site:`
     /// term in the query, and the limit of the parse.
     let supports: Set<SearchFeature> = [.freshness, .site, .count]
+
+    /// `false`: the endpoint is fixed, thus the guard checks the search
+    /// request.
+    let isHostConfiguration = false
 
     /// Makes a `GET` request of the results page, with the headers of a
     /// desktop browser. The provider has no key and does not read the key
@@ -122,7 +130,9 @@ struct BraveHTMLProvider: SearchProviderAdapter {
     /// - Returns: The `q` item and the `source` item, then the `tf` item
     ///   when the query has a freshness.
     private static func queryItems(of query: SearchQuery) -> [(name: String, value: String)] {
-        let timeItems = query.freshness.map { [(name: timeFilterItem, value: $0.braveTimeFilterValue)] } ?? []
+        let timeItems = query.freshness.map { freshness in
+            [(name: timeFilterItem, value: timeFilterValues.value(for: freshness))]
+        } ?? []
         return [(name: queryItem, value: query.textWithSiteTerm), (name: sourceItem, value: webSource)] + timeItems
     }
 
@@ -195,17 +205,5 @@ struct BraveHTMLProvider: SearchProviderAdapter {
     private static func webURL(of href: String) -> String? {
         guard let link = URLComponents(string: href), link.scheme != nil else { return nil }
         return SearchProviderSupport.webURL(of: link)
-    }
-}
-
-private extension SearchFreshness {
-    /// The value of the `tf` query item of Brave for this age limit.
-    var braveTimeFilterValue: String {
-        switch self {
-        case .day: "pd"
-        case .week: "pw"
-        case .month: "pm"
-        case .year: "py"
-        }
     }
 }

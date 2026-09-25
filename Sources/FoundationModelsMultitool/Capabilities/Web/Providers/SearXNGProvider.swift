@@ -34,6 +34,10 @@ struct SearXNGProvider: SearchProviderAdapter {
     /// The query item of the age limit.
     private static let timeRangeItem = "time_range"
 
+    /// The value of ``timeRangeItem`` for each age limit.
+    private static let timeRanges = SearchFreshnessValues(
+        day: "day", week: "week", month: "month", year: "year")
+
     /// The name of the provider: the name of the case
     /// `WebSearchProvider.searxng`.
     let name = "searxng"
@@ -94,7 +98,7 @@ struct SearXNGProvider: SearchProviderAdapter {
     /// - Returns: The `q` item and the `format` item, then the `time_range`
     ///   item when the query sets an age limit.
     private static func queryItems(of query: SearchQuery) -> [(name: String, value: String)] {
-        let timeRangeItems = query.freshness.map { [(name: timeRangeItem, value: $0.searxngTimeRange)] } ?? []
+        let timeRangeItems = query.freshness.map { [(name: timeRangeItem, value: timeRanges.value(for: $0))] } ?? []
         return [(name: queryItem, value: query.textWithSiteTerm), (name: formatItem, value: jsonFormat)]
             + timeRangeItems
     }
@@ -116,17 +120,4 @@ private struct SearXNGResponse: Decodable {
 
     /// The results, in rank order.
     let results: [SearchResult]
-}
-
-private extension SearchFreshness {
-    /// The value of the `time_range` query item of the SearXNG search API for
-    /// this age limit.
-    var searxngTimeRange: String {
-        switch self {
-        case .day: "day"
-        case .week: "week"
-        case .month: "month"
-        case .year: "year"
-        }
-    }
 }

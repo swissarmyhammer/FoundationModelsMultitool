@@ -25,6 +25,10 @@ struct TavilyProvider: SearchProviderAdapter {
     /// search with no results has no use.
     private static let countRange = 1...20
 
+    /// The value of the `time_range` field for each age limit.
+    private static let timeRanges = SearchFreshnessValues(
+        day: "day", week: "week", month: "month", year: "year")
+
     /// The name of the provider: the name of the case
     /// `WebSearchProvider.tavily`.
     let name = "tavily"
@@ -32,6 +36,10 @@ struct TavilyProvider: SearchProviderAdapter {
     /// The query fields that the provider sends: `time_range`,
     /// `include_domains`, and `max_results`.
     let supports: Set<SearchFeature> = [.freshness, .site, .count]
+
+    /// `false`: the endpoint is fixed, thus the guard checks the search
+    /// request.
+    let isHostConfiguration = false
 
     /// Makes a `POST` request with the query as a JSON body and the key in
     /// ``keyHeader``.
@@ -48,7 +56,7 @@ struct TavilyProvider: SearchProviderAdapter {
         let body = TavilyRequestBody(
             query: query.text,
             maxResults: SearchProviderSupport.clampedCount(query.count, to: Self.countRange),
-            timeRange: query.freshness?.tavilyTimeRange,
+            timeRange: query.freshness.map(Self.timeRanges.value(for:)),
             includeDomains: query.site.map { [$0] })
         var request = try SearchProviderSupport.jsonPostRequest(to: Self.endpoint, body: body)
         request.setValue(Self.bearerPrefix + key, forHTTPHeaderField: Self.keyHeader)
@@ -114,17 +122,4 @@ private struct TavilyResponse: Decodable {
 
     /// The results, in rank order.
     let results: [SearchResult]
-}
-
-private extension SearchFreshness {
-    /// The value of the `time_range` field of the Tavily search API for this
-    /// age limit.
-    var tavilyTimeRange: String {
-        switch self {
-        case .day: "day"
-        case .week: "week"
-        case .month: "month"
-        case .year: "year"
-        }
-    }
 }

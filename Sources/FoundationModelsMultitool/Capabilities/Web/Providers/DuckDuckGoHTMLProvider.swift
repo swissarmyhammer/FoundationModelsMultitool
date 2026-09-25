@@ -28,6 +28,10 @@ struct DuckDuckGoHTMLProvider: SearchProviderAdapter {
     /// service obeys it.
     private static let dateField = "df"
 
+    /// The value of ``dateField`` for each age limit.
+    private static let dateValues = SearchFreshnessValues(
+        day: "d", week: "w", month: "m", year: "y")
+
     /// The selector of each organic result container. An ad container also
     /// has the class `result`, and it has the class `result--ad` too.
     private static let organicResultSelector = ".result:not(.result--ad)"
@@ -56,6 +60,10 @@ struct DuckDuckGoHTMLProvider: SearchProviderAdapter {
     /// The query fields that the provider sends: the `df` field, a `site:`
     /// term in the query, and the limit of the parse.
     let supports: Set<SearchFeature> = [.freshness, .site, .count]
+
+    /// `false`: the endpoint is fixed, thus the guard checks the search
+    /// request.
+    let isHostConfiguration = false
 
     /// Makes a `POST` request with the query as a form body. The provider has
     /// no key and does not read the key value.
@@ -103,7 +111,7 @@ struct DuckDuckGoHTMLProvider: SearchProviderAdapter {
     /// - Returns: The `q` field, then the `df` field when the query has a
     ///   freshness.
     private static func formFields(of query: SearchQuery) -> [(name: String, value: String)] {
-        let dateFields = query.freshness.map { [(name: dateField, value: $0.duckDuckGoDateValue)] } ?? []
+        let dateFields = query.freshness.map { [(name: dateField, value: dateValues.value(for: $0))] } ?? []
         return [(name: queryField, value: query.textWithSiteTerm)] + dateFields
     }
 
@@ -157,17 +165,5 @@ struct DuckDuckGoHTMLProvider: SearchProviderAdapter {
         guard let host = link.host?.lowercased() else { return false }
         let isRedirectHost = host == redirectHost || host.hasSuffix(".\(redirectHost)")
         return isRedirectHost && link.path == redirectPath
-    }
-}
-
-private extension SearchFreshness {
-    /// The value of the `df` form field of DuckDuckGo for this age limit.
-    var duckDuckGoDateValue: String {
-        switch self {
-        case .day: "d"
-        case .week: "w"
-        case .month: "m"
-        case .year: "y"
-        }
     }
 }
