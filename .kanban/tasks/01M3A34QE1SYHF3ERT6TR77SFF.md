@@ -34,10 +34,26 @@ comments:
     - note: one warning is present, `missing creator for mutated node` for `mlx-swift_Cmlx.bundle`. This warning is from the vendored mlx-swift dependency under `.build`. It is not part of this repository's code. It does not change the outcome.
     - next: none. The build is clean.
   timestamp: 2026-09-25T19:17:26.517096+00:00
+- actor: claude-code
+  id: 01m3d06zskmvjwdv3g20cbt22m
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit baf5a81). The engine reviewed 1 file (WebResearchScenarioTests.swift). Counts: 0 findings, 0 confirmed, 0 refuted, 7 attempted, 0 failed. The 4 `.kanban/` files are excluded by `.reviewignore`. The commit renames no file.
+    - next: The task is in done. No work remains.
+  timestamp: 2026-09-25T19:20:57.395884+00:00
+- actor: claude-code
+  id: 01m3d07aa651rxssznd5z5w480
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 1 file; the scenario passed one live run (real model, keyless web)
+    - test: green — swift test, 1790 passed; IntegrationTests build passes
+    - commit: baf5a81
+    - review: clean — 0 findings; the task is in done
+  timestamp: 2026-09-25T19:21:08.166798+00:00
 depends_on:
 - 01M3A32XTTF1JWYSA9GPDZP3KQ
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffe380
 title: 'Web: add the real-model web research scenario (WebResearchScenarioTests)'
 ---
 ## What
