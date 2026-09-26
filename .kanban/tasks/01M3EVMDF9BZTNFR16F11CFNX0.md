@@ -28,29 +28,38 @@ comments:
     - evidence: `swift build --build-tests` complete, no compiler warning (only the SwiftPM build-system note "missing creator for mutated node" for the mlx-swift_Cmlx bundle, which is not a compiler diagnostic and was present before); `swift test` — 1786 tests in 144 suites passed, 0 failed, 0 skipped. `ResilienceTests.freshOperationWaitsForInFlightDisconnectStragglerBoundedByDisconnectGracePeriod` passed in this run. The new tests ran and passed (filtered rerun: 114 tests in 5 suites passed).
     - next: commit
   timestamp: 2026-09-26T19:14:28.492711+00:00
+- actor: claude-code
+  id: 01m3fjk1wwfrhg9f7mznhh57dn
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — sandbox `wait()` removed; the name `wait` keeps a synchronous function that throws `SandboxGlobalError.waitRemoved` (return the completion token, end the answer, the result comes as mail); docs page, live-context cap error, README and docs/SECURITY.md updated; `runCollectedBySandboxWaitIsAlsoMail` replaced by `sandboxWaitIsRemovedAndTheRunComesBackAsOneMail`; golden test added.
+    - test: green — `swift build --build-tests` complete, no compiler warning; `swift test` 1786 tests in 144 suites passed, 0 failed, 0 skipped (the ResilienceTests disconnect-grace test passed in this run).
+    - commit: changed — ec75ad2 feat(sandbox)!: remove the sandbox wait() global; a call to wait() gives a repair text
+    - review: clean — review sha HEAD~1..HEAD: 0 findings (14 attempted, 0 failed; README.md and docs/SECURITY.md have no validator; .kanban excluded). No prior findings. Subtasks checked. Task moved to done.
+  timestamp: 2026-09-26T19:20:35.996406+00:00
 depends_on:
 - 01M3EVKX9JFDWDQR297Q4JRND0
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffef80
 title: Remove the sandbox wait() global that holds an in-band runCode body
 ---
 ## What
 User decision (2026-09-26): remove `wait`, and use mail. This includes the sandbox `wait()` hold. The sandbox global `wait(token, seconds)` (`Sources/FoundationModelsMultitool/MultiTool+SandboxGlobals.swift`, 25 uses of `wait`, and its JS surface in `Interpreter/JSCInterpreter.swift`) lets a `runCode` snippet block until a background run settles. When `runCode` runs in-band, which includes the `inlineSettleGrace` window, that block holds the model for every session on it (`../FoundationModelsRouter/generation-queue.md` §5.5).
 
-- [ ] Remove the `wait` sandbox global and its rendering in the tool API surface (`Surface/ToolAPIRenderer.swift`, and the goldens under `Tests/FoundationModelsMultitoolTests/Goldens` that list it).
-- [ ] A snippet that calls `wait(...)` now gets a repairable error that says: return the completion token, end the answer, and the result comes as mail.
-- [ ] Remove or rewrite the tests that depend on it: `SandboxGlobalsTests.swift` (24 uses), `Fixtures/SandboxGlobalsFixtures.swift`, `InlineSettleGraceTests.swift`, `MultiToolExecutionTests.swift`, `ShellExecuteTests.swift`, and the support types `Support/Rendezvous.swift` and `Support/ReleaseGate.swift` if nothing else uses them.
-- [ ] Update `Tests/Support/ScenarioGrading` rules that expect a sandbox `wait(`.
+- [x] Remove the `wait` sandbox global and its rendering in the tool API surface (`Surface/ToolAPIRenderer.swift`, and the goldens under `Tests/FoundationModelsMultitoolTests/Goldens` that list it).
+- [x] A snippet that calls `wait(...)` now gets a repairable error that says: return the completion token, end the answer, and the result comes as mail.
+- [x] Remove or rewrite the tests that depend on it: `SandboxGlobalsTests.swift` (24 uses), `Fixtures/SandboxGlobalsFixtures.swift`, `InlineSettleGraceTests.swift`, `MultiToolExecutionTests.swift`, `ShellExecuteTests.swift`, and the support types `Support/Rendezvous.swift` and `Support/ReleaseGate.swift` if nothing else uses them.
+- [x] Update `Tests/Support/ScenarioGrading` rules that expect a sandbox `wait(`.
 
 ## Acceptance Criteria
-- [ ] The rendered tool API surface has no `wait` global (the golden files are updated).
-- [ ] A snippet that calls `wait("t", 1)` gets the repairable error text above, not a JS `ReferenceError` with no guidance.
-- [ ] `swift test` passes.
+- [x] The rendered tool API surface has no `wait` global (the golden files are updated).
+- [x] A snippet that calls `wait("t", 1)` gets the repairable error text above, not a JS `ReferenceError` with no guidance.
+- [x] `swift test` passes.
 
 ## Tests
-- [ ] `Tests/FoundationModelsMultitoolTests/SandboxGlobalsTests.swift`: a test that a call to `wait(...)` gives the repairable error.
-- [ ] `Tests/FoundationModelsMultitoolTests/ToolAPIRendererTests` (the golden suite): the goldens do not contain `wait(`.
-- [ ] Run `swift test`. Expected result: all tests pass.
+- [x] `Tests/FoundationModelsMultitoolTests/SandboxGlobalsTests.swift`: a test that a call to `wait(...)` gives the repairable error.
+- [x] `Tests/FoundationModelsMultitoolTests/ToolAPIRendererTests` (the golden suite): the goldens do not contain `wait(`.
+- [x] Run `swift test`. Expected result: all tests pass.
 
 ## Workflow
 - Use `/tdd`. Write failing tests first, then do the implementation that makes them pass.
