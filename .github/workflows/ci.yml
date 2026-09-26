@@ -40,6 +40,14 @@ jobs:
     with:
       # The real-model suite is a nested package. This input makes the unit
       # job build it on every run and makes the integration job run it.
+      #
+      # The same package holds the live web suites (folder `Web/`), thus the
+      # integration job runs them too. There is no separate web workflow.
+      # This workflow maps no API key secret. Thus each keyed live test
+      # (`KeyedProviderLiveTests`) is skipped here, because it runs only when
+      # its key is set. `DuckDuckGoHTMLLiveTests` runs on each trigger. Its
+      # challenge page is a known issue, not a failure. web.md § "CI" records
+      # these rules.
       integration-package-path: IntegrationTests
 
       # `--no-parallel` is not a preference. Swift Testing starts a test's

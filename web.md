@@ -411,7 +411,6 @@ Package.swift                                                                   
 README.md                                                                       ## Capabilities: + web
 docs/SECURITY.md                                                                + the web capability section
 IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Web/           live web suites (see Testing)
-.github/workflows/web.yml                                                       new workflow: web-integration job
 ```
 
 ## Testing
@@ -477,8 +476,12 @@ It replaces the earlier decision "always run, fail when the key is missing".
 
 ```
 swift test --package-path IntegrationTests --no-parallel \
-  --filter "BraveHTMLLiveTests|DuckDuckGoHTMLLiveTests|KeylessChainLiveTests|FetchLiveTests|GuardLiveTests|WebRunCodeLiveTests"
+  --filter "BraveHTMLLiveTests|DuckDuckGoHTMLLiveTests|KeylessChainLiveTests|FetchLiveTests|GuardLiveTests|KeyedProviderLiveTests|LiveProviderSettingTests|KeyedFallbackLiveTests|WebRunCodeLiveTests"
 ```
+
+This filter selects each Level 2 suite of the table below. A run of the whole
+package (`swift test --package-path IntegrationTests --no-parallel`, the run of
+CI) also includes each of them.
 
 `--no-parallel`, and `.serialized` on each suite, keep the request rate low.
 Each test has `.timeLimit(.minutes(1))`.
@@ -502,9 +505,10 @@ markup drift, and it is not a defect of the provider. Thus:
 - Each other correction still fails the test. Examples: a markup change, no
   results, a hit on a wrong host.
 - A test does not retry. The assertion rule stays true.
-- In CI, the DuckDuckGo live suite runs only on the daily `schedule` trigger.
-  It does not run on `push` or `pull_request`. This keeps the rate of
-  DuckDuckGo requests from one runner address low. See "CI".
+- In CI, the DuckDuckGo live suite runs in the normal integration job, the
+  same as each other live web suite. There is no special schedule for it.
+  (Decided, 2026-09-26, final: this replaces the earlier rule "only on a daily
+  schedule".) See "CI".
 
 | Suite | Tests |
 |---|---|
@@ -532,26 +536,27 @@ markup drift, and it is not a defect of the provider. Thus:
 
 ### CI
 
-- A new workflow file `.github/workflows/web.yml` with one job
-  `web-integration`. It runs Level 2. Its triggers are `push` to `main`,
-  `pull_request`, `workflow_dispatch`, and a daily `schedule`. The daily run
-  finds markup drift in the keyless providers before a user finds it. A
-  separate file keeps the expensive real-model job of `ci.yml` off the daily
-  schedule.
-- The job has no `needs`. On each push and pull request it runs
-  `swift test --package-path IntegrationTests --no-parallel` with a `--filter`
-  that selects the Level 2 suites (the command in Level 2). The compile
-  coupling that `IntegrationTests/Package.swift` asks for is already in the
-  unit job of `ci.yml`: it builds `IntegrationTests` on each run, and that
+(Decided, 2026-09-26, final. This replaces the earlier CI decisions. The web
+capability follows the pattern of the sibling repositories.)
+
+- There is no separate workflow for the web capability. `ci.yml` calls the
+  shared `swift-ci.yaml` workflow, and its inputs do not change. Its input
+  `integration-package-path: IntegrationTests` makes the integration job run
+  `swift test --package-path IntegrationTests --no-parallel`. That run
+  includes each Level 2 suite, because the suites are in `IntegrationTests/`.
+  The triggers are the triggers of `ci.yml`: `push` to `main`,
+  `pull_request`, and `workflow_dispatch`.
+- The compile coupling that `IntegrationTests/Package.swift` asks for is in
+  the unit job of `ci.yml`: it builds `IntegrationTests` on each run, and that
   build compiles the Level 2 suites too.
-- `DuckDuckGoHTMLLiveTests` runs only on the `schedule` trigger. On `push` and
-  `pull_request`, the test step does not run it. See "The DuckDuckGo challenge
-  page" in Level 2.
-- The job maps the repository secrets `BRAVE_SEARCH_API_KEY`,
-  `TAVILY_API_KEY`, `EXA_API_KEY`, `SERPER_API_KEY`, `KAGI_API_KEY` to
-  environment variables. It sets `MULTITOOL_WEB_EXPECTED_PROVIDERS` to the
-  provider names (not the secret names) of the secrets that `gh secret list`
-  shows, for example `braveAPI,tavily`.
+- CI maps no API key secret. Thus no key variable is set in CI, and each of
+  the six tests of `KeyedProviderLiveTests` is skipped there (see "The
+  environment rule" in Level 2). `KeyedFallbackLiveTests` and
+  `LiveProviderSettingTests` need no real key, thus they run in CI. A person
+  runs the keyed live tests on a computer where the keys are set.
+- `DuckDuckGoHTMLLiveTests` runs in the normal integration job on each
+  trigger. A challenge page is a known issue, not a failure. See "The
+  DuckDuckGo challenge page" in Level 2.
 
 ## Work items
 

@@ -39,8 +39,24 @@ comments:
     - notes: One build-system warning appeared each build: "missing creator for mutated node" for `mlx-swift_Cmlx.bundle`. This comes from the vendored mlx-swift dependency under `.build/checkouts`. It is out of scope for this repo. Report only, per the task instructions. One runtime line appeared during the root `swift test` run: "SWIFT TASK CONTINUATION MISUSE: connect() leaked its continuation without resuming it." This comes from `HangingTransport.connect()` in `Tests/FoundationModelsMultitoolTests/Support/HangingTransport.swift`. Its own doc comment states this line is expected, not a bug: the transport never resumes its continuation on purpose, to prove the connect timeout works when a transport hangs. No code change was needed.
     - next: None. The build is clean.
   timestamp: 2026-09-26T15:08:40.518540+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m3f4de3gqxy41dqb9khcgyvn
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit 142a2e7). 0 findings, 0 confirmed, 0 refuted. The engine reviewed 4 files. It did not review 6 `.kanban/` files (ignore rule) or `web.md` (no validator matches it). The commit has no renamed files. The engine gave no `test-integrity/test-partitioning` finding, so the user's written exception was not necessary.
+    - next: The task is in done.
+  timestamp: 2026-09-26T15:12:51.824283+00:00
+- actor: claude-code
+  id: 01m3f4dvtj3wjqstgyd172b112
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 5 files (keyed tests enabled only when the key is set; user exception to test-partitioning)
+    - test: green — root 1796 passed; keyed filter 14 passed, 6 skipped (no keys); keyless live 14 passed, 2 known issues
+    - commit: 142a2e7
+    - review: clean — 0 findings; the task is in done
+  timestamp: 2026-09-26T15:13:05.874612+00:00
+position_column: done
+position_ordinal: ffe980
 title: 'Web: run each keyed live test only when its API key is set'
 ---
 ## What
