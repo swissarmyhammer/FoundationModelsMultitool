@@ -124,8 +124,8 @@ public enum SubmissionLog {
     ///   them.
     /// - Returns: one record for each chain that ended, in the order the
     ///   chains ended.
-    public static func fold(_ events: [SessionEvent]) -> [AnswerRecord] {
-        events.reduce(into: Fold()) { fold, event in fold.apply(event) }.records
+    public static func fold(events: [SessionEvent]) -> [AnswerRecord] {
+        events.reduce(into: Fold()) { fold, event in fold.apply(event: event) }.records
     }
 
     /// Whether `event` ends an answer chain: `answered`, or `answerFailed`
@@ -139,7 +139,7 @@ public enum SubmissionLog {
     /// - Parameter event: the session event to test.
     /// - Returns: `true` for `answered` and `answerFailed`, and `false` for
     ///   every other event.
-    public static func endsAnswer(_ event: SessionEvent) -> Bool {
+    public static func endsAnswer(event: SessionEvent) -> Bool {
         switch event {
         case .answered, .answerFailed:
             true
@@ -149,7 +149,7 @@ public enum SubmissionLog {
     }
 }
 
-/// The state of ``SubmissionLog/fold(_:)`` between two events.
+/// The state of ``SubmissionLog/fold(events:)`` between two events.
 private struct Fold {
     /// Each chain that ended, in the order it ended.
     var records: [AnswerRecord] = []
@@ -168,18 +168,18 @@ private struct Fold {
     /// fold records until someone adds it here.
     ///
     /// - Parameter event: the next session event.
-    mutating func apply(_ event: SessionEvent) {
+    mutating func apply(event: SessionEvent) {
         switch event {
         case .submissionStarted(let start):
             openSubmissions.append(SubmissionRecord(submissionId: start.submissionId, start: start, end: nil))
         case .submissionEnded(let end):
-            record(end)
+            record(end: end)
         case .repetitionStopped(let stop):
             openStops.append(stop)
         case .answered(let answer):
-            closeChain(.answered(answer))
+            closeChain(outcome: .answered(answer))
         case .answerFailed(let failure):
-            closeChain(.failed(failure))
+            closeChain(outcome: .failed(failure))
         default:
             break
         }
@@ -189,7 +189,7 @@ private struct Fold {
     /// of its own when the submission never started.
     ///
     /// - Parameter end: the end event of the submission.
-    private mutating func record(_ end: SubmissionEnd) {
+    private mutating func record(end: SubmissionEnd) {
         guard let index = openSubmissions.firstIndex(where: { $0.submissionId == end.submissionId }) else {
             openSubmissions.append(SubmissionRecord(submissionId: end.submissionId, start: nil, end: end))
             return
@@ -200,7 +200,7 @@ private struct Fold {
     /// Ends the open chain with `outcome`, and starts the next chain empty.
     ///
     /// - Parameter outcome: how the chain ended.
-    private mutating func closeChain(_ outcome: AnswerRecord.Outcome) {
+    private mutating func closeChain(outcome: AnswerRecord.Outcome) {
         records.append(AnswerRecord(submissions: openSubmissions, repetitionStops: openStops, outcome: outcome))
         openSubmissions = []
         openStops = []

@@ -28,12 +28,37 @@ comments:
     - evidence: `swift build --build-tests && swift test` — 1813 tests in 145 suites passed, 0 failed; `swift build --package-path IntegrationTests --build-tests` — Build complete, no compiler error or warning. The live-model suite was not run (task ^r77er9z).
     - next: commit
   timestamp: 2026-09-26T20:59:39.868327+00:00
+- actor: claude-code
+  id: 01m3frt58dx8j7xhbg0d8na63j
+  text: |-
+    ### review — findings
+    - evidence: review sha HEAD~1..HEAD — 4 findings (4 confirmed, 0 refuted): ScenarioRunner.swift:1292 (code-hygiene/magic-numbers-swift), ScenarioGradingTests.swift:452, SubmissionLog.swift:127, SubmissionLog.swift:142 (swift/fluent-usage)
+    - next: implement the findings
+  timestamp: 2026-09-26T21:09:20.269333+00:00
+- actor: claude-code
+  id: 01m3frt7njh4ww4e8r8f5t34f4
+  text: |-
+    ### finish iteration 1 — findings
+    - implement: changed — SubmissionLog fold, ScenarioRunner events, discovery seams, compile-only removal of wait/canary API
+    - test: green — 1813 root tests passed; IntegrationTests build complete
+    - commit: changed — e8294aa fix(integration): build the IntegrationTests package against the work-queue Router events
+    - review: findings — 4 (ScenarioRunner.swift:1292 magic-numbers-swift; ScenarioGradingTests.swift:452, SubmissionLog.swift:127, SubmissionLog.swift:142 fluent-usage)
+  timestamp: 2026-09-26T21:09:22.738941+00:00
+- actor: claude-code
+  id: 01m3fryhg514ke9gbmspw6w6eg
+  text: |-
+    Iteration 2 fixes: `generationQueueSampleInterval` now reads the named constant `generationQueueSampleIntervalSeconds`. The first argument is labeled on `SubmissionLog.fold(events:)`, `SubmissionLog.endsAnswer(event:)` and the test helper `answer(reply:to:)`. The private `Fold` methods had the same cause, so they are now `apply(event:)`, `record(end:)` and `closeChain(outcome:)`. Every call site is changed.
+
+    ### test — green
+    - evidence: `swift build --build-tests && swift test` — 1813 tests in 145 suites passed; `swift build --package-path IntegrationTests --build-tests` — Build complete
+    - next: commit
+  timestamp: 2026-09-26T21:11:43.877840+00:00
 depends_on:
 - 01M3EVK4VR545ABV6R9YHFQH76
 - 01M3FMSTTSP16K9AE7JKZAEFGZ
 - 01M3EVKX9JFDWDQR297Q4JRND0
 - 01M3EVMDF9BZTNFR16F11CFNX0
-position_column: doing
+position_column: review
 position_ordinal: '80'
 title: Make the IntegrationTests package build against the work-queue Router events
 ---
@@ -55,3 +80,15 @@ The nested package `IntegrationTests/Package.swift` lists Router directly (`:84`
 
 ## Workflow
 - Use `/tdd`. Write failing tests first, then do the implementation that makes them pass.
+
+## Review Findings (2026-09-26 15:59)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 14 file(s) reviewed, 2 not reviewed.
+
+> 2 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 2 file(s)
+
+- [x] `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Support/ScenarioRunner.swift:1292` `code-hygiene/magic-numbers-swift` — Magic numbers should be replaced by named constants.
+- [x] `Tests/FoundationModelsMultitoolTests/ScenarioGradingTests.swift:452` `swift/fluent-usage` — First argument label should be omitted only for value-preserving conversions (e.g., `Int64(someUInt32)`). This function creates a new `SessionAnswer` type and is not a value-preserving conversion, so the first argument should be labeled. Change `private static func answer(_ reply: String, to message: MessageID)` to `private static func answer(reply: String, to message: MessageID)` for consistency with the rule, so calls read as `answer(reply: self.foldedReply, to: message)`.
+- [x] `Tests/Support/ScenarioGrading/SubmissionLog.swift:127` `swift/fluent-usage` — First argument label should be omitted only for value-preserving conversions. This function transforms `[SessionEvent]` into `[AnswerRecord]` — different types undergoing transformation, not a simple type conversion — so the first argument should be labeled for clarity. Change `public static func fold(_ events: [SessionEvent])` to `public static func fold(events: [SessionEvent])`.
+- [x] `Tests/Support/ScenarioGrading/SubmissionLog.swift:142` `swift/fluent-usage` — First argument label should be omitted only for value-preserving conversions. This function tests an event and returns a Boolean — not a value-preserving conversion — so the first argument should be labeled. Change `public static func endsAnswer(_ event: SessionEvent)` to `public static func endsAnswer(event: SessionEvent)`.

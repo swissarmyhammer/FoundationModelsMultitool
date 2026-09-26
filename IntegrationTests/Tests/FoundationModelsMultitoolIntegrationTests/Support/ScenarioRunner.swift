@@ -649,7 +649,7 @@ func streamTurn(of session: RoutedSession, prompt: String) async throws -> Strea
             break
         }
     }
-    turn.settle(from: SubmissionLog.fold(events))
+    turn.settle(from: SubmissionLog.fold(events: events))
     return turn
 }
 
@@ -957,7 +957,7 @@ func runRespondDrainScenario(
         let respondElapsed = Date().timeIntervalSince(start)
         // The respond path takes its text from `answered.reply`, as the stream
         // path does, so both surfaces grade the same field.
-        let respondAnswer = SubmissionLog.fold(await firstAnswerEvents).first?.reply ?? ""
+        let respondAnswer = SubmissionLog.fold(events: await firstAnswerEvents).first?.reply ?? ""
 
         // Read immediately after the call returns: that is the instant the
         // rule is about. A run settling a moment later is precisely the
@@ -1027,7 +1027,7 @@ func runRespondDrainScenario(
 ///
 /// "The end of the reply" is `answered` — or `answerFailed` in its place —
 /// and never one `submissionEnded`, which ends one SDK call only. See
-/// `SubmissionLog.endsAnswer(_:)`.
+/// `SubmissionLog.endsAnswer(event:)`.
 ///
 /// Subscribe before the call that makes the answer: a subscription opened
 /// later can register after the answer ended, and this then waits for the
@@ -1040,7 +1040,7 @@ func eventsThroughFirstAnswer(in events: AsyncStream<SessionEvent>) async -> [Se
     var collected: [SessionEvent] = []
     for await event in events {
         collected.append(event)
-        if SubmissionLog.endsAnswer(event) { break }
+        if SubmissionLog.endsAnswer(event: event) { break }
     }
     return collected
 }
@@ -1192,7 +1192,7 @@ func runInBandCollectionCanaryScenario(
         _ = try await session.respond(to: prompt)
         let elapsed = Date().timeIntervalSince(start)
         let firstAnswer = await firstTurn
-        let answers = SubmissionLog.fold(firstAnswer.events)
+        let answers = SubmissionLog.fold(events: firstAnswer.events)
         // Read the instant the call returns: that is what "nothing survives
         // `respond`" is a statement about.
         let backgroundRunsAfterRespond = await log.backgroundRuns().map(\.tool)
@@ -1283,13 +1283,17 @@ private func usageForDisplay(_ usage: TokenUsage) -> String {
 
 // MARK: - The nested-generation probe
 
-/// How often the shared generation queue is sampled while the probe's turn
-/// runs.
+/// How many seconds pass between two samples of the shared generation queue
+/// while the probe's turn runs.
 ///
 /// Frequent enough that even a run killed at the suite's three-minute limit
 /// leaves dozens of readings, and cheap enough to be free: one sample is two
 /// reads of the queue worker's state.
-private let generationQueueSampleInterval: Duration = .seconds(5)
+private let generationQueueSampleIntervalSeconds = 5
+
+/// How often the shared generation queue is sampled while the probe's turn
+/// runs — ``generationQueueSampleIntervalSeconds`` as a `Duration`.
+private let generationQueueSampleInterval = Duration.seconds(generationQueueSampleIntervalSeconds)
 
 /// How many leading characters of the model's reply the `NESTED-GENERATION`
 /// diagnostic line prints.

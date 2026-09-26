@@ -10,7 +10,7 @@ import ScenarioGrading
 /// `scenarioChecks(for:answerContainsOneOf:answerMustNotContain:groundedIn:)`
 /// `mailCollectionChecks(for:answerContainsOneOf:groundedIn:)` and
 /// `nestedGenerationChecks(for:)` in `Support/ScenarioRunner.swift` — and for
-/// `SubmissionLog.fold(_:)`, which gives those runners each answer of a
+/// `SubmissionLog.fold(events:)`, which gives those runners each answer of a
 /// session from its events.
 ///
 /// The grounding condition used to hold whenever *any* fixture call returned,
@@ -230,9 +230,9 @@ struct ScenarioGradingTests {
         let first = SubmissionID(Self.firstSubmissionNumber)
         let continuation = SubmissionID(Self.secondSubmissionNumber)
         let firstUsage = TokenUsage(tokensIn: Self.firstTokensIn, tokensOut: Self.firstTokensOut, contextFill: 0)
-        let answer = Self.answer(Self.foldedReply, to: message)
+        let answer = Self.answer(reply: Self.foldedReply, to: message)
 
-        let records = SubmissionLog.fold([
+        let records = SubmissionLog.fold(events: [
             .submissionStarted(SubmissionStart(submissionId: first, messageIds: [message], cause: .message)),
             .textDelta(Self.foldedReply),
             .submissionEnded(SubmissionEnd(submissionId: first, usage: firstUsage, finishReason: .maxTokens)),
@@ -260,7 +260,7 @@ struct ScenarioGradingTests {
         let submission = SubmissionID(Self.firstSubmissionNumber)
         let failure = AnswerFailure(messageIds: [message], reason: .cancelled)
 
-        let records = SubmissionLog.fold([
+        let records = SubmissionLog.fold(events: [
             .submissionStarted(SubmissionStart(submissionId: submission, messageIds: [message], cause: .message)),
             .submissionEnded(SubmissionEnd(submissionId: submission, usage: nil, finishReason: .completed)),
             .answerFailed(failure),
@@ -286,11 +286,11 @@ struct ScenarioGradingTests {
             recovery: nil
         )
 
-        let records = SubmissionLog.fold([
+        let records = SubmissionLog.fold(events: [
             .submissionStarted(SubmissionStart(submissionId: submission, messageIds: [message], cause: .mail)),
             .repetitionStopped(stop),
             .submissionEnded(SubmissionEnd(submissionId: submission, usage: nil, finishReason: .repeatedLines)),
-            .answered(Self.answer(Self.foldedReply, to: message)),
+            .answered(Self.answer(reply: Self.foldedReply, to: message)),
         ])
 
         let record = try #require(records.first)
@@ -303,7 +303,7 @@ struct ScenarioGradingTests {
     func anOpenChainFoldsToNoAnswer() {
         let submission = SubmissionID(Self.firstSubmissionNumber)
 
-        let records = SubmissionLog.fold([
+        let records = SubmissionLog.fold(events: [
             .submissionStarted(SubmissionStart(submissionId: submission, messageIds: [MessageID()], cause: .message))
         ])
 
@@ -315,12 +315,13 @@ struct ScenarioGradingTests {
         let message = MessageID()
         let submission = SubmissionID(Self.firstSubmissionNumber)
 
-        #expect(SubmissionLog.endsAnswer(.answered(Self.answer(Self.foldedReply, to: message))))
-        #expect(SubmissionLog.endsAnswer(.answerFailed(AnswerFailure(messageIds: [message], reason: .cancelled))))
+        #expect(SubmissionLog.endsAnswer(event: .answered(Self.answer(reply: Self.foldedReply, to: message))))
+        #expect(
+            SubmissionLog.endsAnswer(event: .answerFailed(AnswerFailure(messageIds: [message], reason: .cancelled))))
         #expect(
             !SubmissionLog.endsAnswer(
-                .submissionEnded(SubmissionEnd(submissionId: submission, usage: nil, finishReason: .completed))))
-        #expect(!SubmissionLog.endsAnswer(.textDelta(Self.foldedReply)))
+                event: .submissionEnded(SubmissionEnd(submissionId: submission, usage: nil, finishReason: .completed))))
+        #expect(!SubmissionLog.endsAnswer(event: .textDelta(Self.foldedReply)))
     }
 
     // MARK: - Building the graded evidence
@@ -449,7 +450,7 @@ struct ScenarioGradingTests {
     ///   - reply: the final reply of the answer.
     ///   - message: the caller message the answer answers.
     /// - Returns: the answer, with no usage, compaction or tool call.
-    private static func answer(_ reply: String, to message: MessageID) -> SessionAnswer {
+    private static func answer(reply: String, to message: MessageID) -> SessionAnswer {
         SessionAnswer(
             reply: reply, messageIds: [message], usage: nil, compactions: [], toolCalls: [], toolInvocations: [])
     }
