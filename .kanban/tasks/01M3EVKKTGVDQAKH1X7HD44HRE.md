@@ -24,9 +24,19 @@ comments:
     - evidence: swift build --build-tests — no compiler warnings (only the SwiftPM build-system message "missing creator for mutated node" for the mlx-swift_Cmlx.bundle, which is not a code diagnostic); swift test — 1794 tests in 144 suites passed, 0 failed, 0 skipped; swift test --filter CLIAnswerDrainTests — 15 passed.
     - next: commit
   timestamp: 2026-09-26T19:46:00.023205+00:00
+- actor: claude-code
+  id: 01m3fmcb8fke0r1hjh1swtvq29
+  text: |-
+    ### finish iteration 1 — findings
+    - implement: changed — CLIAnswerDrain.swift (new), CLIRunner.swift, CLITurnDrainTests.swift -> CLIAnswerDrainTests.swift
+    - test: green — swift test: 1794 tests in 144 suites passed, 0 failed, 0 skipped
+    - commit: changed — 1003470 feat(cli): take the reply from the answered event, report answerFailed, and print mail answers
+    - review: findings — 6 findings (review sha HEAD~1..HEAD): CLIRunner.swift:639 disallowed-constructs-swift (no_direct_standard_out_logs); CLIAnswerDrainTests.swift:300, :303, :307, :359 magic-numbers-swift; CLIAnswerDrainTests.swift:418 reuse/reuse (DrainOutputCollector duplicates OutputCollector)
+    - next: implement the 6 findings
+  timestamp: 2026-09-26T19:51:53.359142+00:00
 depends_on:
 - 01M3EVK4VR545ABV6R9YHFQH76
-position_column: doing
+position_column: review
 position_ordinal: '80'
 title: 'CLI: take the reply from the answered event, report answerFailed, and wait for mail-started answers before exit'
 ---
@@ -49,3 +59,32 @@ title: 'CLI: take the reply from the answered event, report answerFailed, and wa
 
 ## Workflow
 - Use `/tdd`. Write failing tests first, then do the implementation that makes them pass.
+
+## Review Findings (2026-09-26 14:46)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 4 file(s) reviewed, 2 not reviewed.
+
+> 2 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 2 file(s)
+
+> ⚠️ tool rule 'code-hygiene/disallowed-constructs-swift' declined an item — it judged the rest of the code, and this it could not judge:
+> disallowed-constructs-swift found no file at Tests/FoundationModelsMultitoolTests/CLITurnDrainTests.swift, so its constructs are unread
+
+> ⚠️ tool rule 'code-hygiene/function-length-swift' declined an item — it judged the rest of the code, and this it could not judge:
+> function-length-swift found no file at Tests/FoundationModelsMultitoolTests/CLITurnDrainTests.swift, so its bodies are unread
+
+> ⚠️ tool rule 'code-hygiene/idioms-swift' declined an item — it judged the rest of the code, and this it could not judge:
+> idioms-swift found no file at Tests/FoundationModelsMultitoolTests/CLITurnDrainTests.swift, so its declarations are unread
+
+> ⚠️ tool rule 'code-hygiene/magic-numbers-swift' declined an item — it judged the rest of the code, and this it could not judge:
+> magic-numbers-swift found no file at Tests/FoundationModelsMultitoolTests/CLITurnDrainTests.swift, so its literals are unread
+
+> ⚠️ tool rule 'code-hygiene/missing-docs-swift' declined an item — it judged the rest of the code, and this it could not judge:
+> missing-docs-swift found no file at Tests/FoundationModelsMultitoolTests/CLITurnDrainTests.swift, so its declarations are unread
+
+- [x] `Sources/MultitoolCLI/CLIRunner.swift:639` `code-hygiene/disallowed-constructs-swift` — no_direct_standard_out_logs: Do not commit print(…), debugPrint(…), dump(…) or _printChanges(), which write to standard out in release. Log to a dedicated logging system, or silence one debug-only line with // swiftlint:disable:next no_direct_standard_out_logs and the reason after it.
+- [x] `Tests/FoundationModelsMultitoolTests/CLIAnswerDrainTests.swift:300` `code-hygiene/magic-numbers-swift` — Magic numbers should be replaced by named constants.
+- [x] `Tests/FoundationModelsMultitoolTests/CLIAnswerDrainTests.swift:303` `code-hygiene/magic-numbers-swift` — Magic numbers should be replaced by named constants.
+- [x] `Tests/FoundationModelsMultitoolTests/CLIAnswerDrainTests.swift:307` `code-hygiene/magic-numbers-swift` — Magic numbers should be replaced by named constants.
+- [x] `Tests/FoundationModelsMultitoolTests/CLIAnswerDrainTests.swift:359` `code-hygiene/magic-numbers-swift` — Magic numbers should be replaced by named constants.
+- [x] `Tests/FoundationModelsMultitoolTests/CLIAnswerDrainTests.swift:418` `reuse/reuse` — DrainOutputCollector reimplements the same thread-safe output collection capability that already exists as OutputCollector in CLIArgumentTests.swift and CLISmokeTests.swift. The identical functionality is duplicated across multiple test files instead of being shared. Move the shared OutputCollector class to Tests/FoundationModelsMultitoolTests/TestSupport.swift (or a common test support location) and remove all duplicate implementations from CLIArgumentTests.swift, CLISmokeTests.swift, and CLIAnswerDrainTests.swift to maintain one canonical implementation.

@@ -1,9 +1,10 @@
 import Foundation
 import MCPTestServer
 import Testing
-import os
 
 import MultitoolCLI
+
+@testable import MultitoolTestSupport
 
 /// The gated live smoke test for the canonical Router + `RoutedSession` +
 /// `MultiTool` example: it invokes the `CLIRunner` entry function against a
@@ -12,7 +13,8 @@ import MultitoolCLI
 /// Runs `CLIRunner.run(...)` end to end with its default (production)
 /// resolver — a real Router resolve against `CLIRunner.demoProfile`, the
 /// vended tools mounted on a `RoutedSession` over `profile.standard`, and one
-/// turn drained through `streamEvents(to:)` — and asserts on the emitted
+/// answer drained through `streamEvents(to:)`, then each answer that mail
+/// starts drained through `streamSessionEvents()` — and asserts on the emitted
 /// output lines rather than a human reading console output. This is the
 /// shipped host contract, so the run exercises the mounted background path
 /// rather than a bare session that cannot background. Unlike the retired
@@ -142,28 +144,5 @@ struct CLISmokeTests {
             `swift build --product \(testServerName)` at the repository root first.
             """)
         return candidate.path
-    }
-}
-
-/// A thread-safe collector for the lines `CLIRunner.run(...)`'s injectable
-/// `output` closure writes — mirrors
-/// `Tests/FoundationModelsMultitoolTests/CLIArgumentTests.swift`'s
-/// `OutputCollector`, redeclared here since that fixture lives in a
-/// different test target.
-private final class OutputCollector: Sendable {
-    /// Every line appended so far, in append order.
-    private let linesBox = OSAllocatedUnfairLock<[String]>(initialState: [])
-
-    /// Creates an empty collector.
-    init() {}
-
-    /// Every line appended so far, in append order.
-    var lines: [String] { linesBox.withLock { $0 } }
-
-    /// Appends one line — `CLIRunner.run(...)`'s `output` parameter.
-    ///
-    /// - Parameter line: the line to record.
-    func append(_ line: String) {
-        linesBox.withLock { $0.append(line) }
     }
 }

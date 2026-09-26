@@ -2,12 +2,12 @@ import Foundation
 import FoundationModelsExtras
 import MCPTestServer
 import Testing
-import os
 
 import FoundationModelsRouter
 
 @testable import FoundationModelsMultitool
 @testable import MultitoolCLI
+@testable import MultitoolTestSupport
 
 /// M9 coverage for `CLIRunner`: argument parsing and the Router-unavailable
 /// degrade path, both exercised with **no model at all** — plan.md M9's
@@ -343,31 +343,6 @@ private enum CLIArgumentTestsError: Error, Equatable {
     /// The scripted failure `runFailingResolverExitsNonzero` injects to
     /// exercise the Router-unavailable degrade path.
     case injectedResolveFailure
-}
-
-/// A thread-safe collector for the lines `CLIRunner.run(...)`'s injectable
-/// `output` closure writes — lets a test assert on what was printed without
-/// touching real stdout. `final class ... Sendable` for the same reason as
-/// this test target's other lock-boxed fixtures (e.g.
-/// `Fixtures/AgentSessionFixtures.swift`'s `CallCounter`): `append` is
-/// called from concurrent contexts (`CLIRunner`'s console-progress poller
-/// runs on a background `Task` alongside the main call).
-private final class OutputCollector: Sendable {
-    /// Every line appended so far, in append order.
-    private let linesBox = OSAllocatedUnfairLock<[String]>(initialState: [])
-
-    /// Creates an empty collector.
-    init() {}
-
-    /// Every line appended so far, in append order.
-    var lines: [String] { linesBox.withLock { $0 } }
-
-    /// Appends one line — `CLIRunner.run(...)`'s `output` parameter.
-    ///
-    /// - Parameter line: the line to record.
-    func append(_ line: String) {
-        linesBox.withLock { $0.append(line) }
-    }
 }
 
 // `CallCounter` (a thread-safe call counter) is reused as-is from

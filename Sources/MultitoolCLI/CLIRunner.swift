@@ -291,13 +291,32 @@ public enum CLIRunner {
         public static let answerFailed: Int32 = 70
     }
 
+    /// The default `output` of `run(arguments:resolve:output:errorOutput:)`:
+    /// writes one line to standard output.
+    ///
+    /// `public` because it is the default value of a parameter of a `public`
+    /// function, as `defaultResolve` is. The CLI writes its lines through a
+    /// `FileHandle`, and not with `print(_:)`, so each line of the demo goes
+    /// through one writer that a test can replace.
+    public static let standardOutput: @Sendable (String) -> Void = { line in
+        write(line, to: .standardOutput)
+    }
+
     /// The default `errorOutput` of `run(arguments:resolve:output:errorOutput:)`:
     /// writes one line to standard error.
     ///
-    /// `public` because it is the default value of a parameter of a `public`
-    /// function, as `defaultResolve` is.
+    /// `public` for the same reason as `standardOutput`.
     public static let standardErrorOutput: @Sendable (String) -> Void = { line in
-        FileHandle.standardError.write(Data("\(line)\n".utf8))
+        write(line, to: .standardError)
+    }
+
+    /// Writes one line, with its line end, to `handle`.
+    ///
+    /// - Parameters:
+    ///   - line: the line to write.
+    ///   - handle: the file handle of standard output or of standard error.
+    private static func write(_ line: String, to handle: FileHandle) {
+        handle.write(Data("\(line)\n".utf8))
     }
 
     /// The `--direct` flag, for running in direct mode (`runCode` registered with the session, no `searchToolsTool`).
@@ -624,7 +643,7 @@ public enum CLIRunner {
     ///     `defaultResolve`; a test injects a scripted failure to exercise
     ///     the Router-unavailable path with no model.
     ///   - output: where every line of output (usage, errors, progress, the
-    ///     final answer) is written. Defaults to `print(_:)`; a test
+    ///     final answer) is written. Defaults to `standardOutput`; a test
     ///     injects a collector to assert on the emitted lines.
     ///   - errorOutput: where the error line of an answer that failed is
     ///     written. Defaults to `standardErrorOutput`.
@@ -636,7 +655,7 @@ public enum CLIRunner {
     public static func run(
         arguments: [String],
         resolve: @escaping ProfileResolver = defaultResolve,
-        output: @escaping @Sendable (String) -> Void = { print($0) },
+        output: @escaping @Sendable (String) -> Void = standardOutput,
         errorOutput: @escaping @Sendable (String) -> Void = standardErrorOutput
     ) async -> Int32 {
         let parsed: CLIArguments

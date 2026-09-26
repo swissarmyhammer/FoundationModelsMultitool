@@ -1,10 +1,10 @@
 import Foundation
 import FoundationModelsExtras
 import Testing
-import os
 
 @testable import FoundationModelsRouter
 @testable import MultitoolCLI
+@testable import MultitoolTestSupport
 
 /// Coverage for the drains the CLI demo runs its answers through —
 /// `CLIRunner.drainAnswer(_:output:)`, `CLIRunner.presentAnswer(_:output:)`
@@ -25,7 +25,7 @@ import os
 struct CLIAnswerDrainTests {
     @Test("the answer is the reply of the answered event, not the joined text fragments")
     func answerIsTheReplyOfTheAnsweredEvent() async throws {
-        let output = DrainOutputCollector()
+        let output = OutputCollector()
         let answer = try await CLIRunner.drainAnswer(
             scriptedEvents([.textDelta("NYC"), .textDelta(" is warm"), answered("NYC is warmest")]),
             output: output.append
@@ -36,10 +36,10 @@ struct CLIAnswerDrainTests {
 
     @Test("two submissions that give one answer print the reply of that answer one time")
     func twoSubmissionsPrintTheReplyOneTime() async throws {
-        let output = DrainOutputCollector()
+        let output = OutputCollector()
         let message = MessageID()
-        let first = SubmissionID(1)
-        let continuation = SubmissionID(2)
+        let first = SubmissionID(firstSubmissionNumber)
+        let continuation = SubmissionID(secondSubmissionNumber)
         _ = try await CLIRunner.presentAnswer(
             scriptedEvents([
                 .submissionStarted(SubmissionStart(submissionId: first, messageIds: [message], cause: .message)),
@@ -59,8 +59,8 @@ struct CLIAnswerDrainTests {
 
     @Test("a failed answer gives an error line, a non-zero exit code, and no answer line")
     func answerFailedGivesAnErrorAndNoAnswerLine() async throws {
-        let output = DrainOutputCollector()
-        let errorOutput = DrainOutputCollector()
+        let output = OutputCollector()
+        let errorOutput = OutputCollector()
         let failure = AnswerFailure(messageIds: [], reason: .error("the model stopped"))
         let error = await #expect(throws: CLIAnswerError.failed(failure)) {
             try await CLIRunner.presentAnswer(
@@ -80,7 +80,7 @@ struct CLIAnswerDrainTests {
 
     @Test("the error that ends the stream after a failed answer reports as that failure")
     func streamErrorAfterAnswerFailedReportsTheFailure() async {
-        let output = DrainOutputCollector()
+        let output = OutputCollector()
         let failure = AnswerFailure(messageIds: [], reason: .cancelled)
         await #expect(throws: CLIAnswerError.failed(failure)) {
             try await CLIRunner.drainAnswer(
@@ -95,7 +95,7 @@ struct CLIAnswerDrainTests {
 
     @Test("a stream that ends with no end of the answer is an error")
     func streamWithNoEndOfTheAnswerIsAnError() async {
-        let output = DrainOutputCollector()
+        let output = OutputCollector()
         await #expect(throws: CLIAnswerError.missing) {
             try await CLIRunner.drainAnswer(scriptedEvents([.textDelta("partial")]), output: output.append)
         }
@@ -103,7 +103,7 @@ struct CLIAnswerDrainTests {
 
     @Test("a tool call names the tool as it is called")
     func toolCallIsPrinted() async throws {
-        let output = DrainOutputCollector()
+        let output = OutputCollector()
         _ = try await CLIRunner.drainAnswer(
             scriptedEvents([
                 .toolCall(id: "call-1", name: "runCode", argumentsJSON: "{\"code\":\"return 1\"}"),
@@ -117,7 +117,7 @@ struct CLIAnswerDrainTests {
 
     @Test("a still-running tool reports its progress under the tool's own name")
     func runningToolProgressIsPrinted() async throws {
-        let output = DrainOutputCollector()
+        let output = OutputCollector()
         _ = try await CLIRunner.drainAnswer(
             scriptedEvents([
                 .toolCall(id: "call-1", name: "runCode", argumentsJSON: "{}"),
@@ -132,7 +132,7 @@ struct CLIAnswerDrainTests {
 
     @Test("a failed tool call is reported under the tool's own name")
     func failedToolCallIsPrinted() async throws {
-        let output = DrainOutputCollector()
+        let output = OutputCollector()
         _ = try await CLIRunner.drainAnswer(
             scriptedEvents([
                 .toolCall(id: "call-1", name: "getWeather", argumentsJSON: "{}"),
@@ -147,7 +147,7 @@ struct CLIAnswerDrainTests {
 
     @Test("a stalled answer says so, so a long run does not read as a stuck one")
     func generationStallIsPrinted() async throws {
-        let output = DrainOutputCollector()
+        let output = OutputCollector()
         let stall = GenerationStall(
             timeWithoutProgress: .seconds(30),
             timeInFlight: .seconds(45),
@@ -166,7 +166,7 @@ struct CLIAnswerDrainTests {
 
     @Test("a repetition stop is one output line and leaves the answer as it is")
     func repetitionStopIsPrinted() async throws {
-        let output = DrainOutputCollector()
+        let output = OutputCollector()
         let stop = RepetitionStop(
             generatedTokens: 3_000,
             countedLines: 40,
@@ -191,7 +191,7 @@ struct CLIAnswerDrainTests {
 
     @Test("a background run that settles is reported under its tool, its token and its outcome")
     func runSettlementIsPrinted() async throws {
-        let output = DrainOutputCollector()
+        let output = OutputCollector()
         _ = try await CLIRunner.drainAnswer(
             scriptedEvents([.runSettled(settledRun("run-7")), answered("done")]),
             output: output.append
@@ -205,7 +205,7 @@ struct CLIAnswerDrainTests {
 
     @Test("an error on the stream propagates to the caller")
     func streamErrorPropagates() async {
-        let output = DrainOutputCollector()
+        let output = OutputCollector()
         await #expect(throws: DrainTestsError.injectedStreamFailure) {
             try await CLIRunner.drainAnswer(
                 AsyncThrowingStream { continuation in
@@ -219,8 +219,8 @@ struct CLIAnswerDrainTests {
 
     @Test("a background run that settles after the first answer gives a mail answer, and the CLI prints it")
     func mailAnswerIsPrintedBeforeExit() async throws {
-        let output = DrainOutputCollector()
-        let cancels = DrainOutputCollector()
+        let output = OutputCollector()
+        let cancels = OutputCollector()
         let script = MailScript()
         let (events, continuation) = AsyncStream<SessionEvent>.makeStream()
         for event in script.firstAnswerEvents {
@@ -247,8 +247,8 @@ struct CLIAnswerDrainTests {
 
     @Test("a background run that never settles stops the drain at the time limit, and the session is cancelled")
     func openRunStopsAtTheTimeLimit() async throws {
-        let output = DrainOutputCollector()
-        let cancels = DrainOutputCollector()
+        let output = OutputCollector()
+        let cancels = OutputCollector()
         let script = MailScript()
         let (events, continuation) = AsyncStream<SessionEvent>.makeStream()
         for event in script.firstAnswerEvents {
@@ -267,7 +267,7 @@ struct CLIAnswerDrainTests {
 
     @Test("a failed mail answer is an error")
     func failedMailAnswerIsAnError() async {
-        let output = DrainOutputCollector()
+        let output = OutputCollector()
         let script = MailScript()
         let failure = AnswerFailure(messageIds: [], reason: .error("the mail answer stopped"))
         let events = AsyncStream<SessionEvent> { continuation in
@@ -294,17 +294,37 @@ private let answerPrefix = "Answer: "
 /// The prefix of the line that prints an answer that mail started.
 private let mailAnswerPrefix = "Answer from mail: "
 
-/// How long the late mail of `mailAnswerIsPrintedBeforeExit` waits: four
-/// times the quiet period of `testMailWait`, so a drain that did not wait for
-/// the open run stops before the mail comes.
-private let lateMailDelay: Duration = .milliseconds(200)
+/// The number of the first submission of a scripted session.
+private let firstSubmissionNumber: UInt64 = 1
+
+/// The number of the second submission of a scripted session.
+private let secondSubmissionNumber: UInt64 = 2
+
+/// The quiet period of the mail drain in these tests, in milliseconds.
+private let testQuietPeriodMilliseconds = 50
+
+/// How long the late mail of `mailAnswerIsPrintedBeforeExit` waits, in
+/// milliseconds: four times the quiet period, so a drain that did not wait
+/// for the open run stops before the mail comes.
+private let lateMailDelayMilliseconds = 200
+
+/// The time limit of `openRunStopsAtTheTimeLimit`, in milliseconds.
+private let shortTimeLimitMilliseconds = 300
+
+/// The time limit of the mail drain in the tests that must not reach it, in
+/// seconds.
+private let unreachedTimeLimitSeconds = 30
+
+/// How long the late mail of `mailAnswerIsPrintedBeforeExit` waits.
+private let lateMailDelay: Duration = .milliseconds(lateMailDelayMilliseconds)
 
 /// The time limit of `openRunStopsAtTheTimeLimit`.
-private let shortTimeLimit: Duration = .milliseconds(300)
+private let shortTimeLimit: Duration = .milliseconds(shortTimeLimitMilliseconds)
 
 /// The bounds of the mail drain in these tests: a short quiet period, and a
 /// time limit that no passing test reaches.
-private let testMailWait = CLIMailWait(quietPeriod: .milliseconds(50), timeLimit: .seconds(30))
+private let testMailWait = CLIMailWait(
+    quietPeriod: .milliseconds(testQuietPeriodMilliseconds), timeLimit: .seconds(unreachedTimeLimitSeconds))
 
 /// Errors this test file's scripted streams throw.
 private enum DrainTestsError: Error, Equatable {
@@ -342,7 +362,7 @@ private struct MailScript {
 
     /// Every event of the first answer, as `streamSessionEvents()` gives it.
     var firstAnswerEvents: [SessionEvent] {
-        let submission = SubmissionID(1)
+        let submission = SubmissionID(firstSubmissionNumber)
         return [
             .submissionStarted(SubmissionStart(submissionId: submission, messageIds: [message], cause: .message)),
             .toolCall(id: "call-1", name: "runCode", argumentsJSON: "{}"),
@@ -356,7 +376,7 @@ private struct MailScript {
     /// The settlement of the run, and every event of the answer that its
     /// mail starts.
     var mailAnswerEvents: [SessionEvent] {
-        let submission = SubmissionID(2)
+        let submission = SubmissionID(secondSubmissionNumber)
         return [
             .toolInvocation(openRecord.closed(at: Date())),
             .runSettled(settledRun(runToken)),
@@ -408,27 +428,5 @@ private func scriptedEvents(_ events: [SessionEvent]) -> AsyncThrowingStream<Ses
             continuation.yield(event)
         }
         continuation.finish()
-    }
-}
-
-/// A thread-safe collector for the lines the drains write.
-///
-/// `final class ... Sendable` for the same reason as this target's other
-/// lock-boxed fixtures: `append` is handed over as a `@Sendable` closure.
-private final class DrainOutputCollector: Sendable {
-    /// Every line appended so far, in append order.
-    private let linesBox = OSAllocatedUnfairLock<[String]>(initialState: [])
-
-    /// Creates an empty collector.
-    init() {}
-
-    /// Every line appended so far, in append order.
-    var lines: [String] { linesBox.withLock { $0 } }
-
-    /// Appends one line — the `output` parameter of the drains.
-    ///
-    /// - Parameter line: the line to record.
-    func append(_ line: String) {
-        linesBox.withLock { $0.append(line) }
     }
 }
