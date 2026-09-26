@@ -1,4 +1,5 @@
 import FoundationModelsMetadataRegistry
+import FoundationModelsRouter
 import Testing
 import os
 
@@ -51,6 +52,16 @@ struct SampleSnippetTests {
         )
     }
 
+    /// `reply` once for each attempt the loop makes by default, so a reply the
+    /// gate rejects is answered again on each retry and the script does not
+    /// run out.
+    ///
+    /// - Parameter reply: the canned generator reply.
+    /// - Returns: `reply`, ``SampleSnippetConfig/defaultAttemptLimit`` times.
+    static func everyAttempt(_ reply: String) -> [String] {
+        Array(repeating: reply, count: SampleSnippetConfig.defaultAttemptLimit)
+    }
+
     /// Runs the loop over a session scripted with `replies`.
     ///
     /// - Parameter replies: one canned generator reply per expected turn.
@@ -59,7 +70,7 @@ struct SampleSnippetTests {
     static func generate(replies: [String]) async throws -> (sample: String?, prompts: [String]) {
         let session = ScriptedAgentSession(replies)
         let instructions = OSAllocatedUnfairLock<[String]>(initialState: [])
-        let sample = await SampleSnippet.generate(
+        let sample = try await SampleSnippet.generate(
             forTask: "the current temperature where the trip goes",
             over: try entries(),
             using: config(over: session, recordingInstructionsTo: instructions)
@@ -85,7 +96,7 @@ struct SampleSnippetTests {
         let session = ScriptedAgentSession([Self.goodSnippet])
         let instructions = OSAllocatedUnfairLock<[String]>(initialState: [])
 
-        _ = await SampleSnippet.generate(
+        _ = try await SampleSnippet.generate(
             forTask: "a temperature",
             over: entries,
             using: Self.config(over: session, recordingInstructionsTo: instructions)
@@ -157,10 +168,13 @@ struct SampleSnippetTests {
         // `getTemperature` exists in the catalog but is not one of the matched
         // entries handed to the gate, so the sample may not name it.
         let matched = try #require(try Self.entries().first { $0.path == "getCities" })
-        let session = ScriptedAgentSession(["```js\nreturn await tools.getTemperature({ city: \"PDX\" });\n```"])
+        // One rejected reply for each attempt: an exhausted script throws, and
+        // a session error now propagates instead of yielding `nil`.
+        let session = ScriptedAgentSession(Self.everyAttempt(
+            "```js\nreturn await tools.getTemperature({ city: \"PDX\" });\n```"))
         let instructions = OSAllocatedUnfairLock<[String]>(initialState: [])
 
-        let sample = await SampleSnippet.generate(
+        let sample = try await SampleSnippet.generate(
             forTask: "a temperature",
             over: [matched],
             using: Self.config(over: session, recordingInstructionsTo: instructions)
@@ -195,7 +209,7 @@ struct SampleSnippetTests {
         ]
         var leads: Set<String> = []
         for reply in failing {
-            let (_, prompts) = try await Self.generate(replies: [reply])
+            let (_, prompts) = try await Self.generate(replies: Self.everyAttempt(reply))
             let feedback = try #require(prompts.last)
             leads.insert(String(feedback.prefix(while: { $0 != "." })))
         }
@@ -213,13 +227,27 @@ struct SampleSnippetTests {
         #expect(prompts.count == 3)
     }
 
-    @Test("a generator that throws yields no sample rather than propagating")
-    func throwingGeneratorYieldsNoSample() async throws {
+    @Test("a generator that throws propagates its error, so the caller can show it")
+    func throwingGeneratorPropagatesItsError() async throws {
         // An empty script throws on the very first `respond(to:)`.
-        let (sample, prompts) = try await Self.generate(replies: [])
+        await #expect(throws: ScriptedAgentSessionError(scriptedResponseCount: 0)) {
+            try await Self.generate(replies: [])
+        }
+    }
 
-        #expect(sample == nil)
-        #expect(prompts.count == 1)
+    @Test("a generator that Router refuses on the model of the calling session propagates that refusal")
+    func refusedGeneratorPropagatesTheRefusal() async throws {
+        let refusal = GenerationQueueError.waitInsideOpenSubmission(model: "stub/standard")
+        let session = FailingSelectionRootSession(error: refusal)
+        let instructions = OSAllocatedUnfairLock<[String]>(initialState: [])
+
+        await #expect(throws: refusal) {
+            try await SampleSnippet.generate(
+                forTask: "a temperature",
+                over: try Self.entries(),
+                using: Self.config(over: session, recordingInstructionsTo: instructions)
+            )
+        }
     }
 
     @Test("no matched entries means no sample, and no session is opened at all")
@@ -227,7 +255,7 @@ struct SampleSnippetTests {
         let session = ScriptedAgentSession([Self.goodSnippet])
         let instructions = OSAllocatedUnfairLock<[String]>(initialState: [])
 
-        let sample = await SampleSnippet.generate(
+        let sample = try await SampleSnippet.generate(
             forTask: "anything",
             over: [],
             using: Self.config(over: session, recordingInstructionsTo: instructions)

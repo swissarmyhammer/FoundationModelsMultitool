@@ -233,10 +233,10 @@ public struct SearchToolsTool: Tool {
     ///   - sampleSession: makes the session the sample snippet is generated
     ///     on, or `nil` (the default) to leave sample generation unconfigured
     ///     — this tool then answers with the signatures alone, exactly as it
-    ///     always has. Back it with the **main** generation model rather than
-    ///     the selection model: the sample is code the model is told to run,
-    ///     so its quality matters more than its cost. The session must mount
-    ///     no tools: it writes a snippet, it does not execute one.
+    ///     always has. Back it with a model that is not the model of the
+    ///     session that calls `searchTools` — see ``SessionFactory``. The
+    ///     session must mount no tools: it writes a snippet, it does not
+    ///     execute one.
     /// - Throws: what `selection` throws while it builds the selection tier.
     public init(
         registry: MultiTool.Registry,
@@ -263,8 +263,12 @@ public struct SearchToolsTool: Tool {
     ///   `format(task:matches:sample:)`.
     /// - Throws: whatever `searcher.search(intent:limit:)` throws, and
     ///   ``DiscoverySearcherMissing`` from a shared holder with no discovery
-    ///   searcher. Sample generation never throws out of here: a failure in
-    ///   it yields no sample, and discovery answers with the signatures alone.
+    ///   searcher. An error of the selection session comes out of the search
+    ///   unchanged, so the model reads it as the error of this call, and not
+    ///   as an empty selection. Sample generation never throws out of here: a
+    ///   candidate that fails the gate yields no sample, and an error of the
+    ///   sample session yields a note beside the signatures — see
+    ///   ``SampleOutcome``.
     ///
     /// Three spans, because this call has two independent model-backed steps
     /// and formatting is neither: the search (which drives the selection tier)
@@ -283,24 +287,63 @@ public struct SearchToolsTool: Tool {
             ) {
                 try await searcher.search(intent: arguments.task, limit: limit)
             }
-            let snippet = await Self.trace.span(
+            let sample = await Self.trace.span(
                 "SearchToolsTool.generateSample",
                 detail: "matches=\(matches.count)"
             ) {
                 await generateSample(forTask: arguments.task, over: matches.map(\.item))
             }
-            return Self.format(task: arguments.task, matches: matches, sample: snippet)
+            return Self.format(task: arguments.task, matches: matches, sample: sample)
         }
+    }
+
+    /// What the sample step of one call gave.
+    enum SampleOutcome: Sendable, Equatable {
+        /// A validated runnable snippet, which the result leads with.
+        case snippet(String)
+
+        /// No snippet: no generator is configured, nothing matched, or the
+        /// gate rejected every candidate. The result is the signatures alone.
+        case absent
+
+        /// The generation session threw. The payload is the note the result
+        /// shows beside the signatures, with the error of the session in it.
+        case failed(note: String)
+    }
+
+    /// The words that start the note of a sample session that threw — see
+    /// ``sampleFailureNote(describing:)``.
+    static let sampleFailureLead = "searchTools did not write a sample snippet, because the sample session failed."
+
+    /// The note a result shows when the sample session threw.
+    ///
+    /// The note gives the text of the error. It prefers the localized
+    /// description, because a host error often puts the fix there.
+    ///
+    /// - Parameter error: the error of the sample session.
+    /// - Returns: the note text.
+    static func sampleFailureNote(describing error: any Error) -> String {
+        let text = (error as? any LocalizedError)?.errorDescription ?? String(describing: error)
+        return "\(sampleFailureLead) The error: \(text)"
     }
 
     /// Generates and validates the runnable sample for one call, over the
     /// `entries` the snippet may call.
     ///
-    /// Answers `nil` when this tool has no generator configured or the gate
-    /// rejected every candidate.
-    private func generateSample(forTask task: String, over entries: [APISurface.Entry]) async -> String? {
-        guard let sample else { return nil }
-        return await SampleSnippet.generate(forTask: task, over: entries, using: sample)
+    /// - Parameters:
+    ///   - task: the plain-language goal passed to `searchTools`.
+    ///   - entries: the matched catalog entries the snippet may call.
+    /// - Returns: the snippet; ``SampleOutcome/absent`` when this tool has no
+    ///   generator or the gate rejected every candidate; or
+    ///   ``SampleOutcome/failed(note:)`` when the generation session threw.
+    private func generateSample(forTask task: String, over entries: [APISurface.Entry]) async -> SampleOutcome {
+        guard let sample else { return .absent }
+        do {
+            let snippet = try await SampleSnippet.generate(forTask: task, over: entries, using: sample)
+            return snippet.map(SampleOutcome.snippet) ?? .absent
+        } catch {
+            return .failed(note: Self.sampleFailureNote(describing: error))
+        }
     }
 
     /// The sentence that orders a model to write a snippet from scratch.
@@ -395,32 +438,42 @@ public struct SearchToolsTool: Tool {
     /// needed for it: catalog order between slices is what the tier already
     /// does.
     ///
-    /// When `sample` is present the runnable snippet **leads**, and the
+    /// When `sample` is a snippet the runnable snippet **leads**, and the
     /// signature blocks follow it as supporting material: the deliverable is
     /// code to run, not documentation to read, so the code is what the model
     /// reads first. When it is absent the result is exactly what it has always
-    /// been, down to the byte — a generator that failed, timed out, or was
-    /// never configured must never cost discovery anything.
+    /// been, down to the byte — a candidate that failed the gate, or a
+    /// generator that was never configured, must never cost discovery
+    /// anything. When the sample session threw, the result is the
+    /// signatures-only result with the note of that error before the footer:
+    /// the model still gets the signatures, and the fault stays visible.
     ///
     /// - Parameters:
     ///   - task: the plain-language goal passed to `searchTools`, echoed in the
     ///     header line.
     ///   - matches: the searcher's decoded result.
-    ///   - sample: the validated runnable snippet to lead with, or `nil` for
-    ///     the signatures-only result. Defaults to `nil`.
+    ///   - sample: what the sample step gave. Defaults to
+    ///     ``SampleOutcome/absent``, the signatures-only result.
     /// - Returns: the formatted text.
-    static func format(task: String, matches: [Match<APISurface.Entry>], sample: String? = nil) -> String {
+    static func format(
+        task: String, matches: [Match<APISurface.Entry>], sample: SampleOutcome = .absent
+    ) -> String {
         guard !matches.isEmpty else {
             return "searchTools(\"\(task)\") found no matching functions."
         }
         let blocks = matches
             .map { match in "\(match.item.block)\nExample: \(match.item.qualifiedExample)" }
             .joined(separator: "\n\n")
-        guard let sample else {
-            return "searchTools(\"\(task)\") found:\n" + blocks + "\n\n\(nextStepFooter)"
+        let signaturesOnly = "searchTools(\"\(task)\") found:\n" + blocks + "\n\n"
+        switch sample {
+        case .snippet(let snippet):
+            return "searchTools(\"\(task)\") wrote this snippet for that task:\n\n\(snippet)\n\n"
+                + "\(runSampleFooter)\n\n\(signaturesHeading)\n" + blocks
+        case .absent:
+            return signaturesOnly + nextStepFooter
+        case .failed(let note):
+            return signaturesOnly + "\(note)\n\n\(nextStepFooter)"
         }
-        return "searchTools(\"\(task)\") wrote this snippet for that task:\n\n\(sample)\n\n"
-            + "\(runSampleFooter)\n\n\(signaturesHeading)\n" + blocks
     }
 }
 

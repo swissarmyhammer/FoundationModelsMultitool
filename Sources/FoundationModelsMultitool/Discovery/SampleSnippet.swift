@@ -35,6 +35,9 @@ public struct SampleSnippetConfig: Sendable {
     /// factory, and the factory of the sample CLI (`RouterDiscoverySeams` in
     /// `MultitoolCLI`) mounts no tools.
     ///
+    /// The session must also not run on the model of the session that calls
+    /// `searchTools` — see ``SearchToolsTool/SessionFactory``.
+    ///
     /// Every turn of one generation attempt — the opening task and each
     /// repair — goes to the same returned session, so a failure it is told
     /// about is a failure it can see its own previous snippet for.
@@ -103,9 +106,17 @@ public struct SampleSnippetConfig: Sendable {
 ///
 /// ## Never blocking discovery
 ///
-/// A generator error, a timeout, exhausted attempts, or no matched entries all
-/// yield `nil`, and `searchTools` then answers with the signatures exactly as it
-/// always has. An unvalidated candidate is never returned.
+/// A candidate that fails the gate, exhausted attempts, or no matched entries
+/// all yield `nil`, and `searchTools` then answers with the signatures exactly
+/// as it always has. An unvalidated candidate is never returned.
+///
+/// ## Never hiding a session error
+///
+/// An error of the generation session is not a failed candidate. It propagates
+/// from ``generate(forTask:over:using:)``, and `searchTools` shows it to the
+/// model as a note beside the signatures. A silent `nil` would hide a fault
+/// that only the host can correct: for example, a session on the model of the
+/// calling session, which a host that queues its work per model refuses.
 enum SampleSnippet {
     /// Generates and validates a sample snippet for `task` over `entries`.
     ///
@@ -116,16 +127,18 @@ enum SampleSnippet {
     ///   - config: how to open the generation session, and what to check with.
     /// - Returns: the validated snippet, or `nil` when no candidate passed the
     ///   gate.
+    /// - Throws: what the generation session throws. The error is not
+    ///   changed.
     static func generate(
         forTask task: String,
         over entries: [APISurface.Entry],
         using config: SampleSnippetConfig
-    ) async -> String? {
+    ) async throws -> String? {
         guard !entries.isEmpty else { return nil }
         let session = config.makeSession(instructions(over: entries))
         var prompt = openingPrompt(forTask: task)
         for _ in 0..<max(1, config.attemptLimit) {
-            guard let reply = try? await session.respond(to: prompt) else { return nil }
+            let reply = try await session.respond(to: prompt)
             switch await verdictOffCooperativePool(on: reply, over: entries, using: config) {
             case .accepted(let snippet):
                 return snippet

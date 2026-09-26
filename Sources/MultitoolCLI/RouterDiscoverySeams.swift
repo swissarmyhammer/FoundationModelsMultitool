@@ -33,18 +33,19 @@ public struct RouterDiscoverySeams: Sendable {
     ///
     /// - Parameters:
     ///   - librarian: the model every selection session runs on. It must be
-    ///     a handle other than the one whose session mounts `searchTools` —
-    ///     see ``makeSelection(makeGuidedSession:)``. The sample CLI passes
-    ///     `profile.flash`.
+    ///     a model other than the model of the session that mounts
+    ///     `searchTools` — see ``makeSelection(makeGuidedSession:)``. The
+    ///     sample CLI passes `profile.flash`, and `CLIRunner.demoProfile`
+    ///     puts a different model in `flash` than in `standard`.
     ///   - embedder: the embedding handle both searchers rank with. The
     ///     sample CLI passes `profile.embedding`.
     ///   - sampleGenerator: the model the sample snippet is written on, or
-    ///     `nil` (the default) for no sample. Pass the **main** generation
-    ///     slot rather than the librarian: the sample is code the model is
-    ///     told to run, so its quality matters more than its cost. Its
-    ///     session is made with no `tools:` argument, which keeps
-    ///     `searchTools` off it: it writes a snippet, it does not execute
-    ///     one.
+    ///     `nil` (the default) for no sample. It must also be a model other
+    ///     than the model of the session that mounts `searchTools`, for the
+    ///     same reason as the librarian. Thus the main generation slot, which
+    ///     drives that session, is not a correct generator. Its session is
+    ///     made with no `tools:` argument, which keeps `searchTools` off it:
+    ///     it writes a snippet, it does not execute one.
     public init(librarian: RoutedLLM, embedder: RoutedEmbedder, sampleGenerator: RoutedLLM? = nil) {
         self.selection = Self.makeSelection { grammar, instructions in
             librarian.makeGuidedSession(grammar: grammar, instructions: instructions)
@@ -75,28 +76,24 @@ public struct RouterDiscoverySeams: Sendable {
     /// the catalog. That is safe: the tier's own `.unknownSelectedId` filter
     /// drops an id outside the slice the prompt carried.
     ///
-    /// **The selection session must come from a handle other than the one
-    /// whose turn calls `searchTools`. That is a correctness requirement, not
-    /// a cost preference.** `searchTools` is invoked from inside a turn's tool
-    /// body. A Router session holds its own `turnLock` for the whole turn,
-    /// tool rounds included, and both `RoutedSession.fork(workingDirectory:)`
-    /// and the `transcript` getter take `await turnLock.wait()` on that same
-    /// lock. So a selection tier that forked *the session it is running
-    /// inside* would block until the turn ended, and the turn cannot end
-    /// until this tool returns. That is a permanent hang, and it is the exact
-    /// shape of Router's `^d2ptrk1`. What keeps this host clear of it is only
-    /// that the librarian is a different handle — `profile.flash`, with a
-    /// `turnLock` of its own. Measured: the
-    /// `SearchToolsTool.makeSelectionSession` and `AgentSession.fork` spans
-    /// both enter and exit inside a millisecond.
+    /// **The selection session must run on a model other than the model of
+    /// the session whose turn calls `searchTools`. That is a correctness
+    /// requirement, not a cost preference.** `searchTools` is synchronous, so
+    /// its body runs inside the open submission of the calling session.
+    /// Router runs the work of each model in order on one FIFO queue. A
+    /// session on a different model waits its turn on the queue of that
+    /// model, and the search completes. A session on the same model would
+    /// wait for the open submission to end, and that submission ends only
+    /// when this tool returns. Router refuses that wait at once with
+    /// `GenerationQueueError.waitInsideOpenSubmission`, and
+    /// ``RoutedAgentSession`` turns the refusal into a
+    /// ``SameModelDiscoveryError`` whose text names the fix. What keeps this
+    /// host clear of it is that `CLIRunner.demoProfile` puts a different
+    /// model in `flash` than in `standard`.
     ///
-    /// **Router's generation-permit loan does not cover this.** That fix
-    /// (`^1zt7vyg`) lends a `generationGate` permit to a nested turn and
-    /// deliberately leaves `turnLock` alone, because `turnLock` is the
-    /// correctness gate. So forking the in-turn session would deadlock
-    /// immediately, loan or no loan. Reusing the caller's session here looks
-    /// like the natural simplification. It is the one change this factory
-    /// must never take.
+    /// Thus do not reuse or fork the session of the caller here. It looks
+    /// like the natural simplification, and it is the one change this
+    /// factory must never take.
     ///
     /// - Parameter makeGuidedSession: makes one guided Router session from a
     ///   grammar and the instructions. ``init(librarian:embedder:sampleGenerator:)``

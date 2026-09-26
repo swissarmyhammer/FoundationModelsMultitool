@@ -448,10 +448,11 @@ public enum CLIRunner {
             """
     }
 
-    /// The generation model both slots resolve — **the single place a
-    /// generation model is named in this package.**
+    /// The generation model of the `standard` slot — with ``flashModel``,
+    /// **one of the two places a generation model is named in this
+    /// package.**
     ///
-    /// `demoProfile` below puts it in `standard` and in `flash`, and the
+    /// `demoProfile` below puts it in `standard`, and the
     /// integration suite's `multitoolTinyProfile` *is* `demoProfile`
     /// (`IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Support/LiveRouterFixture.swift`),
     /// so changing this one line moves the CLI and every graded scenario
@@ -474,6 +475,24 @@ public enum CLIRunner {
     /// a model *choice* rather than a version lock.
     static let generationModel: ModelRef = "mlx-community/Qwen3.8-27B-mxfp4"
 
+    /// The generation model of the `flash` slot, which the selection tier of
+    /// `searchTools` runs on.
+    ///
+    /// **It must not be ``generationModel``.** `searchTools` is synchronous,
+    /// so its selection session runs inside the open submission of the main
+    /// session on `standard`. Router runs the work of each model on its own
+    /// FIFO queue, and refuses at once a wait on the queue of the open
+    /// submission (`GenerationQueueError.waitInsideOpenSubmission`). A
+    /// selection session on a different model waits its turn on its own
+    /// queue, and the search completes.
+    ///
+    /// This model, because the integration suite already grades the
+    /// selection tier on it (`AgentSurfaceDiscoveryTests`), and the
+    /// integration package reads this constant, so the name is in one place.
+    ///
+    /// No `@revision`, for the same reason as ``generationModel``.
+    public static let flashModel: ModelRef = "mlx-community/Qwen3-4B-4bit"
+
     /// The embedding model, unchanged across every generation-model swap and
     /// shared with Router's own gated suite so the weights are already cached.
     public static let embeddingModel: ModelRef = "mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ"
@@ -492,26 +511,15 @@ public enum CLIRunner {
         // ships and a swap here moves both. Two lists drifted apart once and
         // the suite spent its runs grading a configuration no host had.
         //
-        // One model in both slots: it drives the main session, and the
-        // selection tier `searchTools` runs on `flash` is the same model.
-        //
-        // One reference means one resident container, and that is a known
-        // deadlock today — not an unexplained one. A container carries a
-        // single `generationGate`, `beginTurn()` takes its one permit and
-        // holds it for the whole turn including tool rounds, so a
-        // `searchTools` call made from inside a turn waits for a permit only
-        // that turn's end can free. Measured at `permits=0 waiters=1` for the
-        // life of the run. It is Router's defect, tracked on their `^1zt7vyg`,
-        // and this package's regression test for it is
-        // `NestedGenerationProbeTests`.
-        //
-        // The earlier split onto two models was a workaround for this, written
-        // when the cause was still unknown and wrongly blamed on a container
-        // lock in `mlx-swift-lm` — an explanation that repository's own test
-        // (`ca8e22f`) refuted by generating from a tool body on one container
-        // safely.
+        // Two models, and they must stay different: `standard` drives the
+        // main session, and `flash` runs the selection tier of `searchTools`.
+        // `searchTools` is synchronous, so its selection session runs inside
+        // the open submission on `standard`. Router refuses a wait on the
+        // model of that submission, and waits in order on the queue of any
+        // other model. See `flashModel`, and `DemoProfileTests`, which holds
+        // the two lists apart.
         standard: [generationModel],
-        flash: [generationModel],
+        flash: [flashModel],
         embedding: [embeddingModel],
         // `nil`, not a number: resolve the model's own context window rather
         // than imposing one, exactly as the integration suite's
@@ -956,9 +964,11 @@ public enum CLIRunner {
             // so `RouterDiscoverySeams` turns the Router handles of the
             // profile into those seams here.
             //
-            // `flash` and `standard` name the same model here (`demoProfile`),
-            // so that tier and the main session below share one resident
-            // container. See `demoProfile` for what that costs.
+            // `flash` and `standard` name different models (`demoProfile`), so
+            // the selection session waits on the queue of its own model while
+            // the main session below holds its submission open. On the same
+            // model, Router refuses that wait, and `RoutedAgentSession` gives
+            // the error that names the fix.
             //
             // `profile.embedding` is the embedder both searchers rank with —
             // the same profile that names `embeddingModel`. Without it the

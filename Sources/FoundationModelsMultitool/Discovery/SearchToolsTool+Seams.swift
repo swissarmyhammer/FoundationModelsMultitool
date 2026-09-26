@@ -8,6 +8,9 @@
 // handles to these seams are in `MultitoolCLI` (`RouterDiscoverySeams`), which
 // is the host this package ships.
 //
+// The models of these sessions must not be the model of the session that
+// calls `searchTools` — see `SelectionFactory`.
+//
 // This file keeps what the library adds around each session a host makes: a
 // `TracedAgentSession`, and a span over the synchronous factory call. Both
 // ends of a session factory are opaque from outside, and these spans are the
@@ -26,9 +29,21 @@ extension SearchToolsTool {
     /// factory with them. `SelectionTier.idEnumSchema(ids:)` gives a host the
     /// JSON Schema for those ids.
     ///
-    /// The selection session must not be the session whose turn calls
-    /// `searchTools`. A tool body runs inside that turn, so a session that
-    /// holds a lock for its whole turn would wait on itself.
+    /// **The selection model must not be the model of the session that calls
+    /// `searchTools`.** `searchTools` is synchronous: its body runs inside
+    /// the open submission of the calling session, and that submission ends
+    /// only when the body returns. A host that queues the work of each model
+    /// in order (Router does) cannot start a selection session on that same
+    /// model before the submission ends. Such a host refuses the wait at once
+    /// — Router gives its `waitInsideOpenSubmission` error — or the wait
+    /// never ends. A selection session on a different model waits its turn
+    /// on the queue of its own model, and the search completes. Thus, give
+    /// the selection tier a model that is different from the model of each
+    /// session that mounts `searchTools`. Router's `flash` slot is that model
+    /// when `flash` and `standard` name different models.
+    ///
+    /// When the selection session fails, `searchTools` does not hide it: the
+    /// error of the session is the error of the call, and the model reads it.
     ///
     /// - Parameter ids: every id of the catalog, in catalog order.
     /// - Returns: the selection configuration for that catalog.
@@ -40,6 +55,11 @@ extension SearchToolsTool {
     ///
     /// The session must mount no tools — see
     /// ``SampleSnippetConfig/makeSession``.
+    ///
+    /// The session must also not run on the model of the session that calls
+    /// `searchTools`, for the reason that ``SelectionFactory`` gives. When the
+    /// session fails, `searchTools` shows the error as a note beside the
+    /// signatures.
     ///
     /// - Parameter instructions: the instructions of the session.
     /// - Returns: the session.

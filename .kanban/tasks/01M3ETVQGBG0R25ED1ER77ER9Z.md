@@ -1,6 +1,11 @@
 ---
 assignees:
 - claude-code
+comments:
+- actor: claude-code
+  id: 01m3fq1fb5sdn56scwfmgqmxgy
+  text: 'Item moved here from task ^zhmqvxb (01M3ETTBXPEYFR2DSBAZHMQVXB): run the live check `swift test --package-path IntegrationTests --no-parallel --filter CLISmokeTests` after the IntegrationTests package compiles again (task 01M3ETV0A0AE2F2MTGWTFHF7T4). Expected result: it passes with `CLIRunner.demoProfile`, which now has `standard = [generationModel]` ("mlx-community/Qwen3.8-27B-mxfp4") and `flash = [flashModel]` ("mlx-community/Qwen3-4B-4bit"), both resolved with the model''s own context window (`context: nil`). Also: `agentDiscoveryProfile` and `plumbingProbeProfile` in `IntegrationTests/.../Support/LiveRouterFixture.swift` still put one model in both `standard` and `flash`. With the work-queue Router, a synchronous `searchTools` on such a profile gets `SameModelDiscoveryError` / `waitInsideOpenSubmission`. Router task 01M3FP4SPYCEJ1Y6PRYZSRRNAT will make `Router.resolve` refuse such a profile.'
+  timestamp: 2026-09-26T20:38:22.821676+00:00
 depends_on:
 - 01M3ETV0A0AE2F2MTGWTFHF7T4
 - 01M3ETTBXPEYFR2DSBAZHMQVXB

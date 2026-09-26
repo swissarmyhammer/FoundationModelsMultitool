@@ -427,7 +427,7 @@ let plumbingProbeProfile = ProfileDefinition(
 ///
 /// No `@revision`, exactly as the two constants above carry none — a model
 /// choice, not a version lock.
-let agentFlashModel: ModelRef = "mlx-community/Qwen3-4B-4bit"
+let agentFlashModel: ModelRef = CLIRunner.flashModel
 
 /// The profile `AgentSurfaceDiscoveryTests` resolves, built over
 /// `agentFlashModel`.

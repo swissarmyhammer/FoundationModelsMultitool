@@ -359,6 +359,47 @@ struct SearchToolsToolTests {
         #expect(feedback.contains(SearchToolsTool.writeSnippetInstruction))
     }
 
+    // MARK: - A session error is visible (^zhmqvxb)
+
+    /// The refusal Router gives when a synchronous tool body waits for a
+    /// session on the model of its own open submission.
+    static let sameModelRefusal = GenerationQueueError.waitInsideOpenSubmission(model: "stub/standard")
+
+    @Test("a librarian that Router refuses on the model of the calling session gives that refusal as the tool error")
+    func refusedLibrarianGivesTheRefusalAsTheToolError() async throws {
+        let registry = try MultiTool.Builder().addTool(CitiesTool()).buildRegistry()
+        let tool = try SearchToolsTool(registry: registry, selection: { _ in
+            SelectionConfig(model: { _ in FailingSelectionRootSession(error: Self.sameModelRefusal) },
+                            capacityCharacterLimit: .max)
+        })
+
+        // Not an empty selection, and not the signatures alone: the call
+        // fails, and the model reads the error of the librarian.
+        await #expect(throws: Self.sameModelRefusal) {
+            try await tool.call(arguments: SearchToolsArguments(task: "list the cities"))
+        }
+    }
+
+    @Test("a sample session that throws gives a visible note with its error, and the signatures")
+    func throwingSampleSessionGivesAVisibleNote() async throws {
+        let registry = try MultiTool.Builder().addTool(CitiesTool()).addTool(TempTool()).buildRegistry()
+        let entry = try #require(registry.surface.entries.first { $0.path == "getCities" })
+        let failing = FailingSelectionRootSession(error: Self.sameModelRefusal)
+        let tool = try SearchToolsTool(registry: registry, selection: nil, sampleSession: { _ in failing })
+        let withoutGenerator = try SearchToolsTool(registry: registry, selection: nil)
+        let arguments = SearchToolsArguments(task: "how warm is the trip")
+
+        let feedback = try await tool.call(arguments: arguments)
+        let today = try await withoutGenerator.call(arguments: arguments)
+
+        let refusalText = try #require(Self.sameModelRefusal.errorDescription)
+        #expect(feedback != today)
+        #expect(feedback.contains(SearchToolsTool.sampleFailureLead))
+        #expect(feedback.contains(refusalText))
+        #expect(feedback.contains(entry.block))
+        #expect(feedback.contains(SearchToolsTool.writeSnippetInstruction))
+    }
+
     // MARK: - Discovery blocks until it is done (^bffrdpr)
 
     @Test("a slow discovery call returns its catalog inline, even mounted by a site that backgrounds")
@@ -456,13 +497,24 @@ final class SlowSelectionRootSession: AgentSession, Sendable {
     }
 }
 
-/// A selection root that fails outright.
+/// A session that fails outright: a selection root, or a sample session.
 final class FailingSelectionRootSession: AgentSession, Sendable {
+    /// The error each call throws.
+    private let error: any Error
+
+    /// Creates a session that fails with `error`.
+    ///
+    /// - Parameter error: the error each call throws. Defaults to a
+    ///   ``SelectionSearchFailure``.
+    init(error: any Error = SelectionSearchFailure()) {
+        self.error = error
+    }
+
     func respond(to prompt: String) async throws -> String {
-        throw SelectionSearchFailure()
+        throw error
     }
 
     func fork() async throws -> any AgentSession {
-        throw SelectionSearchFailure()
+        throw error
     }
 }

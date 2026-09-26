@@ -139,8 +139,12 @@ extension MultiTool {
         /// - Parameters:
         ///   - selection: makes `searchTools`'s selection tier for the ids of
         ///     this registry, or `nil` to leave its searcher in cheap
-        ///     retrieval. See ``SearchToolsTool/SelectionFactory``. Unused in
-        ///     direct mode, which vends no `searchTools` to configure.
+        ///     retrieval. Its sessions must run on a model that is not the
+        ///     model of the session that mounts these tools: `searchTools` is
+        ///     synchronous, and a host that queues work per model refuses a
+        ///     wait on the model of the open submission. See
+        ///     ``SearchToolsTool/SelectionFactory``. Unused in direct mode,
+        ///     which vends no `searchTools` to configure.
         ///   - embedder: the embedder both `searchTools`'s searcher and
         ///     `runCode`'s did-you-mean ranker rank with, or `nil` (the
         ///     default) for keyword-only ranking. Without it the registry
@@ -150,9 +154,9 @@ extension MultiTool {
         ///   - sampleSession: makes the session `searchTools` writes its
         ///     runnable sample snippet on, or `nil` (the default) to leave
         ///     sample generation unconfigured, so `searchTools` answers with
-        ///     signatures alone exactly as it always has. Back it with the
-        ///     **main** generation model: the sample is code the model is told
-        ///     to run, so its quality matters more than its cost. Unused in
+        ///     signatures alone exactly as it always has. Its sessions must also
+        ///     run on a model that is not the model of the session that mounts
+        ///     these tools — see ``SearchToolsTool/SessionFactory``. Unused in
         ///     direct mode.
         /// - Returns: `searchTools` and `runCode` — or `runCode` alone in
         ///   direct mode, which takes discovery away but not the background.

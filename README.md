@@ -124,6 +124,28 @@ runtime, so a global added to the code and not to this list fails the suite.
 Do not delete or reword the list items. [`docs/SECURITY.md`](docs/SECURITY.md)
 says what each one guarantees.
 
+## Discovery and the librarian model
+
+`registry.makeSessionTools(selection:embedder:sampleSession:)` mounts
+`searchTools` before `runCode`. `searchTools` asks a second model, the
+librarian, which tool-functions fit the task. It can also ask a model to
+write a sample snippet.
+
+The librarian model must be different from the model of the calling session.
+The same rule applies to the model of the sample snippet. `searchTools` is
+synchronous, so its sessions run inside the open submission of the calling
+session. Router runs the work of each model in order, and it refuses at once
+a wait on the model of that open submission. With Router, give the `flash`
+slot a model that is different from the `standard` slot, and give
+`profile.flash` to the librarian. The sample CLI does this in
+`CLIRunner.demoProfile`.
+
+`searchTools` does not hide a failed session. An error of the librarian is the
+error of the `searchTools` call. An error of the sample session is a note
+beside the signatures. When the librarian and the calling session use the
+same model, the sample CLI gives an error that tells you to use a different
+flash model.
+
 ## Operation tools
 
 An `OperationTool` from the Extras `Operations` module holds many operations

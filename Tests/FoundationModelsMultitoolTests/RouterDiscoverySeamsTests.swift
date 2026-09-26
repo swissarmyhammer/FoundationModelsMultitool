@@ -206,4 +206,51 @@ struct RouterDiscoverySeamsTests {
             #expect(makeSession("instructions") is RoutedAgentSession)
         }
     }
+
+    // MARK: - The same-model refusal names the fix (^zhmqvxb)
+
+    /// The model the refusal names: the model of the calling session.
+    private static let callerModel: ModelRef = "stub/standard"
+
+    /// The sentence of ``SameModelDiscoveryError`` that names the fix, written
+    /// out here so that a reword of the error fails this suite.
+    private static let fixSentence =
+        "The librarian model must be different from the model of the calling session."
+
+    @Test("the adapter turns Router's same-model refusal into an error that names the model and the fix")
+    func sameModelRefusalNamesTheFix() throws {
+        let refusal = GenerationQueueError.waitInsideOpenSubmission(model: Self.callerModel)
+
+        let explained = try #require(RoutedAgentSession.explained(refusal) as? SameModelDiscoveryError)
+
+        #expect(explained.model == Self.callerModel)
+        #expect(String(describing: explained).contains(Self.callerModel.stringValue))
+        #expect(String(describing: explained).contains(Self.fixSentence))
+        #expect(explained.errorDescription == String(describing: explained))
+    }
+
+    @Test("the adapter passes every other error through unchanged")
+    func otherErrorsPassThroughUnchanged() {
+        let explained = RoutedAgentSession.explained(SelectionSearchFailure())
+
+        #expect(explained as? SelectionSearchFailure == SelectionSearchFailure())
+    }
+
+    @Test("a searchTools call whose librarian is refused on the model of the calling session gives the error that names the fix")
+    func refusedLibrarianGivesTheFixAsTheToolError() async throws {
+        let registry = try MultiTool.Builder().addTool(TripCitiesTool()).buildRegistry()
+        let explained = RoutedAgentSession.explained(
+            GenerationQueueError.waitInsideOpenSubmission(model: Self.callerModel))
+        let tool = try SearchToolsTool(registry: registry, selection: { _ in
+            SelectionConfig(model: { _ in FailingSelectionRootSession(error: explained) }, capacityCharacterLimit: .max)
+        })
+
+        let thrown = await #expect(throws: SameModelDiscoveryError.self) {
+            try await tool.call(arguments: SearchToolsArguments(task: "list the trip cities"))
+        }
+
+        // Router shows a failed tool call to the model as
+        // `String(describing: error)`, so that text must name the fix.
+        #expect(String(describing: try #require(thrown)).contains(Self.fixSentence))
+    }
 }
