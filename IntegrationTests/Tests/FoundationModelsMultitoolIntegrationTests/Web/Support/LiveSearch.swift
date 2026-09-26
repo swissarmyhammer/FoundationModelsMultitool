@@ -78,7 +78,7 @@ enum LiveSearch {
     /// `.ephemeral`, as the capability defaults to, with short timeouts.
     ///
     /// The live fetch suites and the live `runCode` suite also use it, thus
-    /// each live request of the package has the same short timeouts.
+    /// each live request of the `Web/` suites has the same short timeouts.
     ///
     /// - Returns: The configuration.
     static func makeShortTimeoutConfiguration() -> URLSessionConfiguration {

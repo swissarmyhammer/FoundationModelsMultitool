@@ -54,9 +54,10 @@ private let webResearchReplyPreviewCharacters = 120
 /// vended through `MultiTool.Registry.makeSessionTools(librarian:)` and
 /// mounted on the `RoutedSession` that the resolved `.standard` slot vends.
 /// This is the wiring that `CLIRunner.runDemo` ships. `.keyless` reads no
-/// environment, thus the rule of `IntegrationTests/Package.swift` ("nothing
-/// here reads the environment") stays true. The web requests go to the
-/// public keyless providers, with the short timeouts above.
+/// environment, thus this scenario needs no API key, and it always runs, as
+/// the environment rule of `IntegrationTests/Package.swift` asks. The web
+/// requests go to the public keyless providers, with the short timeouts
+/// above.
 ///
 /// **The grade.** Two checks, from `web.md`:
 ///

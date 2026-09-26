@@ -406,14 +406,16 @@ Sources/MultitoolCLI/CLIRunner.swift                                            
 Package.swift                                                                   + SwiftSoup dependency (Decision 1)
 README.md                                                                       ## Capabilities: + web
 docs/SECURITY.md                                                                + the web capability section
-WebIntegrationTests/                                                            new package (see Testing)
+IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Web/           live web suites (see Testing)
 .github/workflows/web.yml                                                       new workflow: web-integration job
 ```
 
 ## Testing
 
 There are three levels of test. The root `swift test` stays offline. The two
-live levels are separate packages, the same as `IntegrationTests/`.
+live levels are in the nested package `IntegrationTests/`. (Decided,
+2026-09-26: the first design had a separate package for Level 2. That package
+is removed, and its suites are in `IntegrationTests/`.)
 
 ### Level 1: unit tests, no network (root package)
 
@@ -448,20 +450,26 @@ can examine the headers.
 | `CLIArgumentTests` | The `--web` tests in `CLIArgumentTests+Web.swift`: `--web` sets the flag and no other flag, the usage text lists `--web`, and the demo registry renders `web.search` and `web.fetch` only with `--web`. |
 | `WebDocumentationTests` | The `## Capabilities` section of `README.md` names `withWeb`, the two verbs, and each environment variable. The `## The web capability` section of `docs/SECURITY.md` holds each fixed phrase of "Security". |
 
-### Level 2: live web tests, no model (new package `WebIntegrationTests/`)
+### Level 2: live web tests, no model (existing `IntegrationTests/`, folder `Web/`)
 
 These tests search the real web and fetch real pages. They do not load a
-model, so they run in approximately one minute.
+model, so they run in approximately one minute. The suites and their helpers
+(`Support/LiveSearch.swift`, `Support/LiveFetch.swift`) are in
+`IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Web/`. The
+root `swift test` does not see them, thus it stays offline, by the build graph
+and not by a convention.
 
-**Why a new package.** `IntegrationTests/Package.swift` states: "nothing here
-reads the environment, and nothing may start doing so". The keyed provider
-tests must read keys from the environment, because that is the feature under
-test. A separate package keeps that rule true for `IntegrationTests/`. It also
-keeps the root `swift test` offline, by the build graph and not by a
-convention.
+**The environment rule. (Decided, 2026-09-26.)** A test never reads the
+environment to decide if it runs. A test can read an API key from the
+environment as configuration, but only a test that always runs: when the key
+is missing, the test fails with a message that names the variable, and it
+does not skip. `IntegrationTests/Package.swift` states the same rule. The
+keyed provider tests read keys from the environment, because
+`WebConfiguration.fromEnvironment()` is the feature under test.
 
 ```
-swift test --package-path WebIntegrationTests --no-parallel
+swift test --package-path IntegrationTests --no-parallel \
+  --filter "BraveHTMLLiveTests|DuckDuckGoHTMLLiveTests|KeylessChainLiveTests|FetchLiveTests|GuardLiveTests|WebRunCodeLiveTests"
 ```
 
 `--no-parallel`, and `.serialized` on each suite, keep the request rate low.
@@ -497,7 +505,7 @@ markup drift, and it is not a defect of the provider. Thus:
 | `KeylessChainLiveTests` | `.keyless`: the query gives hits, and `provider` is one of the two keyless names. |
 | `FetchLiveTests` | `https://example.com`: title `Example Domain`, content contains `Example Domain`. `http://github.com`: final `url` starts with `https://github.com`. `https://en.wikipedia.org/wiki/Swift_(programming_language)` with `maxCharacters: 2000`: `nextOffset` is set; a second call with that offset gives the next text and no second download (cache). `https://api.github.com/zen`: `contentType` is `text/plain`, content is not empty. `https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf`: correction for a binary type. |
 | `GuardLiveTests` | `http://localtest.me/` (a public DNS name that resolves to `127.0.0.1`): the correction names the loopback address. This proves that the guard checks the resolved address, not only the host name. `http://169.254.169.254/latest/meta-data/`: correction. |
-| `KeyedProviderLiveTests` | Six `@Test` functions, one for each keyed provider, with a shared helper. (A Swift Testing trait applies to a whole test function, not to one argument of a parameterized test.) Each test builds `WebConfiguration.fromEnvironment()`, takes only its provider, and has `.enabled(if:)` on its variable. Each test: query `swift programming language`, at least 3 hits, `provider` is the name of the provider, and the key value is not in the rendered result. A test with no key shows as "skipped" with its name. It does not show as "passed". |
+| `KeyedProviderLiveTests` | Six `@Test` functions, one for each keyed provider, with a shared helper. (A Swift Testing trait applies to a whole test function, not to one argument of a parameterized test.) Each test builds `WebConfiguration.fromEnvironment()`, and takes only its provider. Each test always runs (see "The environment rule"). When its variable is not set, the test fails with a message that names the variable. Each test: query `swift programming language`, at least 3 hits, `provider` is the name of the provider, and the key value is not in the rendered result. |
 | `KeyedFallbackLiveTests` | `[.braveAPI(.literal("invalid-key")), .braveHTML]`: `provider` is `braveHTML`, `notes` names `braveAPI` with 401 or 403, and the text `invalid-key` is not in the result. |
 | `ExpectedProvidersTests` | Reads `MULTITOOL_WEB_EXPECTED_PROVIDERS` (for example `braveAPI,tavily`). Each name in it must have its key in `fromEnvironment()`. CI sets this variable, so a secret that is not configured fails CI and does not become a quiet skip. Local runs do not set it. |
 | `WebRunCodeLiveTests` | A real `MultiTool` with `.withWeb(configuration: .keyless)` and no model. The snippet at the top of this document runs, and returns 1 to 3 pages, each with a title and content. |
@@ -507,7 +515,7 @@ markup drift, and it is not a defect of the provider. Thus:
 `WebResearchScenarioTests.swift`, beside `FilesBareSessionTests.swift`:
 
 - Mount `.withWeb(configuration: .keyless)`. `.keyless` reads no environment,
-  thus the rule of that package stays true.
+  thus the scenario needs no API key and always runs.
 - The prompt: "Find the address of the home page of the Swift programming
   language on the web. Answer with the URL only."
 - The grade, with `ScenarioGrading`: the call log has `tools.web.search`, and
@@ -522,13 +530,12 @@ markup drift, and it is not a defect of the provider. Thus:
   finds markup drift in the keyless providers before a user finds it. A
   separate file keeps the expensive real-model job of `ci.yml` off the daily
   schedule.
-- The job has no `needs`. It runs
-  `swift build --package-path WebIntegrationTests --build-tests` and then
-  `swift test --package-path WebIntegrationTests --no-parallel` on each push
-  and pull request. The build step gives the compile coupling that
-  `IntegrationTests/Package.swift` asks for. This is a change from the first
-  design, which put the build step in the unit job of the shared
-  `swift-ci.yaml`: that workflow has only one package-path input.
+- The job has no `needs`. On each push and pull request it runs
+  `swift test --package-path IntegrationTests --no-parallel` with a `--filter`
+  that selects the Level 2 suites (the command in Level 2). The compile
+  coupling that `IntegrationTests/Package.swift` asks for is already in the
+  unit job of `ci.yml`: it builds `IntegrationTests` on each run, and that
+  build compiles the Level 2 suites too.
 - `DuckDuckGoHTMLLiveTests` runs only on the `schedule` trigger. On `push` and
   `pull_request`, the test step does not run it. See "The DuckDuckGo challenge
   page" in Level 2.

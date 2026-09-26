@@ -327,8 +327,8 @@ private let scenarioGradingTargetName = "ScenarioGrading"
 /// symbols of the library target, and of the product that exports it.
 ///
 /// **Test support, declared as a product**, for the same reason as
-/// `testServerTargetName`. The unit test target and the live web suite of the
-/// nested `WebIntegrationTests` package use the same helpers: `RunOutput`, the
+/// `testServerTargetName`. The unit test target and the live web suites of the
+/// nested `IntegrationTests` package use the same helpers: `RunOutput`, the
 /// decode of a `runCode` output; `WebVerbCall`, the one call of each web verb;
 /// and `WebPageHead`, the value of each page of the goal snippet of web.md. A
 /// package can import the products of another package only, thus a helper
@@ -378,12 +378,13 @@ private let testSupportPath = "\(testsPath)Support/"
 /// FoundationModels and JavaScriptCore frameworks.
 ///
 /// **This manifest declares no integration test target, and that is the whole
-/// unit/integration split.** The real-model suite is its own package,
+/// unit/integration split.** The integration suite — the real-model scenarios
+/// and the live web tests — is its own package,
 /// `IntegrationTests/Package.swift`, which depends on this one by path. So
 /// `swift test` here runs the unit tests and nothing else — not because a
 /// person remembered a flag, and not because an environment variable was left
 /// unset, but because SwiftPM cannot see a target this manifest does not
-/// declare. The real-model suite runs under
+/// declare. The integration suite runs under
 /// `swift test --package-path IntegrationTests --no-parallel`.
 let package = Package(
     name: packageName,
@@ -421,7 +422,7 @@ let package = Package(
             name: scenarioGradingTargetName,
             targets: [scenarioGradingTargetName]
         ),
-        // Test support. Consumed by `WebIntegrationTests/Package.swift`, for
+        // Test support. Consumed by `IntegrationTests/Package.swift`, for
         // the same reason as the three products above — see
         // `multitoolTestSupportTargetName`.
         .library(
@@ -568,7 +569,7 @@ let package = Package(
             ],
             path: "\(testSupportPath)\(scenarioGradingTargetName)"
         ),
-        // The helpers that the unit tests and the live web suite share — see
+        // The helpers that the unit tests and the live web suites share — see
         // `multitoolTestSupportTargetName`. It links the library target alone.
         .target(
             name: multitoolTestSupportTargetName,

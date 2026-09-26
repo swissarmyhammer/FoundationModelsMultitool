@@ -5,7 +5,7 @@
 // uses the stub session and a resolver that gives a public address for each
 // host, thus no request and no lookup goes to the network. Each verb call goes
 // through `WebVerbCall` of `MultitoolTestSupport`, the call that the live
-// suites of `WebIntegrationTests/` make too.
+// web suites of `IntegrationTests/` make too.
 
 import Foundation
 @testable import FoundationModelsMultitool

@@ -2,7 +2,7 @@
 // suites of two packages.
 //
 // The unit suites call each verb over a stub session (`WebVerbFixture`). The
-// live suites of `WebIntegrationTests/` call each verb over the real session
+// live web suites of `IntegrationTests/` call each verb over the real session
 // (`LiveSearch`, `LiveFetch`). The call is the same in both packages: make the
 // verb over a context, and give it the arguments. This file holds that call
 // one time. The context is the only difference, thus each caller gives its own

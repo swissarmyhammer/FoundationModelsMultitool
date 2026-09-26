@@ -1,10 +1,22 @@
 ---
 assignees:
 - claude-code
+comments:
+- actor: claude-code
+  id: 01m3exwnr0b7mqdm49wncm8458
+  text: |-
+    ### decision — 2026-09-26
+    The user decides: all live web tests are in the existing `IntegrationTests/` package (task ^gf2geha removes `WebIntegrationTests/`). This workflow task must change: there is no separate web package. The job that runs the live web tests must get the API key secrets, and the DuckDuckGo live suite must still run only on the daily `schedule` trigger (decision of 2026-09-26, ^zfah7d8). Check if the shared `swift-ci.yaml` workflow can pass secrets and a schedule-only filter; if not, use a separate workflow that runs `swift test --package-path IntegrationTests` with a filter for the web suites. Update this card's description before you implement (pass `tags: ["web"]`).
+  timestamp: 2026-09-26T13:18:51.136950+00:00
+- actor: claude-code
+  id: 01m3eybhap2bw2ytxpb62c9j23
+  text: 'Note from ^gf2geha (2026-09-26): the live web suites are now in `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Web/`. `ci.yml` runs the whole `IntegrationTests` package in its integration job on `push` and `pull_request`, thus that job now also runs `DuckDuckGoHTMLLiveTests`. A challenge page is a known issue there and does not fail the job, but the "schedule only" decision needs a change (for example a skip of that suite in the `ci.yml` integration run, if the shared `swift-ci.yaml` can pass one). `ci.yml` already builds `IntegrationTests` in its unit job on each run, thus the compile coupling of the web suites is already there. `web.md` § "CI" now states this.'
+  timestamp: 2026-09-26T13:26:58.134370+00:00
 depends_on:
 - 01M3A33HKP5H238CS992MAJYVS
 - 01M3A3FMG0S72N2Q515319Z6S4
 - 01M3A33SMXZ93N45S1SWCZ6NMR
+- 01M3EXW2YT5AH23TP2PGF2GEHA
 position_column: todo
 position_ordinal: '8e80'
 title: 'Web: add the web.yml workflow (web-integration job, daily schedule)'

@@ -29,7 +29,9 @@ private let huggingFacePackage = "swift-huggingface"
 /// The Swift Transformers tokenizer package.
 private let transformersPackage = "swift-transformers"
 
-/// SwiftPM manifest for the real-model integration suite.
+/// SwiftPM manifest for the integration suite: the real-model scenarios, and
+/// the live web tests that load no model (`Web/`, web.md § "Testing",
+/// Level 2).
 ///
 /// **Why this is a package of its own.** `swift test` at the repository root
 /// must run the unit tests and nothing else, and it must do that structurally
@@ -38,22 +40,31 @@ private let transformersPackage = "swift-transformers"
 /// of the default run, so a bare `swift test` would still start the real-model
 /// suite — 12 to 15 minutes locally. A package the root manifest never names
 /// is invisible to the root's `swift test`, so the split is a property of the
-/// build graph rather than of anyone's memory. The suite's predecessor read an
-/// opt-in environment variable instead, which made a green run that measured
-/// nothing indistinguishable from a green run that measured everything;
-/// nothing here reads the environment, and nothing may start doing so.
+/// build graph rather than of anyone's memory.
+///
+/// **The environment rule.** The predecessor of this suite read an opt-in
+/// environment variable to decide if it ran. Then a green run that measured
+/// nothing looked the same as a green run that measured everything. Thus a
+/// test here never reads the environment to decide if it runs, and no test
+/// may start to do so. A test can read an API key from the environment as
+/// configuration, but only a test that always runs: when the key is missing,
+/// the test fails with a message that names the variable, and it does not
+/// skip (decision of 2026-09-26, web.md § "Testing", Level 2).
 ///
 /// The two commands are:
 ///
 ///     swift test                                                  # unit tests
 ///     swift test --package-path IntegrationTests --no-parallel    # this suite
 ///
-/// `--no-parallel` is not a preference. Every scenario here queues behind
+/// `--no-parallel` is not a preference. Every real-model scenario here queues behind
 /// `liveProfileTurnstile`, which admits one live scenario at a time because
 /// concurrent generation destroys grounding. Swift Testing runs suites
 /// concurrently and starts a test's `.timeLimit` when the test starts, so a
 /// parallel run spends the limit on queue time and a queued suite fails in
 /// the same way as a hang. `LiveRouterFixture.swift` records the measurement.
+/// The live web suites of `Web/` load no model and do not queue behind the
+/// turnstile. For them, `--no-parallel` and `.serialized` on each suite keep
+/// the request rate to each web provider low.
 ///
 /// **The compile coupling this package owes CI.** While the suite was a target
 /// of the root manifest, a broken integration test broke a plain
@@ -90,9 +101,10 @@ let package = Package(
     ],
     targets: [
         // M6.5a: the real-model suite — plan.md M6.5 + Testing strategy
-        // "Integration tests". Every test resolves a real profile through
-        // `Router` and generates on the GPU, so this is the target CI runs in
-        // a job of its own.
+        // "Integration tests". Each scenario outside `Web/` resolves a real
+        // profile through `Router` and generates on the GPU, so this is the
+        // target CI runs in a job of its own. The suites of `Web/` send real
+        // web requests and load no model.
         //
         // `MultitoolCLI` is the library half of the sample CLI. The suite
         // resolves `CLIRunner.demoProfile` rather than a pin of its own, so it
@@ -135,6 +147,13 @@ let package = Package(
                 // those rules on each commit; this target drives them against
                 // a real model.
                 .product(name: "ScenarioGrading", package: productPackageName),
+                // The shared web test support, a fourth test-support product
+                // of the root package — `../Package.swift`'s
+                // `multitoolTestSupportTargetName`. The live web suites of
+                // `Web/` call each web verb through its `WebVerbCall`, and
+                // decode a `runCode` output through its `RunOutput`, the same
+                // helpers that the unit tests use.
+                .product(name: "MultitoolTestSupport", package: productPackageName),
                 // The `@Operation` macro and `OperationTool` — see
                 // `extrasDependencyName`. The root package expands an
                 // `OperationTool` into one verb for each operation, and the
