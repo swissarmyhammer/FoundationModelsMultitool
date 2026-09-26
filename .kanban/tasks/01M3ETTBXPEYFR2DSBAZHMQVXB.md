@@ -32,11 +32,21 @@ comments:
     - Live check (`swift test --package-path IntegrationTests --no-parallel --filter CLISmokeTests`) is not run here: the IntegrationTests package does not compile yet (task 01M3ETV0A0AE2F2MTGWTFHF7T4 owns that). The live check moves to task 01M3ETVQGBG0R25ED1ER77ER9Z (comment added there).
     - `swift test` prints `warning: missing creator for mutated node: (.../mlx-swift_Cmlx.bundle/Contents/MacOS)`. This is a SwiftPM build-system message about the resource bundle of the mlx-swift dependency, not a compiler warning of this package; it is present without this change.
   timestamp: 2026-09-26T20:38:17.774863+00:00
+- actor: claude-code
+  id: 01m3fqcx1njpqngs7dxx0ybxgg
+  text: |-
+    ### finish iteration 1 — clean
+    - implement — changed: 13 files (Discovery/SampleSnippet.swift, Discovery/SearchToolsTool.swift, Discovery/SearchToolsTool+Seams.swift, MultiTool.swift, MultitoolCLI/CLIRunner.swift, MultitoolCLI/RoutedAgentSession.swift, MultitoolCLI/RouterDiscoverySeams.swift, README.md, IntegrationTests/.../LiveRouterFixture.swift, tests: SearchToolsToolTests, SampleSnippetTests, RouterDiscoverySeamsTests, new DemoProfileTests)
+    - test — green: `swift build --build-tests && swift test` — 1808 tests in 145 suites passed, 0 failed, 0 skipped (the one SwiftPM message `missing creator for mutated node` is about the mlx-swift resource bundle, not this package)
+    - commit — changed: 3c3de1d fix(discovery): give demoProfile a different flash model, and show a same-model searchTools error
+    - review — clean: `review sha HEAD~1..HEAD` — 0 findings, 0 confirmed, 0 refuted (14 attempted)
+    - open: the live CLISmokeTests check moved to task 01M3ETVQGBG0R25ED1ER77ER9Z (IntegrationTests does not compile until 01M3ETV0A0AE2F2MTGWTFHF7T4 is done).
+  timestamp: 2026-09-26T20:44:37.301685+00:00
 depends_on:
 - 01M3EVK4VR545ABV6R9YHFQH76
 - 01M3FMSTTSP16K9AE7JKZAEFGZ
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: fff380
 title: Give demoProfile a flash model that is not the standard model, and report a same-model searchTools call clearly
 ---
 ## What
