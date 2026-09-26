@@ -53,13 +53,22 @@ comments:
     - evidence: `swift build --build-tests && swift test` — 1813 tests in 145 suites passed; `swift build --package-path IntegrationTests --build-tests` — Build complete
     - next: commit
   timestamp: 2026-09-26T21:11:43.877840+00:00
+- actor: claude-code
+  id: 01m3fs3nnzzwrsr3841narhwg8
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — the 4 findings of iteration 1 (magic number in ScenarioRunner, first-argument labels in SubmissionLog and ScenarioGradingTests)
+    - test: green — 1813 root tests passed; IntegrationTests build complete
+    - commit: changed — 14d4a79 fix(integration): name the queue sample interval and label the fold arguments
+    - review: clean — review sha HEAD~1..HEAD, 0 findings; every prior finding checked; task moved to done
+  timestamp: 2026-09-26T21:14:31.999338+00:00
 depends_on:
 - 01M3EVK4VR545ABV6R9YHFQH76
 - 01M3FMSTTSP16K9AE7JKZAEFGZ
 - 01M3EVKX9JFDWDQR297Q4JRND0
 - 01M3EVMDF9BZTNFR16F11CFNX0
-position_column: review
-position_ordinal: '80'
+position_column: done
+position_ordinal: fff480
 title: Make the IntegrationTests package build against the work-queue Router events
 ---
 ## What
