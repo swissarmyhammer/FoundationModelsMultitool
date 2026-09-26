@@ -202,7 +202,7 @@ struct SurfaceRefresherTests {
             to: scripted, over: .inMemory, name: name, clock: ManualClock())
         let builder = try await MultiTool.Builder().withMCP(servers: [server])
         let (tools, staging) = try builder.buildRegistry()
-            .makeSessionToolsAndStaging(selection: nil)
+            .makeSessionToolsAndStaging(selection: nil, embedder: nil, sampleSession: nil)
         let recording = RecordingStaging(passingTo: staging)
         return Ground(
             server: server,

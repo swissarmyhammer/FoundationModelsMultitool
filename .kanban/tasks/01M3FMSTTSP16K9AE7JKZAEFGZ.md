@@ -28,9 +28,22 @@ comments:
     - evidence: `swift build --build-tests` clean (only the pre-existing SwiftPM `missing creator for mutated node` build-system note); `swift test` — 1800 tests in 144 suites passed, 0 failed, 0 skipped.
     - next: commit
   timestamp: 2026-09-26T20:15:42.848869+00:00
+- actor: claude-code
+  id: 01m3fpafw42gtnb1jk7hg2s1es
+  text: |-
+    ### review — findings
+    - evidence: `review sha HEAD~1..HEAD` — 1 finding (1 confirmed, 0 refuted): `Tests/FoundationModelsMultitoolTests/SurfaceRefresherTests.swift:205` `completeness/public-output-contract`.
+    - next: implement the finding.
+
+    ### finish iteration 1 — findings
+    - implement: changed — discovery takes the registry seams; the Router adapters and `RouterDiscoverySeams` are in `MultitoolCLI`.
+    - test: green — `swift test` 1800 tests in 144 suites passed.
+    - commit: changed — 51309ed refactor(discovery)!: take the metadata-registry seams, and move the Router adapters to the CLI host
+    - review: findings — 1 open: `SurfaceRefresherTests.swift:205` `completeness/public-output-contract`.
+  timestamp: 2026-09-26T20:25:49.700520+00:00
 depends_on:
 - 01M3EVKKTGVDQAKH1X7HD44HRE
-position_column: doing
+position_column: review
 position_ordinal: '80'
 title: Take the metadata-registry seams in the discovery API, and move the Router adapters to the CLI host
 ---
@@ -43,24 +56,30 @@ Current Router coupling in discovery:
 - The adapters `Discovery/RoutedAgentSession.swift`, `Discovery/RoutedTextEmbedding.swift` and `Discovery/SelectionGrammar.swift` (a Router `Grammar` from the id set). `Capabilities/MCP/SurfaceRefresher.swift` also calls the builder.
 
 Change:
-- [ ] Change the builder methods and `SearchToolsTool.init` to take registry seams. For example: `selection: SelectionConfig?`, `embedder: (any TextEmbedding)?`, `sampleSession: (@Sendable (String) -> any AgentSession)?`. The selection tier needs the id set to build its grammar (`SelectionTier.idEnumSchema(ids:)`), and the host cannot know it in advance. If so, take a factory keyed by the ids (for example `@Sendable ([String]) throws -> SelectionConfig?`) and write the reason in its doc comment. Keep the `TracedAgentSession` tracing around each session in the library.
-- [ ] Move `RoutedAgentSession`, `RoutedTextEmbedding` and `SelectionGrammar` out of `Sources/FoundationModelsMultitool/Discovery/` into `Sources/MultitoolCLI/` (for example `RouterDiscoverySeams.swift`). Make them `public` there, because `IntegrationTests` reaches `MultitoolCLI` as a product. Give one entry point that turns a `RoutedLLM` librarian, a `RoutedEmbedder` and an optional `RoutedLLM` generator into the seams. `CLIRunner` uses it.
-- [ ] Move their tests with them (`SelectionGrammarTests.swift`, `DiscoveryEmbedderTests.swift`, and the `RoutedAgentSession` cases). Change the other unit-test call sites to the new signatures (`SearchToolsToolTests`, `MultiToolExecutionTests`, `SiblingToolPathTests`, `RegistrySwapTests`, `RouterSessionMountTests`, `ExamplesTests`, `FilesCapabilityTests`, `MCPCapabilityTests`, `ShellCapabilityTests`, `OverBudgetSelectionOrderTests`, `SurfaceRefresherTests`, `Support/CapabilityDiscoveryProbe.swift`). Most pass `nil`.
-- [ ] Update README.md, where it shows `makeSessionTools(librarian:...)`, and `ExamplesTests`, which checks the README examples.
-- [ ] Do not change `IntegrationTests/`. Task 01M3ETV0A0AE2F2MTGWTFHF7T4 changes its call sites.
+- [x] Change the builder methods and `SearchToolsTool.init` to take registry seams. For example: `selection: SelectionConfig?`, `embedder: (any TextEmbedding)?`, `sampleSession: (@Sendable (String) -> any AgentSession)?`. The selection tier needs the id set to build its grammar (`SelectionTier.idEnumSchema(ids:)`), and the host cannot know it in advance. If so, take a factory keyed by the ids (for example `@Sendable ([String]) throws -> SelectionConfig?`) and write the reason in its doc comment. Keep the `TracedAgentSession` tracing around each session in the library.
+- [x] Move `RoutedAgentSession`, `RoutedTextEmbedding` and `SelectionGrammar` out of `Sources/FoundationModelsMultitool/Discovery/` into `Sources/MultitoolCLI/` (for example `RouterDiscoverySeams.swift`). Make them `public` there, because `IntegrationTests` reaches `MultitoolCLI` as a product. Give one entry point that turns a `RoutedLLM` librarian, a `RoutedEmbedder` and an optional `RoutedLLM` generator into the seams. `CLIRunner` uses it.
+- [x] Move their tests with them (`SelectionGrammarTests.swift`, `DiscoveryEmbedderTests.swift`, and the `RoutedAgentSession` cases). Change the other unit-test call sites to the new signatures (`SearchToolsToolTests`, `MultiToolExecutionTests`, `SiblingToolPathTests`, `RegistrySwapTests`, `RouterSessionMountTests`, `ExamplesTests`, `FilesCapabilityTests`, `MCPCapabilityTests`, `ShellCapabilityTests`, `OverBudgetSelectionOrderTests`, `SurfaceRefresherTests`, `Support/CapabilityDiscoveryProbe.swift`). Most pass `nil`.
+- [x] Update README.md, where it shows `makeSessionTools(librarian:...)`, and `ExamplesTests`, which checks the README examples. (README.md shows no such call; `ExamplesTests` doc comments are updated.)
+- [x] Do not change `IntegrationTests/`. Task 01M3ETV0A0AE2F2MTGWTFHF7T4 changes its call sites.
 
 Do not change `SearchToolsTool.mount` (a Router `ToolMount`). That is how a tool mounts on a session, not a model dependency.
 
 ## Acceptance Criteria
-- [ ] `rg -n 'RoutedLLM|RoutedEmbedder|RoutedSession|Grammar\b' Sources/FoundationModelsMultitool/Discovery Sources/FoundationModelsMultitool/MultiTool.swift` returns no match (doc comments included).
-- [ ] The public discovery API names only registry, Ranker or Multitool types.
-- [ ] `multitool-cli` still gets selection, embedding and samples through the adapters in `MultitoolCLI`.
-- [ ] `swift build --build-tests` and `swift test` pass.
+- [x] `rg -n 'RoutedLLM|RoutedEmbedder|RoutedSession|Grammar\b' Sources/FoundationModelsMultitool/Discovery Sources/FoundationModelsMultitool/MultiTool.swift` returns no match (doc comments included).
+- [x] The public discovery API names only registry, Ranker or Multitool types.
+- [x] `multitool-cli` still gets selection, embedding and samples through the adapters in `MultitoolCLI`.
+- [x] `swift build --build-tests` and `swift test` pass.
 
 ## Tests
-- [ ] `Tests/FoundationModelsMultitoolTests/SearchToolsToolTests.swift`: a `SelectionConfig` over a stub `AgentSession` (no Router) drives selection end to end.
-- [ ] `Tests/FoundationModelsMultitoolTests/RouterDiscoverySeamsTests.swift` (new, or the moved suites): the CLI adapter builds a selection config whose sessions carry the id grammar, and an embedding with the embedder's dimension.
-- [ ] Run `swift build --build-tests && swift test`. Expected result: all tests pass.
+- [x] `Tests/FoundationModelsMultitoolTests/SearchToolsToolTests.swift`: a `SelectionConfig` over a stub `AgentSession` (no Router) drives selection end to end.
+- [x] `Tests/FoundationModelsMultitoolTests/RouterDiscoverySeamsTests.swift` (new, or the moved suites): the CLI adapter builds a selection config whose sessions carry the id grammar, and an embedding with the embedder's dimension.
+- [x] Run `swift build --build-tests && swift test`. Expected result: all tests pass.
 
 ## Workflow
 - Use `/tdd`. Write failing tests first, then do the implementation that makes them pass.
+
+## Review Findings (2026-09-26 15:15)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 28 file(s) reviewed, 2 not reviewed.
+
+- [x] `Tests/FoundationModelsMultitoolTests/SurfaceRefresherTests.swift:205` `completeness/public-output-contract` — The method signature of `Registry.makeSessionToolsAndStaging` changed to accept three parameters (`selection:`, `embedder:`, `sampleSession:`), but the call at line 205 provides only one argument (`selection: nil`). The other parameters are not supplied in the marked line. Verify whether `embedder:` and `sampleSession:` have default values in the new signature. If they are required, supply all three arguments: `.makeSessionToolsAndStaging(selection: nil, embedder: <value>, sampleSession: <value>)` or `.makeSessionToolsAndStaging(selection: nil, embedder: nil, sampleSession: <factory>)`.
