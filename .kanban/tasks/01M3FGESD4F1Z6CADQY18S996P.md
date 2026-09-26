@@ -1,6 +1,11 @@
 ---
 assignees:
 - claude-code
+comments:
+- actor: claude-code
+  id: 01m3fmz005qg8bqzj80zjm4t8b
+  text: 'Task ^hd44hre covers this card (its third item). Commit 1003470 "feat(cli): take the reply from the answered event, report answerFailed, and print mail answers" adds `CLIRunner.drainMailAnswers(_:after:wait:cancel:output:)` in Sources/MultitoolCLI/CLIAnswerDrain.swift. The CLI subscribes to `streamSessionEvents()` before it sends the prompt. After the first answer, it prints each answer that mail starts ("Answer from mail: ...") until the session is idle for a quiet period (no open submission, no caller message with no answer, no open background run). The bound is `CLIMailWait.demo` (time limit `MultiToolConfiguration.defaultExecutionTimeLimit`), then the CLI calls `cancel()`. Test: CLIAnswerDrainTests.mailAnswerIsPrintedBeforeExit. Follow-up commit 5ca8edf is the review fix of ^hd44hre.'
+  timestamp: 2026-09-26T20:02:04.421918+00:00
 position_column: todo
 position_ordinal: 8b80
 title: 'CLI demo: print the answer that mail starts after a background run settles'

@@ -1,8 +1,19 @@
 ---
 assignees:
 - claude-code
+comments:
+- actor: claude-code
+  id: 01m3fmt8dhm0d8zpby9y2tzn3x
+  text: |-
+    Scope change (2026-09-26), from user decision: discovery takes metadata-registry seams (task 01M3FMSTTSP16K9AE7JKZAEFGZ, which this task now depends on). Thus:
+    - The discovery library (`Sources/FoundationModelsMultitool/Discovery/`) must not name `GenerationQueueError`. Make discovery show ANY error of the librarian session and of the sample session as a visible tool error or note, not as a silent empty selection or a silent `nil` (`SampleSnippet.swift` `try?`). Test this with a stub `AgentSession` that throws.
+    - The Router-specific text is in the CLI adapter in `Sources/MultitoolCLI/` (the moved `RoutedAgentSession`). It maps `GenerationQueueError.waitInsideOpenSubmission` to an error whose text says that the librarian model must be different from the model of the calling session. Test this in the adapter's own suite.
+    - The `demoProfile` flash model change (`CLIRunner.flashModel`, `agentFlashModel = CLIRunner.flashModel`, the no-overlap unit test) stays as written.
+    - Also correct the comments that still name `turnLock` / `generationGate` about the same-model deadlock: `Sources/FoundationModelsMultitool/Discovery/SearchToolsTool.swift:336-356` (or where they are after the move) and `Sources/MultitoolCLI/CLIRunner.swift:464`. Task ^b1a2yqb recorded these.
+  timestamp: 2026-09-26T19:59:29.201172+00:00
 depends_on:
 - 01M3EVK4VR545ABV6R9YHFQH76
+- 01M3FMSTTSP16K9AE7JKZAEFGZ
 position_column: todo
 position_ordinal: '8280'
 title: Give demoProfile a flash model that is not the standard model, and report a same-model searchTools call clearly

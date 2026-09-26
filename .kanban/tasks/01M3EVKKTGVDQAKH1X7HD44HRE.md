@@ -34,10 +34,20 @@ comments:
     - review: findings — 6 findings (review sha HEAD~1..HEAD): CLIRunner.swift:639 disallowed-constructs-swift (no_direct_standard_out_logs); CLIAnswerDrainTests.swift:300, :303, :307, :359 magic-numbers-swift; CLIAnswerDrainTests.swift:418 reuse/reuse (DrainOutputCollector duplicates OutputCollector)
     - next: implement the 6 findings
   timestamp: 2026-09-26T19:51:53.359142+00:00
+- actor: claude-code
+  id: 01m3fmyw5d5sgnzathqbmz76mz
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — 6 findings done: CLIRunner.run default output is CLIRunner.standardOutput (FileHandle) in place of print(_:); OutputCollector moved to Tests/Support/MultitoolTestSupport/OutputCollector.swift and the copies in CLIArgumentTests.swift, CLISmokeTests.swift and CLIAnswerDrainTests.swift removed; each numeric value of the CLIAnswerDrainTests fixtures has a name.
+    - test: green — swift build --build-tests: no compiler warnings; swift test: 1794 tests in 144 suites passed, 0 failed, 0 skipped.
+    - commit: changed — 5ca8edf refactor(cli): write lines through FileHandle, and share OutputCollector in MultitoolTestSupport
+    - review: clean — review sha HEAD~1..HEAD: 0 findings; all 6 prior findings checked. Task moved to done.
+    - discovery: `swift build --build-tests --package-path IntegrationTests` fails before it reaches CLISmokeTests.swift, in library files that this change did not touch (MultiTool+SandboxGlobals.swift:423 `WaitOutcome` has no member `cancelled`; MultiTool+SubmissionBoundary.swift:27 cannot find `SubmissionBoundaryTool`). The nested package resolves an older Router revision. The CLISmokeTests.swift change (use of the shared OutputCollector through `@testable import MultitoolTestSupport`) is not compiled yet for this reason.
+  timestamp: 2026-09-26T20:02:00.493981+00:00
 depends_on:
 - 01M3EVK4VR545ABV6R9YHFQH76
-position_column: review
-position_ordinal: '80'
+position_column: done
+position_ordinal: fff180
 title: 'CLI: take the reply from the answered event, report answerFailed, and wait for mail-started answers before exit'
 ---
 ## What
