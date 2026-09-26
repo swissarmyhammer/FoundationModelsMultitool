@@ -32,7 +32,17 @@ actor HangingTransport: Transport {
 
     /// Never returns, and does not respond to cancellation.
     func connect() async throws {
-        await withCheckedContinuation { (_: CheckedContinuation<Void, Never>) in
+        await Self.hangForever()
+    }
+
+    /// Suspends the calling task for good — the hang of this double, shared
+    /// with a peer that must make no progress. A scripted tool whose handler
+    /// calls this is a server that never answers the request and ignores
+    /// cancellation.
+    ///
+    /// - Returns: Never. The continuation is never resumed.
+    static func hangForever() async -> Never {
+        await withCheckedContinuation { (_: CheckedContinuation<Never, Never>) in
             // Never resumed: this is the point.
         }
     }

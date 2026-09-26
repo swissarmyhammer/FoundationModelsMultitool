@@ -103,6 +103,22 @@ struct MCPServerCallTests {
     /// test proves it bounds real time.
     private static let bareCallTimeout = Duration.milliseconds(50)
 
+    /// The name of the tool that never answers and ignores cancellation.
+    private static let hangingToolName = "hangs"
+
+    /// The inner-call bound of the context case, in seconds — short, because
+    /// the test proves it bounds real time.
+    private static let innerCallBoundSeconds: TimeInterval = 0.05
+
+    /// The inner-call mount of the context case: the mount of
+    /// `RunBinding.innerCallMount`, with the short bound injected.
+    private static let shortInnerCallMount = ToolMount(
+        mode: .runToCompletion, timeout: innerCallBoundSeconds)
+
+    /// The latest a bounded call may end. The hanging tool never answers, so
+    /// a call that ends at all before this proves the bound ended it.
+    private static let promptReturnBound = Duration.seconds(5)
+
     /// How many terminal events one run posts.
     private static let terminalEventCount = 1
 
@@ -159,6 +175,19 @@ struct MCPServerCallTests {
             answering: CallTool.Result(
                 content: [.text(text: failingToolText, annotations: nil, _meta: nil)],
                 isError: true))
+    }
+
+    /// A scripted tool that never answers, and does not respond to
+    /// cancellation — the hang of ``HangingTransport``, on the server side of
+    /// a connected transport.
+    private static var hangingTool: ScriptedTool {
+        ScriptedTool(
+            definition: MCP.Tool(
+                name: hangingToolName, description: "Never answers.",
+                inputSchema: JSONSchemaBuilder.emptySchema)
+        ) { _ in
+            await HangingTransport.hangForever()
+        }
     }
 
     /// The progress-reporting tool of the short progress cases.
@@ -357,6 +386,38 @@ struct MCPServerCallTests {
         let recorded = await scripted.waitForRecordedNotifications(
             count: Self.oneNotification, timeout: Self.notificationTimeout)
         #expect(recorded.first?.method == CancelledNotification.name)
+    }
+
+    /// The file header of `MCPServer+Call.swift`: "the engine's clock ... is
+    /// what bounds every call made under a context". An inner `tools.*` call
+    /// goes through `RunBinding.invoke(_:arguments:journalOp:)`, so the bound
+    /// is the `timeout` of its inner-call mount. The server makes no progress,
+    /// so only that bound can end the call: it throws the timeout error of the
+    /// mount, and the MCP call itself ends with `notifications/cancelled` on
+    /// the wire and no entry left in flight.
+    @Test("a call under a context to a server that makes no progress ends at the inner-call bound")
+    func aCallUnderAContextEndsAtTheInnerCallBound() async throws {
+        let (scripted, server) = try await Self.connected(serving: [Self.hangingTool])
+        let binding = RunBinding(
+            context: try await makeOuterRunContext(), innerMount: Self.shortInnerCallMount)
+        let start = ContinuousClock.now
+
+        let thrown = await MCPCallProbe.thrownError {
+            _ = try await binding.invoke(
+                Self.probe(server, tool: Self.hangingToolName), arguments: NoArguments())
+        }
+
+        let elapsed = ContinuousClock.now - start
+        #expect(
+            thrown as? ToolMountError
+                == .timedOut(tool: MCPCallProbeTool.probeName, timeoutSeconds: Self.innerCallBoundSeconds),
+            "thrown was: \(String(describing: thrown))")
+        #expect(elapsed >= .seconds(Self.innerCallBoundSeconds), "elapsed was: \(elapsed)")
+        #expect(elapsed < Self.promptReturnBound, "elapsed was: \(elapsed)")
+        let recorded = await scripted.waitForRecordedNotifications(
+            count: Self.oneNotification, timeout: Self.notificationTimeout)
+        #expect(recorded.first?.method == CancelledNotification.name)
+        #expect(await server.inFlightCalls.isEmpty)
     }
 
     // MARK: - The progress cases of OperationEventsTests
