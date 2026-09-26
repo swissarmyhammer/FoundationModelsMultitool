@@ -44,9 +44,9 @@ allows:
 - `status()` and `cancel()` are the **background runs**, which carry
   envelopes and outcomes only. A finished run reports its terminal event —
   the short report the tool returned plus the run's identifier. Router carries
-  that report whole, so each tool keeps its own report short (`BackgroundTool`);
-  `runCode` caps its report at `MultiToolConfiguration.returnValueCharacterLimit`
-  and `consoleCharacterLimit`. `status()` reports
+  that report whole, so each tool keeps its own report short (`BackgroundTool`).
+  The caps are listed in "The detail of a finished background run" below.
+  `status()` reports
   a running run's token, op, kind, and latest progress, never its output. An
   unknown completion token is a reportable no-op, not a throw: one snippet
   cannot probe another session's tokens, because the mailbox it reaches is
@@ -144,6 +144,32 @@ as it gets file access from the files capability. The web verbs are such tools.
   (`MultiToolConfiguration.consoleCharacterLimit`, default 2,000 characters)
   — `ResultRenderer` truncates and appends a visible note rather than
   flooding the model's context with a fat result.
+
+### The detail of a finished background run
+
+A finished background run comes back to the model as mail, and the mail
+carries the `detail` of the terminal event of the run. Router does not cut
+that detail (Router commit `f3b72f5` removed its tail cut). Thus the caps of
+this package are the only bound on it:
+
+- **`runCode`.** The detail is the rendered result of the snippet.
+  `ResultRenderer` cuts the serialized return value to
+  `MultiToolConfiguration.returnValueCharacterLimit` (default
+  `ResultRendererLimits.defaultReturnValueCharacterLimit`, 4,000 characters),
+  and it cuts the console output to
+  `MultiToolConfiguration.consoleCharacterLimit` (default
+  `ResultRendererLimits.defaultConsoleCharacterLimit`, 2,000 characters). Each
+  cut adds one note line that gives the length before the cut.
+- **`tools.shell.execute`.** The detail is the report of the command. The
+  report holds only the last `Execute.tailLineCount` (32) lines of the output,
+  but one line has no length limit. `ResultRenderer` cuts the rendered report
+  to `ResultRendererLimits.default.returnValueCharacterLimit` (4,000
+  characters), and adds the same note line. The report keys are sorted, so
+  `commandID` comes first and stays in the kept part. The model can read the
+  full output with `tools.shell.getLines`.
+
+`MultiToolExecutionTests` and `ShellExecuteTests` prove each bound with a run
+that writes ten times too much output.
 
 Turn budgeting is no longer this package's to bound: the retired hand-rolled
 ReAct loop's `maxAgentTurns`/`maxRepairTurns` knobs were removed with it, and

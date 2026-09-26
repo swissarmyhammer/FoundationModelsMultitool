@@ -157,6 +157,15 @@ public enum ResultRenderer {
     /// the model inside rendered text, so no other module needs to read it.
     static let truncationMarker = "truncated"
 
+    /// The text between the return value and the console output of a rendered
+    /// result.
+    ///
+    /// The only place it is written: ``render(_:limits:notice:)`` puts it in,
+    /// and `FoundationModelsMultitoolTests` reads it here to split a rendered
+    /// result into its two capped sections. `internal` for the reason
+    /// ``truncationMarker`` gives.
+    static let consoleSectionSeparator = "\n\nConsole output:\n"
+
     /// Renders a successful `InterpreterResult` as the text handed back to the
     /// model.
     ///
@@ -188,7 +197,7 @@ public enum ResultRenderer {
             limit: limits.consoleCharacterLimit,
             label: "console output"
         )
-        return "\(returnValueText)\n\nConsole output:\n\(consoleText)\(noticeSection)"
+        return returnValueText + Self.consoleSectionSeparator + consoleText + noticeSection
     }
 
     /// Renders a thrown `InterpreterError` as a repairable error: what kind of

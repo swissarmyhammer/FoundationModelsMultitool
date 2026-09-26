@@ -1,12 +1,31 @@
 ---
 assignees:
 - claude-code
+comments:
+- actor: claude-code
+  id: 01m3fjpsht08p4sta1nh9q0qqe
+  text: |-
+    Research:
+    - runCode: the terminal detail is the text runCode returns. `ResultRenderer.render(_:limits:notice:)` cuts the serialized return value to `limits.returnValueCharacterLimit` and the joined console output to `limits.consoleCharacterLimit`, and adds one note line `[truncated: ...]` after each cut. The limits come from `MultiToolConfiguration.resultLimits` (defaults 4,000 and 2,000).
+    - Shell: `Execute.report(of:in:)` posts the same text it returns as the terminal detail. `Execute.rendered(_:)` goes through `ResultRenderer.render` with `ResultRendererLimits.default`, so the whole shell report is cut to `ResultRendererLimits.default.returnValueCharacterLimit` (4,000). The tail is also limited to `Execute.tailLineCount` (32) lines, but each line has no length limit; the character cap is the real bound. The report keys are sorted, so `commandID` comes first and stays in the kept part after a cut.
+    - Thus the shell detail already has a Multitool-owned cap. No new constant is necessary. The tests prove the cap for both paths; docs/SECURITY.md gets the names.
+    - Test harness: `makeOuterRunContext()` + `context.mount(...)` + `context.wait(completionToken:seconds:)` (the Router context API, not the removed tool) gives the terminal event.
+  timestamp: 2026-09-26T19:22:38.522508+00:00
+- actor: claude-code
+  id: 01m3fjx30hryer15vfewpcg0ns
+  text: |-
+    ### implement — changed
+    - evidence: 6 files — Sources/FoundationModelsMultitool/Rendering/ResultRenderer.swift (named `consoleSectionSeparator`), Sources/FoundationModelsMultitool/Capabilities/Shell/Execute.swift (doc comment names the cap on the detail), Tests/FoundationModelsMultitoolTests/Fixtures/TerminalDetailFixtures.swift (new), Tests/FoundationModelsMultitoolTests/MultiToolExecutionTests.swift (runCode case), Tests/FoundationModelsMultitoolTests/ShellExecuteTests.swift (shell case), docs/SECURITY.md (new section "The detail of a finished background run").
+    - The shell detail already had a cap: `ResultRendererLimits.default.returnValueCharacterLimit`, through `Execute.rendered(_:)`. No new constant was necessary.
+    - test: `swift build --build-tests && swift test` — 1788 tests in 144 suites passed, 0 failed, 0 skipped, no compiler warning.
+    - next: commit
+  timestamp: 2026-09-26T19:26:04.817704+00:00
 depends_on:
 - 01M3EVK4VR545ABV6R9YHFQH76
 - 01M3EVKX9JFDWDQR297Q4JRND0
 - 01M3EVMDF9BZTNFR16F11CFNX0
-position_column: todo
-position_ordinal: '8180'
+position_column: doing
+position_ordinal: '80'
 title: Prove that the detail of a finished background run that becomes mail has a bound
 ---
 ## What

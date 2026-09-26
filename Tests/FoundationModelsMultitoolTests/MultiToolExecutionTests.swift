@@ -501,4 +501,58 @@ struct MultiToolExecutionTests {
         #expect(collector.detail?.contains(mailProbeResultCode) == false)
         #expect(Self.laterPromptsCarryingTheResult(all).count == 1)
     }
+
+    // MARK: - The detail of a settled background run has a bound
+
+    /// How many times its cap the overlong snippet writes to each section.
+    private static let overflowFactor = 10
+
+    /// The caps the overlong snippet runs against: the stock ones.
+    private static let overflowConfiguration = MultiToolConfiguration(inlineSettleGrace: 0)
+
+    /// How many sections the detail of the overlong snippet holds: the return
+    /// value, and the console output.
+    private static let renderedSectionCount = 2
+
+    /// How much of a detail a failure message shows. The whole detail is many
+    /// thousand characters, which would hide the reason for the failure.
+    private static let failureExcerptLength = 200
+
+    /// A snippet that logs ``overflowFactor`` times the console cap and
+    /// returns ``overflowFactor`` times the return value cap. It calls no
+    /// tool, thus its detail holds the two capped sections and nothing more.
+    private static var overlongSnippet: String {
+        let logged = overflowConfiguration.consoleCharacterLimit * overflowFactor
+        let returned = overflowConfiguration.returnValueCharacterLimit * overflowFactor
+        return "console.log(\"c\".repeat(\(logged))); return \"r\".repeat(\(returned));"
+    }
+
+    /// Router commit f3b72f5 removed its tail cut of a run's `detail`, and the
+    /// detail comes back to the model as mail. Thus `ResultRenderer` is the
+    /// only bound on the detail of a background `runCode`: each section it
+    /// cuts keeps at most its named cap.
+    @Test("the detail of a background runCode with ten times too much output keeps each section within its named cap")
+    func overlongBackgroundRunCodeDetailStaysWithinTheCaps() async throws {
+        let context = try await makeOuterRunContext()
+        let runCode = MultiTool(
+            registry: try MultiTool.Builder().addTool(TempTool()).buildRegistry(),
+            configuration: Self.overflowConfiguration
+        )
+        let mounted = try #require(
+            context.mount(runCode, as: .synchronous) as? any Tool<RunCodeArguments, String>)
+
+        let envelope = try mailProbeEnvelope(
+            try await mounted.call(arguments: RunCodeArguments(code: Self.overlongSnippet)))
+        let terminal = try await TerminalDetail.settledEvent(
+            of: envelope.completionToken, in: context)
+
+        let sections = terminal.detail.components(separatedBy: ResultRenderer.consoleSectionSeparator)
+        try #require(
+            sections.count == Self.renderedSectionCount,
+            "detail began: \(terminal.detail.prefix(Self.failureExcerptLength))")
+        let returned = try #require(TerminalDetail.keptText(of: sections[0]))
+        let logged = try #require(TerminalDetail.keptText(of: sections[1]))
+        #expect(returned.count <= Self.overflowConfiguration.returnValueCharacterLimit)
+        #expect(logged.count <= Self.overflowConfiguration.consoleCharacterLimit)
+    }
 }

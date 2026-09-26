@@ -545,6 +545,12 @@ extension Execute {
     /// `execute` answer is capped and shaped exactly as a `runCode` return
     /// value is, and the model reads one format for both.
     ///
+    /// This cap, `ResultRendererLimits.default.returnValueCharacterLimit`, is
+    /// the one bound on the terminal detail of a background run. The tail
+    /// holds only ``tailLineCount`` lines, but one line has no length limit,
+    /// and Router carries the detail to the model as mail with no cut of its
+    /// own. The sorted keys put `commandID` first, thus a cut keeps it.
+    ///
     /// - Parameter value: The answer to render.
     /// - Returns: The verb's output text.
     private static func rendered(_ value: InterpreterValue) -> String {

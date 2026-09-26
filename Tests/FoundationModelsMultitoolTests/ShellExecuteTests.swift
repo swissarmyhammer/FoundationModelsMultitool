@@ -584,6 +584,43 @@ struct ShellExecuteTests {
         #expect(await state.record(commandID: going.completionToken)?.status == .killed)
     }
 
+    /// How many times the cap on the report the overlong command writes.
+    private static let overflowFactor = 10
+
+    /// How many lines the overlong command writes. It is the number of lines
+    /// the tail of a report holds, thus every line of the output goes into
+    /// the report before the cap cuts it.
+    private static let overlongLineCount = 32
+
+    /// The length of one line of the overlong command. The lines together are
+    /// ``overflowFactor`` times the cap on the report.
+    private static let overlongLineLength =
+        ResultRendererLimits.default.returnValueCharacterLimit * overflowFactor / overlongLineCount
+
+    /// Router commit f3b72f5 removed its tail cut of a run's `detail`, and the
+    /// detail comes back to the model as mail. The tail of the report holds a
+    /// fixed count of lines, but a line has no length limit. Thus the cap of
+    /// `ResultRenderer` on the rendered report is the bound on the detail, and
+    /// the `commandID` stays in the kept part, so the model can still read the
+    /// rest with `tools.shell.getLines`.
+    @Test("the detail of a background run with ten times too much output stays within the report cap and keeps the commandID")
+    func anOverlongBackgroundRunGivesADetailWithinTheCap() async throws {
+        let state = try makeState()
+        let context = try await makeOuterRunContext()
+        let engine = ShellRunPlane.mounted(makeVerb(over: state), inheriting: context)
+        let command =
+            "for i in $(seq \(Self.overlongLineCount)); do printf '%0\(Self.overlongLineLength)d\\n' 0; done"
+
+        let output = try await engine.call(arguments: ExecuteArguments(command: command))
+        let envelope = try JSONDecoder().decode(PendingRunEnvelope.self, from: Data(output.utf8))
+        let terminal = try await TerminalDetail.settledEvent(
+            of: envelope.completionToken, in: context)
+
+        let kept = try #require(TerminalDetail.keptText(of: terminal.detail))
+        #expect(kept.count <= ResultRendererLimits.default.returnValueCharacterLimit)
+        #expect(kept.contains(envelope.completionToken), "kept part was: \(kept.prefix(Self.overlongLineLength))")
+    }
+
     // MARK: - The corrective answers
 
     @Test("a blank command answers with a correction and runs nothing")
