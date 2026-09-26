@@ -473,10 +473,27 @@ title. It does not assert a rank, a snippet, or a count of more than 3. A
 test does not retry. When Brave changes its markup, `BraveHTMLLiveTests`
 fails. That failure is the signal that we want.
 
+**The DuckDuckGo challenge page. (Decided, 2026-09-26.)** After many requests
+in a short time from one address, DuckDuckGo can serve its challenge page and
+not the results. Then the search gives the correction "duckDuckGoHTML: blocked
+by a challenge page." This is a known condition of the live service. It is not
+markup drift, and it is not a defect of the provider. Thus:
+
+- A challenge page is a known condition, not a failure.
+  `DuckDuckGoHTMLLiveTests` records it with `withKnownIssue`. The match is
+  narrow: only an issue with the exact text of the challenge correction is
+  known. A run with no challenge page passes.
+- Each other correction still fails the test. Examples: a markup change, no
+  results, a hit on a wrong host.
+- A test does not retry. The assertion rule stays true.
+- In CI, the DuckDuckGo live suite runs only on the daily `schedule` trigger.
+  It does not run on `push` or `pull_request`. This keeps the rate of
+  DuckDuckGo requests from one runner address low. See "CI".
+
 | Suite | Tests |
 |---|---|
 | `BraveHTMLLiveTests` | Providers `[.braveHTML]` only. Query `swift programming language`: at least 3 hits, each URL is `https`, a hit host is `swift.org` or ends in `.swift.org`. Query with `site: "developer.apple.com"`: each hit host ends in `apple.com`. |
-| `DuckDuckGoHTMLLiveTests` | The same two tests, with `[.duckDuckGoHTML]` only. |
+| `DuckDuckGoHTMLLiveTests` | The same two tests, with `[.duckDuckGoHTML]` only. A challenge page is a known issue, and each other correction fails. See "The DuckDuckGo challenge page". |
 | `KeylessChainLiveTests` | `.keyless`: the query gives hits, and `provider` is one of the two keyless names. |
 | `FetchLiveTests` | `https://example.com`: title `Example Domain`, content contains `Example Domain`. `http://github.com`: final `url` starts with `https://github.com`. `https://en.wikipedia.org/wiki/Swift_(programming_language)` with `maxCharacters: 2000`: `nextOffset` is set; a second call with that offset gives the next text and no second download (cache). `https://api.github.com/zen`: `contentType` is `text/plain`, content is not empty. `https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf`: correction for a binary type. |
 | `GuardLiveTests` | `http://localtest.me/` (a public DNS name that resolves to `127.0.0.1`): the correction names the loopback address. This proves that the guard checks the resolved address, not only the host name. `http://169.254.169.254/latest/meta-data/`: correction. |
@@ -512,6 +529,9 @@ fails. That failure is the signal that we want.
   `IntegrationTests/Package.swift` asks for. This is a change from the first
   design, which put the build step in the unit job of the shared
   `swift-ci.yaml`: that workflow has only one package-path input.
+- `DuckDuckGoHTMLLiveTests` runs only on the `schedule` trigger. On `push` and
+  `pull_request`, the test step does not run it. See "The DuckDuckGo challenge
+  page" in Level 2.
 - The job maps the repository secrets `BRAVE_SEARCH_API_KEY`,
   `TAVILY_API_KEY`, `EXA_API_KEY`, `SERPER_API_KEY`, `KAGI_API_KEY` to
   environment variables. It sets `MULTITOOL_WEB_EXPECTED_PROVIDERS` to the

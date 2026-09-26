@@ -22,9 +22,11 @@ Run the web live package in CI. Design: `web.md` § "Testing / CI".
 ## Acceptance Criteria
 - [ ] `.github/workflows/web.yml` has the four triggers, the build line, the test line with `--no-parallel`, each of the five secret mappings, and the `MULTITOOL_WEB_EXPECTED_PROVIDERS` line.
 - [ ] `ci.yml` has no change, and the existing `CIWorkflowTests` pass.
+- [ ] The DuckDuckGo live suite (`DuckDuckGoHTMLLiveTests`) runs only on the `schedule` trigger. It does not run on `push` or `pull_request`. Decision of 2026-09-26, recorded in `web.md` § "Testing", Level 2, "The DuckDuckGo challenge page", and § "CI" (task ^zfah7d8).
 
 ## Tests
 - [ ] Create `Tests/FoundationModelsMultitoolTests/WebWorkflowTests.swift`, modelled on `CIWorkflowTests.swift` (read the file with `RepositoryFile.read(relativePath: ".github/workflows/web.yml")`). Pin: `cron:`, `pull_request`, the build line, the test line, each secret mapping, the `MULTITOOL_WEB_EXPECTED_PROVIDERS` line, and that the job has no `needs:` line.
+- [ ] In `WebWorkflowTests`, pin that the DuckDuckGo live suite runs only on the `schedule` trigger, and not on `push` or `pull_request`. For example: the test line for `push` and `pull_request` has `--skip DuckDuckGoHTMLLiveTests`, and the step that runs `DuckDuckGoHTMLLiveTests` has the condition `github.event_name == 'schedule'`.
 - [ ] Run `swift test --filter "WebWorkflowTests|CIWorkflowTests"`. All pass. Then run `swift test`.
 
 ## Workflow

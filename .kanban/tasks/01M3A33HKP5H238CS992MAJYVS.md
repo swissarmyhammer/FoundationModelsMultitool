@@ -75,10 +75,26 @@ comments:
     - note: one warning found: `missing creator for mutated node (...mlx-swift_Cmlx.bundle/Contents/MacOS)`. This comes from the vendored mlx-swift package build step, not from this repository's code. It is reported, not treated as red.
     - next: none. The build is clean.
   timestamp: 2026-09-26T12:12:00.171324+00:00
+- actor: claude-code
+  id: 01m3etc8wdjj04w1wpen0n0nnk
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit e725bc5). 0 findings, 0 confirmed, 1 refuted. 5 files reviewed. 6 `.kanban/` files not reviewed (excluded by `.reviewignore`). The task has no prior `## Review Findings` section.
+    - next: none. The task moved to done.
+  timestamp: 2026-09-26T12:17:27.949949+00:00
+- actor: claude-code
+  id: 01m3etckct6b5d6gbv2vfadmsr
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — 2 files (DuckDuckGo challenge page recorded as a known issue, narrow match)
+    - test: green — root swift test 1790 passed; IntegrationTests build passes; WebIntegrationTests 5 passed, 2 known issues (challenge page)
+    - commit: e725bc5
+    - review: clean — 0 findings (1 refuted); the task is in done
+  timestamp: 2026-09-26T12:17:38.714510+00:00
 depends_on:
 - 01M3A32XTTF1JWYSA9GPDZP3KQ
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffe480
 title: 'Web: create the WebIntegrationTests package with keyless live search tests'
 ---
 ## What
