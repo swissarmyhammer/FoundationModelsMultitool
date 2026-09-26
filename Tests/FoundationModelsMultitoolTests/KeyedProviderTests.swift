@@ -26,7 +26,8 @@ struct KeyedProviderTests {
 
     /// A documented error status and the failure that it maps to.
     private static let statusFailures: [(status: Int, failure: ProviderFailure)] = [
-        (401, .badKey), (403, .badKey), (429, .rateLimited), (500, .serverError(500)), (503, .serverError(503))
+        (401, .badKey(401)), (403, .badKey(403)), (429, .rateLimited), (500, .serverError(500)),
+        (503, .serverError(503))
     ]
 
     /// A status that the error map does not name: a payment or plan limit.

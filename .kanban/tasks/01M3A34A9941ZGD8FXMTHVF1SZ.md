@@ -12,6 +12,10 @@ comments:
   id: 01m3eybhap2bw2ytxpb62c9j23
   text: 'Note from ^gf2geha (2026-09-26): the live web suites are now in `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Web/`. `ci.yml` runs the whole `IntegrationTests` package in its integration job on `push` and `pull_request`, thus that job now also runs `DuckDuckGoHTMLLiveTests`. A challenge page is a known issue there and does not fail the job, but the "schedule only" decision needs a change (for example a skip of that suite in the `ci.yml` integration run, if the shared `swift-ci.yaml` can pass one). `ci.yml` already builds `IntegrationTests` in its unit job on each run, thus the compile coupling of the web suites is already there. `web.md` § "CI" now states this.'
   timestamp: 2026-09-26T13:26:58.134370+00:00
+- actor: claude-code
+  id: 01m3f1jnzf20m77zrqm3nqhh7d
+  text: Note from ^wcz6nmr (2026-09-26). The user decision on ^wcz6nmr removes `ExpectedProvidersTests`. No test reads `MULTITOOL_WEB_EXPECTED_PROVIDERS` now. Thus the `MULTITOOL_WEB_EXPECTED_PROVIDERS` line of this card (and the last bullet of web.md § "Testing / CI") has no reader. Also, `KeyedProviderLiveTests` (six tests) ALWAYS runs and FAILS when its key variable is not set. `KeyedFallbackLiveTests` needs no key. The Level 2 `--filter` in web.md does not name `KeyedProviderLiveTests` or `KeyedFallbackLiveTests` yet. A person must decide which of the two keyed suites this workflow runs, and which secrets it maps, before this card starts. ^wcz6nmr did not change web.md § "CI".
+  timestamp: 2026-09-26T14:23:17.999477+00:00
 depends_on:
 - 01M3A33HKP5H238CS992MAJYVS
 - 01M3A3FMG0S72N2Q515319Z6S4

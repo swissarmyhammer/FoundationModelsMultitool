@@ -139,8 +139,10 @@ struct WebSearchChain: Sendable {
     /// Reads the hits of one response.
     ///
     /// The status comes first: 401, 403, 429, and 5xx are failures before
-    /// the adapter reads the body. An adapter that gives an empty list gives
-    /// ``ProviderFailure/noResults``.
+    /// the adapter reads the body. The adapter reads each other status, thus
+    /// it can map a status that only its service uses, for example the HTTP
+    /// 422 of a refused Brave Search API key. An adapter that gives an empty
+    /// list gives ``ProviderFailure/noResults``.
     ///
     /// - Parameters:
     ///   - body: The body and the facts of the response.
@@ -243,7 +245,7 @@ private extension ProviderFailure {
     /// `blocked (HTTP 429)`.
     var reason: String {
         switch self {
-        case .badKey: "the API key was refused"
+        case .badKey(let status): "the API key was refused (HTTP \(status))"
         case .rateLimited: "blocked (HTTP 429)"
         case .serverError(let status): "server error (HTTP \(status))"
         case .challenge: "blocked by a challenge page"

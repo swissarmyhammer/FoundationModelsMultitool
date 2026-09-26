@@ -156,8 +156,10 @@ struct WebHit: Sendable, Equatable {
 ///
 /// Each case sends the chain to the next provider.
 enum ProviderFailure: Error, Sendable, Equatable {
-    /// The service refused the API key (HTTP 401 or 403).
-    case badKey
+    /// The service refused the API key, with this HTTP status: 401 or 403,
+    /// or a status that only one provider uses for a refused key (for
+    /// example 422 of the Brave Search API).
+    case badKey(Int)
 
     /// The service refused the request because of its rate limit (HTTP 429).
     case rateLimited
@@ -191,11 +193,11 @@ enum ProviderFailure: Error, Sendable, Equatable {
     /// the body.
     ///
     /// - Parameter status: The HTTP status of the response.
-    /// - Returns: ``badKey`` for 401 and 403, ``rateLimited`` for 429,
+    /// - Returns: ``badKey(_:)`` for 401 and 403, ``rateLimited`` for 429,
     ///   ``serverError(_:)`` for 5xx, else `nil`.
     init?(status: Int) {
         switch status {
-        case Self.unauthorizedStatus, Self.forbiddenStatus: self = .badKey
+        case Self.unauthorizedStatus, Self.forbiddenStatus: self = .badKey(status)
         case Self.tooManyRequestsStatus: self = .rateLimited
         case Self.serverErrorStatuses: self = .serverError(status)
         default: return nil

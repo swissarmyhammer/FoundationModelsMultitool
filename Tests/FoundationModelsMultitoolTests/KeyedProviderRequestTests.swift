@@ -25,6 +25,9 @@ struct KeyedProviderRequestTests {
     /// The documented maximum count of Brave and Tavily.
     private static let braveAndTavilyMaximum = 20
 
+    /// The status of the Brave answer to a token that is not valid.
+    private static let braveInvalidTokenStatus = 422
+
     /// The documented maximum count of Exa.
     private static let exaMaximum = 100
 
@@ -102,6 +105,14 @@ struct KeyedProviderRequestTests {
     func braveNoWebObject() throws {
         let body = Data("{\"type\": \"search\", \"query\": {\"original\": \"x\"}}".utf8)
         #expect(throws: ProviderFailure.noResults) { try KeyedProviderCase.braveAPI.parse(body) }
+    }
+
+    @Test("a Brave answer of HTTP 422 with SUBSCRIPTION_TOKEN_INVALID gives .badKey with the status")
+    func braveInvalidTokenIsBadKey() {
+        let body = Data("{\"error\": {\"code\": \"SUBSCRIPTION_TOKEN_INVALID\", \"status\": 422}}".utf8)
+        #expect(throws: ProviderFailure.badKey(Self.braveInvalidTokenStatus)) {
+            try KeyedProviderCase.braveAPI.parse(body, status: Self.braveInvalidTokenStatus)
+        }
     }
 
     @Test("a Brave result with a null description gives an empty snippet")

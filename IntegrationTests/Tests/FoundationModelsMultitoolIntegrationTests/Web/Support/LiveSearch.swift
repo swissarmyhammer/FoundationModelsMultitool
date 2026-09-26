@@ -64,11 +64,17 @@ enum LiveSearch {
     /// - Parameters:
     ///   - providers: The providers, in the order to try.
     ///   - site: The one host of the hits, or `nil` for all hosts.
+    ///   - environment: The environment dictionary that each `.environment`
+    ///     key reads. The default is empty, thus a keyless search reads no
+    ///     environment.
     /// - Returns: The result of the `search` verb for ``swiftQuery``.
     /// - Throws: When the verb throws. The verb must not throw.
-    static func search(providers: [WebSearchProvider], site: String? = nil) async throws -> SearchResult {
+    static func search(
+        providers: [WebSearchProvider], site: String? = nil, environment: [String: String] = [:]
+    ) async throws -> SearchResult {
         let configuration = WebConfiguration(
-            providers: providers, fetch: WebFetchPolicy(searchTimeout: searchTimeoutSeconds))
+            providers: providers, fetch: WebFetchPolicy(searchTimeout: searchTimeoutSeconds),
+            environment: environment)
         let context = WebContext(
             configuration: configuration, sessionConfiguration: makeSessionConfiguration())
         return try await WebVerbCall.search(swiftQuery, site: site, context: context)
@@ -175,6 +181,26 @@ enum LiveSearch {
         guard let correction = result.correction else { return true }
         Issue.record(correctionComment(correction), sourceLocation: sourceLocation)
         return false
+    }
+
+    /// Records one failure when a part of a result holds a secret text, for
+    /// example an API key value.
+    ///
+    /// The parts are the title, the URL, and the snippet of each hit, each
+    /// note, and the correction. The failure comment gives the number of
+    /// parts that hold the secret, and does not show the secret.
+    ///
+    /// - Parameters:
+    ///   - secret: The text that must not be in the result. It is not empty.
+    ///   - result: The result of the `search` verb.
+    ///   - sourceLocation: The location of the call, for the failure record.
+    static func expectNoLeak(
+        of secret: String, in result: SearchResult, sourceLocation: SourceLocation = #_sourceLocation
+    ) {
+        let hitTexts = result.results.flatMap { hit in [hit.title, hit.url, hit.snippet] }
+        let texts = hitTexts + (result.notes ?? []) + [result.correction ?? ""]
+        let leakCount = texts.filter { $0.contains(secret) }.count
+        #expect(leakCount == 0, "the secret is in \(leakCount) parts of the result", sourceLocation: sourceLocation)
     }
 
     /// The comment of the failure that a correction records.

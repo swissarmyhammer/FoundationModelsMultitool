@@ -83,8 +83,24 @@ comments:
     - evidence: `swift test` (root) — 1793 tests passed, 0 failed, 0 skipped, 0 warnings. `swift build --build-tests --package-path IntegrationTests` (clean build) — build complete, 0 errors, 0 warnings in this repository. It found 5 warnings in the vendored `mlx-swift` dependency under `.build/checkouts`. That code is not part of this repository. `swift test --package-path IntegrationTests --no-parallel --filter "BraveHTMLLiveTests|DuckDuckGoHTMLLiveTests|KeylessChainLiveTests|FetchLiveTests|GuardLiveTests|WebRunCodeLiveTests"` — 13 tests passed in 6 suites, with 2 known issues (the DuckDuckGo challenge page). The user's decision of 2026-09-26 says this known issue is not a failure.
     - next: none. The build is clean.
   timestamp: 2026-09-26T14:04:45.842774+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m3f0rdjax6a8ynrb67yjgeqn
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit d6af127). 0 findings, 0 confirmed, 0 refuted. The review examined 8 files. The ignore rule excluded 2 `.kanban/` files. The review did not decline a `Web/` file, thus a file-scoped review was not necessary. The 2 prior findings are checked: `Web/DuckDuckGoHTMLLiveTests.swift:60` `swift/idioms` and `Web/Support/LiveSearch.swift:84` `reuse/reuse`.
+    - next: The task is in done. No work remains.
+  timestamp: 2026-09-26T14:08:57.418395+00:00
+- actor: claude-code
+  id: 01m3f0rvhswxrhttxkfgv8t5n5
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — 8 files (shared ShortTimeoutSession, no Void closure parameters)
+    - test: green — root 1793 passed; live web suites 13 passed, 2 known issues
+    - commit: d6af127
+    - review: clean — 0 findings; 2 prior findings checked; the task is in done
+  timestamp: 2026-09-26T14:09:11.737566+00:00
+position_column: done
+position_ordinal: ffe780
 title: 'Web: merge the live web tests into IntegrationTests and remove WebIntegrationTests'
 ---
 ## What

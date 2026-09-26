@@ -5,7 +5,9 @@
 // the key in the `X-Subscription-Token` header. It reads `web.results`. The
 // `web` object is absent when the service has no web results. A description
 // holds `<strong>` markup and HTML entities, thus the provider reads it as
-// HTML and keeps only its text.
+// HTML and keeps only its text. For a token that is not valid, the service
+// answers HTTP 422 with the error code `SUBSCRIPTION_TOKEN_INVALID`, not 401 or
+// 403. The provider maps that answer to a refused key.
 
 import Foundation
 
@@ -35,6 +37,13 @@ struct BraveAPIProvider: SearchProviderAdapter {
 
     /// The counts that the service accepts.
     private static let countRange = 1...20
+
+    /// The HTTP status of the answer to a token that is not valid. The live
+    /// service gave this status on 2026-09-26.
+    private static let invalidTokenStatus = 422
+
+    /// The error code of the answer to a token that is not valid.
+    private static let invalidTokenCode = "SUBSCRIPTION_TOKEN_INVALID"
 
     /// The name of the provider: the name of the case
     /// `WebSearchProvider.braveAPI`.
@@ -72,9 +81,13 @@ struct BraveAPIProvider: SearchProviderAdapter {
     ///   - limit: The maximum number of hits, or `nil` for all hits.
     /// - Returns: The hits, with rank 1 first. The snippet is the text of the
     ///   description, with no markup.
-    /// - Throws: The failure of the status, `.noResults` for a response with
-    ///   no web results, and `.parse` when the body cannot be read.
+    /// - Throws: The failure of the status, `.badKey` for the answer to a
+    ///   token that is not valid, `.noResults` for a response with no web
+    ///   results, and `.parse` when the body cannot be read.
     func parse(_ data: Data, response: HTTPURLResponse, limit: Int?) throws(ProviderFailure) -> [WebHit] {
+        if Self.isInvalidTokenAnswer(data, status: response.statusCode) {
+            throw .badKey(response.statusCode)
+        }
         let body = try SearchProviderSupport.decodedBody(BraveResponse.self, from: data, response: response)
         let results = try (body.web?.results ?? []).map { result throws(ProviderFailure) in
             ProviderResult(
@@ -97,6 +110,36 @@ struct BraveAPIProvider: SearchProviderAdapter {
         } ?? []
         return [(name: queryItem, value: query.textWithSiteTerm)] + countItems + freshnessItems
     }
+
+    /// Tells if a response is the answer of the service to a token that is
+    /// not valid.
+    ///
+    /// The service does not answer 401 or 403 for such a token. It answers
+    /// ``invalidTokenStatus`` with the error code ``invalidTokenCode``.
+    ///
+    /// - Parameters:
+    ///   - data: The JSON body of the response.
+    ///   - status: The HTTP status of the response.
+    /// - Returns: `true` when the status is ``invalidTokenStatus`` and the
+    ///   error code of the body is ``invalidTokenCode``.
+    private static func isInvalidTokenAnswer(_ data: Data, status: Int) -> Bool {
+        guard status == invalidTokenStatus,
+            let answer = try? JSONDecoder().decode(BraveErrorResponse.self, from: data)
+        else { return false }
+        return answer.error.code == invalidTokenCode
+    }
+}
+
+/// The part of a Brave Search API error response that the provider reads.
+private struct BraveErrorResponse: Decodable {
+    /// The `error` object of a response.
+    struct Detail: Decodable {
+        /// The error code, for example `SUBSCRIPTION_TOKEN_INVALID`.
+        let code: String
+    }
+
+    /// The `error` object.
+    let error: Detail
 }
 
 /// The part of a Brave Search API response that the provider reads.

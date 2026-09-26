@@ -172,10 +172,12 @@ struct ProviderFallbackTests {
         #expect(!stub.requestedURLs.contains(Self.endpoint("braveAPI")))
     }
 
-    @Test("a refused key skips the provider with one note", arguments: [unauthorizedStatus, forbiddenStatus])
+    @Test(
+        "a refused key skips the provider with one note that names the status",
+        arguments: [unauthorizedStatus, forbiddenStatus])
     func refusedKeySkips(status: Int) async throws {
         let notes = try await Self.notesAfterFirstProvider(gets: Self.textReply("denied", status: status))
-        #expect(notes == ["braveHTML: skipped, the API key was refused."])
+        #expect(notes == ["braveHTML: skipped, the API key was refused (HTTP \(status))."])
     }
 
     @Test("a rate limit skips the provider with one note")

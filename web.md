@@ -290,15 +290,19 @@ The capability tries providers in list order. It goes to the next provider
 when a provider:
 
 - has an `.environment` key whose variable is not set now,
-- returns 401 or 403 (a bad key),
+- returns 401 or 403 (a bad key), or the status that one provider uses for a
+  bad key (the Brave Search API returns 422 with the error code
+  `SUBSCRIPTION_TOKEN_INVALID`),
 - returns 429 or 5xx,
 - returns a challenge page (HTTP 200, but no `[data-pos]` and a known
   challenge marker, for `braveHTML`),
 - returns no results,
 - does not answer in its timeout.
 
-Each skip adds one line to `notes`. When all providers fail, the result has a
-`correction` that names each provider and its failure.
+Each skip adds one line to `notes`. The note of a bad key names the HTTP
+status, for example `braveAPI: skipped, the API key was refused (HTTP 422).`
+When all providers fail, the result has a `correction` that names each
+provider and its failure.
 
 ## Fetch
 
@@ -446,6 +450,7 @@ can examine the headers.
 | `SerperKagiRequestTests` | The query fields of the Serper and Kagi requests, and the response forms that only one of the two providers has. |
 | `SearXNGRequestTests` | The documented query items, the search path under a base URL, and that the request sends no key. |
 | `SearXNGChainTests` | A chain with the SearXNG adapter at a loopback base URL sends the search request with no guard check and gives hits. |
+| `BraveAPIChainTests` | A chain with the Brave Search API adapter: HTTP 422 with `SUBSCRIPTION_TOKEN_INVALID` skips `braveAPI` with the note `braveAPI: skipped, the API key was refused (HTTP 422).` HTTP 422 with another error code gives the read-failure note. |
 | `SearchFreshnessValuesTests` | The table of the values of one provider field gives the value of each age limit from the field of that age limit. |
 | `CLIArgumentTests` | The `--web` tests in `CLIArgumentTests+Web.swift`: `--web` sets the flag and no other flag, the usage text lists `--web`, and the demo registry renders `web.search` and `web.fetch` only with `--web`. |
 | `WebDocumentationTests` | The `## Capabilities` section of `README.md` names `withWeb`, the two verbs, and each environment variable. The `## The web capability` section of `docs/SECURITY.md` holds each fixed phrase of "Security". |
@@ -505,9 +510,8 @@ markup drift, and it is not a defect of the provider. Thus:
 | `KeylessChainLiveTests` | `.keyless`: the query gives hits, and `provider` is one of the two keyless names. |
 | `FetchLiveTests` | `https://example.com`: title `Example Domain`, content contains `Example Domain`. `http://github.com`: final `url` starts with `https://github.com`. `https://en.wikipedia.org/wiki/Swift_(programming_language)` with `maxCharacters: 2000`: `nextOffset` is set; a second call with that offset gives the next text and no second download (cache). `https://api.github.com/zen`: `contentType` is `text/plain`, content is not empty. `https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf`: correction for a binary type. |
 | `GuardLiveTests` | `http://localtest.me/` (a public DNS name that resolves to `127.0.0.1`): the correction names the loopback address. This proves that the guard checks the resolved address, not only the host name. `http://169.254.169.254/latest/meta-data/`: correction. |
-| `KeyedProviderLiveTests` | Six `@Test` functions, one for each keyed provider, with a shared helper. (A Swift Testing trait applies to a whole test function, not to one argument of a parameterized test.) Each test builds `WebConfiguration.fromEnvironment()`, and takes only its provider. Each test always runs (see "The environment rule"). When its variable is not set, the test fails with a message that names the variable. Each test: query `swift programming language`, at least 3 hits, `provider` is the name of the provider, and the key value is not in the rendered result. |
-| `KeyedFallbackLiveTests` | `[.braveAPI(.literal("invalid-key")), .braveHTML]`: `provider` is `braveHTML`, `notes` names `braveAPI` with 401 or 403, and the text `invalid-key` is not in the result. |
-| `ExpectedProvidersTests` | Reads `MULTITOOL_WEB_EXPECTED_PROVIDERS` (for example `braveAPI,tavily`). Each name in it must have its key in `fromEnvironment()`. CI sets this variable, so a secret that is not configured fails CI and does not become a quiet skip. Local runs do not set it. |
+| `KeyedProviderLiveTests` | Six `@Test` functions (`braveAPI`, `tavily`, `exa`, `serper`, `kagi`, `searxng`), with a shared helper. No test has `.enabled(if:)`: each test always runs (see "The environment rule"). Each test builds `WebConfiguration.fromEnvironment()`, and takes only its provider. When its variable is not set, the test fails with a message that names the variable (`BRAVE_SEARCH_API_KEY` or `BRAVE_API_KEY`, `TAVILY_API_KEY`, `EXA_API_KEY`, `SERPER_API_KEY`, `KAGI_API_KEY`, `SEARXNG_URL`). Thus a run on a computer with no keys has six failures, and a key that is not configured cannot become a quiet skip. Each test: query `swift programming language`, at least 3 hits, `provider` is the name of the provider, and the key value is not in the hits, the notes, or the correction. |
+| `KeyedFallbackLiveTests` | `[.braveAPI(.literal("invalid-key")), .braveHTML]`: `provider` is `braveHTML`, at least 3 hits, `notes` has the refused-key note of `braveAPI` (`braveAPI: skipped, the API key was refused (HTTP <status>).`, today with status 422), and the text `invalid-key` is not in the hits, the notes, or the correction. It needs no real key, thus it can pass on a computer with no keys. |
 | `WebRunCodeLiveTests` | A real `MultiTool` with `.withWeb(configuration: .keyless)` and no model. The snippet at the top of this document runs, and returns 1 to 3 pages, each with a title and content. |
 
 ### Level 3: one real-model scenario (existing `IntegrationTests/`)

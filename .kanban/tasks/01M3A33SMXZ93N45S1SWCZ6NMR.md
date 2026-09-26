@@ -47,31 +47,68 @@ comments:
     2. Map the Brave API HTTP 422 `SUBSCRIPTION_TOKEN_INVALID` to a refused key (`.badKey`) in `BraveAPIProvider`. The refused-key note names the HTTP status, for example `braveAPI: skipped, the API key was refused (HTTP 422).`; 401 and 403 notes also name their status. `KeyedFallbackLiveTests` checks for the refused-key note that names `braveAPI`.
     This task now depends on ^gf2geha. Update this card's description to match (pass `tags: ["web"]`).
   timestamp: 2026-09-26T13:18:48.421240+00:00
+- actor: claude-code
+  id: 01m3f1k3yn7dm51539j02q8n7z
+  text: |-
+    Implementation landed (after the decision of 2026-09-26).
+    - Production: `ProviderFailure.badKey` is now `badKey(Int)` and holds the HTTP status. The note is `<name>: skipped, the API key was refused (HTTP <status>).` for 401, 403, and 422. `BraveAPIProvider.parse` maps HTTP 422 with `error.code == SUBSCRIPTION_TOKEN_INVALID` to `.badKey(422)`. HTTP 422 with another code stays `.parse("the service answered HTTP 422")`. The chain checks 401/403/429/5xx before the adapter, and gives each other status to the adapter, thus the 422 map is in the adapter.
+    - TDD: `ProviderFallbackTests.refusedKeySkips` (new text) and the new `BraveAPIChainTests` (real Brave adapter, WebStub) failed first for the right reason, then passed. `KeyedProviderRequestTests.braveInvalidTokenIsBadKey` added. `KeyedProviderTests.statusFailures` updated to `.badKey(401)`, `.badKey(403)`.
+    - Live: `Web/KeyedProviderLiveTests.swift` (six tests, no `.enabled(if:)`, `#require` with a comment that names the variables) and `Web/KeyedFallbackLiveTests.swift`. `LiveSearch.search` takes an `environment` argument (default empty). New `LiveSearch.expectNoLeak(of:in:)` checks titles, URLs, snippets, notes, and the correction.
+    - Fact: the live Brave body for `invalid-key` is `{"error":{"code":"SUBSCRIPTION_TOKEN_INVALID","detail":"The provided subscription token is invalid.","meta":{"component":"authentication"},"status":422},"type":"ErrorResponse"}` (curl, 2026-09-26).
+    - Fact: in this toolchain `URL(string: <String constant>)` is not optional in a test, thus `try #require(URL(string:))` gives a compiler warning. I used `URL(string:)` directly in `BraveAPIChainTests`.
+    - web.md: § "Fallback" (422 and the status in the note), Level 1 row `BraveAPIChainTests`, Level 2 rows `KeyedProviderLiveTests` and `KeyedFallbackLiveTests`, `ExpectedProvidersTests` row removed. § "CI" not changed; it still names `MULTITOOL_WEB_EXPECTED_PROVIDERS`. I wrote a note on the web.yml card (01M3A34A9941ZGD8FXMTHVF1SZ) for a person to decide.
+  timestamp: 2026-09-26T14:23:32.309454+00:00
+- actor: claude-code
+  id: 01m3f1k9ezhsx7nd6wqsq6vmh4
+  text: |-
+    ### implement — changed
+    - evidence: 12 files — Sources/FoundationModelsMultitool/Capabilities/Web/Providers/BraveAPIProvider.swift, Sources/FoundationModelsMultitool/Capabilities/Web/Providers/SearchProviderAdapter.swift, Sources/FoundationModelsMultitool/Capabilities/Web/WebSearchChain.swift, Tests/FoundationModelsMultitoolTests/BraveAPIChainTests.swift (new), Tests/FoundationModelsMultitoolTests/ProviderFallbackTests.swift, Tests/FoundationModelsMultitoolTests/KeyedProviderTests.swift, Tests/FoundationModelsMultitoolTests/KeyedProviderRequestTests.swift, IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Web/KeyedProviderLiveTests.swift (new), IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Web/KeyedFallbackLiveTests.swift (new), IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Web/Support/LiveSearch.swift, web.md, this card. Runs: `swift build --build-tests --package-path IntegrationTests` complete, 0 source warnings. Keyless live filter plus KeyedFallbackLiveTests: 14 tests in 7 suites passed. Root `swift test`: 1796 tests in 145 suites passed. KeyedProviderLiveTests: 6 of 6 fail on this computer by design (no key variables set); each message names its variable. Each file has fewer than 400 lines (largest: ProviderFallbackTests.swift, 371).
+    - next: /review. A person decides web.md § "CI" and the web.yml card (MULTITOOL_WEB_EXPECTED_PROVIDERS has no reader now; which keyed suites CI runs).
+  timestamp: 2026-09-26T14:23:37.951610+00:00
+- actor: claude-code
+  id: 01m3f1sa0x65xhzyxkxdp0vnrp
+  text: |-
+    ### test — green
+    - evidence: root `swift test` — 1796 tests in 145 suites, 0 fail, 0 skip, 0 warning (repo code). `swift build --build-tests --package-path IntegrationTests` — build OK, 0 warning (repo code). `swift test --package-path IntegrationTests --no-parallel --filter "BraveHTMLLiveTests|DuckDuckGoHTMLLiveTests|KeylessChainLiveTests|FetchLiveTests|GuardLiveTests|WebRunCodeLiveTests|KeyedFallbackLiveTests"` — 14 tests in 7 suites pass, with 2 known issues (DuckDuckGo challenge page, per the 2026-09-26 decision). `swift test --package-path IntegrationTests --no-parallel --filter KeyedProviderLiveTests` — 6 tests fail, as set by the 2026-09-26 decision (no API key is on this machine). Each fail message names its own missing variable: `BRAVE_SEARCH_API_KEY or BRAVE_API_KEY`, `TAVILY_API_KEY`, `EXA_API_KEY`, `SERPER_API_KEY`, `KAGI_API_KEY`, `SEARXNG_URL`. No other kind of fail is present.
+    - note: one build warning, `missing creator for mutated node ... mlx-swift_Cmlx.bundle`, comes from the vendored mlx-swift package under `.build/checkouts`. This is outside this repo. It is noted here, not fixed.
+    - next: none. All four required test runs are green (with the two allowed exceptions).
+  timestamp: 2026-09-26T14:26:55.133922+00:00
 depends_on:
 - 01M3A32XTTF1JWYSA9GPDZP3KQ
 - 01M3A33HKP5H238CS992MAJYVS
 - 01M3EXW2YT5AH23TP2PGF2GEHA
-position_column: todo
-position_ordinal: '9080'
-title: 'Web: add keyed live tests, the key-leak checks, and ExpectedProvidersTests'
+position_column: doing
+position_ordinal: '80'
+title: 'Web: add keyed live tests, the key-leak checks, and the Brave API refused-key note'
 ---
 ## What
-Add the live tests of the six keyed providers to the web live package. Design: `web.md` § "Testing / Level 2", the rows `KeyedProviderLiveTests`, `KeyedFallbackLiveTests`, `ExpectedProvidersTests`.
+Add the live tests of the six keyed providers to the `IntegrationTests` package, and make the Brave API refused-key note name the HTTP status. Design: `web.md` § "Testing / Level 2", the rows `KeyedProviderLiveTests` and `KeyedFallbackLiveTests`, and "The environment rule". The user decision of 2026-09-26 (see comments) replaces the first design.
 
-Create under `WebIntegrationTests/Tests/FoundationModelsMultitoolWebIntegrationTests/`:
-- `KeyedProviderLiveTests.swift`: six `@Test` functions, one for each provider (`braveAPI`, `tavily`, `exa`, `serper`, `kagi`, `searxng`), with one shared helper. A Swift Testing trait applies to a whole test function, not to one argument of a parameterized test, so each function has its own `.enabled(if:)` on its variable (`BRAVE_SEARCH_API_KEY` or `BRAVE_API_KEY`, `TAVILY_API_KEY`, `EXA_API_KEY`, `SERPER_API_KEY`, `KAGI_API_KEY`, `SEARXNG_URL`). Each test builds `WebConfiguration.fromEnvironment()`, keeps only its provider, queries `swift programming language`, and checks: at least 3 hits, `provider` is its name, and the key value is in no field of the rendered result.
-- `KeyedFallbackLiveTests.swift`: `[.braveAPI(.literal("invalid-key")), .braveHTML]` gives `provider == "braveHTML"`, a note that names `braveAPI` with 401 or 403, and no `invalid-key` text in the result.
-- `ExpectedProvidersTests.swift`: read `MULTITOOL_WEB_EXPECTED_PROVIDERS` (a comma list of provider names). Each name in it must have its variable set, so `fromEnvironment()` includes that provider. When the variable is not set, the test passes with no check (local runs).
+Live tests. Create under `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Web/`. Use `Web/Support/LiveSearch.swift` and the `MultitoolTestSupport` product (`WebVerbCall`, `RunOutput`, `ShortTimeoutSession`).
+- `KeyedProviderLiveTests.swift`: six `@Test` functions, one for each provider (`braveAPI`, `tavily`, `exa`, `serper`, `kagi`, `searxng`), with one shared helper. Each test ALWAYS runs. No test has `.enabled(if:)`, and no test reads the environment to decide if it runs. Each test builds `WebConfiguration.fromEnvironment()` and keeps only its provider. When its variable is not set, the test fails with a message that names the variable (`BRAVE_SEARCH_API_KEY` or the alias `BRAVE_API_KEY`, `TAVILY_API_KEY`, `EXA_API_KEY`, `SERPER_API_KEY`, `KAGI_API_KEY`, `SEARXNG_URL`). Each test queries `swift programming language` and checks: at least 3 hits, `provider` is its name, and the key value is not in the results, the notes, or the correction.
+- `KeyedFallbackLiveTests.swift`: `[.braveAPI(.literal("invalid-key")), .braveHTML]` gives `provider == "braveHTML"`, hits from `braveHTML`, a refused-key note that names `braveAPI`, and no `invalid-key` text in the results, the notes, or the correction.
+- No `ExpectedProvidersTests`. The decision removes it.
+
+Production change (use `/tdd`, unit tests in the root `Tests/`, no network):
+- `BraveAPIProvider` maps HTTP 422 with the error code `SUBSCRIPTION_TOKEN_INVALID` to a refused key (`.badKey`). The live Brave Search API gives this answer for an invalid token.
+- The refused-key note names the HTTP status, for example `braveAPI: skipped, the API key was refused (HTTP 422).` The notes for 401 and 403 also name their status.
+
+Documents: update `web.md` § "Testing" Level 2 rows (the keyed tests always run, `ExpectedProvidersTests` is removed, the text of the fallback note) and § "Fallback".
 
 ## Acceptance Criteria
-- [ ] With no key variables set, the output lists each of the six keyed tests as skipped by name, and the fallback test and `ExpectedProvidersTests` pass.
-- [ ] With `MULTITOOL_WEB_EXPECTED_PROVIDERS=tavily` and no `TAVILY_API_KEY`, `ExpectedProvidersTests` fails with a message that names `TAVILY_API_KEY`.
+- [ ] A unit test proves that a Brave API answer of HTTP 422 with `SUBSCRIPTION_TOKEN_INVALID` gives the note `braveAPI: skipped, the API key was refused (HTTP 422).`
+- [ ] Unit tests prove that 401 and 403 notes name their status.
+- [ ] With no key variables set, each of the six keyed tests fails with a message that names its variable. This is the expected result on a machine with no keys.
+- [ ] `KeyedFallbackLiveTests` passes against the live services.
 - [ ] With a real key, its test passes and no key text is in the result.
+- [ ] Each file has fewer than 400 lines.
 
 ## Tests
-- [ ] The three files above.
-- [ ] Run `swift test --package-path WebIntegrationTests --no-parallel`. Pass, with the six keyed tests skipped by name when no key is set.
-- [ ] Run `MULTITOOL_WEB_EXPECTED_PROVIDERS=tavily swift test --package-path WebIntegrationTests --filter ExpectedProvidersTests` with no `TAVILY_API_KEY`. It fails as described.
+- [ ] Unit tests in `Tests/FoundationModelsMultitoolTests/` for the 422 map and the status in the refused-key note.
+- [ ] `KeyedProviderLiveTests.swift` and `KeyedFallbackLiveTests.swift`.
+- [ ] `swift build --build-tests --package-path IntegrationTests` compiles.
+- [ ] Run the keyless live filter plus `KeyedFallbackLiveTests` one time. Pass.
+- [ ] Root `swift test` passes.
 
 ## Workflow
 - Use `/tdd` — write failing tests first, then implement to make them pass. #web
