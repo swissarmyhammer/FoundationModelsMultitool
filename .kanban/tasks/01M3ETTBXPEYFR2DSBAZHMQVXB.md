@@ -11,6 +11,15 @@ comments:
     - The `demoProfile` flash model change (`CLIRunner.flashModel`, `agentFlashModel = CLIRunner.flashModel`, the no-overlap unit test) stays as written.
     - Also correct the comments that still name `turnLock` / `generationGate` about the same-model deadlock: `Sources/FoundationModelsMultitool/Discovery/SearchToolsTool.swift:336-356` (or where they are after the move) and `Sources/MultitoolCLI/CLIRunner.swift:464`. Task ^b1a2yqb recorded these.
   timestamp: 2026-09-26T19:59:29.201172+00:00
+- actor: claude-code
+  id: 01m3fpfb31cm5b96bfq5km4jkc
+  text: |-
+    Scope addition (2026-09-26), from the router session (user decisions):
+    - `standard` and `flash` must never be the same model. Router task 01M3FP4SPYCEJ1Y6PRYZSRRNAT makes `Router.resolve` refuse a profile where they are the same. This task does not wait for it: the `demoProfile` change is correct with or without it.
+    - `searchTools` stays synchronous. It waits until the registry work is done. A synchronous selection call on `flash`, inside an open submission on `standard`, waits on the FIFO queue of `flash`. The queue throws `waitInsideOpenSubmission` only when the model is the same.
+    - Remove the "known deadlock" note of `demoProfile` in `Sources/MultitoolCLI/CLIRunner.swift` (about lines 489-514 on 2026-09-26).
+    - Document in the seams file `Sources/FoundationModelsMultitool/Discovery/SearchToolsTool+Seams.swift` that the selection model must not be the model of the calling session.
+  timestamp: 2026-09-26T20:28:28.641540+00:00
 depends_on:
 - 01M3EVK4VR545ABV6R9YHFQH76
 - 01M3FMSTTSP16K9AE7JKZAEFGZ

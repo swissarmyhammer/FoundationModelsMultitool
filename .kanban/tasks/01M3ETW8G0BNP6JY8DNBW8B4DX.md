@@ -1,6 +1,16 @@
 ---
 assignees:
 - claude-code
+comments:
+- actor: claude-code
+  id: 01m3fpff9xxrj743h7vbr1zb64
+  text: |-
+    Scope addition (2026-09-26), from the router session:
+    - plan.md still names the removed `wait` tool and the word "turn" (`turnWillBegin`). Lines on 2026-09-26: :97, :306, :394, :402, :452, :462. plan.md "Resolved #1" (about :1079) describes the old semaphore bridge. Make these lines state the current design: mail delivery, submissions, and the generation queue for each model.
+    - `RunCodeArguments` doc (`Sources/FoundationModelsMultitool/MultiTool.swift:239-250`) says that `runCode` "always backgrounds" and gives one return shape. But a run that settles inside `inlineSettleGrace` returns `pending:false` with its result. Correct the doc to match the code.
+    - eventplan.md (:106-107) says that the inline grace default is two seconds. The code says 5 s (`MultiToolConfiguration.defaultInlineSettleGrace`). Correct it.
+    - The statement that tool hosting comes from FoundationModelsExtras belongs to task "Take tool hosting from FoundationModelsExtras ...", not to this task.
+  timestamp: 2026-09-26T20:28:32.957312+00:00
 depends_on:
 - 01M3ETT2G7K03B6JMTPV6EN6BA
 - 01M3EVJTWPV4MEG2KFHVRF9403

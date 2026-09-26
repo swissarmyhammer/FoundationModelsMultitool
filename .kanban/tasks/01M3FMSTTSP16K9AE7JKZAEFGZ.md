@@ -41,10 +41,23 @@ comments:
     - commit: changed — 51309ed refactor(discovery)!: take the metadata-registry seams, and move the Router adapters to the CLI host
     - review: findings — 1 open: `SurfaceRefresherTests.swift:205` `completeness/public-output-contract`.
   timestamp: 2026-09-26T20:25:49.700520+00:00
+- actor: claude-code
+  id: 01m3fpfz94w1g9y3ghm4ajmjvf
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` — 0 findings (7 attempted, 0 failed); the one prior finding is checked.
+    - next: task moved to done.
+
+    ### finish iteration 2 — clean
+    - implement: changed — `SurfaceRefresherTests.swift:205` gives `selection: nil, embedder: nil, sampleSession: nil` explicitly.
+    - test: green — `swift build --build-tests` clean; `swift test` 1800 tests in 144 suites passed, 0 failed, 0 skipped.
+    - commit: changed — b5323c5 test(surface): state every discovery seam in the SurfaceRefresherTests mount
+    - review: clean — 0 new findings, 1 of 1 prior finding checked.
+  timestamp: 2026-09-26T20:28:49.316469+00:00
 depends_on:
 - 01M3EVKKTGVDQAKH1X7HD44HRE
-position_column: review
-position_ordinal: '80'
+position_column: done
+position_ordinal: fff280
 title: Take the metadata-registry seams in the discovery API, and move the Router adapters to the CLI host
 ---
 ## What
