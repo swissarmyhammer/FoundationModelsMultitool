@@ -66,7 +66,7 @@ public struct MultiToolConfiguration: Sendable, Equatable {
     /// background (`MultiTool.mount`), so the model gets a token and pays one
     /// more round trip to collect the result. Most snippets are short — one
     /// file read, one small edit, one `tools.*` call — and for those the token
-    /// costs more than the work. A short wait here gives the model the result
+    /// costs more than the work. A wait here gives the model the result
     /// in the tool output it already has, and it makes no `wait` call at all.
     ///
     /// A snippet still running when this elapses is not affected. The call
@@ -98,9 +98,12 @@ public struct MultiToolConfiguration: Sendable, Equatable {
     /// The stock wait before a `runCode` call answers — see
     /// ``inlineSettleGrace``.
     ///
-    /// Two seconds. It is long enough for the short snippets that are the
-    /// common case, and short enough that a long snippet loses little by it.
-    public static let defaultInlineSettleGrace: TimeInterval = 2
+    /// Five seconds. It is long enough for the short snippets that are the
+    /// common case, and for many longer ones, to give their result in the
+    /// call itself. The cost: while the wait runs, the call is in-band, so a
+    /// snippet that does not settle holds the model for up to this time. A
+    /// host that needs the model free sooner sets a smaller value.
+    public static let defaultInlineSettleGrace: TimeInterval = 5
 
     /// The stock number of live `runCode` contexts — see ``liveContextLimit``
     /// for why a handful, rather than an unbounded set, is the right shape.

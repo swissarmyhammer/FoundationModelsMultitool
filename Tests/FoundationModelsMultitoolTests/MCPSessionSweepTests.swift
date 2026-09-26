@@ -214,9 +214,13 @@ struct MCPSessionSweepTests {
         let (ground, registry) = try await Self.makeGround()
         let run = try await makeStubRun()
         let context = run.context
+        // No inline wait, so the call answers with the pending envelope at
+        // once and the run parks. The stock `inlineSettleGrace` would hold
+        // the call for its whole length before the sweep can run.
         let mounted = try #require(
             SessionMount.synchronous(
-                MultiTool(registry: registry), on: context)
+                MultiTool(registry: registry, configuration: MultiToolConfiguration(inlineSettleGrace: 0)),
+                on: context)
                 as? any FoundationModels.Tool<RunCodeArguments, String>)
         let rendered = try await mounted.call(arguments: RunCodeArguments(code: Self.parkedSnippet))
         #expect(PendingRunEnvelope.isRendered(text: rendered), "answer was: \(rendered)")

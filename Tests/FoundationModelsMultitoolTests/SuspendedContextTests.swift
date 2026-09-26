@@ -52,8 +52,11 @@ struct SuspendedContextTests {
     @Test("every mounted runCode call answers the pending envelope at once, whatever mount the site applies")
     func everyMountedCallAnswersThePendingEnvelope() async throws {
         // The harshest site there is: run to completion under no clock. The
-        // tool's own declaration wins over it.
-        let harness = try await Self.makeHarness(mount: .synchronous)
+        // tool's own declaration wins over it. No inline wait: the stock
+        // `inlineSettleGrace` holds a snippet that does not settle for that
+        // long, and this test is about the mount, not about that wait.
+        let harness = try await Self.makeHarness(
+            configuration: MultiToolConfiguration(inlineSettleGrace: 0), mount: .synchronous)
 
         let start = ContinuousClock.now
         let rendered = try await harness.mounted.call(

@@ -54,9 +54,9 @@ struct InlineSettleGraceTests {
 
     // MARK: - The knob
 
-    @Test("the stock wait is two seconds, and a host's own value reaches the tool")
+    @Test("the stock wait is five seconds, and a host's own value reaches the tool")
     func configurationCarriesTheWait() throws {
-        #expect(MultiToolConfiguration.default.inlineSettleGrace == 2)
+        #expect(MultiToolConfiguration.default.inlineSettleGrace == 5)
         #expect(
             MultiToolConfiguration.default.inlineSettleGrace
                 == MultiToolConfiguration.defaultInlineSettleGrace
@@ -64,11 +64,11 @@ struct InlineSettleGraceTests {
 
         let registry = try Self.registry()
         let configured = MultiTool(
-            registry: registry, configuration: MultiToolConfiguration(inlineSettleGrace: 5)
+            registry: registry, configuration: MultiToolConfiguration(inlineSettleGrace: 12)
         )
 
-        #expect(configured.inlineSettleGrace == 5)
-        #expect(MultiTool(registry: registry).inlineSettleGrace == 2)
+        #expect(configured.inlineSettleGrace == 12)
+        #expect(MultiTool(registry: registry).inlineSettleGrace == 5)
     }
 
     @Test("a negative wait is clamped to no wait at all")
