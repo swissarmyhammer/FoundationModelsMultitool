@@ -26,10 +26,23 @@ comments:
     - evidence: `swift build --build-tests` — 0 errors, no new warnings (the one build-system warning on the mlx bundle was there before). `swift test` — 1797 tests in 145 suites passed, 0 failed, 3 full runs. XCTest: 0 tests. `rg -w 'turnWillBegin|TurnBoundaryTool|cancelCurrentTurn' Tests` — no match.
     - next: commit, then review HEAD~1..HEAD.
   timestamp: 2026-09-26T18:24:53.496944+00:00
+- actor: claude-code
+  id: 01m3ffkrdhds638a55tjxbs6ez
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` — findings 0, confirmed 0, refuted 0, attempted 7, failed 0, skipped 0. 5 files reviewed; the 2 `.kanban/` files are excluded by `.reviewignore`. No prior `## Review Findings` section. The Swift dead-code rule could run, because the test target now compiles.
+    - next: the task moved to `done`.
+
+    ### finish iteration 1 — clean
+    - implement: changed — 5 files: `Sources/FoundationModelsMultitool/Capabilities/Shell/ShellRunner.swift`, `Tests/FoundationModelsMultitoolTests/RegistrySwapTests.swift`, `Tests/FoundationModelsMultitoolTests/SurfaceRefresherTests.swift`, `Tests/FoundationModelsMultitoolTests/MCPSessionSweepTests.swift`, `Tests/Support/ScenarioGrading/ScenarioTools.swift`. Correction to the first comment: the build reported the `turnWillBegin` error at 13 call sites (5 + 8), and the sorted list showed fewer lines.
+    - test: green — `swift build --build-tests` 0 errors, no new warnings; `swift test` 1797 tests in 145 suites passed, 3 full runs.
+    - commit: changed — `610bff7 test(router): build and pass the unit tests against the work-queue Router c208add`.
+    - review: clean — 0 findings on `HEAD~1..HEAD`.
+  timestamp: 2026-09-26T18:28:33.329869+00:00
 depends_on:
 - 01M3ETSEG8QR1Y31J1FB1A2YQB
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffec80
 title: Make the unit test target build and pass against the work-queue Router
 ---
 ## What
