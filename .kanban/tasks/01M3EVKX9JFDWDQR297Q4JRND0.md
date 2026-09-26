@@ -52,10 +52,19 @@ comments:
     - commit: changed — d2d1e2b feat(mcp)!: remove the wait tool; a settled background run comes back as mail
     - review: findings — 1 finding (review sha HEAD~1..HEAD): Tests/FoundationModelsMultitoolTests/Fixtures/MailProbeFixtures.swift:112 code-hygiene/disallowed-constructs-swift no_unchecked_sendable
   timestamp: 2026-09-26T19:02:07.147628+00:00
+- actor: claude-code
+  id: 01m3fhqv1jby1y9qefvb51j9gb
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — MailProbeBackend uses a plain `Sendable` conformance (finding no_unchecked_sendable, MailProbeFixtures.swift:112)
+    - test: green — `swift build --build-tests` 0 warnings; `swift test` 1786 passed, 0 failed, 0 skipped
+    - commit: changed — 68f3bfa test(mail): give the mail probe backend a plain Sendable conformance
+    - review: clean — review sha HEAD~1..HEAD: 0 findings; the one prior finding is checked. Task moved to done.
+  timestamp: 2026-09-26T19:05:44.242430+00:00
 depends_on:
 - 01M3EVK4VR545ABV6R9YHFQH76
-position_column: review
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffee80
 title: 'Remove the wait tool: a settled background run comes back as mail'
 ---
 ## What
