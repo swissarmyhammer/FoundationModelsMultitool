@@ -17,8 +17,18 @@ comments:
 
     Evidence: `swift build` → "Build complete!", exit 0. The only warning is the mlx `missing creator for mutated node` warning, which was there before this change. `rg -w 'TurnBoundaryTool|turnWillBegin|turnStarted|turnEnded|defaultTimeoutSeconds' Sources` → no match.
   timestamp: 2026-09-26T18:11:37.635868+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m3fey87p53z6x533sfawk2wz
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 8 files in Sources (rename MultiTool+TurnBoundary.swift to MultiTool+SubmissionBoundary.swift, CLIRunner.swift switch, comment sites).
+    - test: green — `swift build` exit 0, "Build complete!". The only warning is the mlx `missing creator for mutated node` warning, which was there before. `rg -w 'TurnBoundaryTool|turnWillBegin|turnStarted|turnEnded|defaultTimeoutSeconds' Sources` has no match.
+    - commit: changed — e9a1327 fix(router): build the library targets against the work-queue Router c208add
+    - review: clean — `review sha HEAD~1..HEAD`: findings 0, confirmed 0, refuted 1. Note: the tool rule `code-hygiene/dead-code-swift` could not run, because it builds the test target, and the test target does not compile yet (`RegistrySwapTests.swift` calls `turnWillBegin()`). Card ^yhfqh76 makes the test target compile.
+    - next: task moved to done.
+  timestamp: 2026-09-26T18:16:48.630973+00:00
+position_column: done
+position_ordinal: ffeb80
 title: Make the library targets build against the work-queue Router (c208add)
 ---
 ## What
