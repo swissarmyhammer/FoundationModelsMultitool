@@ -53,14 +53,30 @@ comments:
     - note: the build shows 4 warnings from the vendored `mlx-swift` dependency, under `.build/checkouts/mlx-swift/Source/Cmlx` and `IntegrationTests/.build/checkouts/mlx-swift/Source/Cmlx` (message: "constexpr if is a C++17 extension"). These files are not part of this repository. This report states them but does not change them.
     - next: none. The build is clean.
   timestamp: 2026-09-26T15:22:21.531792+00:00
+- actor: claude-code
+  id: 01m3f52qsy3m43kg8b7b35v38j
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit 678c5df). Counts: 0 findings, 0 confirmed, 0 refuted. The engine reviewed 1 file (`.github/workflows/ci.yml`). No validator matches `web.md`, thus the engine did not review it. The ignore rule `.reviewignore` excluded the 4 `.kanban/` files.
+    - next: none. The task is in done.
+  timestamp: 2026-09-26T15:24:29.886979+00:00
+- actor: claude-code
+  id: 01m3f538k6gd2s4thf22y3ws9a
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — web.md, ci.yml comment (no web.yml, sibling CI pattern)
+    - test: green — swift test, 1796 passed; IntegrationTests build passes
+    - commit: 678c5df
+    - review: clean — 0 findings; the task is in done
+  timestamp: 2026-09-26T15:24:47.078141+00:00
 depends_on:
 - 01M3A33HKP5H238CS992MAJYVS
 - 01M3A3FMG0S72N2Q515319Z6S4
 - 01M3A33SMXZ93N45S1SWCZ6NMR
 - 01M3EXW2YT5AH23TP2PGF2GEHA
 - 01M3F2TJB4XSKRRCKW236732BT
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffea80
 title: 'Web: run the live web suites in the existing CI integration job'
 ---
 ## What
