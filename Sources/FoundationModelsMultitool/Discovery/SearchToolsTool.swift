@@ -27,7 +27,7 @@ public struct SearchToolsArguments: Sendable {
 /// The discovery tool a session searches for its mounted functions.
 ///
 /// A host mounts this tool with
-/// `MultiTool.Registry.makeSessionTools(librarian:embedder:sampleGenerator:)`,
+/// `MultiTool.Registry.makeSessionTools(selection:embedder:sampleSession:)`,
 /// which presents it before `runCode`.
 ///
 /// The selection tier, when one is configured, answers only *what* is
@@ -68,7 +68,7 @@ public struct SearchToolsTool: Tool {
     /// also means nothing above this tool will ever interrupt a search that has
     /// stopped making progress. These spans are the only thing that tells a
     /// slow search from a stalled one.
-    private static let trace = CallTrace(category: "SearchTools")
+    static let trace = CallTrace(category: "SearchTools")
 
     /// Where this tool reads the catalog it searches.
     private enum Catalog: Sendable {
@@ -102,7 +102,7 @@ public struct SearchToolsTool: Tool {
     /// whatever mode that searcher was assembled in.
     ///
     /// The searcher `makeSearcher(over:selection:embedder:)` builds for
-    /// `init(registry:librarian:embedder:limit:sampleGenerator:)` comes
+    /// `init(registry:selection:embedder:limit:sampleSession:)` comes
     /// through here as well, and a test's scripted or keyword-only searcher
     /// comes through here too.
     ///
@@ -181,18 +181,6 @@ public struct SearchToolsTool: Tool {
             index: MetadataIndex(items: entries), mode: .auto, embedder: embedder, selection: selection)
     }
 
-    /// The registry's embedding seam over a host's Router embedding handle,
-    /// or `nil` for no handle.
-    ///
-    /// The one place a `RoutedEmbedder` is adapted. `init(registry:...)` and
-    /// `makeSessionToolsAndStaging` both come through here.
-    ///
-    /// - Parameter embedder: the resolved handle, or `nil`.
-    /// - Returns: the handle presented as a `TextEmbedding`, or `nil`.
-    static func makeEmbedding(from embedder: RoutedEmbedder?) -> (any TextEmbedding)? {
-        embedder.map { RoutedTextEmbedding(embedder: $0) }
-    }
-
     /// The searcher and the limit one call uses, read at the call.
     ///
     /// - Returns: the searcher to forward to, and the maximum number of
@@ -210,202 +198,61 @@ public struct SearchToolsTool: Tool {
         }
     }
 
-    /// Creates a `searchTools` tool bound to a Router profile.
+    /// Creates a `searchTools` tool over a registry, with the models the host
+    /// picked.
     ///
     /// This path builds its searcher in `.auto` mode, never `.selection`. With
     /// no selection tier configured, `.auto` answers by retrieval alone, with
     /// no session and no tokens. Discovery then degrades, instead of requiring
     /// a second model call by construction.
     ///
-    /// `librarian`'s own `RoutedLLM.makeGuidedSession(grammar:instructions:)`
-    /// backs every selection call, not `LanguageModelSession`, because the
-    /// FoundationModels interop path does not expose the Router's cache-level
-    /// `fork()` that `SelectionConfig`'s cached-root contract needs.
-    ///
-    /// The grammar is built here, one time, over the whole catalog, and
-    /// threaded into `makeGuidedSession`. The `SelectionTier` used to supply a
-    /// correctly-scoped grammar for each call — the whole catalog under
-    /// budget, the top-M candidates over it — but its factory takes the
-    /// instructions alone as of the ranker's `34fe8d4`, so a per-call grammar
-    /// is no longer expressible. See ``makeSelection(librarian:ids:)`` for why
-    /// the looser grammar stays safe.
+    /// The selection tier is made here, one time, for the ids of the whole
+    /// catalog. The tier's session factory takes the instructions alone as of
+    /// the ranker's `34fe8d4`, so a host that limits the output with a
+    /// grammar builds one grammar over the whole catalog. Over budget, the
+    /// tier prompts one slice of the catalog at a time while that grammar
+    /// still permits every id in the catalog. That is safe: the tier's own
+    /// `.unknownSelectedId` filter drops an id outside the slice the prompt
+    /// carried. Under `capacityCharacterLimit` the over-budget path never
+    /// runs.
     ///
     /// - Parameters:
     ///   - registry: the catalog whose entries become the searcher's
-    ///     catalog and, when `librarian` is supplied, the id set the
-    ///     selection tier constrains its grammar to.
-    ///   - librarian: the resolved `RoutedLLM` every selection session runs
-    ///     on, or `nil` to leave the selection tier unconfigured — `.auto`
-    ///     then always answers via retrieval alone.
-    ///   - embedder: the resolved `RoutedEmbedder` the searcher ranks with —
-    ///     the profile's `embedding` handle — or `nil` (the default) for
-    ///     keyword-only ranking, which the registry reports on every search
-    ///     as `no embedder configured`. A host that resolved a profile has
-    ///     one and passes it; the catalog is embedded at the first search,
-    ///     never at this call — see
+    ///     catalog, and whose ids `selection` receives.
+    ///   - selection: makes the selection tier for the catalog ids, or `nil`
+    ///     to leave the selection tier unconfigured — `.auto` then always
+    ///     answers via retrieval alone. See ``SelectionFactory``.
+    ///   - embedder: the embedder the searcher ranks with, or `nil` (the
+    ///     default) for keyword-only ranking, which the registry reports on
+    ///     every search as `no embedder configured`. The catalog is embedded
+    ///     at the first search, never at this call — see
     ///     ``makeSearcher(over:selection:embedder:)``.
     ///   - limit: the maximum number of matches to request per call. Defaults
     ///     to `nil`, which resolves to `registry.surface.entries.count` — so
     ///     nothing the searcher legitimately matched is ever truncated.
-    ///   - sampleGenerator: the resolved `RoutedLLM` the sample-snippet
-    ///     generation session runs on, or `nil` to leave sample generation
-    ///     unconfigured — this tool then answers with the signatures alone,
-    ///     exactly as it always has. Pass the **main** generation slot rather
-    ///     than the librarian's: the sample is code the model is told to run,
-    ///     so its quality matters more than its cost. The session is vended
-    ///     through `RoutedLLM.makeSession(instructions:)` with no `tools:`
-    ///     argument, which is what keeps `searchTools` off the generation
-    ///     session's own surface: it writes a snippet, it does not execute
-    ///     one.
-    /// - Throws: what ``makeSelection(librarian:ids:)`` throws while it builds
-    ///   the selection grammar.
+    ///   - sampleSession: makes the session the sample snippet is generated
+    ///     on, or `nil` (the default) to leave sample generation unconfigured
+    ///     — this tool then answers with the signatures alone, exactly as it
+    ///     always has. Back it with the **main** generation model rather than
+    ///     the selection model: the sample is code the model is told to run,
+    ///     so its quality matters more than its cost. The session must mount
+    ///     no tools: it writes a snippet, it does not execute one.
+    /// - Throws: what `selection` throws while it builds the selection tier.
     public init(
         registry: MultiTool.Registry,
-        librarian: RoutedLLM?,
-        embedder: RoutedEmbedder? = nil,
+        selection: SelectionFactory?,
+        embedder: (any TextEmbedding)? = nil,
         limit: Int? = nil,
-        sampleGenerator: RoutedLLM? = nil
+        sampleSession: SessionFactory? = nil
     ) throws {
         self.init(
             searcher: Self.makeSearcher(
                 over: registry.surface.entries,
-                selection: try Self.makeSelection(
-                    librarian: librarian, ids: registry.surface.entries.map(\.path)),
-                embedder: Self.makeEmbedding(from: embedder)),
+                selection: try Self.makeSelection(selection, ids: registry.surface.entries.map(\.path)),
+                embedder: embedder),
             limit: limit ?? registry.surface.entries.count,
-            sample: Self.makeSample(generator: sampleGenerator)
+            sample: Self.makeSample(sessionFactory: sampleSession)
         )
-    }
-
-    /// The selection tier over `librarian`, or `nil` when there is no
-    /// librarian and discovery answers by retrieval alone.
-    ///
-    /// The one place the selection tier is wired. `init(registry:...)` and
-    /// `makeSessionToolsAndStaging` both build it here.
-    ///
-    /// **No `preamble:` argument, and that is a decision this package
-    /// measured.** This tool used to seed the tier with a wording of its own,
-    /// because the ranker default that shipped then spoke of "items" and
-    /// closed on "return an empty list if nothing fits": driven over the
-    /// files-and-shell catalog with the agent's own ten queries
-    /// (`AgentSurfaceDiscoveryTests`, card `^zqz1zan`),
-    /// `mlx-community/Qwen3-4B-4bit` answered eight of the ten with
-    /// `{"ids":[]}` — every query for a way to write, edit or run — and the
-    /// bench run ended with an empty patch. Ranker card `^zxm99zs` moved the
-    /// deciding sentence into `String.selectionDefault` itself: "Prefer the
-    /// closest candidates over an empty answer; answer with an empty list only
-    /// when no candidate is related to the task at all."
-    ///
-    /// Card `^46j5hqw` then measured the two wordings against each other on
-    /// the same model, the same catalog and the same grammar, three rounds of
-    /// the ten queries each. The ranker default answered 30 of 30, held the
-    /// write, edit or shell verb in every one of queries 4 to 9 in all three
-    /// rounds, and assembled a 7,601-character prefix against the local
-    /// wording's 7,600. So the local constant was deleted and the default
-    /// takes its place. `SearchToolsToolTests` holds the deciding sentence as
-    /// the guard the old constant carried.
-    ///
-    /// - Parameters:
-    ///   - librarian: the resolved `RoutedLLM` every selection session runs
-    ///     on, or `nil`.
-    ///   - ids: every id in the catalog, which the grammar constrains output
-    ///     to. One grammar over the whole catalog, built here, because the
-    ///     tier's factory takes instructions alone and cannot vary the grammar
-    ///     per call.
-    /// - Returns: the selection configuration, or `nil`.
-    /// - Throws: what ``idEnumGrammar(ids:)`` throws when `ids` cannot be
-    ///   serialized to JSON, which is not expected for an array of strings.
-    static func makeSelection(librarian: RoutedLLM?, ids: [String]) throws -> SelectionConfig? {
-        // One grammar for every call, built before the factory closure rather
-        // than inside it. `SelectionConfig`'s factory takes the instructions
-        // alone as of the ranker's `34fe8d4`; it no longer hands a per-call
-        // grammar down, so a grammar scoped to one round's candidates is no
-        // longer expressible.
-        //
-        // Over budget, the tier prompts one slice of the catalog at a time
-        // while this grammar still permits every id in the catalog. That is
-        // looser than the per-call grammar was, and it is safe: the tier's
-        // own `.unknownSelectedId` filter drops an id outside the slice the
-        // prompt carried. Under `capacityCharacterLimit` the over-budget
-        // path never runs, and the two are identical.
-        let grammar = try idEnumGrammar(ids: ids)
-        // **The selection session must come from `librarian`, a handle other
-        // than the one whose turn is calling this tool. That is a correctness
-        // requirement, not a cost preference.**
-        //
-        // `searchTools` is invoked from inside a turn's tool body. A Router
-        // session holds its own `turnLock` for the whole turn, tool rounds
-        // included, and both `RoutedSession.fork(workingDirectory:)` and the
-        // `transcript` getter take `await turnLock.wait()` on that same lock.
-        // So a selection tier that forked *the session it is running inside*
-        // would block until the turn ended, and the turn cannot end until this
-        // tool returns. That is a permanent hang, and it is the exact shape of
-        // Router's `^d2ptrk1`.
-        //
-        // What keeps this package clear of it is only that `librarian` is a
-        // different handle — `profile.flash`, with a `turnLock` of its own —
-        // so nothing here ever waits on the caller's lock. Measured: the
-        // `SearchToolsTool.makeSelectionSession` and `AgentSession.fork` spans
-        // both enter and exit inside a millisecond.
-        //
-        // **Router's generation-permit loan does not cover this.** That fix
-        // (`^1zt7vyg`) lends a `generationGate` permit to a nested turn and
-        // deliberately leaves `turnLock` alone, because `turnLock` is the
-        // correctness gate — their card states that as a constraint on its own
-        // fix. So forking the in-turn session would deadlock immediately, loan
-        // or no loan, and no upstream change is going to soften it.
-        //
-        // Reusing the caller's session here looks like the natural
-        // simplification — one session, one transcript, no second handle to
-        // thread. It is the one change this factory must never take.
-        return librarian.map { librarian in
-            SelectionConfig(
-                model: { instructions in
-                    // Traced, and traced *here*, because both ends of this
-                    // factory are opaque from outside. The call itself is
-                    // synchronous but not cheap — a grammar-constrained session
-                    // compiles its grammar — and everything the tier then does
-                    // with the session it returns happens behind the
-                    // `AgentSession` seam. See `TracedAgentSession`.
-                    Self.trace.span(
-                        "SearchToolsTool.makeSelectionSession",
-                        detail: "instructionCharacters=\(instructions.count)"
-                    ) {
-                        TracedAgentSession(
-                            wrapped: RoutedAgentSession(
-                                session: librarian.makeGuidedSession(grammar: grammar, instructions: instructions)
-                            ),
-                            role: TracedAgentSession.selectionRole
-                        )
-                    }
-                }
-            )
-        }
-    }
-
-    /// The sample-snippet configuration over `generator`, or `nil` when
-    /// there is no generator and discovery answers with the signatures alone.
-    ///
-    /// The one place sample generation is wired. `init(registry:...)` and
-    /// `makeSessionToolsAndStaging` both build it here.
-    ///
-    /// - Parameter sampleGenerator: the resolved `RoutedLLM` the generation
-    ///   session runs on, or `nil`.
-    /// - Returns: the sample configuration, or `nil`.
-    static func makeSample(generator sampleGenerator: RoutedLLM?) -> SampleSnippetConfig? {
-        sampleGenerator.map { generator in
-            SampleSnippetConfig(makeSession: { instructions in
-                Self.trace.span(
-                    "SearchToolsTool.makeSampleSession",
-                    detail: "instructionCharacters=\(instructions.count)"
-                ) {
-                    TracedAgentSession(
-                        wrapped: RoutedAgentSession(session: generator.makeSession(instructions: instructions)),
-                        role: TracedAgentSession.sampleSnippetRole
-                    )
-                }
-            })
-        }
     }
 
     /// Runs one `searchTools(task)` call.

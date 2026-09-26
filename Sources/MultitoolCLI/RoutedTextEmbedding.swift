@@ -14,26 +14,27 @@ import FoundationModelsRouter
 /// own searcher. Each package keeps its own, as each keeps its own
 /// `AgentSession` conformance: the ranker deleted its Router-specific types
 /// at `34fe8d4`, and the supported route is for a consumer to conform its own.
-struct RoutedTextEmbedding: TextEmbedding {
+/// This one stands in `MultitoolCLI`, the host that picks Router models.
+public struct RoutedTextEmbedding: TextEmbedding {
     /// The Router handle every embed travels to.
     private let embedder: RoutedEmbedder
 
     /// Makes the presentation over one Router embedding handle.
     ///
     /// - Parameter embedder: The resolved, resident handle to present.
-    init(embedder: RoutedEmbedder) {
+    public init(embedder: RoutedEmbedder) {
         self.embedder = embedder
     }
 
     /// The length of every vector the handle answers.
-    var dimension: Int { embedder.dimension }
+    public var dimension: Int { embedder.dimension }
 
     /// Embeds each text into one `dimension`-length vector, in order.
     ///
     /// - Parameter texts: The texts to embed.
     /// - Returns: One vector per text, in the same order.
     /// - Throws: Whatever the handle throws.
-    func embed(_ texts: [String]) async throws -> [[Float]] {
+    public func embed(_ texts: [String]) async throws -> [[Float]] {
         try await embedder.embed(texts: texts)
     }
 }

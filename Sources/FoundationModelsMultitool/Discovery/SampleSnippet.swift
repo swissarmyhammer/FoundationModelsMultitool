@@ -31,9 +31,9 @@ public struct SampleSnippetConfig: Sendable {
     ///
     /// The session must mount **no tools** — it writes a snippet, it does not
     /// execute one, and a session holding `searchTools` could call `searchTools`
-    /// from inside a `searchTools` call. `RoutedLLM.makeSession(instructions:)`
-    /// mounts none by default, which is how the production wiring satisfies
-    /// this.
+    /// from inside a `searchTools` call. The host supplies the session
+    /// factory, and the factory of the sample CLI (`RouterDiscoverySeams` in
+    /// `MultitoolCLI`) mounts no tools.
     ///
     /// Every turn of one generation attempt — the opening task and each
     /// repair — goes to the same returned session, so a failure it is told

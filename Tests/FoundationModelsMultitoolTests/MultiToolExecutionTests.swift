@@ -326,7 +326,7 @@ struct MultiToolExecutionTests {
         #expect(registry.isDirectMode == false)
         #expect(registry.supportsSearchTools == true)
         // No `wait` in either arm: a settled background run comes back to the
-        // session as mail, and `makeSessionTools(librarian:)` mounts no `wait`.
+        // session as mail, and `makeSessionTools(selection:)` mounts no `wait`.
         #expect(registry.affordances == ["runCode", "searchTools"])
 
         let direct = registry.directMode()
@@ -347,7 +347,7 @@ struct MultiToolExecutionTests {
             .addTool(CitiesTool())
             .buildRegistry()
 
-        let mounted = try registry.makeSessionTools(librarian: nil)
+        let mounted = try registry.makeSessionTools(selection: nil)
 
         // Discover, then execute. No `wait` tool is mounted: a settled
         // background run comes back to the session as mail.
@@ -361,7 +361,7 @@ struct MultiToolExecutionTests {
             .buildRegistry()
             .directMode()
 
-        let mounted = try registry.makeSessionTools(librarian: nil)
+        let mounted = try registry.makeSessionTools(selection: nil)
 
         // Direct mode drops discovery and nothing else: a slow `runCode` still
         // goes to the background, and its result still comes back as mail.
@@ -374,7 +374,7 @@ struct MultiToolExecutionTests {
             .addTool(CitiesTool())
             .buildRegistry()
 
-        let mounted = try registry.makeSessionTools(librarian: nil)
+        let mounted = try registry.makeSessionTools(selection: nil)
 
         // The runCode half dispatches into the registry's real wrapped tool:
         // a `MultiTool` over an empty registry would render a repairable
@@ -388,7 +388,7 @@ struct MultiToolExecutionTests {
         #expect(itinerary == "\"AAA-BBB-CCC\"")
 
         // The searchTools half searches the same registry's rendered catalog.
-        // `librarian: nil` leaves the searcher in cheap retrieval, so this
+        // `selection: nil` leaves the searcher in cheap retrieval, so this
         // needs no model.
         let searchTools = try #require(mounted.first as? SearchToolsTool)
         let discovery = try await searchTools.call(arguments: SearchToolsArguments(task: "the cities on the trip"))

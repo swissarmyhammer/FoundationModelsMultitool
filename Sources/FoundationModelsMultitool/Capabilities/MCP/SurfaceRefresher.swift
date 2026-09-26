@@ -45,7 +45,7 @@ import os
 /// ```swift
 /// let builder = try await MultiTool.Builder().withMCP(servers: [github])
 /// let (tools, staging) = try builder.buildRegistry()
-///     .makeSessionToolsAndStaging(librarian: nil)
+///     .makeSessionToolsAndStaging(selection: nil)
 /// let refresher = SurfaceRefresher(
 ///     source: builder.registrySource, staging: staging, servers: [github])
 /// refresher.start()
@@ -108,7 +108,7 @@ public final class SurfaceRefresher: Sendable, Stoppable {
     ///     `MultiTool.Builder.registrySource` of the build that made the
     ///     mounted registry.
     ///   - staging: Where each rebuilt registry is staged. The
-    ///     `makeSessionToolsAndStaging(librarian:embedder:sampleGenerator:)`
+    ///     `makeSessionToolsAndStaging(selection:embedder:sampleSession:)`
     ///     call that mounted the session vends it.
     ///   - servers: The servers to watch, which the host connected before the
     ///     build.

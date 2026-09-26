@@ -74,14 +74,14 @@ extension MultiTool {
         /// without knowing `isDirectMode`'s exact semantics.
         ///
         /// It names every tool that
-        /// `makeSessionTools(librarian:embedder:sampleGenerator:)` mounts, so
+        /// `makeSessionTools(selection:embedder:sampleSession:)` mounts, so
         /// the list agrees with the array a host actually receives, in every
         /// mode. No `wait` tool is in either list: a settled background run
         /// comes back to the session as mail.
         ///
         /// The order is not the mount order, and this property is not the
         /// place to learn one — see
-        /// `makeSessionTools(librarian:embedder:sampleGenerator:)`, which owns it.
+        /// `makeSessionTools(selection:embedder:sampleSession:)`, which owns it.
         public var affordances: [String] {
             isDirectMode ? ["runCode"] : ["runCode", "searchTools"]
         }
@@ -111,13 +111,13 @@ extension MultiTool {
         /// knows.
         ///
         /// This is the whole host contract. A host builds a registry, mounts
-        /// what this returns on a `RoutedSession`, and drives that session by
+        /// what this returns on a Router session, and drives that session by
         /// draining `streamEvents(to:)` — nothing else. In particular it
         /// passes **no session instructions**: the mounted tool descriptions
         /// carry the entire behavioral contract — see ``description``.
         ///
-        /// The session type is part of the contract, not a detail. A
-        /// `RoutedSession` is what puts each tool through Router's own
+        /// The session type is part of the contract, not a detail. A Router
+        /// session is what puts each tool through Router's own
         /// mounting path, where the background mount `MultiTool` declares for
         /// itself takes effect. So every `runCode` call goes to the background
         /// and answers with a pending envelope. The model ends its answer, and
@@ -137,39 +137,40 @@ extension MultiTool {
         /// result reaches the model.
         ///
         /// - Parameters:
-        ///   - librarian: the model backing `searchTools`'s selection
-        ///     tier, or `nil` to leave its searcher in cheap retrieval. Unused
-        ///     in direct mode, which vends no `searchTools` to configure.
-        ///   - embedder: the profile's `embedding` handle, which both
-        ///     `searchTools`'s searcher and `runCode`'s did-you-mean ranker
-        ///     rank with, or `nil` (the default) for keyword-only ranking. A
-        ///     host that resolved a profile has one, and without it the
-        ///     registry reports `no embedder configured` on every search. The
-        ///     catalog is embedded at the first search, so this call still
-        ///     starts nothing and awaits nothing.
-        ///   - sampleGenerator: the model `searchTools` writes its runnable
-        ///     sample snippet on, or `nil` (the default) to leave sample
-        ///     generation unconfigured, so `searchTools` answers with signatures
-        ///     alone exactly as it always has. Pass the **main** generation
-        ///     slot: the sample is code the model is told to run, so its
-        ///     quality matters more than its cost. Unused in direct mode.
+        ///   - selection: makes `searchTools`'s selection tier for the ids of
+        ///     this registry, or `nil` to leave its searcher in cheap
+        ///     retrieval. See ``SearchToolsTool/SelectionFactory``. Unused in
+        ///     direct mode, which vends no `searchTools` to configure.
+        ///   - embedder: the embedder both `searchTools`'s searcher and
+        ///     `runCode`'s did-you-mean ranker rank with, or `nil` (the
+        ///     default) for keyword-only ranking. Without it the registry
+        ///     reports `no embedder configured` on every search. The catalog
+        ///     is embedded at the first search, so this call still starts
+        ///     nothing and awaits nothing.
+        ///   - sampleSession: makes the session `searchTools` writes its
+        ///     runnable sample snippet on, or `nil` (the default) to leave
+        ///     sample generation unconfigured, so `searchTools` answers with
+        ///     signatures alone exactly as it always has. Back it with the
+        ///     **main** generation model: the sample is code the model is told
+        ///     to run, so its quality matters more than its cost. Unused in
+        ///     direct mode.
         /// - Returns: `searchTools` and `runCode` — or `runCode` alone in
         ///   direct mode, which takes discovery away but not the background.
         /// - Throws: whatever
-        ///   `SearchToolsTool.init(registry:librarian:embedder:limit:sampleGenerator:)`
+        ///   `SearchToolsTool.init(registry:selection:embedder:limit:sampleSession:)`
         ///   throws.
         public func makeSessionTools(
-            librarian: RoutedLLM?,
-            embedder: RoutedEmbedder? = nil,
-            sampleGenerator: RoutedLLM? = nil
+            selection: SearchToolsTool.SelectionFactory?,
+            embedder: (any TextEmbedding)? = nil,
+            sampleSession: SearchToolsTool.SessionFactory? = nil
         ) throws -> [any Tool] {
             try makeSessionToolsAndStaging(
-                librarian: librarian, embedder: embedder, sampleGenerator: sampleGenerator
+                selection: selection, embedder: embedder, sampleSession: sampleSession
             ).tools
         }
 
         /// Builds the tools a host mounts on its session, exactly as
-        /// ``makeSessionTools(librarian:embedder:sampleGenerator:)`` does, and
+        /// ``makeSessionTools(selection:embedder:sampleSession:)`` does, and
         /// vends beside them the `RegistryStaging` a refresher stages a rebuilt
         /// registry on.
         ///
@@ -181,24 +182,23 @@ extension MultiTool {
         ///
         /// A method of its own name, and not an overload: two overloads that
         /// differ in the return type alone make
-        /// `let mounted = try registry.makeSessionTools(librarian: nil)`
+        /// `let mounted = try registry.makeSessionTools(selection: nil)`
         /// ambiguous, and every caller of the old method writes exactly that.
         ///
         /// - Parameters:
-        ///   - librarian: see ``makeSessionTools(librarian:embedder:sampleGenerator:)``.
-        ///   - embedder: see ``makeSessionTools(librarian:embedder:sampleGenerator:)``.
-        ///   - sampleGenerator: see
-        ///     ``makeSessionTools(librarian:embedder:sampleGenerator:)``.
+        ///   - selection: see ``makeSessionTools(selection:embedder:sampleSession:)``.
+        ///   - embedder: see ``makeSessionTools(selection:embedder:sampleSession:)``.
+        ///   - sampleSession: see
+        ///     ``makeSessionTools(selection:embedder:sampleSession:)``.
         /// - Returns: the tools in mount order, and the staging half of the
         ///   holder they share.
-        /// - Throws: what ``makeSessionTools(librarian:embedder:sampleGenerator:)``
+        /// - Throws: what ``makeSessionTools(selection:embedder:sampleSession:)``
         ///   throws.
         public func makeSessionToolsAndStaging(
-            librarian: RoutedLLM?,
-            embedder: RoutedEmbedder? = nil,
-            sampleGenerator: RoutedLLM? = nil
+            selection: SearchToolsTool.SelectionFactory?,
+            embedder: (any TextEmbedding)? = nil,
+            sampleSession: SearchToolsTool.SessionFactory? = nil
         ) throws -> (tools: [any Tool], staging: any RegistryStaging) {
-            let embedding = SearchToolsTool.makeEmbedding(from: embedder)
             // No `wait` tool in either mode. A wait inside a submission holds
             // the model for every session on it, and a settled background run
             // comes back to the session as mail (Router `generation-queue.md`
@@ -207,7 +207,7 @@ extension MultiTool {
                 let holder = RegistryHolder(
                     current: RegistryBundle(
                         registry: self,
-                        shape: RegistryBundleShape(bindsSearchTools: false, discovery: .none, embedder: embedding)))
+                        shape: RegistryBundleShape(bindsSearchTools: false, discovery: .none, embedder: embedder)))
                 return ([MultiTool(holder: holder)], holder)
             }
             let holder = RegistryHolder(
@@ -217,16 +217,16 @@ extension MultiTool {
                         bindsSearchTools: true,
                         discovery: .configured(
                             selection: try SearchToolsTool.makeSelection(
-                                librarian: librarian, ids: surface.entries.map(\.path))),
-                        embedder: embedding)))
+                                selection, ids: surface.entries.map(\.path))),
+                        embedder: embedder)))
             let searchTools = SearchToolsTool(
                 holder: holder,
-                sample: SearchToolsTool.makeSample(generator: sampleGenerator)
+                sample: SearchToolsTool.makeSample(sessionFactory: sampleSession)
             )
             // The same instance both ways in: mounted for the model to call
             // directly, and bound as `tools.searchTools` for a snippet that
-            // reaches for it mid-run. One instance means one librarian and one
-            // sample generator, so the two doors cannot answer differently.
+            // reaches for it mid-run. One instance means one selection tier and
+            // one sample generator, so the two doors cannot answer differently.
             let runCode = MultiTool(holder: holder, searchTools: searchTools)
             return ([searchTools, runCode], holder)
         }
@@ -281,7 +281,7 @@ public struct RunCodeArguments {
 /// `Tool` that wraps other, in-process `Tool`s and exposes them to the model
 /// as a callable code API.
 ///
-/// Mount through `Registry.makeSessionTools(librarian:embedder:sampleGenerator:)`
+/// Mount through `Registry.makeSessionTools(selection:embedder:sampleSession:)`
 /// rather than assembling the array by hand. That call puts `searchTools`
 /// ahead of `runCode`, which is the order this package's whole
 /// search-then-call premise depends on, and it drops `searchTools` under
@@ -410,7 +410,7 @@ public struct MultiTool: Tool {
     ///
     /// A tool made here swaps alone: `stage(_:)` and `submissionWillBegin()` reach
     /// its holder, and no `searchTools` shares it. A host that mounts both
-    /// uses `Registry.makeSessionToolsAndStaging(librarian:embedder:sampleGenerator:)`,
+    /// uses `Registry.makeSessionToolsAndStaging(selection:embedder:sampleSession:)`,
     /// which gives the two one holder.
     ///
     /// - Parameters:
@@ -468,7 +468,7 @@ public struct MultiTool: Tool {
     ///     rendered output. Defaults to `configuration.resultLimits`.
     ///   - searchTools: the mounted discovery tool a snippet reaches as
     ///     `tools.searchTools`. Defaults to `nil`, which binds no such path —
-    ///     `Registry.makeSessionTools(librarian:embedder:sampleGenerator:)` passes the
+    ///     `Registry.makeSessionTools(selection:embedder:sampleSession:)` passes the
     ///     instance it mounts so both doors share one configuration.
     ///   - depth: how many enclosing `tools.runCode` calls this run sits
     ///     inside. Defaults to `0`, the depth of a run the model started;
@@ -498,7 +498,7 @@ public struct MultiTool: Tool {
     /// `nil` when this registry mounts none.
     ///
     /// The same instance the session mounts as its own tool, so a snippet and
-    /// the model's direct call share one librarian and one sample generator.
+    /// the model's direct call share one selection tier and one sample generator.
     private let searchTools: (any Tool)?
 
     /// How many enclosing `tools.runCode` calls this run sits inside.

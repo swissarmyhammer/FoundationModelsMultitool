@@ -110,7 +110,7 @@ struct RegistrySwapTests {
 
     @Test("stage then submissionWillBegin makes runCode, help, docs and searchTools see the new verbs at the same time")
     func stageThenTickSwapsEverySurfaceAtOnce() async throws {
-        let (tools, staging) = try Self.citiesRegistry().makeSessionToolsAndStaging(librarian: nil)
+        let (tools, staging) = try Self.citiesRegistry().makeSessionToolsAndStaging(selection: nil)
         let (runCode, searchTools) = try Self.mounted(in: tools)
         #expect(try await helpPaths(of: runCode) == [Self.citiesPath])
 
@@ -129,7 +129,7 @@ struct RegistrySwapTests {
 
     @Test("stage with no submissionWillBegin leaves the current surface unchanged")
     func stageWithNoTickLeavesTheSurface() async throws {
-        let (tools, staging) = try Self.citiesRegistry().makeSessionToolsAndStaging(librarian: nil)
+        let (tools, staging) = try Self.citiesRegistry().makeSessionToolsAndStaging(selection: nil)
         let (runCode, searchTools) = try Self.mounted(in: tools)
 
         staging.stage(try Self.temperatureRegistry())

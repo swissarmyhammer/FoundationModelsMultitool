@@ -1,5 +1,4 @@
 import FoundationModelsMetadataRegistry
-import FoundationModelsRouter
 import Testing
 
 @testable import FoundationModelsMultitool
@@ -16,8 +15,9 @@ import Testing
 /// 1. A bundle built with an embedder embeds its catalog ONE time, at the
 ///    first search, and every query once — through the discovery searcher
 ///    and through the hint searcher alike.
-/// 2. The host-facing factories take a Router `RoutedEmbedder` and adapt it
-///    to the registry's `TextEmbedding` seam.
+/// 2. The host-facing factories take the host's embedder through the
+///    registry's `TextEmbedding` seam. The Router adapter of the sample CLI
+///    has its own suite, `RouterDiscoverySeamsTests`.
 /// 3. A catalog embed that fails leaves the searcher answering keyword-only
 ///    for the life of its bundle, and the next bundle embeds again.
 ///
@@ -103,29 +103,19 @@ struct DiscoveryEmbedderTests {
         #expect(embedder.batches == [blocks, blocks])
     }
 
-    @Test("the host's routed embedder is adapted to the registry's embedding seam unchanged")
-    func routedEmbedderIsAdaptedUnchanged() async throws {
-        let profile = try await makeStubProfile()
-
-        let adapted = RoutedTextEmbedding(embedder: profile.embedding)
-        let vectors = try await adapted.embed(["one", "two"])
-
-        // `StubEmbeddingContainer` answers one constant vector per text; the
-        // adapter forwards both members and adds nothing of its own.
-        #expect(adapted.dimension == profile.embedding.dimension)
-        #expect(vectors == (try await profile.embedding.embed(texts: ["one", "two"])))
-    }
-
     @Test("makeSessionToolsAndStaging takes the host's embedder and still mounts a searchTools that answers")
     func sessionToolsTakeTheHostEmbedder() async throws {
         let registry = try Self.makeRegistry()
         let entry = try #require(registry.surface.entries.first { $0.path == "getCities" })
-        let profile = try await makeStubProfile()
+        let embedder = RecordingEmbedder()
 
-        let mounted = try registry.makeSessionToolsAndStaging(librarian: nil, embedder: profile.embedding)
+        let mounted = try registry.makeSessionToolsAndStaging(selection: nil, embedder: embedder)
         let searchTools = try #require(mounted.tools.compactMap { $0 as? SearchToolsTool }.first)
         let feedback = try await searchTools.call(arguments: SearchToolsArguments(task: "trip cities"))
 
         #expect(feedback.contains(entry.block))
+        // The first batch is the catalog, so the mounted searcher ranked with
+        // the host's embedder and not with a copy of it.
+        #expect(embedder.batches.first == registry.surface.entries.map(\.block))
     }
 }

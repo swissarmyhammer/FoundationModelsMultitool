@@ -71,7 +71,7 @@ struct SiblingToolPathTests {
     @Test("tools.searchTools is bound when the session mounts a discovery tool")
     func searchToolsIsBoundWhenMounted() async throws {
         let registry = try Self.registry()
-        let searchTools = try SearchToolsTool(registry: registry, librarian: nil)
+        let searchTools = try SearchToolsTool(registry: registry, selection: nil)
         let multiTool = MultiTool(registry: registry, searchTools: searchTools)
 
         let output = try await multiTool.call(
@@ -84,7 +84,7 @@ struct SiblingToolPathTests {
     @Test("a snippet's tools.searchTools returns exactly what the mounted tool returns")
     func searchToolsInASnippetMatchesTheMountedTool() async throws {
         let registry = try Self.registry()
-        let searchTools = try SearchToolsTool(registry: registry, librarian: nil)
+        let searchTools = try SearchToolsTool(registry: registry, selection: nil)
         let multiTool = MultiTool(registry: registry, searchTools: searchTools)
         let query = "the cities on the trip"
 
@@ -115,7 +115,7 @@ struct SiblingToolPathTests {
     @Test("both bindings take the object form the generated signatures teach")
     func bothBindingsAcceptTheObjectForm() async throws {
         let registry = try Self.registry()
-        let searchTools = try SearchToolsTool(registry: registry, librarian: nil)
+        let searchTools = try SearchToolsTool(registry: registry, selection: nil)
         let multiTool = MultiTool(registry: registry, searchTools: searchTools)
 
         let nested = try await multiTool.call(

@@ -1,10 +1,37 @@
 ---
 assignees:
 - claude-code
+comments:
+- actor: claude-code
+  id: 01m3fn9163dq44h562wgx17c48
+  text: |-
+    ### research
+    - `SelectionConfig.sessionSource` is a public `var`. Thus the library can take the host config and wrap each session in `TracedAgentSession` for the two cases `.factory` and `.session`. The preamble and the capacity limit stay as the host set them.
+    - The selection seam is a factory keyed by the ids (`SearchToolsTool.SelectionFactory = @Sendable ([String]) throws -> SelectionConfig`). Reason: a Router guided session gets its grammar at creation, and the grammar needs the id set of the catalog.
+    - The Ranker checkout in `.build` has `public static func SelectionTier.idEnumSchema(ids:)`. The CLI grammar helper will call it and not build the schema by hand (reuse rule).
+    - A top-level `func idEnumGrammar(ids:)` breaks the Swift rule "A function belongs to a type". The moved helper becomes a static member of `SelectionGrammar` in `MultitoolCLI`.
+    - Behavior that stays: `makeSessionToolsAndStaging` calls the selection factory one time with the first catalog ids, and the bundle shape keeps that config across swaps (as before). A per-bundle rebuild would need a throwing `RegistryBundle.init`. That is out of scope here.
+    - README.md has no `makeSessionTools(librarian:)` example now. Only doc comments in `ExamplesTests` name it.
+    - The test target links `MultitoolCLI` already, so the moved tests can import it.
+  timestamp: 2026-09-26T20:07:33.315274+00:00
+- actor: claude-code
+  id: 01m3fnqz80rggwme937rvvm402
+  text: |-
+    ### implement — changed
+    - evidence: new `Discovery/SearchToolsTool+Seams.swift` (`SelectionFactory`, `SessionFactory`, traced wrappers for `.factory` and `.session`); `SearchToolsTool.init(registry:selection:embedder:limit:sampleSession:)` and `Registry.makeSessionTools(AndStaging)(selection:embedder:sampleSession:)` name only registry, Ranker and Multitool types; `RoutedAgentSession`, `RoutedTextEmbedding`, `SelectionGrammar` moved to `Sources/MultitoolCLI/` as public; new `MultitoolCLI/RouterDiscoverySeams.swift` is the one entry point, and `CLIRunner` uses it. `SelectionGrammar.idEnumGrammar(ids:)` is now a static member that wraps `SelectionTier.idEnumSchema(ids:)`. Tests: `SelectionGrammarTests.swift` became `RouterDiscoverySeamsTests.swift` (grammar, id-grammar per session, preamble guard, embedder dimension, sample session); `SearchToolsToolTests` has 4 new seam tests with no Router; the other call sites pass `selection: nil`.
+    - Package.swift: no change. `MultitoolCLI` compiles `import FoundationModelsMetadataRegistry` with no declared product, so the compiler does not need it.
+    - README.md: no change. It shows no `makeSessionTools(librarian:)` example.
+    - Did not work: a test that took `makeStubProfile().flash` and let the profile go crashed — a Router handle holds its profile weakly. The test now keeps the profile alive. Comparing two `Grammar` values from `idEnumSchema` as text failed, because `JSONSerialization` gives no fixed key order; the test compares the decoded schemas.
+    - Acceptance rg over `Discovery/` and `MultiTool.swift`: no match.
+
+    ### test — green
+    - evidence: `swift build --build-tests` clean (only the pre-existing SwiftPM `missing creator for mutated node` build-system note); `swift test` — 1800 tests in 144 suites passed, 0 failed, 0 skipped.
+    - next: commit
+  timestamp: 2026-09-26T20:15:42.848869+00:00
 depends_on:
 - 01M3EVKKTGVDQAKH1X7HD44HRE
-position_column: todo
-position_ordinal: 8c80
+position_column: doing
+position_ordinal: '80'
 title: Take the metadata-registry seams in the discovery API, and move the Router adapters to the CLI host
 ---
 ## What

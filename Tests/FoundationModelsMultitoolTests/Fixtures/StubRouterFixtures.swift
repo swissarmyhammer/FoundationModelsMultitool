@@ -349,9 +349,9 @@ func makeStubSession(
 /// The profile is the whole seam a host resolves: its `standard` and `flash`
 /// handles vend sessions over ``ToolCallingBackend``, and its `embedding`
 /// handle answers ``StubEmbeddingContainer``'s constant vector. A test that
-/// needs a real `RoutedLLM` or `RoutedEmbedder` — a `librarian:` or an
-/// `embedder:` argument of the production factories — takes one from here
-/// with no model and no download.
+/// needs a real `RoutedLLM` or `RoutedEmbedder` — an argument of
+/// `RouterDiscoverySeams(librarian:embedder:sampleGenerator:)` — takes one
+/// from here with no model and no download.
 ///
 /// - Parameters:
 ///   - recorder: Where the router journals every transcript event. Defaults

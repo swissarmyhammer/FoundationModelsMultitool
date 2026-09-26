@@ -87,7 +87,7 @@ extension MultiTool {
 
         /// The embedder both searchers of the bundle rank with, or `nil` for
         /// keyword-only ranking. The host's resolved profile carries one, and
-        /// `makeSessionToolsAndStaging(librarian:embedder:sampleGenerator:)`
+        /// `makeSessionToolsAndStaging(selection:embedder:sampleSession:)`
         /// is where the host hands it over.
         let embedder: (any TextEmbedding)?
     }

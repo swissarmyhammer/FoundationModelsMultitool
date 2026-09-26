@@ -242,7 +242,7 @@ struct CLIRouterUnavailableError: Error, CustomStringConvertible {
 /// A runnable demonstration of the FoundationModelsMultitool pipeline.
 ///
 /// The canonical Router + `RoutedSession` + `MultiTool` example, and the host
-/// contract `MultiTool.Registry.makeSessionTools(librarian:)` states, run
+/// contract `MultiTool.Registry.makeSessionTools(selection:)` states, run
 /// end to end: resolving a model profile via `Router`, mounting whatever that
 /// call vends — `searchTools` and `runCode`, or `runCode` alone under
 /// `--direct` — on a `RoutedSession` the resolved `.standard` slot
@@ -952,6 +952,9 @@ public enum CLIRunner {
             // away. The `searchTools` half's internal selection tier is backed
             // by a Router-resolved `profile.flash` session — the
             // registry-backed `SelectionTier`'s "librarian on flash" split.
+            // Discovery takes the registry seams and knows nothing of Router,
+            // so `RouterDiscoverySeams` turns the Router handles of the
+            // profile into those seams here.
             //
             // `flash` and `standard` name the same model here (`demoProfile`),
             // so that tier and the main session below share one resident
@@ -964,15 +967,17 @@ public enum CLIRunner {
             //
             // The staging half of the same call is what a rebuilt registry is
             // handed to, and it is vended here rather than made by a factory:
-            // `makeSessionToolsAndStaging(librarian:embedder:)` starts nothing
+            // `makeSessionToolsAndStaging(selection:embedder:)` starts nothing
             // of its own, so a host that mounts a session leaves no task
             // behind. The catalog is embedded at the first search.
             //
             // Explicitly typed, so the element type a host mounts is stated
             // where a reader meets it rather than inferred from a call in
             // another module.
+            let seams = RouterDiscoverySeams(librarian: profile.flash, embedder: profile.embedding)
             let mounted: (tools: [any FoundationModels.Tool], staging: any RegistryStaging) =
-                try demo.registry.makeSessionToolsAndStaging(librarian: profile.flash, embedder: profile.embedding)
+                try demo.registry.makeSessionToolsAndStaging(
+                    selection: seams.selection, embedder: seams.embedder, sampleSession: seams.sampleSession)
 
             // The refresher starts AFTER the session tools, and the pool stops
             // it BEFORE it closes any server — the two halves of the MCP
@@ -991,7 +996,7 @@ public enum CLIRunner {
 
             // Vended by the resolved profile, because the session type is part
             // of the host contract and not a detail (see
-            // `Registry.makeSessionTools(librarian:)`). A `RoutedSession` reads
+            // `Registry.makeSessionTools(selection:)`). A `RoutedSession` reads
             // each tool's own declared `ToolMount`, and `MultiTool` declares
             // `.background` with no condition on it (`MultiTool.mount`), so
             // every `runCode` call here starts a background run and answers
@@ -1022,7 +1027,7 @@ public enum CLIRunner {
             // contract — their descriptions carry the entire behavioral
             // contract, and a session instruction a real host may never pass
             // must not be load-bearing (see
-            // `Registry.makeSessionTools(librarian:)`).
+            // `Registry.makeSessionTools(selection:)`).
             let session = profile.standard.makeSession(tools: mounted.tools)
 
             // Subscribed before the prompt is sent, so the session stream

@@ -22,7 +22,7 @@ import Testing
 /// because that is what runs offline over the stub model below. **The shipped
 /// host contract mounts the vended tools on a `RoutedSession`
 /// instead** — `profile.standard.makeSession(tools: try registry
-/// .makeSessionTools(librarian:))`, drained through `streamEvents(to:)` — and
+/// .makeSessionTools(selection:))`, drained through `streamEvents(to:)` — and
 /// only that session mounts a tool under
 /// `ToolMount.synchronous`, which is what lets a slow
 /// `runCode` background. `README.md` and `Sources/MultitoolCLI/CLIRunner.swift`
@@ -274,7 +274,7 @@ struct ExamplesTests {
         }
 
         // `searchTools` ahead of `runCode`, the order
-        // `MultiTool.Registry.makeSessionTools(librarian:)` vends. This
+        // `MultiTool.Registry.makeSessionTools(selection:)` vends. This
         // example builds the pair by hand because its `searchTools` is over a
         // scripted searcher rather than a Router-backed librarian, so it
         // states the order the vending API would have applied.

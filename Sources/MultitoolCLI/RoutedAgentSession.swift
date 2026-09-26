@@ -1,4 +1,4 @@
-import FoundationModelsRanker
+import FoundationModelsMetadataRegistry
 import FoundationModelsRouter
 
 // `RoutedAgentSession` — a Router session presented as an `AgentSession`.
@@ -9,12 +9,16 @@ import FoundationModelsRouter
 // the ranker deleted, kept unchanged on purpose: a different shape here would
 // be a third definition of the same seam, which is the outcome both packages
 // want least.
+//
+// It stands in `MultitoolCLI` and not in the library, because discovery takes
+// the registry seams and knows nothing of Router. The host picks the models,
+// and this host picks Router ones.
 
 /// A `RoutedSession` presented to the selection tier as an `AgentSession`.
 ///
 /// The tier holds every session as `any AgentSession` and knows nothing of
 /// Router. This is the whole of the join between the two.
-struct RoutedAgentSession: AgentSession {
+public struct RoutedAgentSession: AgentSession {
 
     /// The Router session every call travels to.
     private let session: any RoutedSession
@@ -22,7 +26,7 @@ struct RoutedAgentSession: AgentSession {
     /// Makes the presentation over one Router session.
     ///
     /// - Parameter session: The session to present.
-    init(session: any RoutedSession) {
+    public init(session: any RoutedSession) {
         self.session = session
     }
 
@@ -31,7 +35,7 @@ struct RoutedAgentSession: AgentSession {
     /// - Parameter prompt: The prompt to send.
     /// - Returns: The session's complete text response.
     /// - Throws: Whatever the underlying session throws.
-    func respond(to prompt: String) async throws -> String {
+    public func respond(to prompt: String) async throws -> String {
         try await session.respond(to: prompt)
     }
 
@@ -48,7 +52,7 @@ struct RoutedAgentSession: AgentSession {
     ///
     /// - Returns: The forked child session.
     /// - Throws: Whatever the underlying session throws while forking.
-    func fork() async throws -> any AgentSession {
+    public func fork() async throws -> any AgentSession {
         RoutedAgentSession(session: try await session.fork(workingDirectory: nil))
     }
 }

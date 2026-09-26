@@ -1,6 +1,7 @@
 import FoundationModels
 import FoundationModelsMetadataRegistry
 import FoundationModelsRouter
+import Synchronization
 import Testing
 import os
 
@@ -16,6 +17,10 @@ import os
 /// tier is configured.
 @Suite("SearchToolsTool")
 struct SearchToolsToolTests {
+    /// The error a host's selection factory throws in
+    /// ``throwingSelectionFactoryStopsTheBuild()``.
+    struct SelectionFactoryFailure: Error {}
+
     @Test("a scripted selection's matched standalone entry splices SearchToolsTool's output verbatim, via a fork() of the prefix-rooted session")
     func standaloneSelectionSplicesVerbatimBlockAndExample() async throws {
         let surface = try MultiTool.Builder().addTool(TripCitiesTool()).build()
@@ -124,7 +129,7 @@ struct SearchToolsToolTests {
         let registry = try MultiTool.Builder().addTool(TripCitiesTool()).buildRegistry()
         // Collapse the multiline literal's hard line-wraps to single spaces
         // so an assertion probes the guidance, not incidental wrapping.
-        let description = try SearchToolsTool(registry: registry, librarian: nil)
+        let description = try SearchToolsTool(registry: registry, selection: nil)
             .description
             .split(whereSeparator: \.isWhitespace)
             .joined(separator: " ")
@@ -174,14 +179,14 @@ struct SearchToolsToolTests {
         // alongside this one. Task 5qadve5 removed the restatement here.
     }
 
-    @Test("the production registry+librarian initializer wires .auto mode over the registry's own surface entries")
-    func registryInitializerBuildsAutoModeSearcherWithNoLibrarian() async throws {
+    @Test("the production registry initializer wires .auto mode over the registry's own surface entries with no selection tier")
+    func registryInitializerBuildsAutoModeSearcherWithNoSelection() async throws {
         let registry = try MultiTool.Builder().addTool(TripCitiesTool()).buildRegistry()
 
-        // `librarian: nil` — no selection tier configured, so `.auto` must
+        // `selection: nil` — no selection tier configured, so `.auto` must
         // still answer via retrieval alone, proving this initializer never
         // requires a Router model to be independently constructible.
-        let searchToolsTool = try SearchToolsTool(registry: registry, librarian: nil)
+        let searchToolsTool = try SearchToolsTool(registry: registry, selection: nil)
 
         let feedback = try await searchToolsTool.call(arguments: SearchToolsArguments(task: "trip cities"))
 
@@ -189,37 +194,69 @@ struct SearchToolsToolTests {
         #expect(searchToolsTool.name == "searchTools")
     }
 
-    // MARK: - The selection preamble (^zqz1zan)
+    // MARK: - The registry seams drive selection with no Router (^kzaefgz)
 
-    /// The sentence that decides the empty case, written out here on purpose.
-    ///
-    /// **Why a copy, when this file reads every other shipped string off the
-    /// declaration that owns it.** This is the guard card `^zqz1zan` left
-    /// behind. Measured on the agent's flash model: under the ranker default
-    /// that shipped before this sentence, `mlx-community/Qwen3-4B-4bit`
-    /// answered eight of the agent's ten queries with `{"ids":[]}` — every
-    /// query for a way to write, edit or run — and the bench run ended with an
-    /// empty patch. The ranker's `String.selectionDefault` now carries the
-    /// sentence itself (ranker card `^zxm99zs`), so this package passes no
-    /// preamble of its own.
-    ///
-    /// A test that read the sentence off `String.selectionDefault` would hold
-    /// whatever that constant said, which is the one thing this guard must not
-    /// do. A copy fails loudly if a later ranker default drops the sentence.
-    private static let emptyAnswerSentence =
-        "Prefer the closest candidates over an empty answer; answer with an empty list only when "
-        + "no candidate is related to the task at all."
+    @Test("a host's SelectionConfig over a stub AgentSession drives selection end to end, with the catalog ids handed to its factory")
+    func hostSelectionConfigDrivesSelectionEndToEnd() async throws {
+        let registry = try MultiTool.Builder().addTool(TripCitiesTool()).addTool(TempTool()).buildRegistry()
+        let entry = try #require(registry.surface.entries.first { $0.path == "getTrip" })
+        let root = RootSessionRespondCalledDirectlySession(forkResponses: [#"{"ids":["getTrip"]}"#])
+        let receivedIds = Mutex<[[String]]>([])
 
-    @Test("the selection tier is seeded with a preamble that tells the model to prefer the closest candidates over an empty answer")
-    func selectionTierIsSeededWithTheEmptyAnswerGuidance() async throws {
-        // A real `RoutedLLM`, because `makeSelection` wires nothing for a `nil`
-        // librarian, and the preamble is only observable on the configuration
-        // it builds for a real one.
-        let profile = try await makeStubProfile()
+        let searchToolsTool = try SearchToolsTool(
+            registry: registry,
+            selection: { ids in
+                receivedIds.withLock { $0.append(ids) }
+                return SelectionConfig(model: { _ in root }, capacityCharacterLimit: .max)
+            })
+        let feedback = try await searchToolsTool.call(arguments: SearchToolsArguments(task: "list the trip cities"))
 
-        let config = try #require(try SearchToolsTool.makeSelection(librarian: profile.flash, ids: ["getTrip"]))
+        // The factory ran one time, for the ids of the whole catalog.
+        #expect(receivedIds.withLock { $0 } == [registry.surface.entries.map(\.path)])
+        // The traced wrapper forwards `fork()`, so the tier's cached-root
+        // path still reaches the host's session.
+        #expect(root.forkCount == 1)
+        #expect(feedback.contains(entry.block))
+        #expect(!feedback.contains("tools.getTemperature"))
+    }
 
-        #expect(config.preamble.contains(Self.emptyAnswerSentence))
+    @Test("a host's SelectionConfig over one fixed AgentSession drives selection through the mounted searchTools")
+    func hostSelectionSessionDrivesTheMountedSearchTools() async throws {
+        let registry = try MultiTool.Builder().addTool(TripCitiesTool()).addTool(TempTool()).buildRegistry()
+        let entry = try #require(registry.surface.entries.first { $0.path == "getTrip" })
+        let root = RootSessionRespondCalledDirectlySession(forkResponses: [#"{"ids":["getTrip"]}"#])
+
+        let mounted = try registry.makeSessionTools(selection: { _ in
+            SelectionConfig(session: root, capacityCharacterLimit: .max)
+        })
+        let searchToolsTool = try #require(mounted.first as? SearchToolsTool)
+        let feedback = try await searchToolsTool.call(arguments: SearchToolsArguments(task: "list the trip cities"))
+
+        #expect(root.forkCount == 1)
+        #expect(feedback.contains(entry.block))
+        #expect(!feedback.contains("tools.getTemperature"))
+    }
+
+    @Test("a host's selection factory that throws stops the build of the session tools")
+    func throwingSelectionFactoryStopsTheBuild() throws {
+        let registry = try MultiTool.Builder().addTool(TripCitiesTool()).buildRegistry()
+
+        #expect(throws: SelectionFactoryFailure.self) {
+            try registry.makeSessionTools(selection: { _ in throw SelectionFactoryFailure() })
+        }
+    }
+
+    @Test("a host's sample session factory backs the sample the registry initializer generates")
+    func hostSampleSessionBacksTheSample() async throws {
+        let registry = try MultiTool.Builder().addTool(CitiesTool()).addTool(TempTool()).buildRegistry()
+        let session = ScriptedAgentSession([Self.sampleReply])
+
+        let tool = try SearchToolsTool(registry: registry, selection: nil, sampleSession: { _ in session })
+        let feedback = try await tool.call(arguments: SearchToolsArguments(task: "how warm is the trip"))
+
+        #expect(session.callCount == 1)
+        #expect(feedback.contains("const trip = await tools.getCities({});"))
+        #expect(!feedback.contains(SearchToolsTool.writeSnippetInstruction))
     }
 
     // MARK: - The generated sample leads the output
@@ -316,7 +353,7 @@ struct SearchToolsToolTests {
     func productionInitializerLeavesSampleGenerationOff() async throws {
         let registry = try MultiTool.Builder().addTool(CitiesTool()).buildRegistry()
 
-        let tool = try SearchToolsTool(registry: registry, librarian: nil, sampleGenerator: nil)
+        let tool = try SearchToolsTool(registry: registry, selection: nil, sampleSession: nil)
         let feedback = try await tool.call(arguments: SearchToolsArguments(task: "trip cities"))
 
         #expect(feedback.contains(SearchToolsTool.writeSnippetInstruction))

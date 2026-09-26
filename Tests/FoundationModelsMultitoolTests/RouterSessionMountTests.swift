@@ -22,7 +22,7 @@ struct RouterSessionMountTests {
     func searchToolsIsTransparentThroughTheMount() async throws {
         let context = try await makeOuterRunContext()
         let registry = try Self.registry()
-        let searchTools = try SearchToolsTool(registry: registry, librarian: nil)
+        let searchTools = try SearchToolsTool(registry: registry, selection: nil)
         let task = "the cities on the trip"
 
         let direct = try await searchTools.call(arguments: SearchToolsArguments(task: task))
@@ -77,7 +77,7 @@ struct RouterSessionMountTests {
     func theMountPreservesTheModelFacingSurface() async throws {
         let context = try await makeOuterRunContext()
         let registry = try Self.registry()
-        let searchTools = try SearchToolsTool(registry: registry, librarian: nil)
+        let searchTools = try SearchToolsTool(registry: registry, selection: nil)
 
         let mounted = Self.makeSessionMounted(searchTools, on: context)
 

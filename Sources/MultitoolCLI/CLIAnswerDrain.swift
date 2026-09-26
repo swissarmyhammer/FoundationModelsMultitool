@@ -368,7 +368,7 @@ extension CLIRunner {
     /// the answer runs, and returns the answer.
     ///
     /// This is the host half of the contract
-    /// `MultiTool.Registry.makeSessionTools(librarian:)` states: a session that
+    /// `MultiTool.Registry.makeSessionTools(selection:)` states: a session that
     /// carries the mounted tools is driven by draining `streamEvents(to:)`.
     /// Every line written here is one a `respond(to:)` caller never sees. Each
     /// `runCode` call goes to the background, and it reports itself while it is

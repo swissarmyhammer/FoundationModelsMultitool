@@ -136,7 +136,7 @@ struct CallTrace: Sendable {
     /// Everything the two share is already factored into `begin`/`end`; what
     /// repeats is the `do`/`catch` the language requires at each.
     ///
-    /// It earns its place: a `RoutedLLM` session factory is synchronous and
+    /// It earns its place: a host's session factory is synchronous and
     /// does real work — a grammar-constrained session compiles its grammar —
     /// so it can hold a thread, and a call that never returns from a
     /// synchronous factory looks identical, from outside, to one suspended in
