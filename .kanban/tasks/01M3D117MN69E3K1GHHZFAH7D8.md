@@ -38,8 +38,25 @@ comments:
     - no disabled or skipped tests found in the code.
     - next: none. The suite is clean.
   timestamp: 2026-09-26T12:23:16.550834+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m3etsy19ycyb5t412jstht4b
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (d1a10a6). 0 findings, 0 confirmed, 0 refuted. The engine reviewed 0 files. The .reviewignore rule excluded 6 .kanban files. No validator matched web.md.
+    - next: The review contract moved the task to done. The acceptance criterion "The suite and the workflow follow the decision." is not checked. A person must decide if this task opens again.
+  timestamp: 2026-09-26T12:24:55.593614+00:00
+- actor: claude-code
+  id: 01m3ettbrtn9e7bhtt0ne7spj3
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — web.md (decision recorded); ^thvf1sz has the daily-only criterion
+    - test: green — swift test, 1790 passed
+    - commit: d1a10a6
+    - review: clean — 0 findings (no validator applies to web.md); the task is in done
+    - note: the second criterion ("the workflow follows the decision") is met when ^thvf1sz is done.
+  timestamp: 2026-09-26T12:25:09.658368+00:00
+position_column: done
+position_ordinal: ffe580
 title: 'Web: decide how the Level 2 suite handles the DuckDuckGo challenge page'
 ---
 ## What

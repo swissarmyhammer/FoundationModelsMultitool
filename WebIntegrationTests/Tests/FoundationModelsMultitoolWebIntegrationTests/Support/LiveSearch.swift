@@ -19,7 +19,9 @@ enum LiveSearch {
     ///
     /// One live search sends one request to each provider that it tries.
     /// With ``searchTimeoutSeconds`` for each provider, one minute is more
-    /// than enough time. A test that reaches the limit is parked, not slow.
+    /// than enough time. A live fetch has ``resourceTimeoutSeconds`` for each
+    /// request, thus the fetch suites and the `runCode` suite use the same
+    /// limit. A test that reaches the limit is parked, not slow.
     static let timeLimitMinutes = 1
 
     /// The query of each live search test.
@@ -73,8 +75,11 @@ enum LiveSearch {
     /// Makes the configuration of the one session of a live context:
     /// `.ephemeral`, as the capability defaults to, with short timeouts.
     ///
+    /// The live fetch suites and the live `runCode` suite also use it, thus
+    /// each live request of the package has the same short timeouts.
+    ///
     /// - Returns: The configuration.
-    private static func makeShortTimeoutConfiguration() -> URLSessionConfiguration {
+    static func makeShortTimeoutConfiguration() -> URLSessionConfiguration {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = requestTimeoutSeconds
         configuration.timeoutIntervalForResource = resourceTimeoutSeconds
