@@ -73,12 +73,29 @@ comments:
     - note: one build warning, `missing creator for mutated node ... mlx-swift_Cmlx.bundle`, comes from the vendored mlx-swift package under `.build/checkouts`. This is outside this repo. It is noted here, not fixed.
     - next: none. All four required test runs are green (with the two allowed exceptions).
   timestamp: 2026-09-26T14:26:55.133922+00:00
+- actor: claude-code
+  id: 01m3f21hhvnek653wtrhtpzn31
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit 0d02475). 0 findings, 0 confirmed, 0 refuted. 10 files reviewed. 7 files not reviewed: 6 `.kanban/` files (ignored by `.reviewignore`) and `web.md` (no validator matches it). The commit renames no file. The description has no earlier `## Review Findings` section.
+    - next: the task moved to `done`. A person decides web.md § "CI" and the web.yml card (01M3A34A9941ZGD8FXMTHVF1SZ), as the implement comment says.
+  timestamp: 2026-09-26T14:31:24.987272+00:00
+- actor: claude-code
+  id: 01m3f222a5hwsffjc3kqvqb66m
+  text: |-
+    ### finish iteration 2 — clean
+    - iteration 1: stuck (two conflicts; the user decided on 2026-09-26)
+    - implement: changed — 11 files (keyed live tests always run; Brave 422 is a refused key; notes name the status)
+    - test: green — root 1796 passed; live keyless + fallback 14 passed, 2 known issues; the 6 keyed tests fail on this machine only because no key is set, as decided
+    - commit: 0d02475
+    - review: clean — 0 findings; the task is in done
+  timestamp: 2026-09-26T14:31:42.149156+00:00
 depends_on:
 - 01M3A32XTTF1JWYSA9GPDZP3KQ
 - 01M3A33HKP5H238CS992MAJYVS
 - 01M3EXW2YT5AH23TP2PGF2GEHA
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffe880
 title: 'Web: add keyed live tests, the key-leak checks, and the Brave API refused-key note'
 ---
 ## What

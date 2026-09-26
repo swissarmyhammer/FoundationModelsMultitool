@@ -464,13 +464,16 @@ model, so they run in approximately one minute. The suites and their helpers
 root `swift test` does not see them, thus it stays offline, by the build graph
 and not by a convention.
 
-**The environment rule. (Decided, 2026-09-26.)** A test never reads the
-environment to decide if it runs. A test can read an API key from the
-environment as configuration, but only a test that always runs: when the key
-is missing, the test fails with a message that names the variable, and it
-does not skip. `IntegrationTests/Package.swift` states the same rule. The
-keyed provider tests read keys from the environment, because
-`WebConfiguration.fromEnvironment()` is the feature under test.
+**The environment rule. (Decided, 2026-09-26, final.)** A keyed live test
+runs only when its key is set, by the user's decision. No other test reads the
+environment to decide if it runs. The six tests of `KeyedProviderLiveTests`
+read keys from the environment, because `WebConfiguration.fromEnvironment()`
+is the feature under test. Each of them runs when its variable is set and not
+empty. When the variable is not set, the test is skipped, not failed, and the
+skip comment names the variable. This is a written exception from the user to
+the review rule `test-integrity/test-partitioning`, for these six tests only.
+It replaces the earlier decision "always run, fail when the key is missing".
+`IntegrationTests/Package.swift` states the same rule and the same exception.
 
 ```
 swift test --package-path IntegrationTests --no-parallel \
@@ -510,7 +513,8 @@ markup drift, and it is not a defect of the provider. Thus:
 | `KeylessChainLiveTests` | `.keyless`: the query gives hits, and `provider` is one of the two keyless names. |
 | `FetchLiveTests` | `https://example.com`: title `Example Domain`, content contains `Example Domain`. `http://github.com`: final `url` starts with `https://github.com`. `https://en.wikipedia.org/wiki/Swift_(programming_language)` with `maxCharacters: 2000`: `nextOffset` is set; a second call with that offset gives the next text and no second download (cache). `https://api.github.com/zen`: `contentType` is `text/plain`, content is not empty. `https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf`: correction for a binary type. |
 | `GuardLiveTests` | `http://localtest.me/` (a public DNS name that resolves to `127.0.0.1`): the correction names the loopback address. This proves that the guard checks the resolved address, not only the host name. `http://169.254.169.254/latest/meta-data/`: correction. |
-| `KeyedProviderLiveTests` | Six `@Test` functions (`braveAPI`, `tavily`, `exa`, `serper`, `kagi`, `searxng`), with a shared helper. No test has `.enabled(if:)`: each test always runs (see "The environment rule"). Each test builds `WebConfiguration.fromEnvironment()`, and takes only its provider. When its variable is not set, the test fails with a message that names the variable (`BRAVE_SEARCH_API_KEY` or `BRAVE_API_KEY`, `TAVILY_API_KEY`, `EXA_API_KEY`, `SERPER_API_KEY`, `KAGI_API_KEY`, `SEARXNG_URL`). Thus a run on a computer with no keys has six failures, and a key that is not configured cannot become a quiet skip. Each test: query `swift programming language`, at least 3 hits, `provider` is the name of the provider, and the key value is not in the hits, the notes, or the correction. |
+| `KeyedProviderLiveTests` | Six `@Test` functions (`braveAPI`, `tavily`, `exa`, `serper`, `kagi`, `searxng`), with a shared helper. Each test has the trait `.enabled(whenSet:)` of `Support/LiveProviderSetting.swift` (see "The environment rule"). The test runs when its variable is set and not empty (`BRAVE_SEARCH_API_KEY` or `BRAVE_API_KEY`, `TAVILY_API_KEY`, `EXA_API_KEY`, `SERPER_API_KEY`, `KAGI_API_KEY`, `SEARXNG_URL`). Else the test is skipped, and the skip comment names the variable, for example `TAVILY_API_KEY is not set`. Thus a run on a computer with no keys has six skipped tests and no failure. Each test builds `WebConfiguration.fromEnvironment()`, and takes only its provider. When the variable is set but `fromEnvironment()` does not have the provider (for example a `SEARXNG_URL` that is not an `http` or `https` URL), the test fails with a message that names the variable. Each test: query `swift programming language`, at least 3 hits, `provider` is the name of the provider, and the key value is not in the hits, the notes, or the correction. |
+| `LiveProviderSettingTests` | No network and no real key. The enable condition of each keyed live test, with a given environment dictionary: true when a variable of the provider is set, false when no variable is set or the variable is empty, and `BRAVE_API_KEY` alone enables `braveAPI`. When the variables are set, `fromEnvironment()` has the provider. The skip comment names each variable. |
 | `KeyedFallbackLiveTests` | `[.braveAPI(.literal("invalid-key")), .braveHTML]`: `provider` is `braveHTML`, at least 3 hits, `notes` has the refused-key note of `braveAPI` (`braveAPI: skipped, the API key was refused (HTTP <status>).`, today with status 422), and the text `invalid-key` is not in the hits, the notes, or the correction. It needs no real key, thus it can pass on a computer with no keys. |
 | `WebRunCodeLiveTests` | A real `MultiTool` with `.withWeb(configuration: .keyless)` and no model. The snippet at the top of this document runs, and returns 1 to 3 pages, each with a title and content. |
 

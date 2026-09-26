@@ -16,11 +16,23 @@ comments:
   id: 01m3f1jnzf20m77zrqm3nqhh7d
   text: Note from ^wcz6nmr (2026-09-26). The user decision on ^wcz6nmr removes `ExpectedProvidersTests`. No test reads `MULTITOOL_WEB_EXPECTED_PROVIDERS` now. Thus the `MULTITOOL_WEB_EXPECTED_PROVIDERS` line of this card (and the last bullet of web.md § "Testing / CI") has no reader. Also, `KeyedProviderLiveTests` (six tests) ALWAYS runs and FAILS when its key variable is not set. `KeyedFallbackLiveTests` needs no key. The Level 2 `--filter` in web.md does not name `KeyedProviderLiveTests` or `KeyedFallbackLiveTests` yet. A person must decide which of the two keyed suites this workflow runs, and which secrets it maps, before this card starts. ^wcz6nmr did not change web.md § "CI".
   timestamp: 2026-09-26T14:23:17.999477+00:00
+- actor: claude-code
+  id: 01m3f2trh33wkja7mhmfms923x
+  text: |-
+    ### decision — 2026-09-26 (final, replaces the earlier CI decisions)
+    The user decides: follow the pattern of the sibling repositories.
+    - Do NOT add `.github/workflows/web.yml`. `ci.yml` keeps calling the shared `swift-ci.yaml`, and the web live suites run in its existing integration job (`integration-package-path: IntegrationTests`).
+    - No API key secrets in CI. The keyed live tests run only when their key is set (new task), so they are skipped in CI.
+    - The DuckDuckGo "daily schedule only" rule is DROPPED. DuckDuckGo runs in the normal integration job; its challenge page is a known issue, not a failure.
+    - `MULTITOOL_WEB_EXPECTED_PROVIDERS` and `ExpectedProvidersTests` are gone.
+    Rewrite this card to: update web.md § "Testing" / "CI" (and the DuckDuckGo decision paragraph) to state these rules; check `ci.yml` and `CIWorkflowTests.swift` need no change, or change only what the rules require; make sure no text names web.yml. Pass `tags: ["web"]` on the update.
+  timestamp: 2026-09-26T14:45:11.331120+00:00
 depends_on:
 - 01M3A33HKP5H238CS992MAJYVS
 - 01M3A3FMG0S72N2Q515319Z6S4
 - 01M3A33SMXZ93N45S1SWCZ6NMR
 - 01M3EXW2YT5AH23TP2PGF2GEHA
+- 01M3F2TJB4XSKRRCKW236732BT
 position_column: todo
 position_ordinal: '8e80'
 title: 'Web: add the web.yml workflow (web-integration job, daily schedule)'

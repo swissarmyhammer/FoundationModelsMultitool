@@ -46,10 +46,18 @@ private let transformersPackage = "swift-transformers"
 /// environment variable to decide if it ran. Then a green run that measured
 /// nothing looked the same as a green run that measured everything. Thus a
 /// test here never reads the environment to decide if it runs, and no test
-/// may start to do so. A test can read an API key from the environment as
-/// configuration, but only a test that always runs: when the key is missing,
-/// the test fails with a message that names the variable, and it does not
-/// skip (decision of 2026-09-26, web.md § "Testing", Level 2).
+/// may start to do so. A test can read a value from the environment as
+/// configuration when the test always runs.
+///
+/// There is one exception, by the user's decision of 2026-09-26 (final,
+/// web.md § "Testing", Level 2): each of the six keyed live tests of
+/// `Web/KeyedProviderLiveTests.swift` runs only when its API key (or
+/// `SEARXNG_URL`) is set. When the key is not set, the test is skipped, not
+/// failed, and the skip comment names the variable. This is a written
+/// exception to the review rule `test-integrity/test-partitioning`, for these
+/// six tests only. `Web/Support/LiveProviderSetting.swift` holds the one
+/// enable condition, and `Web/LiveProviderSettingTests.swift` checks it with
+/// no real key. No other test reads the environment to decide if it runs.
 ///
 /// The two commands are:
 ///
