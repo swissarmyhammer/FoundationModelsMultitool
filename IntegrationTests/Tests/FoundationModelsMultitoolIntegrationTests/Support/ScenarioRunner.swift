@@ -178,21 +178,12 @@ func runNativeIntegrationScenario(
         let start = Date()
         // Streaming, drained to completion — and this is not a preference.
         //
-        // **On `respond(to:)` the design under test does not exist.** `respond`
-        // blocks and drains, so a backgrounded `runCode` is collected before the
-        // caller sees it, a `wait` call has nothing left to wait for, and a
-        // blocking `searchTools` is indistinguishable from a backgrounding one. A
-        // gated suite driven through `respond` would go green while observing
-        // none of the three rules it exists to check: searchTools blocks,
-        // runCode always backgrounds, wait joins on a token.
-        //
-        // `respond` keeps exactly one job in this suite — proving the final
-        // answer equals what a drained stream accumulates. Answer parity, and
-        // nothing else. Asserted beside groundedness, never instead of it: two
-        // surfaces can agree on a wrong answer, and both refusing identically
-        // ("I don't have access to real-time weather data") satisfies equality
-        // while proving nothing, which is what every recorded run of both
-        // surfaces did.
+        // **`respond(to:)` gives one final text and nothing else.** The
+        // stream gives each tool call, each tool status and each submission
+        // of the turn, and the grading and the route diagnostics read them.
+        // A gated suite driven through `respond` would see the answer and not
+        // the route: whether `searchTools` preceded `runCode`, and what each
+        // call returned.
         //
         // Draining also restores the route diagnostics. While this runner used
         // `respond`, four of the seven failure modes were unobservable and the
@@ -309,9 +300,17 @@ func runNativeIntegrationScenario(
 ///    identifier, per `MultiTool.terminalEventFields(of:state:)`).
 /// 2. **A pending envelope really appeared** — some tool output on the way to
 ///    that answer was exactly `PendingRunEnvelope.rendered`, checked with
-///    Router's own byte-shape recognizer. Which background-run global the model
-///    then reached for, and how many rounds it took, is deliberately
-///    unasserted.
+///    Router's own byte-shape recognizer. How many rounds the model took is
+///    deliberately unasserted.
+///
+/// **The graded answer is the last one.** On the work-queue Router the
+/// model ends its answer when it gets a pending envelope, and the settled
+/// run comes back to the session as mail, which starts a new answer
+/// (`SubmissionStart.cause == .mail`). So when a pending envelope appeared,
+/// the runner reads the session events until the answer that mail started
+/// ends, or until `backgroundMailAnswerDeadline`, and grades the reply of the
+/// last answer it read. When no pending envelope appeared, the run settled
+/// inline and the first answer is the graded one.
 ///
 /// The answer is read off `RoutedSession.streamEvents(to:)` rather than
 /// `respond(to:)` because the same stream is what carries the tool outputs the
@@ -354,12 +353,23 @@ func runBackgroundIntegrationScenario(
             discoveryPriming: scenarioDiscoveryPriming
         )
 
+        // Subscribed before the turn starts, so no event of the mail answer
+        // can come before the subscription. The reader is cancelled on every
+        // exit path, so it cannot outlive this scenario.
+        let sessionEvents = await session.streamSessionEvents()
+        let mailReader = Task {
+            await MailAnswerReading.read(sessionEvents, backgroundRunsOf: log, within: backgroundMailAnswerDeadline)
+        }
+        defer { mailReader.cancel() }
+
         let start = Date()
         let turn = try await streamTurn(of: session, prompt: prompt)
+        let pendingEnvelopes = turn.toolOutputs.filter(PendingRunEnvelope.isRendered)
+        let answers = pendingEnvelopes.isEmpty ? [] : SubmissionLog.fold(events: await mailReader.value.events)
+        let answer = answers.last?.reply ?? turn.answer
         let elapsed = Date().timeIntervalSince(start)
 
-        let pendingEnvelopes = turn.toolOutputs.filter(PendingRunEnvelope.isRendered)
-        var checks = answerChecks(turn.answer, containsOneOf: answerContainsOneOf, mustNotContain: [])
+        var checks = answerChecks(answer, containsOneOf: answerContainsOneOf, mustNotContain: [])
         checks.append(
             ScenarioCheck(
                 name: pendingEnvelopeCheckName,
@@ -375,14 +385,30 @@ func runBackgroundIntegrationScenario(
             line: "elapsed=\(elapsed)s toolCalls=\(turn.toolCallCount) "
                 + "toolOutputs=\(turn.toolOutputs.count) "
                 + "pendingEnvelopes=\(pendingEnvelopes.count) "
+                + "mailAnswers=\(answers.filter { $0.cause == .mail }.count) "
                 + "priming=\(primingLabel(turn)) "
                 + "textResets=\(turn.supersededAnswers.count) "
                 + "compactions=\(turn.compactions.count) tokens=\(turn.tokenUsage ?? "n/a") "
                 + "failedCalls=\(turn.failedCalls.count)\(turn.failedCalls.isEmpty ? "" : " \(turn.failedCalls)") "
-                + "reply=\"\(turn.answer.prefix(120))\""
+                + "reply=\"\(answer.prefix(120))\""
         )
     }
 }
+
+/// The count of minutes in `backgroundMailAnswerDeadline`.
+///
+/// This declaration names the number directly, so no call site passes a raw
+/// literal. The reason for the value stands on that constant.
+private let backgroundMailAnswerDeadlineMinutes: Int64 = 8
+
+/// How long `runBackgroundIntegrationScenario` waits for the answer that mail
+/// starts, counted from the start of the turn.
+///
+/// Eight minutes. The time limit of `BackgroundTests` is ten minutes, and it
+/// also has to hold the profile load. A run that gets no mail answer inside
+/// this deadline is graded, and fails with a reading, rather than being cut
+/// off by the time limit with none.
+private let backgroundMailAnswerDeadline = Duration.seconds(backgroundMailAnswerDeadlineMinutes * secondsPerMinute)
 
 /// Everything one streamed turn produced that a background scenario grades or
 /// reports.
@@ -844,220 +870,9 @@ func printSkipNote(_ name: String) {
     reportTraceLine("SKIP [\(name)]: Router's live-inference path is not wired up in this environment.")
 }
 
-/// Drives one scenario through **both** surfaces and holds `respond(to:)` to
-/// the rule that it must self-drain its own background runs (task `^n6kgckr`).
-///
-/// Now that `runCode` always backgrounds (`^cv98vff`), a tool call no longer
-/// returns data on any surface — it returns a reference to work still running.
-/// On streaming that is the feature. On `respond` it must be **invisible**:
-/// the same final answer, just slower. A `respond` that returned while its own
-/// turn's runs were still running would hand the model a token and nothing
-/// else, which is exactly the measured failure this whole plan exists to end
-/// (`invoked=[] returned=[]`, "I don't have access to real-time weather
-/// data").
-///
-/// Four things are asserted, and the first two must both hold or the run
-/// proves nothing:
-///
-/// 1. **Grounded.** The answer depends on what a fixture tool actually
-///    returned, read off the run's own call log rather than off the reply.
-/// 2. **Parity with a drained stream.** The same scenario through
-///    `streamEvents` reaches the same answer.
-/// 3. **Nothing left running.** After `respond` returns, the session holds no
-///    background run. A dangling token means the drain is incomplete even if
-///    the answer happened to be right.
-/// 4. **`wait` calls, reported.** Not asserted — see below.
-///
-/// **What this scenario does not isolate, and a later reader must not assume
-/// it does.** `backgroundRuns=0` on return is necessary but not sufficient
-/// evidence that `respond` drained anything. There are two ways a backgrounded
-/// run gets collected on this surface, and both end with no background run
-/// left:
-///
-/// - the model collects it in-band, because the pending envelope instructs it
-///   to (its `next` sentence, `MultiTool.collectInstruction(forCompletionToken:)`:
-///   "Call the wait tool with completionToken ...");
-/// - the turn ends with runs still going, and `respond`'s drain settles them.
-///
-/// Measured on real hardware, the first happens: `waitCalls=2`. So this
-/// scenario proves the *surface* is sound — grounded answer, parity with
-/// streaming, nothing left running — while leaving Router's drain itself
-/// unexercised, because the model left it nothing to do.
-///
-/// **No scenario here isolates the drain, and none can.** Isolating it needs a
-/// turn that ends with something still running, and Router's `^466d38p` (their
-/// commit `b4c0282`) says no host can produce one: every background run hands
-/// the model a `PendingRunEnvelope` telling it to collect that run with a
-/// `wait` call before it answers, and there is no background run without that
-/// instruction. The scenario
-/// written to try — task `^xeqs138` — measured the opposite and was inverted
-/// into `runInBandCollectionCanaryScenario`, which now watches for the condition
-/// becoming reachable. Cite no suite in this target for "the drain works".
-///
-/// **Router's drain rule, which this scenario is written against.** `respond`
-/// runs its own turn, then snapshots **every** run still going on the session —
-/// not only the ones its own turn started — waits for all of them to settle,
-/// and runs one more ordinary turn carrying their results. It repeats, so a
-/// run started from inside a drained turn is drained too, bounded at four
-/// continuation turns (`RoutedSessionActor.backgroundRunDrainRoundLimit`): one
-/// `respond` costs at most five model turns.
-///
-/// Two consequences for a scenario written here. A prompt whose answer needs
-/// more than four continuation turns fails for a reason that is not a drain
-/// defect, so keep scenarios inside that budget. And a cancelled turn is never
-/// drained: whatever it started keeps running, because ending a background run
-/// is `close()`'s job rather than cancellation's. A cancelling scenario is
-/// therefore asserting about `close()`, not about this rule. Nothing here
-/// cancels.
-///
-/// A cancelling scenario *is* now possible, which it was not when this runner
-/// was written: Router closed `^h3efdrc`, so a `respond` parked inside its
-/// drain can be stopped by either route, and it returns the last turn's answer
-/// rather than throwing.
-///
-/// **Parity is asserted on substance, not on bytes.** The card behind this
-/// runner asks for equality of the two final answers. Two independent live
-/// generations are not byte-equal, so a literal `==` would be a sampling
-/// gate wearing an assertion's clothes: green or red by luck, and the first
-/// thing a later reader would "fix" by loosening it. What is compared instead
-/// is which accepted answers each reply contains — both surfaces must name the
-/// same fixture value, and neither may name a different one. Two runs that
-/// agree on a *wrong* answer still fail, because groundedness is asserted
-/// beside this and never instead of it.
-///
-/// - Parameters:
-///   - name: a short label identifying the scenario, used in the printed line.
-///   - makeTools: builds the scenario's fixed tool set around a call log.
-///   - prompt: the user request driving both surfaces.
-///   - answerContainsOneOf: candidate substrings, at least one of which a
-///     reply must contain (case-insensitively) to count as a valid answer.
-///   - groundedIn: the `tools.*` paths whose returned data the answer must
-///     depend on.
-/// - Throws: any error other than `GenerationError.notWiredForLiveInference`.
-func runRespondDrainScenario(
-    name: String,
-    tools makeTools: (ScenarioCallLog) -> [any Tool],
-    prompt: String,
-    answerContainsOneOf: [String],
-    groundedIn: Set<String>
-) async throws {
-    try await withLiveRouterFixture(name: name) { fixture in
-        // The blocking surface first, on its own session and its own log.
-        let respondLog = ScenarioCallLog()
-        let respondSession = fixture.profile.standard.makeSession(
-            tools: try makeScenarioSurface(over: makeTools(respondLog), on: fixture).tools,
-            discoveryPriming: scenarioDiscoveryPriming
-        )
-        // Subscribed before the call, for the reason the canary runner below
-        // gives: a subscription opened later could miss the `answered` event.
-        let respondEvents = await respondSession.streamSessionEvents()
-        async let firstAnswerEvents = eventsThroughFirstAnswer(in: respondEvents)
-        let start = Date()
-        _ = try await respondSession.respond(to: prompt)
-        let respondElapsed = Date().timeIntervalSince(start)
-        // The respond path takes its text from `answered.reply`, as the stream
-        // path does, so both surfaces grade the same field.
-        let respondAnswer = SubmissionLog.fold(events: await firstAnswerEvents).first?.reply ?? ""
+// MARK: - The mail collection canary
 
-        // Read immediately after the call returns: that is the instant the
-        // rule is about. A run settling a moment later is precisely the
-        // failure — the answer would already have been written without it.
-        let backgroundRunsAfterRespond = await respondLog.backgroundRuns()
-        let respondGrounding = await respondLog.returnedPaths
-
-        // The streaming surface second, drained to completion, on a session of
-        // its own so neither run can read back the other's transcript.
-        let streamLog = ScenarioCallLog()
-        let streamSession = fixture.profile.standard.makeSession(
-            tools: try makeScenarioSurface(over: makeTools(streamLog), on: fixture).tools,
-            discoveryPriming: scenarioDiscoveryPriming
-        )
-        let streamTurnResult = try await streamTurn(of: streamSession, prompt: prompt)
-        let streamGrounding = await streamLog.returnedPaths
-
-        let respondAccepted = accepted(answerContainsOneOf, in: respondAnswer)
-        let streamAccepted = accepted(answerContainsOneOf, in: streamTurnResult.answer)
-
-        reportTraceLine(
-            """
-            RESPOND-DRAIN \(name) elapsed=\(String(format: "%.1f", respondElapsed))s \
-            backgroundRuns=\(backgroundRunsAfterRespond.count) \
-            groundedIn=\(respondGrounding.sorted()) accepted=\(respondAccepted.sorted())
-            RESPOND-DRAIN \(name) stream groundedIn=\(streamGrounding.sorted()) \
-            accepted=\(streamAccepted.sorted())
-            """
-        )
-
-        // 1. Grounded: the answer rests on data a tool really returned.
-        #expect(respondGrounding.isSuperset(of: groundedIn))
-        #expect(!respondAccepted.isEmpty)
-        // 2. Parity of substance with the drained stream: both surfaces
-        // reached the answer.
-        //
-        // Non-empty on both sides IS the parity, because an `answerContainsOneOf`
-        // list holds spellings of ONE answer rather than a choice of answers.
-        // `IntegrationScenarioAnswers.warmestCity` is
-        // `[integrationWarmestCity.code, integrationWarmestCity.name]` — one
-        // city, "by IATA code and by the spelled-out name models routinely
-        // expand codes to. Any other city is wrong." So any non-empty set names
-        // that city and nothing else can.
-        //
-        // Set EQUALITY was the assertion here, and it graded prose style. A run
-        // on 2026-08-16 failed with `respondAccepted = ["SFO"]` against
-        // `streamAccepted = ["SFO", "San Francisco"]`: both surfaces answered
-        // San Francisco, from the same fixture data, and differed only because
-        // one reply also spelled the code out. Equality demands the two replies
-        // pick the same spellings, which is a property of phrasing, not of
-        // substance — and this comment has said "substance" the whole time.
-        #expect(!streamAccepted.isEmpty)
-        // 3. Nothing survives the call.
-        //
-        // This condition measures the old `respond(to:)` drain, which the
-        // work-queue Router removed: a settled run now comes back as mail.
-        // Task ^r77er9z owns this scenario and replaces the condition with
-        // the mail contract. It stays here unchanged until then.
-        #expect(backgroundRunsAfterRespond.isEmpty)
-        // 4. The `wait` calls are no longer counted. The `wait` tool is
-        // removed, and a settled run comes back to the session as mail.
-    }
-}
-
-/// Collects the events of a session up to and including the end of its
-/// first answer chain.
-///
-/// "The end of the reply" is `answered` — or `answerFailed` in its place —
-/// and never one `submissionEnded`, which ends one SDK call only. See
-/// `SubmissionLog.endsAnswer(event:)`.
-///
-/// Subscribe before the call that makes the answer: a subscription opened
-/// later can register after the answer ended, and this then waits for the
-/// next answer.
-///
-/// - Parameter events: the session's own event feed.
-/// - Returns: the events through the first `answered` or `answerFailed`, or
-///   every event the feed gave when it finished first.
-func eventsThroughFirstAnswer(in events: AsyncStream<SessionEvent>) async -> [SessionEvent] {
-    var collected: [SessionEvent] = []
-    for await event in events {
-        collected.append(event)
-        if SubmissionLog.endsAnswer(event: event) { break }
-    }
-    return collected
-}
-
-/// Which of `candidates` a reply contains, case-insensitively.
-///
-/// - Parameters:
-///   - candidates: the accepted answers for a scenario.
-///   - reply: the model's final answer.
-/// - Returns: the accepted answers present in `reply`.
-private func accepted(_ candidates: [String], in reply: String) -> Set<String> {
-    Set(candidates.filter { reply.localizedCaseInsensitiveContains($0) })
-}
-
-// MARK: - The in-band collection canary
-
-/// How many leading characters of the model's reply the `IN-BAND-CANARY`
+/// How many leading characters of the model's reply the `MAIL-CANARY`
 /// diagnostic line prints.
 ///
 /// The reply is a whole sentence or two of prose, and the line already carries
@@ -1065,82 +880,55 @@ private func accepted(_ candidates: [String], in reply: String) -> Set<String> {
 /// 120 characters because the one thing a reader chases here is the manifest
 /// code, and a model that reports it puts it in the opening clause; the same
 /// bound is what the other gated runners' reply previews use.
-private let inBandCollectionReplyPreviewCharacters = 120
+private let mailCanaryReplyPreviewCharacters = 120
 
-/// Drives one in-band collection scenario end to end, and holds the run to
-/// what a live model really does with it: it collects its own background run
-/// in band, and the turn ends with nothing still running (task `^xeqs138`).
+/// The count of minutes in `mailAnswerDeadline`.
+///
+/// This declaration names the number directly, so no call site passes a raw
+/// literal. The reason for the value stands on that constant.
+private let mailAnswerDeadlineMinutes: Int64 = 12
+
+/// The count of seconds in one minute, to turn `mailAnswerDeadlineMinutes`
+/// into a `Duration`.
+private let secondsPerMinute: Int64 = 60
+
+/// How long the canary waits for the answer that mail starts, counted from
+/// the start of the turn.
+///
+/// Twelve minutes. The time limit of `InBandCollectionCanaryTests` is fifteen
+/// minutes, and it also has to hold the profile load. A run that gets no mail
+/// answer inside this deadline is graded, and fails `mailCollection` with a
+/// reading, rather than being cut off by the time limit with none.
+private let mailAnswerDeadline = Duration.seconds(mailAnswerDeadlineMinutes * secondsPerMinute)
+
+/// Drives one mail collection scenario end to end, and holds the run to the
+/// contract of the work-queue Router: a background run that settles after the
+/// answer ends comes back to the session as mail, and the model answers it.
 ///
 /// Two shapes run through this one runner (task `^nhxj8hx`). The mechanism
 /// shape mounts a direct-mode surface, drives the delayed echo by name, and
-/// grades a nonce's round trip through a genuinely deferred settlement. The
-/// teaching shape keeps the discovery surface and the "do not block" prompt,
-/// and grades the instruction the handle carries against that prompt. Both
-/// grade the same conditions, through `mailCollectionChecks`.
+/// grades a nonce's round trip through a deferred settlement. The teaching
+/// shape keeps the discovery surface and the "do not block" prompt. Both grade
+/// the same conditions, through `mailCollectionChecks`.
 ///
-/// **This scenario is the inversion of the one it started as, and it is a
-/// canary.** It was written to end a turn with a run still in flight, so that
-/// Router's `respond` drain would be the only thing that could collect it. The
-/// gated run reported the opposite and reported it cleanly: nothing still
-/// running at the answer, beside `waitCalls=3`, with the manifest code in the
-/// reply, in 635 seconds.
-/// The model collected its own run and answered correctly.
+/// **What changed, and why.** The old Router drained the background runs of a
+/// turn inside `respond(to:)`, and the old surface mounted a `wait` tool that
+/// the model called to collect a run in band. The work-queue Router removed
+/// the drain and the `wait` tool. A run that settles after the answer ends now
+/// sends its result to the session as mail, and the session starts a new
+/// answer for it, whose first submission reports
+/// `SubmissionStart.cause == .mail`. So this runner no longer stops at the end
+/// of the first answer: it reads the session events until an answer that mail
+/// started ends, or until `mailAnswerDeadline`.
 ///
-/// Router then documented why no fixture could have changed that, in
-/// `RoutedSessionActorGeneration`'s "How often this drain enters its loop"
-/// comment (their commit `b4c0282`, card `^466d38p`): every background run hands
-/// a `PendingRunEnvelope` whose text tells it to collect that run with a `wait`
-/// call before it answers; `BackgroundToolRunner` writes that text, and `ToolContext`
-/// starts no background run of its own — so **no host can start one without the
-/// instruction**. A host whose tools always advise collection is every host, not
-/// an unusual one. The condition is not hard to reach from here; it is
-/// unreachable from anywhere, and the instruction sits upstream of anything a
-/// fixture controls. That doc lands after the `c11fe07` this target's
-/// `Package.resolved` pins, so a reader grepping the pinned checkout for it
-/// should read the commit rather than the working copy.
+/// **What is graded.** The last answer the runner read must be a valid answer
+/// that carries the value, grounded in the fixture's own return; at least one
+/// answer must start from mail; and no background run may still be going when
+/// that last answer ends. The value reaches the model only through the settled
+/// run, so an answer that carries it proves the mail brought it.
 ///
-/// So the assertions were inverted rather than loosened. A gated test that can
-/// never pass is a liability: the next reader relaxes one condition until it
-/// goes green, and it then passes vacuously forever.
-///
-/// **What the canary is for.** If a gated run ever fails
-/// `noBackgroundRunsAtAnswer` — if a turn really does end with a run still
-/// going — then the drain has become reachable from this host, and task
-/// `^xeqs138`'s original question reopens with it: `respond`'s snapshot of
-/// every background run, its continuation turn, and its bounded re-entry at
-/// `RoutedSessionActor.backgroundRunDrainRoundLimit` would be running for real, and
-/// nothing in this target covers any of them. Read `inBandCollection` beside it:
-/// those two failing together is the drain-reachable reading, and it is the one
-/// to act on. Do not relax either of them.
-///
-/// **Why "nothing still running" means something although the fixture
-/// settles in seconds.** It is not read alone. `inBandCollection` is graded beside it, and
-/// `wait` is the only in-band collector — so a `wait` call, no background run
-/// left, and an answer carrying the manifest code together say the model
-/// collected its own run.
-/// None of the three is a statement about how long anything took, so a fixture
-/// that stalled would strengthen none of them. What one cost this scenario when
-/// it did stall is recorded on `IntegrationArchiveRebuildTool`.
-///
-/// **Why the answer is graded too, rather than only the background runs.**
-/// Without it
-/// the canary would assert that nothing happened, which a scenario that called
-/// no tool at all would satisfy. The reply has to carry the rebuild's own
-/// manifest code, a value that reaches the model only through the collected
-/// run's terminal `detail` — it is in no prompt, no tool description and no
-/// envelope — so nothing is left running *because the work was collected*, not
-/// because it never started.
-///
-/// **What this says about the drain: nothing.** The drain is not entered on a
-/// passing run — `settleBackgroundRuns` answers `false` on its first round and no
-/// continuation turn runs — so this suite must never be cited for what the loop
-/// does or for its re-entry bound. Router's own suite starts the runs it drains
-/// and covers that; it proves what the loop does, not how often a real model
-/// reaches it (`^466d38p`).
-///
-/// **Nothing here cancels.** A cancelled turn is never drained: whatever it
-/// started keeps running, because ending a background run is `close()`'s job. A
-/// cancelling scenario would therefore be asserting about `close()` instead.
+/// **Nothing here cancels.** Ending a background run is `close()`'s job, so a
+/// cancelling scenario would be asserting about `close()` instead.
 ///
 /// - Parameters:
 ///   - name: a short label identifying the scenario, used in the printed lines.
@@ -1152,15 +940,15 @@ private let inBandCollectionReplyPreviewCharacters = 120
 ///   - answerContainsOneOf: candidate substrings, at least one of which the
 ///     final reply must contain (case-insensitively). Pick a value the reply
 ///     cannot carry unless the run really happened: the teaching shape uses a
-///     value that reaches the model only through the collected run's terminal
+///     value that reaches the model only through the settled run's terminal
 ///     `detail`, and the mechanism shape uses a fresh nonce whose round trip
-///     the grounded and in-band-collection checks pin to the collected run.
+///     the grounded and mail collection checks pin to the settled run.
 ///   - groundedIn: the `tools.*` paths whose returns the answer depends on — see
 ///     `IntegrationScenarioGrounding`.
-///   - direct: when `true`, mount the surface in direct mode — `runCode` and
-///     `wait`, no `searchTools` — so the scenario pays for no discovery. The
-///     mechanism shape passes `true`; the teaching shape keeps the default,
-///     the discovery surface its recorded evidence was measured on. See
+///   - direct: when `true`, mount the surface in direct mode — `runCode`, no
+///     `searchTools` — so the scenario pays for no discovery. The mechanism
+///     shape passes `true`; the teaching shape keeps the default, the
+///     discovery surface its recorded evidence was measured on. See
 ///     `makeScenarioSurface(over:on:direct:)`.
 /// - Throws: any error other than `GenerationError.notWiredForLiveInference`.
 func runInBandCollectionCanaryScenario(
@@ -1180,35 +968,25 @@ func runInBandCollectionCanaryScenario(
             discoveryPriming: scenarioDiscoveryPriming
         )
 
-        // Subscribed on this task, before the turn starts. A subscription opened
-        // from inside the child below could register after the turn had already
-        // ended, and the one event this whole scenario is built around would be
-        // gone — leaving `noBackgroundRunsAtAnswer` graded on an empty snapshot
-        // nobody took.
+        // Subscribed on this task, before the turn starts. A subscription
+        // opened later could register after an answer had already ended, and
+        // the reading would then miss it.
         let sessionEvents = await session.streamSessionEvents()
-        async let firstTurn = backgroundRuns(atFirstTurnEndIn: sessionEvents, reading: log)
+        async let mailReading = MailAnswerReading.read(
+            sessionEvents, backgroundRunsOf: log, within: mailAnswerDeadline)
 
         let start = Date()
         _ = try await session.respond(to: prompt)
+        let reading = await mailReading
         let elapsed = Date().timeIntervalSince(start)
-        let firstAnswer = await firstTurn
-        let answers = SubmissionLog.fold(events: firstAnswer.events)
-        // Read the instant the call returns: that is what "nothing survives
-        // `respond`" is a statement about.
-        let backgroundRunsAfterRespond = await log.backgroundRuns().map(\.tool)
+        let answers = SubmissionLog.fold(events: reading.events)
 
-        // Task ^r77er9z owns this canary. The `wait` tool and the old
-        // in-band evidence are removed, so the run is graded on the one
-        // canary contract that `ScenarioGrading` states: the mail contract.
-        // This runner does not wait for a mail answer after the first answer
-        // ends, so `mailCollection` counts only the mail answers that ended
-        // before it. Task ^r77er9z adds that wait, or deletes this scenario.
         let evidence = MailCollectionEvidence(
-            // The respond path takes its text from `answered.reply`.
-            answer: answers.first?.reply ?? "",
+            // The last answer is the answer that mail started, when one ran.
+            answer: answers.last?.reply ?? "",
             returnedPaths: await log.returnedPaths,
             mailAnswers: answers.filter { $0.cause == .mail }.count,
-            backgroundRunsAtLastAnswer: firstAnswer.backgroundRuns.map(\.tool)
+            backgroundRunsAtLastAnswer: reading.backgroundRuns.map(\.tool)
         )
         grade(
             scenario: name,
@@ -1218,51 +996,84 @@ func runInBandCollectionCanaryScenario(
         )
 
         reportTraceLine(
-            "IN-BAND-CANARY [\(name)] elapsed=\(String(format: "%.1f", elapsed))s "
-                + "backgroundRunsAtAnswer=\(evidence.backgroundRunsAtLastAnswer) "
-                + "backgroundRunsAfterRespond=\(backgroundRunsAfterRespond) "
-                + "mailAnswers=\(evidence.mailAnswers) "
+            "MAIL-CANARY [\(name)] elapsed=\(String(format: "%.1f", elapsed))s "
+                + "answers=\(answers.count) mailAnswers=\(evidence.mailAnswers) "
+                + "backgroundRunsAtLastAnswer=\(evidence.backgroundRunsAtLastAnswer) "
                 + "returned=\(evidence.returnedPaths.sorted()) "
                 + "groundedIn=\(groundedIn.sorted()) "
-                + "reply=\"\(evidence.answer.prefix(inBandCollectionReplyPreviewCharacters))\""
+                + "reply=\"\(evidence.answer.prefix(mailCanaryReplyPreviewCharacters))\""
         )
     }
 }
 
-/// What the canary read at the end of the model's first answer.
-private struct FirstAnswerReading {
-    /// The session events through the end of the first answer chain.
+/// What the canary read at the end of the answer that mail started.
+private struct MailAnswerReading {
+    /// The session events through the end of the first answer that mail
+    /// started, or every event before the deadline when no such answer ended.
     let events: [SessionEvent]
 
-    /// The background runs still going at that instant.
+    /// The background runs still going at the instant the reading ended.
     let backgroundRuns: [BackgroundRun]
-}
 
-/// Snapshots the session's background runs at the end of the model's first
-/// answer.
-///
-/// "The end of the answer" is the `answered` event of the chain (or
-/// `answerFailed` in its place), and not one `submissionEnded`: a chain that
-/// continues ends more than one submission before its reply ends. The first
-/// answer, not the last, because the canary's question is about the answer
-/// that carried the model's own reply.
-///
-/// Nothing here releases anything, so nothing the runner itself did can have
-/// ended a run it reads. Task ^r77er9z owns this function and removes it with
-/// the old drain rule.
-///
-/// - Parameters:
-///   - events: the session's own event feed, subscribed before the turn started.
-///   - log: the run's call log, which holds the handle onto the session's
-///     background runs.
-/// - Returns: the events through the first answer, and the runs still going at
-///   that instant.
-private func backgroundRuns(
-    atFirstTurnEndIn events: AsyncStream<SessionEvent>,
-    reading log: ScenarioCallLog
-) async -> FirstAnswerReading {
-    let answerEvents = await eventsThroughFirstAnswer(in: events)
-    return FirstAnswerReading(events: answerEvents, backgroundRuns: await log.backgroundRuns())
+    /// Reads the session events until an answer that mail started ends, or
+    /// until `limit` passes, and then snapshots the background runs.
+    ///
+    /// Two child tasks race: one reads the events, and one sleeps `limit`.
+    /// When the sleep wins, the reader is cancelled, and an `AsyncStream`
+    /// ends its iteration on cancellation, so the reader gives back the
+    /// events it read so far.
+    ///
+    /// - Parameters:
+    ///   - events: the session's own event feed, subscribed before the turn
+    ///     started.
+    ///   - log: the run's call log, which holds the handle onto the session's
+    ///     background runs.
+    ///   - limit: how long to wait, counted from this call.
+    /// - Returns: the events read, and the runs still going at that instant.
+    static func read(
+        _ events: AsyncStream<SessionEvent>,
+        backgroundRunsOf log: ScenarioCallLog,
+        within limit: Duration
+    ) async -> MailAnswerReading {
+        let collected = await withTaskGroup(of: [SessionEvent]?.self) { group in
+            group.addTask { await eventsThroughMailAnswer(in: events) }
+            group.addTask {
+                try? await Task.sleep(for: limit)
+                return nil
+            }
+            var read: [SessionEvent] = []
+            for await finished in group {
+                group.cancelAll()
+                if let finished {
+                    read = finished
+                    break
+                }
+            }
+            return read
+        }
+        return MailAnswerReading(events: collected, backgroundRuns: await log.backgroundRuns())
+    }
+
+    /// Reads events until an answer chain that mail started ends.
+    ///
+    /// "The end of the answer" is `answered` — or `answerFailed` in its place
+    /// — and never one `submissionEnded`, which ends one SDK call only. See
+    /// `SubmissionLog.endsAnswer(event:)`.
+    ///
+    /// - Parameter events: the session's own event feed.
+    /// - Returns: the events through the end of the first answer that mail
+    ///   started, or every event read when the feed ended or the task was
+    ///   cancelled first.
+    private static func eventsThroughMailAnswer(in events: AsyncStream<SessionEvent>) async -> [SessionEvent] {
+        var collected: [SessionEvent] = []
+        for await event in events {
+            collected.append(event)
+            if SubmissionLog.endsAnswer(event: event), SubmissionLog.fold(events: collected).last?.cause == .mail {
+                break
+            }
+        }
+        return collected
+    }
 }
 
 /// Renders a turn's usage for a gated diagnostic line, without stating a
@@ -1286,8 +1097,8 @@ private func usageForDisplay(_ usage: TokenUsage) -> String {
 /// How many seconds pass between two samples of the shared generation queue
 /// while the probe's turn runs.
 ///
-/// Frequent enough that even a run killed at the suite's three-minute limit
-/// leaves dozens of readings, and cheap enough to be free: one sample is two
+/// Frequent enough that even a run killed at the suite's one-minute limit
+/// leaves a dozen readings, and cheap enough to be free: one sample is two
 /// reads of the queue worker's state.
 private let generationQueueSampleIntervalSeconds = 5
 
@@ -1298,7 +1109,7 @@ private let generationQueueSampleInterval = Duration.seconds(generationQueueSamp
 /// How many leading characters of the model's reply the `NESTED-GENERATION`
 /// diagnostic line prints.
 ///
-/// More than the canary's `inBandCollectionReplyPreviewCharacters`, on purpose
+/// More than the canary's `mailCanaryReplyPreviewCharacters`, on purpose
 /// and not by drift. That line carries six fields and a reader chases one
 /// number in the opening clause; this line carries three, and the reply is the
 /// only prose a completed probe run leaves — how the model described a nested
@@ -1311,10 +1122,11 @@ private let nestedGenerationReplyPreviewCharacters = 200
 /// The work-queue Router replaced the old per-container `generationGate`
 /// with one FIFO `GenerationQueue` for each model. This reads the same two
 /// things the gate reading gave: whether the worker runs a submission, and
-/// how many submissions wait for it. A nested `respond` on the same model now
-/// gets `GenerationQueueError.waitInsideOpenSubmission` at once, so a hang
-/// reads `running=true waiting=1` for the life of the run. Task ^r77er9z
-/// owns the probe, and rewrites it to assert that refusal.
+/// how many submissions wait for it. A nested `respond` on the same model
+/// gets `GenerationQueueError.waitInsideOpenSubmission` at once and never
+/// waits, so a healthy run never reads `waiting=1`. A run that hangs reads
+/// `running=true waiting=1` for the rest of its life, and that is the reading
+/// a run killed by the time limit leaves.
 ///
 /// Sampled while the turn is in flight rather than read afterwards, because a
 /// hung run has no afterwards. The last printed reading is what a killed run
@@ -1338,68 +1150,37 @@ private func sampleGenerationQueue(on slot: RoutedLLM) async {
 /// Runs the nested-generation probe: one turn whose single mounted tool
 /// generates, without any grammar, on the very model that turn is running on.
 ///
-/// **The question.** A gated scenario hangs for ever — 0% CPU, ~19GB resident,
-/// every thread parked on a condition variable — when both profile slots name
-/// one `ModelRef`, because `searchTools` generates from inside the outer turn's
-/// tool call. Two explanations fit, and only one of them needs a grammar:
+/// **The question.** `searchTools` generates from inside the outer turn's tool
+/// call. When the nested generation needs the model that the outer submission
+/// holds open, the work-queue Router must refuse it at once with
+/// `GenerationQueueError.waitInsideOpenSubmission(model:)`. This run makes
+/// exactly that nested call and grades how it ended, through
+/// `nestedGenerationChecks(for:)`: entered, refused, and refused inside
+/// `integrationNestedRefusalTimeLimit`.
 ///
-/// - MLX's grammar-constrained decode deadlocks, its xgrammar path keeping
-///   shared per-model caches; or
-/// - Router's `RoutedModel.generationGate` — an `AsyncSemaphore(value: 1)` per
-///   resident container — is taken by `beginTurn()` and held for the whole
-///   turn, tool calls included, so a nested `respond` on that container parks
-///   on `generationGate.wait()` and can never be admitted: the permit comes
-///   back only from `endTurn()`, which waits on the tool call, which waits on
-///   the nested `respond`.
-///
-/// This run carries no grammar anywhere. A hang here belongs to the gate and
-/// nothing about MLX is implicated; a return here leaves the grammar as the
-/// thing that matters. That is the whole design, and it is why nothing else may
-/// be mounted.
+/// **What it replaced.** The old Router's `RoutedModel.generationGate` — an
+/// `AsyncSemaphore(value: 1)` per resident container, taken by `beginTurn()`
+/// and held across the tool rounds of the turn — parked the same nested call
+/// for ever. Measured on 2026-08-16 with both slots on
+/// `mlx-community/Muse-Glimmer-30B-4bit`: the gate read
+/// `permits=0 waiters=1` to the end of the run, and the unified log read
+/// `enter nestedRespond` at 08:15:49.698 and
+/// `exit nestedRespond threw CancellationError()` at 08:18:34.135 — 165
+/// seconds, unwound only when the time limit cancelled the outer turn.
 ///
 /// **`searchTools` is deliberately absent.** The tool list is
 /// `[IntegrationNestedGenerationTool]` and not what
 /// `MultiTool.Registry.makeSessionTools(selection:embedder:sampleSession:)` vends, so no discovery
 /// call, no selection tier and no `MetadataSearcher` is in the picture — every
-/// one of them generates under a grammar, and any of them present would put the
-/// grammar back into the run this exists to hold it out of.
+/// one of them generates under a grammar on a slot of its own, and none of
+/// them is the question.
 ///
 /// **What a hang looks like from outside.** The turn stops making progress, so
-/// the suite's own `.timeLimit` is what ends it. The evidence is the `GATE`
+/// the suite's own `.timeLimit` is what ends it. The evidence is the `QUEUE`
 /// lines this prints throughout, and the `CallTrace` span the fixture opens:
 /// `log show --predicate 'subsystem == "com.swissarmyhammer.multitool" AND
 /// category == "NestedGenerationProbe"'` shows `enter nestedRespond` with no
 /// matching `exit` for as long as the run lasts.
-///
-/// **What the first run measured, on 2026-08-16.** It hung, with both slots
-/// pinned to `mlx-community/Muse-Glimmer-30B-4bit`:
-///
-/// ```
-/// GATE permits=1 waiters=0        <- before the turn
-/// GATE permits=0 waiters=0        <- beginTurn() took the permit
-/// GATE permits=0 waiters=1        <- and held to the end of the run
-/// ...
-/// ✘ Time limit was exceeded: 180.000 seconds
-/// NESTED-GENERATION [nestedGeneration] elapsed=174.9s entered=[] returned=[] reply=""
-/// ```
-///
-/// beside, in the unified log:
-///
-/// ```
-/// 08:15:49.698 enter nestedRespond #1 checkModelReadiness
-/// 08:18:34.135 exit  nestedRespond #1 threw CancellationError()
-/// ```
-///
-/// 165 seconds inside one nested `respond` with no grammar anywhere in the run,
-/// and the exit arrives only once the harness cancels the outer turn — which is
-/// the mechanism itself: the permit comes back from `endTurn()`, and cancelling
-/// the turn is what let the parked waiter through. **Router's generation gate is
-/// the deadlock, and MLX's grammar path is not needed to explain it.**
-///
-/// The `entered=[]` on that line is not the model declining to call the tool.
-/// `ScenarioCallLog` recorded a call only on the way out at the time, so a call
-/// that never came back was invisible; `enteredPaths` was added for this, and a
-/// rerun of the same hang reads `entered=[checkModelReadiness] returned=[]`.
 ///
 /// - Parameters:
 ///   - name: a short label identifying the run, used in the printed lines.
@@ -1407,21 +1188,21 @@ private func sampleGenerationQueue(on slot: RoutedLLM) async {
 /// - Throws: any error other than `GenerationError.notWiredForLiveInference`.
 func runNestedGenerationProbe(name: String, prompt: String) async throws {
     // `plumbingProbeProfile`, not the shipped pin every other runner in this
-    // file resolves. This probe grades **plumbing**: whether a nested
-    // generation on a held container comes back. The answer belongs to
-    // Router's `generationGate` and is the same whatever model is resident, so
-    // the 17GB generation pin bought nothing here but load time — most of this
-    // probe's runtime was weights coming off disk. See `plumbingProbeModel`
+    // file resolves. This probe grades **plumbing**: how a nested generation
+    // on a held model ends. The answer belongs to Router's generation queue
+    // and is the same whatever model is resident. See `plumbingProbeModel`
     // for the rule, and for why no other suite in this target may take it.
     try await withLiveRouterFixture(name: name, profile: plumbingProbeProfile) { fixture in
         let log = ScenarioCallLog()
+        let outcomes = NestedGenerationOutcomeLog()
         let slot = fixture.profile.standard
         // One tool, mounted directly rather than through the registry. See this
         // runner's own documentation for why `searchTools` must not be here.
         //
         // No instructions either, matching every other runner in this file: the
         // tool's own description is the whole surface a host gives a model.
-        let session = slot.makeSession(tools: [IntegrationNestedGenerationTool(slot: slot, log: log)])
+        let session = slot.makeSession(
+            tools: [IntegrationNestedGenerationTool(slot: slot, log: log, outcomes: outcomes)])
 
         let start = Date()
         let turn = try await withThrowingTaskGroup(of: Void.self, returning: StreamedTurn.self) { group in
@@ -1441,14 +1222,14 @@ func runNestedGenerationProbe(name: String, prompt: String) async throws {
             // tool produces. Measured: the first gated run of this probe
             // reported `entered=[]` for a call that had been open 165 seconds.
             enteredPaths: await log.enteredPaths,
-            returnedPaths: await log.returnedPaths
+            outcome: await outcomes.outcome
         )
         grade(scenario: name, checks: nestedGenerationChecks(for: evidence))
 
         reportTraceLine(
             "NESTED-GENERATION [\(name)] elapsed=\(String(format: "%.1f", elapsed))s "
                 + "entered=\(evidence.enteredPaths.sorted()) "
-                + "returned=\(evidence.returnedPaths.sorted()) "
+                + "outcome=\(evidence.outcome.map { "\($0)" } ?? "none") "
                 + "reply=\"\(turn.answer.prefix(nestedGenerationReplyPreviewCharacters))\""
         )
     }

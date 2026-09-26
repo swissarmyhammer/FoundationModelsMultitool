@@ -12,9 +12,10 @@ import ScenarioGrading
 // reaching it needs the `@testable` import above, which a support library
 // cannot carry.
 //
-// `integrationNestedGenerationPath` and `integrationNestedGenerationToken`
-// stay in `ScenarioGrading`: the grading rule and its ungated coverage read
-// them, and both name the same strings this file does.
+// `integrationNestedGenerationPath`, `integrationNestedGenerationToken` and
+// `NestedGenerationOutcome` stay in `ScenarioGrading`: the grading rule and
+// its ungated coverage read them, and both name the same values this file
+// does.
 
 /// `IntegrationNestedGenerationTool`'s output.
 @Generable(description: "the readiness token the nested check produced.")
@@ -24,68 +25,75 @@ struct IntegrationNestedGenerationOutput {
 
 /// The prompt the nested session is given.
 ///
-/// Deliberately trivial, and deliberately ungraded. The probe asks whether the
-/// nested call **returns**, not what it says, so a prompt with any substance
+/// Deliberately trivial, and deliberately ungraded. The probe asks how the
+/// nested call **ends**, not what it says, so a prompt with any substance
 /// would only add ways for a run to be slow without adding anything to read.
 let integrationNestedGenerationPrompt = "Say hello."
 
 /// How many tokens the nested generation is allowed.
 ///
-/// Small on purpose, and load-bearing for the probe's verdict. A model that
-/// reasons before it answers — Muse Glimmer, which held the slot when this
-/// was measured, cannot be asked not to — can spend minutes on an uncapped
-/// nested turn, and a suite whose own limit is three minutes
-/// would then report a slow call and a deadlocked call identically. A cap this
-/// tight makes a live nested turn a matter of seconds, so the limit can only be
-/// reached by a call that is not running at all.
+/// Small on purpose. On the work-queue Router the nested call is refused
+/// before it generates anything. When a later Router lets it through, this
+/// cap keeps that nested turn to seconds, so the probe reports the changed
+/// behavior as a `returned` outcome and not as a time-limit failure.
 let integrationNestedGenerationTokenLimit = 32
+
+/// The record of how the nested call of the probe ended.
+///
+/// An `actor` because the tool body writes it from inside a tool call, and
+/// the probe runner reads it after the turn ends.
+actor NestedGenerationOutcomeLog {
+    /// How the nested call ended, or `nil` when no nested call ended.
+    private(set) var outcome: NestedGenerationOutcome?
+
+    /// Records how the nested call ended.
+    ///
+    /// - Parameter ended: how the nested call ended.
+    func record(_ ended: NestedGenerationOutcome) {
+        outcome = ended
+    }
+}
 
 /// The tool the nested-generation probe drives: its body opens a plain session
 /// on the very model the outer turn is running on, and generates.
 ///
-/// **What it is for.** A gated scenario hangs for ever — 0% CPU, ~19GB
-/// resident, every thread parked — when both profile slots name one `ModelRef`,
-/// because `searchTools` generates from inside the outer turn's tool call. Two
-/// explanations fit that picture, and this fixture separates them:
+/// **What it is for.** `searchTools` generates from inside the outer turn's
+/// tool call. When one model serves both profile slots, that nested
+/// generation needs the model that the outer submission holds open. The old
+/// Router hung for ever there. The work-queue Router refuses it at once with
+/// `GenerationQueueError.waitInsideOpenSubmission(model:)`, because the queue
+/// sees that the outer submission of the same model is open
+/// (`GenerationQueue.refuseWaitInsideOpenSubmission()`). This fixture makes
+/// that nested call and records how it ended, with the time it took, in a
+/// `NestedGenerationOutcomeLog`. `nestedGenerationChecks(for:)` grades the
+/// record.
 ///
-/// - the nested **grammar-constrained** decode deadlocks in MLX, whose xgrammar
-///   path keeps shared per-model caches; or
-/// - Router's `RoutedModel.generationGate` — an `AsyncSemaphore(value: 1)`
-///   minted per resident container — is taken by `beginTurn()` and held for the
-///   whole turn, tool calls included, so a nested `respond` on that container
-///   parks on `generationGate.wait()` and can never be admitted: the permit is
-///   handed back by `endTurn()`, which needs the tool call to return, which
-///   needs the nested `respond`.
-///
-/// The second explanation needs no grammar. The first needs one. So this body
-/// carries no grammar anywhere: `makeSession()` with every argument defaulted,
-/// no `Grammar`, no selection tier, no `MetadataSearcher`. A hang here belongs
-/// to the gate; a return here leaves the grammar as the thing that matters.
-///
-/// It hung, on 2026-08-16: 165 seconds inside this one call with the gate at
-/// zero permits and one waiter throughout, unwound only when the suite's time
-/// limit cancelled the outer turn. `runNestedGenerationProbe` records the whole
-/// reading. So this call deadlocks today, and the fixture is unchanged by that
-/// — it is what the regression test drives, and it will come back when the gate
-/// lets a nested generation in.
+/// **No grammar.** The body calls `makeSession()` with every argument
+/// defaulted: no `Grammar`, no selection tier, no `MetadataSearcher`. The
+/// refusal is a property of the queue, and a grammar in the run would only add
+/// a second thing to read.
 ///
 /// **Why the same slot.** `slot` is the resolved `.standard` the outer turn is
-/// already running on, so the nested session shares that container's gate by
-/// construction — the condition under test, rather than something that happens
-/// to hold when two pins collide.
+/// already running on, so the nested session shares that model's queue by
+/// construction — the condition under test, rather than something that
+/// happens to hold when two pins collide.
 ///
 /// **Why the output is not a `String`.** Router's session mount wraps a
 /// `Tool<_, String>` in `BackgroundToolRunner` and leaves every other tool in band
 /// (`ToolMounting.makeWrapped(tool:sessionID:mailbox:sink:configuration:)`). A
-/// background body would run outside the turn that holds the permit, which is the
-/// one arrangement that cannot deadlock — and would make this probe answer a
-/// question nobody asked. A `@Generable` output keeps the call in band.
+/// background body runs outside the open submission, where the queue has
+/// nothing to refuse — and would make this probe answer a question nobody
+/// asked. A `@Generable` output keeps the call in band.
+///
+/// **Why the call returns normally after the refusal.** The tool catches the
+/// refusal and reports the readiness token, so the outer turn ends at once.
+/// The verdict reads the outcome log, never the reply.
 struct IntegrationNestedGenerationTool: Tool {
     /// Where this fixture's nested call is recorded as a span.
     ///
     /// A suspended `async` call occupies no thread, so `sample` and `spindump`
     /// name nothing when this hangs — see ``CallTrace``. The entry line with no
-    /// matching exit line is the whole evidence a deadlocked run leaves.
+    /// matching exit line is the whole evidence a hung run leaves.
     private static let trace = CallTrace(category: "NestedGenerationProbe")
 
     let name = integrationNestedGenerationPath
@@ -99,21 +107,42 @@ struct IntegrationNestedGenerationTool: Tool {
     /// The scenario run's call log every invocation of this tool records itself in.
     let log: ScenarioCallLog
 
-    /// Generates on ``slot`` from inside this tool call, then reports the
-    /// readiness token.
+    /// The record this tool writes the outcome of its nested call into.
+    let outcomes: NestedGenerationOutcomeLog
+
+    /// Generates on ``slot`` from inside this tool call, records how that
+    /// nested call ended, then reports the readiness token.
     ///
     /// - Parameter arguments: unused — this tool takes nothing.
     /// - Returns: the fixture readiness token.
-    /// - Throws: whatever the nested `respond(to:maxTokens:)` throws.
+    /// - Throws: a `CancellationError` when the outer turn is cancelled.
     func call(arguments: IntegrationNoArguments) async throws -> IntegrationNestedGenerationOutput {
         try await log.recordCall(to: name) {
             try await Self.trace.span("nestedRespond", detail: name) {
-                _ = try await slot.makeSession().respond(
-                    to: integrationNestedGenerationPrompt,
-                    maxTokens: integrationNestedGenerationTokenLimit
-                )
+                await outcomes.record(await nestedCallOutcome())
+                try Task.checkCancellation()
                 return IntegrationNestedGenerationOutput(readinessToken: integrationNestedGenerationToken)
             }
+        }
+    }
+
+    /// Makes the nested call on ``slot`` and says how it ended.
+    ///
+    /// - Returns: `.refused` with the time the refusal took, `.returned` when
+    ///   the nested call gave a reply, or `.threw` for any other error.
+    private func nestedCallOutcome() async -> NestedGenerationOutcome {
+        let clock = ContinuousClock()
+        let start = clock.now
+        do {
+            _ = try await slot.makeSession().respond(
+                to: integrationNestedGenerationPrompt,
+                maxTokens: integrationNestedGenerationTokenLimit
+            )
+            return .returned
+        } catch GenerationQueueError.waitInsideOpenSubmission {
+            return .refused(after: clock.now - start)
+        } catch {
+            return .threw(description: "\(error)")
         }
     }
 }

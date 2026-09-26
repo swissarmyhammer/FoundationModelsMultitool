@@ -73,9 +73,13 @@ public let noBackgroundRunsAtLastAnswerCheckName = "noBackgroundRunsAtLastAnswer
 /// having been entered at all.
 public let nestedCallEnteredCheckName = "nestedCallEntered"
 
-/// The label of the check that grades the nested, ungrammared generation as
-/// having come back.
-public let nestedGenerationReturnedCheckName = "nestedGenerationReturned"
+/// The label of the check that grades the nested call as refused with
+/// `GenerationQueueError.waitInsideOpenSubmission`.
+public let nestedGenerationRefusedCheckName = "nestedGenerationRefused"
+
+/// The label of the check that grades the refusal of the nested call as
+/// inside `integrationNestedRefusalTimeLimit`.
+public let nestedRefusalInTimeCheckName = "nestedRefusalInTime"
 
 /// Both spellings of one integer a model may write in prose: the bare digits
 /// and the locale's grouped form (`41,739`).
@@ -360,14 +364,32 @@ public func mailCollectionChecks(
     return checks
 }
 
+/// How the nested call of the nested-generation probe ended.
+///
+/// Router refuses a `respond` on a model from inside an open submission of the
+/// same model, with `GenerationQueueError.waitInsideOpenSubmission(model:)`.
+/// The probe tool records which of these three ends its nested call got. A
+/// nested call that hangs records nothing, and the time limit of the probe
+/// suite reports it.
+public enum NestedGenerationOutcome: Equatable, Sendable {
+    /// Router refused the nested call with `waitInsideOpenSubmission`, after
+    /// the given time.
+    case refused(after: Duration)
+
+    /// The nested call came back with a reply. Router did not refuse it.
+    case returned
+
+    /// The nested call threw an error that is not the refusal.
+    case threw(description: String)
+}
+
 /// Everything one nested-generation probe run produced that its verdict is
 /// graded on.
 ///
-/// Both fields are read off the run's own `ScenarioCallLog`, and they are two
-/// different questions. `enteredPaths` says the probe measured anything at all
-/// — a model that never called the tool leaves a run with nothing in it, and
-/// that must fail rather than pass vacuously. `returnedPaths` says the nested
-/// call *came back*, which is the whole subject.
+/// Two different questions. `enteredPaths` says the probe measured anything at
+/// all — a model that never called the tool leaves a run with nothing in it,
+/// and that must fail rather than pass vacuously. `outcome` says how the nested
+/// call ended, which is the whole subject.
 ///
 /// Plain values a test can write down, for `MailCollectionEvidence`'s reason:
 /// the grading rule is then exercised without live inference.
@@ -379,8 +401,8 @@ public struct NestedGenerationEvidence {
     /// `ScenarioCallLog.enteredPaths`, never `invokedPaths`.
     public let enteredPaths: Set<String>
 
-    /// The `tools.*` paths a fixture tool handed a value back from.
-    public let returnedPaths: Set<String>
+    /// How the nested call ended, or `nil` when no nested call ended.
+    public let outcome: NestedGenerationOutcome?
 
     /// Records what one nested-generation probe run produced.
     ///
@@ -390,42 +412,72 @@ public struct NestedGenerationEvidence {
     /// - Parameters:
     ///   - answer: the model's final reply.
     ///   - enteredPaths: the `tools.*` paths a fixture tool entered.
-    ///   - returnedPaths: the `tools.*` paths a fixture tool handed a value back from.
-    public init(answer: String, enteredPaths: Set<String>, returnedPaths: Set<String>) {
+    ///   - outcome: how the nested call ended, or `nil` when none ended.
+    public init(answer: String, enteredPaths: Set<String>, outcome: NestedGenerationOutcome?) {
         self.answer = answer
         self.enteredPaths = enteredPaths
-        self.returnedPaths = returnedPaths
+        self.outcome = outcome
     }
 }
 
 /// Grades one nested-generation probe run into the conditions its verdict is
 /// the conjunction of.
 ///
+/// The probe passes when the nested call was entered, got
+/// `waitInsideOpenSubmission`, and got it inside
+/// `integrationNestedRefusalTimeLimit`.
+///
 /// - Parameter evidence: what the run produced.
 /// - Returns: every condition this run is graded on, in reporting order.
 public func nestedGenerationChecks(for evidence: NestedGenerationEvidence) -> [ScenarioCheck] {
     let path = integrationNestedGenerationPath
+    let outcomeDescription = evidence.outcome?.failureDescription ?? noNestedOutcomeDescription
     return [
         ScenarioCheck(
             name: nestedCallEnteredCheckName,
             held: evidence.enteredPaths.contains(path),
             failureMessage:
                 "expected the model to call `\(path)`, the one tool mounted, but it called nothing "
-                + "— so this run measured neither a hang nor a return, and says nothing about "
-                + "either explanation. Read the CALL lines: a run with none is a prompt problem, "
-                + "not a verdict"
+                + "— so this run made no nested call, and says nothing about the refusal. Read the "
+                + "CALL lines: a run with none is a prompt problem, not a verdict"
         ),
         ScenarioCheck(
-            name: nestedGenerationReturnedCheckName,
-            held: evidence.returnedPaths.contains(path),
+            name: nestedGenerationRefusedCheckName,
+            held: evidence.outcome?.refusalTime != nil,
             failureMessage:
-                "`\(path)` was entered and handed no value back, so its nested ungrammared "
-                + "`respond` did not come back. Read the `GATE` lines to say which way: "
-                + "`permits=0 waiters=1` held to the end is the generation-gate deadlock — the "
-                + "outer turn holding the permit `beginTurn()` took, the nested `respond` parked "
-                + "on `generationGate.wait()` — and it is what the first gated run of this probe "
-                + "measured. Any other gate reading means the call threw instead, which is a "
-                + "third thing and belongs to neither explanation"
+                "expected the nested `respond` inside `\(path)` to get "
+                + "`GenerationQueueError.waitInsideOpenSubmission`, but it ended as \(outcomeDescription)"
+        ),
+        ScenarioCheck(
+            name: nestedRefusalInTimeCheckName,
+            held: evidence.outcome?.refusalTime.map { $0 <= integrationNestedRefusalTimeLimit } ?? false,
+            failureMessage:
+                "expected the refusal inside \(integrationNestedRefusalTimeLimit), but the nested call "
+                + "ended as \(outcomeDescription)"
         ),
     ]
 }
+
+extension NestedGenerationOutcome {
+    /// The time the refusal took, or `nil` when the nested call was not
+    /// refused.
+    public var refusalTime: Duration? {
+        guard case .refused(let time) = self else { return nil }
+        return time
+    }
+
+    /// Says how the nested call ended, for a failure message.
+    var failureDescription: String {
+        switch self {
+        case .refused(let time):
+            "a refusal after \(time)"
+        case .returned:
+            "a reply: Router did not refuse the nested call on the same model"
+        case .threw(let description):
+            "a different error: \(description)"
+        }
+    }
+}
+
+/// What a failure message says when no nested call ended.
+private let noNestedOutcomeDescription = "nothing: no nested call ended"

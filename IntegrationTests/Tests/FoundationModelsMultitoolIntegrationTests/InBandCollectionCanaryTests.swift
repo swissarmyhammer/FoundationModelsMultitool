@@ -2,40 +2,39 @@ import Testing
 
 import ScenarioGrading
 
-/// The canary over how a backgrounded run is collected on this host: the model
-/// collects its own, in band, and the turn never ends with work in flight
-/// (task `^xeqs138`).
+/// The canary over how a backgrounded run comes back to the model on this
+/// host: the model ends its answer while the run is still going, the settled
+/// run comes back to the session as mail, and the model answers the mail.
 ///
 /// **Two tests, two claims, split on task `^nhxj8hx`.** The old suite graded
 /// both claims through one expensive run, and CI run `32203706380` killed that
 /// run at its ceiling as the whole run's only failure. The split gives each
 /// claim its own shortest run:
 ///
-/// - **The mechanism** (`theDelayedEchoRoundTripsThroughItsHandle`): a call
-///   backgrounds, hands the model a handle, and the value comes back through
-///   that handle intact. It mounts a direct-mode surface — `runCode` and
-///   `wait`, no `searchTools` — so the model pays for no discovery, and it
-///   drives `IntegrationDelayedEchoTool`, whose result settles seconds after
-///   the handle exists. That covers the path the rebuild fixture never
-///   exercised: the run is still `running` when the collect starts, so `wait`
-///   must really wait and be woken. The graded value is a fresh nonce; see the
-///   test body for how its round trip is pinned to the collected run.
+/// - **The mechanism** (`theDelayedEchoRoundTripsThroughMail`): a call
+///   backgrounds, hands the model a handle, and the value comes back intact
+///   in the mail answer. It mounts a direct-mode surface — `runCode`, no
+///   `searchTools` — so the model pays for no discovery, and it drives
+///   `IntegrationDelayedEchoTool`, whose result settles seconds after the
+///   handle exists. The graded value is a fresh nonce; see the test body for
+///   how its round trip is pinned to the settled run.
 ///
-/// - **The teaching** (`theModelCollectsItsOwnBackgroundRun`): the prompt
-///   tells the model *not* to block, so the only thing that can make it spend
-///   a `wait` call is the instruction the pending envelope carries on the
-///   handle. This run is the evidence for this package's "in-band teaching
-///   beats upfront prose" rule, and it stays exactly as recorded: same
-///   fixture, same prompt, same discovery surface. Do not delete it and do
-///   not soften its prompt.
+/// - **The teaching** (`theSettledRunComesBackAsMail`): the prompt tells the
+///   model *not* to block, so it ends its answer with the rebuild still going.
+///   Same fixture, same prompt and same discovery surface as the run this
+///   suite was first measured on. Do not soften its prompt.
 ///
-/// **This suite is the inversion of the one this file used to hold, and the
-/// inversion is the finding.** It was written to end a turn with a run still
-/// going, so that Router's `respond` drain would be the only thing that could
-/// collect it — the drain's snapshot of every background run, its continuation
-/// turn and its bounded re-entry at
-/// `RoutedSessionActor.backgroundRunDrainRoundLimit` had never executed in any
-/// scenario this target ships. The recorded run answered plainly:
+/// **What changed on the work-queue Router, and why this suite stays.** The
+/// old Router drained the background runs of a turn inside `respond(to:)`, and
+/// the old surface mounted a `wait` tool that the model called to collect a
+/// run in band. This suite then graded in-band collection: a `wait` call, and
+/// nothing still running at the answer. The work-queue Router removed the
+/// drain and the `wait` tool. A run that settles after the answer ends now
+/// sends its result to the session as mail, and the session starts a new
+/// answer for it (`SubmissionStart.cause == .mail`). The runner therefore
+/// waits for that mail answer and grades it, through `mailCollectionChecks`.
+///
+/// The recorded run of the old contract, kept as history:
 ///
 /// ```
 /// PARKED-DRAIN [parkedRunDrain] elapsed=635.2s parkedAtAnswer=[] parkedAfterRespond=[]
@@ -43,47 +42,21 @@ import ScenarioGrading
 ///   reply="Rebuild is underway.  Manifest code: 58204"
 /// ```
 ///
-/// That block is left exactly as the run printed it, and it is the one place in
-/// this target that still spells the old vocabulary. It is a record of a run
-/// that happened, from the era when the runner printed `PARKED-DRAIN` for a
-/// scenario named `parkedRunDrain` — a marker mirroring Router's own
-/// `parkedRunDrain` — and it carries a `terminals=` field the runner no longer
-/// prints at all. Rewriting it would report words no run ever said. The runner
-/// prints `IN-BAND-CANARY … backgroundRunsAtAnswer= backgroundRunsAfterRespond=`
-/// today; read the line above as history, never as the shape of a fresh run.
+/// That block is left exactly as the run printed it. It is a record of a run
+/// that happened, in words no fresh run prints: the runner prints
+/// `MAIL-CANARY … answers= mailAnswers= backgroundRunsAtLastAnswer=` today.
 ///
-/// **Router then said why no fixture could have changed it**, in
-/// `RoutedSessionActorGeneration`'s "How often this drain enters its loop"
-/// comment (their commit `b4c0282`, card `^466d38p`): every background run hands
-/// the model a `PendingRunEnvelope` whose text tells it to collect that run with
-/// a `wait` call before it answers; `BackgroundToolRunner` writes that text, and
-/// `ToolContext` starts no background run of its own, so **no host can start one
-/// without the instruction** — a host whose tools always advise collection is
-/// every host, not an unusual one. The condition is unreachable, and it is
-/// unreachable upstream of anything a fixture here controls.
-///
-/// **What a failure means, which is the whole point of keeping both tests.**
-/// If either test fails `noBackgroundRunsAtAnswer` — if a turn really does end
-/// with a run still going — then the drain has become reachable from this
-/// host, and task `^xeqs138`'s original question reopens: Router's drain would
-/// be running in production for the first time, and nothing in this target
-/// covers it. `noBackgroundRunsAtAnswer` and `inBandCollection` failing
-/// together is that reading. Do not relax either of them to make a run green;
-/// file the question instead. That is also why `noBackgroundRunsAtAnswer`
-/// survives in both shapes: a model that ends its turn with work still
-/// outstanding fails it whatever the prompt said.
-///
-/// **What neither test proves.** Neither enters the drain, so neither says
-/// anything about what the drain does or about its re-entry bound. Router's
-/// own suite starts the runs it drains, so it proves what that loop does and
-/// not how often a real model reaches it (`^466d38p`). Cite no suite here for
-/// "the drain works".
+/// **What a failure means.** `mailCollection` failing alone means no answer
+/// started from mail: the model held its answer open until the run settled,
+/// or the run settled inside the inline settle grace and needed no mail.
+/// `noBackgroundRunsAtLastAnswer` failing means a run was still going when the
+/// mail answer ended. Do not relax either of them to make a run green; file
+/// the question instead.
 ///
 /// **The rebuild fixture must outlast the inline settle grace, and no more.**
 /// A `runCode` snippet that settles inside `runCode`'s inline settle grace
-/// gives its result inline and tells the model not to call `wait`. Thus a
-/// fixture that settles at once lets a correct model fail `inBandCollection`,
-/// which is what CI run `35230706285` recorded.
+/// gives its result inline, and no mail comes. Thus a fixture that settles at
+/// once lets a correct model fail `mailCollection`.
 /// `integrationArchiveRebuildDelay` holds the rebuild a few seconds past the
 /// grace, so the model always gets the pending envelope. A long stall once
 /// cost this suite its verdict outright — `IntegrationArchiveRebuildTool`
@@ -96,143 +69,50 @@ import ScenarioGrading
 /// the root `swift test` stays green with zero downloads and zero live
 /// inference, and the command that reaches this suite is
 /// `swift test --package-path IntegrationTests --no-parallel`. The
-/// grading rule itself is covered without a live model, on the recorded run
-/// above and on its inverse, in `ScenarioGradingTests`.
+/// grading rule itself is covered without a live model, on a passing run and
+/// on its inverses, in `ScenarioGradingTests`.
 @Suite(
-    "Gated in-band collection canary (the model collects its own background run)",
+    "Gated mail collection canary (a settled background run comes back as mail)",
     .serialized,
-    // Sixty-two minutes, re-derived on 2026-08-19 from measurement on the
-    // slowest machine that runs this suite (task `^nhxj8hx`). Three eras sit
-    // below and all are load-bearing: the first measured a defect, the second
-    // measured its fix, and the third measured the machine the first two
-    // ignored. Read all three before changing the number.
+    // Fifteen minutes for each test. The limit is a hang detector, and it has
+    // to clear every healthy run on the slowest machine that runs this suite.
     //
-    // BEFORE THE FIX, and why no ceiling helped.
+    // The history of the number, which is still the measurement it rests on
+    // (task `^nhxj8hx`, card `^dwzkfzx`): on the old contract the canary
+    // scenario passed in 113.0s, 327.2s and 445.5s on this dev box, against
+    // `Qwen3.8-27B-mxfp4`. CI run `32203706380` ran the same suites 6.21 times
+    // slower than this dev box and cut the canary at a ten-minute ceiling.
     //
-    // This limit read three minutes, on the reasoning that peers finish in
-    // 40-90 seconds and this scenario is one tool call plus one collect, so it
-    // belongs with them. That reasoning was wrong, and its own closing line —
-    // "if this suite ever legitimately needs longer, the reason is worth
-    // finding rather than the ceiling worth raising" — is what found it.
+    // On the mail contract, the runner stops at `mailAnswerDeadline`, twelve
+    // minutes after the turn starts, and grades what it read. So a run that
+    // gets no mail answer fails with a reading, inside this limit. The limit
+    // itself only has to catch a turn that never ends.
     //
-    // The reason is that this scenario costs an order of magnitude more model
-    // generation than its peers, and costs a different amount every run.
-    // Measured on 2026-08-16 against `Muse-Glimmer-30B-mxfp4`, one run per row,
-    // read off the session's own recorded `response` entries:
-    //
-    //   limit   outcome            tokensOut   ms       collected by
-    //   180s    cut off             1,733      175,126  (never reached)
-    //   600s    cut off             8,379      595,581  a second runCode
-    //   1200s   PASSED, grounded      ~4,000    316,700  wait, one call
-    //
-    // A fourth run then refuted the "it just needs more room" reading, and a
-    // ceiling of fifteen minutes with it:
-    //
-    //   900s    cut off             9,752      895,803  nothing — it looped
-    //
-    // That run made FIVE `runCode` calls. Four returned the same sentence,
-    // "Archive rebuild is now under way. I will send you the exact manifest
-    // code as soon as the rebuild completes."; the fifth died on `Can't find
-    // variable: global`. The model wrote a snippet that fires `rebuildArchive`,
-    // discards its return, and answers with a prose promise — and then wrote it
-    // again. Every one of those snippets was graded `outcome: "succeeded"`,
-    // because returning a string is a successful snippet. Nothing in band told
-    // it that it had promised a value instead of reading one, so it had no
-    // reason to write a different snippet the next time.
-    //
-    // That is the real failure and it was never a clock. Raising the ceiling
-    // only bought a longer loop: one pass in four attempts, at 180s, 600s, 900s
-    // and 1200s ceilings. Eight minutes was derived from exactly that — set
-    // above the one measured pass (316.7s, `waitCalls=1`, grounded) and
-    // reporting a runaway in half the time fifteen minutes would.
-    //
-    // AFTER THE FIX, which is where the pass-time distribution comes from.
-    //
-    // Task `^wnfzwxg` shipped the in-band notice that names the failure above:
-    // a snippet that calls `tools.*` and returns a value carrying nothing those
-    // calls returned is told exactly that, in the result it reads next. Its
-    // first attempt asked for a string leaf before it would report, so it
-    // stayed silent on `return { started: true }` — the discard as an object
-    // rather than as prose, which is the shape the model actually writes — and
-    // scored one pass in three:
-    //
-    //   313.5s  PASSED   waitCalls=3   answered with the manifest code
-    //   471.2s  FAILED   waitCalls=2   answered "now under way"
-    //   480.6s  FAILED                 time limit exceeded
-    //
-    // Dropping the string-leaf requirement is what worked. The notice now
-    // closes any run whose returned value shares no text with what its calls
-    // returned, and states that fact rather than accusing the snippet of
-    // narrating. Three runs of that build, commit `00a1066`, against
-    // `Qwen3.8-27B-mxfp4` and Router `aff8b1b`, each run on its own:
-    //
-    //   run   outcome   elapsed   waitCalls
-    //   1     PASSED    445.5s    2
-    //   2     PASSED    327.2s    3
-    //   3     PASSED    113.0s    1
-    //
-    // Three passes in three, against one in four before the fix and one in
-    // three after the first attempt at it. The times fell as far as the pass
-    // rate rose, which is the mechanism working rather than luck: a model told
-    // at once that its snippet carried nothing stops writing further snippets
-    // to find out.
-    //
-    // THE SLOWEST MACHINE, which is where sixty-two minutes comes from.
-    //
-    // The ten-minute ceiling this replaces was derived from the numbers above
-    // — all of them measured on this dev box — with a one-third margin over
-    // the worst healthy pass (445.5s x 4/3 ≈ 594s). CI run `32203706380`
-    // showed what that derivation ignored: the canary was cut off at 600s as
-    // that run's only failure while the other ten suites passed. The ceiling
-    // was reporting the runner's hardware as a defect.
-    //
-    // The measurements (local per-suite times on card `^dwzkfzx`):
-    //
-    //   local, 2026-08-19:  canary suite 368.491s of a 950.159s whole run,
-    //                       so the other ten suites cost 581.668s
-    //   CI, 32203706380:    whole run 4214s with the canary cut at 600s,
-    //                       so the other ten suites cost about 3614s
-    //
-    // The same ten suites cost 6.21 times more on that runner (3614 / 581.7).
-    // Projecting the canary onto it: 368.5s x 6.21 ≈ 2289s for the latest
-    // local pass, and 445.5s x 6.21 ≈ 2768s for the worst healthy pass on
-    // record. The same one-third margin over the worst projection gives
-    // 2768s x 4/3 ≈ 3690s: sixty-two minutes.
-    //
-    // This is a re-derivation, not a raise. The instrument is a hang
-    // detector, and a hang detector must clear every healthy run on every
-    // machine that runs it; a number below a healthy run on the slowest
-    // machine measures hardware, not defects. A genuine runaway still reports
-    // in about an hour, where no limit at all would wait for the CI job's own
-    // timeout. The standing rule is intact: never raise a ceiling to make a
-    // run green — re-derive it from the machine that failed, or remove it.
-    //
-    // The limit applies to each test in this suite. The mechanism test has no
-    // recorded runs yet; when its times exist, derive its own tighter ceiling
-    // from them rather than guessing one here.
+    // The standing rule is intact: never raise a ceiling to make a run
+    // green — re-derive it from the machine that failed, or remove it.
     .timeLimit(.minutes(15))
 )
 struct InBandCollectionCanaryTests {
-    @Test("the delayed echo's value comes back through its handle, collected in band")
-    func theDelayedEchoRoundTripsThroughItsHandle() async throws {
+    @Test("the delayed echo's value comes back through mail, and the mail answer reports it")
+    func theDelayedEchoRoundTripsThroughMail() async throws {
         // The shortest sequence that still passes through the real machinery:
-        // call the named tool, take the handle, collect, report. Direct mode
-        // removes discovery, so no `searchTools` turn runs at all.
+        // call the named tool, take the handle, end the answer, get the mail,
+        // report. Direct mode removes discovery, so no `searchTools` turn runs
+        // at all.
         //
         // The nonce is minted fresh for this run, so no prior run and no
         // training text can supply it. It does appear in the prompt — the
         // model has to pass it — so the reply alone proves nothing: the
         // `grounded` check requires the echo to have handed the value back,
-        // and `inBandCollection` requires a `wait` call to have collected the
-        // run that carried it. A model that parrots the prompt without
-        // running anything fails both.
+        // and `mailCollection` requires an answer that mail started. A model
+        // that parrots the prompt without running anything fails both.
         let nonce = integrationDelayedEchoNonce()
         try await runInBandCollectionCanaryScenario(
             name: "delayedEchoMechanism",
             tools: { log in [IntegrationDelayedEchoTool(log: log)] },
             // Names the tool and the value, and asks for the result. It does
-            // not say how to collect: the pending envelope on the handle
-            // carries that instruction, as it does for every host.
+            // not say how the result comes back: the pending envelope on the
+            // handle carries that, as it does for every host.
             prompt: "Call the \(IntegrationDelayedEchoTool.path) tool with the value \(nonce). "
                 + "Report the exact value it returns.",
             answerContainsOneOf: [nonce],
@@ -241,19 +121,15 @@ struct InBandCollectionCanaryTests {
         )
     }
 
-    @Test("the model collects its own background run, and the turn ends with nothing still running")
-    func theModelCollectsItsOwnBackgroundRun() async throws {
+    @Test("the settled rebuild comes back as mail, and the mail answer carries the manifest code")
+    func theSettledRunComesBackAsMail() async throws {
         try await runInBandCollectionCanaryScenario(
-            name: "inBandCollection",
+            name: "mailCollection",
             tools: { log in [IntegrationArchiveRebuildTool(log: log)] },
             // Asks for the manifest code, so the answer needs the run's result;
-            // and says plainly not to block for it, so the model is being asked
-            // *not* to spend a `wait` call. Both halves are still load-bearing
-            // after the inversion, and the second one more so: the recorded run
-            // blocked anyway, three times, which is how strongly the pending
-            // envelope's own instruction outweighs the request. A prompt that
-            // asked the model to wait would make `inBandCollection` a test of
-            // the prompt; this one makes it a test of the product.
+            // and says plainly not to block for it, so the model ends its
+            // answer while the rebuild is still going. The manifest code then
+            // reaches the model only through the mail.
             //
             // Phrased as a user request rather than as coaching: "start it, tell
             // me when it is running, give me the code when it lands" is how
@@ -262,7 +138,7 @@ struct InBandCollectionCanaryTests {
                 + "waiting for it: start the rebuild, reply as soon as it is under way, and give me "
                 + "the manifest code once it reaches you.",
             // The rebuild fixture always reports the same manifest code, and it
-            // reaches the model only through the collected run's terminal
+            // reaches the model only through the settled run's terminal
             // `detail` — a hallucinated answer cannot match it.
             answerContainsOneOf: integerAnswers(for: integrationArchiveRebuildManifestCode),
             groundedIn: IntegrationScenarioGrounding.archiveRebuild

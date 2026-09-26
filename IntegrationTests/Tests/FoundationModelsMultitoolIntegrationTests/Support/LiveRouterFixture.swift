@@ -212,10 +212,16 @@ import TestConcurrency
 /// that import are still here, and still needed, for any pin with the same
 /// property.
 ///
-/// **One model in both slots, and the hang that argued against it is fixed.**
-/// Sharing one `ModelRef` is what the human asked for and what the code below
-/// does: one resident model rather than a swap between generation and selection
-/// on every search.
+/// **One model in both slots was the shape until the work-queue Router, and it
+/// is not the shape now.** Sharing one `ModelRef` gave one resident model
+/// rather than a swap between generation and selection on every search. The
+/// work-queue Router refuses the nested selection generation on the model that
+/// the outer submission holds open
+/// (`GenerationQueueError.waitInsideOpenSubmission(model:)`), so
+/// `CLIRunner.demoProfile` and every profile of this target now put a
+/// different model in `standard` and `flash`, and `ProfileSlotSeparationTests`
+/// holds that. The history below is kept because it is the record of this
+/// suite's runs.
 ///
 /// It did hang, and for a while nobody knew why. An integration scenario sat 15
 /// minutes at 0% CPU with 18.8GB resident, 98% of system memory free and zero
@@ -236,8 +242,10 @@ import TestConcurrency
 /// on another session rather than releasing it, so the count stays exact.
 /// Verified from here: `NestedGenerationProbeTests` — which holds no grammar
 /// anywhere, and so isolates the gate and nothing else — parked 165.4s and
-/// 166.5s before the fix and returns in about 28s after it. Seven integration suites
-/// that had all deadlocked went green in the same run.
+/// 166.5s before the fix and returned in about 28s after it. Seven integration
+/// suites that had all deadlocked went green in the same run. The work-queue
+/// Router then replaced the gate and the lent permit with the refusal, and
+/// `NestedGenerationProbeTests` now asserts that refusal.
 ///
 /// **Two earlier explanations were wrong, and are recorded so they are not
 /// tried again.** The first blamed a `SerialAccessContainer` lock held across
@@ -350,8 +358,10 @@ import TestConcurrency
 /// record of *this suite's* runs; only the choice moved.
 let multitoolTinyProfile = CLIRunner.demoProfile
 
-/// The model the plumbing probes resolve — **not a second generation pin, and
-/// never a stand-in for `CLIRunner.generationModel`.**
+/// The small model of the plumbing probes — in `flash` of
+/// `plumbingProbeProfile` and in `standard` of `agentDiscoveryProfile` —
+/// **not a second generation pin, and never a stand-in for
+/// `CLIRunner.generationModel`.**
 ///
 /// `CLIRunner.generationModel` remains the single place this package names the
 /// model a *host* runs, and every suite that grades an answer resolves it
@@ -364,16 +374,16 @@ let multitoolTinyProfile = CLIRunner.demoProfile
 /// intelligence.** A suite asserting that a valid, fixture-grounded answer came
 /// back is making a capability claim, and a small model would fail it for
 /// reasons that say nothing about this package —
-/// `SearchThenCallTests`, `BackgroundTests`, `AsyncFanOutTests`,
-/// `RespondDrainTests` and `InBandCollectionCanaryTests` are all of that kind,
+/// `SearchThenCallTests`, `BackgroundTests`, `AsyncFanOutTests` and
+/// `InBandCollectionCanaryTests` are all of that kind,
 /// and `^wnfzwxg` turned on exactly which model produced which answer.
 /// `SelectionForkPerCallTests` is excluded for a third reason: cache behaviour
 /// is architecture-specific, so a different model there measures a different
 /// thing. None of them may take this constant.
 ///
 /// Three suites pass the test today. `NestedGenerationProbeTests` asks whether
-/// a nested generation on a held container comes back — a question about
-/// Router's `generationGate`, answered identically by any model that gets as
+/// a nested generation on the held model is refused at once — a question about
+/// Router's generation queue, answered identically by any model that gets as
 /// far as calling the tool. `OverBudgetSurfaceDiscoveryTests` asks whether a
 /// catalog above the selection budget answers matches that are spliced one
 /// time, are unique, stand inside the limit and name real paths — properties of
@@ -392,20 +402,42 @@ let multitoolTinyProfile = CLIRunner.demoProfile
 /// choice, not a version lock.
 let plumbingProbeModel: ModelRef = "mlx-community/Qwen3-1.7B-4bit"
 
-/// The profile the plumbing probes resolve, built over `plumbingProbeModel`.
+/// The model in the `standard` slot of `plumbingProbeProfile`: the shipped
+/// `CLIRunner.flashModel`.
 ///
-/// Same shape as `multitoolTinyProfile` — one model in both generation slots,
-/// the shared embedding model, `nil` context so the model's own window is
-/// resolved — so the only difference between a probe run and a scenario run is
-/// the weights, and a reading cannot be blamed on a different profile layout.
+/// **It must not be `plumbingProbeModel`, which holds `flash`.** `searchTools`
+/// is synchronous: it runs the selection tier on `flash` from inside a tool
+/// call of the session on `standard`. When one model serves both slots, that
+/// nested generation needs the model that the outer submission holds open, and
+/// the work-queue Router refuses it at once with
+/// `GenerationQueueError.waitInsideOpenSubmission(model:)`. A later Router may
+/// refuse such a profile at `Router.resolve`. `ProfileSlotSeparationTests`
+/// holds every profile of this target to two different models.
+///
+/// Why this model: it is a small tool-calling model of the same Qwen3 family
+/// as `plumbingProbeModel`, and it is already in the local cache from every
+/// `multitoolTinyProfile` run, so the change costs no download. Its only job
+/// in a probe is to emit tokens and call the one tool mounted.
+let plumbingProbeStandardModel: ModelRef = CLIRunner.flashModel
+
+/// The profile the plumbing probes resolve.
+///
+/// `standard` is `plumbingProbeStandardModel` and `flash` is
+/// `plumbingProbeModel`: two different models, for the reason
+/// `plumbingProbeStandardModel` states. `flash` keeps the model the plumbing
+/// suites were measured on, because the selection tier on `flash` is what
+/// `OverBudgetSurfaceDiscoveryTests`, `RetrievalTextSurfaceDiscoveryTests` and
+/// `NoDescriptionSurfaceDiscoveryTests` read. The shared embedding model and a
+/// `nil` context, so the model's own window is resolved, as
+/// `multitoolTinyProfile` does.
 ///
 /// The embedding model is `CLIRunner.embeddingModel` unchanged: it is already
 /// resident from every other real-model run on this machine, so naming it here costs
 /// nothing and naming a second one would cost a download for no reading.
 let plumbingProbeProfile = ProfileDefinition(
     name: "multitool-plumbing-probe",
-    description: "A small model for the gated probes that grade plumbing rather than capability.",
-    standard: [plumbingProbeModel],
+    description: "Small models for the gated probes that grade plumbing rather than capability.",
+    standard: [plumbingProbeStandardModel],
     flash: [plumbingProbeModel],
     embedding: [CLIRunner.embeddingModel],
     context: nil
@@ -429,17 +461,27 @@ let plumbingProbeProfile = ProfileDefinition(
 /// choice, not a version lock.
 let agentFlashModel: ModelRef = CLIRunner.flashModel
 
-/// The profile `AgentSurfaceDiscoveryTests` resolves, built over
-/// `agentFlashModel`.
+/// The profile `AgentSurfaceDiscoveryTests` and `HeldOutSurfaceDiscoveryTests`
+/// resolve, built over `agentFlashModel`.
 ///
-/// One model in both generation slots, so one container is resident, and the
-/// shared embedding model, so the profile names an embedder the way the
+/// `flash` is `agentFlashModel`, the model these suites grade. `standard` is
+/// `plumbingProbeModel`, a different model, because `searchTools` runs the
+/// selection tier on `flash` from inside a tool call of the session on
+/// `standard`: when one model serves both slots, the work-queue Router refuses
+/// that nested generation with
+/// `GenerationQueueError.waitInsideOpenSubmission(model:)`, and a later Router
+/// may refuse such a profile at `Router.resolve`. The agent's own profile puts
+/// two different models in the two slots too. `plumbingProbeModel` because it
+/// is small and already in the local cache; these suites call `searchTools`
+/// directly and grade no generation on `standard`.
+///
+/// The shared embedding model, so the profile names an embedder the way the
 /// agent's profile does. `nil` context so the model's own window is resolved,
 /// the same shape `multitoolTinyProfile` and `plumbingProbeProfile` take.
 let agentDiscoveryProfile = ProfileDefinition(
     name: "multitool-agent-discovery",
     description: "The acp-agent flash model, for the suite that grades the selection tier on it.",
-    standard: [agentFlashModel],
+    standard: [plumbingProbeModel],
     flash: [agentFlashModel],
     embedding: [CLIRunner.embeddingModel],
     context: nil
@@ -596,11 +638,9 @@ struct LiveRouterFixture {
             // profile-wide parameter, not a per-slot one" — so a second reading
             // would be the same number wearing a different label.
             //
-            // Both generation slots are printed because this profile names one
-            // model in both, and the sum of their charges is the thing Router's
-            // `^8hs4wrw` fix changed: `flash` naming an already-reserved
-            // reference must cost its own session's KV cache and no second copy
-            // of the weights.
+            // Both generation slots are printed because each profile of this
+            // target names a different model in each, and a reader of the log
+            // needs to see both models that one run held resident.
             // `RoutedLLM.resolution` is `package`-protected, so a consumer
             // reads neither the context window nor the per-candidate charge.
             // This line is a diagnostic and never an assertion, thus it reports

@@ -386,13 +386,20 @@ struct ScenarioFixtureTests {
 
     // MARK: - The fixture the delayed-echo mechanism test drives (task `^nhxj8hx`)
 
-    @Test("the delayed echo returns its exact input, and only after its delay")
+    @Test("the delayed echo returns its exact input, and only after its delay, which outlasts the inline settle grace")
     func theDelayedEchoReturnsItsExactInputAfterItsDelay() async throws {
-        // The premise the mechanism test rests on: the value settles a few
-        // seconds after the call starts. A tool that returns at once settles
-        // inside the inline settle grace, and the deferred path — the mail —
-        // stays untested: the hole the immediate rebuild fixture left open
-        // (task `^nhxj8hx`).
+        // The premise the mechanism test rests on: the value settles after
+        // the inline settle grace ends. A tool that settles inside the grace
+        // gives its result inline, and the deferred path — the mail — stays
+        // untested: the hole the immediate rebuild fixture left open (task
+        // `^nhxj8hx`). A live run on 2026-09-26 (task `^r77er9z`) showed
+        // it: a four-second echo settled inside the five-second grace, and
+        // no mail came.
+        #expect(
+            integrationDelayedEchoDelay
+                > .milliseconds(Int(MultiToolConfiguration.defaultInlineSettleGrace * 1000))
+        )
+
         let log = ScenarioCallLog()
         let nonce = integrationDelayedEchoNonce()
         let clock = ContinuousClock()

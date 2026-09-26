@@ -1038,6 +1038,19 @@ public enum CLIRunner {
             // contract, and a session instruction a real host may never pass
             // must not be load-bearing (see
             // `Registry.makeSessionTools(selection:)`).
+            //
+            // No `repetitionDetection` either: the session takes Router's
+            // default `RepetitionDetection()`, and so do the gated fixtures.
+            // Task ^r77er9z measured a `runCode` snippet with repeated lines
+            // on `demoProfile` and found no `repetitionStopped` event and no
+            // `FinishReason.repeatedLines`. A snippet with thirty copies of one
+            // long line ran and answered with no stop. Snippets with 160 and
+            // 200 copies never ended their `runCode` call in 20 and 45 minutes,
+            // and the watch did not stop them either. Router documents that
+            // the watch reads the reasoning and the text of a call line by
+            // line; a tool call gives its snippet as JSON, where each line
+            // break is the escape `\n`. No measured run shows a stop of a
+            // legitimate snippet, so this session sets no value of its own.
             let session = profile.standard.makeSession(tools: mounted.tools)
 
             // Subscribed before the prompt is sent, so the session stream

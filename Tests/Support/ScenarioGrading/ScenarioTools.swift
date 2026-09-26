@@ -873,12 +873,32 @@ public struct IntegrationArchiveRebuildTool: Tool {
 public let integrationNestedGenerationPath = "checkModelReadiness"
 
 /// The readiness token `IntegrationNestedGenerationTool` reports once its
-/// nested generation has come back.
+/// nested call has ended.
 ///
 /// A string no model would volunteer, for `integrationDeepScanReportCode`'s
 /// reason: an answer carrying it rests on this fixture's own return rather than
-/// on anything the model could have supplied itself.
+/// on anything the model could have supplied itself. The probe does not grade
+/// the reply. It grades how the nested call ended, which
+/// `NestedGenerationOutcome` records.
 public let integrationNestedGenerationToken = "READY-7Q4X"
+
+/// The count of seconds in `integrationNestedRefusalTimeLimit`.
+///
+/// This declaration names the number directly, so no call site passes a raw
+/// literal. The reason for the value stands on that constant.
+public let integrationNestedRefusalTimeLimitSeconds = 5
+
+/// The longest time the nested call of the probe can take to get
+/// `GenerationQueueError.waitInsideOpenSubmission`.
+///
+/// Router refuses the nested call at once: the queue sees that the outer
+/// submission of the same model is open, and throws before it queues anything
+/// (`GenerationQueue.refuseWaitInsideOpenSubmission()`). So a healthy refusal
+/// takes a small part of one second. Five seconds is far above that, and far
+/// below the one-minute time limit of the probe suite. A nested call that
+/// takes longer than this did not get the refusal at once, and that is the
+/// defect the probe finds.
+public let integrationNestedRefusalTimeLimit = Duration.seconds(integrationNestedRefusalTimeLimitSeconds)
 
 // MARK: - Scenario 9: the delayed echo (background-run mechanism, task `^nhxj8hx`)
 
@@ -887,7 +907,7 @@ public let integrationNestedGenerationToken = "READY-7Q4X"
 /// This declaration names the number directly, so no call site passes a raw
 /// literal — `integrationDelayedEchoDelay` turns it into a `Duration`. The
 /// reasons for the value stand on that constant.
-public let integrationDelayedEchoDelaySeconds = 4
+public let integrationDelayedEchoDelaySeconds = 10
 
 /// `IntegrationDelayedEchoTool`'s arguments.
 @Generable
@@ -916,17 +936,21 @@ public struct IntegrationDelayedEchoOutput {
 
 /// How long `IntegrationDelayedEchoTool` holds its value before it settles.
 ///
-/// A few seconds, and the few seconds are the point. A run that settles at
-/// once settles inside the inline settle grace, and the deferred path goes
-/// untested (task `^nhxj8hx`). This delay keeps the run in the `running`
-/// state past the instant its `runCode` call answers, so the result must come
-/// back later, as mail.
+/// **The delay must be longer than `runCode`'s inline settle grace**
+/// (`MultiToolConfiguration.defaultInlineSettleGrace`, five seconds). A run
+/// that settles inside the grace gives its result inline, and the deferred
+/// path goes untested (task `^nhxj8hx`). This delay keeps the run in the
+/// `running` state past the instant its `runCode` call answers, so the result
+/// must come back later, as mail.
 ///
-/// Four seconds and not the deep scan's eight: the delay only has to
-/// be clearly nonzero, and every extra second is wall clock the mechanism
-/// test pays on each run. It stays far under
-/// `MultiToolConfiguration.executionTimeLimit`, the sandbox work clock, so a
-/// snippet that awaits the echo in line still completes.
+/// Ten seconds, two times the grace, the same value as
+/// `integrationArchiveRebuildDelay`. The delay was four seconds, and a live run
+/// on 2026-09-26 (task `^r77er9z`) showed the fault: the echo settled inside
+/// the grace, the model got the value inline, and no mail came.
+/// `ScenarioFixtureTests` makes sure that this delay stays longer than the
+/// grace. It stays far under `MultiToolConfiguration.executionTimeLimit`, the
+/// sandbox work clock, so a snippet that awaits the echo in line still
+/// completes.
 public let integrationDelayedEchoDelay: Duration = .seconds(integrationDelayedEchoDelaySeconds)
 
 /// How many characters `integrationDelayedEchoNonce()` returns.

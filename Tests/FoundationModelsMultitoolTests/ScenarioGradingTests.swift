@@ -167,16 +167,16 @@ struct ScenarioGradingTests {
 
     // MARK: - The nested-generation probe's verdict
 
-    @Test("a nested ungrammared generation that came back passes the probe")
-    func aNestedGenerationThatReturnedPassesTheProbe() {
-        // The completing reading: the tool was entered and handed its readiness
-        // token back, so the nested `respond` came back and the grammar is what
-        // separates this run from the hang.
+    @Test("a nested call that Router refused inside the time limit passes the probe")
+    func aPromptRefusalPassesTheProbe() {
+        // The healthy reading on the work-queue Router: the tool was entered,
+        // and its nested `respond` on the same model got
+        // `waitInsideOpenSubmission` at once.
         let checks = nestedGenerationChecks(
             for: NestedGenerationEvidence(
                 answer: Self.replyReportingTheReadinessToken,
                 enteredPaths: [integrationNestedGenerationPath],
-                returnedPaths: [integrationNestedGenerationPath]
+                outcome: .refused(after: Self.promptRefusalTime)
             )
         )
 
@@ -185,41 +185,65 @@ struct ScenarioGradingTests {
     }
 
     @Test("a run whose only tool was never called fails the probe rather than passing vacuously")
-    func aRunThatCalledNothingFailsTheProbe() throws {
+    func aRunThatCalledNothingFailsTheProbe() {
         // The shape that must never read as a verdict: the model answered
-        // without calling the one tool mounted, so nothing generated inside a
-        // tool call and the run separates neither explanation. A probe that
-        // passed here would report "no deadlock" for a run that never tried.
+        // without calling the one tool mounted, so no nested call was made. A
+        // probe that passed here would report a refusal for a run that never
+        // tried.
         let checks = nestedGenerationChecks(
             for: NestedGenerationEvidence(
                 answer: Self.replyReportingTheReadinessToken,
                 enteredPaths: [],
-                returnedPaths: []
+                outcome: nil
             )
         )
 
-        let entered = try Self.check(nestedCallEnteredCheckName, in: checks)
-        #expect(!entered.held)
+        let failed = checks.filter { !$0.held }.map(\.name)
+        #expect(failed == [nestedCallEnteredCheckName, nestedGenerationRefusedCheckName, nestedRefusalInTimeCheckName])
     }
 
-    @Test("a nested generation that threw fails the probe on the return, not on the entry")
-    func aNestedGenerationThatThrewFailsOnTheReturn() throws {
-        // The third outcome, which is neither reading: the call was entered and
-        // its nested `respond` threw. Graded apart from the two above so a
-        // reader of a red run knows an error from a deadlock — a deadlock never
-        // reaches this grading at all.
+    @Test("a nested generation that came back fails the probe on the refusal")
+    func aNestedGenerationThatReturnedFailsTheProbe() {
+        // The old reading, from the Router that lent its permit to a nested
+        // turn. On the work-queue Router it means the refusal is gone.
+        let checks = nestedGenerationChecks(
+            for: NestedGenerationEvidence(
+                answer: Self.replyReportingTheReadinessToken,
+                enteredPaths: [integrationNestedGenerationPath],
+                outcome: .returned
+            )
+        )
+
+        let failed = checks.filter { !$0.held }.map(\.name)
+        #expect(failed == [nestedGenerationRefusedCheckName, nestedRefusalInTimeCheckName])
+    }
+
+    @Test("a nested generation that threw a different error fails the probe on the refusal")
+    func aNestedGenerationThatThrewADifferentErrorFailsTheProbe() {
         let checks = nestedGenerationChecks(
             for: NestedGenerationEvidence(
                 answer: "",
                 enteredPaths: [integrationNestedGenerationPath],
-                returnedPaths: []
+                outcome: .threw(description: "CancellationError()")
             )
         )
 
-        let entered = try Self.check(nestedCallEnteredCheckName, in: checks)
-        #expect(entered.held)
-        let returned = try Self.check(nestedGenerationReturnedCheckName, in: checks)
-        #expect(!returned.held)
+        let failed = checks.filter { !$0.held }.map(\.name)
+        #expect(failed == [nestedGenerationRefusedCheckName, nestedRefusalInTimeCheckName])
+    }
+
+    @Test("a refusal slower than the time limit fails the probe on the time alone")
+    func aSlowRefusalFailsOnTheTimeAlone() {
+        let checks = nestedGenerationChecks(
+            for: NestedGenerationEvidence(
+                answer: Self.replyReportingTheReadinessToken,
+                enteredPaths: [integrationNestedGenerationPath],
+                outcome: .refused(after: integrationNestedRefusalTimeLimit + Self.promptRefusalTime)
+            )
+        )
+
+        let failed = checks.filter { !$0.held }.map(\.name)
+        #expect(failed == [nestedRefusalInTimeCheckName])
     }
 
     // MARK: - The fold of the session events
@@ -357,11 +381,15 @@ struct ScenarioGradingTests {
     ///
     /// Rebuilt from the fixture rather than quoted, for
     /// ``replyNamingTheWarmestCity``'s reason. The probe's verdict never reads
-    /// the reply — it grades the call log — so this is here to keep each record
-    /// a whole run rather than to be asserted on.
+    /// the reply — it grades the call log and the nested outcome — so this is
+    /// here to keep each record a whole run rather than to be asserted on.
     private static var replyReportingTheReadinessToken: String {
         "Your model is responsive. Readiness token: \(integrationNestedGenerationToken)"
     }
+
+    /// The time a scripted prompt refusal takes: a small part of one second,
+    /// as a refusal that the queue throws before it queues anything takes.
+    private static let promptRefusalTime = Duration.milliseconds(3)
 
     /// Runs one snippet against the compose scenario's own two fixture tools.
     ///

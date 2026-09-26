@@ -1,125 +1,88 @@
 import Testing
 
-/// The gated probe that names the layer a nested generation deadlocks in.
+/// The gated probe that holds Router to refusing a nested generation on the
+/// model that the outer turn holds open.
 ///
-/// **The observation.** A gated scenario hangs for ever — 0% CPU, ~19GB
-/// resident, 98% of system memory free, zero swap, every thread parked and the
-/// MLX scheduler on a condition variable — when both slots of
-/// `multitoolTinyProfile` name one `ModelRef`, because `searchTools` generates
-/// from inside the outer turn's tool call. `multitoolTinyProfile` records the measurement
-/// and records that splitting the two pins removes it; what it does not record
-/// is *why*, and it says so.
+/// **The contract.** `searchTools` generates from inside the outer turn's
+/// tool call. When one model serves the outer turn and the nested call, the
+/// nested call needs a model that the outer submission holds open. The
+/// work-queue Router refuses that nested call at once with
+/// `GenerationQueueError.waitInsideOpenSubmission(model:)`: its queue sees
+/// the open submission of the same model and throws before it queues
+/// anything. This probe makes that nested call from inside a tool call and
+/// passes only when the nested call gets the refusal inside
+/// `integrationNestedRefusalTimeLimit`.
 ///
-/// **The two explanations, and why one run separates them.**
+/// **What it replaced.** Before the work-queue Router, the same nested call
+/// hung for ever: the old `RoutedModel.generationGate` was an
+/// `AsyncSemaphore(value: 1)` that `beginTurn()` held across the tool rounds
+/// of a turn, so the nested `respond` parked on `generationGate.wait()` and
+/// never came back. Measured on 2026-08-16 it parked 165.4s and 166.5s and
+/// unwound only when the time limit of this suite cancelled the outer turn.
+/// Router's `^1zt7vyg` then lent the permit to the nested turn, and the call
+/// came back. The work-queue Router replaced both with the refusal. The
+/// profiles of this target therefore put a different model in `standard` and
+/// `flash` (`LiveRouterFixture`), and `ProfileSlotSeparationTests` holds that.
 ///
-/// - MLX's guided path deadlocks: the selection tier runs under a grammar, and
-///   xgrammar keeps shared per-model caches, so a nested grammar-constrained
-///   decode on a container already generating is the hazard.
-/// - Router's `RoutedModel.generationGate` deadlocks: it is an
-///   `AsyncSemaphore(value: 1)` minted once per resident container, `beginTurn()`
-///   takes a permit and `endTurn()` is what hands it back, so a turn holds it
-///   across its tool rounds. A nested `respond` on that same container parks on
-///   `generationGate.wait()` and can never be admitted — the permit it waits for
-///   is freed by the turn's end, the turn's end waits on the tool call, and the
-///   tool call waits on it. `AsyncSemaphore.wait()` is a bare
-///   `withCheckedContinuation` with no cancellation handler, which is exactly why
-///   the observed hang is silent, burns no CPU, and cannot be killed.
-///
-/// The first explanation requires a grammar. The second requires none. So this
-/// suite runs the same shape with **no grammar anywhere** — a plain
-/// `makeSession()` inside the tool body, no guided session, no selection tier,
-/// no `MetadataSearcher` — and mounts one tool, never `searchTools`.
+/// **No grammar anywhere.** The one tool mounted opens a plain
+/// `makeSession()` in its body: no guided session, no selection tier, no
+/// `MetadataSearcher`, and no `searchTools`. The refusal is a property of the
+/// queue, so nothing else may be in the run.
 ///
 /// **How to read a run.**
 ///
-/// - It hangs: Router's gate is the fault and MLX is exonerated. The `GATE`
-///   lines say so directly — zero permits, one waiter — and `log show
-///   --predicate 'subsystem == "com.swissarmyhammer.multitool" AND category ==
-///   "NestedGenerationProbe"'` shows `enter nestedRespond` with no matching
-///   `exit`.
-/// - It completes: the grammar is what matters, and the MLX explanation stands.
-///
-/// **It hung.** Measured 2026-08-16, both slots pinned to
-/// `mlx-community/Muse-Glimmer-30B-4bit`: the gate went `permits=1 waiters=0`,
-/// then `permits=0 waiters=0` as `beginTurn()` took the permit, then
-/// `permits=0 waiters=1` and stayed there for the rest of the run; the span
-/// opened at 08:15:49.698 and closed at 08:18:34.135 with a `CancellationError`
-/// — 165 seconds parked, unwound only because the time limit cancelled the
-/// outer turn and `endTurn()` handed the permit back. No grammar was in the run
-/// at all. `runNestedGenerationProbe` records the whole reading. So the second
-/// explanation above is the fault, the first is not needed to account for the
-/// hang, and the fix belongs to Router rather than to MLX or xgrammar.
-///
-/// **Why it stays now the question is answered.** This is the regression test
-/// for the layer it named: whatever admits a nested generation on a held
-/// container has to keep admitting it, and a change that puts the deadlock back
-/// fails here, in a minute, with a reading rather than a mystery. It
-/// **passes today**: Router's `^1zt7vyg` lends the permit to the nested turn
-/// instead of holding it, and this probe has come back on every run since.
+/// - `nestedGenerationRefused` and `nestedRefusalInTime` hold: Router refused
+///   the nested call at once, which is the contract.
+/// - `nestedGenerationRefused` fails with "a reply": Router let the nested
+///   call through. The refusal is gone.
+/// - `nestedGenerationRefused` fails with "a different error": the nested
+///   call threw something else. The message names the error.
+/// - The time limit of this suite ends the run: the nested call hung, which
+///   is the old defect. The `QUEUE` lines show the queue state for the whole
+///   run, and `log show --predicate 'subsystem == "com.swissarmyhammer.multitool"
+///   AND category == "NestedGenerationProbe"'` shows `enter nestedRespond`
+///   with no matching `exit`.
 ///
 /// **This suite grades plumbing, not capability, and that is why it resolves a
-/// small model.** Every assertion here is about whether a nested generation on
-/// a held container comes back. Nothing is asserted about the quality, the
-/// grounding or even the content of what the model says — the reply is printed
-/// and graded by nothing. So the model's whole job is to emit tokens and call
-/// the one tool mounted, which any tool-calling model does, and the 17GB
-/// generation pin was buying load time rather than an answer. It therefore
-/// resolves `plumbingProbeProfile`; `plumbingProbeModel` carries the rule and
-/// names the suites that must **not** follow it, every one of which asserts a
-/// valid, fixture-grounded answer and so is making a capability claim a small
-/// model would fail for reasons that say nothing about this package.
+/// small model.** Every assertion here is about how a nested call on a held
+/// model ends. Nothing is asserted about the quality, the grounding or even
+/// the content of what the model says — the reply is printed and graded by
+/// nothing. So the model's whole job is to emit tokens and call the one tool
+/// mounted, which any tool-calling model does. It therefore resolves
+/// `plumbingProbeProfile`; `plumbingProbeModel` carries the rule and names the
+/// suites that must **not** follow it.
 ///
 /// Like every suite here it lives in the nested `IntegrationTests` package,
 /// which the root manifest declares no target for, so the root `swift test`
 /// never sees it and stays green with zero downloads and zero live inference;
 /// `swift test --package-path IntegrationTests --no-parallel` is what runs it.
-/// The grading rule itself is covered without a live model, on both readings,
+/// The grading rule itself is covered without a live model, on each outcome,
 /// in `ScenarioGradingTests`.
 @Suite(
-    "Gated nested-generation probe (an unguided generation inside a tool call)",
+    "Gated nested-generation probe (a nested generation on the held model is refused)",
     .serialized,
-    // One minute, derived from this suite's own runs on the model it now
-    // resolves. No peer suite's ceiling is cited here, and no peer suite's
-    // ceiling is evidence for this one.
+    // One minute, derived from this suite's own runs on the plumbing model.
     //
-    // THE LIMIT IS THE DETECTOR. The failure this suite exists to catch is a
-    // deadlock, and a deadlock is reported by the limit being reached rather
-    // than by any assertion this file makes. So the ceiling has to stay close
-    // above the expected runtime. A generous one reports the same park, but
-    // only after half an hour spent grading nothing.
+    // THE LIMIT IS THE HANG DETECTOR. A refusal is graded by
+    // `nestedRefusalInTime`, against `integrationNestedRefusalTimeLimit`. A
+    // hang never returns to be graded, so this limit is what reports it. The
+    // ceiling therefore has to stay close above the expected runtime.
     //
-    // A HEALTHY RUN IS SHORT BY CONSTRUCTION. It is one tool call plus one
-    // nested turn, and `integrationNestedGenerationTokenLimit` caps that nested
-    // turn small enough to hold a live nested call to seconds. That constant
-    // carries the argument, and states it where it is set.
+    // A HEALTHY RUN IS SHORT BY CONSTRUCTION. It is the profile load, one tool
+    // call whose nested call is refused at once, and a short answer. Measured
+    // over three consecutive runs on 2026-08-18, when the nested call still
+    // came back: 12.0s, 9.2s and 8.6s, whole-test, profile resolution
+    // included. A refusal costs less than that nested turn did.
     //
-    // WHAT THIS PROBE HAS RECORDED. Parked, it ran 165.4s and 166.5s, and each
-    // of those unwound only when this limit cancelled the outer turn. Returned
-    // on the 17GB generation pin, since Router's `^1zt7vyg` landed, it ran
-    // 14.1s, 14.8s, 16.4s, 25.8s and 28.1s, and the ceiling was three minutes.
-    //
-    // THE MODEL CHANGED, SO THE CEILING DID. This probe now resolves
-    // `plumbingProbeProfile` (see `plumbingProbeModel` for the rule that let
-    // it), and most of what it used to spend was 17GB of weights coming off
-    // disk rather than the question being answered. Measured over three
-    // consecutive runs on 2026-08-18: **12.0s, 9.2s and 8.6s**, whole-test,
-    // profile resolution included. Sixty seconds therefore stands five times
-    // above the slowest of them — the same order of margin three minutes gave
-    // the old readings — and a run that reaches it is parked rather than slow.
-    //
-    // The margin still has to cover the turnstile queue and the profile load,
-    // because the limit starts when the test starts rather than when generation
-    // does (`LiveRouterFixture`). Those three readings were taken under
-    // `--no-parallel`, which that same file already requires and states why.
-    //
-    // Nothing here raises a ceiling. This lowers one, on measurement, and the
-    // detector is sharper for it: a park is now reported in a minute instead of
-    // three.
+    // The margin has to cover the turnstile queue and the profile load,
+    // because the limit starts when the test starts rather than when
+    // generation does (`LiveRouterFixture`). Those readings were taken under
+    // `--no-parallel`, which that same file requires and states why.
     .timeLimit(.minutes(1))
 )
 struct NestedGenerationProbeTests {
-    @Test("a tool body generating on the outer turn's own model, with no grammar anywhere, comes back")
-    func anUngrammaredNestedGenerationComesBack() async throws {
+    @Test("a tool body generating on the outer turn's own model gets waitInsideOpenSubmission at once")
+    func aNestedGenerationOnTheHeldModelIsRefused() async throws {
         try await runNestedGenerationProbe(
             name: "nestedGeneration",
             // Phrased as a user request, not as coaching: one tool is mounted,

@@ -4,9 +4,9 @@ import ScenarioGrading
 
 /// The background-in-code-mode scenario — eventplan.md's phase-1 exit
 /// proof that the two surfaces really do meet on real hardware: a snippet that
-/// goes to the background hands the model a pending envelope,
-/// and the model collects the background run through the background-run globals
-/// and still answers.
+/// goes to the background hands the model a pending envelope, the settled run
+/// comes back to the session as mail, and the answer that mail starts carries
+/// the value.
 ///
 /// **Why this suite does not use `runNativeIntegrationScenario`.** Not the
 /// session: both runners build the same `RoutedSession` from
