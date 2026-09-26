@@ -109,7 +109,10 @@ final class MailProbePrompts: Sendable {
 
 /// A session backend that records each submission's prompt and runs one
 /// scripted ``MailProbeStep`` in it.
-final class MailProbeBackend: LanguageModelSessionBackend, @unchecked Sendable {
+///
+/// A plain `Sendable` conformance: every stored property is immutable and
+/// `Sendable`, and the one mutable state, the transcript, is behind a lock.
+final class MailProbeBackend: LanguageModelSessionBackend, Sendable {
     /// The mounted tools this backend was made over.
     private let tools: [any Tool]
 

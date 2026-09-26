@@ -43,9 +43,18 @@ comments:
     - evidence: `swift build --build-tests` clean (0 warnings); `swift test` — 1786 tests in 144 suites passed, 0 failed, 0 skipped. One earlier run had a failure in `ResilienceTests.freshOperationWaitsForInFlightDisconnectStragglerBoundedByDisconnectGracePeriod` (MCP disconnect timing, code this task does not touch); it passed 3 times alone and in the next full run.
     - next: commit
   timestamp: 2026-09-26T18:52:41.387178+00:00
+- actor: claude-code
+  id: 01m3fhh71be25y05xqjfy37dgs
+  text: |-
+    ### finish iteration 1 — findings
+    - implement: changed — WaitTool removed, model-facing text now says end the answer / result comes back as mail, mail tests added, ScenarioGrading canary moved to mail collection
+    - test: green — `swift test` 1786 passed, 0 failed, 0 skipped; build 0 warnings
+    - commit: changed — d2d1e2b feat(mcp)!: remove the wait tool; a settled background run comes back as mail
+    - review: findings — 1 finding (review sha HEAD~1..HEAD): Tests/FoundationModelsMultitoolTests/Fixtures/MailProbeFixtures.swift:112 code-hygiene/disallowed-constructs-swift no_unchecked_sendable
+  timestamp: 2026-09-26T19:02:07.147628+00:00
 depends_on:
 - 01M3EVK4VR545ABV6R9YHFQH76
-position_column: doing
+position_column: review
 position_ordinal: '80'
 title: 'Remove the wait tool: a settled background run comes back as mail'
 ---
@@ -71,3 +80,9 @@ User decision (2026-09-26): remove `wait`, and use mail. The Router design (`../
 
 ## Workflow
 - Use `/tdd`. Write failing tests first, then do the implementation that makes them pass.
+
+## Review Findings (2026-09-26 13:52)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 20 file(s) reviewed, 4 not reviewed.
+
+- [x] `Tests/FoundationModelsMultitoolTests/Fixtures/MailProbeFixtures.swift:112` `code-hygiene/disallowed-constructs-swift` — no_unchecked_sendable: Instead of @unchecked Sendable, write a plain Sendable conformance or a @preconcurrency import. If the type really must be @unchecked Sendable, write // swiftlint:disable:next no_unchecked_sendable above it with the synchronization invariant that makes the type thread-safe.
