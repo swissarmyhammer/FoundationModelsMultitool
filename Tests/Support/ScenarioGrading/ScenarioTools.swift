@@ -756,13 +756,13 @@ public let integrationArchiveRebuildManifestCode = 58204
 ///
 /// This declaration names the number directly, so no call site passes a raw
 /// literal. The reasons for the value stand on `integrationArchiveRebuildDelay`.
-public let integrationArchiveRebuildDelaySeconds = 4
+public let integrationArchiveRebuildDelaySeconds = 10
 
 /// How long `IntegrationArchiveRebuildTool` holds its manifest code before it
 /// settles.
 ///
 /// **The delay must be longer than `runCode`'s inline settle grace.** A
-/// `runCode` call waits `MultiToolConfiguration.defaultInlineSettleGrace` (two
+/// `runCode` call waits `MultiToolConfiguration.defaultInlineSettleGrace` (five
 /// seconds) for its snippet. When the snippet settles in that time, the call
 /// gives the result inline and tells the model not to call `wait`. Only a
 /// snippet that is still running at the end of the grace gives the model a
@@ -775,9 +775,10 @@ public let integrationArchiveRebuildDelaySeconds = 4
 /// and it correctly made no `wait` call. `inBandCollection` failed on a correct
 /// model.
 ///
-/// Four seconds is two times the grace, the same value as
-/// `integrationDelayedEchoDelaySeconds`. `ScenarioFixtureTests` makes sure that
-/// this delay stays longer than the grace. Do not make the delay long: the
+/// Ten seconds is two times the grace. This module does not import the
+/// library, thus the value is a literal here. `ScenarioFixtureTests` makes
+/// sure that this delay stays longer than the grace: when the grace changes,
+/// that test fails until this value changes too. Do not make the delay long: the
 /// history on `IntegrationArchiveRebuildTool` tells what a stalled fixture cost
 /// this canary.
 public let integrationArchiveRebuildDelay: Duration = .seconds(integrationArchiveRebuildDelaySeconds)

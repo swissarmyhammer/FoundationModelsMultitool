@@ -297,17 +297,19 @@ struct ShellRunner {
     /// throws, above all). This closure therefore never returns having merely
     /// hoped a process died — it waits until it is certain.
     ///
-    /// The order of the two steps is load bearing:
+    /// The order of the three steps is load bearing:
     ///
     /// 1. Await the pid — see the paragraph above. `completeCommand` drops the
-    ///    entry of the process group as it finalizes a record, thus reading it
-    ///    only after writing `.killed` would risk finding nothing that a kill
-    ///    already sent had not yet reached.
-    /// 2. Send `killpg(SIGKILL)`, when step 1 found a pid to send it to.
-    /// 3. Write `.killed` with `completeIfRunning`, which is one hop of the
-    ///    actor. A run whose body is still going, and that reaches its own
-    ///    finalize afterward, finds a record this write already moved past
-    ///    `.running` and does nothing.
+    ///    entry of the process group as it finalizes a record, thus the pid
+    ///    must be read before step 2 writes the record.
+    /// 2. Write `.killed` with `completeIfRunning`, which is one hop of the
+    ///    actor. This write comes BEFORE the signal. The signal ends the child,
+    ///    and the body then reaches its own finalize. When the signal came
+    ///    first, that finalize could win the actor before this write, and the
+    ///    record would say `.completed` for a run that the cancel killed. With
+    ///    this order the finalize finds a record that is already past
+    ///    `.running`, and it does nothing.
+    /// 3. Send `killpg(SIGKILL)`, when step 1 found a pid to send it to.
     ///
     /// The outcome is `.stopped`, and it is never `.cancelled`: `killpg` on the
     /// own process group of the child is authoritative, and this closure does
@@ -324,11 +326,11 @@ struct ShellRunner {
         let state = state
         return {
             let pid = await state.pidToCancel(commandID: completionToken)
+            await state.completeIfRunning(
+                commandID: completionToken, status: .killed, exitCode: Self.absentExitCode)
             if let pid {
                 _ = killpg(pid, SIGKILL)
             }
-            await state.completeIfRunning(
-                commandID: completionToken, status: .killed, exitCode: Self.absentExitCode)
             return .stopped
         }
     }

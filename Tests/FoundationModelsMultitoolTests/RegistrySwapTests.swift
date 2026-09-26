@@ -11,18 +11,24 @@ import Testing
 /// events. Nothing changes below a snippet that runs. An in-flight run keeps
 /// the registry that it started with."
 ///
-/// Five facts carry this suite:
+/// Router gives this boundary through `submissionWillBegin()`. The Router
+/// calls it before each submission, and a continuation of one answer is a
+/// submission too.
 ///
-/// 1. `stage(_:)` then `turnWillBegin()` makes the next `runCode` see the new
-///    verbs, and `help()`, `docs()` and `searchTools` see them at the same
-///    time.
-/// 2. `stage(_:)` with no `turnWillBegin()` leaves the current surface as it
-///    is.
+/// Six facts carry this suite:
+///
+/// 1. `stage(_:)` then `submissionWillBegin()` makes the next `runCode` see
+///    the new verbs, and `help()`, `docs()` and `searchTools` see them at the
+///    same time.
+/// 2. `stage(_:)` with no `submissionWillBegin()` leaves the current surface
+///    as it is.
 /// 3. A snippet in flight across a swap completes against the registry it
 ///    started with.
 /// 4. Two stages then one tick give the newest registry.
 /// 5. A fork made before a stage sees the swap after the tick: the fork and
 ///    its parent share one box.
+/// 6. A swap between two submissions of one answer turns a later call to a
+///    removed verb into the repairable unknown-verb hint.
 @Suite("RegistrySwapTests")
 struct RegistrySwapTests {
 
@@ -52,13 +58,19 @@ struct RegistrySwapTests {
     /// What ``temperatureSnippet`` renders: the fixture temperature of `AAA`.
     private static let temperatureOfAAA = "11"
 
-    /// The snippet that blocks on the gate, then reads the cities verb of
-    /// the registry the run started with.
-    private static let gatedCitiesSnippet =
-        "await tools.\(gatePath)(); return (await tools.\(citiesPath)()).cities.join(\"-\");"
+    /// The snippet that calls the cities verb and joins the cities.
+    private static let citiesSnippet = "return (await tools.\(citiesPath)()).cities.join(\"-\");"
 
-    /// What ``gatedCitiesSnippet`` renders.
+    /// The snippet that blocks on the gate, then runs ``citiesSnippet`` on
+    /// the registry the run started with.
+    private static let gatedCitiesSnippet = "await tools.\(gatePath)(); \(citiesSnippet)"
+
+    /// What ``citiesSnippet`` and ``gatedCitiesSnippet`` render.
     private static let joinedCities = "\"AAA-BBB-CCC\""
+
+    /// The repair hint a call to the cities verb gets when the surface has
+    /// no cities verb.
+    private static let missingCitiesHint = "tools.\(citiesPath) \(UnknownToolHint.missingPathPhrase)"
 
     /// The discovery query that matches the cities verb.
     private static let citiesQuery = "the cities on the trip"
@@ -96,14 +108,14 @@ struct RegistrySwapTests {
 
     // MARK: - Stage and tick
 
-    @Test("stage then turnWillBegin makes runCode, help, docs and searchTools see the new verbs at the same time")
+    @Test("stage then submissionWillBegin makes runCode, help, docs and searchTools see the new verbs at the same time")
     func stageThenTickSwapsEverySurfaceAtOnce() async throws {
         let (tools, staging) = try Self.citiesRegistry().makeSessionToolsAndStaging(librarian: nil)
         let (runCode, searchTools) = try Self.mounted(in: tools)
         #expect(try await helpPaths(of: runCode) == [Self.citiesPath])
 
         staging.stage(try Self.temperatureRegistry())
-        await runCode.turnWillBegin()
+        await runCode.submissionWillBegin()
 
         #expect(try await helpPaths(of: runCode) == [Self.temperaturePath])
         let docs = try await runCode.call(arguments: RunCodeArguments(code: Self.temperatureDocsSnippet))
@@ -115,7 +127,7 @@ struct RegistrySwapTests {
         #expect(!discovery.contains("tools.\(Self.citiesPath)"))
     }
 
-    @Test("stage with no turnWillBegin leaves the current surface unchanged")
+    @Test("stage with no submissionWillBegin leaves the current surface unchanged")
     func stageWithNoTickLeavesTheSurface() async throws {
         let (tools, staging) = try Self.citiesRegistry().makeSessionToolsAndStaging(librarian: nil)
         let (runCode, searchTools) = try Self.mounted(in: tools)
@@ -134,7 +146,7 @@ struct RegistrySwapTests {
 
         runCode.stage(try Self.temperatureRegistry())
         runCode.stage(try Self.issueRegistry())
-        await runCode.turnWillBegin()
+        await runCode.submissionWillBegin()
 
         #expect(try await helpPaths(of: runCode) == [Self.issueCountPath])
     }
@@ -155,12 +167,35 @@ struct RegistrySwapTests {
         // The swap lands while the snippet waits on the latch. The registry
         // it swaps to has no cities verb.
         runCode.stage(try Self.temperatureRegistry())
-        await runCode.turnWillBegin()
+        await runCode.submissionWillBegin()
         latch.release()
 
         #expect(try await run.value == Self.joinedCities)
         // The next run sees the swapped surface.
         #expect(try await helpPaths(of: runCode) == [Self.temperaturePath])
+    }
+
+    // MARK: - A boundary inside one answer
+
+    @Test("a swap between two submissions of one answer gives a later call to the removed verb the repair hint")
+    func swapBetweenTwoSubmissionsOfOneAnswerGivesTheRepairHint() async throws {
+        let runCode = MultiTool(registry: try Self.citiesRegistry())
+
+        // The first submission of the answer calls the cities verb.
+        let first = try await runCode.call(arguments: RunCodeArguments(code: Self.citiesSnippet))
+        #expect(first == Self.joinedCities)
+
+        // A registry with no cities verb is staged while the answer runs.
+        // The Router calls the hook again before the continuation submission
+        // of the same answer: a compaction yield, a rejected tool call, or a
+        // repetition recovery.
+        runCode.stage(try Self.temperatureRegistry())
+        await runCode.submissionWillBegin()
+
+        // The continuation calls the removed verb. The call does not throw:
+        // the model gets the unknown-verb hint and can repair its snippet.
+        let repaired = try await runCode.call(arguments: RunCodeArguments(code: Self.citiesSnippet))
+        #expect(repaired.contains(Self.missingCitiesHint), "answer was: \(repaired)")
     }
 
     // MARK: - Forks share the box
@@ -172,7 +207,7 @@ struct RegistrySwapTests {
         #expect(try await helpPaths(of: fork) == [Self.citiesPath])
 
         parent.stage(try Self.temperatureRegistry())
-        await parent.turnWillBegin()
+        await parent.submissionWillBegin()
 
         #expect(try await helpPaths(of: fork) == [Self.temperaturePath])
         #expect(try await helpPaths(of: parent) == [Self.temperaturePath])
@@ -184,7 +219,7 @@ struct RegistrySwapTests {
         let fork = try #require(parent.forked() as? MultiTool)
 
         fork.stage(try Self.issueRegistry())
-        await fork.turnWillBegin()
+        await fork.submissionWillBegin()
 
         #expect(try await helpPaths(of: parent) == [Self.issueCountPath])
     }

@@ -33,7 +33,7 @@ import Testing
 ///    a plain run-to-completion call, and it is never parked. No run-plane
 ///    entry exists, thus the sweep has nothing to cancel. What ends the call
 ///    at session end is the cancellation of the in-flight turn task
-///    (`RoutedSession.cancelCurrentTurn()`), which cancels the model call the
+///    (`RoutedSession.cancel()`), which cancels the model call the
 ///    tool runs inside; the same cancellation reaches `MCPServer.call` the
 ///    same way, and the advisory cancel still goes out before the transport
 ///    closes.

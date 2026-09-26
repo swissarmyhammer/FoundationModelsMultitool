@@ -14,7 +14,7 @@ import Testing
 ///
 /// `RegistryRebuildTests` covers the rebuild and `RegistrySwapTests` covers the
 /// swap. This suite covers the watcher between them, and it drives the turn
-/// tick by hand with `MultiTool.turnWillBegin()`, the way a `RoutedSession`
+/// tick by hand with `MultiTool.submissionWillBegin()`, the way a `RoutedSession`
 /// drives it.
 ///
 /// Seven facts carry this suite:
@@ -174,8 +174,8 @@ struct SurfaceRefresherTests {
         /// The connected server the refresher watches.
         let server: MCPServer
 
-        /// The `runCode` the mounted session holds, whose `turnWillBegin()`
-        /// is the turn tick of a case.
+        /// The `runCode` the mounted session holds, whose
+        /// `submissionWillBegin()` is the submission tick of a case.
         let runCode: MultiTool
 
         /// The staging the refresher stages on, which counts each stage.
@@ -314,7 +314,7 @@ struct SurfaceRefresherTests {
             // Stage one of the scenario adds the greeter and sends
             // `tools/list_changed`. No host action follows it.
             try await Self.waitForStages(Self.stagesAfterOneChange, on: ground.staging)
-            await ground.runCode.turnWillBegin()
+            await ground.runCode.submissionWillBegin()
 
             #expect(try await helpPaths(of: ground.runCode) == [Self.counterPath, Self.greeterPath])
             let echoed = try await ground.runCode.call(
@@ -333,7 +333,7 @@ struct SurfaceRefresherTests {
         try await Self.withStartedRefresher(named: Self.dynamicServerName, serving: scripted) { ground in
             // The three stages of the scenario are add, re-schema, remove.
             try await Self.waitForStages(Self.stagesAfterThreeChanges, on: ground.staging)
-            await ground.runCode.turnWillBegin()
+            await ground.runCode.submissionWillBegin()
 
             #expect(try await helpPaths(of: ground.runCode) == [Self.counterPath])
             let answer = try await ground.runCode.call(
@@ -364,7 +364,7 @@ struct SurfaceRefresherTests {
             // only a tick swaps.
             #expect(try await helpPaths(of: ground.runCode) == [echoPath])
 
-            await ground.runCode.turnWillBegin()
+            await ground.runCode.submissionWillBegin()
 
             #expect(
                 try await helpPaths(of: ground.runCode) == [
@@ -400,7 +400,7 @@ struct SurfaceRefresherTests {
                 return (lines?.count ?? 0) >= Self.oneLogLine
             }
             try await Task.sleep(for: Self.noFurtherStageSettleDelay)
-            await ground.runCode.turnWillBegin()
+            await ground.runCode.submissionWillBegin()
 
             #expect(ground.staging.count == Self.stagesAfterConnect)
             #expect(
@@ -413,7 +413,7 @@ struct SurfaceRefresherTests {
             try await Self.publish(
                 ScriptedServer.echoTool(named: Self.recoveredToolName), on: scripted)
             try await Self.waitForStages(Self.stagesAfterOneChange, on: ground.staging)
-            await ground.runCode.turnWillBegin()
+            await ground.runCode.submissionWillBegin()
 
             #expect(
                 try await helpPaths(of: ground.runCode) == [
@@ -461,7 +461,7 @@ struct SurfaceRefresherTests {
         try await TestPoll.waitUntil("the server re-listed the added tool") {
             await ground.server.tool(named: Self.alphaToolName) != nil
         }
-        await ground.runCode.turnWillBegin()
+        await ground.runCode.submissionWillBegin()
 
         #expect(ground.staging.count == 0)
         #expect(try await helpPaths(of: ground.runCode) == [echoPath])
@@ -483,7 +483,7 @@ struct SurfaceRefresherTests {
                 to: lateScripted, over: .inMemory, name: Self.lateServerName, clock: ManualClock())
 
             try await ground.refresher.addServer(late)
-            await ground.runCode.turnWillBegin()
+            await ground.runCode.submissionWillBegin()
 
             #expect(
                 try await helpPaths(of: ground.runCode) == [
@@ -510,7 +510,7 @@ struct SurfaceRefresherTests {
             try await Self.publish(
                 ScriptedServer.echoTool(named: Self.alphaToolName), on: lateScripted)
             try await TestPoll.waitUntil("the late server's change reached the surface") {
-                await ground.runCode.turnWillBegin()
+                await ground.runCode.submissionWillBegin()
                 let paths = try? await helpPaths(of: ground.runCode)
                 return paths?.contains(Self.path(of: Self.alphaToolName, on: Self.lateServerName))
                     ?? false
