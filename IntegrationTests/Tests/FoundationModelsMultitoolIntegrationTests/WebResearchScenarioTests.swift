@@ -3,6 +3,7 @@ import ScenarioGrading
 import Testing
 
 @testable import FoundationModelsMultitool
+@testable import MultitoolTestSupport
 
 /// The time limit of the web research test, in minutes.
 ///
@@ -91,7 +92,10 @@ struct WebResearchScenarioTests {
     func searchesTheWebAndNamesTheSwiftHomePage() async throws {
         try await withLiveRouterFixture(name: webResearchScenarioName) { fixture in
             let registry = try MultiTool.Builder()
-                .withWeb(configuration: .keyless, sessionConfiguration: Self.makeShortTimeoutConfiguration())
+                .withWeb(
+                    configuration: .keyless,
+                    sessionConfiguration: ShortTimeoutSession.makeConfiguration(
+                        requestTimeout: webRequestTimeoutSeconds, resourceTimeout: webResourceTimeoutSeconds))
                 .buildRegistry()
             // No instructions, for the reason `runNativeIntegrationScenario`
             // gives: mounting the tools is the whole product surface.
@@ -109,17 +113,6 @@ struct WebResearchScenarioTests {
                 scenario: webResearchScenarioName,
                 line: Self.resultLine(turn: turn, elapsed: elapsed))
         }
-    }
-
-    /// Makes the configuration of the one `URLSession` of the web capability:
-    /// `.ephemeral`, as the capability defaults to, with short timeouts.
-    ///
-    /// - Returns: the configuration.
-    private static func makeShortTimeoutConfiguration() -> URLSessionConfiguration {
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.timeoutIntervalForRequest = webRequestTimeoutSeconds
-        configuration.timeoutIntervalForResource = webResourceTimeoutSeconds
-        return configuration
     }
 
     /// The conditions that the web research run is graded on, in reporting

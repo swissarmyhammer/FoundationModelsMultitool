@@ -36,32 +36,33 @@ struct DuckDuckGoHTMLLiveTests {
 
     @Test("the Swift query gives at least 3 https hits, one of them on swift.org")
     func swiftQueryGivesTheSwiftHomePage() async throws {
-        try await Self.withChallengePageAsKnownIssue {
+        try await withKnownIssue(Self.challengeComment, isIntermittent: true) {
             try await LiveSearch.expectSwiftHomePageHit(providers: Self.providers)
+        } matching: { issue in
+            Self.isChallengePage(issue)
         }
     }
 
     @Test("a site search for developer.apple.com gives only hits under apple.com")
     func siteSearchStaysOnTheSite() async throws {
-        try await Self.withChallengePageAsKnownIssue {
+        try await withKnownIssue(Self.challengeComment, isIntermittent: true) {
             try await LiveSearch.expectHitsOnAppleSite(providers: Self.providers)
+        } matching: { issue in
+            Self.isChallengePage(issue)
         }
     }
 
-    /// Runs one live test, and records the challenge page as a known issue.
+    /// Tells if an issue is the challenge page, thus a known issue.
     ///
-    /// The known issue is intermittent, thus a run with no challenge page
-    /// passes. Only an issue with the exact comment of the challenge
-    /// correction is known. Each other issue fails the test.
+    /// Each test gives this check to `withKnownIssue`. The known issue is
+    /// intermittent, thus a run with no challenge page passes. Only an issue
+    /// with the exact comment of the challenge correction is known. Each
+    /// other issue fails the test.
     ///
-    /// - Parameter body: The live test.
-    /// - Throws: The error that the body throws, when the error does not
-    ///   match the challenge correction. Thus the error fails the test.
-    private static func withChallengePageAsKnownIssue(_ body: () async throws -> Void) async rethrows {
-        try await withKnownIssue(challengeComment, isIntermittent: true) {
-            try await body()
-        } matching: { issue in
-            issue.comments.contains { $0.rawValue == LiveSearch.correctionComment(challengeCorrection).rawValue }
-        }
+    /// - Parameter issue: An issue that the test recorded.
+    /// - Returns: `true` when a comment of the issue is the exact comment of
+    ///   the challenge correction.
+    private static func isChallengePage(_ issue: Issue) -> Bool {
+        issue.comments.contains { $0.rawValue == LiveSearch.correctionComment(challengeCorrection).rawValue }
     }
 }

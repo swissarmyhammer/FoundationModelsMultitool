@@ -9,7 +9,7 @@ import Testing
 ///
 /// The registry comes from `MultiTool.Builder().withWeb(configuration:
 /// .keyless, sessionConfiguration:)`, the public mount of a host, with the
-/// short timeouts of ``LiveSearch/makeShortTimeoutConfiguration()``. The
+/// short timeouts of ``LiveSearch/makeSessionConfiguration()``. The
 /// snippet goes through `MultiTool.call(arguments:)`: the JSC interpreter, the
 /// `tools.web` bindings, and `ToolInvoker`. The search goes to the real
 /// keyless providers, and each fetch goes to a real page. A test does not
@@ -43,7 +43,7 @@ struct WebRunCodeLiveTests {
     @Test("the goal snippet returns 1 to 3 pages, each with a title and content")
     func goalSnippetReturnsPages() async throws {
         let registry = try MultiTool.Builder()
-            .withWeb(configuration: .keyless, sessionConfiguration: LiveSearch.makeShortTimeoutConfiguration())
+            .withWeb(configuration: .keyless, sessionConfiguration: LiveSearch.makeSessionConfiguration())
             .buildRegistry()
 
         let output = try await MultiTool(registry: registry).call(arguments: RunCodeArguments(code: Self.goalSnippet))

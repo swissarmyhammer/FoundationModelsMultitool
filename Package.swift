@@ -330,7 +330,9 @@ private let scenarioGradingTargetName = "ScenarioGrading"
 /// `testServerTargetName`. The unit test target and the live web suites of the
 /// nested `IntegrationTests` package use the same helpers: `RunOutput`, the
 /// decode of a `runCode` output; `WebVerbCall`, the one call of each web verb;
-/// and `WebPageHead`, the value of each page of the goal snippet of web.md. A
+/// `WebPageHead`, the value of each page of the goal snippet of web.md; and
+/// `ShortTimeoutSession`, the one session configuration with short timeouts
+/// of the live web suites and `WebResearchScenarioTests`. A
 /// package can import the products of another package only, thus a helper
 /// that both of them read must stand in a product. Before this target, the
 /// nested package held a copy of each one.

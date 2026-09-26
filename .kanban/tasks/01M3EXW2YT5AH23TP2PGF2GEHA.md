@@ -43,6 +43,46 @@ comments:
     - evidence: `swift test --package-path IntegrationTests --no-parallel --filter "BraveHTMLLiveTests|DuckDuckGoHTMLLiveTests|KeylessChainLiveTests|FetchLiveTests|GuardLiveTests|WebRunCodeLiveTests"` — 13 tests, 6 suites, 0 fail. 2 known issues. Both are the DuckDuckGo challenge page. The user decision of 2026-09-26 says this is not a failure.
     - next: none. All checks are clean.
   timestamp: 2026-09-26T13:30:09.973987+00:00
+- actor: claude-code
+  id: 01m3ezmgs6xmm1953rgmxv1fz1
+  text: |-
+    ### review — findings
+    - evidence: `review sha HEAD~1..HEAD` (commit 748e20b) gave 0 findings. The diff review did not read the 8 renamed files, so a `review file` ran on each new `Web/` path. 6 files gave 0 findings. 2 files gave 1 finding each: `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Web/DuckDuckGoHTMLLiveTests.swift:60` (`swift/idioms`), `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Web/Support/LiveSearch.swift:84` (`reuse/reuse`). Total: 2 findings, 2 confirmed, 0 refuted.
+    - next: Correct the 2 open items in the `## Review Findings` sections. Then run `/review` on this task again. The task stays in `review`.
+  timestamp: 2026-09-26T13:49:21.062832+00:00
+- actor: claude-code
+  id: 01m3ezn5w2gvwj8sv2jbcmdzkh
+  text: |-
+    ### finish iteration 1 — findings
+    - implement: changed — 8 renames, package removed, rule text and web.md updated
+    - test: green — root 1790 passed; live web suites 13 passed, 2 known issues (DuckDuckGo challenge page)
+    - commit: 748e20b
+    - review: findings — IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Web/DuckDuckGoHTMLLiveTests.swift:60, IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Web/Support/LiveSearch.swift:84
+  timestamp: 2026-09-26T13:49:42.658296+00:00
+- actor: claude-code
+  id: 01m3f019tn07tgegmszms6aqqq
+  text: |-
+    ### implement — notes (review findings, round 2)
+    - Finding `swift/idioms` (DuckDuckGoHTMLLiveTests.swift): the literal change `() async throws` does not compile. A Swift function type must have a `->` clause. Thus the fix removes the cause and not only the text: no `Web/` file now declares a closure parameter of a `Void` type. `DuckDuckGoHTMLLiveTests` calls `withKnownIssue(... isIntermittent: true) { ... } matching: { Self.isChallengePage($0) }` directly in each test; the new `isChallengePage(_:)` holds the exact-comment match. The DuckDuckGo `withKnownIssue` rule has no change (user decision 2026-09-26). The same cause was in `LiveSearch.expectHits(of:sourceLocation:_:)` (`(SearchResult) throws -> Void`); it is now `LiveSearch.hasHits(_:sourceLocation:) -> Bool`, and each caller does `guard hasHits(...) else { return }`. `rg` finds no `-> Void` and no `-> ()` in `Web/`.
+    - Finding `reuse/reuse` (LiveSearch.swift): new `ShortTimeoutSession.makeConfiguration(requestTimeout:resourceTimeout:)` in `Tests/Support/MultitoolTestSupport/ShortTimeoutSession.swift`. The timeouts are parameters, because the two callers use different values on purpose (Web/ 10 s / 15 s, WebResearchScenarioTests 15 s / 30 s). `WebResearchScenarioTests` lost its private copy and now imports `MultitoolTestSupport`. `LiveSearch.makeShortTimeoutConfiguration()` is now `LiveSearch.makeSessionConfiguration()`, a one-line call of the shared function with the Web/ timeouts; `LiveFetch` and `WebRunCodeLiveTests` use it.
+    - TDD: new unit suite `Tests/FoundationModelsMultitoolTests/ShortTimeoutSessionTests.swift` (3 tests). RED: it did not compile ("cannot find 'ShortTimeoutSession' in scope"). GREEN after the new file.
+    - The root `Package.swift` doc comment of `multitoolTestSupportTargetName` now names `ShortTimeoutSession` in its list of helpers.
+    - Live run: the challenge page came on both DuckDuckGo tests, and `isChallengePage` matched it as a known issue. Thus the new matcher path ran.
+  timestamp: 2026-09-26T13:56:19.925202+00:00
+- actor: claude-code
+  id: 01m3f01dndhm4t3amzx9agqc94
+  text: |-
+    ### implement — changed
+    - evidence: 9 files — IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Web/DuckDuckGoHTMLLiveTests.swift, Web/Support/LiveSearch.swift, Web/Support/LiveFetch.swift, Web/WebRunCodeLiveTests.swift, IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/WebResearchScenarioTests.swift, Tests/Support/MultitoolTestSupport/ShortTimeoutSession.swift (new), Tests/FoundationModelsMultitoolTests/ShortTimeoutSessionTests.swift (new), Package.swift (comment), task card (2 findings checked). `swift build --build-tests --package-path IntegrationTests`: Build complete. Filtered live run: 13 tests in 6 suites passed, 2 known issues (DuckDuckGo challenge page). Root `swift test`: 1793 tests in 144 suites passed. The only warning is the vendored mlx-swift "missing creator for mutated node" build warning, outside this repository.
+    - next: /test, then /review (file-scoped on the `Web/` files and the new `MultitoolTestSupport` file).
+  timestamp: 2026-09-26T13:56:23.853913+00:00
+- actor: claude-code
+  id: 01m3f0gqwj6hsyz79430a4vptw
+  text: |-
+    ### test — green
+    - evidence: `swift test` (root) — 1793 tests passed, 0 failed, 0 skipped, 0 warnings. `swift build --build-tests --package-path IntegrationTests` (clean build) — build complete, 0 errors, 0 warnings in this repository. It found 5 warnings in the vendored `mlx-swift` dependency under `.build/checkouts`. That code is not part of this repository. `swift test --package-path IntegrationTests --no-parallel --filter "BraveHTMLLiveTests|DuckDuckGoHTMLLiveTests|KeylessChainLiveTests|FetchLiveTests|GuardLiveTests|WebRunCodeLiveTests"` — 13 tests passed in 6 suites, with 2 known issues (the DuckDuckGo challenge page). The user's decision of 2026-09-26 says this known issue is not a failure.
+    - next: none. The build is clean.
+  timestamp: 2026-09-26T14:04:45.842774+00:00
 position_column: doing
 position_ordinal: '80'
 title: 'Web: merge the live web tests into IntegrationTests and remove WebIntegrationTests'
@@ -67,4 +107,28 @@ The user decided on 2026-09-26: all live web tests go in the existing `Integrati
 - [x] Run root `swift test`. All pass.
 
 ## Workflow
-- Use `/tdd` where behavior changes. #web
+- Use `/tdd` where behavior changes.
+
+## Review Findings (2026-09-26 08:31)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 24 file(s) reviewed, 9 not reviewed.
+
+> 8 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 8 file(s)
+
+> 1 file(s) not reviewed — no validator matched:
+> - `web.md` — no validator matches this file
+
+> Note: the hygiene rules `disallowed-constructs-swift`, `function-length-swift`, `idioms-swift`, `magic-numbers-swift` and `missing-docs-swift` found no file at the old `WebIntegrationTests/` paths of the 8 renamed files and of the deleted `WebIntegrationTests/Package.swift`. A file-scoped review of each of the 8 new `Web/` paths follows.
+
+## Review Findings (2026-09-26 08:36)
+
+> Scope: `review file IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Web/DuckDuckGoHTMLLiveTests.swift` — reviewed the whole of each named file. 1 file(s) reviewed, 0 not reviewed.
+
+- [x] `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Web/DuckDuckGoHTMLLiveTests.swift:60` `swift/idioms` — Closure parameter type explicitly declares `-> Void` return type, which should be omitted. The idiom is to drop `Void` from function and closure return types entirely. Change the closure parameter type from `() async throws -> Void` to `() async throws`.
+
+## Review Findings (2026-09-26 08:45)
+
+> Scope: `review file IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Web/Support/LiveSearch.swift` — reviewed the whole of each named file. 1 file(s) reviewed, 0 not reviewed.
+
+- [x] `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Web/Support/LiveSearch.swift:84` `reuse/reuse` — makeShortTimeoutConfiguration reimplements code that already exists elsewhere at near-identical form. The file comments indicate this function is meant to be shared across multiple test suites (line 80-81: 'The live fetch suites and the live `runCode` suite also use it'), yet it is being defined locally here and also in WebResearchScenarioTests.swift, creating duplication. Extract makeShortTimeoutConfiguration to MultitoolTestSupport (where WebVerbCall.search is already shared per line 7 and 17) and import it from both LiveSearch.swift and WebResearchScenarioTests.swift. This keeps one canonical implementation used by all Web/ test suites. #web

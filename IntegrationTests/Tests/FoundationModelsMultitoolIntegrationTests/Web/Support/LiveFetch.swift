@@ -17,7 +17,7 @@ import Testing
 /// The shared setup and the shared checks of the live fetch suites.
 enum LiveFetch {
     /// Makes one live web context, with the real resolver and the short
-    /// timeouts of ``LiveSearch/makeShortTimeoutConfiguration()``.
+    /// timeouts of ``LiveSearch/makeSessionConfiguration()``.
     ///
     /// The configuration is `.keyless`, which reads no environment. The fetch
     /// verb uses no search provider, thus the provider list has no effect on
@@ -26,7 +26,7 @@ enum LiveFetch {
     ///
     /// - Returns: The context.
     static func makeContext() -> WebContext {
-        WebContext(configuration: .keyless, sessionConfiguration: LiveSearch.makeShortTimeoutConfiguration())
+        WebContext(configuration: .keyless, sessionConfiguration: LiveSearch.makeSessionConfiguration())
     }
 
     /// Stops the test when the result is a correction, with the text of the
