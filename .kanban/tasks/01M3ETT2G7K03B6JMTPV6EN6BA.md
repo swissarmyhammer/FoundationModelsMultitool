@@ -20,28 +20,38 @@ comments:
     - test: `swift build --build-tests && swift test` — 1788 tests in 144 suites passed, 0 failed, 0 skipped, no compiler warning.
     - next: commit
   timestamp: 2026-09-26T19:26:04.817704+00:00
+- actor: claude-code
+  id: 01m3fk37te5mxgjtmsxka2kyg4
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — ResultRenderer.swift, Execute.swift, TerminalDetailFixtures.swift (new), MultiToolExecutionTests.swift, ShellExecuteTests.swift, docs/SECURITY.md
+    - test: green — `swift build --build-tests && swift test`: 1788 tests in 144 suites passed, 0 failed, 0 skipped, no compiler warning
+    - commit: changed — ab9e420 test(mail): prove the bound on the detail of a finished background run
+    - review: clean — `review sha HEAD~1..HEAD`: 0 findings, 0 confirmed, 0 refuted (7 attempted, 0 failed); docs/SECURITY.md has no validator; no prior findings open
+    - next: none; task moved to done
+  timestamp: 2026-09-26T19:29:26.350668+00:00
 depends_on:
 - 01M3EVK4VR545ABV6R9YHFQH76
 - 01M3EVKX9JFDWDQR297Q4JRND0
 - 01M3EVMDF9BZTNFR16F11CFNX0
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: fff080
 title: Prove that the detail of a finished background run that becomes mail has a bound
 ---
 ## What
 Router commit f3b72f5 removed the tail cut of a run's `detail`. Upstream commit `2f4707f` made Multitool give the whole report (the `wait()` text, `docs/SECURITY.md` and the tests). After the `wait` removal tasks, the model gets a run's detail as mail. Find and prove the bound on that detail:
-- [ ] `runCode`: `ResultRenderer` caps the return value and the console output (`MultiToolConfiguration.returnValueCharacterLimit`, `consoleCharacterLimit`). Show with a test that a background `runCode` snippet with an overlong return value gives a terminal detail within those caps.
-- [ ] Shell (`Capabilities/Shell/Execute.swift`, background mount): find the cap on the terminal detail of a background shell run. If it has no cap, add one Multitool-owned constant and a tail cut where the detail is set, and write the reason in its doc comment.
-- [ ] Make `docs/SECURITY.md` name each cap that bounds the mail detail.
+- [x] `runCode`: `ResultRenderer` caps the return value and the console output (`MultiToolConfiguration.returnValueCharacterLimit`, `consoleCharacterLimit`). Show with a test that a background `runCode` snippet with an overlong return value gives a terminal detail within those caps.
+- [x] Shell (`Capabilities/Shell/Execute.swift`, background mount): find the cap on the terminal detail of a background shell run. If it has no cap, add one Multitool-owned constant and a tail cut where the detail is set, and write the reason in its doc comment.
+- [x] Make `docs/SECURITY.md` name each cap that bounds the mail detail.
 
 ## Acceptance Criteria
-- [ ] For `runCode` and for shell, a background run with 10× too much output gives a terminal detail whose length is within a named Multitool constant.
-- [ ] `docs/SECURITY.md` names those constants.
+- [x] For `runCode` and for shell, a background run with 10× too much output gives a terminal detail whose length is within a named Multitool constant.
+- [x] `docs/SECURITY.md` names those constants.
 
 ## Tests
-- [ ] `Tests/FoundationModelsMultitoolTests/MultiToolExecutionTests.swift`: the `runCode` case.
-- [ ] `Tests/FoundationModelsMultitoolTests/ShellExecuteTests.swift`: the shell case.
-- [ ] Run `swift test`. Expected result: all tests pass.
+- [x] `Tests/FoundationModelsMultitoolTests/MultiToolExecutionTests.swift`: the `runCode` case.
+- [x] `Tests/FoundationModelsMultitoolTests/ShellExecuteTests.swift`: the shell case.
+- [x] Run `swift test`. Expected result: all tests pass.
 
 ## Workflow
 - Use `/tdd`. Write failing tests first, then do the implementation that makes them pass.
