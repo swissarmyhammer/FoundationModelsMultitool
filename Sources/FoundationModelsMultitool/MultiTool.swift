@@ -53,36 +53,37 @@ extension MultiTool {
             self.isDirectMode = isDirectMode
         }
 
-        /// Returns a copy of this registry in **direct mode**: `runCode` and
-        /// `wait` are surfaced to the session and `searchTools` is not, and a
-        /// snippet is then expected to introspect the surface itself with
+        /// Returns a copy of this registry in **direct mode**: `runCode` is
+        /// surfaced to the session and `searchTools` is not, and a snippet is
+        /// then expected to introspect the surface itself with
         /// `help()`/`docs()` rather than a `searchTools` round trip.
         ///
-        /// Direct mode takes discovery away and nothing else. `wait` stays,
-        /// because every mounted `runCode` call goes to the background and the
-        /// model still needs a deliberate join. The executable surface itself
-        /// (`surface`/`tools`) is unchanged — only the affordance metadata
-        /// (`isDirectMode`, `affordances`, `supportsSearchTools`) flips.
+        /// Direct mode takes discovery away and nothing else. Every mounted
+        /// `runCode` call still goes to the background, and a settled run
+        /// still comes back to the session as mail. The executable surface
+        /// itself (`surface`/`tools`) is unchanged — only the affordance
+        /// metadata (`isDirectMode`, `affordances`, `supportsSearchTools`)
+        /// flips.
         public func directMode() -> Registry {
             Registry(surface: surface, tools: tools, isDirectMode: true)
         }
 
         /// The session-facing operations this registry surfaces —
-        /// `["runCode", "wait"]` in direct mode, `["runCode", "searchTools",
-        /// "wait"]` otherwise. Plain, checkable metadata for a caller or a
-        /// test to read without knowing `isDirectMode`'s exact semantics.
+        /// `["runCode"]` in direct mode, `["runCode", "searchTools"]`
+        /// otherwise. Plain, checkable metadata for a caller or a test to read
+        /// without knowing `isDirectMode`'s exact semantics.
         ///
-        /// **`wait` appears in both arms because
-        /// `makeSessionTools(librarian:embedder:sampleGenerator:)` mounts it in both.**
-        /// Direct mode takes discovery away and nothing else, so a list that
-        /// named only `runCode` and `searchTools` would disagree with the
-        /// array a host actually receives, in every mode.
+        /// It names every tool that
+        /// `makeSessionTools(librarian:embedder:sampleGenerator:)` mounts, so
+        /// the list agrees with the array a host actually receives, in every
+        /// mode. No `wait` tool is in either list: a settled background run
+        /// comes back to the session as mail.
         ///
         /// The order is not the mount order, and this property is not the
         /// place to learn one — see
         /// `makeSessionTools(librarian:embedder:sampleGenerator:)`, which owns it.
         public var affordances: [String] {
-            isDirectMode ? ["runCode", "wait"] : ["runCode", "searchTools", "wait"]
+            isDirectMode ? ["runCode"] : ["runCode", "searchTools"]
         }
 
         /// Whether this registry surfaces `searchTools` discovery — `false` in
@@ -94,11 +95,10 @@ extension MultiTool {
         /// Builds the tools a host mounts on its session, in the order the
         /// model reads them.
         ///
-        /// `searchTools` comes first, `runCode` second, `wait` last. A
-        /// session's tool list is read as a whole before the model picks its
-        /// opening move, so the list is itself the first statement of what a
-        /// turn looks like here: discover what exists, execute against what
-        /// came back, and block only when a result has not arrived yet.
+        /// `searchTools` comes first and `runCode` second. A session's tool
+        /// list is read as a whole before the model picks its opening move, so
+        /// the list is itself the first statement of what a turn looks like
+        /// here: discover what exists, then execute against what came back.
         /// Presenting `runCode` first states the opposite — that execution is
         /// the primary affordance and discovery an aside — which is the
         /// reverse of what the tool descriptions ask for.
@@ -120,12 +120,13 @@ extension MultiTool {
         /// `RoutedSession` is what puts each tool through Router's own
         /// mounting path, where the background mount `MultiTool` declares for
         /// itself takes effect. So every `runCode` call goes to the background
-        /// and answers with a pending envelope the model collects with `wait`.
-        /// Mounted on a bare
-        /// `FoundationModels.LanguageModelSession` the same tools cannot go to
-        /// the background at all: the
-        /// snippet simply blocks, no envelope is ever written, and `wait` has
-        /// nothing to join. The integration suite drives exactly this contract —
+        /// and answers with a pending envelope. The model ends its answer, and
+        /// the settled run comes back to the session as mail, which starts the
+        /// next submission (Router `generation-queue.md` §5.5 rule 1). Mounted
+        /// on a bare `FoundationModels.LanguageModelSession` the same tools
+        /// cannot go to the background at all: the snippet simply blocks, no
+        /// envelope is ever written, and no mail comes. The integration suite
+        /// drives exactly this contract —
         /// `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/
         /// Support/ScenarioRunner.swift` builds every scenario session as
         /// `profile.standard.makeSession(tools:discoveryPriming:)` with no
@@ -152,9 +153,8 @@ extension MultiTool {
         ///     alone exactly as it always has. Pass the **main** generation
         ///     slot: the sample is code the model is told to run, so its
         ///     quality matters more than its cost. Unused in direct mode.
-        /// - Returns: `searchTools`, `runCode`, `wait` — or `runCode` and
-        ///   `wait` in direct mode, which takes discovery away but not
-        ///   the background.
+        /// - Returns: `searchTools` and `runCode` — or `runCode` alone in
+        ///   direct mode, which takes discovery away but not the background.
         /// - Throws: whatever
         ///   `SearchToolsTool.init(registry:librarian:embedder:limit:sampleGenerator:)`
         ///   throws.
@@ -199,16 +199,16 @@ extension MultiTool {
             sampleGenerator: RoutedLLM? = nil
         ) throws -> (tools: [any Tool], staging: any RegistryStaging) {
             let embedding = SearchToolsTool.makeEmbedding(from: embedder)
-            // `wait` is mounted in both modes: a direct-mode surface declares
-            // the background mount for `runCode` too, so every mounted call
-            // goes to the background and a model still needs a way to say
-            // "I cannot continue without that result" (task `h773bed`).
+            // No `wait` tool in either mode. A wait inside a submission holds
+            // the model for every session on it, and a settled background run
+            // comes back to the session as mail (Router `generation-queue.md`
+            // §5.5).
             guard supportsSearchTools else {
                 let holder = RegistryHolder(
                     current: RegistryBundle(
                         registry: self,
                         shape: RegistryBundleShape(bindsSearchTools: false, discovery: .none, embedder: embedding)))
-                return ([MultiTool(holder: holder), WaitTool()], holder)
+                return ([MultiTool(holder: holder)], holder)
             }
             let holder = RegistryHolder(
                 current: RegistryBundle(
@@ -228,12 +228,7 @@ extension MultiTool {
             // reaches for it mid-run. One instance means one librarian and one
             // sample generator, so the two doors cannot answer differently.
             let runCode = MultiTool(holder: holder, searchTools: searchTools)
-            // Presented last, deliberately. A model reads "discover what
-            // exists", then "execute code", and only then "block until
-            // something finishes" — which is the rarest of the three and the
-            // one it should reach for only when the other two have left it
-            // waiting on a result.
-            return ([searchTools, runCode, WaitTool()], holder)
+            return ([searchTools, runCode], holder)
         }
     }
 }
@@ -243,8 +238,9 @@ extension MultiTool {
 ///
 /// **`runCode` always backgrounds.** It hands back a completion token every
 /// time, so waiting is not one of its options — the concept is out of this
-/// schema rather than set to zero. A model that needs the result calls `wait`;
-/// a model that does not lets the snippet run (task `^cv98vff`).
+/// schema rather than set to zero. A model that needs the result ends its
+/// answer, and the settled run comes back to the session as mail; a model that
+/// does not need it lets the snippet run (task `^cv98vff`).
 ///
 /// A tool with two return shapes is unlearnable. Under "inline if it is fast,
 /// a token if it is slow" the same call sometimes yields a value and sometimes
@@ -344,10 +340,10 @@ public struct MultiTool: Tool {
         `return` the final value; only that value comes back. Awaiting a call is the
         whole of how a snippet coordinates its work: do not wait() inside a snippet, and
         never time a call or poll for one. When runCode answers with `pending` false, the
-        snippet is done and its result is the detail field: answer from that result and
-        call no wait tool. When runCode answers with `pending` true, the snippet is still
-        going: call the wait tool with that completionToken to collect the
-        result. Answer only from what the snippet returns: never
+        snippet is done and its result is the detail field: answer from that result. When
+        runCode answers with `pending` true, the snippet is still going and you do not have
+        its result: end your answer now, and the result comes back to you as a new message
+        when the snippet finishes. Answer only from what the snippet returns: never
         state a fact about the user's data that did not come from a `tools.*` return
         value, and never claim success for a call the snippet did not actually return.
         When a snippet fails, fix it and call runCode again immediately. Ambient globals

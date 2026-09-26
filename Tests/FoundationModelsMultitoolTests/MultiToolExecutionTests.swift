@@ -2,6 +2,7 @@ import Foundation
 import FoundationModels
 import FoundationModelsRouter
 import Testing
+import os
 
 @testable import FoundationModelsMultitool
 
@@ -271,14 +272,17 @@ struct MultiToolExecutionTests {
         // thing to forbid it normally puts it back in the option set — the
         // reason refusal is never named below — but `wait()` is already in the
         // option set from outside: `docs("globals")` documents the sandbox
-        // global, so a prohibition has to name what it overrides. The collect
-        // step a pending envelope leads to is the `wait` tool, and the
-        // description says so in the same words as the envelope (task
-        // ^4qcf1v9), so the two texts cannot pull the model two ways.
+        // global, so a prohibition has to name what it overrides. A pending
+        // envelope tells the model to end its answer, because the settled run
+        // comes back as mail, and the description says the same thing (task
+        // ^4qcf1v9), so the two texts cannot pull the model two ways. No text
+        // sends the model to a `wait` tool: none is mounted.
         #expect(description.contains("Awaiting a call is the whole of how a snippet coordinates its work"))
         #expect(description.contains("do not wait()"))
         #expect(description.contains("never time a call or poll for one"))
-        #expect(description.contains("call the wait tool with that completionToken"))
+        #expect(description.contains("end your answer now"))
+        #expect(description.contains("comes back to you as a new message"))
+        #expect(!description.contains("wait tool"))
         // Persona-free, and refusal is never named — naming it would put it
         // back in the option set. An honest failure report replaces it.
         #expect(!description.localizedCaseInsensitiveContains("helpful assistant"))
@@ -312,7 +316,7 @@ struct MultiToolExecutionTests {
 
     // MARK: - directMode(): a surface with discovery taken away
 
-    @Test("registry.directMode() drops the searchTools affordance and keeps wait; a plain registry reports all three")
+    @Test("registry.directMode() drops the searchTools affordance; neither arm reports a wait tool")
     func directModeReportsRunCodeOnlySurface() throws {
         let registry = try MultiTool.Builder()
             .addTool(CitiesTool())
@@ -320,15 +324,15 @@ struct MultiToolExecutionTests {
 
         #expect(registry.isDirectMode == false)
         #expect(registry.supportsSearchTools == true)
-        // `wait` in both arms, because `makeSessionTools(librarian:)` mounts it
-        // in both — direct mode takes discovery away, never the background.
-        #expect(registry.affordances == ["runCode", "searchTools", "wait"])
+        // No `wait` in either arm: a settled background run comes back to the
+        // session as mail, and `makeSessionTools(librarian:)` mounts no `wait`.
+        #expect(registry.affordances == ["runCode", "searchTools"])
 
         let direct = registry.directMode()
 
         #expect(direct.isDirectMode == true)
         #expect(direct.supportsSearchTools == false)
-        #expect(direct.affordances == ["runCode", "wait"])
+        #expect(direct.affordances == ["runCode"])
         // `directMode()` only flips the affordance metadata — the executable
         // surface itself (and its rendered catalog) is unchanged.
         #expect(direct.surface.entries.map(\.path) == registry.surface.entries.map(\.path))
@@ -344,12 +348,12 @@ struct MultiToolExecutionTests {
 
         let mounted = try registry.makeSessionTools(librarian: nil)
 
-        // `wait` comes last: discover, then execute, then block only if a
-        // result is still outstanding (task `h773bed`).
-        #expect(mounted.map(\.name) == ["searchTools", "runCode", "wait"])
+        // Discover, then execute. No `wait` tool is mounted: a settled
+        // background run comes back to the session as mail.
+        #expect(mounted.map(\.name) == ["searchTools", "runCode"])
     }
 
-    @Test("A direct-mode registry vends runCode and wait — there is no searchTools to present")
+    @Test("A direct-mode registry vends runCode alone — there is no searchTools to present and no wait tool")
     func directModeSessionToolsOmitSearchTools() throws {
         let registry = try MultiTool.Builder()
             .addTool(CitiesTool())
@@ -358,9 +362,9 @@ struct MultiToolExecutionTests {
 
         let mounted = try registry.makeSessionTools(librarian: nil)
 
-        // Direct mode drops discovery, not waiting: a slow `runCode` still
-        // goes to the background, so the model still needs a deliberate join.
-        #expect(mounted.map(\.name) == ["runCode", "wait"])
+        // Direct mode drops discovery and nothing else: a slow `runCode` still
+        // goes to the background, and its result still comes back as mail.
+        #expect(mounted.map(\.name) == ["runCode"])
     }
 
     @Test("Both vended tools are backed by the registry they were vended from, not an empty one")
@@ -374,9 +378,8 @@ struct MultiToolExecutionTests {
         // The runCode half dispatches into the registry's real wrapped tool:
         // a `MultiTool` over an empty registry would render a repairable
         // error for `tools.getCities` instead of the itinerary.
-        // Found by type, never by position: `wait` is mounted after `runCode`,
-        // and a positional read silently tested the wrong tool the moment the
-        // array grew.
+        // Found by type, never by position: a positional read silently tested
+        // the wrong tool the moment the array grew.
         let runCode = try #require(mounted.compactMap { $0 as? MultiTool }.first)
         let itinerary = try await runCode.call(
             arguments: RunCodeArguments(code: #"return (await tools.getCities()).cities.join("-");"#)
@@ -389,5 +392,112 @@ struct MultiToolExecutionTests {
         let searchTools = try #require(mounted.first as? SearchToolsTool)
         let discovery = try await searchTools.call(arguments: SearchToolsArguments(task: "the cities on the trip"))
         #expect(discovery.contains("tools.getCities"))
+    }
+
+    // MARK: - A settled background run comes back as mail
+
+    /// How long the double-delivery test lets a `runCode` call wait for its
+    /// own snippet. It is long enough for a snippet that reads a run that
+    /// already settled, and it is the time the gated snippet stays pending
+    /// before its envelope comes back.
+    private static let shortInlineSettleGrace: TimeInterval = 1
+
+    /// The deadline of the sandbox `wait()` in the double-delivery snippet.
+    /// The run it reads settled before the snippet starts, thus the call does
+    /// not wait.
+    private static let collectedRunWaitSeconds = 10
+
+    /// A `runCode` over one ``GatedCodeTool``.
+    ///
+    /// - Parameters:
+    ///   - gate: The gate the tool waits on.
+    ///   - inlineSettleGrace: How long a mounted call waits for its snippet.
+    /// - Returns: The tool.
+    private static func gatedRunCode(gate: ReleaseGate, inlineSettleGrace: TimeInterval) throws -> MultiTool {
+        MultiTool(
+            registry: try MultiTool.Builder().addTool(GatedCodeTool(gate: gate)).buildRegistry(),
+            configuration: MultiToolConfiguration(inlineSettleGrace: inlineSettleGrace)
+        )
+    }
+
+    /// The prompts after the first one that carry the gated tool's result.
+    ///
+    /// - Parameter prompts: Every prompt the backend got, in order.
+    /// - Returns: The later prompts that contain ``mailProbeResultCode``.
+    private static func laterPromptsCarryingTheResult(_ prompts: [String]) -> [String] {
+        prompts.dropFirst().filter { $0.contains(mailProbeResultCode) }
+    }
+
+    @Test("a background runCode that settles after the answer comes back as one mail submission that carries the result, and exactly one")
+    func settledRunComesBackAsOneMail() async throws {
+        let gate = ReleaseGate()
+        let prompts = MailProbePrompts()
+        let session = try await makeMailProbeSession(
+            mounting: try Self.gatedRunCode(gate: gate, inlineSettleGrace: 0),
+            prompts: prompts
+        ) { index, runCode in
+            // The first submission starts the snippet and ends its answer, as
+            // the pending envelope tells the model to do. Every later
+            // submission only answers.
+            guard index == 0 else { return "answered" }
+            _ = try mailProbeEnvelope(
+                try await runCode.call(arguments: RunCodeArguments(code: gatedCodeSnippet)))
+            return "the result comes back later"
+        }
+
+        _ = try await session.respond(to: "start the snippet")
+        await gate.release()
+        let afterMail = await prompts.awaiting(2)
+        // One more caller message after the mail: mail that stays in the
+        // outbox, or a second copy of it, goes into this submission.
+        _ = try await session.respond(to: "one more message")
+        let all = await prompts.awaiting(3)
+
+        #expect(afterMail.count == 2)
+        #expect(Self.laterPromptsCarryingTheResult(all).count == 1)
+        #expect(all.count >= 2 && all[1].contains(mailProbeResultCode))
+        #expect(all.count == 3 && !all[2].contains(mailProbeResultCode))
+    }
+
+    /// Records the finding of task `^q4jrnd0`: a run that the sandbox `wait()`
+    /// global collects is ALSO delivered as mail. `SessionMailbox.wait` does
+    /// not withdraw the staged terminal event, and only the inline settle
+    /// grace withdraws it (`BackgroundToolRunner.settledEnvelope`). Thus the
+    /// model reads the result two times: in the tool output of the snippet
+    /// that collected it, and in the mail. Task `^11cfnx0` removes the
+    /// sandbox `wait()` global, and with it this second path.
+    @Test("a run that a snippet collects with the sandbox wait() still comes back as mail: the double delivery that task ^11cfnx0 removes")
+    func runCollectedBySandboxWaitIsAlsoMail() async throws {
+        let gate = ReleaseGate()
+        let prompts = MailProbePrompts()
+        let collected = OSAllocatedUnfairLock<PendingRunEnvelope?>(initialState: nil)
+        let session = try await makeMailProbeSession(
+            mounting: try Self.gatedRunCode(gate: gate, inlineSettleGrace: Self.shortInlineSettleGrace),
+            prompts: prompts
+        ) { index, runCode in
+            guard index == 0 else { return "answered" }
+            // The gated snippet outlasts the grace, so its call answers with a
+            // pending envelope. The gate then opens, and a second snippet
+            // collects the run with the sandbox `wait()` inside the grace.
+            let pending = try mailProbeEnvelope(
+                try await runCode.call(arguments: RunCodeArguments(code: gatedCodeSnippet)))
+            await gate.release()
+            let collector = "return (await wait(\"\(pending.completionToken)\", "
+                + "\(Self.collectedRunWaitSeconds))).detail;"
+            let settled = try mailProbeEnvelope(
+                try await runCode.call(arguments: RunCodeArguments(code: collector)))
+            collected.withLock { $0 = settled }
+            return "collected"
+        }
+
+        _ = try await session.respond(to: "start and collect the snippet")
+        _ = await prompts.awaiting(2)
+        _ = try await session.respond(to: "one more message")
+        let all = await prompts.awaiting(3)
+
+        let inline = try #require(collected.withLock { $0 })
+        #expect(!inline.pending)
+        #expect(inline.detail?.contains(mailProbeResultCode) == true)
+        #expect(Self.laterPromptsCarryingTheResult(all).count == 1)
     }
 }

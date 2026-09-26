@@ -5,7 +5,7 @@ import ScenarioGrading
 
 /// Ungated coverage for the verdicts a gated scenario is graded on —
 /// `scenarioChecks(for:answerContainsOneOf:answerMustNotContain:groundedIn:)`
-/// `inBandCollectionChecks(for:answerContainsOneOf:groundedIn:)` and
+/// `mailCollectionChecks(for:answerContainsOneOf:groundedIn:)` and
 /// `nestedGenerationChecks(for:)` in `Support/ScenarioRunner.swift`.
 ///
 /// The grounding condition used to hold whenever *any* fixture call returned,
@@ -100,29 +100,20 @@ struct ScenarioGradingTests {
         #expect(!IntegrationScenarioGrounding.archiveRebuild.isEmpty)
     }
 
-    // MARK: - The in-band collection canary's verdict
+    // MARK: - The mail collection canary's verdict
 
-    /// How many `wait` calls the recorded gated run made.
-    ///
-    /// Measured, not chosen: a real-model run of the canary's own
-    /// scenario reported `waitCalls=3` with no background run still going at the
-    /// answer. The exact count is not what the canary grades — any call at all
-    /// is in-band collection — but grading the recorded number keeps this test a
-    /// rebuild of a run that happened rather than of one imagined.
-    private static let recordedInBandWaitCalls = 3
-
-    @Test("the recorded run — the model collected its own background run — passes every canary condition")
-    func theRecordedInBandRunPassesEveryCanaryCondition() {
-        // The gated run this canary was inverted from: the model called `wait`,
-        // collected its own run, and answered with the manifest code, leaving no
-        // background run at the turn's end and none at respond's return.
+    @Test("a run whose settled result came back as mail and started the answer passes every canary condition")
+    func aMailAnswerPassesEveryCanaryCondition() {
+        // The shape the new contract asks for: the model ended its answer with
+        // the rebuild still going, the settled run came back as mail, and the
+        // answer mail started carried the manifest code, with no background
+        // run left when that answer ended.
         let checks = Self.canaryChecks(
-            for: InBandCollectionEvidence(
+            for: MailCollectionEvidence(
                 answer: Self.replyReportingTheManifestCode,
-                backgroundRunsAtAnswer: [],
-                backgroundRunsAfterRespond: [],
                 returnedPaths: IntegrationScenarioGrounding.archiveRebuild,
-                waitCalls: Self.recordedInBandWaitCalls
+                mailAnswers: 1,
+                backgroundRunsAtLastAnswer: []
             )
         )
 
@@ -130,35 +121,43 @@ struct ScenarioGradingTests {
         #expect(failed.isEmpty)
     }
 
-    @Test("a turn that ended with a run still going fails the canary, and fails it on the two conditions that say so")
-    func aRunStillRunningAtTheAnswerFailsTheCanary() throws {
-        // The shape task `^xeqs138` was written to produce and Router's
-        // `^466d38p` says no host can reach: the model ignored the pending
-        // envelope's instruction to collect, so its turn ended with the rebuild
-        // still in flight. If a gated run ever reports this, the drain is
-        // reachable and that card's question is open again — so the canary has
-        // to fail on it, here where it can be checked without live inference.
+    @Test("a run where no answer started from mail fails the canary on mailCollection alone")
+    func noMailAnswerFailsTheCanary() throws {
+        // The model held its answer open until the run settled, or the run
+        // settled inside the inline settle grace. Either way no mail came, and
+        // the canary has to say so, here where it can be checked without live
+        // inference.
         let checks = Self.canaryChecks(
-            for: InBandCollectionEvidence(
+            for: MailCollectionEvidence(
                 answer: Self.replyReportingTheManifestCode,
-                backgroundRunsAtAnswer: [IntegrationArchiveRebuildTool.path],
-                backgroundRunsAfterRespond: [],
                 returnedPaths: IntegrationScenarioGrounding.archiveRebuild,
-                waitCalls: 0
+                mailAnswers: 0,
+                backgroundRunsAtLastAnswer: []
             )
         )
 
-        let noBackgroundRunsAtAnswer = try Self.check(noBackgroundRunsAtAnswerCheckName, in: checks)
-        #expect(!noBackgroundRunsAtAnswer.held)
-        let inBandCollection = try Self.check(inBandCollectionCheckName, in: checks)
-        #expect(!inBandCollection.held)
-        // And it fails on those two alone: the reply is a valid, grounded
-        // answer, so a reader of the failure knows the drain — not the model's
-        // answer — is what changed.
-        let validAnswer = try Self.check(validAnswerCheckName, in: checks)
-        #expect(validAnswer.held)
-        let grounded = try Self.check(groundedCheckName, in: checks)
-        #expect(grounded.held)
+        let mailCollection = try Self.check(mailCollectionCheckName, in: checks)
+        #expect(!mailCollection.held)
+        // And it fails on that condition alone: the reply is a valid, grounded
+        // answer with no run left, so a reader of the failure knows the
+        // delivery — not the model's answer — is what changed.
+        let failed = checks.filter { !$0.held }.map(\.name)
+        #expect(failed == [mailCollectionCheckName])
+    }
+
+    @Test("a run with a background run still going at the last answer fails noBackgroundRunsAtLastAnswer")
+    func aRunStillRunningAtTheLastAnswerFailsTheCanary() throws {
+        let checks = Self.canaryChecks(
+            for: MailCollectionEvidence(
+                answer: Self.replyReportingTheManifestCode,
+                returnedPaths: IntegrationScenarioGrounding.archiveRebuild,
+                mailAnswers: 1,
+                backgroundRunsAtLastAnswer: [IntegrationArchiveRebuildTool.path]
+            )
+        )
+
+        let failed = checks.filter { !$0.held }.map(\.name)
+        #expect(failed == [noBackgroundRunsAtLastAnswerCheckName])
     }
 
     // MARK: - The nested-generation probe's verdict
@@ -228,8 +227,8 @@ struct ScenarioGradingTests {
     ///
     /// - Parameter evidence: the record to grade.
     /// - Returns: every graded condition, in reporting order.
-    private static func canaryChecks(for evidence: InBandCollectionEvidence) -> [ScenarioCheck] {
-        inBandCollectionChecks(
+    private static func canaryChecks(for evidence: MailCollectionEvidence) -> [ScenarioCheck] {
+        mailCollectionChecks(
             for: evidence,
             answerContainsOneOf: integerAnswers(for: integrationArchiveRebuildManifestCode),
             groundedIn: IntegrationScenarioGrounding.archiveRebuild

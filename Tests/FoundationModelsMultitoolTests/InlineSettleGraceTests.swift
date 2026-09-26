@@ -94,8 +94,8 @@ struct InlineSettleGraceTests {
             envelope.next == runCode.resultInstruction(forCompletionToken: envelope.completionToken)
         )
 
-        // The snippet settled by itself, so a model that calls `wait` on the
-        // token anyway is answered with the same result.
+        // The snippet settled by itself, and the run plane keeps its terminal
+        // event, so a read of the token gives the same result.
         let collected = await context.wait(
             completionToken: envelope.completionToken, seconds: scriptedRunSettlementSeconds
         )
@@ -106,8 +106,8 @@ struct InlineSettleGraceTests {
         #expect(terminal.detail == Self.quickSnippetResult)
     }
 
-    @Test("the settled sentence sends the model to its own detail, and never to the wait tool")
-    func settledSentenceKeepsTheModelAwayFromWait() throws {
+    @Test("the settled sentence sends the model to its own detail, says that no other message comes, and names no wait tool")
+    func settledSentenceSendsTheModelToItsDetail() throws {
         let completionToken = ToolContext.makeCompletionToken()
 
         let sentence = MultiTool(registry: try Self.registry())
@@ -115,9 +115,10 @@ struct InlineSettleGraceTests {
 
         #expect(sentence.contains("detail field"))
         #expect(sentence.contains("Answer from that result now"))
-        #expect(sentence.contains("Do not call the wait tool"))
+        #expect(sentence.contains("No other message about completionToken"))
         #expect(sentence.contains(completionToken))
         #expect(sentence.contains("never reply that the result will arrive later"))
+        #expect(!sentence.contains("wait tool"))
     }
 
     @Test("a host that turns the wait off gets the completion token back, as every mounted call did before")

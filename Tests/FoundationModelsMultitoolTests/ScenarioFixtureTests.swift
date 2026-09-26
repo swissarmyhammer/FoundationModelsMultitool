@@ -322,7 +322,7 @@ struct ScenarioFixtureTests {
         )
     }
 
-    // MARK: - The fixture the in-band collection canary drives
+    // MARK: - The fixture the mail collection canary drives
 
     @Test("the archive-rebuild fixture reports its manifest code")
     func theRebuildFixtureReportsItsManifestCode() async throws {
@@ -341,11 +341,11 @@ struct ScenarioFixtureTests {
 
     @Test("the archive-rebuild fixture settles only after its delay, which outlasts runCode's inline settle grace")
     func theRebuildFixtureOutlastsTheInlineSettleGrace() async throws {
-        // The premise `inBandCollection` rests on: the model gets a pending
-        // envelope, and only then does it have a run to collect with `wait`. A
+        // The premise `mailCollection` rests on: the model gets a pending
+        // envelope, and only then does the settled run come back as mail. A
         // snippet that settles inside the inline settle grace gives its result
-        // inline, and a correct model then makes no `wait` call (CI run
-        // `35230706285`). Thus the delay must be longer than the grace.
+        // inline, and no mail comes (CI run `35230706285`). Thus the delay
+        // must be longer than the grace.
         #expect(
             integrationArchiveRebuildDelay
                 > .milliseconds(Int(MultiToolConfiguration.defaultInlineSettleGrace * 1000))
@@ -363,7 +363,7 @@ struct ScenarioFixtureTests {
         #expect(elapsed >= integrationArchiveRebuildDelay)
     }
 
-    @Test("the in-band collection canary's manifest code answers no other scenario's question")
+    @Test("the mail collection canary's manifest code answers no other scenario's question")
     func theManifestCodeAnswersNoOtherScenarioQuestion() {
         // The same rule `IntegrationScenarioAnswers` enforces between its own
         // two answer sets, extended to the two code-shaped fixtures that came
@@ -389,9 +389,10 @@ struct ScenarioFixtureTests {
     @Test("the delayed echo returns its exact input, and only after its delay")
     func theDelayedEchoReturnsItsExactInputAfterItsDelay() async throws {
         // The premise the mechanism test rests on: the value settles a few
-        // seconds after the call starts. A tool that returns at once makes
-        // `wait` return at once, and the deferred path stays untested — the
-        // hole the immediate rebuild fixture left open (task `^nhxj8hx`).
+        // seconds after the call starts. A tool that returns at once settles
+        // inside the inline settle grace, and the deferred path — the mail —
+        // stays untested: the hole the immediate rebuild fixture left open
+        // (task `^nhxj8hx`).
         let log = ScenarioCallLog()
         let nonce = integrationDelayedEchoNonce()
         let clock = ContinuousClock()
@@ -412,7 +413,7 @@ struct ScenarioFixtureTests {
         // seen it. A fresh nonce per run keeps the valid-answer check honest:
         // the reply carries the value only when the value went through the
         // collected run or through the prompt, and the grounded and
-        // in-band-collection checks close the prompt-only path.
+        // mail-collection checks close the prompt-only path.
         let first = integrationDelayedEchoNonce()
         let second = integrationDelayedEchoNonce()
 

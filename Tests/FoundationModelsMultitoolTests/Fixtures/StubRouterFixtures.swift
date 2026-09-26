@@ -214,8 +214,17 @@ struct StubEmbeddingContainer: LoadedEmbeddingContainer {
     }
 }
 
+/// The model reference of the `standard` slot of the stub profile, when a
+/// test gives none of its own.
+let stubStandardModel: ModelRef = "stub/standard"
+
 /// A loader that downloads nothing and loads the stub containers.
 struct StubModelLoader: ModelLoader {
+    /// The generation container every `loadLLM` call hands out. The default
+    /// is ``StubLLMContainer``; a test that must script its own backend gives
+    /// its own container.
+    var container: any LoadedLLMContainer = StubLLMContainer()
+
     func loadLLM(
         ref: ModelRef,
         slot: ModelSlot,
@@ -223,7 +232,7 @@ struct StubModelLoader: ModelLoader {
         reporting: @escaping @Sendable (DownloadProgress) -> Void
     ) async throws -> any LoadedLLMContainer {
         reporting(DownloadProgress(bytesDownloaded: 1, bytesTotal: 1))
-        return StubLLMContainer()
+        return container
     }
 
     func loadEmbedder(
@@ -314,17 +323,24 @@ actor CollectingTranscriptRecorder: TranscriptRecorder {
 ///
 /// - Parameters:
 ///   - tools: The tools the session mounts.
+///   - loader: The loader the router loads its models through. The default
+///     hands out ``StubLLMContainer``.
+///   - standardModel: The model reference of the `standard` slot. See
+///     ``makeStubProfile(recorder:loader:standardModel:in:)``.
 ///   - directory: Where the router caches and records. A fresh temporary
 ///     directory per call keeps runs of one suite apart.
 /// - Returns: The session, and the recorder of its transcript.
 /// - Throws: Whatever resolving the profile throws.
 func makeStubSession(
     mounting tools: [any Tool],
+    loader: StubModelLoader = StubModelLoader(),
+    standardModel: ModelRef = stubStandardModel,
     in directory: URL = FileManager.default.temporaryDirectory
         .appendingPathComponent("multitool-stub-\(ULID.generate())")
 ) async throws -> (session: RoutedSession, recorder: CollectingTranscriptRecorder) {
     let recorder = CollectingTranscriptRecorder()
-    let profile = try await makeStubProfile(recorder: recorder, in: directory)
+    let profile = try await makeStubProfile(
+        recorder: recorder, loader: loader, standardModel: standardModel, in: directory)
     return (profile.standard.makeSession(instructions: nil, tools: tools), recorder)
 }
 
@@ -340,12 +356,21 @@ func makeStubSession(
 /// - Parameters:
 ///   - recorder: Where the router journals every transcript event. Defaults
 ///     to a fresh recorder no test reads.
+///   - loader: The loader the router loads its models through. The default
+///     hands out ``StubLLMContainer``.
+///   - standardModel: The model reference of the `standard` slot. Router
+///     keeps a loaded model in the process-wide `ModelPool.shared` by its
+///     reference, so a test that gives its own container must also give a
+///     reference no other test loads. Otherwise the pool hands it the
+///     container another test loaded first.
 ///   - directory: Where the router caches. A fresh temporary directory per
 ///     call keeps runs of one suite apart.
 /// - Returns: The resolved profile.
 /// - Throws: Whatever resolving the profile throws.
 func makeStubProfile(
     recorder: CollectingTranscriptRecorder = CollectingTranscriptRecorder(),
+    loader: StubModelLoader = StubModelLoader(),
+    standardModel: ModelRef = stubStandardModel,
     in directory: URL = FileManager.default.temporaryDirectory
         .appendingPathComponent("multitool-stub-\(ULID.generate())")
 ) async throws -> LanguageModelProfile {
@@ -354,13 +379,13 @@ func makeStubProfile(
         recorder: recorder,
         probe: StubMachine(),
         metadataSource: StubMetadata(),
-        loader: StubModelLoader()
+        loader: loader
     )
     return try await router.resolve(
         profile: ProfileDefinition(
             name: "stub",
             description: "the stub profile these fixtures run on",
-            standard: ["stub/standard"],
+            standard: [standardModel],
             flash: ["stub/flash"],
             embedding: ["stub/embedding"]
         ),

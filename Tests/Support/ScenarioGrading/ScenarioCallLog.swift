@@ -112,15 +112,15 @@ public actor ScenarioCallLog {
     ///
     /// This is what makes "no run survives the call" assertable at all. It is
     /// an observation of the product's own wiring, not a back door: the
-    /// capability it reads is the same public one `status()` and `wait` use.
+    /// capability it reads is the same public one the sandbox `status()` uses.
     ///
     /// Recorded when a call is *entered*, never when it completes, so the runs
-    /// are readable **while** a fixture tool is still working. The in-band
-    /// collection canary reads them at the instant the model's first turn ends,
-    /// and the failure it exists to catch is exactly the case where a fixture
-    /// call is still open then: recording the handle on completion would make
-    /// that read report nothing running and grade a real background run as
-    /// none — which is the one reading the canary must never get wrong.
+    /// are readable **while** a fixture tool is still working. The mail
+    /// collection canary reads them at the instant the last answer ends, and
+    /// the failure it exists to catch is exactly the case where a fixture call
+    /// is still open then: recording the handle on completion would make that
+    /// read report nothing running and grade a real background run as none —
+    /// which is the one reading the canary must never get wrong.
     public private(set) var observedContext: ToolContext?
 
     /// The runs still going on the session this log's tools ran under.

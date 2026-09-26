@@ -34,7 +34,7 @@ private let cliErrorPrefix = "multitool-cli:"
 
 /// The command-line flags `CLIRunner.parse(_:)` recognizes.
 struct CLIArguments: Equatable {
-    /// Whether to run in direct mode: `runCode` and `wait` are registered with the session, `searchTools` is not.
+    /// Whether to run in direct mode: `runCode` is registered with the session, `searchTools` is not.
     ///
     /// When set, `searchToolsTool` is not registered with the session —
     /// plan.md "Direct mode (skip discovery)".
@@ -243,8 +243,8 @@ struct CLIRouterUnavailableError: Error, CustomStringConvertible {
 /// The canonical Router + `RoutedSession` + `MultiTool` example, and the host
 /// contract `MultiTool.Registry.makeSessionTools(librarian:)` states, run
 /// end to end: resolving a model profile via `Router`, mounting whatever that
-/// call vends — `searchTools`, `runCode`, `wait`, or `runCode` and `wait`
-/// under `--direct` — on a `RoutedSession` the resolved `.standard` slot
+/// call vends — `searchTools` and `runCode`, or `runCode` alone under
+/// `--direct` — on a `RoutedSession` the resolved `.standard` slot
 /// vends, and driving one turn by draining `streamEvents(to:)`. The session's
 /// own tool-calling loop decides when to call `searchTools` vs `runCode` —
 /// this file drives no turn-parsing loop of its own, unlike the retired
@@ -283,12 +283,12 @@ public enum CLIRunner {
         public static let unavailable: Int32 = 69
     }
 
-    /// The `--direct` flag, for running in direct mode (`runCode` and `wait` registered with the session, no `searchToolsTool`).
+    /// The `--direct` flag, for running in direct mode (`runCode` registered with the session, no `searchToolsTool`).
     static let directFlag = Flag(
         names: ["--direct"],
         valueSyntax: nil,
         descriptionLines: [
-            "Run in direct mode: the registry vends runCode and wait alone,",
+            "Run in direct mode: the registry vends runCode alone,",
             "with no searchTools tool; the snippet discovers tools via",
             "help()/docs() instead.",
         ],
@@ -594,7 +594,7 @@ public enum CLIRunner {
     ///
     /// Parses `arguments`, and — unless `--help` was given or parsing
     /// failed — resolves `demoProfile`, mounts the tools the registry vends
-    /// (`searchTools`, `runCode`, `wait` — or `runCode` and `wait` alone under
+    /// (`searchTools` and `runCode` — or `runCode` alone under
     /// `--direct`) on a `RoutedSession` the resolved profile vends, drives one
     /// turn against `demoPrompt` by draining `streamEvents(to:)`, and writes
     /// the answer to `output`.
@@ -704,7 +704,7 @@ public enum CLIRunner {
     /// `mcp-test-server`, with no model and no Router.
     ///
     /// - Parameters:
-    ///   - direct: whether the registry vends `runCode` and `wait` alone.
+    ///   - direct: whether the registry vends `runCode` alone.
     ///   - web: whether the registry mounts the web capability.
     ///   - specs: what the `--mcp` options named, in option order.
     /// - Returns: the registry, its servers, and the pool that shuts them down.
@@ -812,7 +812,7 @@ public enum CLIRunner {
     ///
     /// - Parameters:
     ///   - direct: whether to run in direct mode — the registry vends
-    ///     `runCode` and `wait`, and `searchToolsTool` is omitted. Direct
+    ///     `runCode`, and `searchToolsTool` is omitted. Direct
     ///     mode takes discovery away, never the background.
     ///   - web: whether the registry mounts the web capability.
     ///   - mcpServers: what the `--mcp` options named, in option order.
@@ -878,8 +878,7 @@ public enum CLIRunner {
 
         do {
             // The registry vends its own mounted tools, in the order the
-            // model reads them — `searchTools`, then `runCode`, then `wait`,
-            // with discovery dropped once `directMode()` has taken it
+            // model reads them — `searchTools`, then `runCode`, with discovery dropped once `directMode()` has taken it
             // away. The `searchTools` half's internal selection tier is backed
             // by a Router-resolved `profile.flash` session — the
             // registry-backed `SelectionTier`'s "librarian on flash" split.
@@ -926,12 +925,12 @@ public enum CLIRunner {
             // each tool's own declared `ToolMount`, and `MultiTool` declares
             // `.background` with no condition on it (`MultiTool.mount`), so
             // every `runCode` call here starts a background run and answers
-            // with a pending envelope the model then collects with the mounted
-            // `wait` tool. Mounted on a bare
+            // with a pending envelope. The settled run comes back to the
+            // session as mail. Mounted on a bare
             // `FoundationModels.LanguageModelSession` the same tools cannot go
             // to the background at all: that session reads no mount
             // declaration, so the snippet blocks, no envelope is ever written,
-            // and `wait` has nothing to join.
+            // and no mail comes.
             //
             // **Every run of this demo takes the background path.**
             // `DemoTripTool` and `DemoWeatherTool` answer in microseconds, and
@@ -943,15 +942,17 @@ public enum CLIRunner {
             // Which lines then print is the model's own doing rather than this
             // file's. The pending envelope carries
             // `MultiTool.collectInstruction(forCompletionToken:)`, which tells
-            // the model to call `wait` with that token, so a model that follows
-            // it produces a `Calling wait` line and then a settled-run line. A
-            // model that ignores it produces neither, and that is a model
-            // result and not a wiring defect.
+            // the model to end its answer, so a model that follows it ends this
+            // answer and the run prints a settled-run line. The result then
+            // comes back to the session as mail, and the answer that mail
+            // starts streams on `streamSessionEvents()`, which this demo does
+            // not print (task `^18s996p`). A model that does not follow the
+            // sentence is a model result and not a wiring defect.
             //
             // The background scenario in
             // `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests`
-            // adds a deliberately slow tool, so it measures the wait instead of
-            // only reaching it.
+            // adds a deliberately slow tool, so it measures the mail delivery
+            // instead of only reaching it.
             //
             // No instructions. Mounting the vended tools is the whole host
             // contract — their descriptions carry the entire behavioral
@@ -960,22 +961,17 @@ public enum CLIRunner {
             // `Registry.makeSessionTools(librarian:)`).
             let session = profile.standard.makeSession(tools: mounted.tools)
 
-            // Drained, never `respond(to:)`. `RoutedSession.respond(to:)`
-            // self-drains the background runs (Router `^nmpejc5`), so it would answer
-            // this prompt just as well — but `streamEvents(to:)` is the surface
-            // the host contract names, the surface every integration scenario drives,
-            // and the only one on which a tool still working can report that it
-            // is working. A demo that took the shorter call would leave out
-            // half of what a host has to write.
+            // Drained, never `respond(to:)`. `streamEvents(to:)` is the surface
+            // the host contract names, the surface every integration scenario
+            // drives, and the only one on which a tool still working can report
+            // that it is working. A demo that took the shorter call would leave
+            // out half of what a host has to write.
             //
-            // The choice decides who collects. `respond(to:)` awaits each
-            // background run itself and re-prompts the model with the results;
-            // `streamEvents(to:)` declares that it does not drain the run
-            // plane, so this turn can end while the run is still going and
-            // `.runSettled` below reports the ending to *this* code rather than
-            // to the model. On this surface the mounted `wait` tool is how the
-            // model gets a result inside the turn, which is why the registry
-            // vends it and why the demo mounts it.
+            // Neither surface collects a background run inside the answer. The
+            // answer can end while the run is still going, `.runSettled` below
+            // reports the end of the run to *this* code, and Router delivers
+            // the terminal event to the session as mail, which starts the next
+            // answer (Router `generation-queue.md` §5.5 rule 1).
             let answer = try await Self.drainTurn(
                 await session.streamEvents(to: demoPrompt),
                 output: output

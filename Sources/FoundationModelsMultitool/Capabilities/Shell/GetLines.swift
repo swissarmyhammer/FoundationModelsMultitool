@@ -15,8 +15,8 @@
 // This verb is the CONTENT plane, and it is no run-plane surface. It reads what
 // a run has written up to now, and it never waits for a run to write more. The
 // sibling carries a `waitSeconds` long-poll for that; here the shared background
-// engine owns the wait, through `WaitTool` and the `wait(token, seconds)`
-// sandbox global. Thus one design answers "when is this run done", and one
+// engine owns the end of a run, and it delivers the terminal event of the run to
+// the session as mail. Thus one design answers "when is this run done", and one
 // answers "what did this run write".
 //
 // The identifier is the completion-token `String` of the run — the one string

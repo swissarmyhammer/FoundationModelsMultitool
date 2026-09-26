@@ -61,17 +61,13 @@ public let groundedCheckName = "grounded"
 /// handed a pending envelope back.
 public let pendingEnvelopeCheckName = "pendingEnvelope"
 
-/// The label of the check that grades the model as having collected its own
-/// background run in band, with a `wait` call of its own.
-public let inBandCollectionCheckName = "inBandCollection"
+/// The label of the check that grades the settled background run as having
+/// come back to the session as mail, and as having started an answer.
+public let mailCollectionCheckName = "mailCollection"
 
 /// The label of the check that grades no background run as still running at the
-/// instant the model's first turn ended.
-public let noBackgroundRunsAtAnswerCheckName = "noBackgroundRunsAtAnswer"
-
-/// The label of the check that grades no background run as still running at the
-/// instant `respond(to:)` returned.
-public let noBackgroundRunsAfterRespondCheckName = "noBackgroundRunsAfterRespond"
+/// instant the last answer ended.
+public let noBackgroundRunsAtLastAnswerCheckName = "noBackgroundRunsAtLastAnswer"
 
 /// The label of the check that grades the nested-generation probe's tool as
 /// having been entered at all.
@@ -245,23 +241,37 @@ public func answerChecks(
     return checks
 }
 
-/// Everything one in-band collection canary run produced that its verdict is
+/// Everything one mail collection canary run produced that its verdict is
 /// graded on.
 ///
-/// Collected into one value so `inBandCollectionChecks(for:answerContainsOneOf:
-/// groundedIn:)` grades a record rather than five loose arguments, and so the
+/// The canary asks one question: when the model ends its answer while its
+/// background run is still going, does the settled run come back to the
+/// session as mail, and does the model answer from it? No `wait` tool is
+/// mounted, so mail is the only path a result has to the model after its
+/// answer ends (Router `generation-queue.md` §5.5 rule 1).
+///
+/// Collected into one value so `mailCollectionChecks(for:answerContainsOneOf:
+/// groundedIn:)` grades a record rather than four loose arguments, and so the
 /// printed line and the assertions read the same record.
 ///
 /// Built from plain values a test can write down, which is what lets
-/// `ScenarioGradingTests` grade the recorded gated run and its inverse without
-/// live inference — the canary's whole worth is in which conditions fire, and a
+/// `ScenarioGradingTests` grade a run and its inverse without live
+/// inference — the canary's whole worth is in which conditions fire, and a
 /// rule only a 30GB model can exercise is a rule that rots.
-public struct InBandCollectionEvidence {
-    /// The model's final reply — the last drained turn's, when the drain ran one.
+public struct MailCollectionEvidence {
+    /// The reply of the last answer — the answer that mail started, when one
+    /// ran.
     public let answer: String
 
-    /// The tools owning the runs still going at the instant the model's first
-    /// turn ended.
+    /// The `tools.*` paths a fixture tool handed a value back from.
+    public let returnedPaths: Set<String>
+
+    /// How many answers mail alone started: the answers whose first
+    /// submission reports `SubmissionStart.cause == .mail`.
+    public let mailAnswers: Int
+
+    /// The tools owning the runs still going at the instant the last answer
+    /// ended.
     ///
     /// The owning tools' names rather than the `BackgroundRun` rows themselves, for
     /// the reason `ScenarioEvidence` carries paths: a `BackgroundRun` is Router's
@@ -269,56 +279,41 @@ public struct InBandCollectionEvidence {
     /// — and its memberwise initializer is internal to that module, so a record
     /// built from rows could be graded only by a live run. The name is all the
     /// verdict and the diagnostic line ever read.
-    public let backgroundRunsAtAnswer: [String]
+    public let backgroundRunsAtLastAnswer: [String]
 
-    /// The tools owning the runs still going when `respond(to:)` returned.
-    public let backgroundRunsAfterRespond: [String]
-
-    /// The `tools.*` paths a fixture tool handed a value back from.
-    public let returnedPaths: Set<String>
-
-    /// How many `wait` calls the model made — the whole of the in-band
-    /// collection surface, so any call at all is the model collecting its own
-    /// run and none is something else having collected it.
-    public let waitCalls: Int
-
-    /// Records what one in-band collection canary run produced.
+    /// Records what one mail collection canary run produced.
     ///
     /// Explicit because a `public` struct's synthesized memberwise
     /// initializer is `internal` only.
     ///
     /// - Parameters:
-    ///   - answer: the model's final reply.
-    ///   - backgroundRunsAtAnswer: the tools owning the runs still going at the
-    ///     instant the model's first turn ended.
-    ///   - backgroundRunsAfterRespond: the tools owning the runs still going
-    ///     when `respond(to:)` returned.
+    ///   - answer: the reply of the last answer.
     ///   - returnedPaths: the `tools.*` paths a fixture tool handed a value back from.
-    ///   - waitCalls: how many `wait` calls the model made.
+    ///   - mailAnswers: how many answers mail alone started.
+    ///   - backgroundRunsAtLastAnswer: the tools owning the runs still going
+    ///     at the instant the last answer ended.
     public init(
         answer: String,
-        backgroundRunsAtAnswer: [String],
-        backgroundRunsAfterRespond: [String],
         returnedPaths: Set<String>,
-        waitCalls: Int
+        mailAnswers: Int,
+        backgroundRunsAtLastAnswer: [String]
     ) {
         self.answer = answer
-        self.backgroundRunsAtAnswer = backgroundRunsAtAnswer
-        self.backgroundRunsAfterRespond = backgroundRunsAfterRespond
         self.returnedPaths = returnedPaths
-        self.waitCalls = waitCalls
+        self.mailAnswers = mailAnswers
+        self.backgroundRunsAtLastAnswer = backgroundRunsAtLastAnswer
     }
 }
 
-/// Grades one in-band collection canary run into the conditions its verdict is
+/// Grades one mail collection canary run into the conditions its verdict is
 /// the conjunction of.
 ///
-/// Two of them are the canary proper — `inBandCollection` and
-/// `noBackgroundRunsAtAnswer` — and their failure messages say what a failure
-/// means rather than only what was expected, because that reading is the whole
-/// reason the scenario is run. The other three keep the canary from asserting
-/// that nothing happened: the answer must be a valid one, grounded in the
-/// rebuild's own return, with no background run left on the way out.
+/// `mailCollection` is the canary proper, and its failure message says what a
+/// failure means rather than only what was expected, because that reading is
+/// the whole reason the scenario is run. The other three keep the canary from
+/// asserting that nothing happened: the answer must be a valid one, grounded
+/// in the rebuild's own return, with no background run left when the last
+/// answer ended.
 ///
 /// - Parameters:
 ///   - evidence: what the run produced.
@@ -326,8 +321,8 @@ public struct InBandCollectionEvidence {
 ///     reply must contain case-insensitively.
 ///   - groundedIn: the `tools.*` paths whose returns the answer depends on.
 /// - Returns: every condition this run is graded on, in reporting order.
-public func inBandCollectionChecks(
-    for evidence: InBandCollectionEvidence,
+public func mailCollectionChecks(
+    for evidence: MailCollectionEvidence,
     answerContainsOneOf: [String],
     groundedIn: Set<String>
 ) -> [ScenarioCheck] {
@@ -343,38 +338,23 @@ public func inBandCollectionChecks(
     )
     checks.append(
         ScenarioCheck(
-            name: inBandCollectionCheckName,
-            held: evidence.waitCalls > 0,
+            name: mailCollectionCheckName,
+            held: evidence.mailAnswers > 0,
             failureMessage:
-                "expected the model to collect its own background run with a `wait` call — the "
-                + "only in-band collector, and the path every host's own tooling advises (Router's "
-                + "`^466d38p`) — but it made none. Read `\(noBackgroundRunsAtAnswerCheckName)` "
-                + "beside this: if "
-                + "that failed too, the turn ended with work in flight and Router's drain is what "
-                + "collected it"
+                "expected the settled background run to come back to the session as mail and to "
+                + "start an answer, but no answer started from mail. The model possibly held its "
+                + "answer open until the run settled, which holds the model for every session on "
+                + "it (Router `generation-queue.md` §5.5), or the run settled inside the inline "
+                + "settle grace and needed no mail"
         )
     )
     checks.append(
         ScenarioCheck(
-            name: noBackgroundRunsAtAnswerCheckName,
-            held: evidence.backgroundRunsAtAnswer.isEmpty,
+            name: noBackgroundRunsAtLastAnswerCheckName,
+            held: evidence.backgroundRunsAtLastAnswer.isEmpty,
             failureMessage:
-                "expected no background run at the instant the model's first turn ended, but "
-                + "\(evidence.backgroundRunsAtAnswer) were still running — the turn ended with "
-                + "work in flight, so Router's respond drain, not the model, is what collected "
-                + "it. That is "
-                + "the condition `^466d38p` says no host can reach, so task `^xeqs138`'s question "
-                + "reopens: the drain is running for real and nothing in this target covers it. "
-                + "Do not relax this check to make the run green"
-        )
-    )
-    checks.append(
-        ScenarioCheck(
-            name: noBackgroundRunsAfterRespondCheckName,
-            held: evidence.backgroundRunsAfterRespond.isEmpty,
-            failureMessage:
-                "expected no background run when respond returned, but "
-                + "\(evidence.backgroundRunsAfterRespond) were still running"
+                "expected no background run when the last answer ended, but "
+                + "\(evidence.backgroundRunsAtLastAnswer) were still running"
         )
     )
     return checks
@@ -389,7 +369,7 @@ public func inBandCollectionChecks(
 /// that must fail rather than pass vacuously. `returnedPaths` says the nested
 /// call *came back*, which is the whole subject.
 ///
-/// Plain values a test can write down, for `InBandCollectionEvidence`'s reason:
+/// Plain values a test can write down, for `MailCollectionEvidence`'s reason:
 /// the grading rule is then exercised without live inference.
 public struct NestedGenerationEvidence {
     /// The model's final reply.

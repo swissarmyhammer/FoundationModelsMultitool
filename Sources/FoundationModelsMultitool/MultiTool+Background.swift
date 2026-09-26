@@ -18,49 +18,53 @@ import os
 
 extension MultiTool: BackgroundTool {
     /// The `next` sentence of the pending envelope a background `runCode`
-    /// call hands the model: call the `wait` tool with this envelope's token.
+    /// call hands the model: end the answer, and the result comes back as a
+    /// new message.
     ///
-    /// This package ships the `wait` tool and owns its report, so the sentence
-    /// can state the exact read. The three values it names — `complete`,
-    /// `error` and `timeout` — are spliced from ``RunState`` and
-    /// ``CallResult``, so they cannot drift from what `wait` reports.
+    /// **The session delivers a settled run as mail.** Router puts the
+    /// terminal event of a background run into the session outbox, and that
+    /// mail starts the next submission of the session
+    /// (`generation-queue.md` §5.5 rule 1). Thus the model does not collect
+    /// the run. It ends its answer, and the next message it gets carries the
+    /// result. A wait inside the submission holds the model for every
+    /// session on it, and a run on the same model can never settle inside
+    /// that wait (§5.5). That is why this package mounts no `wait` tool.
     ///
     /// It never names `runCode` and never prescribes a snippet. Every mounted
-    /// `runCode` call goes to the background (``mount``), so a
-    /// snippet that waits on a pending token is itself a background run and
-    /// hands back a fresh token. A sentence that told the model to run another
-    /// snippet made it chase tokens one generation a round until it reached
-    /// for the `wait` tool on its own (task `^4qcf1v9`: 21 rounds and about
-    /// 1700 seconds for an eight-second run). The `wait` tool on this token
-    /// returns the background snippet's result at once.
+    /// `runCode` call goes to the background (``mount``), so a snippet that
+    /// waits on a pending token is itself a background run and hands back a
+    /// fresh token. A sentence that told the model to run another snippet
+    /// made it chase tokens one generation a round (task `^4qcf1v9`: 21
+    /// rounds and about 1700 seconds for an eight-second run).
+    ///
+    /// The sentence names the token, because the mail that comes back names
+    /// the run by the same token.
     public func collectInstruction(forCompletionToken completionToken: String) -> String {
-        "Do not answer yet, and do not guess the result. "
-            + "Call the wait tool with completionToken \"\(completionToken)\" to collect it. "
-            + "When the report shows state \"\(RunState.complete)\" or \"\(RunState.error)\", "
-            + "answer from its detail. "
-            + "When the report shows result \"\(CallResult.timeout)\", "
-            + "call the wait tool again with the same completionToken."
+        "The snippet is still running in the background, and this is not its result. "
+            + "Do not guess the result. End your answer now. "
+            + "When the snippet finishes, its result comes back to you as a new message "
+            + "with completionToken \"\(completionToken)\", and you answer from that result then."
     }
 
     /// The `next` sentence of the envelope a `runCode` call hands the model
     /// when the snippet settled inside ``inlineSettleGrace``: the result is
-    /// beside the sentence, so answer from it and collect nothing.
+    /// beside the sentence, so answer from it now.
     ///
     /// It is the counterpart of ``collectInstruction(forCompletionToken:)``,
     /// and it says the opposite thing for the opposite condition. The pending
-    /// sentence sends the model to the `wait` tool. This one keeps it away
-    /// from that tool, because the value it would wait for is already in the
-    /// same tool output.
+    /// sentence tells the model to end its answer and read the result from a
+    /// later message. This one tells it that no later message comes: Router
+    /// withdraws the staged mail of a run whose result goes out inline
+    /// (`BackgroundToolRunner.settledEnvelope`), so the result is in this
+    /// tool output and nowhere else.
     ///
-    /// The last clause repeats what `WaitTool.finishedRunDirective` says at
-    /// the end of a real wait, and for the same reason: a model that holds the
-    /// result has still answered "it will come back to me later" (task
-    /// `wnfzwxg`).
+    /// The last clause is there because a model that holds the result has
+    /// still answered "it will come back to me later" (task `wnfzwxg`).
     public func resultInstruction(forCompletionToken completionToken: String) -> String {
         "The snippet is complete and its result is the detail field above. "
             + "Answer from that result now. "
-            + "Do not call the wait tool with completionToken \"\(completionToken)\", "
-            + "and never reply that the result will arrive later."
+            + "No other message about completionToken \"\(completionToken)\" comes, "
+            + "so never reply that the result will arrive later."
     }
 
     /// How long a `runCode` call waits for its own snippet before it answers
@@ -68,15 +72,16 @@ extension MultiTool: BackgroundTool {
     ///
     /// **Most snippets are short, and a token for a short snippet is pure
     /// cost.** One file read, one small edit, one `tools.*` call: each is over
-    /// in well under a second, and the model used to pay a whole round trip to
-    /// collect what was already done. With this wait the common snippet
-    /// answers with its own result, and the `wait` tool is left for the
-    /// snippet that really is long.
+    /// in well under a second. Without this wait the model ends its answer and
+    /// pays one more submission to read the result from the mail. With this
+    /// wait the common snippet answers with its own result, and the mail is
+    /// left for the snippet that really is long.
     ///
     /// A snippet still running when the wait elapses answers with the pending
     /// envelope, exactly as every `runCode` call did before. Nothing is
-    /// cancelled and no work is lost, so the cost of the wait is the delay
-    /// itself.
+    /// cancelled and no work is lost. The cost is the delay itself, and it is
+    /// an in-band wait: it holds the model for every session on it
+    /// (`generation-queue.md` §5.5 rule 5).
     ///
     /// The host sets the value, or takes
     /// `MultiToolConfiguration.defaultInlineSettleGrace`.

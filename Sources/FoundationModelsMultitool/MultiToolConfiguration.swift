@@ -63,16 +63,17 @@ public struct MultiToolConfiguration: Sendable, Equatable {
     /// with a completion token.
     ///
     /// **Why a `runCode` call waits at all.** Every mounted call goes to the
-    /// background (`MultiTool.mount`), so the model gets a token and pays one
-    /// more round trip to collect the result. Most snippets are short — one
-    /// file read, one small edit, one `tools.*` call — and for those the token
-    /// costs more than the work. A wait here gives the model the result
-    /// in the tool output it already has, and it makes no `wait` call at all.
+    /// background (`MultiTool.mount`), so the model gets a token, ends its
+    /// answer, and pays one more submission to read the result from the mail.
+    /// Most snippets are short — one file read, one small edit, one `tools.*`
+    /// call — and for those the token costs more than the work. A wait here
+    /// gives the model the result in the tool output it already has, and no
+    /// mail comes for that run.
     ///
     /// A snippet still running when this elapses is not affected. The call
     /// answers with the pending envelope, the snippet goes on in the
-    /// background, and `wait` collects it as before. So the cost of a long
-    /// snippet is this delay, one time, and nothing else.
+    /// background, and its result comes back to the session as mail. So the
+    /// cost of a long snippet is this delay, one time, and nothing else.
     ///
     /// The wait is not a second work clock. It never cancels a snippet and it
     /// never shortens ``executionTimeLimit``.
@@ -102,6 +103,11 @@ public struct MultiToolConfiguration: Sendable, Equatable {
     /// call itself. The cost: while the wait runs, the call is in-band, so a
     /// snippet that does not settle holds the model for up to this time. A
     /// host that needs the model free sooner sets a smaller value.
+    ///
+    /// Router's `generation-queue.md` §5.5 rule 5 says to keep this wait
+    /// small, because it holds the model for every session on it. Five
+    /// seconds is a decision of the user (task `^q4jrnd0`), and it is the
+    /// value this package states against that rule.
     public static let defaultInlineSettleGrace: TimeInterval = 5
 
     /// The stock number of live `runCode` contexts — see ``liveContextLimit``

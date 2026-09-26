@@ -732,7 +732,7 @@ public func integrationStockTools(log: ScenarioCallLog) -> [IntegrationStockTool
     }
 }
 
-// MARK: - Scenario 7: the in-band collection canary (task `^xeqs138`)
+// MARK: - Scenario 7: the mail collection canary (task `^xeqs138`)
 
 /// `IntegrationArchiveRebuildTool`'s output.
 @Generable(description: "a completed archive rebuild's manifest code.")
@@ -764,16 +764,16 @@ public let integrationArchiveRebuildDelaySeconds = 10
 /// **The delay must be longer than `runCode`'s inline settle grace.** A
 /// `runCode` call waits `MultiToolConfiguration.defaultInlineSettleGrace` (five
 /// seconds) for its snippet. When the snippet settles in that time, the call
-/// gives the result inline and tells the model not to call `wait`. Only a
-/// snippet that is still running at the end of the grace gives the model a
-/// `PendingRunEnvelope`. The canary grades a `wait` call, so the run must be
-/// still running at that instant.
+/// gives the result inline and no mail comes for that run. Only a snippet
+/// that is still running at the end of the grace gives the model a
+/// `PendingRunEnvelope`, and only then does the settled run come back as mail.
+/// The canary grades that mail, so the run must be still running at that
+/// instant.
 ///
 /// CI run `35230706285` shows the failure when the fixture settled at once: the
 /// model wrote `const r = await tools.rebuildArchive({}); return r;`, the
-/// snippet settled inside the grace, the model got the manifest code inline,
-/// and it correctly made no `wait` call. `inBandCollection` failed on a correct
-/// model.
+/// snippet settled inside the grace, and the model got the manifest code
+/// inline. The canary failed on a correct model.
 ///
 /// Ten seconds is two times the grace. This module does not import the
 /// library, thus the value is a literal here. `ScenarioFixtureTests` makes
@@ -783,17 +783,16 @@ public let integrationArchiveRebuildDelaySeconds = 10
 /// this canary.
 public let integrationArchiveRebuildDelay: Duration = .seconds(integrationArchiveRebuildDelaySeconds)
 
-/// The tool the in-band collection canary drives: it reports the manifest code
+/// The tool the mail collection canary drives: it reports the manifest code
 /// `integrationArchiveRebuildDelay` after the call.
 ///
-/// **Why it waits a short time.** The canary asks whether the model collected
-/// its own backgrounded run. `MultiTool.mount` declares the background mount
-/// for every call, but a `runCode` call whose snippet settles inside the
-/// inline settle grace gives its result inline, with no `PendingRunEnvelope`.
-/// Only the envelope's text makes the model spend a `wait` call (Router's
-/// `^466d38p`). Thus the fixture must be still running at the end of the
-/// grace, whatever the snippet awaits. `integrationArchiveRebuildDelay` gives
-/// the full reason.
+/// **Why it waits a short time.** The canary asks whether the settled
+/// background run came back to the session as mail. `MultiTool.mount`
+/// declares the background mount for every call, but a `runCode` call whose
+/// snippet settles inside the inline settle grace gives its result inline,
+/// with no `PendingRunEnvelope` and no mail. Thus the fixture must be still
+/// running at the end of the grace, whatever the snippet awaits.
+/// `integrationArchiveRebuildDelay` gives the full reason.
 ///
 /// The contrast with `IntegrationDeepScanTool` is the contrast in what the two
 /// scenarios ask. That fixture is slow so that its background run is still
@@ -803,8 +802,8 @@ public let integrationArchiveRebuildDelay: Duration = .seconds(integrationArchiv
 /// **An earlier version was held on a gate, and that cost the canary its
 /// verdict.** The gate was built for the scenario this canary was inverted
 /// from, which needed the run to survive the end of the turn. On the canary the
-/// gate could only deadlock: the model's `wait` call holds the turn open, the
-/// turn end is what would open the gate, so the fixture always ran out its
+/// gate could only deadlock: the `wait` tool of that time held the turn open,
+/// the turn end is what would open the gate, so the fixture always ran out its
 /// 90-second ceiling instead — about 200 seconds for one collect cycle, and the
 /// cycle count is the model's choice, so the run had no bound it could meet. It
 /// was killed by the suite's own time limit having graded nothing.
@@ -812,15 +811,16 @@ public struct IntegrationArchiveRebuildTool: Tool {
     /// The `tools.*` path this fixture mounts under.
     ///
     /// Declared at the type level for the same reason as
-    /// `IntegrationWeatherTool.path`: the in-band collection canary names it in
+    /// `IntegrationWeatherTool.path`: the mail collection canary names it in
     /// what its answer depends on.
     public static let path = "rebuildArchive"
 
     public let name = IntegrationArchiveRebuildTool.path
     /// Says the rebuild runs in the background, and stops there. It deliberately
-    /// does not tell the model to wait for the result: whether the model blocks
-    /// is exactly what the canary measures, so a tool description that answered
-    /// the question would be grading itself.
+    /// does not tell the model what to do while it runs: whether the model ends
+    /// its answer and reads the result from the mail is exactly what the canary
+    /// measures, so a tool description that answered the question would be
+    /// grading itself.
     ///
     /// "In the background" is true of the call: the tool outlasts `runCode`'s
     /// inline settle grace, so the model gets a token and not a value. The
@@ -915,13 +915,11 @@ public struct IntegrationDelayedEchoOutput {
 
 /// How long `IntegrationDelayedEchoTool` holds its value before it settles.
 ///
-/// A few seconds, and the few seconds are the point. The rebuild fixture's
-/// background run is complete before the model can make a `wait` call — a
-/// model generation takes much longer than its delay — so `wait` never has to
-/// wait there, and the deferred path went
+/// A few seconds, and the few seconds are the point. A run that settles at
+/// once settles inside the inline settle grace, and the deferred path goes
 /// untested (task `^nhxj8hx`). This delay keeps the run in the `running`
-/// state past the instant the snippet's own collect starts, so `wait` must
-/// block and be woken by the settlement.
+/// state past the instant its `runCode` call answers, so the result must come
+/// back later, as mail.
 ///
 /// Four seconds and not the deep scan's eight: the delay only has to
 /// be clearly nonzero, and every extra second is wall clock the mechanism
@@ -1041,7 +1039,7 @@ public enum IntegrationScenarioGrounding {
     /// since only their sum answers the question that scenario asks.
     public static let combinedStock = integrationStockPaths
 
-    /// What the in-band collection canary's answer depends on: the rebuild's
+    /// What the mail collection canary's answer depends on: the rebuild's
     /// own return. The manifest code exists nowhere else — not in the prompt,
     /// not in a tool description, not in the pending envelope — so an answer
     /// carrying it rests on this return and on nothing the model could have
@@ -1052,7 +1050,7 @@ public enum IntegrationScenarioGrounding {
     /// What the delayed-echo mechanism test's answer depends on: the echo's
     /// own return. The nonce is in the prompt — the model has to pass it —
     /// so the reply alone cannot prove the round trip. This path proves the
-    /// echo really handed the value back, and the in-band collection check
-    /// proves the model collected the run that carried it.
+    /// echo really handed the value back, and the mail collection check
+    /// proves the run that carried it came back to the model as mail.
     public static let delayedEcho: Set<String> = [IntegrationDelayedEchoTool.path]
 }

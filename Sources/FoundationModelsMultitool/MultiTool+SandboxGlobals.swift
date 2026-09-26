@@ -49,10 +49,8 @@ import FoundationModelsRouter
 /// on a single field — it just can no longer mistake "the run failed" for "my
 /// own call gave up".
 ///
-/// Internal rather than file-private since task `h773bed`: the `wait` **tool**
-/// reports a finished run with the same state names the sandbox globals do, and
-/// restating the strings there would let two spellings of "complete" drift.
-enum RunState {
+/// File-private: only the sandbox globals of this file report a run.
+private enum RunState {
     /// The run is registered with the mailbox and has not finished.
     static let running = "running"
 
@@ -100,9 +98,8 @@ enum RunState {
 /// canceler answered. An object that has a run to describe carries ``RunState``
 /// under `state` instead, and never both.
 ///
-/// Internal for the same reason ``RunState`` is: the `wait` **tool** restates
-/// these values, and a second spelling of "timeout" would drift.
-enum CallResult {
+/// File-private for the same reason ``RunState`` is.
+private enum CallResult {
     /// The bound the caller passed ran out. The run is still going and nothing
     /// has failed — asking again collects it.
     static let timeout = "timeout"
@@ -517,12 +514,9 @@ extension MultiTool {
     /// identically however it was collected — through `status()`, through
     /// `wait()`, or as the retained event a late `cancel()` reports.
     ///
-    /// Internal rather than file-private since task `h773bed`: the `wait`
-    /// **tool** reports a finished run through this same builder.
-    ///
     /// - Parameter terminal: the terminal event.
     /// - Returns: the object's fields.
-    static func terminalEventFields(of terminal: OperationEvent) -> [String: InterpreterValue] {
+    private static func terminalEventFields(of terminal: OperationEvent) -> [String: InterpreterValue] {
         [
             "state": .string(RunState.finished(reporting: terminal.outcome)),
             "completionToken": .string(terminal.correlationID),
@@ -540,15 +534,11 @@ extension MultiTool {
     /// Stamped under `result` rather than `state`: there is no run to describe,
     /// so the object says how the call itself went.
     ///
-    /// Internal rather than file-private since task `h773bed`: the `wait`
-    /// **tool** reports an unknown handle and an elapsed bound through this
-    /// same builder.
-    ///
     /// - Parameters:
     ///   - result: the ``CallResult`` being reported.
     ///   - token: the completion token the call named.
     /// - Returns: the object's fields.
-    static func tokenOnlyFields(result: String, token: String) -> [String: InterpreterValue] {
+    private static func tokenOnlyFields(result: String, token: String) -> [String: InterpreterValue] {
         ["result": .string(result), "completionToken": .string(token)]
     }
 

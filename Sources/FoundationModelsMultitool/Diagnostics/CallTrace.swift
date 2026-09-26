@@ -19,8 +19,7 @@ import os
 ///
 /// On the calls that can suspend for a long time and are not visible from
 /// anywhere else: the two tools a session mounts (``MultiTool/call(arguments:)``
-/// and ``SearchToolsTool/call(arguments:)``), the tool a model calls to block
-/// (``WaitTool/call(arguments:)``), the inner `tools.*` dispatch
+/// and ``SearchToolsTool/call(arguments:)``), the inner `tools.*` dispatch
 /// (`RunBinding.invoke(_:arguments:journalOp:)`), and the selection tier's own session
 /// calls behind the `AgentSession` seam (``TracedAgentSession``). A span costs
 /// two log writes, so it belongs on a call whose own cost is a model turn — not

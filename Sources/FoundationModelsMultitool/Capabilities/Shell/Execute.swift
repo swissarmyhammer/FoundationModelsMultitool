@@ -47,8 +47,8 @@
 // that declares the background, and `ContextBindingTool` — which never reaches
 // the run plane — to every tool with another output. A verb that must reach the
 // run plane therefore has one available output type. The answer is rendered
-// through `ResultRenderer`, exactly as `runCode` and `wait` render theirs, thus
-// the model reads one format for all of them.
+// through `ResultRenderer`, exactly as `runCode` renders its own, thus the model
+// reads one format for both.
 //
 // A request the verb cannot make stays IN BAND, as a `correction`. It is never
 // thrown: a blank command, a command over the length cap, an environment that
@@ -169,18 +169,25 @@ extension Execute: BackgroundTool {
     /// the model.
     ///
     /// It names the two planes a background run answers on, because they
-    /// answer different questions: the `wait` tool says when the run ended, and
-    /// `tools.shell.getLines` says what it wrote up to now. A sentence that
-    /// named one alone would leave the model either blocked on a run it only
-    /// wanted to peek at, or reading output with no way to learn it was final.
+    /// answer different questions: the mail that the settled run becomes says
+    /// when the run ended, and `tools.shell.getLines` says what it wrote up to
+    /// now. A sentence that named one alone would leave the model either
+    /// ending its answer on a run it only wanted to peek at, or reading output
+    /// with no way to learn it was final.
+    ///
+    /// It sends the model to no `wait` tool. A wait inside a submission holds
+    /// the model for every session on it, and Router delivers the terminal
+    /// event of the run to the session as mail (`generation-queue.md` §5.5
+    /// rule 1).
     ///
     /// - Parameter completionToken: The background run's token.
     /// - Returns: The collect directive, as plain prose.
     func collectInstruction(forCompletionToken completionToken: String) -> String {
-        "The command is running in the background. Do not answer yet, and do not guess what it "
-            + "wrote. Call the wait tool with completionToken \"\(completionToken)\" to collect "
-            + "its result. To read what it has written so far without waiting for it, call "
-            + "tools.shell.getLines with commandID \"\(completionToken)\"."
+        "The command is running in the background, and this is not its result. Do not guess "
+            + "what it wrote. To read what it has written so far, call tools.shell.getLines with "
+            + "commandID \"\(completionToken)\". To get its result, end your answer now: when the "
+            + "command ends, its report comes back to you as a new message with completionToken "
+            + "\"\(completionToken)\"."
     }
 }
 
@@ -536,8 +543,7 @@ extension Execute {
     ///
     /// Through `ResultRenderer` rather than an encode of its own, so an
     /// `execute` answer is capped and shaped exactly as a `runCode` return
-    /// value and a `wait` report are, and the model reads one format for all
-    /// three.
+    /// value is, and the model reads one format for both.
     ///
     /// - Parameter value: The answer to render.
     /// - Returns: The verb's output text.
@@ -794,8 +800,9 @@ struct Execute: Tool {
         changed in them. Use it as well to delete a file or a whole directory, to move one, and \
         to copy one. It starts \
         the command in the background and answers at once with its completion token. When the \
-        command ends, its report carries the tail of its output, its status and its exit code; \
-        collect it with the wait tool. commandID in the report is the run's completion token: \
+        command ends, its report carries the tail of its output, its status and its exit code, \
+        and it comes back to you as a new message after you end your answer. commandID in the \
+        report is the run's completion token: \
         pass it to tools.shell.getLines to read everything the command printed so far, and to \
         tools.shell.grepHistory to search it. Give timeout to bound the command, \
         workingDirectory to run it somewhere else, and environment as a JSON object of string \

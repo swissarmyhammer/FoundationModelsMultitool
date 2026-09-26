@@ -57,7 +57,7 @@ struct RouterSessionMountTests {
         //
         // This snippet is over at once, so the envelope is the settled one:
         // it carries the same value the direct call returned, in its `detail`
-        // field, and the model needs no `wait` call to read it (see
+        // field, and the model reads it with no mail (see
         // `InlineSettleGraceTests`). The envelope is still the answer, and
         // that is what this test holds.
         #expect(PendingRunEnvelope.isRendered(text: throughMount))
@@ -85,16 +85,17 @@ struct RouterSessionMountTests {
         #expect(mounted.description == searchTools.description)
     }
 
-    @Test("a snippet that waits on a pending run hands back an envelope that leads to the wait tool, not to another snippet")
-    func runCodeEnvelopeLeadsToTheWaitTool() async throws {
+    @Test("a snippet that waits on a pending run hands back an envelope that tells the model to end its answer, not to call a wait tool or another snippet")
+    func runCodeEnvelopeTellsTheModelToEndItsAnswer() async throws {
         let context = try await makeOuterRunContext()
         // The live-lock of task ^4qcf1v9: every mounted `runCode` call
         // backgrounds, so a snippet that waits on a pending token is itself
         // tracked and hands back a fresh token. An envelope whose `next` told the
         // model to run another snippet made the model chase tokens, one
-        // generation a round, until it used the `wait` tool. The envelope's
-        // `next` is this package's own sentence, and it must name the `wait`
-        // tool and never a snippet.
+        // generation a round. A settled run now comes back to the session as
+        // mail (Router `generation-queue.md` §5.5), so the envelope's `next`
+        // tells the model to end its answer. It names no `wait` tool, because
+        // no `wait` tool is mounted.
         let registry = try Self.registry()
         let pendingRun = try await startScriptedRun(on: context)
         let runCode = MultiTool(registry: registry)
@@ -109,12 +110,14 @@ struct RouterSessionMountTests {
         #expect(PendingRunEnvelope.isRendered(text: rendered))
         let envelope = try JSONDecoder().decode(PendingRunEnvelope.self, from: Data(rendered.utf8))
         #expect(envelope.next == runCode.collectInstruction(forCompletionToken: envelope.completionToken))
-        // The sentence leads to the top-level `wait` tool with this envelope's
-        // token, and it names the wait tool's own report values.
-        #expect(envelope.next.contains("wait tool"))
+        // The sentence tells the model to end its answer, says that the result
+        // comes back as a new message, and names this envelope's token. It
+        // names no `wait` tool.
+        #expect(envelope.next.contains("End your answer now"))
+        #expect(envelope.next.contains("comes back to you as a new message"))
         #expect(envelope.next.contains(envelope.completionToken))
-        #expect(envelope.next.contains("\"\(RunState.complete)\""))
-        #expect(envelope.next.contains("\"\(CallResult.timeout)\""))
+        #expect(!envelope.next.contains("wait tool"))
+        #expect(!envelope.next.localizedCaseInsensitiveContains("call the wait"))
         // It prescribes no snippet and never names the background tool itself.
         #expect(!envelope.next.contains("runCode"))
         #expect(!envelope.next.contains("Call this tool again"))
