@@ -19,7 +19,7 @@ import FoundationModelsRouter
 /// - **Nothing derived from the registry can drift.** The registry, and the
 ///   host functions, live tools and preamble precomputed from it, live as one
 ///   `RegistryBundle` in the `RegistryHolder` box. The registry now changes
-///   only at a turn boundary, when `turnWillBegin()` applies a staged one. A
+///   only at a submission boundary, when `submissionWillBegin()` applies a staged one. A
 ///   run keeps the bundle it read at its start to its end. Forks share the
 ///   box: a copy of the struct copies the reference, so a fork and its parent
 ///   swap together at the same tick, and two sessions reading the same catalog

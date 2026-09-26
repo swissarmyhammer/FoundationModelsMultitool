@@ -1,13 +1,13 @@
 // `SurfaceRefresher` — the watcher that joins the two halves of
 // rebuild-and-swap: it reads the catalog stream of each MCP server, renders a
 // new registry at the side when a catalog moved, and stages that registry for
-// the next turn boundary.
+// the next submission boundary.
 //
 // eventplan.md § "Consolidation of the siblings": "A late server, a reconnect,
 // or an MCP `tools/list_changed` starts a full rebuild. MultiTool renders the
 // new registry complete at the side. Then MultiTool swaps it in atomically at
 // the next turn boundary." `RegistrySource.rebuildRegistry()` is the render,
-// and `MultiTool.turnWillBegin()` is the swap. This file is what runs between
+// and `MultiTool.submissionWillBegin()` is the swap. This file is what runs between
 // them.
 //
 // **One stream carries every cause.** `MCPServer.catalogUpdates` emits a
@@ -53,10 +53,10 @@ import os
 /// ```
 ///
 /// From then on a `tools/list_changed`, a reconnect, or a late server added
-/// through ``addServer(_:)`` reaches the surface at the next turn boundary,
-/// with no further host action.
+/// through ``addServer(_:)`` reaches the surface at the next submission
+/// boundary, with no further host action.
 ///
-/// Several snapshots between two turn boundaries give one swap: each one
+/// Several snapshots between two submission boundaries give one swap: each one
 /// stages, and `RegistryStaging` keeps only the newest.
 ///
 /// - Important: ``stop()`` ends the watch for good. It cancels the task, and a

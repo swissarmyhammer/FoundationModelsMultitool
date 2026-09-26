@@ -89,10 +89,9 @@ public struct MultiToolConfiguration: Sendable, Equatable {
     /// The stock ceiling on one `runCode` snippet's work, in seconds — see
     /// ``executionTimeLimit``.
     ///
-    /// 120 seconds. This package owns the value. Router's
-    /// `ToolMount.defaultTimeoutSeconds` held the same 120 seconds until Router
-    /// commit `70db984` removed it: a Router tool now has a timeout only when
-    /// the tool states one. `runCode` states this one.
+    /// 120 seconds. This package owns the value. Router has no stock tool
+    /// timeout: a Router tool has a timeout only when the tool states one.
+    /// `runCode` states this one.
     public static let defaultExecutionTimeLimit: TimeInterval = 120
 
     /// The stock wait before a `runCode` call answers — see

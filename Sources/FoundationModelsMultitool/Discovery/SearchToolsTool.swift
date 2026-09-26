@@ -76,9 +76,9 @@ public struct SearchToolsTool: Tool {
         case fixed(searcher: MetadataSearcher<APISurface.Entry>, limit: Int)
 
         /// The holder this tool shares with the `runCode` mounted beside it.
-        /// Each call reads the holder's current bundle, so a swap at the turn
-        /// boundary reaches discovery and execution at the same tick. `limit`
-        /// is `nil` for "every entry of the current registry".
+        /// Each call reads the holder's current bundle, so a swap at the
+        /// submission boundary reaches discovery and execution at the same
+        /// tick. `limit` is `nil` for "every entry of the current registry".
         case shared(holder: MultiTool.RegistryHolder, limit: Int?)
     }
 
@@ -427,7 +427,7 @@ public struct SearchToolsTool: Tool {
     public func call(arguments: SearchToolsArguments) async throws -> String {
         try await Self.trace.span("SearchToolsTool.call", detail: "task=\(arguments.task)") {
             // Read one time, at the top: the catalog of a shared holder can
-            // swap at the next turn boundary, and this call searches the one
+            // swap at the next submission boundary, and this call searches the one
             // current when it started.
             let (searcher, limit) = try resolveCatalog()
             let matches = try await Self.trace.span(

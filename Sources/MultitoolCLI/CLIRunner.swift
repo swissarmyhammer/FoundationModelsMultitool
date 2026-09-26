@@ -1078,17 +1078,19 @@ public enum CLIRunner {
                     "\(terminal.tool) run \(terminal.correlationID) settled: "
                         + "\(terminal.outcome?.rawValue ?? Self.missingDetail)"
                 )
-            case .toolStatus, .turnStarted, .reasoningDelta, .toolInvocation, .toolCallReport,
+            case .toolStatus, .reasoningDelta, .toolInvocation, .toolCallReport,
                 .entryRecorded, .compaction, .discoveryPrimingFailed, .elicitationRequested,
-                .generationCall, .turnEnded:
+                .generationCall, .submissionQueued, .submissionStarted, .submissionEnded,
+                .answered, .answerFailed, .mailDeliveryPaused:
                 // `.toolStatus` here is the residue of the three statuses
-                // handled above. The rest are the correlation frame, reasoning
-                // fragments, the live invocation records, the structured records
-                // a call attached, transcript-entry ids, compaction reports,
-                // seeding reports, an elicitation this demo's tools never raise,
-                // and token usage per generation call and per turn: real signal
-                // for a host that keeps a view of
-                // the session, and none of it part of what this demo prints. A
+                // handled above. The rest are reasoning fragments, the live
+                // invocation records, the structured records a call attached,
+                // transcript-entry ids, compaction reports, seeding reports, an
+                // elicitation this demo's tools never raise, token usage per
+                // generation call, the submission and answer frame, and the
+                // pause of mail delivery: real signal for a host that keeps a
+                // view of the session, and none of it part of what this demo
+                // prints. A
                 // `.toolCallReport` carries the file-change set of a mutating
                 // `tools.files` call, which a host renders as a reviewable diff;
                 // this demo prints lines and renders no diff.

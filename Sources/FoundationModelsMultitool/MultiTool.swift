@@ -175,7 +175,7 @@ extension MultiTool {
         ///
         /// The mounted `runCode` and `searchTools` share one `RegistryHolder`.
         /// A registry staged on the returned `staging` is applied when the
-        /// session calls `runCode`'s `turnWillBegin()`, and from that tick
+        /// session calls `runCode`'s `submissionWillBegin()`, and from that tick
         /// both tools read the new surface: `tools.*`, `help()`, `docs()` and
         /// discovery swap together.
         ///
@@ -383,11 +383,11 @@ public struct MultiTool: Tool {
     /// `RegistryBundle` — see `RegistryHolder`.
     ///
     /// A reference, shared by every copy of this struct and by the
-    /// `searchTools` mounted beside it, so a swap at the turn boundary
+    /// `searchTools` mounted beside it, so a swap at the submission boundary
     /// reaches all of them at one tick. Read one time at the top of
     /// `call(arguments:)`; the run keeps that bundle to its end. Internal,
-    /// not `private`, because the turn-boundary extension applies the staged
-    /// registry through it (see `MultiTool+TurnBoundary.swift`).
+    /// not `private`, because the submission-boundary extension applies the
+    /// staged registry through it (see `MultiTool+SubmissionBoundary.swift`).
     let holder: RegistryHolder
 
     /// The M10 hardening knobs this tool enforces. Internal, not `private`,
@@ -411,7 +411,7 @@ public struct MultiTool: Tool {
 
     /// Creates a `runCode` tool over `registry`, in a holder of its own.
     ///
-    /// A tool made here swaps alone: `stage(_:)` and `turnWillBegin()` reach
+    /// A tool made here swaps alone: `stage(_:)` and `submissionWillBegin()` reach
     /// its holder, and no `searchTools` shares it. A host that mounts both
     /// uses `Registry.makeSessionToolsAndStaging(librarian:embedder:sampleGenerator:)`,
     /// which gives the two one holder.
@@ -573,7 +573,7 @@ public struct MultiTool: Tool {
         }
         defer { liveContexts.release() }
         // Read one time, here, and kept to the end of this run: a registry
-        // staged on the holder is applied at the next turn boundary, and
+        // staged on the holder is applied at the next submission boundary, and
         // "an in-flight run keeps the registry that it started with" — see
         // `RegistryHolder`.
         let bundle = holder.current
@@ -1052,7 +1052,7 @@ public struct MultiTool: Tool {
     ///
     /// The nested run gets a holder of its own over `bundle`, the bundle
     /// this run read at its start, so a nested snippet resolves the same
-    /// surface as the snippet that started it: a swap at the turn boundary
+    /// surface as the snippet that started it: a swap at the submission boundary
     /// reaches neither of them.
     ///
     /// - Parameter bundle: the bundle this run read at its start.

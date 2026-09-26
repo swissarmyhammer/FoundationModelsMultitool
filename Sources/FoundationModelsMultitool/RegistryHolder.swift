@@ -18,7 +18,7 @@ import Synchronization
 ///
 /// `MultiTool.Registry.makeSessionToolsAndStaging(librarian:embedder:sampleGenerator:)`
 /// vends one beside the tools it mounts. A staged registry is applied at the
-/// next turn boundary, by `MultiTool.turnWillBegin()`.
+/// next submission boundary, by `MultiTool.submissionWillBegin()`.
 public protocol RegistryStaging: Sendable {
     /// Stages `registry` as the next surface. Only the newest staged registry
     /// is kept: a second call before the tick replaces the first.
