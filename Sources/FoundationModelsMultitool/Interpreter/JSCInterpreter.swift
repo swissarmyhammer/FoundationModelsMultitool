@@ -232,8 +232,8 @@ private func jscTerminateCallback(_: JSContextRef?, _ info: UnsafeMutableRawPoin
 /// one per interpreter, so two runs of the same interpreter never wait on each
 /// other. That matters as soon as a `runCode` call can go to the background: a
 /// background call keeps its context (and its queue) for as long as it stays
-/// suspended, and the session's follow-up snippet — the `wait()` or `cancel()`
-/// that collects it — has to be able to run meanwhile. Nothing is shared for
+/// suspended, and the session's follow-up snippet — the `status()` or
+/// `cancel()` that reads it — has to be able to run meanwhile. Nothing is shared for
 /// those runs to race: `evaluate` creates, owns, and tears down every piece of a
 /// run's state, starting with its own `JSContextGroup`. How many runs may be
 /// live at once is `MultiTool`'s to bound, not this type's (see

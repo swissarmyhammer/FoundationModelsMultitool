@@ -294,9 +294,10 @@ public struct RunCodeArguments {
 ///    one — see "tools.* glue" below;
 /// 2. runs the glue followed by the snippet in a fresh `Interpreter` sandbox
 ///    off the calling thread (see "Off-cooperative-thread dispatch"), with
-///    `help()`/`docs()` and the six ambient globals — `status()`, `wait()`,
+///    `help()`/`docs()` and the five ambient globals — `status()`,
 ///    `cancel()`, `elicit()`, `notify()`, `progress()`, see
-///    `MultiTool+SandboxGlobals.swift` — also installed;
+///    `MultiTool+SandboxGlobals.swift` — also installed, together with the
+///    `wait` name that only tells a snippet that `wait()` is removed;
 /// 3. renders the result, or a thrown `InterpreterError`, through
 ///    `ResultRenderer`.
 ///
@@ -601,7 +602,8 @@ public struct MultiTool: Tool {
         let code = "\(bundle.preamble)\n\(arguments.code)"
         let outcome = await Self.runCapturingOutcome(
             code: code,
-            installing: bundle.hostFunctions + Self.makeNoticeHostFunctions(outbox: notices),
+            installing: bundle.hostFunctions + Self.makeNoticeHostFunctions(outbox: notices)
+                + Self.makeRemovedGlobalHostFunctions(),
             installingAsync: makeAsyncHostFunctions(
                 over: bundle, binding: binding, recordingInto: ledger, noting: lostRuns,
                 holding: inFlight)

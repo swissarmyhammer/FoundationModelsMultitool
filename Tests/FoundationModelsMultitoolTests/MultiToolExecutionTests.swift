@@ -271,8 +271,9 @@ struct MultiToolExecutionTests {
         // Coordination is awaiting, and `wait()` is forbidden by name. Naming a
         // thing to forbid it normally puts it back in the option set — the
         // reason refusal is never named below — but `wait()` is already in the
-        // option set from outside: `docs("globals")` documents the sandbox
-        // global, so a prohibition has to name what it overrides. A pending
+        // option set from outside: a model that learned the old sandbox
+        // global still writes it, so a prohibition has to name what it
+        // overrides. The sandbox keeps the name only for a repair text. A pending
         // envelope tells the model to end its answer, because the settled run
         // comes back as mail, and the description says the same thing (task
         // ^4qcf1v9), so the two texts cannot pull the model two ways. No text
@@ -396,16 +397,16 @@ struct MultiToolExecutionTests {
 
     // MARK: - A settled background run comes back as mail
 
-    /// How long the double-delivery test lets a `runCode` call wait for its
-    /// own snippet. It is long enough for a snippet that reads a run that
-    /// already settled, and it is the time the gated snippet stays pending
-    /// before its envelope comes back.
+    /// How long the removed-`wait()` test lets a `runCode` call wait for its
+    /// own snippet. It is long enough for a snippet that fails at once, and it
+    /// is the time the gated snippet stays pending before its envelope comes
+    /// back.
     private static let shortInlineSettleGrace: TimeInterval = 1
 
-    /// The deadline of the sandbox `wait()` in the double-delivery snippet.
-    /// The run it reads settled before the snippet starts, thus the call does
-    /// not wait.
-    private static let collectedRunWaitSeconds = 10
+    /// The seconds argument of the removed sandbox `wait()` in the snippet
+    /// that tries to collect a run. The call throws before it reads the
+    /// argument, thus the value has no effect.
+    private static let removedWaitSecondsArgument = 1
 
     /// A `runCode` over one ``GatedCodeTool``.
     ///
@@ -459,45 +460,45 @@ struct MultiToolExecutionTests {
         #expect(all.count == 3 && !all[2].contains(mailProbeResultCode))
     }
 
-    /// Records the finding of task `^q4jrnd0`: a run that the sandbox `wait()`
-    /// global collects is ALSO delivered as mail. `SessionMailbox.wait` does
-    /// not withdraw the staged terminal event, and only the inline settle
-    /// grace withdraws it (`BackgroundToolRunner.settledEnvelope`). Thus the
-    /// model reads the result two times: in the tool output of the snippet
-    /// that collected it, and in the mail. Task `^11cfnx0` removes the
-    /// sandbox `wait()` global, and with it this second path.
-    @Test("a run that a snippet collects with the sandbox wait() still comes back as mail: the double delivery that task ^11cfnx0 removes")
-    func runCollectedBySandboxWaitIsAlsoMail() async throws {
+    /// Records the fix of task `^11cfnx0` for the finding of task `^q4jrnd0`.
+    /// A run that the sandbox `wait()` global collected was ALSO delivered as
+    /// mail, because `SessionMailbox.wait` does not withdraw the staged
+    /// terminal event. Thus the model read the result two times. The global is
+    /// removed. A snippet that calls `wait()` now gets the repair text at once,
+    /// with no result in it, and the run comes back one time only, as mail.
+    @Test("a snippet that calls the removed sandbox wait() gets the repair text, and the run comes back as exactly one mail")
+    func sandboxWaitIsRemovedAndTheRunComesBackAsOneMail() async throws {
         let gate = ReleaseGate()
         let prompts = MailProbePrompts()
-        let collected = OSAllocatedUnfairLock<PendingRunEnvelope?>(initialState: nil)
+        let refused = OSAllocatedUnfairLock<PendingRunEnvelope?>(initialState: nil)
         let session = try await makeMailProbeSession(
             mounting: try Self.gatedRunCode(gate: gate, inlineSettleGrace: Self.shortInlineSettleGrace),
             prompts: prompts
         ) { index, runCode in
             guard index == 0 else { return "answered" }
             // The gated snippet outlasts the grace, so its call answers with a
-            // pending envelope. The gate then opens, and a second snippet
-            // collects the run with the sandbox `wait()` inside the grace.
+            // pending envelope. A second snippet then tries to collect the run
+            // with the removed sandbox `wait()`, and the gate opens after it.
             let pending = try mailProbeEnvelope(
                 try await runCode.call(arguments: RunCodeArguments(code: gatedCodeSnippet)))
-            await gate.release()
             let collector = "return (await wait(\"\(pending.completionToken)\", "
-                + "\(Self.collectedRunWaitSeconds))).detail;"
-            let settled = try mailProbeEnvelope(
+                + "\(Self.removedWaitSecondsArgument))).detail;"
+            let answer = try mailProbeEnvelope(
                 try await runCode.call(arguments: RunCodeArguments(code: collector)))
-            collected.withLock { $0 = settled }
-            return "collected"
+            refused.withLock { $0 = answer }
+            await gate.release()
+            return "the result comes back later"
         }
 
-        _ = try await session.respond(to: "start and collect the snippet")
+        _ = try await session.respond(to: "start the snippet and try to collect it")
         _ = await prompts.awaiting(2)
         _ = try await session.respond(to: "one more message")
         let all = await prompts.awaiting(3)
 
-        let inline = try #require(collected.withLock { $0 })
-        #expect(!inline.pending)
-        #expect(inline.detail?.contains(mailProbeResultCode) == true)
+        let collector = try #require(refused.withLock { $0 })
+        #expect(!collector.pending)
+        #expect(collector.detail?.contains(SandboxGlobalError.waitRemoved.description) == true)
+        #expect(collector.detail?.contains(mailProbeResultCode) == false)
         #expect(Self.laterPromptsCarryingTheResult(all).count == 1)
     }
 }

@@ -35,14 +35,14 @@ registry-backed selection tier (`FoundationModelsMetadataRegistry`'s
 `MetadataSearcher`/`SelectionTier`) and `searchTools` use — they cannot mutate
 anything.
 
-`status()`, `wait()`, `cancel()`, `elicit()`, `notify()`, and `progress()`
+`status()`, `cancel()`, `elicit()`, `notify()`, and `progress()`
 reach exactly one thing: the ambient `ToolContext` the session bound around
 this `runCode` call — its own `SessionMailbox` and its own upstream event
 sink, never another session's. Each is bounded by what that surface itself
 allows:
 
-- `status()`, `wait()`, and `cancel()` are the **background runs**, which carry
-  envelopes and outcomes only. `wait()` resolves to a run's terminal event —
+- `status()` and `cancel()` are the **background runs**, which carry
+  envelopes and outcomes only. A finished run reports its terminal event —
   the short report the tool returned plus the run's identifier. Router carries
   that report whole, so each tool keeps its own report short (`BackgroundTool`);
   `runCode` caps its report at `MultiToolConfiguration.returnValueCharacterLimit`
@@ -60,9 +60,14 @@ allows:
   outbox and return nothing. They cannot read anything back.
 
 Outside a session — a `MultiTool` constructed and called directly, with no
-ambient context — there is no session to reach: `status()`, `wait()`,
+ambient context — there is no session to reach: `status()`,
 `cancel()`, and `elicit()` reject with a named, repairable error, and
-`notify()`/`progress()` are silent no-ops. None of the six traps.
+`notify()`/`progress()` are silent no-ops. None of the five traps.
+
+`wait` reaches nothing. The sandbox `wait()` is removed: a snippet that waits
+for a background run holds the model for every session on it, and a settled
+run comes back to the session as mail. The name stays only so that a call to
+`wait()` throws a repair text at once, in a session or outside one.
 
 Every `tools.*` call is validated (`ArgumentMarshaler`, `ToolInvoker`) before
 it ever reaches the wrapped tool: a malformed call fails with a repairable

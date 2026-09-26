@@ -175,18 +175,22 @@ extension MultiTool {
     /// cap reports.
     ///
     /// Phrased as repair instructions, like every other error this package
-    /// hands a model: it names the cap it hit and the three globals that
-    /// collect a background run, because collecting one is exactly what makes
-    /// room for this call.
+    /// hands a model: it names the cap it hit and the two ways that make room
+    /// for this call. A run that finishes makes room, and its result comes
+    /// back to the session as mail when the model ends its answer. A run that
+    /// `cancel()` stops makes room at once. The text names no `wait()`: a
+    /// snippet that waits holds the model for every session on it
+    /// (`generation-queue.md` §5.5).
     ///
     /// - Returns: the error `ResultRenderer` renders as the call's output.
     static func liveContextCapError(limit: Int) -> InterpreterError {
         InterpreterError(
             kind: .exception,
             message: "Too many runCode snippets are running at once (limit \(limit)). "
-                + "Collect one before starting another: status() lists every pending run's "
-                + "completion token, wait(completionToken, seconds) collects a run's result, and "
-                + "cancel(completionToken) ends one you no longer need."
+                + "Do not start another now. End your answer: the result of each running snippet "
+                + "comes back to you as a new message when it finishes. status() lists the "
+                + "completion token of each running snippet, and cancel(completionToken) stops "
+                + "one that you do not need."
         )
     }
 }

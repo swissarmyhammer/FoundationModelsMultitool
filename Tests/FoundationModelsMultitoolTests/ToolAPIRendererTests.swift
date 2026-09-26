@@ -284,6 +284,27 @@ struct ToolAPIRendererTests {
         #expect(descriptor.source.trimmingCharacters(in: .newlines) == golden)
     }
 
+    /// The file-name suffix every rendered surface golden carries.
+    private static let surfaceGoldenSuffix = ".ts.txt"
+
+    /// The sandbox `wait()` global is removed (task `^11cfnx0`): a snippet does
+    /// not wait for a background run, and the settled run comes back as mail.
+    /// No rendered tool API surface may name it.
+    @Test("no rendered surface golden declares or calls the removed sandbox wait() global")
+    func surfaceGoldensContainNoWaitGlobal() throws {
+        let goldensDirectory = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .appendingPathComponent("Goldens")
+        let names = try FileManager.default.contentsOfDirectory(atPath: goldensDirectory.path)
+            .filter { $0.hasSuffix(Self.surfaceGoldenSuffix) }
+
+        #expect(!names.isEmpty)
+        for name in names {
+            let golden = try TestResource.surfaceGolden(named: name)
+            #expect(!golden.contains("\(MultiTool.removedWaitGlobalName)("), "golden \(name) names wait(")
+        }
+    }
+
     // MARK: - Escaping / injection-safety (schema-derived text is never
     // trusted to be safe TS/JS/comment syntax before being spliced into the
     // generated declaration and doc comment)

@@ -112,6 +112,12 @@ a fresh `runCode` sandbox can reach:
 - `notify`
 - `progress`
 
+`wait` is not a usable global. The sandbox `wait()` is removed, because a
+snippet that waits for a background run holds the model for every session on
+it. The name stays only so that a call to `wait()` fails with a repair text:
+return the completion token, end the answer, and the result comes back as
+mail.
+
 This list is not documentation alone. `HardeningTests` parses it out of this
 file and asserts it is set-equal to the globals the sandbox enumerates at
 runtime, so a global added to the code and not to this list fails the suite.

@@ -85,27 +85,27 @@ struct RouterSessionMountTests {
         #expect(mounted.description == searchTools.description)
     }
 
-    @Test("a snippet that waits on a pending run hands back an envelope that tells the model to end its answer, not to call a wait tool or another snippet")
+    @Test("a snippet that is still running hands back an envelope that tells the model to end its answer, not to call a wait tool or another snippet")
     func runCodeEnvelopeTellsTheModelToEndItsAnswer() async throws {
         let context = try await makeOuterRunContext()
         // The live-lock of task ^4qcf1v9: every mounted `runCode` call
-        // backgrounds, so a snippet that waits on a pending token is itself
-        // tracked and hands back a fresh token. An envelope whose `next` told the
-        // model to run another snippet made the model chase tokens, one
-        // generation a round. A settled run now comes back to the session as
-        // mail (Router `generation-queue.md` §5.5), so the envelope's `next`
-        // tells the model to end its answer. It names no `wait` tool, because
-        // no `wait` tool is mounted.
-        let registry = try Self.registry()
-        let pendingRun = try await startScriptedRun(on: context)
-        let runCode = MultiTool(registry: registry)
+        // backgrounds, so a snippet that is still running is tracked and hands
+        // back a token. An envelope whose `next` told the model to run another
+        // snippet made the model chase tokens, one generation a round. A
+        // settled run now comes back to the session as mail (Router
+        // `generation-queue.md` §5.5), so the envelope's `next` tells the model
+        // to end its answer. It names no `wait` tool, because no `wait` tool is
+        // mounted, and the sandbox has no `wait()` global.
+        let gate = ReleaseGate()
+        let runCode = MultiTool(
+            registry: try MultiTool.Builder().addTool(GatedCodeTool(gate: gate)).buildRegistry(),
+            configuration: MultiToolConfiguration(inlineSettleGrace: 0)
+        )
         let mounted = try #require(
             Self.makeSessionMounted(runCode, on: context) as? any Tool<RunCodeArguments, String>
         )
 
-        let rendered = try await mounted.call(
-            arguments: RunCodeArguments(code: "return await wait(\"\(pendingRun.completionToken)\", 60);")
-        )
+        let rendered = try await mounted.call(arguments: RunCodeArguments(code: gatedCodeSnippet))
 
         #expect(PendingRunEnvelope.isRendered(text: rendered))
         let envelope = try JSONDecoder().decode(PendingRunEnvelope.self, from: Data(rendered.utf8))
@@ -126,9 +126,9 @@ struct RouterSessionMountTests {
         // return value.
         #expect(rendered.count < MultiToolConfiguration.default.returnValueCharacterLimit)
 
-        // Release the run the snippet waits on; the background snippet then
+        // Open the gate the snippet waits on; the background snippet then
         // finishes, and the token the envelope names resolves to a result.
-        await settle(pendingRun, on: context)
+        await gate.release()
         let collected = await context
             .wait(completionToken: envelope.completionToken, seconds: scriptedRunSettlementSeconds)
         guard case .settled = collected else {

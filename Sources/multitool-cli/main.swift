@@ -2,7 +2,7 @@
 //
 // A runnable demonstration of the whole FoundationModelsMultitool pipeline:
 // Router profile resolution -> a RoutedSession over the resolved .standard
-// slot, carrying multiTool, wait and (unless --direct) searchToolsTool ->
+// slot, carrying multiTool and (unless --direct) searchToolsTool ->
 // one demo prompt, driven by draining the session's event stream.
 // All the actual logic lives in the `MultitoolCLI` library target
 // (`Sources/MultitoolCLI/CLIRunner.swift`) so it's directly testable from

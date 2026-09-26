@@ -8,18 +8,24 @@ import Testing
 
 /// Every sandbox global this suite pins, in the order the surface documents
 /// them — the run verbs, the elicitation, and the two notice calls.
-private let sandboxGlobalNames = ["status", "wait", "cancel", "elicit", "notify", "progress"]
+private let sandboxGlobalNames = ["status", "cancel", "elicit", "notify", "progress"]
 
-/// A `wait()` deadline long enough that a finished run always resolves inside
-/// it — never used to bound a run that is expected to keep running.
-private let generousWaitSeconds = 10
+/// The seconds argument a snippet gives the removed `wait()`. The call throws
+/// before it reads the argument, thus the value has no effect.
+private let removedWaitSecondsArgument = 1
 
-/// A `wait()` deadline already elapsed by the time the call reaches the
-/// mailbox, so a still-running run reports `timeout` without the test
-/// sleeping.
-private let elapsedWaitSeconds = 0
+/// A snippet that calls the removed `wait()` inside `try`, and returns the
+/// message of the error it catches, or `"no-throw"`.
+private let removedWaitCatchingSnippet = """
+    try {
+        await wait("no-such-token", \(removedWaitSecondsArgument));
+        return "no-throw";
+    } catch (error) {
+        return String(error.message);
+    }
+    """
 
-/// Phase-1 coverage for the six ambient sandbox globals — eventplan.md § "The
+/// Phase-1 coverage for the five ambient sandbox globals — eventplan.md § "The
 /// sandbox globals" and § "Async JavaScript"'s one-rule contract ("each call
 /// that goes into Swift effects returns a promise… these calls are
 /// synchronous: `help()` and `docs()`… and `notify()` / `progress()`").
@@ -32,8 +38,8 @@ private let elapsedWaitSeconds = 0
 struct SandboxGlobalsTests {
     // MARK: - Reachability and the promise-vs-sync contract
 
-    @Test("all six globals are reachable in a fresh run")
-    func allSixGlobalsAreReachable() async throws {
+    @Test("all five globals are reachable in a fresh run")
+    func allFiveGlobalsAreReachable() async throws {
         let output = try await runSnippet(
             """
             return \(jsArrayLiteral(of: sandboxGlobalNames)).map(name => typeof globalThis[name]);
@@ -66,7 +72,6 @@ struct SandboxGlobalsTests {
             """
             return [
                 "status:" + typeof status().then,
-                "wait:" + typeof wait("no-such-token", \(elapsedWaitSeconds)).then,
                 "cancel:" + typeof cancel("no-such-token").then,
                 "notify:" + String(notify("a notice")),
                 "progress:" + String(progress("half way")),
@@ -80,7 +85,6 @@ struct SandboxGlobalsTests {
         #expect(
             try RunOutput.decoded([String].self, from: output) == [
                 "status:function",
-                "wait:function",
                 "cancel:function",
                 "notify:undefined",
                 "progress:undefined",
@@ -180,8 +184,6 @@ struct SandboxGlobalsTests {
                 await status("\(running.completionToken)"),
                 await status("\(finished.completionToken)"),
                 await status("no-such-token"),
-                await wait("\(running.completionToken)", \(elapsedWaitSeconds)),
-                await wait("no-such-token", \(elapsedWaitSeconds)),
                 await cancel("\(finished.completionToken)"),
                 await cancel("no-such-token"),
                 await cancel("\(running.completionToken)"),
@@ -196,8 +198,6 @@ struct SandboxGlobalsTests {
                 [true, false],   // status() on a run that is going
                 [true, false],   // status() on a run that finished
                 [false, true],   // status() on a handle naming no run
-                [false, true],   // wait() that ran out its bound
-                [false, true],   // wait() on a handle naming no run
                 [true, false],   // cancel() that arrived too late
                 [false, true],   // cancel() on a handle naming no run
                 [false, true],   // cancel() the canceler answered
@@ -302,105 +302,46 @@ struct SandboxGlobalsTests {
         #expect(try RunOutput.decoded([String].self, from: output) == ["unknown", "no-such-token"])
     }
 
-    // MARK: - wait()
+    // MARK: - The removed wait()
 
-    @Test("wait() returns the terminal event's detail and the run's identifier")
-    func waitReturnsTheTerminalEventDetailAndIdentifier() async throws {
-        let stub = try await makeStubRun()
-        let context = stub.context
-        let run = try await startScriptedRun(on: context)
-        await settle(run, on: context)
-
-        let output = try await runSnippet(
-            """
-            const finished = await wait("\(run.completionToken)", \(generousWaitSeconds));
-            return [finished.state, finished.completionToken, finished.detail, finished.outcome];
-            """,
-            under: context
-        )
-
-        #expect(
-            try RunOutput.decoded([String?].self, from: output) == [
-                "complete", run.completionToken, "scripted-terminal-detail", "succeeded",
-            ]
-        )
-    }
-
-    @Test("wait()'s detail is the report the tool returned, whole")
-    func waitDetailIsTheWholeReport() async throws {
-        // Router commit `f3b72f5` deleted the run plane's tail cut: a
-        // background tool's return value is a short report, and the run plane
-        // carries it as it is. A long report must reach `wait()` unchanged,
-        // so no layer of this package cuts it a second time.
-        let stub = try await makeStubRun()
-        let context = stub.context
-        let longReportLength = 10_000
-        let longReport = String(repeating: "d", count: longReportLength)
-        let run = try await startScriptedRun(on: context, detail: longReport)
-        await settle(run, on: context)
-
-        let output = try await runSnippet(
-            "return (await wait(\"\(run.completionToken)\", \(generousWaitSeconds))).detail.length;",
-            under: context
-        )
-
-        #expect(try RunOutput.decoded(Int.self, from: output) == longReportLength)
-    }
-
-    @Test("wait() reports a timeout while the run keeps running")
-    func waitReportsATimeout() async throws {
+    @Test("a snippet that calls wait() in a session gets the repair text: return the token, end the answer, the result comes as mail")
+    func waitInASessionGivesTheRepairText() async throws {
         let stub = try await makeStubRun()
         let context = stub.context
         let run = try await startScriptedRun(on: context)
 
-        let output = try await runSnippet(
-            """
-            const outcome = await wait("\(run.completionToken)", \(elapsedWaitSeconds));
-            return [outcome.result, outcome.completionToken];
-            """,
-            under: context
-        )
+        let output = try await runSnippet(removedWaitCatchingSnippet, under: context)
 
-        #expect(try RunOutput.decoded([String].self, from: output) == ["timeout", run.completionToken])
+        let message = try RunOutput.decoded(String.self, from: output)
+        #expect(message == "\(MultiTool.removedWaitGlobalName): \(SandboxGlobalError.waitRemoved.description)")
+        #expect(message.contains("Return the completion token and end your answer"))
+        #expect(message.contains("comes back to you as mail"))
+        // The call holds nothing: the run it names is still going.
         #expect(await context.backgroundRuns().map(\.completionToken) == [run.completionToken])
     }
 
-    @Test("wait() reports an unknown token as a safe no-op, never a throw")
-    func waitWithAnUnknownTokenIsASafeNoOp() async throws {
-        let stub = try await makeStubRun()
-        let context = stub.context
-
-        let output = try await runSnippet(
-            """
-            const outcome = await wait("no-such-token", \(elapsedWaitSeconds));
-            return [outcome.result, outcome.completionToken];
-            """,
-            under: context
-        )
-
-        #expect(try RunOutput.decoded([String].self, from: output) == ["unknown", "no-such-token"])
-    }
-
-    @Test("wait() called without a seconds deadline rejects with a repairable error naming the shape")
-    func waitWithoutADeadlineRejectsRepairably() async throws {
-        let stub = try await makeStubRun()
-        let context = stub.context
-
-        let output = try await runSnippet(
-            """
-            try {
-                await wait("no-such-token");
-                return "no-throw";
-            } catch (error) {
-                return String(error.message);
-            }
-            """,
-            under: context
-        )
+    @Test("a snippet that calls wait() with no session gets the same repair text, not the no-session text")
+    func waitWithoutASessionGivesTheSameRepairText() async throws {
+        let output = try await runSnippet(removedWaitCatchingSnippet)
 
         let message = try RunOutput.decoded(String.self, from: output)
-        #expect(message.hasPrefix("wait: "))
-        #expect(message.contains("wait(completionToken, seconds)"))
+        #expect(message == "\(MultiTool.removedWaitGlobalName): \(SandboxGlobalError.waitRemoved.description)")
+        #expect(!message.contains(SandboxGlobalError.noSession.description))
+    }
+
+    @Test("an uncaught wait(\"t\", 1) fails the snippet with the repair text, not a ReferenceError")
+    func uncaughtWaitFailsWithTheRepairText() async throws {
+        let output = try await runSnippet("return await wait(\"t\", \(removedWaitSecondsArgument));")
+
+        #expect(output.contains(SandboxGlobalError.waitRemoved.description))
+        #expect(output.contains(RepairDirective.repairSnippet.closingLine))
+        #expect(!output.contains("ReferenceError"))
+    }
+
+    @Test("the globals page and docs(\"wait\") declare no wait global")
+    func theGlobalsPageDeclaresNoWait() {
+        #expect(!MultiTool.sandboxGlobalsPage.contains("\(MultiTool.removedWaitGlobalName)("))
+        #expect(MultiTool.sandboxGlobalsDocumentation(for: MultiTool.removedWaitGlobalName) == nil)
     }
 
     // MARK: - cancel()
@@ -658,7 +599,6 @@ struct SandboxGlobalsTests {
             """
             const calls = [
                 ["status", () => status()],
-                ["wait", () => wait("no-such-token", \(elapsedWaitSeconds))],
                 ["cancel", () => cancel("no-such-token")],
                 ["elicit", () => elicit("Which repository?")],
             ];
@@ -676,8 +616,9 @@ struct SandboxGlobalsTests {
         )
 
         let messages = try RunOutput.decoded([String].self, from: output)
-        #expect(messages.count == 4)
-        for (name, message) in zip(["status", "wait", "cancel", "elicit"], messages) {
+        let promiseGlobalNames = ["status", "cancel", "elicit"]
+        #expect(messages.count == promiseGlobalNames.count)
+        for (name, message) in zip(promiseGlobalNames, messages) {
             #expect(message.hasPrefix("\(name): "))
             #expect(message.contains(SandboxGlobalError.noSession.description))
         }
@@ -703,7 +644,7 @@ struct SandboxGlobalsTests {
 /// `context` when one is given.
 ///
 /// An empty registry keeps every assertion about the globals themselves: the
-/// six are installed unconditionally, so no wrapped tool has to exist for them
+/// five are installed unconditionally, so no wrapped tool has to exist for them
 /// to be reachable. Passing `nil` for `context` is the no-ambient-context mode
 /// every other unit suite in this package runs in — a `MultiTool` constructed
 /// and called directly, outside any session.

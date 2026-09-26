@@ -3,12 +3,12 @@ import FoundationModelsRouter
 
 // MARK: - The ambient sandbox globals (eventplan.md § "The sandbox globals")
 //
-// Six globals beyond `tools.*`/`help()`/`docs()`, installed unconditionally
+// Five globals beyond `tools.*`/`help()`/`docs()`, installed unconditionally
 // into every `runCode` sandbox by the same `HostFunction`/`AsyncHostFunction`
 // mechanism `help()`/`docs()` use, and built by the same
 // `makeHelpDocsHostFunctions`-style factories:
 //
-// - `status()`, `wait()`, `cancel()` — the session's background runs.
+// - `status()`, `cancel()` — the session's background runs.
 //   Envelopes and outcomes only, read from the session's own `SessionMailbox`;
 //   never a capability's bulk output.
 // - `elicit()` — a question for the user in the middle of a snippet, suspending
@@ -20,10 +20,19 @@ import FoundationModelsRouter
 // The one-rule contract (eventplan.md § "Async JavaScript") decides which
 // mechanism each uses: "each call that goes into Swift effects returns a
 // promise… these calls are synchronous: `help()` and `docs()`… and
-// `notify()` / `progress()`." So the first four are `AsyncHostFunction`s and
+// `notify()` / `progress()`." So the first three are `AsyncHostFunction`s and
 // the last two are `HostFunction`s — and nothing else about them differs.
 //
-// None of the six is a `searchTools` entry. A search result implies an item that
+// **There is no `wait()` global.** A `wait()` in a snippet held the `runCode`
+// body until a background run settled. While the body runs in-band, which
+// includes the `inlineSettleGrace` window, that hold stops the model for every
+// session on it (`../FoundationModelsRouter/generation-queue.md` §5.5). A
+// settled run comes back to the session as mail. The name `wait` still has a
+// function in the sandbox, but only to tell a snippet that calls it how to
+// repair the snippet (``SandboxGlobalError/waitRemoved``). The docs page does
+// not declare it.
+//
+// None of the five is a `searchTools` entry. A search result implies an item that
 // can be found or be absent; these are always present. `MultiTool
 // .description` is therefore where the model learns they exist — but it
 // carries only that pointer. The contract itself is read on demand, through
@@ -33,17 +42,17 @@ import FoundationModelsRouter
 //
 // **No ambient context is a supported mode, not an error.** A `MultiTool`
 // constructed and called directly — outside any session, which is how every
-// unit suite in this package runs — has no session to read at all. The four
+// unit suite in this package runs — has no session to read at all. The three
 // promise-returning globals then reject with ``SandboxGlobalError/noSession``,
 // a named, model-repairable rejection, and `notify()`/`progress()` are silent
-// no-ops (consistent with a nil-context `ToolContext.post`). None of the six
+// no-ops (consistent with a nil-context `ToolContext.post`). None of the five
 // traps.
 
 /// What one background run is doing — the `state` a run report stamps, and the
 /// only question that field ever answers.
 ///
 /// **One field, one question.** These three values describe the *work*. How a
-/// `wait` or a `cancel` call of your own went is a different question with a
+/// `status` or a `cancel` call of your own went is a different question with a
 /// different answer, and it is reported under `result` instead (see
 /// ``CallResult``). No object carries both fields, so a snippet still branches
 /// on a single field — it just can no longer mistake "the run failed" for "my
@@ -94,16 +103,12 @@ private enum RunState {
 /// only question *it* ever answers.
 ///
 /// Every value here is about the caller's own call rather than about the work:
-/// a bound that ran out, a handle naming nothing, a cancellation the run's own
-/// canceler answered. An object that has a run to describe carries ``RunState``
-/// under `state` instead, and never both.
+/// a handle naming nothing, or a cancellation the run's own canceler answered.
+/// An object that has a run to describe carries ``RunState`` under `state`
+/// instead, and never both.
 ///
 /// File-private for the same reason ``RunState`` is.
 private enum CallResult {
-    /// The bound the caller passed ran out. The run is still going and nothing
-    /// has failed — asking again collects it.
-    static let timeout = "timeout"
-
     /// This session has no run under that handle, going or finished. A safe,
     /// reportable no-op, never a throw.
     static let unknown = "unknown"
@@ -209,7 +214,7 @@ extension MultiTool {
          * The ambient globals every snippet already has, beyond `tools.*`.
          * They are installed in every runCode sandbox, so they never appear
          * in a searchTools result and nothing has to be discovered before
-         * calling them. Await the four that return a promise; `notify()` and
+         * calling them. Await the three that return a promise; `notify()` and
          * `progress()` return nothing, so never await those.
          *
          * Two fields tell the shapes apart, and an object carries one or the
@@ -219,13 +224,13 @@ extension MultiTool {
          */
         declare type BackgroundRun = { state: "\(RunState.running)"; completionToken: string; tool: string; op: string; kind: string; latestProgress: string | null };
         declare type FinishedRun = { state: "\(RunState.complete)" | "\(RunState.error)"; completionToken: string; tool: string; op: string; detail: string; outcome: string | null };
-        declare type NoResult = { result: "\(CallResult.timeout)" | "\(CallResult.unknown)"; completionToken: string };
+        declare type NoResult = { result: "\(CallResult.unknown)"; completionToken: string };
         declare type Cancelled = { result: "\(CallResult.cancelled)"; completionToken: string; outcome: string };
         declare type ElicitationAnswer = { action: string; content: object | null };
         """
 
     /// Every ambient global's `docs(name)` entry, in the order the preface
-    /// introduces them — the three run verbs, the elicitation, then the two
+    /// introduces them — the two run verbs, the elicitation, then the two
     /// notice calls.
     ///
     /// No `@param` trailers, unlike ``APISurface/Entry/block``: a wrapped
@@ -246,21 +251,6 @@ extension MultiTool {
                  * @example const going = await status();
                  */
                 declare function status(completionToken?: string): Promise<BackgroundRun[] | BackgroundRun | FinishedRun | NoResult>;
-                """
-        ),
-        SandboxGlobalDoc(
-            name: "wait",
-            block: """
-                // wait
-                /**
-                 * Waits up to `seconds` for one long-running call to finish, then reports its
-                 * terminal event — the run's identifier and the short report the tool
-                 * returned. A deadline that passes with the run still going reports
-                 * `\(CallResult.timeout)` rather than failing.
-                 * @returns Promise<FinishedRun | NoResult>
-                 * @example const finished = await wait(token, 30);
-                 */
-                declare function wait(completionToken: string, seconds: number): Promise<FinishedRun | NoResult>;
                 """
         ),
         SandboxGlobalDoc(
@@ -319,9 +309,39 @@ extension MultiTool {
         ),
     ]
 
-    // MARK: - The background runs: status(), wait(), cancel(), and elicit()
+    // MARK: - The removed wait()
 
-    /// Builds the four promise-returning ambient globals for one `runCode`
+    /// The name a snippet called the removed `wait()` global under.
+    ///
+    /// A model that learned the old contract still writes `wait(token, 30)`.
+    /// Without a function under this name, that call stops the snippet with a
+    /// JavaScript `ReferenceError`, which tells the model nothing about what to
+    /// do. Thus the name keeps a function, and the function gives
+    /// ``SandboxGlobalError/waitRemoved``.
+    static let removedWaitGlobalName = "wait"
+
+    /// Builds the one synchronous global that holds the name of the removed
+    /// `wait()` for one `runCode` invocation.
+    ///
+    /// The function is synchronous, and it throws at once. A synchronous throw
+    /// stops the snippet at the call, whether the snippet awaits the call or
+    /// not. A rejected promise that the snippet does not await would pass
+    /// silently. The function reads no session and holds nothing, so the
+    /// `runCode` body never waits for a background run (`generation-queue.md`
+    /// §5.5).
+    ///
+    /// - Returns: one host function, named ``removedWaitGlobalName``.
+    static func makeRemovedGlobalHostFunctions() -> [HostFunction] {
+        [
+            HostFunction(name: removedWaitGlobalName) { _ in
+                throw SandboxGlobalError.waitRemoved
+            },
+        ]
+    }
+
+    // MARK: - The background runs: status(), cancel(), and elicit()
+
+    /// Builds the three promise-returning ambient globals for one `runCode`
     /// invocation.
     ///
     /// Per invocation rather than per registry, for exactly the reason
@@ -331,16 +351,13 @@ extension MultiTool {
     ///
     /// - Parameter binding: this `runCode` invocation's captured session
     ///   binding, or `nil` when it has none — in which case every one of the
-    ///   four rejects with ``SandboxGlobalError/noSession``.
-    /// - Returns: four async host functions, named `"status"`, `"wait"`,
-    ///   `"cancel"`, and `"elicit"`.
+    ///   three rejects with ``SandboxGlobalError/noSession``.
+    /// - Returns: three async host functions, named `"status"`, `"cancel"`,
+    ///   and `"elicit"`.
     static func makeBackgroundRunHostFunctions(binding: RunBinding?) -> [AsyncHostFunction] {
         [
             AsyncHostFunction(name: "status") { arguments in
                 try await reportStatus(of: arguments.first, binding: binding)
-            },
-            AsyncHostFunction(name: "wait") { arguments in
-                try await awaitSettlement(arguments, binding: binding)
             },
             AsyncHostFunction(name: "cancel") { arguments in
                 try await requestCancellation(of: arguments.first, binding: binding)
@@ -416,43 +433,6 @@ extension MultiTool {
         }
     }
 
-    /// `wait()`'s implementation: awaits one run's settlement with a deadline
-    /// and reports the terminal event — the run's identifier plus the report
-    /// the tool returned. Router carries that report whole; each tool keeps its
-    /// report short (`BackgroundTool`), and `runCode` caps its own through
-    /// `ResultRenderer`.
-    ///
-    /// - Parameters:
-    ///   - arguments: the call's arguments: a completion-token string and a
-    ///     number of seconds.
-    ///   - binding: the invocation's captured session binding.
-    /// - Returns: the finished run's report, or the call outcome when the
-    ///   bound ran out or the handle names no run.
-    /// - Throws: ``SandboxGlobalError/noSession`` when the run has no session
-    ///   context; ``SandboxGlobalError/malformedCompletionToken(usage:)`` or
-    ///   ``SandboxGlobalError/missingWaitDeadline`` when an argument is
-    ///   missing or of the wrong kind.
-    private static func awaitSettlement(
-        _ arguments: [InterpreterValue],
-        binding: RunBinding?
-    ) async throws -> InterpreterValue {
-        let context = try sessionContext(from: binding)
-        let token = try completionToken(arguments.first, usage: "wait(completionToken, seconds)")
-        guard case .number(let seconds)? = arguments.dropFirst().first else {
-            throw SandboxGlobalError.missingWaitDeadline
-        }
-        switch await context.wait(completionToken: token, seconds: seconds) {
-        case .settled(let terminal):
-            return .object(terminalEventFields(of: terminal))
-        case .deadlineElapsed:
-            return .object(tokenOnlyFields(result: CallResult.timeout, token: token))
-        case .cancelled:
-            throw CancellationError()
-        case .unknownToken:
-            return .object(tokenOnlyFields(result: CallResult.unknown, token: token))
-        }
-    }
-
     /// `cancel()`'s implementation: invokes the run's own canceler and reports
     /// the outcome it reported — verbatim, never a guess.
     ///
@@ -511,8 +491,8 @@ extension MultiTool {
     ///
     /// The state is derived from the event rather than passed in, so no call
     /// site can label a run that failed complete, and a finished run reads
-    /// identically however it was collected — through `status()`, through
-    /// `wait()`, or as the retained event a late `cancel()` reports.
+    /// identically however it was collected — through `status()`, or as the
+    /// retained event a late `cancel()` reports.
     ///
     /// - Parameter terminal: the terminal event.
     /// - Returns: the object's fields.
@@ -528,8 +508,7 @@ extension MultiTool {
     }
 
     /// The JS-visible fields of a call outcome that carries nothing but the
-    /// token it was asked about — a handle naming no run, or a bound that ran
-    /// out.
+    /// token it was asked about — a handle naming no run.
     ///
     /// Stamped under `result` rather than `state`: there is no run to describe,
     /// so the object says how the call itself went.
@@ -760,12 +739,13 @@ extension MultiTool {
     }
 }
 
-/// A failure one of the four promise-returning ambient globals reports back to
-/// the snippet as its promise's rejection reason.
+/// A failure one of the ambient globals reports back to the snippet — as its
+/// promise's rejection reason for the three promise-returning globals, and as
+/// a thrown exception for the name of the removed `wait()`.
 ///
 /// Every case's ``description`` is written for the model to repair from: it
 /// says what was wrong and what shape to call instead. `JSCInterpreter` already
-/// prefixes a rejection with the global's own name (`"<name>: <reason>"`), so
+/// prefixes a failure with the global's own name (`"<name>: <reason>"`), so
 /// no case repeats it.
 enum SandboxGlobalError: Error, Equatable, CustomStringConvertible {
     /// The enclosing `runCode` invocation captured no ambient `ToolContext`,
@@ -776,8 +756,10 @@ enum SandboxGlobalError: Error, Equatable, CustomStringConvertible {
     /// A completion-token argument was missing or was not a string.
     case malformedCompletionToken(usage: String)
 
-    /// `wait()` was called without a number of seconds to wait.
-    case missingWaitDeadline
+    /// A snippet called `wait()`, which is removed. A snippet does not wait
+    /// for a background run: the settled run comes back to the session as
+    /// mail (`generation-queue.md` §5.5).
+    case waitRemoved
 
     /// `elicit()`'s argument was neither a question string nor an object
     /// carrying a `message`.
@@ -790,21 +772,22 @@ enum SandboxGlobalError: Error, Equatable, CustomStringConvertible {
     /// A human-readable description of the failure, satisfying
     /// `CustomStringConvertible`.
     ///
-    /// This is the text that reaches the snippet as its promise's rejection
-    /// reason, so every case is phrased as repair instructions for the model
-    /// rather than as a diagnosis for a human reader.
+    /// This is the text that reaches the snippet as its failure reason, so
+    /// every case is phrased as repair instructions for the model rather than
+    /// as a diagnosis for a human reader.
     var description: String {
         switch self {
         case .noSession:
-            return "no session context. status(), wait(), cancel(), and elicit() reach the session "
+            return "no session context. status(), cancel(), and elicit() reach the session "
                 + "that issued this run, and this one has none. Drop them and return the value from "
                 + "the tool calls you already made."
         case .malformedCompletionToken(let usage):
             return "\(usage) needs a completion-token string — the token a long-running call handed "
                 + "back. Call status() with no argument to list the token of every run still going."
-        case .missingWaitDeadline:
-            return "wait(completionToken, seconds) needs a number of seconds to wait, "
-                + "e.g. await wait(token, 30)."
+        case .waitRemoved:
+            return "wait() does not exist. Do not wait for a run inside a snippet. "
+                + "Return the completion token and end your answer. "
+                + "When the run finishes, its result comes back to you as mail, in a new message."
         case .malformedElicitationRequest:
             return elicitUsage
         case .undecodableElicitationRequest(let reason):

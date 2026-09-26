@@ -6,7 +6,7 @@ import FoundationModelsRouter
 // MARK: - Phase-1 sandbox-globals fixtures (eventplan.md § "The sandbox
 // globals")
 //
-// The background runs a snippet's `status()`/`wait()`/`cancel()` observe are
+// The background runs a snippet's `status()`/`cancel()` observe are
 // the session's own runs, and the answer its `elicit()` waits for arrives
 // through the same session mailbox. Both are scripted here rather than
 // simulated: a real mailbox, a real background run, and a real elicitation
@@ -190,14 +190,14 @@ final class GatedScriptedTool: Tool, Sendable {
 /// Starts a scripted background run in `mailbox` and returns the handle a test
 /// drives it through.
 ///
-/// The run keeps going — and so stays visible to `status()` and awaitable by
-/// `wait()` — until ``settle(_:in:)`` opens its gate.
+/// The run keeps going — and so stays visible to `status()` — until
+/// ``settle(_:on:)`` opens its gate.
 ///
 /// - Parameters:
 ///   - context: the session context to start the run on.
 ///   - tool: the tool's name that owns the run; also the run's op.
-///   - detail: what the call returns once it finishes — the detail a `wait()`
-///     resolves to. Also the reason it throws when `failing`.
+///   - detail: what the call returns once it finishes — the detail a finished
+///     run reports. Also the reason it throws when `failing`.
 ///   - progress: the latest progress detail `status()` should report, or
 ///     `nil` to let the run post none. When given, this returns only once that
 ///     detail has reached the run's status row, so a following assertion never
@@ -272,7 +272,7 @@ private func awaitProgress(
 
 /// Settles a scripted background run and returns only once the mailbox has
 /// recorded its terminal event — a synchronization point, so a following
-/// `status()` or `wait()` assertion never races the settlement.
+/// `status()` or `cancel()` assertion never races the settlement.
 ///
 /// - Parameters:
 ///   - run: the background run to settle.

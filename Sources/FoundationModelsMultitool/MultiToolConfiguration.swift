@@ -55,8 +55,8 @@ public struct MultiToolConfiguration: Sendable, Equatable {
     ///
     /// Each one holds a real JS context and the thread its run occupies. A
     /// model that has backgrounded this many snippets has lost track of them,
-    /// and the error tells it to collect one — `status()`, `wait()`,
-    /// `cancel()` — instead of starting another.
+    /// and the error tells it to end its answer, so that the results come back
+    /// as mail, or to stop one with `cancel()`, instead of starting another.
     public let liveContextLimit: Int
 
     /// How long a `runCode` call waits for its own snippet before it answers

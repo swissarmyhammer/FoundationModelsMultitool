@@ -605,9 +605,10 @@ public let integrationDeepScanReportCode = 41739
 /// The deliberately slow tool the background scenario drives: the outer
 /// `runCode` call hands the model a pending envelope and keeps running in the
 /// background while a snippet awaits this tool.
-/// Recovering the answer then requires the background-run globals
-/// (`status()`, `wait(completionToken, seconds)`) the sandbox installs — which
-/// is exactly the round trip eventplan.md's phase 1 has to prove end to end.
+/// Recovering the answer then requires the settled run to come back to the
+/// session as mail — the sandbox has no `wait()` global that holds the answer
+/// open — which is exactly the round trip the mail path has to prove end to
+/// end.
 public struct IntegrationDeepScanTool: Tool {
     public let name = "runDeepScan"
     public let description = "Runs a full deep scan of the user's archive and returns that scan's report code. "
