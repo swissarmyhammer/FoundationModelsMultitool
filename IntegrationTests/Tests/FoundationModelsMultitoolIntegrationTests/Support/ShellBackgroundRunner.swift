@@ -186,7 +186,8 @@ private let terminalEventsPerRun = 1
 /// profile, on the shipped configuration.
 ///
 /// The surface is `MultiTool.Builder().withShell(...)` vended through
-/// `MultiTool.Registry.makeSessionTools(librarian:)` and mounted on a
+/// `MultiTool.Registry.makeSessionTools(selection:embedder:sampleSession:)`,
+/// with the seams of `LiveRouterFixture.discoverySeams`, and mounted on a
 /// `RoutedSession` the resolved `.standard` slot vends — the same wiring
 /// `CLIRunner.runDemo` ships, with `searchTools` backed by the resolved `.flash`
 /// slot. Never a bare `LanguageModelSession`: the background path exists only
@@ -214,8 +215,9 @@ func runShellBackgroundScenario(name: String) async throws {
         // No instructions, for the same reason as every other runner here:
         // mounting the tools is the whole product surface, and their own
         // descriptions carry the contract.
+        let seams = fixture.discoverySeams
         let session = fixture.profile.standard.makeSession(
-            tools: try registry.makeSessionTools(librarian: fixture.profile.flash),
+            tools: try registry.makeSessionTools(selection: seams.selection, embedder: seams.embedder),
             discoveryPriming: scenarioDiscoveryPriming
         )
 
@@ -284,7 +286,7 @@ private let shellBackgroundReplyPreviewCharacters = 120
 /// optionals a reader would have to check for agreement.
 ///
 /// Plain values rather than Router's own `BackgroundRun`, for the reason
-/// `InBandCollectionEvidence` states: that type has no public initializer, so a
+/// `MailCollectionEvidence` states: that type has no public initializer, so a
 /// record built from it could be graded only by a live run, and the grading rule
 /// would then be checkable nowhere.
 struct BackgroundShellRun: Sendable, CustomStringConvertible {

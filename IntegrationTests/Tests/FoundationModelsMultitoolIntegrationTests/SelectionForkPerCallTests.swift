@@ -134,7 +134,10 @@ struct SelectionForkPerCallTests {
                 .buildRegistry()
             // `searchToolsTool`'s own production initializer — never a
             // reimplementation of its selection-tier wiring.
-            let searchToolsTool = try SearchToolsTool(registry: registry, librarian: fixture.profile.flash)
+            // The selection tier comes from the librarian seam alone, with no
+            // embedder, as the old `librarian:` initializer made it.
+            let searchToolsTool = try SearchToolsTool(
+                registry: registry, selection: fixture.discoverySeams.selection)
 
             let firstStart = Date()
             _ = try await searchToolsTool.call(

@@ -1,12 +1,17 @@
 import Testing
 
 @testable import FoundationModelsMultitool
+// `@testable`: `SubmissionID` and `MessageID` have internal initializers
+// only, and a scripted submission chain needs both.
+@testable import FoundationModelsRouter
 import ScenarioGrading
 
 /// Ungated coverage for the verdicts a gated scenario is graded on —
 /// `scenarioChecks(for:answerContainsOneOf:answerMustNotContain:groundedIn:)`
 /// `mailCollectionChecks(for:answerContainsOneOf:groundedIn:)` and
-/// `nestedGenerationChecks(for:)` in `Support/ScenarioRunner.swift`.
+/// `nestedGenerationChecks(for:)` in `Support/ScenarioRunner.swift` — and for
+/// `SubmissionLog.fold(_:)`, which gives those runners each answer of a
+/// session from its events.
 ///
 /// The grounding condition used to hold whenever *any* fixture call returned,
 /// which is a weaker question than the one a scenario asks. Recorded on task
@@ -217,6 +222,107 @@ struct ScenarioGradingTests {
         #expect(!returned.held)
     }
 
+    // MARK: - The fold of the session events
+
+    @Test("two submissions and one answered event fold to one answer with both submission ids")
+    func twoSubmissionsFoldToOneAnswer() throws {
+        let message = MessageID()
+        let first = SubmissionID(Self.firstSubmissionNumber)
+        let continuation = SubmissionID(Self.secondSubmissionNumber)
+        let firstUsage = TokenUsage(tokensIn: Self.firstTokensIn, tokensOut: Self.firstTokensOut, contextFill: 0)
+        let answer = Self.answer(Self.foldedReply, to: message)
+
+        let records = SubmissionLog.fold([
+            .submissionStarted(SubmissionStart(submissionId: first, messageIds: [message], cause: .message)),
+            .textDelta(Self.foldedReply),
+            .submissionEnded(SubmissionEnd(submissionId: first, usage: firstUsage, finishReason: .maxTokens)),
+            .submissionStarted(
+                SubmissionStart(submissionId: continuation, messageIds: [message], cause: .continuation)),
+            .submissionEnded(SubmissionEnd(submissionId: continuation, usage: nil, finishReason: .completed)),
+            .answered(answer),
+        ])
+
+        let record = try #require(records.first)
+        #expect(records.count == 1)
+        #expect(record.submissionIds == [first, continuation])
+        #expect(record.submissions.map { $0.start?.cause } == [.message, .continuation])
+        #expect(record.submissions.map { $0.start?.messageIds } == [[message], [message]])
+        #expect(record.submissions.map { $0.end?.finishReason } == [.maxTokens, .completed])
+        #expect(record.submissions.first?.end?.usage == firstUsage)
+        #expect(record.cause == .message)
+        #expect(record.outcome == .answered(answer))
+        #expect(record.reply == Self.foldedReply)
+    }
+
+    @Test("an answerFailed event folds to a failed answer with no reply")
+    func answerFailedFoldsToAFailedAnswer() throws {
+        let message = MessageID()
+        let submission = SubmissionID(Self.firstSubmissionNumber)
+        let failure = AnswerFailure(messageIds: [message], reason: .cancelled)
+
+        let records = SubmissionLog.fold([
+            .submissionStarted(SubmissionStart(submissionId: submission, messageIds: [message], cause: .message)),
+            .submissionEnded(SubmissionEnd(submissionId: submission, usage: nil, finishReason: .completed)),
+            .answerFailed(failure),
+        ])
+
+        let record = try #require(records.first)
+        #expect(records.count == 1)
+        #expect(record.outcome == .failed(failure))
+        #expect(record.reply == nil)
+        #expect(record.submissionIds == [submission])
+    }
+
+    @Test("a repetitionStopped event is recorded on the answer it stopped")
+    func repetitionStoppedIsRecorded() throws {
+        let message = MessageID()
+        let submission = SubmissionID(Self.firstSubmissionNumber)
+        let stop = RepetitionStop(
+            generatedTokens: Self.stoppedGeneratedTokens,
+            countedLines: Self.stoppedCountedLines,
+            newLines: Self.stoppedNewLines,
+            tokensWithoutNewLine: Self.stoppedTokensWithoutNewLine,
+            detection: RepetitionDetection(),
+            recovery: nil
+        )
+
+        let records = SubmissionLog.fold([
+            .submissionStarted(SubmissionStart(submissionId: submission, messageIds: [message], cause: .mail)),
+            .repetitionStopped(stop),
+            .submissionEnded(SubmissionEnd(submissionId: submission, usage: nil, finishReason: .repeatedLines)),
+            .answered(Self.answer(Self.foldedReply, to: message)),
+        ])
+
+        let record = try #require(records.first)
+        #expect(record.repetitionStops == [stop])
+        #expect(record.cause == .mail)
+        #expect(record.submissions.first?.end?.finishReason == .repeatedLines)
+    }
+
+    @Test("a chain with no answered or answerFailed event is still open and folds to no answer")
+    func anOpenChainFoldsToNoAnswer() {
+        let submission = SubmissionID(Self.firstSubmissionNumber)
+
+        let records = SubmissionLog.fold([
+            .submissionStarted(SubmissionStart(submissionId: submission, messageIds: [MessageID()], cause: .message))
+        ])
+
+        #expect(records.isEmpty)
+    }
+
+    @Test("only answered and answerFailed end an answer chain")
+    func onlyTheTwoFinalEventsEndAChain() {
+        let message = MessageID()
+        let submission = SubmissionID(Self.firstSubmissionNumber)
+
+        #expect(SubmissionLog.endsAnswer(.answered(Self.answer(Self.foldedReply, to: message))))
+        #expect(SubmissionLog.endsAnswer(.answerFailed(AnswerFailure(messageIds: [message], reason: .cancelled))))
+        #expect(
+            !SubmissionLog.endsAnswer(
+                .submissionEnded(SubmissionEnd(submissionId: submission, usage: nil, finishReason: .completed))))
+        #expect(!SubmissionLog.endsAnswer(.textDelta(Self.foldedReply)))
+    }
+
     // MARK: - Building the graded evidence
 
     /// Grades one canary record against the gated scenario's own answers and
@@ -308,6 +414,44 @@ struct ScenarioGradingTests {
     private static var replyNamingTheWarmestCity: String {
         let itinerary = integrationCityWeather.map { "\($0.name) (\($0.code))" }.joined(separator: ", ")
         return "I can see your trip includes \(itinerary). \(integrationWarmestCity.name) is the warmest right now."
+    }
+
+    /// The number of the first submission of a scripted chain.
+    private static let firstSubmissionNumber: UInt64 = 1
+
+    /// The number of the continuation submission of a scripted chain.
+    private static let secondSubmissionNumber: UInt64 = 2
+
+    /// The input tokens of the first scripted submission.
+    private static let firstTokensIn = 120
+
+    /// The output tokens of the first scripted submission.
+    private static let firstTokensOut = 40
+
+    /// The tokens the scripted repetition stop reports as generated.
+    private static let stoppedGeneratedTokens = 3_000
+
+    /// The lines the scripted repetition stop reports as counted.
+    private static let stoppedCountedLines = 40
+
+    /// The lines the scripted repetition stop reports as new.
+    private static let stoppedNewLines = 6
+
+    /// The tokens the scripted repetition stop reports since the last new line.
+    private static let stoppedTokensWithoutNewLine = 2_100
+
+    /// The reply of each scripted answer the fold tests make.
+    private static let foldedReply = "NYC is warmest"
+
+    /// A scripted final answer to one caller message.
+    ///
+    /// - Parameters:
+    ///   - reply: the final reply of the answer.
+    ///   - message: the caller message the answer answers.
+    /// - Returns: the answer, with no usage, compaction or tool call.
+    private static func answer(_ reply: String, to message: MessageID) -> SessionAnswer {
+        SessionAnswer(
+            reply: reply, messageIds: [message], usage: nil, compactions: [], toolCalls: [], toolInvocations: [])
     }
 
     /// Picks one graded condition out of a run's verdict by name.

@@ -274,7 +274,7 @@ struct RetrievalTextSurfaceDiscoveryTests {
         try await withLiveRouterFixture(name: retrievalTextScenarioName, profile: plumbingProbeProfile) { fixture in
             let entries = try makeFilesAndShellSurface(over: fixture).registry.surface.entries
             reportTextSizes(of: entries)
-            let embedder = try #require(SearchToolsTool.makeEmbedding(from: fixture.profile.embedding))
+            let embedder = fixture.discoverySeams.embedder
 
             for setting in RetrievalTextSetting.allCases {
                 let searcher = makeRetrievalSearcher(for: setting, over: entries, embedder: embedder)

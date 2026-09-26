@@ -5,7 +5,7 @@ import ScenarioGrading
 
 /// The gated real-model suite: the four sample MultiTools scenarios,
 /// retargeted at the shipped host contract — the tools
-/// `MultiTool.Registry.makeSessionTools(librarian:)` vends, mounted on a
+/// `MultiTool.Registry.makeSessionTools(selection:embedder:sampleSession:)` vends, mounted on a
 /// `RoutedSession` and driven by draining `streamEvents(to:)` — "this is where
 /// the plan's empirical search-then-call behavior is proven against real
 /// hardware."

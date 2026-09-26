@@ -63,8 +63,8 @@ func makeFilesAndShellSurface(
         .withShell(storeDirectory: root.appendingPathComponent(filesAndShellStoreDirectoryName, isDirectory: true))
         .addTools(tools)
         .buildRegistry()
-    let mounted = try registry.makeSessionToolsAndStaging(
-        librarian: fixture.profile.flash, embedder: fixture.profile.embedding)
+    let seams = fixture.discoverySeams
+    let mounted = try registry.makeSessionToolsAndStaging(selection: seams.selection, embedder: seams.embedder)
     let searchTools = try #require(mounted.tools.compactMap { $0 as? SearchToolsTool }.first)
     let holder = try #require(mounted.staging as? MultiTool.RegistryHolder)
     return FilesAndShellSurface(

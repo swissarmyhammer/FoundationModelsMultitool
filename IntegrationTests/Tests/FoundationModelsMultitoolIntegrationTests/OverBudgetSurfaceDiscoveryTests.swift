@@ -98,10 +98,12 @@ struct OverBudgetSurfaceDiscoveryTests {
             let catalogPathSet = Set(entries.map(\.path))
             // The production mount, never a reimplementation of its wiring:
             // the same call `CLIRunner.runDemo` makes, with the profile's
-            // flash slot as the librarian and its embedding handle beside it.
+            // flash slot as the librarian and its embedding handle beside it,
+            // through the same `RouterDiscoverySeams` adapter.
+            let seams = fixture.discoverySeams
             let searchTools = try #require(
                 mounted.registry
-                    .makeSessionTools(librarian: fixture.profile.flash, embedder: fixture.profile.embedding)
+                    .makeSessionTools(selection: seams.selection, embedder: seams.embedder)
                     .compactMap { $0 as? SearchToolsTool }
                     .first
             )

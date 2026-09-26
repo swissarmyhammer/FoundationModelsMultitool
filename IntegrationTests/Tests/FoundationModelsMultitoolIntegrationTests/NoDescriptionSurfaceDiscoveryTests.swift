@@ -167,7 +167,7 @@ struct NoDescriptionSurfaceDiscoveryTests {
             let entries = mounted.registry.surface.entries
             let selection = try #require(
                 try SearchToolsTool.makeSelection(
-                    librarian: fixture.profile.flash, ids: entries.map(\.path)),
+                    fixture.discoverySeams.selection, ids: entries.map(\.path)),
                 "the profile resolved no librarian, so no selection could be measured"
             )
             reportGatedResult(

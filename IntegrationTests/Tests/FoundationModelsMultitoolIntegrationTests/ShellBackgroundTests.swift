@@ -5,7 +5,7 @@ import Testing
 /// prove the background path end to end."
 ///
 /// One live turn on the shipped configuration: `MultiTool.Builder().withShell()`
-/// vended through `makeSessionTools(librarian:)` and mounted on a
+/// vended through `makeSessionTools(selection:embedder:sampleSession:)` and mounted on a
 /// `RoutedSession`. The model discovers `tools.shell.execute`, starts a
 /// never-ending command from a `runCode` snippet, and the outer run goes to the
 /// background and hands back a pending envelope. The harness then reads the run

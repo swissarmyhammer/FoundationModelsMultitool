@@ -5,9 +5,9 @@ import FoundationModels
 import ScenarioGrading
 @testable import FoundationModelsMultitool
 // `@testable` for one reason, and only the nested-generation probe needs it:
-// `RoutedModel.generationGate` and `AsyncSemaphore`'s `availablePermits` /
-// `waiterCount` are `internal`, and they are the direct reading of the deadlock
-// `runNestedGenerationProbe` exists to name. Router's package is not edited to
+// `RoutedModel.container` and `GenerationQueue`'s `isRunning` /
+// `waitingCount` are `internal`, and they are the direct reading of the queue
+// state `runNestedGenerationProbe` samples. Router's package is not edited to
 // expose them.
 @testable import FoundationModelsRouter
 
@@ -232,7 +232,7 @@ func runNativeIntegrationScenario(
         reportGatedResult(
             scenario: name,
             line: "elapsed=\(elapsed)s toolCalls=\(turn.toolCallCount) "
-                + "turn=\(turn.turnIdentity ?? "n/a") "
+                + "submissions=\(turn.submissionIdentity ?? "n/a") "
                 + "typed=\(evidence.typedPaths.sorted()) "
                 + "invoked=\(evidence.invokedPaths.sorted()) "
                 + "returned=\(evidence.returnedPaths.sorted()) "
@@ -276,8 +276,8 @@ func runNativeIntegrationScenario(
 /// discoveryPriming:)`, a real `RoutedSession`, which puts every tool through
 /// Router's own mounting path. There a tool's own declared mount takes effect,
 /// so `runCode` goes to the background. The session also gives the snippet the
-/// live background-run globals (`status()`, `wait()`, `cancel()`) to collect a
-/// background run through. What differs is what each one grades.
+/// live background-run globals (`status()`, `cancel()`), and a settled run
+/// comes back to the session as mail. What differs is what each one grades.
 /// `runNativeIntegrationScenario` grades a valid, fixture-grounded answer and
 /// reports route diagnostics; this runner grades a valid answer **and** that a
 /// pending envelope really appeared, which is the one mechanism it exists to
@@ -387,8 +387,20 @@ func runBackgroundIntegrationScenario(
 /// Everything one streamed turn produced that a background scenario grades or
 /// reports.
 struct StreamedTurn {
-    /// The turn's reply text, every `textDelta` in production order.
+    /// The turn's reply text: `SessionAnswer.reply` of the `answered` event
+    /// that ended the turn, or the empty string when no answer ended it.
+    ///
+    /// Taken from `answered` and not joined from the `textDelta` fragments.
+    /// Router states that `SessionAnswer.reply` is character-equal to what
+    /// `respond(to:)` returns for the same message, so the stream path and the
+    /// respond path grade the same text. A submission that gives its reply
+    /// whole sends no fragment at all.
     var answer = ""
+
+    /// The `textDelta` fragments since the last `.textReset`, in production
+    /// order. Kept only for ``supersededAnswers``; the graded text is
+    /// ``answer``.
+    var streamedText = ""
 
     /// How many tool calls the model made during the turn.
     var toolCallCount = 0
@@ -448,14 +460,15 @@ struct StreamedTurn {
     /// diagnostic never states a number nobody measured.
     var tokenUsage: String?
 
-    /// The turn frame this run's events belong to, as `turnId/promptId`.
+    /// The submissions of the answer that ended this turn, as
+    /// `<submission ids>/<cause>` — for example `1,2/message` for a first
+    /// submission and one continuation.
     ///
-    /// Router reports it once per turn (`^way106d`). `direct` in the prompt
-    /// half means the prompt was handed straight to `streamEvents(to:)` rather
-    /// than queued — only a queued prompt carries an id to correlate, so this
-    /// is the field a queued-prompt test reads to prove its prompt is the one
-    /// that ran.
-    var turnIdentity: String?
+    /// Router reports one `submissionStarted` for each SDK call of the chain
+    /// (`generation-queue.md`, section 5.6). The cause is the cause of the
+    /// first submission: `message` for the prompt of this turn, `mail` for an
+    /// answer that no caller asked for. `nil` when no answer ended the turn.
+    var submissionIdentity: String?
 
     /// Every progress report a still-running call made, as `name: detail`.
     ///
@@ -517,7 +530,9 @@ private func traceExcerpt(_ text: String) -> String {
 /// - Throws: whatever the session's event stream throws.
 func streamTurn(of session: RoutedSession, prompt: String) async throws -> StreamedTurn {
     var turn = StreamedTurn()
+    var events: [SessionEvent] = []
     for try await event in await session.streamEvents(to: prompt) {
+        events.append(event)
         switch event {
         case .generationStalled(let stall):
             // Router reports a stall rather than imposing a timeout
@@ -547,25 +562,19 @@ func streamTurn(of session: RoutedSession, prompt: String) async throws -> Strea
             // the same reason as the stall line: the stop is Router's recovery,
             // and it is not a failure of the scenario.
             reportTraceLine("REPEAT \(stop)")
-        case .turnStarted(let start):
-            // The frame this turn's later events belong to (Router ^way106d).
-            // `promptId` is nil here by design: these scenarios hand the prompt
-            // straight to `streamEvents(to:)` rather than queueing it, and only
-            // a queued prompt has an id to correlate. A queued-prompt test is
-            // what reads that field.
-            turn.turnIdentity = "\(start.turnId)/\(start.promptId.map { "\($0)" } ?? "direct")"
         case .textDelta(let fragment):
-            turn.answer += fragment
+            turn.streamedText += fragment
         case .textReset:
             // Everything delivered so far is superseded, not retracted: the
             // model produced a first pass, a tool ran, and generation resumed
             // on a fresh answer. Router surfaces this rather than hiding it
             // (^w8dzvee D2), and a consumer that ignores it accumulates
             // "PRETOOL FINAL-ANSWER" where `respond(to:)` returns
-            // "FINAL-ANSWER". This suite grades the answer, so it keeps the
-            // current one; the superseded text stays in the transcript.
-            turn.supersededAnswers.append(turn.answer)
-            turn.answer = ""
+            // "FINAL-ANSWER". This suite grades the reply of `answered`, so
+            // the fragments are kept only as the superseded first pass; the
+            // superseded text stays in the transcript.
+            turn.supersededAnswers.append(turn.streamedText)
+            turn.streamedText = ""
         case .toolCall(let id, let name, let argumentsJSON):
             turn.toolCallCount += 1
             turn.callIndexByID[id] = turn.calls.count
@@ -617,11 +626,9 @@ func streamTurn(of session: RoutedSession, prompt: String) async throws -> Strea
             // discovery output it is meant to act on, which looks from the
             // outside exactly like a model that will not use its tools.
             turn.compactions.append("\(result)")
-        case .turnEnded(let usage):
-            // Output only, and the input half relabelled — see `tokenUsage`.
-            turn.tokenUsage = usageForDisplay(usage)
         case .toolStatus, .reasoningDelta, .toolInvocation, .toolCallReport, .entryRecorded,
-            .elicitationRequested, .runSettled, .generationCall:
+            .elicitationRequested, .runSettled, .generationCall, .submissionQueued, .submissionStarted,
+            .submissionEnded, .answered, .answerFailed, .mailDeliveryPaused:
             // `.toolStatus` here is the residue of the three status cases
             // handled above. `.toolInvocation` carries the open/close record
             // of each call, and `.entryRecorded` announces a transcript entry;
@@ -634,11 +641,43 @@ func streamTurn(of session: RoutedSession, prompt: String) async throws -> Strea
             // tool of these scenarios raises one. `.runSettled` announces a
             // background run's terminal event, which the journal readings below
             // already grade. `.generationCall` reports the usage of one
-            // generation call; `.turnEnded` above already gives the turn's sum.
+            // generation call; the `answered` event gives the sum of the
+            // chain. `.submissionQueued` and `.mailDeliveryPaused` report a
+            // wait of the model queue and a hold of mail, and no scenario here
+            // grades either. The submission and answer events are read after
+            // the loop, as one fold — see `settle(from:)`.
             break
         }
     }
+    turn.settle(from: SubmissionLog.fold(events))
     return turn
+}
+
+extension StreamedTurn {
+    /// Takes the graded reply, the submission identity and the token usage
+    /// from the last answer chain that ended in the turn.
+    ///
+    /// **The end of the reply is `answered`, not `submissionEnded`.** The
+    /// event the old Router sent at the end of a turn meant "the reply of this
+    /// turn ended", so the three
+    /// fields read the `answered` event of the chain: its reply, and its usage,
+    /// which is the sum over each `submissionEnded` of the chain. One
+    /// `submissionEnded` is the end of one SDK call only, and a chain that
+    /// continues after a compaction or a stop sends more than one. The
+    /// identity names each submission of the chain, from its
+    /// `submissionStarted` events.
+    ///
+    /// - Parameter records: every answer chain that ended in the turn, in
+    ///   the order the chains ended.
+    mutating func settle(from records: [AnswerRecord]) {
+        guard let last = records.last else { return }
+        answer = last.reply ?? ""
+        let ids = last.submissionIds.map(\.description).joined(separator: ",")
+        submissionIdentity = "\(ids)/\(last.cause?.rawValue ?? "none")"
+        guard case .answered(let final) = last.outcome, let usage = final.usage else { return }
+        // Output only, and the input half relabelled — see `tokenUsage`.
+        tokenUsage = usageForDisplay(usage)
+    }
 }
 
 // MARK: - Shared scenario plumbing
@@ -694,9 +733,10 @@ struct ScenarioSurface {
 }
 
 /// Builds the model-facing tool surface every scenario drives, by asking the
-/// registry for it — `MultiTool.Registry.makeSessionTools(librarian:)`, the
-/// same call `CLIRunner.runDemo` makes, backed by the resolved `.flash` slot
-/// (the "librarian on flash" split the CLI ships).
+/// registry for it — `MultiTool.Registry.makeSessionTools(selection:embedder:sampleSession:)`,
+/// with the seams of `LiveRouterFixture.discoverySeams`: the same call
+/// `CLIRunner.runDemo` makes, with the selection tier on the resolved `.flash`
+/// slot (the "librarian on flash" split the CLI ships).
 ///
 /// Vended rather than assembled here on purpose. Under the suite's intent
 /// statement the harness must mount `MultiTool` exactly the way a host does,
@@ -704,8 +744,8 @@ struct ScenarioSurface {
 /// would let the suite measure an order the product does not recommend.
 ///
 /// **No sample-snippet generator, because the product ships without one.**
-/// `makeSessionTools`'s `sampleGenerator:` defaults to `nil` and
-/// `CLIRunner.runDemo` passes only `librarian:` (`CLIRunner.swift:390`), so an
+/// `makeSessionTools`'s `sampleSession:` defaults to `nil`, and the
+/// `RouterDiscoverySeams` that `CLIRunner.runDemo` makes carries none, so an
 /// arm that wires one measures a configuration no host runs.
 ///
 /// It was wired here, and removing it was not a preference. Each generated
@@ -729,14 +769,15 @@ struct ScenarioSurface {
 ///     selection tier.
 ///   - direct: when `true`, apply `registry.directMode()` before the mount,
 ///     exactly as `CLIRunner.runDemo` does under its `--direct` flag. A
-///     direct-mode registry vends `runCode` and `wait` and no `searchTools`,
-///     so the scenario pays for no discovery. The `librarian:` argument stays
-///     the same in both modes, because the CLI passes it in both modes and
-///     this harness must mount what the CLI mounts.
+///     direct-mode registry vends `runCode` and no `searchTools`, so the
+///     scenario pays for no discovery. The discovery seams stay the same in
+///     both modes, because the CLI passes them in both modes and this harness
+///     must mount what the CLI mounts.
 /// - Returns: the tools to register with the session, and the catalog paths
 ///   behind them.
 /// - Throws: whatever `MultiTool.Builder.buildRegistry()` or
-///   `MultiTool.Registry.makeSessionTools(librarian:)` throws.
+///   `MultiTool.Registry.makeSessionTools(selection:embedder:sampleSession:)`
+///   throws.
 func makeScenarioSurface(
     over tools: [any Tool],
     on fixture: LiveRouterFixture,
@@ -746,11 +787,13 @@ func makeScenarioSurface(
     if direct {
         registry = registry.directMode()
     }
+    let seams = fixture.discoverySeams
     return ScenarioSurface(
-        // `librarian:` alone, exactly as `CLIRunner.runDemo` mounts it
-        // (`CLIRunner.swift:390`). No `sampleGenerator:` — it defaults to `nil`,
-        // so the product ships without one and this harness must too.
-        tools: try registry.makeSessionTools(librarian: fixture.profile.flash),
+        // The selection and embedder seams, exactly as `CLIRunner.runDemo`
+        // mounts them. No `sampleSession:` — the seams carry none, so the
+        // product ships without one and this harness must too.
+        tools: try registry.makeSessionTools(
+            selection: seams.selection, embedder: seams.embedder, sampleSession: seams.sampleSession),
         // Unioned with the sibling paths the sandbox binds itself, so a
         // snippet calling `tools.searchTools` or `tools.runCode` is not
         // graded as having invented a path it can really call (task
@@ -905,18 +948,22 @@ func runRespondDrainScenario(
             tools: try makeScenarioSurface(over: makeTools(respondLog), on: fixture).tools,
             discoveryPriming: scenarioDiscoveryPriming
         )
+        // Subscribed before the call, for the reason the canary runner below
+        // gives: a subscription opened later could miss the `answered` event.
+        let respondEvents = await respondSession.streamSessionEvents()
+        async let firstAnswerEvents = eventsThroughFirstAnswer(in: respondEvents)
         let start = Date()
-        let respondAnswer = try await respondSession.respond(to: prompt)
+        _ = try await respondSession.respond(to: prompt)
         let respondElapsed = Date().timeIntervalSince(start)
+        // The respond path takes its text from `answered.reply`, as the stream
+        // path does, so both surfaces grade the same field.
+        let respondAnswer = SubmissionLog.fold(await firstAnswerEvents).first?.reply ?? ""
 
         // Read immediately after the call returns: that is the instant the
         // rule is about. A run settling a moment later is precisely the
         // failure — the answer would already have been written without it.
         let backgroundRunsAfterRespond = await respondLog.backgroundRuns()
         let respondGrounding = await respondLog.returnedPaths
-        let waitCalls = NativeTranscript.toolCallCount(
-            in: await respondSession.transcript, named: WaitTool().name
-        )
 
         // The streaming surface second, drained to completion, on a session of
         // its own so neither run can read back the other's transcript.
@@ -934,7 +981,7 @@ func runRespondDrainScenario(
         reportTraceLine(
             """
             RESPOND-DRAIN \(name) elapsed=\(String(format: "%.1f", respondElapsed))s \
-            backgroundRuns=\(backgroundRunsAfterRespond.count) waitCalls=\(waitCalls) \
+            backgroundRuns=\(backgroundRunsAfterRespond.count) \
             groundedIn=\(respondGrounding.sorted()) accepted=\(respondAccepted.sorted())
             RESPOND-DRAIN \(name) stream groundedIn=\(streamGrounding.sorted()) \
             accepted=\(streamAccepted.sorted())
@@ -964,19 +1011,38 @@ func runRespondDrainScenario(
         // substance — and this comment has said "substance" the whole time.
         #expect(!streamAccepted.isEmpty)
         // 3. Nothing survives the call.
+        //
+        // This condition measures the old `respond(to:)` drain, which the
+        // work-queue Router removed: a settled run now comes back as mail.
+        // Task ^r77er9z owns this scenario and replaces the condition with
+        // the mail contract. It stays here unchanged until then.
         #expect(backgroundRunsAfterRespond.isEmpty)
-        // 4. `wait` calls are REPORTED, not asserted on — see the type doc's
-        // "what this scenario does not isolate". `^n6kgckr` asked for
-        // `waitCalls == 0` on the reasoning that a model needing `wait` proves
-        // the drain idle. Measured, it is 2, and the product is why: every
-        // `runCode` backgrounds, and the pending envelope it returns *tells*
-        // the model to call `wait` ("Call the wait tool with completionToken
-        // ...", `MultiTool.collectInstruction(forCompletionToken:)`).
-        // The model obeying its own tool is not a drain failure, and an
-        // assertion that fires on it would be demanding the model ignore the
-        // instruction the product gives it.
-        reportTraceLine("RESPOND-DRAIN \(name) waitCalls=\(waitCalls) (reported, not asserted)")
+        // 4. The `wait` calls are no longer counted. The `wait` tool is
+        // removed, and a settled run comes back to the session as mail.
     }
+}
+
+/// Collects the events of a session up to and including the end of its
+/// first answer chain.
+///
+/// "The end of the reply" is `answered` — or `answerFailed` in its place —
+/// and never one `submissionEnded`, which ends one SDK call only. See
+/// `SubmissionLog.endsAnswer(_:)`.
+///
+/// Subscribe before the call that makes the answer: a subscription opened
+/// later can register after the answer ended, and this then waits for the
+/// next answer.
+///
+/// - Parameter events: the session's own event feed.
+/// - Returns: the events through the first `answered` or `answerFailed`, or
+///   every event the feed gave when it finished first.
+func eventsThroughFirstAnswer(in events: AsyncStream<SessionEvent>) async -> [SessionEvent] {
+    var collected: [SessionEvent] = []
+    for await event in events {
+        collected.append(event)
+        if SubmissionLog.endsAnswer(event) { break }
+    }
+    return collected
 }
 
 /// Which of `candidates` a reply contains, case-insensitively.
@@ -1010,7 +1076,7 @@ private let inBandCollectionReplyPreviewCharacters = 120
 /// grades a nonce's round trip through a genuinely deferred settlement. The
 /// teaching shape keeps the discovery surface and the "do not block" prompt,
 /// and grades the instruction the handle carries against that prompt. Both
-/// grade the same five conditions, through `inBandCollectionChecks`.
+/// grade the same conditions, through `mailCollectionChecks`.
 ///
 /// **This scenario is the inversion of the one it started as, and it is a
 /// canary.** It was written to end a turn with a run still in flight, so that
@@ -1120,68 +1186,83 @@ func runInBandCollectionCanaryScenario(
         // gone — leaving `noBackgroundRunsAtAnswer` graded on an empty snapshot
         // nobody took.
         let sessionEvents = await session.streamSessionEvents()
-        async let firstTurnRuns = backgroundRuns(atFirstTurnEndIn: sessionEvents, reading: log)
+        async let firstTurn = backgroundRuns(atFirstTurnEndIn: sessionEvents, reading: log)
 
         let start = Date()
-        let answer = try await session.respond(to: prompt)
+        _ = try await session.respond(to: prompt)
         let elapsed = Date().timeIntervalSince(start)
+        let firstAnswer = await firstTurn
+        let answers = SubmissionLog.fold(firstAnswer.events)
+        // Read the instant the call returns: that is what "nothing survives
+        // `respond`" is a statement about.
+        let backgroundRunsAfterRespond = await log.backgroundRuns().map(\.tool)
 
-        let evidence = InBandCollectionEvidence(
-            answer: answer,
-            backgroundRunsAtAnswer: await firstTurnRuns.map(\.tool),
-            // Read the instant the call returns: that is what "nothing survives
-            // `respond`" is a statement about.
-            backgroundRunsAfterRespond: await log.backgroundRuns().map(\.tool),
+        // Task ^r77er9z owns this canary. The `wait` tool and the old
+        // in-band evidence are removed, so the run is graded on the one
+        // canary contract that `ScenarioGrading` states: the mail contract.
+        // This runner does not wait for a mail answer after the first answer
+        // ends, so `mailCollection` counts only the mail answers that ended
+        // before it. Task ^r77er9z adds that wait, or deletes this scenario.
+        let evidence = MailCollectionEvidence(
+            // The respond path takes its text from `answered.reply`.
+            answer: answers.first?.reply ?? "",
             returnedPaths: await log.returnedPaths,
-            waitCalls: NativeTranscript.toolCallCount(
-                in: await session.transcript, named: WaitTool().name
-            )
+            mailAnswers: answers.filter { $0.cause == .mail }.count,
+            backgroundRunsAtLastAnswer: firstAnswer.backgroundRuns.map(\.tool)
         )
         grade(
             scenario: name,
-            checks: inBandCollectionChecks(
+            checks: mailCollectionChecks(
                 for: evidence, answerContainsOneOf: answerContainsOneOf, groundedIn: groundedIn
             )
         )
 
         reportTraceLine(
             "IN-BAND-CANARY [\(name)] elapsed=\(String(format: "%.1f", elapsed))s "
-                + "backgroundRunsAtAnswer=\(evidence.backgroundRunsAtAnswer) "
-                + "backgroundRunsAfterRespond=\(evidence.backgroundRunsAfterRespond) "
-                + "waitCalls=\(evidence.waitCalls) "
+                + "backgroundRunsAtAnswer=\(evidence.backgroundRunsAtLastAnswer) "
+                + "backgroundRunsAfterRespond=\(backgroundRunsAfterRespond) "
+                + "mailAnswers=\(evidence.mailAnswers) "
                 + "returned=\(evidence.returnedPaths.sorted()) "
                 + "groundedIn=\(groundedIn.sorted()) "
-                + "reply=\"\(answer.prefix(inBandCollectionReplyPreviewCharacters))\""
+                + "reply=\"\(evidence.answer.prefix(inBandCollectionReplyPreviewCharacters))\""
         )
     }
 }
 
+/// What the canary read at the end of the model's first answer.
+private struct FirstAnswerReading {
+    /// The session events through the end of the first answer chain.
+    let events: [SessionEvent]
+
+    /// The background runs still going at that instant.
+    let backgroundRuns: [BackgroundRun]
+}
+
 /// Snapshots the session's background runs at the end of the model's first
-/// turn.
+/// answer.
 ///
-/// The first turn, not the last: `respond(to:)` runs a continuation turn for
-/// every round its drain takes, and the canary's question is about the turn
-/// that carried the model's own answer. Reading a later one would grade a
-/// snapshot the drain had already emptied.
+/// "The end of the answer" is the `answered` event of the chain (or
+/// `answerFailed` in its place), and not one `submissionEnded`: a chain that
+/// continues ends more than one submission before its reply ends. The first
+/// answer, not the last, because the canary's question is about the answer
+/// that carried the model's own reply.
 ///
 /// Nothing here releases anything, so nothing the runner itself did can have
-/// ended a run it reads.
+/// ended a run it reads. Task ^r77er9z owns this function and removes it with
+/// the old drain rule.
 ///
 /// - Parameters:
 ///   - events: the session's own event feed, subscribed before the turn started.
 ///   - log: the run's call log, which holds the handle onto the session's
 ///     background runs.
-/// - Returns: the runs still going at that instant, or an empty array when no
-///   turn ended on this feed.
+/// - Returns: the events through the first answer, and the runs still going at
+///   that instant.
 private func backgroundRuns(
     atFirstTurnEndIn events: AsyncStream<SessionEvent>,
     reading log: ScenarioCallLog
-) async -> [BackgroundRun] {
-    for await event in events {
-        guard case .turnEnded = event else { continue }
-        return await log.backgroundRuns()
-    }
-    return []
+) async -> FirstAnswerReading {
+    let answerEvents = await eventsThroughFirstAnswer(in: events)
+    return FirstAnswerReading(events: answerEvents, backgroundRuns: await log.backgroundRuns())
 }
 
 /// Renders a turn's usage for a gated diagnostic line, without stating a
@@ -1202,12 +1283,13 @@ private func usageForDisplay(_ usage: TokenUsage) -> String {
 
 // MARK: - The nested-generation probe
 
-/// How often the shared generation gate is sampled while the probe's turn runs.
+/// How often the shared generation queue is sampled while the probe's turn
+/// runs.
 ///
 /// Frequent enough that even a run killed at the suite's three-minute limit
 /// leaves dozens of readings, and cheap enough to be free: one sample is two
-/// lock-guarded integer reads.
-private let generationGateSampleInterval: Duration = .seconds(5)
+/// reads of the queue worker's state.
+private let generationQueueSampleInterval: Duration = .seconds(5)
 
 /// How many leading characters of the model's reply the `NESTED-GENERATION`
 /// diagnostic line prints.
@@ -1219,27 +1301,33 @@ private let generationGateSampleInterval: Duration = .seconds(5)
 /// call that came back is worth reading whole.
 private let nestedGenerationReplyPreviewCharacters = 200
 
-/// Prints the shared generation gate's own state, once every
-/// ``generationGateSampleInterval``, until this task is cancelled.
+/// Prints the state of the shared generation queue of the model, once every
+/// ``generationQueueSampleInterval``, until this task is cancelled.
 ///
-/// This is Router's own check for the deadlock the probe is built to name. At
-/// the hang the gate must read zero permits and exactly one waiter: the outer
-/// turn holding the permit `beginTurn()` took, and the nested `respond` parked
-/// on `generationGate.wait()`. Nothing else produces that pair.
+/// The work-queue Router replaced the old per-container `generationGate`
+/// with one FIFO `GenerationQueue` for each model. This reads the same two
+/// things the gate reading gave: whether the worker runs a submission, and
+/// how many submissions wait for it. A nested `respond` on the same model now
+/// gets `GenerationQueueError.waitInsideOpenSubmission` at once, so a hang
+/// reads `running=true waiting=1` for the life of the run. Task ^r77er9z
+/// owns the probe, and rewrites it to assert that refusal.
 ///
 /// Sampled while the turn is in flight rather than read afterwards, because a
-/// deadlocked run has no afterwards. `AsyncSemaphore.wait()` is a bare
-/// `withCheckedContinuation` with no cancellation handler, so a parked caller
-/// cannot be unwound and no later line of this suite's own code ever runs. The
-/// last printed reading is what a killed run leaves behind, which is why this
-/// prints rather than asserts.
+/// hung run has no afterwards. The last printed reading is what a killed run
+/// leaves behind, which is why this prints rather than asserts.
 ///
-/// - Parameter slot: the resolved slot whose resident container owns the gate.
-private func sampleGenerationGate(on slot: RoutedLLM) async {
+/// - Parameter slot: the resolved slot whose resident container owns the
+///   queue.
+private func sampleGenerationQueue(on slot: RoutedLLM) async {
+    // A session backend made only to reach the queue of the container. It
+    // generates nothing, and every session of the model shares its queue.
+    guard let queue = slot.container.makeSession(instructions: nil).generationQueue else {
+        reportTraceLine("QUEUE none: the backend of this model names no generation queue")
+        return
+    }
     while !Task.isCancelled {
-        let gate = slot.generationGate
-        reportTraceLine("GATE permits=\(gate.availablePermits) waiters=\(gate.waiterCount)")
-        try? await Task.sleep(for: generationGateSampleInterval)
+        reportTraceLine("QUEUE running=\(await queue.isRunning) waiting=\(await queue.waitingCount)")
+        try? await Task.sleep(for: generationQueueSampleInterval)
     }
 }
 
@@ -1267,7 +1355,7 @@ private func sampleGenerationGate(on slot: RoutedLLM) async {
 ///
 /// **`searchTools` is deliberately absent.** The tool list is
 /// `[IntegrationNestedGenerationTool]` and not what
-/// `MultiTool.Registry.makeSessionTools(librarian:)` vends, so no discovery
+/// `MultiTool.Registry.makeSessionTools(selection:embedder:sampleSession:)` vends, so no discovery
 /// call, no selection tier and no `MetadataSearcher` is in the picture — every
 /// one of them generates under a grammar, and any of them present would put the
 /// grammar back into the run this exists to hold it out of.
@@ -1333,7 +1421,7 @@ func runNestedGenerationProbe(name: String, prompt: String) async throws {
 
         let start = Date()
         let turn = try await withThrowingTaskGroup(of: Void.self, returning: StreamedTurn.self) { group in
-            group.addTask { await sampleGenerationGate(on: slot) }
+            group.addTask { await sampleGenerationQueue(on: slot) }
             // Cancelled on every exit path, so the sampler cannot outlive the
             // turn it is sampling — including the path where the turn throws.
             defer { group.cancelAll() }

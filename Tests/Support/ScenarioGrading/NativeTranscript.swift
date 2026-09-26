@@ -47,17 +47,6 @@ public enum NativeTranscript {
         }
     }
 
-    /// The number of tool calls to the tool named `name` — or, when `name` is `nil`, every tool call.
-    ///
-    /// - Parameters:
-    ///   - transcript: the transcript to scan.
-    ///   - name: the tool name to count calls for, or `nil` to count every
-    ///     call regardless of name. Defaults to `nil`.
-    /// - Returns: the matching call count.
-    public static func toolCallCount(in transcript: Transcript, named name: String? = nil) -> Int {
-        toolCalls(in: transcript).count { name == nil || $0.toolName == name }
-    }
-
     /// Verifies that a `searchTools` call occurs before the first `runCode` call — the "search-then-code" trace assertion.
     ///
     /// - Parameter transcript: the transcript to scan.

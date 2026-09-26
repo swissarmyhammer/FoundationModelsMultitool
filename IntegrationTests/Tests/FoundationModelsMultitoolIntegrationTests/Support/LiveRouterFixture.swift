@@ -527,6 +527,18 @@ struct LiveRouterFixture {
     /// temporary directory no CI step uploads.
     private let recordingsDir: URL
 
+    /// The discovery seams over ``profile``: the librarian on `profile.flash`
+    /// and the embedder on `profile.embedding`, with no sample generator.
+    ///
+    /// `CLIRunner.runDemo` makes the same value, and each scenario mounts
+    /// discovery through it. Thus the suite measures the discovery wiring that
+    /// a host gets. Discovery takes seams and not Router handles (task
+    /// `^kzaefgz`), and `RouterDiscoverySeams` is the one adapter between the
+    /// two.
+    var discoverySeams: RouterDiscoverySeams {
+        RouterDiscoverySeams(librarian: profile.flash, embedder: profile.embedding)
+    }
+
     /// Resolves a profile over a real, live `LiveModelLoader` — the
     /// `#hubDownloader()`/`#huggingFaceTokenizerLoader()` macros build a
     /// real Hugging Face Hub client + tokenizer loader, mirroring Router's
