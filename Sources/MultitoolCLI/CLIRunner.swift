@@ -25,10 +25,11 @@ import Tokenizers
 /// Prefix for all user-facing CLI error messages.
 ///
 /// This prefix is reused by `CLIArgumentError.description`,
-/// `CLIRouterUnavailableError.description`, and `CLIRunner.run(...)`'s
-/// catch-all branch, so error output is consistently attributable to
-/// `multitool-cli`.
-private let cliErrorPrefix = "multitool-cli:"
+/// `CLIRouterUnavailableError.description`, `CLIAnswerError.description`
+/// (in `CLIAnswerDrain.swift`, so the prefix is not `private`), and
+/// `CLIRunner.run(...)`'s catch-all branch, so error output is consistently
+/// attributable to `multitool-cli`.
+let cliErrorPrefix = "multitool-cli:"
 
 // MARK: - Argument parsing
 
@@ -245,9 +246,10 @@ struct CLIRouterUnavailableError: Error, CustomStringConvertible {
 /// end to end: resolving a model profile via `Router`, mounting whatever that
 /// call vends — `searchTools` and `runCode`, or `runCode` alone under
 /// `--direct` — on a `RoutedSession` the resolved `.standard` slot
-/// vends, and driving one turn by draining `streamEvents(to:)`. The session's
+/// vends, and driving one answer by draining `streamEvents(to:)`, then each
+/// answer that mail starts by draining `streamSessionEvents()`. The session's
 /// own tool-calling loop decides when to call `searchTools` vs `runCode` —
-/// this file drives no turn-parsing loop of its own, unlike the retired
+/// this file drives no answer-parsing loop of its own, unlike the retired
 /// `MultiToolAgent`-based demo this replaces.
 /// Factored out of `main.swift` as a plain, testable entry point:
 ///
@@ -255,7 +257,7 @@ struct CLIRouterUnavailableError: Error, CustomStringConvertible {
 ///   unit-tested here with **no model at all**
 ///   (`Tests/FoundationModelsMultitoolTests/CLIArgumentTests.swift`).
 /// - The full live run — resolving a real profile, mounting the vended tools
-///   on the `RoutedSession` that profile vends, draining the turn, and
+///   on the `RoutedSession` that profile vends, draining the answers, and
 ///   printing the model's answer — is exercised end to end by
 ///   `CLISmokeTests`
 ///   (`IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/CLISmokeTests.swift`),
@@ -281,6 +283,21 @@ public enum CLIRunner {
         ///
         /// The same value as `sysexits.h`'s `EX_UNAVAILABLE` (69).
         public static let unavailable: Int32 = 69
+        /// Exit code when the model gave no answer: the session sent
+        /// `SessionEvent.answerFailed`, or the event stream ended before the
+        /// end of the answer.
+        ///
+        /// The same value as `sysexits.h`'s `EX_SOFTWARE` (70).
+        public static let answerFailed: Int32 = 70
+    }
+
+    /// The default `errorOutput` of `run(arguments:resolve:output:errorOutput:)`:
+    /// writes one line to standard error.
+    ///
+    /// `public` because it is the default value of a parameter of a `public`
+    /// function, as `defaultResolve` is.
+    public static let standardErrorOutput: @Sendable (String) -> Void = { line in
+        FileHandle.standardError.write(Data("\(line)\n".utf8))
     }
 
     /// The `--direct` flag, for running in direct mode (`runCode` registered with the session, no `searchToolsTool`).
@@ -596,8 +613,10 @@ public enum CLIRunner {
     /// failed — resolves `demoProfile`, mounts the tools the registry vends
     /// (`searchTools` and `runCode` — or `runCode` alone under
     /// `--direct`) on a `RoutedSession` the resolved profile vends, drives one
-    /// turn against `demoPrompt` by draining `streamEvents(to:)`, and writes
-    /// the answer to `output`.
+    /// answer against `demoPrompt` by draining `streamEvents(to:)`, and writes
+    /// the answer to `output`. Then it drains `streamSessionEvents()` and
+    /// writes each answer that the mail of a settled background run starts,
+    /// until the session is idle.
     ///
     /// - Parameters:
     ///   - arguments: the raw arguments (excluding the executable name).
@@ -607,15 +626,18 @@ public enum CLIRunner {
     ///   - output: where every line of output (usage, errors, progress, the
     ///     final answer) is written. Defaults to `print(_:)`; a test
     ///     injects a collector to assert on the emitted lines.
+    ///   - errorOutput: where the error line of an answer that failed is
+    ///     written. Defaults to `standardErrorOutput`.
     /// - Returns: the process exit code — `ExitCode.success` on success or
     ///   `--help`, `ExitCode.usageError` for an argument error or for a `--mcp`
-    ///   server that does not start, or `ExitCode.unavailable` if the Router
-    ///   path couldn't be resolved (or the demo otherwise failed after
-    ///   resolution).
+    ///   server that does not start, `ExitCode.answerFailed` when the model
+    ///   gave no answer, or `ExitCode.unavailable` if the Router path couldn't
+    ///   be resolved (or the demo otherwise failed after resolution).
     public static func run(
         arguments: [String],
         resolve: @escaping ProfileResolver = defaultResolve,
-        output: @escaping @Sendable (String) -> Void = { print($0) }
+        output: @escaping @Sendable (String) -> Void = { print($0) },
+        errorOutput: @escaping @Sendable (String) -> Void = standardErrorOutput
     ) async -> Int32 {
         let parsed: CLIArguments
         do {
@@ -636,16 +658,41 @@ public enum CLIRunner {
                 direct: parsed.direct, web: parsed.web, mcpServers: parsed.mcpServers,
                 resolve: resolve, output: output)
             return ExitCode.success
-        } catch let error as CLIMCPStartError {
+        } catch {
+            return exitCode(for: error, output: output, errorOutput: errorOutput)
+        }
+    }
+
+    /// Reports the error that stopped the demo, and gives its exit code.
+    ///
+    /// - Parameters:
+    ///   - error: the error that `runDemo` threw.
+    ///   - output: where the line of every error but an answer failure is
+    ///     written.
+    ///   - errorOutput: where the line of an answer failure is written.
+    /// - Returns: `ExitCode.usageError` for a `--mcp` server that does not
+    ///   start, `ExitCode.answerFailed` for a `CLIAnswerError`, and
+    ///   `ExitCode.unavailable` for every other error.
+    static func exitCode(
+        for error: Error,
+        output: @Sendable (String) -> Void,
+        errorOutput: @Sendable (String) -> Void
+    ) -> Int32 {
+        switch error {
+        case let error as CLIMCPStartError:
             // A `--mcp` value that names no runnable server is a bad argument,
             // not an unavailable Router, so it takes the usage exit code and
             // one line rather than the two-line Router message.
             output(error.description)
             return ExitCode.usageError
-        } catch let error as CLIRouterUnavailableError {
+        case let error as CLIRouterUnavailableError:
             output(error.description)
             return ExitCode.unavailable
-        } catch {
+        case let error as CLIAnswerError:
+            // The model gave no answer, so no "Answer:" line was written.
+            errorOutput(error.description)
+            return ExitCode.answerFailed
+        default:
             output("\(cliErrorPrefix) \(error)")
             return ExitCode.unavailable
         }
@@ -801,7 +848,7 @@ public enum CLIRunner {
     // MARK: - The demo run
 
     /// Starts the MCP servers, renders the registry, lists the surface, drives
-    /// the turn, and shuts the pool down.
+    /// the answers, and shuts the pool down.
     ///
     /// Factored out of `run(...)` as its whole body, so `run(...)` only has to
     /// decide which exit code an error maps to.
@@ -819,9 +866,10 @@ public enum CLIRunner {
     ///   - resolve: the profile-resolution step.
     ///   - output: where progress/answer lines are written.
     /// - Throws: ``CLIMCPStartError`` when a server does not start,
-    ///   `CLIRouterUnavailableError` if `resolve` throws; otherwise whatever
-    ///   building the tools, `searchToolsTool`'s own initializer, or the turn's
-    ///   own event stream throws.
+    ///   `CLIRouterUnavailableError` if `resolve` throws, `CLIAnswerError`
+    ///   when the model gave no answer; otherwise whatever building the tools,
+    ///   `searchToolsTool`'s own initializer, or the event stream of the
+    ///   answer throws.
     private static func runDemo(
         direct: Bool,
         web: Bool,
@@ -832,12 +880,13 @@ public enum CLIRunner {
         let demo = try await Self.makeDemoRegistry(direct: direct, web: web, mcpServers: mcpServers)
         Self.reportSurface(demo.registry.surface, output: output)
         do {
-            try await Self.runTurn(demo, resolve: resolve, output: output)
+            try await Self.runAnswers(demo, resolve: resolve, output: output)
         } catch {
-            // The shutdown that follows the turn, on the failure path as on the
-            // success one: the pool stops the refresher, disconnects each
-            // server, and ends each subprocess. A demo that drives one turn has
-            // no parked run to sweep first.
+            // The shutdown that follows the answers, on the failure path as on
+            // the success one: the pool stops the refresher, disconnects each
+            // server, and ends each subprocess. The mail drain waits until no
+            // background run is open, or cancels the session, so no parked run
+            // is left to sweep first.
             await demo.pool.shutdownAll()
             throw error
         }
@@ -845,16 +894,18 @@ public enum CLIRunner {
     }
 
     /// Resolves a profile, mounts the tools `demo` vends on a `RoutedSession`,
-    /// watches the catalog of each MCP server, and prints the model's answer.
+    /// watches the catalog of each MCP server, and prints the model's answer
+    /// and each answer that mail starts after it.
     ///
     /// - Parameters:
     ///   - demo: the registry of this run, its servers, and its pool.
     ///   - resolve: the profile-resolution step.
     ///   - output: where progress/answer lines are written.
-    /// - Throws: `CLIRouterUnavailableError` if `resolve` throws; otherwise
-    ///   whatever building the tools, `searchToolsTool`'s own initializer, or
-    ///   the turn's own event stream throws.
-    private static func runTurn(
+    /// - Throws: `CLIRouterUnavailableError` if `resolve` throws,
+    ///   `CLIAnswerError` when the model gave no answer; otherwise whatever
+    ///   building the tools, `searchToolsTool`'s own initializer, or the event
+    ///   stream of the answer throws.
+    private static func runAnswers(
         _ demo: DemoRegistry,
         resolve: ProfileResolver,
         output: @escaping @Sendable (String) -> Void
@@ -932,22 +983,16 @@ public enum CLIRunner {
             // declaration, so the snippet blocks, no envelope is ever written,
             // and no mail comes.
             //
-            // **Every run of this demo takes the background path.**
-            // `DemoTripTool` and `DemoWeatherTool` answer in microseconds, and
-            // that changes nothing. There is no clock to beat and no race to
-            // win: a snippet that finishes at once gets a completion token
-            // exactly as a slow one does. The fixtures keep the demo quick;
-            // they do not keep it synchronous.
-            //
-            // Which lines then print is the model's own doing rather than this
-            // file's. The pending envelope carries
-            // `MultiTool.collectInstruction(forCompletionToken:)`, which tells
-            // the model to end its answer, so a model that follows it ends this
-            // answer and the run prints a settled-run line. The result then
-            // comes back to the session as mail, and the answer that mail
-            // starts streams on `streamSessionEvents()`, which this demo does
-            // not print (task `^18s996p`). A model that does not follow the
-            // sentence is a model result and not a wiring defect.
+            // A snippet that settles inside `MultiToolConfiguration.inlineSettleGrace`
+            // puts its result in the same envelope, and no mail comes. A
+            // snippet that runs longer answers with a pending envelope. That
+            // envelope carries `MultiTool.collectInstruction(forCompletionToken:)`,
+            // which tells the model to end its answer, so a model that
+            // follows it ends this answer and the run prints a settled-run
+            // line. The result then comes back to the session as mail, and
+            // the answer that mail starts streams on `streamSessionEvents()`.
+            // `drainMailAnswers` below prints it. A model that does not
+            // follow the sentence is a model result and not a wiring defect.
             //
             // The background scenario in
             // `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests`
@@ -961,6 +1006,11 @@ public enum CLIRunner {
             // `Registry.makeSessionTools(librarian:)`).
             let session = profile.standard.makeSession(tools: mounted.tools)
 
+            // Subscribed before the prompt is sent, so the session stream
+            // also carries the first answer, and no event of a mail answer
+            // can come before the subscription.
+            let sessionEvents = await session.streamSessionEvents()
+
             // Drained, never `respond(to:)`. `streamEvents(to:)` is the surface
             // the host contract names, the surface every integration scenario
             // drives, and the only one on which a tool still working can report
@@ -972,141 +1022,20 @@ public enum CLIRunner {
             // reports the end of the run to *this* code, and Router delivers
             // the terminal event to the session as mail, which starts the next
             // answer (Router `generation-queue.md` §5.5 rule 1).
-            let answer = try await Self.drainTurn(
+            let answer = try await Self.presentAnswer(
                 await session.streamEvents(to: demoPrompt),
                 output: output
             )
 
-            output("")
-            output("Answer: \(answer)")
+            // The CLI must not exit while a background run of the answer is
+            // still going: its mail starts one more answer, and that answer
+            // is the result the demo asked for.
+            try await Self.drainMailAnswers(
+                sessionEvents, after: answer, wait: .demo,
+                cancel: { _ = await session.cancel() }, output: output)
         } catch {
             throw error
         }
-    }
-
-    // MARK: - Driving the turn
-
-    /// What a reported line says in place of a detail the event did not carry.
-    ///
-    /// Router leaves `SessionEvent.toolStatus`' `summary` `nil` for a status it
-    /// has no text for, and a line that ended at its own colon would read as
-    /// truncated output rather than as a tool that said nothing.
-    private static let missingDetail = "no detail"
-
-    /// Drains one turn's event stream, reporting each tool call while the turn
-    /// runs, and returns the turn's answer.
-    ///
-    /// This is the host half of the contract
-    /// `MultiTool.Registry.makeSessionTools(librarian:)` states: a session that
-    /// carries the mounted tools is driven by draining `streamEvents(to:)`.
-    /// Every line written here is one a `respond(to:)` caller never sees. Each
-    /// `runCode` call goes to the background, and it reports itself while it is
-    /// still working, where `respond(to:)` is a single await that returns only
-    /// once the answer is whole.
-    ///
-    /// Not `private`:
-    /// `Tests/FoundationModelsMultitoolTests/CLITurnDrainTests.swift` drives it
-    /// over a scripted stream, so the drain is covered with no model, no Router
-    /// and no network.
-    ///
-    /// - Parameters:
-    ///   - events: the turn's event stream — `RoutedSession.streamEvents(to:)`
-    ///     in production.
-    ///   - output: where each reported line is written.
-    /// - Returns: the turn's answer — every text fragment produced after the
-    ///   last `.textReset`, which is the string `respond(to:)` returns for the
-    ///   same turn.
-    /// - Throws: whatever the stream throws.
-    static func drainTurn(
-        _ events: AsyncThrowingStream<SessionEvent, Error>,
-        output: @escaping @Sendable (String) -> Void
-    ) async throws -> String {
-        var answer = ""
-        // A call's tool name arrives once, on its own `.toolCall`. Every later
-        // event about that call carries the call's id alone, so the name is
-        // kept here to report the call's progress under it.
-        var toolNamesByCallID: [String: String] = [:]
-        for try await event in events {
-            switch event {
-            case .textDelta(let fragment):
-                answer += fragment
-            case .textReset:
-                // The model abandoned the answer it was writing and began
-                // another, which is what a tool-using turn does. Clearing here
-                // is what makes this drain return the same string
-                // `respond(to:)` returns for the turn (Router `^w8dzvee` D2);
-                // a consumer that keeps the superseded text prints the model's
-                // pre-tool guess in front of the real answer.
-                answer = ""
-            case .toolCall(let id, let name, _):
-                toolNamesByCallID[id] = name
-                output("Calling \(name)")
-            case .toolStatus(let id, .running, let summary, _):
-                output(
-                    "\(Self.toolName(of: id, in: toolNamesByCallID)) in process: \(summary ?? Self.missingDetail)"
-                )
-            case .toolStatus(let id, .completed, _, _):
-                output("\(Self.toolName(of: id, in: toolNamesByCallID)) done")
-            case .toolStatus(let id, .failed, let summary, _):
-                output(
-                    "\(Self.toolName(of: id, in: toolNamesByCallID)) failed: \(summary ?? Self.missingDetail)"
-                )
-            case .generationStalled(let stall):
-                // Router reports a stall instead of imposing a timeout: no
-                // token has moved for a while, which a long turn on a real
-                // model does. Printed and never acted on — a demo that stayed
-                // silent here reads as stuck while it is working.
-                output("\(stall)")
-            case .repetitionStopped(let stop):
-                // Router stopped a generation call that wrote the same lines
-                // again, and a recovery attempt of the turn follows, or the
-                // turn ends. The report is printed and not acted on. Without
-                // it, a turn that restarts reads as a turn that lost its work.
-                // The event does not change the answer: only `.textDelta` and
-                // `.textReset` change it.
-                output("\(stop)")
-            case .runSettled(let terminal):
-                // A background call answered its envelope earlier in the
-                // turn, or in an earlier one; this is the one terminal event
-                // that says how that run ended. A demo that stayed silent
-                // here would leave the user with a token and no ending.
-                output(
-                    "\(terminal.tool) run \(terminal.correlationID) settled: "
-                        + "\(terminal.outcome?.rawValue ?? Self.missingDetail)"
-                )
-            case .toolStatus, .reasoningDelta, .toolInvocation, .toolCallReport,
-                .entryRecorded, .compaction, .discoveryPrimingFailed, .elicitationRequested,
-                .generationCall, .submissionQueued, .submissionStarted, .submissionEnded,
-                .answered, .answerFailed, .mailDeliveryPaused:
-                // `.toolStatus` here is the residue of the three statuses
-                // handled above. The rest are reasoning fragments, the live
-                // invocation records, the structured records a call attached,
-                // transcript-entry ids, compaction reports, seeding reports, an
-                // elicitation this demo's tools never raise, token usage per
-                // generation call, the submission and answer frame, and the
-                // pause of mail delivery: real signal for a host that keeps a
-                // view of the session, and none of it part of what this demo
-                // prints. A
-                // `.toolCallReport` carries the file-change set of a mutating
-                // `tools.files` call, which a host renders as a reviewable diff;
-                // this demo prints lines and renders no diff.
-                break
-            }
-        }
-        return answer
-    }
-
-    /// The name of the tool a call id belongs to, for a line reporting on that
-    /// call.
-    ///
-    /// - Parameters:
-    ///   - callID: the call's id, as `SessionEvent.toolStatus` carries it.
-    ///   - namesByCallID: the names this turn's `.toolCall` events announced.
-    /// - Returns: the tool's name, or the call id itself when no `.toolCall`
-    ///   announced that call — an id a reader can still correlate against the
-    ///   recorded transcript, where a placeholder word could not be.
-    private static func toolName(of callID: String, in namesByCallID: [String: String]) -> String {
-        namesByCallID[callID] ?? callID
     }
 
     // MARK: - Console progress
@@ -1152,7 +1081,7 @@ public enum CLIRunner {
     ///
     /// Returns the URL of a fresh, uniquely-named directory the `Router`
     /// records every session it vends under — `searchToolsTool`'s own
-    /// selection-tier sessions, and the demo's main turn, which is a
+    /// selection-tier sessions, and the demo's main session, which is a
     /// `RoutedSession` too.
     ///
     /// - Returns: the created directory's URL.
