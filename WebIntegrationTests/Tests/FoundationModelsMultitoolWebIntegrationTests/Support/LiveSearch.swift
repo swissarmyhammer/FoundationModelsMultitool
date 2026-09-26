@@ -3,15 +3,18 @@
 // facts that the suites assert (web.md § "Testing", Level 2).
 //
 // The context uses the real session and the real resolver of the address
-// guard, thus each request goes to the real provider. A test asserts only
-// facts that are stable for years: a well-known host in the hits, the `https`
-// scheme, and the host that `site` asks for. It asserts no rank, no snippet,
-// and no count of more than 3. A test does not retry.
+// guard, thus each request goes to the real provider. The search goes through
+// `WebVerbCall.search` of `MultitoolTestSupport`, the call that the unit
+// suites make too. A test asserts only facts that are stable for years: a
+// well-known host in the hits, the `https` scheme, and the host that `site`
+// asks for. It asserts no rank, no snippet, and no count of more than 3. A
+// test does not retry.
 
 import Foundation
 import Testing
 
 @testable import FoundationModelsMultitool
+@testable import MultitoolTestSupport
 
 /// The shared setup and the shared checks of the live search suites.
 enum LiveSearch {
@@ -68,8 +71,7 @@ enum LiveSearch {
             providers: providers, fetch: WebFetchPolicy(searchTimeout: searchTimeoutSeconds))
         let context = WebContext(
             configuration: configuration, sessionConfiguration: makeShortTimeoutConfiguration())
-        return try await Search(context: context).call(
-            arguments: .init(query: swiftQuery, count: nil, freshness: nil, site: site))
+        return try await WebVerbCall.search(swiftQuery, site: site, context: context)
     }
 
     /// Makes the configuration of the one session of a live context:

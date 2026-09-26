@@ -323,6 +323,28 @@ private let testConcurrencyTargetName = "TestConcurrency"
 /// names a symbol of this package.
 private let scenarioGradingTargetName = "ScenarioGrading"
 
+/// The name of the shared test-support library that reads the `internal`
+/// symbols of the library target, and of the product that exports it.
+///
+/// **Test support, declared as a product**, for the same reason as
+/// `testServerTargetName`. The unit test target and the live web suite of the
+/// nested `WebIntegrationTests` package use the same helpers: `RunOutput`, the
+/// decode of a `runCode` output; `WebVerbCall`, the one call of each web verb;
+/// and `WebPageHead`, the value of each page of the goal snippet of web.md. A
+/// package can import the products of another package only, thus a helper
+/// that both of them read must stand in a product. Before this target, the
+/// nested package held a copy of each one.
+///
+/// A target of its own, and not a file of `scenarioGradingTargetName`: that
+/// target links Router and no target of this package. The helpers here name
+/// the `internal` web verbs, thus this target links the library target and
+/// reads it with `@testable import`. Each consumer reads this target with
+/// `@testable import` too, because a helper whose signature names an
+/// `internal` type of the library cannot be `public`. SwiftPM builds each
+/// target with testability in a debug build, and each test build is a debug
+/// build.
+private let multitoolTestSupportTargetName = "MultitoolTestSupport"
+
 /// The name of the stdio executable over `testServerTargetName`, and of the
 /// product that exports it.
 ///
@@ -341,9 +363,10 @@ private let sourcesPath = "Sources/"
 /// below.
 private let testsPath = "Tests/"
 
-/// The `Tests/Support/` subdirectory prefix used by the four test-support
+/// The `Tests/Support/` subdirectory prefix used by the five test-support
 /// targets (`testServerTargetName`, `testConcurrencyTargetName`,
-/// `scenarioGradingTargetName`, `testServerExecutableName`) below. A target of
+/// `scenarioGradingTargetName`, `multitoolTestSupportTargetName`,
+/// `testServerExecutableName`) below. A target of
 /// test support is not a test target, so it cannot stand under
 /// `Tests/<Name>Tests`, and it is not shipped, so it does not stand under
 /// `Sources/`.
@@ -397,6 +420,13 @@ let package = Package(
         .library(
             name: scenarioGradingTargetName,
             targets: [scenarioGradingTargetName]
+        ),
+        // Test support. Consumed by `WebIntegrationTests/Package.swift`, for
+        // the same reason as the three products above — see
+        // `multitoolTestSupportTargetName`.
+        .library(
+            name: multitoolTestSupportTargetName,
+            targets: [multitoolTestSupportTargetName]
         ),
         // Test support. The stdio binary a test spawns through
         // `StdioServerProcess` — see `testServerExecutableName`. A product,
@@ -538,6 +568,15 @@ let package = Package(
             ],
             path: "\(testSupportPath)\(scenarioGradingTargetName)"
         ),
+        // The helpers that the unit tests and the live web suite share — see
+        // `multitoolTestSupportTargetName`. It links the library target alone.
+        .target(
+            name: multitoolTestSupportTargetName,
+            dependencies: [
+                .target(name: packageName)
+            ],
+            path: "\(testSupportPath)\(multitoolTestSupportTargetName)"
+        ),
         // The stdio entry point over the test server — see
         // `testServerExecutableName`. `main.swift` and nothing else.
         .executableTarget(
@@ -562,6 +601,7 @@ let package = Package(
                 .target(name: testServerTargetName),
                 .target(name: testConcurrencyTargetName),
                 .target(name: scenarioGradingTargetName),
+                .target(name: multitoolTestSupportTargetName),
                 .product(name: routerDependencyName, package: routerDependencyName),
                 .product(name: metadataRegistryDependencyName, package: metadataRegistryDependencyName),
                 .product(name: extrasDependencyName, package: extrasDependencyName),

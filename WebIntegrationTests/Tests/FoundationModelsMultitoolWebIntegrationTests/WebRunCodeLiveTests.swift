@@ -1,7 +1,7 @@
-import Foundation
 import Testing
 
 @testable import FoundationModelsMultitool
+@testable import MultitoolTestSupport
 
 /// The live test of the snippet of web.md § "Goal", through a real
 /// `MultiTool` and with no model (web.md § "Testing", Level 2, the
@@ -40,18 +40,6 @@ struct WebRunCodeLiveTests {
     /// and at most the three hits of its `slice`.
     private static let pageCountRange = 1...3
 
-    /// The value that the goal snippet returns for each page.
-    private struct PageHead: Decodable {
-        /// The final URL of the page.
-        let url: String
-
-        /// The title of the page, or `nil` when the page has no title.
-        let title: String?
-
-        /// The first characters of the content of the page.
-        let head: String
-    }
-
     @Test("the goal snippet returns 1 to 3 pages, each with a title and content")
     func goalSnippetReturnsPages() async throws {
         let registry = try MultiTool.Builder()
@@ -60,26 +48,11 @@ struct WebRunCodeLiveTests {
 
         let output = try await MultiTool(registry: registry).call(arguments: RunCodeArguments(code: Self.goalSnippet))
 
-        let heads = try Self.decodedHeads(from: output)
+        let heads = try RunOutput.decoded([WebPageHead].self, from: output)
         #expect(Self.pageCountRange.contains(heads.count), "the snippet returned: \(output)")
         for page in heads {
             #expect(page.title?.isEmpty == false, "the page \(page.url) has no title")
             #expect(!page.head.isEmpty, "the page \(page.url) has no content")
-        }
-    }
-
-    /// Decodes the JSON value that the goal snippet returned.
-    ///
-    /// - Parameter output: The rendered output of the run.
-    /// - Returns: The value of each page.
-    /// - Throws: When the output is not the JSON text of the pages. The
-    ///   failure record holds the output.
-    private static func decodedHeads(from output: String) throws -> [PageHead] {
-        do {
-            return try JSONDecoder().decode([PageHead].self, from: Data(output.utf8))
-        } catch {
-            Issue.record("the output did not decode as the pages: \(output)")
-            throw error
         }
     }
 }

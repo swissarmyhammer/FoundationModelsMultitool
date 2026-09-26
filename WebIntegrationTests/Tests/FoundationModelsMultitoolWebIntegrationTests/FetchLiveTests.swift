@@ -1,6 +1,7 @@
 import Testing
 
 @testable import FoundationModelsMultitool
+@testable import MultitoolTestSupport
 
 /// The live tests of the `fetch` verb, over real pages (web.md § "Testing",
 /// Level 2, the `FetchLiveTests` row).
@@ -53,7 +54,7 @@ struct FetchLiveTests {
 
     @Test("example.com gives the title Example Domain, and the content holds Example Domain")
     func examplePageGivesItsTitle() async throws {
-        let result = try await LiveFetch.fetch(Self.exampleURL)
+        let result = try await WebVerbCall.fetch(Self.exampleURL, context: LiveFetch.makeContext())
 
         try LiveFetch.requireNoCorrection(result)
         #expect(result.title == Self.exampleTitle)
@@ -62,7 +63,7 @@ struct FetchLiveTests {
 
     @Test("http://github.com redirects, and the final URL starts with https://github.com")
     func plainGitHubRedirectsToHTTPS() async throws {
-        let result = try await LiveFetch.fetch(Self.plainGitHubURL)
+        let result = try await WebVerbCall.fetch(Self.plainGitHubURL, context: LiveFetch.makeContext())
 
         try LiveFetch.requireNoCorrection(result)
         #expect(result.url.hasPrefix(Self.secureGitHubPrefix), "the final URL was: \(result.url)")
@@ -71,12 +72,12 @@ struct FetchLiveTests {
     @Test("a second window of a long page gives the next text, from the cache and with no second download")
     func secondWindowComesFromTheCache() async throws {
         let context = LiveFetch.makeContext()
-        let first = try await LiveFetch.fetch(Self.longPageURL, maxCharacters: Self.windowSize, context: context)
+        let first = try await WebVerbCall.fetch(Self.longPageURL, maxCharacters: Self.windowSize, context: context)
         try LiveFetch.requireNoCorrection(first)
         let nextOffset = try #require(first.nextOffset, "the first window is the whole page")
 
-        let second = try await LiveFetch.fetch(
-            Self.longPageURL, maxCharacters: Self.windowSize, offset: nextOffset, context: context)
+        let second = try await WebVerbCall.fetch(
+            Self.longPageURL, offset: nextOffset, maxCharacters: Self.windowSize, context: context)
 
         try LiveFetch.requireNoCorrection(second)
         #expect(!second.content.isEmpty)
@@ -87,7 +88,7 @@ struct FetchLiveTests {
 
     @Test("the GitHub zen API gives text/plain content that is not empty")
     func zenGivesPlainText() async throws {
-        let result = try await LiveFetch.fetch(Self.zenURL)
+        let result = try await WebVerbCall.fetch(Self.zenURL, context: LiveFetch.makeContext())
 
         try LiveFetch.requireNoCorrection(result)
         #expect(result.contentType == Self.plainTextType)
@@ -96,7 +97,7 @@ struct FetchLiveTests {
 
     @Test("a PDF gives the correction for a type that is not text")
     func pdfGivesTheBinaryCorrection() async throws {
-        let result = try await LiveFetch.fetch(Self.pdfURL)
+        let result = try await WebVerbCall.fetch(Self.pdfURL, context: LiveFetch.makeContext())
 
         #expect(result.correction == Self.pdfCorrection)
     }

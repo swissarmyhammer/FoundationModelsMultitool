@@ -5,6 +5,7 @@ import FoundationModelsRouter
 import Testing
 
 @testable import FoundationModelsMultitool
+@testable import MultitoolTestSupport
 
 /// Coverage for a `runCode` snippet that calls a verb of an `OperationDescribing`
 /// tool through the JavaScriptCore interpreter: the preamble binding of

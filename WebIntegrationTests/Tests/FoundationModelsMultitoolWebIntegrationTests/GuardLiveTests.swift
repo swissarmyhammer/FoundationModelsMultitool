@@ -1,6 +1,7 @@
 import Testing
 
 @testable import FoundationModelsMultitool
+@testable import MultitoolTestSupport
 
 /// The live tests of the address guard, with the real DNS resolver (web.md
 /// § "Testing", Level 2, the `GuardLiveTests` row).
@@ -32,14 +33,14 @@ struct GuardLiveTests {
 
     @Test("localtest.me gives the correction that names its loopback address")
     func loopbackNameIsRefused() async throws {
-        let result = try await LiveFetch.fetch(Self.loopbackNameURL)
+        let result = try await WebVerbCall.fetch(Self.loopbackNameURL, context: LiveFetch.makeContext())
 
         #expect(result.correction == Self.loopbackCorrection)
     }
 
     @Test("the cloud metadata address gives a correction")
     func metadataAddressIsRefused() async throws {
-        let result = try await LiveFetch.fetch(Self.metadataURL)
+        let result = try await WebVerbCall.fetch(Self.metadataURL, context: LiveFetch.makeContext())
 
         #expect(result.correction == Self.metadataCorrection)
     }

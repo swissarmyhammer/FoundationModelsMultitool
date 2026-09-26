@@ -6,6 +6,15 @@ import PackageDescription
 /// The name of the package under test, and the directory `..` holds.
 private let productPackageName = "FoundationModelsMultitool"
 
+/// The test-support product of the package under test that this suite shares
+/// with the unit test target.
+///
+/// `../Package.swift` states why it is a product
+/// (`multitoolTestSupportTargetName`): the call of each web verb, the decode
+/// of a `runCode` output, and the value of each page of the goal snippet. This
+/// suite calls them and holds no copy of them.
+private let testSupportProductName = "MultitoolTestSupport"
+
 /// The HTML parser package of the web capability.
 ///
 /// `../Package.swift` states why the web capability uses it
@@ -60,13 +69,14 @@ let package = Package(
         .package(url: "https://github.com/scinfu/\(htmlParserPackage).git", from: "2.13.9"),
     ],
     targets: [
-        // The live web suite. It links only the library under test: the web
-        // capability needs no model, thus no MLX product and no live Router
-        // wiring is linked.
+        // The live web suite. It links the library under test and its shared
+        // test support: the web capability needs no model, thus no MLX product
+        // and no live Router wiring is linked.
         .testTarget(
             name: "FoundationModelsMultitoolWebIntegrationTests",
             dependencies: [
-                .product(name: productPackageName, package: productPackageName)
+                .product(name: productPackageName, package: productPackageName),
+                .product(name: testSupportProductName, package: productPackageName),
             ],
             path: "Tests/FoundationModelsMultitoolWebIntegrationTests"
         )

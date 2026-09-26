@@ -4,7 +4,9 @@
 // A snippet that returns an object or an array gives its JSON text as the
 // rendered output. A suite decodes that text into a value type of its own, and
 // then compares fields. `RunOutput.decoded(_:from:)` is that decode, written
-// one time here rather than once for each suite.
+// one time here rather than once for each suite. The unit test target and the
+// live suites of `WebIntegrationTests/` both read it, thus it stands in the
+// `MultitoolTestSupport` product and not in one test target.
 
 import Foundation
 import Testing

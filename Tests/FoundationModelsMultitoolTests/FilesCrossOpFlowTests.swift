@@ -25,6 +25,7 @@ import Foundation
 import Testing
 
 @testable import FoundationModelsMultitool
+@testable import MultitoolTestSupport
 
 /// The six files verbs as one session, each flow through one `runCode`
 /// snippet against a temporary root.

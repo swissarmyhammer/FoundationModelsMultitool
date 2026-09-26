@@ -24,6 +24,7 @@ import FoundationModelsRouter
 import Testing
 
 @testable import FoundationModelsMultitool
+@testable import MultitoolTestSupport
 
 /// Behavioral tests for the cases in which the journal delivers nothing.
 ///

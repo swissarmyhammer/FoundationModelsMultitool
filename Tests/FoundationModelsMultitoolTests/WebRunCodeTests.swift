@@ -15,6 +15,7 @@ import Foundation
 import Testing
 
 @testable import FoundationModelsMultitool
+@testable import MultitoolTestSupport
 
 /// The web verbs as one session, each flow through `runCode` snippets over a
 /// stub session.
@@ -79,18 +80,6 @@ struct WebRunCodeTests {
 
     // MARK: - Search then fetch
 
-    /// The value that the goal snippet returns for each page.
-    private struct PageHead: Decodable, Equatable {
-        /// The final URL of the page.
-        let url: String
-
-        /// The title of the page.
-        let title: String
-
-        /// The first characters of the content of the page.
-        let head: String
-    }
-
     @Test("the search-then-fetch snippet of web.md returns three pages with titles and content heads")
     func goalSnippetReturnsThreePages() async throws {
         let pages = WebRunPage.pages(count: Self.searchHitCount)
@@ -107,10 +96,10 @@ struct WebRunCodeTests {
             """)
 
         #expect(!output.contains(ToolReturnLedger.uncarriedReturnNotice), "output was: \(output)")
-        let heads = try RunOutput.decoded([PageHead].self, from: output)
+        let heads = try RunOutput.decoded([WebPageHead].self, from: output)
         let fetched = pages.prefix(Self.fetchedPageCount)
         let expected = fetched.map { page in
-            PageHead(url: page.url, title: page.title, head: String(page.markdown.prefix(Self.headLength)))
+            WebPageHead(url: page.url, title: page.title, head: String(page.markdown.prefix(Self.headLength)))
         }
         #expect(heads == expected)
         #expect(Set(run.stub.requestedURLs).isSuperset(of: fetched.map(\.url)))

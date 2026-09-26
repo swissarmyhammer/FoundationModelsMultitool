@@ -3,10 +3,13 @@
 //
 // Each test makes one `WebStub` and one `WebContext` over it. The context
 // uses the stub session and a resolver that gives a public address for each
-// host, thus no request and no lookup goes to the network.
+// host, thus no request and no lookup goes to the network. Each verb call goes
+// through `WebVerbCall` of `MultitoolTestSupport`, the call that the live
+// suites of `WebIntegrationTests/` make too.
 
 import Foundation
 @testable import FoundationModelsMultitool
+@testable import MultitoolTestSupport
 import Testing
 
 /// A stub and the web context that sends each request to it.
@@ -111,8 +114,7 @@ struct WebVerbFixture {
     func search(
         _ query: String = query, count: Int? = nil, freshness: String? = nil, site: String? = nil
     ) async throws -> SearchResult {
-        try await Search(context: context).call(
-            arguments: .init(query: query, count: count, freshness: freshness, site: site))
+        try await WebVerbCall.search(query, count: count, freshness: freshness, site: site, context: context)
     }
 
     /// Calls the `fetch` verb.
@@ -129,8 +131,7 @@ struct WebVerbFixture {
         _ url: String = pageURL, format: String? = nil, offset: Int? = nil, maxCharacters: Int? = nil,
         timeout: Int? = nil
     ) async throws -> FetchResult {
-        try await Fetch(context: context).call(
-            arguments: .init(
-                url: url, format: format, offset: offset, maxCharacters: maxCharacters, timeout: timeout))
+        try await WebVerbCall.fetch(
+            url, format: format, offset: offset, maxCharacters: maxCharacters, timeout: timeout, context: context)
     }
 }

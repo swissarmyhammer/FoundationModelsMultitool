@@ -4,6 +4,7 @@ import FoundationModelsRouter
 import Testing
 
 @testable import FoundationModelsMultitool
+@testable import MultitoolTestSupport
 
 /// Every sandbox global this suite pins, in the order the surface documents
 /// them — the run verbs, the elicitation, and the two notice calls.
