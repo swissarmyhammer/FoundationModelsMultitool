@@ -38,30 +38,47 @@ comments:
     - evidence: `swift build --build-tests` 0 compiler warnings (one SwiftPM "missing creator for mutated node" line for the mlx-swift_Cmlx bundle, from the build system, not from source); `swift test` — 1817 tests in 145 suites passed, 0 failed. ExamplesTests docs guards pass (4 + 2 cases).
     - next: commit
   timestamp: 2026-09-27T00:18:39.048272+00:00
+- actor: claude-code
+  id: 01m3g3w9asfhzwnnw40jmzj5ww
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` — counts findings 0, confirmed 0, refuted 0 (7 attempted, 0 failed). No validator matches the four .md files; the Swift files had no finding. No prior Review Findings section.
+    - Note: README.md and docs/SECURITY.md keep `wait` in the injected-globals list. The sandbox still defines that name, only to throw a repair text, and `HardeningTests` requires the list to equal the runtime globals. The text says the name is not usable.
+    - next: done
+  timestamp: 2026-09-27T00:22:44.313958+00:00
+- actor: claude-code
+  id: 01m3g3wbkv6239wq8x3s5jtd9p
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — README.md, docs/SECURITY.md, eventplan.md, plan.md, MultiTool.swift, MultiTool+Background.swift, MultiToolConfiguration.swift, ExamplesTests.swift
+    - test: green — `swift test` 1817 tests in 145 suites passed
+    - commit: changed — b8a6857 docs: make README, SECURITY, eventplan and plan true for mail delivery and the new bounds
+    - review: clean — `review sha HEAD~1..HEAD`, 0 findings
+  timestamp: 2026-09-27T00:22:46.651180+00:00
 depends_on:
 - 01M3ETT2G7K03B6JMTPV6EN6BA
 - 01M3EVJTWPV4MEG2KFHVRF9403
 - 01M3EVKX9JFDWDQR297Q4JRND0
 - 01M3EVMDF9BZTNFR16F11CFNX0
 - 01M3ETTBXPEYFR2DSBAZHMQVXB
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: fff580
 title: Make docs/SECURITY.md, README.md and eventplan.md true for the work-queue Router, mail delivery and the new bounds
 ---
 ## What
 After the other tasks, the prose must state what the code does, not only use the new names:
-- [ ] `docs/SECURITY.md:46` names `terminalDetailTailLimit` and says that `wait()` returns a bounded tail. Change it to the detail bound from the detail-bound task, and state that results come back as mail (no `wait`). `SECURITY.md:76`: change the timeout claim to `MultiToolConfiguration.defaultExecutionTimeLimit` and the inner-call bound.
-- [ ] `eventplan.md`: "at the next turn boundary" becomes "before the next submission" (`SubmissionBoundaryTool.submissionWillBegin()`).
-- [ ] README.md: remove the `wait` tool and the sandbox `wait()` global. Describe mail delivery. State the rule that the librarian (flash) model must be different from the session model.
-- [ ] Run `rg -w 'turnWillBegin|TurnBoundaryTool|turnStarted|turnEnded|synchronousUnbounded|deadlineSecondsCeiling|terminalDetailTailLimit|defaultTimeoutSeconds|WaitTool' README.md docs eventplan.md plan.md` and fix each match.
+- [x] `docs/SECURITY.md:46` names `terminalDetailTailLimit` and says that `wait()` returns a bounded tail. Change it to the detail bound from the detail-bound task, and state that results come back as mail (no `wait`). `SECURITY.md:76`: change the timeout claim to `MultiToolConfiguration.defaultExecutionTimeLimit` and the inner-call bound.
+- [x] `eventplan.md`: "at the next turn boundary" becomes "before the next submission" (`SubmissionBoundaryTool.submissionWillBegin()`).
+- [x] README.md: remove the `wait` tool and the sandbox `wait()` global. Describe mail delivery. State the rule that the librarian (flash) model must be different from the session model.
+- [x] Run `rg -w 'turnWillBegin|TurnBoundaryTool|turnStarted|turnEnded|synchronousUnbounded|deadlineSecondsCeiling|terminalDetailTailLimit|defaultTimeoutSeconds|WaitTool' README.md docs eventplan.md plan.md` and fix each match.
 
 ## Acceptance Criteria
-- [ ] The `rg` command above returns no match.
-- [ ] Each bound that `docs/SECURITY.md` states names the constant that holds it in `Sources/`.
+- [x] The `rg` command above returns no match.
+- [x] Each bound that `docs/SECURITY.md` states names the constant that holds it in `Sources/`.
 
 ## Tests
-- [ ] `Tests/FoundationModelsMultitoolTests/ExamplesTests.swift` (or the existing docs test): assert that README.md and docs/SECURITY.md do not contain the removed names above, and do not describe a `wait` tool.
-- [ ] Run `swift test --filter ExamplesTests`. Expected result: it passes.
+- [x] `Tests/FoundationModelsMultitoolTests/ExamplesTests.swift` (or the existing docs test): assert that README.md and docs/SECURITY.md do not contain the removed names above, and do not describe a `wait` tool.
+- [x] Run `swift test --filter ExamplesTests`. Expected result: it passes.
 
 ## Workflow
 - Use `/tdd`. Write failing tests first, then do the implementation that makes them pass.
