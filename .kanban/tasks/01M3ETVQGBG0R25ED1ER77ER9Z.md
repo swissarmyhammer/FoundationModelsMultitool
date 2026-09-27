@@ -48,6 +48,17 @@ comments:
     - commit: changed — 9b7d328 test(integration): assert the same-model refusal and split the single-model profiles
     - review: findings — 1: `ScenarioRunner.swift:393` `code-hygiene/magic-numbers-swift`
   timestamp: 2026-09-27T00:04:20.278692+00:00
+- actor: claude-code
+  id: 01m3g36prp1fss33k50vnkt2zz
+  text: |-
+    ### finish iteration 2 — stuck
+    - implement: changed — `ScenarioRunner.swift`: the reply preview literals 80 and 120 are now `nativeReplyPreviewCharacters` and `backgroundReplyPreviewCharacters` (finding `code-hygiene/magic-numbers-swift`, whole file).
+    - test: IntegrationTests build pass; `BackgroundTests|ProfileSlotSeparationTests|SearchThenCallTests`: 8 tests in 4 suites pass.
+    - commit: changed — c7359cb fix(integration): name the reply preview lengths of the gated runners
+    - review: clean — `review sha HEAD~1..HEAD`, 0 findings; the finding of iteration 1 is checked.
+    - stuck: acceptance item "`swift test --package-path IntegrationTests --no-parallel` passes" and the filter test item are not met. The only failing suite is `UnknownToolHintLiveTests` (2 issues: `bash.run` → `shell.grepHistory`, `terminal.runTests` → `shell.getLines`, declared `shell.execute`). It fails the same way with the old profile layout, so this change did not cause it. Tracked as task 01M3G1K0GGX4F743R42HD8266A. The task stays in `review` until a person decides.
+    - Router finding to send to the FoundationModelsRouter peer: a `runCode` call with 160-200 repeated snippet lines ran 20-45 minutes with no `repetitionStopped` event (see the repetition comment above).
+  timestamp: 2026-09-27T00:10:57.174284+00:00
 depends_on:
 - 01M3ETV0A0AE2F2MTGWTFHF7T4
 - 01M3ETTBXPEYFR2DSBAZHMQVXB
@@ -83,4 +94,4 @@ Before, a nested `respond` on the same model from inside a tool call deadlocked 
 
 > Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 13 file(s) reviewed, 4 not reviewed.
 
-- [ ] `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Support/ScenarioRunner.swift:393` `code-hygiene/magic-numbers-swift` — Magic numbers should be replaced by named constants.
+- [x] `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Support/ScenarioRunner.swift:393` `code-hygiene/magic-numbers-swift` — Magic numbers should be replaced by named constants.
