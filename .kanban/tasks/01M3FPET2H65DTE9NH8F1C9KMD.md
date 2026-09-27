@@ -11,6 +11,15 @@ comments:
     - `OperationEvent`: already in Extras (Router has only a typealias). Import it from `FoundationModelsExtras`.
     So no Router card is necessary for these three.
   timestamp: 2026-09-26T20:29:04.131068+00:00
+- actor: claude-code
+  id: 01m3gcnbmzjwdvmycztvnq4wx8
+  text: |-
+    Facts from the router session (2026-09-26) for the Extras tool-hosting API:
+    - The Extras work is done locally, but it is NOT pushed (the user approves pushes). The commit to pin is Extras `11404f3`. Do not start this task until Extras `main` on origin contains `11404f3`, and Router 01M3FPCADD0GTFAV2RANXKE7G0 is pushed.
+    - Router's `SessionMailbox` is `RunPlane` in Extras. Its public API: `init`, `makeCompletionToken`, `attach(settlementObserver:)`, `backgroundRuns`, `settledRunTokens`, `respond`, `complete`, `sweep`, `wait(completionToken:seconds:)`.
+    - Tests: our tests call the internal `track`, `updateProgress`, `wait` and `sweep` through `@testable`. `wait` and `sweep` are public now. There is no `track(... settling:)`. Use `start(tool:op:kind:completionToken:canceler:body:)`: the body returns the terminal `OperationEvent`, and a `nil` canceler cancels the body task. `start`, `RunPlane.StartResult` and `updateProgress(completionToken:detail:)` are `@_spi(Testing) public`. `@testable` does not give access to SPI, so a test file that uses them needs `@_spi(Testing) @testable import FoundationModelsExtras`.
+    - `PendingRunEnvelope.decoded(fromRendered:)` is now `makeDecoded(fromRendered:)`.
+  timestamp: 2026-09-27T02:56:14.495479+00:00
 depends_on:
 - 01M3FMSTTSP16K9AE7JKZAEFGZ
 - 01M3ETW8G0BNP6JY8DNBW8B4DX
