@@ -234,7 +234,7 @@ func runNativeIntegrationScenario(
                 + "progress=\(turn.progressEvents.count) "
                 + "compactions=\(turn.compactions.count) tokens=\(turn.tokenUsage ?? "n/a") "
                 + "failedCalls=\(turn.failedCalls.count)\(turn.failedCalls.isEmpty ? "" : " \(turn.failedCalls)") "
-                + "reply=\"\(turn.answer.prefix(80))\""
+                + "reply=\"\(turn.answer.prefix(nativeReplyPreviewCharacters))\""
         )
         // The same run's failure modes, counted. Emitted alongside the
         // `SCENARIO` verdict, never instead of it: nothing below is
@@ -390,10 +390,22 @@ func runBackgroundIntegrationScenario(
                 + "textResets=\(turn.supersededAnswers.count) "
                 + "compactions=\(turn.compactions.count) tokens=\(turn.tokenUsage ?? "n/a") "
                 + "failedCalls=\(turn.failedCalls.count)\(turn.failedCalls.isEmpty ? "" : " \(turn.failedCalls)") "
-                + "reply=\"\(answer.prefix(120))\""
+                + "reply=\"\(answer.prefix(backgroundReplyPreviewCharacters))\""
         )
     }
 }
+
+/// How many leading characters of the model's reply the `RESULT` line of
+/// `runNativeIntegrationScenario` prints: enough for the opening clause that
+/// carries the answer, and short, because that line carries many other
+/// fields.
+private let nativeReplyPreviewCharacters = 80
+
+/// How many leading characters of the model's reply the `RESULT` line of
+/// `runBackgroundIntegrationScenario` prints: the report code is in the
+/// opening clause of the reply, and the canary's reply preview uses the same
+/// bound.
+private let backgroundReplyPreviewCharacters = 120
 
 /// The count of minutes in `backgroundMailAnswerDeadline`.
 ///

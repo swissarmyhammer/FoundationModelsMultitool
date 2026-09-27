@@ -39,33 +39,48 @@ comments:
     - evidence: root `swift build --build-tests && swift test`: 1815 tests in 145 suites pass. `swift build --package-path IntegrationTests --build-tests`: pass. Live filter run (task list + CLISmokeTests + ProfileSlotSeparationTests): all pass (NestedGenerationProbeTests: refused after 0.00063 s, 10.5 s; AgentSurface 46 s; HeldOut 57 s; CLISmokeTests 2/2, 78-88 s; canary 2/2 with mail answers; OverBudget, NoDescription, RetrievalText, SelectionForkPerCall pass) except `UnknownToolHintLiveTests`. Full `swift test --package-path IntegrationTests --no-parallel`: 59 tests in 31 suites, 30 suites pass, 1 fails: `UnknownToolHintLiveTests` (2 issues: `bash.run` → `shell.grepHistory`, `terminal.runTests` → `shell.getLines`, declared `shell.execute`). Stable over 3 runs, and the same with the old profile layout, so not caused by this change. Acceptance item "full swift test passes" is stuck on that pre-existing failure.
     - next: commit, then review.
   timestamp: 2026-09-26T23:56:38.146788+00:00
+- actor: claude-code
+  id: 01m3g2tk5pd1rjzwsfc44ndr49
+  text: |-
+    ### finish iteration 1 — findings
+    - implement: changed (13 files; see the implement record above)
+    - test: red — root 1815/1815 pass; IntegrationTests build pass; full live run 59 tests in 31 suites, only `UnknownToolHintLiveTests` fails (pre-existing, task 01M3G1K0GGX4F743R42HD8266A)
+    - commit: changed — 9b7d328 test(integration): assert the same-model refusal and split the single-model profiles
+    - review: findings — 1: `ScenarioRunner.swift:393` `code-hygiene/magic-numbers-swift`
+  timestamp: 2026-09-27T00:04:20.278692+00:00
 depends_on:
 - 01M3ETV0A0AE2F2MTGWTFHF7T4
 - 01M3ETTBXPEYFR2DSBAZHMQVXB
 - 01M3EVKX9JFDWDQR297Q4JRND0
 - 01M3EVMDF9BZTNFR16F11CFNX0
-position_column: doing
+position_column: review
 position_ordinal: '80'
 title: 'Change the live suites for the same-model refusal: assert the refusal and split the single-model profiles'
 ---
 ## What
 Before, a nested `respond` on the same model from inside a tool call deadlocked silently. `NestedGenerationProbeTests.swift:1-30` documents the old `generationGate` hang. With the new Router it is refused at once with `GenerationQueueError.waitInsideOpenSubmission(model:)`. Also, `respond(to:)` no longer drains background runs: they come back as mail. Change the live suites under `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/` to match:
 
-- [ ] `NestedGenerationProbeTests.swift` and `Fixtures/IntegrationNestedGenerationTool.swift:111`: assert that the in-band nested call gets `waitInsideOpenSubmission` inside a short time limit and does not hang. Rewrite the doc comment, which explains the old `AsyncSemaphore` deadlock, to describe the refusal.
-- [ ] `Support/LiveRouterFixture.swift`: `plumbingProbeProfile` (`:405-410`) and `agentDiscoveryProfile` (`:439-444`) put one model in both `standard` and `flash`. Give `standard` a different model in each profile whose suites run `searchTools` inside a session: `AgentSurfaceDiscoveryTests`, `HeldOutSurfaceDiscoveryTests`, `RetrievalTextSurfaceDiscoveryTests`, `OverBudgetSurfaceDiscoveryTests`, `NoDescriptionSurfaceDiscoveryTests`, `UnknownToolHintLiveTests`, and the `ScenarioRunner` plumbing runner. Write the reason in the profile doc comment. Add a model-free `@Test` in the IntegrationTests package that asserts that `standard` and `flash` do not overlap for each profile constant used by a session suite.
-- [ ] Remove the dependence on the old `respond(to:)` drain: `RespondDrainTests.swift`, `InBandCollectionCanaryTests.swift`, and in `ScenarioRunner.swift` `backgroundRuns(atFirstTurnEndIn:)`, the "must self-drain" rule and `backgroundRunsAfterRespond`. Test the new contract: a background run that settles comes back as a mail submission (`SubmissionStart.cause == .mail`) and gets an answer. Delete the tests that measured only the old drain, and write the reason in the commit message.
-- [ ] Repetition detection is on by default (`RepetitionDetection.defaultIsEnabled`, lines of 20 or more characters). Run one live `runCode` scenario that has repeated JavaScript lines. If the log has `repetitionStopped` or `FinishReason.repeatedLines`, set `repetitionDetection` for Multitool sessions (in `CLIRunner` and in the fixtures). Record the decision in a task comment and in the doc comment of that setting.
+- [x] `NestedGenerationProbeTests.swift` and `Fixtures/IntegrationNestedGenerationTool.swift:111`: assert that the in-band nested call gets `waitInsideOpenSubmission` inside a short time limit and does not hang. Rewrite the doc comment, which explains the old `AsyncSemaphore` deadlock, to describe the refusal.
+- [x] `Support/LiveRouterFixture.swift`: `plumbingProbeProfile` (`:405-410`) and `agentDiscoveryProfile` (`:439-444`) put one model in both `standard` and `flash`. Give `standard` a different model in each profile whose suites run `searchTools` inside a session: `AgentSurfaceDiscoveryTests`, `HeldOutSurfaceDiscoveryTests`, `RetrievalTextSurfaceDiscoveryTests`, `OverBudgetSurfaceDiscoveryTests`, `NoDescriptionSurfaceDiscoveryTests`, `UnknownToolHintLiveTests`, and the `ScenarioRunner` plumbing runner. Write the reason in the profile doc comment. Add a model-free `@Test` in the IntegrationTests package that asserts that `standard` and `flash` do not overlap for each profile constant used by a session suite.
+- [x] Remove the dependence on the old `respond(to:)` drain: `RespondDrainTests.swift`, `InBandCollectionCanaryTests.swift`, and in `ScenarioRunner.swift` `backgroundRuns(atFirstTurnEndIn:)`, the "must self-drain" rule and `backgroundRunsAfterRespond`. Test the new contract: a background run that settles comes back as a mail submission (`SubmissionStart.cause == .mail`) and gets an answer. Delete the tests that measured only the old drain, and write the reason in the commit message.
+- [x] Repetition detection is on by default (`RepetitionDetection.defaultIsEnabled`, lines of 20 or more characters). Run one live `runCode` scenario that has repeated JavaScript lines. If the log has `repetitionStopped` or `FinishReason.repeatedLines`, set `repetitionDetection` for Multitool sessions (in `CLIRunner` and in the fixtures). Record the decision in a task comment and in the doc comment of that setting.
 
 ## Acceptance Criteria
-- [ ] No profile that a session suite uses has the same model in `standard` and `flash`. The model-free test enforces this.
-- [ ] The nested-generation probe fails if the nested call hangs longer than its time limit, and passes when it gets `waitInsideOpenSubmission`.
-- [ ] No file under `IntegrationTests/` names `backgroundRunsAfterRespond` or `atFirstTurnEndIn`.
+- [x] No profile that a session suite uses has the same model in `standard` and `flash`. The model-free test enforces this.
+- [x] The nested-generation probe fails if the nested call hangs longer than its time limit, and passes when it gets `waitInsideOpenSubmission`.
+- [x] No file under `IntegrationTests/` names `backgroundRunsAfterRespond` or `atFirstTurnEndIn`.
 - [ ] `swift test --package-path IntegrationTests --no-parallel` passes on a machine that has the models.
 
 ## Tests
-- [ ] Run `swift build --package-path IntegrationTests --build-tests`. Expected result: it passes.
+- [x] Run `swift build --package-path IntegrationTests --build-tests`. Expected result: it passes.
 - [ ] Run `swift test --package-path IntegrationTests --no-parallel --filter 'NestedGenerationProbeTests|AgentSurfaceDiscoveryTests|HeldOutSurfaceDiscoveryTests|RetrievalTextSurfaceDiscoveryTests|OverBudgetSurfaceDiscoveryTests|NoDescriptionSurfaceDiscoveryTests|UnknownToolHintLiveTests|SelectionForkPerCallTests|InBandCollectionCanaryTests'`. Expected result: it passes.
 - [ ] Run the full `swift test --package-path IntegrationTests --no-parallel`. Expected result: it passes.
 
 ## Workflow
 - Use `/tdd`. Write failing tests first, then do the implementation that makes them pass.
+
+## Review Findings (2026-09-26 18:57)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 13 file(s) reviewed, 4 not reviewed.
+
+- [ ] `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Support/ScenarioRunner.swift:393` `code-hygiene/magic-numbers-swift` — Magic numbers should be replaced by named constants.
