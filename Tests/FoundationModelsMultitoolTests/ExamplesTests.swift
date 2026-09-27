@@ -23,9 +23,9 @@ import Testing
 /// host contract mounts the vended tools on a `RoutedSession`
 /// instead** — `profile.standard.makeSession(tools: try registry
 /// .makeSessionTools(selection:))`, drained through `streamEvents(to:)` — and
-/// only that session mounts a tool under
-/// `ToolMount.synchronous`, which is what lets a slow
-/// `runCode` background. `README.md` and `Sources/MultitoolCLI/CLIRunner.swift`
+/// only that session puts each tool through Router's mounting path, where the
+/// background mount that `MultiTool` declares for `runCode` takes effect.
+/// `README.md` and `Sources/MultitoolCLI/CLIRunner.swift`
 /// state the contract; these examples show the catalog and call shapes it
 /// carries.
 ///
@@ -306,5 +306,51 @@ struct ExamplesTests {
         // text handed back — actually called the real IssueCountTool.
         let runCodeOutput = try #require(Self.toolOutputText(in: session.transcript, from: "runCode"))
         #expect(runCodeOutput.contains("42"))
+    }
+
+    // MARK: - The documents state the shipped contract
+
+    /// The documents that a reader of this package reads for its contract,
+    /// each named by its path from the repository root.
+    static let contractDocuments = ["README.md", "docs/SECURITY.md", "eventplan.md", "plan.md"]
+
+    /// The documents that state the shipped contract itself. `plan.md` and
+    /// `eventplan.md` are records of the design, and each one tells how a
+    /// removed tool went away.
+    static let shippedContractDocuments = ["README.md", "docs/SECURITY.md"]
+
+    /// The names that the work-queue Router, mail delivery and the new bounds
+    /// removed from the code. A document that names one of them sends a
+    /// reader to a symbol that is not there.
+    static let removedNames = [
+        "turnWillBegin",
+        "TurnBoundaryTool",
+        "turnStarted",
+        "turnEnded",
+        "synchronousUnbounded",
+        "deadlineSecondsCeiling",
+        "terminalDetailTailLimit",
+        "defaultTimeoutSeconds",
+        "WaitTool",
+    ]
+
+    /// The phrases that describe a `wait` tool. This package mounts no `wait`
+    /// tool: a settled background run comes back to the session as mail.
+    ///
+    /// The bare phrase starts with a space or a capital letter, because the
+    /// scan finds text inside a word too: `await tools.web.search` holds
+    /// `wait tool`, and that snippet describes no tool.
+    static let waitToolPhrases = ["`wait` tool", " wait tool", "Wait tool"]
+
+    @Test("A contract document names no symbol that the code removed", arguments: contractDocuments)
+    func contractDocumentNamesNoRemovedSymbol(_ documentPath: String) throws {
+        let sightings = try RepositoryFile.sightings(of: Self.removedNames, inRelativeFile: documentPath)
+        #expect(sightings.isEmpty, "\(documentPath) names removed symbols: \(sightings)")
+    }
+
+    @Test("A shipped contract document describes no wait tool", arguments: shippedContractDocuments)
+    func shippedContractDocumentDescribesNoWaitTool(_ documentPath: String) throws {
+        let sightings = try RepositoryFile.sightings(of: Self.waitToolPhrases, inRelativeFile: documentPath)
+        #expect(sightings.isEmpty, "\(documentPath) describes a wait tool: \(sightings)")
     }
 }

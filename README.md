@@ -124,6 +124,28 @@ runtime, so a global added to the code and not to this list fails the suite.
 Do not delete or reword the list items. [`docs/SECURITY.md`](docs/SECURITY.md)
 says what each one guarantees.
 
+## Background runs and mail delivery
+
+On a `RoutedSession`, each `runCode` call goes to the background. The call
+first waits for its snippet for `MultiToolConfiguration.inlineSettleGrace`
+(default `MultiToolConfiguration.defaultInlineSettleGrace`, 5 seconds):
+
+- A snippet that settles in that time gives its result in the tool output,
+  with `pending: false`. No mail comes for that run.
+- A snippet that is still running gives a pending envelope with a
+  `completionToken`. The model ends its answer. When the snippet settles,
+  Router puts its result into the session outbox as mail, and that mail
+  starts the next submission of the session. The model answers from that
+  message.
+
+A snippet can look at a running snippet with `status()` and stop it with
+`cancel(completionToken)`. A snippet cannot wait for a run. Router runs the
+work of each model on one queue, and a wait inside a submission holds the
+model for every session on it.
+
+On a bare `LanguageModelSession` there is no background: the snippet runs to
+its end inside the call, and no mail comes.
+
 ## Discovery and the librarian model
 
 `registry.makeSessionTools(selection:embedder:sampleSession:)` mounts

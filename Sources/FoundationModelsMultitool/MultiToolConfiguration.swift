@@ -13,8 +13,9 @@ public struct MultiToolConfiguration: Sendable, Equatable {
     /// It is also the per-call work bound `runCode` answers the engine (see
     /// `MultiTool.timeout(from:)`).
     ///
-    /// A mounted `runCode` call answers its pending envelope at once and the
-    /// snippet goes on in the background, so the suspended JSC context lives
+    /// A mounted `runCode` call that does not settle inside
+    /// ``inlineSettleGrace`` answers its pending envelope, and the snippet
+    /// goes on in the background, so the suspended JSC context lives
     /// past the call. This value arms the watchdog of every sandbox
     /// `MultiTool.init` runs (`Interpreter.withTimeLimit(_:)`), and it must
     /// never be a second clock that races the engine's. `runCode` states this

@@ -94,9 +94,11 @@ extension MultiTool: BackgroundTool {
     /// **A snippet can run for hours, so the tool states this itself.** A
     /// declared mount wins over the mount the composition site applies, and
     /// this is the declaration that makes `runCode` the backgrounder: every
-    /// mounted call hands back a completion token at once, and the snippet
-    /// goes on behind it. The answer cannot vary by call, by host, or by
-    /// machine load, because `RunCodeArguments` carries no clock at all.
+    /// mounted call runs its snippet in the background. The call waits for
+    /// the snippet for ``inlineSettleGrace`` only, and then it hands back a
+    /// completion token while the snippet goes on behind it. The model cannot
+    /// change the mount or the wait, because `RunCodeArguments` carries no
+    /// clock at all.
     ///
     /// The engine reads ``timeout(from:)`` ahead of the mount's own clock, so
     /// a clock here would never be consulted.

@@ -94,7 +94,8 @@ as it gets file access from the files capability. The web verbs are such tools.
   link-local, or multicast address) is sufficient for a refusal. The
   link-local range includes the cloud metadata address `169.254.169.254`. The
   guard also checks each redirect hop, and it stops a request after
-  `WebFetchPolicy.maxRedirects` hops (default 10). A refusal is a `correction`
+  `WebFetchPolicy.maxRedirects` hops (default 10, the default argument of
+  `WebFetchPolicy.init`). A refusal is a `correction`
   value that the snippet reads, not a thrown error.
 - **Known limit: DNS rebinding.** The guard resolves the host, and then
   `URLSession` resolves it again to connect. A DNS server that gives a
@@ -135,15 +136,27 @@ as it gets file access from the files capability. The web verbs are such tools.
   sandbox creation, and neither reporting progress nor suspending on `elicit()`
   moves that reference point, so no snippet can hold a context open
   indefinitely.
+- **Inner-call time** — each `tools.*` call inside a snippet runs to
+  completion under its own bound, `RunBinding.innerCallMount`. Its timeout is
+  `MultiToolConfiguration.defaultExecutionTimeLimit` (120 seconds). Router
+  gives a tool a timeout only when the tool states one, thus this mount
+  states it. An inner call does not move the reference point of the snippet
+  ceiling above, which is measured from sandbox creation.
 - **Cancellation** — cancelling the Swift `Task` running
   `MultiTool.call(arguments:)` force-terminates the in-flight snippet
   through that same watchdog path and propagates `CancellationError` — no
   leaked interpreter thread, no semaphore deadlock.
 - **Return-value size** (`MultiToolConfiguration.returnValueCharacterLimit`,
-  default 4,000 characters) and **console output size**
-  (`MultiToolConfiguration.consoleCharacterLimit`, default 2,000 characters)
+  default `ResultRendererLimits.defaultReturnValueCharacterLimit`, 4,000
+  characters) and **console output size**
+  (`MultiToolConfiguration.consoleCharacterLimit`, default
+  `ResultRendererLimits.defaultConsoleCharacterLimit`, 2,000 characters)
   — `ResultRenderer` truncates and appends a visible note rather than
   flooding the model's context with a fat result.
+- **Live snippets** (`MultiToolConfiguration.liveContextLimit`, default
+  `MultiToolConfiguration.defaultLiveContextLimit`, 8) — a `runCode` call
+  beyond this number of live snippets is refused with a repairable error, so
+  the suspended JavaScriptCore contexts cannot grow without limit.
 
 ### The detail of a finished background run
 

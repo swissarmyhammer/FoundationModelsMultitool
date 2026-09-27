@@ -240,22 +240,29 @@ extension MultiTool {
 /// The arguments `MultiTool`'s `runCode` call accepts: the JavaScript snippet
 /// to run against `tools.*`, and nothing else.
 ///
-/// **`runCode` always backgrounds.** It hands back a completion token every
-/// time, so waiting is not one of its options — the concept is out of this
-/// schema rather than set to zero. A model that needs the result ends its
-/// answer, and the settled run comes back to the session as mail; a model that
-/// does not need it lets the snippet run (task `^cv98vff`).
+/// **Every mounted `runCode` call goes to the background, and it answers with
+/// one envelope.** The call first waits for its own snippet for
+/// `MultiToolConfiguration.inlineSettleGrace` (see
+/// `MultiTool.inlineSettleGrace`). The `pending` field of the envelope tells
+/// the model what to do:
 ///
-/// A tool with two return shapes is unlearnable. Under "inline if it is fast,
-/// a token if it is slow" the same call sometimes yields a value and sometimes
-/// an envelope, decided by a race the model cannot observe, so it can never
-/// form a stable habit. One shape, every time, is a correctness property
-/// before it is a simplification — and it happens to be deterministic too: the
-/// same call behaves identically on a fast machine and a loaded one.
+/// - A snippet that settles inside that wait answers with `pending: false`,
+///   the outcome of the run, and its result in `detail`. The model answers
+///   from that result, and no mail comes for that run.
+/// - A snippet that is still running answers with `pending: true` and a
+///   completion token. A model that needs the result ends its answer, and the
+///   settled run comes back to the session as mail; a model that does not need
+///   it lets the snippet run (task `^cv98vff`).
+///
+/// The envelope shape is the same in the two cases, and its `next` sentence
+/// states the action (`MultiTool.resultInstruction(forCompletionToken:)`
+/// and `MultiTool.collectInstruction(forCompletionToken:)`). So the model
+/// reads one field and one sentence, and not a race it cannot observe. The
+/// wait is set by the host, never by the model.
 ///
 /// This schema carries no clock, and must not grow one back. A `waitSeconds`
-/// would bound a wait that no longer exists, and a `timeout` would let a model
-/// bound work it no longer blocks on. The host's own
+/// would give the model the wait that the host sets, and a `timeout` would let
+/// a model bound work it does not block on. The host's own
 /// `MultiToolConfiguration.executionTimeLimit` is the ceiling, and
 /// `MultiTool`'s `BackgroundTool` conformance answers it to the engine as the
 /// work bound of every call (see `MultiTool+Background.swift`).

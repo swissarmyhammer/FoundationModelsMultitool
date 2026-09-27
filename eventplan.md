@@ -15,6 +15,27 @@ technical names also.
 > The session pushes settlement to the calling model. `timeout` stays as the
 > one bound on the work. The sections below are corrected to this contract.
 
+> **Update (2026-09-26).** Router now runs the generation work of each model
+> on one queue, in order. This changed three parts of this plan:
+>
+> - **Mail delivery.** A settled background run comes back to the session as
+>   mail. Router puts the terminal event into the session outbox, and that
+>   mail starts the next submission of the session. The model does not
+>   collect the run: it ends its answer, and the next message it gets carries
+>   the result. This package mounts no `wait` tool, and the sandbox `wait()`
+>   is removed. A wait inside a submission holds the model for every session
+>   on it. The name `wait` stays in the sandbox only so that a call to
+>   `wait()` throws a repair text. Where a section below names `wait()` as a
+>   way to collect a run, read "the mail" in its place.
+> - **The submission boundary.** Router calls
+>   `SubmissionBoundaryTool.submissionWillBegin()` on each mounted tool
+>   before the next submission starts. MultiTool applies a staged registry
+>   there.
+> - **The librarian model.** `searchTools` is synchronous, so its sessions
+>   run inside the open submission of the calling session. Router refuses at
+>   once a wait on the model of that open submission. Thus the librarian
+>   model must be different from the model of the calling session.
+
 Router owns the host substrate. The substrate contains the event vocabulary, the
 outbox, the mailbox, and the ambient `ToolContext`. Router is one package with
 one product. The substrate is in a `Hosting/` source folder adjacent to
@@ -40,7 +61,7 @@ each MultiTool. It is never behind a Builder option.
 | Capability | Surface |
 |---|---|
 | Synchronous by default | A `Tool` call runs to completion and returns its value inline. File, skill, and discovery tools are synchronous. `timeout` bounds the work. |
-| Background by declaration | A tool that declares the background protocol returns a `completionToken` handle at once, on every call. The `status()`, `wait()`, and `cancel()` builtins collect; the session pushes settlement to the model. |
+| Background by declaration | A tool that declares the background protocol returns a `completionToken` handle at once, on every call. The session delivers the settled run to the model as mail; the `status()` and `cancel()` builtins look at a run or stop it. |
 | Elicitation | `elicit()` is available at the snippet top level. `ToolContext.elicit` is available in each tool. These are always available. |
 | Notification events | `notify()` and `progress()` are available at the snippet top level. `ToolContext.post` and `progress` are available in each tool. These are always available. |
 | Discovery | `findAPIs`, `help()`, `docs()` |
@@ -104,12 +125,12 @@ The model reads text on the wire in each case.
 
 A call waits a short time for its own run before it answers.
 `MultiToolConfiguration.inlineSettleGrace` sets how long, and the default is
-two seconds. A run that settles inside that time answers with the same
-envelope, but with `pending: false`, the run's `outcome`, and its `detail`.
-The model reads the result in the tool output it already has, and makes no
-`wait` call. A run that is still going answers with the pending envelope, as
-before. There is one envelope. Only the `pending` field changes what the model
-does.
+five seconds (`MultiToolConfiguration.defaultInlineSettleGrace`). A run that
+settles inside that time answers with the same envelope, but with
+`pending: false`, the run's `outcome`, and its `detail`. The model reads the
+result in the tool output it already has, and no mail comes for that run. A
+run that is still going answers with the pending envelope, as before. There is
+one envelope. Only the `pending` field changes what the model does.
 
 A background run speaks to its calling model with five signals:
 
@@ -121,13 +142,14 @@ A background run speaks to its calling model with five signals:
 5. "I am done" — one terminal `.completed` event with the bounded output
    tail.
 
-The session pushes signals 4 and 5 to the model at the next turn boundary. The
-model does not poll. Follow-up is different for each path, and this is
-intentional. Code mode has the `status(completionToken)`,
-`wait(completionToken, seconds)`, and `cancel(completionToken)` builtins. The
-model keeps the token across turns. The native path has no builtins.
-Completion arrives as a turn-riding event through the outbox at the next turn
-boundary. No follow-up pseudo-tools return.
+The session pushes signals 4 and 5 to the model before the next submission.
+The model does not poll. Router puts the terminal event into the session
+outbox as mail, and that mail starts the next submission of the session. The
+model ends its answer, and the next message it gets carries the result. Code
+mode has the `status(completionToken)` and `cancel(completionToken)` builtins.
+It has no `wait` builtin: a wait inside a submission holds the model for every
+session on it. The native path has no builtins. No follow-up pseudo-tools
+return.
 
 The token is a ULID. It is the same value as the run's event `correlationID`.
 The word is always `completionToken`. Do not write "token" alone. That word
@@ -619,8 +641,9 @@ carries. It is not a run cancellation.
 **The surface never changes in place. A change means rebuild and swap.**
 Servers connect before `buildRegistry()`. A late server, a reconnect, or an MCP
 `tools/list_changed` starts a full rebuild. MultiTool renders the new registry
-complete at the side. Then MultiTool swaps it in atomically at the next turn
-boundary — the same boundary where the outbox folds in events.
+complete at the side. Then MultiTool swaps it in atomically before the next
+submission (`SubmissionBoundaryTool.submissionWillBegin()`) — the same
+boundary where the outbox folds in events.
 
 Nothing changes below a snippet that runs. An in-flight run keeps the registry
 that it started with. The swap does not touch parked runs, because the mailbox
@@ -842,9 +865,10 @@ FoundationModelsMCP repository. ACPAgent, its one org consumer, moves first.
 >    conformers** that work on a bare `LanguageModelSession`. Background and
 >    non-blocking elicitation are what Router adds. On a bare session, MCP
 >    elicitation goes to a host handler on `MCPServer`, and the turn waits.
-> 3. **Router supplies the turn boundary** through
->    `TurnBoundaryTool.turnWillBegin()`. MultiTool stages a rebuilt registry
->    and applies it there.
+> 3. **Router supplies the submission boundary** through
+>    `SubmissionBoundaryTool.submissionWillBegin()`, which Router calls before
+>    the next submission. MultiTool stages a rebuilt registry and applies it
+>    there.
 > 4. **ACPAgent does not import FoundationModelsMCP** (manifest comment
 >    only), so the "consumer moves first" step is a check and a comment edit.
 

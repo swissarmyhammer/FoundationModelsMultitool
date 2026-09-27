@@ -9,10 +9,21 @@ right. Read this for why a decision was taken; read `README.md`,
 
 The host contract, in one sentence, so no passage below can send a reader the
 wrong way: build a registry, mount what
-`MultiTool.Registry.makeSessionTools(librarian:)` vends on the `RoutedSession`
-that `profile.standard.makeSession(tools:)` returns, and drive one turn by
-draining `streamEvents(to:)`. `Sources/MultitoolCLI/CLIRunner.swift` does
-exactly that, and every integration scenario drives the same wiring.
+`MultiTool.Registry.makeSessionTools(selection:embedder:sampleSession:)` vends
+on the `RoutedSession` that `profile.standard.makeSession(tools:)` returns, and
+drive one turn by draining `streamEvents(to:)`. The discovery seams take no
+Router type: `RouterDiscoverySeams` in `Sources/MultitoolCLI` makes them from
+`profile.flash` and `profile.embedding`. `Sources/MultitoolCLI/CLIRunner.swift`
+does exactly that, and every integration scenario drives the same wiring.
+
+**Update (2026-09-26).** Router now runs the generation work of each model on
+one queue, in order. The registry vends `searchTools` and `runCode` only; it
+vends no `wait` tool, and the sandbox `wait()` is removed. A settled background
+run comes back to the session as mail, and that mail starts the next
+submission. The librarian model must be different from the model of the
+calling session, because Router refuses at once a wait on the model of the open
+submission. Passages below that name a `wait` tool or `makeSessionTools(librarian:)`
+are corrected to this contract.
 
 One shipped feature is not in this plan: an `OperationTool` from the Extras
 `Operations` module mounts as one verb for each operation, at
@@ -93,8 +104,8 @@ It scales badly along three axes that a *code* surface fixes for free:
 
 1. **Schema bloat.** N tool schemas in the instructions cost tokens, latency, and
    selection accuracy on *every* turn, whatever the window. The MultiTool puts
-   **zero** tool schemas in the main session — only `searchTools`, `runCode` and
-   `wait`, the three the registry vends — and
+   **zero** tool schemas in the main session — only `searchTools` and
+   `runCode`, the two the registry vends — and
    keeps the derived API surface out in the interpreter and the discovery tier,
    so the cost is paid once, not per turn.
 2. **Chaining overhead.** With one-tool-per-turn calling, every intermediate result
@@ -262,8 +273,9 @@ So for `tools.getWeather({ city: "ATX" })` the interpreter:
 2. **Validates** — `T.Arguments(content)` *throws* on type/shape mismatch (free
    validation); `ToolInvoker` adds guide checks (enum/range/count) for a precise
    pre-call error.
-3. **Calls** `await tool.call(arguments:)` — a real Swift method call (blocking the
-   JS thread per the v1 async policy; Resolved #1).
+3. **Calls** `await tool.call(arguments:)` — a real Swift method call in its own
+   Swift `Task`. The JS side gets a `Promise` that settles when that `Task`
+   completes (the async host-function bridge; Resolved #1).
 4. **Renders** `Output` → a JS value: a structured `Output`'s `GeneratedContent`
    has a `jsonString`, parsed into a JS object; a text `Output` becomes a string.
    Intermediates stay in the sandbox.
@@ -303,10 +315,11 @@ let profile = try await router.resolve(profile: travelProfile, reporting: progre
 // 3. Mount the registry's own tools on the session the resolved standard slot
 //    vends (Router integration below). searchTools's own selection tier runs on
 //    the same profile's cheaper/faster flash slot.
-//    makeSessionTools orders them: searchTools first, then runCode, then wait.
+//    makeSessionTools orders them: searchTools first, then runCode.
 //    No instructions: the mounted tool descriptions carry the whole contract.
+let seams = RouterDiscoverySeams(librarian: profile.flash, embedder: profile.embedding)
 let session = profile.standard.makeSession(
-    tools: try registry.makeSessionTools(librarian: profile.flash)
+    tools: try registry.makeSessionTools(selection: seams.selection, embedder: seams.embedder)
 )
 // The session surfaces exactly the vended operations to the model.
 ```
@@ -364,9 +377,10 @@ surface is:
   **`makeGuidedSession(_ grammar:instructions:workingDirectory:)`** vend sessions.
 - **`RoutedSession`** — an `actor` protocol with `respond(to:) async throws ->
   String`, `streamEvents(to:) -> AsyncThrowingStream<SessionEvent, Error>`, and
-  `fork(workingDirectory:)`. It **does** take `tools:`, and mounts each one
-  under `DetachConfiguration.nativeSessionMount`, which is what lets a slow
-  `runCode` park and answer with a pending envelope. That parameter did not
+  `fork(workingDirectory:)`. It **does** take `tools:`, and puts each one
+  through Router's own mounting path, where the background mount that
+  `MultiTool` declares for `runCode` takes effect. That is what lets a slow
+  `runCode` answer with a pending envelope. That parameter did not
   exist when the paragraphs below were first written, and its absence is the
   premise every retired passage here rests on.
 - **Guided generation** on `RoutedLLM` (xgrammar): `respond(to:following: Grammar)`
@@ -390,19 +404,21 @@ wraps the resolved `profile.standard` slot as a real
 `.guidedGeneration`), over the same resident weights the Router already
 loaded. A host never builds that by hand. It calls
 **`profile.standard.makeSession(tools: try registry
-.makeSessionTools(librarian: profile.flash))`** — `searchTools` presented
-before `runCode`, then `wait` — and drives one turn by draining
+.makeSessionTools(selection: seams.selection, embedder: seams.embedder))`**,
+with `seams = RouterDiscoverySeams(librarian: profile.flash, embedder:
+profile.embedding)` — `searchTools` presented before `runCode` — and drives
+one turn by draining
 `streamEvents(to:)`; this package drives no turn loop of its own. The
 production wiring is `Sources/MultitoolCLI/CLIRunner.swift` (`runDemo`, which
 passes no session instructions at all); the offline call-pattern reference is
 `Tests/FoundationModelsMultitoolTests/ExamplesTests.swift`. The session type is
-part of the contract rather than a detail: only a `RoutedSession` mounts a tool
-under `DetachConfiguration.nativeSessionMount`, so only there can a slow
-`runCode` park and answer with a pending envelope the model collects with
-`wait`. `searchToolsTool`'s internal selection tier takes a second, separate
-Router session (see **Discovery** below), because it needs the Router's
-cache-level `fork()` primitive and must never fork the session whose turn is
-calling it.
+part of the contract rather than a detail: only a `RoutedSession` puts a tool
+through Router's mounting path, so only there can a slow `runCode` answer with
+a pending envelope. The model ends its answer, and the settled run comes back
+to the session as mail, which starts the next submission. `searchToolsTool`'s
+internal selection tier takes a second, separate Router session on a different
+model (see **Discovery** below), because it needs the Router's cache-level
+`fork()` primitive and must never wait on the model of the calling session.
 
 **History — the loop this replaced.** The original plan concluded "the agent
 loop is ours to build": the Router has no tool loop, the built-in
@@ -449,7 +465,7 @@ instruction that teaches the search-then-code behavior.
 The MultiTool and `SearchToolsTool` are ordinary `FoundationModels.Tool`
 conformers, so mounting is native: hand both to the session the resolved
 profile vends, and its own tool-calling loop surfaces exactly the vended
-operations — `searchTools`, `runCode`, `wait` — to the model (mirroring
+operations — `searchTools` and `runCode` — to the model (mirroring
 `CLIRunner.runDemo`, the shipped production wiring):
 
 ```swift
@@ -458,8 +474,10 @@ let profile = try await router.resolve(profile: travelProfile, reporting: progre
 
 // The profile vends the session; nothing here wraps a slot by hand.
 // No instructions: the mounted tool descriptions carry the whole contract.
+// The librarian (profile.flash) is a different model from profile.standard.
+let seams = RouterDiscoverySeams(librarian: profile.flash, embedder: profile.embedding)
 let session = profile.standard.makeSession(
-    tools: try registry.makeSessionTools(librarian: profile.flash)   // searchTools, then runCode, then wait
+    tools: try registry.makeSessionTools(selection: seams.selection, embedder: seams.embedder)   // searchTools, then runCode
 )
 
 var reply = ""
@@ -491,11 +509,11 @@ model → "Austin (31°C)."
 
 **Direct mode (skip discovery).** For a small/fixed tool set, take discovery
 away and let the snippet introspect. Direct mode drops `searchTools` and
-nothing else — `runCode` and `wait` are still vended:
+nothing else — `runCode` is still vended, and it still goes to the background:
 
 ```swift
 let session = profile.standard.makeSession(
-    tools: try registry.directMode().makeSessionTools(librarian: nil)  // runCode + wait; help()/docs() inside the snippet
+    tools: try registry.directMode().makeSessionTools(selection: nil)  // runCode alone; help()/docs() inside the snippet
 )
 // in a snippet:  help() → ["getTrip","getWeather",…];  docs("getWeather") → signature + doc + example
 ```
@@ -520,10 +538,11 @@ guaranteed").
 Discovery is `SearchToolsTool` — `searchTools` as its own real `FoundationModels
 .Tool`, mounted on the vended session alongside `multiTool` (Component 8).
 The main session runs on the profile's `standard` slot; discovery's
-**selection tier** — the model-backed "librarian" role, still literally named
-`librarian:` in `SearchToolsTool(registry:librarian:)` — runs on the **same
-resolved profile's `flash` slot**, the cheaper/faster generation model of that
-same profile, as separate Router-backed sessions, so the full
+**selection tier** — the model-backed "librarian" role, named `librarian:` in
+`RouterDiscoverySeams(librarian:embedder:sampleGenerator:)`, which makes the
+`selection:` seam of `SearchToolsTool` — runs on the **same resolved profile's
+`flash` slot**, a different and cheaper/faster generation model of that same
+profile, as separate Router-backed sessions, so the full
 generated surface stays out of the main session's working context.
 
 Internally, every `searchTools(task)` call forwards to a
@@ -533,8 +552,9 @@ package) running in `.auto` mode:
 
 - **Retrieval always runs.** Ranked hybrid retrieval (BM25 + trigram + cosine,
   fused by RRF) narrows the catalog to candidates — no model call, no tokens.
-  With no `librarian` configured, `.auto` degrades to retrieval alone.
-- **Selection runs when a `librarian: RoutedLLM` is configured** (typically
+  With no `selection:` seam configured, `.auto` degrades to retrieval alone.
+- **Selection runs when a `selection:` seam is configured** (in the sample
+  CLI, from `RouterDiscoverySeams(librarian:)`, typically
   `profile.flash`): the registry's `SelectionTier` asks that model *which*
   candidates are relevant. Its answer is **ids only**, xgrammar-constrained to
   the candidate id enum (`idEnumGrammar(ids:)`) — the model cannot invent a
@@ -552,11 +572,14 @@ fork-per-call contract, each `searchTools` call forks the prefilled root —
 parent's prefilled KV cache (`SessionKVCache.copy()`) — so it inherits the
 prefix compute and diverges, rather than re-prefilling the surface each time
 (Findings #6). Only a Router session exposes that cache-level `fork()`, and it
-must be a **different** session from the one whose turn is calling `searchTools`:
-a session holds its own turn lock for the whole turn, tool rounds included, so
-forking the caller's own session would park until a turn that cannot end. That
-is why the selection tier takes `profile.flash` rather than reusing the main
-session. The surface **never enters the main session's context**.
+must run on a **different model** from the session that calls `searchTools`.
+`searchTools` is synchronous, so its body runs inside the open submission of
+the calling session. Router runs the generation work of each model on one
+queue, in order, and it refuses at once a wait on the model of that open
+submission (`GenerationQueueError.waitInsideOpenSubmission`). That is why the
+selection tier takes `profile.flash`, and why `CLIRunner.demoProfile` puts a
+different model in `flash` than in `standard`. The surface **never enters the
+main session's context**.
 
 Plus in-language `help()`/`docs()` globals backed by the same surface.
 
@@ -576,7 +599,7 @@ Plus in-language `help()`/`docs()` globals backed by the same surface.
 
 ```
 main session   (RoutedSession from profile.standard.makeSession(tools:);
-   │            sees only the vended tools: searchTools, runCode, wait)
+   │            sees only the vended tools: searchTools, runCode)
    │  searchTools("for each city in my trip, get weather and pick the warmest")
    ▼
 SearchToolsTool ─► MetadataSearcher (.auto): hybrid retrieval → candidates
@@ -762,11 +785,13 @@ Foundation bridge, irrelevant here because we expose only the wrapped tools, whi
 its costs (pre-release maturity, language gaps) remain.
 
 **Async (Resolved #1).** Each `tools.X()` `await`s a tool `call`; JSC is
-synchronous. v1 runs the interpreter **off the main thread** and **blocks the JS
-thread on a semaphore** per call while the async `call` runs on the cooperative
-pool — the standard JSContext bridging pattern, safe under stateless snippets. A
-JSC microtask/promise pump exposing real `async`/`await` and **parallel tool
-fan-out** (`Promise.all`) is a later upgrade.
+synchronous. v1 blocked the JS thread on a semaphore for each call. That bridge
+is gone. The interpreter runs **off the main thread**, and each `tools.X()` is
+an async host function (`AsyncHostFunction`): the call starts the tool `call`
+in its own Swift `Task` and gives the snippet a `Promise` at once. A promise
+pump on the JS thread settles each `Promise` when its `Task` completes. Thus a
+snippet has real `async`/`await`, and `Promise.all` gives **parallel tool
+fan-out**. `Interpreter.run` settles every pending promise before it returns.
 
 **Execution limits (Resolved #2).** Runaway loops are bounded by
 `JSContextGroupSetExecutionTimeLimit` + a `JSShouldTerminateCallback` watchdog.
@@ -779,7 +804,7 @@ output-size cap.
 ## State: stateless snippets
 
 Each `runCode` gets a **fresh `JSContext`** — no shared state between calls, which
-keeps the blocking async bridge safe and behavior predictable. A persistent context
+keeps the async host-function bridge safe and behavior predictable. A persistent context
 + a Voyager/Anthropic-"skills" reusable-function library is a v2 mode (Resolved #7),
 not a default.
 
@@ -1076,9 +1101,11 @@ a supported subject.)*
 
 ## Resolved open questions
 
-- **#1 Async — block in v1.** Interpreter off the main thread; each `tools.X()`
-  blocks the JS thread on a semaphore while `call` runs on the cooperative pool.
-  Parallel fan-out via a JSC promise pump is a later upgrade.
+- **#1 Async — a promise pump.** Interpreter off the main thread; each
+  `tools.X()` is an async host function that returns a `Promise`, and a promise
+  pump settles it when the tool `call` completes. `Promise.all` fans calls out
+  in parallel. (v1 blocked the JS thread on a semaphore for each call; that
+  bridge is removed.)
 - **#2 Execution limits.** `JSContextGroupSetExecutionTimeLimit` watchdog
   (extern-declared; low review risk) + output-size cap; documented fallbacks.
 - **#3 `Output` → script value.** Structured `Output` → JS object; else string. Exact
