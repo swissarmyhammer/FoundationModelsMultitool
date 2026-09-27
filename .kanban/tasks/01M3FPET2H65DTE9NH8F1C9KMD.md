@@ -1,6 +1,16 @@
 ---
 assignees:
 - claude-code
+comments:
+- actor: claude-code
+  id: 01m3fpgdr3frkc34emh8hk6zpa
+  text: |-
+    Answer from the router session (2026-09-26) about the three types without a named home:
+    - `SessionEvent`: the library uses it only in doc comments (`Capabilities/Files/FileChangeJournal.swift:24` and `:59`). The value in that event is `ToolCallReport`, which moves to Extras in task 01M3FP9700G1GWA15B0GEZQGMD. Change the comments so that they refer to the tool call report and do not name the Router event.
+    - `RunKind`: now in Router's `Hosting/RunPlane.swift`. It moves to Extras in task 01M3FP9700G1GWA15B0GEZQGMD.
+    - `OperationEvent`: already in Extras (Router has only a typealias). Import it from `FoundationModelsExtras`.
+    So no Router card is necessary for these three.
+  timestamp: 2026-09-26T20:29:04.131068+00:00
 depends_on:
 - 01M3FMSTTSP16K9AE7JKZAEFGZ
 - 01M3ETW8G0BNP6JY8DNBW8B4DX

@@ -59,6 +59,10 @@ comments:
     - stuck: acceptance item "`swift test --package-path IntegrationTests --no-parallel` passes" and the filter test item are not met. The only failing suite is `UnknownToolHintLiveTests` (2 issues: `bash.run` → `shell.grepHistory`, `terminal.runTests` → `shell.getLines`, declared `shell.execute`). It fails the same way with the old profile layout, so this change did not cause it. Tracked as task 01M3G1K0GGX4F743R42HD8266A. The task stays in `review` until a person decides.
     - Router finding to send to the FoundationModelsRouter peer: a `runCode` call with 160-200 repeated snippet lines ran 20-45 minutes with no `repetitionStopped` event (see the repetition comment above).
   timestamp: 2026-09-27T00:10:57.174284+00:00
+- actor: claude-code
+  id: 01m3g38qxspbdy4f2nbmz4q9jv
+  text: 'Router board card for the repetition finding: 01M3G38FN9NR923ANR9DZW15ST (2026-09-26). The router session found the main cause: `RepetitionDetector.attemptTexts` (Router `RepetitionDetector.swift:41-57`) watches only `.reasoning` and `.response` entries, and it skips `.toolCalls`. So the watch never reads tool-call arguments. The `\n` escapes in the JSON argument are a second problem. That card covers both.'
+  timestamp: 2026-09-27T00:12:03.897140+00:00
 depends_on:
 - 01M3ETV0A0AE2F2MTGWTFHF7T4
 - 01M3ETTBXPEYFR2DSBAZHMQVXB
