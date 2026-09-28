@@ -81,13 +81,25 @@ comments:
     - evidence: root `swift build --build-tests && swift test`: 1822 tests in 146 suites pass, no compiler warnings. There are only SwiftPM "failed loading cached manifest: disk I/O error" warnings from the shared manifest cache of the environment. Full live run 2 `swift test --package-path IntegrationTests --no-parallel`: 59 tests in 31 suites pass, 1884 s. The six `KeyedProviderLiveTests` tests are skipped because their key variables are not set. This is the written user exception in web.md "The environment rule". Per suite: files-and-shell discovery 73 s; async fan-out 80 s; background-in-code-mode 81 s; Brave HTML 1.8 s; CLI smoke test 187 s (CLISmokeTests live check of ^zhmqvxb passes); DuckDuckGo HTML 1.6 s; fetch verb 1.7 s; bare-session file read 57 s; address guard 0.02 s; held-out discovery 99 s; mail collection canary 152 s; Brave key fallback 1.0 s; keyed providers (6 skipped); keyless chain 0.5 s; LiveProviderSetting; MCP verb 14 s; MCP elicitation 13 s; nested-generation probe 24 s; no-description discovery 125 s; operation tool 113 s; over-budget discovery 38 s; profile slot separation; recordings location; retrieval-text 8.5 s; search-then-call 304 s; selection fork-per-call 10 s; shell background 57 s; shell bare session 47 s; did-you-mean hints (`UnknownToolHintLiveTests`) 8.4 s; web research 383 s. The filter run items are part of this full run.
     - next: commit, then review.
   timestamp: 2026-09-28T23:14:28.661691+00:00
+- actor: claude-code
+  id: 01m3n4xhkaqed43x98g9bp0239
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` on 1027e89, 0 findings (7 attempted, 0 failed). Every earlier finding is checked. Task moved to `done`.
+
+    ### finish iteration 3 — clean
+    - implement: changed. `FetchLiveTests.swift`: the content check now looks for the exact first body sentence of example.com. The page has no `<h1>` now, so the title is only in `<title>`. The title check stays the same. `web.md`: the Level 2 row matches. The package updates did not cause a failure.
+    - test: green. Root: 1822 tests in 146 suites pass. Full live run: 59 tests in 31 suites pass (1884 s). `UnknownToolHintLiveTests` and `CLISmokeTests` pass. The six `KeyedProviderLiveTests` are skipped by the written environment rule (no keys set).
+    - commit: changed. 1027e89 test(web): look for the body text of example.com, not its title, in the fetched content
+    - review: clean. 0 findings.
+  timestamp: 2026-09-28T23:17:06.282367+00:00
 depends_on:
 - 01M3ETV0A0AE2F2MTGWTFHF7T4
 - 01M3ETTBXPEYFR2DSBAZHMQVXB
 - 01M3EVKX9JFDWDQR297Q4JRND0
 - 01M3EVMDF9BZTNFR16F11CFNX0
-position_column: doing
-position_ordinal: '8180'
+position_column: done
+position_ordinal: fffa80
 title: 'Change the live suites for the same-model refusal: assert the refusal and split the single-model profiles'
 ---
 ## What
