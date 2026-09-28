@@ -20,8 +20,24 @@ comments:
     - evidence: `swift build --build-tests && swift test` — 1822 tests in 146 suites passed, 0 failed, 0 skipped. No compiler warning in a `.swift` file. The log shows SwiftPM manifest-cache "disk I/O error" lines and one "missing creator for mutated node" line for the mlx bundle. These come from the host build cache, not from the package source.
     - next: commit
   timestamp: 2026-09-28T18:06:09.567116+00:00
-position_column: doing
-position_ordinal: '8280'
+- actor: claude-code
+  id: 01m3mk6716vwbxafw96pagd9y3
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit 9496c76) — 0 findings, 0 confirmed, 0 refuted. The 2 files in scope are `.kanban/` files, and `.reviewignore` excludes them. No prior Review Findings section is on the task.
+    - next: move to done
+  timestamp: 2026-09-28T18:07:16.006772+00:00
+- actor: claude-code
+  id: 01m3mk69w21j85atft4ycm0aw2
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: no-change. Task ^hd44hre (commit 1003470) meets all items. The checklist is ticked with file:line notes.
+    - test: green. `swift build --build-tests && swift test` — 1822 tests in 146 suites passed, 0 failed, 0 skipped.
+    - commit: changed. 9496c76 chore(kanban): record that ^hd44hre meets ^18s996p (kanban files only).
+    - review: clean. `review sha HEAD~1..HEAD` — 0 findings.
+  timestamp: 2026-09-28T18:07:18.914799+00:00
+position_column: done
+position_ordinal: fff880
 title: 'CLI demo: print the answer that mail starts after a background run settles'
 ---
 ## What
