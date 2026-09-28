@@ -63,13 +63,31 @@ comments:
   id: 01m3g38qxspbdy4f2nbmz4q9jv
   text: 'Router board card for the repetition finding: 01M3G38FN9NR923ANR9DZW15ST (2026-09-26). The router session found the main cause: `RepetitionDetector.attemptTexts` (Router `RepetitionDetector.swift:41-57`) watches only `.reasoning` and `.response` entries, and it skips `.toolCalls`. So the watch never reads tool-call arguments. The `\n` escapes in the JSON argument are a second problem. That card covers both.'
   timestamp: 2026-09-27T00:12:03.897140+00:00
+- actor: claude-code
+  id: 01m3mytcykx0bbnm48m6nf0z41
+  text: 'Picked up for finish iteration 3. The blocker of iteration 2 (`UnknownToolHintLiveTests`) is fixed by task ^hd8266a (Router 2a79f92 embed padding, shell verb index text b270ae4). Packages now: Router 2a79f92, Extras 6c399a4, registry 32288c5. Plan: no code change unless a live suite now fails; run the unit tests, the filter run, CLISmokeTests and the full live run, and record the per-suite results.'
+  timestamp: 2026-09-28T21:30:31.763598+00:00
+- actor: claude-code
+  id: 01m3n2wq992drfet0bzvh0dbxd
+  text: 'Full live run 1 of iteration 3 (packages Router 2a79f92, Extras 6c399a4, registry 32288c5): 59 tests in 31 suites, 30 suites pass, 1 fails: `FetchLiveTests` "example.com gives the title Example Domain, and the content holds Example Domain" (`FetchLiveTests.swift:61`). `UnknownToolHintLiveTests` ("Gated did-you-mean hints") now passes. The failure is stable when the suite runs alone. Cause (evidence: `curl https://example.com`): example.com changed its page. The body now has only `<p>This domain is for use in documentation examples without needing permission. ...</p>` and a link. It has no `<h1>Example Domain</h1>`, so the title is only in `<title>`. The package updates did not cause this. The `title` check still passes. Fix: the content check now looks for the exact first body sentence (`exampleBodySentence`). The `title == "Example Domain"` check stays the same. The assertion is not weaker: it is still an exact text in the content. web.md Level 2 table row is updated to match. `FetchLiveTests` alone: 5/5 pass. Full live run 2 started.'
+  timestamp: 2026-09-28T22:41:42.185982+00:00
+- actor: claude-code
+  id: 01m3n4rqnn8g0b2yrrv8xj6h81
+  text: |-
+    ### implement — changed
+    - evidence: 2 files. `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Web/FetchLiveTests.swift` (new `exampleBodySentence`; the content check uses it; doc comments), `web.md` (the `FetchLiveTests` row of the Level 2 table).
+
+    ### test — green
+    - evidence: root `swift build --build-tests && swift test`: 1822 tests in 146 suites pass, no compiler warnings. There are only SwiftPM "failed loading cached manifest: disk I/O error" warnings from the shared manifest cache of the environment. Full live run 2 `swift test --package-path IntegrationTests --no-parallel`: 59 tests in 31 suites pass, 1884 s. The six `KeyedProviderLiveTests` tests are skipped because their key variables are not set. This is the written user exception in web.md "The environment rule". Per suite: files-and-shell discovery 73 s; async fan-out 80 s; background-in-code-mode 81 s; Brave HTML 1.8 s; CLI smoke test 187 s (CLISmokeTests live check of ^zhmqvxb passes); DuckDuckGo HTML 1.6 s; fetch verb 1.7 s; bare-session file read 57 s; address guard 0.02 s; held-out discovery 99 s; mail collection canary 152 s; Brave key fallback 1.0 s; keyed providers (6 skipped); keyless chain 0.5 s; LiveProviderSetting; MCP verb 14 s; MCP elicitation 13 s; nested-generation probe 24 s; no-description discovery 125 s; operation tool 113 s; over-budget discovery 38 s; profile slot separation; recordings location; retrieval-text 8.5 s; search-then-call 304 s; selection fork-per-call 10 s; shell background 57 s; shell bare session 47 s; did-you-mean hints (`UnknownToolHintLiveTests`) 8.4 s; web research 383 s. The filter run items are part of this full run.
+    - next: commit, then review.
+  timestamp: 2026-09-28T23:14:28.661691+00:00
 depends_on:
 - 01M3ETV0A0AE2F2MTGWTFHF7T4
 - 01M3ETTBXPEYFR2DSBAZHMQVXB
 - 01M3EVKX9JFDWDQR297Q4JRND0
 - 01M3EVMDF9BZTNFR16F11CFNX0
-position_column: review
-position_ordinal: '80'
+position_column: doing
+position_ordinal: '8180'
 title: 'Change the live suites for the same-model refusal: assert the refusal and split the single-model profiles'
 ---
 ## What
@@ -84,12 +102,12 @@ Before, a nested `respond` on the same model from inside a tool call deadlocked 
 - [x] No profile that a session suite uses has the same model in `standard` and `flash`. The model-free test enforces this.
 - [x] The nested-generation probe fails if the nested call hangs longer than its time limit, and passes when it gets `waitInsideOpenSubmission`.
 - [x] No file under `IntegrationTests/` names `backgroundRunsAfterRespond` or `atFirstTurnEndIn`.
-- [ ] `swift test --package-path IntegrationTests --no-parallel` passes on a machine that has the models.
+- [x] `swift test --package-path IntegrationTests --no-parallel` passes on a machine that has the models.
 
 ## Tests
 - [x] Run `swift build --package-path IntegrationTests --build-tests`. Expected result: it passes.
-- [ ] Run `swift test --package-path IntegrationTests --no-parallel --filter 'NestedGenerationProbeTests|AgentSurfaceDiscoveryTests|HeldOutSurfaceDiscoveryTests|RetrievalTextSurfaceDiscoveryTests|OverBudgetSurfaceDiscoveryTests|NoDescriptionSurfaceDiscoveryTests|UnknownToolHintLiveTests|SelectionForkPerCallTests|InBandCollectionCanaryTests'`. Expected result: it passes.
-- [ ] Run the full `swift test --package-path IntegrationTests --no-parallel`. Expected result: it passes.
+- [x] Run `swift test --package-path IntegrationTests --no-parallel --filter 'NestedGenerationProbeTests|AgentSurfaceDiscoveryTests|HeldOutSurfaceDiscoveryTests|RetrievalTextSurfaceDiscoveryTests|OverBudgetSurfaceDiscoveryTests|NoDescriptionSurfaceDiscoveryTests|UnknownToolHintLiveTests|SelectionForkPerCallTests|InBandCollectionCanaryTests'`. Expected result: it passes.
+- [x] Run the full `swift test --package-path IntegrationTests --no-parallel`. Expected result: it passes.
 
 ## Workflow
 - Use `/tdd`. Write failing tests first, then do the implementation that makes them pass.

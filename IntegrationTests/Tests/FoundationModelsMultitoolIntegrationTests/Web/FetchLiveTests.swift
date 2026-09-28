@@ -7,7 +7,7 @@ import Testing
 /// Level 2, the `FetchLiveTests` row).
 ///
 /// Each test fetches one well-known page. The pages and the facts are stable
-/// for years: the title of `example.com`, the `https` redirect of
+/// for years: the title and the body text of `example.com`, the `https` redirect of
 /// `github.com`, the length of a Wikipedia article, the media type of the
 /// GitHub zen API, and the media type of a W3C test PDF. A test does not
 /// retry.
@@ -17,11 +17,17 @@ import Testing
     .timeLimit(.minutes(LiveSearch.timeLimitMinutes))
 )
 struct FetchLiveTests {
-    /// The page whose title and content are `Example Domain`.
+    /// The page whose title is ``exampleTitle`` and whose body holds
+    /// ``exampleBodySentence``.
     private static let exampleURL = "https://example.com"
 
-    /// The title and a text of the content of ``exampleURL``.
+    /// The title of ``exampleURL``. It is in the `<title>` element only: the
+    /// page has no `<h1>` since 2026-09, so the content does not hold it.
     private static let exampleTitle = "Example Domain"
+
+    /// The first sentence of the body text of ``exampleURL``.
+    private static let exampleBodySentence =
+        "This domain is for use in documentation examples without needing permission."
 
     /// The `http` URL that GitHub redirects to `https`.
     private static let plainGitHubURL = "http://github.com"
@@ -52,13 +58,13 @@ struct FetchLiveTests {
     private static let pdfCorrection =
         "The content type is not text: application/pdf. fetch reads text, HTML, JSON, and XML."
 
-    @Test("example.com gives the title Example Domain, and the content holds Example Domain")
+    @Test("example.com gives the title Example Domain, and the content holds the first sentence of its body")
     func examplePageGivesItsTitle() async throws {
         let result = try await WebVerbCall.fetch(Self.exampleURL, context: LiveFetch.makeContext())
 
         try LiveFetch.requireNoCorrection(result)
         #expect(result.title == Self.exampleTitle)
-        #expect(result.content.contains(Self.exampleTitle), "the content was: \(result.content)")
+        #expect(result.content.contains(Self.exampleBodySentence), "the content was: \(result.content)")
     }
 
     @Test("http://github.com redirects, and the final URL starts with https://github.com")
