@@ -38,11 +38,31 @@ comments:
     - note: the first run failed in `applicationTargetDeclaresRouter`: the dependency line `.target(name: packageName),` split the MultitoolCLI declaration. Correction: a declaration starts only at a line that is exactly `.target(`, `.executableTarget(` or `.testTarget(`.
     - next: commit
   timestamp: 2026-09-28T17:32:42.859117+00:00
+- actor: claude-code
+  id: 01m3mh7cjscknryta2kmxxwtcf
+  text: |-
+    ### commit — changed
+    - evidence: 5a90600 refactor(package): take tool hosting from FoundationModelsExtras
+    - next: review HEAD~1..HEAD
+  timestamp: 2026-09-28T17:32:57.305833+00:00
+- actor: claude-code
+  id: 01m3mhen7f1mt6jvb52xfypazd
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD — 0 findings, 0 confirmed, 0 refuted; 32 files reviewed (README.md, plan.md: no validator matches; .kanban: ignored)
+    - next: done
+
+    ### finish iteration 1 — clean
+    - implement: changed — Package.swift, README.md, plan.md, 29 library sources, 3 test files (PackageManifestTests new)
+    - test: green — swift test 1820 tests in 146 suites passed; IntegrationTests --build-tests complete
+    - commit: changed — 5a90600 refactor(package): take tool hosting from FoundationModelsExtras
+    - review: clean — 0 findings on HEAD~1..HEAD
+  timestamp: 2026-09-28T17:36:55.535928+00:00
 depends_on:
 - 01M3FMSTTSP16K9AE7JKZAEFGZ
 - 01M3ETW8G0BNP6JY8DNBW8B4DX
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: fff680
 title: Take tool hosting from FoundationModelsExtras, and remove the FoundationModelsRouter dependency from the library target
 ---
 ## What
