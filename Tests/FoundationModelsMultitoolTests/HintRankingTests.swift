@@ -23,7 +23,8 @@ import Testing
 /// embedder, so it reads the BM25 list alone and the reading is exact and
 /// costs no model. The gated `UnknownToolHintLiveTests` holds the same three
 /// guesses with the shipped embedder behind them, where cosine ranks as well.
-/// This suite is the fast guard that the weights are still the shipped ones.
+/// This suite is the fast guard that the weights are still the shipped ones,
+/// and that the reader verbs do not take the word `run` back from the runner.
 @Suite("HintRankingTests")
 struct HintRankingTests {
 
@@ -44,11 +45,16 @@ struct HintRankingTests {
     /// The wrong `tools.*` paths that each ask to run a command, and that the
     /// keyword ranking answers with the runner.
     ///
-    /// `bash.run` and `terminal.runTests` are held by the gated suite instead:
-    /// each one spells out to one matching word, `run`, and BM25 alone divides
-    /// that word by the length of the block. Cosine settles them, and cosine
-    /// needs an embedder no unit test carries.
-    private static let runACommandGuesses = ["terminal.runCommand"]
+    /// `bash.run` and `terminal.runTests` each spell out to one matching word,
+    /// `run`. BM25 names the runner for them only because `run` is the runner's
+    /// word alone: the two reader verbs call a shell command a "command", and
+    /// never a "run". When the readers called it a "run", they held the word as
+    /// often as the runner did in shorter blocks, and BM25 ranked
+    /// `shell.getLines` first for both guesses (card `^hd8266a`, measured
+    /// 2026-09-28). These two guesses guard that wording.
+    private static let runACommandGuesses = [
+        "terminal.runCommand", "bash.run", "terminal.runTests",
+    ]
 
     /// The bundle a host really gets over the files-and-shell surface, with no
     /// embedder.

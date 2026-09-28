@@ -46,12 +46,12 @@ struct GrepHistoryArguments {
             + "regular expression.")
     var literal: Bool?
 
-    /// The completion token to search inside, or `nil` for each run of this
-    /// session.
+    /// The completion token to search inside, or `nil` for each command of
+    /// this session.
     @Guide(
         description:
-            "The completion token of one run to search inside. Omit it to search every run of "
-            + "this session.")
+            "The completion token of one command to search inside. Omit it to search every "
+            + "command of this session.")
     var commandID: String?
 
     /// The cap on the matches that come back, or `nil` for the cap of the
@@ -181,13 +181,14 @@ struct GrepHistory: Tool {
     /// The usage instructions, as the model reads them.
     let description = """
         grepHistory finds a line in what the commands of this session printed — an error message, \
-        the name of a failing test, a warning — over one run or over every run at once. It \
-        searches the captured output of this session's shell runs, line by line, with a regular \
-        expression — or with exact text when literal is true. Give commandID to search \
-        inside one run, and omit it to search every run. shown is how many matches came back and \
-        total is how many there are, thus a total over shown means a higher limit shows more. A \
-        pattern that does not compile, and a token no run of this session ran under, each come \
-        back as a correction rather than as an error — read it, correct the call, and ask again.
+        the name of a failing test, a warning — over one command or over every command at once. \
+        It searches the captured output of this session's shell commands, line by line, with a \
+        regular expression — or with exact text when literal is true. Give commandID to search \
+        inside one command, and omit it to search every command. shown is how many matches came \
+        back and total is how many there are, thus a total over shown means a higher limit shows \
+        more. A pattern that does not compile, and a token no command of this session ran under, \
+        each come back as a correction rather than as an error — read it, correct the call, and \
+        ask again.
         """
 
     /// The store this verb searches, which the shell capability owns.

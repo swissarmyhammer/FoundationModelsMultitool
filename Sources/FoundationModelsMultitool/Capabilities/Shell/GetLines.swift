@@ -41,11 +41,11 @@ import FoundationModels
 @Generable
 struct GetLinesArguments {
 
-    /// The completion token of the run whose output to read.
+    /// The completion token of the command whose output to read.
     @Guide(
         description:
-            "The completion token of the run whose output to read — the identifier shell.execute "
-            + "answered with.")
+            "The completion token of the command whose output to read — the identifier "
+            + "shell.execute answered with.")
     var commandID: String
 
     /// The first line number to read, or `nil` for the first stored line.
@@ -62,7 +62,8 @@ struct GetLinesArguments {
 ///
 /// `correction` and the lines are exclusive. A read that answers lines carries
 /// no correction, and a correction carries no line, no bound and no status.
-@Generable(description: "the lines of one run, or the correction that says why there are none.")
+@Generable(
+    description: "the lines of one command, or the correction that says why there are none.")
 struct GetLinesResult {
 
     /// The completion token of the run these lines came from.
@@ -198,14 +199,14 @@ struct GetLines: Tool {
 
     /// The usage instructions, as the model reads them.
     let description = """
-        getLines shows what a command printed: the output of a run, the log it wrote, the report \
-        a failing test left behind. That output is not a file on disk, thus this verb reads it \
-        and the file verbs cannot. It reads the captured output of one shell run, by line \
-        number. commandID is the completion token the run answered with. It reads a run that is \
-        still going and a run that ended alike: the status field says which, and `running` means \
-        more output is still to come. Omit start and end to read the whole output. A token no run \
-        of this session ran under, and a range that reads nothing, each come back as a correction \
-        rather than as an error — read it, correct the call, and ask again.
+        getLines shows what a command printed: its output, the log it wrote, the report a \
+        failing test left behind. That output is not a file on disk, thus this verb reads it \
+        and the file verbs cannot. It reads the captured output of one shell command, by line \
+        number. commandID is the completion token of that command. It reads a command that is \
+        still going and a command that ended alike: the status field says which, and `running` \
+        means more output is still to come. Omit start and end to read the whole output. A token \
+        no command of this session ran under, and a range that reads nothing, each come back as a \
+        correction rather than as an error — read it, correct the call, and ask again.
         """
 
     /// The store this verb reads, which the shell capability owns.
