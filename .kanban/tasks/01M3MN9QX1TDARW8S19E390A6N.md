@@ -1,6 +1,15 @@
 ---
 assignees:
 - claude-code
+comments:
+- actor: claude-code
+  id: 01m3mtx7khe2ah3ct4xeq9qt0a
+  text: |-
+    Facts from the swissarmyhammer session (2026-09-28) that change the test handler of this task:
+    - Extras OTel B `TelemetryCapture` (product `TelemetryTestSupport`) uses the task-local `withTracer` and `withMetricsFactory`, and it bootstraps logging only one time. A test process that uses it must NOT call `LoggingSystem.bootstrap` itself. OTel 8 uses `TelemetryCapture`, and it runs in the same test process. So do not add a second process-wide log bootstrap here. Use `TelemetryCapture` for the log read-back if Extras OTel B is on origin/main when this task starts. If not, use a per-logger injected handler (a `Logger` parameter or factory seam), not `LoggingSystem.bootstrap`.
+    - A logger made before the first capture does not go to the capture. So a `static let` logger that a test touches before the capture starts is lost. Make loggers per call or per instance, or make sure the capture starts first.
+    - Extras OTel A–D are done locally but NOT on Extras origin/main yet (2026-09-28).
+  timestamp: 2026-09-28T20:22:10.289130+00:00
 depends_on:
 - 01M3MN95YYY2J02M1X6QC6BREE
 position_column: todo

@@ -1,6 +1,11 @@
 ---
 assignees:
 - claude-code
+comments:
+- actor: claude-code
+  id: 01m3mtxer1xgfmz3jgyf0f3mfw
+  text: 'Fact from the swissarmyhammer session (2026-09-28): Extras already records `FoundationModelsExtras.tool.calls` and `FoundationModelsExtras.tool.duration` for each mounted tool call, with only the dimensions `tool.name` and `tool.outcome`. So do not record a second count and duration for `runCode` and `searchTools` here. Check whether the inner `tools.*` dispatch (`RunBinding.invoke`, through `RunBinding.innerCallMount`) already goes through the Extras tool hosting and gets these metrics. Record Multitool metrics only where Extras does not: the MCP server errors and restarts, the JS interpreter run duration, and the inner dispatch if Extras does not count it. Also: a metric made before the first `TelemetryCapture` does not go to the capture, so make metrics per call or per instance, not in a `static let` that a test touches first. Extras OTel A–D are not on Extras origin/main yet (2026-09-28).'
+  timestamp: 2026-09-28T20:22:17.601269+00:00
 depends_on:
 - 01M3MN95YYY2J02M1X6QC6BREE
 position_column: todo

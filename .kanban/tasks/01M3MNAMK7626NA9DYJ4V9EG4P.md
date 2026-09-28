@@ -6,6 +6,26 @@ comments:
   id: 01m3mnc25x007nsrq8e0wzn3z4
   text: 'Upstream blocker id (from the swissarmyhammer session, 2026-09-28): Extras OTel C ^ykgz2aa (01M3MN91YK71YVJ9C7WYKGZ2AA), the span-plus-"enter"-log helper that replaces CallTrace. Do not start this task until it is on Extras origin/main.'
   timestamp: 2026-09-28T18:45:24.797805+00:00
+- actor: claude-code
+  id: 01m3mtxbcnr0p4xpa2v9c7edbr
+  text: |-
+    Facts from the swissarmyhammer session (2026-09-28) about the Extras helper:
+    - The span-plus-"enter" helper is `TracedCall.run` (Extras OTel C). It gets the trace id and span id for the enter record from the `traceparent` that the tracer injects. `InMemoryTracer` does not inject, so its records have no ids. A test that checks the ids in the enter record needs a tracer that injects.
+    - Extras already opens a tool span for each mounted tool call: the span name is `FoundationModelsExtras.tool` (names in `ExtrasTelemetry.swift`). `ToolCallSpan` is internal, and `ToolCallSpan.withSpan` gives its body a `ToolCallSpan.Call` value. So the `MultiTool.call` and `SearchToolsTool.call` spans of this task are children of that Extras tool span. Do not open a second span with the same meaning; name the Multitool spans for the work inside the call.
+    - Extras OTel A–D are done locally but NOT on Extras origin/main yet. Do not start before they are pushed.
+  timestamp: 2026-09-28T20:22:14.165966+00:00
+- actor: claude-code
+  id: 01m3mv2hx17t5jy1bz79nsqcd1
+  text: 'Second upstream blocker (from the swissarmyhammer session, 2026-09-28): Extras OTel E ^wts388b (01M3MV1R3D52RAMFNFKWTS388B), not implemented yet. Now `TelemetryCapture` uses `InMemoryTracer`, which injects only its own id keys and not W3C `traceparent`. So in a capture, the `TracedCall.run` enter record has no trace id or span id. OTel E makes `TelemetryCapture` bind by default a tracer that records spans and injects and extracts `traceparent` and `tracestate`. The test of this task that checks the ids in the enter record waits for OTel E on Extras origin/main.'
+  timestamp: 2026-09-28T20:25:04.673204+00:00
+- actor: claude-code
+  id: 01m3mv3qpm8krbkx5yzakxvgqe
+  text: 'Update (2026-09-28, swissarmyhammer session): Extras OTel A–D are on Extras origin/main (HEAD 70ad74d), so `TracedCall.run` (OTel C) is available. The non-id parts of this task are no longer blocked. The check of the trace id and span id in the enter record still waits for Extras OTel E ^wts388b (01M3MV1R3D52RAMFNFKWTS388B, not pushed yet). Run `swift package update FoundationModelsExtras` (root and IntegrationTests) before this task starts.'
+  timestamp: 2026-09-28T20:25:43.380458+00:00
+- actor: claude-code
+  id: 01m3mwcbs1nzfrpmrnsqcvqj4j
+  text: 'Update (2026-09-28, swissarmyhammer session): Extras OTel E ^wts388b is on Extras origin/main (6c399a4). No Extras blocker is left. Run `swift package update FoundationModelsExtras` (root and IntegrationTests) first. `TelemetryCapture.Context.tracer` is now a `W3CInMemoryTracer`: it records spans and injects and extracts `traceparent` and `tracestate`. The enter records of `TracedCall.run` have `trace.id` and `span.id`. Code that needs the `InMemoryTracer` type uses `context.tracer.inMemoryTracer`. `SpanIdentity` is public.'
+  timestamp: 2026-09-28T20:47:54.657869+00:00
 depends_on:
 - 01M3MN95YYY2J02M1X6QC6BREE
 - 01M3MN9QX1TDARW8S19E390A6N
@@ -39,4 +59,4 @@ The design (2026-09-28): use real `swift-distributed-tracing` spans and remove `
 - [ ] Run `swift build --build-tests && swift test`. Expected result: all tests pass.
 
 ## Workflow
-- Use `/tdd`. Write failing tests first, then do the implementation that makes them pass. #upstream-blocked #otel
+- Use `/tdd`. Write failing tests first, then do the implementation that makes them pass. #otel
