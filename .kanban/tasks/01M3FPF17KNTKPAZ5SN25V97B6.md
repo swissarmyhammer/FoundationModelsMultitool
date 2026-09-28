@@ -1,10 +1,20 @@
 ---
 assignees:
 - claude-code
+comments:
+- actor: claude-code
+  id: 01m3mhyp1w3q0pznh1w5wnzr4q
+  text: |-
+    Research, iteration 1:
+    - The resolved Router (in `.build/checkouts`) already resolves each profile into the Extras `ModelPool` (default `ModelPool.shared`). `LiveModelLoader` conforms to `PooledModelLoader`. The Router embedding container is a `PooledEmbedding`.
+    - Thus, after the Router resolves `CLIRunner.demoProfile`, the embedding key is resident in `ModelPool.shared`. `PooledTextEmbedding.acquire(profile.embedding.chosen, ...)` adds a hold and does not call the loader. No new Router-only loader is necessary. The Router wiring stays in `MultitoolCLI`.
+    - Design: `RouterDiscoverySeams.acquireEmbedder(for: RoutedEmbedder, loader:, from: ModelPool = .shared)` acquires by `embedding.chosen` (the `ModelRef`). `RouterDiscoverySeams.init` now takes a `PooledTextEmbedding`. `RoutedTextEmbedding` is removed (no other user). `CLIRunner.runAnswers` passes the `LiveModelLoader` of its Router. `LiveRouterFixture` acquires the embedder after the resolve and keeps it.
+    - Test fixture: `makeStubProfile` gets `embeddingModel:` and `pool:` parameters, so a test can name `CLIRunner.embeddingModel` in a private pool and put no stub container into `ModelPool.shared` under a real key.
+  timestamp: 2026-09-28T17:45:40.668454+00:00
 depends_on:
 - 01M3FMSTTSP16K9AE7JKZAEFGZ
-position_column: todo
-position_ordinal: 8d80
+position_column: doing
+position_ordinal: '8180'
 title: Give searchTools a pooled embedder from the registry, so that one embedding model is in memory
 ---
 ## What
@@ -26,4 +36,4 @@ Now the CLI makes a `RoutedEmbedder` from the profile's `embedding` slot and ada
 - [ ] Run `swift build --build-tests && swift test`. Expected result: all tests pass.
 
 ## Workflow
-- Use `/tdd`. Write failing tests first, then do the implementation that makes them pass. #upstream-blocked
+- Use `/tdd`. Write failing tests first, then do the implementation that makes them pass.

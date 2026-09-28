@@ -218,6 +218,10 @@ struct StubEmbeddingContainer: LoadedEmbeddingContainer {
 /// test gives none of its own.
 let stubStandardModel: ModelRef = "stub/standard"
 
+/// The model reference of the `embedding` slot of the stub profile, when a
+/// test gives none of its own.
+let stubEmbeddingModel: ModelRef = "stub/embedding"
+
 /// A loader that downloads nothing and loads the stub containers.
 struct StubModelLoader: ModelLoader {
     /// The generation container every `loadLLM` call hands out. The default
@@ -326,7 +330,7 @@ actor CollectingTranscriptRecorder: TranscriptRecorder {
 ///   - loader: The loader the router loads its models through. The default
 ///     hands out ``StubLLMContainer``.
 ///   - standardModel: The model reference of the `standard` slot. See
-///     ``makeStubProfile(recorder:loader:standardModel:in:)``.
+///     ``makeStubProfile(recorder:loader:standardModel:embeddingModel:pool:in:)``.
 ///   - directory: Where the router caches and records. A fresh temporary
 ///     directory per call keeps runs of one suite apart.
 /// - Returns: The session, and the recorder of its transcript.
@@ -350,7 +354,8 @@ func makeStubSession(
 /// handles vend sessions over ``ToolCallingBackend``, and its `embedding`
 /// handle answers ``StubEmbeddingContainer``'s constant vector. A test that
 /// needs a real `RoutedLLM` or `RoutedEmbedder` — an argument of
-/// `RouterDiscoverySeams(librarian:embedder:sampleGenerator:)` — takes one
+/// `RouterDiscoverySeams(librarian:embedder:sampleGenerator:)` or of
+/// `RouterDiscoverySeams.acquireEmbedder(for:loader:from:)` — takes one
 /// from here with no model and no download.
 ///
 /// - Parameters:
@@ -363,6 +368,11 @@ func makeStubSession(
 ///     reference, so a test that gives its own container must also give a
 ///     reference no other test loads. Otherwise the pool hands it the
 ///     container another test loaded first.
+///   - embeddingModel: The model reference of the `embedding` slot. A test
+///     that names a real model here must also give its own `pool`, so that
+///     no stub container stays in `ModelPool.shared` under a real key.
+///   - pool: The model pool the router resolves into. The default is
+///     `ModelPool.shared`, the pool of the process.
 ///   - directory: Where the router caches. A fresh temporary directory per
 ///     call keeps runs of one suite apart.
 /// - Returns: The resolved profile.
@@ -371,6 +381,8 @@ func makeStubProfile(
     recorder: CollectingTranscriptRecorder = CollectingTranscriptRecorder(),
     loader: StubModelLoader = StubModelLoader(),
     standardModel: ModelRef = stubStandardModel,
+    embeddingModel: ModelRef = stubEmbeddingModel,
+    pool: ModelPool = .shared,
     in directory: URL = FileManager.default.temporaryDirectory
         .appendingPathComponent("multitool-stub-\(ULID.generate())")
 ) async throws -> LanguageModelProfile {
@@ -379,7 +391,8 @@ func makeStubProfile(
         recorder: recorder,
         probe: StubMachine(),
         metadataSource: StubMetadata(),
-        loader: loader
+        loader: loader,
+        pool: pool
     )
     return try await router.resolve(
         profile: ProfileDefinition(
@@ -387,7 +400,7 @@ func makeStubProfile(
             description: "the stub profile these fixtures run on",
             standard: [standardModel],
             flash: ["stub/flash"],
-            embedding: ["stub/embedding"]
+            embedding: [embeddingModel]
         ),
         reporting: ResolutionProgress()
     )

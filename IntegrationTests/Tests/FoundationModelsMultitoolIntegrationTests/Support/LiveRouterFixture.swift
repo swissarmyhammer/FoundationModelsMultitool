@@ -12,6 +12,7 @@ import MLXVLM
 import Testing
 import Tokenizers
 
+import FoundationModelsMetadataRegistry
 import FoundationModelsRouter
 import MultitoolCLI
 import TestConcurrency
@@ -568,9 +569,14 @@ struct LiveRouterFixture {
     /// left no transcript to read, because the recordings lived in a
     /// temporary directory no CI step uploads.
     private let recordingsDir: URL
+    /// The pooled embedder of `profile.embedding`, acquired from
+    /// `ModelPool.shared` after the resolve. The Router resolved the profile
+    /// into the same pool, so this hold loads no second copy of the model.
+    private let embedder: PooledTextEmbedding
 
     /// The discovery seams over ``profile``: the librarian on `profile.flash`
-    /// and the embedder on `profile.embedding`, with no sample generator.
+    /// and the pooled embedder of `profile.embedding`, with no sample
+    /// generator.
     ///
     /// `CLIRunner.runDemo` makes the same value, and each scenario mounts
     /// discovery through it. Thus the suite measures the discovery wiring that
@@ -578,7 +584,7 @@ struct LiveRouterFixture {
     /// `^kzaefgz`), and `RouterDiscoverySeams` is the one adapter between the
     /// two.
     var discoverySeams: RouterDiscoverySeams {
-        RouterDiscoverySeams(librarian: profile.flash, embedder: profile.embedding)
+        RouterDiscoverySeams(librarian: profile.flash, embedder: embedder)
     }
 
     /// Resolves a profile over a real, live `LiveModelLoader` — the
@@ -663,7 +669,9 @@ struct LiveRouterFixture {
                     // directories with no map back to the scenarios.
                     + " recordings=\(recordingsDir.path)"
             )
-            return LiveRouterFixture(router: router, profile: profile, recordingsDir: recordingsDir)
+            let embedder = try await RouterDiscoverySeams.acquireEmbedder(for: profile.embedding, loader: loader)
+            return LiveRouterFixture(
+                router: router, profile: profile, recordingsDir: recordingsDir, embedder: embedder)
         } catch {
             await liveProfileTurnstile.release()
             throw error

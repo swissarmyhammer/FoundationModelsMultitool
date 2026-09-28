@@ -938,11 +938,8 @@ public enum CLIRunner {
         output: @escaping @Sendable (String) -> Void
     ) async throws {
         let recordingsDir = Self.makeTempRecordingsDir()
-        let router = Router(
-            recordingsDir: recordingsDir,
-            recordingLevel: .full,
-            loader: LiveModelLoader(downloader: #hubDownloader(), tokenizerLoader: #huggingFaceTokenizerLoader())
-        )
+        let loader = LiveModelLoader(downloader: #hubDownloader(), tokenizerLoader: #huggingFaceTokenizerLoader())
+        let router = Router(recordingsDir: recordingsDir, recordingLevel: .full, loader: loader)
         let progress = await MainActor.run { ResolutionProgress() }
         let progressTask = Self.trackProgress(progress, output: output)
         defer { progressTask.cancel() }
@@ -970,10 +967,14 @@ public enum CLIRunner {
             // model, Router refuses that wait, and `RoutedAgentSession` gives
             // the error that names the fix.
             //
-            // `profile.embedding` is the embedder both searchers rank with —
+            // Both searchers rank with the model of `profile.embedding` —
             // the same profile that names `embeddingModel`. Without it the
             // registry reports `no embedder configured` on every search and
-            // ranks by keyword alone (card `^zqz1zan`).
+            // ranks by keyword alone (card `^zqz1zan`). The embedder is a
+            // pooled hold of that model: the Router resolved the profile into
+            // `ModelPool.shared`, so the pool adds a hold of the resident
+            // model and loads no second copy. `loader` loads the model only
+            // when it is not resident.
             //
             // The staging half of the same call is what a rebuilt registry is
             // handed to, and it is vended here rather than made by a factory:
@@ -984,7 +985,8 @@ public enum CLIRunner {
             // Explicitly typed, so the element type a host mounts is stated
             // where a reader meets it rather than inferred from a call in
             // another module.
-            let seams = RouterDiscoverySeams(librarian: profile.flash, embedder: profile.embedding)
+            let embedder = try await RouterDiscoverySeams.acquireEmbedder(for: profile.embedding, loader: loader)
+            let seams = RouterDiscoverySeams(librarian: profile.flash, embedder: embedder)
             let mounted: (tools: [any FoundationModels.Tool], staging: any RegistryStaging) =
                 try demo.registry.makeSessionToolsAndStaging(
                     selection: seams.selection, embedder: seams.embedder, sampleSession: seams.sampleSession)

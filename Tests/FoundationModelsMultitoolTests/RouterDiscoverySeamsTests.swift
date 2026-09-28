@@ -8,7 +8,8 @@ import Testing
 @testable import MultitoolCLI
 
 /// Coverage for the Router adapters of the sample CLI (`RouterDiscoverySeams`,
-/// `SelectionGrammar`, `RoutedAgentSession`, `RoutedTextEmbedding`).
+/// `SelectionGrammar`, `RoutedAgentSession`, and the pooled embedder of
+/// `RouterDiscoverySeams.acquireEmbedder`).
 ///
 /// Discovery takes the registry seams and knows nothing of Router. These
 /// adapters are where the host turns the Router handles of a resolved profile
@@ -168,35 +169,102 @@ struct RouterDiscoverySeamsTests {
     func selectionTierIsSeededWithTheEmptyAnswerGuidance() async throws {
         let profile = try await makeStubProfile()
 
-        let seams = RouterDiscoverySeams(librarian: profile.flash, embedder: profile.embedding)
+        let seams = RouterDiscoverySeams(librarian: profile.flash, embedder: try await Self.pooledEmbedder(of: profile))
         let config = try seams.selection(["getTrip"])
 
         #expect(config.preamble.contains(Self.emptyAnswerSentence))
     }
 
-    // MARK: - The embedding and the sample session
+    // MARK: - The pooled embedder and the sample session
 
-    @Test("the host's routed embedder is adapted to the registry's embedding seam unchanged, dimension included")
-    func routedEmbedderIsAdaptedUnchanged() async throws {
+    /// A pool loader that counts its loads and gives a stub embedding model.
+    ///
+    /// A test gives it to `RouterDiscoverySeams.acquireEmbedder` and reads
+    /// ``loads``: each load is one embedding model that the pool put in
+    /// memory.
+    private final class CountingEmbeddingLoader: PooledModelLoader {
+        /// The number of ``load(_:)`` calls.
+        private let loadCount = Mutex(0)
+
+        /// The number of models that this loader loaded.
+        var loads: Int { loadCount.withLock { $0 } }
+
+        func load(_ key: ModelPoolKey) async throws -> any Sendable {
+            loadCount.withLock { $0 += 1 }
+            return StubEmbeddingContainer()
+        }
+
+        func evict(_ container: any Sendable) async {}
+    }
+
+    /// The pooled embedder of the embedding slot of `profile`, from
+    /// `ModelPool.shared`, where `makeStubProfile()` resolves by default.
+    ///
+    /// - Parameter profile: the resolved stub profile.
+    /// - Returns: the pooled embedder.
+    /// - Throws: what the acquire throws.
+    private static func pooledEmbedder(of profile: LanguageModelProfile) async throws -> PooledTextEmbedding {
+        try await RouterDiscoverySeams.acquireEmbedder(for: profile.embedding, loader: CountingEmbeddingLoader())
+    }
+
+    @Test("the seams rank with the pooled embedder of the resolved embedding model, dimension included")
+    func seamsRankWithThePooledEmbedder() async throws {
         let profile = try await makeStubProfile()
+        let texts = ["one", "two"]
 
-        let seams = RouterDiscoverySeams(librarian: profile.flash, embedder: profile.embedding)
-        let vectors = try await seams.embedder.embed(["one", "two"])
+        let seams = RouterDiscoverySeams(librarian: profile.flash, embedder: try await Self.pooledEmbedder(of: profile))
+        let vectors = try await seams.embedder.embed(texts)
 
-        // `StubEmbeddingContainer` answers one constant vector per text; the
-        // adapter forwards both members and adds nothing of its own.
-        #expect(seams.embedder is RoutedTextEmbedding)
+        // The pooled embedder forwards to the container that the Router
+        // loaded, so it gives the vectors of the Router embedding handle.
+        #expect(seams.embedder is PooledTextEmbedding)
         #expect(seams.embedder.dimension == profile.embedding.dimension)
-        #expect(vectors == (try await profile.embedding.embed(texts: ["one", "two"])))
+        #expect(vectors == (try await profile.embedding.embed(texts: texts)))
+    }
+
+    @Test("two requests for the CLI embedding model in one pool load the model one time")
+    func twoRequestsForTheEmbeddingModelLoadOneModel() async throws {
+        // The Router resolves into its own pool, so the discovery pool below
+        // starts empty, and no stub container goes into `ModelPool.shared`
+        // under the key of a real model.
+        let profile = try await makeStubProfile(embeddingModel: CLIRunner.embeddingModel, pool: ModelPool())
+        let pool = ModelPool()
+        let loader = CountingEmbeddingLoader()
+
+        let first = try await RouterDiscoverySeams.acquireEmbedder(for: profile.embedding, loader: loader, from: pool)
+        let second = try await RouterDiscoverySeams.acquireEmbedder(for: profile.embedding, loader: loader, from: pool)
+
+        #expect(loader.loads == 1)
+        #expect(pool.residentModelCount == 1)
+        #expect(pool.isResident(ModelPoolKey(ref: CLIRunner.embeddingModel, role: .embedding)))
+        withExtendedLifetime((first, second)) {}
+    }
+
+    @Test("the embedder takes a hold of the model that the Router loaded, and loads no second model")
+    func embedderSharesTheModelThatTheRouterLoaded() async throws {
+        let pool = ModelPool()
+        let profile = try await makeStubProfile(embeddingModel: CLIRunner.embeddingModel, pool: pool)
+        let residentBefore = pool.residentModelCount
+        let loader = CountingEmbeddingLoader()
+
+        let embedder = try await RouterDiscoverySeams.acquireEmbedder(for: profile.embedding, loader: loader, from: pool)
+
+        #expect(loader.loads == 0)
+        #expect(pool.residentModelCount == residentBefore)
+        #expect(pool.isResident(ModelPoolKey(ref: CLIRunner.embeddingModel, role: .embedding)))
+        // The profile keeps the holds of the Router. Without it, the pool
+        // can evict the model before the checks above run.
+        withExtendedLifetime((profile, embedder)) {}
     }
 
     @Test("the sample session is absent with no generator, and a routed session on the generator otherwise")
     func sampleSessionFollowsTheGenerator() async throws {
         let profile = try await makeStubProfile()
+        let embedder = try await Self.pooledEmbedder(of: profile)
 
-        let withoutGenerator = RouterDiscoverySeams(librarian: profile.flash, embedder: profile.embedding)
+        let withoutGenerator = RouterDiscoverySeams(librarian: profile.flash, embedder: embedder)
         let withGenerator = RouterDiscoverySeams(
-            librarian: profile.flash, embedder: profile.embedding, sampleGenerator: profile.standard)
+            librarian: profile.flash, embedder: embedder, sampleGenerator: profile.standard)
 
         #expect(withoutGenerator.sampleSession == nil)
         let makeSession = try #require(withGenerator.sampleSession)
