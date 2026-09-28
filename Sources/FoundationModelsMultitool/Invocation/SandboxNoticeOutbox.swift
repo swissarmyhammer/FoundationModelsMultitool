@@ -1,5 +1,5 @@
 import Foundation
-import FoundationModelsRouter
+import FoundationModelsExtras
 import os
 
 /// One notice a snippet's `notify()` or `progress()` enqueued, together with
@@ -11,8 +11,9 @@ import os
 /// difference between the cases — the payload is identical.
 ///
 /// Both deliver a `.progress`-kind `OperationEvent`, because that is the only
-/// non-terminal kind Router's `OperationEventKind` vocabulary has today (its
-/// three cases are `progress`, `completed`, and `elicitation`). A distinct
+/// non-terminal kind the `OperationEventKind` vocabulary of
+/// FoundationModelsExtras has today (its three cases are `progress`,
+/// `completed`, and `elicitation`). A distinct
 /// notice kind, if one is ever wanted, lands there — not here.
 enum SandboxNotice: Sendable {
     /// A `notify(detail)` call: delivered through ``ToolContext/post(_:)``.

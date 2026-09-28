@@ -1,5 +1,5 @@
 // `MCPServer+Call` — `call(name:arguments:)`, the one call method of
-// `MCPServer`, on the run plane of Router.
+// `MCPServer`, on the run plane of FoundationModelsExtras.
 //
 // eventplan.md § "Phases", the phase-4 note: an MCP verb is a plain
 // synchronous `Tool`. It runs inside the run that called it, so this method
@@ -13,7 +13,7 @@
 // (`../FoundationModelsMCP/Sources/FoundationModelsMCP/MCPServer.swift`) kept
 // a soft deadline, a call handle, a running-call snapshot, retained records
 // and three follow-up tools around every call. None of that is here. The
-// engine of Router owns the run: its `timeout` is the clock, and every
+// hosting engine of FoundationModelsExtras owns the run: its `timeout` is the clock, and every
 // `notifications/progress` this file routes to `ToolContext.progress(_:)`
 // resets it; cancellation of the calling `Task` becomes the advisory
 // `notifications/cancelled` on the wire; a transport drop under an in-flight
@@ -43,7 +43,7 @@
 // next `connect(via:)` or `disconnect()` tears the client down. The call it
 // served was settled long before, by the drop itself.
 
-import FoundationModelsRouter
+import FoundationModelsExtras
 import MCP
 import os
 

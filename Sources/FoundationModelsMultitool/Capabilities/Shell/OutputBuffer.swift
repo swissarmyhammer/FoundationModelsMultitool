@@ -10,7 +10,7 @@
 // The buffer holds no identifier of its own, and it mints none. The owner of a
 // buffer keys it on the completion-token `String` of its run — the one string
 // that is also the `commandID` of `ShellState` and the `correlationID` of the
-// Router mailbox. Thus a second kind of identifier cannot start here.
+// `RunPlane` of FoundationModelsExtras. Thus a second kind of identifier cannot start here.
 //
 // The buffer stays readable while the child process runs. Each read below
 // answers with the bytes that arrived before the read, and no read waits for

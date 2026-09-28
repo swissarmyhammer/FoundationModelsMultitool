@@ -29,7 +29,7 @@
 
 import Foundation
 import FoundationModels
-import FoundationModelsRouter
+import FoundationModelsExtras
 
 /// The arguments of `tools.files.patch`: the whole patch envelope.
 @Generable

@@ -1,13 +1,14 @@
 import Foundation
 import FoundationModels
-import FoundationModelsRouter
+import FoundationModelsExtras
 import os
 
 // MARK: - The runCode mount and its work bound
 //
-// Router mounts `runCode` through `ToolMounting.makeWrapped` like any other
-// tool, and the tool states its own mount and its own per-call work bound
-// through `BackgroundTool`. This file is that declaration, the
+// A Router session mounts `runCode` through `ToolMounting.makeWrapped` of
+// FoundationModelsExtras like any other tool, and the tool states its own
+// mount and its own per-call work bound through `BackgroundTool`. This file
+// is that declaration, the
 // collect sentence the pending envelope carries — plus the cap on how many of
 // the suspended JSC contexts a background run creates may be alive at once.
 //
@@ -53,10 +54,10 @@ extension MultiTool: BackgroundTool {
     /// It is the counterpart of ``collectInstruction(forCompletionToken:)``,
     /// and it says the opposite thing for the opposite condition. The pending
     /// sentence tells the model to end its answer and read the result from a
-    /// later message. This one tells it that no later message comes: Router
-    /// withdraws the staged mail of a run whose result goes out inline
-    /// (`BackgroundToolRunner.settledEnvelope`), so the result is in this
-    /// tool output and nowhere else.
+    /// later message. This one tells it that no later message comes: the run
+    /// plane of FoundationModelsExtras withdraws the staged mail of a run
+    /// whose result goes out inline (`BackgroundToolRunner.settledEnvelope`),
+    /// so the result is in this tool output and nowhere else.
     ///
     /// The last clause is there because a model that holds the result has
     /// still answered "it will come back to me later" (task `wnfzwxg`).

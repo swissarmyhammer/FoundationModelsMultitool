@@ -1,7 +1,7 @@
 import Foundation
-import FoundationModelsExtras
 import Testing
 
+@testable import FoundationModelsExtras
 @testable import FoundationModelsRouter
 @testable import MultitoolCLI
 @testable import MultitoolTestSupport
@@ -18,9 +18,10 @@ import Testing
 /// These properties are asserted here, in the unit suite, because the demo
 /// fixtures answer instantly and no live run shows them reliably.
 ///
-/// `@testable import FoundationModelsRouter`: `SubmissionID` and `MessageID`
-/// have internal initializers only, and a scripted submission frame needs
-/// both.
+/// `@testable import FoundationModelsRouter` and
+/// `@testable import FoundationModelsExtras`: `SubmissionID` (Router) and
+/// `MessageID` (Extras) have internal initializers only, and a scripted
+/// submission frame needs both.
 @Suite("CLIRunner answer drain")
 struct CLIAnswerDrainTests {
     @Test("the answer is the reply of the answered event, not the joined text fragments")

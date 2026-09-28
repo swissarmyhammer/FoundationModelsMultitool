@@ -25,7 +25,7 @@
 
 import Foundation
 import FoundationModels
-import FoundationModelsRouter
+import FoundationModelsExtras
 
 /// The arguments of `tools.files.write`: the file to write and the content
 /// to put in it.

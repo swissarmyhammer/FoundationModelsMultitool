@@ -1,7 +1,7 @@
 import Foundation
 import FoundationModels
+import FoundationModelsExtras
 import FoundationModelsMetadataRegistry
-import FoundationModelsRouter
 import os
 
 extension MultiTool {
@@ -117,8 +117,8 @@ extension MultiTool {
         /// carry the entire behavioral contract — see ``description``.
         ///
         /// The session type is part of the contract, not a detail. A Router
-        /// session is what puts each tool through Router's own
-        /// mounting path, where the background mount `MultiTool` declares for
+        /// session is what puts each tool through the `ToolMounting` path of
+        /// FoundationModelsExtras, where the background mount `MultiTool` declares for
         /// itself takes effect. So every `runCode` call goes to the background
         /// and answers with a pending envelope. The model ends its answer, and
         /// the settled run comes back to the session as mail, which starts the

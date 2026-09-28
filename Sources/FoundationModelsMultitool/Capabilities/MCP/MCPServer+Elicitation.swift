@@ -1,12 +1,13 @@
 // `MCPServer+Elicitation` — the passthrough of a server-initiated
-// `elicitation/create` to the one elicitation machinery of Router, and the
-// relay of `notifications/elicitation/complete`.
+// `elicitation/create` to the one elicitation machinery of
+// FoundationModelsExtras, and the relay of
+// `notifications/elicitation/complete`.
 //
 // eventplan.md § "Phases", phase 4: "The `ElicitationCoordinator` protocol
 // becomes the host seam of `ToolContext.elicit`, URL mode included." The
 // sibling's `ElicitationCoordinator` and `MCPElicitationTool` are gone.
-// Router's `ElicitationRequest` / `ElicitationResponse` and the
-// `SessionMailbox` are the one machinery; this file decodes the wire request
+// The `ElicitationRequest` / `ElicitationResponse` pair and the `RunPlane` of
+// FoundationModelsExtras are the one machinery; this file decodes the wire request
 // into the first, and encodes the second back onto the wire.
 //
 // **Three answerers, one order.** A question needs an answerer, and the verb
@@ -21,17 +22,18 @@
 //    plain tool on a plain session.
 // 3. Else `cancel` to the server. Never a throw into the transport.
 //
-// Router wins when present, so a Router host never sets the handler.
+// A bound context wins when present, so a Router host never sets the handler.
 //
 // **The restricted form schema.** eventplan.md: "Our boundary enforces the
 // restricted form schema for each elicitor." The wire schema is decoded by
-// Router's own `ElicitationRequestedSchema`, which refuses a nested object and
+// the `ElicitationRequestedSchema` of FoundationModelsExtras, which refuses a
+// nested object and
 // every type outside the subset; a request that fails that decode answers
 // `decline`, with a log line.
 //
 // **URL mode is a three-message flow**, and both answerers hold the accept
-// until the flow ends. Under a context, Router's mailbox keeps the run
-// suspended after the accept until `SessionMailbox.complete(elicitationId:)`,
+// until the flow ends. Under a context, the `RunPlane` keeps the run
+// suspended after the accept until `RunPlane.complete(elicitationId:)`,
 // so the accept reaches the wire only once the host has closed the flow.
 // Under the handler, this actor holds the accept the same way until the host
 // calls `complete(elicitationId:)`. The swift-sdk client runs a request
@@ -43,8 +45,9 @@
 // flow, whether the host calls it or the relay does.
 
 import Foundation
-import FoundationModelsRouter
+import FoundationModelsExtras
 import MCP
+import ULID
 import os
 
 extension MCPServer {
@@ -79,7 +82,7 @@ extension MCPServer {
     }
 
     /// Answers one `elicitation/create`: decodes the wire request into
-    /// Router's `ElicitationRequest`, resolves it in the order the header of
+    /// an `ElicitationRequest`, resolves it in the order the header of
     /// this file states, and encodes the answer back onto the wire.
     ///
     /// - Parameter parameters: The request as the server sent it — form
@@ -186,7 +189,7 @@ extension MCPServer {
     /// out-of-band interaction ends, and the relay of
     /// `notifications/elicitation/complete` calls it too. An id this actor
     /// holds no flow for — never opened, already ended, or a flow a bound
-    /// `ToolContext` answered, which `SessionMailbox.complete(elicitationId:)`
+    /// `ToolContext` answered, which `RunPlane.complete(elicitationId:)`
     /// ends instead — is ignored, per the spec.
     ///
     /// - Parameter elicitationId: The wire id of the flow.
@@ -208,11 +211,12 @@ extension MCPServer {
 
     // MARK: - The wire shapes
 
-    /// Decodes the wire `requestedSchema` into Router's restricted subset, or
-    /// logs why it stands outside it and returns `nil`.
+    /// Decodes the wire `requestedSchema` into the restricted subset of
+    /// FoundationModelsExtras, or logs why it stands outside it and returns
+    /// `nil`.
     ///
-    /// The wire schema is re-encoded as JSON and read by Router's own
-    /// decoder, so this boundary enforces exactly the subset every other
+    /// The wire schema is re-encoded as JSON and read by the decoder of
+    /// `ElicitationRequestedSchema`, so this boundary enforces exactly the subset every other
     /// elicitor does.
     ///
     /// - Parameter schema: The schema the server sent.

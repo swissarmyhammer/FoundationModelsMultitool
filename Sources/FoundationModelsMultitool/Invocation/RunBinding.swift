@@ -1,6 +1,6 @@
 import Foundation
 import FoundationModels
-import FoundationModelsRouter
+import FoundationModelsExtras
 
 /// Everything one `runCode` invocation's inner `tools.*` calls need to reach
 /// the session that issued it — captured once, at the top of
@@ -57,10 +57,11 @@ struct RunBinding: Sendable {
     /// a pending envelope in place of a value it awaited, unless the tool it
     /// called declares the background for itself.
     ///
-    /// The timeout is stated here, because Router's `ToolMount(mode:)` has no
-    /// timeout of its own since Router commit `70db984`. The value is
-    /// ``MultiToolConfiguration/defaultExecutionTimeLimit``, the same stock
-    /// clock inner calls had before that commit.
+    /// The timeout is stated here, because `ToolMount(mode:)` of
+    /// FoundationModelsExtras has no timeout of its own. Router commit
+    /// `70db984` removed it, before the type moved to FoundationModelsExtras.
+    /// The value is ``MultiToolConfiguration/defaultExecutionTimeLimit``,
+    /// the same stock clock inner calls had before that commit.
     static let innerCallMount = ToolMount(
         mode: .runToCompletion, timeout: MultiToolConfiguration.defaultExecutionTimeLimit
     )

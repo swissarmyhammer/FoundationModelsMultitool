@@ -31,7 +31,7 @@
 
 import Foundation
 import FoundationModels
-import FoundationModelsRouter
+import FoundationModelsExtras
 
 /// The arguments of `tools.files.edit`: the file to edit and the
 /// find/replace batch to apply.

@@ -14,10 +14,11 @@
 // **This runner holds no race, no backgrounding and no supervision.** eventplan.md
 // § "Consolidation of the siblings" states that "consolidation is promotion, not
 // construction", and that "Background supervision moves to the shared engine". The
-// `BackgroundToolRunner` engine of Router owns all three now: `run(_:)` is the run body
-// that the mailbox tracks, and `canceler(completionToken:)` is the canceler that
-// the mailbox tracks beside it. There is no `wait:` parameter here, there is no
-// deadline race, and there is no supervisor.
+// `BackgroundToolRunner` engine of FoundationModelsExtras owns all three now:
+// `run(_:)` is the run body that `RunPlane` tracks, and
+// `canceler(completionToken:)` is the canceler that `RunPlane` tracks beside it.
+// There is no `wait:` parameter here, there is no deadline race, and there is
+// no supervisor.
 //
 // The canceler holds NO pid of its own. It reads the process group of the run
 // from `ShellState.pidToCancel(commandID:)` at the moment it runs. The store
@@ -61,7 +62,6 @@
 
 import Foundation
 import FoundationModelsExtras
-import FoundationModelsRouter
 import Subprocess
 import Synchronization
 import System
@@ -182,7 +182,7 @@ struct ShellRunner {
 
         /// The completion token of the run.
         ///
-        /// The caller mints it with `SessionMailbox.makeCompletionToken()` and
+        /// The caller mints it with `RunPlane.makeCompletionToken()` and
         /// gives it here. It is the identifier of the record in `ShellState`, it
         /// is the `correlationID` of each event the run posts, and it is the
         /// token that `canceler(completionToken:)` takes. One string on two
@@ -281,8 +281,9 @@ struct ShellRunner {
     /// The canceler of the run under `completionToken`: it kills the process
     /// group of the child and reports `.stopped`.
     ///
-    /// This is the closure that `SessionMailbox.track(kind:)` takes beside the
-    /// run body. It holds NO pid of its own. It reads the process group from
+    /// This is the closure that
+    /// `RunPlane.start(tool:op:kind:completionToken:canceler:body:)` takes
+    /// beside the run body. It holds NO pid of its own. It reads the process group from
     /// `ShellState.pidToCancel(commandID:)` at the moment it runs, thus the
     /// store stays the one home of that pid and a stale pid cannot reach a
     /// process group that the store already gave up.
@@ -341,8 +342,9 @@ struct ShellRunner {
     ///
     /// This is the whole body of one run: the spawn, the drain of the two
     /// streams, the teardown that kills the process group, and the finalize of
-    /// the record. It is the body that `SessionMailbox.track(kind:)` takes, thus
-    /// it takes no `wait:` of its own and it races no deadline.
+    /// the record. It is the body that
+    /// `RunPlane.start(tool:op:kind:completionToken:canceler:body:)` takes,
+    /// thus it takes no `wait:` of its own and it races no deadline.
     ///
     /// `state.completeIfRunning` runs on each path out of `Subprocess.run`, and
     /// not on the normal return alone. The `catch` finalizes and throws again

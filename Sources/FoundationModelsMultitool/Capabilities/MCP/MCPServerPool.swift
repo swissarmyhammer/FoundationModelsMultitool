@@ -7,7 +7,7 @@
 // token": "MCP requests get the advisory cancel and post `.cancelled` before
 // the transport closes." The two sentences fix an order at session end:
 //
-//   1. The session sweep, `SessionMailbox.sweep()`, cancels every parked run.
+//   1. The session sweep, `RunPlane.sweep()`, cancels every parked run.
 //      A cancelled `MCPServer.call` sends `notifications/cancelled`.
 //   2. The host calls `shutdownAll()` on this pool. `MCPServer.disconnect()`
 //      waits for each notice of step 1 to reach the wire, then closes the

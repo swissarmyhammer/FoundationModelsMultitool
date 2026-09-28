@@ -1,5 +1,6 @@
 import Foundation
-import FoundationModelsRouter
+import FoundationModelsExtras
+import ULID
 
 // MARK: - The ambient sandbox globals (eventplan.md § "The sandbox globals")
 //
@@ -9,7 +10,7 @@ import FoundationModelsRouter
 // `makeHelpDocsHostFunctions`-style factories:
 //
 // - `status()`, `cancel()` — the session's background runs.
-//   Envelopes and outcomes only, read from the session's own `SessionMailbox`;
+//   Envelopes and outcomes only, read from the session's own `RunPlane`;
 //   never a capability's bulk output.
 // - `elicit()` — a question for the user in the middle of a snippet, suspending
 //   the snippet through `ToolContext.elicit` exactly as a wrapped tool's own
@@ -120,7 +121,7 @@ private enum CallResult {
 
 /// The deadline a lifecycle lookup gives the mailbox: none at all.
 ///
-/// `SessionMailbox.wait(completionToken:seconds:)` resolves immediately for a
+/// `RunPlane.wait(completionToken:seconds:)` resolves immediately for a
 /// finished or unknown token and reports its deadline elapsed for a run that is
 /// still going, so a zero-second wait is the mailbox's own lifecycle probe — it
 /// never suspends the calling snippet.
@@ -470,8 +471,9 @@ extension MultiTool {
     /// `status()` lists, and the object `status(completionToken)` reports for a
     /// run still in flight.
     ///
-    /// The `BackgroundRun` in the signature is Router's own type for the row,
-    /// and it is what this package calls the row too.
+    /// The `BackgroundRun` in the signature is the type that
+    /// FoundationModelsExtras gives the row, and it is what this package
+    /// calls the row too.
     ///
     /// - Parameter run: the mailbox's own snapshot row.
     /// - Returns: the object's fields.
@@ -581,8 +583,8 @@ extension MultiTool {
     /// A bare string is the shorthand eventplan.md § "The sandbox globals"
     /// shows (`await elicit("Which repository should I target?")`): a
     /// form-mode request with a message and no fields to fill in. An object
-    /// carries the full restricted MCP shape, decoded by Router's own
-    /// `ElicitationRequestedSchema` so this boundary enforces exactly the
+    /// carries the full restricted MCP shape, decoded by the
+    /// `ElicitationRequestedSchema` of FoundationModelsExtras so this boundary enforces exactly the
     /// subset every other elicitor does — a snippet cannot widen it.
     ///
     /// The `elicitationId` is minted here, never taken from the snippet: it is
@@ -620,8 +622,9 @@ extension MultiTool {
         )
     }
 
-    /// Decodes a form request's `requestedSchema` through Router's own
-    /// `Codable` conformance, so the restricted MCP subset is enforced by the
+    /// Decodes a form request's `requestedSchema` through the `Codable`
+    /// conformance of the `ElicitationRequestedSchema` of
+    /// FoundationModelsExtras, so the restricted MCP subset is enforced by the
     /// one implementation that defines it.
     ///
     /// - Parameter value: the `requestedSchema` field, or `nil`/`null` for a

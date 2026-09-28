@@ -42,6 +42,13 @@ let response: LanguageModelSession.Response<String> =
 .package(url: "https://github.com/swissarmyhammer/FoundationModelsMultitool.git", branch: "main")
 ```
 
+The library does not depend on FoundationModelsRouter. Tool hosting comes from
+FoundationModelsExtras: `ToolContext`, `BackgroundTool`, `ToolMount`,
+`ToolMounting`, `SubmissionBoundaryTool`, `ToolCallReport` and the `RunPlane`
+that mints each completion token. A host that mounts the tools on a
+`RoutedSession` adds Router itself. In this repository, only the sample CLI
+(`MultitoolCLI`) and the test targets link Router.
+
 ## Capabilities
 
 Four capabilities ship with the package, each a set of ordinary `Tool`s you

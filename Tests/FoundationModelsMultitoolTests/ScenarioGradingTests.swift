@@ -1,8 +1,9 @@
 import Testing
 
+// `@testable`: `MessageID` (Extras) and `SubmissionID` (Router) have
+// internal initializers only, and a scripted submission chain needs both.
+@testable import FoundationModelsExtras
 @testable import FoundationModelsMultitool
-// `@testable`: `SubmissionID` and `MessageID` have internal initializers
-// only, and a scripted submission chain needs both.
 @testable import FoundationModelsRouter
 import ScenarioGrading
 

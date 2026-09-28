@@ -1,11 +1,12 @@
 import Foundation
-import FoundationModelsRouter
+import FoundationModelsExtras
 
 /// plan.md M10 — "Limits tuned + configurable": the knobs `MultiTool` uses to
 /// bound one `runCode` call and the number of calls that stay live.
 ///
 /// This type carries no turn budget. A host mounts the vended tools on a
-/// `RoutedSession`, and that session's own tool-calling loop owns turn
+/// session of its own (a Router session in the sample CLI), and that
+/// session's own tool-calling loop owns turn
 /// budgeting. The retired `MultiToolAgent` knobs `maxAgentTurns` and
 /// `maxRepairTurns` went with it, and only the `runCode`-sandbox limits stay.
 public struct MultiToolConfiguration: Sendable, Equatable {
@@ -91,8 +92,9 @@ public struct MultiToolConfiguration: Sendable, Equatable {
     /// The stock ceiling on one `runCode` snippet's work, in seconds — see
     /// ``executionTimeLimit``.
     ///
-    /// 120 seconds. This package owns the value. Router has no stock tool
-    /// timeout: a Router tool has a timeout only when the tool states one.
+    /// 120 seconds. This package owns the value. The hosting engine of
+    /// FoundationModelsExtras has no stock tool timeout: a hosted tool has a
+    /// timeout only when the tool states one.
     /// `runCode` states this one.
     public static let defaultExecutionTimeLimit: TimeInterval = 120
 

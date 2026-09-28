@@ -35,6 +35,12 @@ private let cliTargetName = "multitool-cli"
 private let mainBranch = "main"
 
 /// The name of the FoundationModelsRouter dependency package.
+///
+/// The library target does not link it: FoundationModelsExtras owns tool
+/// hosting (`extrasDependencyName`). `cliLibraryTargetName` links it, because
+/// the CLI runs a Router session. `scenarioGradingTargetName` and the unit
+/// test target link it for `TranscriptEvent` and `SubmissionID`, which stay
+/// in Router.
 private let routerDependencyName = "FoundationModelsRouter"
 
 /// The name of the FoundationModelsMetadataRegistry dependency package.
@@ -58,8 +64,13 @@ private let metadataRegistryDependencyName = "FoundationModelsMetadataRegistry"
 /// `atexit` sweep behind `ProcessRegistry.global` — which the shell
 /// capability's `ShellRunner` registers each spawned child into. This package
 /// held a copy of that type before; the copy is gone, thus every consumer in
-/// the host process now shares one registry and one sweep. The library target
-/// and the unit test target below both link the product.
+/// the host process now shares one registry and one sweep.
+///
+/// It also owns tool hosting: `ToolContext`, `BackgroundTool`, `ToolMount`,
+/// `ToolMounting`, `SubmissionBoundaryTool`, `LostRunError`, `ToolCallReport`,
+/// `OperationEvent` and the `RunPlane` that mints each completion token. The
+/// library target takes each of these from here, and not from Router. The
+/// library target and the unit test target below both link the product.
 private let extrasDependencyName = "FoundationModelsExtras"
 
 /// Base URL for packages published under the swissarmyhammer GitHub
@@ -248,6 +259,24 @@ private let mcpProducts: [Target.Dependency] = [
     .product(name: "MCP", package: mcpPackage)
 ]
 
+/// The time-sortable identifier package (yaslab/ULID.swift).
+///
+/// FoundationModelsExtras declares `ElicitationRequest.elicitationId` as a
+/// `ULID`, thus the library target makes a `ULID` for each elicitation it
+/// raises (`MultiTool+SandboxGlobals.swift` and
+/// `MCPServer+Elicitation.swift`). Router re-exported this module before, and
+/// the library does not depend on Router now. Thus the library target links
+/// the product itself. The version floor is the floor that Extras states.
+private let ulidPackage = "ULID.swift"
+
+/// The products of `ulidPackage`, linked by the library target below.
+///
+/// `shellProducts`, `mcpProducts` and `webProducts` group their own products
+/// the same way.
+private let ulidProducts: [Target.Dependency] = [
+    .product(name: "ULID", package: ulidPackage)
+]
+
 /// The HTML parser package the web capability reads pages with.
 ///
 /// web.md § "Decisions", item 1, selects it. SwiftSoup is pure Swift, has an
@@ -317,10 +346,11 @@ private let testConcurrencyTargetName = "TestConcurrency"
 /// need no model ran only when a person opted into a 14-minute suite.
 ///
 /// A target of its own, and not a file of `testServerTargetName`: that target
-/// is the scripted MCP server. This one links Router — for `ToolContext`,
-/// `BackgroundRun` and `TranscriptEvent` — and the metadata registry, for
-/// `Selection`. It does not link the library target, because no file of it
-/// names a symbol of this package.
+/// is the scripted MCP server. This one links Router — for `TranscriptEvent`
+/// and `SubmissionID`, which stay in Router, and for `ToolContext` and
+/// `BackgroundRun`, which Router re-exports from FoundationModelsExtras — and
+/// the metadata registry, for `Selection`. It does not link the library
+/// target, because no file of it names a symbol of this package.
 private let scenarioGradingTargetName = "ScenarioGrading"
 
 /// The name of the shared test-support library that reads the `internal`
@@ -376,8 +406,10 @@ private let testSupportPath = "\(testsPath)Support/"
 
 /// SwiftPM manifest for FoundationModelsMultitool.
 ///
-/// Integration of the FoundationModelsRouter package alongside the system
-/// FoundationModels and JavaScriptCore frameworks.
+/// A code-mode tool over the system FoundationModels and JavaScriptCore
+/// frameworks. The library takes tool hosting from FoundationModelsExtras and
+/// does not depend on FoundationModelsRouter. Only the CLI and the test
+/// targets link Router.
 ///
 /// **This manifest declares no integration test target, and that is the whole
 /// unit/integration split.** The integration suite — the real-model scenarios
@@ -477,19 +509,30 @@ let package = Package(
         // The package of `webProducts` — see `htmlParserPackage`. It stands
         // under an organization of its own, so neither helper above fits it.
         .package(url: "https://github.com/scinfu/\(htmlParserPackage).git", from: "2.13.9"),
+        // The package of `ulidProducts` — see `ulidPackage`. It stands under
+        // an organization of its own, so neither helper above fits it.
+        .package(url: "https://github.com/yaslab/\(ulidPackage).git", from: "1.3.1"),
     ],
     targets: [
         // Links `shellProducts` for the shell capability this library takes
         // over from `../FoundationModelsShelltool`, and `mcpProducts` for the
         // MCP capability it takes over from `../FoundationModelsMCP`, and
-        // `webProducts` for the HTML parser of the web capability.
+        // `webProducts` for the HTML parser of the web capability, and
+        // `ulidProducts` for the identifier of each elicitation.
+        //
+        // It does NOT link Router. FoundationModelsExtras owns the tool
+        // hosting — `ToolContext`, `BackgroundTool`, `ToolMount`,
+        // `SubmissionBoundaryTool`, `LostRunError` and `RunPlane` — and the
+        // library takes each one from there. Of the shipped targets, only the
+        // application, `cliLibraryTargetName`, links Router.
+        // `PackageManifestTests` reads this declaration and fails when Router
+        // comes back.
         .target(
             name: packageName,
             dependencies: [
-                .product(name: routerDependencyName, package: routerDependencyName),
                 .product(name: metadataRegistryDependencyName, package: metadataRegistryDependencyName),
                 .product(name: extrasDependencyName, package: extrasDependencyName),
-            ] + shellProducts + mcpProducts + webProducts,
+            ] + shellProducts + mcpProducts + webProducts + ulidProducts,
             path: "\(sourcesPath)\(packageName)"
         ),
         // M9: the sample CLI's whole implementation — plan.md "M9 — Sample CLI.

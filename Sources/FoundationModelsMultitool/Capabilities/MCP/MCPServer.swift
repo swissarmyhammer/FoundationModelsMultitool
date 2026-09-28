@@ -3,8 +3,8 @@
 //
 // A behavioral port of the connection and discovery halves of
 // `../FoundationModelsMCP/Sources/FoundationModelsMCP/MCPServer.swift`, split
-// across five files by concern, the way `RoutedSessionActor*.swift` splits
-// its actor in Router:
+// across five files by concern, the way Router splits the files of its
+// session actor:
 //
 // - `MCPServer.swift` (this file) — the actor: its stored state, `init`,
 //   `waitUntilReady()`, and the one funnel every state change goes through.
@@ -19,10 +19,11 @@
 // - `MCPServer+LiveCatalog.swift` — the coalesced re-list a burst of
 //   `tools/list_changed` notifications starts.
 // - `MCPServer+Call.swift` — `call(name:arguments:)`, the one call method,
-//   on the run plane of Router: the in-flight table, progress to the ambient
-//   `ToolContext`, cancellation to the wire, and the transport drop as
-//   `MCPServerError.lost`. `DropObservingTransport.swift` is the transport
-//   the client connects over, which reports that drop.
+//   on the run plane of FoundationModelsExtras: the in-flight table,
+//   progress to the ambient `ToolContext`, cancellation to the wire, and
+//   the transport drop as `MCPServerError.lost`.
+//   `DropObservingTransport.swift` is the transport the client connects
+//   over, which reports that drop.
 // - `MCPServer+Elicitation.swift` — the passthrough of a server-initiated
 //   `elicitation/create` to `ToolContext.elicit`, the host's handler for a
 //   bare session, and the relay of `notifications/elicitation/complete`.
@@ -31,10 +32,11 @@
 // deadline, the call handle and the running-call snapshot, the retained call
 // records, the three follow-up tools, the progress and outcome streams — is
 // gone. eventplan.md § "Consolidation of the siblings": "We delete
-// the two local designs." The call path stands on the run plane of Router
-// instead — see `MCPServer+Call.swift`. A discovered tool is an
-// `MCPCatalogEntry` here, and `mcpTools()` and `tool(named:)` vend that
-// entry; `MCPTool.swift` is the plain `Tool` a host builds over one entry.
+// the two local designs." The call path stands on the run plane of
+// FoundationModelsExtras instead — see `MCPServer+Call.swift`. A
+// discovered tool is an `MCPCatalogEntry` here, and `mcpTools()` and
+// `tool(named:)` vend that entry; `MCPTool.swift` is the plain `Tool` a
+// host builds over one entry.
 //
 // **This actor constructs its own `MCP.Client`.** In swift-sdk 0.12.1 the
 // client capabilities are fixed at `Client.init(name:version:capabilities:)`
@@ -103,7 +105,7 @@ public actor MCPServer {
     public let renderBudget: RenderBudget
 
     /// The bound of a call made with no ambient `ToolContext` — a bare host
-    /// call, outside any run of Router — measured from the moment the
+    /// call, outside any hosted run — measured from the moment the
     /// request went out, and reset by nothing. Once it elapses, the call
     /// answers an in-band `isError` result and `notifications/cancelled` goes
     /// out for the request. Defaults to ``defaultCallTimeout``.

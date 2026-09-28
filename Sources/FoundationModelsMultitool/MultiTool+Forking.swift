@@ -1,5 +1,5 @@
 import FoundationModels
-import FoundationModelsRouter
+import FoundationModelsExtras
 
 // MARK: - Fork composition (eventplan.md § "MultiTool is a host and an emitter")
 //

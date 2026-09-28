@@ -4,8 +4,8 @@
 // Operations/ExecuteCommand.swift`. The sibling is an `@Operation` that takes a
 // `ShellContext`, races a deadline of its own and supervises its own backgrounding;
 // this package has none of those, thus the verb is a plain
-// `FoundationModels.Tool` and the shared background engine of Router owns the
-// tracking, the work bound and the cancel.
+// `FoundationModels.Tool` and the shared background engine of
+// FoundationModelsExtras owns the tracking, the work bound and the cancel.
 //
 // eventplan.md § "Consolidation of the siblings": "consolidation is promotion,
 // not construction", and "Background supervision moves to the shared engine". So
@@ -37,12 +37,13 @@
 // mount through `BackgroundTool`, and every mounted call answers
 // the pending envelope at once. There is no argument that selects a block
 // window, because there is no block window. The verb never tracks a run
-// itself — `SessionMailbox.track` is internal to Router and no code here names
-// it. It DECLARES what kind of run this is and how to stop one, and the engine
+// itself — `RunPlane.start` is SPI of FoundationModelsExtras, and no code here
+// names it. It DECLARES what kind of run this is and how to stop one, and the engine
 // tracks it on those terms. See the extension below.
 //
 // **The answer is `String`, and its two siblings answer a `@Generable` value.**
-// That is the Router's rule rather than a preference:
+// That is the rule of `ToolMounting` in FoundationModelsExtras rather than a
+// preference:
 // `ToolMounting.makeWrapped` gives `BackgroundToolRunner` to a `String`-output tool
 // that declares the background, and `ContextBindingTool` — which never reaches
 // the run plane — to every tool with another output. A verb that must reach the
@@ -67,7 +68,7 @@
 
 import Foundation
 import FoundationModels
-import FoundationModelsRouter
+import FoundationModelsExtras
 
 /// The arguments of `tools.shell.execute`: what to run, where, under what
 /// environment, and for how long.
@@ -119,8 +120,9 @@ extension Execute: BackgroundTool {
     /// **A declared mount is the only way a call of this verb reaches the
     /// background.** `ToolMounting.makeWrapped` picks `BackgroundToolRunner` on the
     /// mount's mode alone, and `RunBinding.innerCallMount` — the mount every
-    /// inner `tools.*` call travels under — is `.runToCompletion`. Router
-    /// states that a declared mount wins over the composition site, and this
+    /// inner `tools.*` call travels under — is `.runToCompletion`.
+    /// `ToolMounting` states that a declared mount wins over the composition
+    /// site, and this
     /// is that declaration: every mounted call answers the pending envelope at
     /// once, and the command goes on behind it.
     ///
@@ -147,8 +149,9 @@ extension Execute: BackgroundTool {
     ///
     /// It is `ShellRunner.canceler(completionToken:)` and nothing else. That
     /// closure was written as this canceler — its own doc comment says it is
-    /// "the closure that `SessionMailbox.track(kind:)` takes beside the run
-    /// body" — and it holds no pid of its own, reading the process group out of
+    /// "the closure that
+    /// `RunPlane.start(tool:op:kind:completionToken:canceler:body:)` takes
+    /// beside the run body" — and it holds no pid of its own, reading the process group out of
     /// the store at the moment it runs. A second copy of that reading here
     /// could signal a group the store already gave up.
     ///
@@ -230,7 +233,7 @@ extension Execute {
     ///   run. A request this verb refuses does not reach it.
     func call(arguments: ExecuteArguments) async throws -> String {
         let context = ToolContext.current
-        let commandID = context?.completionToken ?? ToolContext.makeCompletionToken()
+        let commandID = context?.completionToken ?? RunPlane.makeCompletionToken()
 
         if arguments.command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return Self.corrected(Self.blankCommandCorrection)

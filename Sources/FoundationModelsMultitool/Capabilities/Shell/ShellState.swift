@@ -11,10 +11,10 @@
 // eventplan.md § "Consolidation of the siblings" states the identity rule of a
 // run: the `commandID` of a shell run is its `correlationID` is its
 // `completionToken` — one string on two planes. Thus a command id here is the
-// ULID string that `SessionMailbox.makeCompletionToken()` mints, and the
+// ULID string that `RunPlane.makeCompletionToken()` mints, and the
 // caller gives it. This store mints no identifier of its own, and it holds no
 // identifier of a kind of its own: the one string joins the run plane, which
-// the Router mailbox owns, to the content plane, which this store owns.
+// `RunPlane` of FoundationModelsExtras owns, to the content plane, which this store owns.
 //
 // The history belongs to one session, thus to one process. Each stored log
 // line opens with the `sessionID` of this process, and each reader keeps the
@@ -47,7 +47,7 @@ struct CommandRecord: Sendable {
     ///
     /// It is the `correlationID` of each event the run posts, and it is the
     /// token that `cancel` and `status` take. The caller mints it with
-    /// `SessionMailbox.makeCompletionToken()` and gives it to `startCommand`.
+    /// `RunPlane.makeCompletionToken()` and gives it to `startCommand`.
     let id: String
     /// The command line as the caller gave it.
     let command: String
@@ -269,7 +269,7 @@ actor ShellState {
 
     /// Starts to track a command under the completion token of its run.
     ///
-    /// The caller mints the token with `SessionMailbox.makeCompletionToken()`,
+    /// The caller mints the token with `RunPlane.makeCompletionToken()`,
     /// and that same token is the `correlationID` of each event the run posts.
     /// Thus the model reads one identifier and reaches both planes with it: the
     /// run plane through `status`, `wait` and `cancel`, and the content plane

@@ -1,4 +1,4 @@
-import FoundationModelsRouter
+import FoundationModelsExtras
 import os
 
 /// The first `LostRunError` an inner `tools.*` call of one `runCode`
@@ -10,13 +10,14 @@ import os
 /// reason is a string. A snippet that does not catch it fails with an
 /// `InterpreterError`, which `MultiTool.call(arguments:)` renders as
 /// repairable text; a snippet that catches it goes on. Either way the error
-/// itself never leaves the sandbox, and the engine of Router settles the
-/// `runCode` run from what `call(arguments:)` returned or threw. A transport
-/// drop under an in-flight MCP request is a `LostRunError`, and eventplan.md
-/// § "Phases" (the phase-4 note) says what it must reach: "the engine settles
-/// the calling run as `.lost`." The inner run already settled that way. This
-/// record is what carries the loss out to the outer run, so that run settles
-/// as `.lost` too, and never as a success whose text says a tool failed.
+/// itself never leaves the sandbox, and the run plane of
+/// FoundationModelsExtras settles the `runCode` run from what
+/// `call(arguments:)` returned or threw. A transport drop under an in-flight
+/// MCP request is a `LostRunError`, and eventplan.md § "Phases" (the phase-4
+/// note) says what it must reach: "the engine settles the calling run as
+/// `.lost`." The inner run already settled that way. This record is what
+/// carries the loss out to the outer run, so that run settles as `.lost` too,
+/// and never as a success whose text says a tool failed.
 ///
 /// **Why the first one.** One loss makes the outcome of the whole run
 /// unknowable; a second changes nothing, so the first is kept and the rest

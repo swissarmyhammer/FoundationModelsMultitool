@@ -48,7 +48,7 @@
 //   paginated `tools/list` of a connect, and the coalesced re-list a
 //   `tools/list_changed` burst starts.
 // - `MCPServer+Call.swift` — `call(name:arguments:)` on the run plane of
-//   Router: progress to the ambient `ToolContext`, cancellation to the wire,
+//   FoundationModelsExtras: progress to the ambient `ToolContext`, cancellation to the wire,
 //   a transport drop as `MCPServerError.lost`. `DropObservingTransport.swift`
 //   is the transport the client connects over, which reports that drop.
 // - `MCPTool.swift` — the plain synchronous `Tool` that one server verb

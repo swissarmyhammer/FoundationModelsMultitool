@@ -9,12 +9,13 @@
 //
 // **A plain `Tool`, and portable.** `MCPTool` does not conform to
 // `BackgroundTool`. A plain `Tool` needs only a `LanguageModelSession`, and
-// `BackgroundTool` means nothing without the engine of Router. What the verb
+// `BackgroundTool` means nothing without the hosting engine of
+// FoundationModelsExtras. What the verb
 // needs from the run plane, `MCPServer.call(name:arguments:)` reads off the
 // ambient `ToolContext` — progress and elicitation when a context is bound,
 // and nothing at all when none is (eventplan.md § "The ambient context"). Thus
 // one `MCPTool` serves three hosts with no change: a bare Foundation Models
-// session, a Router `RoutedSession`, and a MultiTool snippet. The result of an
+// session, a session of a host such as Router, and a MultiTool snippet. The result of an
 // MCP call is the value, and it has no content-plane store, so a background
 // envelope would give the model a 4 KB tail and nothing else (eventplan.md §
 // "The run plane and the content plane are different surfaces"). That is why

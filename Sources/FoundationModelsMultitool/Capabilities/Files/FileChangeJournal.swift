@@ -18,11 +18,12 @@
 // the host reads it back.
 //
 // **The same envelope also rides `ToolContext.attach(_:)`, and that is the
-// LIVE half.** The Router keeps a `.progress` event off its live surface: the
-// event is the model-facing preamble and the durable recording, so a host that
-// must show a diff DURING the turn cannot wait for it. A record attached to a
-// call makes ONE `SessionEvent.toolCallReport` when that call closes, under the
-// run's own correlation, which is the carrier the Router built for exactly this
+// LIVE half.** A Router session keeps a `.progress` event off its live surface:
+// the event is the model-facing preamble and the durable recording, so a host
+// that must show a diff DURING the turn cannot wait for it. A record attached
+// to a call makes ONE tool call report (`ToolCallReport`, FoundationModelsExtras)
+// when that call closes, under the run's own correlation. The host gets that
+// report live. It is the carrier that was built for exactly this
 // (UPSTREAM_ASKS.md, ask 4). The record's `schemaName` is
 // `FileChangeSet.operationEventDetailKey`, so a host matches it against the
 // same public name it already reads a `detail` by.
@@ -38,7 +39,7 @@
 // `tool`, `op` and `completionToken` (see `RunBinding.invoke`).
 
 import Foundation
-import FoundationModelsRouter
+import FoundationModelsExtras
 
 /// The session-scoped record of what the mutating verbs changed: delivered to
 /// the session as a `.progress` event and an attached record, or kept for a
@@ -55,8 +56,8 @@ import FoundationModelsRouter
 ///   (``FileChangeSet/encodedOperationEventDetail()``), carried two ways
 ///   through the ambient `ToolContext` of the call: as the `detail` of a
 ///   `.progress` `OperationEvent`, which the session records, and as a
-///   `ToolCallAttachment`, which reaches a host live on
-///   `SessionEvent.toolCallReport`. A host reads the set back from either with
+///   `ToolCallAttachment`, which reaches a host live in the tool call report
+///   (`ToolCallReport`) of the call. A host reads the set back from either with
 ///   ``FileChangeSet/init(operationEventDetail:)``. One verb call makes one
 ///   event and one record, whatever the number of files it touched.
 /// - With no ambient context (a verb on a bare `LanguageModelSession`, or a
@@ -141,7 +142,7 @@ actor FileChangeJournal {
     ///
     /// The two deliveries carry the same text and reach different readers, so
     /// neither replaces the other. The order they are made in decides nothing:
-    /// the Router posts a run's report after that run's close record, whatever
+    /// the host posts a run's report after that run's close record, whatever
     /// order the tool wrote the two calls in.
     ///
     /// - Parameters:

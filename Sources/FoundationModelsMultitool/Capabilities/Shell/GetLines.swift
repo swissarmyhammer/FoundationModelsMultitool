@@ -21,8 +21,8 @@
 //
 // The identifier is the completion-token `String` of the run — the one string
 // that is also the `commandID` of `ShellState` and the `correlationID` of the
-// Router mailbox (see `ShellState.startCommand(_:commandID:)`). The verb mints
-// nothing.
+// `RunPlane` of FoundationModelsExtras (see
+// `ShellState.startCommand(_:commandID:)`). The verb mints nothing.
 //
 // The buffer of a run is private to `ShellRunner.consume`, which writes the
 // lines each chunk completes into `ShellState` as the chunks arrive. Thus a

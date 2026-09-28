@@ -25,6 +25,18 @@ calling session, because Router refuses at once a wait on the model of the open
 submission. Passages below that name a `wait` tool or `makeSessionTools(librarian:)`
 are corrected to this contract.
 
+**Update (2026-09-28).** Tool hosting comes from FoundationModelsExtras, and
+the library target does not depend on FoundationModelsRouter. `ToolContext`,
+`BackgroundTool`, `ToolMount`, `ToolMounting`, `SubmissionBoundaryTool`,
+`LostRunError`, `ToolCallReport`, `OperationEvent` and `RunPlane` are types of
+Extras, and the library imports `FoundationModelsExtras` for each of them.
+`RunPlane.makeCompletionToken()` mints each completion token. Router is a
+dependency of the sample CLI (`MultitoolCLI`) and of the test targets only.
+`PackageManifestTests` fails when the library target links Router again or
+when a library source imports it. Passages below that say the library takes
+these types from Router, or that a tool goes through "Router's mounting path",
+mean the `ToolMounting` path of Extras that a `RoutedSession` calls.
+
 One shipped feature is not in this plan: an `OperationTool` from the Extras
 `Operations` module mounts as one verb for each operation, at
 `tools.<toolName>.<verbNoun>`. `README.md`, section `## Operation tools`,
@@ -378,7 +390,7 @@ surface is:
 - **`RoutedSession`** — an `actor` protocol with `respond(to:) async throws ->
   String`, `streamEvents(to:) -> AsyncThrowingStream<SessionEvent, Error>`, and
   `fork(workingDirectory:)`. It **does** take `tools:`, and puts each one
-  through Router's own mounting path, where the background mount that
+  through the `ToolMounting` path of FoundationModelsExtras, where the background mount that
   `MultiTool` declares for `runCode` takes effect. That is what lets a slow
   `runCode` answer with a pending envelope. That parameter did not
   exist when the paragraphs below were first written, and its absence is the
@@ -413,7 +425,7 @@ production wiring is `Sources/MultitoolCLI/CLIRunner.swift` (`runDemo`, which
 passes no session instructions at all); the offline call-pattern reference is
 `Tests/FoundationModelsMultitoolTests/ExamplesTests.swift`. The session type is
 part of the contract rather than a detail: only a `RoutedSession` puts a tool
-through Router's mounting path, so only there can a slow `runCode` answer with
+through the `ToolMounting` path of FoundationModelsExtras, so only there can a slow `runCode` answer with
 a pending envelope. The model ends its answer, and the settled run comes back
 to the session as mail, which starts the next submission. `searchToolsTool`'s
 internal selection tier takes a second, separate Router session on a different

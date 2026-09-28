@@ -1,14 +1,15 @@
-import FoundationModelsRouter
+import FoundationModelsExtras
 
 // MARK: - The submission boundary (eventplan.md § "Consolidation of the siblings")
 //
 // "Then MultiTool swaps it in atomically at the next turn boundary — the same
-// boundary where the outbox folds in events." Router supplies the boundary
-// through `SubmissionBoundaryTool.submissionWillBegin()`: the Router calls it
-// one time before each submission, after the session takes the waiting
-// messages and before the model call of the submission. A continuation of the
-// same answer is a submission too, so the hook also runs between two
-// submissions of one answer. This file is where `runCode` applies the registry
+// boundary where the outbox folds in events." The host supplies the boundary
+// through `SubmissionBoundaryTool.submissionWillBegin()` of
+// FoundationModelsExtras: a Router session calls it one time before each
+// submission, after the session takes the waiting messages and before the
+// model call of the submission. A continuation of the same answer is a
+// submission too, so the hook also runs between two submissions of one
+// answer. This file is where `runCode` applies the registry
 // a refresher staged.
 
 extension MultiTool {
@@ -29,9 +30,10 @@ extension MultiTool: SubmissionBoundaryTool {
     /// call — and `help()`, `docs()` and the `searchTools` mounted beside it —
     /// read the new surface.
     ///
-    /// The Router calls this hook before each submission. A continuation of
-    /// the same answer is a submission too, so a registry staged while an
-    /// answer runs is applied before the next submission of that answer.
+    /// The host session calls this hook before each submission. A
+    /// continuation of the same answer is a submission too, so a registry
+    /// staged while an answer runs is applied before the next submission of
+    /// that answer.
     ///
     /// A run already in flight keeps the bundle it started with: it read the
     /// holder one time at its start (see `RegistryHolder`).

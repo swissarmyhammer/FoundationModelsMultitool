@@ -1,7 +1,7 @@
 import Foundation
 import FoundationModels
+import FoundationModelsExtras
 import FoundationModelsMetadataRegistry
-import FoundationModelsRouter
 
 /// The arguments a `searchTools` call carries.
 @Generable

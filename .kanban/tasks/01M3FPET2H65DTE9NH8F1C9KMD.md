@@ -20,11 +20,29 @@ comments:
     - Tests: our tests call the internal `track`, `updateProgress`, `wait` and `sweep` through `@testable`. `wait` and `sweep` are public now. There is no `track(... settling:)`. Use `start(tool:op:kind:completionToken:canceler:body:)`: the body returns the terminal `OperationEvent`, and a `nil` canceler cancels the body task. `start`, `RunPlane.StartResult` and `updateProgress(completionToken:detail:)` are `@_spi(Testing) public`. `@testable` does not give access to SPI, so a test file that uses them needs `@_spi(Testing) @testable import FoundationModelsExtras`.
     - `PendingRunEnvelope.decoded(fromRendered:)` is now `makeDecoded(fromRendered:)`.
   timestamp: 2026-09-27T02:56:14.495479+00:00
+- actor: claude-code
+  id: 01m3mgwb4g4vhht6qja6rwp94y
+  text: |-
+    Implementation notes (iteration 1):
+    - Every hosting type has a public home in FoundationModelsExtras (4a733cd): ToolContext, BackgroundTool, ToolMount, ToolMounting, SubmissionBoundaryTool, LostRunError, RunKind, BackgroundRun, ToolCallReport, OperationEvent, RunPlane, ElicitationRequestedSchema. The library needs no Router symbol. SessionEvent and RoutedSession occur in no library file now.
+    - Router re-exported ULID before. The library now links the ULID product (yaslab/ULID.swift, from 1.3.1) itself, for `ElicitationRequest.elicitationId`.
+    - `MessageID` has an internal init in Extras. CLIAnswerDrainTests and ScenarioGradingTests now use `@testable import FoundationModelsExtras`.
+    - ScenarioGrading and the unit test target keep Router: they use `TranscriptEvent` and `SubmissionID`, which stay in Router.
+    - New test suite: PackageManifestTests (library target has no Router product, MultitoolCLI has it, no library source imports Router).
+  timestamp: 2026-09-28T17:26:55.376697+00:00
+- actor: claude-code
+  id: 01m3mh6yfbdn94g5em2wgqyjw3
+  text: |-
+    ### test — green
+    - evidence: `swift build --build-tests` clean. `swift test`: 1820 tests in 146 suites passed, 0 failed, 0 skipped. `swift build --package-path IntegrationTests --build-tests`: Build complete. The only warnings are the known mlx bundle "missing creator" line, SwiftPM manifest-cache "disk I/O error" lines, and C++17 warnings in the third-party mlx-swift Metal kernels. None comes from this code.
+    - note: the first run failed in `applicationTargetDeclaresRouter`: the dependency line `.target(name: packageName),` split the MultitoolCLI declaration. Correction: a declaration starts only at a line that is exactly `.target(`, `.executableTarget(` or `.testTarget(`.
+    - next: commit
+  timestamp: 2026-09-28T17:32:42.859117+00:00
 depends_on:
 - 01M3FMSTTSP16K9AE7JKZAEFGZ
 - 01M3ETW8G0BNP6JY8DNBW8B4DX
-position_column: todo
-position_ordinal: 8c80
+position_column: doing
+position_ordinal: '80'
 title: Take tool hosting from FoundationModelsExtras, and remove the FoundationModelsRouter dependency from the library target
 ---
 ## What
@@ -52,4 +70,4 @@ Name change: Router's `SessionMailbox` is `RunPlane` in Extras. So `SessionMailb
 - [ ] Run `swift build --build-tests && swift test`. Expected result: all tests pass.
 
 ## Workflow
-- Use `/tdd`. Write failing tests first, then do the implementation that makes them pass. #upstream-blocked
+- Use `/tdd`. Write failing tests first, then do the implementation that makes them pass.

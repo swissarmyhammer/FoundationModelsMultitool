@@ -5,16 +5,17 @@
 // A behavioral port of the `BackoffPolicy`, `TransportFactory` and
 // `MCPServerError` declarations of
 // `../FoundationModelsMCP/Sources/FoundationModelsMCP/MCPServer.swift`. The
-// `callTimedOut` case of the source error is not ported: the engine of Router
-// bounds a call made under a context, and a bare call answers its timeout in
-// band — see `MCPServer+Call.swift`. The `lost` case is new: it is what the
-// call path throws for a transport drop under an in-flight request.
+// `callTimedOut` case of the source error is not ported: the run plane of
+// FoundationModelsExtras bounds a call made under a context, and a bare call
+// answers its timeout in band — see `MCPServer+Call.swift`. The `lost` case
+// is new: it is what the call path throws for a transport drop under an
+// in-flight request.
 //
 // **The types are `public`.** A host constructs a `BackoffPolicy` and hands
 // it to `MCPServer.connect(via:backoffPolicy:)`, and it catches an
 // `MCPServerError` from that call, so both cross the module boundary.
 
-import FoundationModelsRouter
+import FoundationModelsExtras
 import MCP
 
 /// Configuration for the connect-retry and reconnect backoff of `MCPServer`
@@ -112,9 +113,10 @@ public typealias TransportFactory = @Sendable () async throws -> any Transport
 /// Errors thrown by the own operations of `MCPServer`, distinct from what the
 /// wrapped `MCP.Client` or its transport throws.
 ///
-/// **Why the whole type is a `LostRunError`.** Router's `ToolRun` settles a
-/// run as `.lost` when the error its tool threw conforms to that marker, and
-/// a conformance is per type, never per case. The one case a run can meet is
+/// **Why the whole type is a `LostRunError`.** The `ToolRun` of
+/// FoundationModelsExtras settles a run as `.lost` when the error its tool
+/// threw conforms to that marker, and a conformance is per type, never per
+/// case. The one case a run can meet is
 /// ``lost(serverName:toolName:underlying:)``: `MCPServer.call(name:arguments:)`
 /// throws no other case, and answers a server that is not ready in band.
 /// Every other case is thrown by a host operation — a connect, a reconnect, a
@@ -161,7 +163,8 @@ public enum MCPServerError: Error, Sendable, Equatable, LostRunError {
     /// human-readable description of what ended the connection.
     ///
     /// eventplan.md § "Consolidation of the siblings": "A transport drop is
-    /// `.lost`." Router's `ToolRun` reads the `LostRunError` conformance of
-    /// this type and settles the calling run that way.
+    /// `.lost`." The `ToolRun` of FoundationModelsExtras reads the
+    /// `LostRunError` conformance of this type and settles the calling run
+    /// that way.
     case lost(serverName: String, toolName: String, underlying: String)
 }
