@@ -34,6 +34,54 @@ comments:
     - evidence: We touched the 14 changed Swift files before the build. `swift build --build-tests` completed with exit 0 and 0 compiler warnings. `swift test` completed with exit 0: 1836 tests in 148 suites passed, 0 failed, 0 skipped (XCTest: 0 tests). `swift build --package-path IntegrationTests --build-tests` completed with exit 0 and 0 compiler warnings (compile only; the live-model suite did not run). The only build messages are the known SwiftPM "failed loading/storing cached manifest ... disk I/O error" and "missing creator for mutated node ... mlx-swift_Cmlx.bundle". These messages do not come from this package.
     - next: review
   timestamp: 2026-09-29T12:56:38.200271+00:00
+- actor: claude-code
+  id: 01m3pmdbmdv356ntdps7kryy3n
+  text: |-
+    ### review — findings
+    - evidence: review sha HEAD~1..HEAD (724b95f), 2 findings (2 confirmed, 0 refuted) — Sources/FoundationModelsMultitool/Interpreter/JSCInterpreter.swift:260 duplication/duplication; Sources/FoundationModelsMultitool/MultiTool.swift:374 duplication/duplication
+    - next: implement — remove the duplicate private static logger properties. Use one shared logger on MultitoolTelemetry in all files that have the same property.
+  timestamp: 2026-09-29T13:07:07.533971+00:00
+- actor: claude-code
+  id: 01m3pmdxkv6qkck8pj43g41ryn
+  text: |-
+    ### finish iteration 1 — findings
+    - implement: changed — 15 files
+    - test: green — swift test 1836 tests in 148 suites passed; IntegrationTests build passed
+    - commit: 724b95f
+    - review: findings — Sources/FoundationModelsMultitool/Interpreter/JSCInterpreter.swift:260 duplication/duplication; Sources/FoundationModelsMultitool/MultiTool.swift:374 duplication/duplication
+  timestamp: 2026-09-29T13:07:25.947381+00:00
+- actor: claude-code
+  id: 01m3pmn5dghenx6n7en16sf2ak
+  text: |-
+    ### implement — changed
+    - evidence: 5 source files. `Diagnostics/MultitoolTelemetry+Logging.swift`: the function `makeLogger()` is now the one computed static property `MultitoolTelemetry.logger` (`boundLogger ?? Logger(label: logLabel)`). Each read makes a new logger, thus no logger is kept in a `static let`, and `boundLogger` behavior does not change. `Interpreter/JSCInterpreter.swift` and `MultiTool.swift`: the duplicate `private static var logger` properties are removed. `JSCInterpreter.evaluate` reads `MultitoolTelemetry.logger` one time per call into a local. `MultiTool.makeAsyncHostFunctions` and `logImaginedTool` read `MultitoolTelemetry.logger`. `Surface/ToolAPIRenderer.swift` and `Capabilities/MCP/SurfaceRefresher.swift` call `MultitoolTelemetry.logger` in place of `makeLogger()`. `SurfaceRefresher.defaultLogger` stays because it is public API and a public default argument cannot name the internal `MultitoolTelemetry`; its body now reads the shared property. `rg 'makeLogger|Self\.logger|static var logger' Sources Tests` gives only the shared property. `swift build --build-tests`: Build complete, 0 compiler warnings (only the known SwiftPM manifest-cache "disk I/O error" and "missing creator for mutated node" messages). `swift test`: 1836 tests in 148 suites passed, 0 failed. Both findings are ticked `- [x]`. The task has no tags.
+    - next: test, then review.
+  timestamp: 2026-09-29T13:11:23.312152+00:00
+- actor: claude-code
+  id: 01m3pmyp3yy3wjzjw8x3bx03yg
+  text: |-
+    ### test — red
+    - evidence: I touched the 5 changed Swift files. `swift build --build-tests` completed with 0 compiler warnings (only the known SwiftPM cached-manifest disk I/O messages and the mlx-swift_Cmlx.bundle "missing creator" message). `swift build --package-path IntegrationTests --build-tests` completed with 0 warnings. Run 1 of `swift test`: 1836 tests in 148 suites, 1 failed. The failed test is "a run registers its child while it runs, and deregisters it at the end" at Tests/FoundationModelsMultitoolTests/ShellRunnerTests.swift:687:9: `Expectation failed: !registry.registeredPids.isEmpty`. Run 2 of `swift test --skip-build`: 1836 tests passed. `swift test --filter ShellRunnerTests` 5 times: 31 of 31 tests passed each time. The test is flaky when the full suite runs in parallel. The working tree does not change ShellRunner or ShellRunnerTests.
+    - next: Find the race and remove it. The test uses `echo one; sleep 0.3`, and when the system has a high load, the child can stop and deregister before the check at line 687. Make the child stay alive until the test tells it to stop (for example, wait on a pipe or a file that the test controls), then do the check. Do not add a retry and do not skip the test.
+  timestamp: 2026-09-29T13:16:35.326213+00:00
+- actor: claude-code
+  id: 01m3pn9jkvjnfghvdf02f8rtst
+  text: 'Test fix for a green test step. The test "a run registers its child while it runs, and deregisters it at the end" (ShellRunnerTests.swift) failed one time in a full parallel `swift test`. This task did not change that test. Cause: the child ran `echo one; sleep 0.3`, and under load the child can end and deregister before the check. Fix: the child now runs `echo one; cat gate > /dev/null` in the test directory. `gate` is a FIFO that the test makes. The child stays alive until the test opens and closes the FIFO (`openGate`). The test checks the registration while the child is surely alive, then opens the gate, waits for the run, and checks the deregistration. The same timing cause was in "lines are visible in the store while the command still runs" (`echo one; sleep 5`, check of `.running`). That test now uses the same gate, and it checks `.completed` after the gate opens. New helpers: `startGatedRun(of:token:in:)`, `openGate(_:)`, constants `gateName`, `gatePermissions`, `gatedCommand`. No retry, no longer sleep, no skip. Other `sleep` uses in the file do not have this cause: the interleave test accepts all orders, the tree and canceler tests use a long marker sleep and poll, and the time-limit tests measure the sleep itself.'
+  timestamp: 2026-09-29T13:22:32.187255+00:00
+- actor: claude-code
+  id: 01m3pn9nevbts661xvbck29we9
+  text: |-
+    ### implement — changed
+    - evidence: 1 file — Tests/FoundationModelsMultitoolTests/ShellRunnerTests.swift (FIFO gate replaces the short sleep in 2 tests). `swift build --build-tests` exit 0. The tests were not run: the user stopped the repeated test runs.
+    - next: the test step runs the tests.
+  timestamp: 2026-09-29T13:22:35.099733+00:00
+- actor: claude-code
+  id: 01m3pnnc1qbhn1qpx6g75me47r
+  text: |-
+    ### test — green
+    - evidence: I touched the 6 changed Swift files (5 in Sources, ShellRunnerTests.swift). `swift build --build-tests` completed with exit 0 and 0 compiler warnings from a file of this package. `swift test` (one run): 1836 tests in 148 suites passed, 0 failed, 0 skipped, exit 0. `swift build --package-path IntegrationTests --build-tests` completed with exit 0 and 0 compiler warnings. The only other messages are the known SwiftPM "disk I/O error" manifest-cache warnings and the "missing creator for mutated node ... mlx-swift_Cmlx.bundle" warning. These are not warnings of this package.
+    - next: review.
+  timestamp: 2026-09-29T13:28:58.679571+00:00
 depends_on:
 - 01M3MN95YYY2J02M1X6QC6BREE
 position_column: doing
@@ -60,3 +108,13 @@ This task covers the core library files. The MCP files are task OTel 3, and `Cal
 
 ## Workflow
 - Use `/tdd`. Write failing tests first, then do the implementation that makes them pass.
+
+## Review Findings (2026-09-29 07:57)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 14 file(s) reviewed, 4 not reviewed.
+
+> 4 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 4 file(s)
+
+- [x] `Sources/FoundationModelsMultitool/Interpreter/JSCInterpreter.swift:260` `duplication/duplication` — Identical static logger property repeated verbatim across multiple types. This private static property simply delegates to MultitoolTelemetry.makeLogger(), and the same implementation appears in MultiTool.swift. When two blocks differ only by their containing type (and nothing else in the body), they are one function with an argument waiting to be extracted, or in this case, one shared static helper property. Extract this into a single shared static property on MultitoolTelemetry (or a shared extension), then call that from both JSCInterpreter and MultiTool. For example, add `static var shared: Logger { makeLogger() }` to MultitoolTelemetry and replace both private properties with calls to `MultitoolTelemetry.shared`.
+- [x] `Sources/FoundationModelsMultitool/MultiTool.swift:374` `duplication/duplication` — Identical static logger property repeated verbatim. This private static property has the same implementation as JSCInterpreter.swift:260 — both simply call MultitoolTelemetry.makeLogger(). Duplication across two types means the logic could drift out of sync if one is updated and the other is not. Extract to a shared static property on MultitoolTelemetry and call it from both locations, eliminating the duplicate definitions.

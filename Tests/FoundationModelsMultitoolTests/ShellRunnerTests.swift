@@ -123,6 +123,20 @@ struct ShellRunnerTests {
     /// The name of the directory a test names in a request.
     private static let requestedDirectoryName = "requested"
 
+    /// The name of the FIFO that holds a gated command alive. The FIFO is in
+    /// the directory of one test, and the gated command runs in that
+    /// directory, thus the command names no absolute path.
+    private static let gateName = "gate"
+
+    /// The permissions of the FIFO: read and write for the owner only.
+    private static let gatePermissions: mode_t = 0o600
+
+    /// A command that writes one line and then stays alive until the test
+    /// opens the gate. `cat` blocks on the open of the FIFO until a writer
+    /// opens it, and then reads until that writer closes it. Thus the child
+    /// ends only when the test lets it end, and never on a timer.
+    private static let gatedCommand = "echo one; cat \(gateName) > /dev/null"
+
     /// A `ShellRunner` over a `ShellState` that a new temporary directory roots.
     ///
     /// `scratch` owns that directory from the moment it exists, thus a throw
@@ -260,6 +274,50 @@ struct ShellRunnerTests {
         try FileManager.default.createDirectory(
             at: workDirectory, withIntermediateDirectories: true)
         return workDirectory
+    }
+
+    /// Makes the FIFO that `gatedCommand` reads in `directory`, and starts
+    /// `gatedCommand` through `runner` in that directory, on a new task.
+    ///
+    /// The child stays alive until the caller gives the FIFO to
+    /// `openGate(_:)`. Thus a check that needs a live child does not depend on
+    /// a timer.
+    ///
+    /// - Parameters:
+    ///   - runner: The runner that starts the command.
+    ///   - token: The completion token of the run.
+    ///   - directory: The directory of the test.
+    /// - Returns: The task of the run, and the FIFO that lets it end.
+    /// - Throws: The `POSIXError` of `mkfifo(2)` when it fails.
+    private func startGatedRun(
+        of runner: ShellRunner, token: String, in directory: URL
+    ) throws -> (run: Task<ShellRunner.Outcome, any Error>, gate: URL) {
+        let gate = directory.appendingPathComponent(Self.gateName, isDirectory: false)
+        guard mkfifo(gate.path, Self.gatePermissions) == 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+        let run = Task {
+            try await runner.run(
+                .init(
+                    command: Self.gatedCommand, completionToken: token,
+                    workingDirectory: directory.path))
+        }
+        return (run, gate)
+    }
+
+    /// Lets a gated command end: opens the FIFO for writing, and closes it at
+    /// once. `cat` then reads the end of the file, and the command ends.
+    ///
+    /// The open blocks until the reader opened the FIFO. The gated command
+    /// opens it right after its first line, thus call this only after that
+    /// line arrived.
+    ///
+    /// - Parameter gate: The FIFO that `startGatedRun(of:token:in:)` made.
+    /// - Throws: What `FileHandle(forWritingTo:)` or `FileHandle.close()`
+    ///   throws.
+    private func openGate(_ gate: URL) throws {
+        let handle = try FileHandle(forWritingTo: gate)
+        try handle.close()
     }
 
     /// Runs `/bin/pwd` through `runner` and gives back the directory it printed.
@@ -539,24 +597,22 @@ struct ShellRunnerTests {
 
     @Test("lines are visible in the store while the command still runs")
     func linesAreVisibleInShellStateWhileTheCommandIsStillRunning() async throws {
-        let (runner, state, _) = try makeRunner()
+        let (runner, state, directory) = try makeRunner()
         let token = ToolContext.makeCompletionToken()
-
-        let runTask = Task {
-            try await runner.run(.init(command: "echo one; sleep 5", completionToken: token))
-        }
+        let (runTask, gate) = try startGatedRun(of: runner, token: token, in: directory)
         defer { runTask.cancel() }
 
         let lines = try await waitForLines(in: state, commandID: token)
         #expect(lines == [LogLine(lineNumber: 1, text: "one")])
 
-        // The record must still read `running`: the line landed well before the
-        // child ends.
-        let record = try #require(await state.record(commandID: token))
-        #expect(record.status == .running)
+        // The record must still read `running`: the child stays alive until
+        // the test opens the gate below.
+        let record = await state.record(commandID: token)
+        #expect(record?.status == .running)
 
-        _ = await runner.canceler(completionToken: token)()
-        _ = try? await runTask.value
+        try openGate(gate)
+        let outcome = try await runTask.value
+        #expect(outcome.status == .completed)
     }
 
     // MARK: - The canceler
@@ -673,21 +729,20 @@ struct ShellRunnerTests {
     @Test("a run registers its child while it runs, and deregisters it at the end")
     func runRegistersTheChildDuringExecutionAndDeregistersAfterCompletion() async throws {
         let registry = ProcessRegistry()
-        let (runner, state, _) = try makeRunner(registry: registry)
+        let (runner, state, directory) = try makeRunner(registry: registry)
         let token = ToolContext.makeCompletionToken()
-
-        let runTask = Task {
-            try await runner.run(.init(command: "echo one; sleep 0.3", completionToken: token))
-        }
+        let (runTask, gate) = try startGatedRun(of: runner, token: token, in: directory)
         defer { runTask.cancel() }
 
-        // The line arrives only after the child started, thus the registry
-        // certainly holds the pid at this point.
+        // The line arrives only after the child started, and the child stays
+        // alive until the test opens the gate. Thus the registry certainly
+        // holds the pid at this point.
         _ = try await waitForLines(in: state, commandID: token)
         #expect(
             !registry.registeredPids.isEmpty,
             "expected the pid of the child to be registered while it runs")
 
+        try openGate(gate)
         _ = try await runTask.value
 
         #expect(

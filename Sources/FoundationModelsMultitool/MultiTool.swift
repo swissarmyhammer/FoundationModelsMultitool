@@ -363,21 +363,9 @@ public struct MultiTool: Tool {
         never appear in searchTools — run `docs("globals")` in a snippet to read them.
         """
 
-    /// Where this tool logs its diagnostics: the start, the end and the
-    /// failure of each `tools.*` call, and, at `.notice`, each imagined
-    /// `tools.*` name that a snippet called (see `logImaginedTool(_:)`).
-    ///
-    /// A new logger for each read, not a `static let`: a logger keeps the
-    /// handler of the logging system at the time it is made, and a host can
-    /// bootstrap the logging system after this type loads. See
-    /// `MultitoolTelemetry.makeLogger()`.
-    private static var logger: Logging.Logger {
-        MultitoolTelemetry.makeLogger()
-    }
-
     /// Where this tool's call boundaries are recorded — see ``CallTrace``.
     ///
-    /// Separate from ``logger`` above, and deliberately so: that one records
+    /// Separate from `MultitoolTelemetry.logger`, and deliberately so: that one records
     /// what a run *decided* — which snippet ran, which `tools.*` name was
     /// imagined — through the swift-log logger of this package, and this one records
     /// only where control is, on its own. A hang is read by looking for an
@@ -935,7 +923,7 @@ public struct MultiTool: Tool {
         // functions: the interpreter calls them from its own thread, which has
         // no task-local value of the call (see
         // `MultitoolTelemetry.boundLogger`).
-        let logger = Self.logger
+        let logger = MultitoolTelemetry.logger
         var functions = bundle.liveTools.map { liveTool in
             AsyncHostFunction(name: liveTool.hostFunctionName) { arguments in
                 try await Self.invokeAsync(
@@ -1343,7 +1331,7 @@ public struct MultiTool: Tool {
     /// values. Nothing from the arguments of a snippet, the output of a tool,
     /// or the prompt of the user is in the record.
     private static func logImaginedTool(_ resolution: UnknownToolHint.Resolution) {
-        logger.log(.imaginedTool, level: .notice, metadata: resolution.logMetadata)
+        MultitoolTelemetry.logger.log(.imaginedTool, level: .notice, metadata: resolution.logMetadata)
     }
 
     /// Logs one `tools.*` invocation's failure, distinguishing a pre-call

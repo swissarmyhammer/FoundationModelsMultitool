@@ -71,7 +71,7 @@ public final class SurfaceRefresher: Sendable, Stoppable {
     /// handler of the logging system at the time it is made, and a host can
     /// bootstrap the logging system after this type loads.
     public static var defaultLogger: Logger {
-        MultitoolTelemetry.makeLogger()
+        MultitoolTelemetry.logger
     }
 
     /// The rebuild half: the recorded registrations, the last built catalog of

@@ -3,14 +3,14 @@ import Logging
 
 /// The helpers that each log call of the library target uses.
 ///
-/// Each type of the library makes its logger with ``makeLogger()`` when it
-/// logs, and not one time in a `static let`. swift-log gives a logger the
+/// Each type of the library reads its logger from ``logger`` when it logs,
+/// and does not keep a logger in a `static let`. swift-log gives a logger the
 /// handler of the logging system at the time that the logger is made. A host,
 /// or a test capture, can bootstrap the logging system after the library
 /// loads. A logger that the library made before that time would keep the old
 /// handler, and its records would not reach the host.
 extension MultitoolTelemetry {
-    /// The logger that ``makeLogger()`` gives, in place of a new logger, in
+    /// The logger that ``logger`` gives, in place of a new logger, in
     /// the task that binds a value here. `nil` in each other task.
     ///
     /// This is the factory seam of the tests. A test binds the logger of its
@@ -22,13 +22,19 @@ extension MultitoolTelemetry {
     /// `tools.*` record goes through that logger. A host binds nothing here.
     @TaskLocal static var boundLogger: Logger?
 
-    /// Makes a new logger with the label of the library target, or gives the
-    /// ``boundLogger`` of the current task.
+    /// The one logger property of the library target. Each type of the
+    /// library reads this property when it logs. No type keeps its own
+    /// logger property.
     ///
-    /// - Returns: The ``boundLogger`` when the current task binds one, or
-    ///   else a new logger that writes through the handler that the logging
-    ///   system has now.
-    static func makeLogger() -> Logger {
+    /// Each read makes a new logger with the label of the library target, or
+    /// gives the ``boundLogger`` of the current task. This property is
+    /// computed, not a `static let`, because a logger that is made before the
+    /// logging system is bootstrapped keeps the old handler.
+    ///
+    /// The value is the ``boundLogger`` when the current task binds one, or
+    /// else a new logger that writes through the handler that the logging
+    /// system has now.
+    static var logger: Logger {
         boundLogger ?? Logger(label: logLabel)
     }
 

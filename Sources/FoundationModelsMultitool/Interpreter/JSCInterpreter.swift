@@ -249,18 +249,6 @@ private func jscTerminateCallback(_: JSContextRef?, _ info: UnsafeMutableRawPoin
 /// a semaphore-based park mechanism and its thread guards only to delete
 /// them later."
 public final class JSCInterpreter: Interpreter {
-    /// Where this interpreter logs its M10 diagnostics — snippet start/end
-    /// and duration, and how a run ended (clean, exception, timeout, or
-    /// cancelled).
-    ///
-    /// A new logger for each read, not a `static let`: a logger keeps the
-    /// handler of the logging system at the time it is made, and a host can
-    /// bootstrap the logging system after this type loads. See
-    /// `MultitoolTelemetry.makeLogger()`.
-    private static var logger: Logging.Logger {
-        MultitoolTelemetry.makeLogger()
-    }
-
     /// How often `WatchdogState.shouldTerminate()` is invoked while a
     /// snippet runs — see that type's documentation for why this, not the
     /// run's real configured `timeLimit`, is the value actually armed via
@@ -513,8 +501,8 @@ public final class JSCInterpreter: Interpreter {
     /// outcome (return value, console lines, exception, watchdog timeout, or
     /// M10 external cancellation) to an `InterpreterResult` or thrown error.
     ///
-    /// Logs the run's start and its end (outcome + duration) via `logger` —
-    /// plan.md M10: "at the seams — snippet start/end + duration." The
+    /// Logs the run's start and its end (outcome + duration) through one
+    /// `MultitoolTelemetry.logger` that this call makes — plan.md M10: "at the seams — snippet start/end + duration." The
     /// records carry the size of the snippet, the duration and the type of
     /// an error. They never carry the JS source or the text of an error,
     /// because both can hold content.
@@ -526,6 +514,7 @@ public final class JSCInterpreter: Interpreter {
         isCancelled: @escaping @Sendable () -> Bool
     ) throws -> InterpreterResult {
         let start = ContinuousClock.now
+        let logger = MultitoolTelemetry.logger
         logger.log(
             .snippetStarted, level: .debug,
             metadata: [MultitoolTelemetry.LogMetadataKey.characterCount.rawValue: "\(code.count)"])

@@ -69,7 +69,7 @@ public enum ToolAPIRenderer {
     /// the type name. It holds no value, no description and no default of the
     /// schema. The logger is new for each report, because a logger keeps the
     /// handler of the logging system at the time it is made (see
-    /// `MultitoolTelemetry.makeLogger()`).
+    /// `MultitoolTelemetry.logger`).
     ///
     /// `@usableFromInline` (rather than `private`) because the three `render`
     /// overloads' default `onWiden` argument references it, and a default
@@ -79,7 +79,7 @@ public enum ToolAPIRenderer {
     /// - Parameter detail: The human-readable text of the widening.
     @usableFromInline
     static func reportWidening(_ detail: String) {
-        MultitoolTelemetry.makeLogger().log(
+        MultitoolTelemetry.logger.log(
             .schemaWidened, level: .warning,
             metadata: [MultitoolTelemetry.LogMetadataKey.wideningDetail.rawValue: "\(detail)"])
     }
