@@ -46,6 +46,7 @@
 import FoundationModelsExtras
 import Logging
 import MCP
+import Tracing
 
 extension MCPServer {
     /// How one `tools/call` ends: the result the server answered, or the
@@ -76,6 +77,10 @@ extension MCPServer {
         /// The ambient context captured when the call started, or `nil` on
         /// the bare-session path.
         let context: ToolContext?
+
+        /// The client span of the call — see `MCPServer+CallSpan.swift`. A
+        /// transport drop and a reconnect record an event on it.
+        let span: any Span
 
         /// Where the call stands — see ``Phase``.
         var phase: Phase = .sent
@@ -140,14 +145,37 @@ extension MCPServer {
     ///   the server answered with, unchanged.
     public func call(name: String, arguments: [String: Value]? = nil) async throws -> CallTool.Result {
         let context = ToolContext.current
+        let requestID = ID.random
+        return try await withCallSpan(toolName: name, requestID: requestID) { span in
+            try await self.callInSpan(
+                name: name, arguments: arguments, requestID: requestID, context: context, span: span)
+        }
+    }
+
+    /// The body of ``call(name:arguments:)``, in the client span of the call.
+    ///
+    /// The `_meta` of the request carries the progress token and the trace
+    /// context of `span` — see `MCPServer+CallSpan.swift`.
+    ///
+    /// - Parameters:
+    ///   - name: The name of the tool to call.
+    ///   - arguments: The arguments of the call.
+    ///   - requestID: The id of the request, and so its progress token.
+    ///   - context: The captured ambient context, or `nil` on the bare path.
+    ///   - span: The client span of the call.
+    /// - Returns: What ``call(name:arguments:)`` returns.
+    /// - Throws: What ``call(name:arguments:)`` throws.
+    private func callInSpan(
+        name: String, arguments: [String: Value]?, requestID: ID, context: ToolContext?, span: any Span
+    ) async throws -> CallTool.Result {
         try Task.checkCancellation()
         guard case .ready = state else {
             return Self.toolErrorResult(toolName: name, reason: notReadyReason)
         }
-        let requestID = ID.random
-        inFlightCalls[requestID] = InFlightCall(toolName: name, context: context)
+        inFlightCalls[requestID] = InFlightCall(toolName: name, context: context, span: span)
+        let meta = Self.requestMetadata(requestID: requestID, span: span)
         return try await withTaskCancellationHandler {
-            try await dispatch(name: name, arguments: arguments, requestID: requestID, context: context)
+            try await dispatch(name: name, arguments: arguments, requestID: requestID, meta: meta, context: context)
         } onCancel: {
             // Tracked, so that `disconnect()` waits for the notice to reach
             // the wire before it closes the transport.
@@ -166,21 +194,19 @@ extension MCPServer {
     ///   - name: The name of the tool to call.
     ///   - arguments: The arguments of the call.
     ///   - requestID: The id of the request, and so its progress token.
+    ///   - meta: The `_meta` of the request: the progress token and the
+    ///     trace context.
     ///   - context: The captured ambient context, or `nil` on the bare path.
     /// - Returns: The settlement of the call.
     /// - Throws: What ``call(name:arguments:)`` throws.
     private func dispatch(
-        name: String, arguments: [String: Value]?, requestID: ID, context: ToolContext?
+        name: String, arguments: [String: Value]?, requestID: ID, meta: Metadata, context: ToolContext?
     ) async throws -> CallTool.Result {
         guard !isTransportDropped else {
             inFlightCalls[requestID] = nil
             throw lostError(toolName: name, underlying: Self.transportAlreadyDroppedDescription)
         }
-        let request = CallTool.request(
-            id: requestID,
-            .init(
-                name: name, arguments: arguments,
-                meta: Metadata(progressToken: .string(requestID.description))))
+        let request = CallTool.request(id: requestID, .init(name: name, arguments: arguments, meta: meta))
         let requestContext: RequestContext<CallTool.Result>
         do {
             requestContext = try await client.send(request)
@@ -202,9 +228,10 @@ extension MCPServer {
     /// Records `waiter` on the entry of `requestID`, or resumes it at once
     /// with the settlement that arrived first.
     ///
-    /// One call attaches one waiter, to an entry `call(name:arguments:)`
-    /// registered and `dispatch(name:arguments:requestID:context:)` removed
-    /// only on a path that never waits. An entry that is missing, or that
+    /// One call attaches one waiter, to an entry
+    /// `callInSpan(name:arguments:requestID:context:span:)` registered and
+    /// `dispatch(name:arguments:requestID:meta:context:)` removed only on a
+    /// path that never waits. An entry that is missing, or that
     /// already holds a waiter, answers this waiter with a `CancellationError`
     /// all the same, so no caller waits forever — a graceful degradation,
     /// never a trap.
@@ -248,7 +275,7 @@ extension MCPServer {
     }
 
     /// Awaits the answer of the client for `requestID` and settles the call
-    /// with it — the task `dispatch(name:arguments:requestID:context:)`
+    /// with it — the task `dispatch(name:arguments:requestID:meta:context:)`
     /// starts once the request went out.
     ///
     /// - Parameters:
@@ -286,7 +313,7 @@ extension MCPServer {
             record(
                 .mcpCancelNoticeFailed, level: .warning,
                 metadata: MultitoolTelemetry.errorMetadata(of: error).merging([
-                    MultitoolTelemetry.LogMetadataKey.requestID.rawValue: "\(requestID.description)"
+                    MultitoolTelemetry.AttributeKey.requestID.rawValue: "\(requestID.description)"
                 ]) { errorValue, _ in errorValue })
         }
     }
@@ -328,6 +355,7 @@ extension MCPServer {
         record(
             .mcpTransportDropped, level: .warning,
             metadata: [MultitoolTelemetry.LogMetadataKey.itemCount.rawValue: "\(inFlightCalls.count)"])
+        recordEventOnInFlightCalls(.mcpTransportDropped)
         failInFlightCalls(underlying: Self.transportDroppedDescription)
     }
 
@@ -383,7 +411,8 @@ extension MCPServer {
             guard !Task.isCancelled else { return }
             await self.endInFlightCall(requestID: requestID, reason: Self.bareCallTimedOutReason) {
                 entry in
-                .success(Self.toolErrorResult(toolName: entry.toolName, reason: self.timedOutReason))
+                Self.recordTimeout(on: entry.span)
+                return .success(Self.toolErrorResult(toolName: entry.toolName, reason: self.timedOutReason))
             }
         }
         inFlightCalls[requestID]?.bareTimeout = timer
@@ -408,7 +437,7 @@ extension MCPServer {
     }
 
     /// The request id a progress token names — the inverse of the token
-    /// `dispatch(name:arguments:requestID:context:)` sends.
+    /// `dispatch(name:arguments:requestID:meta:context:)` sends.
     ///
     /// - Parameter token: The token of the notification.
     /// - Returns: The id.

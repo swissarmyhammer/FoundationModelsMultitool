@@ -10,6 +10,10 @@
 // the close, in the order the client made them. A test also appends a marker
 // of its own, so an event of the run plane — the terminal of a swept run —
 // stands in the same ledger beside the wire.
+//
+// The double also records the `_meta` of each request that has one. A test of
+// the trace propagation reads the `traceparent` that went out on the wire in
+// the `_meta` of a `tools/call`.
 
 import Foundation
 import Logging
@@ -31,8 +35,24 @@ actor WireRecordingTransport: WrappingTransport {
         case marker(String)
     }
 
+    /// The `_meta` of one request that the client sent.
+    struct SentMeta: Sendable {
+        /// The JSON-RPC method of the request.
+        let method: String
+
+        /// Each field of the `_meta` of the request that has a string value,
+        /// under its key.
+        let fields: [String: String]
+    }
+
     /// The key of a JSON-RPC message that names its method.
     private static let methodKey = "method"
+
+    /// The key of a JSON-RPC message that holds its parameters.
+    private static let paramsKey = "params"
+
+    /// The key of the parameters that holds the `_meta` of a request.
+    private static let metaKey = "_meta"
 
     /// What ``Entry/sent(method:)`` carries for a message with no method —
     /// a response, which a client sends for a server-initiated request.
@@ -43,6 +63,10 @@ actor WireRecordingTransport: WrappingTransport {
 
     /// Every entry, in the order it happened.
     private(set) var ledger: [Entry] = []
+
+    /// The `_meta` of each sent message that has one, in the order of the
+    /// sends.
+    private(set) var sentMetas: [SentMeta] = []
 
     /// The logger of this double — a no-op.
     nonisolated let logger = WireRecordingTransport.noOpLogger(
@@ -62,12 +86,18 @@ actor WireRecordingTransport: WrappingTransport {
         try await connectWrapped()
     }
 
-    /// Records the method of `data`, then delegates the send.
+    /// Records the method of `data`, and its `_meta` when it has one, then
+    /// delegates the send.
     ///
     /// - Parameter data: The raw bytes to send.
     /// - Throws: What the `send(_:)` of the wrapped transport throws.
     func send(_ data: Data) async throws {
-        ledger.append(.sent(method: Self.method(of: data)))
+        let object = Self.jsonObject(of: data)
+        let method = object?[Self.methodKey] as? String ?? Self.responseMethod
+        ledger.append(.sent(method: method))
+        if let meta = (object?[Self.paramsKey] as? [String: Any])?[Self.metaKey] as? [String: Any] {
+            sentMetas.append(SentMeta(method: method, fields: meta.compactMapValues { $0 as? String }))
+        }
         try await wrapped.send(data)
     }
 
@@ -100,12 +130,11 @@ actor WireRecordingTransport: WrappingTransport {
         ledger.firstIndex(of: entry)
     }
 
-    /// The JSON-RPC method `data` names, or ``responseMethod``.
+    /// The JSON object of one message.
     ///
     /// - Parameter data: The raw bytes of one message.
-    /// - Returns: The method.
-    private static func method(of data: Data) -> String {
-        let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        return object?[methodKey] as? String ?? responseMethod
+    /// - Returns: The object, or `nil` when the bytes are not a JSON object.
+    private static func jsonObject(of data: Data) -> [String: Any]? {
+        (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
     }
 }

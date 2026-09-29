@@ -3,8 +3,8 @@
 // periphery:ignore:all
 
 /// The telemetry vocabulary of the library target: the span names, the
-/// attribute keys, the metric names with their dimension keys, the log label,
-/// the log metadata keys and the constant log messages.
+/// attribute keys, the span event names, the metric names with their dimension
+/// keys, the log label, the log metadata keys and the constant log messages.
 ///
 /// Rule 3 of the OpenTelemetry design of 2026-09-28: each package keeps all of
 /// its telemetry names in one vocabulary file. No other source file of the
@@ -145,6 +145,17 @@ enum MultitoolTelemetry {
 
         /// The size of the output of a tool call, in characters.
         case outputCharacters = "FoundationModelsMultitool.tool.output_characters"
+
+        /// The id of an MCP request. For a `tools/call` it is also the
+        /// progress token of the request.
+        case requestID = "FoundationModelsMultitool.mcp.request_id"
+
+        /// The count of the content blocks of the result of an MCP call.
+        case contentCount = "FoundationModelsMultitool.mcp.result.content_count"
+
+        /// The size of the content blocks of the result of an MCP call: the
+        /// count of bytes of their JSON encoding.
+        case contentBytes = "FoundationModelsMultitool.mcp.result.content_bytes"
     }
 
     /// Each value that a span of the library target gives under
@@ -160,6 +171,48 @@ enum MultitoolTelemetry {
 
         /// The call threw a `CancellationError`.
         case cancelled
+
+        /// The call returned a result that tells of a failure: for example an
+        /// MCP result with `isError` set.
+        case failed
+
+        /// The call did not end in its time limit, and it returned a result
+        /// that tells of the timeout.
+        case timedOut
+    }
+
+    /// Each value that a span of the library target gives under
+    /// ``AttributeKey/errorKind``.
+    ///
+    /// A value is not a name of the vocabulary, thus it has no module prefix.
+    enum ErrorKindValue: String, CaseIterable, Sendable {
+        /// The transport dropped, or the host disconnected it, under the call.
+        case transport
+
+        /// The call did not end in its time limit.
+        case timeout
+
+        /// The server answered with a result that has `isError` set.
+        case isError
+
+        /// The call threw an error that is not a transport error: for example
+        /// a JSON-RPC error of the server.
+        case protocolError = "protocol"
+    }
+
+    /// The name of each span event that the library target records.
+    ///
+    /// An event marks a thing that occurred during a span, and that is not
+    /// a call of its own. Thus it is an event, not a new span.
+    enum SpanEventName: String, CaseIterable, Sendable {
+        /// The transport of an MCP server dropped under a call. A server
+        /// process that stopped, for example before a restart, drops its
+        /// transport.
+        case mcpTransportDropped = "FoundationModelsMultitool.mcp.transport_dropped"
+
+        /// A connect to an MCP server started under a call: for example a
+        /// reconnect, or the restart of a server process.
+        case mcpReconnectStarted = "FoundationModelsMultitool.mcp.reconnect_started"
     }
 
     /// The name of each metric that the library target records.
@@ -222,9 +275,6 @@ enum MultitoolTelemetry {
 
         /// The name of an MCP method, for example `tools/call`.
         case methodName = "FoundationModelsMultitool.mcp.method"
-
-        /// The id of an MCP request.
-        case requestID = "FoundationModelsMultitool.mcp.request_id"
 
         /// A size, in bytes.
         case byteCount = "FoundationModelsMultitool.size.bytes"

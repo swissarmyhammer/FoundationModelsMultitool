@@ -15,6 +15,7 @@
 // `connectedLoopbackMCPServer(over:name:)` builds the scripted server with the
 // three loopback tools and connects it, for a suite of the capability.
 
+import Logging
 import MCP
 import MCPTestServer
 
@@ -190,7 +191,8 @@ enum MCPTestSupport {
     /// Starts `scripted` on the server end of an in-memory pair, and returns
     /// an `MCPServer` named `name` connected against the client end through a
     /// ``WireRecordingTransport`` — beside that transport, so a suite of the
-    /// session-end sweep reads the order of the wire.
+    /// session-end sweep reads the order of the wire, and a suite of the
+    /// trace propagation reads the `_meta` of each request.
     ///
     /// - Important: The caller keeps the `scripted` server alive for the
     ///   whole test, as ``connectedServer(to:over:clientName:capabilities:)``
@@ -199,15 +201,21 @@ enum MCPTestSupport {
     /// - Parameters:
     ///   - scripted: The scripted server to serve on the far end.
     ///   - name: The name of the `MCPServer`, and so its identity.
+    ///   - callTimeout: The bound of a call with no ambient context. The
+    ///     default is the default of `MCPServer`.
+    ///   - logger: The logger of the `MCPServer`. The default is the default
+    ///     of `MCPServer`.
     /// - Returns: The connected server, and the recording transport it
     ///   connected over.
     /// - Throws: What `ScriptedServer.startOnInMemoryPair()` or
     ///   `MCPServer.connect(via:)` throws.
     static func connectedRecordingMCPServer(
-        to scripted: ScriptedServer, name: String
+        to scripted: ScriptedServer, name: String,
+        callTimeout: Duration = MCPServer.defaultCallTimeout,
+        logger: Logger = MCPServer.defaultLogger
     ) async throws -> (server: MCPServer, wire: WireRecordingTransport) {
         let wire = WireRecordingTransport(wrapping: try await scripted.startOnInMemoryPair())
-        let server = MCPServer(name: name)
+        let server = MCPServer(name: name, callTimeout: callTimeout, logger: logger)
         try await server.connect(via: wire)
         return (server, wire)
     }

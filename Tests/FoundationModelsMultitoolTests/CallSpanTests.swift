@@ -36,20 +36,12 @@ struct CallSpanTests {
     private static let taskMarker = "qzvSpanTaskMarker"
 
     /// The key of the W3C trace id in an enter record.
-    private static let traceIDKey = "trace.id"
+    private static let traceIDKey = LogReadback.traceIDKey
 
     /// The key of the W3C span id in an enter record.
-    private static let spanIDKey = "span.id"
+    private static let spanIDKey = LogReadback.spanIDKey
 
     // MARK: - Helpers
-
-    /// The message of the enter record of the span named `spanName`.
-    ///
-    /// - Parameter spanName: The name of the span.
-    /// - Returns: `enter <spanName>`.
-    private static func enterMessage(_ spanName: MultitoolTelemetry.SpanName) -> String {
-        "enter \(spanName.rawValue)"
-    }
 
     /// The enter records of `context` for the span named `spanName`.
     ///
@@ -60,7 +52,7 @@ struct CallSpanTests {
     private static func enterRecords(
         _ spanName: MultitoolTelemetry.SpanName, in context: TelemetryCapture.Context
     ) -> [InMemoryLogHandler.Entry] {
-        context.logRecords.filter { "\($0.message)" == enterMessage(spanName) }
+        LogReadback.enterRecords(spanName, in: context)
     }
 
     /// The ended spans of `context` with the name `spanName`.

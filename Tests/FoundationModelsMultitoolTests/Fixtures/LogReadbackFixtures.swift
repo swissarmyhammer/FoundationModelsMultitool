@@ -48,6 +48,32 @@ enum LogReadback {
     ) -> [InMemoryLogHandler.Entry] {
         records.filter { "\($0.message)" == message.rawValue }
     }
+
+    /// The key of the W3C trace id in an "enter" record of `TracedCall`.
+    static let traceIDKey = "trace.id"
+
+    /// The key of the W3C span id in an "enter" record of `TracedCall`.
+    static let spanIDKey = "span.id"
+
+    /// The message of the "enter" record of the span named `spanName`.
+    ///
+    /// - Parameter spanName: The name of the span.
+    /// - Returns: `enter <spanName>`.
+    static func enterMessage(_ spanName: MultitoolTelemetry.SpanName) -> String {
+        "enter \(spanName.rawValue)"
+    }
+
+    /// The "enter" records of `context` for the span named `spanName`.
+    ///
+    /// - Parameters:
+    ///   - spanName: The name of the span.
+    ///   - context: The capture that holds the records.
+    /// - Returns: The records, in the order of the calls.
+    static func enterRecords(
+        _ spanName: MultitoolTelemetry.SpanName, in context: TelemetryCapture.Context
+    ) -> [InMemoryLogHandler.Entry] {
+        context.logRecords.filter { "\($0.message)" == enterMessage(spanName) }
+    }
 }
 
 extension InMemoryLogHandler.Entry {

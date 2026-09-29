@@ -18,6 +18,9 @@ struct MultitoolTelemetryTests {
     /// Each attribute key of the vocabulary.
     private static let attributeKeys = MultitoolTelemetry.AttributeKey.allCases.map(\.rawValue)
 
+    /// Each span event name of the vocabulary.
+    private static let spanEventNames = MultitoolTelemetry.SpanEventName.allCases.map(\.rawValue)
+
     /// Each metric name of the vocabulary.
     private static let metricNames = MultitoolTelemetry.MetricName.allCases.map(\.rawValue)
 
@@ -25,9 +28,11 @@ struct MultitoolTelemetryTests {
     private static let logMetadataKeys = MultitoolTelemetry.LogMetadataKey.allCases.map(\.rawValue)
 
     /// Each name of the vocabulary: the log label, the span names, the
-    /// attribute keys, the metric names and the log metadata keys.
+    /// attribute keys, the span event names, the metric names and the log
+    /// metadata keys.
     private static let allNames =
-        [MultitoolTelemetry.logLabel] + spanNames + attributeKeys + metricNames + logMetadataKeys
+        [MultitoolTelemetry.logLabel] + spanNames + attributeKeys + spanEventNames + metricNames
+        + logMetadataKeys
 
     @Test("each name starts with the module name")
     func eachNameStartsWithTheModuleName() {

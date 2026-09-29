@@ -14,11 +14,41 @@ comments:
   id: 01m3mwcdxdwhnr1n05dewftyaa
   text: 'Update (2026-09-28, swissarmyhammer session): Extras OTel E ^wts388b is on Extras origin/main (6c399a4). No Extras blocker is left. Run `swift package update FoundationModelsExtras` (root and IntegrationTests) first. Inject through the tracer''s `inject` (`InstrumentationSystem.instrument.inject` / the bound tracer) with the field names in `ExtrasTelemetry` (`traceparent`, `tracestate`). Do NOT write a second `traceparent` format. In tests, `TelemetryCapture.Context.tracer` is a `W3CInMemoryTracer` that injects and extracts these fields; `SpanIdentity` is public.'
   timestamp: 2026-09-28T20:47:56.845752+00:00
+- actor: claude-code
+  id: 01m3prqw0c13jx9gc4kpv1rfex
+  text: |-
+    Research (implement step):
+    - The Extras checkout in .build and in IntegrationTests/.build is at 6c399a4. Package.resolved of both packages already pins 6c399a4. No package update is necessary.
+    - The fork swift-sdk `Metadata` has `fields: [String: Value]` and `init(progressToken:additionalFields:)`. Thus `_meta` can carry `traceparent` and `tracestate`. No card for the swift-sdk board is necessary.
+    - `TracedCall.run(_:ofKind:tracer:logger:attributes:metadata:_:)` takes a span kind. Thus the client span and the enter record use one call.
+    - `Tracer.withSpan` sets the error status for a thrown error. A timeout of a bare call and an `isError` result do not throw. Thus the code must set the error status for these two.
+    - The vocabulary test (`MultitoolTelemetryTests`) forbids two equal names over the span names, the attribute keys, the metric names and the log metadata keys. Thus the request id key moves from `LogMetadataKey` to `AttributeKey` (one reader, `MCPServer+Call.swift`).
+    - A reconnect runs `disconnectClientWithoutHanging()` in `connect(via:)` (factory) and in `performConnectAttempt`. A transport drop goes through `handleTransportDrop(generation:)`. These are the places for the span events.
+  timestamp: 2026-09-29T14:22:46.284487+00:00
+- actor: claude-code
+  id: 01m3ps7st7nbbeea9zftrbxak6
+  text: |-
+    ### implement — changed
+    - evidence: `swift build --build-tests` passes with no compiler warning (only the SwiftPM manifest-cache "disk I/O error" warnings and the mlx "missing creator" note of the toolchain). `swift test` (one run): 1846 tests in 150 suites passed, 0 failures. The new suite `MCPTracePropagation` has 6 tests, all pass. Before the implementation, `swift build --build-tests` failed on the new test (red).
+    - files: Sources/FoundationModelsMultitool/Capabilities/MCP/MCPServer+CallSpan.swift (new), Sources/FoundationModelsMultitool/Capabilities/MCP/MCPServer+Call.swift, Sources/FoundationModelsMultitool/Capabilities/MCP/MCPServer+Connection.swift, Sources/FoundationModelsMultitool/Diagnostics/MultitoolTelemetry.swift, Sources/FoundationModelsMultitool/Diagnostics/MultitoolTelemetry+Tracing.swift, Tests/FoundationModelsMultitoolTests/MCPTracePropagationTests.swift (new), Tests/FoundationModelsMultitoolTests/Support/WireRecordingTransport.swift, Tests/FoundationModelsMultitoolTests/Support/MCPTestSupport.swift, Tests/FoundationModelsMultitoolTests/Fixtures/LogReadbackFixtures.swift, Tests/FoundationModelsMultitoolTests/CallSpanTests.swift, Tests/FoundationModelsMultitoolTests/MultitoolTelemetryTests.swift.
+    - what: `MCPServer.call` opens a client span (`FoundationModelsMultitool.mcp.call`, kind `.client`) through `MultitoolTelemetry.traced`, thus through `TracedCall.run`, which writes the enter record. `traced` now takes a span kind, a logger and enter metadata, and keeps an outcome that the body set. The span carries server name, tool name, request id, outcome, error kind, content count and content size (JSON bytes). No arguments and no result text. `InstrumentationSystem.instrument.inject` writes the trace context into the `_meta` next to `progressToken` (no second `traceparent` format). Error status for a thrown error (transport, cancel, JSON-RPC error), a bare-call timeout (`outcome=timedOut`, `error.kind=timeout`) and an `isError` result (`outcome=failed`, `error.kind=isError`). Span events `FoundationModelsMultitool.mcp.transport_dropped` (in `handleTransportDrop`) and `FoundationModelsMultitool.mcp.reconnect_started` (before each connect attempt) on each call in flight.
+    - vocabulary: the request id key moved from `LogMetadataKey` to `AttributeKey` (same string). New `AttributeKey.contentCount`, `AttributeKey.contentBytes`, `OutcomeValue.failed`, `OutcomeValue.timedOut`, enum `ErrorKindValue`, enum `SpanEventName` (the vocabulary test now also checks the span event names).
+    - note: a timeout under an engine context (`ToolMountError.timedOut`) reaches the MCP call as a cancel of the calling task, thus the span gets the error status and `outcome=cancelled` through `Tracer.withSpan`. The test covers the bare-call timeout, the one timeout that this file owns.
+    - note: the swift-sdk fork `Metadata` has `fields` and `additionalFields`, thus no card for the swift-sdk board.
+    - next: review.
+  timestamp: 2026-09-29T14:31:28.327245+00:00
+- actor: claude-code
+  id: 01m3psgy4zce2w5xzbbdj3m31q
+  text: |-
+    ### test — green
+    - evidence: I touched the changed Swift files. Then `swift build --build-tests` completed with 0 compiler warnings from this package. `swift test` ran 1846 tests in 150 suites: all passed, 0 failed, 0 skipped. XCTest ran 0 tests. `swift build --package-path IntegrationTests --build-tests` completed with 0 compiler warnings and 0 errors. The only other messages were the known SwiftPM "disk I/O error" manifest-cache messages and the "missing creator for mutated node ... mlx-swift_Cmlx.bundle" message. These do not come from this package.
+    - next: review
+  timestamp: 2026-09-29T14:36:27.679617+00:00
 depends_on:
 - 01M3MN95YYY2J02M1X6QC6BREE
 - 01M3MN9YSGJ8N3R97GFTY1RC0A
-position_column: todo
-position_ordinal: '8480'
+position_column: doing
+position_ordinal: '8180'
 title: 'OTel 5: open a client span for each MCP server call, and inject W3C traceparent into the MCP request _meta'
 ---
 ## What

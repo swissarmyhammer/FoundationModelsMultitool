@@ -27,32 +27,44 @@ extension MultitoolTelemetry {
     /// record when the call starts.
     ///
     /// The span opens through `TracedCall.run` of FoundationModelsExtras, with
-    /// the tracer of the current task and ``logger``. The span is a child of
-    /// the span of the current `ServiceContext`. The span gets
-    /// ``AttributeKey/outcome`` when the call ends. When the call throws, the
-    /// span records the error and gets the error status, and this function
-    /// throws the same error.
+    /// the tracer of the current task. The span is a child of the span of the
+    /// current `ServiceContext`. The span gets ``AttributeKey/outcome`` when
+    /// the call ends: ``OutcomeValue/succeeded`` when `body` returns and set
+    /// no outcome itself, or the outcome of the error when `body` throws. When
+    /// the call throws, the span records the error and gets the error status,
+    /// and this function throws the same error.
     ///
-    /// Give no content in `attributes`: ids, names, counts and sizes only.
+    /// Give no content in `attributes` and in `metadata`: ids, names, counts
+    /// and sizes only.
     ///
     /// - Parameters:
     ///   - spanName: The name of the span.
+    ///   - kind: The kind of the span. The default is `.internal`.
+    ///   - spanLogger: The logger of the "enter" record. The default is
+    ///     ``logger``.
     ///   - attributes: The attributes of the span, set before `body` starts. A
     ///     `nil` value sets no attribute.
+    ///   - metadata: The metadata of the "enter" record.
     ///   - body: The call. It gets the open span, so that it can add an
-    ///     attribute that it knows only at its end.
+    ///     attribute that it knows only at its end, for example an outcome
+    ///     that is not ``OutcomeValue/succeeded``.
     /// - Returns: The value of `body`.
     /// - Throws: The error of `body`.
     nonisolated(nonsending) static func traced<Output>(
         _ spanName: SpanName,
+        ofKind kind: SpanKind = .internal,
+        logger spanLogger: Logger = MultitoolTelemetry.logger,
         attributes: [AttributeKey: (any SpanAttributeConvertible)?] = [:],
+        metadata: Logger.Metadata = [:],
         _ body: nonisolated(nonsending) (any Span) async throws -> Output
     ) async throws -> Output {
-        try await TracedCall.run(spanName.rawValue, logger: logger) { span in
+        try await TracedCall.run(spanName.rawValue, ofKind: kind, logger: spanLogger, metadata: metadata) { span in
             span.updateAttributes { $0.set(attributes) }
             do {
                 let output = try await body(span)
-                span.attributes[AttributeKey.outcome.rawValue] = OutcomeValue.succeeded.rawValue
+                if span.attributes.get(AttributeKey.outcome.rawValue) == nil {
+                    span.attributes[AttributeKey.outcome.rawValue] = OutcomeValue.succeeded.rawValue
+                }
                 return output
             } catch {
                 span.attributes[AttributeKey.outcome.rawValue] = MultitoolTelemetry.outcome(of: error).rawValue

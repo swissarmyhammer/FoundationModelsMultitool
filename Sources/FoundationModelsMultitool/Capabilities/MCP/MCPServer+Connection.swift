@@ -109,6 +109,7 @@ extension MCPServer {
         // without a disconnect first leaves two tasks racing to consume the
         // same receive stream. `disconnect()` is a no-op before any
         // connection was ever made.
+        recordEventOnInFlightCalls(.mcpReconnectStarted)
         await disconnectClientWithoutHanging()
         connectGeneration += 1
         try await applyConnect(via: factory, generation: connectGeneration)
@@ -348,6 +349,7 @@ extension MCPServer {
     private func performConnectAttempt(
         factory: @escaping TransportFactory, timeout: Duration
     ) async throws {
+        recordEventOnInFlightCalls(.mcpReconnectStarted)
         await disconnectClientWithoutHanging()
         connectGeneration += 1
         let generation = connectGeneration
