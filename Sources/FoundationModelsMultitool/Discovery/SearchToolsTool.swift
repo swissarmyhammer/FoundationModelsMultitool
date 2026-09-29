@@ -2,6 +2,7 @@ import Foundation
 import FoundationModels
 import FoundationModelsExtras
 import FoundationModelsMetadataRegistry
+import Tracing
 
 /// The arguments a `searchTools` call carries.
 @Generable
@@ -60,15 +61,6 @@ public struct SearchToolsTool: Tool {
         Never name a function yourself, and never ask the user for data a function can
         fetch.
         """
-
-    /// Where this tool's call boundaries are recorded — see ``CallTrace``.
-    ///
-    /// A discovery call runs to completion with no timeout at all
-    /// (`mount` below), which is right — slow is not broken — but it
-    /// also means nothing above this tool will ever interrupt a search that has
-    /// stopped making progress. These spans are the only thing that tells a
-    /// slow search from a stalled one.
-    static let trace = CallTrace(category: "SearchTools")
 
     /// Where this tool reads the catalog it searches.
     private enum Catalog: Sendable {
@@ -274,23 +266,28 @@ public struct SearchToolsTool: Tool {
     /// and formatting is neither: the search (which drives the selection tier)
     /// and the sample generation (which drives a generation session) can each
     /// stall on their own, and one span over the whole call could not say
-    /// which.
+    /// which. A discovery call runs to completion with no timeout at all
+    /// (`mount` below), which is right — slow is not broken — but it also
+    /// means nothing above this tool will ever interrupt a search that has
+    /// stopped making progress. The enter records of these spans are the only
+    /// thing that tells a slow search from a stalled one (see
+    /// ``MultitoolTelemetry/SpanName``). No span carries the task text.
     public func call(arguments: SearchToolsArguments) async throws -> String {
-        try await Self.trace.span("SearchToolsTool.call", detail: "task=\(arguments.task)") {
+        try await MultitoolTelemetry.traced(.searchTools, attributes: [.toolName: name]) { _ in
             // Read one time, at the top: the catalog of a shared holder can
             // swap at the next submission boundary, and this call searches the one
             // current when it started.
             let (searcher, limit) = try resolveCatalog()
-            let matches = try await Self.trace.span(
-                "SearchToolsTool.search",
-                detail: "limit=\(limit)"
-            ) {
-                try await searcher.search(intent: arguments.task, limit: limit)
+            let matches = try await MultitoolTelemetry.traced(
+                .searchToolsSearch, attributes: [.searchLimit: limit]
+            ) { span in
+                let found = try await searcher.search(intent: arguments.task, limit: limit)
+                span.attributes[MultitoolTelemetry.AttributeKey.matchCount.rawValue] = found.count
+                return found
             }
-            let sample = await Self.trace.span(
-                "SearchToolsTool.generateSample",
-                detail: "matches=\(matches.count)"
-            ) {
+            let sample = try await MultitoolTelemetry.traced(
+                .searchToolsSample, attributes: [.matchCount: matches.count]
+            ) { _ in
                 await generateSample(forTask: arguments.task, over: matches.map(\.item))
             }
             return Self.format(task: arguments.task, matches: matches, sample: sample)

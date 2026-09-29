@@ -1189,10 +1189,10 @@ private func sampleGenerationQueue(on slot: RoutedLLM) async {
 ///
 /// **What a hang looks like from outside.** The turn stops making progress, so
 /// the suite's own `.timeLimit` is what ends it. The evidence is the `QUEUE`
-/// lines this prints throughout, and the `CallTrace` span the fixture opens:
-/// `log show --predicate 'subsystem == "com.swissarmyhammer.multitool" AND
-/// category == "NestedGenerationProbe"'` shows `enter nestedRespond` with no
-/// matching `exit` for as long as the run lasts.
+/// lines this prints throughout, and the enter record of the span the fixture
+/// opens: the swift-log output of the run shows
+/// `enter FoundationModelsMultitoolIntegrationTests.nestedRespond`, and the
+/// span of that call does not end for as long as the run lasts.
 ///
 /// - Parameters:
 ///   - name: a short label identifying the run, used in the printed lines.

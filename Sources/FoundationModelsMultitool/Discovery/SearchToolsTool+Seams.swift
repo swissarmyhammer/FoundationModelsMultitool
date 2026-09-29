@@ -17,6 +17,7 @@
 // only thing that tells a slow search from a stalled one.
 
 import FoundationModelsMetadataRegistry
+import Tracing
 
 extension SearchToolsTool {
     /// Makes the selection tier for one catalog, given the ids of that
@@ -120,8 +121,7 @@ extension SearchToolsTool {
         factory.map { factory in
             SampleSnippetConfig(makeSession: { instructions in
                 tracedSession(
-                    "SearchToolsTool.makeSampleSession", role: TracedAgentSession.sampleSnippetRole,
-                    instructions: instructions, make: factory)
+                    role: TracedAgentSession.sampleSnippetRole, instructions: instructions, make: factory)
             })
         }
     }
@@ -136,8 +136,7 @@ extension SearchToolsTool {
         case .factory(let factory):
             return .factory { instructions in
                 tracedSession(
-                    "SearchToolsTool.makeSelectionSession", role: TracedAgentSession.selectionRole,
-                    instructions: instructions, make: factory)
+                    role: TracedAgentSession.selectionRole, instructions: instructions, make: factory)
             }
         case .session(let session):
             return .session(TracedAgentSession(wrapped: session, role: TracedAgentSession.selectionRole))
@@ -150,21 +149,23 @@ extension SearchToolsTool {
     /// Traced here because both ends of a factory are opaque from outside.
     /// The call is synchronous but not cheap — a grammar-constrained session
     /// compiles its grammar — and everything done with the session it returns
-    /// happens behind the `AgentSession` seam. See `TracedAgentSession`.
+    /// happens behind the `AgentSession` seam. See `TracedAgentSession`. The
+    /// span is an `agent_session.make` span, and the role tells the selection
+    /// factory from the sample factory.
     ///
     /// - Parameters:
-    ///   - spanName: the name of the span over the factory call.
     ///   - role: the role the traced session reports.
     ///   - instructions: the instructions of the session.
     ///   - make: the host's factory.
     /// - Returns: the traced session.
     private static func tracedSession(
-        _ spanName: StaticString,
         role: String,
         instructions: String,
         make: SessionFactory
     ) -> any AgentSession {
-        trace.span(spanName, detail: "instructionCharacters=\(instructions.count)") {
+        MultitoolTelemetry.tracedSynchronously(
+            .agentSessionMake, attributes: [.sessionRole: role, .instructionCharacters: instructions.count]
+        ) {
             TracedAgentSession(wrapped: make(instructions), role: role)
         }
     }

@@ -1,4 +1,5 @@
 import FoundationModelsMetadataRegistry
+import Tracing
 
 /// An `AgentSession` that records every call it forwards, and forwards
 /// everything unchanged.
@@ -15,10 +16,10 @@ import FoundationModelsMetadataRegistry
 ///
 /// That matters because both are `async`. A call suspended in either occupies
 /// no OS thread, so it appears in no sample and in no stack — see
-/// ``CallTrace``. A `searchTools` call that never returns is otherwise a
-/// silence with two candidate causes inside it, and these spans tell them
-/// apart: an `AgentSession.fork` entry with no exit, or an
-/// `AgentSession.respond` entry with no exit.
+/// ``MultitoolTelemetry/SpanName``. A `searchTools` call that never returns is
+/// otherwise a silence with two candidate causes inside it, and these spans
+/// tell them apart: an `agent_session.fork` enter record with no ended span,
+/// or an `agent_session.respond` enter record with no ended span.
 ///
 /// ## What it forwards
 ///
@@ -28,12 +29,6 @@ import FoundationModelsMetadataRegistry
 /// `respond(to:)`, so it is covered without being restated here — restating it
 /// would replace the shared default with a copy.
 struct TracedAgentSession: AgentSession {
-    /// Where both traced calls are recorded.
-    ///
-    /// One category for the whole selection area, so a stream narrowed to it
-    /// carries the session calls and nothing else.
-    static let trace = CallTrace(category: "Selection")
-
     /// The role a session vended for the searcher's selection tier carries.
     static let selectionRole = "selection"
 
@@ -45,26 +40,26 @@ struct TracedAgentSession: AgentSession {
 
     /// What this session is for — ``selectionRole`` or ``sampleSnippetRole``.
     ///
-    /// Printed beside every line, because one `searchTools` call can drive
-    /// both and the two would otherwise be indistinguishable in a stream.
+    /// Each span carries it, because one `searchTools` call can drive both
+    /// and the two would otherwise be indistinguishable.
     let role: String
 
     /// Sends `prompt` to the wrapped session, recording the call.
     ///
-    /// The prompt's length is recorded, never its text: a selection prompt
-    /// carries the caller's own task description, and a diagnostic trail is
-    /// not the place to copy it. The length is enough to tell one call from
-    /// another beside the span id.
+    /// The span records the length of the prompt and of the response, never
+    /// their text: a selection prompt carries the caller's own task
+    /// description, and telemetry is not the place to copy it.
     ///
     /// - Parameter prompt: the prompt to respond to.
     /// - Returns: the wrapped session's complete text response.
     /// - Throws: whatever the wrapped session throws.
     func respond(to prompt: String) async throws -> String {
-        try await Self.trace.span(
-            "AgentSession.respond",
-            detail: "role=\(role) promptCharacters=\(prompt.count)"
-        ) {
-            try await wrapped.respond(to: prompt)
+        try await MultitoolTelemetry.traced(
+            .agentSessionRespond, attributes: [.sessionRole: role, .promptCharacters: prompt.count]
+        ) { span in
+            let response = try await wrapped.respond(to: prompt)
+            span.attributes[MultitoolTelemetry.AttributeKey.outputCharacters.rawValue] = response.count
+            return response
         }
     }
 
@@ -73,7 +68,7 @@ struct TracedAgentSession: AgentSession {
     /// - Returns: the forked child session, wrapped.
     /// - Throws: whatever the wrapped session throws while forking.
     func fork() async throws -> any AgentSession {
-        try await Self.trace.span("AgentSession.fork", detail: "role=\(role)") {
+        try await MultitoolTelemetry.traced(.agentSessionFork, attributes: [.sessionRole: role]) { _ in
             TracedAgentSession(wrapped: try await wrapped.fork(), role: role)
         }
     }

@@ -48,7 +48,10 @@ enum MultitoolTelemetry {
     ///
     /// Each case names one call that can suspend for a long time. The span of
     /// the mounted tool call itself is not in this list: FoundationModelsExtras
-    /// opens it with the name `FoundationModelsExtras.tool`.
+    /// opens it with the name `FoundationModelsExtras.tool`, and the spans
+    /// here name the work inside that call. Read
+    /// `MultitoolTelemetry+Tracing.swift` for why each asynchronous span also
+    /// writes an "enter" log record, and for how to read a hang.
     enum SpanName: String, CaseIterable, Sendable {
         /// One `runCode` call: `MultiTool.call(arguments:)`.
         case runCode = "FoundationModelsMultitool.runCode"
@@ -56,9 +59,25 @@ enum MultitoolTelemetry {
         /// One `searchTools` call: `SearchToolsTool.call(arguments:)`.
         case searchTools = "FoundationModelsMultitool.searchTools"
 
-        /// One inner `tools.*` dispatch of a snippet:
-        /// `RunBinding.invoke(_:arguments:journalOp:)`.
+        /// The catalog search of one `searchTools` call. It drives the
+        /// selection tier.
+        case searchToolsSearch = "FoundationModelsMultitool.searchTools.search"
+
+        /// The sample generation of one `searchTools` call. It drives a
+        /// generation session.
+        case searchToolsSample = "FoundationModelsMultitool.searchTools.sample"
+
+        /// One inner `tools.*` dispatch of a snippet: `MultiTool.invokeAsync`.
+        /// It holds both mounts of the call: the native call, and
+        /// `RunBinding.invoke(_:arguments:journalOp:)` when a session binds a
+        /// context.
         case toolsDispatch = "FoundationModelsMultitool.tools.dispatch"
+
+        /// One call of a session factory of a host:
+        /// `SearchToolsTool.tracedSession`. The call is synchronous. Thus
+        /// this span writes no enter record: a synchronous call that blocks
+        /// holds its thread, and `sample` shows that thread.
+        case agentSessionMake = "FoundationModelsMultitool.agent_session.make"
 
         /// One `respond(to:)` call of a selection session:
         /// `TracedAgentSession.respond(to:)`.
@@ -126,6 +145,21 @@ enum MultitoolTelemetry {
 
         /// The size of the output of a tool call, in characters.
         case outputCharacters = "FoundationModelsMultitool.tool.output_characters"
+    }
+
+    /// Each value that a span of the library target gives under
+    /// ``AttributeKey/outcome``.
+    ///
+    /// A value is not a name of the vocabulary, thus it has no module prefix.
+    enum OutcomeValue: String, CaseIterable, Sendable {
+        /// The call returned.
+        case succeeded
+
+        /// The call threw an error that is not a `CancellationError`.
+        case threw
+
+        /// The call threw a `CancellationError`.
+        case cancelled
     }
 
     /// The name of each metric that the library target records.

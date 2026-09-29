@@ -1,4 +1,5 @@
 import FoundationModels
+import FoundationModelsExtras
 import FoundationModelsRouter
 import ScenarioGrading
 
@@ -7,8 +8,9 @@ import ScenarioGrading
 // The one fixture tool that stays in the gated package. Every other fixture
 // reads plain values and stands in `ScenarioGrading`, where the root test
 // target links it. This one opens a nested generation on a resolved slot, so
-// it drives a model and belongs here. It also records its call as a
-// `CallTrace` span, and `CallTrace` is `internal` to the shipped library —
+// it drives a model and belongs here. It also records its call as a span with
+// an enter record through `TracedCall.run`, and it writes that record through
+// `MultitoolTelemetry.logger`, which is `internal` to the shipped library —
 // reaching it needs the `@testable` import above, which a support library
 // cannot carry.
 //
@@ -89,12 +91,16 @@ actor NestedGenerationOutcomeLog {
 /// refusal and reports the readiness token, so the outer turn ends at once.
 /// The verdict reads the outcome log, never the reply.
 struct IntegrationNestedGenerationTool: Tool {
-    /// Where this fixture's nested call is recorded as a span.
+    /// The name of the span of this fixture's nested call.
     ///
     /// A suspended `async` call occupies no thread, so `sample` and `spindump`
-    /// name nothing when this hangs — see ``CallTrace``. The entry line with no
-    /// matching exit line is the whole evidence a hung run leaves.
-    private static let trace = CallTrace(category: "NestedGenerationProbe")
+    /// name nothing when this hangs — see
+    /// `MultitoolTelemetry.SpanName`. The call opens its span through
+    /// `TracedCall.run`, which writes the record `enter <this name>` when the
+    /// call starts. That record with no ended span is the whole evidence a
+    /// hung run leaves. The name is not in the vocabulary of the library,
+    /// because only this test fixture opens the span.
+    private static let spanName = "FoundationModelsMultitoolIntegrationTests.nestedRespond"
 
     let name = integrationNestedGenerationPath
     let description = "Checks that the assistant's own language model is responsive right now, and "
@@ -118,7 +124,7 @@ struct IntegrationNestedGenerationTool: Tool {
     /// - Throws: a `CancellationError` when the outer turn is cancelled.
     func call(arguments: IntegrationNoArguments) async throws -> IntegrationNestedGenerationOutput {
         try await log.recordCall(to: name) {
-            try await Self.trace.span("nestedRespond", detail: name) {
+            try await TracedCall.run(Self.spanName, logger: MultitoolTelemetry.logger) { _ in
                 await outcomes.record(await nestedCallOutcome())
                 try Task.checkCancellation()
                 return IntegrationNestedGenerationOutput(readinessToken: integrationNestedGenerationToken)

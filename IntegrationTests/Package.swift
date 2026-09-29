@@ -17,7 +17,9 @@ private let metadataRegistryDependencyName = "FoundationModelsMetadataRegistry"
 /// The root manifest links its core product for `ProcessRegistry`. This
 /// manifest links its `Operations` product: the `@Operation` macro and
 /// `OperationTool` that `Fixtures/IntegrationNotesOperationTool.swift` builds
-/// the one real operation tool of this suite from.
+/// the one real operation tool of this suite from. It also links the core
+/// product for `TracedCall`, which
+/// `Fixtures/IntegrationNestedGenerationTool.swift` opens its span with.
 private let extrasDependencyName = "FoundationModelsExtras"
 
 /// The MLX-backed model package a live `LiveModelLoader` is built over.
@@ -166,9 +168,12 @@ let package = Package(
                 // `extrasDependencyName`. The root package expands an
                 // `OperationTool` into one verb for each operation, and the
                 // suite that proves that with a real model builds its fixture
-                // from this product. The core `FoundationModelsExtras` product
-                // is not linked: no file of this target names a symbol of it.
+                // from this product.
                 .product(name: "Operations", package: extrasDependencyName),
+                // The core product of `extrasDependencyName`, for
+                // `TracedCall`: the nested-generation fixture opens its span
+                // and writes its enter record through it.
+                .product(name: extrasDependencyName, package: extrasDependencyName),
                 .product(name: routerDependencyName, package: routerDependencyName),
                 .product(name: metadataRegistryDependencyName, package: metadataRegistryDependencyName),
                 .product(name: "MLXLMCommon", package: mlxPackage),

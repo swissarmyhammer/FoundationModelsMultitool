@@ -39,9 +39,9 @@ import Testing
 ///   call threw something else. The message names the error.
 /// - The time limit of this suite ends the run: the nested call hung, which
 ///   is the old defect. The `QUEUE` lines show the queue state for the whole
-///   run, and `log show --predicate 'subsystem == "com.swissarmyhammer.multitool"
-///   AND category == "NestedGenerationProbe"'` shows `enter nestedRespond`
-///   with no matching `exit`.
+///   run, and the swift-log output of the run shows the enter record
+///   `enter FoundationModelsMultitoolIntegrationTests.nestedRespond`, with no
+///   ended span for that call.
 ///
 /// **This suite grades plumbing, not capability, and that is why it resolves a
 /// small model.** Every assertion here is about how a nested call on a held

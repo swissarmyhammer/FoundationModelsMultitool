@@ -4,6 +4,7 @@ import FoundationModelsExtras
 import FoundationModelsMetadataRegistry
 import Logging
 import os
+import Tracing
 
 extension MultiTool {
     /// The built, executable artifact `MultiTool.Builder.buildRegistry()`
@@ -363,24 +364,6 @@ public struct MultiTool: Tool {
         never appear in searchTools — run `docs("globals")` in a snippet to read them.
         """
 
-    /// Where this tool's call boundaries are recorded — see ``CallTrace``.
-    ///
-    /// Separate from `MultitoolTelemetry.logger`, and deliberately so: that one records
-    /// what a run *decided* — which snippet ran, which `tools.*` name was
-    /// imagined — through the swift-log logger of this package, and this one records
-    /// only where control is, on its own. A hang is read by looking for an
-    /// entry with no exit, and interleaving decisions into that stream is what
-    /// makes the missing line hard to see.
-    private static let trace = CallTrace(category: "MultiTool")
-
-    /// What ``trace`` prints for a `runCode` call made outside any session.
-    ///
-    /// A `MultiTool` constructed and called directly has no ambient
-    /// `ToolContext`, so it has no completion token to correlate against. That
-    /// is a legitimate mode — every unit suite in this package runs in it —
-    /// and it reads as an explicit absence rather than a blank.
-    private static let noAmbientToken = CallTrace.absent
-
     /// The box that holds the catalog + live tool instances this `runCode`
     /// dispatches into, and everything precomputed from them, as one
     /// `RegistryBundle` — see `RegistryHolder`.
@@ -553,11 +536,15 @@ public struct MultiTool: Tool {
     ///   reachable through `JSCInterpreter`, kept as a defensive passthrough
     ///   for any other `Interpreter` conformer).
     public func call(arguments: RunCodeArguments) async throws -> String {
-        try await Self.trace.span(
-            "MultiTool.call",
-            detail: "depth=\(depth) completionToken=\(ToolContext.current?.completionToken ?? Self.noAmbientToken)"
-        ) {
-            try await runSnippet(arguments: arguments)
+        // A `MultiTool` that is called directly, outside each session, has no
+        // ambient `ToolContext`, thus no completion token.
+        let completionToken = ToolContext.current?.completionToken
+        return try await MultitoolTelemetry.traced(
+            .runCode, attributes: [.toolName: name, .depth: depth, .completionToken: completionToken]
+        ) { span in
+            let rendered = try await runSnippet(arguments: arguments)
+            span.attributes[MultitoolTelemetry.AttributeKey.outputCharacters.rawValue] = rendered.count
+            return rendered
         }
     }
 
@@ -919,11 +906,12 @@ public struct MultiTool: Tool {
         binding: RunBinding?, recordingInto ledger: ToolReturnLedger, noting lostRuns: LostRunRecord,
         holding inFlight: InFlightInnerCalls
     ) -> [AsyncHostFunction] {
-        // Made here, in the task of the `runCode` call, and not in the host
-        // functions: the interpreter calls them from its own thread, which has
-        // no task-local value of the call (see
-        // `MultitoolTelemetry.boundLogger`).
-        let logger = MultitoolTelemetry.logger
+        // Captured here, in the task of the `runCode` call and in its span,
+        // and not in the host functions: the interpreter calls them from its
+        // own thread, which has no task-local value of the call (see
+        // `MultitoolTelemetry.Scope`).
+        let scope = MultitoolTelemetry.Scope.current
+        let logger = scope.logger
         var functions = bundle.liveTools.map { liveTool in
             AsyncHostFunction(name: liveTool.hostFunctionName) { arguments in
                 try await Self.invokeAsync(
@@ -949,7 +937,7 @@ public struct MultiTool: Tool {
         }
         functions.append(makeNestedRunCodeHostFunction(over: bundle))
         return functions.map {
-            Self.recording($0, into: ledger, noting: lostRuns, holding: inFlight)
+            scope.bind(Self.recording($0, into: ledger, noting: lostRuns, holding: inFlight))
         }
     }
 
@@ -1242,6 +1230,12 @@ public struct MultiTool: Tool {
     /// Bridges one `tools.<name>(...)` call into the wrapped tool's real
     /// `async` `call(arguments:)`.
     ///
+    /// The call runs in a `tools.dispatch` span, with its enter record (see
+    /// ``MultitoolTelemetry/SpanName/toolsDispatch``). This is the one path
+    /// of each `tools.*` call of a snippet, for both mounts. The span is a
+    /// child of the `runCode` span because `makeAsyncHostFunctions` binds the
+    /// telemetry scope of the `runCode` call around this call.
+    ///
     /// No blocking bridge, no semaphore: this is an `AsyncHostFunction`
     /// body, which `JSCInterpreter.install(asyncHostFunction:into:registry:)`
     /// already runs in its own Swift `Task` — installed as a JS function
@@ -1291,19 +1285,25 @@ public struct MultiTool: Tool {
         journalOp: String? = nil,
         logger: Logging.Logger
     ) async throws -> InterpreterValue {
-        let start = ContinuousClock.now
-        let toolName = MultitoolTelemetry.toolNameMetadata(tool.name)
-        logger.log(.toolInvocationStarted, level: .debug, metadata: toolName)
-        do {
-            let value = try await performInvocation(
-                tool: tool, arguments: arguments, binding: binding, journalOp: journalOp)
-            logger.log(
-                .toolInvocationFinished, level: .debug,
-                metadata: toolName.merging(MultitoolTelemetry.durationMetadata(since: start)) { $1 })
-            return value
-        } catch {
-            logInvocationFailure(tool: tool, error: error, to: logger)
-            throw error
+        // The completion token is the one of the outer `runCode` run, when a
+        // session bound one.
+        let attributes = MultitoolTelemetry.journalAttributes(of: journalOp)
+            .merging([.toolName: tool.name, .completionToken: binding?.context.completionToken]) { $1 }
+        return try await MultitoolTelemetry.traced(.toolsDispatch, attributes: attributes) { _ in
+            let start = ContinuousClock.now
+            let toolName = MultitoolTelemetry.toolNameMetadata(tool.name)
+            logger.log(.toolInvocationStarted, level: .debug, metadata: toolName)
+            do {
+                let value = try await performInvocation(
+                    tool: tool, arguments: arguments, binding: binding, journalOp: journalOp)
+                logger.log(
+                    .toolInvocationFinished, level: .debug,
+                    metadata: toolName.merging(MultitoolTelemetry.durationMetadata(since: start)) { $1 })
+                return value
+            } catch {
+                logInvocationFailure(tool: tool, error: error, to: logger)
+                throw error
+            }
         }
     }
 

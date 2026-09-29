@@ -31,10 +31,26 @@ comments:
     - evidence: The 16 changed Swift files were touched. `swift build --build-tests` completed with exit 0 and 0 compiler warnings from this package. `swift test` ran one time: Swift Testing ran 1840 tests in 149 suites; all passed, 0 failed, 0 skipped. XCTest ran 0 tests with 0 failures. `swift build --package-path IntegrationTests --build-tests` completed with exit 0 and 0 compiler warnings or errors. The only other messages were the known SwiftPM "cached manifest ... disk I/O error" and "missing creator for mutated node ... mlx-swift_Cmlx.bundle" messages. These are not warnings of this package.
     - next: Do the review step.
   timestamp: 2026-09-29T13:46:53.251741+00:00
+- actor: claude-code
+  id: 01m3ppy1wthfz5z70mwsmvnndr
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (commit 88aa828). 0 findings (confirmed 0, refuted 0). 13 files reviewed. 4 files in .kanban/ not reviewed (.reviewignore). No prior findings sections.
+    - next: The task moved to done.
+  timestamp: 2026-09-29T13:51:11.770243+00:00
+- actor: claude-code
+  id: 01m3ppydvsrsmvrfvhan4nhma7
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 14 files (MCP files to the shared swift-log logger; new MCPLogRecordTests.swift)
+    - test: green — swift build --build-tests, 0 package warnings; swift test 1840 tests in 149 suites passed (one run); IntegrationTests build passed
+    - commit: 88aa828
+    - review: clean — 0 findings
+  timestamp: 2026-09-29T13:51:24.025453+00:00
 depends_on:
 - 01M3MN95YYY2J02M1X6QC6BREE
-position_column: doing
-position_ordinal: '8180'
+position_column: done
+position_ordinal: fffd80
 title: 'OTel 3: replace os.Logger with swift-log in the MCP capability files'
 ---
 ## What

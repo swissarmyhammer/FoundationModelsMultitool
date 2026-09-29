@@ -26,11 +26,36 @@ comments:
   id: 01m3mwcbs1nzfrpmrnsqcvqj4j
   text: 'Update (2026-09-28, swissarmyhammer session): Extras OTel E ^wts388b is on Extras origin/main (6c399a4). No Extras blocker is left. Run `swift package update FoundationModelsExtras` (root and IntegrationTests) first. `TelemetryCapture.Context.tracer` is now a `W3CInMemoryTracer`: it records spans and injects and extracts `traceparent` and `tracestate`. The enter records of `TracedCall.run` have `trace.id` and `span.id`. Code that needs the `InMemoryTracer` type uses `context.tracer.inMemoryTracer`. `SpanIdentity` is public.'
   timestamp: 2026-09-28T20:47:54.657869+00:00
+- actor: claude-code
+  id: 01m3pq6hc9cmh6q9cwfrcekzh5
+  text: |-
+    Research (implement step):
+    - Extras is at 6c399a4 in the root and in the IntegrationTests Package.resolved. `TracedCall.run` is async only. `withSpan` of swift-distributed-tracing sets the error status and records the error when the body throws.
+    - A `tools.*` call runs in a Task that the interpreter starts on its own thread. That task has no task-local value of the `runCode` call: no `ServiceContext`, no task-local tracer of `withTracer`, no bound logger. Thus the `runCode` call must capture the tracer, the service context and the logger in its own task, and bind them again around each async host function. Without this, the `tools.*` span is not a child of the `runCode` span.
+    - `RunBinding.invoke` runs only when a session binds a `ToolContext`. A `MultiTool` that is called directly dispatches natively. Thus the `tools.dispatch` span goes in `MultiTool.invokeAsync`, which is the one path of every `tools.*` call (native and `RunBinding.invoke`).
+    - CallTrace also had other uses: `SearchToolsTool.search`, `SearchToolsTool.generateSample`, the synchronous session factories in `SearchToolsTool+Seams.swift`, and the integration fixture `IntegrationNestedGenerationTool`. The old `SearchToolsTool.call` detail wrote `task=<the task text>`, which is content; the new span does not.
+    - The synchronous factory cannot use `TracedCall.run` (async only). It gets a synchronous span with no enter record: a synchronous call that blocks holds a thread, and `sample` shows it.
+  timestamp: 2026-09-29T13:55:49.769494+00:00
+- actor: claude-code
+  id: 01m3pqy6yyx1313bxe188y176j
+  text: |-
+    ### implement — changed
+    - evidence: new `Sources/FoundationModelsMultitool/Diagnostics/MultitoolTelemetry+Tracing.swift` (`MultitoolTelemetry.traced` over `TracedCall.run`, `tracedSynchronously`, `journalAttributes(of:)`, `SpanAttributes.set(_:)`, `MultitoolTelemetry.Scope`, and the "why" and "reading a hang" doc rewritten for OTLP); `MultitoolTelemetry.swift` (new span names `searchTools.search`, `searchTools.sample`, `agent_session.make`; new `OutcomeValue`); spans in `MultiTool.call` (runCode), `MultiTool.invokeAsync` (tools.dispatch, both mounts), `SearchToolsTool.call` (+ search and sample children), `TracedAgentSession.respond/fork`, `SearchToolsTool.tracedSession` (synchronous span, no enter record); `RunBinding.invoke` has no trace now; deleted `CallTrace.swift` and `CallTraceTests.swift`; new `Tests/FoundationModelsMultitoolTests/CallSpanTests.swift` (5 cases: nesting + two enter records with the same `trace.id`, hung gated call leaves enter record and no ended span while the parent is open, thrown error sets error status, searchTools children, respond span error status); integration fixture `IntegrationNestedGenerationTool` uses `TracedCall.run` and the integration target links the core Extras product; docs in `ScenarioRunner.swift` and `NestedGenerationProbeTests.swift` updated. `rg -n 'CallTrace|OSSignposter|os\.Logger' Sources/FoundationModelsMultitool` gives no match. `swift build --build-tests` green; `swift build --package-path IntegrationTests --build-tests` green; `swift test` (one run): 1840 tests in 149 suites passed, suite CallSpans passed. After that one run, the attribute API changed from a closure to a key dictionary and `tools.dispatch` got verb and noun attributes; these edits were checked by `swift build --build-tests` only, because the rule permits one test run.
+    - Decisions: the `tools.dispatch` span is in `MultiTool.invokeAsync` and not in `RunBinding.invoke`, because `RunBinding.invoke` runs only when a session binds a `ToolContext`; `invokeAsync` is the one path of each `tools.*` call. The interpreter runs each `tools.*` call in a task with no task-local values, thus `makeAsyncHostFunctions` captures `MultitoolTelemetry.Scope` (tracer, `ServiceContext`, logger) in the `runCode` span and binds it around each host function. No span carries the task text of `searchTools` (the old CallTrace detail did).
+    - next: review
+  timestamp: 2026-09-29T14:08:45.534517+00:00
+- actor: claude-code
+  id: 01m3pr3fmwn0a73eq3tfk84xzd
+  text: |-
+    ### test — green
+    - evidence: The 12 changed Swift files were touched. `swift build --build-tests` completed with exit 0 and 0 compiler warnings or errors from a file of this package. `swift test` ran one time: 1840 tests in 149 suites passed, 0 failed, 0 skipped. XCTest executed 0 tests. `swift build --package-path IntegrationTests --build-tests` completed with exit 0 and 0 compiler warnings or errors. The only messages were the known SwiftPM "disk I/O error" manifest-cache messages and the "missing creator for mutated node ... mlx-swift_Cmlx.bundle" message.
+    - next: Do the review step.
+  timestamp: 2026-09-29T14:11:38.268722+00:00
 depends_on:
 - 01M3MN95YYY2J02M1X6QC6BREE
 - 01M3MN9QX1TDARW8S19E390A6N
-position_column: todo
-position_ordinal: '8380'
+position_column: doing
+position_ordinal: '8180'
 title: 'OTel 4: replace CallTrace with real spans and an enter log record, and keep the hang diagnosis'
 ---
 ## What

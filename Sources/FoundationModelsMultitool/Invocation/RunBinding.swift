@@ -66,16 +66,6 @@ struct RunBinding: Sendable {
         mode: .runToCompletion, timeout: MultiToolConfiguration.defaultExecutionTimeLimit
     )
 
-    /// Where each inner `tools.*` dispatch is recorded — see ``CallTrace``.
-    ///
-    /// This is the one place an inner call is visible as itself. Below it the
-    /// call is inside the shared engine, and above it the call is inside a JSC
-    /// promise the interpreter is pumping — so a snippet whose `await` never
-    /// settles looks, from either side, like a snippet that has not finished.
-    /// One `tools.*` call under `Promise.all` that never comes back is
-    /// otherwise indistinguishable from all of them being slow.
-    static let trace = CallTrace(category: "RunBinding")
-
     /// The ambient context captured at the top of the enclosing `runCode`
     /// invocation — its session identity, mailbox, upstream sink, and the
     /// outer run's `completionToken`.
@@ -133,6 +123,10 @@ struct RunBinding: Sendable {
     /// `completionToken` stays with the background runs. A context whose
     /// session has gone away posts into a no-op, which is not an error.
     ///
+    /// The `tools.dispatch` span of this call is open around it: the caller,
+    /// `MultiTool.invokeAsync`, opens it for both mounts (see
+    /// `MultitoolTelemetry.SpanName.toolsDispatch`).
+    ///
     /// This is the one place in this package that hands the engine a journal
     /// op, which is why `journalOp` is threaded down to here rather than read
     /// from anything the tool itself carries — a verb does not know its own
@@ -157,12 +151,7 @@ struct RunBinding: Sendable {
     func invoke<T: Tool>(
         _ tool: T, arguments: T.Arguments, journalOp: String? = nil
     ) async throws -> T.Output {
-        try await Self.trace.span(
-            "RunBinding.invoke",
-            detail: "tool=\(tool.name) outerToken=\(context.completionToken)"
-        ) {
-            let engine = context.mount(tool, op: journalOp, as: innerMount)
-            return try await engine.call(arguments: arguments)
-        }
+        let engine = context.mount(tool, op: journalOp, as: innerMount)
+        return try await engine.call(arguments: arguments)
     }
 }
