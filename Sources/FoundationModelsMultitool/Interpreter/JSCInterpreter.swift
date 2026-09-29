@@ -1,5 +1,6 @@
 import Foundation
 import JavaScriptCore
+import Logging
 import os
 
 // MARK: - Private JSC watchdog symbols
@@ -251,7 +252,14 @@ public final class JSCInterpreter: Interpreter {
     /// Where this interpreter logs its M10 diagnostics — snippet start/end
     /// and duration, and how a run ended (clean, exception, timeout, or
     /// cancelled).
-    private static let logger = Logger(subsystem: "FoundationModelsMultitool", category: "JSCInterpreter")
+    ///
+    /// A new logger for each read, not a `static let`: a logger keeps the
+    /// handler of the logging system at the time it is made, and a host can
+    /// bootstrap the logging system after this type loads. See
+    /// `MultitoolTelemetry.makeLogger()`.
+    private static var logger: Logging.Logger {
+        MultitoolTelemetry.makeLogger()
+    }
 
     /// How often `WatchdogState.shouldTerminate()` is invoked while a
     /// snippet runs — see that type's documentation for why this, not the
@@ -506,8 +514,10 @@ public final class JSCInterpreter: Interpreter {
     /// M10 external cancellation) to an `InterpreterResult` or thrown error.
     ///
     /// Logs the run's start and its end (outcome + duration) via `logger` —
-    /// plan.md M10: "os.Logger... at the seams — snippet start/end +
-    /// duration."
+    /// plan.md M10: "at the seams — snippet start/end + duration." The
+    /// records carry the size of the snippet, the duration and the type of
+    /// an error. They never carry the JS source or the text of an error,
+    /// because both can hold content.
     private static func evaluate(
         code: String,
         installing: [HostFunction],
@@ -516,7 +526,9 @@ public final class JSCInterpreter: Interpreter {
         isCancelled: @escaping @Sendable () -> Bool
     ) throws -> InterpreterResult {
         let start = ContinuousClock.now
-        logger.debug("runCode snippet started (\(code.count, privacy: .public) characters).")
+        logger.log(
+            .snippetStarted, level: .debug,
+            metadata: [MultitoolTelemetry.LogMetadataKey.characterCount.rawValue: "\(code.count)"])
 
         let sandbox = try makeSandbox(
             installing: installing,
@@ -590,12 +602,13 @@ public final class JSCInterpreter: Interpreter {
 
             let returnValue = try jsonValue(of: outcome?.objectForKeyedSubscript("value"), in: sandbox.context)
             let result = InterpreterResult(returnValue: returnValue, consoleLines: sandbox.consoleLines.lines)
-            logger.debug("runCode snippet finished in \(start.duration(to: .now), privacy: .public).")
+            logger.log(.snippetFinished, level: .debug, metadata: MultitoolTelemetry.durationMetadata(since: start))
             return result
         } catch {
-            logger.debug(
-                "runCode snippet ended (\(String(describing: error), privacy: .public)) after \(start.duration(to: .now), privacy: .public)."
-            )
+            logger.log(
+                .snippetEnded, level: .debug,
+                metadata: MultitoolTelemetry.errorMetadata(of: error)
+                    .merging(MultitoolTelemetry.durationMetadata(since: start)) { $1 })
             throw error
         }
     }

@@ -1,34 +1,64 @@
-import Foundation
-import OSLog
+import InMemoryLogging
+import Logging
+import TelemetryTestSupport
 
-// MARK: - The one log-store read of this test target
+@testable import FoundationModelsMultitool
+
+// MARK: - The one log read-back of this test target
 //
-// A line an `os.Logger` writes reaches the log store a little AFTER the call
-// that wrote it, so a read taken at that instant is a race. The read itself is
-// always the same three steps: open the store of this process, take a position
-// at an instant, and keep the entries of this package's own subsystem.
+// The library target logs through swift-log. A suite runs the code under test
+// in a `TelemetryCapture` of FoundationModelsExtras, and the capture keeps each
+// log record of the task of the suite in memory. The capture bootstraps the
+// logging system one time for each process. Thus no code of this test target
+// calls `LoggingSystem.bootstrap`.
 //
-// Those three steps stand here one time. A suite that reads a line back polls
-// this reader through `TestPoll`, thus every suite reads the same store, the
-// same subsystem and the same window, and no copy can drift from another.
+// A record goes to the capture of the task that writes it, and a child task
+// gets the capture of its parent task. Thus two suites that run in parallel
+// do not see the records of each other. A record that the task of the suite
+// writes is in the capture when the call that wrote it returns.
+//
+// The readers of the records stand here one time, so that each suite reads
+// the records in the same way.
 
-/// The `os.Logger` subsystem every logger of this package is built with.
-let multitoolLogSubsystem = "FoundationModelsMultitool"
+/// The readers of the log records that a `TelemetryCapture` keeps.
+enum LogReadback {
+    /// The records of `context` that carry `message`, in the order of the
+    /// calls.
+    ///
+    /// - Parameters:
+    ///   - message: The constant message of the records to keep.
+    ///   - context: The capture that holds the records.
+    /// - Returns: The records, in the order of the calls.
+    static func records(
+        _ message: MultitoolTelemetry.LogMessage, in context: TelemetryCapture.Context
+    ) -> [InMemoryLogHandler.Entry] {
+        records(message, in: context.logRecords)
+    }
 
-/// The composed message of every line this process wrote under
-/// ``multitoolLogSubsystem`` since `start`.
-///
-/// - Parameter start: The instant to read from. A line older than this one is
-///   dropped.
-/// - Returns: The messages, in emission order.
-/// - Throws: What `OSLogStore` throws when it cannot be opened or read.
-func multitoolLogMessages(since start: Date) throws -> [String] {
-    let store = try OSLogStore(scope: .currentProcessIdentifier)
-    let entries = try store.getEntries(at: store.position(date: start))
-    return entries.compactMap { entry in
-        guard let log = entry as? OSLogEntryLog, log.subsystem == multitoolLogSubsystem else {
-            return nil
-        }
-        return log.composedMessage
+    /// The records of `records` that carry `message`, in the order of the
+    /// calls.
+    ///
+    /// - Parameters:
+    ///   - message: The constant message of the records to keep.
+    ///   - records: The records to read, for example the records that a case
+    ///     returned from its capture.
+    /// - Returns: The records, in the order of the calls.
+    static func records(
+        _ message: MultitoolTelemetry.LogMessage, in records: [InMemoryLogHandler.Entry]
+    ) -> [InMemoryLogHandler.Entry] {
+        records.filter { "\($0.message)" == message.rawValue }
+    }
+}
+
+extension InMemoryLogHandler.Entry {
+    /// The metadata value of this record under `key`, as text.
+    ///
+    /// - Parameter key: The metadata key: a case of
+    ///   `MultitoolTelemetry.AttributeKey` or of
+    ///   `MultitoolTelemetry.LogMetadataKey`.
+    /// - Returns: The text of the value, or `nil` when the record has no value
+    ///   under `key`.
+    func metadataText(_ key: some RawRepresentable<String>) -> String? {
+        metadata[key.rawValue].map { "\($0)" }
     }
 }

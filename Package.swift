@@ -285,6 +285,22 @@ private let telemetryProducts: [Target.Dependency] = [
     .product(name: "Metrics", package: metricsPackage),
 ]
 
+/// The products that the unit test target uses to read back the telemetry of
+/// the library target.
+///
+/// `TelemetryTestSupport` is the test helper of FoundationModelsExtras.
+/// `TelemetryCapture` gives a test an in-memory tracer, log handler and
+/// metrics factory for the task of the test. It bootstraps the logging system
+/// one time for each process. Thus no code of the unit test target calls
+/// `LoggingSystem.bootstrap`. `Logging` gives the suites the `Logger.Metadata`
+/// type, and `InMemoryLogging` gives them the `InMemoryLogHandler.Entry` type
+/// of each log record. A library target does not link these products.
+private let telemetryTestProducts: [Target.Dependency] = [
+    .product(name: "TelemetryTestSupport", package: extrasDependencyName),
+    .product(name: "Logging", package: loggingPackage),
+    .product(name: "InMemoryLogging", package: loggingPackage),
+]
+
 /// The time-sortable identifier package (yaslab/ULID.swift).
 ///
 /// FoundationModelsExtras declares `ElicitationRequest.elicitationId` as a
@@ -664,6 +680,8 @@ let package = Package(
         // `shellProducts` and `mcpProducts` again: `DependencyReachTests`
         // imports `Subprocess` and `MCP` directly, and this target declares
         // each product it imports, as it does for the two products above.
+        // `telemetryTestProducts` gives the log read-back of the suites — see
+        // its documentation.
         // `testServerTargetName` is the scripted server the MCP suites run
         // against; the executable over it is not a dependency, because a
         // test target cannot depend on an executable, and `swift test`
@@ -680,7 +698,7 @@ let package = Package(
                 .product(name: routerDependencyName, package: routerDependencyName),
                 .product(name: metadataRegistryDependencyName, package: metadataRegistryDependencyName),
                 .product(name: extrasDependencyName, package: extrasDependencyName),
-            ] + shellProducts + mcpProducts,
+            ] + shellProducts + mcpProducts + telemetryTestProducts,
             path: "\(testsPath)\(packageName)Tests",
             resources: [
                 // Golden files pinning `ToolAPIRenderer`'s rendered surface

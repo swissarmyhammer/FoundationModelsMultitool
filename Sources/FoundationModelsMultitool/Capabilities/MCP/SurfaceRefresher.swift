@@ -34,8 +34,8 @@
 // usually arrives first. One rebuild of a catalog that did not move is the cost
 // of never missing a change that landed before the watch started.
 
+import Logging
 import Synchronization
-import os
 
 /// Watches the catalog of each MCP server of one session, and stages a rebuilt
 /// registry whenever a catalog moves.
@@ -65,13 +65,14 @@ import os
 ///   makes a new refresher for the next one.
 public final class SurfaceRefresher: Sendable, Stoppable {
     /// The logger ``init(source:staging:servers:logger:)`` takes when the host
-    /// supplies none.
-    public static let defaultLogger = Logger(
-        subsystem: "FoundationModelsMultitool", category: "SurfaceRefresher")
-
-    /// The first word of the line a failed rebuild writes, which a test reads
-    /// the line back by.
-    static let rebuildFailureLogPrefix = "surfaceRebuildFailed"
+    /// supplies none: a new swift-log logger with the label of the library.
+    ///
+    /// A new logger for each read, not a stored value: a logger keeps the
+    /// handler of the logging system at the time it is made, and a host can
+    /// bootstrap the logging system after this type loads.
+    public static var defaultLogger: Logger {
+        MultitoolTelemetry.makeLogger()
+    }
 
     /// The rebuild half: the recorded registrations, the last built catalog of
     /// each server, and the staging each rebuilt registry goes to.
@@ -328,9 +329,13 @@ public final class SurfaceRefresher: Sendable, Stoppable {
                 // A stop cancels the rebuild in flight. That is the host ending
                 // the session, and not a catalog this refresher cannot render.
                 guard !Task.isCancelled else { return }
-                logger.warning(
-                    "\(SurfaceRefresher.rebuildFailureLogPrefix, privacy: .public) server=\(snapshot.identity.name, privacy: .public) error=\(String(describing: error), privacy: .public)"
-                )
+                // The name of the server and the type of the error only. The
+                // text of the error can hold a name or a schema of the MCP
+                // catalog, which is an MCP payload.
+                logger.log(
+                    .surfaceRebuildFailed, level: .warning,
+                    metadata: [MultitoolTelemetry.AttributeKey.serverName.rawValue: "\(snapshot.identity.name)"]
+                        .merging(MultitoolTelemetry.errorMetadata(of: error)) { $1 })
             }
         }
 

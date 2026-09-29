@@ -1,6 +1,7 @@
 import Foundation
 import FoundationModels
 import FoundationModelsMetadataRegistry
+import TelemetryTestSupport
 import Testing
 
 @testable import FoundationModelsMultitool
@@ -258,7 +259,7 @@ struct UnknownToolHintTests {
         #expect(output.contains(Self.repairClosing))
     }
 
-    // MARK: - Imagined names reach the system log
+    // MARK: - Imagined names reach the log
 
     /// Resolves `message` against `registry` the way `MultiTool` does, with
     /// no `runCode` round trip.
@@ -311,8 +312,8 @@ struct UnknownToolHintTests {
         #expect(resolution.tier == .nameResemblance)
         #expect(resolution.suggestedPaths == ["getWeather"])
         #expect(
-            resolution.logMessage
-                == "imaginedTool imagined=getWeatherOutlook tier=resemblance suggested=[getWeather]"
+            ImaginedToolLogRecord(metadata: resolution.logMetadata)
+                == ImaginedToolLogRecord(imagined: "getWeatherOutlook", tier: "resemblance", suggested: ["getWeather"])
         )
     }
 
@@ -323,8 +324,8 @@ struct UnknownToolHintTests {
         #expect(resolution.tier == .catalogRelevance)
         #expect(resolution.suggestedPaths == ["getTrip"])
         #expect(
-            resolution.logMessage
-                == "imaginedTool imagined=getItinerary tier=relevance suggested=[getTrip]"
+            ImaginedToolLogRecord(metadata: resolution.logMetadata)
+                == ImaginedToolLogRecord(imagined: "getItinerary", tier: "relevance", suggested: ["getTrip"])
         )
     }
 
@@ -348,28 +349,28 @@ struct UnknownToolHintTests {
         #expect(resolution.tier == .noMatch)
         #expect(resolution.suggestedPaths.isEmpty)
         #expect(
-            resolution.logMessage == "imaginedTool imagined=sendEmail tier=none suggested=[]"
+            ImaginedToolLogRecord(metadata: resolution.logMetadata)
+                == ImaginedToolLogRecord(imagined: "sendEmail", tier: "none", suggested: [])
         )
     }
 
-    /// The guess the emission test drives, spelled so that no other test in
-    /// this process can produce a line carrying the same `imagined=` value —
-    /// the log store is read per process, not per test.
+    /// The guess the emission test drives.
     private static let emittedGuess = "getWeatherBulletin"
 
-    @Test("an unknown tools.* path reaches the system log, exactly once")
+    @Test("an unknown tools.* path reaches the log at the notice level, exactly once")
     func unknownPathIsLoggedOnce() async throws {
         let registry = try MultiTool.Builder().addTools(Self.travelCatalog()).buildRegistry()
         let multiTool = MultiTool(registry: registry)
-        let start = Date()
 
-        _ = try await multiTool.call(
-            arguments: RunCodeArguments(code: "return tools.\(Self.emittedGuess)();")
-        )
+        let records = try await TelemetryCapture.run(forbidding: []) { context in
+            _ = try await multiTool.call(
+                arguments: RunCodeArguments(code: "return tools.\(Self.emittedGuess)();")
+            )
+            return ImaginedToolLogRecord.records(in: context)
+        }
 
-        let records = try await imaginedToolLogRecords(since: start, waitingFor: 1)
         #expect(
-            records.filter { $0.imagined == Self.emittedGuess } == [
+            records == [
                 ImaginedToolLogRecord(
                     imagined: Self.emittedGuess,
                     tier: "resemblance",
@@ -383,37 +384,34 @@ struct UnknownToolHintTests {
     /// asserting produced nothing — see that test for why it is there.
     private static let controlGuess = "getWeatherDigest"
 
-    @Test("a mis-called existing tool reaches the system log not at all")
+    @Test("a mis-called existing tool reaches the log not at all")
     func misCalledExistingToolIsNotLogged() async throws {
         let registry = try MultiTool.Builder()
             .addTools(Self.travelCatalog())
             .addTool(TempTool())
             .buildRegistry()
         let multiTool = MultiTool(registry: registry)
-        let start = Date()
 
-        // A real catalog path, called wrongly: the snippet takes the same
-        // failure route the emitting test does, and the only difference is
-        // that the path it names exists. The rendered text is checked so
-        // this stays a mis-called *known* path rather than a snippet that
-        // failed for some other reason.
-        let misCall = try await multiTool.call(
-            arguments: RunCodeArguments(code: "return tools.getTemperature({});")
-        )
-        #expect(misCall.contains("getTemperature"))
-        #expect(!misCall.contains(Self.missingPathPhrase))
-        // Emitted second, and waited for below. Log delivery is ordered per
-        // process, so a `getWeather` line would have had to arrive before
-        // this one — which makes the absence below a real absence rather
-        // than a read taken too early. It is also what keeps this test from
-        // passing vacuously if the reader ever stopped working.
-        _ = try await multiTool.call(
-            arguments: RunCodeArguments(code: "return tools.\(Self.controlGuess)();")
-        )
+        let records = try await TelemetryCapture.run(forbidding: []) { context in
+            // A real catalog path, called wrongly: the snippet takes the same
+            // failure route the emitting test does, and the only difference
+            // is that the path it names exists. The rendered text is checked
+            // so this stays a mis-called *known* path rather than a snippet
+            // that failed for some other reason.
+            let misCall = try await multiTool.call(
+                arguments: RunCodeArguments(code: "return tools.getTemperature({});")
+            )
+            #expect(misCall.contains("getTemperature"))
+            #expect(!misCall.contains(Self.missingPathPhrase))
+            // The control call keeps this test from passing vacuously if the
+            // read-back ever stopped working: its record must be there.
+            _ = try await multiTool.call(
+                arguments: RunCodeArguments(code: "return tools.\(Self.controlGuess)();")
+            )
+            return ImaginedToolLogRecord.records(in: context)
+        }
 
-        let records = try await imaginedToolLogRecords(since: start, waitingFor: 1)
-        #expect(records.contains { $0.imagined == Self.controlGuess })
-        #expect(!records.contains { $0.imagined == "getTemperature" })
+        #expect(records.map(\.imagined) == [Self.controlGuess])
     }
 
     // MARK: - A call on a group, not on one of its functions (^zhrjrax)
@@ -468,8 +466,8 @@ struct UnknownToolHintTests {
         #expect(!resolution.text.contains(Self.missingPathPhrase), "text was: \(resolution.text)")
         #expect(resolution.directive == .repairSnippet)
         #expect(
-            resolution.logMessage
-                == "imaginedTool imagined=\(group) tier=group suggested=[\(verbPaths.joined(separator: ","))]"
+            ImaginedToolLogRecord(metadata: resolution.logMetadata)
+                == ImaginedToolLogRecord(imagined: group, tier: "group", suggested: verbPaths)
         )
     }
 
@@ -500,7 +498,7 @@ struct UnknownToolHintTests {
 
         #expect(resolution.imaginedPath == Self.noGroupPath)
         #expect(resolution.text.hasPrefix("tools.\(Self.noGroupPath) \(Self.missingPathPhrase)"), "text was: \(resolution.text)")
-        #expect(!resolution.logMessage.contains("tier=group"))
+        #expect(resolution.tier != .groupCall)
     }
 
     @Test("a group-call hint names the first eight verbs at most, and says how many it does not show")

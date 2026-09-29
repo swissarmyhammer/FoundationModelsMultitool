@@ -1,6 +1,6 @@
 import Foundation
 import FoundationModels
-import os
+import Logging
 
 /// A failure to render a complete, valid `ToolDescriptor` for a tool.
 ///
@@ -61,12 +61,28 @@ public struct ToolAPIRendererError: Error, Sendable, Equatable, CustomStringConv
 /// awaits it — see
 /// `render(name:description:arguments:returns:onWiden:)`.
 public enum ToolAPIRenderer {
+    /// The default `onWiden` report of the three `render` overloads: one
+    /// warning log record for each widened schema element.
+    ///
+    /// The message is constant, and `detail` goes into the metadata. The
+    /// detail holds schema names only: the property path, the `$ref` name or
+    /// the type name. It holds no value, no description and no default of the
+    /// schema. The logger is new for each report, because a logger keeps the
+    /// handler of the logging system at the time it is made (see
+    /// `MultitoolTelemetry.makeLogger()`).
+    ///
     /// `@usableFromInline` (rather than `private`) because the three `render`
     /// overloads' default `onWiden` argument references it, and a default
     /// argument expression on a `public` function must be at least as
     /// visible as the function itself.
+    ///
+    /// - Parameter detail: The human-readable text of the widening.
     @usableFromInline
-    static let logger = Logger(subsystem: "FoundationModelsMultitool", category: "ToolAPIRenderer")
+    static func reportWidening(_ detail: String) {
+        MultitoolTelemetry.makeLogger().log(
+            .schemaWidened, level: .warning,
+            metadata: [MultitoolTelemetry.LogMetadataKey.wideningDetail.rawValue: "\(detail)"])
+    }
 
     /// The JSDoc continuation-line prefix (`" * "`) shared by every line of
     /// the doc comment this renderer emits — the summary/description lines,
@@ -194,13 +210,14 @@ public enum ToolAPIRenderer {
     ///     per Findings #1.
     ///   - onWiden: called with a human-readable message whenever a schema
     ///     element this renderer doesn't have a specific TS mapping for is
-    ///     widened to `any`. Defaults to logging via `os.Logger`.
+    ///     widened to `any`. Defaults to a warning log record (see
+    ///     `reportWidening(_:)`).
     /// - Returns: `tool`'s rendered name/declaration/doc/example/source.
     /// - Throws: `ToolAPIRendererError` if `tool.parameters` can't be turned
     ///   into a complete declaration (see the type's documentation).
     public static func render<T: Tool>(
         _ tool: T,
-        onWiden: @escaping (String) -> Void = { logger.warning("\($0, privacy: .public)") }
+        onWiden: @escaping (String) -> Void = { reportWidening($0) }
     ) throws -> ToolDescriptor {
         let returns: Returns
         if let generableOutput = T.Output.self as? any Generable.Type {
@@ -233,7 +250,7 @@ public enum ToolAPIRenderer {
     ///     must be a `@Generable` struct); anything else throws.
     ///   - returns: how to render the `@returns` type; defaults to `.text`.
     ///   - onWiden: called whenever a schema element widens to `any`.
-    ///     Defaults to logging via `os.Logger`.
+    ///     Defaults to a warning log record (see `reportWidening(_:)`).
     /// - Returns: the rendered name/declaration/doc/example/source.
     /// - Throws: `ToolAPIRendererError` if `name` isn't a legal TypeScript
     ///   identifier (schema-derived text is never trusted to be safe to
@@ -246,7 +263,7 @@ public enum ToolAPIRenderer {
         description: String,
         parameters: GenerationSchema,
         returns: Returns = .text,
-        onWiden: @escaping (String) -> Void = { logger.warning("\($0, privacy: .public)") }
+        onWiden: @escaping (String) -> Void = { reportWidening($0) }
     ) throws -> ToolDescriptor {
         let parametersNode = try decode(parameters, subject: "\"\(name)\"'s parameters")
         guard parametersNode.type == typeObject else {
@@ -275,7 +292,7 @@ public enum ToolAPIRenderer {
     ///   - arguments: the tool's parameters, in the order to render them.
     ///   - returns: how to render the `@returns` type; defaults to `.text`.
     ///   - onWiden: called whenever a `.schema` return widens to `any`.
-    ///     Defaults to logging via `os.Logger`.
+    ///     Defaults to a warning log record (see `reportWidening(_:)`).
     /// - Returns: the rendered name/declaration/doc/example/source.
     /// - Throws: `ToolAPIRendererError` if `name` isn't a legal TypeScript
     ///   identifier (schema-derived text is never trusted to be safe to
@@ -289,7 +306,7 @@ public enum ToolAPIRenderer {
         description: String,
         arguments: [RenderedParameter],
         returns: Returns = .text,
-        onWiden: @escaping (String) -> Void = { logger.warning("\($0, privacy: .public)") }
+        onWiden: @escaping (String) -> Void = { reportWidening($0) }
     ) throws -> ToolDescriptor {
         guard isLegalTSIdentifier(name) else {
             throw ToolAPIRendererError(

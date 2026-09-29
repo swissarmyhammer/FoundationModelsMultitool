@@ -1,15 +1,16 @@
-import Foundation
+import Logging
+import TelemetryTestSupport
 
 @testable import FoundationModelsMultitool
 
-/// One `imaginedTool` line read back out of the unified log and parsed into
-/// the triple the synonym-mining use needs.
+/// One `imaginedTool` log record, read back from its metadata into the triple
+/// that the synonym-mining use needs.
 ///
-/// Parsing here is the other half of the contract `UnknownToolHint
-/// .Resolution.logMessage` writes: the emitted line is only useful if a
-/// later script can turn it back into `(imagined, suggested, tier)` without
-/// regex archaeology, so the tests read it back through a parser rather
-/// than string-matching the whole line.
+/// The read here is the other half of the contract that `UnknownToolHint
+/// .Resolution.logMetadata` writes: the record is only useful if a later
+/// script can turn it back into `(imagined, suggested, tier)`. Thus the tests
+/// read the record back through its metadata keys, and not through the text of
+/// a message.
 struct ImaginedToolLogRecord: Equatable {
     /// The `tools.*` path the model invented, without its `tools.` prefix.
     let imagined: String
@@ -22,89 +23,31 @@ struct ImaginedToolLogRecord: Equatable {
     let suggested: [String]
 }
 
-/// Reads back every `imaginedTool` line this process emitted since `start`,
-/// waiting for the log store to catch up with the emitting call.
-///
-/// `os_log` hands an entry to the logging system asynchronously, so a read
-/// taken immediately after the emitting call can legitimately see nothing
-/// yet. Rather than sleeping for a fixed interval and hoping, this polls
-/// until at least `minimumCount` records are visible or the deadline
-/// passes, then returns whatever the store holds. Per-process log delivery
-/// is ordered, so a caller that waits for a record it emitted *last* has
-/// also waited for everything it emitted before that — which is what lets
-/// the negative test assert an absence without a race.
-///
-/// - Parameters:
-///   - start: the instant to read from; entries older than this are ignored.
-///   - minimumCount: how many records to wait for before returning.
-/// - Returns: every `imaginedTool` record in the window, in emission order.
-/// - Throws: whatever `OSLogStore` throws when it cannot be opened or read.
-func imaginedToolLogRecords(since start: Date, waitingFor minimumCount: Int) async throws
-    -> [ImaginedToolLogRecord]
-{
-    let deadline = Date().addingTimeInterval(logReadbackTimeout)
-    var records = try readImaginedToolLogRecords(since: start)
-    while records.count < minimumCount, Date() < deadline {
-        try await Task.sleep(for: .milliseconds(logReadbackPollInterval))
-        records = try readImaginedToolLogRecords(since: start)
-    }
-    return records
-}
-
-/// How long `imaginedToolLogRecords(since:waitingFor:)` waits for the log
-/// store to catch up before giving up and returning what it has.
-///
-/// Generous on purpose: a miss here would make a genuine emission look like
-/// a missing one, and the wait ends as soon as the records arrive.
-private let logReadbackTimeout: TimeInterval = 20
-
-/// How long `imaginedToolLogRecords(since:waitingFor:)` sleeps between
-/// reads of the log store, in milliseconds.
-private let logReadbackPollInterval = 50
-
-/// Reads the current contents of this process's log store, once.
-///
-/// - Parameter start: the instant to read from.
-/// - Returns: every `imaginedTool` record the store holds in that window.
-/// - Throws: whatever `OSLogStore` throws when it cannot be opened or read.
-private func readImaginedToolLogRecords(since start: Date) throws -> [ImaginedToolLogRecord] {
-    try multitoolLogMessages(since: start).compactMap(ImaginedToolLogRecord.init(parsing:))
-}
-
 extension ImaginedToolLogRecord {
-    /// Parses one `imaginedTool` line, or fails when `message` is some other
-    /// log line.
+    /// Reads one `imaginedTool` record back from its metadata, or fails when
+    /// the metadata does not hold the three values of the record.
     ///
-    /// - Parameter message: one composed log message.
-    fileprivate init?(parsing message: String) {
-        let fields = message.split(separator: " ")
-        guard fields.first.map(String.init) == UnknownToolHint.logPrefix else { return nil }
-
-        var values: [Substring: Substring] = [:]
-        for field in fields.dropFirst() {
-            guard let separator = field.firstIndex(of: "=") else { continue }
-            values[field[..<separator]] = field[field.index(after: separator)...]
-        }
-        guard let imagined = values["imagined"], let tier = values["tier"],
-            let suggested = values["suggested"]
+    /// - Parameter metadata: The metadata of one log record, or the
+    ///   `logMetadata` of one `UnknownToolHint.Resolution`.
+    init?(metadata: Logger.Metadata) {
+        guard case .string(let imagined)? = metadata[MultitoolTelemetry.LogMetadataKey.imaginedPath.rawValue],
+            case .string(let tier)? = metadata[MultitoolTelemetry.LogMetadataKey.suggestionTier.rawValue],
+            case .array(let suggested)? = metadata[MultitoolTelemetry.LogMetadataKey.suggestedPaths.rawValue]
         else {
             return nil
         }
-
-        self.init(
-            imagined: String(imagined),
-            tier: String(tier),
-            suggested: Self.parseSuggestions(suggested)
-        )
+        self.init(imagined: imagined, tier: tier, suggested: suggested.map { "\($0)" })
     }
 
-    /// Parses the bracketed, comma-separated `suggested=` value.
+    /// Every `imaginedTool` record that `context` holds, in the order of the
+    /// calls.
     ///
-    /// - Parameter value: the field's raw text, brackets included.
-    /// - Returns: the suggested paths, empty for `[]`.
-    private static func parseSuggestions(_ value: Substring) -> [String] {
-        let inner = value.dropFirst().dropLast()
-        guard !inner.isEmpty else { return [] }
-        return inner.split(separator: ",").map(String.init)
+    /// - Parameter context: The capture that holds the records.
+    /// - Returns: The records at the `.notice` level, read back from their
+    ///   metadata.
+    static func records(in context: TelemetryCapture.Context) -> [ImaginedToolLogRecord] {
+        LogReadback.records(.imaginedTool, in: context)
+            .filter { $0.level == .notice }
+            .compactMap { ImaginedToolLogRecord(metadata: $0.metadata) }
     }
 }

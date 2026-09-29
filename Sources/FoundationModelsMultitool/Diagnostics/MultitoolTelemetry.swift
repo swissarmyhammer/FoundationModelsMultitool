@@ -3,8 +3,8 @@
 // periphery:ignore:all
 
 /// The telemetry vocabulary of the library target: the span names, the
-/// attribute keys, the metric names with their dimension keys, the log label
-/// and the log metadata keys.
+/// attribute keys, the metric names with their dimension keys, the log label,
+/// the log metadata keys and the constant log messages.
 ///
 /// Rule 3 of the OpenTelemetry design of 2026-09-28: each package keeps all of
 /// its telemetry names in one vocabulary file. No other source file of the
@@ -197,5 +197,78 @@ enum MultitoolTelemetry {
 
         /// A count of items.
         case itemCount = "FoundationModelsMultitool.count.items"
+
+        /// A size, in characters. For JS source it is the size only, never
+        /// the source.
+        case characterCount = "FoundationModelsMultitool.size.characters"
+
+        /// A duration, in whole milliseconds.
+        case durationMilliseconds = "FoundationModelsMultitool.duration.ms"
+
+        /// The `tools.*` path that a snippet called and that the catalog does
+        /// not have, without its `tools.` prefix. The model makes this name
+        /// up. It is a name, not an argument and not a value.
+        case imaginedPath = "FoundationModelsMultitool.hint.imagined_path"
+
+        /// The tier that answered an imagined path: `resemblance`,
+        /// `relevance`, `none` or `group`.
+        case suggestionTier = "FoundationModelsMultitool.hint.tier"
+
+        /// The catalog paths that the hint of an imagined path names, as an
+        /// array of names.
+        case suggestedPaths = "FoundationModelsMultitool.hint.suggested_paths"
+
+        /// Where and why a schema element widened to `any`. The text holds
+        /// schema names only: the property path, the `$ref` name or the type
+        /// name. It holds no value, no description and no default of the
+        /// schema.
+        case wideningDetail = "FoundationModelsMultitool.schema.widening"
+    }
+
+    /// The message of each log record of the library target.
+    ///
+    /// A message is a constant text. Each variable value of a record goes into
+    /// its metadata under a ``LogMetadataKey`` or an ``AttributeKey``. Thus a
+    /// reader can find all records of one event with one message, and no
+    /// message can carry content. A message is not a name of the vocabulary,
+    /// thus it has no module prefix.
+    enum LogMessage: String, CaseIterable, Sendable {
+        /// One `tools.*` call of a snippet started. Level: `debug`.
+        case toolInvocationStarted = "tools invocation started"
+
+        /// One `tools.*` call of a snippet finished. Level: `debug`.
+        case toolInvocationFinished = "tools invocation finished"
+
+        /// The arguments of a `tools.*` call failed the validation before the
+        /// call. Level: `warning`.
+        case toolArgumentValidationFailed = "tools argument validation failed"
+
+        /// The arguments of a `tools.*` call could not be marshaled. Level:
+        /// `warning`.
+        case toolArgumentMarshalingFailed = "tools argument marshaling failed"
+
+        /// A `tools.*` call threw an error of the tool itself. Level: `error`.
+        case toolInvocationFailed = "tools invocation failed"
+
+        /// A snippet called a `tools.*` path that the catalog does not have.
+        /// Level: `notice`. A host collects these records to learn the names
+        /// that its model expects.
+        case imaginedTool = "imaginedTool"
+
+        /// The interpreter started one snippet. Level: `debug`.
+        case snippetStarted = "runCode snippet started"
+
+        /// The interpreter finished one snippet with a value. Level: `debug`.
+        case snippetFinished = "runCode snippet finished"
+
+        /// The interpreter ended one snippet with an error. Level: `debug`.
+        case snippetEnded = "runCode snippet ended with an error"
+
+        /// The renderer widened a schema element to `any`. Level: `warning`.
+        case schemaWidened = "schema element widened to any"
+
+        /// A rebuild of the surface after a change of an MCP server failed,
+        /// and the old surface stays. Level: `warning`.
+        case surfaceRebuildFailed = "surfaceRebuildFailed"
     }
 }

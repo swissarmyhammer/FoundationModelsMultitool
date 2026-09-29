@@ -48,6 +48,12 @@ struct MultitoolTelemetryTests {
         #expect(repeated.isEmpty, "These names occur more than one time: \(repeated)")
     }
 
+    @Test("no two log messages are the same, so that one message finds the records of one event")
+    func noTwoLogMessagesAreTheSame() {
+        let messages = MultitoolTelemetry.LogMessage.allCases.map(\.rawValue)
+        #expect(Set(messages).count == messages.count, "A log message occurs more than one time: \(messages)")
+    }
+
     @Test("each metric has dimensions, and each dimension key is an attribute key of the same fact")
     func eachMetricHasItsDimensions() {
         let expected: [MultitoolTelemetry.MetricName: [MultitoolTelemetry.AttributeKey]] = [

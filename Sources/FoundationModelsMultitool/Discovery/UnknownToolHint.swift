@@ -1,5 +1,6 @@
 import Foundation
 import FoundationModelsMetadataRegistry
+import Logging
 
 /// Builds the did-you-mean repair hint appended to a `runCode` error when a
 /// snippet called a `tools.*` path that does not exist.
@@ -123,27 +124,27 @@ enum UnknownToolHint {
         /// The hint text appended to the model's repairable error.
         let text: String
 
-        /// This detection rendered as one greppable log line.
+        /// This detection as the metadata of one `imaginedTool` log record.
         ///
         /// A host's log is where the synonym corpus accumulates, so the
-        /// shape is a parsing contract rather than prose: a fixed leading
-        /// token, then `key=value` fields in a fixed order. Every value is
-        /// delimiter-free by construction — a `tools.*` path is identifier
-        /// characters and dots (`referencedToolPaths(in:)`'s pattern), a
-        /// catalog path is the same, and a tier is one of four
-        /// fixed words — so a reader can split on spaces and `=` and get
-        /// `(imagined, suggested, tier)` back without a regex. The
-        /// suggestion list is bracketed so that "no suggestion" reads as an
-        /// empty list rather than as a missing field.
-        var logMessage: String {
-            "\(UnknownToolHint.logPrefix) imagined=\(imaginedPath) tier=\(tier.rawValue) "
-                + "suggested=[\(suggestedPaths.joined(separator: ","))]"
+        /// record is a parsing contract rather than prose: the message is the
+        /// constant `MultitoolTelemetry.LogMessage.imaginedTool`, and the
+        /// three values stand under three keys. A reader gets
+        /// `(imagined, suggested, tier)` back from the keys, with no parse of
+        /// text. The suggestion list is an array, so that "no suggestion"
+        /// reads as an empty list rather than as a missing value.
+        ///
+        /// Each value is a name or a fixed word: the path the model made up,
+        /// the catalog paths, and one of the four tier words.
+        var logMetadata: Logger.Metadata {
+            [
+                MultitoolTelemetry.LogMetadataKey.imaginedPath.rawValue: "\(imaginedPath)",
+                MultitoolTelemetry.LogMetadataKey.suggestionTier.rawValue: "\(tier.rawValue)",
+                MultitoolTelemetry.LogMetadataKey.suggestedPaths.rawValue: .array(
+                    suggestedPaths.map { "\($0)" }),
+            ]
         }
     }
-
-    /// The leading token every imagined-tool log line carries, so one `grep`
-    /// picks the corpus out of a host's whole log.
-    static let logPrefix = "imaginedTool"
 
     /// The maximum number of name-resemblance matches a hint shows.
     private static let resemblanceSuggestionLimit = 3

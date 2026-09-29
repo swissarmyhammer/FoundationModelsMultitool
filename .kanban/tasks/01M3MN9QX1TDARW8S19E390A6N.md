@@ -10,9 +10,33 @@ comments:
     - A logger made before the first capture does not go to the capture. So a `static let` logger that a test touches before the capture starts is lost. Make loggers per call or per instance, or make sure the capture starts first.
     - Extras OTel A–D are done locally but NOT on Extras origin/main yet (2026-09-28).
   timestamp: 2026-09-28T20:22:10.289130+00:00
+- actor: claude-code
+  id: 01m3pkm2sa6de75cbeskjyvrf3
+  text: |-
+    Facts found in the implement step (2026-09-29):
+    - `MultiTool+Background.swift`, `Invocation/LostRunRecord.swift`, `Invocation/SandboxNoticeOutbox.swift` and `Invocation/ToolReturnLedger.swift` use no `os.Logger`. They import `os` for `OSAllocatedUnfairLock` only, thus `import os` stays and the files do not change. The same is true for each test fixture in the third subtask (`AgentSessionFixtures`, `EmbeddingFixtures`, `MailProbeFixtures`, `MultiToolExecutionFixtures`, `RunBindingFixtures`, `SuspendedContextFixtures`, `ToolInvokerFixtures`, `JSCInterpreterTests`, `MultiToolExecutionTests`, `OverBudgetSelectionOrderTests`, `SampleSnippetTests`, `SearchToolsToolTests`, `OutputCollector.swift`): each uses `OSAllocatedUnfairLock` only. No change there.
+    - `SurfaceRefresherTests` read its rebuild-failure line through `LogReadbackFixtures` (`OSLogStore`). The acceptance `rg` covers that test file, thus the fixture had to go, and the one log call of `Capabilities/MCP/SurfaceRefresher.swift` moved to swift-log in this task too (OTel 3 lists that file). `SurfaceRefresher.defaultLogger` is now a public computed `Logging.Logger`; `rebuildFailureLogPrefix` is gone. OTel 3 does not need to do that file again.
+    - `MultiTool.dispatchRun` runs the interpreter on `DispatchQueue.global`, and each `tools.*` call runs in a `Task` that JSC makes on that thread. That thread has no task-local of the test, thus the task-local routing of `TelemetryCapture` does not see those records. Seam: `MultitoolTelemetry.boundLogger` (`@TaskLocal`), read by `MultitoolTelemetry.makeLogger()`. `MultiTool.makeAsyncHostFunctions` makes the logger in the task of the call and passes it to `invokeAsync`. A test binds `context.logger` there. The JSC snippet records that run through `MultiTool` still go through the default handler (not the capture); `CoreLogRecordTests` checks them with a direct `JSCInterpreter().run`. OTel 8 must bind `boundLogger` to see the `tools.*` records.
+    - No `LoggingSystem.bootstrap` in the test target. `TelemetryTestSupport`, `Logging` and `InMemoryLogging` are linked to the unit test target only (`telemetryTestProducts`).
+    - Vocabulary added to `MultitoolTelemetry`: log metadata keys `characterCount`, `durationMilliseconds`, `imaginedPath`, `suggestionTier`, `suggestedPaths`, `wideningDetail`, and the enum `LogMessage` (constant messages). Helpers in the new file `Diagnostics/MultitoolTelemetry+Logging.swift`. `UnknownToolHint.Resolution.logMessage` and `logPrefix` became `logMetadata`.
+  timestamp: 2026-09-29T12:53:19.274192+00:00
+- actor: claude-code
+  id: 01m3pkmae2jkjdnbhjja49ekta
+  text: |-
+    ### implement — changed
+    - evidence: 15 files. Sources: `Diagnostics/MultitoolTelemetry.swift`, `Diagnostics/MultitoolTelemetry+Logging.swift` (new), `MultiTool.swift`, `Interpreter/JSCInterpreter.swift`, `Surface/ToolAPIRenderer.swift`, `Discovery/UnknownToolHint.swift`, `Capabilities/MCP/SurfaceRefresher.swift`, `Package.swift`. Tests: `CoreLogRecordTests.swift` (new, 7 cases), `Fixtures/LogReadbackFixtures.swift`, `Fixtures/ImaginedToolLogFixtures.swift`, `UnknownToolHintTests.swift`, `SurfaceRefresherTests.swift`, `MultitoolTelemetryTests.swift`. TDD: the tests failed to compile first (no `LogMessage`, no new keys). Then `swift build --build-tests` passed with no warning in the changed files, and `swift test` passed: 1836 tests in 148 suites, 0 failures. The acceptance `rg -n 'os\.Logger|Logger\(subsystem|OSLogStore' Sources/FoundationModelsMultitool Tests --glob '!**/Capabilities/MCP/**' --glob '!**/Diagnostics/CallTrace.swift'` gives no match. The nested `IntegrationTests` package was not built.
+    - next: review. Look at the `boundLogger` test seam and at the move of `SurfaceRefresher.swift` from OTel 3 into this task (see the comment before this one).
+  timestamp: 2026-09-29T12:53:27.106500+00:00
+- actor: claude-code
+  id: 01m3pkt51r4tpmyax3d6cpjzb7
+  text: |-
+    ### test — green
+    - evidence: We touched the 14 changed Swift files before the build. `swift build --build-tests` completed with exit 0 and 0 compiler warnings. `swift test` completed with exit 0: 1836 tests in 148 suites passed, 0 failed, 0 skipped (XCTest: 0 tests). `swift build --package-path IntegrationTests --build-tests` completed with exit 0 and 0 compiler warnings (compile only; the live-model suite did not run). The only build messages are the known SwiftPM "failed loading/storing cached manifest ... disk I/O error" and "missing creator for mutated node ... mlx-swift_Cmlx.bundle". These messages do not come from this package.
+    - next: review
+  timestamp: 2026-09-29T12:56:38.200271+00:00
 depends_on:
 - 01M3MN95YYY2J02M1X6QC6BREE
-position_column: todo
+position_column: doing
 position_ordinal: '8180'
 title: 'OTel 2: replace os.Logger with swift-log in the core library files and their tests'
 ---

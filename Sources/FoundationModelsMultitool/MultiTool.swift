@@ -2,6 +2,7 @@ import Foundation
 import FoundationModels
 import FoundationModelsExtras
 import FoundationModelsMetadataRegistry
+import Logging
 import os
 
 extension MultiTool {
@@ -362,17 +363,23 @@ public struct MultiTool: Tool {
         never appear in searchTools — run `docs("globals")` in a snippet to read them.
         """
 
-    /// Where this tool logs its diagnostics — one `runCode` call's start and
-    /// end, and each `tools.*` invocation's start, end and validation
-    /// failure — and, at `.notice`, every imagined `tools.*` name a snippet
-    /// reached for (see `logImaginedTool(_:)`).
-    private static let logger = Logger(subsystem: "FoundationModelsMultitool", category: "MultiTool")
+    /// Where this tool logs its diagnostics: the start, the end and the
+    /// failure of each `tools.*` call, and, at `.notice`, each imagined
+    /// `tools.*` name that a snippet called (see `logImaginedTool(_:)`).
+    ///
+    /// A new logger for each read, not a `static let`: a logger keeps the
+    /// handler of the logging system at the time it is made, and a host can
+    /// bootstrap the logging system after this type loads. See
+    /// `MultitoolTelemetry.makeLogger()`.
+    private static var logger: Logging.Logger {
+        MultitoolTelemetry.makeLogger()
+    }
 
     /// Where this tool's call boundaries are recorded — see ``CallTrace``.
     ///
     /// Separate from ``logger`` above, and deliberately so: that one records
     /// what a run *decided* — which snippet ran, which `tools.*` name was
-    /// imagined — on this package's diagnostic subsystem, and this one records
+    /// imagined — through the swift-log logger of this package, and this one records
     /// only where control is, on its own. A hang is read by looking for an
     /// entry with no exit, and interleaving decisions into that stream is what
     /// makes the missing line hard to see.
@@ -924,13 +931,19 @@ public struct MultiTool: Tool {
         binding: RunBinding?, recordingInto ledger: ToolReturnLedger, noting lostRuns: LostRunRecord,
         holding inFlight: InFlightInnerCalls
     ) -> [AsyncHostFunction] {
+        // Made here, in the task of the `runCode` call, and not in the host
+        // functions: the interpreter calls them from its own thread, which has
+        // no task-local value of the call (see
+        // `MultitoolTelemetry.boundLogger`).
+        let logger = Self.logger
         var functions = bundle.liveTools.map { liveTool in
             AsyncHostFunction(name: liveTool.hostFunctionName) { arguments in
                 try await Self.invokeAsync(
                     tool: liveTool.tool,
                     arguments: arguments,
                     binding: binding,
-                    journalOp: liveTool.journalOp
+                    journalOp: liveTool.journalOp,
+                    logger: logger
                 )
             }
         }
@@ -940,7 +953,8 @@ public struct MultiTool: Tool {
                     try await Self.invokeAsync(
                         tool: searchTools,
                         arguments: Self.widenedToObject(arguments, field: Self.searchToolsTaskField),
-                        binding: binding
+                        binding: binding,
+                        logger: logger
                     )
                 }
             )
@@ -1270,6 +1284,9 @@ public struct MultiTool: Tool {
     ///     binding, or `nil` when it has none.
     ///   - journalOp: the `"verb noun"` string this call's run journals as its
     ///     `op`, or `nil` for a tool registered under no noun.
+    ///   - logger: the logger of the run, made in the task of the `runCode`
+    ///     call. This call runs in a task that the interpreter starts on its
+    ///     own thread, which has no task-local value of that call.
     /// - Returns: the tool's rendered `Output`, JS-ready.
     /// - Throws: `ArgumentMarshalerError` if `arguments` can't be marshaled
     ///   into the tool's `Arguments` shape (or its `Output` can't be
@@ -1283,19 +1300,21 @@ public struct MultiTool: Tool {
         tool: any Tool,
         arguments: [InterpreterValue],
         binding: RunBinding?,
-        journalOp: String? = nil
+        journalOp: String? = nil,
+        logger: Logging.Logger
     ) async throws -> InterpreterValue {
         let start = ContinuousClock.now
-        logger.debug("tools.\(tool.name, privacy: .public) invocation started.")
+        let toolName = MultitoolTelemetry.toolNameMetadata(tool.name)
+        logger.log(.toolInvocationStarted, level: .debug, metadata: toolName)
         do {
             let value = try await performInvocation(
                 tool: tool, arguments: arguments, binding: binding, journalOp: journalOp)
-            logger.debug(
-                "tools.\(tool.name, privacy: .public) invocation finished in \(start.duration(to: .now), privacy: .public)."
-            )
+            logger.log(
+                .toolInvocationFinished, level: .debug,
+                metadata: toolName.merging(MultitoolTelemetry.durationMetadata(since: start)) { $1 })
             return value
         } catch {
-            logInvocationFailure(tool: tool, error: error)
+            logInvocationFailure(tool: tool, error: error, to: logger)
             throw error
         }
     }
@@ -1311,23 +1330,20 @@ public struct MultiTool: Tool {
     /// model's error text and discarded.
     ///
     /// **Why `.notice`.** The corpus has to survive an ordinary host run to
-    /// be worth mining. `.debug` is disabled by default and never reaches the
-    /// store at all. `.info` reaches the in-memory buffer, but is not
-    /// persisted to disk unless the subsystem's info level is turned on, so
-    /// it survives a live `log stream` and not a later `log show`. `.notice`
-    /// is the lowest level that persists by default. Nor `.warning`/`.error`:
-    /// the lines at those levels in this file report a failure a host should
-    /// act on, and an imagined name is not one.
+    /// be worth mining. A host usually drops `.debug` and `.info` records.
+    /// `.notice` is the lowest level that a host usually keeps. Not
+    /// `.warning` or `.error`: the records at those levels in this file report
+    /// a failure that a host must act on, and an imagined name is not one.
     ///
-    /// **Why `.public`.** Every field is model- or catalog-authored and
-    /// carries no user data: `imaginedPath` is a name the model made up,
+    /// **No content.** Each value is a name or a fixed word, and carries no
+    /// user data: `imaginedPath` is a name the model made up,
     /// `suggestedPaths` are the host's own tool names, and the tier is one of
-    /// three fixed words. Nothing derived from a snippet's arguments, a
-    /// tool's output, or the user's prompt is in the line, and none can be
-    /// added: `UnknownToolHint.Resolution.logMessage` composes the message
-    /// from exactly those three fields.
+    /// four fixed words. The message is constant, and
+    /// `UnknownToolHint.Resolution.logMetadata` holds exactly those three
+    /// values. Nothing from the arguments of a snippet, the output of a tool,
+    /// or the prompt of the user is in the record.
     private static func logImaginedTool(_ resolution: UnknownToolHint.Resolution) {
-        logger.notice("\(resolution.logMessage, privacy: .public)")
+        logger.log(.imaginedTool, level: .notice, metadata: resolution.logMetadata)
     }
 
     /// Logs one `tools.*` invocation's failure, distinguishing a pre-call
@@ -1335,20 +1351,26 @@ public struct MultiTool: Tool {
     /// logged at `.warning`, because the snippet's call was malformed and not
     /// the tool itself — from any other failure, which is the tool's own
     /// thrown error and is logged at `.error`.
-    private static func logInvocationFailure(tool: any Tool, error: Error) {
+    ///
+    /// The record carries the name of the tool and the type and code of the
+    /// error, and never the text of the error: a validation message can hold
+    /// an argument value, and the error of a tool can hold its input or its
+    /// output.
+    ///
+    /// - Parameters:
+    ///   - tool: the tool whose call failed.
+    ///   - error: what the call threw.
+    ///   - logger: the logger of the run — see `invokeAsync`.
+    private static func logInvocationFailure(tool: any Tool, error: Error, to logger: Logging.Logger) {
+        let metadata = MultitoolTelemetry.toolNameMetadata(tool.name)
+            .merging(MultitoolTelemetry.errorMetadata(of: error)) { $1 }
         switch error {
-        case let validationError as ToolInvokerError:
-            logger.warning(
-                "tools.\(tool.name, privacy: .public) argument validation failed: \(validationError.message, privacy: .public)"
-            )
-        case let marshalingError as ArgumentMarshalerError:
-            logger.warning(
-                "tools.\(tool.name, privacy: .public) argument marshaling failed: \(marshalingError.message, privacy: .public)"
-            )
+        case is ToolInvokerError:
+            logger.log(.toolArgumentValidationFailed, level: .warning, metadata: metadata)
+        case is ArgumentMarshalerError:
+            logger.log(.toolArgumentMarshalingFailed, level: .warning, metadata: metadata)
         default:
-            logger.error(
-                "tools.\(tool.name, privacy: .public) invocation failed: \(String(describing: error), privacy: .public)"
-            )
+            logger.log(.toolInvocationFailed, level: .error, metadata: metadata)
         }
     }
 

@@ -1,7 +1,9 @@
 import Foundation
 import FoundationModels
+import InMemoryLogging
 import MCPTestServer
 import Synchronization
+import TelemetryTestSupport
 import Testing
 
 @testable import FoundationModelsMultitool
@@ -127,9 +129,10 @@ struct SurfaceRefresherTests {
     /// whole point is that nothing happens.
     private static let noFurtherStageSettleDelay = Duration.milliseconds(200)
 
-    /// How long a case waits for the log store to catch up with the line a
-    /// failed rebuild wrote. Generous: a miss would make a genuine line look
-    /// like a missing one, and the wait ends the instant the line arrives.
+    /// How long a case waits for the watch task of the refresher to write the
+    /// record of a failed rebuild. Generous: a miss would make a genuine
+    /// record look like a missing one, and the wait ends the instant the
+    /// record arrives.
     private static let logReadbackDeadline = Duration.seconds(20)
 
     // MARK: - The ground of one test
@@ -282,22 +285,19 @@ struct SurfaceRefresherTests {
         "\(name).\(verb)"
     }
 
-    /// The log lines the rebuild of the server named `name` wrote since
-    /// `start`.
-    ///
-    /// The server name is part of the line, so a case reads back only its own
-    /// lines however many suites run beside it.
+    /// The warning records that the rebuild of the server named `name` wrote
+    /// into `context`.
     ///
     /// - Parameters:
-    ///   - name: The name of the server whose lines to read.
-    ///   - start: The instant to read from.
-    /// - Returns: The matching lines, in emission order.
-    /// - Throws: What the log store throws when it cannot be opened or read.
-    private static func rebuildFailureLines(
-        of name: String, since start: Date
-    ) throws -> [String] {
-        let marker = "\(SurfaceRefresher.rebuildFailureLogPrefix) server=\(name)"
-        return try multitoolLogMessages(since: start).filter { $0.hasPrefix(marker) }
+    ///   - name: The name of the server whose records to read.
+    ///   - context: The capture of the case.
+    /// - Returns: The matching records, in the order of the calls.
+    private static func rebuildFailureRecords(
+        of name: String, in context: TelemetryCapture.Context
+    ) -> [InMemoryLogHandler.Entry] {
+        LogReadback.records(.surfaceRebuildFailed, in: context).filter {
+            $0.level == .warning && $0.metadataText(MultitoolTelemetry.AttributeKey.serverName) == name
+        }
     }
 
     // MARK: - A tool the server adds
@@ -383,42 +383,48 @@ struct SurfaceRefresherTests {
         let scripted = ScriptedServer(name: Self.failureServerName)
         await scripted.addEchoTool()
         let echoPath = Self.path(of: ScriptedServer.echoToolName, on: Self.failureServerName)
-        let start = Date()
 
-        try await Self.withStartedRefresher(named: Self.failureServerName, serving: scripted) { ground in
-            try await Self.waitForStages(Self.stagesAfterConnect, on: ground.staging)
+        // The capture starts before the refresher, so the watch task of the
+        // refresher inherits the capture and its record reaches it. The
+        // capture forbids nothing, because the MCP client of the sdk logs into
+        // it too, and the content of those records is not in the scope of
+        // this suite. The expectations below read the record of the
+        // refresher alone.
+        try await TelemetryCapture.run(forbidding: []) { context in
+            try await Self.withStartedRefresher(named: Self.failureServerName, serving: scripted) { ground in
+                try await Self.waitForStages(Self.stagesAfterConnect, on: ground.staging)
 
-            // The verb fails the renderer's own identifier check, so the
-            // rebuild throws and nothing is staged.
-            try await Self.publish(
-                ScriptedServer.echoTool(named: Self.illegalVerb), on: scripted)
-            try await TestPoll.waitUntil(
-                "the failed rebuild reached the log", before: Self.logReadbackDeadline
-            ) {
-                let lines = try? Self.rebuildFailureLines(
-                    of: Self.failureServerName, since: start)
-                return (lines?.count ?? 0) >= Self.oneLogLine
+                // The verb fails the renderer's own identifier check, so the
+                // rebuild throws and nothing is staged.
+                try await Self.publish(
+                    ScriptedServer.echoTool(named: Self.illegalVerb), on: scripted)
+                try await TestPoll.waitUntil(
+                    "the failed rebuild reached the log", before: Self.logReadbackDeadline
+                ) {
+                    Self.rebuildFailureRecords(of: Self.failureServerName, in: context).count >= Self.oneLogLine
+                }
+                try await Task.sleep(for: Self.noFurtherStageSettleDelay)
+                await ground.runCode.submissionWillBegin()
+
+                let records = Self.rebuildFailureRecords(of: Self.failureServerName, in: context)
+                #expect(ground.staging.count == Self.stagesAfterConnect)
+                #expect(records.count == Self.oneLogLine)
+                #expect(records.first?.metadataText(MultitoolTelemetry.LogMetadataKey.errorType) != nil)
+                #expect(!"\(records)".contains(Self.illegalVerb), "the record carries the verb: \(records)")
+                #expect(try await helpPaths(of: ground.runCode) == [echoPath])
+
+                // The next snapshot tries again, and it renders.
+                await scripted.removeTool(named: Self.illegalVerb)
+                try await Self.publish(
+                    ScriptedServer.echoTool(named: Self.recoveredToolName), on: scripted)
+                try await Self.waitForStages(Self.stagesAfterOneChange, on: ground.staging)
+                await ground.runCode.submissionWillBegin()
+
+                #expect(
+                    try await helpPaths(of: ground.runCode) == [
+                        echoPath, Self.path(of: Self.recoveredToolName, on: Self.failureServerName),
+                    ])
             }
-            try await Task.sleep(for: Self.noFurtherStageSettleDelay)
-            await ground.runCode.submissionWillBegin()
-
-            #expect(ground.staging.count == Self.stagesAfterConnect)
-            #expect(
-                try Self.rebuildFailureLines(of: Self.failureServerName, since: start).count
-                    == Self.oneLogLine)
-            #expect(try await helpPaths(of: ground.runCode) == [echoPath])
-
-            // The next snapshot tries again, and it renders.
-            await scripted.removeTool(named: Self.illegalVerb)
-            try await Self.publish(
-                ScriptedServer.echoTool(named: Self.recoveredToolName), on: scripted)
-            try await Self.waitForStages(Self.stagesAfterOneChange, on: ground.staging)
-            await ground.runCode.submissionWillBegin()
-
-            #expect(
-                try await helpPaths(of: ground.runCode) == [
-                    echoPath, Self.path(of: Self.recoveredToolName, on: Self.failureServerName),
-                ])
         }
     }
 
