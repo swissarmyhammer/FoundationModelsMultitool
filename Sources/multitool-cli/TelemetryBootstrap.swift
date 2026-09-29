@@ -95,14 +95,23 @@ enum TelemetryBootstrap {
     /// The logs are off in the configuration given to `OTel.bootstrap`,
     /// because ``bootstrapOpenTelemetry()`` already bootstrapped logging.
     ///
+    /// `OTel.bootstrap` reads `OTEL_SDK_DISABLED` again, and a value of
+    /// `false` turns the logs of the configuration on again. The second
+    /// `LoggingSystem.bootstrap` that follows stops the process. Thus the
+    /// environment given to `OTel.bootstrap` does not hold that variable.
+    /// `CLITelemetryBackend(environment:)` already read it: this path runs only
+    /// when the SDK is on.
+    ///
     /// - Parameter configuration: The swift-otel configuration.
     /// - Returns: The export service of the two exporters, or `nil` when they
     ///   cannot be made.
     private static func bootstrapTracingAndMetrics(configuration: OTel.Configuration) -> (any Service)? {
         var tracesAndMetrics = configuration
         tracesAndMetrics.logs.enabled = false
+        var environment = ProcessInfo.processInfo.environment
+        environment[CLITelemetryBackend.sdkDisabledVariable] = nil
         do {
-            return try OTel.bootstrap(configuration: tracesAndMetrics)
+            return try OTel.bootstrap(configuration: tracesAndMetrics, environment: environment)
         } catch {
             reportFailure(error)
             return nil

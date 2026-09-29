@@ -7,6 +7,7 @@
 // and the one new mode, `loopback`, serves the three tools the MCP suites
 // cite by name.
 
+import Foundation
 import MCP
 
 /// The tool set the `mcp-test-server` executable registers on the server it
@@ -48,6 +49,28 @@ public enum ServerMode: String, Sendable, CaseIterable {
     /// Registers the echo tool and the filesystem tools — the default when no
     /// `--mode` flag is given.
     case all
+
+    /// Registers no tool and answers no request, not even `initialize`: the
+    /// executable reads its input until the end, and writes nothing. A client
+    /// that connects waits in its connect. `CLISignalExitTests` uses this mode
+    /// for a run of `multitool-cli` that stays open and loads no model.
+    case stall
+
+    /// Whether a server of this mode answers the requests of its client. Only
+    /// ``stall`` does not: the executable calls ``readInputToEnd()`` in place
+    /// of the start of a server.
+    public var answersRequests: Bool {
+        self != .stall
+    }
+
+    /// Reads standard input until its end, and writes nothing.
+    ///
+    /// The end of the input comes when the client closes its end of the pipe,
+    /// or when the client process ends. Thus a ``stall`` server does not
+    /// stay after its client.
+    public static func readInputToEnd() {
+        _ = FileHandle.standardInput.readDataToEndOfFile()
+    }
 
     /// The command-line flag ``parse(from:)`` searches `arguments` for.
     public static let flagName = "--mode"
@@ -112,6 +135,9 @@ public enum ServerMode: String, Sendable, CaseIterable {
         case .all:
             await server.addEchoTool()
             await server.addFilesystemTools()
+        case .stall:
+            // No tool: a stall server never answers a request.
+            break
         }
     }
 }

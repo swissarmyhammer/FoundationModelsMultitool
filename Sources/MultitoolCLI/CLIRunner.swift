@@ -657,6 +657,9 @@ public enum CLIRunner {
     ///     injects a collector to assert on the emitted lines.
     ///   - errorOutput: where the error line of an answer that failed is
     ///     written. Defaults to `standardErrorOutput`.
+    ///   - cancellation: where the run adds the cancel of its session. The
+    ///     exit path of the process runs it on a stop signal. Defaults to a
+    ///     new ``CLIRunCancellation`` that nothing cancels.
     /// - Returns: the process exit code — `ExitCode.success` on success or
     ///   `--help`, `ExitCode.usageError` for an argument error or for a `--mcp`
     ///   server that does not start, `ExitCode.answerFailed` when the model
@@ -666,7 +669,8 @@ public enum CLIRunner {
         arguments: [String],
         resolve: @escaping ProfileResolver = defaultResolve,
         output: @escaping @Sendable (String) -> Void = standardOutput,
-        errorOutput: @escaping @Sendable (String) -> Void = standardErrorOutput
+        errorOutput: @escaping @Sendable (String) -> Void = standardErrorOutput,
+        cancellation: CLIRunCancellation = CLIRunCancellation()
     ) async -> Int32 {
         let parsed: CLIArguments
         do {
@@ -685,7 +689,7 @@ public enum CLIRunner {
         do {
             try await runDemo(
                 direct: parsed.direct, web: parsed.web, mcpServers: parsed.mcpServers,
-                resolve: resolve, output: output)
+                resolve: resolve, output: output, cancellation: cancellation)
             return ExitCode.success
         } catch {
             return exitCode(for: error, output: output, errorOutput: errorOutput)
@@ -894,6 +898,7 @@ public enum CLIRunner {
     ///   - mcpServers: what the `--mcp` options named, in option order.
     ///   - resolve: the profile-resolution step.
     ///   - output: where progress/answer lines are written.
+    ///   - cancellation: where the run adds the cancel of its session.
     /// - Throws: ``CLIMCPStartError`` when a server does not start,
     ///   `CLIRouterUnavailableError` if `resolve` throws, `CLIAnswerError`
     ///   when the model gave no answer; otherwise whatever building the tools,
@@ -904,12 +909,13 @@ public enum CLIRunner {
         web: Bool,
         mcpServers: [MCPServerSpec],
         resolve: ProfileResolver,
-        output: @escaping @Sendable (String) -> Void
+        output: @escaping @Sendable (String) -> Void,
+        cancellation: CLIRunCancellation
     ) async throws {
         let demo = try await Self.makeDemoRegistry(direct: direct, web: web, mcpServers: mcpServers)
         Self.reportSurface(demo.registry.surface, output: output)
         do {
-            try await Self.runAnswers(demo, resolve: resolve, output: output)
+            try await Self.runAnswers(demo, resolve: resolve, output: output, cancellation: cancellation)
         } catch {
             // The shutdown that follows the answers, on the failure path as on
             // the success one: the pool stops the refresher, disconnects each
@@ -930,6 +936,8 @@ public enum CLIRunner {
     ///   - demo: the registry of this run, its servers, and its pool.
     ///   - resolve: the profile-resolution step.
     ///   - output: where progress/answer lines are written.
+    ///   - cancellation: where the run adds the cancel of its session, when it
+    ///     makes the session.
     /// - Throws: `CLIRouterUnavailableError` if `resolve` throws,
     ///   `CLIAnswerError` when the model gave no answer; otherwise whatever
     ///   building the tools, `searchToolsTool`'s own initializer, or the event
@@ -937,7 +945,8 @@ public enum CLIRunner {
     private static func runAnswers(
         _ demo: DemoRegistry,
         resolve: ProfileResolver,
-        output: @escaping @Sendable (String) -> Void
+        output: @escaping @Sendable (String) -> Void,
+        cancellation: CLIRunCancellation
     ) async throws {
         let recordingsDir = Self.makeTempRecordingsDir()
         let loader = LiveModelLoader(downloader: #hubDownloader(), tokenizerLoader: #huggingFaceTokenizerLoader())
@@ -1056,6 +1065,10 @@ public enum CLIRunner {
             // break is the escape `\n`. No measured run shows a stop of a
             // legitimate snippet, so this session sets no value of its own.
             let session = profile.standard.makeSession(tools: mounted.tools)
+
+            // A stop signal cancels the session through the exit path of the
+            // process, thus an open answer ends before the exporters flush.
+            await cancellation.onCancel { _ = await session.cancel() }
 
             // Subscribed before the prompt is sent, so the session stream
             // also carries the first answer, and no event of a mail answer

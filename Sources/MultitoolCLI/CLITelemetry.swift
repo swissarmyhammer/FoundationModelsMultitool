@@ -25,7 +25,10 @@ public enum CLITelemetryBackend: Equatable, Sendable {
     static let endpointVariable = "OTEL_EXPORTER_OTLP_ENDPOINT"
 
     /// The variable that turns the whole OpenTelemetry SDK off.
-    static let sdkDisabledVariable = "OTEL_SDK_DISABLED"
+    ///
+    /// `public` because the executable removes it from the environment that
+    /// it gives to `OTel.bootstrap`, after this type read it.
+    public static let sdkDisabledVariable = "OTEL_SDK_DISABLED"
 
     /// The value of ``sdkDisabledVariable`` that turns the SDK off. The
     /// OpenTelemetry specification compares it without regard to the case of
