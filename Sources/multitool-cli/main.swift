@@ -14,12 +14,17 @@
 // `IntegrationTests/` has to reach `CLIRunner`. `Package.swift` states the
 // same split from the manifest side.
 //
+// The first statement bootstraps the telemetry backends, before the first log
+// record: the OTLP exporters when `OTEL_EXPORTER_OTLP_ENDPOINT` is set, and a
+// log handler that writes to standard error when it is not. Standard output
+// carries only the answers. `TelemetryServices.runThenExit(_:)` then runs the
+// command, flushes the exporters, and exits with the code of the command.
+//
 // A literal `main.swift` supports top-level `await` directly (no `@main`
 // type needed), so the entry point is exactly this.
 
-import Foundation
-
 import MultitoolCLI
 
-let exitStatus = await CLIRunner.run(arguments: Array(CommandLine.arguments.dropFirst()))
-exit(exitStatus)
+let telemetry = TelemetryBootstrap.bootstrap()
+let arguments = Array(CommandLine.arguments.dropFirst())
+await telemetry.runThenExit { await CLIRunner.run(arguments: arguments) }

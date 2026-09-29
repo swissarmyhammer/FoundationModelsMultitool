@@ -15,14 +15,18 @@ private let packageName = "FoundationModelsMultitool"
 /// nested integration package (`IntegrationTests/Package.swift`) has to reach
 /// `CLIRunner.demoProfile`, `CLIRunner.embeddingModel`,
 /// `CLIRunner.run(arguments:resolve:output:)` and `CLIRunner.ExitCode`. Those
-/// four are the library's whole `public` surface; everything else stays
-/// `internal`, where `"\(packageName)Tests"` reaches it with `@testable`.
+/// four, and the two telemetry types that `cliTargetName` calls
+/// (`CLITelemetryBackend` and `CLILogHandler`), are the library's whole
+/// `public` surface; everything else stays `internal`, where
+/// `"\(packageName)Tests"` reaches it with `@testable`.
 private let cliLibraryTargetName = "MultitoolCLI"
 
 /// The name of the M9 sample CLI executable target (and its Sources/ subdirectory).
 ///
-/// `main.swift` alone — it calls `CLIRunner.run(arguments:)` from
-/// `cliLibraryTargetName` and holds no logic of its own.
+/// `main.swift` calls `CLIRunner.run(arguments:)` from `cliLibraryTargetName`.
+/// Beside it, `TelemetryBootstrap.swift` and `TelemetryServices.swift`
+/// bootstrap the telemetry backend and flush it at exit. They stand here and
+/// not in the library, because only an executable links `otelProducts`.
 private let cliTargetName = "multitool-cli"
 
 /// The git branch tracked by the `.package(url:branch:)` declaration for
@@ -283,6 +287,40 @@ private let metricsPackage = "swift-metrics"
 private let telemetryProducts: [Target.Dependency] = [
     .product(name: "Logging", package: loggingPackage),
     .product(name: "Metrics", package: metricsPackage),
+]
+
+/// The OpenTelemetry backend package (swift-otel): the OTLP exporters for
+/// logs, traces and metrics.
+///
+/// The design of 2026-09-28 lets only an executable depend on it. The
+/// `cliTargetName` executable bootstraps it one time at startup, and the
+/// standard `OTEL_*` environment variables configure it at run time. No
+/// library target links it: `PackageManifestTests` reads this manifest and
+/// fails when a target other than `cliTargetName` names a swift-otel product.
+///
+/// The version floor is the release that FoundationModelsACPClient uses, thus
+/// the two command-line clients of the family resolve one version.
+private let otelPackage = "swift-otel"
+
+/// The lifecycle package (swift-server/swift-service-lifecycle) that runs the
+/// export services of `otelPackage`.
+///
+/// `OTel.bootstrap` and `OTel.makeLoggingBackend` each give back a `Service`.
+/// An exporter sends its records in batches from that service, thus the
+/// executable runs the services in a `ServiceGroup` while the command runs,
+/// and gives the group a graceful shutdown, which flushes each exporter,
+/// before the process exits. The version floor is the release that
+/// FoundationModelsACPClient uses.
+private let serviceLifecyclePackage = "swift-service-lifecycle"
+
+/// The products of `otelPackage` and `serviceLifecyclePackage`, linked by the
+/// `cliTargetName` executable target ONLY.
+///
+/// The name holds `otel`: `PackageManifestTests` finds each swift-otel
+/// product, package and group by that text.
+private let otelProducts: [Target.Dependency] = [
+    .product(name: "OTel", package: otelPackage),
+    .product(name: "ServiceLifecycle", package: serviceLifecyclePackage),
 ]
 
 /// The products that the unit test target uses to read back the telemetry of
@@ -559,6 +597,11 @@ let package = Package(
         // fits them.
         .package(url: "https://github.com/apple/\(loggingPackage).git", from: "1.15.1"),
         .package(url: "https://github.com/apple/\(metricsPackage).git", from: "2.11.0"),
+        // The packages of `otelProducts` — see `otelPackage` and
+        // `serviceLifecyclePackage`. Each one stands under an organization of
+        // its own, so neither helper above fits them.
+        .package(url: "https://github.com/swift-otel/\(otelPackage).git", from: "1.5.1"),
+        .package(url: "https://github.com/swift-server/\(serviceLifecyclePackage).git", from: "2.12.0"),
     ],
     targets: [
         // Links `shellProducts` for the shell capability this library takes
@@ -590,22 +633,37 @@ let package = Package(
         // construct a real `LiveModelLoader` — the same live-inference wiring
         // the nested integration package drives — making this a genuinely
         // runnable demo rather than a stub.
+        //
+        // It links the `Logging` API of swift-log for `CLILogHandler`, the
+        // handler that the executable bootstraps when no OTLP endpoint is set,
+        // and for `CLITelemetryBackend`, the pure choice between the two
+        // paths. Both stand here, and not in the executable, so that the unit
+        // test target reads them. It does NOT link swift-otel: the executable
+        // alone links `otelProducts`.
         .target(
             name: cliLibraryTargetName,
             dependencies: [
                 .target(name: packageName),
                 .product(name: routerDependencyName, package: routerDependencyName),
+                .product(name: "Logging", package: loggingPackage),
             ] + liveLoaderMLXProducts + hubProducts,
             path: "\(sourcesPath)\(cliLibraryTargetName)"
         ),
-        // The process entry point: `main.swift` and nothing else. It links the
-        // library above, so every product that library declares reaches this
-        // binary transitively — `MLXVLM`'s runtime factory registry included.
+        // The process entry point: `main.swift` and the telemetry bootstrap.
+        // It links the library above, so every product that library declares
+        // reaches this binary transitively — `MLXVLM`'s runtime factory
+        // registry included.
+        //
+        // It is the one target that links `otelProducts`: only an executable
+        // bootstraps an exporter. `main.swift` bootstraps logging, tracing and
+        // metrics before the first log record, and flushes the exporters
+        // before the process exits.
         .executableTarget(
             name: cliTargetName,
             dependencies: [
-                .target(name: cliLibraryTargetName)
-            ],
+                .target(name: cliLibraryTargetName),
+                .product(name: "Logging", package: loggingPackage),
+            ] + otelProducts,
             path: "\(sourcesPath)\(cliTargetName)"
             // No custom linker settings needed: the rpath workaround that
             // used to live here existed only because the retired

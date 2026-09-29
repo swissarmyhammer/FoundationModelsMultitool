@@ -263,9 +263,11 @@ struct CLIRouterUnavailableError: Error, CustomStringConvertible {
 ///   (`IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/CLISmokeTests.swift`),
 ///   in the nested integration package.
 ///
-/// This type carries the only `public` surface of the `MultitoolCLI` library.
-/// `main.swift` in the `multitool-cli` executable calls `run(arguments:)` and
-/// nothing else, and the nested integration package reads `demoProfile`,
+/// This type carries the `public` surface of the `MultitoolCLI` library, with
+/// the two telemetry types of `CLITelemetry.swift`. `main.swift` in the
+/// `multitool-cli` executable calls `run(arguments:)`, and its telemetry
+/// bootstrap reads `CLITelemetryBackend`, `CLILogHandler` and
+/// `standardErrorOutput`. The nested integration package reads `demoProfile`,
 /// `embeddingModel`, `run(arguments:resolve:output:)` and `ExitCode`. Every
 /// other declaration of this library stays `internal`, where the unit test
 /// target reaches it with `@testable import MultitoolCLI`.

@@ -126,6 +126,43 @@ struct PackageManifestTests {
         }
     }
 
+    @Test("only the multitool-cli executable target links a swift-otel product")
+    func onlyTheExecutableLinksOTel() throws {
+        let otelDeclarations = try Self.declarations()
+            .map { $0.joined(separator: "\n") }
+            .filter { $0.lowercased().contains(Self.otelMarker) }
+        let executable = try #require(try Self.targetDeclaration(named: Self.executableTargetName))
+        #expect(
+            otelDeclarations == [executable],
+            """
+            The multitool-cli executable target must be the one target that \
+            links swift-otel. It bootstraps the exporters. These targets link it:
+            \(otelDeclarations.joined(separator: "\n\n"))
+            """)
+        #expect(
+            executable.hasPrefix(Self.executableDeclarationStart),
+            "The target that links swift-otel is not an executable target:\n\(executable)")
+        let products = try #require(try Self.productGroupDeclaration(named: Self.otelProductsName))
+        #expect(
+            products.contains(Self.otelProductDeclaration),
+            """
+            \(Self.otelProductsName) does not list \(Self.otelProductDeclaration):
+            \(products)
+            """)
+    }
+
+    /// The name the manifest gives to the executable target of the CLI.
+    private static let executableTargetName = "cliTargetName"
+
+    /// The text that starts the declaration of an executable target.
+    private static let executableDeclarationStart = ".executableTarget("
+
+    /// The name the manifest gives to the product group of swift-otel.
+    private static let otelProductsName = "otelProducts"
+
+    /// The product declaration of the OTel backend, as the manifest writes it.
+    private static let otelProductDeclaration = #".product(name: "OTel", package: otelPackage)"#
+
     /// The name the manifest gives to the product group of the telemetry
     /// APIs.
     private static let telemetryProductsName = "telemetryProducts"

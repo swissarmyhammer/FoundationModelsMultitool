@@ -44,11 +44,27 @@ comments:
     - evidence: I touched the changed Swift files. Then `swift build --build-tests` completed with 0 compiler warnings from this package. `swift test` ran 1846 tests in 150 suites: all passed, 0 failed, 0 skipped. XCTest ran 0 tests. `swift build --package-path IntegrationTests --build-tests` completed with 0 compiler warnings and 0 errors. The only other messages were the known SwiftPM "disk I/O error" manifest-cache messages and the "missing creator for mutated node ... mlx-swift_Cmlx.bundle" message. These do not come from this package.
     - next: review
   timestamp: 2026-09-29T14:36:27.679617+00:00
+- actor: claude-code
+  id: 01m3pt17qd2tvtfyr17nj79cn5
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (commit 5f5109b). 0 findings, 0 confirmed, 3 refuted. 11 files reviewed. 4 files in .kanban/ not reviewed (excluded by .reviewignore). The task has no earlier Review Findings sections.
+    - next: none. The task is in done.
+  timestamp: 2026-09-29T14:45:21.773241+00:00
+- actor: claude-code
+  id: 01m3pt1kxyy5j5xmft8gkx53hb
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 11 files (MCP client span in new MCPServer+CallSpan.swift; traceparent in _meta through the tracer inject; new MCPTracePropagationTests.swift)
+    - test: green — swift test 1846 tests in 150 suites passed (one run); IntegrationTests build passed
+    - commit: 5f5109b
+    - review: clean — 0 findings
+  timestamp: 2026-09-29T14:45:34.270390+00:00
 depends_on:
 - 01M3MN95YYY2J02M1X6QC6BREE
 - 01M3MN9YSGJ8N3R97GFTY1RC0A
-position_column: doing
-position_ordinal: '8180'
+position_column: done
+position_ordinal: ffff80
 title: 'OTel 5: open a client span for each MCP server call, and inject W3C traceparent into the MCP request _meta'
 ---
 ## What
