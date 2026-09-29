@@ -273,6 +273,13 @@ public actor MCPServer {
     /// removed when the call settles and its caller was resumed.
     var inFlightCalls: [ID: InFlightCall] = [:]
 
+    /// The request id of each bare call that timed out and whose client span
+    /// did not end yet — see `MCPServer+CallSpan.swift`. The bare timeout adds
+    /// an id, and the end of the client span removes it. A timed-out call
+    /// ends with an `isError` result, thus this set is how the error counter
+    /// tells a timeout from an `isError` answer of the server.
+    var timedOutRequestIDs: Set<ID> = []
+
     /// The tasks that carry a `notifications/cancelled` to the wire for a
     /// call whose calling `Task` was cancelled — see `CancellationNotices.swift`.
     /// `disconnect()` drains it before it tears the client down, thus every

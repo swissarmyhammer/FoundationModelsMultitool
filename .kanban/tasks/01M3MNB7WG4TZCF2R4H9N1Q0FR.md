@@ -36,10 +36,26 @@ comments:
     - evidence: `swift build --build-tests` completed after a touch of the 8 changed Swift files. It showed 0 compiler warnings from files of this package. `swift test` ran one time: 1855 tests in 151 suites passed, 0 failed, 0 skipped. XCTest executed 0 tests with 0 failures. `swift build --package-path IntegrationTests --build-tests` completed with 0 compiler warnings. The only build messages were the known SwiftPM "disk I/O error" manifest-cache warnings and the "missing creator for mutated node ... mlx-swift_Cmlx.bundle" warning.
     - next: review
   timestamp: 2026-09-29T14:58:54.199906+00:00
+- actor: claude-code
+  id: 01m3pv2yj2bshgk5z868a8gqmc
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit 9a7d72c). 0 findings, 0 confirmed, 0 refuted. 8 files reviewed. 4 files in `.kanban/` not reviewed (.reviewignore). No prior Review Findings sections.
+    - next: The task is in done.
+  timestamp: 2026-09-29T15:03:46.498084+00:00
+- actor: claude-code
+  id: 01m3pv39pg98hgdn917vj9zhk5
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 8 files (swift-otel on the multitool-cli executable only; CLITelemetryBackend choice function; one LoggingSystem.bootstrap; flush at normal end and answerFailed; new CLITelemetryBootstrapTests.swift)
+    - test: green — swift test 1855 tests in 151 suites passed (one run); IntegrationTests build passed
+    - commit: 9a7d72c
+    - review: clean — 0 findings
+  timestamp: 2026-09-29T15:03:57.904530+00:00
 depends_on:
 - 01M3MN95YYY2J02M1X6QC6BREE
-position_column: doing
-position_ordinal: '8180'
+position_column: done
+position_ordinal: ffff8180
 title: 'OTel 6: multitool-cli depends on swift-otel and bootstraps logging, tracing and metrics, with a guard that keeps logs off stdout'
 ---
 ## What

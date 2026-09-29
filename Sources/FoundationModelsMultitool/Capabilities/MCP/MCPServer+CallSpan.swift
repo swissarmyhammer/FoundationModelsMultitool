@@ -62,12 +62,52 @@ extension MCPServer {
             do {
                 let result = try await body(span)
                 Self.recordEnding(of: result, on: span)
+                recordError(kind: endingErrorKind(of: result, requestID: requestID))
                 return result
             } catch {
-                span.attributes.set([.errorKind: Self.errorKind(of: error)?.rawValue])
+                let kind = Self.errorKind(of: error)
+                span.attributes.set([.errorKind: kind?.rawValue])
+                recordError(kind: kind)
                 throw error
             }
         }
+    }
+
+    /// Records one failed call on the error counter of this server.
+    ///
+    /// The error counter reads no span attribute: a no-op span keeps no
+    /// attributes, and a host with no tracer still records metrics. The kind
+    /// is the same ``MultitoolTelemetry/ErrorKindValue`` that the client span
+    /// carries, thus the two do not drift.
+    ///
+    /// - Parameter kind: The kind of the failure, or `nil` for a call that
+    ///   did not fail, or that was cancelled.
+    private func recordError(kind: MultitoolTelemetry.ErrorKindValue?) {
+        guard let kind else {
+            return
+        }
+        MultitoolTelemetry.recordMCPServerError(serverName: identityNameForDiagnostics, kind: kind)
+    }
+
+    /// The kind of the failure of a call that returned `result`.
+    ///
+    /// Removes `requestID` from ``timedOutRequestIDs``, because the call has
+    /// ended.
+    ///
+    /// - Parameters:
+    ///   - result: The result of the call.
+    ///   - requestID: The id of the request.
+    /// - Returns: ``MultitoolTelemetry/ErrorKindValue/timeout`` for a bare
+    ///   call that timed out, ``MultitoolTelemetry/ErrorKindValue/isError``
+    ///   for another result with `isError` set, or else `nil`.
+    private func endingErrorKind(
+        of result: CallTool.Result, requestID: ID
+    ) -> MultitoolTelemetry.ErrorKindValue? {
+        let timedOut = timedOutRequestIDs.remove(requestID) != nil
+        guard result.isError == true else {
+            return nil
+        }
+        return timedOut ? .timeout : .isError
     }
 
     /// The `_meta` of one `tools/call` request: the progress token, and the
@@ -88,13 +128,18 @@ extension MCPServer {
         return metadata
     }
 
-    /// Gives the span of a bare call the outcome and the kind of a timeout.
+    /// Gives the span of a bare call the outcome and the kind of a timeout,
+    /// and marks the request as timed out for the error counter.
     ///
-    /// The bare call then returns an `isError` result, and
-    /// ``recordEnding(of:on:)`` keeps this outcome.
+    /// The bare call then returns an `isError` result.
+    /// ``recordEnding(of:on:)`` keeps this outcome on the span, and the error
+    /// counter records the kind `timeout`, not `isError`.
     ///
-    /// - Parameter span: The client span of the call.
-    static func recordTimeout(on span: any Span) {
+    /// - Parameters:
+    ///   - requestID: The id of the request.
+    ///   - span: The client span of the call.
+    func recordTimeout(of requestID: ID, on span: any Span) {
+        timedOutRequestIDs.insert(requestID)
         span.attributes.set([
             .outcome: MultitoolTelemetry.OutcomeValue.timedOut.rawValue,
             .errorKind: MultitoolTelemetry.ErrorKindValue.timeout.rawValue,
@@ -108,6 +153,25 @@ extension MCPServer {
         for entry in inFlightCalls.values {
             entry.span.addEvent(SpanEvent(name: event.rawValue))
         }
+    }
+
+    /// Records the start of a connect: the span event
+    /// ``MultitoolTelemetry/SpanEventName/mcpReconnectStarted`` on each call
+    /// in flight, and one count on the restart counter when the server
+    /// connected before.
+    ///
+    /// A connect is a restart or a reconnect when an earlier connect
+    /// succeeded, that is, when the server has an ``identity``. The first
+    /// connect is not a restart. A stdio server restarts through this same
+    /// connect, because its transport factory is `StdioServerProcess.respawn`.
+    /// Thus `respawn` records no count of its own: a second count there would
+    /// count each restart two times.
+    func recordConnectStart() {
+        recordEventOnInFlightCalls(.mcpReconnectStarted)
+        guard identity != nil else {
+            return
+        }
+        MultitoolTelemetry.recordMCPServerRestart(serverName: identityNameForDiagnostics)
     }
 
     /// Records the count and the size of the content of `result` on `span`,

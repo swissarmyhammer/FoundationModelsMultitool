@@ -332,11 +332,14 @@ private let otelProducts: [Target.Dependency] = [
 /// one time for each process. Thus no code of the unit test target calls
 /// `LoggingSystem.bootstrap`. `Logging` gives the suites the `Logger.Metadata`
 /// type, and `InMemoryLogging` gives them the `InMemoryLogHandler.Entry` type
-/// of each log record. A library target does not link these products.
+/// of each log record. `MetricsTestKit` gives them the `TestMetrics` factory of
+/// the capture, and its `TestCounter` and `TestTimer` types. A library target
+/// does not link these products.
 private let telemetryTestProducts: [Target.Dependency] = [
     .product(name: "TelemetryTestSupport", package: extrasDependencyName),
     .product(name: "Logging", package: loggingPackage),
     .product(name: "InMemoryLogging", package: loggingPackage),
+    .product(name: "MetricsTestKit", package: metricsPackage),
 ]
 
 /// The time-sortable identifier package (yaslab/ULID.swift).

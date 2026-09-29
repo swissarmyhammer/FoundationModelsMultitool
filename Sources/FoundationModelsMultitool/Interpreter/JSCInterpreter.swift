@@ -1,6 +1,7 @@
 import Foundation
 import JavaScriptCore
 import Logging
+import Metrics
 import os
 
 // MARK: - Private JSC watchdog symbols
@@ -336,13 +337,17 @@ public final class JSCInterpreter: Interpreter {
         installingAsync: [AsyncHostFunction],
         isCancelled: @escaping @Sendable () -> Bool
     ) throws -> InterpreterResult {
-        try DispatchQueue(label: Self.queueLabel).sync {
+        // The worker queue has no task-local value, thus the factory of the
+        // calling thread is read here and given to the run.
+        let metricsFactory = MetricsSystem.factory
+        return try DispatchQueue(label: Self.queueLabel).sync {
             try Self.evaluate(
                 code: code,
                 installing: installing,
                 installingAsync: installingAsync,
                 timeLimit: timeLimit,
-                isCancelled: isCancelled
+                isCancelled: isCancelled,
+                metricsFactory: metricsFactory
             )
         }
     }
@@ -506,12 +511,17 @@ public final class JSCInterpreter: Interpreter {
     /// records carry the size of the snippet, the duration and the type of
     /// an error. They never carry the JS source or the text of an error,
     /// because both can hold content.
+    ///
+    /// Records the duration of the run on the timer
+    /// `MultitoolTelemetry.MetricName.interpreterRunDuration`, with the
+    /// outcome of the run as the one dimension.
     private static func evaluate(
         code: String,
         installing: [HostFunction],
         installingAsync: [AsyncHostFunction],
         timeLimit: TimeInterval,
-        isCancelled: @escaping @Sendable () -> Bool
+        isCancelled: @escaping @Sendable () -> Bool,
+        metricsFactory: any MetricsFactory
     ) throws -> InterpreterResult {
         let start = ContinuousClock.now
         let logger = MultitoolTelemetry.logger
@@ -592,12 +602,17 @@ public final class JSCInterpreter: Interpreter {
             let returnValue = try jsonValue(of: outcome?.objectForKeyedSubscript("value"), in: sandbox.context)
             let result = InterpreterResult(returnValue: returnValue, consoleLines: sandbox.consoleLines.lines)
             logger.log(.snippetFinished, level: .debug, metadata: MultitoolTelemetry.durationMetadata(since: start))
+            MultitoolTelemetry.recordInterpreterRun(
+                outcome: .succeeded, duration: ContinuousClock.now - start, factory: metricsFactory)
             return result
         } catch {
             logger.log(
                 .snippetEnded, level: .debug,
                 metadata: MultitoolTelemetry.errorMetadata(of: error)
                     .merging(MultitoolTelemetry.durationMetadata(since: start)) { $1 })
+            MultitoolTelemetry.recordInterpreterRun(
+                outcome: MultitoolTelemetry.interpreterOutcome(of: error), duration: ContinuousClock.now - start,
+                factory: metricsFactory)
             throw error
         }
     }

@@ -219,12 +219,15 @@ enum MultitoolTelemetry {
     ///
     /// FoundationModelsExtras records the metrics of the mounted tool call
     /// (`FoundationModelsExtras.tool.calls` and
-    /// `FoundationModelsExtras.tool.duration`). The metrics here count the
-    /// calls of the library itself, and each name starts with the prefix of
-    /// this module.
+    /// `FoundationModelsExtras.tool.duration`): the `runCode` call, the
+    /// `searchTools` call, and each inner `tools.*` call that a session
+    /// mounts. The metrics here count only what no Extras mount holds, and
+    /// each name starts with the prefix of this module. Read
+    /// `MultitoolTelemetry+Metrics.swift` for the helpers that record them.
     enum MetricName: String, CaseIterable, Sendable {
-        /// The counter of the calls to `runCode`, to `searchTools` and to each
-        /// inner `tools.*` verb.
+        /// The counter of the native inner `tools.*` calls: the calls of a
+        /// snippet when no session bound a context, which no Extras mount
+        /// holds.
         case toolCalls = "FoundationModelsMultitool.tool.calls"
 
         /// The timer of the calls that ``toolCalls`` counts.

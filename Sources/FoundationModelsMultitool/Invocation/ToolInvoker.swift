@@ -198,7 +198,12 @@ public enum ToolInvoker {
             )
         }
         guard let binding else {
-            return try await tool.call(arguments: arguments)
+            // No Extras mount holds a native call, thus no Extras metric
+            // counts it. The library counts it here. A call through the
+            // binding below gets the Extras metrics from its mount.
+            return try await MultitoolTelemetry.measuringToolCall(toolName: tool.name) {
+                try await tool.call(arguments: arguments)
+            }
         }
         return try await binding.invoke(tool, arguments: arguments, journalOp: journalOp)
     }

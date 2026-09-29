@@ -411,7 +411,7 @@ extension MCPServer {
             guard !Task.isCancelled else { return }
             await self.endInFlightCall(requestID: requestID, reason: Self.bareCallTimedOutReason) {
                 entry in
-                Self.recordTimeout(on: entry.span)
+                self.recordTimeout(of: requestID, on: entry.span)
                 return .success(Self.toolErrorResult(toolName: entry.toolName, reason: self.timedOutReason))
             }
         }

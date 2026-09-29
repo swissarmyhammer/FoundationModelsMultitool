@@ -1,5 +1,6 @@
 import FoundationModelsExtras
 import Logging
+import Metrics
 import Tracing
 
 /// The helpers that each span of the library target uses.
@@ -139,11 +140,14 @@ extension MultitoolTelemetry {
     /// The interpreter runs each `tools.*` call of a snippet in a task that it
     /// starts on its own thread. That task has no task-local value of the
     /// `runCode` call: no `ServiceContext`, no tracer that `withTracer` binds,
-    /// and no ``boundLogger``. Thus `MultiTool` captures a scope in the task
-    /// of the `runCode` call, in the `runCode` span, and binds it again around
-    /// each host function (see ``bind(_:)``). The span of each `tools.*` call
-    /// is then a child of the `runCode` span, and its records go to the logger
-    /// of the call.
+    /// no metrics factory that `withMetricsFactory` binds, and no
+    /// ``boundLogger``. Thus `MultiTool` captures a scope in the task of the
+    /// `runCode` call, in the `runCode` span, and binds it again around each
+    /// host function (see ``bind(_:)``). The span of each `tools.*` call is
+    /// then a child of the `runCode` span, its records go to the logger of the
+    /// call, and its metrics go to the metrics factory of the call. The
+    /// metrics of a mounted call, which FoundationModelsExtras records, go to
+    /// that factory too.
     struct Scope: Sendable {
         /// The tracer of the captured task.
         let tracer: any Tracer
@@ -155,9 +159,15 @@ extension MultitoolTelemetry {
         /// The logger of the captured task.
         let logger: Logger
 
+        /// The metrics factory of the captured task: the factory that the task
+        /// binds, or else the factory that the host bootstrapped.
+        let metricsFactory: any MetricsFactory
+
         /// The scope of the current task.
         static var current: Scope {
-            Scope(tracer: InstrumentationSystem.tracer, serviceContext: .current, logger: MultitoolTelemetry.logger)
+            Scope(
+                tracer: InstrumentationSystem.tracer, serviceContext: .current, logger: MultitoolTelemetry.logger,
+                metricsFactory: MetricsSystem.factory)
         }
 
         /// Wraps `function` so that it runs in this scope, from whichever task
@@ -168,9 +178,11 @@ extension MultitoolTelemetry {
         func bind(_ function: AsyncHostFunction) -> AsyncHostFunction {
             AsyncHostFunction(name: function.name) { arguments in
                 try await withTracer(tracer) {
-                    try await ServiceContext.withValue(serviceContext) {
-                        try await MultitoolTelemetry.$boundLogger.withValue(logger) {
-                            try await function.call(arguments)
+                    try await withMetricsFactory(metricsFactory) {
+                        try await ServiceContext.withValue(serviceContext) {
+                            try await MultitoolTelemetry.$boundLogger.withValue(logger) {
+                                try await function.call(arguments)
+                            }
                         }
                     }
                 }
