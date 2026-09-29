@@ -206,14 +206,30 @@ struct TelemetryContentSafetyTests {
     /// - Returns: The places.
     private static func eventPlaces(of event: SpanEvent, on spanName: String) -> [TelemetryPlace] {
         let eventSpan = "\(spanName) event \(event.name)"
-        // `SpanAttributes` is not a `Sequence`: `forEach` is its only walk of
-        // the attributes, thus the walk collects them into an array.
-        var attributes: [TelemetryPlace] = []
-        // swiftformat:disable:next preferForLoop  SpanAttributes is not a Sequence, thus no for loop compiles
-        event.attributes.forEach { key, value in
-            attributes.append(.spanAttribute(span: eventSpan, key: key, value: String(describing: value)))
+        let attributes = attributeTable(of: event.attributes).map { key, value in
+            TelemetryPlace.spanAttribute(span: eventSpan, key: key, value: String(describing: value))
         }
         return [.spanName(eventSpan)] + attributes
+    }
+
+    /// The label of the stored dictionary in `SpanAttributes`.
+    private static let storedAttributesLabel = "_attributes"
+
+    /// The attributes of a span event as a dictionary.
+    ///
+    /// `SpanAttributes` is not a `Sequence`, and its only public walk is a
+    /// closure. Thus this function reads the stored dictionary with a
+    /// `Mirror`. The public `count` must be equal to the count of the
+    /// dictionary. If swift-distributed-tracing changes its storage, the
+    /// test fails and does not hide an attribute.
+    ///
+    /// - Parameter attributes: The attributes of the span event.
+    /// - Returns: Each attribute, by its key.
+    private static func attributeTable(of attributes: SpanAttributes) -> [String: SpanAttribute] {
+        let stored = Mirror(reflecting: attributes).descendant(storedAttributesLabel)
+        let table = stored as? [String: SpanAttribute] ?? [:]
+        #expect(table.count == attributes.count, "the Mirror did not read the attributes of SpanAttributes")
+        return table
     }
 
     /// Records a failure unless `context` holds the spans, the log records and
