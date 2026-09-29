@@ -27,7 +27,6 @@
 // the reader.
 
 import MCP
-import os
 
 extension MCPServer {
     /// Fetches every tool page from the server through the paginated

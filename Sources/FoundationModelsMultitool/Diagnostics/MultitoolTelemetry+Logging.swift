@@ -60,8 +60,25 @@ extension MultitoolTelemetry {
     /// - Returns: The whole milliseconds under
     ///   ``LogMetadataKey/durationMilliseconds``.
     static func durationMetadata(since start: ContinuousClock.Instant) -> Logger.Metadata {
-        let milliseconds = start.duration(to: .now) / .milliseconds(1)
+        durationMetadata(of: start.duration(to: .now))
+    }
+
+    /// The metadata of a duration.
+    ///
+    /// - Parameter duration: The duration.
+    /// - Returns: The whole milliseconds under
+    ///   ``LogMetadataKey/durationMilliseconds``.
+    static func durationMetadata(of duration: Duration) -> Logger.Metadata {
+        let milliseconds = duration / .milliseconds(1)
         return [LogMetadataKey.durationMilliseconds.rawValue: "\(Int(milliseconds.rounded()))"]
+    }
+
+    /// The metadata of the name of an MCP server.
+    ///
+    /// - Parameter name: The name of the server.
+    /// - Returns: The name under ``AttributeKey/serverName``.
+    static func serverNameMetadata(_ name: String) -> Logger.Metadata {
+        [AttributeKey.serverName.rawValue: "\(name)"]
     }
 
     /// The metadata of the name of a tool.

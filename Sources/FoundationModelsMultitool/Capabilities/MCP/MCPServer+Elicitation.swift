@@ -46,9 +46,9 @@
 
 import Foundation
 import FoundationModelsExtras
+import Logging
 import MCP
 import ULID
-import os
 
 extension MCPServer {
     /// The host's answerer for a bare session — case 2 of the resolution
@@ -100,9 +100,11 @@ extension MCPServer {
             return Self.wireResult(of: await resolve(request, urlElicitationId: nil))
         case .url(let url):
             guard let link = URL(string: url.url) else {
-                logger.warning(
-                    "MCPServer \(self.identityNameForDiagnostics, privacy: .public) declined a URL-mode elicitation whose url is not a URL: \(url.url, privacy: .public)"
-                )
+                // The url is content of the server, thus the record holds the
+                // wire id of the elicitation and not the url.
+                record(
+                    .mcpElicitationURLInvalid, level: .warning,
+                    metadata: [MultitoolTelemetry.LogMetadataKey.elicitationID.rawValue: "\(url.elicitationId)"])
                 return Self.wireResult(of: .decline)
             }
             let request = ElicitationRequest(message: url.message, elicitationId: ULID(), url: link)
@@ -160,9 +162,9 @@ extension MCPServer {
         do {
             return try await context.elicit(request)
         } catch {
-            logger.warning(
-                "MCPServer \(self.identityNameForDiagnostics, privacy: .public) could not elicit through the calling run; answering cancel: \(String(describing: error), privacy: .public)"
-            )
+            record(
+                .mcpElicitationThroughRunFailed, level: .warning,
+                metadata: MultitoolTelemetry.errorMetadata(of: error))
             return .cancel
         }
     }
@@ -195,9 +197,9 @@ extension MCPServer {
     /// - Parameter elicitationId: The wire id of the flow.
     public func complete(elicitationId: String) {
         guard let continuation = pendingHostElicitations.removeValue(forKey: elicitationId) else {
-            logger.debug(
-                "MCPServer \(self.identityNameForDiagnostics, privacy: .public) ignored a completion for an elicitation it does not hold: \(elicitationId, privacy: .public)"
-            )
+            record(
+                .mcpElicitationCompletionIgnored, level: .debug,
+                metadata: [MultitoolTelemetry.LogMetadataKey.elicitationID.rawValue: "\(elicitationId)"])
             return
         }
         continuation.resume()
@@ -226,9 +228,9 @@ extension MCPServer {
             let encoded = try JSONEncoder().encode(schema)
             return try JSONDecoder().decode(ElicitationRequestedSchema.self, from: encoded)
         } catch {
-            logger.warning(
-                "MCPServer \(self.identityNameForDiagnostics, privacy: .public) declined a form-mode elicitation whose requestedSchema is outside the restricted subset: \(String(describing: error), privacy: .public)"
-            )
+            record(
+                .mcpElicitationSchemaDeclined, level: .warning,
+                metadata: MultitoolTelemetry.errorMetadata(of: error))
             return nil
         }
     }

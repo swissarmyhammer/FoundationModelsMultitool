@@ -223,6 +223,21 @@ enum MultitoolTelemetry {
         /// name. It holds no value, no description and no default of the
         /// schema.
         case wideningDetail = "FoundationModelsMultitool.schema.widening"
+
+        /// The number of one connect attempt to an MCP server. The first
+        /// attempt is `1`.
+        case connectAttempt = "FoundationModelsMultitool.mcp.connect.attempt"
+
+        /// The largest count of connect attempts that the backoff policy of a
+        /// connect permits.
+        case connectAttemptLimit = "FoundationModelsMultitool.mcp.connect.attempt_limit"
+
+        /// The name that an MCP server gives for itself at `initialize`. It
+        /// is a name, not a payload.
+        case peerServerName = "FoundationModelsMultitool.mcp.peer_server_name"
+
+        /// The wire id of a URL-mode elicitation.
+        case elicitationID = "FoundationModelsMultitool.mcp.elicitation_id"
     }
 
     /// The message of each log record of the library target.
@@ -270,5 +285,82 @@ enum MultitoolTelemetry {
         /// A rebuild of the surface after a change of an MCP server failed,
         /// and the old surface stays. Level: `warning`.
         case surfaceRebuildFailed = "surfaceRebuildFailed"
+
+        /// One connect attempt to an MCP server succeeded. Level: `info`.
+        case mcpConnectAttemptSucceeded = "mcp connect attempt succeeded"
+
+        /// One connect attempt to an MCP server failed, and the backoff policy
+        /// can retry it. Level: `warning`.
+        case mcpConnectAttemptFailed = "mcp connect attempt failed"
+
+        /// One connect attempt to an MCP server failed with a configuration
+        /// error, and no retry follows. Level: `error`.
+        case mcpConnectAttemptRefused = "mcp connect attempt failed with a configuration error"
+
+        /// The connect waits for the backoff delay before the next attempt.
+        /// Level: `info`.
+        case mcpConnectRetryScheduled = "mcp connect retry scheduled"
+
+        /// Each connect attempt that the backoff policy permits failed. Level:
+        /// `error`.
+        case mcpConnectBackoffExhausted = "mcp connect backoff exhausted"
+
+        /// A host reconnect of an MCP server succeeded. Level: `info`.
+        case mcpReconnected = "mcp server reconnected"
+
+        /// The `initialize` handshake and the tool discovery of a connect
+        /// succeeded. Level: `debug`.
+        case mcpServerInitialized = "mcp server initialized"
+
+        /// A newer connect attempt started, thus a stale attempt did not
+        /// start its connect. Level: `warning`.
+        case mcpStaleAttemptSkipped = "mcp stale connect attempt skipped"
+
+        /// A newer connect attempt started, thus the success of a stale
+        /// attempt was discarded. Level: `warning`.
+        case mcpStaleSuccessDiscarded = "mcp stale connect success discarded"
+
+        /// A newer connect attempt started, thus the failure of a stale
+        /// attempt was discarded. Level: `warning`.
+        case mcpStaleFailureDiscarded = "mcp stale connect failure discarded"
+
+        /// A newer connect attempt started, thus the transport that a stale
+        /// attempt built was discarded. Level: `warning`.
+        case mcpStaleTransportDiscarded = "mcp stale transport discarded"
+
+        /// A newer connect replaced a transport, thus the end of the receive
+        /// stream of the old transport was ignored. Level: `warning`.
+        case mcpStaleStreamEndIgnored = "mcp stale receive stream end ignored"
+
+        /// The `notifications/cancelled` of a call could not be sent. Level:
+        /// `warning`.
+        case mcpCancelNoticeFailed = "mcp cancel notice failed"
+
+        /// The transport of an MCP server dropped, and each call in flight
+        /// failed as lost. Level: `warning`.
+        case mcpTransportDropped = "mcp transport dropped"
+
+        /// A URL-mode elicitation was declined because its url is not a URL.
+        /// Level: `warning`.
+        case mcpElicitationURLInvalid = "mcp url elicitation declined: the url is not valid"
+
+        /// An elicitation through the calling run failed, and the answer is
+        /// `cancel`. Level: `warning`.
+        case mcpElicitationThroughRunFailed = "mcp elicitation through the calling run failed"
+
+        /// A completion named an elicitation that the server does not hold.
+        /// Level: `debug`.
+        case mcpElicitationCompletionIgnored = "mcp elicitation completion ignored"
+
+        /// A form-mode elicitation was declined because its schema is outside
+        /// the restricted subset. Level: `warning`.
+        case mcpElicitationSchemaDeclined = "mcp form elicitation declined: the schema is not supported"
+
+        /// A `notifications/tools/list_changed` came in. Level: `debug`.
+        case mcpToolListChanged = "mcp tools list changed"
+
+        /// The re-list of the tools after a `tools/list_changed` failed.
+        /// Level: `warning`.
+        case mcpToolRelistFailed = "mcp tools re-list failed"
     }
 }

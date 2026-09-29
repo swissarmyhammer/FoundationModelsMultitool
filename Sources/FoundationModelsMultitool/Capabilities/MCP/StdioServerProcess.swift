@@ -52,12 +52,13 @@
 //      to the `StdioServerProcess` value, ARC drops the last strong reference
 //      and `deinit` fires with no call from anyone.
 //
-// **`import Logging` names ONE type, and logs nothing.** The sdk's `Transport`
-// protocol requires `var logger: Logging.Logger`, so the private transport
-// below must name that type to conform. It hands on the logger of the inner
-// `StdioTransport` and writes nothing of its own; this file logs through
-// nothing else. The manifest declares the `swift-log` product — see
-// `loggingPackage` in `Package.swift`.
+// **The transport logs through the logger of the library.** The sdk's
+// `Transport` protocol requires `var logger: Logging.Logger`. `spawn` gives
+// the inner `StdioTransport` the logger `MultitoolTelemetry.logger`, thus the
+// records of the sdk transport have the label of the library. The private
+// transport below hands on that same logger, and writes nothing of its own.
+// The manifest declares the `swift-log` product — see `loggingPackage` in
+// `Package.swift`.
 
 import Foundation
 import FoundationModelsExtras
@@ -373,7 +374,8 @@ public struct StdioServerProcess: Sendable {
 
         let transport = StdioTransport(
             input: FileDescriptor(rawValue: stdoutReadFd),
-            output: FileDescriptor(rawValue: stdinWriteFd)
+            output: FileDescriptor(rawValue: stdinWriteFd),
+            logger: MultitoolTelemetry.logger
         )
         return Spawned(pid: pid, transport: transport)
     }
@@ -675,10 +677,10 @@ private actor StdioServerTransport: Transport, DisposableTransport {
     /// `state` holds now": see `ProcessState.terminateIfCurrent(pid:)`.
     private let pid: pid_t
 
-    /// The logger of this transport — the one of `inner`, handed on, so log
-    /// output carries the same label an unwrapped `StdioTransport` gives. This
-    /// file writes nothing through it; the `Transport` protocol requires the
-    /// property, and that is the whole reason it is here.
+    /// The logger of this transport — the one of `inner`, handed on. `spawn`
+    /// gives `inner` the logger of the library, thus the records of the
+    /// transport have the label `MultitoolTelemetry.logLabel`. This actor
+    /// writes nothing of its own through it.
     nonisolated let logger: Logging.Logger
 
     /// The receive stream of `inner`, cached by `connect()` — `receive()` is

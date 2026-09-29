@@ -185,7 +185,7 @@ extension MCPServer {
             guard
                 await self.isCurrentGeneration(
                     generation,
-                    orDiscard: "discarding a stale factory-built transport; a newer attempt started"
+                    orDiscard: .mcpStaleTransportDiscarded
                 )
             else {
                 await (transport as? DisposableTransport)?.dispose()

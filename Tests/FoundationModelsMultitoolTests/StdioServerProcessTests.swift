@@ -198,6 +198,20 @@ struct StdioServerProcessTests {
         Self.confirmNoLeaks()
     }
 
+    // MARK: - The transport logs through the logger of the library
+
+    @Test("respawn vends a transport whose logger has the label of the library")
+    func respawnVendsATransportWithTheLibraryLogger() async throws {
+        let stdio = try Self.makeSleeper(named: "logger-label-test")
+
+        let transport = try await stdio.respawn()
+        let label = await transport.logger.label
+
+        #expect(label == MultitoolTelemetry.logLabel)
+        await stdio.shutdown()
+        Self.confirmNoLeaks()
+    }
+
     // MARK: - A failed spawn attempt does not leak the pipe fds it created
 
     /// `respawn()` against a well-formed but absent executable must fail with

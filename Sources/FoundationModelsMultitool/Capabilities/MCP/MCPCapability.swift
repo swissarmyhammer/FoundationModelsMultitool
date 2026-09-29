@@ -54,11 +54,14 @@
 // - `MCPTool.swift` — the plain synchronous `Tool` that one server verb
 //   renders as.
 //
-// **Each file logs with `os.Logger`**, as `MultiTool.swift` does. The library
-// target declares `swift-log` — see `loggingPackage` in `Package.swift`. Two
-// files of this folder import it: `StdioServerProcess.swift` and
-// `DropObservingTransport.swift` each name `Logging.Logger` as the type the
-// `Transport` protocol requires, and each logs nothing through it.
+// **Each file logs with swift-log**, as `MultiTool.swift` does. The library
+// target declares `swift-log` — see `loggingPackage` in `Package.swift`.
+// `MCPServer` writes each record through `record(_:level:metadata:)`, with a
+// constant `MultitoolTelemetry.LogMessage` and the server name in the
+// metadata, and never an MCP payload. `StdioServerProcess.swift` gives the
+// stdio transport the logger of the library. `DropObservingTransport.swift`
+// names `Logging.Logger` only because the `Transport` protocol requires it,
+// and logs nothing through it.
 
 import FoundationModels
 import MCP

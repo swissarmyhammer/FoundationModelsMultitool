@@ -48,11 +48,14 @@
 // `MCPServer+Connection.swift`; the capability is declared here, because the
 // declaration cannot wait for the handler.
 //
-// **Logging goes through `os.Logger`**, as `MultiTool.swift` logs. Each
-// message names the server, so a stream can be narrowed to one connection.
+// **Logging goes through swift-log**, as `MultiTool.swift` logs. Each record
+// has a constant `MultitoolTelemetry.LogMessage` and the server name in its
+// metadata, so a reader can find the records of one connection. A record
+// never holds an MCP payload, a tool argument or a tool output: an error goes
+// in as its type and its code only. See `record(_:level:metadata:)`.
 
+import Logging
 import MCP
-import os
 
 /// Owns one `MCP.Client` connection to a single MCP server: the async
 /// `connect(via:)` handshake, a `connecting` / `ready` / `disconnected` /
@@ -83,9 +86,14 @@ public actor MCPServer {
     public static let defaultCallTimeout = Duration.seconds(defaultCallTimeoutSeconds)
 
     /// The logger ``init(name:version:clock:callTimeout:renderBudget:elicitationHandler:logger:)``
-    /// takes when the host supplies none.
-    public static let defaultLogger = Logger(
-        subsystem: "FoundationModelsMultitool", category: "MCPServer")
+    /// takes when the host supplies none: the swift-log logger of the library.
+    ///
+    /// A new logger for each read, not a stored value: a logger keeps the
+    /// handler of the logging system at the time it is made, and a host can
+    /// bootstrap the logging system after this type loads.
+    public static var defaultLogger: Logger {
+        MultitoolTelemetry.logger
+    }
 
     /// The wrapped swift-sdk client this actor owns for its whole lifetime.
     ///
@@ -343,6 +351,21 @@ public actor MCPServer {
     /// established ``identity`` once there is one, and ``name`` before that.
     var identityNameForDiagnostics: String {
         identity?.name ?? name
+    }
+
+    /// Writes one record to ``logger``, with the name of this server in its
+    /// metadata — the one point each log call of `MCPServer` goes through.
+    ///
+    /// - Parameters:
+    ///   - message: The constant message of the record.
+    ///   - level: The level of the record.
+    ///   - metadata: The other variable values of the record: names, ids,
+    ///     counts and sizes only, never a payload.
+    func record(
+        _ message: MultitoolTelemetry.LogMessage, level: Logger.Level, metadata: Logger.Metadata = [:]
+    ) {
+        let serverName = MultitoolTelemetry.serverNameMetadata(identityNameForDiagnostics)
+        logger.log(message, level: level, metadata: metadata.merging(serverName) { _, name in name })
     }
 
     /// Suspends until ``state`` is `.ready`, and throws when it cannot get

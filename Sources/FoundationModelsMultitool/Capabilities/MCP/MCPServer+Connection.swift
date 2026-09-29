@@ -35,8 +35,8 @@
 // the loser keeps running and its late result is discarded by the generation
 // guard.
 
+import Logging
 import MCP
-import os
 
 extension MCPServer {
     /// The base of the exponential backoff of `backoffDelay(afterAttempt:policy:)`
@@ -188,9 +188,10 @@ extension MCPServer {
         // here too, so its late resolution is discarded instead of mutating
         // the state after the caller was told the connect failed.
         connectGeneration += 1
-        logger.error(
-            "MCPServer \(self.identityNameForDiagnostics, privacy: .public) exhausted its connect backoff after \(backoffPolicy.maxAttempts) attempts: \(String(describing: lastError), privacy: .public)"
-        )
+        record(
+            .mcpConnectBackoffExhausted, level: .error,
+            metadata: Self.attemptLimitMetadata(backoffPolicy)
+                .merging(MultitoolTelemetry.errorMetadata(of: lastError)) { limit, _ in limit })
         throw MCPServerError.backoffExhausted(
             serverName: identityNameForDiagnostics,
             attempts: backoffPolicy.maxAttempts,
@@ -214,7 +215,7 @@ extension MCPServer {
             throw MCPServerError.neverConnected
         }
         try await connect(via: transportFactory, backoffPolicy: activeBackoffPolicy)
-        logger.info("MCPServer \(self.identityNameForDiagnostics, privacy: .public) reconnected")
+        record(.mcpReconnected, level: .info)
     }
 
     /// Disconnects the client and moves ``state`` to `.disconnected`, without
@@ -254,9 +255,9 @@ extension MCPServer {
     ) async -> ConnectAttemptOutcome {
         do {
             try await performConnectAttempt(factory: factory, timeout: policy.connectTimeout)
-            logger.info(
-                "MCPServer \(self.identityNameForDiagnostics, privacy: .public) connected on attempt \(attempt)"
-            )
+            record(
+                .mcpConnectAttemptSucceeded, level: .info,
+                metadata: Self.attemptMetadata(attempt, policy: policy))
             return .connected
         } catch {
             return failedAttemptOutcome(error, attempt: attempt, policy: policy)
@@ -274,22 +275,42 @@ extension MCPServer {
     private func failedAttemptOutcome(
         _ error: any Error, attempt: Int, policy: BackoffPolicy
     ) -> ConnectAttemptOutcome {
-        let description = String(describing: error)
+        let failure = Self.attemptMetadata(attempt, policy: policy)
+            .merging(MultitoolTelemetry.errorMetadata(of: error)) { attemptValue, _ in attemptValue }
         if let nonRetryable = error as? NonRetryableConnectError, nonRetryable.isNonRetryable {
-            logger.error(
-                "MCPServer \(self.identityNameForDiagnostics, privacy: .public) connect attempt \(attempt) failed with a non-retryable configuration error; not retrying: \(description, privacy: .public)"
-            )
+            record(.mcpConnectAttemptRefused, level: .error, metadata: failure)
             return .permanentFailure(error)
         }
-        logger.warning(
-            "MCPServer \(self.identityNameForDiagnostics, privacy: .public) connect attempt \(attempt) of \(policy.maxAttempts) failed: \(description, privacy: .public)"
-        )
+        record(.mcpConnectAttemptFailed, level: .warning, metadata: failure)
         guard attempt < policy.maxAttempts else { return .exhausted(error) }
         let delay = Self.backoffDelay(afterAttempt: attempt, policy: policy)
-        logger.info(
-            "MCPServer \(self.identityNameForDiagnostics, privacy: .public) backs off \(String(describing: delay), privacy: .public) before the next connect retry"
-        )
+        record(
+            .mcpConnectRetryScheduled, level: .info,
+            metadata: MultitoolTelemetry.durationMetadata(of: delay))
         return .retryAfter(delay)
+    }
+
+    /// The metadata of the attempt limit of `policy`.
+    ///
+    /// - Parameter policy: The policy of the retry loop.
+    /// - Returns: `policy.maxAttempts` under
+    ///   `MultitoolTelemetry.LogMetadataKey.connectAttemptLimit`.
+    private static func attemptLimitMetadata(_ policy: BackoffPolicy) -> Logger.Metadata {
+        [MultitoolTelemetry.LogMetadataKey.connectAttemptLimit.rawValue: "\(policy.maxAttempts)"]
+    }
+
+    /// The metadata of one attempt of the retry loop: its number and the
+    /// attempt limit of `policy`.
+    ///
+    /// - Parameters:
+    ///   - attempt: The 1-based number of the attempt.
+    ///   - policy: The policy of the retry loop.
+    /// - Returns: The number under
+    ///   `MultitoolTelemetry.LogMetadataKey.connectAttempt`, and the limit.
+    private static func attemptMetadata(_ attempt: Int, policy: BackoffPolicy) -> Logger.Metadata {
+        var metadata = attemptLimitMetadata(policy)
+        metadata[MultitoolTelemetry.LogMetadataKey.connectAttempt.rawValue] = "\(attempt)"
+        return metadata
     }
 
     /// The exponential backoff delay for the retry after `attempt`.
@@ -402,7 +423,7 @@ extension MCPServer {
     private func applyConnect(via factory: TransportFactory, generation: Int) async throws {
         guard
             isCurrentGeneration(
-                generation, orDiscard: "skipping a connect attempt a newer one superseded")
+                generation, orDiscard: .mcpStaleAttemptSkipped)
         else {
             return
         }
@@ -424,7 +445,7 @@ extension MCPServer {
             guard
                 isCurrentGeneration(
                     generation,
-                    orDiscard: "discarding a stale connect success; a newer attempt started")
+                    orDiscard: .mcpStaleSuccessDiscarded)
             else {
                 return
             }
@@ -432,14 +453,17 @@ extension MCPServer {
             establishIdentityIfAbsent()
             transition(to: .ready)
             emitCatalogSnapshot()
-            logger.debug(
-                "MCPServer \(self.identityNameForDiagnostics, privacy: .public) initialized against server \(initialized.serverInfo.name, privacy: .public) with \(tools.count) tools"
-            )
+            record(
+                .mcpServerInitialized, level: .debug,
+                metadata: [
+                    MultitoolTelemetry.LogMetadataKey.peerServerName.rawValue: "\(initialized.serverInfo.name)",
+                    MultitoolTelemetry.LogMetadataKey.itemCount.rawValue: "\(tools.count)",
+                ])
         } catch {
             guard
                 isCurrentGeneration(
                     generation,
-                    orDiscard: "discarding a stale connect failure; a newer attempt started",
+                    orDiscard: .mcpStaleFailureDiscarded,
                     error: error)
             else {
                 throw error
@@ -457,18 +481,17 @@ extension MCPServer {
     /// - Parameters:
     ///   - generation: The ``connectGeneration`` the attempt was launched
     ///     under.
-    ///   - message: What the caller discards when the generation is stale.
-    ///   - error: The error being discarded, when there is one.
+    ///   - message: The constant message of the record that names what the
+    ///     caller discards when the generation is stale.
+    ///   - error: The error being discarded, when there is one. The record
+    ///     holds its type and its code only.
     /// - Returns: `true` when `generation` is current and the caller
     ///   proceeds; `false` when it was logged and discarded as stale.
     func isCurrentGeneration(
-        _ generation: Int, orDiscard message: String, error: (any Error)? = nil
+        _ generation: Int, orDiscard message: MultitoolTelemetry.LogMessage, error: (any Error)? = nil
     ) -> Bool {
         guard generation == connectGeneration else {
-            let errorDescription = error.map { String(describing: $0) } ?? "none"
-            logger.warning(
-                "MCPServer \(self.identityNameForDiagnostics, privacy: .public) \(message, privacy: .public) (error: \(errorDescription, privacy: .public))"
-            )
+            record(message, level: .warning, metadata: error.map(MultitoolTelemetry.errorMetadata(of:)) ?? [:])
             return false
         }
         return true

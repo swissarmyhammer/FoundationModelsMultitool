@@ -82,10 +82,26 @@ comments:
     - evidence: I touched the 6 changed Swift files (5 in Sources, ShellRunnerTests.swift). `swift build --build-tests` completed with exit 0 and 0 compiler warnings from a file of this package. `swift test` (one run): 1836 tests in 148 suites passed, 0 failed, 0 skipped, exit 0. `swift build --package-path IntegrationTests --build-tests` completed with exit 0 and 0 compiler warnings. The only other messages are the known SwiftPM "disk I/O error" manifest-cache warnings and the "missing creator for mutated node ... mlx-swift_Cmlx.bundle" warning. These are not warnings of this package.
     - next: review.
   timestamp: 2026-09-29T13:28:58.679571+00:00
+- actor: claude-code
+  id: 01m3pny705j913rxcx7gv8w05t
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (ae28cf2). 0 findings (attempted 7, failed 0, refuted 0). 6 files reviewed. The 2 prior findings of 2026-09-29 07:57 are checked.
+    - next: The task moved to done.
+  timestamp: 2026-09-29T13:33:48.421146+00:00
+- actor: claude-code
+  id: 01m3pnyn1bk7za5tk9chv8jm74
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — 5 source files (one shared MultitoolTelemetry.logger) + ShellRunnerTests.swift (FIFO gate in place of short sleeps in two flaky tests)
+    - test: green — Router f497700; swift test 1836 tests in 148 suites passed (one run); IntegrationTests build passed
+    - commit: ae28cf2
+    - review: clean — 0 findings; both prior findings checked
+  timestamp: 2026-09-29T13:34:02.795878+00:00
 depends_on:
 - 01M3MN95YYY2J02M1X6QC6BREE
-position_column: doing
-position_ordinal: '8180'
+position_column: done
+position_ordinal: fffc80
 title: 'OTel 2: replace os.Logger with swift-log in the core library files and their tests'
 ---
 ## What

@@ -22,7 +22,6 @@
 // nothing: there is no client to ask, and the next connect discovers afresh.
 
 import MCP
-import os
 
 extension MCPServer {
     /// How many milliseconds ``toolListChangedCoalesceWindow`` lasts.
@@ -44,9 +43,7 @@ extension MCPServer {
     /// one re-list once it goes quiet.
     func handleToolListChangedNotification() {
         toolListChangedGeneration += 1
-        logger.debug(
-            "MCPServer \(self.identityNameForDiagnostics, privacy: .public) received tools/list_changed"
-        )
+        record(.mcpToolListChanged, level: .debug)
         guard !isCoalescingToolListChanged else { return }
         isCoalescingToolListChanged = true
         coalescingTask = Task { await self.coalesceAndRelist() }
@@ -103,9 +100,7 @@ extension MCPServer {
             discoveredTools = try await discoverAllTools()
             return true
         } catch {
-            logger.warning(
-                "MCPServer \(self.identityNameForDiagnostics, privacy: .public) failed to re-list tools after tools/list_changed: \(String(describing: error), privacy: .public)"
-            )
+            record(.mcpToolRelistFailed, level: .warning, metadata: MultitoolTelemetry.errorMetadata(of: error))
             return false
         }
     }

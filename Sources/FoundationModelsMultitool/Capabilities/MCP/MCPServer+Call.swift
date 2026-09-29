@@ -44,8 +44,8 @@
 // served was settled long before, by the drop itself.
 
 import FoundationModelsExtras
+import Logging
 import MCP
-import os
 
 extension MCPServer {
     /// How one `tools/call` ends: the result the server answered, or the
@@ -283,9 +283,11 @@ extension MCPServer {
         do {
             try await client.cancelRequest(requestID, reason: reason)
         } catch {
-            logger.warning(
-                "MCPServer \(self.identityNameForDiagnostics, privacy: .public) could not send notifications/cancelled: \(String(describing: error), privacy: .public)"
-            )
+            record(
+                .mcpCancelNoticeFailed, level: .warning,
+                metadata: MultitoolTelemetry.errorMetadata(of: error).merging([
+                    MultitoolTelemetry.LogMetadataKey.requestID.rawValue: "\(requestID.description)"
+                ]) { errorValue, _ in errorValue })
         }
     }
 
@@ -318,14 +320,14 @@ extension MCPServer {
     func handleTransportDrop(generation: Int) {
         guard
             isCurrentGeneration(
-                generation, orDiscard: "ignoring the end of a receive stream a newer connect superseded")
+                generation, orDiscard: .mcpStaleStreamEndIgnored)
         else {
             return
         }
         isTransportDropped = true
-        logger.warning(
-            "MCPServer \(self.identityNameForDiagnostics, privacy: .public) transport dropped with \(self.inFlightCalls.count) calls in flight"
-        )
+        record(
+            .mcpTransportDropped, level: .warning,
+            metadata: [MultitoolTelemetry.LogMetadataKey.itemCount.rawValue: "\(inFlightCalls.count)"])
         failInFlightCalls(underlying: Self.transportDroppedDescription)
     }
 
