@@ -35,10 +35,26 @@ comments:
     - evidence: I touched the 12 changed Swift files (git status). `swift build --build-tests` completed with 0 compiler warnings and 0 errors. `swift test` ran 1863 tests in 152 suites: 1863 passed, 0 failed, 0 skipped (XCTest: 0 tests executed, 0 failures). `swift build --package-path IntegrationTests --build-tests` completed with 0 compiler warnings and 0 errors. I did not run the live-model suite. The only other messages are the known SwiftPM "disk I/O error" manifest-cache messages and the known "missing creator for mutated node ... mlx-swift_Cmlx.bundle" message.
     - next: review
   timestamp: 2026-09-29T15:18:22.739839+00:00
+- actor: claude-code
+  id: 01m3pw765xs2a9veepf812ffk6
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (commit a80a1af). 0 findings, 0 confirmed, 0 refuted. 12 files reviewed. 4 files in .kanban/ not reviewed (.reviewignore). No prior Review Findings sections.
+    - next: none. The task moved to done.
+  timestamp: 2026-09-29T15:23:33.949870+00:00
+- actor: claude-code
+  id: 01m3pw7j55k8b6enveetqdhye8
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 13 files (new MultitoolTelemetry+Metrics.swift, MetricsTests.swift; metrics only where Extras does not count; factory bound across the interpreter thread and queue)
+    - test: green — swift test 1863 tests in 152 suites passed (one run); IntegrationTests build passed
+    - commit: a80a1af
+    - review: clean — 0 findings
+  timestamp: 2026-09-29T15:23:46.213573+00:00
 depends_on:
 - 01M3MN95YYY2J02M1X6QC6BREE
-position_column: doing
-position_ordinal: '8180'
+position_column: done
+position_ordinal: ffff8280
 title: 'OTel 7: add swift-metrics metrics for tool calls, MCP server errors and restarts, and JS interpreter runs'
 ---
 ## What

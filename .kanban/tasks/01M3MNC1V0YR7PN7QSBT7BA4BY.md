@@ -10,37 +10,70 @@ comments:
   id: 01m3mv3k4yz45h2fxev6easghp
   text: 'Update (2026-09-28, swissarmyhammer session): Extras OTel A–D are on Extras origin/main (HEAD 70ad74d), so `TelemetryCapture` is available and this task is no longer blocked by Extras OTel B. Run `swift package update FoundationModelsExtras` (root and IntegrationTests) before this task starts. It still depends on OTel 2, 3, 4, 5 and 7 on this board.'
   timestamp: 2026-09-28T20:25:38.718212+00:00
+- actor: claude-code
+  id: 01m3pwejcawb634snvsmkb2y0z
+  text: |-
+    Research (implement step):
+    - `Package.swift` already links `TelemetryTestSupport` to the unit test target (line 339). No change is necessary there.
+    - `TelemetryCapture.Context.places` reads span names and attributes, log messages and metadata, and metric names and dimensions. It does NOT read span events. Thus the new test reads the name and the attributes of each span event itself.
+    - `TracedCall.run` of Extras uses `withSpan`, which records each thrown error on the span. An OTel exporter sends a recorded error as an `exception` event with the error description. `TelemetryCapture` does not read recorded errors, and the Router test does not read them. This test does not read them either (the design lists span events, and the recorded error is not an event of the in-memory span). Possible gap for the design: an MCP tool that throws with content in its error text.
+    - A JS throw in `runCode` does not throw from `MultiTool.call`: the error is rendered as text. Thus the test reads the rendered text to prove the snippet threw.
+    - The MCP events (`mcpTransportDropped`, `mcpReconnectStarted`) occur only on a drop or a reconnect. The work of this test has neither, thus the span event check reads zero events today. It reads each event that a future change adds to the driven work.
+  timestamp: 2026-09-29T15:27:35.818133+00:00
+- actor: claude-code
+  id: 01m3pwrmv75qdkvfj45stnavf9
+  text: |-
+    Implementation notes:
+    - Red run (temporary bad attribute `span.attributes["temporary.bad.source"] = arguments.code` in `MultiTool.call`): `swift test --filter TelemetryContentSafetyTests` failed with 4 issues. 3 issues were the leaks of the bad attribute (`qzvSafetySourceMarker`, `qzvSafetyToolArgumentMarker`, `qzvSafetyErrorMarker` at `FoundationModelsMultitool.runCode.temporary.bad.source`). Thus the test catches content in a span attribute.
+    - The 4th issue was a real gap: the records `runCode snippet started/finished/ended with an error` of `JSCInterpreter` did not reach the capture. `MultiTool.dispatchRun` runs the interpreter on a GCD queue. It re-bound the metrics factory there (OTel 7), but not the logger. A host that binds `boundLogger` lost these records too. Fix: `MultiTool.dispatchRun` now reads `MultitoolTelemetry.logger` in the calling task and binds it again as `boundLogger` on the queue. `JSCInterpreter.run` now reads `MultitoolTelemetry.logger` before its own `DispatchQueue.sync` and gives it to `evaluate`, as it does for the metrics factory.
+    - Two runs did not reach a test because of compile errors (`Tool` and `Logger` are ambiguous with `MCP.Tool` and `os.Logger`). After these, `swift build --build-tests` ran before each test run.
+    - Green-state filtered run (bad attribute removed, before the `dispatchRun` fix): no leak, 1 issue (the snippet records gap above). After the fix, the full `swift test` passed, which includes this test.
+  timestamp: 2026-09-29T15:33:06.023543+00:00
+- actor: claude-code
+  id: 01m3pwrvjy28sxqanmbzk1hfxy
+  text: |-
+    ### implement — changed
+    - evidence: 4 files — Tests/FoundationModelsMultitoolTests/TelemetryContentSafetyTests.swift (new), Sources/FoundationModelsMultitool/Diagnostics/MultitoolTelemetry.swift (doc line naming the test as the proof), Sources/FoundationModelsMultitool/MultiTool.swift (`dispatchRun` binds the logger on the GCD queue), Sources/FoundationModelsMultitool/Interpreter/JSCInterpreter.swift (`run` gives the logger of the calling task to `evaluate`). `Package.swift` already linked `TelemetryTestSupport`. Red: `swift test --filter TelemetryContentSafetyTests` with the temporary bad attribute: 1 test failed, 4 issues (3 leaks of the bad attribute). `swift build --build-tests`: build complete, no warnings in the changed files. `swift test`: 1864 tests in 153 suites passed, 0 failures.
+    - next: review. Open question for the design: span events of this work are zero today (the MCP events occur only on a drop or a reconnect), and an error that `withSpan` records is not read by `TelemetryCapture`.
+  timestamp: 2026-09-29T15:33:12.926811+00:00
+- actor: claude-code
+  id: 01m3pwwpabqf6e12z6gyv4ytm0
+  text: |-
+    ### test — green
+    - evidence: The changed Swift files were touched (MultitoolTelemetry.swift, JSCInterpreter.swift, MultiTool.swift, TelemetryContentSafetyTests.swift). `swift build --build-tests` completed with 0 compiler warnings and 0 errors from this package. `swift test` ran 1864 tests in 153 suites: 1864 passed, 0 failed, 0 skipped. `swift build --package-path IntegrationTests --build-tests` completed with 0 compiler warnings and 0 errors. The live-model suite did not run. The only other messages were SwiftPM "disk I/O error" cached-manifest messages and "missing creator for mutated node ... mlx-swift_Cmlx.bundle". These messages are not from this package.
+    - next: Do the review step.
+  timestamp: 2026-09-29T15:35:18.603084+00:00
 depends_on:
 - 01M3MN9QX1TDARW8S19E390A6N
 - 01M3MN9YSGJ8N3R97GFTY1RC0A
 - 01M3MNAMK7626NA9DYJ4V9EG4P
 - 01M3MNAWNW3PAZ1N3G1VF3PKVJ
 - 01M3MNBF5PNAF9KFDZV77HYPT2
-position_column: todo
-position_ordinal: '8780'
+position_column: doing
+position_ordinal: '8180'
 title: 'OTel 8: add a content-safety test over the spans, log records and metrics of Multitool'
 ---
 ## What
 The design (2026-09-28): each package has a content-safety test that uses the shared test helper from FoundationModelsExtras. A span attribute, a log message, a log metadata value and a metric dimension must never carry tool arguments, tool output, JS source, embed input text or MCP payloads. Router's `SpanContentSafetyTests` is the model: it drives real work against an in-memory tracer, reads every value, and fails on any value that has the fixture's own content.
 
 **Upstream blocker (Extras board; it cannot be `depends_on` here):** Extras OTel B ^z6jqd9g (01M3MN8N9P4RPET2V5JZ6JQD9G), the content-safety helper in a new `TelemetryTestSupport` product. Do not start this task until it is on Extras `origin/main`.
-- [ ] `Package.swift`: link the `TelemetryTestSupport` product to the unit test target only.
-- [ ] `Tests/FoundationModelsMultitoolTests/TelemetryContentSafetyTests.swift` (new): with the Extras helper, drive work that uses unique marker strings as its content. The work must include:
+- [x] `Package.swift`: link the `TelemetryTestSupport` product to the unit test target only.
+- [x] `Tests/FoundationModelsMultitoolTests/TelemetryContentSafetyTests.swift` (new): with the Extras helper, drive work that uses unique marker strings as its content. The work must include:
   - a `runCode` call whose JS source, `tools.*` argument and return value each have a marker
   - a `searchTools` call with a marker in its intent
   - an MCP `tools/call` against `ScriptedServer` with markers in its arguments and result
   - a JS run that throws with a marker in the error text
   - a failed MCP call
-- [ ] Assert that no recorded span attribute, span event, log message, log metadata value or metric dimension value has any marker.
-- [ ] Add a line to the `MultitoolTelemetry` doc that names this test as the proof of the no-content rule, as `RouterTracing.swift` does.
+- [x] Assert that no recorded span attribute, span event, log message, log metadata value or metric dimension value has any marker.
+- [x] Add a line to the `MultitoolTelemetry` doc that names this test as the proof of the no-content rule, as `RouterTracing.swift` does.
 
 ## Acceptance Criteria
-- [ ] The test fails if any one of the tasks OTel 2, 3, 4, 5 or 7 puts content into telemetry. Show this one time with a temporary bad attribute, then remove it.
-- [ ] `swift build --build-tests` and `swift test` pass.
+- [x] The test fails if any one of the tasks OTel 2, 3, 4, 5 or 7 puts content into telemetry. Show this one time with a temporary bad attribute, then remove it.
+- [x] `swift build --build-tests` and `swift test` pass.
 
 ## Tests
-- [ ] `Tests/FoundationModelsMultitoolTests/TelemetryContentSafetyTests.swift`, as described above.
-- [ ] Run `swift build --build-tests && swift test`. Expected result: all tests pass.
+- [x] `Tests/FoundationModelsMultitoolTests/TelemetryContentSafetyTests.swift`, as described above.
+- [x] Run `swift build --build-tests && swift test`. Expected result: all tests pass.
 
 ## Workflow
 - Use `/tdd`. Write failing tests first, then do the implementation that makes them pass. #otel

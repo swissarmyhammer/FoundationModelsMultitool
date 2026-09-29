@@ -778,9 +778,10 @@ public struct MultiTool: Tool {
     /// flips it to `true`.
     ///
     /// The GCD queue has no task-local value. Thus this function reads the
-    /// metrics factory of the calling task first, and binds it again on the
-    /// queue, so that the interpreter records its run to the factory of the
-    /// `runCode` call.
+    /// logger and the metrics factory of the calling task first, and binds
+    /// them again on the queue, so that the interpreter writes its records to
+    /// the logger of the `runCode` call and records its run to the factory of
+    /// that call.
     private static func dispatchRun(
         code: String,
         installing: [HostFunction],
@@ -789,16 +790,19 @@ public struct MultiTool: Tool {
         cancelledBox: OSAllocatedUnfairLock<Bool>,
         continuation: CheckedContinuation<InterpreterResult, Error>
     ) {
+        let logger = MultitoolTelemetry.logger
         let metricsFactory = MetricsSystem.factory
         DispatchQueue.global(qos: .userInitiated).async {
             do {
-                let result = try withMetricsFactory(metricsFactory) {
-                    try interpreter.run(
-                        code: code,
-                        installing: installing,
-                        installingAsync: installingAsync,
-                        isCancelled: { cancelledBox.withLock { $0 } }
-                    )
+                let result = try MultitoolTelemetry.$boundLogger.withValue(logger) {
+                    try withMetricsFactory(metricsFactory) {
+                        try interpreter.run(
+                            code: code,
+                            installing: installing,
+                            installingAsync: installingAsync,
+                            isCancelled: { cancelledBox.withLock { $0 } }
+                        )
+                    }
                 }
                 continuation.resume(returning: result)
             } catch {

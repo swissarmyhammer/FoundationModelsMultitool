@@ -337,8 +337,10 @@ public final class JSCInterpreter: Interpreter {
         installingAsync: [AsyncHostFunction],
         isCancelled: @escaping @Sendable () -> Bool
     ) throws -> InterpreterResult {
-        // The worker queue has no task-local value, thus the factory of the
-        // calling thread is read here and given to the run.
+        // The worker queue has no task-local value, thus the logger and the
+        // metrics factory of the calling task are read here and given to the
+        // run.
+        let logger = MultitoolTelemetry.logger
         let metricsFactory = MetricsSystem.factory
         return try DispatchQueue(label: Self.queueLabel).sync {
             try Self.evaluate(
@@ -347,6 +349,7 @@ public final class JSCInterpreter: Interpreter {
                 installingAsync: installingAsync,
                 timeLimit: timeLimit,
                 isCancelled: isCancelled,
+                logger: logger,
                 metricsFactory: metricsFactory
             )
         }
@@ -506,8 +509,8 @@ public final class JSCInterpreter: Interpreter {
     /// outcome (return value, console lines, exception, watchdog timeout, or
     /// M10 external cancellation) to an `InterpreterResult` or thrown error.
     ///
-    /// Logs the run's start and its end (outcome + duration) through one
-    /// `MultitoolTelemetry.logger` that this call makes — plan.md M10: "at the seams — snippet start/end + duration." The
+    /// Logs the run's start and its end (outcome + duration) through
+    /// `logger` — plan.md M10: "at the seams — snippet start/end + duration." The
     /// records carry the size of the snippet, the duration and the type of
     /// an error. They never carry the JS source or the text of an error,
     /// because both can hold content.
@@ -521,10 +524,10 @@ public final class JSCInterpreter: Interpreter {
         installingAsync: [AsyncHostFunction],
         timeLimit: TimeInterval,
         isCancelled: @escaping @Sendable () -> Bool,
+        logger: Logging.Logger,
         metricsFactory: any MetricsFactory
     ) throws -> InterpreterResult {
         let start = ContinuousClock.now
-        let logger = MultitoolTelemetry.logger
         logger.log(
             .snippetStarted, level: .debug,
             metadata: [MultitoolTelemetry.LogMetadataKey.characterCount.rawValue: "\(code.count)"])

@@ -40,6 +40,15 @@
 /// and the library cannot know where that backend sends them. Identifiers,
 /// names, counts and sizes are safe. Content is not safe. Thus each key below
 /// names an identifier, a name, an outcome, a count or a size.
+///
+/// `TelemetryContentSafetyTests` is the proof of this rule. It drives a
+/// `runCode` call, a `tools.*` call, a JS run that throws, a `searchTools`
+/// call, an MCP call and a failed MCP call inside the `TelemetryCapture` of
+/// FoundationModelsExtras, with a unique marker as each input and output. It
+/// reads each span name, attribute and event, each log message and metadata
+/// value, and each metric name and dimension, and it fails on each of them
+/// that holds a marker. Each new span, log record or metric of the library
+/// must pass that test.
 enum MultitoolTelemetry {
     /// The label of each logger of the library target.
     static let logLabel = "FoundationModelsMultitool.log"
