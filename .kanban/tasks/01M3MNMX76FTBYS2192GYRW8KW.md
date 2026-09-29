@@ -1,6 +1,11 @@
 ---
 assignees:
 - claude-code
+comments:
+- actor: claude-code
+  id: 01m3n93hf9j0arb979dqtf5p8z
+  text: 'Fact from the ACPClient work (swift-otel 1.5.1), sent by the swissarmyhammer session on 2026-09-28: a graceful-shutdown timeout of swift-service-lifecycle ends in `fatalError`. Do not use it for the bounded flush. Use a bound of your own (ACPClient uses 2 seconds), for example a task group that races the flush against a sleep.'
+  timestamp: 2026-09-29T00:30:17.065368+00:00
 depends_on:
 - 01M3MNB7WG4TZCF2R4H9N1Q0FR
 position_column: todo

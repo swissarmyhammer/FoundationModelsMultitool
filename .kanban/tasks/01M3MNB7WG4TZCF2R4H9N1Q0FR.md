@@ -1,6 +1,15 @@
 ---
 assignees:
 - claude-code
+comments:
+- actor: claude-code
+  id: 01m3n93egk92v9zg7f7zxew9ep
+  text: |-
+    Facts from the ACPClient work (swift-otel 1.5.1), sent by the swissarmyhammer session on 2026-09-28:
+    - `OTel.bootstrap` can bootstrap logs and then fail on metrics or traces, and a second `LoggingSystem.bootstrap` stops the process. So bootstrap logging ONE time: use `OTel.makeLoggingBackend` with one `LoggingSystem.bootstrap`, and call `OTel.bootstrap` for traces and metrics only.
+    - Check `OTEL_SDK_DISABLED` case-insensitively before the bootstrap. When it is true, use the no-endpoint path.
+    - Correction to the reason in this task: the default swift-log handler writes to STDERR (`StreamLogHandler.standardError`), not to stdout. The explicit bootstrap and the test that no log line reaches stdout are still required, because stdout carries only the answers.
+  timestamp: 2026-09-29T00:30:14.035316+00:00
 depends_on:
 - 01M3MN95YYY2J02M1X6QC6BREE
 position_column: todo
