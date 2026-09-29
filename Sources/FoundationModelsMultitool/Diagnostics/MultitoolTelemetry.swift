@@ -1,0 +1,201 @@
+// The tasks OTel 2 to OTel 7 read these names. This task adds the vocabulary
+// before its readers, thus periphery must keep each declaration of the file.
+// periphery:ignore:all
+
+/// The telemetry vocabulary of the library target: the span names, the
+/// attribute keys, the metric names with their dimension keys, the log label
+/// and the log metadata keys.
+///
+/// Rule 3 of the OpenTelemetry design of 2026-09-28: each package keeps all of
+/// its telemetry names in one vocabulary file. No other source file of the
+/// library target writes a telemetry name as a string literal. The model is
+/// `RouterTelemetry` of FoundationModelsRouter.
+///
+/// Each name starts with the module name, `FoundationModelsMultitool.`, thus a
+/// name of this library stays apart from the names of the host application
+/// and of the other packages of the family. No two names are the same.
+/// `MultitoolTelemetryTests` reads each name and fails on a name without the
+/// prefix and on two equal names. A name here is part of the observable
+/// surface of the library: a dashboard, a query or an alert of a host can
+/// use it. Thus change a name only as a deliberate break.
+///
+/// The library uses the telemetry APIs only: `swift-distributed-tracing` for
+/// spans, `swift-log` for logs and `swift-metrics` for metrics. It bootstraps
+/// no backend. An executable bootstraps the backend. Until one does, each span
+/// goes to a no-op tracer, each logger writes through the default handler of
+/// swift-log, and each metric does nothing.
+///
+/// ## No content in the telemetry
+///
+/// A span attribute, a log message, a log metadata value and a metric
+/// dimension value must never carry:
+///
+/// - prompt text or response text,
+/// - tool arguments or tool output,
+/// - JS source,
+/// - embed input text,
+/// - MCP payloads.
+///
+/// A span and a log record leave the process through the backend of the host,
+/// and the library cannot know where that backend sends them. Identifiers,
+/// names, counts and sizes are safe. Content is not safe. Thus each key below
+/// names an identifier, a name, an outcome, a count or a size.
+enum MultitoolTelemetry {
+    /// The label of each logger of the library target.
+    static let logLabel = "FoundationModelsMultitool.log"
+
+    /// The name of each span that the library target opens.
+    ///
+    /// Each case names one call that can suspend for a long time. The span of
+    /// the mounted tool call itself is not in this list: FoundationModelsExtras
+    /// opens it with the name `FoundationModelsExtras.tool`.
+    enum SpanName: String, CaseIterable, Sendable {
+        /// One `runCode` call: `MultiTool.call(arguments:)`.
+        case runCode = "FoundationModelsMultitool.runCode"
+
+        /// One `searchTools` call: `SearchToolsTool.call(arguments:)`.
+        case searchTools = "FoundationModelsMultitool.searchTools"
+
+        /// One inner `tools.*` dispatch of a snippet:
+        /// `RunBinding.invoke(_:arguments:journalOp:)`.
+        case toolsDispatch = "FoundationModelsMultitool.tools.dispatch"
+
+        /// One `respond(to:)` call of a selection session:
+        /// `TracedAgentSession.respond(to:)`.
+        case agentSessionRespond = "FoundationModelsMultitool.agent_session.respond"
+
+        /// One `fork()` call of a selection session:
+        /// `TracedAgentSession.fork()`.
+        case agentSessionFork = "FoundationModelsMultitool.agent_session.fork"
+
+        /// One client call to a tool of an MCP server:
+        /// `MCPServer.call(name:arguments:)`.
+        case mcpClientCall = "FoundationModelsMultitool.mcp.call"
+    }
+
+    /// The key of each attribute that a span of the library target carries.
+    ///
+    /// A metric dimension that records the same fact uses the same key (see
+    /// ``MetricName/dimensionKeys``). Read the no-content rule of
+    /// ``MultitoolTelemetry`` before you add a key.
+    enum AttributeKey: String, CaseIterable, Sendable {
+        /// The model-facing name of a tool: `runCode`, `searchTools`, or the
+        /// `noun.verb` of an inner tool.
+        case toolName = "FoundationModelsMultitool.tool.name"
+
+        /// The verb of an inner `tools.<noun>.<verb>` call.
+        case verb = "FoundationModelsMultitool.tool.verb"
+
+        /// The journal operation of an inner call, when the call has one.
+        case operation = "FoundationModelsMultitool.tool.operation"
+
+        /// The noun of an inner `tools.<noun>.<verb>` call.
+        case noun = "FoundationModelsMultitool.tool.noun"
+
+        /// The name of an MCP server.
+        case serverName = "FoundationModelsMultitool.mcp.server_name"
+
+        /// How a call ended: for example `succeeded`, `failed`, `cancelled`,
+        /// `timedOut` or `threw`.
+        case outcome = "FoundationModelsMultitool.outcome"
+
+        /// The kind of a failure: for example `transport`, `timeout`,
+        /// `isError` or `protocol`.
+        case errorKind = "FoundationModelsMultitool.error.kind"
+
+        /// The completion token of the ambient tool call.
+        case completionToken = "FoundationModelsMultitool.tool.completion_token"
+
+        /// The nesting depth of a `runCode` call.
+        case depth = "FoundationModelsMultitool.run_code.depth"
+
+        /// The largest count of matches that a search can give.
+        case searchLimit = "FoundationModelsMultitool.search.limit"
+
+        /// The count of matches that a search gave.
+        case matchCount = "FoundationModelsMultitool.search.match_count"
+
+        /// The role of a selection session.
+        case sessionRole = "FoundationModelsMultitool.agent_session.role"
+
+        /// The size of a prompt, in characters.
+        case promptCharacters = "FoundationModelsMultitool.agent_session.prompt_characters"
+
+        /// The size of the instructions of a session, in characters.
+        case instructionCharacters = "FoundationModelsMultitool.agent_session.instruction_characters"
+
+        /// The size of the output of a tool call, in characters.
+        case outputCharacters = "FoundationModelsMultitool.tool.output_characters"
+    }
+
+    /// The name of each metric that the library target records.
+    ///
+    /// FoundationModelsExtras records the metrics of the mounted tool call
+    /// (`FoundationModelsExtras.tool.calls` and
+    /// `FoundationModelsExtras.tool.duration`). The metrics here count the
+    /// calls of the library itself, and each name starts with the prefix of
+    /// this module.
+    enum MetricName: String, CaseIterable, Sendable {
+        /// The counter of the calls to `runCode`, to `searchTools` and to each
+        /// inner `tools.*` verb.
+        case toolCalls = "FoundationModelsMultitool.tool.calls"
+
+        /// The timer of the calls that ``toolCalls`` counts.
+        case toolDuration = "FoundationModelsMultitool.tool.duration"
+
+        /// The counter of the failed calls to an MCP server.
+        case mcpServerErrors = "FoundationModelsMultitool.mcp.server.errors"
+
+        /// The counter of the restarts and the reconnects of an MCP server.
+        case mcpServerRestarts = "FoundationModelsMultitool.mcp.server.restarts"
+
+        /// The timer of each run of the JS interpreter.
+        case interpreterRunDuration = "FoundationModelsMultitool.interpreter.run.duration"
+
+        /// The keys of the dimensions of this metric, in order.
+        ///
+        /// Each value set of a dimension is small: tool names, server names,
+        /// outcomes and error kinds. No metric has a dimension for a request
+        /// id or a completion token, because those sets have no bound.
+        var dimensionKeys: [AttributeKey] {
+            switch self {
+            case .toolCalls, .toolDuration:
+                [.toolName, .outcome]
+            case .mcpServerErrors:
+                [.serverName, .errorKind]
+            case .mcpServerRestarts:
+                [.serverName]
+            case .interpreterRunDuration:
+                [.outcome]
+            }
+        }
+    }
+
+    /// The key of each log metadata value that no ``AttributeKey`` names.
+    ///
+    /// A log record that carries the fact of an attribute (for example the
+    /// tool name or the server name) uses the ``AttributeKey`` of that fact.
+    /// A log message is a constant text, and each variable value goes into
+    /// the metadata under a key. An error goes into the metadata as its type
+    /// and its code, never as its description, because a description can
+    /// carry content.
+    enum LogMetadataKey: String, CaseIterable, Sendable {
+        /// The type of an error.
+        case errorType = "FoundationModelsMultitool.error.type"
+
+        /// The code of an error.
+        case errorCode = "FoundationModelsMultitool.error.code"
+
+        /// The name of an MCP method, for example `tools/call`.
+        case methodName = "FoundationModelsMultitool.mcp.method"
+
+        /// The id of an MCP request.
+        case requestID = "FoundationModelsMultitool.mcp.request_id"
+
+        /// A size, in bytes.
+        case byteCount = "FoundationModelsMultitool.size.bytes"
+
+        /// A count of items.
+        case itemCount = "FoundationModelsMultitool.count.items"
+    }
+}

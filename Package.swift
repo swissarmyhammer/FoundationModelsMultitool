@@ -240,13 +240,9 @@ private let shellProducts: [Target.Dependency] = [
 /// machine with no SSH key resolves it. The organization name is the whole
 /// change from the upstream URL.
 ///
-/// The sdk depends on `swift-log` for its own logging. This package does NOT
-/// declare `swift-log`: it logs with `os.Logger` (see `MultiTool.swift`), and
-/// each ported MCP file does the same. `swift-log` reaches the build
-/// transitively. One file names one symbol of it: `StdioServerProcess.swift`
-/// wraps a `Transport`, and that protocol requires a `Logging.Logger`
-/// property, so the wrapper names the type to conform and logs nothing
-/// through it.
+/// The sdk depends on `swift-log` for its own logging. Its `Transport`
+/// protocol requires a `Logging.Logger` property. This package declares
+/// `swift-log` itself — see `loggingPackage`.
 private let mcpPackage = "swift-sdk"
 
 /// The products of `mcpPackage`, linked by the library target and the unit
@@ -257,6 +253,36 @@ private let mcpPackage = "swift-sdk"
 /// same way.
 private let mcpProducts: [Target.Dependency] = [
     .product(name: "MCP", package: mcpPackage)
+]
+
+/// The logging API package (apple/swift-log).
+///
+/// The OpenTelemetry design of 2026-09-28: a library of the family uses the
+/// telemetry APIs only — `swift-distributed-tracing`, `swift-log` and
+/// `swift-metrics`. It links no backend and it bootstraps none. An executable
+/// depends on `swift-otel` and bootstraps the exporters. Until one does, each
+/// logger writes through the default handler of swift-log, and each metric
+/// does nothing. `PackageManifestTests` reads this manifest and fails when a
+/// library target links a `swift-otel` product.
+///
+/// `Tracing` is not declared here. It reaches the library target through
+/// FoundationModelsExtras, which links it for the tool span. The version floor
+/// is the floor that Extras states, thus the two packages resolve one version.
+private let loggingPackage = "swift-log"
+
+/// The metrics API package (apple/swift-metrics). See `loggingPackage` for
+/// the API-only rule. The version floor is the floor that Extras states.
+private let metricsPackage = "swift-metrics"
+
+/// The products of `loggingPackage` and `metricsPackage`, linked by the
+/// library target below.
+///
+/// `MultitoolTelemetry` holds the log label, the log metadata keys, the metric
+/// names and the dimension keys that these APIs carry. `shellProducts`,
+/// `mcpProducts` and `webProducts` group their own products the same way.
+private let telemetryProducts: [Target.Dependency] = [
+    .product(name: "Logging", package: loggingPackage),
+    .product(name: "Metrics", package: metricsPackage),
 ]
 
 /// The time-sortable identifier package (yaslab/ULID.swift).
@@ -512,13 +538,19 @@ let package = Package(
         // The package of `ulidProducts` — see `ulidPackage`. It stands under
         // an organization of its own, so neither helper above fits it.
         .package(url: "https://github.com/yaslab/\(ulidPackage).git", from: "1.3.1"),
+        // The packages of `telemetryProducts` — see `loggingPackage`. They
+        // stand under an organization of their own, so neither helper above
+        // fits them.
+        .package(url: "https://github.com/apple/\(loggingPackage).git", from: "1.15.1"),
+        .package(url: "https://github.com/apple/\(metricsPackage).git", from: "2.11.0"),
     ],
     targets: [
         // Links `shellProducts` for the shell capability this library takes
         // over from `../FoundationModelsShelltool`, and `mcpProducts` for the
         // MCP capability it takes over from `../FoundationModelsMCP`, and
         // `webProducts` for the HTML parser of the web capability, and
-        // `ulidProducts` for the identifier of each elicitation.
+        // `ulidProducts` for the identifier of each elicitation, and
+        // `telemetryProducts` for the logging and metrics APIs.
         //
         // It does NOT link Router. FoundationModelsExtras owns the tool
         // hosting — `ToolContext`, `BackgroundTool`, `ToolMount`,
@@ -532,7 +564,7 @@ let package = Package(
             dependencies: [
                 .product(name: metadataRegistryDependencyName, package: metadataRegistryDependencyName),
                 .product(name: extrasDependencyName, package: extrasDependencyName),
-            ] + shellProducts + mcpProducts + webProducts + ulidProducts,
+            ] + shellProducts + mcpProducts + webProducts + ulidProducts + telemetryProducts,
             path: "\(sourcesPath)\(packageName)"
         ),
         // M9: the sample CLI's whole implementation — plan.md "M9 — Sample CLI.
@@ -570,12 +602,9 @@ let package = Package(
             // the built binary directly.
         ),
         // The scripted MCP test server — see `testServerTargetName`. Links
-        // `mcpProducts` for the sdk's `Server`, which is what it wraps. It does
-        // NOT declare `swift-log`, on purpose: `FlakyConnectTransport` names
-        // `Logging.Logger` because the `Transport` protocol requires the
-        // property, and the transitive `swift-log` the sdk brings satisfies
-        // the import, exactly as `StdioServerProcess.swift` relies on — see
-        // `mcpPackage` above.
+        // `mcpProducts` for the sdk's `Server`, which is what it wraps.
+        // `FlakyConnectTransport` names `Logging.Logger` because the
+        // `Transport` protocol requires the property.
         //
         // It links `testConcurrencyTargetName` for the one gate
         // `LoopbackHTTPServer` holds the loopbacks of the process with.

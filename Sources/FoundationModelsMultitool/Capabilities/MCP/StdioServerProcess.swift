@@ -56,8 +56,8 @@
 // protocol requires `var logger: Logging.Logger`, so the private transport
 // below must name that type to conform. It hands on the logger of the inner
 // `StdioTransport` and writes nothing of its own; this file logs through
-// nothing else. The manifest still declares no `swift-log` product — see
-// `mcpPackage` in `Package.swift`.
+// nothing else. The manifest declares the `swift-log` product — see
+// `loggingPackage` in `Package.swift`.
 
 import Foundation
 import FoundationModelsExtras
