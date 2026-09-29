@@ -74,10 +74,26 @@ comments:
     - evidence: Iteration 2. We touched the changed Swift files. Then `swift build --build-tests` completed with 0 compiler warnings and 0 errors. `swift test` (one run, to the end): "Test run with 1872 tests in 154 suites passed". 0 failed, 0 skipped. The XCTest part executed 0 tests with 0 failures. `swift build --package-path IntegrationTests --build-tests` completed with 0 compiler warnings and 0 errors. We did not run the live-model suite. The only other messages were SwiftPM "disk I/O error" messages for the manifest cache and "missing creator for mutated node ... mlx-swift_Cmlx.bundle". These messages do not come from this package.
     - next: Do the review step.
   timestamp: 2026-09-29T16:27:35.436951+00:00
+- actor: claude-code
+  id: 01m3q02qnzrtprams7sxkxahs7
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (df681bf): 0 findings (confirmed 0, refuted 0, attempted 7, failed 0). The 4 items of "Review Findings (2026-09-29 11:10)" are all checked. The declined-item notes are about 3 test files that this commit moved to the integration package; they are not in the tree at their old paths.
+    - next: none. The task is in done.
+  timestamp: 2026-09-29T16:31:02.335498+00:00
+- actor: claude-code
+  id: 01m3q036960emb9dpjnc25ktpj
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — signal suite and OTLP collector moved to IntegrationTests; TestPoll shared in MultitoolTestSupport; collector numbers named; CI builds multitool-cli for the integration job
+    - test: green — swift test 1872 tests in 154 suites passed (one run); IntegrationTests build passed; CLISignalExit 1 test (2 cases) passed in its one integration run
+    - commit: df681bf
+    - review: clean — 0 findings; the 4 prior findings checked
+  timestamp: 2026-09-29T16:31:17.286049+00:00
 depends_on:
 - 01M3MNB7WG4TZCF2R4H9N1Q0FR
-position_column: doing
-position_ordinal: '8180'
+position_column: done
+position_ordinal: ffff8480
 title: 'OTel 6b: multitool-cli shuts down OTel on every exit path, including SIGTERM and SIGINT, so the last span is exported'
 ---
 ## What

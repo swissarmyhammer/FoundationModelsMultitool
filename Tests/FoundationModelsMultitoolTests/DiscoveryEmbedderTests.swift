@@ -26,7 +26,8 @@ import Testing
 /// it was handed.
 @Suite("Discovery embedder")
 struct DiscoveryEmbedderTests {
-    /// A two-entry catalog, so a batch of "every block" is visibly a batch.
+    /// A two-entry catalog, so a batch of "every summary block" is visibly a
+    /// batch.
     private static func makeRegistry() throws -> MultiTool.Registry {
         try MultiTool.Builder().addTool(CitiesTool()).addTool(TempTool()).buildRegistry()
     }
@@ -37,7 +38,7 @@ struct DiscoveryEmbedderTests {
         MultiTool.RegistryBundleShape(bindsSearchTools: true, discovery: .configured(selection: nil), embedder: embedder)
     }
 
-    @Test("the discovery searcher embeds every catalog block one time at its first search, then each query once")
+    @Test("the discovery searcher embeds every catalog summary block one time at its first search, then each query once")
     func discoverySearcherEmbedsTheCatalogOnceAndEachQueryOnce() async throws {
         let registry = try Self.makeRegistry()
         let embedder = RecordingEmbedder()
@@ -47,9 +48,11 @@ struct DiscoveryEmbedderTests {
         _ = try await searcher.search(intent: "trip cities", limit: 1)
         _ = try await searcher.search(intent: "temperature", limit: 1)
 
-        // One batch of every rendered block, in catalog order, and never a
+        // One batch of every summary block, in catalog order, and never a
         // second one: the second search embeds its query and nothing else.
-        #expect(embedder.batches == [registry.surface.entries.map(\.block), ["trip cities"], ["temperature"]])
+        // The summary block is the embedded text of each entry (see
+        // `APISurface+SearchableMetadata.swift`).
+        #expect(embedder.batches == [registry.surface.entries.map(\.summaryBlock), ["trip cities"], ["temperature"]])
     }
 
     @Test("the hint searcher embeds the catalog and the guess through the same embedder")
@@ -60,7 +63,7 @@ struct DiscoveryEmbedderTests {
 
         _ = try await bundle.hintSearcher.search(intent: "get itinerary", limit: 1)
 
-        #expect(embedder.batches == [registry.surface.entries.map(\.block), ["get itinerary"]])
+        #expect(embedder.batches == [registry.surface.entries.map(\.summaryBlock), ["get itinerary"]])
     }
 
     @Test("a bundle built with no embedder embeds nothing and still answers")
@@ -96,11 +99,12 @@ struct DiscoveryEmbedderTests {
         let nextBundle = MultiTool.RegistryBundle(registry: registry, shape: Self.makeShape(embedder: embedder))
         _ = try await #require(nextBundle.discoverySearcher).search(intent: "trip cities", limit: 1)
 
-        // The catalog block batch, two times and never three: one per bundle.
-        // No query batch at all — with no entry embedded, the retrieval tier
-        // skips the cosine signal instead of embedding a query it cannot use.
-        let blocks = registry.surface.entries.map(\.block)
-        #expect(embedder.batches == [blocks, blocks])
+        // The catalog summary-block batch, two times and never three: one per
+        // bundle. No query batch at all — with no entry embedded, the
+        // retrieval tier skips the cosine signal instead of embedding a query
+        // it cannot use.
+        let summaryBlocks = registry.surface.entries.map(\.summaryBlock)
+        #expect(embedder.batches == [summaryBlocks, summaryBlocks])
     }
 
     @Test("makeSessionToolsAndStaging takes the host's embedder and still mounts a searchTools that answers")
@@ -116,6 +120,6 @@ struct DiscoveryEmbedderTests {
         #expect(feedback.contains(entry.block))
         // The first batch is the catalog, so the mounted searcher ranked with
         // the host's embedder and not with a copy of it.
-        #expect(embedder.batches.first == registry.surface.entries.map(\.block))
+        #expect(embedder.batches.first == registry.surface.entries.map(\.summaryBlock))
     }
 }

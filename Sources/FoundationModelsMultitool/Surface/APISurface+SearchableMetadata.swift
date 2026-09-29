@@ -13,16 +13,20 @@ import FoundationModelsMetadataRegistry
 /// `descriptor.source` with its embedded `@example` call qualified to the
 /// entry's fully-qualified `path` (see `Entry.block`/`Entry.qualify(_:)`)
 /// — the same text `SearchToolsTool` splices, verbatim, into the main agent's
-/// transcript for every selected entry, and the text the retrieval tier
-/// tokenizes and embeds.
+/// transcript for every selected entry. The keyword signals (BM25 and the
+/// trigram index) also read this text, through the protocol default of
+/// `renderIndexedText(from:)`.
 ///
-/// `renderSummaryBlock()` is `summaryBlock`: the same banner, then the
-/// tool's description alone. The registry seeds the selection tier's prefix
-/// from this text (`MetadataIndex.summaryBlock(forID:)`), so the forked
-/// selection session reads one description per tool and no signature text,
-/// while the main session still gets the full block of each selected id.
+/// `renderEmbeddedText(from:)` is `summaryBlock`: the embedder reads the
+/// banner and the description of the tool, and no signature text.
 ///
-/// ## Why the retrieval tier reads the full block, measured
+/// `renderSummaryBlock()` is `summaryBlock` too. The registry seeds the
+/// selection tier's prefix from this text
+/// (`MetadataIndex.summaryBlock(forID:)`), so the forked selection session
+/// reads one description per tool and no signature text, while the main
+/// session still gets the full block of each selected id.
+///
+/// ## Why the embedder reads the description, measured
 ///
 /// Card `^0z0te3n` gave the selection prompt the description alone and left
 /// the retrieval half at the protocol default, so the keyword index and the
@@ -33,17 +37,25 @@ import FoundationModelsMetadataRegistry
 /// same nine-entry files-and-shell surface, the same embedder and the same
 /// twenty-five queries — the ten of card `^zqz1zan` and the fifteen
 /// held-out queries of card `^kn9ay20` — with the selection tier switched
-/// off, so the ranking is the retrieval tier's alone. Measured 2026-09-10,
-/// and repeated: nothing on this path samples, so both runs printed the
-/// same numbers to the digit.
+/// off, so the ranking is the retrieval tier's alone. The setting names the
+/// keyword text first and the embedded text second.
+///
+/// The first measurement, on 2026-09-10, is not valid. The Router batch
+/// embed then gave every text of a batch except the longest a pad token in
+/// its pooled vector (Router card `^nmmnn7k`, fixed in FoundationModelsRouter
+/// 2a79f92), so the cosine signal of each setting measured that defect. Card
+/// `^a9ketxt` measured again with the fixed embedder: one run on 2026-09-28
+/// (Router 2a79f92) and one run on 2026-09-29 (Router f497700). Nothing on
+/// this path samples, and the two runs printed the same numbers to the
+/// digit:
 ///
 ///   setting                  group          rank 1   top 3   mean best
 ///   block/block              agentSurface     9/10   10/10        1.10
-///   block/block              heldOut         10/15   13/15        1.87
+///   block/block              heldOut          9/15   14/15        1.87
 ///   description/description  agentSurface     9/10   10/10        1.10
-///   description/description  heldOut          8/15   14/15        1.80
+///   description/description  heldOut         11/15   14/15        1.60
 ///   block/description        agentSurface    10/10   10/10        1.00
-///   block/description        heldOut          6/15   12/15        2.13
+///   block/description        heldOut         11/15   14/15        1.67
 ///
 /// "rank 1" counts the queries whose first answer is a path a reader
 /// declared correct, "top 3" the queries that hold one in the first three
@@ -51,36 +63,39 @@ import FoundationModelsMetadataRegistry
 /// Every declared path of every query ranked somewhere in all three
 /// settings, so no setting lost a query outright.
 ///
-/// **The choice: the full block, for the keyword index and the embedder
-/// alike — the shipped conformance below, unchanged.** The card suspected
-/// the embedder was the weak half, because a vector of a description plus a
-/// TypeScript signature is not a vector of what the tool does. The
-/// held-out group refutes that: swapping the embedder alone to the
-/// description is the worst of the three settings there, on all three
-/// counts (6 against 10 at rank 1, 12 against 13 in the top three, a mean
-/// of 2.13 against 1.87). It wins only on the ten queries a coding agent
-/// wrote while hunting for these very tools, which are thick with the
-/// words the signature carries. The group written from a task description
-/// alone is the one that says anything about a query nobody has seen, and
-/// there the split loses.
+/// **The choice: the full block for the keyword signals, and the summary
+/// block for the embedder — the `block/description` setting.** The reasons:
 ///
-/// The description-for-both setting is the one that reads a little better
-/// on the held-out group (14 in the top three against 13, a mean of 1.80
-/// against 1.87), and it costs half as much to embed: the nine blocks are
-/// 18,720 characters against 9,057 characters of summary block. It is
-/// still not taken, for a reason no ranking can outweigh. `renderBlock()`
-/// holds three jobs at once in this registry — the keyword text, the
-/// embedded text, and the text `SearchToolsTool` splices verbatim into the
-/// main session — so a consumer cannot narrow the retrieval halves without
-/// also stripping the signature from the text the main model is handed,
-/// which is exactly what it needs to write the call. The gain is inside
-/// one rank place; the loss would be the call site.
+/// - The embedder must read the description. The full block for the
+///   embedder (`block/block`) is the worst setting of the three on the
+///   held-out group: 9 of 15 at rank 1 against 11, and a mean of 1.87
+///   against 1.60 and 1.67. It is not better than `block/description` on any
+///   count of either group. The 2026-09-10 table said the opposite, and that
+///   was the padding defect.
+/// - The keyword signals keep the full block. `block/description` and
+///   `description/description` are equal on the top-3 count of both groups.
+///   Over all twenty-five queries, `block/description` puts 21 queries at
+///   rank 1 against 20, and both have a mean best of 1.40 (35 places over 25
+///   queries). `block/description` also puts 38 of the 45 declared paths in
+///   the first three places, against 36. The held-out mean of
+///   `description/description` is better by one place on one query, and
+///   that is smaller than the agent-surface difference in the other
+///   direction. A query that names a parameter or a word of the signature
+///   finds it only in the full block.
+/// - The embedder reads less text. The nine blocks are 18,956 characters
+///   against 9,198 characters of summary block, so the one catalog embed at
+///   the first search is approximately half as large.
 ///
-/// So the registry, not this file, is where a different answer would have
-/// to start, and registry card `^kh2ttmm` asks for it: one text for the
-/// verbatim splice, and seams for the keyword text and the embedded text
-/// apart from it. Until those seams exist, this conformance is the whole
-/// of the decision, and it is now a measured one rather than a default.
+/// The 2026-09-10 text kept the full block for the embedder also because
+/// `renderBlock()` then held three jobs at once — the keyword text, the
+/// embedded text and the verbatim splice. Registry card `^kh2ttmm` added
+/// `renderIndexedText(from:)` and `renderEmbeddedText(from:)`, so this
+/// conformance changes the embedded text alone, and `SearchToolsTool` still
+/// splices the full block, with the signature the main model needs to write
+/// the call.
+///
+/// `MultiTool.RegistryBundle/hintSearcher` ranks over the same entries, so
+/// the hint tier also embeds the summary block.
 extension APISurface.Entry: SearchableMetadata {
     /// This entry's fully-qualified `tools.*` call path, used as its
     /// unique identifier within the catalog.
@@ -88,6 +103,14 @@ extension APISurface.Entry: SearchableMetadata {
 
     /// The rendered content block for this entry.
     public func renderBlock() -> String { block }
+
+    /// The text the embedder embeds for this entry: the banner and the
+    /// description, with no signature text.
+    ///
+    /// - Parameter block: this entry's `renderBlock()` output. The summary
+    ///   block is not derived from it, so it is not read.
+    /// - Returns: ``summaryBlock``.
+    public func renderEmbeddedText(from block: String) -> String { summaryBlock }
 
     /// The banner and the description of this entry, for the selection
     /// prompt.

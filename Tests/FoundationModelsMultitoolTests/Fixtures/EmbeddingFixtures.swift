@@ -5,10 +5,10 @@ import os
 /// and answers one constant vector per text.
 ///
 /// The batches are the reading: the registry's first-search catch-up embeds
-/// a catalog as ONE batch of every rendered block, and a search embeds the
-/// query as a batch of one. So the recorded batches say what was embedded, in
-/// what grouping, and how many times — which is what a test of the embed
-/// catch-up asserts on.
+/// a catalog as ONE batch of the embedded text of each entry, and a search
+/// embeds the query as a batch of one. So the recorded batches say what was
+/// embedded, in what grouping, and how many times — which is what a test of
+/// the embed catch-up asserts on.
 ///
 /// `final class ... Sendable` for the same reason as `ScriptedAgentSession`:
 /// `embed(_:)` records across `await` boundaries, behind an

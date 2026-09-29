@@ -10,7 +10,7 @@ import Testing
 /// time for each of the three settings, and then makes one query embed for
 /// each of the twenty-five queries of each setting. Nothing here generates,
 /// so the whole run is one model load and 78 embed calls. Measured on a warm
-/// machine on 2026-09-10, all of it took 3.4 s. Ten minutes stands far over
+/// machine on 2026-09-29, all of it took 4.8 s. Ten minutes stands far over
 /// that and over a cold load, and a run that reaches it is parked rather
 /// than slow.
 private let retrievalTextTimeLimitMinutes = 10
@@ -33,8 +33,8 @@ private let retrievalTextFirstPlace = 1
 
 /// How many places after the point each printed mean carries.
 ///
-/// Two places separate the settings — the 2026-09-10 measurement read means of
-/// 1.80, 1.87 and 2.13 on the held-out group — and a third place would only
+/// Two places separate the settings — the 2026-09-29 measurement read means of
+/// 1.60, 1.67 and 1.87 on the held-out group — and a third place would only
 /// print noise, because the ranks behind the mean are whole numbers.
 private let meanBestRankPlacesAfterThePoint = 2
 
@@ -42,36 +42,42 @@ private let meanBestRankPlacesAfterThePoint = 2
 /// with a declared-correct path in the first ``retrievalTextTopPlaces``
 /// places.
 ///
-/// The 2026-09-10 measurement read 10 of 10, and this level holds that
-/// reading. See ``GradedDiscoveryGroup/shippedTopPlaceLevel`` for why a level
-/// of this kind may be raised and never lowered.
+/// The 2026-09-29 measurement of the shipped `block/description` setting read
+/// 10 of 10, and this level holds that reading. See
+/// ``GradedDiscoveryGroup/shippedTopPlaceLevel`` for why a level of this kind
+/// may be raised and never lowered.
 private let shippedAgentSurfaceTopPlaceLevel = 10
 
 /// How many of the fifteen held-out queries the shipped setting must answer
 /// with a declared-correct path in the first ``retrievalTextTopPlaces``
 /// places.
 ///
-/// The 2026-09-10 measurement read 13 of 15, and this level holds that
-/// reading. See ``GradedDiscoveryGroup/shippedTopPlaceLevel`` for why a level
-/// of this kind may be raised and never lowered.
-private let shippedHeldOutTopPlaceLevel = 13
+/// The 2026-09-29 measurement of the shipped `block/description` setting read
+/// 14 of 15, and this level holds that reading. The earlier level of 13 was
+/// the 2026-09-10 reading, which the Router padding defect made. See
+/// ``GradedDiscoveryGroup/shippedTopPlaceLevel`` for why a level of this kind
+/// may be raised and never lowered.
+private let shippedHeldOutTopPlaceLevel = 14
 
 /// Which text each half of the retrieval tier reads.
 ///
-/// The registry gives one `renderBlock()` to both halves, so a setting that
-/// reads two different texts needs an instrument here — see
-/// ``SubstitutingTextEmbedding`` — and never a mechanism in this package.
-/// Card `^kvefc5z` names these three and no others.
+/// The suite presents each setting to the registry through
+/// ``RetrievalTextEntry`` and ``SubstitutingTextEmbedding``, and never
+/// through the conformance of `APISurface.Entry`. Thus every setting reads
+/// the same way whatever the package ships. Card `^kvefc5z` names these
+/// three and no others.
 private enum RetrievalTextSetting: String, CaseIterable, Sendable {
 
     /// The full block for keyword ranking and for the embedder. What the
-    /// package ships, and what the protocol default gives.
+    /// package shipped before card `^a9ketxt`, and what the protocol defaults
+    /// give.
     case blockBoth = "block/block"
 
     /// The banner and the description alone for both halves.
     case descriptionBoth = "description/description"
 
     /// The full block for keyword ranking, the description for the embedder.
+    /// What the package ships since card `^a9ketxt`.
     case blockThenDescription = "block/description"
 
     /// The text this setting gives the keyword half for `entry`.
@@ -106,14 +112,14 @@ private enum RetrievalTextSetting: String, CaseIterable, Sendable {
 ///
 /// The other two are instruments. A level on an instrument would hold the
 /// package to a path it does not take.
-private let shippedRetrievalTextSetting = RetrievalTextSetting.blockBoth
+private let shippedRetrievalTextSetting = RetrievalTextSetting.blockThenDescription
 
 /// One catalog entry presented to the registry with the text one setting
 /// gives the keyword half.
 ///
-/// The registry indexes and embeds whatever `renderBlock()` answers, so this
-/// wrapper is how a setting changes the keyword text without touching
-/// `APISurface.Entry`'s own conformance, which card `^0z0te3n` settled.
+/// This wrapper overrides `renderBlock()` alone, so the protocol defaults
+/// make the registry index and embed that same text. Thus the conformance of
+/// `APISurface.Entry` has no effect on what a setting measures.
 private struct RetrievalTextEntry: SearchableMetadata {
 
     /// The catalog entry behind this item.
@@ -133,11 +139,12 @@ private struct RetrievalTextEntry: SearchableMetadata {
 
 /// An embedder that swaps one text for another before it embeds.
 ///
-/// This is the measurement instrument of the `block/description` setting,
-/// and it is deliberately not a mechanism this package ships. The registry
-/// hands the embedder the same text it indexes, so the only way to embed a
-/// different text is to swap it on the way in. A text with no entry in
-/// ``substitutions`` — every query is one — travels unchanged.
+/// This is the measurement instrument of the `block/description` setting.
+/// ``RetrievalTextEntry`` makes the registry embed the same text it indexes,
+/// so this instrument swaps the text on the way in. The package itself
+/// ships this setting through `renderEmbeddedText(from:)`, not through this
+/// type. A text with no entry in ``substitutions`` — every query is one —
+/// travels unchanged.
 private struct SubstitutingTextEmbedding: TextEmbedding {
 
     /// The embedder every call travels to.
@@ -209,7 +216,7 @@ private struct GradedDiscoveryGroup: Sendable {
 ///
 /// Both lists are taken from the suites that own them — the ten of card
 /// `^zqz1zan` and the fifteen of card `^kn9ay20` — so no query is written
-/// twice. The levels are the 2026-09-10 measurement of the shipped setting,
+/// twice. The levels are the 2026-09-29 measurement of the shipped setting,
 /// printed as `bestRankTopThree` on each closing line.
 private let retrievalTextGroups = [
     GradedDiscoveryGroup(
@@ -501,9 +508,10 @@ private func format(_ value: Double?) -> String {
 /// Prints how long the two texts of each entry are, over the whole surface.
 ///
 /// The block total is the size of the one embed batch a first search pays
-/// today, and the summary total is what it would pay if the embedder read
-/// the description. That is the cost half of the question card `^kvefc5z`
-/// asks.
+/// when the embedder reads the full block, and the summary total is the size
+/// it pays when the embedder reads the description, as the package ships
+/// since card `^a9ketxt`. That is the cost half of the question card
+/// `^kvefc5z` asks.
 ///
 /// - Parameter entries: the catalog entries of the mounted surface.
 private func reportTextSizes(of entries: [APISurface.Entry]) {

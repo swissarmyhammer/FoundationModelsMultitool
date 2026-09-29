@@ -78,6 +78,25 @@ struct APISurfaceSearchableMetadataTests {
         }
     }
 
+    @Test("renderIndexedText(from:) is the full block, so BM25 and the trigram index read the signature")
+    func indexedTextIsTheFullBlock() throws {
+        let entry = try Self.githubCreateIssueEntry()
+
+        #expect(entry.renderIndexedText(from: entry.renderBlock()) == entry.block)
+    }
+
+    @Test("renderEmbeddedText(from:) is the summary block, so the embedder reads the banner and the description only")
+    func embeddedTextIsTheSummaryBlock() throws {
+        let entry = try Self.githubCreateIssueEntry()
+
+        let embedded = entry.renderEmbeddedText(from: entry.renderBlock())
+
+        #expect(embedded == entry.summaryBlock)
+        for signatureText in Self.signatureOnlyTexts {
+            #expect(!embedded.contains(signatureText), "embedded text holds \(signatureText): \(embedded)")
+        }
+    }
+
     @Test("a MetadataSearcher over a real built surface ranks the expected tool first for a keyword query")
     func retrievalSearchRanksExpectedToolFirst() async throws {
         let surface = try MultiTool.Builder()

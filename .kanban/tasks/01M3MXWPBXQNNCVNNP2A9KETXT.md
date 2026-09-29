@@ -1,8 +1,78 @@
 ---
 assignees:
 - claude-code
-position_column: todo
-position_ordinal: '8980'
+comments:
+- actor: claude-code
+  id: 01m3q0dcbtey3wza1q6xmy7f6e
+  text: |-
+    Measurement and decision (2026-09-29).
+
+    - Router in both Package.resolved files: f497700 (has the padding fix of 2a79f92). Registry: 32288c5.
+    - One live run: `swift test --package-path IntegrationTests --no-parallel --filter RetrievalTextSurfaceDiscoveryTests` — 1 test passed, 4.8 s. The figures are the same to the digit as the 2026-09-28 run in this card (Router 2a79f92). These two runs are the "2 runs" of the card. The user rule forbids a second run of a live suite in this session.
+    - Figures (rank 1 / top 3 / mean best):
+      - block/block: agentSurface 9/10, 10/10, 1.10; heldOut 9/15, 14/15, 1.87
+      - description/description: agentSurface 9/10, 10/10, 1.10; heldOut 11/15, 14/15, 1.60
+      - block/description: agentSurface 10/10, 10/10, 1.00; heldOut 11/15, 14/15, 1.67
+      - declaredTopThree: block/block 21+17, description/description 19+17, block/description 21+17
+      - text size: blockCharacters=18956, summaryCharacters=9198
+    - Discovery: registry card ^kh2ttmm (registry a33ecaf) added `renderIndexedText(from:)` and `renderEmbeddedText(from:)`. The 2026-09-10 reason to keep the full block ("renderBlock() holds three jobs, no seam") is not true now.
+    - Decision: block/description. The embedder reads `summaryBlock`; the keyword signals keep the full block; `SearchToolsTool` still splices the full block. Reasons: block/block is the worst setting on heldOut and is not better than block/description on any count. block/description and description/description are equal on top 3 in both groups and on the mean over all 25 queries (1.40); block/description has 21 rank-1 queries against 20 and 38 declared paths in the top 3 against 36. The embed batch is approximately half as large.
+    - Blast radius: `MultiTool.RegistryBundle.hintSearcher` ranks over the same entries, so the hint tier also embeds the summary block now. The live suites that use the discovery embedder (UnknownToolHintLiveTests, SearchThenCallTests, OverBudgetSurfaceDiscoveryTests, NoDescriptionSurfaceDiscoveryTests, WebResearchScenarioTests, ShellBackgroundTests, SelectionForkPerCallTests) were not run in this step.
+  timestamp: 2026-09-29T16:36:51.194326+00:00
+- actor: claude-code
+  id: 01m3q0dv80bgbdwzwh7hb0cnyj
+  text: |-
+    ### implement — changed
+    - evidence: 5 files — Sources/FoundationModelsMultitool/Surface/APISurface+SearchableMetadata.swift (new `renderEmbeddedText(from:)` returns `summaryBlock`; new 2026-09-29 table and reasons), IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/RetrievalTextSurfaceDiscoveryTests.swift (shipped setting = blockThenDescription; heldOut level 13 -> 14; dates and docs), Tests/FoundationModelsMultitoolTests/APISurfaceSearchableMetadataTests.swift (2 new tests: indexed text is the block, embedded text is the summary block), Tests/FoundationModelsMultitoolTests/DiscoveryEmbedderTests.swift (catalog embed batches are summary blocks), Tests/FoundationModelsMultitoolTests/Fixtures/EmbeddingFixtures.swift (doc). Live measurement: 1 run of `swift test --package-path IntegrationTests --no-parallel --filter RetrievalTextSurfaceDiscoveryTests` BEFORE the code change: 1 test passed; figures equal to the 2026-09-28 run. `swift test` (root): 1874 tests in 154 suites passed, 0 source warnings (only SwiftPM "disk I/O error" manifest-cache warnings from the environment). `swift build --build-tests --package-path IntegrationTests`: Build complete, 0 warnings.
+    - next: test step must run `swift test --package-path IntegrationTests --no-parallel --filter RetrievalTextSurfaceDiscoveryTests` with the new shipped setting and level (expected 10/10 and 14/15), and the live suites that use the discovery embedder, because the hint tier and searchTools now embed the summary block. Then review.
+  timestamp: 2026-09-29T16:37:06.432425+00:00
+- actor: claude-code
+  id: 01m3q3wpe0zvwm9wpetpv3tkvp
+  text: |-
+    ### test — red
+    - evidence:
+      - `swift build --build-tests` (after a touch of the 5 changed Swift files): Build complete. 0 compiler warnings from files of this package. 0 errors. Only the known SwiftPM manifest-cache and mlx-swift_Cmlx.bundle messages.
+      - `swift test` (one run): 1874 tests in 154 suites passed, BUT the run took 1840.310 s (a usual run is about 40 s). One test hung: "a run registers its child while it runs, and deregisters it at the end" (`runRegistersTheChildDuringExecutionAndDeregistersAfterCompletion`), Tests/FoundationModelsMultitoolTests/ShellRunnerTests.swift:730. The test waited at `_ = try await runTask.value` (ShellRunnerTests.swift:747) after `try openGate(gate)` (line 746). The gated child `/bin/sh -c "echo one; cat gate > /dev/null"` (pid 43365) and its `cat gate` (pid 43369) stayed alive for 30 minutes. `lsof` showed `cat` with the FIFO `gate` open for read, and no process with the FIFO open for write. Thus the write-open-then-close of `openGate` did not release `cat` (a FIFO open/close race on macOS: the writer closed before the blocked reader woke). I sent SIGKILL to `cat` (pid 43369) to let this one run end and report the other tests. I did not run the tests again. A hang is a failed test. This hang is in the shell-runner test and not in the changed discovery code, but it makes the step red.
+      - `swift build --package-path IntegrationTests --build-tests`: Build complete. 0 compiler warnings from files of this package.
+      - `swift test --package-path IntegrationTests --no-parallel --filter RetrievalTextSurfaceDiscoveryTests`: 1 test in 1 suite passed after 4.624 s. Live figures (setting=keyword/embedded):
+        - block/block agentSurface: queries=10 bestRankOne=9 bestRankTopThree=10 meanBestRank=1.10 declaredRanked=23/23 declaredTopThree=21
+        - block/block heldOut: queries=15 bestRankOne=9 bestRankTopThree=14 meanBestRank=1.87 declaredRanked=22/22 declaredTopThree=17
+        - description/description agentSurface: queries=10 bestRankOne=9 bestRankTopThree=10 meanBestRank=1.10 declaredRanked=23/23 declaredTopThree=19
+        - description/description heldOut: queries=15 bestRankOne=11 bestRankTopThree=14 meanBestRank=1.60 declaredRanked=22/22 declaredTopThree=17
+        - block/description (shipped) agentSurface: queries=10 bestRankOne=10 bestRankTopThree=10 meanBestRank=1.00 declaredRanked=23/23 declaredTopThree=21
+        - block/description (shipped) heldOut: queries=15 bestRankOne=11 bestRankTopThree=14 meanBestRank=1.67 declaredRanked=22/22 declaredTopThree=17 (worst query: heldOut q15 "check which source files i have changed so far" best=6)
+      - `swift test --package-path IntegrationTests --no-parallel --filter UnknownToolHintLiveTests`: 1 test in 1 suite passed after 3.523 s. entries=9 prefixCharacters=9728 budget=32000. files.raed -> resemblance [files.read, files.edit, files.glob]; process.spawn, terminal.runCommand, bash.run, terminal.runTests -> relevance [shell.execute]; weather.getForecast -> relevance [shell.getLines] (declaredBest=none).
+    - next: Make the gate of `ShellRunnerTests` release the gated child without a FIFO open/close race (for example, hold the write end open until the reader has opened the FIFO, or open the write end with O_NONBLOCK in a retry until the reader is present, then close it; or make the child end on a signal that the test sends). Then run only `ShellRunnerTests` one time, and then `swift test` one time.
+  timestamp: 2026-09-29T17:37:38.752334+00:00
+- actor: claude-code
+  id: 01m3q42nhcj71pytjbj2he3jpg
+  text: |-
+    Note: the test step needs this fix to become green. It corrects the FIFO gate that task OTel 2 added (commit ae28cf2) in `Tests/FoundationModelsMultitoolTests/ShellRunnerTests.swift`. This task did not cause the defect.
+
+    Cause of the hang: `openGate` opened the write end of the FIFO and then closed it at once. The child `cat gate` could open the read end after that close. Then `cat` waited for a writer that did not come, and `try await runTask.value` waited for 30 minutes.
+
+    Fix (design a):
+    - `startGatedRun` now opens the write end BEFORE it starts the child. `openWriteEnd(ofFIFOAt:)` opens a read end with `O_RDONLY | O_NONBLOCK`, opens the write end with `O_WRONLY | O_NONBLOCK`, and then closes its own read end. Each descriptor has `O_CLOEXEC`, so no child gets a copy of the write end.
+    - `gatedCommand` is now `{ echo one; cat > /dev/null; } < gate`. The shell opens the read end before it writes the line "one". Thus the arrival of the line proves that the child holds the read end. The open does not wait, because the test holds a writer.
+    - `openGate(_:)` now closes the held write end. `cat` then reads the end of the file. The release of the handle also closes the write end when a test stops early.
+    - The two gated tests ("lines are visible in the store while the command still runs" and "a run registers its child while it runs, and deregisters it at the end") use these shared helpers. No retry, sleep, time limit, or skip was added.
+  timestamp: 2026-09-29T17:40:54.444404+00:00
+- actor: claude-code
+  id: 01m3q42s0v5v9xq4ex07acmv2r
+  text: |-
+    ### implement — changed
+    - evidence: 1 file changed in this step: Tests/FoundationModelsMultitoolTests/ShellRunnerTests.swift (FIFO gate: write end is held before the child starts, and the shell opens the read end before the first line). The 5 files of the retrieval-text work were not changed. `swift build --build-tests`: build complete, no Swift compiler warnings or errors (only SwiftPM manifest-cache "disk I/O error" warnings). `swift test --filter ShellRunnerTests`: 31 tests in 1 suite passed in 2.047 s. Both gated tests passed (0.037 s and 0.036 s).
+    - next: test step runs the full suite, and `swift test --package-path IntegrationTests --no-parallel --filter RetrievalTextSurfaceDiscoveryTests` for the open Tests item.
+  timestamp: 2026-09-29T17:40:58.011702+00:00
+- actor: claude-code
+  id: 01m3q46pj57a4gg9pd0ccracdf
+  text: |-
+    ### test — green
+    - evidence: I touched the 6 changed Swift files. `swift build --build-tests` completed with 0 compiler warnings and 0 errors (only the SwiftPM "disk I/O error" manifest-cache messages and the mlx-swift_Cmlx.bundle "missing creator" message). `swift test` ran one time: "Test run with 1874 tests in 154 suites passed after 11.646 seconds", 0 failed, 0 skipped, exit 0, total run time 31 s. The suite "ShellRunnerTests" passed after 2.600 seconds. The FIFO gate does not hang now. `swift build --package-path IntegrationTests --build-tests` completed with 0 compiler warnings and 0 errors. I did not run the live suites again, as the instruction said.
+    - next: review.
+  timestamp: 2026-09-29T17:43:06.565982+00:00
+position_column: doing
+position_ordinal: '8180'
 title: 'Measure the retrieval-text choice again: the 2026-09-10 table was measured with the Router padding defect'
 ---
 ## What
@@ -16,8 +86,8 @@ The doc comment on `extension APISurface.Entry: SearchableMetadata` (`Sources/Fo
 The doc says block/description is the worst setting on heldOut (6/15). That is not true now.
 
 ## Acceptance Criteria
-- [ ] Run `RetrievalTextSurfaceDiscoveryTests` again (2 runs) and replace the table with the new figures.
-- [ ] Decide the retrieval text again from the new figures, and write the reason in the doc comment.
+- [x] Run `RetrievalTextSurfaceDiscoveryTests` again (2 runs) and replace the table with the new figures.
+- [x] Decide the retrieval text again from the new figures, and write the reason in the doc comment.
 
 ## Tests
 - [ ] `swift test --package-path IntegrationTests --no-parallel --filter RetrievalTextSurfaceDiscoveryTests` passes.

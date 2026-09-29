@@ -133,10 +133,17 @@ struct ShellRunnerTests {
     private static let gatePermissions: mode_t = 0o600
 
     /// A command that writes one line and then stays alive until the test
-    /// opens the gate. `cat` blocks on the open of the FIFO until a writer
-    /// opens it, and then reads until that writer closes it. Thus the child
-    /// ends only when the test lets it end, and never on a timer.
-    private static let gatedCommand = "echo one; cat \(gateName) > /dev/null"
+    /// opens the gate.
+    ///
+    /// The shell opens the FIFO as the standard input of the group BEFORE the
+    /// group writes its line. Thus the arrival of the line proves that the
+    /// child holds the read end. The test holds the write end from before the
+    /// child starts, thus the open of the read end does not wait for a
+    /// writer. `cat` then reads until the test closes the write end, and gets
+    /// the end of the file. Thus the child ends only when the test lets it
+    /// end, never on a timer, and no order of events can make it wait for a
+    /// writer that does not come.
+    private static let gatedCommand = "{ echo one; cat > /dev/null; } < \(gateName)"
 
     /// A `ShellRunner` over a `ShellState` that a new temporary directory roots.
     ///
@@ -277,26 +284,31 @@ struct ShellRunnerTests {
         return workDirectory
     }
 
-    /// Makes the FIFO that `gatedCommand` reads in `directory`, and starts
-    /// `gatedCommand` through `runner` in that directory, on a new task.
+    /// Makes the FIFO that `gatedCommand` reads in `directory`, opens its
+    /// write end, and then starts `gatedCommand` through `runner` in that
+    /// directory, on a new task.
     ///
-    /// The child stays alive until the caller gives the FIFO to
-    /// `openGate(_:)`. Thus a check that needs a live child does not depend on
-    /// a timer.
+    /// The test holds the write end BEFORE the child starts. Thus the child
+    /// opens the read end at once, and it stays alive until the caller gives
+    /// the write end to `openGate(_:)`. A check that needs a live child thus
+    /// does not depend on a timer. When a test stops before it opens the gate,
+    /// the release of the handle closes the write end, and the child ends.
     ///
     /// - Parameters:
     ///   - runner: The runner that starts the command.
     ///   - token: The completion token of the run.
     ///   - directory: The directory of the test.
-    /// - Returns: The task of the run, and the FIFO that lets it end.
-    /// - Throws: The `POSIXError` of `mkfifo(2)` when it fails.
+    /// - Returns: The task of the run, and the write end of the FIFO that
+    ///   lets it end.
+    /// - Throws: The `POSIXError` of `mkfifo(2)` or `open(2)` when it fails.
     private func startGatedRun(
         of runner: ShellRunner, token: String, in directory: URL
-    ) throws -> (run: Task<ShellRunner.Outcome, any Error>, gate: URL) {
-        let gate = directory.appendingPathComponent(Self.gateName, isDirectory: false)
-        guard mkfifo(gate.path, Self.gatePermissions) == 0 else {
-            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+    ) throws -> (run: Task<ShellRunner.Outcome, any Error>, gate: FileHandle) {
+        let path = directory.appendingPathComponent(Self.gateName, isDirectory: false).path
+        guard mkfifo(path, Self.gatePermissions) == 0 else {
+            throw Self.lastPOSIXError()
         }
+        let gate = try Self.openWriteEnd(ofFIFOAt: path)
         let run = Task {
             try await runner.run(
                 .init(
@@ -306,19 +318,47 @@ struct ShellRunnerTests {
         return (run, gate)
     }
 
-    /// Lets a gated command end: opens the FIFO for writing, and closes it at
-    /// once. `cat` then reads the end of the file, and the command ends.
+    /// Opens the write end of the FIFO at `path`, with no wait for a reader.
     ///
-    /// The open blocks until the reader opened the FIFO. The gated command
-    /// opens it right after its first line, thus call this only after that
-    /// line arrived.
+    /// An `open(2)` of the write end with `O_NONBLOCK` fails with `ENXIO` when
+    /// no reader holds the FIFO. Thus the function first opens a read end with
+    /// `O_NONBLOCK`, which never waits, then opens the write end, and then
+    /// closes its own read end. Each descriptor carries `O_CLOEXEC`, thus no
+    /// child of this process gets a copy of the write end, and the close of
+    /// the handle is the one close that the gated command waits for.
     ///
-    /// - Parameter gate: The FIFO that `startGatedRun(of:token:in:)` made.
-    /// - Throws: What `FileHandle(forWritingTo:)` or `FileHandle.close()`
-    ///   throws.
-    private func openGate(_ gate: URL) throws {
-        let handle = try FileHandle(forWritingTo: gate)
-        try handle.close()
+    /// - Parameter path: The path of the FIFO.
+    /// - Returns: A handle on the write end, which closes the descriptor when
+    ///   it is released.
+    /// - Throws: The `POSIXError` of `open(2)` when it fails.
+    private static func openWriteEnd(ofFIFOAt path: String) throws -> FileHandle {
+        let readEnd = open(path, O_RDONLY | O_NONBLOCK | O_CLOEXEC)
+        guard readEnd >= 0 else { throw lastPOSIXError() }
+        defer { close(readEnd) }
+        let writeEnd = open(path, O_WRONLY | O_NONBLOCK | O_CLOEXEC)
+        guard writeEnd >= 0 else { throw lastPOSIXError() }
+        return FileHandle(fileDescriptor: writeEnd, closeOnDealloc: true)
+    }
+
+    /// The `POSIXError` that the current `errno` names.
+    ///
+    /// - Returns: The error of `errno`, or `EIO` when `errno` names no code
+    ///   that `POSIXErrorCode` knows.
+    private static func lastPOSIXError() -> POSIXError {
+        POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+    }
+
+    /// Lets a gated command end: closes the write end of the FIFO. `cat` then
+    /// reads the end of the file, and the command ends.
+    ///
+    /// The close never waits. The gated command opens the read end before it
+    /// writes its first line, thus call this only after that line arrived.
+    ///
+    /// - Parameter gate: The write end that `startGatedRun(of:token:in:)`
+    ///   opened.
+    /// - Throws: What `FileHandle.close()` throws.
+    private func openGate(_ gate: FileHandle) throws {
+        try gate.close()
     }
 
     /// Runs `/bin/pwd` through `runner` and gives back the directory it printed.
