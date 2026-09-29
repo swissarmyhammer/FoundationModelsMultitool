@@ -71,8 +71,24 @@ comments:
     - evidence: I touched the 6 changed Swift files. `swift build --build-tests` completed with 0 compiler warnings and 0 errors (only the SwiftPM "disk I/O error" manifest-cache messages and the mlx-swift_Cmlx.bundle "missing creator" message). `swift test` ran one time: "Test run with 1874 tests in 154 suites passed after 11.646 seconds", 0 failed, 0 skipped, exit 0, total run time 31 s. The suite "ShellRunnerTests" passed after 2.600 seconds. The FIFO gate does not hang now. `swift build --package-path IntegrationTests --build-tests` completed with 0 compiler warnings and 0 errors. I did not run the live suites again, as the instruction said.
     - next: review.
   timestamp: 2026-09-29T17:43:06.565982+00:00
-position_column: doing
-position_ordinal: '8180'
+- actor: claude-code
+  id: 01m3q4c96rx91dwmvxnm6qaafp
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (f562563). 0 findings, 0 confirmed, 0 refuted. 6 files reviewed. 4 .kanban files not reviewed (.reviewignore).
+    - next: none. The task moved to done.
+  timestamp: 2026-09-29T17:46:09.496785+00:00
+- actor: claude-code
+  id: 01m3q4cpwy4zjmcnx3a79brrqg
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — embedded text of the discovery index is the summary block (new table dated 2026-09-29); then a FIFO-gate fix in ShellRunnerTests.swift after a red test step (the full run hung in the OTel 2 gate)
+    - test: red, then green — first step: RetrievalTextSurfaceDiscoveryTests passed (block/description agentSurface 10/10 rank 1; heldOut 11/15 rank 1, 14/15 top 3) and UnknownToolHintLiveTests passed, but swift test hung 30 min in ShellRunnerTests.swift:730; after the gate fix: swift test 1874 tests in 154 suites passed in 31 s (one run); IntegrationTests build passed
+    - commit: f562563
+    - review: clean — 0 findings
+  timestamp: 2026-09-29T17:46:23.518533+00:00
+position_column: done
+position_ordinal: ffff8580
 title: 'Measure the retrieval-text choice again: the 2026-09-10 table was measured with the Router padding defect'
 ---
 ## What
