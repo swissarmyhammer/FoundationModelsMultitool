@@ -5,6 +5,7 @@ import MCPTestServer
 import Testing
 
 @testable import FoundationModelsMultitool
+@testable import MultitoolTestSupport
 
 /// Behavioral tests for `StdioServerProcess` — real children, spawned in their
 /// own process group, registered into a `ProcessRegistry`, and torn down by

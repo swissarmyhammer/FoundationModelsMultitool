@@ -5,6 +5,7 @@ import Testing
 
 @testable import FoundationModelsMultitool
 @testable import FoundationModelsRouter
+@testable import MultitoolTestSupport
 
 /// Coverage for the session-end sweep of a background shell run — eventplan.md:
 /// *"Background runs die with the session."* Teardown does one deterministic

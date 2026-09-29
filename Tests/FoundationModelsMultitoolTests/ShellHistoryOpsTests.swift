@@ -4,6 +4,7 @@ import FoundationModelsRouter
 import Testing
 
 @testable import FoundationModelsMultitool
+@testable import MultitoolTestSupport
 
 /// Behavioral tests for the two content-plane verbs of the shell capability,
 /// `tools.shell.getLines` and `tools.shell.grepHistory`.

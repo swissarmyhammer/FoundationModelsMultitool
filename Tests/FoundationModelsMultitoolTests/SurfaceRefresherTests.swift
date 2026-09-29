@@ -7,6 +7,7 @@ import TelemetryTestSupport
 import Testing
 
 @testable import FoundationModelsMultitool
+@testable import MultitoolTestSupport
 
 /// Coverage for `SurfaceRefresher` — the watcher that joins the two halves of
 /// rebuild-and-swap. eventplan.md § "Consolidation of the siblings": "A late

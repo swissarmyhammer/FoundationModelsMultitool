@@ -162,7 +162,8 @@ let package = Package(
                 // `multitoolTestSupportTargetName`. The live web suites of
                 // `Web/` call each web verb through its `WebVerbCall`, and
                 // decode a `runCode` output through its `RunOutput`, the same
-                // helpers that the unit tests use.
+                // helpers that the unit tests use. `IntegrationPoll` and
+                // `CLISignalExitTests` poll through its `TestPoll`.
                 .product(name: "MultitoolTestSupport", package: productPackageName),
                 // The `@Operation` macro and `OperationTool` — see
                 // `extrasDependencyName`. The root package expands an

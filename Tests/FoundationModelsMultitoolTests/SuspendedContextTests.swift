@@ -4,6 +4,7 @@ import FoundationModelsRouter
 import Testing
 
 @testable import FoundationModelsMultitool
+@testable import MultitoolTestSupport
 
 /// Phase-1 coverage for the `runCode` background mount and its work bound.
 ///
@@ -192,7 +193,7 @@ struct SuspendedContextTests {
         // nothing released the gate. `wasCancelled` is written by the tool's
         // own task as it unwinds, and the terminal event above can be observed
         // before that write lands, so wait for it the way
-        // ``TestPoll.waitUntil(_:before:_:)`` exists to — sampling it here is a
+        // ``TestPoll.waitUntil(_:before:every:_:)`` exists to — sampling it here is a
         // race, not a check.
         try await TestPoll.waitUntil("the gated call unwound") { harness.gated.wasCancelled }
         #expect(!harness.latch.isReleased)

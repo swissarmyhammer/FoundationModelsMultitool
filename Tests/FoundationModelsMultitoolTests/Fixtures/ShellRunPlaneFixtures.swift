@@ -4,6 +4,7 @@ import FoundationModelsRouter
 import Testing
 
 @testable import FoundationModelsMultitool
+@testable import MultitoolTestSupport
 
 // MARK: - The run plane of a shell run
 //

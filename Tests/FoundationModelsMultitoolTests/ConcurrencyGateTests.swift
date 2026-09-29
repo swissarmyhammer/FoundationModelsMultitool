@@ -1,6 +1,8 @@
 import Testing
 import TestConcurrency
 
+@testable import MultitoolTestSupport
+
 /// Tests of ``ConcurrencyGate``, the one exclusive gate the test support code
 /// shares.
 ///

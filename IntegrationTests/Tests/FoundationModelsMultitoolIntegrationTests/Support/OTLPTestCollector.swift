@@ -118,8 +118,21 @@ private final class OTLPRequestLog: Sendable {
         let body: Data
     }
 
+    /// The number of bytes in one kibibyte.
+    private static let bytesPerKibibyte = 1024
+
+    /// The largest number of kibibytes that one receive of a connection reads.
+    private static let receiveChunkKibibytes = 64
+
     /// The largest number of bytes that one receive of a connection reads.
-    private static let receiveChunkSize = 64 * 1024
+    private static let receiveChunkSize = receiveChunkKibibytes * bytesPerKibibyte
+
+    /// The separator between the name and the value of an HTTP header field.
+    private static let headerFieldSeparator: Character = ":"
+
+    /// The number of parts of a header field that has a value: the name and
+    /// the value.
+    private static let headerFieldPartCount = 2
 
     /// The bytes that end the header of an HTTP request.
     private static let headerEnd = Data("\r\n\r\n".utf8)
@@ -203,8 +216,8 @@ private final class OTLPRequestLog: Sendable {
     /// - Returns: The length of the body, or `0` when no line gives it.
     private static func contentLength(in headerLines: ArraySlice<String>) -> Int {
         let lengthField = headerLines
-            .map { $0.split(separator: ":", maxSplits: 1) }
-            .first { $0.count == 2 && $0[0].lowercased() == contentLengthHeader }
-        return lengthField.flatMap { Int($0[1].trimmingCharacters(in: .whitespaces)) } ?? 0
+            .map { $0.split(separator: headerFieldSeparator, maxSplits: 1) }
+            .first { $0.count == headerFieldPartCount && $0.first?.lowercased() == contentLengthHeader }
+        return lengthField?.last.flatMap { Int($0.trimmingCharacters(in: .whitespaces)) } ?? 0
     }
 }

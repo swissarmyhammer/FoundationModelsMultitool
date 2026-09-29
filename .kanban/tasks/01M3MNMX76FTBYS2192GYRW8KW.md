@@ -33,6 +33,47 @@ comments:
     - evidence: I touched the 12 changed Swift files from `git status`. `swift build --build-tests` completed with exit 0. It showed 0 compiler warnings and 0 errors from files of this package. `swift test` ran one time to the end with exit 0: "Test run with 1873 tests in 155 suites passed". It had 0 failures and 0 skipped tests. XCTest executed 0 tests. The suite "CLISignalExit" passed after 2.721 seconds. `swift build --package-path IntegrationTests --build-tests` completed with exit 0 and 0 compiler warnings. The only build messages were SwiftPM "failed loading/storing cached manifest ... disk I/O error" and "missing creator for mutated node ... mlx-swift_Cmlx.bundle". These messages do not come from this package.
     - next: review
   timestamp: 2026-09-29T16:10:13.672463+00:00
+- actor: claude-code
+  id: 01m3pz7yv37epesrd60ywv45ec
+  text: |-
+    ### review — findings
+    - evidence: review sha HEAD~1..HEAD (f051edf); 4 findings — Tests/FoundationModelsMultitoolTests/CLISignalExitTests.swift:20 (test-integrity/test-partitioning), Tests/FoundationModelsMultitoolTests/CLISignalExitTests.swift:161 (reuse/reuse), Tests/FoundationModelsMultitoolTests/Support/OTLPTestCollector.swift:122 (code-hygiene/magic-numbers-swift), Tests/FoundationModelsMultitoolTests/Support/OTLPTestCollector.swift:207 (code-hygiene/magic-numbers-swift).
+    - next: implement the 4 findings in the "Review Findings (2026-09-29 11:10)" section, then test, commit and review again.
+  timestamp: 2026-09-29T16:16:24.931165+00:00
+- actor: claude-code
+  id: 01m3pz8ngbw0mx16b5pm37nqha
+  text: |-
+    ### finish iteration 1 — findings
+    - implement: changed — 12 files (CLIExitPath.swift, signal sources, one exit in main.swift, test collector, stall mode; OTel 6 double-bootstrap fix)
+    - test: green — swift test 1873 tests in 155 suites passed (one run), CLISignalExit passed; IntegrationTests build passed
+    - commit: f051edf
+    - review: findings — CLISignalExitTests.swift:20 test-integrity/test-partitioning; CLISignalExitTests.swift:161 reuse/reuse; Support/OTLPTestCollector.swift:122 code-hygiene/magic-numbers-swift; Support/OTLPTestCollector.swift:207 code-hygiene/magic-numbers-swift
+  timestamp: 2026-09-29T16:16:48.139775+00:00
+- actor: claude-code
+  id: 01m3pzra4380zyf1wewk5zmne5
+  text: |-
+    Implement notes for the 4 findings of "Review Findings (2026-09-29 11:10)":
+    - Finding 1 (test-partitioning): `CLISignalExitTests.swift` and `OTLPTestCollector.swift` moved (git mv) to `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/` (the collector goes to `Support/`). No file of the unit target uses the collector. The suite finds `multitool-cli` and `mcp-test-server` at `<repository root>/.build/debug`, the same way `CLISmokeTests` found `mcp-test-server`. That lookup is now one shared helper, `Support/RootProduct.swift` (`RootProduct.executablePath(named:)`, `testServerName`, `cliName`); `CLISmokeTests` uses it too, and its private copy is gone. `.build/debug` is a symbolic link to `.build/out/Products/Debug` (new SwiftPM build system), thus the path works.
+    - CI: the integration job removes the root `.build` and builds only the root products that `integration-root-products` names. `.github/workflows/ci.yml` now names `mcp-test-server multitool-cli`, and `CIWorkflowTests` pins the new line.
+    - Finding 2 (reuse): `TestPoll` moved (git mv) from `Tests/FoundationModelsMultitoolTests/Fixtures/PollFixtures.swift` to the shared product `Tests/Support/MultitoolTestSupport/TestPoll.swift`, and it got an `every interval:` parameter. Each unit test file that uses `TestPoll` now has `@testable import MultitoolTestSupport` (24 files). `CLISignalExitTests` uses `TestPoll.waitUntil(_:before:)` with its own 30 s deadline; its `waitUntil` copy and its error enum are gone. `IntegrationPoll` held a second copy of the loop, because `TestPoll` was not reachable from the nested package; it now keeps only its own values (250 ms, 60 s) and calls `TestPoll.holds(before:every:_:)`.
+    - Not `TestConcurrency` for `TestPoll`: `TestPoll` imports `Testing` (`Issue.record`), and `TestConcurrency` is linked into the `mcp-test-server` executable through `MCPTestServer`. `MultitoolTestSupport` already imports `Testing` and no executable links it.
+    - Findings 3 and 4 (magic numbers): `OTLPTestCollector` now names `bytesPerKibibyte`, `receiveChunkKibibytes`, `headerFieldSeparator` and `headerFieldPartCount`, and it reads the field name and value with `first` and `last` in place of the indexes.
+    - Known and left as is: `ShellRunnerTests`, `ShellHistoryOpsTests`, `MailProbeFixtures`, `StubRouterFixtures` and `ScriptedServer` hold older poll loops of their own. They are code that existed before this task, not part of the reviewed diff.
+  timestamp: 2026-09-29T16:25:20.771653+00:00
+- actor: claude-code
+  id: 01m3pzrfsccbdqd6fs5cxce06b
+  text: |-
+    ### implement — changed
+    - evidence: moved: Tests/FoundationModelsMultitoolTests/CLISignalExitTests.swift -> IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/CLISignalExitTests.swift; Tests/FoundationModelsMultitoolTests/Support/OTLPTestCollector.swift -> IntegrationTests/.../Support/OTLPTestCollector.swift; Tests/FoundationModelsMultitoolTests/Fixtures/PollFixtures.swift -> Tests/Support/MultitoolTestSupport/TestPoll.swift. New: IntegrationTests/.../Support/RootProduct.swift. Changed: IntegrationTests/.../Support/IntegrationPoll.swift, IntegrationTests/.../CLISmokeTests.swift, IntegrationTests/Package.swift, Package.swift, .github/workflows/ci.yml, Tests/FoundationModelsMultitoolTests/CIWorkflowTests.swift, and 24 unit test files that got `@testable import MultitoolTestSupport` (SuspendedContextTests and ScriptedServerSelfTests also got doc text changes). `swift build --build-tests`: exit 0, 0 errors, 0 compiler warnings from this package. `swift build --package-path IntegrationTests --build-tests`: exit 0, 0 errors. The one run of `swift test --package-path IntegrationTests --no-parallel --filter CLISignalExit`: "Test run with 1 test in 1 suite passed after 4.443 seconds" (2 test cases, SIGINT and SIGTERM). The full unit `swift test` was not run: the test step runs it. The 4 findings are ticked `- [x]`; the task has no tags.
+    - next: the test step runs `swift build --build-tests && swift test` (the unit suite now has 2 test cases fewer, because `CLISignalExit` moved). Then commit and review.
+  timestamp: 2026-09-29T16:25:26.572109+00:00
+- actor: claude-code
+  id: 01m3pzwdmc6v3ed04f38z7908f
+  text: |-
+    ### test — green
+    - evidence: Iteration 2. We touched the changed Swift files. Then `swift build --build-tests` completed with 0 compiler warnings and 0 errors. `swift test` (one run, to the end): "Test run with 1872 tests in 154 suites passed". 0 failed, 0 skipped. The XCTest part executed 0 tests with 0 failures. `swift build --package-path IntegrationTests --build-tests` completed with 0 compiler warnings and 0 errors. We did not run the live-model suite. The only other messages were SwiftPM "disk I/O error" messages for the manifest cache and "missing creator for mutated node ... mlx-swift_Cmlx.bundle". These messages do not come from this package.
+    - next: Do the review step.
+  timestamp: 2026-09-29T16:27:35.436951+00:00
 depends_on:
 - 01M3MNB7WG4TZCF2R4H9N1Q0FR
 position_column: doing
@@ -57,3 +98,15 @@ The ACPClient session found (2026-09-28) that an OTLP batch exporter does not se
 
 ## Workflow
 - Use `/tdd`. Write failing tests first, then do the implementation that makes them pass.
+
+## Review Findings (2026-09-29 11:10)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 12 file(s) reviewed, 4 not reviewed.
+
+> 4 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 4 file(s)
+
+- [x] `Tests/FoundationModelsMultitoolTests/CLISignalExitTests.swift:20` `test-integrity/test-partitioning` — This test suite exercises real external systems (spawns the built CLI binary as a subprocess, runs a real network HTTP server for OTLP collection, sends real OS signals) making it an integration test. Integration tests must reside in a separate integration test target per Swift conventions, not in the unit test target. Move CLISignalExitTests.swift to IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/CLISignalExitTests.swift to align with Swift integration-test package structure convention, so the default `swift test` runs unit tests only and `swift test --package-path IntegrationTests` runs integration tests.
+- [x] `Tests/FoundationModelsMultitoolTests/CLISignalExitTests.swift:161` `reuse/reuse` — The `waitUntil` static function reimplements nearly identical poll-with-deadline logic that already exists in the shared test fixtures. Use or adapt `TestPoll` from PollFixtures instead of creating a parallel waitUntil implementation. If the contracts differ (signature, error type, or deadline source), extend TestPoll or create a shared wrapper rather than duplicating the poll logic.
+- [x] `Tests/FoundationModelsMultitoolTests/Support/OTLPTestCollector.swift:122` `code-hygiene/magic-numbers-swift` — Magic numbers should be replaced by named constants.
+- [x] `Tests/FoundationModelsMultitoolTests/Support/OTLPTestCollector.swift:207` `code-hygiene/magic-numbers-swift` — Magic numbers should be replaced by named constants.

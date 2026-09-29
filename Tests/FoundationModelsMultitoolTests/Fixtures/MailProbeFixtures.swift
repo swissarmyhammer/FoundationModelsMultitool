@@ -4,6 +4,7 @@ import FoundationModelsRouter
 import os
 
 @testable import FoundationModelsMultitool
+@testable import MultitoolTestSupport
 
 // MARK: - A session that records the mail it gets
 //

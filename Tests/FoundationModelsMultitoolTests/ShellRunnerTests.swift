@@ -5,6 +5,7 @@ import Synchronization
 import Testing
 
 @testable import FoundationModelsMultitool
+@testable import MultitoolTestSupport
 
 /// Behavioral tests for `ShellRunner` — real `sh -c` children, each one spawned
 /// into a new `ShellState` that a temporary directory roots.

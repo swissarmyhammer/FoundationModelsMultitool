@@ -2,6 +2,8 @@ import MCP
 import MCPTestServer
 import Testing
 
+@testable import MultitoolTestSupport
+
 /// Self-tests that prove the scripting of `ScriptedServer` works — one test
 /// per scenario, each driving the scenario from a plain `MCP.Client`
 /// connected over an in-memory transport pair.
@@ -12,7 +14,7 @@ import Testing
 /// `GetResultTool`, `CancelCallTool` and `ListCallsTool` over an
 /// `MCPServer`, and none of the four is in this package yet. The
 /// `poll(timeout:until:)` helper of the source is `TestPoll`, the one poll
-/// of this test target.
+/// of the test support code.
 @Suite("ScriptedServerSelf")
 struct ScriptedServerSelfTests {
     /// The client name every test of this suite connects under.

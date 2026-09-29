@@ -6,6 +6,7 @@ import TelemetryTestSupport
 import Testing
 
 @testable import FoundationModelsMultitool
+@testable import MultitoolTestSupport
 
 /// Coverage for the swift-log records of the MCP capability files: a connect
 /// that fails, a reconnect, and a tool call that fails because the transport

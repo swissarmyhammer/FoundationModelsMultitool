@@ -7,6 +7,7 @@ import Testing
 
 @testable import FoundationModelsMultitool
 @testable import FoundationModelsRouter
+@testable import MultitoolTestSupport
 
 /// Coverage for the session-end sweep of an MCP call, and for the shutdown of
 /// the server subprocesses that follows it — eventplan.md § "Background tools

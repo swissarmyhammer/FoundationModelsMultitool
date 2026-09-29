@@ -2,6 +2,8 @@ import Foundation
 import FoundationModels
 import FoundationModelsRouter
 
+@testable import MultitoolTestSupport
+
 // MARK: - A router over a stub model
 //
 // The fixtures of this target need a real `ToolContext`: the run plane, the

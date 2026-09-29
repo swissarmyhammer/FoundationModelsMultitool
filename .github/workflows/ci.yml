@@ -76,7 +76,13 @@ jobs:
       # `swift build --product mcp-test-server` at the repository root before
       # the suite. The unit job needs no such input: its root
       # `swift build --build-tests` builds every product of this manifest.
-      integration-root-products: mcp-test-server
+      #
+      # `CLISignalExitTests` starts the `multitool-cli` executable and the
+      # `mcp-test-server` executable, and it reads both at
+      # `<repository root>/.build/debug` (`RootProduct` in the nested
+      # package). Thus the shared workflow builds both products at the
+      # repository root. The input is a list separated by white space.
+      integration-root-products: mcp-test-server multitool-cli
 
       # Keep the transcripts of the run. The integration suite writes each
       # Router recordings directory under `IntegrationTests/.build/recordings`

@@ -5,6 +5,7 @@ import MCPTestServer
 import Testing
 
 @testable import FoundationModelsMultitool
+@testable import MultitoolTestSupport
 
 /// Coverage for the `lost` terminal outcome: a dropped transport destroys the
 /// only channel a result was ever going to arrive on, so the outcome is

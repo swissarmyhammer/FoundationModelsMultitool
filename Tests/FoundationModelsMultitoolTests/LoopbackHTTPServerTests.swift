@@ -2,6 +2,8 @@ import MCP
 import MCPTestServer
 import Testing
 
+@testable import MultitoolTestSupport
+
 /// Tests of the in-process HTTP loopback: a bare `MCP.Client` over
 /// `HTTPClientTransport(endpoint:configuration:)` against a `ScriptedServer`
 /// served through `LoopbackHTTPServer`, in one process, with no socket.

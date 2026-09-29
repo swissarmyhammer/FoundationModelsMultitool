@@ -3,6 +3,7 @@ import MCPTestServer
 import Testing
 
 @testable import FoundationModelsMultitool
+@testable import MultitoolTestSupport
 
 /// Coverage for the dynamic half of the catalog of `MCPServer`: the
 /// `catalogUpdates` stream, the coalescing of a `tools/list_changed` burst

@@ -5,6 +5,7 @@ import FoundationModelsRouter
 import Testing
 
 @testable import FoundationModelsMultitool
+@testable import MultitoolTestSupport
 
 /// Behavioral tests for the run-plane verb of the shell capability,
 /// `tools.shell.execute`.

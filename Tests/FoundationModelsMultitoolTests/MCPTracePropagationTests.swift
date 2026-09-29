@@ -9,6 +9,7 @@ import Testing
 import Tracing
 
 @testable import FoundationModelsMultitool
+@testable import MultitoolTestSupport
 
 /// Coverage for the client span of each MCP `tools/call`, and for the W3C
 /// trace context that the request carries in its `_meta`.

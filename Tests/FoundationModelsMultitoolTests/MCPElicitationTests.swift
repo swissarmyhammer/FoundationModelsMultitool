@@ -7,6 +7,7 @@ import Testing
 import ULID
 
 @testable import FoundationModelsMultitool
+@testable import MultitoolTestSupport
 
 /// Coverage for `MCPServer+Elicitation.swift` — the passthrough of a
 /// server-initiated `elicitation/create` to the one elicitation machinery of

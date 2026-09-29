@@ -7,6 +7,7 @@ import Testing
 import ULID
 
 @testable import FoundationModelsMultitool
+@testable import MultitoolTestSupport
 
 /// Behavioral tests for `MCPServer.call(name:arguments:)` on the run plane of
 /// Router: the five acceptance criteria of the call rewrite, the two in-band

@@ -3,6 +3,7 @@ import MCPTestServer
 import Testing
 
 @testable import FoundationModelsMultitool
+@testable import MultitoolTestSupport
 
 /// Coverage for the connection resilience of `MCPServer`: the backoff-retried
 /// connect, its exhaustion, the per-attempt timeout against a transport that

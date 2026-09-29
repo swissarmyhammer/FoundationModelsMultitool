@@ -35,9 +35,6 @@ struct CLISmokeTests {
     /// The prefix the demo writes the model's answer under.
     private static let answerPrefix = "Answer: "
 
-    /// The name of the stdio MCP server executable the ROOT package builds.
-    private static let testServerName = "mcp-test-server"
-
     /// The noun the attached server claims in the `--mcp` case below.
     private static let mcpServerNoun = "echo"
 
@@ -51,7 +48,7 @@ struct CLISmokeTests {
 
     @Test("the live demo attaches a stdio MCP server, lists its verbs, and still answers")
     func demoAttachesAnMCPServer() async throws {
-        let command = try Self.testServerPath()
+        let command = try RootProduct.executablePath(named: RootProduct.testServerName)
 
         let run = await Self.runDemo(arguments: [
             "--mcp", "\(Self.mcpServerNoun)=\(command)", ServerMode.flagName,
@@ -116,33 +113,5 @@ struct CLISmokeTests {
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             #expect(!answer.isEmpty, "expected a non-empty final answer")
         }
-    }
-
-    /// The path of the `mcp-test-server` executable the ROOT package builds.
-    ///
-    /// This nested package builds no executable of its own over `MCPTestServer`,
-    /// and a test target can depend on no executable, so the binary stands in
-    /// the products directory of the ROOT build rather than beside this test
-    /// bundle. `#filePath` names this file inside the checkout, so four steps up
-    /// reach the repository root, and the root build writes the product under
-    /// `.build/debug`.
-    ///
-    /// - Returns: the path of the executable.
-    /// - Throws: when no executable stands there, naming the command that
-    ///   writes it.
-    private static func testServerPath() throws -> String {
-        let repositoryRoot = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()  // FoundationModelsMultitoolIntegrationTests
-            .deletingLastPathComponent()  // Tests
-            .deletingLastPathComponent()  // IntegrationTests
-            .deletingLastPathComponent()  // the repository root
-        let candidate = repositoryRoot.appendingPathComponent(".build/debug/\(testServerName)")
-        try #require(
-            FileManager.default.isExecutableFile(atPath: candidate.path),
-            """
-            no \(testServerName) executable at \(candidate.path); run \
-            `swift build --product \(testServerName)` at the repository root first.
-            """)
-        return candidate.path
     }
 }

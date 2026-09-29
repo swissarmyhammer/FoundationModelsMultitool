@@ -5,6 +5,7 @@ import Testing
 import Tracing
 
 @testable import FoundationModelsMultitool
+@testable import MultitoolTestSupport
 
 /// Coverage for the spans of the calls that can suspend for a long time, and
 /// for the "enter" log record that each of these spans writes when it starts.

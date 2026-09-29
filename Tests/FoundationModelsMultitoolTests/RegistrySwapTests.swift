@@ -4,6 +4,7 @@ import FoundationModelsRouter
 import Testing
 
 @testable import FoundationModelsMultitool
+@testable import MultitoolTestSupport
 
 /// Coverage for the second half of rebuild-and-swap. eventplan.md
 /// § "Consolidation of the siblings": "Then MultiTool swaps it in atomically

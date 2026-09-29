@@ -1,6 +1,8 @@
 import Foundation
 
-// MARK: - The one poll of this gated target
+@testable import MultitoolTestSupport
+
+// MARK: - The poll values of this gated target
 //
 // Some readings a gated scenario takes become true a little AFTER the call that
 // makes them true, and a live model decides WHEN that call happens. A shell run
@@ -8,17 +10,12 @@ import Foundation
 // group inside the spawn, and a process group goes away after the canceler that
 // killed it returned.
 //
-// A read taken at one instant is a race, and a fixed sleep is slack. A poll is
-// neither: it re-reads until the reading holds, and it gives up at a deadline
-// that bounds a genuine hang.
-//
-// **This is not `TestPoll`, and it cannot be.** `TestPoll` stands in
-// `Tests/FoundationModelsMultitoolTests/Fixtures/PollFixtures.swift`, which
-// belongs to the root package's test target. A nested package cannot import
-// another package's test target, so the loop is written again here rather than
-// shared. The deadlines are this target's own in any case: `TestPoll` waits ten
-// seconds, which bounds a unit test's hang and is far under the minutes one
-// live-model turn takes.
+// The loop is `TestPoll`, the one poll of the test support code. It stands in
+// the `MultitoolTestSupport` product of the root package, thus this target
+// takes it from there and does not write the loop again. This file holds only
+// the values of this target: `TestPoll` waits ten seconds and reads every 25
+// milliseconds, which bounds the hang of a unit test. One live-model turn takes
+// minutes, thus this target waits longer and reads less frequently.
 
 /// The poll a gated scenario takes while it waits for a reading to become true.
 enum IntegrationPoll {
@@ -57,11 +54,6 @@ enum IntegrationPoll {
     static func holds(
         before deadline: Duration = IntegrationPoll.deadline, _ condition: () async -> Bool
     ) async -> Bool {
-        let end = ContinuousClock.now + deadline
-        while ContinuousClock.now < end {
-            if await condition() { return true }
-            try? await Task.sleep(for: interval)
-        }
-        return await condition()
+        await TestPoll.holds(before: deadline, every: interval, condition)
     }
 }

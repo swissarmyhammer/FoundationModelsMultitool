@@ -4,6 +4,7 @@ import MCPTestServer
 import Testing
 
 @testable import FoundationModelsMultitool
+@testable import MultitoolTestSupport
 
 /// Coverage for `MultiTool.RegistrySource.rebuildRegistry()` — the first
 /// half of rebuild-and-swap. eventplan.md § "Consolidation of the siblings":

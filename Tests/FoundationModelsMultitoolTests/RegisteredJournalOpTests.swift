@@ -6,6 +6,7 @@ import Synchronization
 import Testing
 
 @testable import FoundationModelsMultitool
+@testable import MultitoolTestSupport
 
 /// Phase-2 coverage for the `"verb noun"` journal op — eventplan.md §
 /// "Registration of capabilities: noun/verb": "`OperationEvent.op` stays the

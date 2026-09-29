@@ -3,6 +3,7 @@ import MCPTestServer
 import Testing
 
 @testable import MultitoolCLI
+@testable import MultitoolTestSupport
 
 /// Covers a stop signal that reaches the built `multitool-cli` process.
 ///
@@ -17,11 +18,14 @@ import Testing
 /// The batch span processor of swift-otel waits 5 seconds before it sends a
 /// batch. The run is shorter, thus the run span reaches the collector only
 /// through the flush of the exit path.
+///
+/// This suite is an integration test: it starts real child processes, it
+/// sends real signals, and it opens a real socket. Thus it stands in this
+/// package, and not in the unit test target of the root package. It loads no
+/// model and it does not queue behind `liveProfileTurnstile`. Both executables
+/// stand in the products directory of the root build — see ``RootProduct``.
 @Suite("CLISignalExit")
 struct CLISignalExitTests {
-    /// The product name of the CLI executable, as `Package.swift` declares it.
-    private static let cliExecutableName = "multitool-cli"
-
     /// The OTLP path of the trace export requests.
     private static let tracesPath = "/v1/traces"
 
@@ -46,12 +50,16 @@ struct CLISignalExitTests {
     /// The flag of ``processFinderPath`` that reads the full argument list.
     private static let fullArgumentsFlag = "-f"
 
+    /// How many seconds the test waits for the stub server to start, and then
+    /// for the process to exit.
+    private static let deadlineSeconds = 30
+
     /// The longest time the test waits for the stub server to start, and then
     /// for the process to exit.
-    private static let deadline: Duration = .seconds(30)
-
-    /// The time between two checks of a wait.
-    private static let pollInterval: Duration = .milliseconds(50)
+    ///
+    /// Longer than the deadline of `TestPoll`: the CLI links the MLX and Hugging
+    /// Face products, and its first start after a build can take seconds.
+    private static let deadline = Duration.seconds(deadlineSeconds)
 
     @Test(
         "a stop signal during an open run exports the run span and exits with 128 + the signal number",
@@ -60,14 +68,18 @@ struct CLISignalExitTests {
         let collector = try await OTLPTestCollector.start()
         defer { collector.stop() }
         let marker = UUID().uuidString
-        let process = try Self.makeCLIProcess(endpoint: collector.endpoint, marker: marker)
+        let serverPath = try RootProduct.executablePath(named: RootProduct.testServerName)
+        let process = try Self.makeCLIProcess(
+            endpoint: collector.endpoint, serverPath: serverPath, marker: marker)
 
         try process.run()
         defer { Self.stopIfRunning(process) }
-        let stubServer = try Self.stubServerPattern(marker: marker)
-        try await Self.waitUntil("the stub server started") { Self.processExists(matching: stubServer) }
+        let stubServer = Self.stubServerPattern(serverPath: serverPath, marker: marker)
+        try await TestPoll.waitUntil("the stub server started", before: Self.deadline) {
+            Self.processExists(matching: stubServer)
+        }
         kill(process.processIdentifier, signal.number)
-        try await Self.waitUntil("the CLI exited") { !process.isRunning }
+        try await TestPoll.waitUntil("the CLI exited", before: Self.deadline) { !process.isRunning }
 
         #expect(process.terminationReason == .exit)
         #expect(process.terminationStatus == signal.exitCode)
@@ -82,17 +94,20 @@ struct CLISignalExitTests {
     ///
     /// - Parameters:
     ///   - endpoint: The OTLP endpoint of the collector.
+    ///   - serverPath: The path of the `mcp-test-server` executable.
     ///   - marker: A text that the arguments of the stub server carry, thus
     ///     the test can find that process.
     /// - Returns: The process, not started.
-    /// - Throws: What `TestServerLocator` throws when the products directory
-    ///   or the test server is not there.
-    private static func makeCLIProcess(endpoint: String, marker: String) throws -> Process {
+    /// - Throws: What `RootProduct.executablePath(named:)` throws when the CLI
+    ///   executable is not there.
+    private static func makeCLIProcess(
+        endpoint: String, serverPath: String, marker: String
+    ) throws -> Process {
         let process = Process()
-        process.executableURL = try TestServerLocator.productsDirectoryURL()
-            .appendingPathComponent(cliExecutableName)
+        process.executableURL = URL(
+            fileURLWithPath: try RootProduct.executablePath(named: RootProduct.cliName))
         process.arguments = [
-            mcpOption, "\(stallServerName)=\(try TestServerLocator.executableURL().path)",
+            mcpOption, "\(stallServerName)=\(serverPath)",
             ServerMode.flagName, ServerMode.stall.rawValue, marker,
         ]
         process.environment = ProcessInfo.processInfo.environment.merging([
@@ -113,13 +128,12 @@ struct CLISignalExitTests {
     /// not of the CLI. Other suites start the same server, thus the pattern
     /// holds `marker` too.
     ///
-    /// - Parameter marker: The text that the arguments of the stub server
-    ///   carry.
+    /// - Parameters:
+    ///   - serverPath: The path of the `mcp-test-server` executable.
+    ///   - marker: The text that the arguments of the stub server carry.
     /// - Returns: An extended regular expression for ``processFinderPath``.
-    /// - Throws: What `TestServerLocator.executableURL()` throws.
-    private static func stubServerPattern(marker: String) throws -> String {
-        let serverPath = try TestServerLocator.executableURL().path
-        return "^\(NSRegularExpression.escapedPattern(for: serverPath)) .*\(marker)"
+    private static func stubServerPattern(serverPath: String, marker: String) -> String {
+        "^\(NSRegularExpression.escapedPattern(for: serverPath)) .*\(marker)"
     }
 
     /// Sends the stop signal of `process` when it still runs, thus a test that
@@ -150,26 +164,4 @@ struct CLISignalExitTests {
         finder.waitUntilExit()
         return finder.terminationStatus == 0
     }
-
-    /// Waits until `condition` is true, for ``deadline`` at most.
-    ///
-    /// - Parameters:
-    ///   - event: The event the wait is for. The error names it.
-    ///   - condition: The check.
-    /// - Throws: ``CLISignalExitTestsError/timedOut(_:)`` when the deadline
-    ///   ends first, and `CancellationError` when the test is cancelled.
-    private static func waitUntil(_ event: String, _ condition: () -> Bool) async throws {
-        let clock = ContinuousClock()
-        let end = clock.now + deadline
-        while !condition() {
-            guard clock.now < end else { throw CLISignalExitTestsError.timedOut(event) }
-            try await Task.sleep(for: pollInterval)
-        }
-    }
-}
-
-/// The errors of the fixtures of ``CLISignalExitTests``.
-private enum CLISignalExitTestsError: Error {
-    /// The wait for the named event ended at the deadline.
-    case timedOut(String)
 }
