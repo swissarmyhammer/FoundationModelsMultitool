@@ -26,7 +26,7 @@ import Testing
 @Suite(
     "Live: each keyed provider gives hits with the key from the environment",
     .serialized,
-    .timeLimit(.minutes(LiveSearch.timeLimitMinutes))
+    .timeLimit(IntegrationHangGuard.timeLimit)
 )
 struct KeyedProviderLiveTests {
     @Test("braveAPI gives hits with BRAVE_SEARCH_API_KEY or BRAVE_API_KEY", .enabled(whenSet: .braveAPI))

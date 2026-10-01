@@ -26,7 +26,7 @@ import Testing
 @Suite(
     "An MCP verb on a bare LanguageModelSession",
     .serialized,
-    .timeLimit(.minutes(bareSessionTimeLimitMinutes))
+    .timeLimit(IntegrationHangGuard.timeLimit)
 )
 struct MCPBareSessionTests {
 

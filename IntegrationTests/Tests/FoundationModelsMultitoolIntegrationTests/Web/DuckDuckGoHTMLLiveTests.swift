@@ -19,7 +19,7 @@ import Testing
 @Suite(
     "Live: the DuckDuckGo HTML results page gives stable hits",
     .serialized,
-    .timeLimit(.minutes(LiveSearch.timeLimitMinutes))
+    .timeLimit(IntegrationHangGuard.timeLimit)
 )
 struct DuckDuckGoHTMLLiveTests {
     /// The one provider of this suite.

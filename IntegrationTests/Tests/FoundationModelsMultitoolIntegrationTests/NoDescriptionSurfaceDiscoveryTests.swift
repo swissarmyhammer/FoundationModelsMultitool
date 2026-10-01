@@ -5,15 +5,6 @@ import Testing
 
 @testable import FoundationModelsMultitool
 
-/// The time limit of the no-description discovery test, in minutes.
-///
-/// The test resolves the plumbing probe model and then drives three texts
-/// over three queries for ``discoveryRoundCount`` rounds, and each of those
-/// twenty-seven searches is one grammar-constrained generation. Ten minutes
-/// stands over the model load plus that many generations, and a run that
-/// reaches it is parked rather than slow.
-private let noDescriptionTimeLimitMinutes = 10
-
 /// The label the printed result lines carry.
 private let noDescriptionScenarioName = "noDescriptionSurfaceDiscovery"
 
@@ -149,7 +140,7 @@ private struct NoDescriptionItem: SearchableMetadata {
 @Suite(
     "Gated searchTools discovery over a surface of tools with no description",
     .serialized,
-    .timeLimit(.minutes(noDescriptionTimeLimitMinutes))
+    .timeLimit(IntegrationHangGuard.timeLimit)
 )
 struct NoDescriptionSurfaceDiscoveryTests {
     @Test("a tool that publishes no description is still selected from the text the surface writes")

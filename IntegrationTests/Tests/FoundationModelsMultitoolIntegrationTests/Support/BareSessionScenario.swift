@@ -1,14 +1,6 @@
 import FoundationModels
 import Testing
 
-/// The time limit of one bare-session test, in minutes.
-///
-/// THE LIMIT IS THE DETECTOR, exactly as it is in `BackgroundTests`. The whole
-/// turn is one on-device tool call and one short reply, so a run that reaches
-/// this limit is a hang rather than a slow pass. Five minutes stands far over
-/// any healthy run and still reports a hang inside one CI job.
-let bareSessionTimeLimitMinutes = 5
-
 /// Runs one bare-session scenario: a set of plain `FoundationModels.Tool`
 /// values mounted on a `LanguageModelSession` with no Router at all.
 ///

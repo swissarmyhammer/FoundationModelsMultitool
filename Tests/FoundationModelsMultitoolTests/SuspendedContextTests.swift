@@ -59,14 +59,20 @@ struct SuspendedContextTests {
         let harness = try await Self.makeHarness(
             configuration: MultiToolConfiguration(inlineSettleGrace: 0), mount: .synchronous)
 
-        let start = ContinuousClock.now
         let rendered = try await harness.mounted.call(
             arguments: RunCodeArguments(code: Self.gatedSnippet)
         )
-        let elapsed = start.duration(to: .now)
 
+        // The gated snippet cannot settle before the test releases its latch.
+        // Thus a call that answered at all did not wait for the snippet, and
+        // its run still stands in the background. The test reads no real time
+        // (card `^tm4x2hp`: no test checks the speed of the machine).
         #expect(PendingRunEnvelope.isRendered(text: rendered))
-        #expect(elapsed < Self.promptResponseBound)
+        let token = try Self.completionToken(of: rendered)
+        try await TestPoll.waitUntil("the gated run stands in the background") {
+            await harness.run.context.backgroundRuns().contains { $0.completionToken == token }
+        }
+        #expect(!harness.latch.isReleased)
 
         harness.latch.release()
         _ = try await Self.settledTerminal(
@@ -185,9 +191,10 @@ struct SuspendedContextTests {
         )
         #expect(cancelTerminal.detail.contains("\"result\":\"cancelled\""))
 
-        let start = ContinuousClock.now
+        // The outcome `.cancelled` proves that the cancel ended the run, and
+        // not the time limit of the run: a time limit gives another outcome.
+        // The test reads no real time (card `^tm4x2hp`).
         let terminal = try await Self.settledTerminal(of: token, on: harness.run.context)
-        #expect(start.duration(to: .now) < Self.promptResponseBound)
         #expect(terminal.outcome == .cancelled)
         // The pending promise's own work was torn down with the context —
         // nothing released the gate. `wasCancelled` is written by the tool's
@@ -208,12 +215,6 @@ struct SuspendedContextTests {
     /// Long enough that a watchdog armed at the moment the call returned would
     /// have fired, and short enough that the suite stays fast.
     private static let aliveWindowNanoseconds: UInt64 = 600_000_000
-
-    /// The bound every "this happened promptly" assertion uses.
-    ///
-    /// Generous against scheduling jitter, and far below any clock it proves
-    /// was not the one enforced.
-    private static let promptResponseBound: Duration = .seconds(3)
 
     /// The snippet every suspended-context test runs.
     ///

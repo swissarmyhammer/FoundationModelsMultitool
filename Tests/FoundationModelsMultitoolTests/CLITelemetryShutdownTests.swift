@@ -26,13 +26,10 @@ struct CLITelemetryShutdownTests {
     /// a test of the bound ends soon.
     private static let testBound: Duration = .milliseconds(200)
 
-    /// A time much longer than ``testBound``. A flush or a command that does
-    /// not end by itself waits this long.
-    private static let longWait: Duration = .seconds(60)
-
-    /// The longest time a test of the bound lets the exit path take. It is
-    /// much shorter than ``longWait`` and much longer than ``testBound``.
-    private static let boundedEnd: Duration = .seconds(10)
+    /// How long a flush or a command that does not end by itself waits: one
+    /// day. No test reaches it, thus only the bound of the exit path can end
+    /// the wait while the test runs.
+    private static let longWait: Duration = .seconds(86_400)
 
     /// The line that the command of the thrown-error test throws.
     private static let thrownText = "the command threw"
@@ -121,16 +118,28 @@ struct CLITelemetryShutdownTests {
 
     // MARK: - The bound and the path with no exporter
 
-    @Test("a flush that does not end holds the exit path for the bound only")
-    func flushThatDoesNotEndIsBounded() async {
-        let clock = ContinuousClock()
-        let start = clock.now
+    /// The bound sleeps on a `GatedClock`, and the flush never ends while the
+    /// test runs. Thus the exit path can end only when the test opens the
+    /// clock, and the clock records the bound that the path armed. The test
+    /// reads no real time (card `^tm4x2hp`: no test checks the speed of the
+    /// machine). A path that waits for the flush past its bound hangs, and the
+    /// hang guard fails the test.
+    @Test("a flush that does not end holds the exit path for the bound only", .timeLimit(TestHangGuard.timeLimit))
+    func flushThatDoesNotEndIsBounded() async throws {
+        let clock = GatedClock()
+        let path = CLIExitPath(
+            flush: { try? await Task.sleep(for: Self.longWait) }, bound: Self.testBound,
+            errorOutput: CLIRunner.standardErrorOutput, clock: clock)
+        let run = Task {
+            await path.run(stoppingOn: Self.noStopSignals()) { _ in CLIRunner.ExitCode.answerFailed }
+        }
 
-        let code = await CLIExitPath(flush: { try? await Task.sleep(for: Self.longWait) }, bound: Self.testBound)
-            .run(stoppingOn: Self.noStopSignals()) { _ in CLIRunner.ExitCode.answerFailed }
+        try await TestPoll.waitUntil("the exit path armed its bound") { !clock.recordedSleeps.isEmpty }
+        clock.open()
+        let code = await run.value
 
         #expect(code == CLIRunner.ExitCode.answerFailed)
-        #expect(clock.now - start < Self.boundedEnd)
+        #expect(clock.recordedSleeps == [Self.testBound])
     }
 
     @Test("with no exporter the exit path gives the exit code of the command")

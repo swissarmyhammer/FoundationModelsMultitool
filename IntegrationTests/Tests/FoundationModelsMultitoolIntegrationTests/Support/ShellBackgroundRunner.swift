@@ -113,7 +113,7 @@ private let sweptRunSleepSeconds = 600
 /// the snippet reaching the verb. It is generous because a live turn on the
 /// shipped 30-billion-parameter pin takes minutes, and it is bounded because a
 /// turn that never calls the verb must report that rather than hang until the
-/// suite's own time limit fires and reads as a hang of something else.
+/// hang guard of the suite fires and reads as a hang of something else.
 private let shellRunArrivalDeadlineSeconds = 480
 
 /// How long the harness waits for the model to reach `tools.shell.execute`.

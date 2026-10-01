@@ -3,16 +3,6 @@ import Testing
 
 @testable import FoundationModelsMultitool
 
-/// The time limit of the held-out discovery test, in minutes.
-///
-/// The test resolves a 4B model and makes fifteen `searchTools` calls in each
-/// of ``discoveryRoundCount`` rounds, and each call is one grammar-constrained
-/// generation of a few tokens. Measured on a warm machine on 2026-09-10, the
-/// whole test — the model load plus forty-five such calls — took 40.3 s. Six
-/// minutes stands far over that and over a cold load, and a run that reaches
-/// it is parked rather than slow.
-private let heldOutTimeLimitMinutes = 6
-
 /// The label the printed result and skip lines carry.
 private let heldOutScenarioName = "heldOutSurfaceDiscovery"
 
@@ -163,7 +153,7 @@ let heldOutRoundCorrectLevel = 15
 @Suite(
     "Gated searchTools discovery over held-out queries",
     .serialized,
-    .timeLimit(.minutes(heldOutTimeLimitMinutes))
+    .timeLimit(IntegrationHangGuard.timeLimit)
 )
 struct HeldOutSurfaceDiscoveryTests {
     @Test("queries written from a task description alone each find a declared tool, and hold the level in every round")

@@ -103,7 +103,7 @@ private let selectionForkScenario = "selectionFork"
 @Suite(
     "Gated selection tier fork()-per-call trace (prefix reuse itself unmeasured)",
     .serialized,
-    .timeLimit(.minutes(10))
+    .timeLimit(IntegrationHangGuard.timeLimit)
 )
 struct SelectionForkPerCallTests {
     @Test(

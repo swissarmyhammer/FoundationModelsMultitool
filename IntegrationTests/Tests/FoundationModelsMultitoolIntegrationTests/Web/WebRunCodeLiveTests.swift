@@ -27,7 +27,7 @@ import Testing
 @Suite(
     "Live: the search-then-fetch snippet of web.md runs through runCode",
     .serialized,
-    .timeLimit(.minutes(LiveSearch.timeLimitMinutes))
+    .timeLimit(IntegrationHangGuard.timeLimit)
 )
 struct WebRunCodeLiveTests {
     /// The snippet of web.md § "Goal", word for word.

@@ -519,8 +519,8 @@ let agentDiscoveryProfile = ProfileDefinition(
 /// and starts a test's `.timeLimit` when the test starts; every scenario takes
 /// the turnstile from *inside* its own test body, by way of
 /// `LiveRouterFixture.resolve()`. So a suite's reported duration is its own
-/// work plus however long it queued behind the other suites, and its time limit
-/// is spent on both.
+/// work plus however long it queued behind the other suites, and its hang
+/// guard counts both.
 ///
 /// Measured on 2026-08-16, the same commit both ways:
 ///

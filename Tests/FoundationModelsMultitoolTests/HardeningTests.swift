@@ -5,6 +5,7 @@ import Testing
 import FoundationModels
 import FoundationModelsRouter
 @testable import FoundationModelsMultitool
+@testable import MultitoolTestSupport
 
 /// M10 coverage: cancellation reaching into an in-flight `runCode` snippet,
 /// every `MultiToolConfiguration` limit enforced at its boundary, the
@@ -45,12 +46,33 @@ struct HardeningTests {
 
     // MARK: - Cancellation (plan.md M10 acceptance: "no leaked JS thread or semaphore deadlock")
 
-    @Test("cancelling the task running MultiTool.call terminates an infinite-loop snippet and throws CancellationError within the configured time limit")
-    func cancellationTerminatesInfiniteLoopSnippetWithinTimeLimit() async throws {
-        // A generous configured limit: if cancellation only worked by waiting
-        // out the ordinary watchdog timeout, this assertion's `< .seconds(3)`
-        // bound below would fail.
-        let configuration = MultiToolConfiguration(executionTimeLimit: 10.0)
+    /// The execution limit of the cancellation tests: one day, in seconds.
+    ///
+    /// No test reaches it, thus the watchdog cannot end the run while the
+    /// test runs. The only event that can end the run is the cancellation. A
+    /// cancellation that does not reach the run makes the test hang, and
+    /// ``TestHangGuard/timeLimit`` then fails it. Thus the tests read no
+    /// clock (card `^tm4x2hp`: no test checks the speed of the machine).
+    private static let unreachedExecutionTimeLimit: TimeInterval = 86_400
+
+    /// How long the slow tool of the pending-promise test sleeps: one day, in
+    /// nanoseconds.
+    ///
+    /// The tool cannot answer while the test runs, thus a cancellation that
+    /// does not reach its pending call makes the test hang, and the hang guard
+    /// fails it. A tool that answers by itself would let `MultiTool.call`
+    /// throw `CancellationError` from its own check after the run, whether or
+    /// not the cancellation reached the pending call.
+    private static let unreachedToolDelayNanoseconds: UInt64 = 86_400_000_000_000
+
+    @Test(
+        "cancelling the task running MultiTool.call terminates an infinite-loop snippet and throws CancellationError",
+        .timeLimit(TestHangGuard.timeLimit))
+    func cancellationTerminatesInfiniteLoopSnippet() async throws {
+        // A configured limit that no test reaches: if cancellation only worked
+        // by waiting out the ordinary watchdog timeout, the test would hang
+        // until its hang guard fails it.
+        let configuration = MultiToolConfiguration(executionTimeLimit: Self.unreachedExecutionTimeLimit)
         let multiTool = MultiTool(registry: Self.emptyRegistry, configuration: configuration)
 
         let task = Task {
@@ -60,14 +82,12 @@ struct HardeningTests {
         try await Task.sleep(nanoseconds: 100_000_000)
         task.cancel()
 
-        let start = ContinuousClock.now
         await Self.expectCancellationError { _ = try await task.value }
-        #expect(start.duration(to: .now) < .seconds(3))
     }
 
     @Test(
-        "cancelling the task running MultiTool.call while it waits on a pending tools.* promise still throws CancellationError within the watchdog window"
-    )
+        "cancelling the task running MultiTool.call while it waits on a pending tools.* promise still throws CancellationError",
+        .timeLimit(TestHangGuard.timeLimit))
     func cancellationCancelsWhileAwaitingAPendingToolCall() async throws {
         // Regression for the async host-function bridge (eventplan.md "Async
         // JavaScript"): unlike `while (true) {}` above, this snippet spends
@@ -75,8 +95,8 @@ struct HardeningTests {
         // (`pumpUntilSettled`) waiting on a pending `tools.*` call, not
         // spinning the JS thread — a different code path M10's cancellation
         // guarantee must also reach.
-        let configuration = MultiToolConfiguration(executionTimeLimit: 10.0)
-        let slowTool = WindowRecordingTool(name: "slow", delayNanoseconds: 5_000_000_000)
+        let configuration = MultiToolConfiguration(executionTimeLimit: Self.unreachedExecutionTimeLimit)
+        let slowTool = WindowRecordingTool(name: "slow", delayNanoseconds: Self.unreachedToolDelayNanoseconds)
         let registry = try MultiTool.Builder().addTool(slowTool).buildRegistry()
         let multiTool = MultiTool(registry: registry, configuration: configuration)
 
@@ -88,9 +108,7 @@ struct HardeningTests {
         try await Task.sleep(nanoseconds: 100_000_000)
         task.cancel()
 
-        let start = ContinuousClock.now
         await Self.expectCancellationError { _ = try await task.value }
-        #expect(start.duration(to: .now) < .seconds(3))
     }
 
     @Test(
@@ -141,16 +159,12 @@ struct HardeningTests {
         let configuration = MultiToolConfiguration(executionTimeLimit: 0.3)
         let multiTool = MultiTool(registry: Self.emptyRegistry, configuration: configuration)
 
-        let start = ContinuousClock.now
         let output = try await multiTool.call(arguments: RunCodeArguments(code: "while (true) {}"))
-        let elapsed = start.duration(to: .now)
 
-        #expect(output.contains(InterpreterError.Kind.timeout.repairableErrorSummary))
-        // Comfortably above the 0.3s configured limit (watchdog scheduling
-        // jitter) but far below the package's own default work clock —
-        // proves the configured limit, not the default, was the one
-        // enforced.
-        #expect(elapsed < .seconds(3))
+        // The run ended, and the timeout text names the limit the watchdog
+        // was armed with: the configured limit, not the package's own default
+        // work clock.
+        Self.expectTimedOut(output, armedWith: configuration.executionTimeLimit)
     }
 
     @Test("a snippet finishing under a small configured executionTimeLimit succeeds normally")
@@ -175,16 +189,29 @@ struct HardeningTests {
             interpreter: JSCInterpreter()
         )
 
-        let start = ContinuousClock.now
         let output = try await multiTool.call(arguments: RunCodeArguments(code: "while (true) {}"))
-        let elapsed = start.duration(to: .now)
 
-        #expect(output.contains(InterpreterError.Kind.timeout.repairableErrorSummary))
-        // Comfortably above the 0.3s configured limit (watchdog scheduling
-        // jitter) but far below the interpreter's own stock limit — proves
-        // the configured ceiling, not the injected interpreter's, was the one
-        // enforced.
-        #expect(elapsed < .seconds(3))
+        // The run ended, and the timeout text names the limit the watchdog
+        // was armed with: the configured ceiling, not the injected
+        // interpreter's own stock limit.
+        Self.expectTimedOut(output, armedWith: configuration.executionTimeLimit)
+    }
+
+    /// Records a failure unless `output` is the timeout text of a run that the
+    /// watchdog ended at `limit`.
+    ///
+    /// The watchdog names the limit it was armed with in its timeout message.
+    /// Thus the test reads which limit fired from the output, and not from the
+    /// real time the run took (card `^tm4x2hp`: no test checks the speed of
+    /// the machine).
+    ///
+    /// - Parameters:
+    ///   - output: The rendered output of the `runCode` call.
+    ///   - limit: The limit, in seconds, the watchdog must have been armed
+    ///     with.
+    private static func expectTimedOut(_ output: String, armedWith limit: TimeInterval) {
+        #expect(output.contains(InterpreterError.Kind.timeout.repairableErrorSummary), "output was: \(output)")
+        #expect(output.contains("Execution exceeded the \(limit)s time limit."), "output was: \(output)")
     }
 
     @Test("a configured executionTimeLimit above an injected interpreter's own limit is the one enforced")

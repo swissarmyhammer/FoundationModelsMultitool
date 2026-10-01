@@ -416,10 +416,10 @@ private let backgroundMailAnswerDeadlineMinutes: Int64 = 8
 /// How long `runBackgroundIntegrationScenario` waits for the answer that mail
 /// starts, counted from the start of the turn.
 ///
-/// Eight minutes. The time limit of `BackgroundTests` is ten minutes, and it
-/// also has to hold the profile load. A run that gets no mail answer inside
-/// this deadline is graded, and fails with a reading, rather than being cut
-/// off by the time limit with none.
+/// Eight minutes. The hang guard (`IntegrationHangGuard.timeLimit`) of
+/// `BackgroundTests` stands far above it. A run that gets no mail answer
+/// inside this deadline is graded, and fails with a reading, rather than
+/// being cut off by the hang guard with none.
 private let backgroundMailAnswerDeadline = Duration.seconds(backgroundMailAnswerDeadlineMinutes * secondsPerMinute)
 
 /// Everything one streamed turn produced that a background scenario grades or
@@ -907,10 +907,10 @@ private let secondsPerMinute: Int64 = 60
 /// How long the canary waits for the answer that mail starts, counted from
 /// the start of the turn.
 ///
-/// Twelve minutes. The time limit of `InBandCollectionCanaryTests` is fifteen
-/// minutes, and it also has to hold the profile load. A run that gets no mail
+/// Twelve minutes. The hang guard (`IntegrationHangGuard.timeLimit`) of
+/// `InBandCollectionCanaryTests` stands far above it. A run that gets no mail
 /// answer inside this deadline is graded, and fails `mailCollection` with a
-/// reading, rather than being cut off by the time limit with none.
+/// reading, rather than being cut off by the hang guard with none.
 private let mailAnswerDeadline = Duration.seconds(mailAnswerDeadlineMinutes * secondsPerMinute)
 
 /// Drives one mail collection scenario end to end, and holds the run to the
@@ -1138,7 +1138,7 @@ private let nestedGenerationReplyPreviewCharacters = 200
 /// gets `GenerationQueueError.waitInsideOpenSubmission` at once and never
 /// waits, so a healthy run never reads `waiting=1`. A run that hangs reads
 /// `running=true waiting=1` for the rest of its life, and that is the reading
-/// a run killed by the time limit leaves.
+/// a run killed by the hang guard leaves.
 ///
 /// Sampled while the turn is in flight rather than read afterwards, because a
 /// hung run has no afterwards. The last printed reading is what a killed run
@@ -1178,7 +1178,7 @@ private func sampleGenerationQueue(on slot: RoutedLLM) async {
 /// `permits=0 waiters=1` to the end of the run, and the unified log read
 /// `enter nestedRespond` at 08:15:49.698 and
 /// `exit nestedRespond threw CancellationError()` at 08:18:34.135 — 165
-/// seconds, unwound only when the time limit cancelled the outer turn.
+/// seconds, unwound only when the hang guard cancelled the outer turn.
 ///
 /// **`searchTools` is deliberately absent.** The tool list is
 /// `[IntegrationNestedGenerationTool]` and not what
@@ -1188,7 +1188,8 @@ private func sampleGenerationQueue(on slot: RoutedLLM) async {
 /// them is the question.
 ///
 /// **What a hang looks like from outside.** The turn stops making progress, so
-/// the suite's own `.timeLimit` is what ends it. The evidence is the `QUEUE`
+/// the hang guard of the suite, `IntegrationHangGuard.timeLimit`, is what ends
+/// it. The evidence is the `QUEUE`
 /// lines this prints throughout, and the enter record of the span the fixture
 /// opens: the swift-log output of the run shows
 /// `enter FoundationModelsMultitoolIntegrationTests.nestedRespond`, and the

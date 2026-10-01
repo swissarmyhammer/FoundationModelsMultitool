@@ -22,7 +22,7 @@ import FoundationModelsMultitool
 @Suite(
     "A file read on a bare LanguageModelSession",
     .serialized,
-    .timeLimit(.minutes(bareSessionTimeLimitMinutes))
+    .timeLimit(IntegrationHangGuard.timeLimit)
 )
 struct FilesBareSessionTests {
 

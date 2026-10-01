@@ -4,6 +4,7 @@ import MCPTestServer
 import Testing
 
 @testable import FoundationModelsMultitool
+@testable import MultitoolTestSupport
 
 /// Tests of `DropObservingTransport` — how the mirrored receive stream ENDS.
 ///
@@ -23,7 +24,10 @@ import Testing
 ///
 /// What the report of a drop then does — `handleTransportDrop(generation:)` and
 /// the `.lost` calls that follow — is read by `LostCallTests`.
-@Suite("DropObservingTransport", .timeLimit(.minutes(1)))
+///
+/// The time limit is ``TestHangGuard/timeLimit``: it stops a mirror that never
+/// ends, and it is a hang guard and not a speed check (card `^tm4x2hp`).
+@Suite("DropObservingTransport", .timeLimit(TestHangGuard.timeLimit))
 struct DropObservingTransportTests {
 
     // MARK: - Shared test constants

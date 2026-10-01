@@ -11,8 +11,9 @@ import TestConcurrency
 ///
 /// The time limit bounds a gate that never hands itself over: a defect of that
 /// shape parks every caller for ever, and a parked task fails as a hang and not
-/// as an assertion.
-@Suite("ConcurrencyGate", .timeLimit(.minutes(1)))
+/// as an assertion. The limit is ``TestHangGuard/timeLimit``, a hang guard and
+/// not a speed check (card `^tm4x2hp`).
+@Suite("ConcurrencyGate", .timeLimit(TestHangGuard.timeLimit))
 struct ConcurrencyGateTests {
     /// How many callers each case starts.
     private static let callerCount = 8

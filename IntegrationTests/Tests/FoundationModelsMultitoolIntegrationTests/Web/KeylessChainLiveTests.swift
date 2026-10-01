@@ -17,7 +17,7 @@ import Testing
 @Suite(
     "Live: the keyless chain gives hits from a keyless provider",
     .serialized,
-    .timeLimit(.minutes(LiveSearch.timeLimitMinutes))
+    .timeLimit(IntegrationHangGuard.timeLimit)
 )
 struct KeylessChainLiveTests {
     /// The names of the two keyless providers. The set is stated here, and

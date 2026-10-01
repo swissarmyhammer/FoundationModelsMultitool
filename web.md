@@ -420,6 +420,17 @@ live levels are in the nested package `IntegrationTests/`. (Decided,
 2026-09-26: the first design had a separate package for Level 2. That package
 is removed, and its suites are in `IntegrationTests/`.)
 
+**No test checks the speed of the machine. (Decided by the user, 2026-10-01, card `^tm4x2hp`.)**
+A time check in a test uses an injected clock or an event, and never the real
+time that a step took. A `.timeLimit` on a model-driven test is a hang guard
+only: one shared value, `IntegrationHangGuard.timeLimit` in
+`IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Support/IntegrationHangGuard.swift`,
+far above the slowest step on a busy machine. A hang guard stops a test that
+cannot end; it does not fail a test that makes progress. The rule is for each
+run of the integration package, not only for the web suites. In the root
+package, `TestHangGuard.timeLimit` and `TestPoll.deadline`
+(`Tests/Support/MultitoolTestSupport/`) are the hang guards of the unit tests.
+
 ### Level 1: unit tests, no network (root package)
 
 All in `Tests/FoundationModelsMultitoolTests/`. A stub `URLProtocol`
@@ -484,7 +495,8 @@ package (`swift test --package-path IntegrationTests --no-parallel`, the run of
 CI) also includes each of them.
 
 `--no-parallel`, and `.serialized` on each suite, keep the request rate low.
-Each test has `.timeLimit(.minutes(1))`.
+Each test has `.timeLimit(IntegrationHangGuard.timeLimit)`, the shared hang
+guard of the integration package (see the rule above).
 
 **The search spacing. (Decided, 2026-09-30, card `^kghyac5`.)** Two live
 requests to the Brave results page 0.6 s apart gave HTTP 429 to the second
@@ -531,7 +543,7 @@ The rule:
   is not a skip: each check of the test runs on a result. It does not change
   a time limit.
 - The rule is for the live web search tests only. It does not apply to the
-  model scenarios, for example the time limits of `CLISmokeTests` and
+  model scenarios, for example `CLISmokeTests` and
   `AgentSurfaceDiscoveryTests`.
 - `BlockedProviderRuleTests` checks the rule with no network.
   `IntegrationTests/Package.swift` states the same rule.

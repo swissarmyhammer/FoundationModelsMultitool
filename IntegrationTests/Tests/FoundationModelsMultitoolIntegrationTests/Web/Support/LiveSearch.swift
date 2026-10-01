@@ -18,15 +18,6 @@ import Testing
 
 /// The shared setup and the shared checks of the live search suites.
 enum LiveSearch {
-    /// The time limit of each live test, in minutes.
-    ///
-    /// One live search sends one request to each provider that it tries.
-    /// With ``searchTimeoutSeconds`` for each provider, one minute is more
-    /// than enough time. A live fetch has ``resourceTimeoutSeconds`` for each
-    /// request, thus the fetch suites and the `runCode` suite use the same
-    /// limit. A test that reaches the limit is parked, not slow.
-    static let timeLimitMinutes = 1
-
     /// The query of each live search test.
     static let swiftQuery = "swift programming language"
 
@@ -65,7 +56,7 @@ enum LiveSearch {
     /// no limit, thus the value comes from that measurement: two seconds is
     /// more than three times the gap that failed. A suite of two tests waits
     /// at most this long one time, which is a small part of
-    /// ``timeLimitMinutes``.
+    /// ``IntegrationHangGuard/timeLimit``.
     static let searchSpacingSeconds: Int64 = 2
 
     /// The one spacing of the live searches of the test process.

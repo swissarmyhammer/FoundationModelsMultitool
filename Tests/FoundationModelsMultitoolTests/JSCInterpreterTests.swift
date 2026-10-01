@@ -3,6 +3,7 @@ import Testing
 import os
 
 @testable import FoundationModelsMultitool
+@testable import MultitoolTestSupport
 
 /// M1 coverage for `JSCInterpreter`: return-value capture, console capture,
 /// exception mapping, cross-run statelessness, host-function round-trips,
@@ -214,11 +215,23 @@ struct JSCInterpreterTests {
         #expect(result.returnValue == .number(1))
     }
 
-    @Test("DIAGNOSTIC: isCancelled forces early termination of an infinite loop, isolated from other tests")
+    /// The time limit of the interpreter of the cancellation test: one day, in
+    /// seconds.
+    ///
+    /// No test reaches it, thus only the cancel flag can end the loop while
+    /// the test runs. The watchdog ends a timed-out run with
+    /// `InterpreterError`, and a cancelled run with `CancellationError`, thus
+    /// the error alone tells which one ended the run. A cancel flag that the
+    /// watchdog does not read makes the test hang, and the hang guard fails
+    /// it. The test reads no real time (card `^tm4x2hp`).
+    private static let unreachedTimeLimit: TimeInterval = 86_400
+
+    @Test(
+        "DIAGNOSTIC: isCancelled forces early termination of an infinite loop, isolated from other tests",
+        .timeLimit(TestHangGuard.timeLimit))
     func diagnosticCancellationForcesEarlyTermination() throws {
-        let interpreter = JSCInterpreter(timeLimit: 10.0)
+        let interpreter = JSCInterpreter(timeLimit: Self.unreachedTimeLimit)
         let cancelledBox = OSAllocatedUnfairLock(initialState: false)
-        let start = ContinuousClock.now
         DispatchQueue.global().asyncAfter(deadline: .now() + 0.2) {
             cancelledBox.withLock { $0 = true }
         }
@@ -231,9 +244,6 @@ struct JSCInterpreterTests {
         } throws: { error in
             error is CancellationError
         }
-        let elapsed = start.duration(to: .now)
-        print("DIAGNOSTIC elapsed: \(elapsed)")
-        #expect(elapsed < .seconds(3))
     }
 
     @Test("concurrent run() calls from multiple threads stay isolated")

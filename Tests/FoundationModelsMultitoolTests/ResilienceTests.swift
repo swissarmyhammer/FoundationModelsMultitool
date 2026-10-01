@@ -79,8 +79,8 @@ struct ResilienceTests {
     /// The attempt budget of the exhaustion test.
     private static let exhaustionMaxAttempts = 3
 
-    /// The per-attempt timeout of the hanging-transport test — short, because
-    /// the test proves it bounds real time.
+    /// The per-attempt timeout of the hanging-transport test. The test reads
+    /// it back from the clock of the attempt, thus the value is arbitrary.
     private static let hangingConnectTimeout = Duration.milliseconds(50)
 
     /// The per-attempt timeout every gated test holds its gate closed past.
@@ -91,10 +91,6 @@ struct ResilienceTests {
 
     /// The attempt budget of every single-attempt policy.
     private static let singleAttempt = 1
-
-    /// The upper bound that proves the hanging-transport test returned on
-    /// its `connectTimeout` and not on the transport.
-    private static let promptReturnBound = Duration.seconds(5)
 
     /// How long a test waits for a released, orphaned attempt to run and
     /// discard its result before it asserts — a fixed, bounded interval,
@@ -151,28 +147,28 @@ struct ResilienceTests {
 
     // MARK: - Helpers
 
-    /// A `MCPServer` named ``serverName`` over `clock`.
+    /// A `MCPServer` named ``serverName`` over the three given clocks, with
+    /// every other setting at the default of the public initializer.
     ///
-    /// - Parameter clock: The clock the retry loop sleeps on. Defaults to a
-    ///   real clock, for a test that exercises no backoff delay.
+    /// - Parameters:
+    ///   - clock: The clock the retry loop sleeps on. Defaults to a real
+    ///     clock, for a test that exercises no backoff delay.
+    ///   - clientQueueClock: The clock each bounded wait of the
+    ///     client-operation queue sleeps on. Defaults to a real clock.
+    ///   - connectAttemptClock: The clock the per-attempt timeout sleeps on.
+    ///     Defaults to a real clock.
     /// - Returns: The server, not yet connected.
-    private func makeServer(clock: any Clock<Duration> = ContinuousClock()) -> MCPServer {
-        MCPServer(name: Self.serverName, clock: clock)
-    }
-
-    /// A `MCPServer` named ``serverName`` whose client-operation queue bounds
-    /// each wait on `clientQueueClock`, with every other setting at the
-    /// default of the public initializer.
-    ///
-    /// - Parameter clientQueueClock: The clock each bounded wait of the queue
-    ///   sleeps on.
-    /// - Returns: The server, not yet connected.
-    private func makeServer(clientQueueClock: any Clock<Duration>) -> MCPServer {
+    private func makeServer(
+        clock: any Clock<Duration> = ContinuousClock(),
+        clientQueueClock: any Clock<Duration> = ContinuousClock(),
+        connectAttemptClock: any Clock<Duration> = ContinuousClock()
+    ) -> MCPServer {
         MCPServer(
             name: Self.serverName,
             version: MCPServer.defaultClientVersion,
-            clock: ContinuousClock(),
+            clock: clock,
             clientQueueClock: clientQueueClock,
+            connectAttemptClock: connectAttemptClock,
             callTimeout: MCPServer.defaultCallTimeout,
             renderBudget: .default,
             elicitationHandler: nil,
@@ -307,25 +303,32 @@ struct ResilienceTests {
         }
     }
 
-    // MARK: - Per-attempt timeout bounds real wall-clock time
+    // MARK: - Per-attempt timeout ends an attempt whose transport hangs
 
-    @Test func connectAttemptTimeoutBoundsRealWallClockTimeEvenWhenTransportHangs() async throws {
+    /// The `connect()` of the hanging transport never returns, and the
+    /// timeout of the attempt sleeps on a `GatedClock`. Thus the connect can
+    /// end only when the test opens the clock, and the clock records the
+    /// timeout that the attempt armed. A retry loop that blocks on the
+    /// abandoned attempt hangs, and the hang guard fails the test. The test
+    /// reads no real time (card `^tm4x2hp`: no test checks the speed of the
+    /// machine).
+    @Test(.timeLimit(TestHangGuard.timeLimit))
+    func connectAttemptTimeoutEndsTheAttemptEvenWhenTransportHangs() async throws {
         let hanging = HangingTransport()
         let policy = BackoffPolicy(
             connectTimeout: Self.hangingConnectTimeout, baseDelay: Self.singleAttemptDelay,
             maxDelay: Self.singleAttemptDelay, maxAttempts: Self.singleAttempt)
-        let server = makeServer(clock: ManualClock())
+        let attemptClock = GatedClock()
+        let server = makeServer(clock: ManualClock(), connectAttemptClock: attemptClock)
 
-        let start = ContinuousClock.now
+        let connecting = Task { try await server.connect(via: hanging, backoffPolicy: policy) }
+        try await TestPoll.waitUntil("the attempt armed its timeout") { !attemptClock.recordedSleeps.isEmpty }
+        attemptClock.open()
+
         await #expect(throws: MCPServerError.self) {
-            try await server.connect(via: hanging, backoffPolicy: policy)
+            try await connecting.value
         }
-        let elapsed = ContinuousClock.now - start
-
-        // The `connect()` of the hanging transport never returns, so this
-        // proves the retry loop returned on `connectTimeout` and did not
-        // block on the abandoned attempt.
-        #expect(elapsed < Self.promptReturnBound)
+        #expect(attemptClock.recordedSleeps == [Self.hangingConnectTimeout])
     }
 
     @Test func lateResolvingAttemptAfterExhaustionIsDiscarded() async throws {

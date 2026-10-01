@@ -66,6 +66,14 @@ private let mlxPackage = "mlx-swift-lm"
 /// The rule does not change a time limit, and it is not for the model
 /// scenarios.
 ///
+/// **No test checks the speed of the machine.** By the user's decision of
+/// 2026-10-01 (card `^tm4x2hp`, web.md § "Testing"): a time check in a test
+/// uses an injected clock or an event, and never the real time that a step
+/// took. A `.timeLimit` on a model-driven test is a hang guard only. It is one
+/// shared value, `IntegrationHangGuard.timeLimit`, far above the slowest step
+/// on a busy machine. A hang guard stops a test that cannot end. It does not
+/// fail a test that makes progress.
+///
 /// The two commands are:
 ///
 ///     swift test                                                  # unit tests

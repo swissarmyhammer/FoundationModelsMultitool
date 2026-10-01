@@ -78,8 +78,9 @@ struct MCPSessionSweepTests {
     private static let slowStepDelay = Duration.milliseconds(20)
 
     /// How long a test waits for the scripted server to record a
-    /// `notifications/cancelled`.
-    private static let notificationTimeout = Duration.seconds(5)
+    /// `notifications/cancelled`: ``TestPoll/deadline``, a hang guard and
+    /// not a speed check (card `^tm4x2hp`).
+    private static let notificationTimeout = TestPoll.deadline
 
     /// How many recorded notifications the cancel cases wait for.
     private static let oneNotification = 1

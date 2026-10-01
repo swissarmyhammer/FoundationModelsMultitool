@@ -172,8 +172,24 @@ comments:
     - evidence: 36ffe02 test(web): skip live search for a blocked provider and space the live requests; base sha d2816ca
     - next: the caller records the kanban-only commit, if the comment leaves a change
   timestamp: 2026-10-01T18:01:33.153550+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m3wbrcxt38q3t2yb0b0ykcad
+  text: |-
+    ### review — clean
+    - evidence: `review sha d2816ca..HEAD` gave 0 findings (confirmed 0, refuted 0, attempted 7, failed 0, skipped 0). The engine examined 14 files. It did not examine 6 `.kanban/` files (`.reviewignore` excludes them) and `web.md` (no validator applies to it). The description has no earlier review findings.
+    - next: The task moved to done. No push was done.
+  timestamp: 2026-10-01T18:31:18.714933+00:00
+- actor: claude-code
+  id: 01m3wbrw2x9fkyh1segebh6bh0
+  text: |-
+    ### finish iteration 4 — clean
+    - test: accepted by the user — root 1879 tests, 0 issues; the Web failures come only from a blocked network address (see iteration 3).
+    - commit: 36ffe02, 5eae064
+    - review: clean — review sha d2816ca..HEAD, 0 findings. Task is in done.
+    - note: the subject of 36ffe02 says "skip". The rule does not skip; it replaces a blocked provider. The commit is not pushed.
+  timestamp: 2026-10-01T18:31:34.237965+00:00
+position_column: done
+position_ordinal: ffff8b80
 title: Integration tests fail when the network is slow or rate-limited
 ---
 ## What

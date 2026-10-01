@@ -17,7 +17,7 @@ import Testing
 @Suite(
     "Live: the Brave results page gives stable hits",
     .serialized,
-    .timeLimit(.minutes(LiveSearch.timeLimitMinutes))
+    .timeLimit(IntegrationHangGuard.timeLimit)
 )
 struct BraveHTMLLiveTests {
     /// The one provider of this suite.
