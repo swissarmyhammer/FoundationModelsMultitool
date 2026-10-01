@@ -48,6 +48,13 @@ comments:
     - failing tests: none. No test from the card ^0hd2aq3 list failed.
     - next: review.
   timestamp: 2026-10-01T00:21:33.177192+00:00
+- actor: claude-code
+  id: 01m3tddk9xfmp1y6hfxwfxgcnm
+  text: |-
+    ### commit — changed
+    - evidence: 317f1e8 test(telemetry): check the logger label on each TelemetryCapture.LogRecord; base 333e793
+    - next: review
+  timestamp: 2026-10-01T00:21:53.085211+00:00
 position_column: doing
 position_ordinal: '80'
 title: Adopt TelemetryCapture.LogRecord in place of InMemoryLogHandler.Entry
