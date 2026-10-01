@@ -409,6 +409,9 @@ struct SurfaceRefresherTests {
                 let records = Self.rebuildFailureRecords(of: Self.failureServerName, in: context)
                 #expect(ground.staging.count == Self.stagesAfterConnect)
                 #expect(records.count == Self.oneLogLine)
+                // The case gives the refresher no logger, thus the default
+                // logger of the library writes the record.
+                #expect(records.first?.label == LogReadback.libraryLoggerLabel)
                 #expect(records.first?.metadataText(MultitoolTelemetry.LogMetadataKey.errorType) != nil)
                 #expect(!"\(records)".contains(Self.illegalVerb), "the record carries the verb: \(records)")
                 #expect(try await helpPaths(of: ground.runCode) == [echoPath])

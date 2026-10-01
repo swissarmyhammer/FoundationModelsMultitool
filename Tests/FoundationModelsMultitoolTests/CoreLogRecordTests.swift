@@ -9,10 +9,13 @@ import Testing
 /// `JSCInterpreter` and `ToolAPIRenderer`.
 ///
 /// Each case runs the code in a `TelemetryCapture` and reads the records back
-/// from it. Each case asserts the level, the constant message and the metadata
-/// keys of a record. Each case gives the capture the content of the fixture —
-/// the JS source, the tool argument, the error text — as forbidden strings, so
-/// a record that carries that content fails the case.
+/// from it. Each case asserts the level, the constant message, the logger label
+/// and the metadata keys of a record. A `MultiTool` case reads the label of the
+/// logger that it binds. A `JSCInterpreter` or `ToolAPIRenderer` case binds no
+/// logger, thus it reads the label of the library. Each case gives the capture
+/// the content of the fixture — the JS source, the tool argument, the error
+/// text — as forbidden strings, so a record that carries that content fails
+/// the case.
 ///
 /// `SurfaceRefresherTests` covers the record of `SurfaceRefresher`, and
 /// `UnknownToolHintTests` covers the `imaginedTool` record of `MultiTool`.
@@ -86,10 +89,12 @@ struct CoreLogRecordTests {
 
         let started = try #require(LogReadback.records(.toolInvocationStarted, in: records).first)
         #expect(started.level == .debug)
+        #expect(started.label == LogReadback.captureLoggerLabel)
         #expect(started.metadataText(MultitoolTelemetry.AttributeKey.toolName) == "getTemperature")
 
         let finished = try #require(LogReadback.records(.toolInvocationFinished, in: records).first)
         #expect(finished.level == .debug)
+        #expect(finished.label == LogReadback.captureLoggerLabel)
         #expect(finished.metadataText(MultitoolTelemetry.AttributeKey.toolName) == "getTemperature")
         #expect(finished.metadataText(MultitoolTelemetry.LogMetadataKey.durationMilliseconds) != nil)
     }
@@ -103,6 +108,7 @@ struct CoreLogRecordTests {
 
         let failed = try #require(LogReadback.records(.toolArgumentValidationFailed, in: records).first)
         #expect(failed.level == .warning)
+        #expect(failed.label == LogReadback.captureLoggerLabel)
         #expect(failed.metadataText(MultitoolTelemetry.AttributeKey.toolName) == "rangedTool")
         #expect(failed.metadataText(MultitoolTelemetry.LogMetadataKey.errorType) == "ToolInvokerError")
         #expect(failed.metadataText(MultitoolTelemetry.LogMetadataKey.errorCode) != nil)
@@ -117,6 +123,7 @@ struct CoreLogRecordTests {
 
         let failed = try #require(LogReadback.records(.toolArgumentMarshalingFailed, in: records).first)
         #expect(failed.level == .warning)
+        #expect(failed.label == LogReadback.captureLoggerLabel)
         #expect(failed.metadataText(MultitoolTelemetry.AttributeKey.toolName) == "getTemperature")
         #expect(failed.metadataText(MultitoolTelemetry.LogMetadataKey.errorType) == "ArgumentMarshalerError")
     }
@@ -131,6 +138,7 @@ struct CoreLogRecordTests {
 
         let failed = try #require(LogReadback.records(.toolInvocationFailed, in: records).first)
         #expect(failed.level == .error)
+        #expect(failed.label == LogReadback.captureLoggerLabel)
         #expect(failed.metadataText(MultitoolTelemetry.AttributeKey.toolName) == "throwingTool")
         #expect(failed.metadataText(MultitoolTelemetry.LogMetadataKey.errorType) == "ThrowingToolError")
     }
@@ -148,10 +156,12 @@ struct CoreLogRecordTests {
 
         let started = try #require(LogReadback.records(.snippetStarted, in: records).first)
         #expect(started.level == .debug)
+        #expect(started.label == LogReadback.libraryLoggerLabel)
         #expect(started.metadataText(MultitoolTelemetry.LogMetadataKey.characterCount) == "\(code.count)")
 
         let finished = try #require(LogReadback.records(.snippetFinished, in: records).first)
         #expect(finished.level == .debug)
+        #expect(finished.label == LogReadback.libraryLoggerLabel)
         #expect(finished.metadataText(MultitoolTelemetry.LogMetadataKey.durationMilliseconds) != nil)
     }
 
@@ -166,6 +176,7 @@ struct CoreLogRecordTests {
 
         let ended = try #require(LogReadback.records(.snippetEnded, in: records).first)
         #expect(ended.level == .debug)
+        #expect(ended.label == LogReadback.libraryLoggerLabel)
         #expect(ended.metadataText(MultitoolTelemetry.LogMetadataKey.errorType) == "InterpreterError")
         #expect(ended.metadataText(MultitoolTelemetry.LogMetadataKey.durationMilliseconds) != nil)
         #expect(LogReadback.records(.snippetFinished, in: records).isEmpty)
@@ -186,6 +197,7 @@ struct CoreLogRecordTests {
 
         let widened = try #require(LogReadback.records(.schemaWidened, in: records).first)
         #expect(widened.level == .warning)
+        #expect(widened.label == LogReadback.libraryLoggerLabel)
         let detail = try #require(widened.metadataText(MultitoolTelemetry.LogMetadataKey.wideningDetail))
         #expect(detail.contains(Self.widenedProperty), "the detail was: \(detail)")
     }

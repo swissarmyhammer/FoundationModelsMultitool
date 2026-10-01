@@ -362,13 +362,17 @@ struct UnknownToolHintTests {
         let registry = try MultiTool.Builder().addTools(Self.travelCatalog()).buildRegistry()
         let multiTool = MultiTool(registry: registry)
 
-        let records = try await TelemetryCapture.run(forbidding: []) { context in
+        let (records, labels) = try await TelemetryCapture.run(forbidding: []) { context in
             _ = try await multiTool.call(
                 arguments: RunCodeArguments(code: "return tools.\(Self.emittedGuess)();")
             )
-            return ImaginedToolLogRecord.records(in: context)
+            let labels = LogReadback.records(.imaginedTool, in: context).map(\.label)
+            return (ImaginedToolLogRecord.records(in: context), labels)
         }
 
+        // The case binds no logger, thus the logger of the library writes the
+        // record.
+        #expect(labels == [LogReadback.libraryLoggerLabel])
         #expect(
             records == [
                 ImaginedToolLogRecord(

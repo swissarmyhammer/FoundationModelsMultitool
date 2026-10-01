@@ -14,8 +14,9 @@ import Tracing
 /// never ends, thus its span never leaves the process. The "enter" record
 /// leaves the process at once. Thus a hung call shows as an enter record with
 /// no ended span. These cases prove that each call gives one span and one
-/// enter record, that the spans nest, that a hung call leaves its enter record
-/// and no ended span, and that a thrown error sets the error status.
+/// enter record that the bound logger writes, that the spans nest, that a hung
+/// call leaves its enter record and no ended span, and that a thrown error sets
+/// the error status.
 ///
 /// Each case runs in a `TelemetryCapture`, and binds the logger of the capture
 /// as the bound logger of the library. The interpreter dispatches each
@@ -55,6 +56,22 @@ struct CallSpanTests {
     ) -> [TelemetryCapture.LogRecord] {
         LogReadback.enterRecords(spanName, in: context)
     }
+
+    /// The logger labels of the enter records of `context` for the span named
+    /// `spanName`.
+    ///
+    /// - Parameters:
+    ///   - spanName: The name of the span.
+    ///   - context: The capture that holds the records.
+    /// - Returns: The labels, in the order of the calls.
+    private static func enterLabels(
+        _ spanName: MultitoolTelemetry.SpanName, in context: TelemetryCapture.Context
+    ) -> [String] {
+        enterRecords(spanName, in: context).map(\.label)
+    }
+
+    /// The labels of one enter record that the bound logger of the case wrote.
+    private static let oneBoundEnterLabel = [LogReadback.captureLoggerLabel]
 
     /// The ended spans of `context` with the name `spanName`.
     ///
@@ -128,8 +145,8 @@ struct CallSpanTests {
 
             let runCodeEnter = try #require(Self.enterRecords(.runCode, in: context).first)
             let dispatchEnter = try #require(Self.enterRecords(.toolsDispatch, in: context).first)
-            #expect(Self.enterRecords(.runCode, in: context).count == 1)
-            #expect(Self.enterRecords(.toolsDispatch, in: context).count == 1)
+            #expect(Self.enterLabels(.runCode, in: context) == Self.oneBoundEnterLabel)
+            #expect(Self.enterLabels(.toolsDispatch, in: context) == Self.oneBoundEnterLabel)
             let runCodeTraceID = try #require(runCodeEnter.metadata[Self.traceIDKey])
             #expect(dispatchEnter.metadata[Self.traceIDKey] == runCodeTraceID)
             let runCodeSpanID = try #require(runCodeEnter.metadata[Self.spanIDKey])
@@ -152,7 +169,8 @@ struct CallSpanTests {
                 !Self.enterRecords(.toolsDispatch, in: context).isEmpty
             }
 
-            #expect(Self.enterRecords(.runCode, in: context).count == 1)
+            #expect(Self.enterLabels(.runCode, in: context) == Self.oneBoundEnterLabel)
+            #expect(Self.enterLabels(.toolsDispatch, in: context) == Self.oneBoundEnterLabel)
             #expect(Self.spans(.toolsDispatch, in: context).isEmpty)
             #expect(Self.spans(.runCode, in: context).isEmpty)
             let open = context.tracer.activeSpans.map(\.operationName)
@@ -199,9 +217,9 @@ struct CallSpanTests {
             let sample = try #require(Self.spans(.searchToolsSample, in: context).first)
             #expect(search.parentSpanID == call.spanID)
             #expect(sample.parentSpanID == call.spanID)
-            #expect(Self.enterRecords(.searchTools, in: context).count == 1)
-            #expect(Self.enterRecords(.searchToolsSearch, in: context).count == 1)
-            #expect(Self.enterRecords(.searchToolsSample, in: context).count == 1)
+            #expect(Self.enterLabels(.searchTools, in: context) == Self.oneBoundEnterLabel)
+            #expect(Self.enterLabels(.searchToolsSearch, in: context) == Self.oneBoundEnterLabel)
+            #expect(Self.enterLabels(.searchToolsSample, in: context) == Self.oneBoundEnterLabel)
         }
     }
 
@@ -220,7 +238,7 @@ struct CallSpanTests {
 
             let respond = try #require(Self.spans(.agentSessionRespond, in: context).first)
             #expect(Self.spans(.agentSessionRespond, in: context).count == 1)
-            #expect(Self.enterRecords(.agentSessionRespond, in: context).count == 1)
+            #expect(Self.enterLabels(.agentSessionRespond, in: context) == Self.oneBoundEnterLabel)
             #expect(respond.status?.code == .error)
             #expect(Self.attribute(.sessionRole, of: respond) == .string(TracedAgentSession.selectionRole))
             #expect(Self.attribute(.promptCharacters, of: respond) == .int64(Int64(Self.promptMarker.count)))
@@ -271,7 +289,7 @@ struct CallSpanTests {
             let make = try #require(Self.spans(.agentSessionMake, in: context).first)
             let probe = try #require(context.spans.first { $0.operationName == Self.factoryProbeSpanName })
             #expect(Self.spans(.agentSessionMake, in: context).count == 1)
-            #expect(Self.enterRecords(.agentSessionMake, in: context).count == 1)
+            #expect(Self.enterLabels(.agentSessionMake, in: context) == Self.oneBoundEnterLabel)
             #expect(probe.parentSpanID == make.spanID)
             #expect(session is TracedAgentSession)
             #expect(Self.attribute(.sessionRole, of: make) == .string(TracedAgentSession.selectionRole))

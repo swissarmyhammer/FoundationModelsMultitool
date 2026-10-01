@@ -21,6 +21,15 @@ import TelemetryTestSupport
 
 /// The readers of the log records that a `TelemetryCapture` keeps.
 enum LogReadback {
+    /// The label of each record that the logger of a `TelemetryCapture`
+    /// writes. A case gives this logger to the code under test: it binds it
+    /// with `MultitoolTelemetry.$boundLogger`, or gives it to an `MCPServer`.
+    static let captureLoggerLabel = TelemetryCapture.loggerLabel
+
+    /// The label of each record that the logger of the library writes when
+    /// the task binds no logger (see `MultitoolTelemetry.logger`).
+    static let libraryLoggerLabel = MultitoolTelemetry.logLabel
+
     /// The records of `context` that carry `message`, in the order of the
     /// calls.
     ///

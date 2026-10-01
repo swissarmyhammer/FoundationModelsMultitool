@@ -219,6 +219,7 @@ struct MCPTracePropagationTests {
             let enters = LogReadback.enterRecords(.mcpClientCall, in: context)
             #expect(enters.count == 1)
             let enter = try #require(enters.first)
+            #expect(enter.label == LogReadback.captureLoggerLabel)
             #expect(enter.metadataText(MultitoolTelemetry.AttributeKey.serverName) == Self.serverName)
             #expect(enter.metadataText(MultitoolTelemetry.AttributeKey.toolName) == Self.echoToolName)
             #expect(enter.metadata[LogReadback.traceIDKey] == "\(client.traceID)")

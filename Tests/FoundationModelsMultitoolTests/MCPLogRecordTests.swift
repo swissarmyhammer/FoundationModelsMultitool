@@ -85,11 +85,14 @@ struct MCPLogRecordTests {
         }
     }
 
-    /// Records a failure unless `record` names the server of this suite.
+    /// Records a failure unless the server of this suite wrote `record`: the
+    /// record names the server, and the logger that the case gave the server
+    /// wrote it.
     ///
     /// - Parameter record: The log record.
-    private static func expectServerName(of record: TelemetryCapture.LogRecord) {
+    private static func expectWrittenByTheServer(_ record: TelemetryCapture.LogRecord) {
         #expect(record.metadataText(MultitoolTelemetry.AttributeKey.serverName) == serverName)
+        #expect(record.label == LogReadback.captureLoggerLabel)
     }
 
     // MARK: - A failed connect
@@ -113,14 +116,14 @@ struct MCPLogRecordTests {
         #expect(failed.count == Self.attemptLimit)
         for record in failed {
             #expect(record.level == .warning)
-            Self.expectServerName(of: record)
+            Self.expectWrittenByTheServer(record)
             #expect(record.metadataText(MultitoolTelemetry.LogMetadataKey.errorType) != nil)
             #expect(record.metadataText(MultitoolTelemetry.LogMetadataKey.connectAttemptLimit) == "\(Self.attemptLimit)")
         }
 
         let exhausted = try #require(LogReadback.records(.mcpConnectBackoffExhausted, in: records).first)
         #expect(exhausted.level == .error)
-        Self.expectServerName(of: exhausted)
+        Self.expectWrittenByTheServer(exhausted)
         #expect(exhausted.metadataText(MultitoolTelemetry.LogMetadataKey.connectAttemptLimit) == "\(Self.attemptLimit)")
         #expect(exhausted.metadataText(MultitoolTelemetry.LogMetadataKey.errorType) != nil)
     }
@@ -141,10 +144,10 @@ struct MCPLogRecordTests {
 
         let reconnected = try #require(LogReadback.records(.mcpReconnected, in: records).first)
         #expect(reconnected.level == .info)
-        Self.expectServerName(of: reconnected)
+        Self.expectWrittenByTheServer(reconnected)
         let succeeded = try #require(LogReadback.records(.mcpConnectAttemptSucceeded, in: records).last)
         #expect(succeeded.level == .info)
-        Self.expectServerName(of: succeeded)
+        Self.expectWrittenByTheServer(succeeded)
     }
 
     // MARK: - A tool call that fails
@@ -177,7 +180,7 @@ struct MCPLogRecordTests {
 
         let dropped = try #require(LogReadback.records(.mcpTransportDropped, in: records).first)
         #expect(dropped.level == .warning)
-        Self.expectServerName(of: dropped)
+        Self.expectWrittenByTheServer(dropped)
         #expect(dropped.metadataText(MultitoolTelemetry.LogMetadataKey.itemCount) == "\(Self.oneCallInFlight)")
     }
 }
