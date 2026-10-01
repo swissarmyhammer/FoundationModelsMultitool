@@ -56,6 +56,13 @@ comments:
     - no failing tests, so no fix was needed and no known-race test failed.
     - next: review. Nothing was committed or pushed.
   timestamp: 2026-10-01T00:54:02.287113+00:00
+- actor: claude-code
+  id: 01m3tf983wqwdm704wgrm3efga
+  text: |-
+    ### commit — changed
+    - evidence: 2c50a68 build(deps): drop the unused swift-huggingface and swift-transformers dependencies; base sha before the commit: 896053d
+    - next: review
+  timestamp: 2026-10-01T00:54:27.708890+00:00
 position_column: doing
 position_ordinal: '80'
 title: Adopt LiveModelLoader(reporting:)
