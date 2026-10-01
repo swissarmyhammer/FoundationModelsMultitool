@@ -93,6 +93,14 @@ comments:
     - evidence: swift package update (pins current), then swift test: 1882 tests in 154 suites passed, 0 failed, 0 skipped. First run had 4 issues in 3 tests, all from upstream changes recorded on ^9255d9b. They are fixed in the tests, and the fixes are recorded on ^9255d9b. The only warning is the linker line "missing creator for mutated node" for the mlx-swift_Cmlx bundle in .build. It comes from the build tool, not from a source file of this package.
     - next: review
   timestamp: 2026-10-01T22:58:14.945576+00:00
+- actor: claude-code
+  id: 01m3wv2ttxjdmavc74d4eenf3z
+  text: |-
+    ### commit — changed
+    - evidence: 4dfacb3 feat(interpreter): run runCode as jobs on an event loop; d8de90e test(contracts): follow the upstream changes to span errors, the selection default and the prefix format (task ^9255d9b)
+    - note: The repo holds no formatter config (no .swift-format, .swiftformat or .swiftlint.yml). The committed code passes neither swift-format lint nor swiftformat lint with default rules. So no formatter ran. A run would rewrite whole files.
+    - next: review
+  timestamp: 2026-10-01T22:59:09.277925+00:00
 position_column: doing
 position_ordinal: '8180'
 title: 'runCode as a queue: run JS as jobs on an event loop, so a waiting snippet holds no thread and no limit is necessary'
