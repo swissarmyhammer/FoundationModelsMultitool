@@ -34,11 +34,22 @@ struct ReadArguments {
 
     /// The 1-based line number to start reading from, or `nil` for the
     /// first line.
-    @Guide(description: "The 1-based line number to start reading from. Omit it to start at the first line.")
+    ///
+    /// The guide carries ``offsetRange``, thus a guided generator cannot
+    /// write a value that the verb refuses.
+    @Guide(
+        description: "The 1-based line number to start reading from. Omit it to start at the first line.",
+        .range(ReadArguments.offsetRange))
     var offset: Int?
 
     /// The maximum number of lines to return, or `nil` for the whole tail.
-    @Guide(description: "The maximum number of lines to return. Omit it to read to the end of the file.")
+    ///
+    /// The guide carries ``limitRange``, thus a guided generator cannot
+    /// write `0`. A live run of the on-device model wrote `limit: 0`, read
+    /// the correction, and answered that a one-line file held no lines.
+    @Guide(
+        description: "The maximum number of lines to return. Omit it to read to the end of the file.",
+        .range(ReadArguments.limitRange))
     var limit: Int?
 
     /// The output format name: `hashline` anchors (the default) or `plain`
@@ -48,6 +59,23 @@ struct ReadArguments {
             "The output format. `hashline` (the default) tags each line as `N:HH|text` with its "
             + "absolute line number and content hash; `plain` returns the raw text.")
     var format: String?
+}
+
+extension ReadArguments {
+
+    /// The accepted `offset` values: a 1-based line number up to the
+    /// millionth line, matching the Rust `files` tool.
+    ///
+    /// The generation schema and the verb's own bound check read this one
+    /// range, thus the two cannot disagree.
+    static let offsetRange = 1...1_000_000
+
+    /// The accepted `limit` values: a line count up to a hundred thousand
+    /// lines, matching the Rust `files` tool.
+    ///
+    /// The generation schema and the verb's own bound check read this one
+    /// range, thus the two cannot disagree.
+    static let limitRange = 1...100_000
 }
 
 /// The result of `tools.files.read`: the windowed lines, or the correction
@@ -81,26 +109,21 @@ extension Read {
 
     // MARK: Bounds
 
-    /// The largest accepted `offset`: the millionth line, matching the Rust `files` tool.
-    private static let maximumOffset = 1_000_000
-
-    /// The largest accepted `limit`: a hundred thousand lines, matching the Rust `files` tool.
-    private static let maximumLimit = 100_000
-
-    /// The bound on `offset`: a 1-based line number up to ``maximumOffset``.
+    /// The bound on `offset`: a 1-based line number in
+    /// ``ReadArguments/offsetRange``.
     private static let offsetBound = BoundParameter(
         parameterName: "offset",
         typeDescription: "1-based line number",
-        minimum: 1,
-        maximum: maximumOffset
+        minimum: ReadArguments.offsetRange.lowerBound,
+        maximum: ReadArguments.offsetRange.upperBound
     )
 
-    /// The bound on `limit`: a line count up to ``maximumLimit``.
+    /// The bound on `limit`: a line count in ``ReadArguments/limitRange``.
     private static let limitBound = BoundParameter(
         parameterName: "limit",
         typeDescription: "line count",
-        minimum: 1,
-        maximum: maximumLimit
+        minimum: ReadArguments.limitRange.lowerBound,
+        maximum: ReadArguments.limitRange.upperBound
     )
 
     // MARK: Format names
