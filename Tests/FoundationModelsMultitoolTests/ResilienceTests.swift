@@ -114,16 +114,6 @@ struct ResilienceTests {
     /// bound, so the check runs before that wait could time out.
     private static let stragglerNotYetRacedAheadCheckDelay = Duration.milliseconds(800)
 
-    /// How long the disconnect-straggler test waits before its first check —
-    /// well under `MCPServer.clientDisconnectGracePeriod`.
-    private static let disconnectStragglerNotYetRacedAheadCheckDelay = Duration.milliseconds(200)
-
-    /// How much longer that test waits before its second check — added to the
-    /// first delay, the wait lands past `MCPServer.clientDisconnectGracePeriod`,
-    /// which proves the wait behind a disconnect predecessor is bounded by
-    /// the short constant and not the long one.
-    private static let disconnectStragglerHasProceededCheckDelay = Duration.milliseconds(600)
-
     /// The per-attempt timeout of the in-flight reconnect test — shared by
     /// the FIRST connect (which must really succeed against a scripted
     /// transport that does not hang) and, because `reconnect()` reuses the
@@ -168,6 +158,25 @@ struct ResilienceTests {
     /// - Returns: The server, not yet connected.
     private func makeServer(clock: any Clock<Duration> = ContinuousClock()) -> MCPServer {
         MCPServer(name: Self.serverName, clock: clock)
+    }
+
+    /// A `MCPServer` named ``serverName`` whose client-operation queue bounds
+    /// each wait on `clientQueueClock`, with every other setting at the
+    /// default of the public initializer.
+    ///
+    /// - Parameter clientQueueClock: The clock each bounded wait of the queue
+    ///   sleeps on.
+    /// - Returns: The server, not yet connected.
+    private func makeServer(clientQueueClock: any Clock<Duration>) -> MCPServer {
+        MCPServer(
+            name: Self.serverName,
+            version: MCPServer.defaultClientVersion,
+            clock: ContinuousClock(),
+            clientQueueClock: clientQueueClock,
+            callTimeout: MCPServer.defaultCallTimeout,
+            renderBudget: .default,
+            elicitationHandler: nil,
+            logger: MCPServer.defaultLogger)
     }
 
     /// Starts a fresh `ScriptedServer` on the server end of an in-memory pair
@@ -446,36 +455,57 @@ struct ResilienceTests {
     /// enqueued behind it. With no connect unresolved anywhere in the queue,
     /// the short bound applies, and it is safe to proceed once it elapses
     /// even though the predecessor never finishes.
+    ///
+    /// Each bounded wait of the queue sleeps on a `GatedClock`, thus no bound
+    /// can elapse before the test opens the clock, and every bound elapses
+    /// when it does. The clock records the bound each wait chose, which is
+    /// what proves the short bound and not the long one. The fresh transport
+    /// holds its own connect at a gate, thus the fresh attempt cannot reach
+    /// `.ready` before the first disconnect wrote `.disconnected`.
     @Test func freshOperationWaitsForInFlightDisconnectStragglerBoundedByDisconnectGracePeriod()
         async throws
     {
         let (initial, clientTransport1) = try await makeScriptedPair(name: "initial-server")
         let gatedDisconnect = GatedDisconnectTransport(wrapping: clientTransport1)
+        let queueClock = GatedClock()
 
-        let server = makeServer()
+        let server = makeServer(clientQueueClock: queueClock)
         try await server.connect(via: gatedDisconnect, backoffPolicy: .default)
         #expect(await server.state == .ready)
 
+        let tailBeforeDisconnect = await server.clientQueueTail
         let firstDisconnect = Task { await server.disconnect() }
+        try await TestPoll.waitUntil("the first disconnect entered the client queue") {
+            await server.clientQueueTail != tailBeforeDisconnect
+        }
 
         let (fresh, clientTransport2) = try await makeScriptedPair(name: "fresh-server")
-        let spy = DisposableSpyTransport(wrapping: clientTransport2)
+        let gatedConnect = GatedConnectTransport(wrapping: clientTransport2)
+        let spy = DisposableSpyTransport(wrapping: gatedConnect)
+        let tailBehindDisconnect = await server.clientQueueTail
         let attempt2 = Task { try await server.connect(via: spy, backoffPolicy: .default) }
+        try await TestPoll.waitUntil("the fresh attempt entered the client queue") {
+            await server.clientQueueTail != tailBehindDisconnect
+        }
 
-        // Under the short bound: the fresh connect has not raced ahead yet.
-        try await Task.sleep(for: Self.disconnectStragglerNotYetRacedAheadCheckDelay)
+        // The fresh attempt waits in the queue, and no bound elapsed: it has
+        // not raced ahead of the first disconnect.
         #expect(await spy.connectWasCalled == false)
 
-        // Past the short bound, with the first disconnect still gated: the
-        // fresh attempt proceeded anyway.
-        try await Task.sleep(for: Self.disconnectStragglerHasProceededCheckDelay)
-        #expect(await spy.connectWasCalled == true)
-
+        // Every bound elapses, with the first disconnect still gated: the
+        // first disconnect returns, and the fresh attempt proceeds anyway.
+        queueClock.open()
+        await firstDisconnect.value
+        try await TestPoll.waitUntil("the fresh attempt connected its own transport") {
+            await spy.connectWasCalled
+        }
+        await gatedConnect.release()
         try await attempt2.value
         #expect(await server.state == .ready)
+        #expect(!queueClock.recordedSleeps.isEmpty)
+        #expect(queueClock.recordedSleeps.allSatisfy { $0 == MCPServer.clientDisconnectGracePeriod })
 
         await gatedDisconnect.release()
-        await firstDisconnect.value
         withExtendedLifetime((initial, fresh)) {}
     }
 

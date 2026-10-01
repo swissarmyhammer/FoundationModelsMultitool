@@ -22,8 +22,10 @@ import Testing
 ///    `ShellState` store and the `FileContext` of the first build are the
 ///    ones the rebuild renders.
 ///
-/// The add and remove cases run over `startDynamicToolsetScenario()` of the
-/// test server, whose three timed stages add, re-schema and remove a tool.
+/// The add and remove cases run over the dynamic toolset scenario of the
+/// test server, whose three stages add, re-schema and remove a tool. Each
+/// case runs a stage with `advanceDynamicToolsetScenario()`, thus no timer
+/// decides what the catalog holds when the case reads it.
 /// Every server sleeps on a `ManualClock`, so the coalesce window of a
 /// `tools/list_changed` re-list takes no real time — the convention of
 /// `LiveCatalogTests`.
@@ -152,6 +154,8 @@ struct RegistryRebuildTests {
         let source = builder.registrySource
         #expect(Self.paths(of: first) == [Self.counterPath])
 
+        // The first stage adds the greeter.
+        #expect(await scripted.advanceDynamicToolsetScenario())
         try await Self.waitUntilCatalog(
             of: server, holds: ScriptedServer.dynamicToolsetVanishingToolName, present: true)
         let rebuilt = try await source.rebuildRegistry()
@@ -170,11 +174,17 @@ struct RegistryRebuildTests {
         let builder = try await MultiTool.Builder().withMCP(servers: [server])
         let source = builder.registrySource
 
+        // The first stage adds the greeter.
+        #expect(await scripted.advanceDynamicToolsetScenario())
         try await Self.waitUntilCatalog(
             of: server, holds: ScriptedServer.dynamicToolsetVanishingToolName, present: true)
         let withGreeter = try await source.rebuildRegistry()
         #expect(withGreeter.tools[Self.greeterPath] != nil)
 
+        // The second stage re-schemas the counter, and the third removes the
+        // greeter.
+        #expect(await scripted.advanceDynamicToolsetScenario())
+        #expect(await scripted.advanceDynamicToolsetScenario())
         try await Self.waitUntilCatalog(
             of: server, holds: ScriptedServer.dynamicToolsetVanishingToolName, present: false)
         let withoutGreeter = try await source.rebuildRegistry()

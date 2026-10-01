@@ -76,26 +76,31 @@ struct ShellRunnerTests {
     /// The highest marker a test picks for that sleep duration.
     private static let markerUpperBound = 999_999
 
-    /// How long a test waits for a process tree to come up.
-    private static let treeStartDeadline = Duration.seconds(2)
-
     /// How long a test waits for a process tree to go away after a kill.
     private static let treeExitDeadline = Duration.seconds(5)
 
     /// How long a test waits for a line of output to reach the store.
     private static let outputArrivalDeadline = Duration.seconds(3)
 
-    /// The time limit the run of the group-kill test carries. It is short, thus
-    /// the timer fires long before the sleeps end.
+    /// The time limit the run of the group-kill test carries. The timer sleeps
+    /// on a `GatedClock`, thus it fires when the test opens the clock, and
+    /// never before the test saw the tree.
     private static let treeKillTimeout = Duration.seconds(2)
 
-    /// The time limit of the test that proves a limit kills the command.
+    /// The time limit of the test that proves a limit kills the command. The
+    /// timer sleeps on a `GatedClock`, thus the value is what the test reads
+    /// back from the clock, and not a wait on the wall clock.
     private static let shortTimeout = Duration.milliseconds(400)
 
-    /// The longest a run under `shortTimeout` may take. It stands far below the
-    /// sleep the command asks for, thus a run that reaches it proves the limit
-    /// fired.
-    private static let timeoutUpperBound = Duration.seconds(3)
+    /// The line a tree command writes after its shell started each member of
+    /// the tree. The `&` of the shell forks each member before the shell runs
+    /// the next command, thus each member is a process when the line arrives.
+    private static let readyMarker = "ready"
+
+    /// The tail of a tree command: it writes ``readyMarker``, and then waits for
+    /// each member of the tree, thus the leader stays alive as long as the
+    /// tree does.
+    private static let readyThenWait = "echo \(readyMarker); wait"
 
     /// The shortest a `sleep 1` with no time limit may take. A run below it
     /// proves a limit fired that nobody asked for.
@@ -151,19 +156,60 @@ struct ShellRunnerTests {
     /// from `ShellState.init` cannot leave behind a directory whose path no
     /// caller learned, and no caller has to remove it.
     ///
-    /// - Parameter registry: The process-group registry to give the runner. The
-    ///   default is a new PRIVATE `ProcessRegistry()`, and never `.global`, thus
-    ///   an ordinary test never touches the process-wide instance. Give one
-    ///   here when a test must read the state of the registry.
+    /// - Parameters:
+    ///   - registry: The process-group registry to give the runner. The
+    ///     default is a new PRIVATE `ProcessRegistry()`, and never `.global`,
+    ///     thus an ordinary test never touches the process-wide instance. Give
+    ///     one here when a test must read the state of the registry.
+    ///   - clock: The clock the timer of a time limit sleeps on. The default is
+    ///     the real clock. A test of a time limit gives a `GatedClock`, thus
+    ///     the limit fires when the test opens the clock.
+    ///   - outputChunkStream: The live view of the output the runner tees into,
+    ///     or `nil` — the default — for none. A test reads it to learn when the
+    ///     command started its tree.
     /// - Returns: The runner, its store, and the temporary directory.
     /// - Throws: What `TestScratch.makeDirectory` or `ShellState.init` throws.
     private func makeRunner(
-        registry: ProcessRegistry = ProcessRegistry()
+        registry: ProcessRegistry = ProcessRegistry(),
+        clock: any Clock<Duration> = ContinuousClock(),
+        outputChunkStream: ShellOutputChunkStream? = nil
     ) throws -> (runner: ShellRunner, state: ShellState, directory: URL) {
         let directory = try scratch.makeDirectory(prefix: Self.testDirectoryNamePrefix)
         let state = try ShellState(
             preferredDirectory: directory.appendingPathComponent(Self.shellStoreDirectoryName))
-        return (ShellRunner(state: state, registry: registry), state, directory)
+        var runner = ShellRunner(state: state, registry: registry, clock: clock)
+        runner.outputChunkStream = outputChunkStream
+        return (runner, state, directory)
+    }
+
+    /// Reads `live` until the output of the run holds ``readyMarker``, and then
+    /// ends the view.
+    ///
+    /// The wait is for an event of the run, and not for a time: the line
+    /// arrives when the command wrote it, and the completion marker of the run
+    /// ends the wait when the command ends with no such line. Thus no
+    /// deadline can expire under machine load.
+    ///
+    /// - Parameter live: The live view of the output of the run.
+    /// - Returns: `true` when the line arrived, or `false` when the run ended
+    ///   first.
+    private static func waitForReadiness(on live: ShellOutputChunkStream) async -> Bool {
+        defer { live.finish() }
+        var output = ""
+        for await event in live {
+            switch event.kind {
+            case .output(_, let bytes):
+                output += String(decoding: bytes, as: UTF8.self)
+                if output.contains(readyMarker) {
+                    return true
+                }
+            case .gap:
+                continue
+            case .completed:
+                return false
+            }
+        }
+        return false
     }
 
     /// A sleep duration no other test uses, thus `pgrep -f` on it matches the
@@ -298,11 +344,13 @@ struct ShellRunnerTests {
     ///   - runner: The runner that starts the command.
     ///   - token: The completion token of the run.
     ///   - directory: The directory of the test.
+    ///   - timeout: The time limit of the run, or `nil` — the default — for
+    ///     none.
     /// - Returns: The task of the run, and the write end of the FIFO that
     ///   lets it end.
     /// - Throws: The `POSIXError` of `mkfifo(2)` or `open(2)` when it fails.
     private func startGatedRun(
-        of runner: ShellRunner, token: String, in directory: URL
+        of runner: ShellRunner, token: String, in directory: URL, timeout: Duration? = nil
     ) throws -> (run: Task<ShellRunner.Outcome, any Error>, gate: FileHandle) {
         let path = directory.appendingPathComponent(Self.gateName, isDirectory: false).path
         guard mkfifo(path, Self.gatePermissions) == 0 else {
@@ -313,7 +361,7 @@ struct ShellRunnerTests {
             try await runner.run(
                 .init(
                     command: Self.gatedCommand, completionToken: token,
-                    workingDirectory: directory.path))
+                    workingDirectory: directory.path, timeout: timeout))
         }
         return (run, gate)
     }
@@ -390,12 +438,18 @@ struct ShellRunnerTests {
 
     // MARK: - The kill of a process group takes down the whole tree
 
-    /// The load-bearing test: a `sh -c 'sleep N & sleep N'` tree that the
+    /// The load-bearing test: a `sh -c 'sleep N & sleep N & …'` tree that the
     /// own-process-group spawn of the runner started must die whole when the
     /// time limit fires the group kill. No `sleep` survives.
+    ///
+    /// The timer of the limit sleeps on a `GatedClock`. The test opens the
+    /// clock only after the tree reported that it runs, thus the kill always
+    /// finds the whole tree, whatever the load of the machine.
     @Test("the group kill at the time limit leaves no survivor in the process tree")
     func timeoutGroupKillLeavesNoSurvivorsInProcessTree() async throws {
-        let (runner, _, _) = try makeRunner()
+        let clock = GatedClock()
+        let live = ShellOutputChunkStream()
+        let (runner, _, _) = try makeRunner(clock: clock, outputChunkStream: live)
         let token = ToolContext.makeCompletionToken()
 
         let marker = Self.makeMarker()
@@ -404,19 +458,20 @@ struct ShellRunnerTests {
         let runTask = Task {
             try await runner.run(
                 .init(
-                    command: "sleep \(marker) & sleep \(marker)", completionToken: token,
-                    timeout: Self.treeKillTimeout))
+                    command: "sleep \(marker) & sleep \(marker) & \(Self.readyThenWait)",
+                    completionToken: token, timeout: Self.treeKillTimeout))
         }
         defer { runTask.cancel() }
 
-        let alive = await waitForProcessCount(
-            matching: pattern, deadline: Self.treeStartDeadline,
-            until: { $0 >= Self.treeMemberCount })
+        #expect(await Self.waitForReadiness(on: live), "the sleep tree never reported that it runs")
+        let alive = processCount(matching: pattern)
         #expect(alive >= Self.treeMemberCount, "expected the sleep tree to run, saw \(alive)")
 
+        clock.open()
         let outcome = try await runTask.value
         #expect(outcome.status == .timedOut)
         #expect(outcome.exitCode == Self.absentExitCode)
+        #expect(clock.recordedSleeps == [Self.treeKillTimeout])
 
         let survivors = await waitForProcessCount(
             matching: pattern, deadline: Self.treeExitDeadline, until: { $0 == 0 })
@@ -665,18 +720,20 @@ struct ShellRunnerTests {
     /// `.cancelled` — the contract of `RunKind.process`.
     @Test("the canceler stops a long command, reports .stopped, and leaves no child")
     func cancelerStopsALongCommandAndReportsStopped() async throws {
-        let (runner, state, _) = try makeRunner()
+        let live = ShellOutputChunkStream()
+        let (runner, state, _) = try makeRunner(outputChunkStream: live)
         let token = ToolContext.makeCompletionToken()
         let marker = Self.makeMarker()
         let pattern = "sleep \(marker)"
 
         let runTask = Task {
-            try await runner.run(.init(command: "sleep \(marker)", completionToken: token))
+            try await runner.run(
+                .init(command: "sleep \(marker) & \(Self.readyThenWait)", completionToken: token))
         }
         defer { runTask.cancel() }
 
-        let alive = await waitForProcessCount(
-            matching: pattern, deadline: Self.treeStartDeadline, until: { $0 >= 1 })
+        #expect(await Self.waitForReadiness(on: live), "the command never reported that it runs")
+        let alive = processCount(matching: pattern)
         #expect(alive >= 1, "expected the command to run, saw \(alive)")
 
         let outcome = await runner.canceler(completionToken: token)()
@@ -695,7 +752,8 @@ struct ShellRunnerTests {
     /// a command that put a child in the background dies with its tree.
     @Test("the canceler kills the whole process group, and not the leader alone")
     func cancelerKillsTheWholeProcessGroupAndNotTheLeaderAlone() async throws {
-        let (runner, _, _) = try makeRunner()
+        let live = ShellOutputChunkStream()
+        let (runner, _, _) = try makeRunner(outputChunkStream: live)
         let token = ToolContext.makeCompletionToken()
         let marker = Self.makeMarker()
         let pattern = "sleep \(marker)"
@@ -703,13 +761,13 @@ struct ShellRunnerTests {
         let runTask = Task {
             try await runner.run(
                 .init(
-                    command: "sleep \(marker) & sleep \(marker)", completionToken: token))
+                    command: "sleep \(marker) & sleep \(marker) & \(Self.readyThenWait)",
+                    completionToken: token))
         }
         defer { runTask.cancel() }
 
-        let alive = await waitForProcessCount(
-            matching: pattern, deadline: Self.treeStartDeadline,
-            until: { $0 >= Self.treeMemberCount })
+        #expect(await Self.waitForReadiness(on: live), "the sleep tree never reported that it runs")
+        let alive = processCount(matching: pattern)
         #expect(alive >= Self.treeMemberCount, "expected the sleep tree to run, saw \(alive)")
 
         let outcome = await runner.canceler(completionToken: token)()
@@ -724,22 +782,26 @@ struct ShellRunnerTests {
 
     // MARK: - The wall clock of the time limit, and the default of no limit
 
+    /// The gated command cannot end by itself: it ends only when the test
+    /// opens its gate, and the test holds the gate shut until the run ended.
+    /// Thus a run that ends proves that the limit killed the command, and the
+    /// clock proves that the limit the request named is the one that fired.
     @Test("the requested time limit kills well before the command would end")
     func requestedTimeoutKillsWellBeforeTheCommandWouldFinish() async throws {
-        let (runner, _, _) = try makeRunner()
+        let clock = GatedClock()
+        let (runner, _, directory) = try makeRunner(clock: clock)
         let token = ToolContext.makeCompletionToken()
+        let (runTask, gate) = try startGatedRun(
+            of: runner, token: token, in: directory, timeout: Self.shortTimeout)
+        defer { runTask.cancel() }
 
-        let clock = ContinuousClock()
-        let start = clock.now
-        let outcome = try await runner.run(
-            .init(command: "sleep 30", completionToken: token, timeout: Self.shortTimeout))
-        let elapsed = clock.now - start
+        clock.open()
+        let outcome = try await runTask.value
 
         #expect(outcome.status == .timedOut)
         #expect(outcome.exitCode == Self.absentExitCode)
-        #expect(
-            elapsed < Self.timeoutUpperBound,
-            "the time limit took \(elapsed), expected well under the 30 second sleep")
+        #expect(clock.recordedSleeps == [Self.shortTimeout])
+        try openGate(gate)
     }
 
     @Test("no time limit applies when the request asks for none")

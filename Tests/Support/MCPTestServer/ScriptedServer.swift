@@ -100,6 +100,12 @@ public actor ScriptedServer {
     /// wire carried a capability, and not only that the client held it.
     public private(set) var receivedClientCapabilities: Client.Capabilities?
 
+    /// How many stages of the dynamic toolset scenario ran — the index of the
+    /// stage `advanceDynamicToolsetScenario()` runs next. It is stored here,
+    /// and not in `DynamicToolsetScenario.swift`, because an extension cannot
+    /// hold a stored property.
+    var dynamicToolsetStagesRun = 0
+
     /// Creates a scripted server around a fresh `MCP.Server`.
     ///
     /// - Parameters:

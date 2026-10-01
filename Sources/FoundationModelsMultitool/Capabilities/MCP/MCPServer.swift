@@ -145,6 +145,15 @@ public actor MCPServer {
     /// a full backoff schedule with no real delay.
     let clock: any Clock<Duration>
 
+    /// The clock each bounded wait of the client-operation queue sleeps on —
+    /// see `awaitWithBoundedWait(_:timeout:on:)` in `MCPServer+ClientQueue.swift`.
+    ///
+    /// It is not ``clock``. A test gives ``clock`` a virtual clock whose sleep
+    /// never waits, and a queue bound that never waits would let a queued
+    /// operation run beside its predecessor. A host always gets the real
+    /// clock here; a test of the queue gives a clock it opens on command.
+    let clientQueueClock: any Clock<Duration>
+
     /// The logger every retry, reconnect and discarded attempt is reported to.
     let logger: Logger
 
@@ -334,6 +343,44 @@ public actor MCPServer {
         elicitationHandler: ElicitationHandler? = nil,
         logger: Logger = MCPServer.defaultLogger
     ) {
+        self.init(
+            name: name,
+            version: version,
+            clock: clock,
+            clientQueueClock: ContinuousClock(),
+            callTimeout: callTimeout,
+            renderBudget: renderBudget,
+            elicitationHandler: elicitationHandler,
+            logger: logger)
+    }
+
+    /// Creates a server whose client-operation queue bounds each wait on
+    /// `clientQueueClock` — the initializer every other one forwards to.
+    ///
+    /// Internal: a host has no reason to move the bounds of the queue, and
+    /// the public initializer gives the real clock. A test of the queue calls
+    /// this one through `@testable import`, with a clock it opens on command.
+    ///
+    /// - Parameters:
+    ///   - name: See the public initializer.
+    ///   - version: See the public initializer.
+    ///   - clock: See the public initializer.
+    ///   - clientQueueClock: The clock each bounded wait of the
+    ///     client-operation queue sleeps on — see ``clientQueueClock``.
+    ///   - callTimeout: See the public initializer.
+    ///   - renderBudget: See the public initializer.
+    ///   - elicitationHandler: See the public initializer.
+    ///   - logger: See the public initializer.
+    init(
+        name: String,
+        version: String,
+        clock: any Clock<Duration>,
+        clientQueueClock: any Clock<Duration>,
+        callTimeout: Duration,
+        renderBudget: RenderBudget,
+        elicitationHandler: ElicitationHandler?,
+        logger: Logger
+    ) {
         self.name = name
         self.client = Client(
             name: name,
@@ -341,6 +388,7 @@ public actor MCPServer {
             capabilities: Client.Capabilities(elicitation: .init(form: .init(), url: .init()))
         )
         self.clock = clock
+        self.clientQueueClock = clientQueueClock
         self.callTimeout = callTimeout
         self.renderBudget = renderBudget
         self.elicitationHandler = elicitationHandler

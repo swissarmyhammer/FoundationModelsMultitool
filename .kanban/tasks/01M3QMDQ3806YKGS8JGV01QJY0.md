@@ -65,10 +65,27 @@ comments:
     - evidence: 373cfea refactor(discovery): replace PooledTextEmbedding with PooledEmbedder in acquireEmbedder; base e3d91b4
     - next: review
   timestamp: 2026-10-01T02:00:18.848227+00:00
+- actor: claude-code
+  id: 01m3tka04gm5y3maknq91dnjgd
+  text: |-
+    ### review — clean
+    - evidence: `review sha e3d91b4..HEAD` reviewed 5 files. Counts: findings 0, confirmed 0, refuted 0, attempted 7, failed 0, skipped 0. A `.reviewignore` rule excluded 6 `.kanban/` files. The task has no prior Review Findings sections.
+    - next: The task is in done. The user must push to `origin main` and confirm that CI is green on the pushed commit. That acceptance item is a user step. It is not a code finding.
+  timestamp: 2026-10-01T02:04:46.608904+00:00
+- actor: claude-code
+  id: 01m3tkad4z1xqh0z6001f8bxtb
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 5 files; acquireEmbedder returns PooledEmbedder(ref:pool:); 3 one-resident-model tests.
+    - test: green — swift test, 1877 tests, 0 issues, 0 skipped; swift test --package-path IntegrationTests --no-parallel, 60 tests, 0 failed, 6 skipped. The 6 skips are the keyed live provider tests, a written exception in IntegrationTests/Package.swift:49-54. The tester reported `stuck` only for these skips.
+    - commit: 373cfea, 49d8d8b
+    - review: clean — review sha e3d91b4..HEAD, 0 findings. Task is in done.
+    - open: "CI is green on the pushed commit" needs a push. That is a user step.
+  timestamp: 2026-10-01T02:04:59.935913+00:00
 depends_on:
 - 01M3QMDMN7RY93Y3Y3FVG37780
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffff8980
 title: Replace PooledTextEmbedding with PooledEmbedder
 ---
 **Wait for:** FoundationModelsMetadataRegistry task 01M3QMDGR3PSYQ5PMM41Y9GJ7B ("Take PooledEmbedder directly; delete PooledTextEmbedding…") on the registry board: done and pushed.

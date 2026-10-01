@@ -2,6 +2,8 @@ import MCP
 import MCPTestServer
 import Testing
 
+@testable import MultitoolTestSupport
+
 /// Coverage for `ServerMode`, the `--mode` selector `mcp-test-server` parses
 /// to decide which scripted tool set to register.
 ///
@@ -21,17 +23,37 @@ struct ServerModeTests {
     private static let unknownModeName = "bogus"
 
     /// Connects a fresh client to `server` over an in-memory transport pair
+    /// and returns every tool `tools/list` reports.
+    ///
+    /// - Parameter server: The scripted server to list tools from.
+    /// - Returns: The registered tools, in `tools/list` order.
+    /// - Throws: What the connect or the `tools/list` throws.
+    private func registeredTools(on server: ScriptedServer) async throws -> [MCP.Tool] {
+        let client = try await MCPTestSupport.connectedServer(
+            to: server, over: .inMemory, clientName: "ServerModeTestClient")
+        let (tools, _) = try await client.listTools()
+        await client.disconnect()
+        return tools
+    }
+
+    /// Connects a fresh client to `server` over an in-memory transport pair
     /// and returns the names of every tool `tools/list` reports.
     ///
     /// - Parameter server: The scripted server to list tools from.
     /// - Returns: The names of the registered tools, in `tools/list` order.
     /// - Throws: What the connect or the `tools/list` throws.
     private func registeredToolNames(on server: ScriptedServer) async throws -> [String] {
-        let client = try await MCPTestSupport.connectedServer(
-            to: server, over: .inMemory, clientName: "ServerModeTestClient")
-        let (tools, _) = try await client.listTools()
-        await client.disconnect()
-        return tools.map(\.name)
+        try await registeredTools(on: server).map(\.name)
+    }
+
+    /// Whether `tools` is the tool set the dynamic scenario ends with: the
+    /// re-schemad tool alone, under its new `inputSchema`.
+    ///
+    /// - Parameter tools: The tools `tools/list` reported.
+    /// - Returns: `true` when every stage of the scenario ran.
+    private static func isFinalDynamicToolset(_ tools: [MCP.Tool]) -> Bool {
+        tools.map(\.name) == [ScriptedServer.dynamicToolsetReschemadToolName]
+            && tools.first?.inputSchema != JSONSchemaBuilder.emptySchema
     }
 
     /// Parses `[binaryName] + rest`.
@@ -111,13 +133,33 @@ struct ServerModeTests {
         #expect(try await registeredToolNames(on: server) == [ScriptedServer.catalogShowcaseToolName])
     }
 
+    /// The stage clock stays closed, thus no stage can run before the list:
+    /// the list reads the tool set of the registration alone.
     @Test(".dynamic registers the initial re-schemad tool up front")
     func dynamicModeRegistersInitialTool() async throws {
         let server = ScriptedServer(name: "mode-test")
-        await ServerMode.dynamic.registerTools(on: server)
+        await ServerMode.dynamic.registerTools(on: server, stageClock: GatedClock())
 
         #expect(
             try await registeredToolNames(on: server) == [ScriptedServer.dynamicToolsetReschemadToolName])
+    }
+
+    @Test(".dynamic runs each stage after one stage delay on its stage clock")
+    func dynamicModeRunsItsStagesOnTheStageClock() async throws {
+        let server = ScriptedServer(name: "mode-test")
+        let stageClock = GatedClock()
+        await ServerMode.dynamic.registerTools(on: server, stageClock: stageClock)
+
+        stageClock.open()
+
+        try await TestPoll.waitUntil("every stage of the dynamic scenario ran") {
+            ((try? await registeredTools(on: server)).map(Self.isFinalDynamicToolset)) ?? false
+        }
+        #expect(
+            stageClock.recordedSleeps
+                == Array(
+                    repeating: ScriptedServer.dynamicToolsetStageDelay,
+                    count: ScriptedServer.dynamicToolsetStageCount))
     }
 
     @Test(".longRunning registers only the slow-build tool, under ServerMode.slowBuildToolName")

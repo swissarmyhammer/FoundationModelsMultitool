@@ -230,6 +230,37 @@ struct ScriptedServerSelfTests {
         await client.disconnect()
     }
 
+    // MARK: - The dynamic toolset scenario, one stage on each command
+
+    @Test("the dynamic scenario runs one stage on each advance, then reports that no stage is left")
+    func dynamicScenarioRunsOneStageOnEachAdvance() async throws {
+        let counter = ScriptedServer.dynamicToolsetReschemadToolName
+        let greeter = ScriptedServer.dynamicToolsetVanishingToolName
+        let scripted = ScriptedServer()
+        await scripted.startDynamicToolsetScenario()
+        let client = try await connect(to: scripted)
+
+        // No stage runs before the first command.
+        var page = try await client.listTools()
+        #expect(page.tools.map(\.name) == [counter])
+
+        #expect(await scripted.advanceDynamicToolsetScenario())
+        page = try await client.listTools()
+        #expect(page.tools.map(\.name) == [counter, greeter])
+
+        #expect(await scripted.advanceDynamicToolsetScenario())
+        page = try await client.listTools()
+        #expect(page.tools.map(\.name) == [counter, greeter])
+        #expect(page.tools.first?.inputSchema != JSONSchemaBuilder.emptySchema)
+
+        #expect(await scripted.advanceDynamicToolsetScenario())
+        page = try await client.listTools()
+        #expect(page.tools.map(\.name) == [counter])
+
+        #expect(await scripted.advanceDynamicToolsetScenario() == false)
+        await client.disconnect()
+    }
+
     // MARK: - fail-N-times-then-succeed connects
 
     @Test("FlakyConnectTransport fails the scripted number of connect attempts, then succeeds")

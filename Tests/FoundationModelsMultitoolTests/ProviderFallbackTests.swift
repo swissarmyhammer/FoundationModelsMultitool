@@ -31,8 +31,10 @@ struct ProviderFallbackTests {
     /// The status of a server that is not available.
     private static let unavailableStatus = 503
 
-    /// The time limit of a provider in the timeout test, in seconds.
-    private static let shortTimeout: TimeInterval = 0.2
+    /// The time limit of a provider in the timeout test, in seconds. The
+    /// limit applies to each provider of the chain, the one that answers
+    /// included, thus it is long: no answer of the stub comes near it.
+    private static let providerTimeoutSeconds: TimeInterval = 10
 
     /// The number of hits that a provider with hits gives.
     private static let hitCount = 3
@@ -211,12 +213,19 @@ struct ProviderFallbackTests {
         #expect(notes == ["braveHTML: skipped, the response could not be read: bad line: garbage."])
     }
 
+    /// The session of the first provider reports a time-out at once, and the
+    /// chain must skip that provider with one note that names the limit.
+    ///
+    /// The time-out comes from the stub and not from a wall-clock limit. A
+    /// short limit would also bound the second provider, and under machine
+    /// load its answer could miss that limit too. `WebFetcherTests` proves
+    /// that a request that hangs reaches the time-out failure.
     @Test("a timeout skips the provider with one note")
     func timeoutSkips() async throws {
-        let policy = WebFetchPolicy(searchTimeout: Self.shortTimeout)
-        let notes = try await Self.notesAfterFirstProvider(gets: .hang, policy: policy)
+        let policy = WebFetchPolicy(searchTimeout: Self.providerTimeoutSeconds)
+        let notes = try await Self.notesAfterFirstProvider(gets: .fail(.timedOut), policy: policy)
         let endpoint = Self.endpoint("braveHTML")
-        #expect(notes == ["braveHTML: skipped, the request timed out after 0.2 seconds: \(endpoint)."])
+        #expect(notes == ["braveHTML: skipped, the request timed out after 10 seconds: \(endpoint)."])
     }
 
     @Test("a network failure skips the provider with one note")

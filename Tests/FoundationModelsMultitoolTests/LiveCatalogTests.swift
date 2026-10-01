@@ -9,7 +9,7 @@ import Testing
 /// `catalogUpdates` stream, the coalescing of a `tools/list_changed` burst
 /// into one re-list, the snapshot a reconnect emits, the snapshot a failed
 /// reconnect emits, `tool(named:)` against the current catalog, and the
-/// three timed stages of `ScriptedServer.startDynamicToolsetScenario()`.
+/// three stages of the dynamic toolset scenario of `ScriptedServer`.
 ///
 /// A port of the live cases of
 /// `../FoundationModelsMCP/Tests/FoundationModelsMCPTests/LiveCatalogTests.swift`.
@@ -60,7 +60,7 @@ struct LiveCatalogTests {
     private static let snapshotsAfterTwoMore = 3
 
     /// How many snapshots the dynamic scenario produces: the connect, then
-    /// one per stage of `startDynamicToolsetScenario()`.
+    /// one per stage of `advanceDynamicToolsetScenario()`.
     private static let dynamicScenarioSnapshots = 4
 
     /// How long a test waits, after the burst produced its one snapshot, to
@@ -333,12 +333,14 @@ struct LiveCatalogTests {
 
     // MARK: - The dynamic toolset scenario
 
-    /// The three timed stages of `startDynamicToolsetScenario()` — add,
-    /// re-schema, remove — each send one `tools/list_changed`, and each
-    /// produces one snapshot whose diff against the previous one classifies
-    /// exactly that stage.
+    /// The three stages of the dynamic toolset scenario — add, re-schema,
+    /// remove — each send one `tools/list_changed`, and each produces one
+    /// snapshot whose diff against the previous one classifies exactly that
+    /// stage.
     ///
-    /// - Note: Runs for the three stage delays of the scenario in real time.
+    /// The test runs each stage on command, and waits for the snapshot of
+    /// one stage before it runs the next. Thus no timer decides which stage
+    /// a snapshot sees, and no two stages share one re-list.
     @Test func dynamicToolsetScenarioEmitsOneSnapshotPerStage() async throws {
         let scripted = ScriptedServer(name: Self.serverName)
         await scripted.startDynamicToolsetScenario()
@@ -347,7 +349,13 @@ struct LiveCatalogTests {
         let recording = await recordCatalogUpdates(from: server)
         defer { recording.task.cancel() }
 
-        let snapshots = await recording.snapshots(atLeast: Self.dynamicScenarioSnapshots)
+        _ = await recording.snapshots(atLeast: Self.snapshotsAfterConnect)
+        for stage in 1...ScriptedServer.dynamicToolsetStageCount {
+            #expect(await scripted.advanceDynamicToolsetScenario())
+            _ = await recording.snapshots(atLeast: Self.snapshotsAfterConnect + stage)
+        }
+
+        let snapshots = await recording.recorder.snapshots
         try #require(snapshots.count == Self.dynamicScenarioSnapshots)
         expectStrictlyIncreasingEpochs(snapshots)
 

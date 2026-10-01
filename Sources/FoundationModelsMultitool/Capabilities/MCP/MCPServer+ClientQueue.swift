@@ -3,7 +3,7 @@
 // `MCPServer`.
 //
 // A behavioral port of `enqueueClientOperation(kind:_:)`,
-// `awaitWithBoundedWait(_:timeout:)`, `connectClientExclusively(transport:generation:)`
+// `awaitWithBoundedWait(_:timeout:on:)`, `connectClientExclusively(transport:generation:)`
 // and `disconnectClientWithoutHanging()` of
 // `../FoundationModelsMCP/Sources/FoundationModelsMCP/MCPServer.swift`.
 //
@@ -75,17 +75,21 @@ extension MCPServer {
     static let clientConnectStragglerGracePeriod = Duration.seconds(
         clientConnectStragglerGraceSeconds)
 
-    /// Waits for `task` to finish, but no longer than `timeout` — when `task`
-    /// has not finished by then, this returns anyway and leaves `task`
-    /// running, never cancelled, in the background.
+    /// Waits for `task` to finish, but no longer than `timeout` as `clock`
+    /// measures it — when `task` has not finished by then, this returns
+    /// anyway and leaves `task` running, never cancelled, in the background.
     ///
     /// Two independent, un-joined tasks resume one ``SingleResume``: the
     /// first to finish answers, and the other is discarded.
     ///
     /// - Parameters:
     ///   - task: The task to wait for.
-    ///   - timeout: The maximum real wall-clock time to wait.
-    static func awaitWithBoundedWait(_ task: Task<Void, Never>, timeout: Duration) async {
+    ///   - timeout: The maximum time to wait.
+    ///   - clock: The clock the wait sleeps on — ``clientQueueClock``, the
+    ///     real clock for a host.
+    static func awaitWithBoundedWait(
+        _ task: Task<Void, Never>, timeout: Duration, on clock: any Clock<Duration>
+    ) async {
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             let resume = SingleResume<Void, Never>(continuation)
             Task {
@@ -93,7 +97,7 @@ extension MCPServer {
                 resume.resume(with: .success(()))
             }
             Task {
-                try? await Task.sleep(for: timeout)
+                try? await clock.sleep(for: timeout)
                 resume.resume(with: .success(()))
             }
         }
@@ -136,8 +140,9 @@ extension MCPServer {
         if kind == .connect {
             pendingConnectStragglers += 1
         }
+        let clock = clientQueueClock
         let task = Task<T, any Error> {
-            await Self.awaitWithBoundedWait(previous, timeout: timeout)
+            await Self.awaitWithBoundedWait(previous, timeout: timeout, on: clock)
             defer {
                 if kind == .connect { self.decrementPendingConnectStragglers() }
             }
@@ -208,6 +213,6 @@ extension MCPServer {
         let task = enqueueClientOperation(kind: .disconnect) { await self.client.disconnect() }
         await Self.awaitWithBoundedWait(
             Task<Void, Never> { _ = try? await task.value },
-            timeout: Self.clientDisconnectGracePeriod)
+            timeout: Self.clientDisconnectGracePeriod, on: clientQueueClock)
     }
 }

@@ -33,7 +33,8 @@ public enum ServerMode: String, Sendable, CaseIterable {
     case catalog
 
     /// Starts ``ScriptedServer/startDynamicToolsetScenario()`` — a tool set
-    /// that adds, re-schemas and removes a tool on a timer.
+    /// that adds, re-schemas and removes a tool on a timer, through
+    /// ``ScriptedServer/runDynamicToolsetStages(on:)``.
     case dynamic
 
     /// Registers only ``ScriptedServer/addSlowBuildTool(named:totalSteps:stepDelay:)``
@@ -111,8 +112,15 @@ public enum ServerMode: String, Sendable, CaseIterable {
 
     /// Registers the tool set of this mode on `server`.
     ///
-    /// - Parameter server: The server to register tools on.
-    public func registerTools(on server: ScriptedServer) async {
+    /// - Parameters:
+    ///   - server: The server to register tools on.
+    ///   - stageClock: The clock the timed stages of ``dynamic`` sleep on.
+    ///     The default is the real clock, which the executable needs. A test
+    ///     gives a clock it controls, so no stage runs before the test lets
+    ///     it. The other modes have no timed stage and read nothing of it.
+    public func registerTools(
+        on server: ScriptedServer, stageClock: any Clock<Duration> = ContinuousClock()
+    ) async {
         switch self {
         case .echo:
             await server.addEchoTool()
@@ -128,6 +136,7 @@ public enum ServerMode: String, Sendable, CaseIterable {
             await server.addCatalogShowcaseTool()
         case .dynamic:
             await server.startDynamicToolsetScenario()
+            await server.runDynamicToolsetStages(on: stageClock)
         case .longRunning:
             await server.addSlowBuildTool(named: Self.slowBuildToolName)
         case .loopback:

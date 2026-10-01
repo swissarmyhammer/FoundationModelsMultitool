@@ -108,6 +108,14 @@ struct ShellRunner {
     /// `ProcessRegistry.global` for the reason.
     var registry: ProcessRegistry = .global
 
+    /// The clock the timer of a time limit sleeps on.
+    ///
+    /// It takes the real `ContinuousClock` by default, thus a production limit
+    /// measures wall-clock time. A test gives a clock it controls, thus the
+    /// limit fires when the test lets it, and machine load cannot move the
+    /// kill before or after the point the test checks.
+    var clock: any Clock<Duration> = ContinuousClock()
+
     /// The live view of the output that each command of this runner tees its raw
     /// chunks into, or `nil` — the default where no host subscribed — to tee
     /// nothing.
@@ -747,9 +755,9 @@ struct ShellRunner {
     }
 
     /// Adds the timer of the time limit to the task group of
-    /// `waitForCompletion`: it waits for `timeout` and, when the group does not
-    /// cancel it first, it kills the process group of `pid` and reports that the
-    /// limit fired.
+    /// `waitForCompletion`: it waits for `timeout` on ``clock`` and, when the
+    /// group does not cancel it first, it kills the process group of `pid` and
+    /// reports that the limit fired.
     ///
     /// It takes a closure instead of the flag itself: a `Mutex` cannot be
     /// copied, thus to give one here as a parameter would consume it, and the
@@ -769,8 +777,9 @@ struct ShellRunner {
         pid: pid_t,
         markTimedOut: @escaping @Sendable () -> Void
     ) {
+        let timerClock = clock
         group.addTask {
-            if (try? await Task.sleep(for: timeout)) != nil {
+            if (try? await timerClock.sleep(for: timeout)) != nil {
                 markTimedOut()
                 _ = killpg(pid, SIGKILL)
             }

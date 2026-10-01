@@ -37,7 +37,9 @@ import Testing
 ///
 /// **Every server sleeps on a `ManualClock`**, so the coalesce window of a
 /// `tools/list_changed` re-list takes no real time — the convention of
-/// `LiveCatalogTests` and `RegistryRebuildTests`.
+/// `LiveCatalogTests` and `RegistryRebuildTests`. The dynamic-scenario cases
+/// run each stage with `advanceDynamicToolsetScenario()`, thus no timer
+/// decides what the surface holds when a case reads it.
 ///
 /// **The connect emits a snapshot of its own**, and an `AsyncStream` holds what
 /// it emitted before a consumer read it. So the refresher rebuilds one time as
@@ -313,6 +315,7 @@ struct SurfaceRefresherTests {
 
             // Stage one of the scenario adds the greeter and sends
             // `tools/list_changed`. No host action follows it.
+            #expect(await scripted.advanceDynamicToolsetScenario())
             try await Self.waitForStages(Self.stagesAfterOneChange, on: ground.staging)
             await ground.runCode.submissionWillBegin()
 
@@ -332,7 +335,14 @@ struct SurfaceRefresherTests {
 
         try await Self.withStartedRefresher(named: Self.dynamicServerName, serving: scripted) { ground in
             // The three stages of the scenario are add, re-schema, remove.
-            try await Self.waitForStages(Self.stagesAfterThreeChanges, on: ground.staging)
+            // Each stage runs only after the refresher staged the one before
+            // it, thus each stage gets a rebuild of its own.
+            try await Self.waitForStages(Self.stagesAfterConnect, on: ground.staging)
+            for stage in 1...ScriptedServer.dynamicToolsetStageCount {
+                #expect(await scripted.advanceDynamicToolsetScenario())
+                try await Self.waitForStages(Self.stagesAfterConnect + stage, on: ground.staging)
+            }
+            #expect(ground.staging.count == Self.stagesAfterThreeChanges)
             await ground.runCode.submissionWillBegin()
 
             #expect(try await helpPaths(of: ground.runCode) == [Self.counterPath])
