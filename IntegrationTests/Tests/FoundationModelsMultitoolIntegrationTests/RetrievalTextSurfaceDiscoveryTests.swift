@@ -153,9 +153,6 @@ private struct SubstitutingTextEmbedding: TextEmbedding {
     /// What to embed instead, keyed by the text the registry hands over.
     let substitutions: [String: String]
 
-    /// The length of every vector ``base`` produces.
-    var dimension: Int { base.dimension }
-
     /// Embeds `texts`, with every substituted text swapped first.
     ///
     /// - Parameter texts: the texts the registry asks for.

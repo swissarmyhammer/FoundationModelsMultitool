@@ -331,14 +331,13 @@ private let otelProducts: [Target.Dependency] = [
 /// metrics factory for the task of the test. It bootstraps the logging system
 /// one time for each process. Thus no code of the unit test target calls
 /// `LoggingSystem.bootstrap`. `Logging` gives the suites the `Logger.Metadata`
-/// type, and `InMemoryLogging` gives them the `InMemoryLogHandler.Entry` type
-/// of each log record. `MetricsTestKit` gives them the `TestMetrics` factory of
-/// the capture, and its `TestCounter` and `TestTimer` types. A library target
-/// does not link these products.
+/// type. `TelemetryTestSupport` itself gives them the
+/// `TelemetryCapture.LogRecord` type of each log record. `MetricsTestKit` gives
+/// them the `TestMetrics` factory of the capture, and its `TestCounter` and
+/// `TestTimer` types. A library target does not link these products.
 private let telemetryTestProducts: [Target.Dependency] = [
     .product(name: "TelemetryTestSupport", package: extrasDependencyName),
     .product(name: "Logging", package: loggingPackage),
-    .product(name: "InMemoryLogging", package: loggingPackage),
     .product(name: "MetricsTestKit", package: metricsPackage),
 ]
 
@@ -650,6 +649,7 @@ let package = Package(
             dependencies: [
                 .target(name: packageName),
                 .product(name: routerDependencyName, package: routerDependencyName),
+                .product(name: extrasDependencyName, package: extrasDependencyName),
                 .product(name: "Logging", package: loggingPackage),
             ] + liveLoaderMLXProducts + hubProducts,
             path: "\(sourcesPath)\(cliLibraryTargetName)"

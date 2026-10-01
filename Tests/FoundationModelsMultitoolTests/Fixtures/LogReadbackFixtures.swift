@@ -1,4 +1,3 @@
-import InMemoryLogging
 import Logging
 import TelemetryTestSupport
 
@@ -31,7 +30,7 @@ enum LogReadback {
     /// - Returns: The records, in the order of the calls.
     static func records(
         _ message: MultitoolTelemetry.LogMessage, in context: TelemetryCapture.Context
-    ) -> [InMemoryLogHandler.Entry] {
+    ) -> [TelemetryCapture.LogRecord] {
         records(message, in: context.logRecords)
     }
 
@@ -44,8 +43,8 @@ enum LogReadback {
     ///     returned from its capture.
     /// - Returns: The records, in the order of the calls.
     static func records(
-        _ message: MultitoolTelemetry.LogMessage, in records: [InMemoryLogHandler.Entry]
-    ) -> [InMemoryLogHandler.Entry] {
+        _ message: MultitoolTelemetry.LogMessage, in records: [TelemetryCapture.LogRecord]
+    ) -> [TelemetryCapture.LogRecord] {
         records.filter { "\($0.message)" == message.rawValue }
     }
 
@@ -71,12 +70,12 @@ enum LogReadback {
     /// - Returns: The records, in the order of the calls.
     static func enterRecords(
         _ spanName: MultitoolTelemetry.SpanName, in context: TelemetryCapture.Context
-    ) -> [InMemoryLogHandler.Entry] {
+    ) -> [TelemetryCapture.LogRecord] {
         context.logRecords.filter { "\($0.message)" == enterMessage(spanName) }
     }
 }
 
-extension InMemoryLogHandler.Entry {
+extension TelemetryCapture.LogRecord {
     /// The metadata value of this record under `key`, as text.
     ///
     /// - Parameter key: The metadata key: a case of

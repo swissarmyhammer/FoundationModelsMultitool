@@ -12,7 +12,7 @@
 // calls `searchTools` — see `SelectionFactory`.
 //
 // This file keeps what the library adds around each session a host makes: a
-// `TracedAgentSession`, and a span over the synchronous factory call. Both
+// `TracedAgentSession`, and a span over each factory call. Both
 // ends of a session factory are opaque from outside, and these spans are the
 // only thing that tells a slow search from a stalled one.
 
@@ -135,11 +135,37 @@ extension SearchToolsTool {
         switch source {
         case .factory(let factory):
             return .factory { instructions in
-                tracedSession(
-                    role: TracedAgentSession.selectionRole, instructions: instructions, make: factory)
+                try await tracedSelectionSession(instructions: instructions, make: factory)
             }
         case .session(let session):
             return .session(TracedAgentSession(wrapped: session, role: TracedAgentSession.selectionRole))
+        }
+    }
+
+    /// Makes one selection session through the host's asynchronous `make`,
+    /// inside a span, and wraps it in a `TracedAgentSession`.
+    ///
+    /// The selection factory can `await`, for example while a pooled model
+    /// loads at the first request, and it can `throw`. The span stays open
+    /// until the factory returns, so a slow load shows as a long
+    /// `agent_session.make` span, and the "enter" record of the span shows a
+    /// load that never ends. An error from `make` sets the error status of
+    /// the span, and then comes out of this call unchanged.
+    ///
+    /// - Parameters:
+    ///   - instructions: the instructions of the session.
+    ///   - make: the host's selection factory.
+    /// - Returns: the traced session.
+    /// - Throws: what `make` throws.
+    private static func tracedSelectionSession(
+        instructions: String,
+        make: @Sendable (String) async throws -> any AgentSession
+    ) async throws -> any AgentSession {
+        let role = TracedAgentSession.selectionRole
+        return try await MultitoolTelemetry.traced(
+            .agentSessionMake, attributes: makeSpanAttributes(role: role, instructions: instructions)
+        ) { _ in
+            TracedAgentSession(wrapped: try await make(instructions), role: role)
         }
     }
 
@@ -147,11 +173,11 @@ extension SearchToolsTool {
     /// it in a `TracedAgentSession`.
     ///
     /// Traced here because both ends of a factory are opaque from outside.
-    /// The call is synchronous but not cheap — a grammar-constrained session
-    /// compiles its grammar — and everything done with the session it returns
-    /// happens behind the `AgentSession` seam. See `TracedAgentSession`. The
-    /// span is an `agent_session.make` span, and the role tells the selection
-    /// factory from the sample factory.
+    /// The call is synchronous but not cheap, and everything done with the
+    /// session it returns happens behind the `AgentSession` seam. See
+    /// `TracedAgentSession`. The span is an `agent_session.make` span, and the
+    /// role tells the sample factory from the selection factory, which
+    /// ``tracedSelectionSession(instructions:make:)`` traces.
     ///
     /// - Parameters:
     ///   - role: the role the traced session reports.
@@ -164,9 +190,23 @@ extension SearchToolsTool {
         make: SessionFactory
     ) -> any AgentSession {
         MultitoolTelemetry.tracedSynchronously(
-            .agentSessionMake, attributes: [.sessionRole: role, .instructionCharacters: instructions.count]
+            .agentSessionMake, attributes: makeSpanAttributes(role: role, instructions: instructions)
         ) {
             TracedAgentSession(wrapped: make(instructions), role: role)
         }
+    }
+
+    /// The attributes of an `agent_session.make` span: the role of the
+    /// session and the length of its instructions, never their text.
+    ///
+    /// - Parameters:
+    ///   - role: the role the traced session reports.
+    ///   - instructions: the instructions of the session.
+    /// - Returns: the span attributes.
+    private static func makeSpanAttributes(
+        role: String,
+        instructions: String
+    ) -> [MultitoolTelemetry.AttributeKey: (any SpanAttributeConvertible)?] {
+        [.sessionRole: role, .instructionCharacters: instructions.count]
     }
 }

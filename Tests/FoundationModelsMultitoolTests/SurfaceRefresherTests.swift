@@ -1,6 +1,5 @@
 import Foundation
 import FoundationModels
-import InMemoryLogging
 import MCPTestServer
 import Synchronization
 import TelemetryTestSupport
@@ -295,7 +294,7 @@ struct SurfaceRefresherTests {
     /// - Returns: The matching records, in the order of the calls.
     private static func rebuildFailureRecords(
         of name: String, in context: TelemetryCapture.Context
-    ) -> [InMemoryLogHandler.Entry] {
+    ) -> [TelemetryCapture.LogRecord] {
         LogReadback.records(.surfaceRebuildFailed, in: context).filter {
             $0.level == .warning && $0.metadataText(MultitoolTelemetry.AttributeKey.serverName) == name
         }

@@ -1,4 +1,5 @@
 import Foundation
+import FoundationModelsExtras
 import FoundationModelsMetadataRegistry
 import FoundationModelsMultitool
 import FoundationModelsRouter
@@ -17,10 +18,6 @@ import Testing
 /// so no test loads a model.
 @Suite("RouterDiscoverySeams")
 struct RouterDiscoverySeamsTests {
-    /// The error ``sessionFactory(of:)`` throws for a source that holds one
-    /// fixed session and no factory.
-    private struct NotASessionFactory: Error {}
-
     /// The JSON Schema text of `grammar`, or `nil` when it is not a
     /// `.jsonSchema` grammar.
     ///
@@ -41,22 +38,6 @@ struct RouterDiscoverySeamsTests {
         let source = try #require(jsonSchemaSource(of: grammar))
         let object = try JSONSerialization.jsonObject(with: Data(source.utf8))
         return try #require(object as? [String: Any])
-    }
-
-    /// The session factory of `source`.
-    ///
-    /// - Parameter source: the session source of a selection configuration.
-    /// - Returns: the factory that makes one session per instruction text.
-    /// - Throws: ``NotASessionFactory`` when `source` holds one fixed session.
-    private static func sessionFactory(
-        of source: SelectionSessionSource
-    ) throws -> @Sendable (String) -> any AgentSession {
-        switch source {
-        case .factory(let makeSession):
-            return makeSession
-        case .session:
-            throw NotASessionFactory()
-        }
     }
 
     /// The `ids` array subschema of a decoded selection schema.
@@ -128,9 +109,9 @@ struct RouterDiscoverySeamsTests {
             recordedGrammars.withLock { $0.append(grammar) }
             return profile.flash.makeGuidedSession(grammar: grammar, instructions: instructions)
         }
-        let makeSession = try Self.sessionFactory(of: try factory(ids).sessionSource)
-        let first = makeSession("first instructions")
-        let second = makeSession("second instructions")
+        let makeSession = try factory(ids).sessionSource.sessionFactory()
+        let first = try await makeSession("first instructions")
+        let second = try await makeSession("second instructions")
 
         // One grammar, built one time for the catalog, under both sessions.
         let recorded = recordedGrammars.withLock { $0 }
@@ -203,11 +184,11 @@ struct RouterDiscoverySeamsTests {
     /// - Parameter profile: the resolved stub profile.
     /// - Returns: the pooled embedder.
     /// - Throws: what the acquire throws.
-    private static func pooledEmbedder(of profile: LanguageModelProfile) async throws -> PooledTextEmbedding {
+    private static func pooledEmbedder(of profile: LanguageModelProfile) async throws -> PooledEmbedder {
         try await RouterDiscoverySeams.acquireEmbedder(for: profile.embedding, loader: CountingEmbeddingLoader())
     }
 
-    @Test("the seams rank with the pooled embedder of the resolved embedding model, dimension included")
+    @Test("the seams rank with the pooled embedder of the resolved embedding model")
     func seamsRankWithThePooledEmbedder() async throws {
         let profile = try await makeStubProfile()
         let texts = ["one", "two"]
@@ -217,8 +198,7 @@ struct RouterDiscoverySeamsTests {
 
         // The pooled embedder forwards to the container that the Router
         // loaded, so it gives the vectors of the Router embedding handle.
-        #expect(seams.embedder is PooledTextEmbedding)
-        #expect(seams.embedder.dimension == profile.embedding.dimension)
+        #expect(seams.embedder is PooledEmbedder)
         #expect(vectors == (try await profile.embedding.embed(texts: texts)))
     }
 

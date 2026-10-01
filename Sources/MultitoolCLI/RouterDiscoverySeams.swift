@@ -1,3 +1,4 @@
+import FoundationModelsExtras
 import FoundationModelsMetadataRegistry
 import FoundationModelsMultitool
 import FoundationModelsRouter
@@ -49,7 +50,7 @@ public struct RouterDiscoverySeams: Sendable {
     ///     drives that session, is not a correct generator. Its session is
     ///     made with no `tools:` argument, which keeps `searchTools` off it:
     ///     it writes a snippet, it does not execute one.
-    public init(librarian: RoutedLLM, embedder: PooledTextEmbedding, sampleGenerator: RoutedLLM? = nil) {
+    public init(librarian: RoutedLLM, embedder: PooledEmbedder, sampleGenerator: RoutedLLM? = nil) {
         self.selection = Self.makeSelection { grammar, instructions in
             librarian.makeGuidedSession(grammar: grammar, instructions: instructions)
         }
@@ -84,10 +85,18 @@ public struct RouterDiscoverySeams: Sendable {
         for embedding: RoutedEmbedder,
         loader: any PooledModelLoader,
         from pool: ModelPool = .shared
-    ) async throws -> PooledTextEmbedding {
-        try await PooledTextEmbedding.acquire(
-            embedding.chosen, footprintBytes: embedding.footprintBytes, loader: loader, from: pool)
+    ) async throws -> PooledEmbedder {
+        let hold = try await pool.acquire(
+            ModelPoolKey(ref: embedding.chosen, role: .embedding),
+            footprintBytes: embedding.footprintBytes,
+            sessionBytes: embeddingSessionBytes,
+            loader: loader)
+        return try PooledEmbedder(hold: hold)
     }
+
+    /// The session bytes of an embedding hold. An embedding model opens no
+    /// session, so its hold adds no bytes to the footprint of the model.
+    private static let embeddingSessionBytes: Int64 = 0
 
     /// The session factory over `generator`: one plain Router session per
     /// instruction text, with no tools mounted.

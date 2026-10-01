@@ -32,9 +32,6 @@ final class RecordingEmbedder: TextEmbedding, Sendable {
     /// Whether `embed(_:)` records its batch and then throws ``Failure``.
     private let alwaysFails: Bool
 
-    /// The length of every vector this embedder answers.
-    let dimension = RecordingEmbedder.vectorLength
-
     /// Creates an embedder that has embedded nothing yet.
     ///
     /// - Parameter alwaysFails: `true` to record each batch and then throw

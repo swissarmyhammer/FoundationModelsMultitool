@@ -1,7 +1,4 @@
 import Foundation
-import HuggingFace
-import MLXHuggingFace
-import MLXLMCommon
 // Load-bearing although this file names no `MLXVLM` symbol: keep it.
 // The pinned generation model may be registered in `VLMModelFactory`
 // alone, and `MLXLMCommon`'s `ModelFactoryRegistry` finds its trampolines
@@ -10,8 +7,8 @@ import MLXLMCommon
 // after paying for the whole download.
 import MLXVLM
 import Testing
-import Tokenizers
 
+import FoundationModelsExtras
 import FoundationModelsMetadataRegistry
 import FoundationModelsRouter
 import MultitoolCLI
@@ -572,7 +569,7 @@ struct LiveRouterFixture {
     /// The pooled embedder of `profile.embedding`, acquired from
     /// `ModelPool.shared` after the resolve. The Router resolved the profile
     /// into the same pool, so this hold loads no second copy of the model.
-    private let embedder: PooledTextEmbedding
+    private let embedder: PooledEmbedder
 
     /// The discovery seams over ``profile``: the librarian on `profile.flash`
     /// and the pooled embedder of `profile.embedding`, with no sample
@@ -587,10 +584,10 @@ struct LiveRouterFixture {
         RouterDiscoverySeams(librarian: profile.flash, embedder: embedder)
     }
 
-    /// Resolves a profile over a real, live `LiveModelLoader` — the
-    /// `#hubDownloader()`/`#huggingFaceTokenizerLoader()` macros build a
-    /// real Hugging Face Hub client + tokenizer loader, mirroring Router's
-    /// own gated `IntegrationTests.endToEnd()`.
+    /// Resolves a profile over a real, live `LiveModelLoader` — its Extras
+    /// `MLXModelLoader` downloads from the Hugging Face Hub with its own
+    /// tokenizer loader, mirroring Router's own gated
+    /// `IntegrationTests.endToEnd()`.
     ///
     /// Takes ``liveProfileTurnstile`` before resolving anything, so at
     /// most one integration scenario in the target has a profile resident at a time;
@@ -619,10 +616,7 @@ struct LiveRouterFixture {
         do {
             let cacheDir = Self.makeTempDir()
             let recordingsDir = Self.makeRecordingsDir()
-            let loader = LiveModelLoader(
-                downloader: #hubDownloader(),
-                tokenizerLoader: #huggingFaceTokenizerLoader()
-            )
+            let loader = LiveModelLoader()
             let router = Router(
                 cacheDir: cacheDir,
                 recordingsDir: recordingsDir,

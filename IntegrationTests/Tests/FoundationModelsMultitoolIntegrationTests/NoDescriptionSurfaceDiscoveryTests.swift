@@ -178,7 +178,7 @@ struct NoDescriptionSurfaceDiscoveryTests {
             let readings = try await NoDescriptionCandidate.allCases.mappedInOrder {
                 candidate in
                 let items = entries.map { NoDescriptionItem(entry: $0, candidate: candidate) }
-                let searcher = await MetadataSearcher(
+                let searcher = MetadataSearcher(
                     items: items, mode: .selection, embedder: nil, selection: selection)
                 let total = try await measure(
                     candidate: candidate, through: searcher, limit: entries.count)

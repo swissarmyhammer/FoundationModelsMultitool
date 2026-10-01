@@ -164,6 +164,31 @@ final class RootSessionRespondCalledDirectlySession: AgentSession, Sendable {
     }
 }
 
+// MARK: - `SelectionSessionSource.sessionFactory()` — the factory of a source
+
+/// Thrown by `SelectionSessionSource.sessionFactory()` for a source that
+/// holds one fixed session and no factory.
+struct NotASessionFactory: Error {}
+
+extension SelectionSessionSource {
+    /// The session factory of this source.
+    ///
+    /// A test calls the factory directly to examine the sessions that it
+    /// makes, and the span that the library puts around each call.
+    ///
+    /// - Returns: the factory that makes one session per instruction text.
+    /// - Throws: ``NotASessionFactory`` when this source holds one fixed
+    ///   session.
+    func sessionFactory() throws -> @Sendable (String) async throws -> any AgentSession {
+        switch self {
+        case .factory(let makeSession):
+            return makeSession
+        case .session:
+            throw NotASessionFactory()
+        }
+    }
+}
+
 // MARK: - `TripCitiesTool` — a standalone fixture tool
 
 /// The `Output` of `TripCitiesTool` — a fixed trip itinerary.

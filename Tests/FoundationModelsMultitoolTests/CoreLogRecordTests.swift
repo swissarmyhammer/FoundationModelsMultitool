@@ -1,5 +1,4 @@
 import FoundationModels
-import InMemoryLogging
 import Logging
 import TelemetryTestSupport
 import Testing
@@ -66,7 +65,7 @@ struct CoreLogRecordTests {
     /// - Throws: What the build of the tool or the call throws.
     private static func records(
         runningSnippet code: String, forbidding forbidden: [String]
-    ) async throws -> [InMemoryLogHandler.Entry] {
+    ) async throws -> [TelemetryCapture.LogRecord] {
         let multiTool = try makeMultiTool()
         return try await TelemetryCapture.run(forbidding: forbidden) { context in
             _ = try await MultitoolTelemetry.$boundLogger.withValue(context.logger) {

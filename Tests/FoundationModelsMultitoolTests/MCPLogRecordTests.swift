@@ -1,4 +1,3 @@
-import InMemoryLogging
 import Logging
 import MCP
 import MCPTestServer
@@ -89,7 +88,7 @@ struct MCPLogRecordTests {
     /// Records a failure unless `record` names the server of this suite.
     ///
     /// - Parameter record: The log record.
-    private static func expectServerName(of record: InMemoryLogHandler.Entry) {
+    private static func expectServerName(of record: TelemetryCapture.LogRecord) {
         #expect(record.metadataText(MultitoolTelemetry.AttributeKey.serverName) == serverName)
     }
 

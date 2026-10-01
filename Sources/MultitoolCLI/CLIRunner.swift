@@ -2,25 +2,13 @@ import Foundation
 import FoundationModels
 import FoundationModelsMultitool
 import FoundationModelsRouter
-// `HuggingFace`, `MLXLMCommon` and `Tokenizers` are named by nothing in this
-// file, and all three are load-bearing: the
-// `#hubDownloader()`/`#huggingFaceTokenizerLoader()` macros below expand into
-// `HubClient`, `MLXLMCommon.Downloader`/`MLXLMCommon.TokenizerLoader` and
-// `Tokenizers` code at this call site, and the expansion resolves against the
-// imports of the file it lands in. Dropping any of the three fails the build
-// inside the expansion.
-//
-// Model *loading* itself is Router's, so every other MLX module that load
+// Model *loading* is Router's. `LiveModelLoader()` makes the Extras
+// `MLXModelLoader`, which builds its own downloader and tokenizer loader, so
+// this file names no Hugging Face or MLX module. Every MLX module that a load
 // needs — `MLXVLM` among them, whose `VLMModelFactory` is the only registry
 // some checkpoints appear in — is imported by Router's own
-// `LiveModelLoader.swift` rather than here; `Package.swift` links them into
-// this library, and records there why that link outlives the pin that first
-// needed it. The `multitool-cli` executable links this library, so the same
-// modules reach the shipped binary through it.
-import HuggingFace
-import MLXHuggingFace
-import MLXLMCommon
-import Tokenizers
+// `LiveModelLoader.swift`. The `multitool-cli` executable links this library,
+// so the same modules reach the shipped binary through it.
 
 /// Prefix for all user-facing CLI error messages.
 ///
@@ -949,7 +937,7 @@ public enum CLIRunner {
         cancellation: CLIRunCancellation
     ) async throws {
         let recordingsDir = Self.makeTempRecordingsDir()
-        let loader = LiveModelLoader(downloader: #hubDownloader(), tokenizerLoader: #huggingFaceTokenizerLoader())
+        let loader = LiveModelLoader()
         let router = Router(recordingsDir: recordingsDir, recordingLevel: .full, loader: loader)
         let progress = await MainActor.run { ResolutionProgress() }
         let progressTask = Self.trackProgress(progress, output: output)

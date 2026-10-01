@@ -1,4 +1,4 @@
-import InMemoryLogging
+import FoundationModelsMetadataRegistry
 import InMemoryTracing
 import TelemetryTestSupport
 import Testing
@@ -52,7 +52,7 @@ struct CallSpanTests {
     /// - Returns: The records, in the order of the calls.
     private static func enterRecords(
         _ spanName: MultitoolTelemetry.SpanName, in context: TelemetryCapture.Context
-    ) -> [InMemoryLogHandler.Entry] {
+    ) -> [TelemetryCapture.LogRecord] {
         LogReadback.enterRecords(spanName, in: context)
     }
 
@@ -225,6 +225,79 @@ struct CallSpanTests {
             #expect(Self.attribute(.sessionRole, of: respond) == .string(TracedAgentSession.selectionRole))
             #expect(Self.attribute(.promptCharacters, of: respond) == .int64(Int64(Self.promptMarker.count)))
             #expect(Self.attribute(.outcome, of: respond) == Self.outcomeAttribute(.threw))
+        }
+    }
+
+    // MARK: - The selection factory
+
+    /// The instructions that the cases give the selection factory. No span
+    /// and no record may carry them.
+    private static let factoryInstructions = "qzvSpanFactoryInstructions"
+
+    /// The name of the span that the fixture selection factory opens after it
+    /// suspends. The parent of this span tells if the factory ran inside the
+    /// make span.
+    private static let factoryProbeSpanName = "CallSpanTests.selectionFactoryProbe"
+
+    /// The error that the throwing fixture selection factory throws.
+    private struct SelectionFactoryFailure: Error {}
+
+    /// The session factory that `SearchToolsTool.makeSelection` gives the
+    /// selection tier when the host makes each session with `makeSession`.
+    ///
+    /// - Parameter makeSession: the session factory of the host.
+    /// - Returns: the traced session factory of the selection tier.
+    /// - Throws: ``NotASessionFactory`` when the traced source is not a
+    ///   factory.
+    private static func tracedSelectionFactory(
+        _ makeSession: @escaping @Sendable (String) async throws -> any AgentSession
+    ) throws -> @Sendable (String) async throws -> any AgentSession {
+        let selection = try SearchToolsTool.makeSelection({ _ in SelectionConfig(model: makeSession) }, ids: [])
+        return try #require(selection).sessionSource.sessionFactory()
+    }
+
+    @Test("an async selection factory is awaited inside the make span, which gives one enter record")
+    func asyncSelectionFactoryIsAwaitedInsideTheMakeSpan() async throws {
+        let makeSession = try Self.tracedSelectionFactory { _ in
+            // Suspend first, so that the probe span starts after an await.
+            await Task.yield()
+            return InstrumentationSystem.tracer.withSpan(Self.factoryProbeSpanName) { _ in ScriptedAgentSession([]) }
+        }
+        try await TelemetryCapture.run(forbidding: [Self.factoryInstructions]) { context in
+            let session = try await MultitoolTelemetry.$boundLogger.withValue(context.logger) {
+                try await makeSession(Self.factoryInstructions)
+            }
+
+            let make = try #require(Self.spans(.agentSessionMake, in: context).first)
+            let probe = try #require(context.spans.first { $0.operationName == Self.factoryProbeSpanName })
+            #expect(Self.spans(.agentSessionMake, in: context).count == 1)
+            #expect(Self.enterRecords(.agentSessionMake, in: context).count == 1)
+            #expect(probe.parentSpanID == make.spanID)
+            #expect(session is TracedAgentSession)
+            #expect(Self.attribute(.sessionRole, of: make) == .string(TracedAgentSession.selectionRole))
+            #expect(
+                Self.attribute(.instructionCharacters, of: make) == .int64(Int64(Self.factoryInstructions.count)))
+            #expect(Self.attribute(.outcome, of: make) == Self.outcomeAttribute(.succeeded))
+        }
+    }
+
+    @Test("a throwing selection factory surfaces its error, and the make span records it")
+    func throwingSelectionFactorySurfacesItsError() async throws {
+        let makeSession = try Self.tracedSelectionFactory { _ in
+            await Task.yield()
+            throw SelectionFactoryFailure()
+        }
+        try await TelemetryCapture.run(forbidding: [Self.factoryInstructions]) { context in
+            await #expect(throws: SelectionFactoryFailure.self) {
+                try await MultitoolTelemetry.$boundLogger.withValue(context.logger) {
+                    try await makeSession(Self.factoryInstructions)
+                }
+            }
+
+            let make = try #require(Self.spans(.agentSessionMake, in: context).first)
+            #expect(Self.spans(.agentSessionMake, in: context).count == 1)
+            #expect(make.status?.code == .error)
+            #expect(Self.attribute(.outcome, of: make) == Self.outcomeAttribute(.threw))
         }
     }
 }
