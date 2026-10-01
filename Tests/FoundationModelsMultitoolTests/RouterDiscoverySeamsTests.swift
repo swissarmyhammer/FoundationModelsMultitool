@@ -135,18 +135,19 @@ struct RouterDiscoverySeamsTests {
     /// that shipped before this sentence, `mlx-community/Qwen3-4B-4bit`
     /// answered eight of the agent's ten queries with `{"ids":[]}` — every
     /// query for a way to write, edit or run — and the bench run ended with an
-    /// empty patch. The ranker's `String.selectionDefault` now carries the
-    /// sentence itself (ranker card `^zxm99zs`), so this host passes no
-    /// preamble of its own.
+    /// empty patch. The ranker's `String.selectionDefault` carries the
+    /// sentence itself, so this host passes no preamble of its own. The
+    /// ranker commit `dbda1ae` gave the default new words for this 4B model:
+    /// the sentence "Prefer the closest candidates over an empty answer" is
+    /// gone, and the default now says when an empty answer is correct.
     ///
     /// A test that read the sentence off `String.selectionDefault` would hold
     /// whatever that constant said, which is the one thing this guard must not
     /// do. A copy fails loudly if a later ranker default drops the sentence.
     private static let emptyAnswerSentence =
-        "Prefer the closest candidates over an empty answer; answer with an empty list only when "
-        + "no candidate is related to the task at all."
+        "Answer with an empty list only when no candidate is related to the request at all."
 
-    @Test("the selection tier is seeded with a preamble that tells the model to prefer the closest candidates over an empty answer")
+    @Test("the selection tier is seeded with a preamble that tells the model to answer with an empty list only when no candidate is related to the request")
     func selectionTierIsSeededWithTheEmptyAnswerGuidance() async throws {
         let profile = try await makeStubProfile()
 

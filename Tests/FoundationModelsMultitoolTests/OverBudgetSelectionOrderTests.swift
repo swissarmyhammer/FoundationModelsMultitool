@@ -46,11 +46,12 @@ struct OverBudgetSelectionOrderTests {
     /// The name of the shell store directory inside the session root.
     private static let shellStoreDirectoryName = ".shell"
 
-    /// The heading that opens one candidate entry of an assembled prefix,
-    /// with its trailing space — `SelectionTier` renders every candidate as
-    /// `## <id>` above that id's summary block, so a prompt's own slice is
-    /// readable off its instructions and off nothing else.
-    private static let candidateHeadingPrefix = "## "
+    /// The line prefix that holds the id of one candidate entry of an
+    /// assembled prefix, with its trailing space — `SelectionTier` renders
+    /// every candidate as a `<candidate>` block with `id: <id>` on its own
+    /// line above the `description:` line of that id, so a prompt's own slice
+    /// is readable off its instructions and off nothing else.
+    private static let candidateIDLinePrefix = "id: "
 
     /// The banner line every spliced catalog block opens with, up to the
     /// path — `APISurface.Entry.summaryBlock` and `block` both open with
@@ -204,12 +205,12 @@ struct OverBudgetSelectionOrderTests {
     /// renders them — the slice one prompt was given.
     ///
     /// - Parameter instructions: the prefix the tier seeded a session with.
-    /// - Returns: the ids under the prefix's candidate headings.
+    /// - Returns: the ids on the `id:` lines of the prefix's candidate blocks.
     private static func candidateIDs(in instructions: String) -> [String] {
         instructions
             .split(separator: "\n", omittingEmptySubsequences: true)
-            .filter { $0.hasPrefix(candidateHeadingPrefix) }
-            .map { String($0.dropFirst(candidateHeadingPrefix.count)) }
+            .filter { $0.hasPrefix(candidateIDLinePrefix) }
+            .map { String($0.dropFirst(candidateIDLinePrefix.count)) }
     }
 
     /// The guided-generation answer of one scripted selection call.
