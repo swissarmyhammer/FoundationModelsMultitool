@@ -165,6 +165,13 @@ comments:
     - The user chose: accept the code, because it follows the blocked provider rule. The last run shows only that this network address is blocked by both keyless providers.
     - Next: /commit and /review of this card. Then start ^tm4x2hp.
   timestamp: 2026-10-01T18:01:14.399591+00:00
+- actor: claude-code
+  id: 01m3wa1x71296s7w4b3t5gxa00
+  text: |-
+    ### commit - changed
+    - evidence: 36ffe02 test(web): skip live search for a blocked provider and space the live requests; base sha d2816ca
+    - next: the caller records the kanban-only commit, if the comment leaves a change
+  timestamp: 2026-10-01T18:01:33.153550+00:00
 position_column: doing
 position_ordinal: '80'
 title: Integration tests fail when the network is slow or rate-limited
