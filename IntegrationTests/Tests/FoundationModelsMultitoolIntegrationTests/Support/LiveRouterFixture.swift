@@ -566,9 +566,10 @@ struct LiveRouterFixture {
     /// left no transcript to read, because the recordings lived in a
     /// temporary directory no CI step uploads.
     private let recordingsDir: URL
-    /// The pooled embedder of `profile.embedding`, acquired from
+    /// The pooled embedder of `profile.embedding`, made by name over
     /// `ModelPool.shared` after the resolve. The Router resolved the profile
-    /// into the same pool, so this hold loads no second copy of the model.
+    /// into the same pool, so its first embed call adds a hold of the
+    /// resident model and loads no second copy.
     private let embedder: PooledEmbedder
 
     /// The discovery seams over ``profile``: the librarian on `profile.flash`
@@ -663,7 +664,7 @@ struct LiveRouterFixture {
                     // directories with no map back to the scenarios.
                     + " recordings=\(recordingsDir.path)"
             )
-            let embedder = try await RouterDiscoverySeams.acquireEmbedder(for: profile.embedding, loader: loader)
+            let embedder = RouterDiscoverySeams.acquireEmbedder(for: profile.embedding)
             return LiveRouterFixture(
                 router: router, profile: profile, recordingsDir: recordingsDir, embedder: embedder)
         } catch {

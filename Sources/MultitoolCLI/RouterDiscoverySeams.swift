@@ -14,7 +14,7 @@ import FoundationModelsRouter
 /// with the result:
 ///
 /// ```swift
-/// let embedder = try await RouterDiscoverySeams.acquireEmbedder(for: profile.embedding, loader: loader)
+/// let embedder = RouterDiscoverySeams.acquireEmbedder(for: profile.embedding)
 /// let seams = RouterDiscoverySeams(librarian: profile.flash, embedder: embedder)
 /// let mounted = try registry.makeSessionToolsAndStaging(
 ///     selection: seams.selection, embedder: seams.embedder, sampleSession: seams.sampleSession)
@@ -24,8 +24,9 @@ public struct RouterDiscoverySeams: Sendable {
     /// the librarian.
     public let selection: SearchToolsTool.SelectionFactory
 
-    /// The pooled embedder both searchers rank with. It keeps a hold of the
-    /// embedding model in the model pool of the process.
+    /// The pooled embedder both searchers rank with. From its first embed
+    /// call, it keeps a hold of the embedding model in the model pool of the
+    /// process.
     public let embedder: any TextEmbedding
 
     /// Makes the sample-snippet session on the generator, or `nil` when no
@@ -42,7 +43,7 @@ public struct RouterDiscoverySeams: Sendable {
     ///     puts a different model in `flash` than in `standard`.
     ///   - embedder: the pooled embedder both searchers rank with. The
     ///     sample CLI passes the result of
-    ///     ``acquireEmbedder(for:loader:from:)`` for `profile.embedding`.
+    ///     ``acquireEmbedder(for:from:)`` for `profile.embedding`.
     ///   - sampleGenerator: the model the sample snippet is written on, or
     ///     `nil` (the default) for no sample. It must also be a model other
     ///     than the model of the session that mounts `searchTools`, for the
@@ -58,45 +59,33 @@ public struct RouterDiscoverySeams: Sendable {
         self.sampleSession = sampleGenerator.map(Self.makeSampleSession(generator:))
     }
 
-    /// Acquires the pooled embedder for the embedding slot of a resolved
+    /// Makes the pooled embedder for the embedding slot of a resolved
     /// profile, by the `ModelRef` that the slot chose.
     ///
-    /// The Router resolves each profile into its model pool, and the default
-    /// pool is `ModelPool.shared`, the pool of the process. When the Router
-    /// resolved `embedding` into `pool`, the model is resident: the pool adds
-    /// a hold and does not call `loader`. Thus the Router, the registry and
-    /// this host use one embedding model in memory. When the model is not
-    /// resident, the pool loads it through `loader`.
+    /// The embedder loads nothing when you make it. Its first embed call
+    /// acquires the model from `pool`. The Router resolves each profile into
+    /// its model pool, and the default pool is `ModelPool.shared`, the pool of
+    /// the process. While the profile exists, the Router keeps a hold of the
+    /// embedding model, so the model is resident: the pool adds a hold and
+    /// loads nothing. Thus the Router embedding slot and the discovery
+    /// embedder use one embedding model in memory. When the model is not
+    /// resident, the pool loads it with its own loader, the loader of
+    /// `ModelPool(loader:)`.
     ///
     /// - Parameters:
     ///   - embedding: the embedding handle of a resolved profile. Its
-    ///     `chosen` model is the pool key, and its `footprintBytes` is the
-    ///     footprint that the pool counts when this call loads the model.
-    ///   - loader: the loader that loads the model when it is not resident.
-    ///     The sample CLI passes the `LiveModelLoader` of its Router.
+    ///     `chosen` model is the pool key.
     ///   - pool: the pool to acquire the model from. The default is
     ///     `ModelPool.shared`, the pool that a Router uses when it gets no
     ///     pool.
-    /// - Returns: the pooled embedder. It keeps a hold of the model, so the
-    ///   model stays resident while the embedder exists.
-    /// - Throws: what `loader` throws, or `PooledEmbedderError.notAnEmbedding`
-    ///   when the container of the key is not a `PooledEmbedding`.
-    public static func acquireEmbedder(
-        for embedding: RoutedEmbedder,
-        loader: any PooledModelLoader,
-        from pool: ModelPool = .shared
-    ) async throws -> PooledEmbedder {
-        let hold = try await pool.acquire(
-            ModelPoolKey(ref: embedding.chosen, role: .embedding),
-            footprintBytes: embedding.footprintBytes,
-            sessionBytes: embeddingSessionBytes,
-            loader: loader)
-        return try PooledEmbedder(hold: hold)
+    /// - Returns: the pooled embedder. After its first embed call, it keeps a
+    ///   hold of the model, so the model stays resident while the embedder
+    ///   exists. An embed call throws what the load throws, or
+    ///   `PooledEmbedderError.notAnEmbedding` when the container of the key
+    ///   is not a `PooledEmbedding`.
+    public static func acquireEmbedder(for embedding: RoutedEmbedder, from pool: ModelPool = .shared) -> PooledEmbedder {
+        PooledEmbedder(ref: embedding.chosen, pool: pool)
     }
-
-    /// The session bytes of an embedding hold. An embedding model opens no
-    /// session, so its hold adds no bytes to the footprint of the model.
-    private static let embeddingSessionBytes: Int64 = 0
 
     /// The session factory over `generator`: one plain Router session per
     /// instruction text, with no tools mounted.

@@ -969,11 +969,10 @@ public enum CLIRunner {
             // Both searchers rank with the model of `profile.embedding` —
             // the same profile that names `embeddingModel`. Without it the
             // registry reports `no embedder configured` on every search and
-            // ranks by keyword alone (card `^zqz1zan`). The embedder is a
-            // pooled hold of that model: the Router resolved the profile into
-            // `ModelPool.shared`, so the pool adds a hold of the resident
-            // model and loads no second copy. `loader` loads the model only
-            // when it is not resident.
+            // ranks by keyword alone (card `^zqz1zan`). The embedder names
+            // that model and loads nothing here. The Router resolved the
+            // profile into `ModelPool.shared`, so the first embed call adds a
+            // hold of the resident model and loads no second copy.
             //
             // The staging half of the same call is what a rebuilt registry is
             // handed to, and it is vended here rather than made by a factory:
@@ -984,7 +983,7 @@ public enum CLIRunner {
             // Explicitly typed, so the element type a host mounts is stated
             // where a reader meets it rather than inferred from a call in
             // another module.
-            let embedder = try await RouterDiscoverySeams.acquireEmbedder(for: profile.embedding, loader: loader)
+            let embedder = RouterDiscoverySeams.acquireEmbedder(for: profile.embedding)
             let seams = RouterDiscoverySeams(librarian: profile.flash, embedder: embedder)
             let mounted: (tools: [any FoundationModels.Tool], staging: any RegistryStaging) =
                 try demo.registry.makeSessionToolsAndStaging(

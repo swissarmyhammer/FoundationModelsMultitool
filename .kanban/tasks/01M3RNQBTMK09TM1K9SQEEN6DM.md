@@ -63,8 +63,25 @@ comments:
     - evidence: 2c50a68 build(deps): drop the unused swift-huggingface and swift-transformers dependencies; base sha before the commit: 896053d
     - next: review
   timestamp: 2026-10-01T00:54:27.708890+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m3tfgrxv895j0xacn6ntwaqw
+  text: |-
+    ### review — clean
+    - evidence: `review sha 896053d..HEAD` gave 0 findings, 0 confirmed, 1 refuted (7 attempted, 0 failed, 0 skipped). The engine reviewed 2 files (Package.swift, IntegrationTests/Package.swift). The .reviewignore rule excluded 4 .kanban files. The task had no prior Review Findings sections.
+    - next: The task is in done. The acceptance item "CI is green on the pushed commit" is open. It needs a push to origin main. The user must do this step.
+  timestamp: 2026-10-01T00:58:34.299919+00:00
+- actor: claude-code
+  id: 01m3tfh57061qm62705jhsee0f
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — Package.swift, IntegrationTests/Package.swift (unused swift-huggingface and swift-transformers dependencies removed). The LiveModelLoader() calls were already in d7973b7.
+    - test: green — swift test, 1876 tests, 0 issues, 0 skipped; IntegrationTests build complete; integration suite 60 passed, 6 documented keyed-provider skips.
+    - commit: 2c50a68, e3d91b4
+    - review: clean — review sha 896053d..HEAD, 0 findings. Task is in done.
+    - open: "CI is green on the pushed commit" needs a push. That is a user step.
+  timestamp: 2026-10-01T00:58:46.880289+00:00
+position_column: done
+position_ordinal: ffff8880
 title: Adopt LiveModelLoader(reporting:)
 ---
 ## What

@@ -357,7 +357,7 @@ func makeStubSession(
 /// handle answers ``StubEmbeddingContainer``'s constant vector. A test that
 /// needs a real `RoutedLLM` or `RoutedEmbedder` — an argument of
 /// `RouterDiscoverySeams(librarian:embedder:sampleGenerator:)` or of
-/// `RouterDiscoverySeams.acquireEmbedder(for:loader:from:)` — takes one
+/// `RouterDiscoverySeams.acquireEmbedder(for:from:)` — takes one
 /// from here with no model and no download.
 ///
 /// - Parameters:
