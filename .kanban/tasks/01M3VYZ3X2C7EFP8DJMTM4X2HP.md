@@ -186,6 +186,13 @@ comments:
     - logs: scratchpad root-test.log and integration-test.log
     - next: review
   timestamp: 2026-10-01T21:56:51.253613+00:00
+- actor: claude-code
+  id: 01m3wy1h30y98881qp838bshsc
+  text: |-
+    ### commit — changed
+    - evidence: e1bab62 fix(files): state the range of offset and limit in the read tool schema (part 1); 05aed3a test(timing): use injected clocks and events so no test checks machine speed (part 2)
+    - next: review
+  timestamp: 2026-10-01T23:50:52.256279+00:00
 position_column: doing
 position_ordinal: '80'
 title: Integration tests fail on time limits and a wrong model answer under machine load
