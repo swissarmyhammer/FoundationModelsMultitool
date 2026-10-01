@@ -149,8 +149,25 @@ comments:
     - evidence: 61e0842 test(fixtures): name the hog slice and ceiling constants
     - next: review
   timestamp: 2026-10-01T23:20:33.751144+00:00
-position_column: doing
-position_ordinal: '8180'
+- actor: claude-code
+  id: 01m3wwf9mwbbmm4771rxkkkj4b
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (3dd26f5). 0 findings (0 confirmed, 0 refuted, 7 validators attempted, 0 failed). 1 file reviewed: Tests/FoundationModelsMultitoolTests/Fixtures/CooperativePoolHogFixtures.swift. Not reviewed: 2 files in .kanban/ (ignore rule). No file in the range is renamed (git diff --name-status -M), so no file-scoped review was necessary. The two prior findings (2026-10-01 17:59, lines 21 and 28, code-hygiene/magic-numbers-swift) are checked. The diff shows that the literals are now the named constants hogSliceMilliseconds and hogCeilingSeconds.
+    - note: The commit comment above gives sha 61e0842. The commit in HEAD is 3dd26f5, with the same subject.
+    - next: none. The task moved to done.
+  timestamp: 2026-10-01T23:23:26.236509+00:00
+- actor: claude-code
+  id: 01m3wwfrg37ancbrhktvcaqmg1
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — 1 file (CooperativePoolHogFixtures.swift, named constants)
+    - test: green — swift test, 1882 passed, 0 failed, 0 skipped
+    - commit: 3dd26f5 (the commit comment names 61e0842, the sha before an amend)
+    - review: clean — 0 findings; task moved to done
+  timestamp: 2026-10-01T23:23:41.443154+00:00
+position_column: done
+position_ordinal: ffff8a80
 title: 'runCode as a queue: run JS as jobs on an event loop, so a waiting snippet holds no thread and no limit is necessary'
 ---
 ## Source
