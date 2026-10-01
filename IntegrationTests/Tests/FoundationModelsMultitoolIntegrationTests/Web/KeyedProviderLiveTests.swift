@@ -19,7 +19,8 @@ import Testing
 ///
 /// Each test builds `WebConfiguration.fromEnvironment()`, because that
 /// function is the feature under test, and keeps only its own provider. Thus
-/// a hit comes from that provider or the test fails. A Swift Testing trait
+/// when the provider answers, each hit comes from that provider. A blocked
+/// provider obeys ``BlockedProviderRule``. A Swift Testing trait
 /// applies to a whole test function, and not to one argument, thus each
 /// provider has its own test function and all six share one helper.
 @Suite(
@@ -60,8 +61,12 @@ struct KeyedProviderLiveTests {
 
     /// The shared test of one provider: `fromEnvironment()` has the
     /// provider, ``LiveSearch/swiftQuery`` gives at least
-    /// ``LiveSearch/minimumHitCount`` hits from that provider, and no key
-    /// value is in the result.
+    /// ``LiveSearch/minimumHitCount`` hits from a provider of the search, and
+    /// no key value is in the result.
+    ///
+    /// The search obeys ``BlockedProviderRule``: when the provider is blocked
+    /// (HTTP 429, or a challenge page), the test records the block as a known
+    /// issue, and does the same checks on the hits of a keyless provider.
     ///
     /// - Parameters:
     ///   - setting: The provider and its environment variables.
@@ -77,10 +82,12 @@ struct KeyedProviderLiveTests {
         let provider = try #require(
             configured.first { $0.name == setting.name }, setting.notConfiguredComment,
             sourceLocation: sourceLocation)
-        let result = try await LiveSearch.search(providers: [provider], environment: environment)
+        let search = try await BlockedProviderRule.search(
+            providers: [provider], environment: environment, sourceLocation: sourceLocation)
+        let result = search.result
 
         LiveSearch.expectNoCorrection(result, sourceLocation: sourceLocation)
-        #expect(result.provider == setting.name, sourceLocation: sourceLocation)
+        #expect(search.providers.map(\.name).contains(result.provider), sourceLocation: sourceLocation)
         #expect(
             result.results.count >= LiveSearch.minimumHitCount,
             "expected at least \(LiveSearch.minimumHitCount) hits, got \(result.results.map(\.url))",

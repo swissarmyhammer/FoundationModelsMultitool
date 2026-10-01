@@ -57,9 +57,30 @@ enum LiveSearch {
     /// How many seconds one request can take from start to end.
     static let resourceTimeoutSeconds: TimeInterval = 15
 
+    /// The shortest time, in seconds, between the starts of two live
+    /// searches of the test process.
+    ///
+    /// The Brave results page gave HTTP 429 to a request that came 0.6 s
+    /// after the previous one (card `^kghyac5`). The results page publishes
+    /// no limit, thus the value comes from that measurement: two seconds is
+    /// more than three times the gap that failed. A suite of two tests waits
+    /// at most this long one time, which is a small part of
+    /// ``timeLimitMinutes``.
+    static let searchSpacingSeconds: Int64 = 2
+
+    /// The one spacing of the live searches of the test process.
+    ///
+    /// Each suite that calls ``search(providers:site:environment:)`` shares
+    /// it. Thus the requests of two suites that run one after the other
+    /// under `--no-parallel` are also kept apart.
+    static let searchSpacing = LiveSearchSpacing(interval: .seconds(searchSpacingSeconds))
+
     // MARK: The search
 
     /// Sends one live search, with the real session and the real resolver.
+    ///
+    /// The search first takes a turn of ``searchSpacing``, thus it starts at
+    /// least ``searchSpacingSeconds`` after the previous live search.
     ///
     /// - Parameters:
     ///   - providers: The providers, in the order to try.
@@ -68,10 +89,13 @@ enum LiveSearch {
     ///     key reads. The default is empty, thus a keyless search reads no
     ///     environment.
     /// - Returns: The result of the `search` verb for ``swiftQuery``.
-    /// - Throws: When the verb throws. The verb must not throw.
+    /// - Throws: When the verb throws. The verb must not throw. Also
+    ///   `CancellationError` when the task is cancelled during the wait for
+    ///   the turn.
     static func search(
         providers: [WebSearchProvider], site: String? = nil, environment: [String: String] = [:]
     ) async throws -> SearchResult {
+        try await searchSpacing.waitForTurn()
         let configuration = WebConfiguration(
             providers: providers, fetch: WebFetchPolicy(searchTimeout: searchTimeoutSeconds),
             environment: environment)
@@ -100,7 +124,8 @@ enum LiveSearch {
     /// The query test of one provider list: ``swiftQuery`` gives at least
     /// ``minimumHitCount`` hits, each hit URL is `https`, and a hit host is
     /// ``swiftHost`` or is under it. A correction records one failure, and
-    /// the checks of the hits do not run.
+    /// the checks of the hits do not run. The search obeys
+    /// ``BlockedProviderRule``.
     ///
     /// - Parameters:
     ///   - providers: The providers, in the order to try.
@@ -109,7 +134,9 @@ enum LiveSearch {
     static func expectSwiftHomePageHit(
         providers: [WebSearchProvider], sourceLocation: SourceLocation = #_sourceLocation
     ) async throws {
-        let result = try await search(providers: providers)
+        let result = try await BlockedProviderRule.search(
+            providers: providers, sourceLocation: sourceLocation
+        ).result
         guard hasHits(result, sourceLocation: sourceLocation) else { return }
         #expect(
             result.results.count >= minimumHitCount,
@@ -129,7 +156,7 @@ enum LiveSearch {
     /// The `site` test of one provider list: ``swiftQuery`` with the site
     /// ``appleDeveloperSite`` gives hits, and each hit host is under
     /// ``appleDomain``. A correction records one failure, and the checks of
-    /// the hits do not run.
+    /// the hits do not run. The search obeys ``BlockedProviderRule``.
     ///
     /// - Parameters:
     ///   - providers: The providers, in the order to try.
@@ -138,7 +165,9 @@ enum LiveSearch {
     static func expectHitsOnAppleSite(
         providers: [WebSearchProvider], sourceLocation: SourceLocation = #_sourceLocation
     ) async throws {
-        let result = try await search(providers: providers, site: appleDeveloperSite)
+        let result = try await BlockedProviderRule.search(
+            providers: providers, site: appleDeveloperSite, sourceLocation: sourceLocation
+        ).result
         guard hasHits(result, sourceLocation: sourceLocation) else { return }
         try #require(!result.results.isEmpty, "the site search gave no hit", sourceLocation: sourceLocation)
         for host in hosts(of: result) {
@@ -169,8 +198,8 @@ enum LiveSearch {
     ///
     /// A correction has no hits, thus the caller does not run the checks of
     /// the hits for it. The one failure has the comment
-    /// ``correctionComment(_:)``, thus a suite can find a known correction by
-    /// its exact text.
+    /// ``correctionComment(_:)``, thus the failure gives the exact text of the
+    /// correction.
     ///
     /// - Parameters:
     ///   - result: The result of the `search` verb.

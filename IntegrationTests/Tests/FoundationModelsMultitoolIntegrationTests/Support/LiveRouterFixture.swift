@@ -615,15 +615,8 @@ struct LiveRouterFixture {
         _ = MetalLibraryTestBootstrap.ensureColocatedMetallib
         await liveProfileTurnstile.acquire()
         do {
-            let cacheDir = Self.makeTempDir()
             let recordingsDir = Self.makeRecordingsDir()
-            let loader = LiveModelLoader()
-            let router = Router(
-                cacheDir: cacheDir,
-                recordingsDir: recordingsDir,
-                recordingLevel: .full,
-                loader: loader
-            )
+            let router = Self.makeRouter(recordingsDir: recordingsDir, loader: LiveModelLoader())
             let progress = ResolutionProgress()
             let profile = try await router.resolve(profile: definition, reporting: progress)
             // What this run actually resolved, printed because a real-model run's
@@ -688,6 +681,37 @@ struct LiveRouterFixture {
         await liveProfileTurnstile.release()
     }
 
+    /// Makes the `Router` of one fixture.
+    ///
+    /// ``resolve(_:)`` makes each live router here. A test of the router
+    /// configuration gives its own loader, metadata source, and pool, and
+    /// gets the same cache directory as a live router.
+    ///
+    /// - Parameters:
+    ///   - recordingsDir: The durable transcripts root of the router.
+    ///   - loader: The download and load step.
+    ///   - metadataSource: The fetch of the sizing metadata. The default
+    ///     reads the Hugging Face Hub.
+    ///   - pool: The resident-model pool to resolve into. The default is
+    ///     the pool of the process.
+    /// - Returns: The router, which records every transcript in full, and
+    ///   caches the sizing metadata under ``routerCacheRoot``.
+    static func makeRouter(
+        recordingsDir: URL,
+        loader: any ModelLoader,
+        metadataSource: any MetadataSource = HuggingFaceMetadataSource(),
+        pool: ModelPool = .shared
+    ) -> Router {
+        Router(
+            cacheDir: routerCacheRoot,
+            recordingsDir: recordingsDir,
+            recordingLevel: .full,
+            metadataSource: metadataSource,
+            loader: loader,
+            pool: pool
+        )
+    }
+
     /// Reads back this fixture's whole recorded run as a totally-ordered
     /// event stream — `TranscriptEvent.merged(under:)` over this router's
     /// own recording root (`recordings/<routerId>/`).
@@ -728,23 +752,49 @@ struct LiveRouterFixture {
     /// directly, and `swift package clean`/`.build` removal is the deliberate
     /// way to clear old runs. `RecordingsLocationTests` holds this location.
     static var recordingsRoot: URL {
+        packageBuildDirectory.appendingPathComponent("recordings", isDirectory: true)
+    }
+
+    /// The one cache directory of every Router this fixture makes:
+    /// `<IntegrationTests package>/.build/router-cache`.
+    ///
+    /// Router keeps the parsed sizing metadata of each model here. When the
+    /// metadata fetch of a reference with no pinned commit fails, Router reads
+    /// the entry that an earlier resolve wrote (card `^kghyac5`: a fetch that
+    /// timed out failed two scenarios before they started, because each
+    /// router had a new temporary cache directory and thus no entry). The
+    /// fetch is still the first read, thus a good network still gives the
+    /// current metadata.
+    ///
+    /// Under `.build/` for the reasons of ``recordingsRoot``: git ignores it,
+    /// and `swift package clean` removes it. Not the user caches directory of
+    /// the shipped host, because a test of this package writes stub entries,
+    /// and those must not reach the cache that a host reads.
+    /// `RouterMetadataCacheTests` holds this behavior.
+    static var routerCacheRoot: URL {
+        packageBuildDirectory.appendingPathComponent("router-cache", isDirectory: true)
+    }
+
+    /// `<IntegrationTests package>/.build`, derived from this file's own
+    /// compile-time path. `#filePath` is valid at run time because this
+    /// package builds and tests on the same machine, locally and in CI alike.
+    private static var packageBuildDirectory: URL {
         URL(fileURLWithPath: #filePath)     // …/Support/LiveRouterFixture.swift
             .deletingLastPathComponent()    // …/Support
             .deletingLastPathComponent()    // …/FoundationModelsMultitoolIntegrationTests
             .deletingLastPathComponent()    // …/Tests
             .deletingLastPathComponent()    // …/IntegrationTests
             .appendingPathComponent(".build", isDirectory: true)
-            .appendingPathComponent("recordings", isDirectory: true)
     }
 
     /// The name prefix of every directory this fixture creates — one spelling
-    /// for the temporary cache directories and the durable recordings
+    /// for the temporary directories and the durable recordings
     /// directories alike, so a directory listing reads as one family.
     private static let fixtureDirectoryPrefix = "FMMultitoolIntegration-"
 
     /// Creates a unique temporary directory, for state that must NOT outlive
-    /// the run — the Router cache directory, and a capability store a scenario
-    /// configures for the surface it mounts.
+    /// the run — a capability store a scenario configures for the surface it
+    /// mounts.
     static func makeTempDir() -> URL {
         makeUniqueDirectory(under: FileManager.default.temporaryDirectory)
     }
