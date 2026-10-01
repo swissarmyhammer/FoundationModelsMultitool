@@ -58,6 +58,13 @@ comments:
     - No source or test file was changed in this step. No commit, no push.
     - next: a person decides on the 6 credential-gated skips. All other results are green.
   timestamp: 2026-10-01T01:59:49.186083+00:00
+- actor: claude-code
+  id: 01m3tk1tn0rmakgygeb05y8t9r
+  text: |-
+    ### commit — changed
+    - evidence: 373cfea refactor(discovery): replace PooledTextEmbedding with PooledEmbedder in acquireEmbedder; base e3d91b4
+    - next: review
+  timestamp: 2026-10-01T02:00:18.848227+00:00
 depends_on:
 - 01M3QMDMN7RY93Y3Y3FVG37780
 position_column: doing
