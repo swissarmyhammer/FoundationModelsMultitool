@@ -55,8 +55,25 @@ comments:
     - evidence: 317f1e8 test(telemetry): check the logger label on each TelemetryCapture.LogRecord; base 333e793
     - next: review
   timestamp: 2026-10-01T00:21:53.085211+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m3tdk9yf878qaxeyqyg8f02z
+  text: |-
+    ### review — clean
+    - evidence: review sha 333e793..HEAD. 0 findings, 0 confirmed, 0 refuted. 7 files reviewed. 4 .kanban files not reviewed (.reviewignore).
+    - next: The user must push to origin main and make sure that CI is green. This closes the acceptance item "CI is green on the pushed commit". This is a user step. It is not a code finding.
+  timestamp: 2026-10-01T00:25:00.111308+00:00
+- actor: claude-code
+  id: 01m3tdkpabm5hpf9w9jep3f7s8
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 7 test files (logger label checks). The type adoption was already in d7973b7.
+    - test: green — swift test, 1876 tests, 154 suites, 0 issues, 0 skipped.
+    - commit: 317f1e8, 896053d
+    - review: clean — review sha 333e793..HEAD, 0 findings. Task is in done.
+    - open: "CI is green on the pushed commit" needs a push. That is a user step.
+  timestamp: 2026-10-01T00:25:12.779148+00:00
+position_column: done
+position_ordinal: ffff8780
 title: Adopt TelemetryCapture.LogRecord in place of InMemoryLogHandler.Entry
 ---
 ## What

@@ -25,12 +25,6 @@ private let extrasDependencyName = "FoundationModelsExtras"
 /// The MLX-backed model package a live `LiveModelLoader` is built over.
 private let mlxPackage = "mlx-swift-lm"
 
-/// The Hugging Face Hub client package.
-private let huggingFacePackage = "swift-huggingface"
-
-/// The Swift Transformers tokenizer package.
-private let transformersPackage = "swift-transformers"
-
 /// SwiftPM manifest for the integration suite: the real-model scenarios, and
 /// the live web tests that load no model (`Web/`, web.md § "Testing",
 /// Level 2).
@@ -106,8 +100,6 @@ let package = Package(
         .package(url: "git@github.com:swissarmyhammer/\(metadataRegistryDependencyName).git", branch: "main"),
         .package(url: "git@github.com:swissarmyhammer/\(extrasDependencyName).git", branch: "main"),
         .package(url: "git@github.com:swissarmyhammer/\(mlxPackage).git", branch: "stable"),
-        .package(url: "https://github.com/huggingface/\(huggingFacePackage)", from: "0.9.0"),
-        .package(url: "https://github.com/huggingface/\(transformersPackage)", from: "1.3.0"),
     ],
     targets: [
         // M6.5a: the real-model suite — plan.md M6.5 + Testing strategy
@@ -122,15 +114,13 @@ let package = Package(
         // depend on another package's executable target, which is why that
         // logic is a library in the first place.
         //
-        // The MLX and Hugging Face products are the live-inference wiring:
-        // `MLXLMCommon` and `MLXHuggingFace` for the
-        // `#hubDownloader()`/`#huggingFaceTokenizerLoader()` macros a real
-        // `LiveModelLoader` is built from, `HuggingFace` and `Tokenizers` for
-        // what those macros expand into, and `MLXVLM` for its model registry
-        // alone — `MLXLMCommon`'s `ModelFactoryRegistry` resolves its built-in
-        // trampolines with `NSClassFromString`, so a checkpoint registered in
-        // `VLMModelFactory` alone throws `unsupportedModelType` after paying
-        // for the whole download unless that module is linked into the binary.
+        // `LiveModelLoader()` takes no downloader and no tokenizer loader, thus
+        // the one MLX product here is the live-inference wiring that remains:
+        // `MLXVLM`, for its model registry alone. `MLXLMCommon`'s
+        // `ModelFactoryRegistry` resolves its built-in trampolines with
+        // `NSClassFromString`, so a checkpoint registered in `VLMModelFactory`
+        // alone throws `unsupportedModelType` after paying for the whole
+        // download unless that module is linked into the binary.
         // `../Package.swift`'s `liveLoaderMLXProducts` states this at length.
         .testTarget(
             name: "FoundationModelsMultitoolIntegrationTests",
@@ -177,11 +167,7 @@ let package = Package(
                 .product(name: extrasDependencyName, package: extrasDependencyName),
                 .product(name: routerDependencyName, package: routerDependencyName),
                 .product(name: metadataRegistryDependencyName, package: metadataRegistryDependencyName),
-                .product(name: "MLXLMCommon", package: mlxPackage),
-                .product(name: "MLXHuggingFace", package: mlxPackage),
                 .product(name: "MLXVLM", package: mlxPackage),
-                .product(name: "HuggingFace", package: huggingFacePackage),
-                .product(name: "Tokenizers", package: transformersPackage),
             ],
             path: "Tests/FoundationModelsMultitoolIntegrationTests"
         )

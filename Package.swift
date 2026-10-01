@@ -97,15 +97,13 @@ private func swissArmyHammerPackage(name: String, branch: String = mainBranch) -
 ///
 /// Taken by URL from its published `stable` branch — see `mlxStableBranch`.
 ///
-/// Only three of its products are declared directly here (not Router's own
-/// broader `mlxProducts` set), and all three are in `liveLoaderMLXProducts`:
-/// `MLXLMCommon`, whose `Downloader`/`TokenizerLoader` protocols a live
-/// `LiveModelLoader` is constructed over; `MLXHuggingFace`, whose
-/// `#hubDownloader()`/`#huggingFaceTokenizerLoader()` macros adapt a real
-/// Hugging Face Hub client into those protocols — the same macros Router's
-/// own gated `…IntegrationTests` target uses, and the M9 `MultitoolCLI`
-/// library's default (production) model-resolution path uses too; and
-/// `MLXVLM`, for its model registry alone (see `liveLoaderMLXProducts`).
+/// Only one of its products is declared directly here (not Router's own
+/// broader `mlxProducts` set): `MLXVLM`, in `liveLoaderMLXProducts`, for its
+/// model registry alone. A live `LiveModelLoader` takes no downloader and no
+/// tokenizer loader from its caller — `LiveModelLoader()` loads each model
+/// through the `MLXModelLoader` of FoundationModelsExtras — thus no target
+/// here names a symbol of `MLXLMCommon` or `MLXHuggingFace`, and neither is
+/// declared.
 ///
 /// `MLXFoundationModels` — the module `LiveModelLoader` is written over — is
 /// deliberately *not* declared here. Router's own library target names it, so
@@ -118,7 +116,7 @@ private func swissArmyHammerPackage(name: String, branch: String = mainBranch) -
 ///
 /// This package's resolved dependency graph already carries all of
 /// mlx-swift-lm transitively (Router's own library target needs the *full*
-/// product set to build at all), so declaring these three directly for the
+/// product set to build at all), so declaring this one directly for the
 /// targets below adds no new MLX/C++ compilation, only linking.
 private let mlxPackage = "mlx-swift-lm"
 
@@ -136,49 +134,9 @@ private let mlxPackage = "mlx-swift-lm"
 /// a divergent branch.
 private let mlxStableBranch = "stable"
 
-/// Base URL for packages published under the Hugging Face GitHub
-/// organization — `huggingFacePackage` and `transformersPackage` are both
-/// fetched from here.
-private let huggingFaceOrgURL = "https://github.com/huggingface/"
-
-/// Builds a `.package(url:from:)` dependency for a package hosted under
-/// `huggingFaceOrgURL`, pinned to a minimum semantic version floor.
-///
-/// This is used for `huggingFacePackage` and `transformersPackage`, whose
-/// declarations would otherwise be near-verbatim copies differing only in the
-/// package name and version floor — mirrors `swissArmyHammerPackage(name:)`
-/// above.
-private func huggingFaceOrgPackage(name: String, from version: Version) -> Package.Dependency {
-    .package(url: "\(huggingFaceOrgURL)\(name)", from: version)
-}
-
-/// Hugging Face Hub client and tokenizer packages.
-///
-/// These packages are needed by every target below that constructs a real,
-/// live `LiveModelLoader` through the `MLXHuggingFace` macros (the M9
-/// `MultitoolCLI` library, and through it the executable). This
-/// mirrors `../FoundationModelsRouter/Package.swift`'s own `hubProducts`
-/// (same package identities and version floors as Router's own gated
-/// suite, so a machine that already ran Router's gated suite shares the
-/// resolved checkout).
-private let huggingFacePackage = "swift-huggingface"
-
-/// The Swift Transformers tokenizer package, paired with
-/// `huggingFacePackage` above — linked by the M9 `MultitoolCLI` library.
-private let transformersPackage = "swift-transformers"
-
-/// The Hub client + tokenizer products a live `LiveModelLoader` needs (via
-/// the `MLXHuggingFace` macros) — linked by the M9 `MultitoolCLI` library.
-private let hubProducts: [Target.Dependency] = [
-    .product(name: "HuggingFace", package: huggingFacePackage),
-    .product(name: "Tokenizers", package: transformersPackage),
-]
-
-/// The `mlx-swift-lm` products a live `LiveModelLoader` needs, alongside
-/// `hubProducts` — see `mlxPackage`'s documentation above.
+/// The `mlx-swift-lm` products a live `LiveModelLoader` needs — linked by the
+/// M9 `MultitoolCLI` library. See `mlxPackage`'s documentation above.
 private let liveLoaderMLXProducts: [Target.Dependency] = [
-    .product(name: "MLXLMCommon", package: mlxPackage),
-    .product(name: "MLXHuggingFace", package: mlxPackage),
     // Linked for its model registry, not for vision, exactly as Router links
     // it (`../FoundationModelsRouter/Package.swift`). `loadModelContainer`
     // finds a factory through `MLXLMCommon`'s `ModelFactoryRegistry`, which
@@ -207,8 +165,8 @@ private let subprocessPackage = "swift-subprocess"
 /// The products of `subprocessPackage`, linked by the library target and the
 /// unit test target below.
 ///
-/// The shell capability is the one consumer. `hubProducts` and
-/// `liveLoaderMLXProducts` above group their own products the same way.
+/// The shell capability is the one consumer. `liveLoaderMLXProducts` above
+/// groups its own products the same way.
 private let shellProducts: [Target.Dependency] = [
     .product(name: "Subprocess", package: subprocessPackage)
 ]
@@ -237,12 +195,11 @@ private let shellProducts: [Target.Dependency] = [
 /// reads this URL and fails on a change back to upstream, thus a commit that
 /// goes back must change that suite too.
 ///
-/// Neither helper above fits it. `huggingFaceOrgPackage(name:from:)` names
-/// another organization. `swissArmyHammerPackage(name:branch:)` builds the
-/// `git@github.com:` URL of the three packages this repository develops. This
-/// one is a public fork, and it keeps the HTTPS URL it always had, thus a
-/// machine with no SSH key resolves it. The organization name is the whole
-/// change from the upstream URL.
+/// The helper above does not fit it. `swissArmyHammerPackage(name:branch:)`
+/// builds the `git@github.com:` URL of the three packages this repository
+/// develops. This one is a public fork, and it keeps the HTTPS URL it always
+/// had, thus a machine with no SSH key resolves it. The organization name is
+/// the whole change from the upstream URL.
 ///
 /// The sdk depends on `swift-log` for its own logging. Its `Transport`
 /// protocol requires a `Logging.Logger` property. This package declares
@@ -252,9 +209,8 @@ private let mcpPackage = "swift-sdk"
 /// The products of `mcpPackage`, linked by the library target and the unit
 /// test target below.
 ///
-/// The MCP capability is the one consumer. `hubProducts`,
-/// `liveLoaderMLXProducts` and `shellProducts` group their own products the
-/// same way.
+/// The MCP capability is the one consumer. `liveLoaderMLXProducts` and
+/// `shellProducts` group their own products the same way.
 private let mcpProducts: [Target.Dependency] = [
     .product(name: "MCP", package: mcpPackage)
 ]
@@ -560,13 +516,11 @@ let package = Package(
         swissArmyHammerPackage(name: routerDependencyName),
         swissArmyHammerPackage(name: metadataRegistryDependencyName),
         swissArmyHammerPackage(name: extrasDependencyName),
-        // Only the M9 `cliLibraryTargetName` library below links products from
-        // these three — see their documentation above.
+        // Only the M9 `cliLibraryTargetName` library below links a product
+        // from this one — see its documentation above.
         swissArmyHammerPackage(name: mlxPackage, branch: mlxStableBranch),
-        huggingFaceOrgPackage(name: huggingFacePackage, from: "0.9.0"),
-        huggingFaceOrgPackage(name: transformersPackage, from: "1.3.0"),
         // The package of `shellProducts`. It stands under an organization of
-        // its own, so neither helper above fits it.
+        // its own, so the helper above does not fit it.
         //
         // The version is an EXACT pin, and it is the pin
         // `../FoundationModelsShelltool/Package.swift` states today. The shell
@@ -591,19 +545,20 @@ let package = Package(
         // revision that file names.
         .package(url: "https://github.com/swissarmyhammer/\(mcpPackage).git", branch: mainBranch),
         // The package of `webProducts` — see `htmlParserPackage`. It stands
-        // under an organization of its own, so neither helper above fits it.
+        // under an organization of its own, so the helper above does not fit
+        // it.
         .package(url: "https://github.com/scinfu/\(htmlParserPackage).git", from: "2.13.9"),
         // The package of `ulidProducts` — see `ulidPackage`. It stands under
-        // an organization of its own, so neither helper above fits it.
+        // an organization of its own, so the helper above does not fit it.
         .package(url: "https://github.com/yaslab/\(ulidPackage).git", from: "1.3.1"),
         // The packages of `telemetryProducts` — see `loggingPackage`. They
-        // stand under an organization of their own, so neither helper above
-        // fits them.
+        // stand under an organization of their own, so the helper above does
+        // not fit them.
         .package(url: "https://github.com/apple/\(loggingPackage).git", from: "1.15.1"),
         .package(url: "https://github.com/apple/\(metricsPackage).git", from: "2.11.0"),
         // The packages of `otelProducts` — see `otelPackage` and
         // `serviceLifecyclePackage`. Each one stands under an organization of
-        // its own, so neither helper above fits them.
+        // its own, so the helper above does not fit them.
         .package(url: "https://github.com/swift-otel/\(otelPackage).git", from: "1.5.1"),
         .package(url: "https://github.com/swift-server/\(serviceLifecyclePackage).git", from: "2.12.0"),
     ],
@@ -632,11 +587,11 @@ let package = Package(
         ),
         // M9: the sample CLI's whole implementation — plan.md "M9 — Sample CLI.
         // A prompt that triggers searchTools then a multi-tool runCode." Links
-        // `liveLoaderMLXProducts` + `hubProducts` (see their documentation
-        // above) so its default, production model-resolution path can
-        // construct a real `LiveModelLoader` — the same live-inference wiring
-        // the nested integration package drives — making this a genuinely
-        // runnable demo rather than a stub.
+        // `liveLoaderMLXProducts` (see its documentation above) so its
+        // default, production model-resolution path can construct a real
+        // `LiveModelLoader()` and resolve any pinned checkpoint — the same
+        // live-inference wiring the nested integration package drives —
+        // making this a genuinely runnable demo rather than a stub.
         //
         // It links the `Logging` API of swift-log for `CLILogHandler`, the
         // handler that the executable bootstraps when no OTLP endpoint is set,
@@ -651,7 +606,7 @@ let package = Package(
                 .product(name: routerDependencyName, package: routerDependencyName),
                 .product(name: extrasDependencyName, package: extrasDependencyName),
                 .product(name: "Logging", package: loggingPackage),
-            ] + liveLoaderMLXProducts + hubProducts,
+            ] + liveLoaderMLXProducts,
             path: "\(sourcesPath)\(cliLibraryTargetName)"
         ),
         // The process entry point: `main.swift` and the telemetry bootstrap.
