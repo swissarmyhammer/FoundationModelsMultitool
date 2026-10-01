@@ -101,6 +101,54 @@ comments:
     - note: The repo holds no formatter config (no .swift-format, .swiftformat or .swiftlint.yml). The committed code passes neither swift-format lint nor swiftformat lint with default rules. So no formatter ran. A run would rewrite whole files.
     - next: review
   timestamp: 2026-10-01T22:59:09.277925+00:00
+- actor: claude-code
+  id: 01m3wvzzfxa3tvp1j6jw7fzvqc
+  text: |-
+    ### review — findings
+    - evidence: review sha d2816ca..HEAD. 2 findings (2 confirmed, 1 refuted). Tests/FoundationModelsMultitoolTests/Fixtures/CooperativePoolHogFixtures.swift:21, Tests/FoundationModelsMultitoolTests/Fixtures/CooperativePoolHogFixtures.swift:28 (code-hygiene/magic-numbers-swift). No file in the range is renamed (git diff --name-status -M), so no file-scoped review was necessary. Not reviewed: .kanban/ (ignore rule); UPSTREAM_ASKS.md, docs/SECURITY.md, eventplan.md (no validator matches).
+    - next: implement. Replace the magic numbers in CooperativePoolHogFixtures.swift with named constants, in all of the file. The task stays in review.
+  timestamp: 2026-10-01T23:15:04.317965+00:00
+- actor: claude-code
+  id: 01m3ww0g8xqsphjsct08gk1k7f
+  text: |-
+    ### finish iteration 1 — findings
+    - implement: changed — 29 files (event loop, cap removed, pending sentence)
+    - test: green — swift test, 1882 passed, 0 failed (3 upstream contract test fixes, ^9255d9b)
+    - commit: d8de90e, 4dfacb3, 817be44
+    - review: findings — Tests/FoundationModelsMultitoolTests/Fixtures/CooperativePoolHogFixtures.swift:21, Tests/FoundationModelsMultitoolTests/Fixtures/CooperativePoolHogFixtures.swift:28
+  timestamp: 2026-10-01T23:15:21.501320+00:00
+- actor: claude-code
+  id: 01m3ww70w4nbmwr1xfs7h20wek
+  text: |-
+    ### Findings: magic numbers in CooperativePoolHogFixtures.swift
+    - Cause: swiftlint `no_magic_numbers` reports a literal that is an argument of a call, also in a `let` declaration. `.milliseconds(5)` and `.seconds(10)` were such arguments. A `let` with a plain literal is not reported.
+    - Correction: the file now has `hogSliceMilliseconds = 5` and `hogCeilingSeconds = 10` (integer constants with the unit in the name, the same pattern as `TestPoll.intervalMilliseconds`). `hogSliceDuration` and `hogCeiling` are made from them. The only other literal in the file is `0` in `0..<activeProcessorCount`; `0` is in the allowed list.
+    - RED: swiftlint with the rule config (`only_rules: [no_magic_numbers]`, `allowed_numbers: [0, 1, -1, 100]`) gave 2 violations, at lines 21 and 28. GREEN: the same command gives 0 violations.
+    - `swift test --filter InlineSettleGraceTests` (the only suite that uses the fixture): 7 tests in 1 suite passed, 0 failed. The only warning is the known linker line "missing creator for mutated node" for the mlx-swift_Cmlx bundle in .build.
+    - Acceptance box "`swift test` passes" checked: the test step of iteration 1 was green (1882 passed, 0 failed), and this change touches only constants of a test fixture.
+  timestamp: 2026-10-01T23:18:55.108654+00:00
+- actor: claude-code
+  id: 01m3ww72nmnxjkjkqcq1jg8bta
+  text: |-
+    ### implement — changed
+    - evidence: 1 file — Tests/FoundationModelsMultitoolTests/Fixtures/CooperativePoolHogFixtures.swift. swiftlint no_magic_numbers: 2 violations before, 0 after. swift test --filter InlineSettleGraceTests: 7 passed, 0 failed.
+    - next: test, then review. The task stays in doing.
+  timestamp: 2026-10-01T23:18:56.948370+00:00
+- actor: claude-code
+  id: 01m3ww9frabekdxz1fcddjfxj0
+  text: |-
+    ### test — green
+    - evidence: `swift test` — 1882 tests in 154 suites passed, 0 failed, 0 skipped. No compiler warning from a file of this package.
+    - note: The build tool printed one linker line: "missing creator for mutated node" for the mlx-swift_Cmlx bundle in .build. It comes from the build tool. It was not fixed.
+    - next: review.
+  timestamp: 2026-10-01T23:20:15.882036+00:00
+- actor: claude-code
+  id: 01m3wwa16qym5jac6s405wxkcm
+  text: |-
+    ### commit — changed
+    - evidence: 61e0842 test(fixtures): name the hog slice and ceiling constants
+    - next: review
+  timestamp: 2026-10-01T23:20:33.751144+00:00
 position_column: doing
 position_ordinal: '8180'
 title: 'runCode as a queue: run JS as jobs on an event loop, so a waiting snippet holds no thread and no limit is necessary'
@@ -195,4 +243,19 @@ The model is the browser event loop. JS executes only in short **jobs**. Between
 - [x] The pending envelope contains "Do not call runCode to wait or to check; the result comes to you without a call."
 - [x] The card records the cause of the `return "waiting"` delay, and its layer.
 - [x] No test starts many slow snippets.
-- [ ] `swift test` passes. #defect
+- [x] `swift test` passes.
+
+## Review Findings (2026-10-01 17:59)
+
+> Scope: `review sha d2816ca..HEAD` — reviewed the diffs only — lines this change added or modified. 30 file(s) reviewed, 7 not reviewed.
+
+> 4 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 4 file(s)
+
+> 3 file(s) not reviewed — no validator matched:
+> - `UPSTREAM_ASKS.md` — no validator matches this file
+> - `docs/SECURITY.md` — no validator matches this file
+> - `eventplan.md` — no validator matches this file
+
+- [x] `Tests/FoundationModelsMultitoolTests/Fixtures/CooperativePoolHogFixtures.swift:21` `code-hygiene/magic-numbers-swift` — Magic numbers should be replaced by named constants.
+- [x] `Tests/FoundationModelsMultitoolTests/Fixtures/CooperativePoolHogFixtures.swift:28` `code-hygiene/magic-numbers-swift` — Magic numbers should be replaced by named constants. #defect

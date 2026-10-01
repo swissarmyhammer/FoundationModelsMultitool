@@ -14,18 +14,26 @@ import os
 /// The value `CooperativePoolHogTool` returns when it stops.
 let cooperativePoolHogResult = "hog-result"
 
-/// The time one child of `CooperativePoolHogTool` spins before it yields.
+/// The milliseconds one child of `CooperativePoolHogTool` spins before it
+/// yields.
 ///
 /// Short, so that another task at the same priority gets a thread soon. That is
 /// also how the children of a real grep behave: each one is a short job.
-private let hogSliceDuration: Duration = .milliseconds(5)
+private let hogSliceMilliseconds = 5
 
-/// The longest time `CooperativePoolHogTool` keeps the CPUs busy.
+/// The time one child of `CooperativePoolHogTool` spins before it yields.
+private let hogSliceDuration: Duration = .milliseconds(hogSliceMilliseconds)
+
+/// The longest time, in seconds, that `CooperativePoolHogTool` keeps the CPUs
+/// busy.
 ///
 /// A test releases the latch long before this. The ceiling stops the spin of a
 /// test that failed before it released the latch, so that no other test runs
 /// beside a busy CPU for the rest of the suite.
-private let hogCeiling: Duration = .seconds(10)
+private let hogCeilingSeconds = 10
+
+/// The longest time `CooperativePoolHogTool` keeps the CPUs busy.
+private let hogCeiling: Duration = .seconds(hogCeilingSeconds)
 
 /// A tool that keeps each thread of the cooperative pool busy until its latch
 /// is released.
