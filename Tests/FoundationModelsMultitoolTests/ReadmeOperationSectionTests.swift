@@ -92,8 +92,8 @@ struct ReadmeOperationSectionTests {
     // MARK: - The snippet
 
     @Test("the js snippet of the section passes the typed-mock dry run over the fixture verbs")
-    func snippetPassesTheDryRunOverTheFixtureVerbs() throws {
-        let failure = TypedMockDryRunTests.failure(for: try Self.snippet(), against: try TypedMockDryRunTests.notesEntries())
+    func snippetPassesTheDryRunOverTheFixtureVerbs() async throws {
+        let failure = await TypedMockDryRunTests.failure(for: try Self.snippet(), against: try TypedMockDryRunTests.notesEntries())
 
         #expect(failure == nil, "dry run failure: \(failure ?? "")")
     }

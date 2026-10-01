@@ -118,8 +118,9 @@ struct RouterSessionMountTests {
         #expect(envelope.next.contains(envelope.completionToken))
         #expect(!envelope.next.contains("wait tool"))
         #expect(!envelope.next.localizedCaseInsensitiveContains("call the wait"))
-        // It prescribes no snippet and never names the background tool itself.
-        #expect(!envelope.next.contains("runCode"))
+        // It prescribes no snippet. It names the background tool only to
+        // forbid a call that waits or checks (task `^cf57dtd`).
+        #expect(envelope.next.contains("Do not call runCode to wait or to check"))
         #expect(!envelope.next.contains("Call this tool again"))
         #expect(!envelope.next.contains("return await wait"))
         // The envelope is a short report: shorter than one capped `runCode`

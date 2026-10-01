@@ -1,16 +1,15 @@
 import Foundation
 import FoundationModels
 import FoundationModelsExtras
-import os
 
 // MARK: - The runCode mount and its work bound
 //
 // A Router session mounts `runCode` through `ToolMounting.makeWrapped` of
 // FoundationModelsExtras like any other tool, and the tool states its own
 // mount and its own per-call work bound through `BackgroundTool`. This file
-// is that declaration, the
-// collect sentence the pending envelope carries — plus the cap on how many of
-// the suspended JSC contexts a background run creates may be alive at once.
+// is that declaration and the collect sentence the pending envelope carries.
+// No number limits how many runs are alive at once: a run that waits holds
+// no thread, only its JSC context in memory (see `JSCInterpreter`).
 //
 // There is exactly one background point per snippet: the outer `runCode` call.
 // Inner `tools.*` calls run on the same engine under `RunBinding.innerCallMount`,
@@ -31,12 +30,16 @@ extension MultiTool: BackgroundTool {
     /// session on it, and a run on the same model can never settle inside
     /// that wait (§5.5). That is why this package mounts no `wait` tool.
     ///
-    /// It never names `runCode` and never prescribes a snippet. Every mounted
-    /// `runCode` call goes to the background (``mount``), so a snippet that
-    /// waits on a pending token is itself a background run and hands back a
-    /// fresh token. A sentence that told the model to run another snippet
-    /// made it chase tokens one generation a round (task `^4qcf1v9`: 21
-    /// rounds and about 1700 seconds for an eight-second run).
+    /// It never prescribes a snippet, and it names `runCode` only to forbid a
+    /// call. Every mounted `runCode` call goes to the background (``mount``),
+    /// so a snippet that waits on a pending token is itself a background run
+    /// and hands back a fresh token. A sentence that told the model to run
+    /// another snippet made it chase tokens one generation a round (task
+    /// `^4qcf1v9`: 21 rounds and about 1700 seconds for an eight-second run).
+    /// And with no word against it, a model still called `runCode` to wait:
+    /// in one SWE-bench run, 133 of 348 calls were `return "waiting1"` to
+    /// `return "waiting130"` (task `^cf57dtd`). Thus the last sentence forbids
+    /// a call that waits or checks.
     ///
     /// The sentence names the token, because the mail that comes back names
     /// the run by the same token.
@@ -44,7 +47,8 @@ extension MultiTool: BackgroundTool {
         "The snippet is still running in the background, and this is not its result. "
             + "Do not guess the result. End your answer now. "
             + "When the snippet finishes, its result comes back to you as a new message "
-            + "with completionToken \"\(completionToken)\", and you answer from that result then."
+            + "with completionToken \"\(completionToken)\", and you answer from that result then. "
+            + "Do not call runCode to wait or to check; the result comes to you without a call."
     }
 
     /// The `next` sentence of the envelope a `runCode` call hands the model
@@ -128,72 +132,5 @@ extension MultiTool: BackgroundTool {
     /// property, not a gap. The reconciliation named above states why.
     public func timeout(from arguments: GeneratedContent) -> TimeInterval? {
         configuration.executionTimeLimit
-    }
-}
-
-// MARK: - The cap on live contexts
-
-extension MultiTool {
-    /// How many of one `MultiTool`'s `runCode` contexts are live right now.
-    ///
-    /// A live context is a `runCode` call between entering
-    /// `call(arguments:)` and leaving it — which, once the call has handed
-    /// back its pending envelope, means a *suspended* JSC context: the
-    /// background run is the only way a call stays live after it answered.
-    /// Each one holds a real JS context, its pending promises, and the thread
-    /// its run occupies, so the set is capped rather than left to grow
-    /// (eventplan.md § "The constraint boundary, and the escape hatch"; the
-    /// cap itself is `MultiToolConfiguration.liveContextLimit`).
-    ///
-    /// A reference type because every copy of the `MultiTool` value that owns
-    /// it shares the one interpreter whose contexts it counts. Guarded by
-    /// `OSAllocatedUnfairLock` rather than modelled as an `actor` because both
-    /// operations are synchronous decisions on a single `Int`, taken on the
-    /// call's own thread, with nothing to await — the same choice
-    /// `JSCInterpreter`'s own `WatchdogState` makes.
-    final class LiveContextCounter: Sendable {
-        /// The count of live contexts.
-        private let live = OSAllocatedUnfairLock(initialState: 0)
-
-        /// Claims one live context, if the cap leaves room for it.
-        ///
-        /// - Returns: `true` when the context was claimed, and the caller owes
-        ///   a matching ``release()``; `false` when the cap is already full
-        ///   and the caller must not run.
-        func claim(upTo limit: Int) -> Bool {
-            live.withLock { count in
-                guard count < limit else { return false }
-                count += 1
-                return true
-            }
-        }
-
-        /// Gives back one claimed live context.
-        func release() {
-            live.withLock { $0 -= 1 }
-        }
-    }
-
-    /// The repairable, in-band failure a `runCode` call beyond the live-context
-    /// cap reports.
-    ///
-    /// Phrased as repair instructions, like every other error this package
-    /// hands a model: it names the cap it hit and the two ways that make room
-    /// for this call. A run that finishes makes room, and its result comes
-    /// back to the session as mail when the model ends its answer. A run that
-    /// `cancel()` stops makes room at once. The text names no `wait()`: a
-    /// snippet that waits holds the model for every session on it
-    /// (`generation-queue.md` §5.5).
-    ///
-    /// - Returns: the error `ResultRenderer` renders as the call's output.
-    static func liveContextCapError(limit: Int) -> InterpreterError {
-        InterpreterError(
-            kind: .exception,
-            message: "Too many runCode snippets are running at once (limit \(limit)). "
-                + "Do not start another now. End your answer: the result of each running snippet "
-                + "comes back to you as a new message when it finishes. status() lists the "
-                + "completion token of each running snippet, and cancel(completionToken) stops "
-                + "one that you do not need."
-        )
     }
 }

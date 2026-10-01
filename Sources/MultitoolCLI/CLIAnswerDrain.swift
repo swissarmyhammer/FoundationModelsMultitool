@@ -133,6 +133,12 @@ struct CLIEventReporter {
             // Without the line, an answer that restarts reads as an answer
             // that lost its work.
             output("\(stop)")
+        case .reasoningStopped(let stop):
+            // Router stopped a pass that only reasoned past its reasoning
+            // limit, and a recovery submission follows, or the answer ends.
+            // The line tells why the answer restarts, for the reason the
+            // repetition stop above gives.
+            output("\(stop)")
         case .runSettled(let terminal):
             // The one terminal event that says how a background run ended.
             // Its mail can start one more answer.
@@ -239,8 +245,8 @@ struct CLISessionActivity {
         case .runSettled(let terminal):
             openRuns.remove(terminal.correlationID)
         case .textDelta, .textReset, .reasoningDelta, .toolCall, .toolStatus, .toolCallReport, .entryRecorded,
-            .compaction, .discoveryPrimingFailed, .generationStalled, .repetitionStopped, .elicitationRequested,
-            .generationCall, .mailDeliveryPaused:
+            .compaction, .discoveryPrimingFailed, .generationStalled, .repetitionStopped, .reasoningStopped,
+            .elicitationRequested, .generationCall, .mailDeliveryPaused:
             // These events come inside a submission, or they report work that
             // an event above already tracks, so they change no activity.
             break

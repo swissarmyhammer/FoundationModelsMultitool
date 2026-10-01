@@ -122,7 +122,10 @@ as it gets file access from the files capability. The web verbs are such tools.
 
 - **Execution time** — a runaway/infinite-loop snippet is force-terminated by
   the interpreter's watchdog (`JSContextGroupSetExecutionTimeLimit`), not left
-  to run forever. Under a `MultiTool` the ceiling it terminates at is always
+  to run forever. A snippet that waits for a `tools.*` call that never
+  completes executes no JS, so the watchdog has nothing to stop: the
+  wall-clock timer of the run ends it at the same ceiling, and cancels the
+  pending call. Under a `MultiTool` the ceiling it terminates at is always
   `MultiToolConfiguration.executionTimeLimit`, which defaults to
   `MultiToolConfiguration.defaultExecutionTimeLimit` (120 seconds). That holds for
   the sandbox `MultiTool.init` builds for itself and for one injected through
@@ -144,8 +147,9 @@ as it gets file access from the files capability. The web verbs are such tools.
   ceiling above, which is measured from sandbox creation.
 - **Cancellation** — cancelling the Swift `Task` running
   `MultiTool.call(arguments:)` force-terminates the in-flight snippet
-  through that same watchdog path and propagates `CancellationError` — no
-  leaked interpreter thread, no semaphore deadlock.
+  through that same watchdog path, cancels each pending `tools.*` call, and
+  propagates `CancellationError` — no leaked interpreter thread, no
+  semaphore deadlock.
 - **Return-value size** (`MultiToolConfiguration.returnValueCharacterLimit`,
   default `ResultRendererLimits.defaultReturnValueCharacterLimit`, 4,000
   characters) and **console output size**
@@ -153,10 +157,12 @@ as it gets file access from the files capability. The web verbs are such tools.
   `ResultRendererLimits.defaultConsoleCharacterLimit`, 2,000 characters)
   — `ResultRenderer` truncates and appends a visible note rather than
   flooding the model's context with a fat result.
-- **Live snippets** (`MultiToolConfiguration.liveContextLimit`, default
-  `MultiToolConfiguration.defaultLiveContextLimit`, 8) — a `runCode` call
-  beyond this number of live snippets is refused with a repairable error, so
-  the suspended JavaScriptCore contexts cannot grow without limit.
+- **Live snippets** — no number limits how many `runCode` snippets run or
+  wait at the same time. A snippet executes JS only in short jobs, and a
+  snippet that waits for a `tools.*` call holds no thread, only its
+  JavaScriptCore context in memory (see `JSCInterpreter`). Each live snippet
+  is still bounded by the execution-time ceiling above, so no suspended
+  context lives past it.
 
 ### The detail of a finished background run
 

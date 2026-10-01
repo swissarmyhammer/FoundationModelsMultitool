@@ -276,6 +276,31 @@ delete them later. The rules are:
 JS single-thread semantics hold. Interleaved operation occurs only at `await`
 points. This is the JavaScript that the model already knows.
 
+**The event loop (task `^cf57dtd`).** A snippet executes JS only in short
+jobs, as the event loop of a browser does. Between two jobs a snippet is only
+data in memory: its `JSContext`, its pending promises, and its run record. It
+holds no thread. There are three kinds of job:
+
+- The start job makes the context, installs the host functions, evaluates the
+  snippet, and drains the microtasks. It does not wait for the promises.
+- A settle job runs when the Swift Task of a call completes. It resolves or
+  rejects the promise of that call and drains the microtasks.
+- The finish step ends each job. When no bridge promise is pending, the run
+  settles, releases its context, and resumes the `runCode` call.
+
+The job queue of each run is a private serial `DispatchQueue` with no
+constrained target. It gets a thread when it has a job, also when every CPU is
+busy, and it holds no thread when it has no job. A constrained global queue
+does not do this: while a CPU-bound tool kept every CPU busy at a high
+priority, a snippet sent to `DispatchQueue.global(qos: .userInitiated)` did
+not start at all.
+
+No number limits how many snippets run or wait at the same time. Like browser
+tabs, scores of waiting snippets cost scores of contexts in memory and no
+threads. Two clocks bound each snippet: the CPU watchdog stops a job that
+executes JS for too long, and a wall-clock timer on the job queue stops a
+snippet that waits past its ceiling for a call that does not complete.
+
 Parallel calls become real. `Promise.all([tools.a.read(...), tools.b.fetch(...)])`
 starts concurrent Swift Tasks. This is do-more-per-call at the snippet level.
 Capabilities keep their own serialization where order is important (atomic file

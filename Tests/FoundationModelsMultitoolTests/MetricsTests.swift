@@ -282,8 +282,8 @@ struct MetricsTests {
     @Test("a JS run that throws records the interpreter timer with the outcome threw")
     func throwingRunRecordsThrew() async throws {
         try await TelemetryCapture.run(forbidding: [Self.errorMarker]) { context in
-            #expect(throws: InterpreterError.self) {
-                try JSCInterpreter().run(code: "throw new Error('\(Self.errorMarker)');", installing: [])
+            await #expect(throws: InterpreterError.self) {
+                try await JSCInterpreter().run(code: "throw new Error('\(Self.errorMarker)');", installing: [])
             }
 
             let run = try context.metricsFactory.expectTimer(
@@ -295,8 +295,8 @@ struct MetricsTests {
     @Test("a JS run that passes its time limit records the interpreter timer with the outcome timedOut")
     func timedOutRunRecordsTimedOut() async throws {
         try await TelemetryCapture.run(forbidding: []) { context in
-            #expect(throws: InterpreterError.self) {
-                try JSCInterpreter(timeLimit: Self.shortTimeLimit).run(code: "while (true) {}", installing: [])
+            await #expect(throws: InterpreterError.self) {
+                try await JSCInterpreter(timeLimit: Self.shortTimeLimit).run(code: "while (true) {}", installing: [])
             }
 
             let run = try context.metricsFactory.expectTimer(

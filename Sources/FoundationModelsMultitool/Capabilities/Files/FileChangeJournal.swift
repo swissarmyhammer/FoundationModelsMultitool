@@ -30,9 +30,8 @@
 //
 // **Why each verb delivers its own changes, and no drain at the end of a
 // `runCode` call does.** `FilesCapability.init` makes ONE `FileContext`, thus
-// ONE journal, for the whole registry, and `MultiToolConfiguration.
-// liveContextLimit` lets several `runCode` calls run at once over that
-// registry. A drain at the end of call A would take the changes call B
+// ONE journal, for the whole registry, and several `runCode` calls can run at
+// once over that registry (no number limits them). A drain at the end of call A would take the changes call B
 // recorded and post them under A's correlation. So each verb posts through
 // the `ToolContext` the engine bound around its own inner call, and
 // `ToolContext.post(_:)` re-stamps the event with the outer `runCode` run's

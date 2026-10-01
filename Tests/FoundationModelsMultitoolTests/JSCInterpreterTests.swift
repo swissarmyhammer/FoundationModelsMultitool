@@ -3,16 +3,32 @@ import Testing
 import os
 
 @testable import FoundationModelsMultitool
+@testable import MultitoolTestSupport
 
 /// M1 coverage for `JSCInterpreter`: return-value capture, console capture,
 /// exception mapping, cross-run statelessness, host-function round-trips,
-/// and the execution-time watchdog. No model is needed for any of this.
+/// the execution-time watchdog, and the event loop that settles async host
+/// functions (task `^cf57dtd`). No model is needed for any of this.
 @Suite("JSCInterpreter", .serialized)
 struct JSCInterpreterTests {
+    /// The bound every "this happened promptly" assertion uses.
+    ///
+    /// Generous against scheduling jitter, and far below every larger clock a
+    /// test proves was not the one enforced.
+    private static let promptResponseBound: Duration = .seconds(3)
+
+    /// A wall-clock limit far below every other clock in this suite, for the
+    /// tests that prove that limit is the one enforced.
+    private static let shortTimeLimit: TimeInterval = 0.3
+
+    /// How long a call that "never completes" sleeps: far longer than any
+    /// test waits, so only a cancellation ends it.
+    private static let neverCompletingCallDuration: Duration = .seconds(3600)
+
     @Test("a snippet's return value round-trips out as JSON")
-    func returnValueRoundTripsAsJson() throws {
+    func returnValueRoundTripsAsJson() async throws {
         let interpreter = JSCInterpreter()
-        let result = try interpreter.run(
+        let result = try await interpreter.run(
             code: "return { a: 1, b: \"two\", c: [true, null, 3.5] };",
             installing: []
         )
@@ -26,16 +42,16 @@ struct JSCInterpreterTests {
     }
 
     @Test("a snippet with no explicit return produces a null return value")
-    func missingReturnValueIsNull() throws {
+    func missingReturnValueIsNull() async throws {
         let interpreter = JSCInterpreter()
-        let result = try interpreter.run(code: "const x = 1;", installing: [])
+        let result = try await interpreter.run(code: "const x = 1;", installing: [])
         #expect(result.returnValue == .null)
     }
 
     @Test("console.log lines are captured in order")
-    func consoleLogLinesCapturedInOrder() throws {
+    func consoleLogLinesCapturedInOrder() async throws {
         let interpreter = JSCInterpreter()
-        let result = try interpreter.run(
+        let result = try await interpreter.run(
             code: """
             console.log("first");
             console.log("second", 42);
@@ -47,10 +63,10 @@ struct JSCInterpreterTests {
     }
 
     @Test("a JS throw surfaces as InterpreterError with message and location")
-    func jsThrowSurfacesAsInterpreterError() throws {
+    func jsThrowSurfacesAsInterpreterError() async throws {
         let interpreter = JSCInterpreter()
-        #expect {
-            try interpreter.run(
+        await #expect {
+            try await interpreter.run(
                 code: """
                 function boom() {
                   throw new Error("kaboom");
@@ -68,16 +84,16 @@ struct JSCInterpreterTests {
     }
 
     @Test("a fresh context per run: globals set in run N are absent in run N+1")
-    func freshContextPerRun() throws {
+    func freshContextPerRun() async throws {
         let interpreter = JSCInterpreter()
 
-        let first = try interpreter.run(
+        let first = try await interpreter.run(
             code: "globalThis.counter = 1; return counter;",
             installing: []
         )
         #expect(first.returnValue == .number(1))
 
-        let second = try interpreter.run(
+        let second = try await interpreter.run(
             code: "return typeof counter;",
             installing: []
         )
@@ -85,7 +101,7 @@ struct JSCInterpreterTests {
     }
 
     @Test("an installed host function is callable from the snippet")
-    func hostFunctionIsCallableFromSnippet() throws {
+    func hostFunctionIsCallableFromSnippet() async throws {
         let interpreter = JSCInterpreter()
         let double = HostFunction(name: "double") { arguments in
             guard case .number(let value) = arguments.first else {
@@ -93,16 +109,16 @@ struct JSCInterpreterTests {
             }
             return .number(value * 2)
         }
-        let result = try interpreter.run(code: "return double(21);", installing: [double])
+        let result = try await interpreter.run(code: "return double(21);", installing: [double])
         #expect(result.returnValue == .number(42))
     }
 
     @Test("an infinite loop is terminated by the watchdog within the configured limit")
-    func infiniteLoopTerminatedByWatchdog() throws {
+    func infiniteLoopTerminatedByWatchdog() async throws {
         let interpreter = JSCInterpreter(timeLimit: 1.0)
         let start = ContinuousClock.now
-        #expect {
-            try interpreter.run(code: "while (true) {}", installing: [])
+        await #expect {
+            try await interpreter.run(code: "while (true) {}", installing: [])
         } throws: { error in
             guard let interpreterError = error as? InterpreterError else { return false }
             return interpreterError.kind == .timeout
@@ -113,11 +129,11 @@ struct JSCInterpreterTests {
     }
 
     @Test("withTimeLimit returns an interpreter armed with the given limit, not the receiver's")
-    func withTimeLimitReturnsAnInterpreterArmedWithTheGivenLimit() throws {
+    func withTimeLimitReturnsAnInterpreterArmedWithTheGivenLimit() async throws {
         let interpreter = JSCInterpreter(timeLimit: 30.0).withTimeLimit(0.3)
         let start = ContinuousClock.now
-        #expect {
-            try interpreter.run(code: "while (true) {}", installing: [])
+        await #expect {
+            try await interpreter.run(code: "while (true) {}", installing: [])
         } throws: { error in
             guard let interpreterError = error as? InterpreterError else { return false }
             return interpreterError.kind == .timeout
@@ -128,13 +144,13 @@ struct JSCInterpreterTests {
     }
 
     @Test("a host function that throws surfaces as InterpreterError")
-    func hostFunctionThrowSurfacesAsInterpreterError() throws {
+    func hostFunctionThrowSurfacesAsInterpreterError() async throws {
         let interpreter = JSCInterpreter()
         let boom = HostFunction(name: "boom") { _ in
             throw InterpreterError(kind: .exception, message: "nope")
         }
-        #expect {
-            try interpreter.run(code: "return boom();", installing: [boom])
+        await #expect {
+            try await interpreter.run(code: "return boom();", installing: [boom])
         } throws: { error in
             guard let interpreterError = error as? InterpreterError else { return false }
             return interpreterError.kind == .exception
@@ -144,7 +160,7 @@ struct JSCInterpreterTests {
     }
 
     @Test("a sync result the bridge cannot convert to JSON surfaces the underlying conversion error")
-    func syncResultConversionFailureSurfacesUnderlyingError() throws {
+    func syncResultConversionFailureSurfacesUnderlyingError() async throws {
         // The sync bridge and the async bridge convert a host function's
         // successful result through the very same `jsValue(from:in:)`, and
         // both report a failure of that conversion as `"<name>: <error>"`.
@@ -158,7 +174,7 @@ struct JSCInterpreterTests {
         // message under test.
         let interpreter = JSCInterpreter()
         let weather = HostFunction(name: "getWeather") { _ in .object(["tempC": .number(31)]) }
-        let result = try interpreter.run(
+        let result = try await interpreter.run(
             code: """
             JSON.parse = function () { return undefined; };
             try {
@@ -174,10 +190,10 @@ struct JSCInterpreterTests {
     }
 
     @Test("a JS syntax error surfaces as InterpreterError")
-    func syntaxErrorSurfacesAsInterpreterError() throws {
+    func syntaxErrorSurfacesAsInterpreterError() async throws {
         let interpreter = JSCInterpreter()
-        #expect {
-            try interpreter.run(code: "function( {{{", installing: [])
+        await #expect {
+            try await interpreter.run(code: "function( {{{", installing: [])
         } throws: { error in
             guard let interpreterError = error as? InterpreterError else { return false }
             return interpreterError.kind == .exception
@@ -185,10 +201,10 @@ struct JSCInterpreterTests {
     }
 
     @Test("a host function returning a non-finite number round-trips as null")
-    func hostFunctionNonFiniteReturnValueRoundTripsAsNull() throws {
+    func hostFunctionNonFiniteReturnValueRoundTripsAsNull() async throws {
         let interpreter = JSCInterpreter()
         let makeNaN = HostFunction(name: "makeNaN") { _ in .number(.nan) }
-        let result = try interpreter.run(
+        let result = try await interpreter.run(
             code: "return makeNaN() === null ? \"isNull\" : \"notNull\";",
             installing: [makeNaN]
         )
@@ -196,47 +212,44 @@ struct JSCInterpreterTests {
     }
 
     @Test("a snippet passing Infinity as a host function argument round-trips as null")
-    func hostFunctionNonFiniteArgumentRoundTripsAsNull() throws {
+    func hostFunctionNonFiniteArgumentRoundTripsAsNull() async throws {
         let interpreter = JSCInterpreter()
         let receivedBox = OSAllocatedUnfairLock<InterpreterValue?>(initialState: nil)
         let record = HostFunction(name: "record") { arguments in
             receivedBox.withLock { $0 = arguments.first }
             return .null
         }
-        _ = try interpreter.run(code: "record(Infinity);", installing: [record])
+        _ = try await interpreter.run(code: "record(Infinity);", installing: [record])
         #expect(receivedBox.withLock { $0 } == .null)
     }
 
     @Test("a snippet ending in a single-line comment before the injected wrapper still evaluates correctly")
-    func trailingLineCommentBeforeWrapperIsHandled() throws {
+    func trailingLineCommentBeforeWrapperIsHandled() async throws {
         let interpreter = JSCInterpreter()
-        let result = try interpreter.run(code: "return 1; // trailing comment", installing: [])
+        let result = try await interpreter.run(code: "return 1; // trailing comment", installing: [])
         #expect(result.returnValue == .number(1))
     }
 
-    @Test("DIAGNOSTIC: isCancelled forces early termination of an infinite loop, isolated from other tests")
-    func diagnosticCancellationForcesEarlyTermination() throws {
+    @Test("cancelling the calling task forces early termination of an infinite loop")
+    func cancellationForcesEarlyTerminationOfAnInfiniteLoop() async throws {
         let interpreter = JSCInterpreter(timeLimit: 10.0)
-        let cancelledBox = OSAllocatedUnfairLock(initialState: false)
+        let loopStarted = OSAllocatedUnfairLock(initialState: false)
+        let started = HostFunction(name: "started") { _ in
+            loopStarted.withLock { $0 = true }
+            return .null
+        }
+        let run = Task {
+            try await interpreter.run(code: "started(); while (true) {}", installing: [started])
+        }
+        try await TestPoll.waitUntil("the loop started") { loopStarted.withLock { $0 } }
         let start = ContinuousClock.now
-        DispatchQueue.global().asyncAfter(deadline: .now() + 0.2) {
-            cancelledBox.withLock { $0 = true }
-        }
-        #expect {
-            try interpreter.run(
-                code: "while (true) {}",
-                installing: [],
-                isCancelled: { cancelledBox.withLock { $0 } }
-            )
-        } throws: { error in
-            error is CancellationError
-        }
-        let elapsed = start.duration(to: .now)
-        print("DIAGNOSTIC elapsed: \(elapsed)")
-        #expect(elapsed < .seconds(3))
+        run.cancel()
+
+        await #expect(throws: CancellationError.self) { try await run.value }
+        #expect(start.duration(to: .now) < Self.promptResponseBound)
     }
 
-    @Test("concurrent run() calls from multiple threads stay isolated")
+    @Test("concurrent run() calls from multiple tasks stay isolated")
     func concurrentRunsStayIsolated() async throws {
         let interpreter = JSCInterpreter()
         let count = 20
@@ -244,7 +257,7 @@ struct JSCInterpreterTests {
         let results = try await withThrowingTaskGroup(of: (Int, InterpreterValue).self) { group in
             for index in 0..<count {
                 group.addTask {
-                    let result = try interpreter.run(code: "return \(index);", installing: [])
+                    let result = try await interpreter.run(code: "return \(index);", installing: [])
                     return (index, result.returnValue)
                 }
             }
@@ -263,10 +276,10 @@ struct JSCInterpreterTests {
     // MARK: - Top-level await
 
     @Test("a snippet may await a host function's result at the top level")
-    func topLevelAwaitOfHostFunctionResult() throws {
+    func topLevelAwaitOfHostFunctionResult() async throws {
         let interpreter = JSCInterpreter()
         let weather = HostFunction(name: "getWeather") { _ in .object(["tempC": .number(31)]) }
-        let result = try interpreter.run(
+        let result = try await interpreter.run(
             code: """
             const conditions = await getWeather();
             return conditions.tempC;
@@ -277,9 +290,9 @@ struct JSCInterpreterTests {
     }
 
     @Test("a snippet may await a genuine promise at the top level")
-    func topLevelAwaitOfPromise() throws {
+    func topLevelAwaitOfPromise() async throws {
         let interpreter = JSCInterpreter()
-        let result = try interpreter.run(
+        let result = try await interpreter.run(
             code: "return await Promise.resolve(42);",
             installing: []
         )
@@ -287,10 +300,10 @@ struct JSCInterpreterTests {
     }
 
     @Test("an awaited rejection surfaces as InterpreterError with its message")
-    func awaitedRejectionSurfacesAsInterpreterError() throws {
+    func awaitedRejectionSurfacesAsInterpreterError() async throws {
         let interpreter = JSCInterpreter()
-        #expect {
-            try interpreter.run(
+        await #expect {
+            try await interpreter.run(
                 code: "await Promise.reject(new Error(\"kaput\"));",
                 installing: []
             )
@@ -302,10 +315,10 @@ struct JSCInterpreterTests {
     }
 
     @Test("awaiting a promise that never settles surfaces as InterpreterError, not a hang")
-    func neverSettlingAwaitSurfacesAsInterpreterError() throws {
+    func neverSettlingAwaitSurfacesAsInterpreterError() async throws {
         let interpreter = JSCInterpreter()
-        #expect {
-            try interpreter.run(
+        await #expect {
+            try await interpreter.run(
                 code: "await new Promise(function() {});",
                 installing: []
             )
@@ -365,7 +378,7 @@ struct JSCInterpreterTests {
     }
 
     @Test("checkSyntax installs nothing: a snippet naming an uninstalled global still parses")
-    func syntaxCheckInstallsNothing() throws {
+    func syntaxCheckInstallsNothing() async throws {
         let interpreter = JSCInterpreter()
         // `tools` is never installed by `checkSyntax`, and an unresolved
         // identifier is a runtime failure rather than a parse failure — so
@@ -373,21 +386,21 @@ struct JSCInterpreterTests {
         #expect(throws: Never.self) {
             try interpreter.checkSyntax(of: "return tools.whatever();")
         }
-        #expect(throws: InterpreterError.self) {
-            try interpreter.run(code: "return tools.whatever();", installing: [])
+        await #expect(throws: InterpreterError.self) {
+            try await interpreter.run(code: "return tools.whatever();", installing: [])
         }
     }
 
-    // MARK: - Async host functions (promise pump)
+    // MARK: - Async host functions (the event loop)
 
     @Test("a snippet may await an async host function's result at the top level")
-    func topLevelAwaitOfAsyncHostFunctionResult() throws {
+    func topLevelAwaitOfAsyncHostFunctionResult() async throws {
         let interpreter = JSCInterpreter()
         let weather = AsyncHostFunction(name: "getWeatherAsync") { _ in
             try await Task.sleep(nanoseconds: 20_000_000)
             return .object(["tempC": .number(31)])
         }
-        let result = try interpreter.run(
+        let result = try await interpreter.run(
             code: """
             const conditions = await getWeatherAsync();
             return conditions.tempC;
@@ -399,7 +412,7 @@ struct JSCInterpreterTests {
     }
 
     @Test("the sandbox stays alive across multiple sequential async host-function awaits")
-    func sandboxSurvivesMultipleSequentialAwaits() throws {
+    func sandboxSurvivesMultipleSequentialAwaits() async throws {
         let interpreter = JSCInterpreter()
         let increment = AsyncHostFunction(name: "incrementAsync") { arguments in
             guard case .number(let value) = arguments.first else {
@@ -408,7 +421,7 @@ struct JSCInterpreterTests {
             try await Task.sleep(nanoseconds: 20_000_000)
             return .number(value + 1)
         }
-        let result = try interpreter.run(
+        let result = try await interpreter.run(
             code: """
             let total = 0;
             total = await incrementAsync(total);
@@ -423,7 +436,7 @@ struct JSCInterpreterTests {
     }
 
     @Test("Promise.all over two async host functions runs them concurrently")
-    func promiseAllRunsAsyncHostFunctionsConcurrently() throws {
+    func promiseAllRunsAsyncHostFunctionsConcurrently() async throws {
         let interpreter = JSCInterpreter()
         let windows = OSAllocatedUnfairLock<[(start: ContinuousClock.Instant, end: ContinuousClock.Instant)]>(
             initialState: []
@@ -437,7 +450,7 @@ struct JSCInterpreterTests {
                 return .null
             }
         }
-        let result = try interpreter.run(
+        let result = try await interpreter.run(
             code: """
             await Promise.all([slowA(), slowB()]);
             return "done";
@@ -456,7 +469,7 @@ struct JSCInterpreterTests {
     }
 
     @Test("a floating async host-function call completes before the run returns")
-    func floatingAsyncCallSettlesBeforeReturn() throws {
+    func floatingAsyncCallSettlesBeforeReturn() async throws {
         let interpreter = JSCInterpreter()
         let completed = OSAllocatedUnfairLock(initialState: false)
         let write = AsyncHostFunction(name: "writeAsync") { _ in
@@ -464,7 +477,7 @@ struct JSCInterpreterTests {
             completed.withLock { $0 = true }
             return .null
         }
-        let result = try interpreter.run(
+        let result = try await interpreter.run(
             code: """
             writeAsync();
             return "done";
@@ -477,14 +490,14 @@ struct JSCInterpreterTests {
     }
 
     @Test("a floating async host-function rejection fails the run")
-    func floatingAsyncRejectionFailsRun() throws {
+    func floatingAsyncRejectionFailsRun() async throws {
         let interpreter = JSCInterpreter()
         let boom = AsyncHostFunction(name: "boomAsync") { _ in
             try await Task.sleep(nanoseconds: 50_000_000)
             throw InterpreterError(kind: .exception, message: "nope")
         }
-        #expect {
-            try interpreter.run(
+        await #expect {
+            try await interpreter.run(
                 code: """
                 boomAsync();
                 return "done";
@@ -501,13 +514,13 @@ struct JSCInterpreterTests {
     }
 
     @Test("an awaited async host-function rejection that is caught does not fail the run")
-    func caughtAsyncRejectionDoesNotFailRun() throws {
+    func caughtAsyncRejectionDoesNotFailRun() async throws {
         let interpreter = JSCInterpreter()
         let boom = AsyncHostFunction(name: "boomAsync") { _ in
             try await Task.sleep(nanoseconds: 20_000_000)
             throw InterpreterError(kind: .exception, message: "nope")
         }
-        let result = try interpreter.run(
+        let result = try await interpreter.run(
             code: """
             try {
               await boomAsync();
@@ -523,13 +536,13 @@ struct JSCInterpreterTests {
     }
 
     @Test("a rejection that settles while a different sibling call is still pending is still caught, not reported as floating")
-    func delayedSequentialAwaitOfEarlierSettledRejectionIsStillCaught() throws {
-        // Regression: `pumpUntilSettled` used to decide "floating" per
-        // individual settlement, which fires too early here — `fast`
-        // rejects and settles while the snippet is still suspended on
-        // `await slow()`, well before the snippet's own code even reaches
-        // `await fast()`. Floating-rejection detection must only be decided
-        // once, after the whole registry has drained.
+    func delayedSequentialAwaitOfEarlierSettledRejectionIsStillCaught() async throws {
+        // Regression: the bridge used to decide "floating" per individual
+        // settlement, which fires too early here — `fast` rejects and
+        // settles while the snippet is still suspended on `await slow()`,
+        // well before the snippet's own code even reaches `await fast()`.
+        // Floating-rejection detection must only be decided once, after the
+        // whole registry has drained.
         let interpreter = JSCInterpreter()
         let slow = AsyncHostFunction(name: "slow") { _ in
             try await Task.sleep(nanoseconds: 150_000_000)
@@ -539,7 +552,7 @@ struct JSCInterpreterTests {
             try await Task.sleep(nanoseconds: 10_000_000)
             throw InterpreterError(kind: .exception, message: "fast-boom")
         }
-        let result = try interpreter.run(
+        let result = try await interpreter.run(
             code: """
             const slowPromise = slow();
             const fastPromise = fast();
@@ -558,13 +571,13 @@ struct JSCInterpreterTests {
     }
 
     @Test("a snippet's own floating rejection, unrelated to any async host function, does not fail the run")
-    func snippetOwnFloatingRejectionIsOutOfScope() throws {
+    func snippetOwnFloatingRejectionIsOutOfScope() async throws {
         // Floating-rejection detection is scoped to promises the async
         // host-function bridge itself creates (eventplan.md: "each promise
         // it creates") — a snippet's own `Promise.reject(...)`, with no
         // async host functions installed at all, is untouched by it.
         let interpreter = JSCInterpreter()
-        let result = try interpreter.run(
+        let result = try await interpreter.run(
             code: """
             Promise.reject(new Error("snippet-made"));
             return "ok";
@@ -575,13 +588,13 @@ struct JSCInterpreterTests {
     }
 
     @Test("an async host function's unawaited RETURNED promise settles at the run's boundary")
-    func unawaitedReturnedPromiseSettlesAtBoundary() throws {
+    func unawaitedReturnedPromiseSettlesAtBoundary() async throws {
         let interpreter = JSCInterpreter()
         let weather = AsyncHostFunction(name: "getWeatherAsync") { _ in
             try await Task.sleep(nanoseconds: 20_000_000)
             return .object(["tempC": .number(31)])
         }
-        let result = try interpreter.run(
+        let result = try await interpreter.run(
             code: "return getWeatherAsync();",
             installing: [],
             installingAsync: [weather]
@@ -590,23 +603,23 @@ struct JSCInterpreterTests {
     }
 
     @Test("an async result the bridge cannot convert to JSON rejects with the underlying conversion error")
-    func asyncResultConversionFailureRejectsWithUnderlyingError() throws {
-        // `settle(_:in:)`'s success branch used to reject with a fixed
-        // "could not convert the result to JSON." string, discarding the
-        // real error and diverging from the sync bridge's
+    func asyncResultConversionFailureRejectsWithUnderlyingError() async throws {
+        // `settle(_:with:in:recordingFailuresTo:)`'s success branch used to
+        // reject with a fixed "could not convert the result to JSON." string,
+        // discarding the real error and diverging from the sync bridge's
         // `"<name>: <error>"` shape. Reaching that branch takes a snippet
         // that breaks the sandbox's own `JSON.parse` — the mechanism
         // `jsValue(from:in:)` converts through — after the call has started
-        // but before the pump settles it. The stub returns `undefined`
+        // but before its settle job runs. The stub returns `undefined`
         // rather than throwing: a throwing stub would additionally notify a
-        // TypeError into the context, which `evaluate` reports ahead of the
+        // TypeError into the context, which the run reports ahead of the
         // rejection, hiding the message under test.
         let interpreter = JSCInterpreter()
         let weather = AsyncHostFunction(name: "getWeatherAsync") { _ in
             try await Task.sleep(nanoseconds: 20_000_000)
             return .object(["tempC": .number(31)])
         }
-        let result = try interpreter.run(
+        let result = try await interpreter.run(
             code: """
             const pending = getWeatherAsync();
             JSON.parse = function () { return undefined; };
@@ -624,13 +637,13 @@ struct JSCInterpreterTests {
     }
 
     @Test("a bridge call's returned value supports .catch(...), not just await/.then")
-    func bridgeReturnValueSupportsCatch() throws {
+    func bridgeReturnValueSupportsCatch() async throws {
         let interpreter = JSCInterpreter()
         let boom = AsyncHostFunction(name: "boomAsync") { _ in
             try await Task.sleep(nanoseconds: 20_000_000)
             throw InterpreterError(kind: .exception, message: "nope")
         }
-        let result = try interpreter.run(
+        let result = try await interpreter.run(
             code: """
             return boomAsync().catch(function(e) { return "caught:" + e; });
             """,
@@ -645,7 +658,7 @@ struct JSCInterpreterTests {
     }
 
     @Test("a .then(onFulfilled) with no rejection handler still fails the run on rejection")
-    func thenWithNoRejectionHandlerStillFailsRun() throws {
+    func thenWithNoRejectionHandlerStillFailsRun() async throws {
         // Consumption means the rejection was genuinely handled, not merely
         // that `.then` was called: `.then(onFulfilled)` alone supplies no
         // `onRejected`, so a `boomAsync()` rejection here is exactly as
@@ -657,8 +670,8 @@ struct JSCInterpreterTests {
             try await Task.sleep(nanoseconds: 20_000_000)
             throw InterpreterError(kind: .exception, message: "nope")
         }
-        #expect {
-            try interpreter.run(
+        await #expect {
+            try await interpreter.run(
                 code: """
                 boomAsync().then(function(v) { return v; });
                 return "done";
@@ -675,7 +688,7 @@ struct JSCInterpreterTests {
     }
 
     @Test("a .then(undefined, nonFunction) with a non-callable rejection handler still fails the run on rejection")
-    func thenWithNonCallableRejectionHandlerStillFailsRun() throws {
+    func thenWithNonCallableRejectionHandlerStillFailsRun() async throws {
         // A non-undefined/non-null second argument to `.then` is not on its
         // own proof of a genuine rejection handler — `.then(undefined,
         // false)` supplies a value that cannot run as `onRejected`, so the
@@ -689,8 +702,8 @@ struct JSCInterpreterTests {
             try await Task.sleep(nanoseconds: 20_000_000)
             throw InterpreterError(kind: .exception, message: "nope")
         }
-        #expect {
-            try interpreter.run(
+        await #expect {
+            try await interpreter.run(
                 code: """
                 boomAsync().then(undefined, false);
                 return "done";
@@ -707,7 +720,7 @@ struct JSCInterpreterTests {
     }
 
     @Test("a .then(undefined, objectInstanceofFunction) with a merely-instanceof-Function, non-callable handler still fails the run")
-    func thenWithInstanceOfFunctionButNonCallableHandlerStillFailsRun() throws {
+    func thenWithInstanceOfFunctionButNonCallableHandlerStillFailsRun() async throws {
         // `instanceof Function` is neither necessary nor sufficient for
         // callability: `Object.create(Function.prototype)` passes
         // `instanceof Function` (it inherits from `Function.prototype`) yet
@@ -721,8 +734,8 @@ struct JSCInterpreterTests {
             try await Task.sleep(nanoseconds: 20_000_000)
             throw InterpreterError(kind: .exception, message: "nope")
         }
-        #expect {
-            try interpreter.run(
+        await #expect {
+            try await interpreter.run(
                 code: """
                 boomAsync().then(undefined, Object.create(Function.prototype));
                 return "done";
@@ -739,7 +752,7 @@ struct JSCInterpreterTests {
     }
 
     @Test("a .then(undefined, callableButNotInstanceofFunction) handler is still recognized as genuinely handling the rejection")
-    func thenWithCallableButNotInstanceOfFunctionHandlerDoesNotFailRun() throws {
+    func thenWithCallableButNotInstanceOfFunctionHandlerDoesNotFailRun() async throws {
         // `Function.prototype` is itself callable (`typeof
         // Function.prototype === "function"`, a real no-op function) but is
         // NOT `instanceof Function` (its own prototype is
@@ -752,7 +765,7 @@ struct JSCInterpreterTests {
             try await Task.sleep(nanoseconds: 20_000_000)
             throw InterpreterError(kind: .exception, message: "nope")
         }
-        let result = try interpreter.run(
+        let result = try await interpreter.run(
             code: """
             boomAsync().then(undefined, Function.prototype);
             return "done";
@@ -764,13 +777,13 @@ struct JSCInterpreterTests {
     }
 
     @Test("a bridge call's returned value supports .finally(...) and is instanceof Promise")
-    func bridgeReturnValueSupportsFinallyAndIsPromise() throws {
+    func bridgeReturnValueSupportsFinallyAndIsPromise() async throws {
         let interpreter = JSCInterpreter()
         let weather = AsyncHostFunction(name: "getWeatherAsync") { _ in
             try await Task.sleep(nanoseconds: 20_000_000)
             return .number(31)
         }
-        let result = try interpreter.run(
+        let result = try await interpreter.run(
             code: """
             let ranFinally = false;
             const value = await getWeatherAsync().finally(function() { ranFinally = true; });
@@ -789,16 +802,16 @@ struct JSCInterpreterTests {
     }
 
     @Test("running a snippet with an async host function does not leak the sandbox")
-    func asyncHostFunctionDoesNotLeakTheSandbox() throws {
+    func asyncHostFunctionDoesNotLeakTheSandbox() async throws {
         // Regression: an earlier version of the promise bridge captured the
         // internal `JSValue` promise directly inside a native function
         // installed into that same `JSContext` — a retain cycle (the
         // context's heap holds the function, the function holds the
         // `JSValue`, the `JSValue` holds its `JSContext`) that kept the
-        // whole sandbox alive forever. `run` blocks until every bridge
-        // promise settles (`pumpUntilSettled`), so by the time it returns,
-        // the sandbox — and everything it retained, including the async
-        // host function's own closure — must have been torn down.
+        // whole sandbox alive forever. `run` does not return until every
+        // bridge promise settles, so by the time it returns, the sandbox —
+        // and everything it retained, including the async host function's
+        // own closure — must have been torn down.
         //
         // The closure below captures `canary` directly, so the *only* two
         // strong owners are this test's own `var` and that closure (which
@@ -811,33 +824,43 @@ struct JSCInterpreterTests {
         final class Canary: @unchecked Sendable {}
         var canary: Canary? = Canary()
         weak let weakCanary = canary
-        try autoreleasepool {
-            let interpreter = JSCInterpreter()
-            let touch = AsyncHostFunction(name: "touchAsync") { [canary] _ in
-                _ = canary
-                return .null
-            }
-            _ = try interpreter.run(
-                code: "touchAsync(); return \"done\";",
-                installing: [],
-                installingAsync: [touch]
-            )
-        }
+        try await Self.runTouching(canary)
         canary = nil
         #expect(weakCanary == nil)
+    }
+
+    /// Runs one snippet whose only async host function captures `canary`,
+    /// for ``asyncHostFunctionDoesNotLeakTheSandbox()``.
+    ///
+    /// A function of its own, so the interpreter and the host function are
+    /// locals that end when it returns, and only the sandbox could still
+    /// hold the closure.
+    ///
+    /// - Parameter canary: the object the host function captures.
+    private static func runTouching(_ canary: (some AnyObject & Sendable)?) async throws {
+        let interpreter = JSCInterpreter()
+        let touch = AsyncHostFunction(name: "touchAsync") { [canary] _ in
+            _ = canary
+            return .null
+        }
+        _ = try await interpreter.run(
+            code: "touchAsync(); return \"done\";",
+            installing: [],
+            installingAsync: [touch]
+        )
     }
 
     // MARK: - Proxy trap on pending results
 
     @Test("accessing a property other than then/catch/finally on a pending async host-function result throws a precise, model-repairable error naming the call and the property")
-    func propertyAccessOnPendingResultThrowsForgotAwaitError() throws {
+    func propertyAccessOnPendingResultThrowsForgotAwaitError() async throws {
         let interpreter = JSCInterpreter()
         let call = AsyncHostFunction(name: "tools.x.y") { _ in
             try await Task.sleep(nanoseconds: 20_000_000)
             return .object(["value": .number(1)])
         }
-        #expect {
-            try interpreter.run(
+        await #expect {
+            try await interpreter.run(
                 code: """
                 const r = globalThis["tools.x.y"]();
                 return r.value;
@@ -856,7 +879,7 @@ struct JSCInterpreterTests {
     }
 
     @Test("arithmetic coercion of a pending async host-function result throws a precise, model-repairable error naming the call, rather than escaping the trap")
-    func arithmeticCoercionOfPendingResultThrowsForgotAwaitError() throws {
+    func arithmeticCoercionOfPendingResultThrowsForgotAwaitError() async throws {
         // eventplan.md frames "truthiness/arithmetic on a promise" as one
         // uncaught shape, but only bare truthiness genuinely evades this
         // trap (`ToBoolean` on an object never looks up a property).
@@ -870,8 +893,8 @@ struct JSCInterpreterTests {
             try await Task.sleep(nanoseconds: 20_000_000)
             return .number(1)
         }
-        #expect {
-            try interpreter.run(
+        await #expect {
+            try await interpreter.run(
                 code: """
                 const r = globalThis["tools.x.y"]();
                 return r + 1;
@@ -889,7 +912,7 @@ struct JSCInterpreterTests {
     }
 
     @Test("console.log on a pending async host-function result throws a precise, model-repairable error instead of crashing the process")
-    func consoleLogOnPendingResultThrowsForgotAwaitErrorInsteadOfCrashing() throws {
+    func consoleLogOnPendingResultThrowsForgotAwaitErrorInsteadOfCrashing() async throws {
         // Regression: `console.log(r)` coerces `r` via the same
         // `ToPrimitive`/`@@toPrimitive` path as arithmetic, which trips this
         // trap — and `installConsole`'s own argument-to-string conversion
@@ -903,8 +926,8 @@ struct JSCInterpreterTests {
             try await Task.sleep(nanoseconds: 20_000_000)
             return .number(1)
         }
-        #expect {
-            try interpreter.run(
+        await #expect {
+            try await interpreter.run(
                 code: """
                 const r = globalThis["tools.x.y"]();
                 console.log(r);
@@ -922,13 +945,13 @@ struct JSCInterpreterTests {
     }
 
     @Test("then, catch, and finally are exempt from the pending-result proxy trap")
-    func thenCatchFinallyAreExemptFromTheProxyTrap() throws {
+    func thenCatchFinallyAreExemptFromTheProxyTrap() async throws {
         let interpreter = JSCInterpreter()
         let call = AsyncHostFunction(name: "tools.x.y") { _ in
             try await Task.sleep(nanoseconds: 20_000_000)
             return .number(1)
         }
-        let result = try interpreter.run(
+        let result = try await interpreter.run(
             code: """
             const r = globalThis["tools.x.y"]();
             const hasThen = typeof r.then === "function";
@@ -950,13 +973,13 @@ struct JSCInterpreterTests {
     }
 
     @Test("a rejected proxied result is still catchable via .catch even though it is wrapped in a Proxy")
-    func proxiedRejectionIsStillCatchable() throws {
+    func proxiedRejectionIsStillCatchable() async throws {
         let interpreter = JSCInterpreter()
         let boom = AsyncHostFunction(name: "tools.boom") { _ in
             try await Task.sleep(nanoseconds: 20_000_000)
             throw InterpreterError(kind: .exception, message: "nope")
         }
-        let result = try interpreter.run(
+        let result = try await interpreter.run(
             code: """
             return globalThis["tools.boom"]().catch(function(e) { return "caught:" + e; });
             """,
@@ -971,7 +994,7 @@ struct JSCInterpreterTests {
     }
 
     @Test("Promise.all resolves both values through the proxy wrapping each pending result")
-    func promiseAllResolvesBothProxiedResults() throws {
+    func promiseAllResolvesBothProxiedResults() async throws {
         let interpreter = JSCInterpreter()
         let a = AsyncHostFunction(name: "tools.a") { _ in
             try await Task.sleep(nanoseconds: 20_000_000)
@@ -981,7 +1004,7 @@ struct JSCInterpreterTests {
             try await Task.sleep(nanoseconds: 20_000_000)
             return .number(2)
         }
-        let result = try interpreter.run(
+        let result = try await interpreter.run(
             code: """
             const values = await Promise.all([globalThis["tools.a"](), globalThis["tools.b"]()]);
             return values[0] + values[1];
@@ -993,14 +1016,14 @@ struct JSCInterpreterTests {
     }
 
     @Test("the forgot-await proxy trap error renders through ResultRenderer with the standard repair instruction")
-    func pendingResultPropertyAccessErrorRendersWithRepairInstruction() throws {
+    func pendingResultPropertyAccessErrorRendersWithRepairInstruction() async throws {
         let interpreter = JSCInterpreter()
         let call = AsyncHostFunction(name: "tools.x.y") { _ in
             try await Task.sleep(nanoseconds: 20_000_000)
             return .object(["value": .number(1)])
         }
         do {
-            _ = try interpreter.run(
+            _ = try await interpreter.run(
                 code: """
                 const r = globalThis["tools.x.y"]();
                 return r.value;
@@ -1024,39 +1047,69 @@ struct JSCInterpreterTests {
         }
     }
 
-    @Test("isCancelled mid-await cancels a pending async host function and returns within the time limit")
-    func cancellationCancelsPendingAsyncHostFunction() throws {
+    // MARK: - The two clocks and cancellation
+
+    @Test("the wall-clock limit ends a run that waits for a call that never completes, and cancels that call")
+    func wallClockLimitEndsARunThatWaitsForever() async throws {
+        // No job executes JS while the run waits, so the CPU watchdog has
+        // nothing to stop: only the wall-clock timer of the run can end it.
+        let interpreter = JSCInterpreter(timeLimit: Self.shortTimeLimit)
+        let callWasCancelled = OSAllocatedUnfairLock(initialState: false)
+        let never = AsyncHostFunction(name: "neverAsync") { _ in
+            do {
+                try await Task.sleep(for: Self.neverCompletingCallDuration)
+            } catch {
+                callWasCancelled.withLock { $0 = true }
+                throw error
+            }
+            return .null
+        }
+        let start = ContinuousClock.now
+
+        await #expect {
+            try await interpreter.run(
+                code: "return await neverAsync();",
+                installing: [],
+                installingAsync: [never]
+            )
+        } throws: { error in
+            (error as? InterpreterError)?.kind == .timeout
+        }
+        #expect(start.duration(to: .now) < Self.promptResponseBound)
+        try await TestPoll.waitUntil("the pending call saw its cancellation") {
+            callWasCancelled.withLock { $0 }
+        }
+    }
+
+    @Test("cancelling the calling task mid-await cancels a pending async host function and returns within the time limit")
+    func cancellationCancelsPendingAsyncHostFunction() async throws {
         let interpreter = JSCInterpreter(timeLimit: 10.0)
-        let cancelledBox = OSAllocatedUnfairLock(initialState: false)
+        let callStarted = OSAllocatedUnfairLock(initialState: false)
         let taskWasCancelled = OSAllocatedUnfairLock(initialState: false)
         let slow = AsyncHostFunction(name: "slowAsync") { _ in
+            callStarted.withLock { $0 = true }
             do {
-                try await Task.sleep(nanoseconds: 5_000_000_000)
+                try await Task.sleep(for: Self.neverCompletingCallDuration)
             } catch {
                 taskWasCancelled.withLock { $0 = true }
                 throw error
             }
             return .null
         }
-        DispatchQueue.global().asyncAfter(deadline: .now() + 0.2) {
-            cancelledBox.withLock { $0 = true }
-        }
-        let start = ContinuousClock.now
-        #expect {
-            try interpreter.run(
+        let run = Task {
+            try await interpreter.run(
                 code: "await slowAsync(); return \"done\";",
                 installing: [],
-                installingAsync: [slow],
-                isCancelled: { cancelledBox.withLock { $0 } }
+                installingAsync: [slow]
             )
-        } throws: { error in
-            error is CancellationError
         }
-        #expect(start.duration(to: .now) < .seconds(3))
-        // Give the abandoned background Task a moment to observe its own
-        // cancellation after `run` has already returned.
-        Thread.sleep(forTimeInterval: 0.3)
-        #expect(taskWasCancelled.withLock { $0 })
+        try await TestPoll.waitUntil("the slow call started") { callStarted.withLock { $0 } }
+        let start = ContinuousClock.now
+        run.cancel()
+
+        await #expect(throws: CancellationError.self) { try await run.value }
+        #expect(start.duration(to: .now) < Self.promptResponseBound)
+        try await TestPoll.waitUntil("the slow call saw its cancellation") { taskWasCancelled.withLock { $0 } }
     }
 
     /// The snippet the cancellation pin and both of its controls run
@@ -1094,9 +1147,9 @@ struct JSCInterpreterTests {
     /// Builds the `record(marker)` global ``cleanupWitnessSnippet`` calls.
     ///
     /// Deliberately a synchronous `HostFunction` rather than an
-    /// `AsyncHostFunction`: it runs inline on the run's own queue, so a marker
-    /// lands before `run` returns and a cancelled run cannot drop it for the
-    /// wrong reason.
+    /// `AsyncHostFunction`: it runs inline in the job that calls it, so a
+    /// marker lands before `run` returns and a cancelled run cannot drop it
+    /// for the wrong reason.
     ///
     /// - Parameter markers: the recorded markers, appended to in call order.
     /// - Returns: the host function to install as `record`.
@@ -1112,14 +1165,14 @@ struct JSCInterpreterTests {
     @Test(
         "cancelling a snippet that waits on a pending call runs none of its author-written .catch() or finally {}"
     )
-    func cancellationSkipsAuthorCatchAndFinally() throws {
+    func cancellationSkipsAuthorCatchAndFinally() async throws {
         // Pins the ruled cancellation contract (eventplan.md "Async
         // JavaScript"): `cancel` is terminate-without-settling, NOT
         // reject-and-unwind. `PromiseRegistry.cancelAllPending` cancels each
         // backing Swift Task and drops the entry without calling
         // `resolve`/`reject`, so the suspended continuation never resumes and
         // no author cleanup code runs. That is deliberate — settling would
-        // resume author JS outside any armed watchdog, which would make a
+        // resume author JS in a run that is ending, which would make a
         // cancelled snippet's `finally { while (true) {} }` unkillable.
         //
         // An `AsyncHostFunction` is what a `tools.*` call is at this layer, so
@@ -1127,36 +1180,33 @@ struct JSCInterpreterTests {
         // witness is `record` (see `makeRecorder(into:)`), and the snippet is
         // the one both controls below run unchanged.
         let interpreter = JSCInterpreter(timeLimit: 10.0)
-        let cancelledBox = OSAllocatedUnfairLock(initialState: false)
         let markers = OSAllocatedUnfairLock<[InterpreterValue]>(initialState: [])
         let pendingCallStarted = OSAllocatedUnfairLock(initialState: false)
+        let pendingCallEnded = OSAllocatedUnfairLock(initialState: false)
         let slow = AsyncHostFunction(name: "slowAsync") { _ in
             pendingCallStarted.withLock { $0 = true }
-            try await Task.sleep(nanoseconds: 5_000_000_000)
+            defer { pendingCallEnded.withLock { $0 = true } }
+            try await Task.sleep(for: Self.neverCompletingCallDuration)
             return .null
         }
-        DispatchQueue.global().asyncAfter(deadline: .now() + 0.2) {
-            cancelledBox.withLock { $0 = true }
-        }
-        let start = ContinuousClock.now
-        #expect {
-            try interpreter.run(
+        let run = Task {
+            try await interpreter.run(
                 code: Self.cleanupWitnessSnippet,
                 installing: [Self.makeRecorder(into: markers)],
-                installingAsync: [slow],
-                isCancelled: { cancelledBox.withLock { $0 } }
+                installingAsync: [slow]
             )
-        } throws: { error in
-            error is CancellationError
         }
-        #expect(start.duration(to: .now) < .seconds(3))
-        // The sandbox is torn down by the time `run` returns. This sleep buys
-        // the cancelled backing Task time to unwind, and gives any late
-        // resumption of the suspended continuation a window to land a marker
-        // before the markers are read. It does not reach the five seconds at
-        // which the pending call would have settled on its own — nothing in
-        // this test waits that long.
-        Thread.sleep(forTimeInterval: 0.3)
+        try await TestPoll.waitUntil("the pending call started") { pendingCallStarted.withLock { $0 } }
+        let start = ContinuousClock.now
+        run.cancel()
+
+        await #expect(throws: CancellationError.self) { try await run.value }
+        #expect(start.duration(to: .now) < Self.promptResponseBound)
+        // The cancelled backing Task unwinds after the run ended, and its
+        // late completion reaches the job queue of the run. Waiting for that
+        // unwind gives a late resumption of the suspended continuation its
+        // chance to land a marker before the markers are read.
+        try await TestPoll.waitUntil("the pending call unwound") { pendingCallEnded.withLock { $0 } }
         // `entered` and `attached`, and nothing after them. `entered` witnesses
         // that the snippet really did start; `attached` witnesses that the
         // author's `.catch()` was installed on the pending call before the
@@ -1164,14 +1214,10 @@ struct JSCInterpreterTests {
         // that was skipped, not a snippet the cancel beat to the `try` block or
         // to the handler's installation.
         #expect(markers.withLock { $0 } == [.string("entered"), .string("attached")])
-        // ...and the promise that handler was installed on was backed by a call
-        // that really was in flight, so the handler was live rather than
-        // attached to something already dead.
-        #expect(pendingCallStarted.withLock { $0 })
     }
 
     @Test("an uncancelled snippet does run its author-written finally {} after a pending call settles")
-    func uncancelledSnippetRunsAuthorFinally() throws {
+    func uncancelledSnippetRunsAuthorFinally() async throws {
         // The positive control for the `finally` half of
         // `cancellationSkipsAuthorCatchAndFinally`. Same snippet, same witness,
         // no cancellation — so the markers land. Without it, the pin's
@@ -1184,7 +1230,7 @@ struct JSCInterpreterTests {
             try await Task.sleep(nanoseconds: 20_000_000)
             return .null
         }
-        let result = try interpreter.run(
+        let result = try await interpreter.run(
             code: Self.cleanupWitnessSnippet,
             installing: [Self.makeRecorder(into: markers)],
             installingAsync: [quick]
@@ -1198,7 +1244,7 @@ struct JSCInterpreterTests {
     }
 
     @Test("an uncancelled snippet does run its author-written .catch() when a pending call rejects")
-    func uncancelledSnippetRunsAuthorCatch() throws {
+    func uncancelledSnippetRunsAuthorCatch() async throws {
         // The positive control for the `.catch()` half of the same pin. The
         // `finally` control above installs a `slowAsync` that resolves, so it
         // never reaches the `.catch()` arm: on its own it would leave the pin
@@ -1212,7 +1258,7 @@ struct JSCInterpreterTests {
             try await Task.sleep(nanoseconds: 20_000_000)
             throw InterpreterError(kind: .exception, message: "nope")
         }
-        let result = try interpreter.run(
+        let result = try await interpreter.run(
             code: Self.cleanupWitnessSnippet,
             installing: [Self.makeRecorder(into: markers)],
             installingAsync: [rejecting]

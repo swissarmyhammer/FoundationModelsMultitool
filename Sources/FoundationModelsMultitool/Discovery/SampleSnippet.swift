@@ -139,7 +139,7 @@ enum SampleSnippet {
         var prompt = openingPrompt(forTask: task)
         for _ in 0..<max(1, config.attemptLimit) {
             let reply = try await session.respond(to: prompt)
-            switch await verdictOffCooperativePool(on: reply, over: entries, using: config) {
+            switch await verdict(on: reply, over: entries, using: config) {
             case .accepted(let snippet):
                 return snippet
             case .rejected(let feedback):
@@ -159,37 +159,12 @@ enum SampleSnippet {
         case rejected(String)
     }
 
-    /// Runs the gate without blocking the cooperative pool.
-    ///
-    /// Both checks the gate performs are synchronous and blocking:
-    /// `Interpreter.checkSyntax(of:)` parses inline, and
-    /// `TypedMockDryRun.apiUsageFailure(in:against:using:)` blocks until the
-    /// mocked snippet finishes or the sandbox's watchdog ends it. Called
-    /// directly from this `async` context, that would tie up whichever
-    /// cooperative-pool thread is running the enclosing `searchTools` call for the
-    /// whole check. Dispatching onto an elastic GCD queue and suspending
-    /// instead means this function *suspends* rather than *blocks* — the same
-    /// "never block the caller" treatment `MultiTool` gives the real
-    /// `runCode` path.
-    ///
-    /// - Parameters:
-    ///   - reply: the generator's raw reply text.
-    ///   - entries: the matched catalog entries the snippet may use.
-    ///   - config: the checking sandbox and session factory.
-    /// - Returns: the accepted snippet, or the feedback to send back.
-    private static func verdictOffCooperativePool(
-        on reply: String,
-        over entries: [APISurface.Entry],
-        using config: SampleSnippetConfig
-    ) async -> Verdict {
-        await withCheckedContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
-                continuation.resume(returning: verdict(on: reply, over: entries, using: config))
-            }
-        }
-    }
-
     /// Runs the whole gate over one generator reply.
+    ///
+    /// The dry run awaits `Interpreter.run`, which holds no thread while it
+    /// waits (see the event-loop documentation of `JSCInterpreter`). The
+    /// syntax check parses inline: it executes nothing, so it is short CPU
+    /// work, not a wait.
     ///
     /// - Parameters:
     ///   - reply: the generator's raw reply text.
@@ -200,7 +175,7 @@ enum SampleSnippet {
         on reply: String,
         over entries: [APISurface.Entry],
         using config: SampleSnippetConfig
-    ) -> Verdict {
+    ) async -> Verdict {
         guard let snippet = fencedBlock(in: reply) else {
             return .rejected(missingFenceFeedback)
         }
@@ -215,7 +190,7 @@ enum SampleSnippet {
         if let invented {
             return .rejected(unknownPathFeedback(named: invented, matchedPaths: matchedPaths))
         }
-        let usageFailure = TypedMockDryRun.apiUsageFailure(
+        let usageFailure = await TypedMockDryRun.apiUsageFailure(
             in: snippet,
             against: entries,
             using: config.interpreter

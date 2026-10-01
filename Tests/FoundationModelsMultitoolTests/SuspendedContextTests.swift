@@ -16,8 +16,7 @@ import Testing
 /// the suspended JSC context holding it. Everything here is about that state —
 /// that the interpreter's own watchdog does not kill the context at the instant
 /// the call returns, that the run settles into exactly one terminal event when
-/// its inner call finally returns, that too many live contexts is a repairable
-/// error rather than a pile-up, and that `cancel()` genuinely tears one down.
+/// its inner call finally returns, and that `cancel()` genuinely tears one down.
 ///
 /// Every test mounts `MultiTool` exactly as Router's native session does —
 /// `ToolMounting.makeWrapped` under `synchronous` — so what is exercised
@@ -136,27 +135,6 @@ struct SuspendedContextTests {
         #expect(completions.count == 1)
         #expect(completions.first?.correlationID == token)
         #expect(completions.first?.detail == Self.renderedGatedResult)
-    }
-
-    // MARK: - The cap on live contexts
-
-    @Test("a run beyond the live-context cap is a repairable in-band error, not a crash")
-    func exceedingTheLiveContextCapIsARepairableError() async throws {
-        let latch = ToolReleaseLatch()
-        let gated = GatedTool(latch: latch)
-        let multiTool = MultiTool(
-            registry: try Self.registry(exposing: gated),
-            configuration: MultiToolConfiguration(liveContextLimit: 1)
-        )
-        let held = Task { try await multiTool.call(arguments: RunCodeArguments(code: Self.gatedSnippet)) }
-        try await TestPoll.waitUntil("the gated call started") { gated.hasStarted }
-
-        let refused = try await multiTool.call(arguments: RunCodeArguments(code: "return 1 + 1;"))
-
-        #expect(refused.contains("Too many runCode snippets are running at once"))
-        #expect(refused.contains(RepairDirective.repairSnippet.closingLine))
-        latch.release()
-        #expect(try await held.value == Self.renderedGatedResult)
     }
 
     // MARK: - The hard unblock
