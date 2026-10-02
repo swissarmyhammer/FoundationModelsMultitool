@@ -5,12 +5,12 @@ import Testing
 
 /// The time limit of the held-out discovery test, in minutes.
 ///
-/// The test resolves a 4B model and makes fifteen `searchTools` calls in each
-/// of ``discoveryRoundCount`` rounds, and each call is one grammar-constrained
-/// generation of a few tokens. Measured on a warm machine on 2026-09-10, the
-/// whole test — the model load plus forty-five such calls — took 40.3 s. Six
-/// minutes stands far over that and over a cold load, and a run that reaches
-/// it is parked rather than slow.
+/// The test resolves a 4B model and makes fifteen `searchTools` calls, and
+/// each call is one grammar-constrained generation of a few tokens. Measured
+/// on a warm machine on 2026-09-10, the whole test — the model load plus
+/// forty-five such calls, three passes of the group at that time — took
+/// 40.3 s. Six minutes stands far over that and over a cold load, and a run
+/// that reaches it is parked rather than slow.
 private let heldOutTimeLimitMinutes = 6
 
 /// The label the printed result and skip lines carry.
@@ -88,7 +88,7 @@ let heldOutQueries = [
         correctPaths: ["shell.execute"]),
 ]
 
-/// How many declared-correct paths one whole round of ``heldOutQueries`` must
+/// How many declared-correct paths the whole group ``heldOutQueries`` must
 /// find over its fifteen queries.
 ///
 /// A level, not a floor. The per-query assertion is a floor — each query finds
@@ -98,15 +98,15 @@ let heldOutQueries = [
 /// **This level is the standard the surface owes a host, and the model meets
 /// it today.** It is set at one declared path for each of the fifteen
 /// queries, which is the least a group of this shape can score while every
-/// query is still answered. Measured on 2026-09-10, all three rounds scored
-/// 16 of the 22 declared paths, which is over this level, and each round
-/// returned 2 undeclared paths. Every query found a declared path, and the
-/// suite passes.
+/// query is still answered. Measured on 2026-09-10, all three passes of the
+/// group scored 16 of the 22 declared paths, which is over this level, and
+/// each pass returned 2 undeclared paths. Every query found a declared path,
+/// and the suite passes.
 ///
 /// **The history, because it is why this group exists.** When card `^kn9ay20`
-/// wrote this group, all three rounds scored 9 of the 22 declared paths and
+/// wrote this group, all three passes scored 9 of the 22 declared paths and
 /// returned 8 undeclared ones, and six queries found no declared path in any
-/// round. That red result was the defect the group was written to find. The
+/// pass. That red result was the defect the group was written to find. The
 /// level was not lowered to 9, because a level at 9 makes the defect the
 /// standard. Card `^p06rh7z` then wrote the nine tool descriptions again, so
 /// that each one names the work a person brings and not the mechanism of the
@@ -116,14 +116,14 @@ let heldOutQueries = [
 ///
 /// **Why this level stays at 15 while the measurement is 16.** The number
 /// comes from the shape of the group, and not from the score of one model on
-/// one day. ``agentSurfaceRoundCorrectLevel`` can stand at its measurement,
+/// one day. ``agentSurfaceCorrectLevel`` can stand at its measurement,
 /// because those ten queries are the record of one failure that is now
 /// corrected. These fifteen queries are held out, so a level at the score of
 /// today makes a later, honest change of model or of wording look like a
-/// defect. Two runs on 2026-09-10 scored 16 in each of their rounds, and a
+/// defect. Two runs on 2026-09-10 scored 16 in each of their passes, and a
 /// later card can lift this level to 16 on that record. The level is never
 /// lowered to make a run green. Card `^fdaxnjw` holds this decision.
-let heldOutRoundCorrectLevel = 15
+let heldOutCorrectLevel = 15
 
 /// The gated discovery test over queries nobody chose the preamble with.
 ///
@@ -143,9 +143,9 @@ let heldOutRoundCorrectLevel = 15
 /// regression record of a real failure, not a benchmark to retire.
 ///
 /// **What it grades.** Every query declares the catalog paths a reader of the
-/// nine tool descriptions says answer it. Each round is held to two things:
-/// every query finds at least one declared path, and the round finds at least
-/// ``heldOutRoundCorrectLevel`` of them over the whole group. The count of
+/// nine tool descriptions says answer it. The group is held to two things:
+/// every query finds at least one declared path, and the group finds at least
+/// ``heldOutCorrectLevel`` of them over all its queries. The count of
 /// paths a query returned that no reader declared is printed for every query
 /// and asserted on nowhere — card `^kn9ay20` asks for that reading until a
 /// level for it is known.
@@ -166,28 +166,26 @@ let heldOutRoundCorrectLevel = 15
     .timeLimit(.minutes(heldOutTimeLimitMinutes))
 )
 struct HeldOutSurfaceDiscoveryTests {
-    @Test("queries written from a task description alone each find a declared tool, and hold the level in every round")
+    @Test("queries written from a task description alone each find a declared tool, and hold the level")
     func heldOutQueriesFindTheirDeclaredTools() async throws {
         try await withLiveRouterFixture(name: heldOutScenarioName, profile: agentDiscoveryProfile) { fixture in
             let surface = try makeFilesAndShellSurface(over: fixture)
             reportCatalogSize(of: surface.registry, reportedAs: heldOutScenarioName)
 
-            let rounds = try await gradeDiscoveryRounds(
+            let group = try await gradeDiscoveryGroup(
                 of: heldOutQueries,
                 through: surface.searchTools,
                 recordedBy: fixture,
                 reportedAs: heldOutScenarioName)
 
-            for round in rounds {
-                expectEveryQueryFindsACorrectPath(in: round, of: heldOutQueries)
-                #expect(
-                    round.correctCount >= heldOutRoundCorrectLevel,
-                    """
-                    round \(round.number) found \(round.correctCount) correct paths, \
-                    under the level of \(heldOutRoundCorrectLevel)
-                    """
-                )
-            }
+            expectEveryQueryFindsACorrectPath(in: group, of: heldOutQueries)
+            #expect(
+                group.correctCount >= heldOutCorrectLevel,
+                """
+                the group found \(group.correctCount) correct paths, \
+                under the level of \(heldOutCorrectLevel)
+                """
+            )
         }
     }
 }

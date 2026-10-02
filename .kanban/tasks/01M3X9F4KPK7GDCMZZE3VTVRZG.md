@@ -1,0 +1,177 @@
+---
+assignees:
+- claude-code
+comments:
+- actor: claude-code
+  id: 01m3xa98h3hrw4d3pa84t3haws
+  text: |-
+    ### Decision of the user — target is 20 minutes
+    - The user said: "20 minutes is ok."
+    - This comment replaces the 10 to 15 minute target in the description. The integration job (builds and tests together) must take 20 minutes or less in a real CI run on the runner `mini`.
+    - The rules do not change: every test keeps running on each push, in the same job. No nightly workflow, no new category, no skipped test, no smaller model for an answer-graded suite.
+    - The section "If the target is still not met" now applies only if the measured time is more than 20 minutes. A runner hardware decision is not necessary if the job takes 20 minutes or less.
+  timestamp: 2026-10-02T03:24:48.547993+00:00
+- actor: claude-code
+  id: 01m3xaa4jtgf4an4cncjpqjmfn
+  text: |-
+    ### Decision of the user — no repeated tests
+    - The user said: "Don't make repeated tests, that's just a waste."
+    - Work item 2 changes: remove the round concept fully, not only set `discoveryRoundCount` to 1. Remove `discoveryRoundCount`, the round loops (`gradeDiscoveryRounds`, the rounds of `NoDescriptionSurfaceDiscoveryTests`), and the round wording in test names, `RESULT` lines and doc comments. Each query runs one time.
+    - Find and remove every other repetition in `IntegrationTests` that runs the same scenario, query or call again only to repeat it.
+    - Keep a second call only when the test checks the second call itself (for example a cache or reuse test that compares a first and a second call). Record each kept case and its reason on this card.
+    - Every distinct test case still runs.
+  timestamp: 2026-10-02T03:25:17.274672+00:00
+- actor: claude-code
+  id: 01m3xbtnzh5zeymcvspstc5vmh
+  text: |-
+    Research results (implement step).
+
+    Pins used: FoundationModelsRouter 8821ccc, mlx-swift-lm a1f77ad (stable), FoundationModelsExtras 50fd4a5. These are the same pins that run 36951032341 used.
+
+    1. KV cache of the 27B model: reuse WORKS. The card premise is not correct. Measurement on this machine, 2026-10-01, `SearchThenCallTests/singleCallWeather` on Qwen3.8-27B-mxfp4, unified log `com.apple.FoundationModels-MLX:ExecutorPromptCache`:
+       - call 1: `rendered=945 reused=0 fed=945 rule=cold`
+       - call 2: `rendered=1228 reused=1016 fed=212 rule=splice`
+       - call 3: `rendered=1412 reused=1284 fed=128 rule=splice`
+       Thus a call after the first turn feeds only the new tokens. The words "fed N tokens" in the Router transcript do not show the fed tokens. Router defines `tokensIn` as "the whole context of the call" (`FoundationModelsRouter/Sources/FoundationModelsRouter/Session/GenerationCallUsage.swift:21-22`, printed as "fed" at `:73`). Router drops the reused count: `MLXFoundationModelsSessionBackend.usageTokenCounts()` returns only `usage.input.totalTokenCount` (`Resolution/LiveModelLoader.swift:734-736`), although mlx-swift-lm sends `cachedTokenCount: promptCache.reusedTokenCount` (`mlx-swift-lm/Libraries/MLXFoundationModels/MLXLanguageModel.swift:594-595`). Upstream card that is necessary (Router): record the reused (cached) input tokens in each `generationCall` entry, so a transcript shows the tokens that a call really fed.
+       Consequence: the estimate "27B time from 719 s to less than 400 s" does not exist. The 27B time is decode time and the first (cold) call of each new load.
+
+    2. KV cache of the 4B selection prompt: NO reuse, and the cause is upstream, in two places:
+       - mlx-swift-lm: a guided (grammar) pass builds its own KV cache and takes no carried cache. `MLXLanguageModel.swift:2221-2224` (`runSchemaGeneration` calls `promptCache.carriesNoCache()`; "GuidedGenerationLoop.run builds its own key/value cache and accepts none from a caller"), also `:1645`, and `ExecutorPromptCache.swift:1709-1712`. The log shows `rule=guided (the guided pass owns its cache and carries none)` for each selection call.
+       - Router: each selection call is a fork, and a fork has its own prompt-cache key and does not take the cache of its parent (`Session/RoutedSessionActorPromptCache.swift:8-9`).
+       Upstream cards that are necessary: (a) mlx-swift-lm: let a guided pass start from a carried prompt cache (the catalog prefix of the instructions); (b) Router: let a selection fork start from the prompt cache of the cached root session. I did not make these cards (other repositories).
+
+    3. Model load for each test: Router permits a load one time for each process. `Router.swift:536-543`: when the pool holds the model, the slot takes a new hold and goes to `ready` with no load. `ModelPool.swift:104-107`: "A resident key adds a hold at once". `ModelPool.release` (`:305-314`) evicts the model when the last hold goes, which is what happens now at each fixture teardown. Thus a process-wide hold of each model keeps it resident for the next test.
+
+    4. Build: the shared workflow removes `.build` (step "Clean build directory", `rm -rf .build`) and removes `<integration-package-path>/.build` before each nested build, in both jobs. `actions/checkout@v4` with its default `clean: true` also removes ignored files. Thus no change in this repository can keep a build. The root-products step builds the root package a second time in the root `.build` (181 s).
+
+    5. Time in run 36951032341 (integration job 2470 s): builds 293 s, tests 2158 s. Discovery suites with 3 rounds: 748 s. Each 4B selection call fed approximately 2400 tokens and took approximately 6.7 s on `mini`.
+
+    6. Local build note: a sourcekit-lsp of an other `sah serve` process runs index builds inside `IntegrationTests/.build/checkouts/FoundationModelsRanker`, and SwiftPM then cannot remove that checkout ("Operation not permitted"). I built with `--scratch-path` in the scratchpad; I did not change `.build/checkouts`.
+  timestamp: 2026-10-02T03:51:47.953235+00:00
+- actor: claude-code
+  id: 01m3xdze69nbx41a0s1h4fvcm4
+  text: |-
+    ### Implementation landed (not committed)
+
+    Files changed, all in `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/`:
+    - `Support/LiveModelResidency.swift` (new): an actor that keeps one `ModelHold` of each resolved model (`ModelPool.shared.acquire(_:)`) for the whole test process. `LiveRouterFixture.resolve` calls it after each resolve. Each scenario still gets a new `Router` and its own recordings directory, so no transcript read changes.
+    - `ModelResidencyTests.swift` (new): resolves the plumbing profile, lets the fixture tear down, and reads the pool footprint in an admission job. RED before the change (all 3 models evicted), GREEN after.
+    - `Support/LiveRouterFixture.swift`: one process-wide Router metadata cache directory (`metadataCacheDir`) in place of a new temporary directory for each resolve; the keeper call; doc comments for the new residency and for the 27B prefix-reuse measurement; removed an orphan doc comment block ("What the shared budget was actually charged...", with a `- Parameter model:` line and no declaration under it).
+    - `Support/DiscoveryGrading.swift`: round concept removed. `discoveryRoundCount`, `DiscoveryRound` and `gradeDiscoveryRounds` are gone; `DiscoveryGroupGrade` and `gradeDiscoveryGroup` run each query one time. Its doc comment gives the measured reason.
+    - `AgentSurfaceDiscoveryTests.swift`, `HeldOutSurfaceDiscoveryTests.swift`, `OperationToolLiveTests.swift`, `NoDescriptionSurfaceDiscoveryTests.swift`: one pass, no "in every round" in test names, no `round=` in `RESULT` lines, doc comments changed. `agentSurfaceRoundCorrectLevel` is now `agentSurfaceCorrectLevel` and `heldOutRoundCorrectLevel` is now `heldOutCorrectLevel` (the values do not change; card `^xr5w83f` removes these levels, and its search `CorrectLevel` still finds them).
+    - `SelectionForkPerCallTests.swift`: see the decision below.
+
+    ### Repetitions removed
+    1. `gradeDiscoveryRounds`: each group ran 3 times (AgentSurface 10 queries, HeldOut 15, OperationTool discovery 5). Now 1 time.
+    2. `NoDescriptionSurfaceDiscoveryTests.measure`: 3 rounds for each candidate text (`(1...discoveryRoundCount).mappedInOrder`). Now 1 time.
+    Evidence that the repeats measured nothing: in CI runs 36951032341 and 36609306669, every per-query `RESULT` line (paths and raw selection ids) of all four groups occurred exactly 3 times, identical.
+
+    ### Two-call tests kept, with the reason
+    - `SelectionForkPerCallTests`: two `searchTools` calls, because the subject is the second call (it must fork its own child off the same cached root).
+    - `Web/FetchLiveTests.secondWindowComesFromTheCache`: two fetches, because the subject is the second window (it must come from the cache, with one download).
+    Other loops in the package iterate over different inputs (candidate texts, settings and groups, queries, imagined paths), not over repetitions.
+
+    ### Decision for the reviewer: one timing assertion removed
+    `SelectionForkPerCallTests` asserted `second <= first` on the premise "the first call pays the cold model warm-up". With the models kept resident, the first call is warm when an earlier suite resolved the same model. Local full run 2026-10-01: `first=1.24s second=1.46s`, a failure from noise. I removed `expectSecondCallNoSlower` and kept both durations in the `RESULT` line. The fork-per-call contract (the subject of the suite) is still asserted in full. The only other way to keep the assertion is to evict this suite's models before it runs, which costs one more load of the 27B and the 4B. If the user prefers that, it is a small change.
+
+    ### Test results
+    - `swift test` (root, scratch build): 1882 tests in 154 suites passed; suite "CI workflow" passed. The only warnings come from the mlx-swift Metal headers and from the SwiftPM "missing creator" note on the metallib bundle; none comes from this repository.
+    - `swift build --build-tests --package-path IntegrationTests`: build complete, no warning from this repository.
+    - Local full integration run (M3 Ultra, all 61 tests in 33 suites in one process): 558.6 s. Each failure is outside this change: the two fixed-score assertions of card `^xr5w83f` (agent surface 18 < 19; held-out per-query floor), which also failed in CI run 36951032341; `OverBudgetSurfaceDiscoveryTests` `matchedPathCount > 0` (it fails the same way at HEAD with my changes stashed: both queries answered no match on Qwen3-1.7B; CI had 1 match); and the live Brave/keyless web tests (provider answers on this network; CI run 36951032341 also failed three of them). The SelectionForkPerCall timing failure in that run caused the decision above; after the change, it passes.
+    - Unified log of the full run: 34 `rule=splice`, 1 `rule=rewind`, 14 `rule=cold` (first call of a session), 69 `rule=guided` (selection).
+  timestamp: 2026-10-02T04:29:20.969514+00:00
+- actor: claude-code
+  id: 01m3xdzzxykb0yzj4s8ff4mkfc
+  text: |-
+    ### Blockers: what this repository cannot do, and the decision that is necessary
+
+    **1. The time criterion needs a real CI run.** I cannot push. CI must show, in the job "Integration (opt-in, real dependencies)": all 61 tests in 33 suites run (60 from run 36951032341 plus `ModelResidencyTests`); one `RESOLVED` line for each fixture, with the second and later resolves of a model taking approximately 1 s and not approximately 9 s; and the total job time. Record the run id and the step times here.
+
+    **2. Expected time on `mini` after this change: more than 20 minutes.** Estimate from run 36951032341: tests 2158 s, less approximately 480 s (discovery groups 748 s run one time in place of three), less approximately 150 to 300 s (20 model loads of approximately 8 s, and part of the cold first call of each scenario) = approximately 1400 to 1530 s, plus builds 293 s, plus approximately 15 s set-up = approximately 28 to 31 minutes.
+    The cause is the decode speed of the 27B on `mini`. Fit over the 11 cold first calls of run 36951032341: approximately 0.17 s for each generated token (approximately 6 tokens/s). The 38 calls generated 4168 tokens, approximately 700 s of the 719 s of 27B time. KV-cache reuse cannot shorten decode time, and the prefill after the first turn is already small (splice). This needs a **decision of the user about the runner hardware** (the card's "If the target is still not met" section), after the CI run confirms the number.
+
+    **3. Build reuse needs inputs in the shared workflow** (`swissarmyhammer/workflows/.github/workflows/swift-ci.yaml`; I did not change it):
+    - An input that disables the step "Clean build directory" (`rm -rf .build`) in the integration job, and the `rm -rf '<integration-package-path>/.build'` in "Build the nested integration package" (for example `integration-keep-build: true`). Also `actions/checkout@v4` must get `clean: false` for that job, because its default `git clean -ffdx` removes the ignored `.build` directories too.
+    - An input that builds `integration-root-products` inside the nested package (`swift build --package-path <integration-package-path> --product <name>`) and not at the root. Measured locally: after the nested build, `swift build --package-path IntegrationTests --product mcp-test-server` took 4.9 s of build, against 181 s in CI for the root build of the two products. With that input, `RootProduct.productsDirectoryPath` in this repository must change to the nested products directory in the same change.
+    Saving: up to approximately 290 s of the 293 s of builds.
+
+    **4. Upstream cards that are necessary** (not made; other repositories):
+    - mlx-swift-lm: let a guided (grammar) pass start from a carried prompt cache (the catalog prefix of the selection instructions). Evidence: `Libraries/MLXFoundationModels/MLXLanguageModel.swift:2221-2224` and `:1645` call `promptCache.carriesNoCache()`; `ExecutorPromptCache.swift:1709-1712`. All 69 selection calls of the local run logged `rule=guided`. After this card, approximately 50 selection calls feed approximately 2400 tokens each on CI.
+    - FoundationModelsRouter: let a selection fork start from the prompt cache of its cached root (`Session/RoutedSessionActorPromptCache.swift:8-9`: a fork has its own key and takes no cache of its parent).
+    - FoundationModelsRouter: record the reused input tokens in each `generationCall` entry. `Resolution/LiveModelLoader.swift:734-736` reads only `usage.input.totalTokenCount`, and `Session/GenerationCallUsage.swift:21-22,73` prints that whole context as "fed N tokens". mlx-swift-lm already sends `cachedTokenCount` (`MLXLanguageModel.swift:594-595`).
+
+    **5. Memory risk to check in the CI run.** All four models now stay resident together: Router footprint estimates in run 36951032341 were 27B 17.98 GB, 4B 8.49 GB, 1.7B 5.67 GB, plus the embedding model. Router prices each resolve against `recommendedMaxWorkingSetSize`. If the GPU working set of `mini` is smaller than that union, a resolve fails with `ResolutionFailure` in CI. That is a hardware fact for the same decision.
+  timestamp: 2026-10-02T04:29:39.134416+00:00
+- actor: claude-code
+  id: 01m3xe0ftbgnwm54v7rg1aq7pm
+  text: |-
+    ### implement — stuck
+    - evidence: 9 files — IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/{Support/LiveModelResidency.swift (new), ModelResidencyTests.swift (new), Support/LiveRouterFixture.swift, Support/DiscoveryGrading.swift, AgentSurfaceDiscoveryTests.swift, HeldOutSurfaceDiscoveryTests.swift, OperationToolLiveTests.swift, NoDescriptionSurfaceDiscoveryTests.swift, SelectionForkPerCallTests.swift}. `swift test` 1882 passed; `swift build --build-tests --package-path IntegrationTests` passes; `ModelResidencyTests` RED then GREEN; local full integration run 61 tests in 558.6 s, failures only outside this change (see the comment above).
+    - stuck parts: (1) the 20-minute criterion needs a real CI run, which I cannot start; (2) item 4 needs new inputs in the shared workflow repository; (3) the estimate on `mini` is approximately 28 to 31 minutes because the 27B decodes at approximately 6 tokens/s, so a runner-hardware decision of the user is likely necessary; (4) three upstream cards (mlx-swift-lm guided-pass prompt cache, Router fork prompt cache, Router reused-token count).
+    - next: review of the diff; the user decides on the `SelectionForkPerCallTests` timing assertion, the shared-workflow inputs and the runner hardware; then a CI run to record the time.
+  timestamp: 2026-10-02T04:29:55.403617+00:00
+- actor: claude-code
+  id: 01m3xf3s2pre150na4yhe1qav7
+  text: |-
+    ### test - green
+    - evidence: `swift test` at root (scratch path, because the default .build/checkouts was locked by another process): 1882 tests in 154 suites passed, 0 failed, 0 skipped. `swift build --build-tests --package-path IntegrationTests` (scratch path): exit 0, 0 errors, 0 warnings from package sources. `swift test --package-path IntegrationTests --filter ModelResidencyTests`: 1 test in 1 suite passed. Only SwiftPM build-system warning: "missing creator for mutated node" for the mlx-swift_Cmlx bundle. It is not from package sources.
+    - next: review. No commit made.
+  timestamp: 2026-10-02T04:49:11.766226+00:00
+- actor: claude-code
+  id: 01m3xf4demqdw64f6kj1kcs4ng
+  text: |-
+    ### commit — changed
+    - evidence: this commit
+    - next: the CI run on the pushed commit must show the integration job at 20 minutes or less (last open acceptance item)
+  timestamp: 2026-10-02T04:49:32.628803+00:00
+position_column: doing
+position_ordinal: '80'
+title: Make the full integration suite run in 20 minutes or less, with every test kept
+---
+## Goal
+
+The CI job "Integration (opt-in, real dependencies)" must run **every** integration test on each push, and take 20 minutes or less (builds and tests together, on the runner `mini`). Now it takes approximately 41 minutes.
+
+Decision of the user (2026-10-02): "I want you to have thorough integration tests, and them to take less than 10-15 minutes. Skipping by making up new categories is cheating." Later decision of the user (2026-10-02): "20 minutes is ok." Thus:
+
+- Do not move tests to a nightly or scheduled workflow.
+- Do not skip, filter or remove a test, and do not change an answer-graded suite to a smaller model.
+- Do not make repeated tests (decision of the user: "don't make repeated tests — that's just a waste").
+- Make the tests faster.
+
+## Measurements (run 36951032341, commit ef905bf, runner `mini`)
+
+- Builds: approximately 5 minutes ("Build the nested integration package" 1m52s, "Build the root products the integration suite starts" 3m01s). The shared workflow step "Clean build directory" removes the build directory first, so each run builds everything again.
+- "Run the selected integration tests": 2136 s for 60 tests. `integration-no-parallel: true`, so the step time is the sum of the test times.
+- 13 answer-graded scenarios on `Qwen3.8-27B-mxfp4`: approximately 1290 s.
+- 5 discovery-grading tests: approximately 780 s.
+- 42 other tests: approximately 70 s.
+
+From the Router recordings (artifact of the run):
+
+- The 27B model made 38 generation calls: 719 s in total, approximately 19 s each, with approximately 1414 input tokens and 109 output tokens each. Every call says "fed N tokens", where N is the **full** context. Thus each turn processes the full prompt again; no KV cache of the earlier turns of the session is used. On the runner, the prompt processing of approximately 1400 tokens is the larger part of each call. (Correction by the implement step: this premise is not correct. See the comments: the 27B reuses its KV cache, and "fed N" is the whole context by the definition of Router.)
+- The 4B selection model made 106 calls with approximately 2104 input tokens each (223 030 tokens in total). Each call also feeds the full selection prompt.
+- Each test resolves its profile again and loads its models again: approximately 9 s for each of 20 resolutions (example: weather scenario, `resolve` 21:28:44, first submission 21:28:53).
+- `discoveryRoundCount = 3` (`IntegrationTests/.../Support/DiscoveryGrading.swift:14`). In this run and in run 36609306669, rounds 1, 2 and 3 of every group gave exactly the same results (for example `agentSurfaceDiscovery` correctTotal=18 wrongTotal=1 in all 3 rounds). Rounds 2 and 3 cost approximately 500 s and add no information.
+- The fixed waits are small: `integrationDelayedEchoDelaySeconds = 10`, `integrationArchiveRebuildDelaySeconds = 10`.
+
+## Work, in order of the time it saves
+
+1. **Reuse the KV cache across the turns of a session (estimate: 27B time from 719 s to less than 400 s).** Find why each generation call feeds the full context. A later turn must feed only the new tokens (tool output and the next message). Do the same for the selection prompt of the 4B model, which is the same for each query of a catalog. If the cause is in FoundationModelsRouter or the mlx-swift-lm fork, record the cause with file:line evidence and report the necessary upstream card; do not edit `.build/checkouts/`. Note: `LiveRouterFixture.swift` records that a two-round prefix-reuse test on Qwen3.6 gave NO at `f85fc50`. Measure it again on `Qwen3.8-27B-mxfp4`.
+2. **Remove the discovery rounds (approximately 500 s).** The 3 rounds gave identical results in two runs, so the 2 extra rounds test nothing more. Remove the round concept fully (decision of the user): `discoveryRoundCount`, the round loops and the round wording in test names, `RESULT` lines and doc comments. Every query of every group runs one time. Remove every other repetition in `IntegrationTests` that runs the same scenario, query or call again only to repeat it.
+3. **Load each model one time for each test process (approximately 3 minutes).** Resolve each profile one time and give it to every test that uses it, if Router permits it. If Router does not permit it, record why.
+4. **Do not build everything again on each run (approximately 4 minutes).** Keep the build directories between runs, or cache them. The step "Clean build directory" is in the shared workflow `swissarmyhammer/workflows/.github/workflows/swift-ci.yaml`. If an input is necessary there, record which input; do not change the shared workflow from this repo.
+5. **Measure after each item**, with a real CI run, and record the run id and the step times on this card.
+
+## If the target is still not met
+
+If the measured time after items 1 to 4 is more than 20 minutes, record the measured numbers and stop for a decision of the user about the runner hardware. Do not remove tests to meet the target.
+
+## Acceptance criteria
+
+- [x] Every integration test that ran in run 36951032341 still runs on each push, in the same job.
+- [x] A 27B generation call after the first turn of a session feeds only the new tokens, or the card records the upstream cause and the upstream card.
+- [x] The discovery round concept is removed, and the doc comment of `DiscoveryGroupGrade` gives the measured reason. (Was: `discoveryRoundCount` is 1. Changed by the decision of the user on repeated tests.)
+- [x] Each model loads one time for each test process, or the card records why it cannot.
+- [ ] The integration job takes 20 minutes or less in a real CI run (record the run id), or the card records the measured time and the decision that is necessary.
+- [x] `CIWorkflowTests` passes, `swift test` passes, and `swift build --build-tests --package-path IntegrationTests` passes. #ci

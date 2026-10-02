@@ -4,15 +4,6 @@ import Testing
 @testable import FoundationModelsMultitool
 import ScenarioGrading
 
-/// How many times each graded group drives its whole query list.
-///
-/// One round says nothing about a stochastic model. Between two recorded runs
-/// of the ten queries of card `^zqz1zan`, one query answered five matches and
-/// then six, and a single pass observed neither. Three rounds put that
-/// variation in the printed record, and hold every round to the same level
-/// rather than to the luck of one pass.
-let discoveryRoundCount = 3
-
 /// One query of a graded discovery group: the phrase a host gives
 /// `searchTools`, and the catalog paths a reader of the tool descriptions says
 /// answer it.
@@ -30,7 +21,7 @@ struct GradedDiscoveryQuery: Sendable {
     let correctPaths: Set<String>
 }
 
-/// What one query scored in one round.
+/// What one query scored.
 ///
 /// It carries the whole answer and both halves of it, so the printed line
 /// shows which paths earned the correct count and which paths did not. The
@@ -66,26 +57,29 @@ struct DiscoveryGrade: Sendable {
     }
 }
 
-/// What one whole pass of a graded group scored.
-struct DiscoveryRound: Sendable {
-
-    /// The one-based number of this round.
-    let number: Int
+/// What one pass over a graded group scored.
+///
+/// Each query of the group runs one time. Two CI runs (`36609306669` and
+/// `36951032341`) drove each of the four discovery groups three times in one
+/// test. In both runs, each query printed the same paths and the same raw
+/// selection ids in all three passes. The second and the third pass thus
+/// measured nothing new, and they cost approximately 500 s of each run.
+struct DiscoveryGroupGrade: Sendable {
 
     /// The grade of each query of the group, in the order the group lists
     /// them.
     let grades: [DiscoveryGrade]
 
-    /// How many declared-correct paths this round found over the whole group.
+    /// How many declared-correct paths the group found over all its queries.
     var correctCount: Int { grades.reduce(0) { $0 + $1.correctCount } }
 
-    /// How many undeclared paths this round returned over the whole group.
+    /// How many undeclared paths the group returned over all its queries.
     var wrongCount: Int { grades.reduce(0) { $0 + $1.wrongCount } }
 }
 
-/// Drives `queries` through `searchTools` ``discoveryRoundCount`` times and
-/// grades every answer, printing one line for each query of each round and one
-/// line for each round.
+/// Drives each query of `queries` through `searchTools` one time and grades
+/// every answer, printing one line for each query and one line for the whole
+/// group.
 ///
 /// The raw ids of each call are read off the Router recording the same way
 /// `SelectionForkPerCallTests` reads its fork trace. Each call adds its own
@@ -97,77 +91,72 @@ struct DiscoveryRound: Sendable {
 ///   - searchTools: the mounted production tool the queries go through.
 ///   - fixture: the resolved fixture whose recording the raw ids are read off.
 ///   - scenario: the label the printed lines carry.
-/// - Returns: one ``DiscoveryRound`` for each round, in round order.
+/// - Returns: the grade of the group.
 /// - Throws: whatever the tool call or the transcript read throws.
-func gradeDiscoveryRounds(
+func gradeDiscoveryGroup(
     of queries: [GradedDiscoveryQuery],
     through searchTools: SearchToolsTool,
     recordedBy fixture: LiveRouterFixture,
     reportedAs scenario: String
-) async throws -> [DiscoveryRound] {
-    var rounds: [DiscoveryRound] = []
+) async throws -> DiscoveryGroupGrade {
+    var grades: [DiscoveryGrade] = []
     var readSelections = 0
-    for number in 1...discoveryRoundCount {
-        var grades: [DiscoveryGrade] = []
-        for (index, query) in queries.enumerated() {
-            let feedback = try await searchTools.call(arguments: SearchToolsArguments(task: query.task))
-            let grade = DiscoveryGrade(query: query, matchedPaths: catalogPaths(in: feedback))
-            let selections = try NativeTranscript.selections(in: fixture.transcriptEvents(), slot: .flash)
-            let rawIDs = selections.dropFirst(readSelections).flatMap(\.ids)
-            readSelections = selections.count
-            grades.append(grade)
-            reportGatedResult(
-                scenario: scenario,
-                line: gradeLine(round: number, number: index + 1, query: query, grade: grade, rawIDs: rawIDs)
-            )
-        }
-        let round = DiscoveryRound(number: number, grades: grades)
-        reportGatedResult(scenario: scenario, line: roundLine(of: round, queryCount: queries.count))
-        rounds.append(round)
+    for (index, query) in queries.enumerated() {
+        let feedback = try await searchTools.call(arguments: SearchToolsArguments(task: query.task))
+        let grade = DiscoveryGrade(query: query, matchedPaths: catalogPaths(in: feedback))
+        let selections = try NativeTranscript.selections(in: fixture.transcriptEvents(), slot: .flash)
+        let rawIDs = selections.dropFirst(readSelections).flatMap(\.ids)
+        readSelections = selections.count
+        grades.append(grade)
+        reportGatedResult(
+            scenario: scenario,
+            line: gradeLine(number: index + 1, query: query, grade: grade, rawIDs: rawIDs)
+        )
     }
-    return rounds
+    let group = DiscoveryGroupGrade(grades: grades)
+    reportGatedResult(scenario: scenario, line: groupLine(of: group, queryCount: queries.count))
+    return group
 }
 
-/// Holds every query of one round to finding at least one of the catalog
+/// Holds every query of one group to finding at least one of the catalog
 /// paths it declares correct.
 ///
-/// This is the floor under the round level: a query that answered nothing, or
-/// answered only paths no reader declared, fails here whatever the round total
+/// This is the floor under the group level: a query that answered nothing, or
+/// answered only paths no reader declared, fails here whatever the group total
 /// is.
 ///
 /// - Parameters:
-///   - round: the round to hold.
-///   - queries: the group the round was driven over, in the same order.
-func expectEveryQueryFindsACorrectPath(in round: DiscoveryRound, of queries: [GradedDiscoveryQuery]) {
-    for (index, grade) in round.grades.enumerated() {
+///   - group: the graded group to hold.
+///   - queries: the queries the group was driven over, in the same order.
+func expectEveryQueryFindsACorrectPath(in group: DiscoveryGroupGrade, of queries: [GradedDiscoveryQuery]) {
+    for (index, grade) in group.grades.enumerated() {
         let query = queries[index]
         #expect(
             grade.correctCount >= 1,
             """
-            round \(round.number) query \(index + 1) "\(query.task)" found no correct path; \
+            query \(index + 1) "\(query.task)" found no correct path; \
             it matched \(grade.matchedPaths) and declares \(query.correctPaths.sorted())
             """
         )
     }
 }
 
-/// The printed line of one graded query of one round.
+/// The printed line of one graded query.
 ///
 /// Built in named pieces because one chained interpolation of this length
 /// times the type checker out.
 ///
 /// - Parameters:
-///   - round: the one-based number of the round.
 ///   - number: the one-based position of the query in its group.
 ///   - query: the query that was driven.
 ///   - grade: what the answer scored.
 ///   - rawIDs: the ids the selection model answered for this call.
 /// - Returns: the line to print.
 private func gradeLine(
-    round: Int, number: Int, query: GradedDiscoveryQuery, grade: DiscoveryGrade, rawIDs: [String]
+    number: Int, query: GradedDiscoveryQuery, grade: DiscoveryGrade, rawIDs: [String]
 ) -> String {
     let counts =
-        "round=\(round) q\(number) matches=\(grade.matchedPaths.count) "
+        "q\(number) matches=\(grade.matchedPaths.count) "
         + "correct=\(grade.correctCount) wrong=\(grade.wrongCount)"
     let paths =
         "paths=\(grade.matchedPaths) correctPaths=\(grade.correctPaths) "
@@ -175,13 +164,12 @@ private func gradeLine(
     return "\(counts) \(paths) selection=\(rawIDs) query=\"\(query.task)\""
 }
 
-/// The printed line that closes one round.
+/// The printed line that closes one group.
 ///
 /// - Parameters:
-///   - round: the round to report.
+///   - group: the graded group to report.
 ///   - queryCount: how many queries the group holds.
 /// - Returns: the line to print.
-private func roundLine(of round: DiscoveryRound, queryCount: Int) -> String {
-    "round=\(round.number) queries=\(queryCount) "
-        + "correctTotal=\(round.correctCount) wrongTotal=\(round.wrongCount)"
+private func groupLine(of group: DiscoveryGroupGrade, queryCount: Int) -> String {
+    "queries=\(queryCount) correctTotal=\(group.correctCount) wrongTotal=\(group.wrongCount)"
 }

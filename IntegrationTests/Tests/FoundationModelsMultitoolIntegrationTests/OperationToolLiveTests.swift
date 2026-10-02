@@ -7,10 +7,10 @@ import Testing
 
 /// The time limit of each test of this suite, in minutes.
 ///
-/// The discovery test makes five `searchTools` calls in each of
-/// ``discoveryRoundCount`` rounds. The search-then-call test drives one turn
-/// of the shipped profile, and `SearchThenCallTests` gives one such turn the
-/// same twelve minutes. A run that reaches the limit is parked, not slow.
+/// The discovery test makes five `searchTools` calls. The search-then-call
+/// test drives one turn of the shipped profile, and `SearchThenCallTests`
+/// gives one such turn the same twelve minutes. A run that reaches the limit
+/// is parked, not slow.
 private let operationToolTimeLimitMinutes = 12
 
 /// The label the discovery test prints its result lines under.
@@ -83,12 +83,11 @@ let operationToolQueries = [
 ///
 /// 1. Discovery. The notes tool stands beside the nine files-and-shell
 ///    entries, so a query has distractors to miss it among. Every query of
-///    ``operationToolQueries`` must find a declared verb path in every one of
-///    ``discoveryRoundCount`` rounds, graded by `gradeDiscoveryRounds` and
-///    held by `expectEveryQueryFindsACorrectPath`, exactly as
-///    `HeldOutSurfaceDiscoveryTests` grades its group. No round level: the
-///    group is five queries with one declared path each, so the per-query
-///    floor is the whole level.
+///    ``operationToolQueries`` must find a declared verb path, graded by
+///    `gradeDiscoveryGroup` and held by `expectEveryQueryFindsACorrectPath`,
+///    exactly as `HeldOutSurfaceDiscoveryTests` grades its group. No group
+///    level: the group is five queries with one declared path each, so the
+///    per-query floor is the whole level.
 /// 2. Search then call. One prompt asks the model to add a note, tag it and
 ///    report its id. The route is read off `StreamedTurn.calls`, which is the
 ///    record `streamTurn` keeps of every session tool call: a `searchTools`
@@ -115,22 +114,20 @@ let operationToolQueries = [
     .timeLimit(.minutes(operationToolTimeLimitMinutes))
 )
 struct OperationToolLiveTests {
-    @Test("every query finds a declared verb of the notes tool beside the files-and-shell distractors, in every round")
+    @Test("every query finds a declared verb of the notes tool beside the files-and-shell distractors")
     func notesVerbsAreFoundBesideTheDistractors() async throws {
         try await withLiveRouterFixture(name: operationDiscoveryScenarioName) { fixture in
             let notes = try IntegrationNotesTool.make(store: IntegrationNotesStore())
             let surface = try makeFilesAndShellSurface(over: fixture, adding: [notes])
             reportCatalogSize(of: surface.registry, reportedAs: operationDiscoveryScenarioName)
 
-            let rounds = try await gradeDiscoveryRounds(
+            let group = try await gradeDiscoveryGroup(
                 of: operationToolQueries,
                 through: surface.searchTools,
                 recordedBy: fixture,
                 reportedAs: operationDiscoveryScenarioName)
 
-            for round in rounds {
-                expectEveryQueryFindsACorrectPath(in: round, of: operationToolQueries)
-            }
+            expectEveryQueryFindsACorrectPath(in: group, of: operationToolQueries)
         }
     }
 

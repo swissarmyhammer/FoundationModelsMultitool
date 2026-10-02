@@ -8,10 +8,10 @@ import Testing
 /// The time limit of the no-description discovery test, in minutes.
 ///
 /// The test resolves the plumbing probe model and then drives three texts
-/// over three queries for ``discoveryRoundCount`` rounds, and each of those
-/// twenty-seven searches is one grammar-constrained generation. Ten minutes
-/// stands over the model load plus that many generations, and a run that
-/// reaches it is parked rather than slow.
+/// over three queries, and each of those nine searches is one
+/// grammar-constrained generation. Ten minutes stands over the model load
+/// plus that many generations, and a run that reaches it is parked rather
+/// than slow.
 private let noDescriptionTimeLimitMinutes = 10
 
 /// The label the printed result lines carry.
@@ -128,8 +128,8 @@ private struct NoDescriptionItem: SearchableMetadata {
 /// **What it measures.** The same catalog, three times, under the three texts
 /// of ``NoDescriptionCandidate``: the banner alone, which is the reading
 /// before this card; the name of the tool; and the sentence the surface now
-/// renders. Each text is driven over the same queries, for the same number of
-/// rounds, on the same model, so the printed totals are comparable.
+/// renders. Each text is driven over the same queries one time, on the same
+/// model, so the printed totals are comparable.
 ///
 /// **What it holds.** One floor, and no ranking: the shipped text must find
 /// at least one declared path over the whole run. A tool that never answers
@@ -173,33 +173,33 @@ struct NoDescriptionSurfaceDiscoveryTests {
             reportGatedResult(
                 scenario: noDescriptionScenarioName,
                 line: "entries=\(entries.count) domain=\(noDescriptionDomain.serverName) "
-                    + "queries=\(noDescriptionQueries.count) rounds=\(discoveryRoundCount)")
+                    + "queries=\(noDescriptionQueries.count)")
 
             let readings = try await NoDescriptionCandidate.allCases.mappedInOrder {
                 candidate in
                 let items = entries.map { NoDescriptionItem(entry: $0, candidate: candidate) }
                 let searcher = MetadataSearcher(
                     items: items, mode: .selection, embedder: nil, selection: selection)
-                let total = try await measure(
+                let group = try await measure(
                     candidate: candidate, through: searcher, limit: entries.count)
-                return (candidate, total)
+                return (candidate, group)
             }
-            let totals = Dictionary(uniqueKeysWithValues: readings)
+            let groups = Dictionary(uniqueKeysWithValues: readings)
 
-            let shipped = totals[.arguments]?.correct ?? 0
+            let shipped = groups[.arguments]?.correctCount ?? 0
             reportGatedResult(
                 scenario: noDescriptionScenarioName,
                 line: NoDescriptionCandidate.allCases
                     .map {
-                        "\($0.rawValue)=\(totals[$0]?.correct ?? 0)/\(totals[$0]?.wrong ?? 0)"
+                        "\($0.rawValue)=\(groups[$0]?.correctCount ?? 0)/\(groups[$0]?.wrongCount ?? 0)"
                     }
                     .joined(separator: " "))
             #expect(
                 shipped > 0,
                 """
-                over \(discoveryRoundCount) rounds of \(noDescriptionQueries.count) queries the \
-                selection model found no declared path for a tool that publishes no description, \
-                so the text the surface writes in place of a description carries no signal
+                over \(noDescriptionQueries.count) queries the selection model found no declared \
+                path for a tool that publishes no description, so the text the surface writes in \
+                place of a description carries no signal
                 """
             )
             withExtendedLifetime(mounted.servers) {}
@@ -207,9 +207,9 @@ struct NoDescriptionSurfaceDiscoveryTests {
     }
 }
 
-/// Drives every query of this suite through `searcher` for
-/// ``discoveryRoundCount`` rounds, prints one line for each round, and
-/// answers how many declared paths the whole run found.
+/// Drives each query of this suite through `searcher` one time, prints one
+/// line for each query and one line for the whole group, and answers the
+/// grade of the group.
 ///
 /// The grading is `DiscoveryGrade`, the same one the other gated discovery
 /// suites read, so a line of this suite reads like a line of theirs.
@@ -220,61 +220,31 @@ struct NoDescriptionSurfaceDiscoveryTests {
 ///   - limit: how many matches each search asks for. The whole catalog, so
 ///     the reading is the order the model answered in and never a cut this
 ///     test made.
-/// - Returns: how many declared paths the run found over every round, and how
-///   many paths it answered that no query declares.
+/// - Returns: the grade of each query, in the order this suite lists them.
 /// - Throws: what the search throws.
 private func measure(
     candidate: NoDescriptionCandidate,
     through searcher: MetadataSearcher<NoDescriptionItem>,
     limit: Int
-) async throws -> (correct: Int, wrong: Int) {
-    let rounds = try await (1...discoveryRoundCount).mappedInOrder { number in
-        try await measureOneRound(
-            number: number, candidate: candidate, through: searcher, limit: limit)
-    }
-    return (
-        correct: rounds.reduce(0) { $0 + $1.correctCount },
-        wrong: rounds.reduce(0) { $0 + $1.wrongCount }
-    )
-}
-
-/// Drives every query of this suite through `searcher` one time, prints one
-/// line for each query and one line for the round, and answers the graded
-/// round.
-///
-/// - Parameters:
-///   - number: the one-based number of this round, which labels each printed
-///     line.
-///   - candidate: the text under measurement, which labels each printed line.
-///   - searcher: the searcher over that text.
-///   - limit: how many matches each search asks for.
-/// - Returns: the grade of each query of this round, in the order this suite
-///   lists them.
-/// - Throws: what the search throws.
-private func measureOneRound(
-    number: Int,
-    candidate: NoDescriptionCandidate,
-    through searcher: MetadataSearcher<NoDescriptionItem>,
-    limit: Int
-) async throws -> DiscoveryRound {
+) async throws -> DiscoveryGroupGrade {
     let grades = try await noDescriptionQueries.mappedInOrder { query in
         let matches = try await searcher.search(
             intent: query.task, limit: limit)
         let grade = DiscoveryGrade(query: query, matchedPaths: matches.map(\.id))
         reportGatedResult(
             scenario: noDescriptionScenarioName,
-            line: "candidate=\(candidate.rawValue) round=\(number) "
+            line: "candidate=\(candidate.rawValue) "
                 + "matches=\(grade.matchedPaths.count) correct=\(grade.correctCount) "
                 + "wrong=\(grade.wrongCount) paths=\(grade.matchedPaths) "
                 + "query=\"\(query.task)\"")
         return grade
     }
-    let round = DiscoveryRound(number: number, grades: grades)
+    let group = DiscoveryGroupGrade(grades: grades)
     reportGatedResult(
         scenario: noDescriptionScenarioName,
-        line: "candidate=\(candidate.rawValue) round=\(number) "
-            + "correctTotal=\(round.correctCount) wrongTotal=\(round.wrongCount)")
-    return round
+        line: "candidate=\(candidate.rawValue) "
+            + "correctTotal=\(group.correctCount) wrongTotal=\(group.wrongCount)")
+    return group
 }
 
 private extension Sequence {

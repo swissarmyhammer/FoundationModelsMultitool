@@ -27,20 +27,26 @@ private let selectionForkScenario = "selectionFork"
 /// every child came off the same single root. The mechanism is asserted from
 /// the recording rather than assumed.
 ///
-/// It also times the two calls and holds the second to being no slower than
-/// the first. That is a timing observation and nothing more — see below.
+/// It also times the two calls and prints both durations. Nothing asserts on
+/// them — see below.
 ///
 /// ## What this suite CANNOT establish, and why it was renamed
 ///
 /// It was `PrefixReuseTests`, and its suite name called it a pin. It pinned
 /// nothing. Its one assertion was `secondElapsed <= firstElapsed`, and the
-/// first call pays a model warm-up the second never pays, so a run that
-/// re-prefilled the whole surface from scratch satisfies it exactly as well
+/// first call paid a model warm-up the second never paid, so a run that
+/// re-prefilled the whole surface from scratch satisfied it exactly as well
 /// as a run that skipped a prefill. Measured 2026-08-16, both candidate
-/// models pass and neither passes decisively — Muse Glimmer `first=7.75s
-/// second=3.31s`, Qwen3.8 `first=5.81s second=3.58s`. The assertion is kept
-/// because "the second call is not slower" is true and worth holding; it is
-/// not evidence of prefix reuse, and no reader should take it for any.
+/// models passed and neither passed decisively — Muse Glimmer `first=7.75s
+/// second=3.31s`, Qwen3.8 `first=5.81s second=3.58s`.
+///
+/// Card `^3vtvrzg` removed that timing assertion. `LiveModelResidency` now
+/// keeps each model resident for the whole test process, thus the first call
+/// of this suite is warm whenever an earlier suite resolved the same model,
+/// and the comparison is then of two warm calls. A local full run on
+/// 2026-10-01 measured `first=1.24s second=1.46s`: the order of two warm
+/// calls is noise, and it shows nothing about this package. The durations
+/// stay in the `RESULT` line as a reading.
 ///
 /// The recorded entries cannot rescue it either. That was checked against the
 /// shipped build before this suite was narrowed, rather than assumed:
@@ -58,11 +64,13 @@ private let selectionForkScenario = "selectionFork"
 /// - The one figure that would answer the question,
 ///   `usage.input.cachedTokenCount`, never arrives here. Router's live
 ///   conformer, `MLXFoundationModelsSessionBackend.usageTokenCounts()`,
-///   reads only the two `totalTokenCount`s and drops it; and in the pinned
-///   `mlx-swift-lm` the FoundationModels executor carries no prompt cache
-///   at all, so `cachedTokenCount` is the literal `0` at every emission
-///   site. On this build nothing is ever skipped, so there is nothing for
-///   a count to report.
+///   reads only the two `totalTokenCount`s and drops it. The pinned
+///   `mlx-swift-lm` executor now keeps a prompt cache for each session, and
+///   a plain turn reuses it (`LiveRouterFixture.swift` records the
+///   measurement). But each selection call here is a guided pass, and a
+///   guided pass builds its own cache and takes none (the unified log says
+///   `rule=guided`). Thus a selection call skips nothing, and there is
+///   nothing for a count to report.
 ///
 /// A live run bears that out and then goes one worse. Both selection turns
 /// recorded exactly `tokensIn=1144`, although their two intents tokenize two
@@ -151,7 +159,6 @@ struct SelectionForkPerCallTests {
 
             let trace = SelectionForkTrace(events: try fixture.transcriptEvents())
             expectForkPerCall(trace)
-            expectSecondCallNoSlower(first: firstElapsed, second: secondElapsed)
             reportDiagnostics(trace, first: firstElapsed, second: secondElapsed)
 
             await fixture.tearDown()
@@ -232,28 +239,6 @@ private func expectForkPerCall(_ trace: SelectionForkTrace) {
         expected every selection child to be forked from the tier's ONE cached root, but the run \
         recorded \(trace.rootSessionIds.count) distinct roots — the cached root was dropped and \
         rebuilt between calls, so each call re-assembled the surface prefix from scratch
-        """
-    )
-}
-
-/// Holds the second selection call to being no slower than the first.
-///
-/// A timing comparison and nothing more. The first call pays model warm-up
-/// the second never pays, so this holds on a run that re-prefills the whole
-/// surface exactly as it holds on one that skips a prefill — see this file's
-/// suite documentation, and never read a pass here as prefix reuse.
-///
-/// - Parameters:
-///   - first: the first `searchTools` call's wall-clock duration.
-///   - second: the second call's wall-clock duration.
-private func expectSecondCallNoSlower(first: TimeInterval, second: TimeInterval) {
-    #expect(
-        second <= first,
-        """
-        expected the second searchTools call to be no slower than the first, which pays the cold \
-        model warm-up: first=\(first)s second=\(second)s. This is a warm-vs-cold timing check, not a \
-        prefix-reuse check — a failure means the second call got slower than a COLD first call, which \
-        no warm path should manage
         """
     )
 }

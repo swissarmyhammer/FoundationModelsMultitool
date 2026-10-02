@@ -337,6 +337,20 @@ import TestConcurrency
 /// slower, which is all it can see. Cite `mlx-swift-lm`'s `f85fc50`, or
 /// measure it again there.
 ///
+/// **Measured again on Qwen3.8-27B-mxfp4, 2026-10-01 (card `^3vtvrzg`).** The
+/// fork's executor now carries a prompt cache for each session, and it logs
+/// each plan under `com.apple.FoundationModels-MLX:ExecutorPromptCache`. The
+/// log of `SearchThenCallTests/singleCallWeather` (`mlx-swift-lm` `a1f77ad`,
+/// Router `8821ccc`) read: call 1 `rendered=945 reused=0 fed=945 rule=cold`,
+/// call 2 `rendered=1228 reused=1016 fed=212 rule=splice`, call 3
+/// `rendered=1412 reused=1284 fed=128 rule=splice`. Thus each turn of a
+/// session after the first feeds only its new tokens on the 27B. The Router
+/// transcript cannot show it: its `generationCall` entry writes "fed N
+/// tokens" for the whole context, because Router reads only
+/// `usage.input.totalTokenCount`. The selection tier reuses nothing: each
+/// selection call is a guided pass, and a guided pass builds its own cache
+/// (`rule=guided`).
+///
 /// Neither reference carries an `@revision`, so both track their repository's
 /// default revision rather than a fixed commit — these are model *choices*,
 /// not version locks, whatever the surrounding prose calls them.
@@ -554,9 +568,9 @@ struct LiveRouterFixture {
     /// The router that resolved `profile` — its `id` roots the recording
     /// tree `transcriptEvents()` reads back.
     let router: Router
-    /// The resolved, resident profile. Router owns its residency by ARC, so
-    /// the models it holds are freed once this fixture and every handle taken
-    /// from it are unreferenced; see ``tearDown()``.
+    /// The resolved, resident profile. Its models stay resident after this
+    /// fixture is unreferenced, because `LiveModelResidency` keeps one hold of
+    /// each of them for the test process; see ``tearDown()``.
     let profile: LanguageModelProfile
     /// The durable transcripts root passed to `Router.init(recordingsDir:)`.
     /// Stands under ``recordingsRoot`` — inside the workspace, never under the
@@ -591,9 +605,15 @@ struct LiveRouterFixture {
     /// `IntegrationTests.endToEnd()`.
     ///
     /// Takes ``liveProfileTurnstile`` before resolving anything, so at
-    /// most one integration scenario in the target has a profile resident at a time;
+    /// most one integration scenario in the target generates at a time;
     /// ``tearDown()`` gives it back. A resolution that throws gives it back
     /// itself, since its caller is left with no fixture to tear down.
+    ///
+    /// Each call makes a new `Router`, thus each scenario gets its own
+    /// recordings directory. The models come from `ModelPool.shared`, and
+    /// `LiveModelResidency` keeps each model resident after its first
+    /// resolve, thus a later resolve of the same model loads nothing. Every
+    /// router reads one repository-metadata cache, ``metadataCacheDir``.
     ///
     /// - Parameter definition: the profile to resolve. Defaults to
     ///   `multitoolTinyProfile`, the configuration a host really gets, which is
@@ -615,17 +635,17 @@ struct LiveRouterFixture {
         _ = MetalLibraryTestBootstrap.ensureColocatedMetallib
         await liveProfileTurnstile.acquire()
         do {
-            let cacheDir = Self.makeTempDir()
             let recordingsDir = Self.makeRecordingsDir()
             let loader = LiveModelLoader()
             let router = Router(
-                cacheDir: cacheDir,
+                cacheDir: Self.metadataCacheDir,
                 recordingsDir: recordingsDir,
                 recordingLevel: .full,
                 loader: loader
             )
             let progress = ResolutionProgress()
             let profile = try await router.resolve(profile: definition, reporting: progress)
+            try await LiveModelResidency.shared.keep(LiveModelResidency.poolKeys(of: profile))
             // What this run actually resolved, printed because a real-model run's
             // whole purpose is to measure the configuration a host really gets
             // — and until now the only time any of it reached the log was when
@@ -677,13 +697,12 @@ struct LiveRouterFixture {
     /// Call once a scenario is done with this fixture, on every exit path
     /// (success, assertion failure, or thrown error).
     ///
-    /// The three resident models are not evicted here, because Router owns
-    /// their residency by ARC: each handle holds the residency claim, and the
-    /// models are freed once this fixture and every handle taken from it are
-    /// unreferenced. The next `Router.resolve` drains those pending evictions
-    /// before it measures the host budget, so the next scenario still fits.
-    /// A scenario must therefore keep no handle and no session past its own
-    /// test function.
+    /// The three resident models stay resident after this call, because
+    /// `LiveModelResidency` keeps one hold of each model for the whole test
+    /// process. The next scenario that names the same model thus loads
+    /// nothing. The handles and the sessions of this fixture are still freed
+    /// by ARC once nothing references them, so a scenario must keep no handle
+    /// and no session past its own test function.
     func tearDown() async {
         await liveProfileTurnstile.release()
     }
@@ -697,21 +716,6 @@ struct LiveRouterFixture {
     func transcriptEvents() throws -> [TranscriptEvent] {
         try TranscriptEvent.merged(under: recordingsDir.appendingPathComponent(router.id.description))
     }
-
-    /// What the shared budget was actually charged for a resolved slot, as
-    /// distinct from what that slot's candidate *weighs*.
-    ///
-    /// The two differ exactly when a reference is named by more than one slot,
-    /// which is this package's shipped shape: `footprintBytes` is "the chosen
-    /// candidate's `× 1.2` footprint estimate, as used at the joint-fit
-    /// comparison" and reads the same for both generation slots, while
-    /// `chargedBytes` is what that slot took out of the budget. Router's
-    /// `^8hs4wrw` made the second slot's charge its own session's KV cache
-    /// rather than a second copy of the weights, so `chargedBytes` is the
-    /// figure that moves and `footprintBytes` is the figure that does not.
-    /// Printing only the footprint would show a number the fix never touches.
-    ///
-    /// - Parameter model: the resolved slot to read.
 
     /// The durable root every fixture's recordings directory stands under:
     /// `<IntegrationTests package>/.build/recordings`, derived from this
@@ -741,6 +745,16 @@ struct LiveRouterFixture {
     /// for the temporary cache directories and the durable recordings
     /// directories alike, so a directory listing reads as one family.
     private static let fixtureDirectoryPrefix = "FMMultitoolIntegration-"
+
+    /// The one Router cache directory of this test process: the cache of the
+    /// repository metadata that Router reads to size each candidate.
+    ///
+    /// One directory for every fixture, and not one for each fixture. A fresh
+    /// directory made each resolve fetch the metadata of every model from the
+    /// Hugging Face Hub again. With one directory, only the first resolve of
+    /// each model fetches it. The directory is temporary, thus nothing of it
+    /// outlives the run.
+    private static let metadataCacheDir = makeTempDir()
 
     /// Creates a unique temporary directory, for state that must NOT outlive
     /// the run — the Router cache directory, and a capability store a scenario
