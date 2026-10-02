@@ -34,6 +34,24 @@ comments:
     - evidence: 18 source/test files + 1 new (Support/GatedServerMaker.swift). Helpers: MCPTestSupport.makeServer (new), connectedMCPServer(to:over:), connectedMCPServer(serving:), connectedLoopbackMCPServer, connectedRecordingMCPServer; CLIRunner.run/makeDemoRegistry `makeServer` seam; makeLargeCatalogSurface `makeServer`. Tests converted: LiveCatalog, LostCall, MCPServerDiscovery, Metrics, MCPTracePropagation, MCPLogRecord, MCPSessionSweep, TransportFactory, StdioServerProcess, Resilience (forwards), OverBudgetSelectionOrder, CLIArgument (+2 new tests). Runs: `swift test --filter <22 affected suites>` 205 tests / 22 suites passed; root `swift test` 1890 tests / 155 suites passed; `swift build --build-tests --package-path IntegrationTests` OK; `swift test --package-path IntegrationTests --no-parallel --filter 'OverBudgetSurfaceDiscoveryTests|NoDescriptionSurfaceDiscoveryTests|CLISmokeTests'` 4 tests / 3 suites passed. Only build warning: the existing "missing creator for mutated node" of the mlx Cmlx bundle (SwiftPM, not this change).
     - next: /review
   timestamp: 2026-10-02T03:07:47.282219+00:00
+- actor: claude-code
+  id: 01m3xaq429mm7pzch1wg04zf9w
+  text: |-
+    ### test - green
+    - root suite on merge 97fd6a9: 1893 tests in 155 suites, 0 issues (one run, no change after it).
+    - integration run: swift test --package-path IntegrationTests --no-parallel --filter 'OverBudgetSurfaceDiscoveryTests|NoDescriptionSurfaceDiscoveryTests|CLISmokeTests|CLISignalExitTests|SearchThenCallTests'
+    - result: 9 tests (plus 2 test cases of the signal test) in 5 suites passed after 237.493 seconds. 0 failures, 0 issues, 0 skipped.
+    - warnings: 1 build system line from SwiftPM: "missing creator for mutated node" for the mlx-swift_Cmlx.bundle in a dependency. It is not in the code of this task. 0 compiler warnings.
+    - output file: scratchpad/integration-run.txt
+    - next: review
+  timestamp: 2026-10-02T03:32:22.729157+00:00
+- actor: claude-code
+  id: 01m3xaqtnfef7rme4w8dda872y
+  text: |-
+    ### commit — changed
+    - evidence: code commit fff0f4b (test(mcp): pass a gated connect-attempt clock through the MCP test helpers); merge commit 97fd6a9. Kanban records go in one local commit "chore(kanban): record the test and commit steps for ^zbhjc99".
+    - next: review
+  timestamp: 2026-10-02T03:32:45.871520+00:00
 position_column: doing
 position_ordinal: '80'
 title: Pass a gated connect-attempt clock through the MCPTestSupport connect helpers
