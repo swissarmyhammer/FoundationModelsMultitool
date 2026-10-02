@@ -85,7 +85,7 @@ private func JSContextGroupClearExecutionTimeLimit(_ group: JSContextGroupRef)
 /// poll interval elapses) re-arms the *same* short interval itself whenever
 /// it decides not to terminate yet, rather than relying on JSC's own
 /// "return false" contract. `shouldTerminate()` is what actually decides, in
-/// Swift, whether the *real* configured `timeLimit` has elapsed or
+/// Swift, whether the *real* configured deadline is reached or
 /// `isCancelled` has reported `true` — this state is effectively the *real*
 /// watchdog, with JSC's own limit reduced to a self-renewing polling tick.
 ///
@@ -114,15 +114,12 @@ private final class WatchdogState: @unchecked Sendable {
 
     private let lock: OSAllocatedUnfairLock<Cause?>
 
-    /// When this run's watchdog was armed — the reference point
-    /// `shouldTerminate()` measures elapsed time from.
-    private let runStart: ContinuousClock.Instant
-
-    /// The *real* configured time limit this state enforces — independent
-    /// of whatever short poll interval the group's own
-    /// `JSContextGroupSetExecutionTimeLimit` was actually armed with (see
-    /// this type's documentation).
-    private let timeLimit: TimeInterval
+    /// The *real* configured time limit this state enforces, as a deadline on
+    /// the watchdog clock — independent of whatever short poll interval the
+    /// group's own `JSContextGroupSetExecutionTimeLimit` was actually armed
+    /// with (see this type's documentation). It is armed when this state is
+    /// made.
+    private let deadline: WatchdogDeadline
 
     /// Polled once per `jscTerminateCallback` invocation — the M10
     /// cancellation hook.
@@ -144,21 +141,26 @@ private final class WatchdogState: @unchecked Sendable {
     ///   - group: the context group this state's watchdog polls against.
     ///   - pollInterval: the short window re-armed on every callback
     ///     invocation that isn't yet ready to terminate.
-    ///   - timeLimit: the real wall-clock ceiling this state enforces.
+    ///   - deadline: the real ceiling this state enforces, already armed.
     ///   - isCancelled: polled once per callback invocation to detect
     ///     external (M10 `Task`) cancellation.
     fileprivate init(
         group: JSContextGroupRef,
         pollInterval: TimeInterval,
-        timeLimit: TimeInterval,
+        deadline: WatchdogDeadline,
         isCancelled: @escaping @Sendable () -> Bool
     ) {
         self.lock = OSAllocatedUnfairLock(initialState: nil)
-        self.runStart = ContinuousClock.now
+        self.deadline = deadline
         self.group = group
         self.pollInterval = pollInterval
-        self.timeLimit = timeLimit
         self.isCancelled = isCancelled
+    }
+
+    /// Stops the deadline timer of this run. The sandbox calls it at
+    /// teardown, thus no timer outlives its run.
+    fileprivate func disarm() {
+        deadline.disarm()
     }
 
     /// The recorded cause, or `nil` if this state hasn't decided to
@@ -175,7 +177,7 @@ private final class WatchdogState: @unchecked Sendable {
     /// anything on this SDK).
     ///
     /// - Returns: `true` (terminate) the first time either `isCancelled`
-    ///   reports `true` or the real `timeLimit` has elapsed, recording which
+    ///   reports `true` or the clock reached the real deadline, recording which
     ///   caused it; `false` (having just re-armed one more poll-interval
     ///   window) otherwise.
     fileprivate func shouldTerminate() -> Bool {
@@ -183,7 +185,7 @@ private final class WatchdogState: @unchecked Sendable {
             recordCause(.cancelled)
             return true
         }
-        if runStart.duration(to: .now) >= .seconds(timeLimit) {
+        if deadline.isReached {
             recordCause(.timedOut)
             return true
         }
@@ -220,6 +222,57 @@ private final class WatchdogState: @unchecked Sendable {
 private func jscTerminateCallback(_: JSContextRef?, _ info: UnsafeMutableRawPointer?) -> Bool {
     guard let info else { return true }
     return Unmanaged<WatchdogState>.fromOpaque(info).takeUnretainedValue().shouldTerminate()
+}
+
+/// The time limit of one run, as a deadline on the watchdog clock.
+///
+/// The deadline is reached by one of two paths:
+///
+/// 1. **The timer.** A task sleeps on the clock until the deadline, and then
+///    marks the deadline as reached. Thus the deadline is an event of the
+///    clock. A clock that a test controls ends the sleep when the test lets
+///    it, and the run ends at that event and at no real time
+///    (`JSCInterpreter.init(timeLimit:watchdogClock:)`).
+/// 2. **The reading of `now`.** Each check also compares the current instant
+///    of the clock with the deadline. The JS thread makes the checks, thus
+///    this path needs no other thread. It is the backstop when every thread
+///    of the cooperative pool is busy and the timer cannot run.
+private final class WatchdogDeadline: Sendable {
+    /// Whether the clock reached the deadline, by either path.
+    private let hasPassed: @Sendable () -> Bool
+
+    /// The task that sleeps until the deadline. ``disarm()`` cancels it.
+    private let timer: Task<Void, Never>
+
+    /// Arms the deadline `timeLimit` after the current instant of `clock`.
+    ///
+    /// - Parameters:
+    ///   - timeLimit: the time from now to the deadline.
+    ///   - clock: the clock that the deadline is on.
+    init<WatchdogClock: Clock<Duration>>(timeLimit: Duration, on clock: WatchdogClock) {
+        let deadline = clock.now.advanced(by: timeLimit)
+        let timerFired = OSAllocatedUnfairLock(initialState: false)
+        hasPassed = { timerFired.withLock { $0 } || clock.now >= deadline }
+        timer = Task {
+            do {
+                try await clock.sleep(until: deadline, tolerance: nil)
+            } catch {
+                // Cancelled by `disarm()`: the run ended first.
+                return
+            }
+            timerFired.withLock { $0 = true }
+        }
+    }
+
+    /// Whether the clock reached the deadline.
+    var isReached: Bool {
+        hasPassed()
+    }
+
+    /// Cancels the timer. A cancelled timer does not mark the deadline.
+    func disarm() {
+        timer.cancel()
+    }
 }
 
 /// JavaScriptCore-backed `Interpreter`.
@@ -260,6 +313,15 @@ public final class JSCInterpreter: Interpreter {
     /// Wall-clock ceiling for a single `run`, enforced by `WatchdogState`.
     private let timeLimit: TimeInterval
 
+    /// The clock that the deadline of each run is on (see
+    /// `WatchdogDeadline`).
+    ///
+    /// A host always gets the continuous clock. A test gives a clock that it
+    /// opens on command. Thus the watchdog fires when the test lets it, and a
+    /// busy machine cannot end a run that the test does not end (web.md §
+    /// "Testing": no test checks the speed of the machine).
+    private let watchdogClock: any Clock<Duration>
+
     /// The label every run's own worker queue carries (see the type doc for
     /// why the queue is per run rather than per interpreter). Shared rather
     /// than made unique per run: it names the role in a stack trace, and no
@@ -289,8 +351,20 @@ public final class JSCInterpreter: Interpreter {
     ///   watchdog terminates it. Defaults to a ceiling sized for a
     ///   directly-constructed interpreter running a self-contained snippet;
     ///   a `MultiTool` replaces it with its own configured ceiling.
-    public init(timeLimit: TimeInterval = 5.0) {
+    public convenience init(timeLimit: TimeInterval = 5.0) {
+        self.init(timeLimit: timeLimit, watchdogClock: ContinuousClock())
+    }
+
+    /// Creates a JavaScriptCore-backed interpreter whose watchdog deadline is
+    /// on `watchdogClock` — the initializer every other one forwards to.
+    ///
+    /// - Parameters:
+    ///   - timeLimit: See ``init(timeLimit:)``.
+    ///   - watchdogClock: The clock that the deadline of each run is on — see
+    ///     ``watchdogClock``. ``withTimeLimit(_:)`` keeps it.
+    init(timeLimit: TimeInterval, watchdogClock: any Clock<Duration>) {
         self.timeLimit = timeLimit
+        self.watchdogClock = watchdogClock
     }
 
     /// Returns a `JSCInterpreter` whose watchdog is armed with `seconds` in
@@ -300,14 +374,15 @@ public final class JSCInterpreter: Interpreter {
     /// this type's state, and the caller that constructed this interpreter
     /// keeps the ceiling it asked for. Every other piece of a run's state is
     /// created per `run` anyway (see this type's own documentation), so the
-    /// returned interpreter differs in nothing but the ceiling.
+    /// returned interpreter differs in nothing but the ceiling. It keeps the
+    /// watchdog clock of this one.
     ///
     /// - Parameter seconds: seconds a single `run` of the returned
     ///   interpreter may execute before its watchdog terminates it.
     /// - Returns: an interpreter that runs exactly as this one does, armed
     ///   with `seconds`.
     public func withTimeLimit(_ seconds: TimeInterval) -> any Interpreter {
-        JSCInterpreter(timeLimit: seconds)
+        JSCInterpreter(timeLimit: seconds, watchdogClock: watchdogClock)
     }
 
     /// Runs `code` on this run's own worker queue in a fresh, isolated
@@ -348,6 +423,7 @@ public final class JSCInterpreter: Interpreter {
                 installing: installing,
                 installingAsync: installingAsync,
                 timeLimit: timeLimit,
+                watchdogClock: watchdogClock,
                 isCancelled: isCancelled,
                 logger: logger,
                 metricsFactory: metricsFactory
@@ -447,6 +523,7 @@ public final class JSCInterpreter: Interpreter {
 
         fileprivate func tearDown() {
             JSContextGroupClearExecutionTimeLimit(group)
+            watchdogState.disarm()
             JSGlobalContextRelease(globalContextRef)
             JSContextGroupRelease(group)
         }
@@ -460,6 +537,7 @@ public final class JSCInterpreter: Interpreter {
         installing: [HostFunction],
         installingAsync: [AsyncHostFunction],
         timeLimit: TimeInterval,
+        watchdogClock: any Clock<Duration>,
         isCancelled: @escaping @Sendable () -> Bool
     ) throws -> Sandbox {
         guard let group = JSContextGroupCreate() else {
@@ -489,7 +567,7 @@ public final class JSCInterpreter: Interpreter {
         let watchdogState = WatchdogState(
             group: group,
             pollInterval: watchdogPollInterval,
-            timeLimit: timeLimit,
+            deadline: WatchdogDeadline(timeLimit: .seconds(timeLimit), on: watchdogClock),
             isCancelled: isCancelled
         )
         let statePointer = Unmanaged.passUnretained(watchdogState).toOpaque()
@@ -523,6 +601,7 @@ public final class JSCInterpreter: Interpreter {
         installing: [HostFunction],
         installingAsync: [AsyncHostFunction],
         timeLimit: TimeInterval,
+        watchdogClock: any Clock<Duration>,
         isCancelled: @escaping @Sendable () -> Bool,
         logger: Logging.Logger,
         metricsFactory: any MetricsFactory
@@ -536,6 +615,7 @@ public final class JSCInterpreter: Interpreter {
             installing: installing,
             installingAsync: installingAsync,
             timeLimit: timeLimit,
+            watchdogClock: watchdogClock,
             isCancelled: isCancelled
         )
         defer { sandbox.tearDown() }

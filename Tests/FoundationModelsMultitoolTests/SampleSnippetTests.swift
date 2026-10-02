@@ -48,7 +48,7 @@ struct SampleSnippetTests {
                 instructions.withLock { $0.append(opened) }
                 return session
             },
-            interpreter: JSCInterpreter(timeLimit: 5.0)
+            interpreter: JSCInterpreter.makeWithHeldWatchdog()
         )
     }
 

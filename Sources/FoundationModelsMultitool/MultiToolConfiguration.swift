@@ -33,7 +33,7 @@ public struct MultiToolConfiguration: Sendable, Equatable {
     /// The two clocks are not the same kind. The engine resets its clock on
     /// every progress event. This one does not: the `WatchdogState` measures
     /// from sandbox creation, and neither progress nor a suspension on
-    /// `elicit()` moves that reference point (`runStart` is a `let`, and
+    /// `elicit()` moves that reference point (`deadline` is a `let`, and
     /// `rearm()` re-arms the poll interval, not the deadline). So a snippet
     /// that keeps resetting the engine's clock is force-terminated here, at
     /// this ceiling. That absolute cap is the intended safety property, and

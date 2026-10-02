@@ -205,7 +205,7 @@ struct ResultRendererTests {
         // message is `"<hostFunctionName>: \(error)"`, which JSC then
         // surfaces back out as an `InterpreterError`. So this is a genuine
         // round trip through the real interpreter, not a hand-built stand-in.
-        let interpreter = JSCInterpreter()
+        let interpreter = JSCInterpreter.makeWithHeldWatchdog()
         let failingTool = HostFunction(name: "getWeather") { _ in
             throw ToolInvokerError(
                 kind: .missingRequiredField,

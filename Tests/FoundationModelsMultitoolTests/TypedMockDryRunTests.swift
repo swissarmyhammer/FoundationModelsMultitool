@@ -1,6 +1,8 @@
+import Foundation
 import Testing
 
 @testable import FoundationModelsMultitool
+@testable import MultitoolTestSupport
 
 /// Coverage for `TypedMockDryRun` — the gate that runs a candidate snippet
 /// against typed mocks of the matched catalog and reports the first failure
@@ -36,8 +38,8 @@ struct TypedMockDryRunTests {
         failure(for: snippet, against: try surface().entries)
     }
 
-    /// Runs `snippet` against the typed mocks of `entries`, under the
-    /// interpreter's stock time limit.
+    /// Runs `snippet` against the typed mocks of `entries`, in an interpreter
+    /// whose watchdog is held: only the snippet can end the run.
     ///
     /// - Parameters:
     ///   - snippet: the JavaScript to dry-run.
@@ -45,7 +47,7 @@ struct TypedMockDryRunTests {
     /// - Returns: the first failure message, or `nil` when the snippet ran
     ///   clean.
     static func failure(for snippet: String, against entries: [APISurface.Entry]) -> String? {
-        TypedMockDryRun.apiUsageFailure(in: snippet, against: entries, using: JSCInterpreter())
+        TypedMockDryRun.apiUsageFailure(in: snippet, against: entries, using: JSCInterpreter.makeWithHeldWatchdog())
     }
 
     /// Two typed entries: `notes.addNote`, whose result is a parsed JSON
@@ -331,17 +333,29 @@ struct TypedMockDryRunTests {
         #expect(failure.contains("must be string"))
     }
 
-    @Test("a snippet that cannot finish against instant mocks fails rather than passing")
+    /// The watchdog sleeps on a gated clock that the test opens. Thus the
+    /// deadline is an event, and the test reads no real time (card
+    /// `^3np5yzj`).
+    @Test(
+        "a snippet that cannot finish against instant mocks fails rather than passing",
+        .timeLimit(TestHangGuard.timeLimit))
     func nonTerminatingSnippetFails() throws {
+        let clock = GatedClock()
+        clock.open()
         let failure = try #require(
             TypedMockDryRun.apiUsageFailure(
                 in: "while (true) {}",
                 against: try Self.surface().entries,
-                using: JSCInterpreter(timeLimit: 0.5)
+                using: JSCInterpreter(timeLimit: Self.dryRunTimeLimit, watchdogClock: clock)
             )
         )
         #expect(failure.contains("time limit"))
+        #expect(clock.recordedSleeps == [.seconds(Self.dryRunTimeLimit)])
     }
+
+    /// The limit, in seconds, of the dry run of the snippet that cannot
+    /// finish. The gated clock reaches it only when the test opens the clock.
+    private static let dryRunTimeLimit: TimeInterval = 0.5
 
     // MARK: - Parsed JSON values, which carry no declared structure
 

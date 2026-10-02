@@ -72,8 +72,25 @@ comments:
     - evidence: 4d75201 test: replace real-clock speed checks with counts, events and GatedClock; base sha before it: 4211657
     - next: review
   timestamp: 2026-10-02T02:25:10.787149+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m3x78gacbr9kdx1gr2kskwjb
+  text: |-
+    ### review — clean
+    - evidence: review sha 4211657..HEAD (4d75201, 124330f). 22 files reviewed. Counts: 0 findings, 0 confirmed, 0 refuted, 21 attempted, 0 failed, 0 skipped. 10 .kanban files not reviewed (.reviewignore). No prior review findings on the task.
+    - next: none. The task moved to done.
+  timestamp: 2026-10-02T02:31:58.028206+00:00
+- actor: claude-code
+  id: 01m3x78yv3w619nts3pjrp7s4h
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 22 test files; each item converted under the user rule "no test checks the speed of the machine" (decision recorded in an earlier comment). New cards ^3np5yzj, ^zbhjc99, ^pfvdg5b.
+    - test: green — root swift test 1888 tests, 0 issues; full integration: only web failures with all keyless providers blocked (accepted on ^kghyac5), 6 keyed skips.
+    - commit: 4d75201, 124330f
+    - review: clean — review sha 4211657..HEAD, 0 findings. Task is in done.
+    - note: the 2 checklist items in the description are not ticked. Both are true: each item is converted, and root swift test passes.
+  timestamp: 2026-10-02T02:32:12.899336+00:00
+position_column: done
+position_ordinal: ffff8f80
 title: Remaining real-clock time checks after the "no load testing" decision
 ---
 ## What

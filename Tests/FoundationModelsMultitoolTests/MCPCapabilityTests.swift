@@ -72,9 +72,6 @@ struct MCPCapabilityTests {
     /// The plain-language goal the discovery test searches for.
     private static let loopbackTask = "echo text back through the loopback server"
 
-    /// The wall-clock ceiling of the sandbox the dry run of an example runs in.
-    private static let dryRunTimeLimit: TimeInterval = 5.0
-
     /// What the scripted selection tier answers: every loopback verb, by its
     /// rendered path. Built from ``loopbackPaths`` so a verb added or taken
     /// away moves the reply with it.
@@ -218,7 +215,7 @@ struct MCPCapabilityTests {
             let dryRunFailure = TypedMockDryRun.apiUsageFailure(
                 in: entry.qualifiedExample,
                 against: [entry],
-                using: JSCInterpreter(timeLimit: Self.dryRunTimeLimit))
+                using: JSCInterpreter.makeWithHeldWatchdog())
             #expect(dryRunFailure == nil, "the example of \(path) failed its dry run: \(dryRunFailure ?? "")")
         }
 

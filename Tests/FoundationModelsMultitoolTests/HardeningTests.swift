@@ -46,14 +46,20 @@ struct HardeningTests {
 
     // MARK: - Cancellation (plan.md M10 acceptance: "no leaked JS thread or semaphore deadlock")
 
-    /// The execution limit of the cancellation tests: one day, in seconds.
+    /// Makes the `runCode` tool of the cancellation tests: its watchdog is
+    /// held (`JSCInterpreter.makeWithHeldWatchdog`).
     ///
-    /// No test reaches it, thus the watchdog cannot end the run while the
-    /// test runs. The only event that can end the run is the cancellation. A
-    /// cancellation that does not reach the run makes the test hang, and
+    /// Thus the watchdog cannot end the run while the test runs. The only
+    /// event that can end the run is the cancellation. A cancellation that
+    /// does not reach the run makes the test hang, and
     /// ``TestHangGuard/timeLimit`` then fails it. Thus the tests read no
-    /// clock (card `^tm4x2hp`: no test checks the speed of the machine).
-    private static let unreachedExecutionTimeLimit: TimeInterval = 86_400
+    /// clock (card `^3np5yzj`: no test checks the speed of the machine).
+    ///
+    /// - Parameter registry: The registry of the tool.
+    /// - Returns: A `runCode` tool whose watchdog cannot fire.
+    private static func makeHeldMultiTool(registry: MultiTool.Registry) -> MultiTool {
+        MultiTool(registry: registry, interpreter: JSCInterpreter.makeWithHeldWatchdog())
+    }
 
     /// How long the slow tool of the pending-promise test sleeps: one day, in
     /// nanoseconds.
@@ -69,11 +75,10 @@ struct HardeningTests {
         "cancelling the task running MultiTool.call terminates an infinite-loop snippet and throws CancellationError",
         .timeLimit(TestHangGuard.timeLimit))
     func cancellationTerminatesInfiniteLoopSnippet() async throws {
-        // A configured limit that no test reaches: if cancellation only worked
-        // by waiting out the ordinary watchdog timeout, the test would hang
-        // until its hang guard fails it.
-        let configuration = MultiToolConfiguration(executionTimeLimit: Self.unreachedExecutionTimeLimit)
-        let multiTool = MultiTool(registry: Self.emptyRegistry, configuration: configuration)
+        // A held watchdog: if cancellation only worked by waiting out the
+        // ordinary watchdog timeout, the test would hang until its hang guard
+        // fails it.
+        let multiTool = Self.makeHeldMultiTool(registry: Self.emptyRegistry)
 
         let task = Task {
             try await multiTool.call(arguments: RunCodeArguments(code: "while (true) {}"))
@@ -95,10 +100,9 @@ struct HardeningTests {
         // (`pumpUntilSettled`) waiting on a pending `tools.*` call, not
         // spinning the JS thread — a different code path M10's cancellation
         // guarantee must also reach.
-        let configuration = MultiToolConfiguration(executionTimeLimit: Self.unreachedExecutionTimeLimit)
         let slowTool = WindowRecordingTool(name: "slow", delayNanoseconds: Self.unreachedToolDelayNanoseconds)
         let registry = try MultiTool.Builder().addTool(slowTool).buildRegistry()
-        let multiTool = MultiTool(registry: registry, configuration: configuration)
+        let multiTool = Self.makeHeldMultiTool(registry: registry)
 
         let task = Task {
             try await multiTool.call(arguments: RunCodeArguments(code: "return await tools.slow();"))
@@ -111,17 +115,21 @@ struct HardeningTests {
         await Self.expectCancellationError { _ = try await task.value }
     }
 
+    /// Each run has a held watchdog, thus only its cancellation can end it,
+    /// and a busy machine cannot turn a cancelled run into a timed-out one. A
+    /// cancellation that does not reach its run makes the test hang, and the
+    /// hang guard fails it (card `^3np5yzj`).
     @Test(
-        "repeated concurrent cancellations across many MultiTool.call invocations all complete cleanly, with no deadlock and no hung interpreter thread"
+        "repeated concurrent cancellations across many MultiTool.call invocations all complete cleanly, with no deadlock and no hung interpreter thread",
+        .timeLimit(TestHangGuard.timeLimit)
     )
     func cancellationStressTestNoDeadlock() async throws {
         let iterations = 40
-        let configuration = MultiToolConfiguration(executionTimeLimit: 10.0)
 
         try await withThrowingTaskGroup(of: Void.self) { group in
             for _ in 0..<iterations {
                 group.addTask {
-                    let multiTool = MultiTool(registry: Self.emptyRegistry, configuration: configuration)
+                    let multiTool = Self.makeHeldMultiTool(registry: Self.emptyRegistry)
                     let task = Task {
                         try await multiTool.call(arguments: RunCodeArguments(code: "while (true) {}"))
                     }
@@ -154,89 +162,144 @@ struct HardeningTests {
 
     // MARK: - Configuration limits enforced at their boundary
 
-    @Test("a small configured executionTimeLimit terminates a runaway snippet near that limit, not the (larger) default")
+    // Each boundary test injects an interpreter whose watchdog sleeps on a
+    // `GatedClock`. `MultiTool.init` re-arms that interpreter with the
+    // configured limit and keeps the clock. The recorded sleep tells which
+    // limit the watchdog armed, and the test opens the clock to make the
+    // deadline an event. No test reads the real time the run took (card
+    // `^3np5yzj`: no test checks the speed of the machine).
+
+    /// The small configured limit of the boundary tests, in seconds.
+    private static let smallExecutionTimeLimit: TimeInterval = 0.3
+
+    /// The stock limit of `JSCInterpreter()`, in seconds: the limit of the
+    /// injected interpreter that a smaller configured limit must replace.
+    private static let stockInterpreterTimeLimit: TimeInterval = 5
+
+    @Test(
+        "a small configured executionTimeLimit terminates a runaway snippet at that limit, not the (larger) default",
+        .timeLimit(TestHangGuard.timeLimit))
     func executionTimeLimitBoundaryTerminatesNearConfiguredLimit() async throws {
-        let configuration = MultiToolConfiguration(executionTimeLimit: 0.3)
-        let multiTool = MultiTool(registry: Self.emptyRegistry, configuration: configuration)
-
-        let output = try await multiTool.call(arguments: RunCodeArguments(code: "while (true) {}"))
-
-        // The run ended, and the timeout text names the limit the watchdog
-        // was armed with: the configured limit, not the package's own default
-        // work clock.
-        Self.expectTimedOut(output, armedWith: configuration.executionTimeLimit)
-    }
-
-    @Test("a snippet finishing under a small configured executionTimeLimit succeeds normally")
-    func executionTimeLimitBoundaryAllowsAFastSnippet() async throws {
-        let configuration = MultiToolConfiguration(executionTimeLimit: 0.3)
-        let multiTool = MultiTool(registry: Self.emptyRegistry, configuration: configuration)
-
-        let output = try await multiTool.call(arguments: RunCodeArguments(code: "return 1 + 1;"))
-
-        #expect(output == "2")
-    }
-
-    @Test("a configured executionTimeLimit below an injected interpreter's own limit is the one enforced")
-    func executionTimeLimitBelowAnInjectedInterpretersOwnLimitIsEnforced() async throws {
-        // `JSCInterpreter()` — the shape a caller reaches for first — carries
-        // its own stock time limit, far larger than this configuration's. The
-        // configured ceiling is the one that has to fire.
-        let configuration = MultiToolConfiguration(executionTimeLimit: 0.3)
+        let configuration = MultiToolConfiguration(executionTimeLimit: Self.smallExecutionTimeLimit)
+        let clock = GatedClock()
         let multiTool = MultiTool(
             registry: Self.emptyRegistry,
             configuration: configuration,
-            interpreter: JSCInterpreter()
+            interpreter: JSCInterpreter(
+                timeLimit: MultiToolConfiguration.defaultExecutionTimeLimit, watchdogClock: clock)
         )
+        clock.open()
 
         let output = try await multiTool.call(arguments: RunCodeArguments(code: "while (true) {}"))
 
-        // The run ended, and the timeout text names the limit the watchdog
-        // was armed with: the configured ceiling, not the injected
-        // interpreter's own stock limit.
-        Self.expectTimedOut(output, armedWith: configuration.executionTimeLimit)
+        // The deadline ended the run, and the watchdog was armed with the
+        // configured limit, not the package's own default work clock.
+        try await Self.expectTimedOut(output, armedWith: configuration.executionTimeLimit, on: clock)
+    }
+
+    @Test(
+        "a snippet finishing under a small configured executionTimeLimit succeeds normally",
+        .timeLimit(TestHangGuard.timeLimit))
+    func executionTimeLimitBoundaryAllowsAFastSnippet() async throws {
+        let configuration = MultiToolConfiguration(executionTimeLimit: Self.smallExecutionTimeLimit)
+        let clock = GatedClock()
+        let multiTool = MultiTool(
+            registry: Self.emptyRegistry,
+            configuration: configuration,
+            interpreter: JSCInterpreter(
+                timeLimit: MultiToolConfiguration.defaultExecutionTimeLimit, watchdogClock: clock)
+        )
+
+        // The clock stays closed: the snippet finishes before its deadline.
+        let output = try await multiTool.call(arguments: RunCodeArguments(code: "return 1 + 1;"))
+
+        #expect(output == "2")
+        try await Self.expectArmed(clock, with: configuration.executionTimeLimit)
+    }
+
+    @Test(
+        "a configured executionTimeLimit below an injected interpreter's own limit is the one enforced",
+        .timeLimit(TestHangGuard.timeLimit))
+    func executionTimeLimitBelowAnInjectedInterpretersOwnLimitIsEnforced() async throws {
+        // An injected interpreter with the stock time limit of
+        // `JSCInterpreter()` — the shape a caller reaches for first — far
+        // larger than this configuration's. The configured ceiling is the one
+        // that has to fire.
+        let configuration = MultiToolConfiguration(executionTimeLimit: Self.smallExecutionTimeLimit)
+        let clock = GatedClock()
+        let multiTool = MultiTool(
+            registry: Self.emptyRegistry,
+            configuration: configuration,
+            interpreter: JSCInterpreter(timeLimit: Self.stockInterpreterTimeLimit, watchdogClock: clock)
+        )
+        clock.open()
+
+        let output = try await multiTool.call(arguments: RunCodeArguments(code: "while (true) {}"))
+
+        // The deadline ended the run, and the watchdog was armed with the
+        // configured ceiling, not the injected interpreter's own stock limit.
+        try await Self.expectTimedOut(output, armedWith: configuration.executionTimeLimit, on: clock)
     }
 
     /// Records a failure unless `output` is the timeout text of a run that the
-    /// watchdog ended at `limit`.
+    /// watchdog ended at `limit`, and `clock` recorded the one deadline of
+    /// `limit`.
     ///
-    /// The watchdog names the limit it was armed with in its timeout message.
-    /// Thus the test reads which limit fired from the output, and not from the
-    /// real time the run took (card `^tm4x2hp`: no test checks the speed of
-    /// the machine).
+    /// The watchdog names the limit it was armed with in its timeout message,
+    /// and it sleeps on `clock` until that limit. Thus the test reads which
+    /// limit fired from the output and from the clock, and not from the real
+    /// time the run took.
     ///
     /// - Parameters:
     ///   - output: The rendered output of the `runCode` call.
     ///   - limit: The limit, in seconds, the watchdog must have been armed
     ///     with.
-    private static func expectTimedOut(_ output: String, armedWith limit: TimeInterval) {
+    ///   - clock: The gated clock the watchdog slept on.
+    private static func expectTimedOut(
+        _ output: String, armedWith limit: TimeInterval, on clock: GatedClock
+    ) async throws {
         #expect(output.contains(InterpreterError.Kind.timeout.repairableErrorSummary), "output was: \(output)")
         #expect(output.contains("Execution exceeded the \(limit)s time limit."), "output was: \(output)")
+        try await expectArmed(clock, with: limit)
     }
 
-    @Test("a configured executionTimeLimit above an injected interpreter's own limit is the one enforced")
+    /// Records a failure unless the watchdog slept on `clock` one time, until
+    /// `limit`.
+    ///
+    /// The deadline timer of a run starts as its own task. A run that ends
+    /// first can return before that task records its sleep. Thus the check
+    /// waits for the event "a sleep is recorded", and it never waits a fixed
+    /// time.
+    ///
+    /// - Parameters:
+    ///   - clock: The gated clock the watchdog sleeps on.
+    ///   - limit: The limit, in seconds, the watchdog must have armed.
+    private static func expectArmed(_ clock: GatedClock, with limit: TimeInterval) async throws {
+        try await TestPoll.waitUntil("the watchdog armed its deadline") { !clock.recordedSleeps.isEmpty }
+        #expect(clock.recordedSleeps == [.seconds(limit)])
+    }
+
+    @Test(
+        "a configured executionTimeLimit above an injected interpreter's own limit is the one enforced",
+        .timeLimit(TestHangGuard.timeLimit))
     func executionTimeLimitAboveAnInjectedInterpretersOwnLimitIsEnforced() async throws {
         // The mirror direction: a configured ceiling well above
         // `JSCInterpreter`'s own stock limit, and an injected interpreter
-        // armed far tighter than the snippet below needs. The snippet reaches
-        // its `return` only if the configured ceiling replaced that limit.
+        // armed far tighter. The watchdog must arm the configured ceiling, and
+        // the snippet reaches its `return`.
         let configuredLimit: TimeInterval = 20.0
-        let injectedLimit: TimeInterval = 0.3
-        let snippetMilliseconds = 1000
         let configuration = MultiToolConfiguration(executionTimeLimit: configuredLimit)
+        let clock = GatedClock()
         let multiTool = MultiTool(
             registry: Self.emptyRegistry,
             configuration: configuration,
-            interpreter: JSCInterpreter(timeLimit: injectedLimit)
+            interpreter: JSCInterpreter(timeLimit: Self.smallExecutionTimeLimit, watchdogClock: clock)
         )
 
-        let output = try await multiTool.call(
-            arguments: RunCodeArguments(
-                code: "const end = Date.now() + \(snippetMilliseconds); while (Date.now() < end) {} return \"done\";"
-            )
-        )
+        let output = try await multiTool.call(arguments: RunCodeArguments(code: "return \"done\";"))
 
         #expect(output == "\"done\"")
+        try await Self.expectArmed(clock, with: configuredLimit)
     }
 
     @Test("a return value serialized to exactly the configured returnValueCharacterLimit is not truncated")
