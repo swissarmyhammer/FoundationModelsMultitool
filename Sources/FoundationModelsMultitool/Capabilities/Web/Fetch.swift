@@ -34,16 +34,54 @@ struct FetchArguments {
     var format: String?
 
     /// The character offset of the window, or `nil` for 0.
-    @Guide(description: "The character offset of the window. Omit it to start at 0. Use nextOffset to read on.")
+    ///
+    /// The guide carries ``minimumOffset``, thus a guided generator cannot
+    /// write a negative offset.
+    @Guide(
+        description: "The character offset of the window. Omit it to start at 0. Use nextOffset to read on.",
+        .minimum(FetchArguments.minimumOffset))
     var offset: Int?
 
     /// The maximum number of characters in the window, or `nil` for 20000.
-    @Guide(description: "The maximum number of characters in the window, 500 to 200000. Omit it for 20000.")
+    ///
+    /// The guide carries ``maxCharactersRange``, thus a guided generator
+    /// cannot write a value that the verb refuses.
+    @Guide(
+        description: "The maximum number of characters in the window, 500 to 200000. Omit it for 20000.",
+        .range(FetchArguments.maxCharactersRange))
     var maxCharacters: Int?
 
     /// The time limit in seconds, or `nil` for the default of the policy.
-    @Guide(description: "The time limit of the download in seconds, 1 to 120. Omit it for 30.")
+    ///
+    /// The guide carries ``timeoutRange``, thus a guided generator cannot
+    /// write a value that the verb refuses.
+    @Guide(
+        description: "The time limit of the download in seconds, 1 to 120. Omit it for 30.",
+        .range(FetchArguments.timeoutRange))
     var timeout: Int?
+}
+
+extension FetchArguments {
+
+    /// The smallest accepted `offset`: the first character of the page. The
+    /// offset has no upper end.
+    ///
+    /// The generation schema and the verb's own bound check read this one
+    /// value, thus the two cannot disagree.
+    static let minimumOffset = 0
+
+    /// The accepted `maxCharacters` values: a character count from 500 to
+    /// 200000.
+    ///
+    /// The generation schema and the verb's own bound check read this one
+    /// range, thus the two cannot disagree.
+    static let maxCharactersRange = 500...200_000
+
+    /// The accepted `timeout` values: 1 to 120 seconds.
+    ///
+    /// The generation schema and the verb's own bound check read this one
+    /// range, thus the two cannot disagree.
+    static let timeoutRange = 1...120
 }
 
 /// The result of `tools.web.fetch`: one window of the page, or the
@@ -91,27 +129,20 @@ extension Fetch {
     /// The window size of a fetch that omits `maxCharacters`.
     private static let defaultMaxCharacters = 20_000
 
-    /// The smallest accepted `maxCharacters`.
-    private static let minimumMaxCharacters = 500
-
-    /// The largest accepted `maxCharacters`.
-    private static let maximumMaxCharacters = 200_000
-
-    /// The largest accepted `timeout`, in seconds.
-    private static let maximumTimeout = 120
-
-    /// The bound on `offset`: a character offset of 0 or more.
+    /// The bound on `offset`: a character offset of
+    /// ``FetchArguments/minimumOffset`` or more.
     private static let offsetBound = BoundParameter(
-        parameterName: "offset", typeDescription: "character offset", minimum: 0)
+        parameterName: "offset", typeDescription: "character offset", minimum: FetchArguments.minimumOffset)
 
-    /// The bound on `maxCharacters`.
+    /// The bound on `maxCharacters`: a character count in
+    /// ``FetchArguments/maxCharactersRange``.
     private static let maxCharactersBound = BoundParameter(
-        parameterName: "maxCharacters", typeDescription: "character count",
-        minimum: minimumMaxCharacters, maximum: maximumMaxCharacters)
+        parameterName: "maxCharacters", typeDescription: "character count", range: FetchArguments.maxCharactersRange)
 
-    /// The bound on `timeout`: 1 to ``maximumTimeout`` seconds.
+    /// The bound on `timeout`: a number of seconds in
+    /// ``FetchArguments/timeoutRange``.
     private static let timeoutBound = BoundParameter(
-        parameterName: "timeout", typeDescription: "number of seconds", minimum: 1, maximum: maximumTimeout)
+        parameterName: "timeout", typeDescription: "number of seconds", range: FetchArguments.timeoutRange)
 
     /// The URL schemes that the verb fetches.
     private static let fetchSchemes: Set<String> = ["http", "https"]

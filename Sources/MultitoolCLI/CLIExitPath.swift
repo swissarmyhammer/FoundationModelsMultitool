@@ -143,6 +143,13 @@ public struct CLIExitPath: Sendable {
     /// Where the line of an error that the command throws goes.
     private let errorOutput: @Sendable (String) -> Void
 
+    /// The clock that each wait of ``bound`` sleeps on.
+    ///
+    /// A host always gets the real clock. A test gives a clock that it opens
+    /// on command, thus the test reads the bound that the path armed, and no
+    /// real time.
+    private let clock: any Clock<Duration>
+
     /// Makes the exit path.
     ///
     /// - Parameters:
@@ -157,9 +164,31 @@ public struct CLIExitPath: Sendable {
         bound: Duration = flushBound,
         errorOutput: @escaping @Sendable (String) -> Void = CLIRunner.standardErrorOutput
     ) {
+        self.init(flush: flush, bound: bound, errorOutput: errorOutput, clock: ContinuousClock())
+    }
+
+    /// Makes the exit path whose waits sleep on `clock` — the initializer the
+    /// public one forwards to.
+    ///
+    /// Internal: a host has no reason to move the clock of the bound, and the
+    /// public initializer gives the real clock. A test calls this one through
+    /// `@testable import`, with a clock it opens on command.
+    ///
+    /// - Parameters:
+    ///   - flush: See the public initializer.
+    ///   - bound: See the public initializer.
+    ///   - errorOutput: See the public initializer.
+    ///   - clock: The clock that each wait of `bound` sleeps on.
+    init(
+        flush: (@Sendable () async -> Void)?,
+        bound: Duration,
+        errorOutput: @escaping @Sendable (String) -> Void,
+        clock: any Clock<Duration>
+    ) {
         self.flush = flush
         self.bound = bound
         self.errorOutput = errorOutput
+        self.clock = clock
     }
 
     /// Runs `command` in the run span, and flushes the exporters at its end.
@@ -188,7 +217,7 @@ public struct CLIExitPath: Sendable {
             return code
         }
         if let flush {
-            await Self.wait(atMost: bound, for: flush)
+            await Self.wait(atMost: bound, on: clock, for: flush)
         }
         return code
     }
@@ -211,7 +240,7 @@ public struct CLIExitPath: Sendable {
         case .stopped(let stop):
             await cancellation.cancel()
             commandTask.cancel()
-            await Self.wait(atMost: bound) { _ = await commandTask.value }
+            await Self.wait(atMost: bound, on: clock) { _ = await commandTask.value }
             return stop.exitCode
         }
     }
@@ -284,15 +313,19 @@ public struct CLIExitPath: Sendable {
     ///
     /// - Parameters:
     ///   - bound: The longest time to wait.
+    ///   - clock: The clock that the wait of `bound` sleeps on.
     ///   - work: The work to wait for.
-    private static func wait(atMost bound: Duration, for work: @escaping @Sendable () async -> Void) async {
+    private static func wait(
+        atMost bound: Duration, on clock: any Clock<Duration>,
+        for work: @escaping @Sendable () async -> Void
+    ) async {
         let (ends, continuation) = AsyncStream<Void>.makeStream()
         let working = Task {
             await work()
             continuation.yield()
         }
         let timing = Task {
-            try? await Task.sleep(for: bound)
+            try? await clock.sleep(for: bound)
             continuation.yield()
         }
         defer {

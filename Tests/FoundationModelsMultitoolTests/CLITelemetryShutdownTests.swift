@@ -20,19 +20,20 @@ import Tracing
 /// come from the in-memory tracer of `TelemetryCapture`. No test bootstraps a
 /// telemetry system, and no test sends a real signal to the test process: a
 /// test gives its own stream of stop signals.
-@Suite("CLITelemetryShutdown")
+///
+/// No bound of the exit path sleeps on the real clock. A test that must not
+/// reach the bound gives a `GatedClock` that it never opens, thus a wait that
+/// never ends is a hang, and the hang guard of the suite reports it.
+@Suite("CLITelemetryShutdown", .timeLimit(TestHangGuard.timeLimit))
 struct CLITelemetryShutdownTests {
     /// The time bound that the tests give to the exit path. It is short, thus
     /// a test of the bound ends soon.
     private static let testBound: Duration = .milliseconds(200)
 
-    /// A time much longer than ``testBound``. A flush or a command that does
-    /// not end by itself waits this long.
-    private static let longWait: Duration = .seconds(60)
-
-    /// The longest time a test of the bound lets the exit path take. It is
-    /// much shorter than ``longWait`` and much longer than ``testBound``.
-    private static let boundedEnd: Duration = .seconds(10)
+    /// How long a flush or a command that does not end by itself waits: one
+    /// day. No test reaches it, thus only the bound of the exit path can end
+    /// the wait while the test runs.
+    private static let longWait: Duration = .seconds(86_400)
 
     /// The line that the command of the thrown-error test throws.
     private static let thrownText = "the command threw"
@@ -51,7 +52,7 @@ struct CLITelemetryShutdownTests {
             let flushes = FlushRecorder(context: context)
             let output = OutputCollector()
 
-            let code = await CLIExitPath(flush: flushes.flush, bound: Self.testBound)
+            let code = await Self.exitPathWithUnreachedBound(flush: flushes.flush)
                 .run(stoppingOn: Self.noStopSignals()) { cancellation in
                     await CLIRunner.run(
                         arguments: arguments, resolve: Self.failingResolve, output: output.append,
@@ -71,7 +72,7 @@ struct CLITelemetryShutdownTests {
             let flushes = FlushRecorder(context: context)
             let errorOutput = OutputCollector()
 
-            let code = await CLIExitPath(flush: flushes.flush, bound: Self.testBound, errorOutput: errorOutput.append)
+            let code = await Self.exitPathWithUnreachedBound(flush: flushes.flush, errorOutput: errorOutput.append)
                 .run(stoppingOn: Self.noStopSignals()) { _ in
                     throw CLITelemetryShutdownTestsError.thrown(Self.thrownText)
                 }
@@ -95,7 +96,7 @@ struct CLITelemetryShutdownTests {
             let cancels = CallCounter()
             let (signals, sender) = AsyncStream<CLIStopSignal>.makeStream()
 
-            let code = await CLIExitPath(flush: flushes.flush, bound: Self.testBound)
+            let code = await Self.exitPathWithUnreachedBound(flush: flushes.flush)
                 .run(stoppingOn: signals) { cancellation in
                     await cancellation.onCancel { cancels.increment() }
                     sender.yield(signal)
@@ -121,16 +122,28 @@ struct CLITelemetryShutdownTests {
 
     // MARK: - The bound and the path with no exporter
 
-    @Test("a flush that does not end holds the exit path for the bound only")
-    func flushThatDoesNotEndIsBounded() async {
-        let clock = ContinuousClock()
-        let start = clock.now
+    /// The bound sleeps on a `GatedClock`, and the flush never ends while the
+    /// test runs. Thus the exit path can end only when the test opens the
+    /// clock, and the clock records the bound that the path armed. The test
+    /// reads no real time (card `^tm4x2hp`: no test checks the speed of the
+    /// machine). A path that waits for the flush past its bound hangs, and the
+    /// hang guard fails the test.
+    @Test("a flush that does not end holds the exit path for the bound only", .timeLimit(TestHangGuard.timeLimit))
+    func flushThatDoesNotEndIsBounded() async throws {
+        let clock = GatedClock()
+        let path = CLIExitPath(
+            flush: { try? await Task.sleep(for: Self.longWait) }, bound: Self.testBound,
+            errorOutput: CLIRunner.standardErrorOutput, clock: clock)
+        let run = Task {
+            await path.run(stoppingOn: Self.noStopSignals()) { _ in CLIRunner.ExitCode.answerFailed }
+        }
 
-        let code = await CLIExitPath(flush: { try? await Task.sleep(for: Self.longWait) }, bound: Self.testBound)
-            .run(stoppingOn: Self.noStopSignals()) { _ in CLIRunner.ExitCode.answerFailed }
+        try await TestPoll.waitUntil("the exit path armed its bound") { !clock.recordedSleeps.isEmpty }
+        clock.open()
+        let code = await run.value
 
         #expect(code == CLIRunner.ExitCode.answerFailed)
-        #expect(clock.now - start < Self.boundedEnd)
+        #expect(clock.recordedSleeps == [Self.testBound])
     }
 
     @Test("with no exporter the exit path gives the exit code of the command")
@@ -154,6 +167,26 @@ struct CLITelemetryShutdownTests {
     }
 
     // MARK: - Fixtures
+
+    /// An exit path whose bound sleeps on a `GatedClock` that no test opens.
+    ///
+    /// Thus the bound never ends the wait for the flush or for the command,
+    /// however slow the machine is, and the flush that the test records
+    /// always runs to its end. With the real clock, a busy machine could let
+    /// the bound end first, and the test would read no flush (card
+    /// `^kdtrmhv`: no test checks the speed of the machine).
+    ///
+    /// - Parameters:
+    ///   - flush: The flush that the path calls.
+    ///   - errorOutput: Where the line of an error that the command throws
+    ///     goes.
+    /// - Returns: The exit path.
+    private static func exitPathWithUnreachedBound(
+        flush: @escaping @Sendable () async -> Void,
+        errorOutput: @escaping @Sendable (String) -> Void = CLIRunner.standardErrorOutput
+    ) -> CLIExitPath {
+        CLIExitPath(flush: flush, bound: testBound, errorOutput: errorOutput, clock: GatedClock())
+    }
 
     /// A stream of stop signals that never gives a signal.
     ///

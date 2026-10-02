@@ -15,17 +15,19 @@ import Testing
 /// keyless providers, and each fetch goes to a real page. A test does not
 /// retry.
 ///
-/// **The DuckDuckGo challenge page (web.md, decided 2026-09-26).** The chain
-/// of `.keyless` tries `braveHTML` first. When Brave gives hits, the chain
-/// does not ask DuckDuckGo. The test does not assert which keyless provider
-/// gave the hits, and it does not read `notes`. Thus a DuckDuckGo challenge
-/// page alone cannot fail this test. A challenge page can only have an effect
-/// after Brave failed, and then the failure of Brave is the failure that the
-/// test reports.
+/// **A blocked provider (``BlockedProviderRule``, web.md).** The chain of
+/// `.keyless` tries `braveHTML`, then `duckDuckGoHTML`, and goes to the next
+/// provider after a block. The test does not assert which keyless provider
+/// gave the hits, and it does not read `notes`. Thus one blocked provider
+/// does not fail this test when the other provider gives results. When no
+/// provider gives results, the snippet gets a correction and not hits, and
+/// the test fails. The snippet goes through the chain of a real `MultiTool`,
+/// thus the chain itself applies the rule, and the test sends no second
+/// search.
 @Suite(
     "Live: the search-then-fetch snippet of web.md runs through runCode",
     .serialized,
-    .timeLimit(.minutes(LiveSearch.timeLimitMinutes))
+    .timeLimit(IntegrationHangGuard.timeLimit)
 )
 struct WebRunCodeLiveTests {
     /// The snippet of web.md § "Goal", word for word.

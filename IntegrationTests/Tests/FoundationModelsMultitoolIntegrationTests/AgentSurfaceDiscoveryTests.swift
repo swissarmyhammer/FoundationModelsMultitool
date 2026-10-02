@@ -3,16 +3,6 @@ import Testing
 
 @testable import FoundationModelsMultitool
 
-/// The time limit of the agent-surface discovery test, in minutes.
-///
-/// The test resolves a 4B model and makes ten `searchTools` calls, and each
-/// call is one grammar-constrained generation of a few tokens. Measured on a
-/// warm machine on 2026-09-10, the model load plus thirty such calls, three
-/// passes of the group at that time, took 24.4 s. Five minutes stands far over
-/// that and over a cold load, and a run that reaches it is parked rather than
-/// slow.
-private let agentSurfaceTimeLimitMinutes = 5
-
 /// The label the printed result and skip lines carry.
 private let agentSurfaceScenarioName = "agentSurfaceDiscovery"
 
@@ -139,7 +129,7 @@ let agentSurfaceQueries = [
 @Suite(
     "Gated searchTools discovery over the agent's files-and-shell surface",
     .serialized,
-    .timeLimit(.minutes(agentSurfaceTimeLimitMinutes))
+    .timeLimit(IntegrationHangGuard.timeLimit)
 )
 struct AgentSurfaceDiscoveryTests {
     @Test("the ten recorded queries each answer only real catalog paths, one time each, inside the limit")

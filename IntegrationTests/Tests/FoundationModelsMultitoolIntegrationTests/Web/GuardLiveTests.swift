@@ -14,7 +14,7 @@ import Testing
 @Suite(
     "Live: the address guard refuses loopback and metadata addresses",
     .serialized,
-    .timeLimit(.minutes(LiveSearch.timeLimitMinutes))
+    .timeLimit(IntegrationHangGuard.timeLimit)
 )
 struct GuardLiveTests {
     /// A public DNS name that resolves to the loopback address.

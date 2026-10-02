@@ -76,12 +76,6 @@ struct ShellRunnerTests {
     /// The highest marker a test picks for that sleep duration.
     private static let markerUpperBound = 999_999
 
-    /// How long a test waits for a process tree to go away after a kill.
-    private static let treeExitDeadline = Duration.seconds(5)
-
-    /// How long a test waits for a line of output to reach the store.
-    private static let outputArrivalDeadline = Duration.seconds(3)
-
     /// The time limit the run of the group-kill test carries. The timer sleeps
     /// on a `GatedClock`, thus it fires when the test opens the clock, and
     /// never before the test saw the tree.
@@ -243,31 +237,30 @@ struct ShellRunnerTests {
         return text.split(separator: "\n").filter { !$0.isEmpty }.count
     }
 
-    /// Polls `processCount(matching:)` until `predicate` accepts the count, or
-    /// until `deadline` passes.
+    /// Polls `processCount(matching:)` until `predicate` accepts the count.
+    ///
+    /// The wait is for an event: the count that the predicate accepts. Its
+    /// only deadline is ``TestPoll/deadline``, a hang guard and not a speed
+    /// check (card `^tm4x2hp`).
     ///
     /// - Parameters:
     ///   - pattern: The pattern `pgrep -f` reads.
-    ///   - deadline: How long to keep polling.
     ///   - predicate: What the count must satisfy.
     /// - Returns: The last count the poll read.
     private func waitForProcessCount(
         matching pattern: String,
-        deadline: Duration,
         until predicate: (Int) -> Bool
     ) async -> Int {
-        let clock = ContinuousClock()
-        let start = clock.now
-        var count = processCount(matching: pattern)
-        while !predicate(count), clock.now - start < deadline {
-            try? await Task.sleep(for: TestPoll.interval)
-            count = processCount(matching: pattern)
-        }
-        return count
+        await TestPoll.lastReading(of: { processCount(matching: pattern) }, until: predicate)
     }
 
-    /// Polls the log of `commandID` until it holds a line, or until the arrival
-    /// deadline passes.
+    /// Polls the log of `commandID` until it holds a line.
+    ///
+    /// The wait is for an event: the first line in the store. Its only
+    /// deadline is ``TestPoll/deadline``, a hang guard and not a speed check
+    /// (card `^tm4x2hp`). Each caller runs a gated command, which cannot end
+    /// before the test opens its gate, thus the line arrives while the
+    /// command still runs, however slow the machine is.
     ///
     /// - Parameters:
     ///   - state: The store to read.
@@ -276,14 +269,9 @@ struct ShellRunnerTests {
     ///   arrived.
     /// - Throws: What `ShellState.getLines` throws.
     private func waitForLines(in state: ShellState, commandID: String) async throws -> [LogLine] {
-        let clock = ContinuousClock()
-        let start = clock.now
-        var lines = try await linesOnceStarted(in: state, commandID: commandID)
-        while lines.isEmpty, clock.now - start < Self.outputArrivalDeadline {
-            try? await Task.sleep(for: TestPoll.interval)
-            lines = try await linesOnceStarted(in: state, commandID: commandID)
-        }
-        return lines
+        try await TestPoll.lastReading(
+            of: { try await linesOnceStarted(in: state, commandID: commandID) },
+            until: { !$0.isEmpty })
     }
 
     /// The lines of `commandID`, and an empty array while no command started
@@ -474,7 +462,7 @@ struct ShellRunnerTests {
         #expect(clock.recordedSleeps == [Self.treeKillTimeout])
 
         let survivors = await waitForProcessCount(
-            matching: pattern, deadline: Self.treeExitDeadline, until: { $0 == 0 })
+            matching: pattern, until: { $0 == 0 })
         #expect(survivors == 0, "the group kill left \(survivors) survivor(s)")
     }
 
@@ -740,7 +728,7 @@ struct ShellRunnerTests {
         #expect(outcome == .stopped)
 
         let survivors = await waitForProcessCount(
-            matching: pattern, deadline: Self.treeExitDeadline, until: { $0 == 0 })
+            matching: pattern, until: { $0 == 0 })
         #expect(survivors == 0, "the canceler left \(survivors) survivor(s)")
 
         _ = try? await runTask.value
@@ -774,7 +762,7 @@ struct ShellRunnerTests {
         #expect(outcome == .stopped)
 
         let survivors = await waitForProcessCount(
-            matching: pattern, deadline: Self.treeExitDeadline, until: { $0 == 0 })
+            matching: pattern, until: { $0 == 0 })
         #expect(survivors == 0, "the canceler left \(survivors) member(s) of the group alive")
 
         _ = try? await runTask.value

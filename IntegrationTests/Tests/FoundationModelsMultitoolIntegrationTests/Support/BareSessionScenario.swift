@@ -1,14 +1,6 @@
 import FoundationModels
 import Testing
 
-/// The time limit of one bare-session test, in minutes.
-///
-/// THE LIMIT IS THE DETECTOR, exactly as it is in `BackgroundTests`. The whole
-/// turn is one on-device tool call and one short reply, so a run that reaches
-/// this limit is a hang rather than a slow pass. Five minutes stands far over
-/// any healthy run and still reports a hang inside one CI job.
-let bareSessionTimeLimitMinutes = 5
-
 /// Runs one bare-session scenario: a set of plain `FoundationModels.Tool`
 /// values mounted on a `LanguageModelSession` with no Router at all.
 ///
@@ -25,8 +17,12 @@ let bareSessionTimeLimitMinutes = 5
 /// machine, the same way every other gated runner skips when live inference
 /// is not wired.
 ///
+/// After the reply, it writes one `TOOL` line for each tool call and each tool
+/// output of the turn. These lines show the arguments the model gave and the
+/// output it read, thus a wrong answer shows its cause in the log.
+///
 /// - Parameters:
-///   - scenarioName: the label the printed result and skip lines carry.
+///   - scenarioName: the label the printed result, tool, and skip lines carry.
 ///   - tools: the plain tools to mount on the session.
 ///   - prompt: the request the model is given.
 ///   - marker: the text the answer must carry, which only a tool's report
@@ -51,7 +47,26 @@ func runBareSessionScenario(
     let response: LanguageModelSession.Response<String> = try await session.respond(to: prompt)
 
     reportGatedResult(scenario: scenarioName, line: "reply=\"\(response.content)\"")
+    for entry in response.transcriptEntries.filter(\.isToolEntry) {
+        reportTraceLine("TOOL [\(scenarioName)] \(entry)")
+    }
     #expect(
         response.content.contains(marker),
         "expected the answer to carry \(marker), and it was: \(response.content)")
+}
+
+extension Transcript.Entry {
+
+    /// Whether this entry is a tool call or a tool output.
+    ///
+    /// A bare session has no Router, thus no recording holds its turn. The
+    /// `TOOL` lines that `runBareSessionScenario` writes from these entries
+    /// are the one record of the arguments the model gave and of the output
+    /// the tool gave back. Without them, a wrong answer does not show if the
+    /// model or the tool caused it.
+    var isToolEntry: Bool {
+        if case .toolCalls = self { return true }
+        if case .toolOutput = self { return true }
+        return false
+    }
 }

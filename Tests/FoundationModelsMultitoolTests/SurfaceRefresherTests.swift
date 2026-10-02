@@ -131,12 +131,6 @@ struct SurfaceRefresherTests {
     /// whole point is that nothing happens.
     private static let noFurtherStageSettleDelay = Duration.milliseconds(200)
 
-    /// How long a case waits for the watch task of the refresher to write the
-    /// record of a failed rebuild. Generous: a miss would make a genuine
-    /// record look like a missing one, and the wait ends the instant the
-    /// record arrives.
-    private static let logReadbackDeadline = Duration.seconds(20)
-
     // MARK: - The ground of one test
 
     /// A `RegistryStaging` that counts each staged registry and passes it on
@@ -408,9 +402,7 @@ struct SurfaceRefresherTests {
                 // rebuild throws and nothing is staged.
                 try await Self.publish(
                     ScriptedServer.echoTool(named: Self.illegalVerb), on: scripted)
-                try await TestPoll.waitUntil(
-                    "the failed rebuild reached the log", before: Self.logReadbackDeadline
-                ) {
+                try await TestPoll.waitUntil("the failed rebuild reached the log") {
                     Self.rebuildFailureRecords(of: Self.failureServerName, in: context).count >= Self.oneLogLine
                 }
                 try await Task.sleep(for: Self.noFurtherStageSettleDelay)

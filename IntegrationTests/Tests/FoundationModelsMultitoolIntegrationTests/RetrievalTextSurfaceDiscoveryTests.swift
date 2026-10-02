@@ -4,17 +4,6 @@ import Testing
 
 @testable import FoundationModelsMultitool
 
-/// The time limit of the retrieval-text measurement, in minutes.
-///
-/// The test resolves the embedding model, embeds the nine catalog texts one
-/// time for each of the three settings, and then makes one query embed for
-/// each of the twenty-five queries of each setting. Nothing here generates,
-/// so the whole run is one model load and 78 embed calls. Measured on a warm
-/// machine on 2026-09-29, all of it took 4.8 s. Ten minutes stands far over
-/// that and over a cold load, and a run that reaches it is parked rather
-/// than slow.
-private let retrievalTextTimeLimitMinutes = 10
-
 /// The label the printed result and skip lines carry.
 private let retrievalTextScenarioName = "retrievalTextChoice"
 
@@ -230,7 +219,7 @@ private let retrievalTextGroups = [
 @Suite(
     "Gated retrieval-text measurement over the agent's files-and-shell surface",
     .serialized,
-    .timeLimit(.minutes(retrievalTextTimeLimitMinutes))
+    .timeLimit(IntegrationHangGuard.timeLimit)
 )
 struct RetrievalTextSurfaceDiscoveryTests {
     @Test("every setting ranks only real catalog paths, one time each, for every query")

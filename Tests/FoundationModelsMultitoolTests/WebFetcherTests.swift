@@ -1,5 +1,6 @@
 import Foundation
 @testable import FoundationModelsMultitool
+@testable import MultitoolTestSupport
 import Testing
 
 /// Tests for `WebFetcher`: the byte limit, the status, the response fields,
@@ -38,6 +39,14 @@ struct WebFetcherTests {
 
     /// A time limit that is part of a second.
     private static let halfSecond: Duration = .milliseconds(500)
+
+    /// The smallest time limit of the `fetch` verb: shorter than the time
+    /// limit that a request has of its own.
+    private static let shortestFetchTimeout: Duration = .seconds(FetchArguments.timeoutRange.lowerBound)
+
+    /// The largest time limit of the `fetch` verb: longer than the time limit
+    /// that a request has of its own.
+    private static let longestFetchTimeout: Duration = .seconds(FetchArguments.timeoutRange.upperBound)
 
     /// Loads ``pageURL`` from a stub that gives `reply` for it.
     ///
@@ -179,12 +188,42 @@ struct WebFetcherTests {
 
     // MARK: - Failures
 
-    @Test("a request that does not answer in time gives the timeout failure")
+    /// The time limit sleeps on a `GatedClock`, thus it ends the load only
+    /// when the test opens the clock, and the clock records the limit that
+    /// the load armed. The test reads no real time (card `^tm4x2hp`: no test
+    /// checks the speed of the machine).
+    @Test("a request that does not answer in time gives the timeout failure", .timeLimit(TestHangGuard.timeLimit))
     func hangingRequestTimesOut() async throws {
-        let (_, result) = try await Self.loadPage(.hang, timeout: Self.shortTimeout)
+        let stub = WebStub(routes: [Self.pageURL: .hang])
+        let clock = GatedClock()
+        let fetcher = stub.makeFetcher(timeLimitClock: clock)
+        let request = try WebStub.request(to: Self.pageURL)
+        let loading = Task { await fetcher.load(request, timeout: Self.shortTimeout) }
+        try await TestPoll.waitUntil("the load armed its time limit") { !clock.recordedSleeps.isEmpty }
+        clock.open()
+        let result = await loading.value
         #expect(throws: WebFetchFailure.timeout(url: Self.pageURL, limit: Self.shortTimeout)) {
             try result.get()
         }
+        #expect(clock.recordedSleeps == [Self.shortTimeout])
+    }
+
+    /// The session timer of a request is a backstop only: it never ends a
+    /// load before the time limit on the clock does, and it never shortens
+    /// the time limit that the request has of its own. Thus a time limit of
+    /// one second does not start a real one-second timer.
+    @Test(
+        "the session timer of a request never ends before the time limit of the load",
+        arguments: [shortestFetchTimeout, longestFetchTimeout]
+    )
+    func sessionTimerIsABackstop(limit: Duration) async throws {
+        let (stub, result) = try await Self.loadPage(
+            .respond(status: WebStub.okStatus, headers: [:], body: Data()), timeout: limit)
+        _ = try result.get()
+        let ownInterval = try WebStub.request(to: Self.pageURL).timeoutInterval
+        let recorded = try #require(stub.requests.first?.timeoutInterval)
+        #expect(recorded >= Double(limit.components.seconds))
+        #expect(recorded >= ownInterval)
     }
 
     @Test(

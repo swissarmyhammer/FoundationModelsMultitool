@@ -39,8 +39,8 @@ public struct MultiToolConfiguration: Sendable, Equatable {
     /// every progress event. This one does not: the `WatchdogState` and the
     /// wall-clock timer of the run measure from sandbox creation, and neither
     /// progress nor a suspension on `elicit()` moves that reference point
-    /// (`runStart` is a `let`, and `rearm()` re-arms the poll interval, not
-    /// the deadline). So a snippet
+    /// (both read one `deadline`, which is a `let`, and `rearm()` re-arms the
+    /// poll interval, not the deadline). So a snippet
     /// that keeps resetting the engine's clock is force-terminated here, at
     /// this ceiling. That absolute cap is the intended safety property, and
     /// it is why progress reports cannot keep a suspended context alive

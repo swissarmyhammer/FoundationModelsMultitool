@@ -78,8 +78,9 @@ struct MCPServerCallTests {
     private static let longRunStepDelay = Duration.milliseconds(20)
 
     /// How long a test waits for the scripted server to record a
-    /// `notifications/cancelled`.
-    private static let notificationTimeout = Duration.seconds(5)
+    /// `notifications/cancelled`: ``TestPoll/deadline``, a hang guard and
+    /// not a speed check (card `^tm4x2hp`).
+    private static let notificationTimeout = TestPoll.deadline
 
     /// How many recorded notifications the cancel cases wait for.
     private static let oneNotification = 1
@@ -116,10 +117,6 @@ struct MCPServerCallTests {
     private static let shortInnerCallMount = ToolMount(
         mode: .runToCompletion, timeout: innerCallBoundSeconds)
 
-    /// The latest a bounded call may end. The hanging tool never answers, so
-    /// a call that ends at all before this proves the bound ended it.
-    private static let promptReturnBound = Duration.seconds(5)
-
     /// How many terminal events one run posts.
     private static let terminalEventCount = 1
 
@@ -133,7 +130,7 @@ struct MCPServerCallTests {
 
     /// A scripted server that serves `tools`, connected to a fresh
     /// `MCPServer` named ``serverName`` over the in-memory transport — the
-    /// shared ``MCPTestSupport/connectedMCPServer(serving:name:callTimeout:renderBudget:)``
+    /// shared ``MCPTestSupport/connectedMCPServer(serving:name:connectAttemptClock:callTimeout:renderBudget:)``
     /// under this suite's own name.
     ///
     /// - Parameters:
@@ -409,12 +406,15 @@ struct MCPServerCallTests {
         }
 
         let elapsed = ContinuousClock.now - start
+        // The hanging tool never answers, thus a call that ended at all was
+        // ended by a bound, and the error names the bound that fired: the
+        // configured inner-call bound. No upper bound on the real time stands
+        // here (card `^tm4x2hp`: no test checks the speed of the machine).
         #expect(
             thrown as? ToolMountError
                 == .timedOut(tool: MCPCallProbeTool.probeName, timeoutSeconds: Self.innerCallBoundSeconds),
             "thrown was: \(String(describing: thrown))")
         #expect(elapsed >= .seconds(Self.innerCallBoundSeconds), "elapsed was: \(elapsed)")
-        #expect(elapsed < Self.promptReturnBound, "elapsed was: \(elapsed)")
         let recorded = await scripted.waitForRecordedNotifications(
             count: Self.oneNotification, timeout: Self.notificationTimeout)
         #expect(recorded.first?.method == CancelledNotification.name)

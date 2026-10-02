@@ -147,6 +147,12 @@ final class WebFetcher: Sendable {
     /// The guard that checks each URL and each redirect hop.
     private let addressGuard: WebAddressGuard
 
+    /// The clock that the time limit of each load sleeps on. A host uses the
+    /// continuous clock. A test gives a clock that it controls, thus no test
+    /// races its stub against the real time (web.md § "Testing": no test
+    /// checks the speed of the machine).
+    let timeLimitClock: any Clock<Duration>
+
     /// Makes a fetcher.
     ///
     /// - Parameters:
@@ -156,7 +162,12 @@ final class WebFetcher: Sendable {
     ///     whose `protocolClasses` holds a stub.
     ///   - policy: The limits and the user agent of each request.
     ///   - addressGuard: The guard that checks each URL and each redirect hop.
-    init(sessionConfiguration: URLSessionConfiguration, policy: WebFetchPolicy, addressGuard: WebAddressGuard) {
+    ///   - timeLimitClock: The clock that the time limit of each load sleeps
+    ///     on — see ``timeLimitClock``. The default is the continuous clock.
+    init(
+        sessionConfiguration: URLSessionConfiguration, policy: WebFetchPolicy, addressGuard: WebAddressGuard,
+        timeLimitClock: any Clock<Duration> = ContinuousClock()
+    ) {
         let configuration = (sessionConfiguration.copy() as? URLSessionConfiguration) ?? sessionConfiguration
         configuration.httpShouldSetCookies = false
         configuration.httpCookieAcceptPolicy = .never
@@ -166,6 +177,7 @@ final class WebFetcher: Sendable {
         session = URLSession(configuration: configuration)
         self.policy = policy
         self.addressGuard = addressGuard
+        self.timeLimitClock = timeLimitClock
     }
 
     /// Sends `request` and reads its body.
@@ -176,7 +188,7 @@ final class WebFetcher: Sendable {
     /// - Parameters:
     ///   - request: The request.
     ///   - timeout: The time limit of the whole load: the guard, each
-    ///     redirect hop, and the body.
+    ///     redirect hop, and the body. It sleeps on ``timeLimitClock``.
     ///   - guarded: `true` to check the URL of the request with the guard.
     ///     `false` is only for a URL of the host configuration, for example
     ///     the base URL of a SearXNG instance. The guard still checks each
@@ -191,7 +203,7 @@ final class WebFetcher: Sendable {
         return await withTaskGroup(of: Result<FetchedBody, WebFetchFailure>.self) { group in
             group.addTask { await self.send(prepared, timeout: timeout, guarded: guarded) }
             group.addTask {
-                try? await Task.sleep(for: timeout)
+                try? await self.timeLimitClock.sleep(for: timeout)
                 return .failure(.timeout(url: target, limit: timeout))
             }
             let first = await group.next() ?? .failure(.timeout(url: target, limit: timeout))
@@ -224,8 +236,15 @@ final class WebFetcher: Sendable {
         return .success(String(decoding: body.bytes, as: UTF8.self))
     }
 
-    /// Adds the policy `User-Agent` when the request has none, and sets the
-    /// time limit of the session.
+    /// Adds the policy `User-Agent` when the request has none, and makes the
+    /// session timer of the request a backstop only.
+    ///
+    /// The time limit of the load sleeps on ``timeLimitClock``, and it ends
+    /// the load when it fires. The session timer of the request is a second
+    /// timer on the real clock. Thus it is never shorter than the time limit
+    /// of the load, and never shorter than the timer that the request has of
+    /// its own. It cannot end a load before the time limit does, and a time
+    /// limit of one second does not start a real one-second timer.
     ///
     /// - Parameters:
     ///   - request: The request of the caller.
@@ -236,7 +255,7 @@ final class WebFetcher: Sendable {
         if prepared.value(forHTTPHeaderField: Self.userAgentHeader) == nil {
             prepared.setValue(policy.userAgent, forHTTPHeaderField: Self.userAgentHeader)
         }
-        prepared.timeoutInterval = timeout.timeInterval
+        prepared.timeoutInterval = max(prepared.timeoutInterval, timeout.timeInterval)
         return prepared
     }
 

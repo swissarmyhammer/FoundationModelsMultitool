@@ -6,14 +6,6 @@ import Testing
 @testable import FoundationModelsMultitool
 import ScenarioGrading
 
-/// The time limit of the over-budget discovery test, in minutes.
-///
-/// The test resolves the plumbing probe model and makes two `searchTools`
-/// calls, and each call is one grammar-constrained generation for each slice
-/// of the catalog. Six minutes stands over the model load plus a handful of
-/// such generations, and a run that reaches it is parked rather than slow.
-private let overBudgetTimeLimitMinutes = 6
-
 /// The label the printed result and skip lines carry.
 private let overBudgetScenarioName = "overBudgetSurfaceDiscovery"
 
@@ -90,7 +82,7 @@ private let overBudgetQueries = [
 @Suite(
     "Gated searchTools discovery over a surface above the selection budget",
     .serialized,
-    .timeLimit(.minutes(overBudgetTimeLimitMinutes))
+    .timeLimit(IntegrationHangGuard.timeLimit)
 )
 struct OverBudgetSurfaceDiscoveryTests {
     @Test("a surface above the budget answers spliced-once, unique, in-limit matches from its slices")

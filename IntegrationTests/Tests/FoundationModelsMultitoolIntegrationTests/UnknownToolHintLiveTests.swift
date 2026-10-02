@@ -3,19 +3,6 @@ import Testing
 
 @testable import FoundationModelsMultitool
 
-/// The time limit of the did-you-mean hint test, in minutes.
-///
-/// The test resolves the plumbing probe profile, embeds the nine-entry catalog
-/// one time, and resolves six wrong paths. It generates nothing at all: the
-/// hint searcher runs in `.retrieval` mode with no selection tier, so the only
-/// model work is the catalog embed and one query embed for each guess that
-/// reaches tier 2. Measured on a warm machine on 2026-09-10, the whole suite
-/// took 2.7 s with three cases, and the same 2.7 s with six — the resolution
-/// is the cost, and the cases are free beside it. Four minutes stands far over that
-/// and over a cold load, which is the one slow part, and a run that reaches it
-/// is parked rather than slow.
-private let unknownToolHintTimeLimitMinutes = 4
-
 /// The label the printed result and skip lines carry.
 private let unknownToolHintScenarioName = "unknownToolHint"
 
@@ -186,7 +173,7 @@ let imaginedToolPaths = [
 @Suite(
     "Gated did-you-mean hints over the agent's files-and-shell surface",
     .serialized,
-    .timeLimit(.minutes(unknownToolHintTimeLimitMinutes))
+    .timeLimit(IntegrationHangGuard.timeLimit)
 )
 struct UnknownToolHintLiveTests {
     @Test("every wrong tools.* path answers with a tool the surface really defines")

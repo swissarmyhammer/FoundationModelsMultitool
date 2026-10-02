@@ -154,6 +154,16 @@ public actor MCPServer {
     /// clock here; a test of the queue gives a clock it opens on command.
     let clientQueueClock: any Clock<Duration>
 
+    /// The clock the per-attempt timeout of a connect sleeps on — see
+    /// `failConnectAttemptAfterTimeout(_:resume:)` in
+    /// `MCPServer+Connection.swift`.
+    ///
+    /// It is not ``clock``. A test gives ``clock`` a virtual clock whose sleep
+    /// never waits, and a timeout that never waits would win at once against
+    /// an attempt in flight. A host always gets the real clock here; a test of
+    /// the timeout gives a clock it opens on command.
+    let connectAttemptClock: any Clock<Duration>
+
     /// The logger every retry, reconnect and discarded attempt is reported to.
     let logger: Logger
 
@@ -321,9 +331,9 @@ public actor MCPServer {
     ///   - clock: The clock `connect(via:backoffPolicy:)` sleeps on between
     ///     retries. Defaults to a real `ContinuousClock`; a test substitutes a
     ///     virtual clock to drive a full backoff schedule with no real delay.
-    ///     Never used by the per-attempt timeout, which always measures real
-    ///     wall-clock time — a virtual clock that never suspends would make
-    ///     the timeout win at once against an attempt in flight.
+    ///     Never used by the per-attempt timeout, which sleeps on the real
+    ///     clock here — a virtual clock that never suspends would make the
+    ///     timeout win at once against an attempt in flight.
     ///   - callTimeout: The bound of a call made with no ambient
     ///     `ToolContext` — see ``callTimeout``. Defaults to
     ///     ``defaultCallTimeout``.
@@ -348,6 +358,7 @@ public actor MCPServer {
             version: version,
             clock: clock,
             clientQueueClock: ContinuousClock(),
+            connectAttemptClock: ContinuousClock(),
             callTimeout: callTimeout,
             renderBudget: renderBudget,
             elicitationHandler: elicitationHandler,
@@ -355,11 +366,13 @@ public actor MCPServer {
     }
 
     /// Creates a server whose client-operation queue bounds each wait on
-    /// `clientQueueClock` — the initializer every other one forwards to.
+    /// `clientQueueClock`, and whose per-attempt connect timeout sleeps on
+    /// `connectAttemptClock` — the initializer every other one forwards to.
     ///
-    /// Internal: a host has no reason to move the bounds of the queue, and
-    /// the public initializer gives the real clock. A test of the queue calls
-    /// this one through `@testable import`, with a clock it opens on command.
+    /// Internal: a host has no reason to move these bounds, and the public
+    /// initializer gives the real clock to each. A test of the queue or of the
+    /// timeout calls this one through `@testable import`, with a clock it
+    /// opens on command.
     ///
     /// - Parameters:
     ///   - name: See the public initializer.
@@ -367,6 +380,8 @@ public actor MCPServer {
     ///   - clock: See the public initializer.
     ///   - clientQueueClock: The clock each bounded wait of the
     ///     client-operation queue sleeps on — see ``clientQueueClock``.
+    ///   - connectAttemptClock: The clock the per-attempt timeout of a
+    ///     connect sleeps on — see ``connectAttemptClock``.
     ///   - callTimeout: See the public initializer.
     ///   - renderBudget: See the public initializer.
     ///   - elicitationHandler: See the public initializer.
@@ -376,6 +391,7 @@ public actor MCPServer {
         version: String,
         clock: any Clock<Duration>,
         clientQueueClock: any Clock<Duration>,
+        connectAttemptClock: any Clock<Duration>,
         callTimeout: Duration,
         renderBudget: RenderBudget,
         elicitationHandler: ElicitationHandler?,
@@ -389,6 +405,7 @@ public actor MCPServer {
         )
         self.clock = clock
         self.clientQueueClock = clientQueueClock
+        self.connectAttemptClock = connectAttemptClock
         self.callTimeout = callTimeout
         self.renderBudget = renderBudget
         self.elicitationHandler = elicitationHandler

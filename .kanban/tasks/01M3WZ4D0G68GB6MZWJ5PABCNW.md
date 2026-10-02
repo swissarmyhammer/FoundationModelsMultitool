@@ -1,0 +1,75 @@
+---
+assignees:
+- claude-code
+comments:
+- actor: claude-code
+  id: 01m3x0cprxqxk0jx7t6vae29xy
+  text: |-
+    Card ^gmhbe7g (iteration 2, not committed yet) did the work of this card. Each item, with the file evidence:
+
+    Do:
+    - "Give `WebFetcher` an injected clock": done. `Sources/FoundationModelsMultitool/Capabilities/Web/WebFetcher.swift` has `let timeLimitClock: any Clock<Duration>`, an init parameter that defaults to `ContinuousClock()`, and `load` sleeps on `self.timeLimitClock.sleep(for: timeout)` (not `Task.sleep`). `WebContext.init` passes a `timeLimitClock` parameter through, default `ContinuousClock()`. This is the pattern of `MCPServer.connectAttemptClock`.
+    - The session timer: `WebFetcher.prepare` set `URLRequest.timeoutInterval` to the limit, thus a second real timer of 1 second. Now it sets `max(request.timeoutInterval, limit)`. The session timer is a backstop only: it never ends a load before the clock limit, and a limit of 1 second does not start a real 1-second timer. The request default is 60 seconds.
+    - "Make `boundTimeoutIsAccepted` use the injected clock": done. `Tests/FoundationModelsMultitoolTests/Support/WebVerbFixture.swift` has `let timeLimitClock = GatedClock()`, given to the `WebContext`. No test opens it. `WebVerbArgumentTests.boundTimeoutIsAccepted` also checks `fixture.timeLimitClock.recordedSleeps == [.seconds(timeout)]`.
+    - "Look for other web tests that use a real short time limit": done. `WebStub.makeFetcher` (`Support/WebStubURLProtocol.swift`) now takes `timeLimitClock`, default a closed `GatedClock()`. Thus each stub test (WebFetcher, ProviderFallback, BraveHTML, BraveAPI, SearXNG, WebPageReader, WebRedirectGuard) cannot race the real clock. `WebContextTests.searchChainUsesTheSessionConfiguration` gives `GatedClock()`. The live suites in `IntegrationTests/` keep the real clock, which is correct for a live test.
+
+    Tests:
+    - [x] "`boundTimeoutIsAccepted` does not depend on the real clock": satisfied, see above. The only real timer left is the 60-second session backstop, a hang guard far above the stub reply.
+    - [x] "A test that proves the time limit still gives the timeout correction, with the injected clock": `WebFetcherTests.hangingRequestTimesOut`. The stub hangs, the test waits until the clock records the sleep, opens the clock, and expects `WebFetchFailure.timeout(url:limit:)` and `recordedSleeps == [shortTimeout]`. The correction text of that failure is checked by `timeoutMessageStatesSeconds`. New test `WebFetcherTests.sessionTimerIsABackstop` checks the session timer (RED with the old line: 1.0 < 60).
+    - [x] "Root `swift test` passes": one run, 1886 tests in 154 suites passed.
+
+    I did not move this card.
+  timestamp: 2026-10-02T00:31:55.677581+00:00
+- actor: claude-code
+  id: 01m3x26t6z391mhcq4b6svtqjj
+  text: |-
+    ### implement — no-change
+    - evidence: HEAD (commit 959b87d, ^gmhbe7g) does all items of this card. I made no file change.
+      - Do 1 (injected clock): `WebFetcher.swift` has `let timeLimitClock: any Clock<Duration>`, the init default is `ContinuousClock()`, and `load` sleeps on `self.timeLimitClock.sleep(for: timeout)`. `WebContext.init` passes `timeLimitClock` through. `prepare` sets `timeoutInterval = max(prepared.timeoutInterval, timeout.timeInterval)`, thus the session timer is a backstop only.
+      - Do 2 and Test 1 (`boundTimeoutIsAccepted`): `Support/WebVerbFixture.swift` gives `let timeLimitClock = GatedClock()` to `WebContext`. The test checks `fixture.timeLimitClock.recordedSleeps == [.seconds(timeout)]`.
+      - Do 3 (other web tests): `WebStub.makeFetcher` defaults to a closed `GatedClock()`. `WebContextTests.searchChainUsesTheSessionConfiguration` gives `GatedClock()`. The two tests that use the default clock (`WebFetcherTests.sessionHasNoCookiesAndNoCache`, `WebContextTests.fetcherUsesTheFetchPolicy`) do no load, thus no clock race.
+      - Test 2 (timeout correction with the injected clock): `WebFetcherTests.hangingRequestTimesOut` opens the `GatedClock` and expects `WebFetchFailure.timeout(url:limit:)`. `timeoutMessageStatesSeconds` checks the correction text.
+      - Test 3 (root `swift test`): one run at HEAD, 1888 tests in 155 suites passed, exit 0. The only `warning:` line comes from the build system ("missing creator for mutated node" on `mlx-swift_Cmlx.bundle`). It is not a compiler warning and it is not from this card.
+    - next: /review
+  timestamp: 2026-10-02T01:03:39.743766+00:00
+- actor: claude-code
+  id: 01m3x27jevctpchh771rxxcmhn
+  text: |-
+    ### commit — changed
+    - evidence: one local commit holds the .kanban changes only. Base is 4a7a2d9. Commit 959b87d already holds all code for this card. No push.
+    - next: review
+  timestamp: 2026-10-02T01:04:04.571614+00:00
+- actor: claude-code
+  id: 01m3x2d82926dc3jg1253t3r6n
+  text: |-
+    ### review — clean
+    - evidence: `review sha 56379b8..959b87d` — 0 findings, 0 confirmed, 0 refuted (7 attempted, 0 failed). 9 files reviewed. 6 `.kanban/` files are excluded by `.reviewignore`. The task has no earlier review findings.
+    - next: The task is in done. No more work is necessary.
+  timestamp: 2026-10-02T01:07:10.537957+00:00
+- actor: claude-code
+  id: 01m3x2djtss9hfvvxhrsyhgyat
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: no-change — HEAD 959b87d (^gmhbe7g) satisfies each item.
+    - test: green — root swift test at HEAD, 1888 tests, 155 suites, 0 issues (run in the implement step; no code change after it).
+    - commit: 4211657 (kanban only)
+    - review: clean — review sha 56379b8..959b87d, 0 findings. Task is in done.
+  timestamp: 2026-10-02T01:07:21.561114+00:00
+position_column: done
+position_ordinal: ffff8e80
+title: Remove the real 1-second clock from the web fetch timeout test
+---
+## What
+The root `swift test` run of ^gmhbe7g on 2026-10-02 had one failure: `WebVerbArgumentTests.boundTimeoutIsAccepted` with `timeout: 1`. The result was the correction "The request timed out after 1 second: https://site.example/page". The fetch goes to a `WebStub`, thus no network is used, but `WebFetcher.load` races the request against `Task.sleep(for: timeout)` on the real clock, and it also sets `URLRequest.timeoutInterval`. When the machine is busy, the stubbed reply takes more than 1 second, and the test fails.
+
+The user decision (web.md § "Testing", and ^tm4x2hp) is that no test checks the speed of the machine. This test was not in the list of ^kdtrmhv.
+
+## Do
+- Give `WebFetcher` an injected clock (or an event) for the time limit race, in the pattern of `MCPServer.connectAttemptClock` from ^tm4x2hp. Production uses the continuous clock.
+- Make `boundTimeoutIsAccepted` use the injected clock, thus a `timeout` of 1 is accepted no matter how slow the machine is.
+- Look for other web tests that use a real short time limit (for example the timeout correction tests), and convert them the same way.
+
+## Tests
+- [x] `boundTimeoutIsAccepted` does not depend on the real clock.
+- [x] A test that proves the time limit still gives the timeout correction, with the injected clock.
+- [x] Root `swift test` passes.

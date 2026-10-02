@@ -5,13 +5,19 @@ import Testing
 /// The live tests of the Brave results page provider, with no fallback
 /// (web.md § "Testing", Level 2).
 ///
-/// The providers are `[.braveHTML]` only, thus a hit comes from Brave or the
-/// test fails. When Brave changes its markup, this suite fails. That failure
-/// is the signal that we want.
+/// The providers are `[.braveHTML]` only, thus when Brave answers, each hit
+/// comes from Brave. When Brave changes its markup, this suite fails. That
+/// failure is the signal that we want.
+///
+/// When Brave blocks the request (HTTP 429, or a challenge page),
+/// ``BlockedProviderRule`` decides the case: the test records the block as a
+/// known issue, and does the same checks on the hits of a keyless provider
+/// that the first search did not try. When that provider gives no results
+/// too, the test fails.
 @Suite(
     "Live: the Brave results page gives stable hits",
     .serialized,
-    .timeLimit(.minutes(LiveSearch.timeLimitMinutes))
+    .timeLimit(IntegrationHangGuard.timeLimit)
 )
 struct BraveHTMLLiveTests {
     /// The one provider of this suite.

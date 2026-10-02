@@ -50,17 +50,11 @@ struct CLISignalExitTests {
     /// The flag of ``processFinderPath`` that reads the full argument list.
     private static let fullArgumentsFlag = "-f"
 
-    /// How many seconds the test waits for the stub server to start, and then
-    /// for the process to exit.
-    private static let deadlineSeconds = 30
-
-    /// The longest time the test waits for the stub server to start, and then
-    /// for the process to exit.
-    ///
-    /// Longer than the deadline of `TestPoll`: the CLI links the MLX and Hugging
-    /// Face products, and its first start after a build can take seconds.
-    private static let deadline = Duration.seconds(deadlineSeconds)
-
+    // Each wait below takes the shared hang guard of `TestPoll`, and no
+    // deadline of its own: a poll is a synchronization point, and no test
+    // checks the speed of the machine (card `^kdtrmhv`). The first start of
+    // the CLI after a build can take seconds, because it links the MLX and
+    // Hugging Face products.
     @Test(
         "a stop signal during an open run exports the run span and exits with 128 + the signal number",
         arguments: CLIStopSignal.allCases)
@@ -75,11 +69,11 @@ struct CLISignalExitTests {
         try process.run()
         defer { Self.stopIfRunning(process) }
         let stubServer = Self.stubServerPattern(serverPath: serverPath, marker: marker)
-        try await TestPoll.waitUntil("the stub server started", before: Self.deadline) {
+        try await TestPoll.waitUntil("the stub server started") {
             Self.processExists(matching: stubServer)
         }
         kill(process.processIdentifier, signal.number)
-        try await TestPoll.waitUntil("the CLI exited", before: Self.deadline) { !process.isRunning }
+        try await TestPoll.waitUntil("the CLI exited") { !process.isRunning }
 
         #expect(process.terminationReason == .exit)
         #expect(process.terminationStatus == signal.exitCode)

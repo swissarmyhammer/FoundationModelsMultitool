@@ -100,6 +100,10 @@ struct StdioServerProcessTests {
     /// A `MCPServer` named `name`, connected through the `respawn()` of
     /// `stdio` under `policy`.
     ///
+    /// The connect-attempt timeout of the server sleeps on a clock that no
+    /// test opens. Thus a slow spawn never times the connect or the reconnect
+    /// out — see ``MCPTestSupport/makeServer(name:clock:clientQueueClock:connectAttemptClock:callTimeout:renderBudget:elicitationHandler:logger:)``.
+    ///
     /// - Parameters:
     ///   - stdio: The process whose `respawn()` is the transport factory.
     ///   - name: The name of the server.
@@ -109,7 +113,7 @@ struct StdioServerProcessTests {
     private static func connectServer(
         through stdio: StdioServerProcess, named name: String, policy: BackoffPolicy = .default
     ) async throws -> MCPServer {
-        let server = MCPServer(name: name)
+        let server = MCPTestSupport.makeServer(name: name)
         try await server.connect(via: stdio.respawn, backoffPolicy: policy)
         return server
     }
@@ -275,7 +279,7 @@ struct StdioServerProcessTests {
         let stdio = try StdioServerProcess(
             command: Self.absentCommand, name: "spawn-failure-backoff-test", registry: Self.sharedRegistry)
         let clock = ManualClock()
-        let server = MCPServer(name: "spawn-failure-backoff-test", clock: clock)
+        let server = MCPTestSupport.makeServer(name: "spawn-failure-backoff-test", clock: clock)
         let policy = BackoffPolicy(
             connectTimeout: Self.generousConnectTimeout, baseDelay: Self.backoffBaseDelay,
             maxDelay: Self.backoffMaxDelay, maxAttempts: Self.backoffMaxAttempts)

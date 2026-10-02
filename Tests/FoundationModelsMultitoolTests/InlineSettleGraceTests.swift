@@ -27,13 +27,14 @@ struct InlineSettleGraceTests {
         "3\n\n\(ToolReturnLedger.uncarriedReturnNotice)"
     }
 
-    /// The wait of the test that runs a quick snippet beside a slow tool.
+    /// The wait of the quick snippet in the test that runs it beside a slow
+    /// tool: the hang bound of `TestPoll`, in seconds.
     ///
-    /// The quick snippet settles in milliseconds when nothing stops it, so this
-    /// is far longer than it needs. And it is short, because the slow tool
-    /// keeps every CPU busy for all of it: the slow snippet must outlast it
-    /// before the quick snippet starts.
-    private static let besideSlowToolGrace: TimeInterval = 1
+    /// The test does not measure time with it. It is only the bound of a
+    /// hang (card `^3np5yzj`: no test checks the speed of the machine). The
+    /// test proves the property with an event: the quick snippet answers
+    /// while the slow tool still spins.
+    private static let besideSlowToolGrace = TimeInterval(TestPoll.deadline.components.seconds)
 
     /// A registry carrying one real tool.
     private static func registry() throws -> MultiTool.Registry {
@@ -115,30 +116,41 @@ struct InlineSettleGraceTests {
         #expect(terminal.detail == Self.quickSnippetResult)
     }
 
-    @Test("a snippet that awaits nothing answers with its own result while a slow tool keeps every CPU busy")
+    /// The slow snippet runs on a mount with no wait, thus its call answers
+    /// pending at once and the tool goes on in the background. The quick
+    /// snippet runs on a second mount whose wait is only a hang bound. The
+    /// test checks an event, not a time: the quick snippet answered with its
+    /// own result while the slow tool still kept every CPU busy. A quick
+    /// snippet that cannot start until the slow tool stops answers only after
+    /// the spin ended, and the last check fails.
+    @Test(
+        "a snippet that awaits nothing answers with its own result while a slow tool keeps every CPU busy",
+        .timeLimit(TestHangGuard.timeLimit))
     func quickSnippetAnswersBesideABusySlowTool() async throws {
         let latch = ToolReleaseLatch()
         defer { latch.release() }
         let hog = CooperativePoolHogTool(latch: latch)
         let context = try await makeOuterRunContext()
-        let runCode = MultiTool(
-            registry: try MultiTool.Builder().addTool(hog).buildRegistry(),
-            configuration: MultiToolConfiguration(inlineSettleGrace: Self.besideSlowToolGrace)
+        let registry = try MultiTool.Builder().addTool(hog).buildRegistry()
+        let slowMount = try Self.mounted(
+            MultiTool(registry: registry, configuration: MultiToolConfiguration(inlineSettleGrace: 0)), on: context)
+        let quickMount = try Self.mounted(
+            MultiTool(registry: registry, configuration: MultiToolConfiguration(inlineSettleGrace: Self.besideSlowToolGrace)),
+            on: try await makeOuterRunContext()
         )
-        let mounted = try Self.mounted(runCode, on: context)
-        let slowCall = Task { try await mounted.call(arguments: RunCodeArguments(code: "return await tools.hog();")) }
-        try await TestPoll.waitUntil("the slow tool keeps every CPU busy") { hog.hasStarted }
-        // The slow snippet outlasts the grace: its call answers pending while
-        // the tool still keeps every CPU busy.
-        let slow = try Self.envelope(try await slowCall.value)
+        let slow = try Self.envelope(
+            try await slowMount.call(arguments: RunCodeArguments(code: "return await tools.hog();"))
+        )
         #expect(slow.pending)
+        try await TestPoll.waitUntil("the slow tool keeps every CPU busy") { hog.hasStarted }
 
         let quick = try Self.envelope(
-            try await mounted.call(arguments: RunCodeArguments(code: "return \"x\";"))
+            try await quickMount.call(arguments: RunCodeArguments(code: "return \"x\";"))
         )
 
         #expect(!quick.pending)
         #expect(quick.detail == "\"x\"")
+        #expect(hog.isSpinning, "the quick snippet answered only after the slow tool stopped")
         latch.release()
         // The spin stops with the latch, and the slow snippet settles.
         let settled = await context.wait(completionToken: slow.completionToken, seconds: scriptedRunSettlementSeconds)

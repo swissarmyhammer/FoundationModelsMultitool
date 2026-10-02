@@ -13,6 +13,10 @@ import Synchronization
 /// then returns at once — for every sleep that waits, and for every later
 /// sleep.
 ///
+/// A test that must end one bound and hold the others — two bounds of
+/// different length that sleep on one clock — calls ``open(sleepsOf:)``
+/// instead: it opens the clock for the sleeps of one duration only.
+///
 /// The clock records each requested duration, in call order, so a test can
 /// read which bound the code under test chose. A sleep whose task is
 /// cancelled throws `CancellationError`, as the sleep of a real clock does.
@@ -28,19 +32,31 @@ final class GatedClock: Clock, Sendable {
         /// The instant the sleep asked for.
         let deadline: ManualInstant
 
+        /// The duration the sleep asked for.
+        let duration: Swift.Duration
+
         /// The continuation that ends the sleep.
         let continuation: CheckedContinuation<Void, any Error>
     }
 
+    /// One sleep that took its ticket and did not register yet.
+    private struct Ticket {
+        /// The number of the ticket.
+        let number: Int
+
+        /// The duration the sleep asked for.
+        let duration: Swift.Duration
+    }
+
     /// What a sleep does at the moment it registers.
     private enum Registration {
-        /// The clock is open: the sleep ends at once.
+        /// The clock is open for the sleep: the sleep ends at once.
         case proceed
 
         /// The task of the sleep was cancelled first: the sleep throws.
         case cancelled
 
-        /// The clock is closed: the sleep waits for ``open()``.
+        /// The clock is closed for the sleep: the sleep waits for ``open()``.
         case wait
     }
 
@@ -54,6 +70,9 @@ final class GatedClock: Clock, Sendable {
 
         /// Whether ``open()`` was called.
         var isOpen = false
+
+        /// The durations ``open(sleepsOf:)`` opened the clock for.
+        var openDurations: Set<Swift.Duration> = []
 
         /// The sleeps that wait for ``open()``, by ticket.
         var waiting: [Int: Sleeper] = [:]
@@ -71,6 +90,30 @@ final class GatedClock: Clock, Sendable {
             if deadline > currentInstant {
                 currentInstant = deadline
             }
+        }
+
+        /// Whether a sleep of `duration` ends at once.
+        ///
+        /// - Parameter duration: The duration the sleep asked for.
+        /// - Returns: `true` after ``open()``, or after ``open(sleepsOf:)``
+        ///   with this duration.
+        func isOpen(for duration: Swift.Duration) -> Bool {
+            isOpen || openDurations.contains(duration)
+        }
+
+        /// Takes every waiting sleep that `isReleased` selects out of
+        /// ``waiting``, and moves the virtual instant to its deadline.
+        ///
+        /// - Parameter isReleased: Selects the sleeps that end.
+        /// - Returns: The sleeps that end, for the caller to resume outside
+        ///   the lock.
+        mutating func release(where isReleased: (Sleeper) -> Bool) -> [Sleeper] {
+            let released = waiting.filter { isReleased($0.value) }
+            for (ticket, sleeper) in released {
+                waiting[ticket] = nil
+                reach(sleeper.deadline)
+            }
+            return Array(released.values)
         }
     }
 
@@ -93,7 +136,7 @@ final class GatedClock: Clock, Sendable {
     var minimumResolution: Swift.Duration { .zero }
 
     /// Records the requested delay, and waits until ``open()`` — or returns
-    /// at once when the clock is already open.
+    /// at once when the clock is already open for the delay.
     ///
     /// - Parameters:
     ///   - deadline: The instant to sleep until.
@@ -107,7 +150,7 @@ final class GatedClock: Clock, Sendable {
                 register(ticket: ticket, deadline: deadline, continuation: continuation)
             }
         } onCancel: {
-            cancel(ticket: ticket)
+            cancel(ticket: ticket.number)
         }
     }
 
@@ -115,13 +158,27 @@ final class GatedClock: Clock, Sendable {
     func open() {
         let sleepers = state.withLock { current in
             current.isOpen = true
-            let sleepers = Array(current.waiting.values)
-            current.waiting = [:]
-            for sleeper in sleepers {
-                current.reach(sleeper.deadline)
-            }
-            return sleepers
+            return current.release { _ in true }
         }
+        resume(sleepers)
+    }
+
+    /// Ends every sleep of `duration` that waits, and makes every later sleep
+    /// of `duration` end at once. A sleep of any other duration still waits.
+    ///
+    /// - Parameter duration: The requested duration of the sleeps to end.
+    func open(sleepsOf duration: Swift.Duration) {
+        let sleepers = state.withLock { current in
+            current.openDurations.insert(duration)
+            return current.release { $0.duration == duration }
+        }
+        resume(sleepers)
+    }
+
+    /// Ends each of `sleepers`.
+    ///
+    /// - Parameter sleepers: The sleeps that end, already out of the state.
+    private func resume(_ sleepers: [Sleeper]) {
         for sleeper in sleepers {
             sleeper.continuation.resume()
         }
@@ -131,12 +188,13 @@ final class GatedClock: Clock, Sendable {
     ///
     /// - Parameter deadline: The instant the sleep asks for.
     /// - Returns: The ticket of the sleep.
-    private func takeTicket(for deadline: ManualInstant) -> Int {
+    private func takeTicket(for deadline: ManualInstant) -> Ticket {
         state.withLock { current in
-            current.sleeps.append(current.currentInstant.duration(to: deadline))
-            let ticket = current.nextTicket
+            let duration = current.currentInstant.duration(to: deadline)
+            current.sleeps.append(duration)
+            let number = current.nextTicket
             current.nextTicket += 1
-            return ticket
+            return Ticket(number: number, duration: duration)
         }
     }
 
@@ -147,17 +205,18 @@ final class GatedClock: Clock, Sendable {
     ///   - deadline: The instant the sleep asks for.
     ///   - continuation: The continuation that ends the sleep.
     private func register(
-        ticket: Int, deadline: ManualInstant, continuation: CheckedContinuation<Void, any Error>
+        ticket: Ticket, deadline: ManualInstant, continuation: CheckedContinuation<Void, any Error>
     ) {
         let registration = state.withLock { current -> Registration in
-            if current.cancelledTickets.remove(ticket) != nil {
+            if current.cancelledTickets.remove(ticket.number) != nil {
                 return .cancelled
             }
-            if current.isOpen {
+            if current.isOpen(for: ticket.duration) {
                 current.reach(deadline)
                 return .proceed
             }
-            current.waiting[ticket] = Sleeper(deadline: deadline, continuation: continuation)
+            current.waiting[ticket.number] = Sleeper(
+                deadline: deadline, duration: ticket.duration, continuation: continuation)
             return .wait
         }
         switch registration {
@@ -173,7 +232,7 @@ final class GatedClock: Clock, Sendable {
     /// Ends the sleep of `ticket` with `CancellationError`, or marks the
     /// ticket so that the sleep throws when it registers.
     ///
-    /// - Parameter ticket: The ticket of the cancelled sleep.
+    /// - Parameter ticket: The number of the ticket of the cancelled sleep.
     private func cancel(ticket: Int) {
         let sleeper = state.withLock { current -> Sleeper? in
             if let sleeper = current.waiting.removeValue(forKey: ticket) {

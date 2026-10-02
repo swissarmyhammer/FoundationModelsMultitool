@@ -168,16 +168,17 @@ struct ScenarioGradingTests {
 
     // MARK: - The nested-generation probe's verdict
 
-    @Test("a nested call that Router refused inside the time limit passes the probe")
-    func aPromptRefusalPassesTheProbe() {
+    @Test("a nested call refused while the outer submission held the model, with nothing queued, passes")
+    func aRefusalAtOncePassesTheProbe() {
         // The healthy reading on the work-queue Router: the tool was entered,
         // and its nested `respond` on the same model got
-        // `waitInsideOpenSubmission` at once.
+        // `waitInsideOpenSubmission` at once — while the outer submission
+        // still ran, and before anything was queued behind it.
         let checks = nestedGenerationChecks(
             for: NestedGenerationEvidence(
                 answer: Self.replyReportingTheReadinessToken,
                 enteredPaths: [integrationNestedGenerationPath],
-                outcome: .refused(after: Self.promptRefusalTime)
+                outcome: .refused(queueAtRefusal: Self.queueWhileOuterSubmissionRuns)
             )
         )
 
@@ -200,7 +201,7 @@ struct ScenarioGradingTests {
         )
 
         let failed = checks.filter { !$0.held }.map(\.name)
-        #expect(failed == [nestedCallEnteredCheckName, nestedGenerationRefusedCheckName, nestedRefusalInTimeCheckName])
+        #expect(failed == [nestedCallEnteredCheckName, nestedGenerationRefusedCheckName, nestedRefusalAtOnceCheckName])
     }
 
     @Test("a nested generation that came back fails the probe on the refusal")
@@ -216,7 +217,7 @@ struct ScenarioGradingTests {
         )
 
         let failed = checks.filter { !$0.held }.map(\.name)
-        #expect(failed == [nestedGenerationRefusedCheckName, nestedRefusalInTimeCheckName])
+        #expect(failed == [nestedGenerationRefusedCheckName, nestedRefusalAtOnceCheckName])
     }
 
     @Test("a nested generation that threw a different error fails the probe on the refusal")
@@ -230,21 +231,32 @@ struct ScenarioGradingTests {
         )
 
         let failed = checks.filter { !$0.held }.map(\.name)
-        #expect(failed == [nestedGenerationRefusedCheckName, nestedRefusalInTimeCheckName])
+        #expect(failed == [nestedGenerationRefusedCheckName, nestedRefusalAtOnceCheckName])
     }
 
-    @Test("a refusal slower than the time limit fails the probe on the time alone")
-    func aSlowRefusalFailsOnTheTimeAlone() {
+    /// Each queue reading is a refusal that did not come at once. A refusal
+    /// that came after a job waited behind the outer submission was queued
+    /// first. A refusal that came when no job ran came after the outer
+    /// submission closed. A refusal with no queue to read shows no order.
+    @Test(
+        "a refusal that did not come at once fails the probe on the order alone",
+        arguments: [
+            GenerationQueueReading(isRunning: true, waitingCount: 1),
+            GenerationQueueReading(isRunning: false, waitingCount: 0),
+            nil,
+        ]
+    )
+    func aRefusalNotAtOnceFailsOnTheOrderAlone(queueAtRefusal: GenerationQueueReading?) {
         let checks = nestedGenerationChecks(
             for: NestedGenerationEvidence(
                 answer: Self.replyReportingTheReadinessToken,
                 enteredPaths: [integrationNestedGenerationPath],
-                outcome: .refused(after: integrationNestedRefusalTimeLimit + Self.promptRefusalTime)
+                outcome: .refused(queueAtRefusal: queueAtRefusal)
             )
         )
 
         let failed = checks.filter { !$0.held }.map(\.name)
-        #expect(failed == [nestedRefusalInTimeCheckName])
+        #expect(failed == [nestedRefusalAtOnceCheckName])
     }
 
     // MARK: - The fold of the session events
@@ -388,9 +400,10 @@ struct ScenarioGradingTests {
         "Your model is responsive. Readiness token: \(integrationNestedGenerationToken)"
     }
 
-    /// The time a scripted prompt refusal takes: a small part of one second,
-    /// as a refusal that the queue throws before it queues anything takes.
-    private static let promptRefusalTime = Duration.milliseconds(3)
+    /// The queue a scripted refusal at once reads: the outer submission still
+    /// runs, and no job waits behind it, as when the queue throws before it
+    /// queues anything.
+    private static let queueWhileOuterSubmissionRuns = GenerationQueueReading(isRunning: true, waitingCount: 0)
 
     /// Runs one snippet against the compose scenario's own two fixture tools.
     ///

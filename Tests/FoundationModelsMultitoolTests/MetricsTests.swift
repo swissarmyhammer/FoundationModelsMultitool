@@ -264,7 +264,7 @@ struct MetricsTests {
     func reconnectRecordsARestart() async throws {
         let respawning = RespawningTransport.makeServingFreshScriptedServers { ScriptedServer() }
         try await TelemetryCapture.run(forbidding: []) { context in
-            let server = MCPServer(name: Self.serverName, logger: context.logger)
+            let server = MCPTestSupport.makeServer(name: Self.serverName, logger: context.logger)
             try await server.connect(via: respawning, backoffPolicy: .default)
             #expect(Self.counters(.mcpServerRestarts, in: context).isEmpty)
 
@@ -283,7 +283,8 @@ struct MetricsTests {
     func throwingRunRecordsThrew() async throws {
         try await TelemetryCapture.run(forbidding: [Self.errorMarker]) { context in
             await #expect(throws: InterpreterError.self) {
-                try await JSCInterpreter().run(code: "throw new Error('\(Self.errorMarker)');", installing: [])
+                try await JSCInterpreter.makeWithHeldWatchdog().run(
+                    code: "throw new Error('\(Self.errorMarker)');", installing: [])
             }
 
             let run = try context.metricsFactory.expectTimer(
@@ -294,10 +295,17 @@ struct MetricsTests {
 
     @Test("a JS run that passes its time limit records the interpreter timer with the outcome timedOut")
     func timedOutRunRecordsTimedOut() async throws {
+        // The watchdog sleeps on a gated clock that the test opens. Thus the
+        // deadline is an event, and the run reads no real time (card
+        // `^3np5yzj`).
+        let clock = GatedClock()
+        clock.open()
         try await TelemetryCapture.run(forbidding: []) { context in
             await #expect(throws: InterpreterError.self) {
-                try await JSCInterpreter(timeLimit: Self.shortTimeLimit).run(code: "while (true) {}", installing: [])
+                try await JSCInterpreter(timeLimit: Self.shortTimeLimit, watchdogClock: clock)
+                    .run(code: "while (true) {}", installing: [])
             }
+            #expect(clock.recordedSleeps == [.seconds(Self.shortTimeLimit)])
 
             let run = try context.metricsFactory.expectTimer(
                 MultitoolTelemetry.MetricName.interpreterRunDuration.rawValue, Self.runDimensions(.timedOut))

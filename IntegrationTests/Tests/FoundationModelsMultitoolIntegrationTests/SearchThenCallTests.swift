@@ -54,13 +54,14 @@ import ScenarioGrading
 /// requirement of this target. That is a rule of the target and not a limit of
 /// `Router` — Router's residency is pooled and reference-counted, so it holds
 /// more than one profile resident quite happily. Real weight loading is heavy
-/// enough that one scenario at a time, under a generous `.timeLimit`, is the
-/// sane default anyway, even though each test resolves its own fresh
-/// `Router`.
+/// enough that one scenario at a time is the sane default anyway, even though
+/// each test resolves its own fresh `Router`. The `.timeLimit` of this suite
+/// is the shared hang guard, `IntegrationHangGuard.timeLimit`. It stops a test
+/// that cannot end, and it does not check the speed of the machine.
 @Suite(
     "Gated search-then-call scenarios (M6.5a)",
     .serialized,
-    .timeLimit(.minutes(12))
+    .timeLimit(IntegrationHangGuard.timeLimit)
 )
 struct SearchThenCallTests {
     // MARK: - Scenario 1: single-call `getWeather`

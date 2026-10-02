@@ -26,7 +26,12 @@ struct SearchArguments {
     var query: String
 
     /// The number of results, or `nil` for 10.
-    @Guide(description: "The number of results, 1 to 20. Omit it to get 10 results.")
+    ///
+    /// The guide carries ``countRange``, thus a guided generator cannot write
+    /// a value that the verb refuses.
+    @Guide(
+        description: "The number of results, 1 to 20. Omit it to get 10 results.",
+        .range(SearchArguments.countRange))
     var count: Int?
 
     /// The age limit name, or `nil` for no age limit.
@@ -36,6 +41,15 @@ struct SearchArguments {
     /// The one host name that the results must come from, or `nil` for all hosts.
     @Guide(description: "One host name that each result must come from, for example developer.apple.com.")
     var site: String?
+}
+
+extension SearchArguments {
+
+    /// The accepted `count` values: a result count from 1 to 20.
+    ///
+    /// The generation schema and the verb's own bound check read this one
+    /// range, thus the two cannot disagree.
+    static let countRange = 1...20
 }
 
 /// The result of `tools.web.search`: the ranked hits, or the correction that
@@ -69,12 +83,9 @@ extension Search {
     /// The number of results of a search that omits `count`.
     private static let defaultCount = 10
 
-    /// The largest accepted `count`.
-    private static let maximumCount = 20
-
-    /// The bound on `count`: a result count from 1 to ``maximumCount``.
+    /// The bound on `count`: a result count in ``SearchArguments/countRange``.
     private static let countBound = BoundParameter(
-        parameterName: "count", typeDescription: "result count", minimum: 1, maximum: maximumCount)
+        parameterName: "count", typeDescription: "result count", range: SearchArguments.countRange)
 
     /// The characters of a host name other than the ASCII letters and
     /// digits.

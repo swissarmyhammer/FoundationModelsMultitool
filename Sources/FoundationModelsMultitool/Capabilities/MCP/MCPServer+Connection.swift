@@ -332,8 +332,9 @@ extension MCPServer {
 
     // MARK: - One attempt
 
-    /// Makes one connect attempt bounded by `timeout` in real wall-clock time
-    /// — never the injected clock, which is for the delay BETWEEN attempts.
+    /// Makes one connect attempt bounded by `timeout` on
+    /// ``connectAttemptClock`` — the real clock for a host — and never on
+    /// ``clock``, which is for the delay BETWEEN attempts.
     ///
     /// See the header of this file for why this races two un-joined tasks
     /// instead of a task group. `factory` runs inside the same race as the
@@ -385,9 +386,10 @@ extension MCPServer {
         }
     }
 
-    /// The other side of the race: sleeps for `timeout`, then resumes
-    /// `resume` with ``MCPServerError/connectAttemptTimedOut`` — a no-op when
-    /// the attempt already won.
+    /// The other side of the race: sleeps for `timeout` on
+    /// ``connectAttemptClock``, then resumes `resume` with
+    /// ``MCPServerError/connectAttemptTimedOut`` — a no-op when the attempt
+    /// already won.
     ///
     /// - Parameters:
     ///   - timeout: How long to wait before this attempt is timed out.
@@ -395,7 +397,7 @@ extension MCPServer {
     private func failConnectAttemptAfterTimeout(
         _ timeout: Duration, resume: SingleResume<Void, any Error>
     ) async {
-        try? await Task.sleep(for: timeout)
+        try? await connectAttemptClock.sleep(for: timeout)
         resume.resume(with: .failure(MCPServerError.connectAttemptTimedOut))
     }
 

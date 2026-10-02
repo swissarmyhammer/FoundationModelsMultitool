@@ -3,6 +3,8 @@ import FoundationModels
 import FoundationModelsExtras
 import FoundationModelsRouter
 
+@testable import MultitoolTestSupport
+
 // MARK: - Phase-1 sandbox-globals fixtures (eventplan.md § "The sandbox
 // globals")
 //
@@ -78,10 +80,12 @@ struct ScriptedRun: Sendable {
 let scriptedRunCancelOutcome: OperationOutcome = .cancelled
 
 /// How long a fixture waits for a mailbox to record a settlement before
-/// giving up. Generous: this is a synchronization point, not a timing
-/// assertion — the wait resolves the instant the mailbox records the terminal
-/// event.
-let scriptedRunSettlementSeconds: Double = 10
+/// giving up: ``TestPoll/deadline``, in seconds.
+///
+/// This is a synchronization point, not a timing assertion — the wait
+/// resolves the instant the mailbox records the terminal event. The bound is
+/// a hang guard and not a speed check (card `^tm4x2hp`).
+let scriptedRunSettlementSeconds = Double(TestPoll.deadline.components.seconds)
 
 /// What a scripted run could not do.
 enum ScriptedRunFailure: Error, CustomStringConvertible {
@@ -261,13 +265,13 @@ func startScriptedRun(
 private func awaitProgress(
     _ detail: String, of completionToken: String, on context: ToolContext
 ) async throws {
-    let deadline = ContinuousClock.now.advanced(by: .seconds(scriptedRunSettlementSeconds))
-    while ContinuousClock.now < deadline {
+    let arrived = await TestPoll.holds {
         let row = await context.backgroundRuns().first { $0.completionToken == completionToken }
-        if row?.latestProgressDetail == detail { return }
-        await Task.yield()
+        return row?.latestProgressDetail == detail
     }
-    throw ScriptedRunFailure.progressNeverArrived(detail)
+    guard arrived else {
+        throw ScriptedRunFailure.progressNeverArrived(detail)
+    }
 }
 
 /// Settles a scripted background run and returns only once the mailbox has
@@ -348,7 +352,10 @@ actor ScriptedElicitationSink {
                 guard delivery == .acceptedAwaitingCompletion else { continue }
                 completions.append(await run.session.complete(elicitationId: id))
             }
-            await Task.yield()
+            // A sleep between two reads, and not a yield: the watch lasts as
+            // long as the hang guard ``scriptedRunSettlementSeconds``, and a
+            // loop of yields would hold a core busy for all that time.
+            try? await Task.sleep(for: TestPoll.interval)
         }
     }
 }

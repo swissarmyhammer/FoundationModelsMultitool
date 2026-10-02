@@ -55,15 +55,13 @@ struct ShellExecuteTests {
     /// The exit code a command that ended with success reports.
     private static let successExitCode = 0
 
-    /// How long the long command of the background tests sleeps. Long enough
-    /// that it certainly still runs while the test reads the run plane, and
-    /// each such test ends it before it returns.
-    private static let backgroundRunSleepSeconds = 30
-
-    /// The longest a mounted call may take. It stands far under
-    /// ``backgroundRunSleepSeconds``, thus a call that reaches it proves the
-    /// call blocked on the command rather than handing back its identifier.
-    private static let doesNotBlockUpperBound = Duration.seconds(10)
+    /// How long the long command of the background tests sleeps: one day. No
+    /// test reaches it, thus the command certainly still runs while the test
+    /// reads the run plane, and each such test ends it before it returns. A
+    /// mounted call that blocks on the command does not return while the test
+    /// runs, and ``TestHangGuard/timeLimit`` then fails the test. Thus no test
+    /// reads the real time that the call took (card `^tm4x2hp`).
+    private static let backgroundRunSleepSeconds = 86_400
 
     /// How many lines the command of the progress test writes. More than one,
     /// thus the run has output to report before it ends.
@@ -517,20 +515,21 @@ struct ShellExecuteTests {
 
     /// The verb never blocks on its command: the call hands back the run's
     /// identifier, and the builtins read the run from there.
-    @Test("a mounted call answers with the run identifier and does not block")
+    ///
+    /// The command cannot end while the test runs, thus a call that returned
+    /// at all did not block on it, and the run still stands on the run plane.
+    /// A call that blocks makes the test hang, and the hang guard fails it.
+    @Test("a mounted call answers with the run identifier and does not block", .timeLimit(TestHangGuard.timeLimit))
     func aMountedCallAnswersWithTheIdentifierAndDoesNotBlock() async throws {
         let state = try makeState()
         let context = try await makeOuterRunContext()
         let engine = ShellRunPlane.mounted(makeVerb(over: state), inheriting: context)
 
-        let started = ContinuousClock.now
         let output = try await engine.call(
             arguments: ExecuteArguments(command: "sleep \(Self.backgroundRunSleepSeconds)"))
-        let elapsed = ContinuousClock.now - started
 
         let going = try await ShellRunPlane.backgroundRun(in: context)
 
-        #expect(elapsed < Self.doesNotBlockUpperBound, "the call took \(elapsed)")
         #expect(
             output.contains(going.completionToken),
             "the answer carries no run identifier: \(output)")

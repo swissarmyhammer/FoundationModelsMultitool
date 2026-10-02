@@ -3,14 +3,6 @@ import FoundationModelsExtras
 import FoundationModelsRouter
 import Testing
 
-/// The time limit of the residency test, in minutes.
-///
-/// The test resolves the plumbing probe profile one time and generates
-/// nothing. A cold load of its three models on the CI runner takes less than
-/// one minute, thus a run that reaches five minutes is parked rather than
-/// slow.
-private let residencyTimeLimitMinutes = 5
-
 /// The label the skip note of the residency test carries.
 private let residencyScenarioName = "modelResidency"
 
@@ -41,7 +33,7 @@ private let residencyScenarioName = "modelResidency"
 @Suite(
     "Model residency across the tests of one process",
     .serialized,
-    .timeLimit(.minutes(residencyTimeLimitMinutes))
+    .timeLimit(IntegrationHangGuard.timeLimit)
 )
 struct ModelResidencyTests {
     @Test("each model of a resolved profile stays resident after its fixture tears down")

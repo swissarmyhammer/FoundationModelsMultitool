@@ -5,14 +5,6 @@ import Testing
 
 @testable import FoundationModelsMultitool
 
-/// The time limit of each test of this suite, in minutes.
-///
-/// The discovery test makes five `searchTools` calls. The search-then-call
-/// test drives one turn of the shipped profile, and `SearchThenCallTests`
-/// gives one such turn the same twelve minutes. A run that reaches the limit
-/// is parked, not slow.
-private let operationToolTimeLimitMinutes = 12
-
 /// The label the discovery test prints its result lines under.
 private let operationDiscoveryScenarioName = "operationToolDiscovery"
 
@@ -115,7 +107,7 @@ let operationToolQueries = [
 @Suite(
     "Gated operation tool: a real @Operation tool is found and called through runCode",
     .serialized,
-    .timeLimit(.minutes(operationToolTimeLimitMinutes))
+    .timeLimit(IntegrationHangGuard.timeLimit)
 )
 struct OperationToolLiveTests {
     @Test("the notes verbs stand in the catalog beside the distractors, and each answer holds only catalog paths")

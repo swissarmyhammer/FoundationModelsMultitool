@@ -74,23 +74,14 @@ import ScenarioGrading
 @Suite(
     "Gated mail collection canary (a settled background run comes back as mail)",
     .serialized,
-    // Fifteen minutes for each test. The limit is a hang detector, and it has
-    // to clear every healthy run on the slowest machine that runs this suite.
+    // The limit is the shared hang guard, `IntegrationHangGuard.timeLimit`.
+    // It stops a turn that cannot end. It does not check the speed of the
+    // machine (card `^tm4x2hp`).
     //
-    // The history of the number, which is still the measurement it rests on
-    // (task `^nhxj8hx`, card `^dwzkfzx`): on the old contract the canary
-    // scenario passed in 113.0s, 327.2s and 445.5s on this dev box, against
-    // `Qwen3.8-27B-mxfp4`. CI run `32203706380` ran the same suites 6.21 times
-    // slower than this dev box and cut the canary at a ten-minute ceiling.
-    //
-    // On the mail contract, the runner stops at `mailAnswerDeadline`, twelve
-    // minutes after the turn starts, and grades what it read. So a run that
-    // gets no mail answer fails with a reading, inside this limit. The limit
-    // itself only has to catch a turn that never ends.
-    //
-    // The standing rule is intact: never raise a ceiling to make a run
-    // green — re-derive it from the machine that failed, or remove it.
-    .timeLimit(.minutes(15))
+    // On the mail contract, the runner stops at the shared poll hang guard
+    // `IntegrationPoll.deadline`, and grades what it read. So a run that gets
+    // no mail answer fails with a reading, inside the hang guard.
+    .timeLimit(IntegrationHangGuard.timeLimit)
 )
 struct InBandCollectionCanaryTests {
     @Test("the delayed echo's value comes back through mail, and the mail answer reports it")

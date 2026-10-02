@@ -68,6 +68,19 @@ import Testing
         try makeContext(writing: Data(text.utf8), named: name)
     }
 
+    /// Renders the surface documentation of the `tools.files.read` verb from
+    /// its generation schema.
+    ///
+    /// The renderer writes each numeric guide of the schema as a `(range …)`
+    /// clause, thus the documentation shows the bounds a guided generator
+    /// reads.
+    ///
+    /// - Returns: the rendered documentation of the verb.
+    private static func renderedDoc() throws -> String {
+        let (context, _) = try makeContext(writing: "")
+        return try ToolAPIRenderer.render(Read(context: context)).doc
+    }
+
     /// Call the `tools.files.read` verb over a session context.
     ///
     /// - Parameters:
@@ -262,6 +275,30 @@ import Testing
         let message = try #require(result.correction)
 
         #expect(message.contains("\(Self.maximumLimit)"))
+    }
+
+    // MARK: Bounds in the generation schema
+
+    /// The generation schema bounds `offset` to the range the verb accepts.
+    ///
+    /// A guided generator reads the bound from the schema, thus it cannot
+    /// write an `offset` that the verb always refuses.
+    @Test func generationSchemaBoundsOffset() throws {
+        let doc = try Self.renderedDoc()
+
+        #expect(doc.contains("(range 1…\(Self.maximumOffset))"), "doc was: \(doc)")
+    }
+
+    /// The generation schema bounds `limit` to the range the verb accepts.
+    ///
+    /// A guided generator reads the bound from the schema, thus it cannot
+    /// write `limit: 0`. On 2026-10-01 the on-device model wrote `limit: 0`
+    /// in a live run of `FilesBareSessionTests`, read the correction, and
+    /// answered that the file held no lines.
+    @Test func generationSchemaBoundsLimit() throws {
+        let doc = try Self.renderedDoc()
+
+        #expect(doc.contains("(range 1…\(Self.maximumLimit))"), "doc was: \(doc)")
     }
 
     /// An unknown `format` comes back as the correction that names the

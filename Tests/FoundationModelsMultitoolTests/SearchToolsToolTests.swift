@@ -286,7 +286,7 @@ struct SearchToolsToolTests {
             let session = ScriptedAgentSession(replies)
             return SampleSnippetConfig(
                 makeSession: { _ in session },
-                interpreter: JSCInterpreter(timeLimit: 5.0)
+                interpreter: JSCInterpreter.makeWithHeldWatchdog()
             )
         }
         return (surface, SearchToolsTool(searcher: searcher, limit: surface.entries.count, sample: sample))
@@ -340,7 +340,7 @@ struct SearchToolsToolTests {
         let tool = SearchToolsTool(
             searcher: searcher,
             limit: surface.entries.count,
-            sample: SampleSnippetConfig(makeSession: { _ in session }, interpreter: JSCInterpreter(timeLimit: 5.0))
+            sample: SampleSnippetConfig(makeSession: { _ in session }, interpreter: JSCInterpreter.makeWithHeldWatchdog())
         )
 
         let feedback = try await tool.call(arguments: SearchToolsArguments(task: "something no tool does"))

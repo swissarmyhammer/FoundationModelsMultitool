@@ -308,8 +308,10 @@ func runNativeIntegrationScenario(
 /// run comes back to the session as mail, which starts a new answer
 /// (`SubmissionStart.cause == .mail`). So when a pending envelope appeared,
 /// the runner reads the session events until the answer that mail started
-/// ends, or until `backgroundMailAnswerDeadline`, and grades the reply of the
-/// last answer it read. When no pending envelope appeared, the run settled
+/// ends, or until the shared poll hang guard `IntegrationPoll.deadline`, and
+/// grades the reply of the last answer it read. That bound is a hang guard
+/// and never a speed check (card `^kdtrmhv`): a run that gets no mail answer
+/// fails with a reading, inside `IntegrationHangGuard.timeLimit`. When no pending envelope appeared, the run settled
 /// inline and the first answer is the graded one.
 ///
 /// The answer is read off `RoutedSession.streamEvents(to:)` rather than
@@ -358,7 +360,7 @@ func runBackgroundIntegrationScenario(
         // exit path, so it cannot outlive this scenario.
         let sessionEvents = await session.streamSessionEvents()
         let mailReader = Task {
-            await MailAnswerReading.read(sessionEvents, backgroundRunsOf: log, within: backgroundMailAnswerDeadline)
+            await MailAnswerReading.read(sessionEvents, backgroundRunsOf: log, within: IntegrationPoll.deadline)
         }
         defer { mailReader.cancel() }
 
@@ -406,21 +408,6 @@ private let nativeReplyPreviewCharacters = 80
 /// opening clause of the reply, and the canary's reply preview uses the same
 /// bound.
 private let backgroundReplyPreviewCharacters = 120
-
-/// The count of minutes in `backgroundMailAnswerDeadline`.
-///
-/// This declaration names the number directly, so no call site passes a raw
-/// literal. The reason for the value stands on that constant.
-private let backgroundMailAnswerDeadlineMinutes: Int64 = 8
-
-/// How long `runBackgroundIntegrationScenario` waits for the answer that mail
-/// starts, counted from the start of the turn.
-///
-/// Eight minutes. The time limit of `BackgroundTests` is ten minutes, and it
-/// also has to hold the profile load. A run that gets no mail answer inside
-/// this deadline is graded, and fails with a reading, rather than being cut
-/// off by the time limit with none.
-private let backgroundMailAnswerDeadline = Duration.seconds(backgroundMailAnswerDeadlineMinutes * secondsPerMinute)
 
 /// Everything one streamed turn produced that a background scenario grades or
 /// reports.
@@ -901,25 +888,6 @@ func printSkipNote(_ name: String) {
 /// bound is what the other gated runners' reply previews use.
 private let mailCanaryReplyPreviewCharacters = 120
 
-/// The count of minutes in `mailAnswerDeadline`.
-///
-/// This declaration names the number directly, so no call site passes a raw
-/// literal. The reason for the value stands on that constant.
-private let mailAnswerDeadlineMinutes: Int64 = 12
-
-/// The count of seconds in one minute, to turn `mailAnswerDeadlineMinutes`
-/// into a `Duration`.
-private let secondsPerMinute: Int64 = 60
-
-/// How long the canary waits for the answer that mail starts, counted from
-/// the start of the turn.
-///
-/// Twelve minutes. The time limit of `InBandCollectionCanaryTests` is fifteen
-/// minutes, and it also has to hold the profile load. A run that gets no mail
-/// answer inside this deadline is graded, and fails `mailCollection` with a
-/// reading, rather than being cut off by the time limit with none.
-private let mailAnswerDeadline = Duration.seconds(mailAnswerDeadlineMinutes * secondsPerMinute)
-
 /// Drives one mail collection scenario end to end, and holds the run to the
 /// contract of the work-queue Router: a background run that settles after the
 /// answer ends comes back to the session as mail, and the model answers it.
@@ -938,7 +906,10 @@ private let mailAnswerDeadline = Duration.seconds(mailAnswerDeadlineMinutes * se
 /// answer for it, whose first submission reports
 /// `SubmissionStart.cause == .mail`. So this runner no longer stops at the end
 /// of the first answer: it reads the session events until an answer that mail
-/// started ends, or until `mailAnswerDeadline`.
+/// started ends, or until the shared poll hang guard `IntegrationPoll.deadline`.
+/// That bound is a hang guard and never a speed check (card `^kdtrmhv`): a
+/// run that gets no mail answer fails `mailCollection` with a reading, inside
+/// `IntegrationHangGuard.timeLimit`.
 ///
 /// **What is graded.** The last answer the runner read must be a valid answer
 /// that carries the value, grounded in the fixture's own return; at least one
@@ -992,7 +963,7 @@ func runInBandCollectionCanaryScenario(
         // the reading would then miss it.
         let sessionEvents = await session.streamSessionEvents()
         async let mailReading = MailAnswerReading.read(
-            sessionEvents, backgroundRunsOf: log, within: mailAnswerDeadline)
+            sessionEvents, backgroundRunsOf: log, within: IntegrationPoll.deadline)
 
         let start = Date()
         _ = try await session.respond(to: prompt)
@@ -1145,7 +1116,7 @@ private let nestedGenerationReplyPreviewCharacters = 200
 /// gets `GenerationQueueError.waitInsideOpenSubmission` at once and never
 /// waits, so a healthy run never reads `waiting=1`. A run that hangs reads
 /// `running=true waiting=1` for the rest of its life, and that is the reading
-/// a run killed by the time limit leaves.
+/// a run killed by the hang guard leaves.
 ///
 /// Sampled while the turn is in flight rather than read afterwards, because a
 /// hung run has no afterwards. The last printed reading is what a killed run
@@ -1154,15 +1125,28 @@ private let nestedGenerationReplyPreviewCharacters = 200
 /// - Parameter slot: the resolved slot whose resident container owns the
 ///   queue.
 private func sampleGenerationQueue(on slot: RoutedLLM) async {
-    // A session backend made only to reach the queue of the container. It
-    // generates nothing, and every session of the model shares its queue.
-    guard let queue = slot.container.makeSession(instructions: nil).generationQueue else {
+    guard let queue = slot.residentGenerationQueue else {
         reportTraceLine("QUEUE none: the backend of this model names no generation queue")
         return
     }
     while !Task.isCancelled {
         reportTraceLine("QUEUE running=\(await queue.isRunning) waiting=\(await queue.waitingCount)")
         try? await Task.sleep(for: generationQueueSampleInterval)
+    }
+}
+
+extension RoutedLLM {
+    /// The generation queue of the resident model of this slot, or `nil` when
+    /// the backend of the model names none.
+    ///
+    /// Read through a session backend made only to reach the queue of the
+    /// container. It generates nothing, and every session of the model shares
+    /// its queue. `container` is `internal` to Router, thus this extension
+    /// stays in this file, next to the `@testable` import that reaches it.
+    /// The queue sampler above and `IntegrationNestedGenerationTool` both
+    /// read the queue through it.
+    var residentGenerationQueue: GenerationQueue? {
+        container.makeSession(instructions: nil).generationQueue
     }
 }
 
@@ -1174,8 +1158,9 @@ private func sampleGenerationQueue(on slot: RoutedLLM) async {
 /// holds open, the work-queue Router must refuse it at once with
 /// `GenerationQueueError.waitInsideOpenSubmission(model:)`. This run makes
 /// exactly that nested call and grades how it ended, through
-/// `nestedGenerationChecks(for:)`: entered, refused, and refused inside
-/// `integrationNestedRefusalTimeLimit`.
+/// `nestedGenerationChecks(for:)`: entered, refused, and refused at once —
+/// while the outer submission still ran, and with no job queued behind it.
+/// The order of events decides, and no real-time bound (card `^kdtrmhv`).
 ///
 /// **What it replaced.** The old Router's `RoutedModel.generationGate` — an
 /// `AsyncSemaphore(value: 1)` per resident container, taken by `beginTurn()`
@@ -1185,7 +1170,7 @@ private func sampleGenerationQueue(on slot: RoutedLLM) async {
 /// `permits=0 waiters=1` to the end of the run, and the unified log read
 /// `enter nestedRespond` at 08:15:49.698 and
 /// `exit nestedRespond threw CancellationError()` at 08:18:34.135 — 165
-/// seconds, unwound only when the time limit cancelled the outer turn.
+/// seconds, unwound only when the hang guard cancelled the outer turn.
 ///
 /// **`searchTools` is deliberately absent.** The tool list is
 /// `[IntegrationNestedGenerationTool]` and not what
@@ -1195,7 +1180,8 @@ private func sampleGenerationQueue(on slot: RoutedLLM) async {
 /// them is the question.
 ///
 /// **What a hang looks like from outside.** The turn stops making progress, so
-/// the suite's own `.timeLimit` is what ends it. The evidence is the `QUEUE`
+/// the hang guard of the suite, `IntegrationHangGuard.timeLimit`, is what ends
+/// it. The evidence is the `QUEUE`
 /// lines this prints throughout, and the enter record of the span the fixture
 /// opens: the swift-log output of the run shows
 /// `enter FoundationModelsMultitoolIntegrationTests.nestedRespond`, and the

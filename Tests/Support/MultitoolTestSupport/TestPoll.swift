@@ -31,15 +31,19 @@ enum TestPoll {
     /// of its own.
     static let interval = Duration.milliseconds(intervalMilliseconds)
 
-    /// How many seconds a poll keeps reading before it gives up.
-    private static let deadlineSeconds = 10
+    /// How many seconds a poll keeps reading before it gives up: five minutes.
+    private static let deadlineSeconds = 300
 
     /// How long a poll keeps reading before it gives up, when its caller names
     /// no deadline of its own.
     ///
-    /// A poll is a synchronization point and never a timing assertion, thus
-    /// this bounds a genuine hang and states nothing about how quickly the
-    /// reading becomes true.
+    /// This is a hang guard, and not a speed check. No test checks the speed
+    /// of the machine (decision of the user, card `^tm4x2hp`). A poll is a
+    /// synchronization point, thus this bounds a genuine hang and states
+    /// nothing about how quickly the reading becomes true. The value is far
+    /// above the time that a step of a unit test takes on a busy machine, and
+    /// below ``TestHangGuard/timeLimit``, thus a poll that never holds reports
+    /// its own named failure before the time limit of its test stops it.
     static let deadline = Duration.seconds(deadlineSeconds)
 
     /// What ``waitUntil(_:before:every:_:)`` calls a condition its caller did
@@ -68,6 +72,35 @@ enum TestPoll {
             try? await Task.sleep(for: interval)
         }
         return await condition()
+    }
+
+    /// Reads `read` until its reading satisfies `isReady`, or until
+    /// `deadline` passes, and answers the last reading.
+    ///
+    /// The answer is a reading and never a failure, thus the caller states
+    /// its own expectation on it. A read that throws ends the poll, and the
+    /// error goes on to the caller.
+    ///
+    /// - Parameters:
+    ///   - deadline: How long to keep reading.
+    ///   - interval: How long to wait between two reads.
+    ///   - read: The reading to take.
+    ///   - isReady: What the reading must satisfy.
+    /// - Returns: The last reading the poll took.
+    /// - Throws: What `read` throws.
+    static func lastReading<Reading>(
+        before deadline: Duration = TestPoll.deadline,
+        every interval: Duration = TestPoll.interval,
+        of read: () async throws -> Reading,
+        until isReady: (Reading) -> Bool
+    ) async rethrows -> Reading {
+        let end = ContinuousClock.now + deadline
+        var reading = try await read()
+        while !isReady(reading), ContinuousClock.now < end {
+            try? await Task.sleep(for: interval)
+            reading = try await read()
+        }
+        return reading
     }
 
     /// Polls `condition` until it holds, and fails the test when it never does.

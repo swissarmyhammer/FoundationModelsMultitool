@@ -57,8 +57,11 @@ final class CooperativePoolHogTool: Tool, Sendable {
     /// The latch whose release stops every child.
     private let latch: ToolReleaseLatch
 
-    /// Whether a child of a call spins now.
+    /// Whether a child of a call started to spin.
     private let startedBox = OSAllocatedUnfairLock(initialState: false)
+
+    /// The number of children that spin now.
+    private let spinningChildren = OSAllocatedUnfairLock(initialState: 0)
 
     /// Creates a tool that stops when `latch` is released.
     ///
@@ -67,8 +70,14 @@ final class CooperativePoolHogTool: Tool, Sendable {
         self.latch = latch
     }
 
-    /// Whether a child of a call spins now: the cooperative pool is busy.
+    /// Whether a child of a call started to spin: the cooperative pool became
+    /// busy.
     var hasStarted: Bool { startedBox.withLock { $0 } }
+
+    /// Whether a child of a call spins now: the cooperative pool is still
+    /// busy. It becomes `false` when the latch is released, the ceiling
+    /// elapses, or the call is cancelled.
+    var isSpinning: Bool { spinningChildren.withLock { $0 > 0 } }
 
     /// Keeps one busy child on each CPU until the latch is released, the
     /// ceiling elapses, or the call is cancelled.
@@ -91,6 +100,8 @@ final class CooperativePoolHogTool: Tool, Sendable {
     ///
     /// - Parameter deadline: the instant the spin stops at the latest.
     private func spin(until deadline: ContinuousClock.Instant) async {
+        spinningChildren.withLock { $0 += 1 }
+        defer { spinningChildren.withLock { $0 -= 1 } }
         startedBox.withLock { $0 = true }
         while !latch.isReleased, ContinuousClock.now < deadline, !Task.isCancelled {
             let sliceEnd = ContinuousClock.now + hogSliceDuration

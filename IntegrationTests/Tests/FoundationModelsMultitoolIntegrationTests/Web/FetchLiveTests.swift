@@ -14,7 +14,7 @@ import Testing
 @Suite(
     "Live: the fetch verb reads real pages",
     .serialized,
-    .timeLimit(.minutes(LiveSearch.timeLimitMinutes))
+    .timeLimit(IntegrationHangGuard.timeLimit)
 )
 struct FetchLiveTests {
     /// The page whose title is ``exampleTitle`` and whose body holds

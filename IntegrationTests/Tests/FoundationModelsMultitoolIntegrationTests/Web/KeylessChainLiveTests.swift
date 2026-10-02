@@ -8,10 +8,16 @@ import Testing
 /// The chain tries `braveHTML`, then `duckDuckGoHTML`. The test does not
 /// assert which of the two gives the hits: a fallback to the second provider
 /// is correct behavior of the chain.
+///
+/// The chain itself applies ``BlockedProviderRule``: it goes to the next
+/// provider after a block, thus a blocked provider does not fail this test
+/// when the other provider gives results. When no provider gives results, the
+/// correction fails the test. The chain tries each keyless provider, thus the
+/// rule has no provider to add, and the test sends one search.
 @Suite(
     "Live: the keyless chain gives hits from a keyless provider",
     .serialized,
-    .timeLimit(.minutes(LiveSearch.timeLimitMinutes))
+    .timeLimit(IntegrationHangGuard.timeLimit)
 )
 struct KeylessChainLiveTests {
     /// The names of the two keyless providers. The set is stated here, and

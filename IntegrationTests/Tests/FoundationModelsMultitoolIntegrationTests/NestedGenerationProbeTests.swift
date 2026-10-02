@@ -10,15 +10,17 @@ import Testing
 /// `GenerationQueueError.waitInsideOpenSubmission(model:)`: its queue sees
 /// the open submission of the same model and throws before it queues
 /// anything. This probe makes that nested call from inside a tool call and
-/// passes only when the nested call gets the refusal inside
-/// `integrationNestedRefusalTimeLimit`.
+/// passes only when the nested call gets the refusal at once: the queue of
+/// the model, read at the refusal, shows the outer submission still running
+/// and no job waiting behind it. The order of events decides, and no
+/// real-time bound (card `^kdtrmhv`: no test checks the speed of the machine).
 ///
 /// **What it replaced.** Before the work-queue Router, the same nested call
 /// hung for ever: the old `RoutedModel.generationGate` was an
 /// `AsyncSemaphore(value: 1)` that `beginTurn()` held across the tool rounds
 /// of a turn, so the nested `respond` parked on `generationGate.wait()` and
 /// never came back. Measured on 2026-08-16 it parked 165.4s and 166.5s and
-/// unwound only when the time limit of this suite cancelled the outer turn.
+/// unwound only when the hang guard of this suite cancelled the outer turn.
 /// Router's `^1zt7vyg` then lent the permit to the nested turn, and the call
 /// came back. The work-queue Router replaced both with the refusal. The
 /// profiles of this target therefore put a different model in `standard` and
@@ -31,13 +33,16 @@ import Testing
 ///
 /// **How to read a run.**
 ///
-/// - `nestedGenerationRefused` and `nestedRefusalInTime` hold: Router refused
+/// - `nestedGenerationRefused` and `nestedRefusalAtOnce` hold: Router refused
 ///   the nested call at once, which is the contract.
+/// - `nestedRefusalAtOnce` fails alone: Router refused, but not at once. The
+///   message names the queue reading at the refusal: a job waited behind the
+///   outer submission, or no job ran because the outer submission had closed.
 /// - `nestedGenerationRefused` fails with "a reply": Router let the nested
 ///   call through. The refusal is gone.
 /// - `nestedGenerationRefused` fails with "a different error": the nested
 ///   call threw something else. The message names the error.
-/// - The time limit of this suite ends the run: the nested call hung, which
+/// - The hang guard of this suite ends the run: the nested call hung, which
 ///   is the old defect. The `QUEUE` lines show the queue state for the whole
 ///   run, and the swift-log output of the run shows the enter record
 ///   `enter FoundationModelsMultitoolIntegrationTests.nestedRespond`, with no
@@ -61,24 +66,15 @@ import Testing
 @Suite(
     "Gated nested-generation probe (a nested generation on the held model is refused)",
     .serialized,
-    // One minute, derived from this suite's own runs on the plumbing model.
+    // The limit is the shared hang guard, `IntegrationHangGuard.timeLimit`.
+    // It stops a test that cannot end. It does not check the speed of the
+    // machine (card `^tm4x2hp`).
     //
-    // THE LIMIT IS THE HANG DETECTOR. A refusal is graded by
-    // `nestedRefusalInTime`, against `integrationNestedRefusalTimeLimit`. A
-    // hang never returns to be graded, so this limit is what reports it. The
-    // ceiling therefore has to stay close above the expected runtime.
-    //
-    // A HEALTHY RUN IS SHORT BY CONSTRUCTION. It is the profile load, one tool
-    // call whose nested call is refused at once, and a short answer. Measured
-    // over three consecutive runs on 2026-08-18, when the nested call still
-    // came back: 12.0s, 9.2s and 8.6s, whole-test, profile resolution
-    // included. A refusal costs less than that nested turn did.
-    //
-    // The margin has to cover the turnstile queue and the profile load,
-    // because the limit starts when the test starts rather than when
-    // generation does (`LiveRouterFixture`). Those readings were taken under
-    // `--no-parallel`, which that same file requires and states why.
-    .timeLimit(.minutes(1))
+    // A hang never returns to be graded, so the hang guard is what reports
+    // it. The limit starts when the test starts, and not when generation
+    // starts (`LiveRouterFixture`). The hang guard stands far above the
+    // turnstile queue and the profile load.
+    .timeLimit(IntegrationHangGuard.timeLimit)
 )
 struct NestedGenerationProbeTests {
     @Test("a tool body generating on the outer turn's own model gets waitInsideOpenSubmission at once")

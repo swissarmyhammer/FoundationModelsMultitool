@@ -5,15 +5,6 @@ import Testing
 @testable import FoundationModelsMultitool
 @testable import MultitoolTestSupport
 
-/// The time limit of the web research test, in minutes.
-///
-/// The turn is one turn of the shipped profile, and `SearchThenCallTests`
-/// and `OperationToolLiveTests` give one such turn the same twelve minutes.
-/// The web requests of the turn add little to that time, because
-/// ``webRequestTimeoutSeconds`` and ``webResourceTimeoutSeconds`` stop each
-/// slow request early. A run that reaches the limit is parked, not slow.
-private let webResearchTimeLimitMinutes = 12
-
 /// The label that the result lines and the skip line of the scenario carry.
 private let webResearchScenarioName = "webResearch"
 
@@ -39,7 +30,7 @@ private let searchedTheWebCheckName = "searchedTheWeb"
 ///
 /// A request that waits longer than this fails, and the search chain then
 /// tries the next provider. Thus a provider that does not answer cannot use
-/// the time limit of the test.
+/// the hang guard of the test.
 private let webRequestTimeoutSeconds: TimeInterval = 15
 
 /// How many seconds one web request can take from start to end.
@@ -84,7 +75,7 @@ private let webResearchReplyPreviewCharacters = 120
 @Suite(
     "Gated web research: a real model searches the web and names the Swift home page",
     .serialized,
-    .timeLimit(.minutes(webResearchTimeLimitMinutes))
+    .timeLimit(IntegrationHangGuard.timeLimit)
 )
 struct WebResearchScenarioTests {
 

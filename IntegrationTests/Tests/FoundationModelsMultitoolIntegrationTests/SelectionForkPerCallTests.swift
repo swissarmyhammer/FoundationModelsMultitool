@@ -27,26 +27,23 @@ private let selectionForkScenario = "selectionFork"
 /// every child came off the same single root. The mechanism is asserted from
 /// the recording rather than assumed.
 ///
-/// It also times the two calls and prints both durations. Nothing asserts on
-/// them — see below.
+/// What the second call saves is the root: it forks a child off the root the
+/// first call left cached, and builds no root of its own. The recording
+/// states that as counts — one child session per call, and one root session
+/// for both calls — so the suite asserts the counts, and never the time a
+/// call took (card `^kdtrmhv`: no test checks the speed of the machine).
 ///
 /// ## What this suite CANNOT establish, and why it was renamed
 ///
 /// It was `PrefixReuseTests`, and its suite name called it a pin. It pinned
 /// nothing. Its one assertion was `secondElapsed <= firstElapsed`, and the
-/// first call paid a model warm-up the second never paid, so a run that
-/// re-prefilled the whole surface from scratch satisfied it exactly as well
+/// first call pays a model warm-up the second never pays, so a run that
+/// re-prefilled the whole surface from scratch satisfies it exactly as well
 /// as a run that skipped a prefill. Measured 2026-08-16, both candidate
-/// models passed and neither passed decisively — Muse Glimmer `first=7.75s
-/// second=3.31s`, Qwen3.8 `first=5.81s second=3.58s`.
-///
-/// Card `^3vtvrzg` removed that timing assertion. `LiveModelResidency` now
-/// keeps each model resident for the whole test process, thus the first call
-/// of this suite is warm whenever an earlier suite resolved the same model,
-/// and the comparison is then of two warm calls. A local full run on
-/// 2026-10-01 measured `first=1.24s second=1.46s`: the order of two warm
-/// calls is noise, and it shows nothing about this package. The durations
-/// stay in the `RESULT` line as a reading.
+/// models pass and neither passes decisively — Muse Glimmer `first=7.75s
+/// second=3.31s`, Qwen3.8 `first=5.81s second=3.58s`. That timing assertion
+/// is gone: it was a check of the speed of the machine, a busy machine could
+/// fail it, and it was never evidence of prefix reuse.
 ///
 /// The recorded entries cannot rescue it either. That was checked against the
 /// shipped build before this suite was narrowed, rather than assumed:
@@ -64,13 +61,11 @@ private let selectionForkScenario = "selectionFork"
 /// - The one figure that would answer the question,
 ///   `usage.input.cachedTokenCount`, never arrives here. Router's live
 ///   conformer, `MLXFoundationModelsSessionBackend.usageTokenCounts()`,
-///   reads only the two `totalTokenCount`s and drops it. The pinned
-///   `mlx-swift-lm` executor now keeps a prompt cache for each session, and
-///   a plain turn reuses it (`LiveRouterFixture.swift` records the
-///   measurement). But each selection call here is a guided pass, and a
-///   guided pass builds its own cache and takes none (the unified log says
-///   `rule=guided`). Thus a selection call skips nothing, and there is
-///   nothing for a count to report.
+///   reads only the two `totalTokenCount`s and drops it; and in the pinned
+///   `mlx-swift-lm` the FoundationModels executor carries no prompt cache
+///   at all, so `cachedTokenCount` is the literal `0` at every emission
+///   site. On this build nothing is ever skipped, so there is nothing for
+///   a count to report.
 ///
 /// A live run bears that out and then goes one worse. Both selection turns
 /// recorded exactly `tokensIn=1144`, although their two intents tokenize two
@@ -111,7 +106,7 @@ private let selectionForkScenario = "selectionFork"
 @Suite(
     "Gated selection tier fork()-per-call trace (prefix reuse itself unmeasured)",
     .serialized,
-    .timeLimit(.minutes(10))
+    .timeLimit(IntegrationHangGuard.timeLimit)
 )
 struct SelectionForkPerCallTests {
     @Test(
@@ -147,19 +142,14 @@ struct SelectionForkPerCallTests {
             let searchToolsTool = try SearchToolsTool(
                 registry: registry, selection: fixture.discoverySeams.selection)
 
-            let firstStart = Date()
             _ = try await searchToolsTool.call(
                 arguments: SearchToolsArguments(task: "list trip cities and get weather for each")
             )
-            let firstElapsed = Date().timeIntervalSince(firstStart)
-
-            let secondStart = Date()
             _ = try await searchToolsTool.call(arguments: SearchToolsArguments(task: "convert 100 USD to EUR"))
-            let secondElapsed = Date().timeIntervalSince(secondStart)
 
             let trace = SelectionForkTrace(events: try fixture.transcriptEvents())
             expectForkPerCall(trace)
-            reportDiagnostics(trace, first: firstElapsed, second: secondElapsed)
+            reportDiagnostics(trace)
 
             await fixture.tearDown()
         } catch GenerationError.notWiredForLiveInference {
@@ -243,21 +233,17 @@ private func expectForkPerCall(_ trace: SelectionForkTrace) {
     )
 }
 
-/// Prints what the run measured, including the numbers nothing asserts on.
+/// Prints what the run recorded, including the numbers nothing asserts on.
 ///
 /// `tokensIn` is here as a diagnostic only. It is the whole rendered prompt of
 /// the turn, so it reads the same whether a prefix was reused or re-prefilled,
 /// and on this build it has been observed not to move with the prompt at all.
 ///
-/// - Parameters:
-///   - trace: the run's own recorded selection trace.
-///   - first: the first `searchTools` call's wall-clock duration.
-///   - second: the second call's wall-clock duration.
-private func reportDiagnostics(_ trace: SelectionForkTrace, first: TimeInterval, second: TimeInterval) {
+/// - Parameter trace: the run's own recorded selection trace.
+private func reportDiagnostics(_ trace: SelectionForkTrace) {
     reportGatedResult(
         scenario: selectionForkScenario,
-        line: "first=\(first)s second=\(second)s "
-            + "children=\(trace.childSessionIds.count) roots=\(trace.rootSessionIds.count)"
+        line: "children=\(trace.childSessionIds.count) roots=\(trace.rootSessionIds.count)"
     )
     for generation in trace.generations {
         reportGatedResult(

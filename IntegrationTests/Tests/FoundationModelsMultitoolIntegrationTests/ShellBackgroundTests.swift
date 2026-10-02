@@ -37,49 +37,15 @@ import Testing
 @Suite(
     "A shell command on the background path (phase-2)",
     .serialized,
-    // Fifteen minutes, derived by the method `BackgroundTests` states, applied to
-    // this scenario's own costs. Read that suite's derivation before changing
-    // this number.
+    // The limit is the shared hang guard, `IntegrationHangGuard.timeLimit`.
+    // It stops a turn that cannot end. It does not check the speed of the
+    // machine (card `^tm4x2hp`).
     //
-    // THE LIMIT IS THE DETECTOR, exactly as it is there. This suite exists to
-    // show that one shell command travels the whole background path. The
-    // failure the limit must catch is a turn that never reaches
-    // `tools.shell.execute` at all — and the harness already bounds that with
-    // `shellRunArrivalDeadline`, eight minutes, after which it reports what it
-    // read rather than hanging. So the ceiling stands above a healthy run plus
-    // that bound, and it is not the primary detector of anything.
-    //
-    // WHAT A HEALTHY RUN COSTS. Measured on this dev box on 2026-08-25, two
-    // runs of this suite against `Qwen3.8-27B-mxfp4`, the shipped pin:
-    //
-    //   date        suite time   tool calls   note
-    //   2026-08-25   42.123s      2           searchTools, runCode
-    //   2026-08-25   59.471s      2           searchTools, runCode
-    //
-    // The shape is constant: searchTools, then one `runCode` whose snippet calls
-    // `tools.shell.execute`. The worst healthy run is 59.471s.
-    //
-    // The limit of about 90s is headroom over that worst run, not a derived
-    // number. It was once 59.471s + 30s, where the 30s was `Execute`'s block
-    // window. That window is gone: `Execute` declares a background mount, so
-    // every call goes to the background at once and no call waits for a window
-    // to elapse. The headroom stays because a live model sets the pace. The two
-    // polls beside it — the live `getLines` read and the process-group probe —
-    // each cost about one `IntegrationPoll.interval`, because the command writes
-    // its first line at once and `killpg` kills the tree at once.
-    //
-    // THE DERIVATION. Task `^nhxj8hx` measured the CI runner at 6.21 times this
-    // dev box over ten suites (3614s / 581.7s). Project the worst healthy run
-    // onto that runner: 90s x 6.21 ≈ 559s. Apply the same one-third margin:
-    // 559s x 4/3 ≈ 745s. Round up to whole minutes: thirteen. Round once more to
-    // fifteen, because this scenario's arrival bound is itself eight minutes and
-    // a run that spends the whole of it and then reports must land inside the
-    // limit rather than be killed by it.
-    //
-    // Nothing here is a retry gate and nothing here is a sampling gate. A run
-    // that reaches this limit is a defect to fix. Re-derive it from the machine
-    // that failed, or remove it.
-    .timeLimit(.minutes(15))
+    // The harness bounds a turn that never reaches `tools.shell.execute` with
+    // the shared poll hang guard `IntegrationPoll.deadline`, after which it
+    // reports what it read rather than hanging. The time limit stands above
+    // that bound, so it is not the primary detector of anything.
+    .timeLimit(IntegrationHangGuard.timeLimit)
 )
 struct ShellBackgroundTests {
     @Test("a shell command goes to the background, stands on the run plane, is read live, is stopped, and is journaled")

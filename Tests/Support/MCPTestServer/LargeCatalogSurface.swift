@@ -49,6 +49,11 @@ public struct LargeCatalogSurface: Sendable {
 ///   - describing: whether each connected verb publishes a description —
 ///     see ``ScriptedServer/addLargeCatalogTools(of:describing:)``. `false`
 ///     builds the surface of a server that gives none.
+///   - makeServer: builds the `MCPServer` of each domain, not yet connected,
+///     from the server name of the domain. The default is the public
+///     initializer, whose connect attempts are timed on the real clock. A
+///     unit test passes a maker whose connect-attempt clock it holds, so no
+///     connect of the mount can time out on a busy machine.
 /// - Returns: the registry and the servers behind it.
 /// - Throws: what the connect, the capability mounts or `buildRegistry()`
 ///   throws.
@@ -56,14 +61,15 @@ public func makeLargeCatalogSurface(
     root: URL,
     shellStoreDirectoryName: String,
     domains: [LargeCatalogDomain] = LargeCatalogDomain.allCases,
-    describing: Bool = true
+    describing: Bool = true,
+    makeServer: (_ name: String) -> MCPServer = { name in MCPServer(name: name) }
 ) async throws -> LargeCatalogSurface {
     var scriptedServers: [ScriptedServer] = []
     var connectedServers: [MCPServer] = []
     for domain in domains {
         let scripted = ScriptedServer(name: domain.serverName)
         await scripted.addLargeCatalogTools(of: domain, describing: describing)
-        let connected = MCPServer(name: domain.serverName)
+        let connected = makeServer(domain.serverName)
         try await connected.connect(via: scripted.startOnInMemoryPair())
         scriptedServers.append(scripted)
         connectedServers.append(connected)

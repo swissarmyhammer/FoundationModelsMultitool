@@ -51,13 +51,11 @@ struct ShellHistoryOpsTests {
     /// The text the still-running command writes before it goes to sleep.
     private static let liveMarker = "partial"
 
-    /// How long the still-running command sleeps after it wrote its one line.
-    /// Long enough that the read below certainly lands while the run goes on,
-    /// and the test kills the run as soon as it read what it came for.
-    private static let liveRunSleepSeconds = 5
-
-    /// How long a poll waits for the first line of a run to arrive.
-    private static let outputArrivalDeadline = Duration.seconds(10)
+    /// How long the still-running command sleeps after it wrote its one line:
+    /// one day. No test reaches it, thus the read below lands while the run
+    /// goes on, however slow the machine is, and the test kills the run as
+    /// soon as it read what it came for (card `^tm4x2hp`).
+    private static let liveRunSleepSeconds = 86_400
 
     /// The text each line of the limit test carries, thus one pattern matches
     /// every one of them.
@@ -152,11 +150,13 @@ struct ShellHistoryOpsTests {
         _ = try? await run.value
     }
 
-    /// Reads again and again until the answer satisfies `isReady`, or until
-    /// the deadline elapses.
+    /// Reads again and again until the answer satisfies `isReady`.
     ///
     /// The read goes through the verb under test, because what a live test
-    /// proves is that the VERB answers for a run that still goes.
+    /// proves is that the VERB answers for a run that still goes. The wait is
+    /// for an event: the answer that satisfies `isReady`. Its only deadline is
+    /// ``TestPoll/deadline``, a hang guard and not a speed check (card
+    /// `^tm4x2hp`).
     ///
     /// - Parameters:
     ///   - read: How to read one answer.
@@ -166,14 +166,7 @@ struct ShellHistoryOpsTests {
     private func poll<Answer>(
         read: () async throws -> Answer, until isReady: (Answer) -> Bool
     ) async throws -> Answer {
-        let clock = ContinuousClock()
-        let start = clock.now
-        var answer = try await read()
-        while !isReady(answer), clock.now - start < Self.outputArrivalDeadline {
-            try? await Task.sleep(for: TestPoll.interval)
-            answer = try await read()
-        }
-        return answer
+        try await TestPoll.lastReading(of: read, until: isReady)
     }
 
     // MARK: - The rendered surface

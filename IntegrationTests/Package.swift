@@ -55,6 +55,25 @@ private let mlxPackage = "mlx-swift-lm"
 /// enable condition, and `Web/LiveProviderSettingTests.swift` checks it with
 /// no real key. No other test reads the environment to decide if it runs.
 ///
+/// **The blocked provider rule.** By the user's decision of 2026-10-01 (card
+/// `^kghyac5`, web.md § "Testing", Level 2): a blocked search provider (HTTP
+/// 429, or a challenge page) does not fail a live web search test, on the
+/// condition that at least one provider gives results. When no provider gives
+/// results, the test fails. `Web/Support/BlockedProviderRule.swift` holds the
+/// one rule: it records the block as a known issue, and the test does its
+/// checks on the results of a keyless provider that the first search did not
+/// try. `Web/BlockedProviderRuleTests.swift` checks the rule with no network.
+/// The rule does not change a time limit, and it is not for the model
+/// scenarios.
+///
+/// **No test checks the speed of the machine.** By the user's decision of
+/// 2026-10-01 (card `^tm4x2hp`, web.md § "Testing"): a time check in a test
+/// uses an injected clock or an event, and never the real time that a step
+/// took. A `.timeLimit` on a model-driven test is a hang guard only. It is one
+/// shared value, `IntegrationHangGuard.timeLimit`, far above the slowest step
+/// on a busy machine. A hang guard stops a test that cannot end. It does not
+/// fail a test that makes progress.
+///
 /// The two commands are:
 ///
 ///     swift test                                                  # unit tests

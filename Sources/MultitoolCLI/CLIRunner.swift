@@ -32,14 +32,14 @@ struct CLIArguments: Equatable {
     /// Every MCP server the `--mcp` options named, in the order the options stand.
     ///
     /// Each one becomes a spawned subprocess, a connected `MCPServer`, and one
-    /// group of the rendered surface — see `CLIRunner.makeDemoRegistry(direct:web:mcpServers:)`.
+    /// group of the rendered surface — see `CLIRunner.makeDemoRegistry(direct:web:mcpServers:makeServer:)`.
     var mcpServers: [MCPServerSpec] = []
 
     /// Whether to mount the web capability: `tools.web.search` and
     /// `tools.web.fetch`.
     ///
     /// Set by the `--web` flag. The API keys of the providers come from the
-    /// environment — see `CLIRunner.makeDemoRegistry(direct:web:mcpServers:)`.
+    /// environment — see `CLIRunner.makeDemoRegistry(direct:web:mcpServers:makeServer:)`.
     var web = false
 
     /// Whether to print usage text and exit without touching the Router.
@@ -256,7 +256,7 @@ struct CLIRouterUnavailableError: Error, CustomStringConvertible {
 /// `multitool-cli` executable calls `run(arguments:)`, and its telemetry
 /// bootstrap reads `CLITelemetryBackend`, `CLILogHandler` and
 /// `standardErrorOutput`. The nested integration package reads `demoProfile`,
-/// `embeddingModel`, `run(arguments:resolve:output:)` and `ExitCode`. Every
+/// `embeddingModel`, `run(arguments:resolve:output:errorOutput:cancellation:makeServer:)` and `ExitCode`. Every
 /// other declaration of this library stays `internal`, where the unit test
 /// target reaches it with `@testable import MultitoolCLI`.
 public enum CLIRunner {
@@ -281,7 +281,7 @@ public enum CLIRunner {
         public static let answerFailed: Int32 = 70
     }
 
-    /// The default `output` of `run(arguments:resolve:output:errorOutput:)`:
+    /// The default `output` of `run(arguments:resolve:output:errorOutput:cancellation:makeServer:)`:
     /// writes one line to standard output.
     ///
     /// `public` because it is the default value of a parameter of a `public`
@@ -292,7 +292,7 @@ public enum CLIRunner {
         write(line, to: .standardOutput)
     }
 
-    /// The default `errorOutput` of `run(arguments:resolve:output:errorOutput:)`:
+    /// The default `errorOutput` of `run(arguments:resolve:output:errorOutput:cancellation:makeServer:)`:
     /// writes one line to standard error.
     ///
     /// `public` for the same reason as `standardOutput`.
@@ -552,11 +552,35 @@ public enum CLIRunner {
     ///
     /// `router.resolve(profile:reporting:)`, unchanged — see `ProfileResolver`.
     ///
-    /// `public` because it is the default value of `run(arguments:resolve:output:)`'s
+    /// `public` because it is the default value of `run(arguments:resolve:output:errorOutput:cancellation:makeServer:)`'s
     /// `resolve` parameter, and a caller outside this module writes that
     /// default whenever it omits the argument.
     public static let defaultResolve: ProfileResolver = { router, definition, progress in
         try await router.resolve(profile: definition, reporting: progress)
+    }
+
+    /// Builds the `MCPServer` that one `--mcp` option attaches, from the
+    /// `<name>` of that option. The server is not yet connected.
+    ///
+    /// Injectable so `CLIArgumentTests` can give each server a connect-attempt
+    /// clock that the test holds. Then no connect attempt of a test run times
+    /// out on the real clock, however slow the machine is.
+    ///
+    /// - Parameter name: the name of the server, and so the noun its verbs
+    ///   render under.
+    /// - Returns: the server, not yet connected.
+    public typealias MCPServerMaker = @Sendable (_ name: String) -> MCPServer
+
+    /// The default server maker: `MCPServer(name:)`, unchanged — see
+    /// `MCPServerMaker`. Each connect attempt of the server it builds is
+    /// timed on the real clock.
+    ///
+    /// `public` because it is the default value of the `makeServer` parameter
+    /// of `run(arguments:resolve:output:errorOutput:cancellation:makeServer:)`,
+    /// and a caller outside this module writes that default whenever it omits
+    /// the argument.
+    public static let defaultMakeServer: MCPServerMaker = { name in
+        MCPServer(name: name)
     }
 
     /// Parses command-line arguments into `CLIArguments`.
@@ -648,6 +672,9 @@ public enum CLIRunner {
     ///   - cancellation: where the run adds the cancel of its session. The
     ///     exit path of the process runs it on a stop signal. Defaults to a
     ///     new ``CLIRunCancellation`` that nothing cancels.
+    ///   - makeServer: builds the server of each `--mcp` option. Defaults to
+    ///     `defaultMakeServer`; a test injects a maker whose servers time
+    ///     each connect attempt on a clock the test holds.
     /// - Returns: the process exit code — `ExitCode.success` on success or
     ///   `--help`, `ExitCode.usageError` for an argument error or for a `--mcp`
     ///   server that does not start, `ExitCode.answerFailed` when the model
@@ -658,7 +685,8 @@ public enum CLIRunner {
         resolve: @escaping ProfileResolver = defaultResolve,
         output: @escaping @Sendable (String) -> Void = standardOutput,
         errorOutput: @escaping @Sendable (String) -> Void = standardErrorOutput,
-        cancellation: CLIRunCancellation = CLIRunCancellation()
+        cancellation: CLIRunCancellation = CLIRunCancellation(),
+        makeServer: @escaping MCPServerMaker = defaultMakeServer
     ) async -> Int32 {
         let parsed: CLIArguments
         do {
@@ -677,7 +705,8 @@ public enum CLIRunner {
         do {
             try await runDemo(
                 direct: parsed.direct, web: parsed.web, mcpServers: parsed.mcpServers,
-                resolve: resolve, output: output, cancellation: cancellation)
+                makeServer: makeServer, resolve: resolve, output: output,
+                cancellation: cancellation)
             return ExitCode.success
         } catch {
             return exitCode(for: error, output: output, errorOutput: errorOutput)
@@ -775,13 +804,16 @@ public enum CLIRunner {
     ///   - direct: whether the registry vends `runCode` alone.
     ///   - web: whether the registry mounts the web capability.
     ///   - specs: what the `--mcp` options named, in option order.
+    ///   - makeServer: builds the server of each `--mcp` option. Defaults to
+    ///     `defaultMakeServer`.
     /// - Returns: the registry, its servers, and the pool that shuts them down.
     /// - Throws: ``CLIMCPStartError`` when a server does not start, and what
     ///   `MultiTool.Builder.buildRegistry()` throws when the rendered surface
     ///   is not legal — a server name that is no identifier, or a noun another
     ///   registration already owns.
     static func makeDemoRegistry(
-        direct: Bool, web: Bool, mcpServers specs: [MCPServerSpec]
+        direct: Bool, web: Bool, mcpServers specs: [MCPServerSpec],
+        makeServer: MCPServerMaker = defaultMakeServer
     ) async throws -> DemoRegistry {
         let builder = MultiTool.Builder()
             .addTool(DemoTripTool())
@@ -789,7 +821,8 @@ public enum CLIRunner {
         if web {
             builder.withWeb()
         }
-        let started = try await startMCPServers(specs, recordingInto: builder.serverPool)
+        let started = try await startMCPServers(
+            specs, recordingInto: builder.serverPool, makeServer: makeServer)
         do {
             try await builder.withMCP(servers: started.map(\.server))
             var registry = try builder.buildRegistry()
@@ -817,18 +850,20 @@ public enum CLIRunner {
     /// - Parameters:
     ///   - specs: what the `--mcp` options named, in option order.
     ///   - pool: where each started server and each subprocess is recorded.
+    ///   - makeServer: builds the server of each spec.
     /// - Returns: the started servers, in the order of `specs`.
     /// - Throws: ``CLIMCPStartError`` when a server does not spawn or does not
     ///   connect.
     private static func startMCPServers(
-        _ specs: [MCPServerSpec], recordingInto pool: MCPServerPool
+        _ specs: [MCPServerSpec], recordingInto pool: MCPServerPool,
+        makeServer: MCPServerMaker
     ) async throws -> [StartedMCPServer] {
         var started: [StartedMCPServer] = []
         for spec in specs {
             do {
                 let process = try StdioServerProcess(
                     command: spec.absoluteCommand, args: spec.arguments, name: spec.name)
-                let server = MCPServer(name: spec.name)
+                let server = makeServer(spec.name)
                 await pool.add(process: process)
                 await pool.add(server: server)
                 try await server.connect(via: process.respawn, backoffPolicy: .default)
@@ -884,6 +919,7 @@ public enum CLIRunner {
     ///     mode takes discovery away, never the background.
     ///   - web: whether the registry mounts the web capability.
     ///   - mcpServers: what the `--mcp` options named, in option order.
+    ///   - makeServer: builds the server of each `--mcp` option.
     ///   - resolve: the profile-resolution step.
     ///   - output: where progress/answer lines are written.
     ///   - cancellation: where the run adds the cancel of its session.
@@ -896,11 +932,13 @@ public enum CLIRunner {
         direct: Bool,
         web: Bool,
         mcpServers: [MCPServerSpec],
+        makeServer: MCPServerMaker,
         resolve: ProfileResolver,
         output: @escaping @Sendable (String) -> Void,
         cancellation: CLIRunCancellation
     ) async throws {
-        let demo = try await Self.makeDemoRegistry(direct: direct, web: web, mcpServers: mcpServers)
+        let demo = try await Self.makeDemoRegistry(
+            direct: direct, web: web, mcpServers: mcpServers, makeServer: makeServer)
         Self.reportSurface(demo.registry.surface, output: output)
         do {
             try await Self.runAnswers(demo, resolve: resolve, output: output, cancellation: cancellation)
