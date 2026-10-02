@@ -45,8 +45,24 @@ comments:
     - evidence: this commit holds only .kanban record files: the step records and checked boxes of ^9255d9b, and the finish ledger of ^cf57dtd. The code work of ^9255d9b is in commit d8de90e.
     - next: review
   timestamp: 2026-10-01T23:29:19.090577+00:00
-position_column: doing
-position_ordinal: '8180'
+- actor: claude-code
+  id: 01m3wx31q2tn1zj0kdhgeg0a6c
+  text: |-
+    ### review — clean
+    - evidence: 0 findings. review sha d8de90e~1..d8de90e: 4 source and test files reviewed, 7 validator runs, 0 failed, 0 skipped. The 2 .kanban files are excluded by .reviewignore. git diff --name-status -M shows no renamed file, so a file-scoped review was not necessary. The task has no earlier Review Findings sections.
+    - next: none. The task is in done.
+  timestamp: 2026-10-01T23:34:13.474245+00:00
+- actor: claude-code
+  id: 01m3wx3ffzd8w8d5nh0w5f0q3z
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: no-change — the fixes were already in d8de90e; all 3 criteria verified against .build/checkouts
+    - test: green — swift test, 1882 passed, 0 failed, 0 skipped
+    - commit: 2f4fe4f (kanban records only)
+    - review: clean — 0 findings on d8de90e~1..d8de90e; task moved to done
+  timestamp: 2026-10-01T23:34:27.583420+00:00
+position_column: done
+position_ordinal: ffff8b80
 title: Update three unit tests to the upstream changes of 2026-10-01
 ---
 ## Problem
