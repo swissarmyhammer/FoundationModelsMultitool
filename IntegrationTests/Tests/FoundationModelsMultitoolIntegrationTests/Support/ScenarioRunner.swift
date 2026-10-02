@@ -600,6 +600,13 @@ func streamTurn(of session: RoutedSession, prompt: String) async throws -> Strea
             // the same reason as the stall line: the stop is Router's recovery,
             // and it is not a failure of the scenario.
             reportTraceLine("REPEAT \(stop)")
+        case .reasoningStopped(let stop):
+            // Router stopped a pass that only reasoned past its reasoning
+            // limit. A recovery submission follows, or the answer ends. The
+            // line is printed and not asserted, for the same reason as the
+            // repeat line: the stop is Router's recovery, and it is not a
+            // failure of the scenario.
+            reportTraceLine("REASONING-STOP \(stop)")
         case .textDelta(let fragment):
             turn.streamedText += fragment
         case .textReset:
