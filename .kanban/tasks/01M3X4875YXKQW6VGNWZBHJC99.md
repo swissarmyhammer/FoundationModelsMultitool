@@ -95,8 +95,25 @@ comments:
     - evidence: One local commit of 3 test files and the task files. The base sha is 6a8895d. No `.git/index.lock` was present and no git process ran. The commit sha is in the git log, because the commit holds this comment.
     - next: review. Nothing was pushed.
   timestamp: 2026-10-02T03:43:29.533352+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m3yq6abj8dhqykhgg3nyvrp3
+  text: |-
+    ### review — clean
+    - evidence: `review sha c56729b~1..c56729b`. 0 findings, 0 confirmed, 0 refuted (7 attempted, 0 failed). 3 files reviewed; 2 `.kanban/` files excluded by `.reviewignore`. `git diff --name-status -M` shows no renamed file, so no file-scoped review was necessary.
+    - prior findings: 4 of 4 checked. At HEAD, `MCPTestSupport.makeServer` and `connectedMCPServer(to:over:...)` still have the default `clock: any Clock<Duration> = ManualClock()` (115a5c4 did not remove it). The 4 finding sites call `MCPTestSupport.makeServer(name: Self.serverName)` and get that default: LiveCatalogTests.swift (now lines 294 and 320 after later commits), LostCallTests.swift:101, MCPServerDiscoveryTests.swift:106.
+    - next: none. Task moved to done.
+  timestamp: 2026-10-02T16:29:38.034357+00:00
+- actor: claude-code
+  id: 01m3yq6t7106k0j6qxdjmbnqa3
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — 3 files (another session); ManualClock() default in MCPTestSupport.makeServer and connectedMCPServer(to:over:...); 4 of 4 findings checked
+    - test: green — root swift test 1893 passed (another session)
+    - commit: c56729b
+    - review: clean — 0 findings on c56729b~1..c56729b; the default is still in place at HEAD; task moved to done
+  timestamp: 2026-10-02T16:29:54.273555+00:00
+position_column: done
+position_ordinal: ffff9380
 title: Pass a gated connect-attempt clock through the MCPTestSupport connect helpers
 ---
 ## What

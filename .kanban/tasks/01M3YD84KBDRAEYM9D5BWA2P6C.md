@@ -47,8 +47,28 @@ comments:
     - evidence: this commit: feat(root): list the tool declarations in the direct mode runCode description
     - next: review
   timestamp: 2026-10-02T16:06:41.322460+00:00
-position_column: doing
-position_ordinal: '8180'
+- actor: claude-code
+  id: 01m3ypcyh6f9adc8jee9x1ben5
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit 8347ce4): 0 findings, 0 confirmed, 0 refuted; 7 validator runs attempted, 0 failed, 0 skipped. 4 source files reviewed (MultiTool+Description.swift, MultiTool.swift, Surface/APISurface.swift, MultiToolExecutionTests.swift). 4 `.kanban/` files are excluded by `.reviewignore`. `git diff --name-status -M HEAD~1..HEAD` shows no renamed file, so no file-scoped review was necessary.
+    - step: review
+    - outcome: clean
+    - evidence: 0 findings
+    - task: ^bwa2p6c
+    - next: none. The task moved to done.
+  timestamp: 2026-10-02T16:15:46.726600+00:00
+- actor: claude-code
+  id: 01m3ypdfca98xwkt524bpcmnd7
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 4 files; the direct-mode runCode description names no searchTools and lists the declaration of each catalog entry; tests written first and seen failing
+    - test: green — swift test 1895 passed; IntegrationTests build passes; 4 live tests passed (direct-mode canary, 2 search-then-call scenarios, shell background)
+    - commit: 8347ce4
+    - review: clean — 0 findings; task moved to done
+  timestamp: 2026-10-02T16:16:03.978474+00:00
+position_column: done
+position_ordinal: ffff9280
 title: Give direct mode a runCode description that names the tools and does not name searchTools
 ---
 ## Problem
