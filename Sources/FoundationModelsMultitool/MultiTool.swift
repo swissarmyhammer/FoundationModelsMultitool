@@ -270,10 +270,15 @@ extension MultiTool {
 @Generable
 public struct RunCodeArguments {
     /// The JavaScript snippet to run against `tools.*`.
+    ///
+    /// The guide names no `searchTools`. The macro makes this schema one time,
+    /// for the two modes, and a registry in direct mode mounts no
+    /// `searchTools` (task `^bwa2p6c`). The description of `runCode` tells the
+    /// model where the paths come from in each mode.
     @Guide(
         description: "JavaScript snippet to run against the available tools, exposed as functions "
-            + "under `tools.*`. Call the exact paths searchTools returned. Compose calls with normal "
-            + "code — variables, loops, map/filter — and `return` the final value; only that value "
+            + "under `tools.*`. Call only the exact `tools.*` paths this session gave you. "
+            + "Compose calls with normal code — variables, loops, map/filter — and `return` the final value; only that value "
             + "(and any console output) comes back."
     )
     public var code: String
@@ -320,50 +325,6 @@ public struct RunCodeArguments {
 public struct MultiTool: Tool {
     /// This tool's `Tool`-protocol name, always `"runCode"`.
     public let name = "runCode"
-    /// This tool's `Tool`-protocol description, presented to the model as
-    /// usage instructions for `runCode`.
-    ///
-    /// Together with `SearchToolsTool.description` this carries the **whole**
-    /// behavioral contract a session needs. Mounting the two tools is the
-    /// entire integration: a `Tool` conformance's description goes into the
-    /// prompt on every turn, but a session instruction is optional and a host
-    /// can supply none. So nothing load-bearing can live outside these two
-    /// strings. `searchTools` owns the discovery mandate; this side owns the
-    /// snippet, the provenance rule, and the error-recovery contract.
-    ///
-    /// The provenance rule — answer only from what the snippet returns — is
-    /// in this text because runs reported a booking as confirmed with nothing
-    /// invoked.
-    ///
-    /// The ambient globals' *contract* is the one part deliberately not
-    /// carried here. This text is read on every turn, alongside every tool
-    /// schema, so everything in it competes with the discovery mandate for
-    /// the model's attention — and the globals are the part a snippet needs
-    /// only once it is already writing a snippet. So this names them, closes
-    /// the global world around them, and points at `docs("globals")`, which
-    /// hands back the contract on demand (see
-    /// `MultiTool+SandboxGlobals.swift`, "MARK: - The docs() page").
-    public let description = """
-        runCode is an isolated JavaScript runtime that runs one snippet and returns what
-        that snippet returns — use it for any computation (arithmetic, string work,
-        dates, sorting, reshaping JSON) and for this session's functions, which it
-        exposes under `tools.*`. The runtime is JavaScriptCore, core JavaScript only:
-        `import` and `require` do not exist, there are no modules and no node, deno or
-        bun APIs, and every function you can call is under `tools.*`. Write one snippet
-        calling the exact `tools.*` paths searchTools returned, await every call, and
-        `return` the final value; only that value comes back. Awaiting a call is the
-        whole of how a snippet coordinates its work: do not wait() inside a snippet, and
-        never time a call or poll for one. When runCode answers with `pending` false, the
-        snippet is done and its result is the detail field: answer from that result. When
-        runCode answers with `pending` true, the snippet is still going and you do not have
-        its result: end your answer now, and the result comes back to you as a new message
-        when the snippet finishes. Answer only from what the snippet returns: never
-        state a fact about the user's data that did not come from a `tools.*` return
-        value, and never claim success for a call the snippet did not actually return.
-        When a snippet fails, fix it and call runCode again immediately. Ambient globals
-        never appear in searchTools — run `docs("globals")` in a snippet to read them.
-        """
-
     /// The box that holds the catalog + live tool instances this `runCode`
     /// dispatches into, and everything precomputed from them, as one
     /// `RegistryBundle` — see `RegistryHolder`.

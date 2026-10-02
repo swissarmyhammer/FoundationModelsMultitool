@@ -50,8 +50,27 @@ comments:
     - evidence: this commit: test(root): wait for events or use an injected clock in place of real-time windows
     - next: review
   timestamp: 2026-10-02T15:34:06.327724+00:00
-position_column: doing
-position_ordinal: '8180'
+- actor: claude-code
+  id: 01m3ymvtx4tk133va8q3326pjm
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (commit 115a5c4): 0 findings, 0 confirmed, 0 refuted, 14 attempted, 0 failed. 13 files reviewed. 4 .kanban files were not reviewed (.reviewignore). `git diff --name-status -M HEAD~1..HEAD` shows no renamed file, so no file-scoped review was necessary.
+    - judgment 1: `LoopbackHTTPServer.start(hangBound:)` with `TestHangGuard.seconds` (600 s) is a hang guard, not a widened deadline. The old 30 s bound was a real-time window: the SSE stream stays open for the whole test body, and `TestPoll.deadline` is 300 s. The new bound is the same value as the `.timeLimit` of the test process. Each request ends on the event of its response, so a correct run never meets this bound.
+    - judgment 2: the `runCode` settle grace on the real clock is not a speed check. The gated snippet holds on a `ReleaseGate` with grace 0, so it is pending at once. The collector throws at its first statement and settles, and the wait ends on that event. `TestPoll.deadline` is only its hang bound (pattern of ^3np5yzj).
+    - next: none. The task is in done.
+    task: ^pfvdg5b
+  timestamp: 2026-10-02T15:48:57.380686+00:00
+- actor: claude-code
+  id: 01m3ymwb1ef27jgcr7r8k4kde5
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 15 files; each listed real-time window now waits for an event or uses an injected clock (new seam CLIMailWait.clock, new helper HeldScriptedTool)
+    - test: green — swift test 1893 passed; the 8 changed suites passed 84 tests under load; IntegrationTests build passes
+    - commit: 115a5c4
+    - review: clean — 0 findings; the 600 s loopback bound is a hang guard, and the runCode grace test ends on an event; task moved to done
+  timestamp: 2026-10-02T15:49:13.902734+00:00
+position_column: done
+position_ordinal: ffff9180
 title: Remove the remaining short real-time windows from root tests
 ---
 ## What

@@ -356,6 +356,45 @@ struct MultiToolExecutionTests {
         #expect(mounted.map(\.name) == ["runCode"])
     }
 
+    /// Mounts the direct-mode tools of a catalog with one flat entry and one
+    /// grouped entry, and returns the `runCode` among them.
+    ///
+    /// - Returns: the mounted `runCode` and the registry it reads.
+    /// - Throws: what the build or the mount throws, or a missing `runCode`.
+    private func mountDirectModeRunCode() throws -> (runCode: MultiTool, registry: MultiTool.Registry) {
+        let registry = try MultiTool.Builder()
+            .addTool(CitiesTool())
+            .addGroup(named: "github", [IssueCountTool()])
+            .buildRegistry()
+            .directMode()
+        let mounted = try registry.makeSessionTools(selection: nil)
+        let runCode = try #require(mounted.compactMap { $0 as? MultiTool }.first)
+        return (runCode, registry)
+    }
+
+    @Test("A direct-mode runCode names no searchTools, in its description or in its argument schema")
+    func directModeRunCodeNamesNoSearchTools() throws {
+        let runCode = try mountDirectModeRunCode().runCode
+        let schema = try ToolAPIRenderer.jsonSchemaString(for: runCode.parameters)
+
+        // Direct mode mounts no searchTools. A text that sends the model to
+        // it sends the model to a tool that does not exist.
+        #expect(!runCode.description.contains("searchTools"))
+        #expect(!schema.contains("searchTools"))
+    }
+
+    @Test("A direct-mode runCode description declares the signature of each catalog entry under its full path")
+    func directModeRunCodeDeclaresEachCatalogEntry() throws {
+        let (runCode, registry) = try mountDirectModeRunCode()
+
+        // The model reads each signature before its first snippet, so no
+        // failed snippet is necessary to learn one.
+        for entry in registry.surface.entries {
+            #expect(runCode.description.contains("// tools.\(entry.path)\n\(entry.descriptor.declaration)"))
+        }
+        #expect(runCode.description.contains("// tools.github.getIssueCount"))
+    }
+
     @Test("Both vended tools are backed by the registry they were vended from, not an empty one")
     func vendedToolsAreBackedByTheirOwnRegistry() async throws {
         let registry = try MultiTool.Builder()

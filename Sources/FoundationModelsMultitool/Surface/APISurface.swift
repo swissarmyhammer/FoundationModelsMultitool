@@ -91,6 +91,20 @@ public struct APISurface: Sendable, Equatable {
             "\(banner)\n\(qualify(descriptor.source))"
         }
 
+        /// The signature of this entry alone: the same `// tools.<path>`
+        /// banner ``block`` opens with, then `descriptor.declaration`, with
+        /// no doc comment and no example.
+        ///
+        /// A direct-mode `runCode` description lists this block for each
+        /// entry, because direct mode mounts no `searchTools` and the model
+        /// must read each signature before its first snippet. The doc
+        /// comment and the example stay out, because the description goes
+        /// into the prompt on every turn; `docs("<path>")` in a snippet gives
+        /// the full ``block``.
+        var declarationBlock: String {
+            "\(banner)\n\(descriptor.declaration)"
+        }
+
         /// The short text block that seeds the registry-backed selection
         /// tier's prompt for this entry: the same `// tools.<path>` banner
         /// ``block`` opens with, then `descriptor.description` alone —
@@ -228,10 +242,10 @@ public struct APISurface: Sendable, Equatable {
             return "\(names.dropLast().joined(separator: ", ")) and \(last)"
         }
 
-        /// The `// tools.<path>` line that opens ``block`` and
-        /// ``summaryBlock``, so the two texts name the entry the same way and
-        /// a reader of either finds the fully-qualified call path on its
-        /// first line.
+        /// The `// tools.<path>` line that opens ``block``,
+        /// ``declarationBlock`` and ``summaryBlock``, so the three texts name
+        /// the entry the same way and a reader of each finds the
+        /// fully-qualified call path on its first line.
         private var banner: String {
             "// tools.\(path)"
         }
@@ -296,7 +310,23 @@ public struct APISurface: Sendable, Equatable {
     /// that tier assembles its prefix from each entry's
     /// ``Entry/summaryBlock``.
     public var source: String {
-        entries.map(\.block).joined(separator: "\n\n")
+        joinedBlocks(\.block)
+    }
+
+    /// Every entry's ``Entry/declarationBlock``, in catalog order, separated
+    /// by a blank line. It is the catalog part of the direct-mode `runCode`
+    /// description (see `MultiTool.description`).
+    var declarations: String {
+        joinedBlocks(\.declarationBlock)
+    }
+
+    /// One text block for each entry, in catalog order, separated by a blank
+    /// line.
+    ///
+    /// - Parameter block: The text block of one entry.
+    /// - Returns: The blocks of all entries, joined.
+    private func joinedBlocks(_ block: (Entry) -> String) -> String {
+        entries.map(block).joined(separator: "\n\n")
     }
 
     /// Every standalone (flat-namespaced) entry, in catalog order — a view for
