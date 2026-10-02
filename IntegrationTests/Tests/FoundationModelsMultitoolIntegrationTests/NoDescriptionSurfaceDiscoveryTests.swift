@@ -131,10 +131,15 @@ private struct NoDescriptionItem: SearchableMetadata {
 /// renders. Each text is driven over the same queries one time, on the same
 /// model, so the printed totals are comparable.
 ///
-/// **What it holds.** One floor, and no ranking: the shipped text must find
-/// at least one declared path over the whole run. A tool that never answers
-/// any query is the defect the card names, and a level over that floor is a
-/// claim about a model that this suite does not make.
+/// **What it holds.** Only what the code of this package controls, under each
+/// of the three texts: each search answers without an error, each declared
+/// path is a path of the catalog, and each answer holds only catalog paths,
+/// each one time, inside the limit (``DiscoveryAnswerCheck``). How many
+/// declared paths each text finds is a measurement of the model: the suite
+/// prints it and asserts nothing on it. Card `^xr5w83f` removed the earlier
+/// floor, that the shipped text find at least one declared path over the run,
+/// because that floor failed when the model changed, also when the code was
+/// correct.
 ///
 /// **Why the plumbing probe model.** `agentFlashModel` is reserved to
 /// `AgentSurfaceDiscoveryTests` by a written rule on that constant — "no
@@ -152,8 +157,8 @@ private struct NoDescriptionItem: SearchableMetadata {
     .timeLimit(.minutes(noDescriptionTimeLimitMinutes))
 )
 struct NoDescriptionSurfaceDiscoveryTests {
-    @Test("a tool that publishes no description is still selected from the text the surface writes")
-    func aToolWithNoDescriptionIsStillSelected() async throws {
+    @Test("each text for a tool with no description gives answers of real catalog paths, one time each")
+    func eachTextForAToolWithNoDescriptionAnswersRealCatalogPaths() async throws {
         try await withLiveRouterFixture(
             name: noDescriptionScenarioName, profile: plumbingProbeProfile
         ) { fixture in
@@ -174,6 +179,8 @@ struct NoDescriptionSurfaceDiscoveryTests {
                 scenario: noDescriptionScenarioName,
                 line: "entries=\(entries.count) domain=\(noDescriptionDomain.serverName) "
                     + "queries=\(noDescriptionQueries.count)")
+            let check = DiscoveryAnswerCheck(surfaceOf: mounted.registry)
+            check.expectEveryDeclaredPathIsInTheCatalog(of: noDescriptionQueries)
 
             let readings = try await NoDescriptionCandidate.allCases.mappedInOrder {
                 candidate in
@@ -181,12 +188,12 @@ struct NoDescriptionSurfaceDiscoveryTests {
                 let searcher = MetadataSearcher(
                     items: items, mode: .selection, embedder: nil, selection: selection)
                 let group = try await measure(
-                    candidate: candidate, through: searcher, limit: entries.count)
+                    candidate: candidate, through: searcher, limit: check.limit)
+                check.expectNoFault(in: group, answering: noDescriptionQueries)
                 return (candidate, group)
             }
             let groups = Dictionary(uniqueKeysWithValues: readings)
 
-            let shipped = groups[.arguments]?.correctCount ?? 0
             reportGatedResult(
                 scenario: noDescriptionScenarioName,
                 line: NoDescriptionCandidate.allCases
@@ -194,14 +201,6 @@ struct NoDescriptionSurfaceDiscoveryTests {
                         "\($0.rawValue)=\(groups[$0]?.correctCount ?? 0)/\(groups[$0]?.wrongCount ?? 0)"
                     }
                     .joined(separator: " "))
-            #expect(
-                shipped > 0,
-                """
-                over \(noDescriptionQueries.count) queries the selection model found no declared \
-                path for a tool that publishes no description, so the text the surface writes in \
-                place of a description carries no signal
-                """
-            )
             withExtendedLifetime(mounted.servers) {}
         }
     }

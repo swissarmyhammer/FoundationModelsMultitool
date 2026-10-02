@@ -35,6 +35,37 @@ struct FilesAndShellSurface {
     let hintSearcher: MetadataSearcher<APISurface.Entry>
 }
 
+extension FilesAndShellSurface {
+
+    /// Drives one graded group through ``searchTools`` and holds each answer
+    /// to the rules the code of this package controls.
+    ///
+    /// Prints the size of the catalog, one line for each query and one line
+    /// for the group, with the correct and the wrong counts. Asserts nothing
+    /// on those counts: they measure the model. Asserts that each path a
+    /// query declares is a path of the catalog, and that each answer holds
+    /// only catalog paths, each one time, inside the limit — see
+    /// ``DiscoveryAnswerCheck``. A call that throws fails the test, so each
+    /// query also answers without an error.
+    ///
+    /// - Parameters:
+    ///   - queries: the group to drive, in the order it is listed.
+    ///   - fixture: the resolved fixture whose recording the raw ids are read
+    ///     off.
+    ///   - scenario: the label the printed lines carry.
+    /// - Throws: whatever the tool call or the transcript read throws.
+    func driveGradedGroup(
+        _ queries: [GradedDiscoveryQuery], recordedBy fixture: LiveRouterFixture, reportedAs scenario: String
+    ) async throws {
+        reportCatalogSize(of: registry, reportedAs: scenario)
+        let check = DiscoveryAnswerCheck(surfaceOf: registry)
+        check.expectEveryDeclaredPathIsInTheCatalog(of: queries)
+        let group = try await gradeDiscoveryGroup(
+            of: queries, through: searchTools, recordedBy: fixture, reportedAs: scenario)
+        check.expectNoFault(in: group, answering: queries)
+    }
+}
+
 /// Mounts the files-and-shell surface, writable, and takes the production
 /// `searchTools` and the production did-you-mean ranker off it.
 ///

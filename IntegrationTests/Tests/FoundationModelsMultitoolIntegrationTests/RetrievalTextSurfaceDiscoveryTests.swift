@@ -22,7 +22,7 @@ private let retrievalTextScenarioName = "retrievalTextChoice"
 ///
 /// A host reads the first few answers, so a declared tool that ranks below
 /// them is not much better than one the ranking missed. Three is the number
-/// every count and every level of this suite reads.
+/// every printed count of this suite reads.
 private let retrievalTextTopPlaces = 3
 
 /// The one place at the top of a ranking that the counts read on its own.
@@ -37,27 +37,6 @@ private let retrievalTextFirstPlace = 1
 /// 1.60, 1.67 and 1.87 on the held-out group — and a third place would only
 /// print noise, because the ranks behind the mean are whole numbers.
 private let meanBestRankPlacesAfterThePoint = 2
-
-/// How many of the ten agent-surface queries the shipped setting must answer
-/// with a declared-correct path in the first ``retrievalTextTopPlaces``
-/// places.
-///
-/// The 2026-09-29 measurement of the shipped `block/description` setting read
-/// 10 of 10, and this level holds that reading. See
-/// ``GradedDiscoveryGroup/shippedTopPlaceLevel`` for why a level of this kind
-/// may be raised and never lowered.
-private let shippedAgentSurfaceTopPlaceLevel = 10
-
-/// How many of the fifteen held-out queries the shipped setting must answer
-/// with a declared-correct path in the first ``retrievalTextTopPlaces``
-/// places.
-///
-/// The 2026-09-29 measurement of the shipped `block/description` setting read
-/// 14 of 15, and this level holds that reading. The earlier level of 13 was
-/// the 2026-09-10 reading, which the Router padding defect made. See
-/// ``GradedDiscoveryGroup/shippedTopPlaceLevel`` for why a level of this kind
-/// may be raised and never lowered.
-private let shippedHeldOutTopPlaceLevel = 14
 
 /// Which text each half of the retrieval tier reads.
 ///
@@ -106,13 +85,6 @@ private enum RetrievalTextSetting: String, CaseIterable, Sendable {
         }
     }
 }
-
-/// The setting the package ships, and the only one this suite holds to a
-/// level.
-///
-/// The other two are instruments. A level on an instrument would hold the
-/// package to a path it does not take.
-private let shippedRetrievalTextSetting = RetrievalTextSetting.blockThenDescription
 
 /// One catalog entry presented to the registry with the text one setting
 /// gives the keyword half.
@@ -176,6 +148,9 @@ private struct DeclaredPathRank: Sendable {
 /// What one query scored in one setting.
 private struct RetrievalRankReading: Sendable {
 
+    /// Every path the answer ranked, best first.
+    let rankedPaths: [String]
+
     /// The rank of each declared-correct path, in path order.
     let ranks: [DeclaredPathRank]
 
@@ -188,8 +163,7 @@ private struct RetrievalRankReading: Sendable {
     var foundNearTheTop: Bool { (bestRank ?? .max) <= retrievalTextTopPlaces }
 }
 
-/// One named group of graded queries, with the standard the shipped setting
-/// holds on it.
+/// One named group of graded queries.
 private struct GradedDiscoveryGroup: Sendable {
 
     /// The label the printed lines carry.
@@ -197,35 +171,16 @@ private struct GradedDiscoveryGroup: Sendable {
 
     /// The queries of the group, in the order the group lists them.
     let queries: [GradedDiscoveryQuery]
-
-    /// How many queries of this group the shipped setting must answer with a
-    /// declared-correct path in the first ``retrievalTextTopPlaces`` places.
-    ///
-    /// A level, not a floor, and it sits at the measurement rather than
-    /// under it. Nothing here samples: the embedder and the two keyword
-    /// signals answer the same way every run, so the value a settling run
-    /// measured is the value every run holds. It may be raised by a later
-    /// measurement and never lowered to make a run green.
-    let shippedTopPlaceLevel: Int
 }
 
 /// The two graded groups this measurement drives, in report order.
 ///
 /// Both lists are taken from the suites that own them — the ten of card
 /// `^zqz1zan` and the fifteen of card `^kn9ay20` — so no query is written
-/// twice. The levels are the 2026-09-29 measurement of the shipped setting,
-/// printed as `bestRankTopThree` on each closing line.
+/// twice.
 private let retrievalTextGroups = [
-    GradedDiscoveryGroup(
-        name: "agentSurface",
-        queries: agentSurfaceQueries,
-        shippedTopPlaceLevel: shippedAgentSurfaceTopPlaceLevel
-    ),
-    GradedDiscoveryGroup(
-        name: "heldOut",
-        queries: heldOutQueries,
-        shippedTopPlaceLevel: shippedHeldOutTopPlaceLevel
-    ),
+    GradedDiscoveryGroup(name: "agentSurface", queries: agentSurfaceQueries),
+    GradedDiscoveryGroup(name: "heldOut", queries: heldOutQueries),
 ]
 
 /// The gated measurement that decides which text the retrieval tier reads.
@@ -245,11 +200,16 @@ private let retrievalTextGroups = [
 /// model picks anything. Each query asks for the whole catalog, so a
 /// declared-correct path any signal ranked has a place to report.
 ///
-/// **What it holds.** Every query of every setting must rank at least one
-/// declared-correct path, and the shipped setting must additionally hold
-/// each group's ``GradedDiscoveryGroup/shippedTopPlaceLevel``. The other two
-/// settings are instruments: they are measured and printed, and no level
-/// holds them.
+/// **What it holds.** Only what the code of this package controls, in every
+/// setting: each search answers without an error, each declared path is a
+/// path of the catalog, and each ranking holds only catalog paths, each one
+/// time, inside the limit (``DiscoveryAnswerCheck``). Where the declared paths
+/// rank is a measurement of the embedder and of the text: the suite prints it
+/// and asserts nothing on it. Card `^xr5w83f` removed the earlier fixed
+/// levels — a declared path ranked for each query, and 10 of 10 and 14 of 15
+/// queries with a declared path in the first three places for the shipped
+/// setting — because a change of the embedding model can move those numbers
+/// while the code is correct.
 ///
 /// **What it prints.** One line for each query of each setting, with the
 /// place each declared-correct path took; and one line closing each group of
@@ -273,21 +233,25 @@ private let retrievalTextGroups = [
     .timeLimit(.minutes(retrievalTextTimeLimitMinutes))
 )
 struct RetrievalTextSurfaceDiscoveryTests {
-    @Test("every setting ranks a declared tool for every query, and the shipped setting holds its level")
-    func everySettingRanksADeclaredToolForEveryQuery() async throws {
+    @Test("every setting ranks only real catalog paths, one time each, for every query")
+    func everySettingRanksOnlyRealCatalogPaths() async throws {
         try await withLiveRouterFixture(name: retrievalTextScenarioName, profile: plumbingProbeProfile) { fixture in
-            let entries = try makeFilesAndShellSurface(over: fixture).registry.surface.entries
+            let registry = try makeFilesAndShellSurface(over: fixture).registry
+            let entries = registry.surface.entries
             reportTextSizes(of: entries)
             let embedder = fixture.discoverySeams.embedder
+            let check = DiscoveryAnswerCheck(surfaceOf: registry)
+            for group in retrievalTextGroups {
+                check.expectEveryDeclaredPathIsInTheCatalog(of: group.queries)
+            }
 
             for setting in RetrievalTextSetting.allCases {
                 let searcher = makeRetrievalSearcher(for: setting, over: entries, embedder: embedder)
                 for group in retrievalTextGroups {
                     let readings = try await measure(
-                        group: group, through: searcher, over: entries.count, in: setting)
-                    expectEveryQueryRanksADeclaredPath(readings, of: group, in: setting)
-                    if setting == shippedRetrievalTextSetting {
-                        expectTheShippedSettingHoldsItsLevel(readings, of: group, in: setting)
+                        group: group, through: searcher, over: check.limit, in: setting)
+                    for (reading, query) in zip(readings, group.queries) {
+                        check.expectNoFault(in: reading.rankedPaths, answering: query.task)
                     }
                 }
             }
@@ -372,62 +336,10 @@ private func measure(
 /// - Returns: the reading of that query.
 private func rankReading(of query: GradedDiscoveryQuery, in order: [String]) -> RetrievalRankReading {
     RetrievalRankReading(
+        rankedPaths: order,
         ranks: query.correctPaths.sorted().map { path in
             DeclaredPathRank(path: path, rank: order.firstIndex(of: path).map { $0 + 1 })
         }
-    )
-}
-
-/// Holds every query of one group, in one setting, to ranking at least one
-/// of the catalog paths it declares correct.
-///
-/// This is the floor under the whole measurement: a setting that leaves a
-/// query with no declared path anywhere in the ranking has lost that query,
-/// whatever its other numbers say.
-///
-/// - Parameters:
-///   - readings: the readings of the group, in query order.
-///   - group: the group the readings came from.
-///   - setting: the setting the readings were measured in.
-private func expectEveryQueryRanksADeclaredPath(
-    _ readings: [RetrievalRankReading],
-    of group: GradedDiscoveryGroup,
-    in setting: RetrievalTextSetting
-) {
-    for (index, reading) in readings.enumerated() {
-        let query = group.queries[index]
-        #expect(
-            reading.bestRank != nil,
-            """
-            setting \(setting.rawValue) group \(group.name) query \(index + 1) "\(query.task)" \
-            ranked none of \(query.correctPaths.sorted())
-            """
-        )
-    }
-}
-
-/// Holds one group of the shipped setting to the level the group states.
-///
-/// The caller applies this to ``shippedRetrievalTextSetting`` alone. A level
-/// on either instrument would hold the package to a path it does not take.
-///
-/// - Parameters:
-///   - readings: the readings of the group, in query order.
-///   - group: the group the readings came from.
-///   - setting: the setting the readings were measured in.
-private func expectTheShippedSettingHoldsItsLevel(
-    _ readings: [RetrievalRankReading],
-    of group: GradedDiscoveryGroup,
-    in setting: RetrievalTextSetting
-) {
-    let found = readings.filter(\.foundNearTheTop).count
-    #expect(
-        found >= group.shippedTopPlaceLevel,
-        """
-        setting \(setting.rawValue) group \(group.name) answered \(found) of \(readings.count) queries \
-        with a declared path in the first \(retrievalTextTopPlaces) places, \
-        under the level of \(group.shippedTopPlaceLevel)
-        """
     )
 }
 

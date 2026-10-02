@@ -82,12 +82,16 @@ let operationToolQueries = [
 /// **Two tests, two questions.**
 ///
 /// 1. Discovery. The notes tool stands beside the nine files-and-shell
-///    entries, so a query has distractors to miss it among. Every query of
-///    ``operationToolQueries`` must find a declared verb path, graded by
-///    `gradeDiscoveryGroup` and held by `expectEveryQueryFindsACorrectPath`,
-///    exactly as `HeldOutSurfaceDiscoveryTests` grades its group. No group
-///    level: the group is five queries with one declared path each, so the
-///    per-query floor is the whole level.
+///    entries, so a query has distractors to miss it among. The group
+///    ``operationToolQueries`` runs through
+///    `FilesAndShellSurface.driveGradedGroup`, exactly as
+///    `HeldOutSurfaceDiscoveryTests` runs its group. It holds that each verb
+///    path a query declares is a path of the catalog, so the `@Operation`
+///    macro expanded the notes tool into those verbs, and that each answer
+///    holds only catalog paths, each one time, inside the limit. It prints
+///    how many declared verbs the model found, and asserts nothing on that
+///    count: card `^xr5w83f` removed the floor of one declared verb for each
+///    query, because that count measures the model.
 /// 2. Search then call. One prompt asks the model to add a note, tag it and
 ///    report its id. The route is read off `StreamedTurn.calls`, which is the
 ///    record `streamTurn` keeps of every session tool call: a `searchTools`
@@ -114,20 +118,12 @@ let operationToolQueries = [
     .timeLimit(.minutes(operationToolTimeLimitMinutes))
 )
 struct OperationToolLiveTests {
-    @Test("every query finds a declared verb of the notes tool beside the files-and-shell distractors")
-    func notesVerbsAreFoundBesideTheDistractors() async throws {
+    @Test("the notes verbs stand in the catalog beside the distractors, and each answer holds only catalog paths")
+    func notesVerbsStandInTheCatalogBesideTheDistractors() async throws {
         try await withLiveRouterFixture(name: operationDiscoveryScenarioName) { fixture in
             let notes = try IntegrationNotesTool.make(store: IntegrationNotesStore())
-            let surface = try makeFilesAndShellSurface(over: fixture, adding: [notes])
-            reportCatalogSize(of: surface.registry, reportedAs: operationDiscoveryScenarioName)
-
-            let group = try await gradeDiscoveryGroup(
-                of: operationToolQueries,
-                through: surface.searchTools,
-                recordedBy: fixture,
-                reportedAs: operationDiscoveryScenarioName)
-
-            expectEveryQueryFindsACorrectPath(in: group, of: operationToolQueries)
+            try await makeFilesAndShellSurface(over: fixture, adding: [notes])
+                .driveGradedGroup(operationToolQueries, recordedBy: fixture, reportedAs: operationDiscoveryScenarioName)
         }
     }
 

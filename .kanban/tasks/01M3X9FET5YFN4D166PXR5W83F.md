@@ -9,7 +9,76 @@ comments:
     - `OverBudgetSurfaceDiscoveryTests.swift:140` asserts `matchedPathCount > 0` over its two queries. That is a model-quality floor on `Qwen3-1.7B-4bit`. On 2026-10-01 it failed locally at HEAD (both queries answered no match), also with the `^3vtvrzg` changes stashed. CI run 36951032341 passed it with one match only, and that match was a wrong path (`deploy.download_artifact` for "read the contents of a file on disk").
     - `^3vtvrzg` renamed `agentSurfaceRoundCorrectLevel` to `agentSurfaceCorrectLevel` and `heldOutRoundCorrectLevel` to `heldOutCorrectLevel` (values unchanged), and removed the discovery rounds. `expectEveryQueryFindsACorrectPath` now takes a `DiscoveryGroupGrade`.
   timestamp: 2026-10-02T04:29:48.099220+00:00
-position_column: todo
+- actor: claude-code
+  id: 01m3xfebfs263pc4whhma28vxm
+  text: |-
+    Research (implement step). A search at HEAD de553cf found these fixed discovery-score assertions in `IntegrationTests/`:
+    - `AgentSurfaceDiscoveryTests`: `group.correctCount >= agentSurfaceCorrectLevel` (19), `expectEveryQueryFindsACorrectPath` (each query `correctCount >= 1`), and `expectTheMutatingQueriesAnswer` (queries 4 to 9 must answer a match, and a match must be `files.write`, `files.edit` or `shell.execute`). The third one also depends on how well the model selects.
+    - `HeldOutSurfaceDiscoveryTests`: `group.correctCount >= heldOutCorrectLevel` (15) and `expectEveryQueryFindsACorrectPath`.
+    - `OperationToolLiveTests.notesVerbsAreFoundBesideTheDistractors`: `expectEveryQueryFindsACorrectPath` (a per-query floor).
+    - `OverBudgetSurfaceDiscoveryTests`: `matchedPathCount > 0`. Its other three checks (no repeated path, count in limit, path in catalog) are already the properties of item 1.
+    - `NoDescriptionSurfaceDiscoveryTests`: `shipped > 0` (the shipped text must find one declared path over the run).
+    - `RetrievalTextSurfaceDiscoveryTests`: `shippedAgentSurfaceTopPlaceLevel` (10), `shippedHeldOutTopPlaceLevel` (14), and `expectEveryQueryRanksADeclaredPath` (each query must rank a declared path). This suite uses no generation, but the ranking comes from the embedding model, so these are model-quality scores too.
+    Facts for the new checks:
+    - `SearchToolsTool.call` throws on a searcher error or a selection-session error, so a `try` on the call is the "answer without an error" check.
+    - The limit of `searchTools` defaults to `registry.surface.entries.count`.
+    - `APISurface.Entry.id` is its `path`, so a searcher match id is a catalog path.
+    - `UnknownToolHintLiveTests` asserts a fixed best path for each imagined path (`suggestedPaths.first == bestPath`). That is a retrieval-ranking expectation, not a count of correct discovery paths. It is out of the scope of this card; I record it here for a person to decide.
+  timestamp: 2026-10-02T04:54:58.297343+00:00
+- actor: claude-code
+  id: 01m3xfvebfhg5knbbyzms6xmpd
+  text: |-
+    `OverBudgetSurfaceDiscoveryTests` investigation result: the failure of `matchedPathCount > 0` is a model-quality score, not a defect of this package.
+    Evidence (local run, 2026-10-02, M3 Ultra, `swift test --package-path IntegrationTests --no-parallel --filter OverBudgetSurfaceDiscoveryTests`, after the test was changed to print the raw ids of each slice):
+    - `entries=49 prefixCharacters=38340 budget=32000`, so the over-budget path ran.
+    - Both queries: `matches=0 slices=2 selection=[[], []]`.
+    - The Router recording shows four `.flash` responses from `mlx-community/Qwen3-1.7B-4bit`, each with `contentJSON` `{"ids": []}`.
+    - For "read the contents of a file on disk", slice 1 had `// tools.files.read` in its instructions, `files.read` in the "Choose only from these ids" list of its prompt, and `files.read` in the enum of its grammar. The model still answered no id.
+    - `SearchToolsTool.format` then gave "found no matching functions", which is the correct text for an empty selection. No id was lost by the code.
+    - CI run 36951032341 passed the old assertion with one match, and that match was a wrong path (`deploy.download_artifact`). Thus the old assertion passed or failed on the model only.
+  timestamp: 2026-10-02T05:02:07.215888+00:00
+- actor: claude-code
+  id: 01m3xgpe2za311anhn33jg7h6q
+  text: |-
+    Implementation landed (not committed).
+    What changed:
+    - New `Support/DiscoveryAnswerCheck.swift`: `DiscoveryAnswerFault` (`pathNotInCatalog`, `repeatedPath`, `overLimit`) and `DiscoveryAnswerCheck` (catalog plus limit; `faults(in:)`, `expectNoFault(in:answering:)` for one answer and for a `DiscoveryGroupGrade`, `declaredPathsOutsideTheCatalog(of:)`, `expectEveryDeclaredPathIsInTheCatalog(of:)`, `init(surfaceOf:)` with the default `searchTools` limit).
+    - New offline `DiscoveryAnswerCheckTests.swift` (6 tests, no model). `aPathOutsideTheCatalogIsAFault` is the acceptance test: an answer with `files.delete` (not in the catalog) gives `.pathNotInCatalog("files.delete")`. RED was seen first for each rule.
+    - `FilesAndShellSurface.driveGradedGroup(_:recordedBy:reportedAs:)` holds the shared flow of the agent-surface, held-out and operation-tool groups.
+    - Removed: `agentSurfaceCorrectLevel`, `heldOutCorrectLevel`, `expectEveryQueryFindsACorrectPath`, `expectTheMutatingQueriesAnswer` with `agentSurfaceQueriesThatMustAnswer` and `agentSurfaceMutatingPaths`, `matchedPathCount > 0`, NoDescription `shipped > 0`, RetrievalText `shippedAgentSurfaceTopPlaceLevel`, `shippedHeldOutTopPlaceLevel`, `shippedRetrievalTextSetting`, `expectEveryQueryRanksADeclaredPath`, `expectTheShippedSettingHoldsItsLevel`.
+    - OverBudget now also prints the raw ids of each slice (`selection=[[...], ...]`).
+    - The `RESULT` lines with correct and wrong counts are unchanged.
+    - No test was skipped, moved or repeated. The CI workflow is not changed.
+    Decision for a person to see: `expectTheMutatingQueriesAnswer` (queries 4 to 9 must match a write, edit or shell path) was the regression guard of `^zqz1zan`. It depends on how well the model selects, so item 1 of Work removes it. The counts stay printed.
+    Test results (2026-10-02, M3 Ultra):
+    - `swift build --build-tests --package-path IntegrationTests`: Build complete, 0 compiler warnings. (SwiftPM prints "missing creator for mutated node ... mlx-swift_Cmlx.bundle" on every build of this package; it is not from this change.)
+    - `swift test --package-path IntegrationTests --no-parallel --filter 'AgentSurfaceDiscoveryTests|HeldOutSurfaceDiscoveryTests|OverBudgetSurfaceDiscoveryTests|NoDescriptionSurfaceDiscoveryTests|RetrievalTextSurfaceDiscoveryTests|OperationToolLiveTests|DiscoveryAnswerCheckTests'`: 13 tests in 7 suites passed, 127.5 s.
+    - Readings: agentSurface correctTotal=18 wrongTotal=1 (the old level of 19 would fail); heldOut 16/4; operationToolDiscovery 5/0; noDescription banner=2/19 name=2/4 arguments=1/3; overBudget 0 matches, raw ids `[[], []]` for both queries; retrievalText block/description agentSurface bestRankTopThree=10, heldOut 14.
+    - Root `swift test --scratch-path <scratchpad>`: 1882 tests in 154 suites passed. (The default scratch path failed: another process holds `.build/checkouts/FoundationModelsRouter`.)
+    Open: the CI run id for the last criterion. I cannot make a CI run from this step.
+  timestamp: 2026-10-02T05:16:51.679879+00:00
+- actor: claude-code
+  id: 01m3xgph6b9zrbnw9075dfn20f
+  text: |-
+    ### implement — changed
+    - evidence: 10 files — IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/{Support/DiscoveryAnswerCheck.swift (new), DiscoveryAnswerCheckTests.swift (new), Support/DiscoveryGrading.swift, Support/FilesAndShellSurface.swift, AgentSurfaceDiscoveryTests.swift, HeldOutSurfaceDiscoveryTests.swift, OperationToolLiveTests.swift, OverBudgetSurfaceDiscoveryTests.swift, NoDescriptionSurfaceDiscoveryTests.swift, RetrievalTextSurfaceDiscoveryTests.swift}; integration build passes; 13 discovery tests in 7 suites pass locally; root 1882 tests pass.
+    - next: /review. The CI run id of the last criterion stays open.
+  timestamp: 2026-10-02T05:16:54.859714+00:00
+- actor: claude-code
+  id: 01m3xh6r1h2tcwq15mxcmfh9s7
+  text: |-
+    ### test — green
+    - evidence: (1) swift test at the root (with --scratch-path, because .build/checkouts is not removable): 1882 tests in 154 suites passed, 0 warnings from this package. (2) swift build --build-tests --package-path IntegrationTests: build complete, 0 errors, 0 warnings from IntegrationTests sources. (3) --filter DiscoveryAnswerCheckTests: 6 tests in 1 suite passed. (4) Live models, one run, --no-parallel, filter AgentSurfaceDiscovery|HeldOutSurfaceDiscovery|OperationTool|OverBudgetSurfaceDiscovery|NoDescriptionSurfaceDiscovery|RetrievalTextSurfaceDiscovery: 7 tests in 6 suites passed, 0 failed, 0 skipped.
+    - next: review. The CI run id for the last acceptance item is still open.
+  timestamp: 2026-10-02T05:25:46.161119+00:00
+- actor: claude-code
+  id: 01m3xh7d3392psz1235gyzv0a1
+  text: |-
+    ### commit — changed
+    - evidence: this commit, "test(integration): check the properties of a discovery answer, not the model score". It holds the 10 Swift files of the implement step and the .kanban files.
+    - next: review. The CI run id of the last acceptance item stays open.
+  timestamp: 2026-10-02T05:26:07.715581+00:00
+position_column: doing
 position_ordinal: '8180'
 title: Replace the fixed discovery scores in the integration tests with checks that do not depend on model quality
 ---
@@ -38,8 +107,7 @@ A fixed score is a measurement of model quality, and it is written as a test of 
 
 ## Acceptance criteria
 
-- [ ] No integration test asserts a fixed number of correct discovery paths, in total or for each query.
-- [ ] Each discovery test asserts the properties of item 1 of Work, and prints its correct and wrong counts.
-- [ ] A test shows that a catalog path that does not exist in an answer fails the check.
-- [ ] `swift build --build-tests --package-path IntegrationTests` passes, and the discovery suites pass in one real integration run (record the run id).
-#ci
+- [x] No integration test asserts a fixed number of correct discovery paths, in total or for each query.
+- [x] Each discovery test asserts the properties of item 1 of Work, and prints its correct and wrong counts.
+- [x] A test shows that a catalog path that does not exist in an answer fails the check.
+- [ ] `swift build --build-tests --package-path IntegrationTests` passes, and the discovery suites pass in one real integration run (record the run id). Local part done on 2026-10-02 (build passes; 13 tests in 7 suites pass on the M3 Ultra). The CI run id is still open: the implement step cannot produce a CI run. #ci

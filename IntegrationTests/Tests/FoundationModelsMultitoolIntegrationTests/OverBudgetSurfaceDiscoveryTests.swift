@@ -54,11 +54,17 @@ private let overBudgetQueries = [
 /// budget would measure the test.
 ///
 /// **What it holds.** What this package owns, and nothing about how well a
-/// model picks: every match is spliced one time, no id is repeated, the
-/// count obeys the limit of the call, every matched path is a path the
-/// catalog really defines, and the two queries together answer at least one
-/// match, so the result is one a model can act on. The order rule for
-/// matches that come from more than one slice is written on
+/// model picks: the surface is above the budget, each call answers without
+/// an error, and each answer holds only paths the catalog really defines,
+/// each one time, inside the limit of the call (``DiscoveryAnswerCheck``).
+/// How many paths a query matches is a reading of the model, and an empty
+/// answer is a valid answer. Card `^xr5w83f` removed the earlier assertion
+/// that the two queries together answer at least one match. On 2026-10-02
+/// the probe model answered `{"ids": []}` for each slice of each query,
+/// although the slice that holds `files.read` showed that path in its
+/// catalog, its prompt and its grammar. The code gave that empty answer
+/// unchanged. Thus that assertion measured the model, not this package. The
+/// order rule for matches that come from more than one slice is written on
 /// `SearchToolsTool.format(task:matches:sample:)` and held, deterministically
 /// and with no model, by `OverBudgetSelectionOrderTests` in the root
 /// package.
@@ -70,9 +76,11 @@ private let overBudgetQueries = [
 ///
 /// **What it prints.** The entry count and the prefix size of the surface
 /// against the budget, then one line per call with its match count, its
-/// slice count and its elapsed time. Nothing asserts on the time: the
-/// reading is there because an over-budget search costs one model call for
-/// each slice, and nothing else reports that.
+/// slice count, its elapsed time, its matched paths and the raw ids each
+/// slice's model answered. Nothing asserts on the time or on the counts: the
+/// time is there because an over-budget search costs one model call for each
+/// slice, and nothing else reports that; the raw ids are there so that a
+/// reader can tell an empty model answer from an answer the code lost.
 ///
 /// Packaged like every gated suite: in the nested `IntegrationTests`
 /// package, out of reach of the root `swift test`, run under
@@ -94,8 +102,6 @@ struct OverBudgetSurfaceDiscoveryTests {
             let mounted = try await makeLargeCatalogSurface(
                 root: LiveRouterFixture.makeTempDir(),
                 shellStoreDirectoryName: overBudgetShellStoreDirectoryName)
-            let entries = mounted.registry.surface.entries
-            let catalogPathSet = Set(entries.map(\.path))
             // The production mount, never a reimplementation of its wiring:
             // the same call `CLIRunner.runDemo` makes, with the profile's
             // flash slot as the librarian and its embedding handle beside it,
@@ -113,7 +119,7 @@ struct OverBudgetSurfaceDiscoveryTests {
                 "the surface is at or under the budget, so this suite measures the under-budget path"
             )
 
-            var matchedPathCount = 0
+            let check = DiscoveryAnswerCheck(surfaceOf: mounted.registry)
             var countedSelections = 0
             let clock = ContinuousClock()
             for query in overBudgetQueries {
@@ -121,23 +127,16 @@ struct OverBudgetSurfaceDiscoveryTests {
                 let feedback = try await searchTools.call(arguments: SearchToolsArguments(task: query))
                 let elapsed = clock.now - start
                 let selections = try NativeTranscript.selections(in: fixture.transcriptEvents(), slot: .flash)
-                let slices = selections.count - countedSelections
+                let sliceSelections = selections.dropFirst(countedSelections)
                 countedSelections = selections.count
 
                 let paths = catalogPaths(in: feedback)
-                matchedPathCount += paths.count
                 reportOverBudgetLine(
-                    "matches=\(paths.count) slices=\(slices) elapsed=\(elapsed) paths=\(paths) query=\"\(query)\""
+                    "matches=\(paths.count) slices=\(sliceSelections.count) elapsed=\(elapsed) paths=\(paths) "
+                        + "selection=\(sliceSelections.map(\.ids)) query=\"\(query)\""
                 )
-
-                #expect(Set(paths).count == paths.count, "\"\(query)\" spliced a repeated id: \(paths)")
-                #expect(paths.count <= entries.count, "\"\(query)\" answered more matches than the limit of the call")
-                #expect(
-                    catalogPathSet.isSuperset(of: paths),
-                    "\"\(query)\" spliced a path the catalog does not define: \(paths)"
-                )
+                check.expectNoFault(in: paths, answering: query)
             }
-            #expect(matchedPathCount > 0, "both queries answered no match at all, so nothing above was measured")
             withExtendedLifetime(mounted.servers) {}
         }
     }

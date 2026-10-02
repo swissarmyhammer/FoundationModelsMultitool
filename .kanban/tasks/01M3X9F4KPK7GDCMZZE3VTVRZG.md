@@ -124,6 +124,16 @@ comments:
     - evidence: this commit
     - next: the CI run on the pushed commit must show the integration job at 20 minutes or less (last open acceptance item)
   timestamp: 2026-10-02T04:49:32.628803+00:00
+- actor: claude-code
+  id: 01m3xf4zxfed8j2zsqzc9pnzkh
+  text: |-
+    ### finish iteration 1 — stuck
+    - implement: stuck — round concept removed, each model loads one time per test process (LiveModelResidency, ModelResidencyTests), timing assertion removed from SelectionForkPerCallTests; local full integration run 558.6 s on the M3 Ultra
+    - test: green — swift test 1882 passed; IntegrationTests build passes; ModelResidencyTests passes
+    - commit: de553cf (local, not pushed)
+    - review: not run — the task cannot go to done before the CI time criterion is measured
+    - decisions for the user: (1) runner hardware (estimate 28 to 31 min on `mini`, because 27B decode is approximately 6 tokens/s there); (2) the removed timing assertion in SelectionForkPerCallTests, or unload the models before that test; (3) three inputs for the shared workflow swift-ci.yaml; (4) upstream cards for mlx-swift-lm and Router (selection cache reuse, reused-token count)
+  timestamp: 2026-10-02T04:49:51.535006+00:00
 position_column: doing
 position_ordinal: '80'
 title: Make the full integration suite run in 20 minutes or less, with every test kept

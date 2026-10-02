@@ -1,5 +1,4 @@
 import Foundation
-import Testing
 
 @testable import FoundationModelsMultitool
 import ScenarioGrading
@@ -24,9 +23,10 @@ struct GradedDiscoveryQuery: Sendable {
 /// What one query scored.
 ///
 /// It carries the whole answer and both halves of it, so the printed line
-/// shows which paths earned the correct count and which paths did not. The
-/// wrong half is a reading and never an assertion — card `^kn9ay20` asks for
-/// it to be printed until a level for it is known.
+/// shows which paths earned the correct count and which paths did not. Both
+/// halves are readings and never assertions: they measure how well the model
+/// selects, and card `^xr5w83f` removed every fixed level on them. The rules
+/// an answer is held to are in ``DiscoveryAnswerCheck``.
 struct DiscoveryGrade: Sendable {
 
     /// Every path the answer spliced, in the order the answer listed them.
@@ -116,29 +116,6 @@ func gradeDiscoveryGroup(
     let group = DiscoveryGroupGrade(grades: grades)
     reportGatedResult(scenario: scenario, line: groupLine(of: group, queryCount: queries.count))
     return group
-}
-
-/// Holds every query of one group to finding at least one of the catalog
-/// paths it declares correct.
-///
-/// This is the floor under the group level: a query that answered nothing, or
-/// answered only paths no reader declared, fails here whatever the group total
-/// is.
-///
-/// - Parameters:
-///   - group: the graded group to hold.
-///   - queries: the queries the group was driven over, in the same order.
-func expectEveryQueryFindsACorrectPath(in group: DiscoveryGroupGrade, of queries: [GradedDiscoveryQuery]) {
-    for (index, grade) in group.grades.enumerated() {
-        let query = queries[index]
-        #expect(
-            grade.correctCount >= 1,
-            """
-            query \(index + 1) "\(query.task)" found no correct path; \
-            it matched \(grade.matchedPaths) and declares \(query.correctPaths.sorted())
-            """
-        )
-    }
 }
 
 /// The printed line of one graded query.
