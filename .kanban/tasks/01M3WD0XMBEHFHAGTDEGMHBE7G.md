@@ -128,8 +128,24 @@ comments:
     - evidence: 5797ef0 refactor(files): share one bound parameter init for all range verbs; base sha before the commit: c1921dc
     - next: review
   timestamp: 2026-10-02T01:00:16.159249+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m3x247z09h6db854320yc579
+  text: |-
+    ### review — clean
+    - evidence: `review sha c1921dc..HEAD` — 0 findings, 0 confirmed, 0 refuted. 5 files reviewed. 2 `.kanban/` files not reviewed (ignore rule). All prior findings are checked (`Fetch.swift:141 duplication/duplication` is [x]).
+    - next: The task moved to done. No more work.
+  timestamp: 2026-10-02T01:02:15.520053+00:00
+- actor: claude-code
+  id: 01m3x24hvf7qzzyrqrejxphtqv
+  text: |-
+    ### finish iteration 3 — clean
+    - implement: changed — shared BoundParameter.init(parameterName:typeDescription:range:) for Fetch, Search, Read; finding Fetch.swift:141 checked.
+    - test: green — root swift test 1888 tests, 155 suites, 0 issues.
+    - commit: 5797ef0, 4a7a2d9
+    - review: clean — review sha c1921dc..HEAD, 0 findings. Task is in done.
+  timestamp: 2026-10-02T01:02:25.647953+00:00
+position_column: done
+position_ordinal: ffff8d80
 title: Put the bounds of the web verb integer arguments in their generation schemas
 ---
 ## What

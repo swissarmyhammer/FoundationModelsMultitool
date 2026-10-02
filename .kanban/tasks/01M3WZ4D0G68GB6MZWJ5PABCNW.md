@@ -20,8 +20,27 @@ comments:
 
     I did not move this card.
   timestamp: 2026-10-02T00:31:55.677581+00:00
-position_column: todo
-position_ordinal: '8280'
+- actor: claude-code
+  id: 01m3x26t6z391mhcq4b6svtqjj
+  text: |-
+    ### implement — no-change
+    - evidence: HEAD (commit 959b87d, ^gmhbe7g) does all items of this card. I made no file change.
+      - Do 1 (injected clock): `WebFetcher.swift` has `let timeLimitClock: any Clock<Duration>`, the init default is `ContinuousClock()`, and `load` sleeps on `self.timeLimitClock.sleep(for: timeout)`. `WebContext.init` passes `timeLimitClock` through. `prepare` sets `timeoutInterval = max(prepared.timeoutInterval, timeout.timeInterval)`, thus the session timer is a backstop only.
+      - Do 2 and Test 1 (`boundTimeoutIsAccepted`): `Support/WebVerbFixture.swift` gives `let timeLimitClock = GatedClock()` to `WebContext`. The test checks `fixture.timeLimitClock.recordedSleeps == [.seconds(timeout)]`.
+      - Do 3 (other web tests): `WebStub.makeFetcher` defaults to a closed `GatedClock()`. `WebContextTests.searchChainUsesTheSessionConfiguration` gives `GatedClock()`. The two tests that use the default clock (`WebFetcherTests.sessionHasNoCookiesAndNoCache`, `WebContextTests.fetcherUsesTheFetchPolicy`) do no load, thus no clock race.
+      - Test 2 (timeout correction with the injected clock): `WebFetcherTests.hangingRequestTimesOut` opens the `GatedClock` and expects `WebFetchFailure.timeout(url:limit:)`. `timeoutMessageStatesSeconds` checks the correction text.
+      - Test 3 (root `swift test`): one run at HEAD, 1888 tests in 155 suites passed, exit 0. The only `warning:` line comes from the build system ("missing creator for mutated node" on `mlx-swift_Cmlx.bundle`). It is not a compiler warning and it is not from this card.
+    - next: /review
+  timestamp: 2026-10-02T01:03:39.743766+00:00
+- actor: claude-code
+  id: 01m3x27jevctpchh771rxxcmhn
+  text: |-
+    ### commit — changed
+    - evidence: one local commit holds the .kanban changes only. Base is 4a7a2d9. Commit 959b87d already holds all code for this card. No push.
+    - next: review
+  timestamp: 2026-10-02T01:04:04.571614+00:00
+position_column: doing
+position_ordinal: '80'
 title: Remove the real 1-second clock from the web fetch timeout test
 ---
 ## What
@@ -35,6 +54,6 @@ The user decision (web.md § "Testing", and ^tm4x2hp) is that no test checks the
 - Look for other web tests that use a real short time limit (for example the timeout correction tests), and convert them the same way.
 
 ## Tests
-- [ ] `boundTimeoutIsAccepted` does not depend on the real clock.
-- [ ] A test that proves the time limit still gives the timeout correction, with the injected clock.
-- [ ] Root `swift test` passes.
+- [x] `boundTimeoutIsAccepted` does not depend on the real clock.
+- [x] A test that proves the time limit still gives the timeout correction, with the injected clock.
+- [x] Root `swift test` passes.
