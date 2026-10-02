@@ -121,6 +121,13 @@ comments:
     - scope: the integration package was not run, because only root Sources code changed.
     - next: review
   timestamp: 2026-10-02T00:59:57.573740+00:00
+- actor: claude-code
+  id: 01m3x20kczrxt86bjef46f9es6
+  text: |-
+    ### commit — changed
+    - evidence: 5797ef0 refactor(files): share one bound parameter init for all range verbs; base sha before the commit: c1921dc
+    - next: review
+  timestamp: 2026-10-02T01:00:16.159249+00:00
 position_column: doing
 position_ordinal: '80'
 title: Put the bounds of the web verb integer arguments in their generation schemas
