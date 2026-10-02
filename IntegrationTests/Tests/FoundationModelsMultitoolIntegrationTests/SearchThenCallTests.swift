@@ -3,12 +3,40 @@ import Testing
 @testable import FoundationModelsMultitool
 import ScenarioGrading
 
-/// The gated real-model suite: the four sample MultiTools scenarios,
-/// retargeted at the shipped host contract — the tools
+/// The prompt of the discovery scenario.
+///
+/// It asks two things, because card `^3vtvrzg` merged two scenarios into
+/// this one: which trip city is warmest (the compose/chain and discovery
+/// question), and how warm it is (the single-call question, which graded a
+/// `getWeather` reading in the reply). "One short sentence" keeps the answer
+/// as long as the check needs and no longer: each generated token costs
+/// approximately 0.2 s on the CI runner `mini`, and the long replies of CI
+/// run `36951032341` listed every city of the trip.
+private let discoveryPrompt =
+    "Of the cities on my trip, which is warmest right now, and how warm is it there? "
+    + "Answer in one short sentence."
+
+/// The gated real-model suite: the sample MultiTools scenarios, retargeted at
+/// the shipped host contract — the tools
 /// `MultiTool.Registry.makeSessionTools(selection:embedder:sampleSession:)` vends, mounted on a
 /// `RoutedSession` and driven by draining `streamEvents(to:)` — "this is where
 /// the plan's empirical search-then-call behavior is proven against real
 /// hardware."
+///
+/// **Two scenarios, not four.** Card `^3vtvrzg` removed two duplicates. The
+/// compose/chain scenario asked the discovery scenario's question over the
+/// same two tools and graded the same answer and the same grounding; the
+/// discovery scenario adds the ten distractors, so it proves all of that and
+/// more. The single-call scenario graded one thing the discovery scenario did
+/// not: that the reply states the reading `getWeather` returned. The
+/// discovery scenario now asks for that reading too, and grades it
+/// (`readingReported`). Its grounding already required the `getWeather`
+/// return. The same card removed `AsyncFanOutTests` for the same reason: it
+/// graded an answer that only the returns of two tools could give, grounded
+/// in both, and its documentation stated that the route (`Promise.all` or two
+/// awaits) was not asserted. The discovery scenario grades the same kind of
+/// answer, grounded in the trip and the weather returns, and its natural
+/// snippet awaits one `getWeather` call for each trip city at once.
 ///
 /// **Outcome over path.** Each scenario passes when the model produces a
 /// valid, grounded answer — see `runNativeIntegrationScenario`'s
@@ -17,7 +45,7 @@ import ScenarioGrading
 /// diagnostics. The `answerContainsOneOf` values below are the fixtures'
 /// own distinctive data (`ScenarioGrading`'s `ScenarioTools.swift`), read from those
 /// fixtures rather than restated here: `IntegrationScenarioAnswers` derives
-/// both the single-call reading and the one warmest trip city from
+/// both the one warmest trip city and its reading from
 /// `integrationCityWeather`, and the booking fixture confirms id 42 only
 /// when genuinely called with `confirm: true`. These are values a
 /// hallucinating model has never guessed across the many recorded runs on
@@ -47,7 +75,7 @@ import ScenarioGrading
 /// zero downloads, zero live inference — and stays green on a network/GPU-less
 /// box (the default posture of this environment). The command that runs this
 /// suite is `swift test --package-path IntegrationTests --no-parallel`.
-/// `.serialized` holds the four scenarios to one at a time inside this suite,
+/// `.serialized` holds the scenarios to one at a time inside this suite,
 /// which is what `liveProfileTurnstile` (`Support/LiveRouterFixture.swift`)
 /// holds across suite boundaries: concurrent live scenarios come back fluent
 /// but ungrounded, so one live scenario at a time is a correctness
@@ -64,54 +92,9 @@ import ScenarioGrading
     .timeLimit(IntegrationHangGuard.timeLimit)
 )
 struct SearchThenCallTests {
-    // MARK: - Scenario 1: single-call `getWeather`
+    // MARK: - Discovery under distractors, with the compose walk and the reading
 
-    @Test("single-call weather scenario answers with the fixture's real temperature")
-    func singleCallWeather() async throws {
-        try await runNativeIntegrationScenario(
-            name: "singleCallWeather",
-            tools: { log in [IntegrationWeatherTool(log: log)] },
-            // Both the city this asks about and the temperature it grades on
-            // are read from `integrationSingleCallCity`, so editing a reading
-            // moves the question and the answer together. Stating either as a
-            // literal is what let this scenario grade `"31"` against a fixture
-            // that had stopped reporting 31 — the drift the human ruling of
-            // 2026-08-07 (task `tkrdwb8`) removed from the compose scenario
-            // and this one inherited.
-            prompt: "How warm is it in \(integrationSingleCallCity.name) right now?",
-            // The fixture's own reading — a value no hallucinated forecast has
-            // ever produced (72°F, 25°C, 22°C were the observed inventions).
-            // `integrationSingleCallCity` is never the warmest trip city, and
-            // `IntegrationScenarioAnswers` enforces that this reading shares no
-            // substring with the warmest-city answers, so a reply that passes
-            // here cannot also pass the compose and discovery scenarios.
-            answerContainsOneOf: IntegrationScenarioAnswers.singleCall,
-            // A reading, because that is what "how warm is it there" asks for:
-            // the city's own name is in the prompt already, so nothing about
-            // the reply proves a temperature was fetched except the fetch.
-            groundedIn: IntegrationScenarioGrounding.singleCall
-        )
-    }
-
-    // MARK: - Scenario 2: compose/chain getTrip -> getWeather -> warmest
-
-    @Test("compose/chain scenario names the fixture's single warmest trip city")
-    func composeChain() async throws {
-        try await runNativeIntegrationScenario(
-            name: "composeChain",
-            tools: { log in [IntegrationTripTool(log: log), IntegrationWeatherTool(log: log)] },
-            prompt: "Of the cities on my trip, which is warmest right now?",
-            answerContainsOneOf: IntegrationScenarioAnswers.warmestCity,
-            // The itinerary *and* a reading: which cities are candidates comes
-            // from one, which of them is warmest from the other. A trip-only
-            // run that names a city is guessing.
-            groundedIn: IntegrationScenarioGrounding.warmestCity
-        )
-    }
-
-    // MARK: - Scenario 3: discovery under distractors
-
-    @Test("discovery scenario still names the warmest trip city among the distractor tools")
+    @Test("discovery scenario names the warmest trip city and its reading among the distractor tools")
     func discoveryUnderDistractors() async throws {
         try await runNativeIntegrationScenario(
             name: "discoveryUnderDistractors",
@@ -119,17 +102,22 @@ struct SearchThenCallTests {
                 [IntegrationWeatherTool(log: log), IntegrationTripTool(log: log)]
                     + integrationDistractorTools(log: log)
             },
-            prompt: "Of the cities on my trip, which is warmest right now?",
+            prompt: discoveryPrompt,
             answerContainsOneOf: IntegrationScenarioAnswers.warmestCity,
-            // The same question, so the same dependency — the distractors
-            // change how hard the two relevant tools are to find, not what the
-            // answer rests on. This is the scenario whose recorded run named
-            // the warmest city off the itinerary alone (task `0981ar3`).
+            // The fixture's own reading for the warmest city — the check the
+            // single-call scenario made. A value no hallucinated forecast has
+            // ever produced (72°F, 25°C, 22°C were the observed inventions).
+            readingContainsOneOf: IntegrationScenarioAnswers.warmestCityReading,
+            // The itinerary *and* a reading: which cities are candidates comes
+            // from one, which of them is warmest and how warm from the other.
+            // A trip-only run that names a city is guessing. This is the
+            // scenario whose recorded run named the warmest city off the
+            // itinerary alone (task `0981ar3`).
             groundedIn: IntegrationScenarioGrounding.warmestCity
         )
     }
 
-    // MARK: - Scenario 4: repair from a trip-prone tool
+    // MARK: - Repair from a trip-prone tool
 
     @Test("repair scenario genuinely confirms the booking, however many attempts it takes")
     func repairFromTripProneTool() async throws {

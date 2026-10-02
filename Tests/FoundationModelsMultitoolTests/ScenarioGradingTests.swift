@@ -8,7 +8,7 @@ import Testing
 import ScenarioGrading
 
 /// Ungated coverage for the verdicts a gated scenario is graded on —
-/// `scenarioChecks(for:answerContainsOneOf:answerMustNotContain:groundedIn:)`
+/// `scenarioChecks(for:answerContainsOneOf:answerMustNotContain:readingContainsOneOf:groundedIn:)`
 /// `mailCollectionChecks(for:answerContainsOneOf:groundedIn:)` and
 /// `nestedGenerationChecks(for:)` in `Support/ScenarioRunner.swift` — and for
 /// `SubmissionLog.fold(events:)`, which gives those runners each answer of a
@@ -48,7 +48,8 @@ struct ScenarioGradingTests {
         _ = try await Self.runComposeSnippet("return (await tools.\(IntegrationTripTool.path)()).cities;", log: log)
         #expect(await log.returnedPaths == [IntegrationTripTool.path])
 
-        let checks = await Self.warmestCityChecks(typedPaths: [IntegrationTripTool.path], log: log)
+        let checks = await Self.warmestCityChecks(
+            reply: Self.replyNamingTheWarmestCity, typedPaths: [IntegrationTripTool.path], log: log)
 
         // The reply names the fixture's warmest city, so the answer's *form* is
         // valid — which is exactly why this run used to pass outright.
@@ -65,21 +66,11 @@ struct ScenarioGradingTests {
     @Test("a run that read the trip's readings is grounded")
     func aRunThatReadsEveryTripReadingIsGrounded() async throws {
         let log = ScenarioCallLog()
-        // The walk the question actually needs: the itinerary, then a reading
-        // for each city it lists.
-        _ = try await Self.runComposeSnippet(
-            """
-            const trip = await tools.\(IntegrationTripTool.path)();
-            const readings = await Promise.all(
-                trip.cities.map((city) => tools.\(IntegrationWeatherTool.path)({ city: city }))
-            );
-            return readings.map((reading) => reading.tempC).join(",");
-            """,
-            log: log
-        )
+        try await Self.readEveryTripReading(into: log)
         #expect(await log.returnedPaths == IntegrationScenarioGrounding.warmestCity)
 
         let checks = await Self.warmestCityChecks(
+            reply: Self.replyNamingTheWarmestCityAndItsReading,
             typedPaths: [IntegrationTripTool.path, IntegrationWeatherTool.path],
             log: log
         )
@@ -92,6 +83,48 @@ struct ScenarioGradingTests {
         #expect(failed.isEmpty)
     }
 
+    // MARK: - The reading the reply states
+
+    @Test("a grounded reply that names the warmest city without its reading fails readingReported alone")
+    func aReplyWithoutTheReadingFailsReadingReportedAlone() async throws {
+        // The discovery scenario also asks how warm the warmest city is, which
+        // is the check the single-call weather scenario made before card
+        // `^3vtvrzg` merged it: the reply states the reading `getWeather`
+        // returned. A grounded run whose reply names only the city fails on
+        // that condition and on nothing else.
+        let log = ScenarioCallLog()
+        try await Self.readEveryTripReading(into: log)
+
+        let checks = await Self.warmestCityChecks(
+            reply: Self.replyNamingTheWarmestCity,
+            typedPaths: [IntegrationTripTool.path, IntegrationWeatherTool.path],
+            log: log
+        )
+
+        let failed = checks.filter { !$0.held }.map(\.name)
+        #expect(failed == [readingReportedCheckName])
+    }
+
+    @Test("a scenario that names no reading gets no readingReported check")
+    func noReadingAddsNoReadingCheck() {
+        // An empty list adds no check rather than a check that cannot fail, the
+        // same rule `answerMustNotContain` follows.
+        let checks = scenarioChecks(
+            for: ScenarioEvidence(
+                answer: Self.replyNamingTheWarmestCity,
+                typedPaths: [],
+                invokedPaths: [],
+                returnedPaths: IntegrationScenarioGrounding.warmestCity
+            ),
+            answerContainsOneOf: IntegrationScenarioAnswers.warmestCity,
+            answerMustNotContain: [],
+            readingContainsOneOf: [],
+            groundedIn: IntegrationScenarioGrounding.warmestCity
+        )
+
+        #expect(!checks.contains { $0.name == readingReportedCheckName })
+    }
+
     // MARK: - Every scenario declares something
 
     @Test("every gated scenario declares a non-empty dependency for its answer")
@@ -99,32 +132,56 @@ struct ScenarioGradingTests {
         // An empty declaration would grade every run as grounded, including one
         // that called nothing at all — the vacuous pass `scenarioChecks`
         // refuses, but only once a gated run reaches it.
-        #expect(!IntegrationScenarioGrounding.singleCall.isEmpty)
         #expect(!IntegrationScenarioGrounding.warmestCity.isEmpty)
         #expect(!IntegrationScenarioGrounding.booking.isEmpty)
-        #expect(!IntegrationScenarioGrounding.combinedStock.isEmpty)
-        #expect(!IntegrationScenarioGrounding.archiveRebuild.isEmpty)
+        #expect(!IntegrationScenarioGrounding.delayedEcho.isEmpty)
     }
 
     // MARK: - The mail collection canary's verdict
 
     @Test("a run whose settled result came back as mail and started the answer passes every canary condition")
     func aMailAnswerPassesEveryCanaryCondition() {
-        // The shape the new contract asks for: the model ended its answer with
-        // the rebuild still going, the settled run came back as mail, and the
-        // answer mail started carried the manifest code, with no background
-        // run left when that answer ended.
+        // The shape the contract asks for: a runCode call handed back a
+        // pending envelope, the model ended its answer with the echo still
+        // going, the settled run came back as mail, and the answer mail started
+        // carried the value, with no background run left when that answer
+        // ended.
+        let nonce = integrationDelayedEchoNonce()
         let checks = Self.canaryChecks(
             for: MailCollectionEvidence(
-                answer: Self.replyReportingTheManifestCode,
-                returnedPaths: IntegrationScenarioGrounding.archiveRebuild,
+                answer: Self.replyReportingTheEcho(of: nonce),
+                returnedPaths: IntegrationScenarioGrounding.delayedEcho,
+                pendingEnvelopes: 1,
                 mailAnswers: 1,
                 backgroundRunsAtLastAnswer: []
-            )
+            ),
+            nonce: nonce
         )
 
         let failed = checks.filter { !$0.held }.map(\.name)
         #expect(failed.isEmpty)
+    }
+
+    @Test("a run where no runCode call handed back a pending envelope fails the canary on pendingEnvelope alone")
+    func noPendingEnvelopeFailsTheCanary() {
+        // The check the background-in-code-mode scenario made before card
+        // `^3vtvrzg` merged it into the canary: some tool output of the turn
+        // was the rendered pending envelope. A run that got its value some
+        // other way fails on that condition and on nothing else.
+        let nonce = integrationDelayedEchoNonce()
+        let checks = Self.canaryChecks(
+            for: MailCollectionEvidence(
+                answer: Self.replyReportingTheEcho(of: nonce),
+                returnedPaths: IntegrationScenarioGrounding.delayedEcho,
+                pendingEnvelopes: 0,
+                mailAnswers: 1,
+                backgroundRunsAtLastAnswer: []
+            ),
+            nonce: nonce
+        )
+
+        let failed = checks.filter { !$0.held }.map(\.name)
+        #expect(failed == [pendingEnvelopeCheckName])
     }
 
     @Test("a run where no answer started from mail fails the canary on mailCollection alone")
@@ -133,13 +190,16 @@ struct ScenarioGradingTests {
         // settled inside the inline settle grace. Either way no mail came, and
         // the canary has to say so, here where it can be checked without live
         // inference.
+        let nonce = integrationDelayedEchoNonce()
         let checks = Self.canaryChecks(
             for: MailCollectionEvidence(
-                answer: Self.replyReportingTheManifestCode,
-                returnedPaths: IntegrationScenarioGrounding.archiveRebuild,
+                answer: Self.replyReportingTheEcho(of: nonce),
+                returnedPaths: IntegrationScenarioGrounding.delayedEcho,
+                pendingEnvelopes: 1,
                 mailAnswers: 0,
                 backgroundRunsAtLastAnswer: []
-            )
+            ),
+            nonce: nonce
         )
 
         let mailCollection = try Self.check(mailCollectionCheckName, in: checks)
@@ -153,13 +213,16 @@ struct ScenarioGradingTests {
 
     @Test("a run with a background run still going at the last answer fails noBackgroundRunsAtLastAnswer")
     func aRunStillRunningAtTheLastAnswerFailsTheCanary() throws {
+        let nonce = integrationDelayedEchoNonce()
         let checks = Self.canaryChecks(
             for: MailCollectionEvidence(
-                answer: Self.replyReportingTheManifestCode,
-                returnedPaths: IntegrationScenarioGrounding.archiveRebuild,
+                answer: Self.replyReportingTheEcho(of: nonce),
+                returnedPaths: IntegrationScenarioGrounding.delayedEcho,
+                pendingEnvelopes: 1,
                 mailAnswers: 1,
-                backgroundRunsAtLastAnswer: [IntegrationArchiveRebuildTool.path]
-            )
+                backgroundRunsAtLastAnswer: [IntegrationDelayedEchoTool.path]
+            ),
+            nonce: nonce
         )
 
         let failed = checks.filter { !$0.held }.map(\.name)
@@ -366,27 +429,30 @@ struct ScenarioGradingTests {
     /// Grades one canary record against the gated scenario's own answers and
     /// declared grounding.
     ///
-    /// The accepted answers and the grounding come from the fixtures, so this
+    /// The accepted answer is the nonce of the run and the grounding comes from
+    /// the fixtures, exactly as the gated canary grades its own run, so this
     /// grades the same contract the gated suite does rather than a copy of it.
     ///
-    /// - Parameter evidence: the record to grade.
+    /// - Parameters:
+    ///   - evidence: the record to grade.
+    ///   - nonce: the value the scripted run gave the delayed echo.
     /// - Returns: every graded condition, in reporting order.
-    private static func canaryChecks(for evidence: MailCollectionEvidence) -> [ScenarioCheck] {
+    private static func canaryChecks(for evidence: MailCollectionEvidence, nonce: String) -> [ScenarioCheck] {
         mailCollectionChecks(
             for: evidence,
-            answerContainsOneOf: integerAnswers(for: integrationArchiveRebuildManifestCode),
-            groundedIn: IntegrationScenarioGrounding.archiveRebuild
+            answerContainsOneOf: [nonce],
+            groundedIn: IntegrationScenarioGrounding.delayedEcho
         )
     }
 
-    /// The reply both canary records are graded on: an answer reporting the
-    /// rebuild's manifest code, in the recorded shape.
+    /// The reply each canary record is graded on: a mail answer reporting the
+    /// value the delayed echo returned, in the recorded shape of CI run
+    /// `36951032341`.
     ///
-    /// Rebuilt from the fixture rather than quoted, for
-    /// ``replyNamingTheWarmestCity``'s reason: a pinned string would keep
-    /// passing after the fixture's code changed under it.
-    private static var replyReportingTheManifestCode: String {
-        "Rebuild is under way. Manifest code: \(integrationArchiveRebuildManifestCode)"
+    /// - Parameter nonce: the value the scripted run gave the delayed echo.
+    /// - Returns: the reply.
+    private static func replyReportingTheEcho(of nonce: String) -> String {
+        "The call settled. `\(IntegrationDelayedEchoTool.path)` returned exactly: \(nonce)"
     }
 
     /// The reply the nested-generation probe's records are graded on: an answer
@@ -419,34 +485,57 @@ struct ScenarioGradingTests {
         return try await MultiTool(registry: registry).call(arguments: RunCodeArguments(code: code))
     }
 
-    /// Grades the compose and discovery scenarios' shared question against what `log` recorded.
+    /// Runs the walk the discovery question needs: the itinerary, then a
+    /// reading for each city it lists.
     ///
-    /// The reply, the accepted answers and the declared grounding all come from
-    /// the fixtures, so this grades the same contract `SearchThenCallTests`'
-    /// compose and discovery scenarios do rather than a copy of it.
+    /// - Parameter log: the run's call log, which both fixtures record into.
+    /// - Throws: whatever building the registry or calling `MultiTool` throws.
+    private static func readEveryTripReading(into log: ScenarioCallLog) async throws {
+        _ = try await runComposeSnippet(
+            """
+            const trip = await tools.\(IntegrationTripTool.path)();
+            const readings = await Promise.all(
+                trip.cities.map((city) => tools.\(IntegrationWeatherTool.path)({ city: city }))
+            );
+            return readings.map((reading) => reading.tempC).join(",");
+            """,
+            log: log
+        )
+    }
+
+    /// Grades the discovery scenario's question against what `log` recorded.
+    ///
+    /// The accepted answers, the reading and the declared grounding all come
+    /// from the fixtures, so this grades the same contract
+    /// `SearchThenCallTests.discoveryUnderDistractors` does rather than a copy
+    /// of it.
     ///
     /// - Parameters:
+    ///   - reply: the model's final reply to grade.
     ///   - typedPaths: the `tools.*` paths the run's snippet wrote — the paths
     ///     the snippet above calls, which the grounding condition reports and
     ///     never grades on.
     ///   - log: the run's call log.
     /// - Returns: every graded condition, in reporting order.
-    private static func warmestCityChecks(typedPaths: Set<String>, log: ScenarioCallLog) async -> [ScenarioCheck] {
+    private static func warmestCityChecks(
+        reply: String, typedPaths: Set<String>, log: ScenarioCallLog
+    ) async -> [ScenarioCheck] {
         scenarioChecks(
             for: ScenarioEvidence(
-                answer: replyNamingTheWarmestCity,
+                answer: reply,
                 typedPaths: typedPaths,
                 invokedPaths: await log.invokedPaths,
                 returnedPaths: await log.returnedPaths
             ),
             answerContainsOneOf: IntegrationScenarioAnswers.warmestCity,
-            // Empty, exactly as the compose and discovery scenarios leave it.
+            // Empty, exactly as the discovery scenario leaves it.
             answerMustNotContain: [],
+            readingContainsOneOf: IntegrationScenarioAnswers.warmestCityReading,
             groundedIn: IntegrationScenarioGrounding.warmestCity
         )
     }
 
-    /// The reply both runs above are graded on: an answer to "which trip city is warmest", in the recorded shape.
+    /// A reply that names the warmest trip city and no reading, in the recorded shape.
     ///
     /// Rebuilt from the fixtures rather than quoted, so it names whichever city
     /// the readings make warmest instead of pinning the one the recorded run
@@ -457,6 +546,16 @@ struct ScenarioGradingTests {
     private static var replyNamingTheWarmestCity: String {
         let itinerary = integrationCityWeather.map { "\($0.name) (\($0.code))" }.joined(separator: ", ")
         return "I can see your trip includes \(itinerary). \(integrationWarmestCity.name) is the warmest right now."
+    }
+
+    /// A reply that names the warmest trip city and states its reading, the
+    /// answer the discovery scenario asks for.
+    ///
+    /// The reading is the fixture row's own temperature, written as a whole
+    /// number of degrees, so the reply follows the fixture when a reading
+    /// changes.
+    private static var replyNamingTheWarmestCityAndItsReading: String {
+        "\(replyNamingTheWarmestCity) It is \(Int(integrationWarmestCity.tempC)) °C there."
     }
 
     /// The number of the first submission of a scripted chain.

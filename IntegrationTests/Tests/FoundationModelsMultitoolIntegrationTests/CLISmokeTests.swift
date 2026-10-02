@@ -22,6 +22,14 @@ import MultitoolCLI
 /// trace to assert on: `runDemo` prints the tool calls it made and the final
 /// answer, so this only asserts that the answer is present and non-empty.
 ///
+/// **One live run, not two.** Until card `^3vtvrzg` this suite also ran the
+/// demo with no arguments (`demoProducesNonEmptyAnswer`, 107 s on the CI
+/// runner `mini`, run `36951032341`). That run took the same `CLIRunner.run`
+/// path with the same demo prompt, and asserted success and a non-empty
+/// answer. The run that stays attaches an MCP server as well, and asserts
+/// success, the listed verb and a non-empty answer, so it proves all of that
+/// and more.
+///
 /// A deeper, scenario-level port of this suite (prefix reuse,
 /// selection accuracy, multi-tool-call composition) is the dedicated
 /// gated-suite migration task's job — see that task for the broader port.
@@ -38,15 +46,7 @@ struct CLISmokeTests {
     /// The noun the attached server claims in the `--mcp` case below.
     private static let mcpServerNoun = "echo"
 
-    @Test("the live demo succeeds and prints a non-empty final answer")
-    func demoProducesNonEmptyAnswer() async {
-        let run = await Self.runDemo(arguments: [])
-
-        Self.expectSuccess(of: run)
-        Self.expectNonEmptyAnswer(in: run.lines)
-    }
-
-    @Test("the live demo attaches a stdio MCP server, lists its verbs, and still answers")
+    @Test("the live demo attaches a stdio MCP server, lists its verbs, and prints a non-empty final answer")
     func demoAttachesAnMCPServer() async throws {
         let command = try RootProduct.executablePath(named: RootProduct.testServerName)
 

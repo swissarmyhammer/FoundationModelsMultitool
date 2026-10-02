@@ -107,7 +107,7 @@ let scenarioDiscoveryPriming: DiscoveryPriming? = nil
 ///
 /// **Per-scenario measurement.** Every condition above is collected as a
 /// `ScenarioCheck` — by `scenarioChecks(for:answerContainsOneOf:
-/// answerMustNotContain:groundedIn:)`, which is where the grading rule itself
+/// answerMustNotContain:readingContainsOneOf:groundedIn:)`, which is where the grading rule itself
 /// is exercised ungated — before any of them is asserted, so a run reports its
 /// own verdict on a `SCENARIO` line. See `grade(scenario:checks:)` for why
 /// suite totals alone are not enough.
@@ -137,6 +137,10 @@ let scenarioDiscoveryPriming: DiscoveryPriming? = nil
 ///     invalidates the answer even when a required substring matched —
 ///     guards required words that also appear inside failure phrasings
 ///     ("unable to confirm" contains "confirm"). Empty by default.
+///   - readingContainsOneOf: candidate substrings for a tool reading the
+///     reply must also state, at least one of which it must contain
+///     (case-insensitively), graded as `readingReported`. Empty by default,
+///     which adds no check: only the discovery scenario asks for a reading.
 ///   - groundedIn: the `tools.*` paths whose *returns* this scenario's answer
 ///     depends on — see `IntegrationScenarioGrounding`, which declares one set
 ///     per scenario question. Required rather than defaulted, and required to
@@ -152,6 +156,7 @@ func runNativeIntegrationScenario(
     prompt: String,
     answerContainsOneOf: [String],
     answerMustNotContain: [String] = [],
+    readingContainsOneOf: [String] = [],
     groundedIn: Set<String>
 ) async throws {
     try await withLiveRouterFixture(name: name) { fixture in
@@ -202,6 +207,7 @@ func runNativeIntegrationScenario(
             for: evidence,
             answerContainsOneOf: answerContainsOneOf,
             answerMustNotContain: answerMustNotContain,
+            readingContainsOneOf: readingContainsOneOf,
             groundedIn: groundedIn
         )
         grade(scenario: name, checks: checks)
@@ -258,159 +264,13 @@ func runNativeIntegrationScenario(
     }
 }
 
-/// Runs one gated scenario end to end against a *Router-mounted* session, so
-/// the scenario's `runCode` calls really can go to the background — eventplan.md
-/// § "Background tools and the completion token".
-///
-/// **Why a second runner exists — and it is not the session.** Both runners
-/// build the same thing: `fixture.profile.standard.makeSession(tools:
-/// discoveryPriming:)`, a real `RoutedSession`, which puts every tool through
-/// Router's own mounting path. There a tool's own declared mount takes effect,
-/// so `runCode` goes to the background. The session also gives the snippet the
-/// live background-run globals (`status()`, `cancel()`), and a settled run
-/// comes back to the session as mail. What differs is what each one grades.
-/// `runNativeIntegrationScenario` grades a valid, fixture-grounded answer and
-/// reports route diagnostics; this runner grades a valid answer **and** that a
-/// pending envelope really appeared, which is the one mechanism it exists to
-/// prove.
-///
-/// It used to be the session. Until `f8964b4` the native runner built a bare
-/// `LanguageModelSession` over an `MLXLanguageModel`, which carries no
-/// background mount at all — `BackgroundToolRunner` is applied only by Router's own
-/// per-session tool wiring (`ToolMounting.makeSessionMounted(tool:sessionID:
-/// mailbox:sink:cappedToTokenLimit:)`) — so on that path a slow snippet simply
-/// blocked and a pending envelope could never appear. That is history, not the
-/// reason this runner is still here.
-///
-/// **One turn, not two.** Splitting the scenario into a "start it" turn and a
-/// "collect it" turn was tried on real hardware and is worse in both halves: a
-/// turn that only asks to start the job gets an announcement and no `runCode`
-/// call at all, and a second turn asked to report the result re-scans or
-/// invents a code rather than reading the background run (one run answered the
-/// right code in the opening turn and a made-up `8472` in the closing one).
-/// The single turn is also the honest unit of the claim — the model receives
-/// the pending envelope and still finishes the job it was given.
-///
-/// **What it asserts.** The same outcome-over-path posture as the native
-/// runner, plus the one mechanism this scenario exists to prove:
-///
-/// 1. **The answer is valid** — the reply carries the fixture's own
-///    distinctive value, which reaches the model only through the collected
-///    run's terminal `detail` (the capped output tail plus the run
-///    identifier, per `MultiTool.terminalEventFields(of:state:)`).
-/// 2. **A pending envelope really appeared** — some tool output on the way to
-///    that answer was exactly `PendingRunEnvelope.rendered`, checked with
-///    Router's own byte-shape recognizer. How many rounds the model took is
-///    deliberately unasserted.
-///
-/// **The graded answer is the last one.** On the work-queue Router the
-/// model ends its answer when it gets a pending envelope, and the settled
-/// run comes back to the session as mail, which starts a new answer
-/// (`SubmissionStart.cause == .mail`). So when a pending envelope appeared,
-/// the runner reads the session events until the answer that mail started
-/// ends, or until the shared poll hang guard `IntegrationPoll.deadline`, and
-/// grades the reply of the last answer it read. That bound is a hang guard
-/// and never a speed check (card `^kdtrmhv`): a run that gets no mail answer
-/// fails with a reading, inside `IntegrationHangGuard.timeLimit`. When no pending envelope appeared, the run settled
-/// inline and the first answer is the graded one.
-///
-/// The answer is read off `RoutedSession.streamEvents(to:)` rather than
-/// `respond(to:)` because the same stream is what carries the tool outputs the
-/// envelope check reads. Every `textDelta` of a turn is accumulated, not just
-/// the run of them after the last tool call: the stream derives its events
-/// from committed transcript entries, so a turn's `toolCalls` entry can
-/// surface after the reply text it preceded, and dropping text on a tool call
-/// would throw the answer away.
-///
-/// **Skip, not failure.** Identical to `runNativeIntegrationScenario`: a
-/// `GenerationError.notWiredForLiveInference` prints a note and records no
-/// issue.
-///
-/// - Parameters:
-///   - name: a short label identifying the scenario, used only in the
-///     printed result/skip line.
-///   - makeTools: builds the scenario's fixed tool set around the run's own
-///     call log — the same builder shape `runNativeIntegrationScenario`
-///     takes, because every fixture tool needs a log to record into.
-///   - prompt: the user request driving the session's turn.
-///   - answerContainsOneOf: candidate substrings, at least one of which the
-///     reply must contain (case-insensitively) to count as a valid answer.
-/// - Throws: any error other than `GenerationError.notWiredForLiveInference`.
-func runBackgroundIntegrationScenario(
-    name: String,
-    tools makeTools: (ScenarioCallLog) -> [any Tool],
-    prompt: String,
-    answerContainsOneOf: [String]
-) async throws {
-    try await withLiveRouterFixture(name: name) { fixture in
-        // This runner grades on the collected run's answer and on the pending
-        // envelope, and emits no `MODES` line, so nothing reads the log back.
-        // It still exists per run because the fixture tools require one, and
-        // it is minted here so it cannot outlive this scenario.
-        let log = ScenarioCallLog()
-        // No instructions, for the same reason as the native runner above: mounting
-        // the tools is the whole product surface.
-        let session = fixture.profile.standard.makeSession(
-            tools: try makeScenarioSurface(over: makeTools(log), on: fixture).tools,
-            discoveryPriming: scenarioDiscoveryPriming
-        )
-
-        // Subscribed before the turn starts, so no event of the mail answer
-        // can come before the subscription. The reader is cancelled on every
-        // exit path, so it cannot outlive this scenario.
-        let sessionEvents = await session.streamSessionEvents()
-        let mailReader = Task {
-            await MailAnswerReading.read(sessionEvents, backgroundRunsOf: log, within: IntegrationPoll.deadline)
-        }
-        defer { mailReader.cancel() }
-
-        let start = Date()
-        let turn = try await streamTurn(of: session, prompt: prompt)
-        let pendingEnvelopes = turn.toolOutputs.filter(PendingRunEnvelope.isRendered)
-        let answers = pendingEnvelopes.isEmpty ? [] : SubmissionLog.fold(events: await mailReader.value.events)
-        let answer = answers.last?.reply ?? turn.answer
-        let elapsed = Date().timeIntervalSince(start)
-
-        var checks = answerChecks(answer, containsOneOf: answerContainsOneOf, mustNotContain: [])
-        checks.append(
-            ScenarioCheck(
-                name: pendingEnvelopeCheckName,
-                held: !pendingEnvelopes.isEmpty,
-                failureMessage:
-                    "expected at least one runCode call to go to the background and return a pending envelope, but the tool outputs were \(turn.toolOutputs)"
-            )
-        )
-        grade(scenario: name, checks: checks)
-
-        reportGatedResult(
-            scenario: name,
-            line: "elapsed=\(elapsed)s toolCalls=\(turn.toolCallCount) "
-                + "toolOutputs=\(turn.toolOutputs.count) "
-                + "pendingEnvelopes=\(pendingEnvelopes.count) "
-                + "mailAnswers=\(answers.filter { $0.cause == .mail }.count) "
-                + "priming=\(primingLabel(turn)) "
-                + "textResets=\(turn.supersededAnswers.count) "
-                + "compactions=\(turn.compactions.count) tokens=\(turn.tokenUsage ?? "n/a") "
-                + "failedCalls=\(turn.failedCalls.count)\(turn.failedCalls.isEmpty ? "" : " \(turn.failedCalls)") "
-                + "reply=\"\(answer.prefix(backgroundReplyPreviewCharacters))\""
-        )
-    }
-}
-
 /// How many leading characters of the model's reply the `RESULT` line of
 /// `runNativeIntegrationScenario` prints: enough for the opening clause that
 /// carries the answer, and short, because that line carries many other
 /// fields.
 private let nativeReplyPreviewCharacters = 80
 
-/// How many leading characters of the model's reply the `RESULT` line of
-/// `runBackgroundIntegrationScenario` prints: the report code is in the
-/// opening clause of the reply, and the canary's reply preview uses the same
-/// bound.
-private let backgroundReplyPreviewCharacters = 120
-
-/// Everything one streamed turn produced that a background scenario grades or
-/// reports.
+/// Everything one streamed turn produced that a scenario grades or reports.
 struct StreamedTurn {
     /// The turn's reply text: `SessionAnswer.reply` of the `answered` event
     /// that ended the turn, or the empty string when no answer ended it.
@@ -882,21 +742,38 @@ func printSkipNote(_ name: String) {
 /// diagnostic line prints.
 ///
 /// The reply is a whole sentence or two of prose, and the line already carries
-/// five other fields, so it is truncated to keep one run to one readable line.
-/// 120 characters because the one thing a reader chases here is the manifest
-/// code, and a model that reports it puts it in the opening clause; the same
+/// six other fields, so it is truncated to keep one run to one readable line.
+/// 120 characters because the one thing a reader chases here is the echoed
+/// value, and a model that reports it puts it in the opening clause; the same
 /// bound is what the other gated runners' reply previews use.
 private let mailCanaryReplyPreviewCharacters = 120
 
-/// Drives one mail collection scenario end to end, and holds the run to the
-/// contract of the work-queue Router: a background run that settles after the
-/// answer ends comes back to the session as mail, and the model answers it.
+/// Drives the mail collection scenario end to end, and holds the run to the
+/// contract of the work-queue Router: a `runCode` call goes to the background
+/// and hands the model a pending envelope, the background run settles after
+/// the answer ends, comes back to the session as mail, and the model answers
+/// it.
 ///
-/// Two shapes run through this one runner (task `^nhxj8hx`). The mechanism
-/// shape mounts a direct-mode surface, drives the delayed echo by name, and
-/// grades a nonce's round trip through a deferred settlement. The teaching
-/// shape keeps the discovery surface and the "do not block" prompt. Both grade
-/// the same conditions, through `mailCollectionChecks`.
+/// **One runner for three former scenarios.** Card `^3vtvrzg` merged the
+/// background-in-code-mode scenario (`BackgroundTests`, which had its own
+/// runner) and the "do not block" teaching shape of the canary into the
+/// delayed-echo mechanism shape, which already graded every condition they
+/// graded but one. That one, the `pendingEnvelope` check of the
+/// background-in-code-mode runner, is graded here now. The surface is the
+/// direct-mode surface — `runCode`, no `searchTools` — exactly as
+/// `CLIRunner.runDemo` mounts it under `--direct`, so the run pays for no
+/// discovery. A pending envelope on the discovery surface is graded by
+/// `ShellBackgroundTests`.
+///
+/// **One turn, not two.** Splitting a background scenario into a "start it"
+/// turn and a "collect it" turn was tried on real hardware and is worse in
+/// both halves: a turn that only asks to start the job gets an announcement
+/// and no `runCode` call at all, and a second turn asked to report the result
+/// re-scans or invents a code rather than reading the background run (one run
+/// answered the right code in the opening turn and a made-up `8472` in the
+/// closing one). The single turn is also the honest unit of the claim — the
+/// model receives the pending envelope and still finishes the job it was
+/// given.
 ///
 /// **What changed, and why.** The old Router drained the background runs of a
 /// turn inside `respond(to:)`, and the old surface mounted a `wait` tool that
@@ -911,11 +788,17 @@ private let mailCanaryReplyPreviewCharacters = 120
 /// run that gets no mail answer fails `mailCollection` with a reading, inside
 /// `IntegrationHangGuard.timeLimit`.
 ///
-/// **What is graded.** The last answer the runner read must be a valid answer
-/// that carries the value, grounded in the fixture's own return; at least one
+/// **What is graded.** Some tool output of the first answer must be exactly
+/// `PendingRunEnvelope.rendered`, checked with Router's own byte-shape
+/// recognizer. The last answer the runner read must be a valid answer that
+/// carries the value, grounded in the fixture's own return; at least one
 /// answer must start from mail; and no background run may still be going when
 /// that last answer ends. The value reaches the model only through the settled
 /// run, so an answer that carries it proves the mail brought it.
+///
+/// The first answer is driven through `streamTurn(of:prompt:)` and not
+/// through `respond(to:)`, because only the stream carries the tool outputs
+/// the envelope check reads.
 ///
 /// **Nothing here cancels.** Ending a background run is `close()`'s job, so a
 /// cancelling scenario would be asserting about `close()` instead.
@@ -929,32 +812,25 @@ private let mailCanaryReplyPreviewCharacters = 120
 ///   - prompt: the user request driving the turn.
 ///   - answerContainsOneOf: candidate substrings, at least one of which the
 ///     final reply must contain (case-insensitively). Pick a value the reply
-///     cannot carry unless the run really happened: the teaching shape uses a
-///     value that reaches the model only through the settled run's terminal
-///     `detail`, and the mechanism shape uses a fresh nonce whose round trip
-///     the grounded and mail collection checks pin to the settled run.
+///     cannot carry unless the run really happened: the canary uses a fresh
+///     nonce whose round trip the grounded and mail collection checks pin to
+///     the settled run.
 ///   - groundedIn: the `tools.*` paths whose returns the answer depends on — see
 ///     `IntegrationScenarioGrounding`.
-///   - direct: when `true`, mount the surface in direct mode — `runCode`, no
-///     `searchTools` — so the scenario pays for no discovery. The mechanism
-///     shape passes `true`; the teaching shape keeps the default, the
-///     discovery surface its recorded evidence was measured on. See
-///     `makeScenarioSurface(over:on:direct:)`.
 /// - Throws: any error other than `GenerationError.notWiredForLiveInference`.
 func runInBandCollectionCanaryScenario(
     name: String,
     tools makeTools: (ScenarioCallLog) -> [any Tool],
     prompt: String,
     answerContainsOneOf: [String],
-    groundedIn: Set<String>,
-    direct: Bool = false
+    groundedIn: Set<String>
 ) async throws {
     try await withLiveRouterFixture(name: name) { fixture in
         let log = ScenarioCallLog()
         // No instructions, for the same reason as every other runner here:
         // mounting the tools is the whole product surface.
         let session = fixture.profile.standard.makeSession(
-            tools: try makeScenarioSurface(over: makeTools(log), on: fixture, direct: direct).tools,
+            tools: try makeScenarioSurface(over: makeTools(log), on: fixture, direct: true).tools,
             discoveryPriming: scenarioDiscoveryPriming
         )
 
@@ -966,7 +842,7 @@ func runInBandCollectionCanaryScenario(
             sessionEvents, backgroundRunsOf: log, within: IntegrationPoll.deadline)
 
         let start = Date()
-        _ = try await session.respond(to: prompt)
+        let turn = try await streamTurn(of: session, prompt: prompt)
         let reading = await mailReading
         let elapsed = Date().timeIntervalSince(start)
         let answers = SubmissionLog.fold(events: reading.events)
@@ -975,6 +851,7 @@ func runInBandCollectionCanaryScenario(
             // The last answer is the answer that mail started, when one ran.
             answer: answers.last?.reply ?? "",
             returnedPaths: await log.returnedPaths,
+            pendingEnvelopes: turn.toolOutputs.filter(PendingRunEnvelope.isRendered).count,
             mailAnswers: answers.filter { $0.cause == .mail }.count,
             backgroundRunsAtLastAnswer: reading.backgroundRuns.map(\.tool)
         )
@@ -987,6 +864,7 @@ func runInBandCollectionCanaryScenario(
 
         reportTraceLine(
             "MAIL-CANARY [\(name)] elapsed=\(String(format: "%.1f", elapsed))s "
+                + "pendingEnvelopes=\(evidence.pendingEnvelopes) "
                 + "answers=\(answers.count) mailAnswers=\(evidence.mailAnswers) "
                 + "backgroundRunsAtLastAnswer=\(evidence.backgroundRunsAtLastAnswer) "
                 + "returned=\(evidence.returnedPaths.sorted()) "

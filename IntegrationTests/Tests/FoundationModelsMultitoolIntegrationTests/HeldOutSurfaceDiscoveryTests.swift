@@ -6,8 +6,25 @@ import Testing
 /// The label the printed result and skip lines carry.
 private let heldOutScenarioName = "heldOutSurfaceDiscovery"
 
-/// Fifteen `task` strings nobody chose the selection preamble with, each
+/// Twelve `task` strings nobody chose the selection preamble with, each
 /// beside the catalog paths a reader says answer it.
+///
+/// **Twelve of the fifteen.** The group had fifteen strings. Card `^3vtvrzg`
+/// removed three that test the same tool, with the same declared paths and
+/// the same kind of phrase, as a string that stays. Each one cost a selection
+/// call of approximately 7 s on the CI runner `mini` and measured nothing the
+/// kept string does not:
+///
+/// - "open a file and look at one region of it closely" (`files.read`), the
+///   same as "i need to read the source file where the defect lives".
+/// - "run only the one test that reproduces the bug" and "run a shell command
+///   in the project directory" (`shell.execute`), the same kind of "run …"
+///   phrase as "i want to run the project test suite now".
+///
+/// In CI run `36951032341` each of the three answered exactly the paths of the
+/// string it duplicated. "remove a scratch file i made earlier" stays beside
+/// "delete a leftover temporary directory": the two declare different paths,
+/// because `files.patch` deletes a file and not a directory.
 ///
 /// **How these were written, which is the whole value of the group.** A model
 /// wrote them in a context of its own, with no file, no repository and no tool
@@ -25,7 +42,7 @@ private let heldOutScenarioName = "heldOutSurfaceDiscovery"
 /// That is what makes this group different from the ten of card `^zqz1zan`.
 /// Those ten chose the wording the selection tier runs, so grading that
 /// wording on them grades an answer against its own answer key. Nothing chose
-/// anything with these fifteen.
+/// anything with these strings.
 ///
 /// The correct paths were declared afterwards, once the phrases were fixed, by
 /// a reader of the nine tool descriptions of the surface. The declaration
@@ -41,9 +58,6 @@ let heldOutQueries = [
         task: "find every place in the code that mentions this function name",
         correctPaths: ["files.grep"]),
     GradedDiscoveryQuery(
-        task: "open a file and look at one region of it closely",
-        correctPaths: ["files.read"]),
-    GradedDiscoveryQuery(
         task: "change a few lines in an existing source file",
         correctPaths: ["files.edit", "files.patch"]),
     GradedDiscoveryQuery(
@@ -56,14 +70,8 @@ let heldOutQueries = [
         task: "i want to run the project test suite now",
         correctPaths: ["shell.execute"]),
     GradedDiscoveryQuery(
-        task: "run only the one test that reproduces the bug",
-        correctPaths: ["shell.execute"]),
-    GradedDiscoveryQuery(
         task: "i need to see what the failing test printed",
         correctPaths: ["shell.getLines", "shell.grepHistory"]),
-    GradedDiscoveryQuery(
-        task: "run a shell command in the project directory",
-        correctPaths: ["shell.execute"]),
     GradedDiscoveryQuery(
         task: "read the log file that the last run wrote",
         correctPaths: ["files.read", "shell.getLines"]),
@@ -105,8 +113,8 @@ let heldOutQueries = [
 /// only catalog paths, each one time, inside the limit
 /// (``DiscoveryAnswerCheck``).
 ///
-/// **The history of the counts.** When card `^kn9ay20` wrote this group, the
-/// group found 9 of the 22 declared paths, and six queries found none. Card
+/// **The history of the counts.** When card `^kn9ay20` wrote this group of
+/// fifteen, it found 9 of the 22 declared paths, and six queries found none. Card
 /// `^p06rh7z` then wrote the nine tool descriptions again, so that each one
 /// names the work a person brings and not the mechanism of the verb, and the
 /// group found 16 on 2026-09-10. Card `^xr5w83f` removed the level of 15 and

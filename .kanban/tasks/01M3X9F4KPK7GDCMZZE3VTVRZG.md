@@ -134,6 +134,154 @@ comments:
     - review: not run — the task cannot go to done before the CI time criterion is measured
     - decisions for the user: (1) runner hardware (estimate 28 to 31 min on `mini`, because 27B decode is approximately 6 tokens/s there); (2) the removed timing assertion in SelectionForkPerCallTests, or unload the models before that test; (3) three inputs for the shared workflow swift-ci.yaml; (4) upstream cards for mlx-swift-lm and Router (selection cache reuse, reused-token count)
   timestamp: 2026-10-02T04:49:51.535006+00:00
+- actor: claude-code
+  id: 01m3ycgc8pb2qybkezq1yta633
+  text: |-
+    ### Decision of the user — trim duplication and needless length; no hardware change
+    - The user said: "The option I give you is: trim the tests for duplication and needless length, and make them fit." Then: "finish up all tasks."
+    - Thus the runner stays `mini`. Do not ask for a faster runner.
+    - Make the integration job fit in 20 minutes or less on `mini` by removing duplicate coverage and needless length:
+      - **Duplication:** two tests that prove the same behavior through the same path. Keep the one that covers more, and merge the unique checks of the other into it. Examples to examine: the two CLI live-demo tests (one also attaches an MCP server); the two mail scenarios (delayed echo, archive rebuild) and the background deep-scan scenario; the weather, compose/chain and distractor-discovery scenarios; discovery queries that test the same tool with the same kind of phrase.
+      - **Needless length:** work that does not change what a test proves. Examples: fixture delays longer than necessary to outlast the inline settle grace of 5 s (now 10 s); answers or prompts longer than the check needs; extra model turns that a shorter prompt avoids; output-token limits that are not set.
+    - Every behavior that the suite proves now must still be proved by one test. For each removed or merged test, record on this card: the test, the test that still proves its behavior, and the seconds saved (measured from run 36951032341 or from a local run).
+    - Estimate the time on `mini` from the measured times of run 36951032341 (the runner `mini` is approximately 3 to 4 times slower than this M3 Ultra for 27B decode). The target is 20 minutes or less for the full job, builds included.
+    - The rules stay: no nightly workflow, no new category, no skipped test, no repeated rounds, no smaller model for an answer-graded suite, no fixed model-quality score.
+    - The merge `74a0b73` took the incoming `makeRouter` and `routerCacheRoot` in place of `metadataCacheDir`, and the incoming `SelectionForkPerCallTests` (card `^kdtrmhv` removed the timing assertion the same way). Decision 2 of iteration 1 is thus closed.
+  timestamp: 2026-10-02T13:22:53.334290+00:00
+- actor: claude-code
+  id: 01m3yd7evm1jprf94whaswzgqa
+  text: |-
+    ### Research for iteration 2 (trim duplication and needless length)
+
+    Data: job log of job 110668387017 and the Router recordings of run 36951032341.
+
+    **Where the time goes on `mini` (27B scenarios).** Each 27B scenario makes 3 to 4 calls on the 27B. The first call of each new session starts approximately 26 s after the session (a cold prefill of approximately 950 tokens takes approximately 13 s, then decode). Decode is approximately 0.18 to 0.2 s for each generated token. Thus one scenario costs approximately 13 s + 0.2 s x (all generated tokens) + 2 to 4 s of selection on the 4B + tool time. Only a smaller count of scenarios or of generated tokens makes the suite shorter.
+
+    **Duplicates found.**
+    - `CLISmokeTests.demoProducesNonEmptyAnswer` (107.1 s) and `demoAttachesAnMCPServer` (93.9 s): the same `CLIRunner.run` path, the same demo prompt; the second one also attaches an MCP server, and it already asserts success and a non-empty answer.
+    - `SearchThenCallTests.composeChain` (122.3 s) and `discoveryUnderDistractors` (102.9 s): the same prompt, the same tools, the same answer and grounding checks. The discovery test adds the distractors.
+    - `SearchThenCallTests.singleCallWeather` (66.6 s): its behavior (a model reads a `getWeather` reading and reports it, grounded in `getWeather`) is part of the discovery run, which is also grounded in `getWeather`. Its only unique check is that the reply states the reading. That check moves into the discovery test.
+    - `AsyncFanOutTests.fanOutOverTwoStockTools` (74.3 s): it asserts a valid answer and grounding in two tools. Its doc comment says that the route (`Promise.all` or two awaits) is deliberately not asserted. The discovery test asserts the same kind of claim: an answer that only the returns of two tools can give, grounded in both.
+    - `BackgroundTests.backgroundInCodeMode` (100.4 s), `InBandCollectionCanaryTests.theSettledRunComesBackAsMail` (124.1 s) and `theDelayedEchoRoundTripsThroughMail` (177.3 s): all three prove the same path: a `runCode` snippet goes to the background, the model ends its answer, the settled run comes back as mail, and the mail answer carries the value. The delayed echo already grades `validAnswer`, `grounded`, `mailCollection` and `noBackgroundRunsAtLastAnswer`. The only unique check of the other two is `pendingEnvelope` (the byte shape of the envelope, from `runBackgroundIntegrationScenario`). It moves into the delayed echo test. A pending envelope on the discovery surface is also proved by `ShellBackgroundTests` (`pendingEnvelope=pass`).
+    - `HeldOutSurfaceDiscoveryTests`: queries that test the same tool with the same kind of phrase: q4 ("open a file and look at one region of it closely", `files.read`, the same as q2), q9 and q11 (`shell.execute` "run ...", the same as q8), q14 ("remove a scratch file", the same kind as q13 "delete a leftover temporary directory"). The `AgentSurfaceDiscoveryTests` group is a record of a real agent log, and card `^zqz1zan` numbers its queries by position, so it stays whole.
+
+    **Needless length found.**
+    - The delayed echo (177.3 s) lost one full model turn: in direct mode the description of `runCode` names no signature, so the model first called `tools.docs(...)`, which does not exist, and its first call generated 531 tokens. The prompt can give the argument object, so the model writes the call at once.
+    - The delayed-echo delay is 10 s for a grace of 5 s.
+    - `ShellBackgroundTests` does not grade the reply, but the final reply was 177 tokens (approximately 33 s).
+
+    **Discovered defect (not in this card):** in direct mode, the description of `runCode` still says "Write one snippet calling the exact `tools.*` paths searchTools returned", but direct mode mounts no `searchTools`, and no description gives the signatures of the tools. I record it as a new card.
+  timestamp: 2026-10-02T13:35:29.652611+00:00
+- actor: claude-code
+  id: 01m3yeceqnyrpcjdv2wnne84rh
+  text: |-
+    ### Implementation of iteration 2 landed (not committed)
+
+    **Removed or merged tests.** For each: the test, the test that still proves its behavior, and the seconds saved on `mini` (measured time in run 36951032341).
+
+    | Removed or merged test | Test that still proves its behavior | Seconds saved |
+    |---|---|---|
+    | `CLISmokeTests.demoProducesNonEmptyAnswer` | `CLISmokeTests.demoAttachesAnMCPServer`: the same `CLIRunner.run` path and demo prompt; it asserts success and a non-empty answer, and also the MCP verb | 107.1 |
+    | `SearchThenCallTests.composeChain` | `SearchThenCallTests.discoveryUnderDistractors`: the same prompt, the same two tools plus ten distractors, the same answer and grounding checks | 122.3 |
+    | `SearchThenCallTests.singleCallWeather` | `discoveryUnderDistractors`: the prompt now also asks how warm the warmest city is; new check `readingReported` grades the `getWeather` reading in the reply; grounding already required the `getWeather` return | 66.6 |
+    | `AsyncFanOutTests.fanOutOverTwoStockTools` | `discoveryUnderDistractors`: an answer that only the returns of two tools give, grounded in both. The fan-out test asserted no route (`Promise.all` was documented as not asserted) | 74.3 |
+    | `BackgroundTests.backgroundInCodeMode` | `InBandCollectionCanaryTests.theDelayedEchoRoundTripsThroughMail`: valid answer from the background run; its unique check `pendingEnvelope` moved into `mailCollectionChecks` (from the turn's tool outputs, `PendingRunEnvelope.isRendered`). Pending envelope on the discovery surface: `ShellBackgroundTests` | 100.4 |
+    | `InBandCollectionCanaryTests.theSettledRunComesBackAsMail` | `theDelayedEchoRoundTripsThroughMail`: it graded the same four conditions (`validAnswer`, `grounded`, `mailCollection`, `noBackgroundRunsAtLastAnswer`) | 124.1 |
+    | `HeldOutSurfaceDiscoveryTests`: 3 queries ("open a file and look at one region of it closely", "run only the one test that reproduces the bug", "run a shell command in the project directory") | the same test: "i need to read the source file where the defect lives" (`files.read`) and "i want to run the project test suite now" (`shell.execute`); same tool, same declared paths, same kind of phrase; the same answers in CI | approximately 20 (3 selection calls of 6.8 s) |
+
+    Kept on purpose: "remove a scratch file i made earlier" (declares `files.patch`, which deletes a file but not a directory, so it is not the same as "delete a leftover temporary directory"); the `AgentSurfaceDiscoveryTests` group (a record of a real agent log; card `^zqz1zan` numbers its queries by position).
+
+    **Needless length removed.**
+    - Delayed echo: the prompt names the call with its argument object, and asks for one short sentence. In run 36951032341 the model first called `tools.docs` (direct mode gives no signature, see the new card `^bwa2p6c`) and generated 878 tokens in 4 calls. Local run now: 243 tokens in 3 calls, 26.1 s.
+    - `ShellBackgroundTests`: "Reply in one short sentence." No check reads the reply. Local: 247 tokens in place of 393 in CI.
+    - `discoveryUnderDistractors`: "Answer in one short sentence." Local: 349 tokens.
+    - `integrationDelayedEchoDelaySeconds` 10 → 7 (grace 5 s + 2 s). `ScenarioFixtureTests` still makes sure that it stays longer than the grace. The archive-rebuild and deep-scan fixtures are deleted with their tests.
+
+    **Dead code removed with the tests.** `IntegrationDeepScanTool`, `IntegrationStockTool`, `IntegrationArchiveRebuildTool`, `integrationSingleCallCity`, `IntegrationScenarioAnswers.singleCall`, `IntegrationScenarioGrounding.singleCall/combinedStock/archiveRebuild`, `runBackgroundIntegrationScenario`; the unit tests of those fixtures are replaced (the concurrent-call log test now uses one `getWeather` call for each trip city).
+
+    **Verification.**
+    - `swift test` (root): 1892 tests in 155 suites passed. RED/GREEN on the new grading checks (`readingReported`, `pendingEnvelope` in the canary).
+    - `swift build --build-tests --package-path IntegrationTests`: build complete, no warning from the sources.
+    - Local live run (M3 Ultra) of the changed suites: `discoveryUnderDistractors` PASS (readingReported=pass) 40.6 s; canary PASS (pendingEnvelope=pass) 26.1 s; `ShellBackgroundTests` PASS 25.6 s; `HeldOutSurfaceDiscoveryTests` PASS 21.8 s (12 queries).
+  timestamp: 2026-10-02T13:55:41.941086+00:00
+- actor: claude-code
+  id: 01m3yeczvkeq3q0yzy51p7ytvy
+  text: |-
+    ### Time table and job estimate (runner `mini`)
+
+    Correction to the comment above: I wrote the new unit tests (`readingReported`, `pendingEnvelope` in the canary) before the implementation, but I did not run them in the RED state. They pass now.
+
+    Measured column: CI run 36951032341 (job 110668387017). Estimate column: after iteration 1 (one discovery pass, models resident: approximately 8 s less for each resolve) and this change. The estimate of a 27B scenario uses approximately 13 s cold prefill + 0.19 s for each generated token, scaled from the token counts of the local runs. Local M3 Ultra times are given where measured.
+
+    | Test | mini measured (s) | mini estimate (s) |
+    |---|---|---|
+    | AgentSurfaceDiscoveryTests (10 queries) | 205.0 | 70 |
+    | AsyncFanOutTests.fanOutOverTwoStockTools | 74.3 | 0 (merged) |
+    | BackgroundTests.backgroundInCodeMode | 100.4 | 0 (merged) |
+    | BraveHTMLLiveTests (2) | 0.4 | 0.4 |
+    | CLISignalExitTests (2 cases) | 6.2 | 6 |
+    | CLISmokeTests.demoProducesNonEmptyAnswer | 107.1 | 0 (merged) |
+    | CLISmokeTests.demoAttachesAnMCPServer | 93.9 | 86 |
+    | DuckDuckGoHTMLLiveTests (2) | 1.6 | 1.6 |
+    | FetchLiveTests (5) | 3.0 | 3.0 |
+    | FilesBareSessionTests | 6.6 | 6.6 |
+    | GuardLiveTests (2) | 0.04 | 0.04 |
+    | HeldOutSurfaceDiscoveryTests (12 queries, was 15) | 309.5 | 85 (local 21.8) |
+    | InBandCollectionCanaryTests.theDelayedEchoRoundTripsThroughMail | 177.3 | 55 (local 26.1) |
+    | InBandCollectionCanaryTests.theSettledRunComesBackAsMail | 124.1 | 0 (merged) |
+    | KeyedFallbackLiveTests + KeylessChainLiveTests | 1.0 | 1.0 |
+    | LiveProviderSettingTests (8) | 0.01 | 0.01 |
+    | MCPBareSessionTests + MCPElicitationBareSessionTests | 2.6 | 2.6 |
+    | ModelResidencyTests (new in iteration 1) | — | 2 |
+    | NestedGenerationProbeTests | 12.1 | 8 |
+    | NoDescriptionSurfaceDiscoveryTests | 114.3 | 40 |
+    | OperationToolLiveTests discovery | 119.7 | 40 |
+    | OperationToolLiveTests search-then-call | 74.8 | 67 |
+    | OverBudgetSurfaceDiscoveryTests | 33.3 | 25 |
+    | ProfileSlotSeparationTests + RecordingsLocationTests | 0.01 | 0.01 |
+    | RetrievalTextSurfaceDiscoveryTests | 9.7 | 9.7 |
+    | SearchThenCallTests.singleCallWeather | 66.6 | 0 (merged) |
+    | SearchThenCallTests.composeChain | 122.3 | 0 (merged) |
+    | SearchThenCallTests.discoveryUnderDistractors | 102.9 | 85 (local 40.6) |
+    | SearchThenCallTests.repairFromTripProneTool | 59.8 | 52 |
+    | SelectionForkPerCallTests | 12.7 | 5 |
+    | ShellBackgroundTests | 107.2 | 70 (local 25.6) |
+    | ShellBareSessionTests | 3.8 | 3.8 |
+    | UnknownToolHintLiveTests | 5.0 | 5 |
+    | WebResearchScenarioTests | 77.1 | 69 |
+    | WebRunCodeLiveTests (goal snippet) | 1.8 | 1.8 |
+    | First load of the 3 model sets (resident after) | in the test times | 24 |
+    | **Test run total** | **2136** | **approximately 825** |
+
+    **Job estimate.** Builds 293 s (nested package 112 s, root products 181 s; not changed) + test step approximately 847 s (test run + 22 s step overhead) + other steps 19 s = **approximately 1160 s, 19 min 20 s**. Uncertainty approximately ±10 % of the test step (±85 s): 18 to 21 minutes. The real CI run must confirm it; I cannot push, so the acceptance box for the time stays open.
+
+    **What is left if the CI run is above 20 minutes.** The builds (293 s) are the largest fixed part. Item 4 of the description (keep the build, or build the root products inside the nested package: 181 s → approximately 5 s) needs inputs in the shared workflow, recorded in iteration 1.
+  timestamp: 2026-10-02T13:55:59.475603+00:00
+- actor: claude-code
+  id: 01m3yedctacgetghhb2fb3ffhy
+  text: |-
+    ### implement — changed
+    - evidence: 16 files — deleted `IntegrationTests/.../AsyncFanOutTests.swift`, `IntegrationTests/.../BackgroundTests.swift`; changed `IntegrationTests/.../{CLISmokeTests, HeldOutSurfaceDiscoveryTests, InBandCollectionCanaryTests, SearchThenCallTests}.swift`, `IntegrationTests/.../Support/{LiveRouterFixture, ScenarioRunner, ShellBackgroundRunner}.swift`, `Tests/Support/ScenarioGrading/{ScenarioCallLog, ScenarioFailureModes, ScenarioGrading, ScenarioTools}.swift`, `Tests/FoundationModelsMultitoolTests/{ScenarioFixtureTests, ScenarioGradingTests}.swift`. `swift test` 1892 passed in 155 suites; `swift build --build-tests --package-path IntegrationTests` complete, no source warning; local live run of the 4 changed suites: 4 passed.
+    - estimate: test run approximately 825 s (was 2136 s), job approximately 1160 s (19 min 20 s) on `mini`.
+    - open: the 20-minute acceptance box needs a real CI run (record the run id). New card `^bwa2p6c` (direct-mode `runCode` description names `searchTools` and no signature).
+    - next: review. No commit made.
+  timestamp: 2026-10-02T13:56:12.746391+00:00
+- actor: claude-code
+  id: 01m3yhgv6wgfzqcqqs7w86w4w2
+  text: |-
+    ### test - green
+    - evidence: `swift test` at the root: 1892 tests in 155 suites passed, 0 failed, 0 skipped. `swift build --build-tests --package-path IntegrationTests`: build complete, 0 errors. The only warning is the build system note "missing creator for mutated node" for the mlx-swift_Cmlx bundle. It is not from this package's sources. Live run: `swift test --package-path IntegrationTests --no-parallel --filter 'CLISmokeTests|SearchThenCallTests|InBandCollectionCanaryTests|HeldOutSurfaceDiscoveryTests|ShellBackgroundTests'` ran 6 tests in 5 suites, all passed (163.992 s in total).
+    - live times: CLI smoke 40.889 s; held-out discovery 23.592 s; in-band collection canary 25.418 s; search-then-call discovery 29.633 s; search-then-call repair 15.824 s; shell background 28.633 s.
+    - next: review.
+    task: ^3vtvrzg
+  timestamp: 2026-10-02T14:50:31.516826+00:00
+- actor: claude-code
+  id: 01m3yhheega9q2myhm8fsavp43
+  text: |-
+    ### commit — changed
+    - evidence: this commit. Subject: test(integration): merge duplicate tests and shorten prompts
+    - next: review
+  timestamp: 2026-10-02T14:50:51.216314+00:00
 position_column: doing
 position_ordinal: '80'
 title: Make the full integration suite run in 20 minutes or less, with every test kept

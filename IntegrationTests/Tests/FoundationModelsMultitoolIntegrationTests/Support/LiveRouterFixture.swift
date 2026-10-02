@@ -340,7 +340,8 @@ import TestConcurrency
 /// **Measured again on Qwen3.8-27B-mxfp4, 2026-10-01 (card `^3vtvrzg`).** The
 /// fork's executor now carries a prompt cache for each session, and it logs
 /// each plan under `com.apple.FoundationModels-MLX:ExecutorPromptCache`. The
-/// log of `SearchThenCallTests/singleCallWeather` (`mlx-swift-lm` `a1f77ad`,
+/// log of `SearchThenCallTests/singleCallWeather` (a test the same card later
+/// merged into `discoveryUnderDistractors`; `mlx-swift-lm` `a1f77ad`,
 /// Router `8821ccc`) read: call 1 `rendered=945 reused=0 fed=945 rule=cold`,
 /// call 2 `rendered=1228 reused=1016 fed=212 rule=splice`, call 3
 /// `rendered=1412 reused=1284 fed=128 rule=splice`. Thus each turn of a
@@ -386,8 +387,7 @@ let multitoolTinyProfile = CLIRunner.demoProfile
 /// intelligence.** A suite asserting that a valid, fixture-grounded answer came
 /// back is making a capability claim, and a small model would fail it for
 /// reasons that say nothing about this package —
-/// `SearchThenCallTests`, `BackgroundTests`, `AsyncFanOutTests` and
-/// `InBandCollectionCanaryTests` are all of that kind,
+/// `SearchThenCallTests` and `InBandCollectionCanaryTests` are of that kind,
 /// and `^wnfzwxg` turned on exactly which model produced which answer.
 /// `SelectionForkPerCallTests` is excluded for a third reason: cache behaviour
 /// is architecture-specific, so a different model there measures a different

@@ -53,6 +53,10 @@ public let validAnswerCheckName = "validAnswer"
 /// phrasings that invalidate it, even when a required substring matched.
 public let answerNotInvalidatedCheckName = "answerNotInvalidated"
 
+/// The label of the check that grades the reply as stating the reading a tool
+/// returned, beside the answer `validAnswer` grades.
+public let readingReportedCheckName = "readingReported"
+
 /// The label of the check that grades the answer as grounded in the returns it
 /// depends on.
 public let groundedCheckName = "grounded"
@@ -169,6 +173,10 @@ public struct ScenarioEvidence {
 ///     reply must contain case-insensitively.
 ///   - answerMustNotContain: substrings whose case-insensitive presence
 ///     invalidates the reply even when a required substring matched.
+///   - readingContainsOneOf: candidate substrings for the reading the reply
+///     must also state, at least one of which it must contain
+///     case-insensitively. An empty list adds no check rather than a
+///     vacuously true one.
 ///   - groundedIn: the `tools.*` paths whose returns this scenario's answer
 ///     depends on. Must not be empty: an empty declaration would grade every
 ///     run as grounded, including one that called nothing.
@@ -177,6 +185,7 @@ public func scenarioChecks(
     for evidence: ScenarioEvidence,
     answerContainsOneOf: [String],
     answerMustNotContain: [String],
+    readingContainsOneOf: [String],
     groundedIn: Set<String>
 ) -> [ScenarioCheck] {
     precondition(
@@ -191,6 +200,17 @@ public func scenarioChecks(
         containsOneOf: answerContainsOneOf,
         mustNotContain: answerMustNotContain
     )
+    if !readingContainsOneOf.isEmpty {
+        checks.append(
+            ScenarioCheck(
+                name: readingReportedCheckName,
+                held: readingContainsOneOf.contains { evidence.answer.localizedCaseInsensitiveContains($0) },
+                failureMessage:
+                    "expected the answer to state the reading, one of \(readingContainsOneOf), "
+                    + "got \"\(evidence.answer)\""
+            )
+        )
+    }
     checks.append(
         ScenarioCheck(
             name: groundedCheckName,
@@ -256,7 +276,7 @@ public func answerChecks(
 /// answer ends (Router `generation-queue.md` §5.5 rule 1).
 ///
 /// Collected into one value so `mailCollectionChecks(for:answerContainsOneOf:
-/// groundedIn:)` grades a record rather than four loose arguments, and so the
+/// groundedIn:)` grades a record rather than five loose arguments, and so the
 /// printed line and the assertions read the same record.
 ///
 /// Built from plain values a test can write down, which is what lets
@@ -270,6 +290,15 @@ public struct MailCollectionEvidence {
 
     /// The `tools.*` paths a fixture tool handed a value back from.
     public let returnedPaths: Set<String>
+
+    /// How many tool outputs of the turn were exactly the rendered pending
+    /// envelope — the outputs Router's own `PendingRunEnvelope.isRendered`
+    /// recognizes.
+    ///
+    /// A count and not the outputs themselves, for the reason
+    /// ``backgroundRunsAtLastAnswer`` gives: the recognizer is Router's, and
+    /// the verdict reads only how many outputs it accepted.
+    public let pendingEnvelopes: Int
 
     /// How many answers mail alone started: the answers whose first
     /// submission reports `SubmissionStart.cause == .mail`.
@@ -294,17 +323,21 @@ public struct MailCollectionEvidence {
     /// - Parameters:
     ///   - answer: the reply of the last answer.
     ///   - returnedPaths: the `tools.*` paths a fixture tool handed a value back from.
+    ///   - pendingEnvelopes: how many tool outputs of the turn were the
+    ///     rendered pending envelope.
     ///   - mailAnswers: how many answers mail alone started.
     ///   - backgroundRunsAtLastAnswer: the tools owning the runs still going
     ///     at the instant the last answer ended.
     public init(
         answer: String,
         returnedPaths: Set<String>,
+        pendingEnvelopes: Int,
         mailAnswers: Int,
         backgroundRunsAtLastAnswer: [String]
     ) {
         self.answer = answer
         self.returnedPaths = returnedPaths
+        self.pendingEnvelopes = pendingEnvelopes
         self.mailAnswers = mailAnswers
         self.backgroundRunsAtLastAnswer = backgroundRunsAtLastAnswer
     }
@@ -315,10 +348,13 @@ public struct MailCollectionEvidence {
 ///
 /// `mailCollection` is the canary proper, and its failure message says what a
 /// failure means rather than only what was expected, because that reading is
-/// the whole reason the scenario is run. The other three keep the canary from
-/// asserting that nothing happened: the answer must be a valid one, grounded
-/// in the rebuild's own return, with no background run left when the last
-/// answer ended.
+/// the whole reason the scenario is run. `pendingEnvelope` grades the handle
+/// the model got first: some `runCode` output of the turn was exactly the
+/// rendered pending envelope. The background-in-code-mode scenario graded that
+/// condition until card `^3vtvrzg` merged it into the canary. The other three
+/// keep the canary from asserting that nothing happened: the answer must be a
+/// valid one, grounded in the fixture's own return, with no background run
+/// left when the last answer ended.
 ///
 /// - Parameters:
 ///   - evidence: what the run produced.
@@ -339,6 +375,15 @@ public func mailCollectionChecks(
             failureMessage:
                 "expected the answer to be grounded in what \(groundedIn.sorted()) returned, but "
                 + "only \(evidence.returnedPaths.sorted()) returned"
+        )
+    )
+    checks.append(
+        ScenarioCheck(
+            name: pendingEnvelopeCheckName,
+            held: evidence.pendingEnvelopes > 0,
+            failureMessage:
+                "expected at least one runCode call to go to the background and return a pending "
+                + "envelope, but no tool output of the turn was the rendered envelope"
         )
     )
     checks.append(

@@ -10,11 +10,12 @@ import ScenarioGrading
 /// Every assertion in `SearchThenCallTests` rests on something being true of
 /// those fixtures — that exactly one trip city is warmest, that the trip tool
 /// forces a snippet to navigate to `.cities`, that `getWeather` refuses an
-/// argument it cannot resolve to one city, that no single reply can answer
-/// both scenario questions. All four scenarios run only against a real model
-/// on capable hardware, so until this suite existed a fixture edit could
-/// break any of those premises and leave every check anyone could actually run
-/// green while those assertions quietly stopped meaning what they say.
+/// argument it cannot resolve to one city, that the graded reading is the one
+/// `getWeather` reports for the warmest city. The scenarios run only against a
+/// real model on capable hardware, so until this suite existed a fixture edit
+/// could break any of those premises and leave every check anyone could
+/// actually run green while those assertions quietly stopped meaning what they
+/// say.
 ///
 /// The same holds for the fixtures' own call log: the gated runners grade on
 /// what `ScenarioCallLog` recorded, so its recording rules are exercised here
@@ -106,7 +107,7 @@ struct ScenarioFixtureTests {
 
     @Test("a city name inside a longer phrase still resolves to that one city")
     func aCityNameInsideALongerPhraseResolves() async throws {
-        let city = integrationSingleCallCity
+        let city = integrationWarmestCity
 
         let reading = try await IntegrationWeatherTool(log: ScenarioCallLog())
             .call(arguments: IntegrationWeatherArguments(city: "\(city.name) right now"))
@@ -141,9 +142,9 @@ struct ScenarioFixtureTests {
         }
     }
 
-    // MARK: - The two scenario questions stay two questions
+    // MARK: - The discovery question has exactly one answer
 
-    @Test("exactly one trip city is warmest, so the compose question has exactly one answer")
+    @Test("exactly one trip city is warmest, so the discovery question has exactly one answer")
     func exactlyOneTripCityIsWarmest() {
         // The maximum is recomputed from the readings instead of read back off
         // `integrationWarmestCity.tempC`. Filtering the readings by the
@@ -158,56 +159,33 @@ struct ScenarioFixtureTests {
         #expect(warmest.first?.code == integrationWarmestCity.code)
     }
 
-    @Test("the single-call scenario asks about a city that is not the warmest one")
-    func theSingleCallCityIsNotTheWarmestCity() throws {
-        // `integrationSingleCallCity` is derived as
-        // `integrationCityWeather.first(where: { $0.code != integrationWarmestCity.code })`
-        // (`ScenarioTools.swift`), so comparing it back against
-        // `integrationWarmestCity.code` would only restate that exclusion —
-        // guaranteed true by the derivation itself, and unable to fail without
-        // editing that derivation. The hottest reading is recomputed here from
-        // scratch instead, exactly as `exactlyOneTripCityIsWarmest` does, so a
-        // bug shared between `integrationWarmestCity`'s sort and
-        // `integrationSingleCallCity`'s exclusion (for example, if the sort
-        // picked the wrong city and the exclusion inherited that mistake) is
-        // still caught: the single-call city's own reading would then equal
-        // the independently computed maximum.
-        let hottest = try #require(integrationCityWeather.map(\.tempC).max())
-
-        #expect(integrationSingleCallCity.tempC != hottest)
-    }
-
-    @Test("the single-call scenario grades the reading getWeather reports for its own city")
-    func theSingleCallAnswerIsTheReadingTheToolReports() async throws {
-        // Read back through the tool rather than off the fixture row: the
-        // graded substring has to be the number a reply quoting `getWeather`
-        // states. A matcher that resolved this city to a different reading,
-        // or an answer set derived from a different city, leaves scenario 1
-        // grading a temperature the model was never shown, and only the round
-        // trip notices. The rendering here is deliberately the assertion's
-        // own and not the fixture's `integrationTemperatureAnswer` — reusing
-        // that helper would compare the answer set against the expression
-        // that produced it.
+    @Test("the discovery scenario grades the reading getWeather reports for the warmest city")
+    func theWarmestCityReadingIsTheReadingTheToolReports() async throws {
+        // The check the single-call weather scenario made before card
+        // `^3vtvrzg` merged it into the discovery scenario: the reply states
+        // the reading `getWeather` returned. Read back through the tool rather
+        // than off the fixture row: the graded substring has to be the number
+        // a reply quoting `getWeather` states. A matcher that resolved the
+        // city to a different reading, or a reading derived from a different
+        // city, leaves the scenario grading a temperature the model was never
+        // shown, and only the round trip notices. The rendering here is
+        // deliberately the assertion's own and not the fixture's
+        // `integrationTemperatureAnswer` — reusing that helper would compare
+        // the answer set against the expression that produced it.
         let reading = try await IntegrationWeatherTool(log: ScenarioCallLog())
-            .call(arguments: IntegrationWeatherArguments(city: integrationSingleCallCity.name))
+            .call(arguments: IntegrationWeatherArguments(city: integrationWarmestCity.name))
 
-        #expect(IntegrationScenarioAnswers.singleCall == [String(Int(reading.tempC))])
+        #expect(IntegrationScenarioAnswers.warmestCityReading == [String(Int(reading.tempC))])
     }
 
-    @Test("the compose scenario grades the city its own getTrip-then-getWeather walk finds warmest")
-    func theWarmestCityAnswersNameTheCityTheComposeWalkFinds() async throws {
-        // The walk the compose and discovery scenarios ask a snippet to write,
-        // run here in Swift: read the itinerary, read each city it lists, keep
-        // the warmest. Grading the answer set against what that walk produces
-        // is the part the set cannot check about itself — an itinerary and a
+    @Test("the discovery scenario grades the city its own getTrip-then-getWeather walk finds warmest")
+    func theWarmestCityAnswersNameTheCityTheDiscoveryWalkFinds() async throws {
+        // The walk the discovery scenario asks a snippet to write, run here in
+        // Swift: read the itinerary, read each city it lists, keep the
+        // warmest. Grading the answer set against what that walk produces is
+        // the part the set cannot check about itself — an itinerary and a
         // weather table that drifted apart, or answers derived from a city the
         // walk never reaches, fail here.
-        //
-        // Reading the set also runs `IntegrationScenarioAnswers`' own overlap
-        // check, which traps on a substring relation between the two
-        // scenarios' answers in either direction. That check is stricter than
-        // any expectation here could be, and this suite is what makes it run
-        // under an ungated `swift test`.
         let log = ScenarioCallLog()
         let trip = try await IntegrationTripTool(log: log).call(arguments: IntegrationNoArguments(unused: nil))
         let weather = IntegrationWeatherTool(log: log)
@@ -238,7 +216,7 @@ struct ScenarioFixtureTests {
         let log = ScenarioCallLog()
         let tool = IntegrationWeatherTool(log: log)
 
-        _ = try await tool.call(arguments: IntegrationWeatherArguments(city: integrationSingleCallCity.name))
+        _ = try await tool.call(arguments: IntegrationWeatherArguments(city: integrationWarmestCity.name))
 
         #expect(await log.calls == [ScenarioCall(path: tool.name, outcome: .returned)])
         #expect(await log.invokedPaths == [tool.name])
@@ -261,37 +239,39 @@ struct ScenarioFixtureTests {
         #expect(await log.returnedPaths.isEmpty)
     }
 
-    @Test("every call of a snippet that awaits two tools at once is recorded")
+    @Test("every call of a snippet that awaits several calls at once is recorded")
     func concurrentCallsThroughOneSnippetAreAllRecorded() async throws {
-        // `Promise.all` over two independent tools is the async fan-out
-        // scenario's own natural snippet, so the log really is written from
-        // two calls in flight at the same time.
+        // `Promise.all` over one reading for each trip city is the natural
+        // snippet of the discovery scenario, so the log really is written
+        // from several calls in flight at the same time.
         let log = ScenarioCallLog()
-        let counters = integrationStockTools(log: log)
-        let registry = try MultiTool.Builder().addTools(counters).buildRegistry()
+        let weather = IntegrationWeatherTool(log: log)
+        let registry = try MultiTool.Builder().addTool(weather).buildRegistry()
         let multiTool = MultiTool(registry: registry)
-        let calls = counters.map { "tools.\($0.name)()" }.joined(separator: ", ")
+        let calls = integrationCityWeather
+            .map { "tools.\(weather.name)({ city: \"\($0.code)\" })" }
+            .joined(separator: ", ")
 
         let output = try await multiTool.call(
             arguments: RunCodeArguments(
                 code: """
-                    const counts = await Promise.all([\(calls)]);
-                    return counts.reduce((total, count) => total + count.units, 0);
+                    const readings = await Promise.all([\(calls)]);
+                    return readings.reduce((total, reading) => total + reading.tempC, 0);
                     """
             )
         )
 
-        // A total reduced from the two counts shares no text with either of
+        // A total reduced from the readings shares no text with any one of
         // them, so the run closes with `ToolReturnLedger`'s notice as well —
-        // the fan-out snippet is a real instance of the shape that detector
-        // reports on, and a gated model writing this snippet reads the same
-        // sentence. The whole output is compared, and the notice is read from
-        // its one source rather than restated (task `wnfzwxg`).
-        let total = integrationWarehouseStockUnits + integrationStoreStockUnits
+        // the snippet is a real instance of the shape that detector reports
+        // on, and a gated model writing this snippet reads the same sentence.
+        // The whole output is compared, and the notice is read from its one
+        // source rather than restated (task `wnfzwxg`).
+        let total = Int(integrationCityWeather.reduce(0) { $0 + $1.tempC })
         #expect(output == "\(total)\n\n\(ToolReturnLedger.uncarriedReturnNotice)")
-        #expect(await log.calls.count == counters.count)
-        #expect(await log.invokedPaths == Set(counters.map(\.name)))
-        #expect(await log.returnedPaths == Set(counters.map(\.name)))
+        #expect(await log.calls.count == integrationCityWeather.count)
+        #expect(await log.invokedPaths == [weather.name])
+        #expect(await log.returnedPaths == [weather.name])
     }
 
     @Test("a snippet naming paths no fixture defines invokes nothing, though the scan still reports what it typed")
@@ -322,79 +302,16 @@ struct ScenarioFixtureTests {
         )
     }
 
-    // MARK: - The fixture the mail collection canary drives
-
-    @Test("the archive-rebuild fixture reports its manifest code")
-    func theRebuildFixtureReportsItsManifestCode() async throws {
-        // The premise the canary's grounding rests on: the manifest code
-        // reaches the model through this return and through nothing else, so a
-        // fixture that stopped reporting it would make every gated grounding
-        // assertion fail on a cause an ordinary `swift test` never named.
-        let log = ScenarioCallLog()
-
-        let rebuild = try await IntegrationArchiveRebuildTool(log: log)
-            .call(arguments: IntegrationNoArguments(unused: nil))
-
-        #expect(rebuild.manifestCode == integrationArchiveRebuildManifestCode)
-        #expect(await log.returnedPaths == [IntegrationArchiveRebuildTool.path])
-    }
-
-    @Test("the archive-rebuild fixture settles only after its delay, which outlasts runCode's inline settle grace")
-    func theRebuildFixtureOutlastsTheInlineSettleGrace() async throws {
-        // The premise `mailCollection` rests on: the model gets a pending
-        // envelope, and only then does the settled run come back as mail. A
-        // snippet that settles inside the inline settle grace gives its result
-        // inline, and no mail comes (CI run `35230706285`). Thus the delay
-        // must be longer than the grace.
-        #expect(
-            integrationArchiveRebuildDelay
-                > .milliseconds(Int(MultiToolConfiguration.defaultInlineSettleGrace * 1000))
-        )
-
-        let log = ScenarioCallLog()
-        let clock = ContinuousClock()
-
-        let start = clock.now
-        let rebuild = try await IntegrationArchiveRebuildTool(log: log)
-            .call(arguments: IntegrationNoArguments(unused: nil))
-        let elapsed = clock.now - start
-
-        #expect(rebuild.manifestCode == integrationArchiveRebuildManifestCode)
-        #expect(elapsed >= integrationArchiveRebuildDelay)
-    }
-
-    @Test("the mail collection canary's manifest code answers no other scenario's question")
-    func theManifestCodeAnswersNoOtherScenarioQuestion() {
-        // The same rule `IntegrationScenarioAnswers` enforces between its own
-        // two answer sets, extended to the two code-shaped fixtures that came
-        // later. A manifest code that contained — or was contained by — the deep
-        // scan's report code would let a reply about the wrong run satisfy this
-        // scenario, and both are `answerContainsOneOf` substring matches.
-        let manifest = integerAnswers(for: integrationArchiveRebuildManifestCode)
-        let everyOtherAnswer = integerAnswers(for: integrationDeepScanReportCode)
-            + integerAnswers(for: integrationWarehouseStockUnits + integrationStoreStockUnits)
-            + IntegrationScenarioAnswers.singleCall
-            + IntegrationScenarioAnswers.warmestCity
-
-        for answer in manifest {
-            for other in everyOtherAnswer {
-                #expect(!answer.localizedCaseInsensitiveContains(other))
-                #expect(!other.localizedCaseInsensitiveContains(answer))
-            }
-        }
-    }
-
-    // MARK: - The fixture the delayed-echo mechanism test drives (task `^nhxj8hx`)
+    // MARK: - The fixture the mail collection canary drives (task `^nhxj8hx`)
 
     @Test("the delayed echo returns its exact input, and only after its delay, which outlasts the inline settle grace")
     func theDelayedEchoReturnsItsExactInputAfterItsDelay() async throws {
-        // The premise the mechanism test rests on: the value settles after
-        // the inline settle grace ends. A tool that settles inside the grace
-        // gives its result inline, and the deferred path — the mail — stays
-        // untested: the hole the immediate rebuild fixture left open (task
-        // `^nhxj8hx`). A live run on 2026-09-26 (task `^r77er9z`) showed
-        // it: a four-second echo settled inside the five-second grace, and
-        // no mail came.
+        // The premise the canary rests on: the value settles after the inline
+        // settle grace ends. A tool that settles inside the grace gives its
+        // result inline, and the deferred path — the mail — stays untested:
+        // the hole the immediate rebuild fixture left open (task `^nhxj8hx`).
+        // A live run on 2026-09-26 (task `^r77er9z`) showed it: a four-second
+        // echo settled inside the five-second grace, and no mail came.
         #expect(
             integrationDelayedEchoDelay
                 > .milliseconds(Int(MultiToolConfiguration.defaultInlineSettleGrace * 1000))

@@ -103,7 +103,7 @@ public struct ScenarioObservation {
 /// A host mounts `MultiTool` with the catalog behind `searchTools` rather than
 /// in the session instructions, so a model that has not searched does not
 /// know a single real name — which is why the floor is two rather than one,
-/// and why it is the same floor for all four scenarios.
+/// and why it is the same floor for every scenario this runner drives.
 public let scenarioMinimumToolCalls = 2
 
 /// How far past `scenarioMinimumToolCalls` a turn may go before it counts
@@ -125,10 +125,10 @@ private let scenarioGroundingValueMinimumLength = 2
 
 /// The failure modes one gated scenario run exhibited.
 ///
-/// The gated suite grades four scenarios pass/fail, which is four bits per
-/// run — too little signal for any experiment to answer its own question at
-/// the sample sizes live inference allows. These modes are the observations
-/// the same run already produces and used to discard: each is counted
+/// The gated suite grades each scenario pass/fail, which is one bit for each
+/// scenario of a run — too little signal for any experiment to answer its own
+/// question at the sample sizes live inference allows. These modes are the
+/// observations the same run already produces and used to discard: each is counted
 /// alongside the existing grade, never in place of it, so a run yields many
 /// signals instead of one.
 public struct ScenarioFailureModes {
@@ -266,7 +266,7 @@ public struct ScenarioFailureModes {
     /// taking it.
     ///
     /// The recorded shape is a turn that opens "Let me first find…" and
-    /// ends there — see `runBackgroundIntegrationScenario`'s note that a turn
+    /// ends there — see `runInBandCollectionCanaryScenario`'s note that a turn
     /// asked only to start a job "gets an announcement and no `runCode` call
     /// at all".
     private static let announcementPhrases = [

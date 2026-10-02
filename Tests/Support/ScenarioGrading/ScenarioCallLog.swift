@@ -51,9 +51,9 @@ public struct ScenarioCall: Equatable, Sendable {
 /// of them to say so as it runs, and that is what this records.
 ///
 /// An `actor` because every fixture tool's `call(arguments:)` is `async
-/// throws` and a snippet is free to drive several at once — the async fan-out
-/// scenario's natural snippet is a `Promise.all` over two tools — so
-/// invocations genuinely race.
+/// throws` and a snippet is free to drive several at once — the discovery
+/// scenario's natural snippet is a `Promise.all` over one `getWeather` call for
+/// each trip city — so invocations genuinely race.
 ///
 /// One log belongs to one scenario run. `runNativeIntegrationScenario` mints a
 /// fresh one per run and builds that run's tools around it, so no scenario can
@@ -138,8 +138,8 @@ public actor ScenarioCallLog {
 
     /// Runs one fixture tool's body and records the invocation it makes.
     ///
-    /// Every fixture tool routes its `call(arguments:)` through here, so all
-    /// six record the same way and a tool that throws is still recorded — as
+    /// Every fixture tool routes its `call(arguments:)` through here, so they
+    /// all record the same way and a tool that throws is still recorded — as
     /// entered-but-not-returned. That matters: `IntegrationWeatherTool`
     /// refuses a city it cannot resolve and `IntegrationBookingTool` refuses
     /// an unconfirmed booking, and both refusals are invocations a scenario

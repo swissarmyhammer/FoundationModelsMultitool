@@ -3,26 +3,39 @@ import Testing
 import ScenarioGrading
 
 /// The canary over how a backgrounded run comes back to the model on this
-/// host: the model ends its answer while the run is still going, the settled
-/// run comes back to the session as mail, and the model answers the mail.
+/// host: a `runCode` call hands the model a pending envelope, the model ends
+/// its answer while the run is still going, the settled run comes back to the
+/// session as mail, and the model answers the mail.
 ///
-/// **Two tests, two claims, split on task `^nhxj8hx`.** The old suite graded
-/// both claims through one expensive run, and CI run `32203706380` killed that
-/// run at its ceiling as the whole run's only failure. The split gives each
-/// claim its own shortest run:
+/// **One test for the whole background path.** Until card `^3vtvrzg` three
+/// tests drove this same path on the 27B model:
 ///
-/// - **The mechanism** (`theDelayedEchoRoundTripsThroughMail`): a call
-///   backgrounds, hands the model a handle, and the value comes back intact
-///   in the mail answer. It mounts a direct-mode surface — `runCode`, no
-///   `searchTools` — so the model pays for no discovery, and it drives
-///   `IntegrationDelayedEchoTool`, whose result settles seconds after the
-///   handle exists. The graded value is a fresh nonce; see the test body for
-///   how its round trip is pinned to the settled run.
+/// - `BackgroundTests.backgroundInCodeMode` (100 s on the CI runner `mini`,
+///   run `36951032341`): a deep scan on the discovery surface; it graded a
+///   valid answer and that a pending envelope appeared.
+/// - `theSettledRunComesBackAsMail` (124 s): an archive rebuild on the
+///   discovery surface, with a prompt that told the model not to block; it
+///   graded a valid, grounded answer, an answer that mail started, and no run
+///   left at the last answer.
+/// - `theDelayedEchoRoundTripsThroughMail` (177 s): the delayed echo on the
+///   direct-mode surface; it graded the same four conditions as the rebuild,
+///   on a fresh nonce.
 ///
-/// - **The teaching** (`theSettledRunComesBackAsMail`): the prompt tells the
-///   model *not* to block, so it ends its answer with the rebuild still going.
-///   Same fixture, same prompt and same discovery surface as the run this
-///   suite was first measured on. Do not soften its prompt.
+/// The delayed echo already graded every condition of the other two but one,
+/// the pending envelope, and the runner now grades that one too
+/// (`runInBandCollectionCanaryScenario`). A pending envelope on the discovery
+/// surface is graded by `ShellBackgroundTests`, and mail delivery does not
+/// depend on the surface that started the run. The test that stays is the
+/// shortest: direct mode, so the model pays for no discovery.
+///
+/// **The prompt gives the call.** The direct-mode description of `runCode`
+/// names no signature (card `^bwa2p6c`), so in CI run `36951032341` the model
+/// first called `tools.docs(...)`, which does not exist, and generated 531
+/// tokens before its first real call: one full model turn of approximately
+/// 40 s on `mini` that the subject of this test does not need. The prompt
+/// therefore names the call with its argument object. It still does not say
+/// how the result comes back: the pending envelope on the handle carries
+/// that, as it does for every host.
 ///
 /// **What changed on the work-queue Router, and why this suite stays.** The
 /// old Router drained the background runs of a turn inside `respond(to:)`, and
@@ -44,25 +57,17 @@ import ScenarioGrading
 ///
 /// That block is left exactly as the run printed it. It is a record of a run
 /// that happened, in words no fresh run prints: the runner prints
-/// `MAIL-CANARY … answers= mailAnswers= backgroundRunsAtLastAnswer=` today.
+/// `MAIL-CANARY … pendingEnvelopes= answers= mailAnswers= backgroundRunsAtLastAnswer=`
+/// today.
 ///
-/// **What a failure means.** `mailCollection` failing alone means no answer
-/// started from mail: the model held its answer open until the run settled,
-/// or the run settled inside the inline settle grace and needed no mail.
-/// `noBackgroundRunsAtLastAnswer` failing means a run was still going when the
-/// mail answer ended. Do not relax either of them to make a run green; file
-/// the question instead.
-///
-/// **The rebuild fixture must outlast the inline settle grace, and no more.**
-/// A `runCode` snippet that settles inside `runCode`'s inline settle grace
-/// gives its result inline, and no mail comes. Thus a fixture that settles at
-/// once lets a correct model fail `mailCollection`.
-/// `integrationArchiveRebuildDelay` holds the rebuild a few seconds past the
-/// grace, so the model always gets the pending envelope. A long stall once
-/// cost this suite its verdict outright — `IntegrationArchiveRebuildTool`
-/// records what happened — so the delay stays short. The delayed echo is slow
-/// for a different reason: its subject is the deferred settlement itself, and
-/// `integrationDelayedEchoDelay` records why.
+/// **What a failure means.** `pendingEnvelope` failing means no `runCode`
+/// output was the rendered envelope: the echo settled inside the inline settle
+/// grace, or the model never called it. `mailCollection` failing alone means
+/// no answer started from mail: the model held its answer open until the run
+/// settled, or the run settled inside the inline settle grace and needed no
+/// mail. `noBackgroundRunsAtLastAnswer` failing means a run was still going
+/// when the mail answer ended. Do not relax any of them to make a run green;
+/// file the question instead.
 ///
 /// Like every other suite here, this one belongs to the nested
 /// `IntegrationTests` package; the root manifest declares no target for it, so
@@ -84,7 +89,7 @@ import ScenarioGrading
     .timeLimit(IntegrationHangGuard.timeLimit)
 )
 struct InBandCollectionCanaryTests {
-    @Test("the delayed echo's value comes back through mail, and the mail answer reports it")
+    @Test("a backgrounded echo hands back a pending envelope, its value comes back through mail, and the mail answer reports it")
     func theDelayedEchoRoundTripsThroughMail() async throws {
         // The shortest sequence that still passes through the real machinery:
         // call the named tool, take the handle, end the answer, get the mail,
@@ -101,38 +106,16 @@ struct InBandCollectionCanaryTests {
         try await runInBandCollectionCanaryScenario(
             name: "delayedEchoMechanism",
             tools: { log in [IntegrationDelayedEchoTool(log: log)] },
-            // Names the tool and the value, and asks for the result. It does
-            // not say how the result comes back: the pending envelope on the
-            // handle carries that, as it does for every host.
-            prompt: "Call the \(IntegrationDelayedEchoTool.path) tool with the value \(nonce). "
-                + "Report the exact value it returns.",
+            // Names the call and its argument object, and asks for the
+            // result. It does not say how the result comes back: the pending
+            // envelope on the handle carries that, as it does for every host.
+            // "One short sentence" keeps the mail answer as long as the check
+            // needs: a local run on 2026-10-02 wrote 204 tokens for it, a
+            // JSON block and an explanation of the echo.
+            prompt: "Call tools.\(IntegrationDelayedEchoTool.path)({ value: \"\(nonce)\" }). "
+                + "Report the exact value it returns, in one short sentence.",
             answerContainsOneOf: [nonce],
-            groundedIn: IntegrationScenarioGrounding.delayedEcho,
-            direct: true
-        )
-    }
-
-    @Test("the settled rebuild comes back as mail, and the mail answer carries the manifest code")
-    func theSettledRunComesBackAsMail() async throws {
-        try await runInBandCollectionCanaryScenario(
-            name: "mailCollection",
-            tools: { log in [IntegrationArchiveRebuildTool(log: log)] },
-            // Asks for the manifest code, so the answer needs the run's result;
-            // and says plainly not to block for it, so the model ends its
-            // answer while the rebuild is still going. The manifest code then
-            // reaches the model only through the mail.
-            //
-            // Phrased as a user request rather than as coaching: "start it, tell
-            // me when it is running, give me the code when it lands" is how
-            // someone asks for work they do not want to sit through.
-            prompt: "Rebuild my archive index and tell me its exact manifest code. Do not block "
-                + "waiting for it: start the rebuild, reply as soon as it is under way, and give me "
-                + "the manifest code once it reaches you.",
-            // The rebuild fixture always reports the same manifest code, and it
-            // reaches the model only through the settled run's terminal
-            // `detail` — a hallucinated answer cannot match it.
-            answerContainsOneOf: integerAnswers(for: integrationArchiveRebuildManifestCode),
-            groundedIn: IntegrationScenarioGrounding.archiveRebuild
+            groundedIn: IntegrationScenarioGrounding.delayedEcho
         )
     }
 }

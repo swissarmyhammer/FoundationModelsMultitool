@@ -81,9 +81,14 @@ private let shellBackgroundCommand = "echo $$ ; while true ; do echo tick ; slee
 /// completion token back at once"). The wording does not decide the outcome:
 /// `Execute` declares a background mount for itself, so every `execute` call
 /// goes to the background whatever the model asked for.
+///
+/// "Reply in one short sentence" keeps the reply as long as the scenario needs
+/// and no longer: no check reads the reply (see `shellBackgroundChecks(for:)`),
+/// and the final reply of CI run `36951032341` was 177 generated tokens,
+/// approximately 33 s on the CI runner `mini` (card `^3vtvrzg`).
 private let shellBackgroundPrompt = """
     Start this shell command running in the background and tell me the completion token it hands \
-    back. Do not wait for it to finish, because it never finishes.
+    back. Do not wait for it to finish, because it never finishes. Reply in one short sentence.
 
     \(shellBackgroundCommand)
     """
@@ -656,7 +661,7 @@ private let shellJournaledTerminalCheckName = "oneJournaledTerminal"
 /// conjunction of.
 ///
 /// Separate from the run that produced the evidence, exactly as
-/// `scenarioChecks(for:answerContainsOneOf:answerMustNotContain:groundedIn:)` is,
+/// `scenarioChecks(for:answerContainsOneOf:answerMustNotContain:readingContainsOneOf:groundedIn:)` is,
 /// so the grading rule is a pure function over plain values rather than
 /// something only a live run can exercise.
 ///
