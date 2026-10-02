@@ -20,6 +20,7 @@ import MCP
 import MCPTestServer
 
 @testable import FoundationModelsMultitool
+@testable import MultitoolTestSupport
 
 /// The transport a ``MCPTestSupport/connectedServer(to:over:clientName:capabilities:)``
 /// or a ``MCPTestSupport/connectedMCPServer(to:over:name:)`` call connects over.
@@ -70,7 +71,9 @@ enum MCPTestSupport {
     ///   - kind: The transport to connect over.
     /// - Returns: The client end of the transport.
     /// - Throws: What `ScriptedServer.start(transport:)` or
-    ///   `LoopbackHTTPServer.start()` throws.
+    ///   `LoopbackHTTPServer.start(hangBound:)` throws. A `.http` transport
+    ///   takes `TestHangGuard.seconds` as its hang bound: the loopback ends
+    ///   no request that the hang guard of a test lets run.
     static func clientTransport(
         serving scripted: ScriptedServer, over kind: MCPTransportKind
     ) async throws -> any Transport {
@@ -79,7 +82,7 @@ enum MCPTestSupport {
             return try await scripted.startOnInMemoryPair()
         case .http:
             let loopback = LoopbackHTTPServer(serving: scripted)
-            let (endpoint, configuration) = try await loopback.start()
+            let (endpoint, configuration) = try await loopback.start(hangBound: TestHangGuard.seconds)
             return LoopbackClosingTransport(
                 wrapping: HTTPClientTransport(endpoint: endpoint, configuration: configuration),
                 stopping: loopback)

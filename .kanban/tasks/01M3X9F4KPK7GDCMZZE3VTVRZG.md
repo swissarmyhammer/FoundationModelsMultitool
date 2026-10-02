@@ -282,8 +282,36 @@ comments:
     - evidence: this commit. Subject: test(integration): merge duplicate tests and shorten prompts
     - next: review
   timestamp: 2026-10-02T14:50:51.216314+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m3yjcxrgr08e2s8z9mn4sg7g
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit 15d8315): 0 findings, 0 confirmed, 0 refuted; 14 validator runs attempted, 0 failed, 0 skipped. 15 files reviewed; 4 `.kanban/` files not reviewed (`.reviewignore`). `git diff --name-status -M HEAD~1..HEAD` shows no renamed file, so no file-scoped review was necessary. The hygiene rules declined only `AsyncFanOutTests.swift` and `BackgroundTests.swift`, which this commit deletes.
+    - removed-test check (diff read in full): each removed test has a test that stays and proves its behavior.
+      - `CLISmokeTests.demoProducesNonEmptyAnswer` -> `demoAttachesAnMCPServer`: same `CLIRunner.run` path and demo prompt; it asserts success and a non-empty answer, and also the MCP verb.
+      - `SearchThenCallTests.composeChain` -> `discoveryUnderDistractors`: same question, same two tools plus distractors, same `warmestCity` answer and grounding.
+      - `SearchThenCallTests.singleCallWeather` -> `discoveryUnderDistractors`: the new `readingReported` check grades `IntegrationScenarioAnswers.warmestCityReading`; grounding requires the `getWeather` return. Unit tests `aReplyWithoutTheReadingFailsReadingReportedAlone`, `noReadingAddsNoReadingCheck` and `theWarmestCityReadingIsTheReadingTheToolReports` cover the check.
+      - `AsyncFanOutTests.fanOutOverTwoStockTools` -> `discoveryUnderDistractors`: an answer that only two tool returns give, grounded in both; the removed test asserted no route. `concurrentCallsThroughOneSnippetAreAllRecorded` still proves that a `Promise.all` snippet records every concurrent call.
+      - `BackgroundTests.backgroundInCodeMode` -> `InBandCollectionCanaryTests.theDelayedEchoRoundTripsThroughMail`: `pendingEnvelope` now in `mailCollectionChecks` (unit test `noPendingEnvelopeFailsTheCanary`); pending envelope on the discovery surface: `ShellBackgroundTests`.
+      - `InBandCollectionCanaryTests.theSettledRunComesBackAsMail` -> `theDelayedEchoRoundTripsThroughMail`: same four conditions (`validAnswer`, `grounded`, `mailCollection`, `noBackgroundRunsAtLastAnswer`), and the kept prompt does not tell the model to not block.
+      - `HeldOutSurfaceDiscoveryTests` 3 queries -> kept queries with the same tool and the same declared paths (`files.read`; `shell.execute`).
+    - user rules: the diff adds no nightly or scheduled workflow, no skipped or disabled test, no repeated round, no fixed model-quality score, and no smaller model.
+    - column: stays in `review` by the rule of this run. The review is clean, but the last acceptance item (integration job 20 minutes or less) needs a real CI run, which cannot exist until the user pushes. Do not move to `done` before that run is recorded.
+    - next: the user pushes; record the CI run id and the job time on this card; then move to `done` if the job takes 20 minutes or less.
+    task: ^3vtvrzg
+  timestamp: 2026-10-02T15:05:51.632505+00:00
+- actor: claude-code
+  id: 01m3yjdjmx9ywc1y0yn30sfq21
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — 16 files; 6 duplicate tests merged into tests that prove the same behavior, 3 duplicate held-out queries removed, shorter prompts, echo delay 7 s; estimate approximately 1160 s for the job on `mini`
+    - test: green — swift test 1892 passed; IntegrationTests build passes; 6 changed live tests passed locally in 164 s
+    - commit: 15d8315
+    - review: clean — 0 findings; each removed test has a test that stays
+    - the task stays in review: the 20-minute criterion needs a real CI run, and that needs a push that the user approves
+  timestamp: 2026-10-02T15:06:13.021291+00:00
+position_column: review
+position_ordinal: '8180'
 title: Make the full integration suite run in 20 minutes or less, with every test kept
 ---
 ## Goal

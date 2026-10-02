@@ -69,13 +69,10 @@ struct MCPSessionSweepTests {
     /// The name of the server of the subprocess case.
     private static let subprocessServerName = "sweep-subprocess"
 
-    /// How many progress notifications the slow tool sends — far more than a
-    /// test lets run, thus the call is still in flight when the sweep reaches
-    /// it.
-    private static let slowSteps = 1_000
-
-    /// How long the slow tool waits between notifications.
-    private static let slowStepDelay = Duration.milliseconds(20)
+    /// The name of the verb whose call holds on the server until the test
+    /// releases it, thus the call is still in flight when the sweep reaches
+    /// it, whatever the speed of the machine.
+    private static let heldToolName = "held"
 
     /// How long a test waits for the scripted server to record a
     /// `notifications/cancelled`: ``TestPoll/deadline``, a hang guard and
@@ -92,10 +89,9 @@ struct MCPSessionSweepTests {
     /// How many times one `shutdownAll()` stops the attachment.
     private static let oneStop = 1
 
-    /// The `runCode` snippet of the parked shape: it awaits the slow verb of
+    /// The `runCode` snippet of the parked shape: it awaits the held verb of
     /// the server.
-    private static let parkedSnippet =
-        "return await tools.\(serverName).\(ServerMode.slowBuildToolName)({});"
+    private static let parkedSnippet = "return await tools.\(serverName).\(heldToolName)({});"
 
     /// The marker the parked case appends once the sweep answered the
     /// terminal of the run.
@@ -108,16 +104,19 @@ struct MCPSessionSweepTests {
     private static let cancelEntry = WireRecordingTransport.Entry.sent(
         method: CancelledNotification.name)
 
-    /// The wire entry of the request that starts the slow call.
+    /// The wire entry of the request that starts the held call.
     private static let callEntry = WireRecordingTransport.Entry.sent(method: CallTool.name)
 
     // MARK: - The ground of one test
 
-    /// One server that serves the slow tool, connected over a recording
+    /// One server that serves the held tool, connected over a recording
     /// transport, and the pool that holds it.
     private struct SweepGround {
         /// The scripted server, which the test keeps alive.
         let scripted: ScriptedServer
+
+        /// The tool whose call holds until the test releases it.
+        let held: HeldScriptedTool
 
         /// The connected server.
         let server: MCPServer
@@ -150,7 +149,7 @@ struct MCPSessionSweepTests {
         }
     }
 
-    /// A scripted server that serves the slow tool, connected to a fresh
+    /// A scripted server that serves the held tool, connected to a fresh
     /// `MCPServer` named ``serverName`` over a recording transport, and a
     /// pool that records that server through `withMCP(servers:)`.
     ///
@@ -158,17 +157,18 @@ struct MCPSessionSweepTests {
     /// - Throws: What the connect or the build throws.
     private static func makeGround() async throws -> (ground: SweepGround, registry: MultiTool.Registry) {
         let scripted = ScriptedServer()
-        await scripted.addSlowBuildTool(
-            named: ServerMode.slowBuildToolName, totalSteps: slowSteps, stepDelay: slowStepDelay)
+        let held = HeldScriptedTool(named: heldToolName)
+        await scripted.addTool(held.scriptedTool)
         let (server, wire) = try await MCPTestSupport.connectedRecordingMCPServer(
             to: scripted, name: serverName)
         let builder = try await MultiTool.Builder().withMCP(servers: [server])
         let registry = try builder.buildRegistry()
-        let ground = SweepGround(scripted: scripted, server: server, wire: wire, pool: builder.serverPool)
+        let ground = SweepGround(
+            scripted: scripted, held: held, server: server, wire: wire, pool: builder.serverPool)
         return (ground, registry)
     }
 
-    /// Waits until the slow call of `ground` is on the wire.
+    /// Waits until the held call of `ground` is on the wire.
     ///
     /// - Parameter ground: The ground whose wire to read.
     /// - Throws: When no call reaches the wire before the deadline.
@@ -208,7 +208,7 @@ struct MCPSessionSweepTests {
 
     /// eventplan.md: *"MCP requests get the advisory cancel and post
     /// `.cancelled` before the transport closes."* The `runCode` run that
-    /// awaits the slow verb is parked on the run plane; the sweep cancels it,
+    /// awaits the held verb is parked on the run plane; the sweep cancels it,
     /// the cancellation reaches `MCPServer.call`, and the pool then closes
     /// the transport.
     @Test("parked shape: the sweep sends the advisory cancel and records .cancelled before the transport closes")
@@ -259,6 +259,7 @@ struct MCPSessionSweepTests {
         try await Self.expectOrder(
             of: .marker(Self.terminalMarker), before: .disconnected, on: ground.wire)
         #expect(await context.backgroundRuns().isEmpty)
+        await ground.held.release()
         withExtendedLifetime(ground.scripted) {}
     }
 
@@ -274,7 +275,7 @@ struct MCPSessionSweepTests {
         let (ground, _) = try await Self.makeGround()
         let run = try await makeStubRun()
         let context = run.context
-        let entry = try #require(await ground.server.tool(named: ServerMode.slowBuildToolName))
+        let entry = try #require(await ground.server.tool(named: Self.heldToolName))
         let mounted = try #require(
             SessionMount.synchronous(
                 MCPTool(entry: entry, server: ground.server), on: context)
@@ -291,6 +292,7 @@ struct MCPSessionSweepTests {
 
         await Self.expectServerReceivedTheCancel(from: ground.scripted)
         try await Self.expectOrder(of: Self.cancelEntry, before: .disconnected, on: ground.wire)
+        await ground.held.release()
         withExtendedLifetime(ground.scripted) {}
     }
 

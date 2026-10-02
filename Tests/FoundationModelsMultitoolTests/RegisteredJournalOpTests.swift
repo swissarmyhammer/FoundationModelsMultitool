@@ -65,28 +65,23 @@ struct RegisteredJournalOpTests {
     /// verbs register under.
     private static let mcpServerName = "loopback"
 
-    /// The `Tool.name` of the progress-reporting verb of the MCP server, whose
-    /// call stands in flight long enough for the test to read its stamp.
-    private static let mcpSlowVerb = "slow"
+    /// The `Tool.name` of the MCP verb whose call holds on the server until the
+    /// test releases it, thus the test reads its stamp while it is in flight.
+    private static let mcpHeldVerb = "held"
 
-    /// How many progress notifications the slow verb sends before it returns.
-    private static let mcpProgressSteps = 3
-
-    /// How long the slow verb waits between notifications — long enough that
-    /// the call is still in flight when the poll below reads it.
-    private static let mcpProgressStepDelay = Duration.milliseconds(200)
-
-    /// How long the command of the run-plane test sleeps. Long enough that it
-    /// certainly still stands on the run plane while the test reads it, and the
-    /// test ends it before it returns.
-    private static let backgroundRunSleepSeconds = 30
+    /// The command of the run-plane test. It never ends by itself: it follows
+    /// a file that never grows. Thus it still stands on the run plane when the
+    /// test reads it, whatever the speed of the machine, and the test ends it
+    /// with a cancel before it returns.
+    private static let heldCommand = "tail -f /dev/null"
 
     /// The command of the short run. A shell builtin that ends at once, thus
     /// that run settles as soon as the test waits for it.
     ///
     /// It reaches no system outside the shell the capability spawns itself,
-    /// exactly as the `sleep` of the run-plane test above does, thus this stays
-    /// a unit test of the wiring rather than an integration test of a service.
+    /// exactly as the held command of the run-plane test above does, thus this
+    /// stays a unit test of the wiring rather than an integration test of a
+    /// service.
     private static let shortCommand = "true"
 
     // MARK: - The one pair, read off the rendered surface
@@ -186,7 +181,7 @@ struct RegisteredJournalOpTests {
         try await Self.run(
             """
             return await tools.\(Self.shellNoun).\(Self.executeVerb)({ \
-            command: "sleep \(Self.backgroundRunSleepSeconds)" });
+            command: "\(Self.heldCommand)" });
             """,
             over: registry,
             under: context)
@@ -200,7 +195,7 @@ struct RegisteredJournalOpTests {
 
         // Awaited rather than deferred into a task of its own: an unstructured
         // task started at the end of a test need never run, and the command this
-        // one stops sleeps far longer than the whole suite.
+        // one stops never ends by itself.
         _ = await context.cancel(completionToken: going.completionToken)
     }
 
@@ -249,13 +244,14 @@ struct RegisteredJournalOpTests {
     ///
     /// The verb is synchronous, so the snippet holds the call until the
     /// server answers. The test runs the snippet in a task of its own and
-    /// polls the in-flight table of the server for the stamp while the slow
-    /// verb still stands there.
+    /// polls the in-flight table of the server for the stamp. The held verb
+    /// answers only when the test releases it, thus the call is still in
+    /// flight when the poll reads it.
     @Test("a tools.<serverName>.<verb> call of an MCP server carries the journal op \"<verb> <serverName>\" into its own call")
     func anMCPVerbCarriesThePairIntoItsOwnCall() async throws {
         let scripted = ScriptedServer()
-        await scripted.addProgressReportingTool(
-            named: Self.mcpSlowVerb, totalSteps: Self.mcpProgressSteps, stepDelay: Self.mcpProgressStepDelay)
+        let held = HeldScriptedTool(named: Self.mcpHeldVerb)
+        await scripted.addTool(held.scriptedTool)
         let server = try await MCPTestSupport.connectedMCPServer(
             to: scripted, over: .inMemory, name: Self.mcpServerName)
         let registry = try await MultiTool.Builder()
@@ -265,7 +261,7 @@ struct RegisteredJournalOpTests {
 
         let run = Task {
             try await Self.run(
-                "return await tools.\(Self.mcpServerName).\(Self.mcpSlowVerb)({});",
+                "return await tools.\(Self.mcpServerName).\(Self.mcpHeldVerb)({});",
                 over: registry,
                 under: context)
         }
@@ -275,9 +271,10 @@ struct RegisteredJournalOpTests {
             stampedOp = await server.inFlightCalls.values.first?.context?.op
             return stampedOp != nil
         }
+        await held.release()
         try await run.value
 
-        #expect(stampedOp == "\(Self.mcpSlowVerb) \(Self.mcpServerName)")
+        #expect(stampedOp == "\(Self.mcpHeldVerb) \(Self.mcpServerName)")
         withExtendedLifetime(scripted) {}
     }
 

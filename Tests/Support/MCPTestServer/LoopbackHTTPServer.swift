@@ -34,18 +34,19 @@ import TestConcurrency
 
 /// Serves one ``ScriptedServer`` over HTTP inside the test process.
 ///
-/// ``start()`` returns the endpoint and the `URLSessionConfiguration` a
+/// ``start(hangBound:)`` returns the endpoint and the `URLSessionConfiguration` a
 /// client passes to `HTTPClientTransport(endpoint:configuration:)`. Every
 /// request that session sends to the endpoint reaches the
 /// `StatefulHTTPServerTransport` of this loopback without a socket.
 ///
 /// A started loopback is held by a process-wide registry, which the
 /// `URLProtocol` consults, until ``stop()`` removes it. The caller of
-/// ``start()`` calls ``stop()`` at the end of its test.
+/// ``start(hangBound:)`` calls ``stop()`` at the end of its test.
 ///
-/// ``start()`` and ``stop()`` also take and give back one process-wide gate.
-/// As a result, only one loopback of the whole process can hold an open SSE
-/// stream at any one time. See `concurrencyGate` for more on this.
+/// ``start(hangBound:)`` and ``stop()`` also take and give back one
+/// process-wide gate. As a result, only one loopback of the whole process can
+/// hold an open SSE stream at any one time. See `concurrencyGate` for more on
+/// this.
 public actor LoopbackHTTPServer {
     /// The path of every loopback endpoint.
     private static let endpointPath = "/mcp"
@@ -59,40 +60,19 @@ public actor LoopbackHTTPServer {
     /// The HTTP method of a standalone SSE stream request.
     private static let eventStreamMethod = "GET"
 
-    /// The request and resource timeout of the `URLSessionConfiguration`
-    /// ``start()`` returns.
-    ///
-    /// A loopback never reaches a real network: every request routes to
-    /// `LoopbackURLProtocol`, in the same process, so it has no network delay
-    /// of its own to wait out. This timeout therefore says nothing about how
-    /// long a good request may take; it says only how long a stuck one takes to
-    /// report. Foundation's default of 60 seconds makes a red run ten times
-    /// longer than a green one.
-    ///
-    /// 30 seconds is a floor, and not a preference.
-    /// `timeoutIntervalForResource` bounds the WHOLE life of the standalone SSE
-    /// stream, and that stream stays open for the whole body of a test. A test
-    /// waits two times on that stream: the connect helper waits for the stream
-    /// to open, then the body waits for the message that arrives on it. Each
-    /// wait gets one full deadline of `TestPoll`, which is 10 seconds. Thus 20
-    /// seconds of stream life is legitimate, and a shorter bound cuts a correct
-    /// run short. Silence for 30 seconds on a same-process transport is a
-    /// genuinely stuck request.
-    private static let requestTimeout: TimeInterval = 30
-
     /// The started loopbacks, by the host of their endpoint. A `Mutex`, and
     /// not an actor, because `URLProtocol.canInit(with:)` is synchronous.
     private static let registry = Mutex<[String: LoopbackHTTPServer]>([:])
 
-    /// The one gate that makes ``start()`` and ``stop()`` run one at a time,
-    /// for the whole test process. As a result, only one loopback can hold an
-    /// open SSE stream at any one time.
+    /// The one gate that makes ``start(hangBound:)`` and ``stop()`` run one at
+    /// a time, for the whole test process. As a result, only one loopback can
+    /// hold an open SSE stream at any one time.
     ///
     /// A `.serialized` `@Suite` trait puts the tests of ONE suite in order. It
     /// does not put one suite in order against another suite, and two suites
     /// each connect over `.http` — `LoopbackHTTPServerTests` and
     /// `MCPElicitationTests`. This gate is what puts them in order against each
-    /// other: ``start()`` waits for the prior loopback's ``stop()``.
+    /// other: ``start(hangBound:)`` waits for the prior loopback's ``stop()``.
     ///
     /// What that buys is ownership, and not speed. `registry` is process-wide
     /// and `URLProtocol.canInit(with:)` reads it, so one live loopback at a
@@ -134,10 +114,24 @@ public actor LoopbackHTTPServer {
     /// Starts the scripted server on the server transport, registers this
     /// loopback, and returns what a client needs to reach it.
     ///
+    /// **The timeouts of the configuration are a hang bound only.** A loopback
+    /// reaches no network: each request routes to `LoopbackURLProtocol` in the
+    /// same process, and each request ends on the event of its own response,
+    /// not on a time. `timeoutIntervalForResource` bounds the WHOLE life of the
+    /// standalone SSE stream, and that stream stays open for the whole body of
+    /// a test. A bound of this file's own choice would end a correct run on a
+    /// slow machine, and no test checks the speed of the machine (card
+    /// `^pfvdg5b`). Thus the caller gives the hang guard of its own test
+    /// process, and the loopback never ends a run that the guard lets run.
+    ///
+    /// - Parameter hangBound: The request and resource timeout of the
+    ///   configuration, in seconds: the hang guard of the test process.
     /// - Returns: The endpoint, and a session configuration whose
     ///   `protocolClasses` routes the endpoint to this loopback.
     /// - Throws: What `ScriptedServer.start(transport:)` throws.
-    public func start() async throws -> (endpoint: URL, configuration: URLSessionConfiguration) {
+    public func start(
+        hangBound: TimeInterval
+    ) async throws -> (endpoint: URL, configuration: URLSessionConfiguration) {
         await Self.concurrencyGate.acquire()
         do {
             try await scripted.start(transport: transport)
@@ -148,14 +142,15 @@ public actor LoopbackHTTPServer {
         Self.registry.withLock { $0[host] = self }
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [LoopbackURLProtocol.self]
-        configuration.timeoutIntervalForRequest = Self.requestTimeout
-        configuration.timeoutIntervalForResource = Self.requestTimeout
+        configuration.timeoutIntervalForRequest = hangBound
+        configuration.timeoutIntervalForResource = hangBound
         return (endpoint: endpoint, configuration: configuration)
     }
 
     /// Removes this loopback from the registry, and ends the session of the
     /// server transport. This closes every open stream. It then releases
-    /// `concurrencyGate`, so the next loopback's ``start()`` can proceed.
+    /// `concurrencyGate`, so the next loopback's ``start(hangBound:)`` can
+    /// proceed.
     public func stop() async {
         _ = Self.registry.withLock { $0.removeValue(forKey: host) }
         isServingEventStream = false

@@ -72,6 +72,25 @@ struct CLIMailWait: Sendable {
     /// The longest time the CLI waits for mail answers. When the time limit
     /// ends first, the CLI cancels the work of the session.
     let timeLimit: Duration
+
+    /// The clock that measures ``quietPeriod`` and ``timeLimit``.
+    ///
+    /// The CLI measures on `ContinuousClock`. A test gives a clock that it
+    /// controls. Thus the test sets when each bound ends, and the load on the
+    /// machine does not change the order of the events.
+    let clock: any Clock<Duration>
+
+    /// Makes the bounds of one wait for mail answers.
+    ///
+    /// - Parameters:
+    ///   - quietPeriod: see ``quietPeriod``.
+    ///   - timeLimit: see ``timeLimit``.
+    ///   - clock: see ``clock``. The default is `ContinuousClock`.
+    init(quietPeriod: Duration, timeLimit: Duration, clock: any Clock<Duration> = ContinuousClock()) {
+        self.quietPeriod = quietPeriod
+        self.timeLimit = timeLimit
+        self.clock = clock
+    }
 }
 
 // MARK: - The lines a person reads while an answer runs
@@ -478,7 +497,7 @@ extension CLIRunner {
     ) async throws {
         let (signals, sink) = AsyncStream<CLIMailSignal>.makeStream()
         let forwarder = Task { await forward(sessionEvents, to: sink) }
-        let limit = Task { await send(.timeLimit, after: wait.timeLimit, to: sink) }
+        let limit = Task { await send(.timeLimit, after: wait.timeLimit, on: wait.clock, to: sink) }
         var quietTimer: Task<Void, Never>?
         defer {
             forwarder.cancel()
@@ -535,7 +554,7 @@ extension CLIRunner {
     private static func startQuietTimer(
         afterEvent: Int, wait: CLIMailWait, sink: AsyncStream<CLIMailSignal>.Continuation
     ) -> Task<Void, Never> {
-        Task { await send(.quiet(afterEvent: afterEvent), after: wait.quietPeriod, to: sink) }
+        Task { await send(.quiet(afterEvent: afterEvent), after: wait.quietPeriod, on: wait.clock, to: sink) }
     }
 
     /// Sends each event of the session to `sink`, and then `.streamEnded`.
@@ -552,17 +571,19 @@ extension CLIRunner {
         sink.yield(.streamEnded)
     }
 
-    /// Sends `signal` to `sink` after `delay`, unless the task is cancelled
-    /// first.
+    /// Sends `signal` to `sink` after `delay` on `clock`, unless the task is
+    /// cancelled first.
     ///
     /// - Parameters:
     ///   - signal: the signal to send.
     ///   - delay: how long to wait.
+    ///   - clock: the clock that measures `delay`.
     ///   - sink: where the signal goes.
     private static func send(
-        _ signal: CLIMailSignal, after delay: Duration, to sink: AsyncStream<CLIMailSignal>.Continuation
+        _ signal: CLIMailSignal, after delay: Duration, on clock: any Clock<Duration>,
+        to sink: AsyncStream<CLIMailSignal>.Continuation
     ) async {
-        guard (try? await Task.sleep(for: delay)) != nil else { return }
+        guard (try? await clock.sleep(for: delay)) != nil else { return }
         sink.yield(signal)
     }
 }

@@ -52,15 +52,8 @@ struct ScriptedServerSelfTests {
     /// The delay between steps of the progress-cadence test.
     private static let progressStepDelay: Duration = .milliseconds(10)
 
-    /// How many steps the cancellation test registers — enough that the call
-    /// is still in flight when the cancel goes out.
-    private static let cancellationSteps = 20
-
-    /// The delay between steps of the cancellation test.
-    private static let cancellationStepDelay: Duration = .milliseconds(20)
-
-    /// How long the cancellation test lets the call run before it cancels.
-    private static let cancellationLeadTime: Duration = .milliseconds(50)
+    /// The name of the tool the cancellation test holds in flight.
+    private static let heldToolName = "held"
 
     /// The reason the cancellation test sends.
     private static let cancellationReason = "self-test cancel"
@@ -397,15 +390,17 @@ struct ScriptedServerSelfTests {
 
     // MARK: - recording inbound notifications (cancelled)
 
+    /// The call holds on the server until the test releases it, thus the
+    /// cancel always goes out while the call is in flight.
     @Test("a cancelled notification is recorded for test assertion")
     func cancelledNotificationRecording() async throws {
         let scripted = ScriptedServer()
-        await scripted.addProgressReportingTool(
-            named: "slow", totalSteps: Self.cancellationSteps, stepDelay: Self.cancellationStepDelay)
+        let held = HeldScriptedTool(named: Self.heldToolName)
+        await scripted.addTool(held.scriptedTool)
         let client = try await connect(to: scripted)
 
-        let context = try await client.send(CallTool.request(.init(name: "slow")))
-        try await Task.sleep(for: Self.cancellationLeadTime)
+        let context = try await client.send(CallTool.request(.init(name: Self.heldToolName)))
+        try await TestPoll.waitUntil("the call reached the server") { held.hasArrived }
         try await client.cancelRequest(context.requestID, reason: Self.cancellationReason)
 
         let recorded = await scripted.waitForRecordedNotifications(
@@ -413,6 +408,7 @@ struct ScriptedServerSelfTests {
         #expect(recorded.count == 1)
         #expect(recorded.first?.method == CancelledNotification.name)
         #expect(recorded.first?.reason == Self.cancellationReason)
+        await held.release()
         await client.disconnect()
     }
 

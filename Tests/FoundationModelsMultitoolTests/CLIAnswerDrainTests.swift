@@ -241,38 +241,63 @@ struct CLIAnswerDrainTests {
         }
     }
 
+    /// The clock holds every quiet period until the drain printed the mail
+    /// answer. Thus the drain cannot stop between two events of that answer,
+    /// whatever the load on the machine. The clock never ends the time limit.
     @Test("a background run that settles after the first answer gives a mail answer, and the CLI prints it")
     func mailAnswerIsPrintedBeforeExit() async throws {
         let output = OutputCollector()
         let cancels = OutputCollector()
+        let clock = GatedClock()
         let script = MailScript()
-        let (events, continuation) = AsyncStream<SessionEvent>.makeStream()
-        for event in script.firstAnswerEvents {
-            continuation.yield(event)
-        }
-        // The run settles well after the quiet period of the drain. Only the
-        // open run keeps the drain alive until then.
-        let lateMail = Task {
-            try await Task.sleep(for: lateMailDelay)
-            for event in script.mailAnswerEvents {
+        let events = AsyncStream<SessionEvent> { continuation in
+            for event in script.firstAnswerEvents + script.mailAnswerEvents {
                 continuation.yield(event)
             }
         }
 
-        try await CLIRunner.drainMailAnswers(
-            events, after: script.firstAnswer, wait: testMailWait,
-            cancel: { cancels.append("cancel") }, output: output.append)
-        try await lateMail.value
+        let drain = Task {
+            try await CLIRunner.drainMailAnswers(
+                events, after: script.firstAnswer, wait: gatedMailWait(on: clock),
+                cancel: { cancels.append("cancel") }, output: output.append)
+        }
+        try await TestPoll.waitUntil("the drain printed the mail answer") {
+            output.lines.contains("\(mailAnswerPrefix)Tokyo is warmest")
+        }
+        clock.open(sleepsOf: testQuietPeriod)
+        try await drain.value
 
-        #expect(output.lines.contains("\(mailAnswerPrefix)Tokyo is warmest"))
         #expect(!output.lines.contains { $0.hasPrefix(answerPrefix) })
         #expect(cancels.lines.isEmpty)
     }
 
+    /// The first answer ends while its background run is still open. Only
+    /// that open run keeps the drain from its quiet period, thus a drain that
+    /// ignored the run stops before the mail comes.
+    @Test("the drain is not settled after the first answer while its background run is open, and is settled after the mail answer")
+    func openRunKeepsTheDrainUnsettled() throws {
+        let script = MailScript()
+        var drain = CLIMailDrain(following: script.firstAnswer, output: OutputCollector().append)
+
+        for event in script.firstAnswerEvents {
+            try drain.apply(event)
+        }
+        #expect(!drain.isSettled)
+
+        for event in script.mailAnswerEvents {
+            try drain.apply(event)
+        }
+        #expect(drain.isSettled)
+    }
+
+    /// The clock ends the time limit at once. The run never settles, thus the
+    /// drain asks for no quiet period, and the time limit is its one sleep.
     @Test("a background run that never settles stops the drain at the time limit, and the session is cancelled")
     func openRunStopsAtTheTimeLimit() async throws {
         let output = OutputCollector()
         let cancels = OutputCollector()
+        let clock = GatedClock()
+        clock.open()
         let script = MailScript()
         let (events, continuation) = AsyncStream<SessionEvent>.makeStream()
         for event in script.firstAnswerEvents {
@@ -280,15 +305,17 @@ struct CLIAnswerDrainTests {
         }
 
         try await CLIRunner.drainMailAnswers(
-            events, after: script.firstAnswer,
-            wait: CLIMailWait(quietPeriod: testMailWait.quietPeriod, timeLimit: shortTimeLimit),
+            events, after: script.firstAnswer, wait: gatedMailWait(on: clock, timeLimit: shortTimeLimit),
             cancel: { cancels.append("cancel") }, output: output.append)
         continuation.finish()
 
         #expect(cancels.lines == ["cancel"])
         #expect(!output.lines.contains { $0.hasPrefix(mailAnswerPrefix) })
+        #expect(clock.recordedSleeps == [shortTimeLimit])
     }
 
+    /// The clock never ends a quiet period, thus the drain reads the failed
+    /// answer, whatever the time between the events.
     @Test("a failed mail answer is an error")
     func failedMailAnswerIsAnError() async {
         let output = OutputCollector()
@@ -304,7 +331,7 @@ struct CLIAnswerDrainTests {
 
         await #expect(throws: CLIAnswerError.failed(failure)) {
             try await CLIRunner.drainMailAnswers(
-                events, after: script.firstAnswer, wait: testMailWait,
+                events, after: script.firstAnswer, wait: gatedMailWait(on: GatedClock()),
                 cancel: {}, output: output.append)
         }
     }
@@ -325,30 +352,41 @@ private let firstSubmissionNumber: UInt64 = 1
 private let secondSubmissionNumber: UInt64 = 2
 
 /// The quiet period of the mail drain in these tests, in milliseconds.
+///
+/// The `GatedClock` of each test measures it, thus the value takes no real
+/// time. It only names the sleeps the test opens: a value different from each
+/// time limit below.
 private let testQuietPeriodMilliseconds = 50
-
-/// How long the late mail of `mailAnswerIsPrintedBeforeExit` waits, in
-/// milliseconds: four times the quiet period, so a drain that did not wait
-/// for the open run stops before the mail comes.
-private let lateMailDelayMilliseconds = 200
 
 /// The time limit of `openRunStopsAtTheTimeLimit`, in milliseconds.
 private let shortTimeLimitMilliseconds = 300
 
-/// The time limit of the mail drain in the tests that must not reach it, in
-/// seconds.
-private let unreachedTimeLimitSeconds = 30
+/// The time limit of the mail drain in the tests whose clock never ends it,
+/// in seconds.
+private let heldTimeLimitSeconds = 30
 
-/// How long the late mail of `mailAnswerIsPrintedBeforeExit` waits.
-private let lateMailDelay: Duration = .milliseconds(lateMailDelayMilliseconds)
+/// The quiet period of the mail drain in these tests.
+private let testQuietPeriod: Duration = .milliseconds(testQuietPeriodMilliseconds)
 
 /// The time limit of `openRunStopsAtTheTimeLimit`.
 private let shortTimeLimit: Duration = .milliseconds(shortTimeLimitMilliseconds)
 
-/// The bounds of the mail drain in these tests: a short quiet period, and a
-/// time limit that no passing test reaches.
-private let testMailWait = CLIMailWait(
-    quietPeriod: .milliseconds(testQuietPeriodMilliseconds), timeLimit: .seconds(unreachedTimeLimitSeconds))
+/// The time limit of the tests whose clock never ends it.
+private let heldTimeLimit: Duration = .seconds(heldTimeLimitSeconds)
+
+/// The bounds of the mail drain in these tests, measured on `clock`.
+///
+/// No test checks the speed of the machine (card `^pfvdg5b`). The test opens
+/// `clock` for the bound it wants to end, and a bound the test does not open
+/// never ends.
+///
+/// - Parameters:
+///   - clock: The clock that measures both bounds.
+///   - timeLimit: The time limit of the wait.
+/// - Returns: The bounds.
+private func gatedMailWait(on clock: GatedClock, timeLimit: Duration = heldTimeLimit) -> CLIMailWait {
+    CLIMailWait(quietPeriod: testQuietPeriod, timeLimit: timeLimit, clock: clock)
+}
 
 /// Errors this test file's scripted streams throw.
 private enum DrainTestsError: Error, Equatable {

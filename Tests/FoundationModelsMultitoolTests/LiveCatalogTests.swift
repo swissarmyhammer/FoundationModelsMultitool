@@ -13,8 +13,10 @@ import Testing
 ///
 /// A port of the live cases of
 /// `../FoundationModelsMCP/Tests/FoundationModelsMCPTests/LiveCatalogTests.swift`.
-/// Every case that exercises the coalesce window drives a `ManualClock`, so
-/// the window sleeps for no real time — the convention of `ResilienceTests`.
+/// Every case that exercises the coalesce window drives an injected clock, so
+/// the window sleeps for no real time. A case that sends a burst of more than
+/// one notification drives a `GatedClock`, and it opens the window only after
+/// the server counted the whole burst (see `emitBurstInOneWindow`).
 ///
 /// **Two cases of the source are not here.**
 /// `midCallFaultEmitsFaultedThenReadySnapshots` and
@@ -63,10 +65,9 @@ struct LiveCatalogTests {
     /// one per stage of `advanceDynamicToolsetScenario()`.
     private static let dynamicScenarioSnapshots = 4
 
-    /// How long a test waits, after the burst produced its one snapshot, to
-    /// prove that no FURTHER snapshot arrives — a fixed, bounded interval,
-    /// because the whole point is that nothing more happens.
-    private static let noFurtherEmissionSettleDelay = Duration.milliseconds(200)
+    /// How many coalesce windows one burst asks for: one watcher sleeps one
+    /// window for the whole burst.
+    private static let oneCoalesceWindow = 1
 
     /// How many leading connect attempts the flaky transport of the failed
     /// reconnect case fails.
@@ -149,12 +150,41 @@ struct LiveCatalogTests {
         #expect(Set(epochs).count == epochs.count)
     }
 
+    /// Sends a burst of ``burstCount`` notifications from `scripted`, and
+    /// ends the coalesce window of `server` only after `server` counted each
+    /// one.
+    ///
+    /// The window sleeps on `windowClock`, and that clock holds the sleep
+    /// until the test opens it. A window on a clock that ends at once can
+    /// end before the last notification of the burst arrives, and a slow
+    /// machine then splits one burst into two re-lists. No test checks the
+    /// speed of the machine (card `^pfvdg5b`), thus the event that opens the
+    /// window is the count of the server, and not a time.
+    ///
+    /// - Parameters:
+    ///   - scripted: The server that sends the burst.
+    ///   - server: The server whose window coalesces the burst.
+    ///   - windowClock: The clock `server` sleeps its window on.
+    /// - Throws: What the burst throws, and `TestPoll.ConditionNeverHeld`
+    ///   when the server never counts the whole burst.
+    private static func emitBurstInOneWindow(
+        from scripted: ScriptedServer, to server: MCPServer, windowClock: GatedClock
+    ) async throws {
+        let generationBefore = await server.toolListChangedGeneration
+        try await scripted.emitToolListChangedBurst(count: burstCount)
+        try await TestPoll.waitUntil("the server counted the whole burst") {
+            await server.toolListChangedGeneration == generationBefore + burstCount
+        }
+        windowClock.open()
+    }
+
     // MARK: - Coalescing
 
     @Test func coalescesRapidBurstIntoOneRelist() async throws {
         let scripted = await Self.scriptedServerWithInitialTool()
+        let windowClock = GatedClock()
         let server = try await MCPTestSupport.connectedMCPServer(
-            to: scripted, over: .inMemory, name: Self.serverName, clock: ManualClock())
+            to: scripted, over: .inMemory, name: Self.serverName, clock: windowClock)
         let recording = await recordCatalogUpdates(from: server)
         defer { recording.task.cancel() }
 
@@ -165,19 +195,19 @@ struct LiveCatalogTests {
         #expect(afterConnect.first?.epoch == Self.firstEpoch)
 
         await scripted.addTool(ScriptedServer.echoTool(named: Self.addedToolName))
-        try await scripted.emitToolListChangedBurst(count: Self.burstCount)
+        try await Self.emitBurstInOneWindow(from: scripted, to: server, windowClock: windowClock)
 
         let afterBurst = await recording.snapshots(atLeast: Self.snapshotsAfterOneMore)
-        // A bounded wait proves no FURTHER snapshot arrives: the burst
-        // coalesced into one re-list, not five.
-        try await Task.sleep(for: Self.noFurtherEmissionSettleDelay)
-        let finalSnapshots = await recording.recorder.snapshots
 
+        // The burst coalesced into one re-list, not five: one watcher asked
+        // for one window, and the server emitted one snapshot after the
+        // connect.
+        #expect(windowClock.recordedSleeps.count == Self.oneCoalesceWindow)
+        #expect(await server.catalogEpoch == Self.secondEpoch)
         #expect(afterBurst.count == Self.snapshotsAfterOneMore)
-        #expect(finalSnapshots.count == Self.snapshotsAfterOneMore)
-        #expect(finalSnapshots.last?.epoch == Self.secondEpoch)
+        #expect(afterBurst.last?.epoch == Self.secondEpoch)
         #expect(
-            finalSnapshots.last.map(Self.toolNames(of:))
+            afterBurst.last.map(Self.toolNames(of:))
                 == [Self.initialToolName, Self.addedToolName])
         withExtendedLifetime(scripted) {}
     }
@@ -186,15 +216,16 @@ struct LiveCatalogTests {
 
     @Test func epochsStrictlyIncreaseAcrossEmissions() async throws {
         let first = await Self.scriptedServerWithInitialTool()
+        let windowClock = GatedClock()
         let server = try await MCPTestSupport.connectedMCPServer(
-            to: first, over: .inMemory, name: Self.serverName, clock: ManualClock())
+            to: first, over: .inMemory, name: Self.serverName, clock: windowClock)
         let recording = await recordCatalogUpdates(from: server)
         defer { recording.task.cancel() }
         _ = await recording.snapshots(atLeast: Self.snapshotsAfterConnect)
 
         // A coalesced re-list.
         await first.addTool(ScriptedServer.echoTool(named: Self.addedToolName))
-        try await first.emitToolListChangedBurst(count: Self.burstCount)
+        try await Self.emitBurstInOneWindow(from: first, to: server, windowClock: windowClock)
         _ = await recording.snapshots(atLeast: Self.snapshotsAfterOneMore)
 
         // A reconnect to a differently-tooled server, same actor — an
@@ -270,8 +301,10 @@ struct LiveCatalogTests {
         try await server.reconnect()
 
         let afterReconnect = await recording.snapshots(atLeast: Self.snapshotsAfterOneMore)
-        try await Task.sleep(for: Self.noFurtherEmissionSettleDelay)
-        #expect(await recording.recorder.snapshots.count == Self.snapshotsAfterOneMore)
+        // `reconnect()` emits its snapshot before it returns, thus the epoch
+        // the server holds now counts every snapshot of the reconnect: one.
+        #expect(await server.catalogEpoch == Self.secondEpoch)
+        #expect(afterReconnect.count == Self.snapshotsAfterOneMore)
         #expect(afterReconnect.last?.state == .ready)
         expectStrictlyIncreasingEpochs(afterReconnect)
         #expect(

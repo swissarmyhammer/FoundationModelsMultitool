@@ -5,6 +5,7 @@
 // `.timeLimit` is a hang guard only: it stops a test that can never end, and
 // it must not fail a test that makes progress on a busy machine.
 
+import Foundation
 import Testing
 
 /// The hang guard of a unit test that can hang when the code under test is
@@ -17,8 +18,19 @@ enum TestHangGuard {
     /// holds reports its own failure first.
     private static let minutes = 10
 
+    /// How many seconds one minute holds.
+    private static let secondsPerMinute = 60
+
     /// The `.timeLimit` of a guarded unit test.
     ///
     /// This is a hang guard, and not a speed check.
     static let timeLimit = TimeLimitTrait.Duration.minutes(minutes)
+
+    /// The same hang guard in seconds, for a bound that is not a `.timeLimit`
+    /// trait: for example the timeout of the `URLSessionConfiguration` of an
+    /// in-process loopback.
+    ///
+    /// This is a hang guard, and not a speed check. A bound of this length
+    /// does not end a test step that makes progress on a busy machine.
+    static let seconds = TimeInterval(minutes * secondsPerMinute)
 }

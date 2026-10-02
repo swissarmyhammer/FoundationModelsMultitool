@@ -69,13 +69,10 @@ struct MCPServerCallTests {
     /// How long the short progress tool waits between notifications.
     private static let progressStepDelay = Duration.milliseconds(5)
 
-    /// How many progress notifications the long-running tool sends — far
-    /// more than a test lets run, so the call is still in flight when the
-    /// test acts on it.
-    private static let longRunSteps = 1_000
-
-    /// How long the long-running tool waits between notifications.
-    private static let longRunStepDelay = Duration.milliseconds(20)
+    /// The name of the tool whose call holds on the server until the test
+    /// releases it, thus the call is still in flight when the test acts on
+    /// it.
+    private static let heldToolName = "held"
 
     /// How long a test waits for the scripted server to record a
     /// `notifications/cancelled`: ``TestPoll/deadline``, a hang guard and
@@ -93,13 +90,6 @@ struct MCPServerCallTests {
 
     /// The text the failing tool answers.
     private static let failingToolText = "nope"
-
-    /// The name of the tool that never answers in time.
-    private static let stallingToolName = "stalls"
-
-    /// How long the stalling tool sleeps — far past the bare-call timeout of
-    /// its test.
-    private static let stallingToolSleep = Duration.seconds(30)
 
     /// The bound of the bare call of the timeout case — short, because the
     /// test proves it bounds real time.
@@ -146,33 +136,17 @@ struct MCPServerCallTests {
             serving: tools, name: serverName, callTimeout: callTimeout)
     }
 
-    /// A scripted tool that answers `result` after `delay`.
-    ///
-    /// - Parameters:
-    ///   - name: The tool name.
-    ///   - delay: How long the handler sleeps before it answers.
-    ///   - result: The result the handler answers.
-    /// - Returns: The scripted tool.
-    private static func delayedTool(
-        named name: String, delay: Duration, answering result: CallTool.Result
-    ) -> ScriptedTool {
-        ScriptedTool(
-            definition: MCP.Tool(
-                name: name, description: "Answers after a delay.",
-                inputSchema: JSONSchemaBuilder.emptySchema)
-        ) { _ in
-            try await Task.sleep(for: delay)
-            return result
-        }
-    }
-
     /// A scripted tool that answers an `isError` result at once.
     private static var failingTool: ScriptedTool {
-        delayedTool(
-            named: failingToolName, delay: .zero,
-            answering: CallTool.Result(
+        ScriptedTool(
+            definition: MCP.Tool(
+                name: failingToolName, description: "Answers an isError result.",
+                inputSchema: JSONSchemaBuilder.emptySchema)
+        ) { _ in
+            CallTool.Result(
                 content: [.text(text: failingToolText, annotations: nil, _meta: nil)],
-                isError: true))
+                isError: true)
+        }
     }
 
     /// A scripted tool that never answers, and does not respond to
@@ -270,21 +244,18 @@ struct MCPServerCallTests {
 
     // MARK: - Cancellation
 
+    /// The call holds on the server until the test releases it, thus the
+    /// cancel always comes while the call is in flight.
     @Test("cancellation of the calling Task sends notifications/cancelled and the call throws CancellationError")
     func cancellationSendsTheNotificationAndThrows() async throws {
-        let (scripted, server) = try await Self.connected(serving: [])
-        await scripted.addProgressReportingTool(
-            named: Self.progressToolName, totalSteps: Self.longRunSteps,
-            stepDelay: Self.longRunStepDelay)
-        let run = try await makeStubRun()
-        let context = run.context
+        let held = HeldScriptedTool(named: Self.heldToolName)
+        let (scripted, server) = try await Self.connected(serving: [held.scriptedTool])
+        let context = try await makeOuterRunContext()
 
         let callTask = Task {
-            try await Self.call(server, tool: Self.progressToolName, under: context)
+            try await Self.call(server, tool: Self.heldToolName, under: context)
         }
-        try await TestPoll.waitUntil("the call reported progress") {
-            await !recordedOperationEvents(of: run, ofKind: .progress).isEmpty
-        }
+        try await TestPoll.waitUntil("the call reached the server") { held.hasArrived }
         callTask.cancel()
 
         await #expect(throws: CancellationError.self) {
@@ -293,6 +264,7 @@ struct MCPServerCallTests {
         let recorded = await scripted.waitForRecordedNotifications(
             count: Self.oneNotification, timeout: Self.notificationTimeout)
         #expect(recorded.first?.method == CancelledNotification.name)
+        await held.release()
     }
 
     // MARK: - The transport drop
@@ -367,23 +339,21 @@ struct MCPServerCallTests {
 
     /// A call with no ambient context has no engine to bound it, so the
     /// server's own `callTimeout` does: the request is cancelled on the wire,
-    /// and the call answers in band.
+    /// and the call answers in band. The tool holds the call until the test
+    /// releases it, thus only the `callTimeout` can end the call.
     @Test("a call with no ambient context is bounded by callTimeout and answers in band")
     func aBareCallIsBoundedByTheCallTimeout() async throws {
+        let held = HeldScriptedTool(named: Self.heldToolName)
         let (scripted, server) = try await Self.connected(
-            serving: [
-                Self.delayedTool(
-                    named: Self.stallingToolName, delay: Self.stallingToolSleep,
-                    answering: CallTool.Result(content: []))
-            ],
-            callTimeout: Self.bareCallTimeout)
+            serving: [held.scriptedTool], callTimeout: Self.bareCallTimeout)
 
-        let result = try await server.call(name: Self.stallingToolName, arguments: nil)
+        let result = try await server.call(name: Self.heldToolName, arguments: nil)
 
         #expect(result.isError == true)
         let recorded = await scripted.waitForRecordedNotifications(
             count: Self.oneNotification, timeout: Self.notificationTimeout)
         #expect(recorded.first?.method == CancelledNotification.name)
+        await held.release()
     }
 
     /// The file header of `MCPServer+Call.swift`: "the engine's clock ... is

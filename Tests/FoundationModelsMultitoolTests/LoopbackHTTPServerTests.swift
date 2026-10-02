@@ -87,7 +87,7 @@ struct LoopbackHTTPServerTests {
         advertising capabilities: Client.Capabilities = .init()
     ) async throws -> Connection {
         let loopback = LoopbackHTTPServer(serving: scripted)
-        let (endpoint, configuration) = try await loopback.start()
+        let (endpoint, configuration) = try await loopback.start(hangBound: TestHangGuard.seconds)
         do {
             let client = MCPTestSupport.makeClient(name: Self.clientName, capabilities: capabilities)
             _ = try await client.connect(

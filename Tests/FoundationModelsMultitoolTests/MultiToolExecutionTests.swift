@@ -385,11 +385,16 @@ struct MultiToolExecutionTests {
 
     // MARK: - A settled background run comes back as mail
 
-    /// How long the removed-`wait()` test lets a `runCode` call wait for its
-    /// own snippet. It is long enough for a snippet that fails at once, and it
-    /// is the time the gated snippet stays pending before its envelope comes
-    /// back.
-    private static let shortInlineSettleGrace: TimeInterval = 1
+    /// How long the collector of the removed-`wait()` test waits for its own
+    /// snippet: the hang bound of `TestPoll`, in seconds.
+    ///
+    /// The test does not measure time with it. It is only the bound of a
+    /// hang (card `^pfvdg5b`: no test checks the speed of the machine). The
+    /// collector snippet throws at its first statement, thus it settles, and
+    /// the settle is the event that ends the wait. The gated snippet runs on a
+    /// mount with no wait at all, thus no time decides which of the two
+    /// envelopes is pending.
+    private static let collectorGrace = TimeInterval(TestPoll.deadline.components.seconds)
 
     /// The seconds argument of the removed sandbox `wait()` in the snippet
     /// that tries to collect a run. The call throws before it reads the
@@ -459,20 +464,26 @@ struct MultiToolExecutionTests {
         let gate = ReleaseGate()
         let prompts = MailProbePrompts()
         let refused = OSAllocatedUnfairLock<PendingRunEnvelope?>(initialState: nil)
+        let collectorMount = try #require(
+            try await makeOuterRunContext().mount(
+                Self.gatedRunCode(gate: gate, inlineSettleGrace: Self.collectorGrace), as: .synchronous)
+                as? any Tool<RunCodeArguments, String>)
         let session = try await makeMailProbeSession(
-            mounting: try Self.gatedRunCode(gate: gate, inlineSettleGrace: Self.shortInlineSettleGrace),
+            mounting: try Self.gatedRunCode(gate: gate, inlineSettleGrace: 0),
             prompts: prompts
         ) { index, runCode in
             guard index == 0 else { return "answered" }
-            // The gated snippet outlasts the grace, so its call answers with a
-            // pending envelope. A second snippet then tries to collect the run
-            // with the removed sandbox `wait()`, and the gate opens after it.
+            // The gated snippet runs on a mount with no wait, so its call
+            // answers with a pending envelope at once. A second snippet then
+            // tries to collect the run with the removed sandbox `wait()`, on a
+            // mount that waits for its snippet to settle, and the gate opens
+            // after it.
             let pending = try mailProbeEnvelope(
                 try await runCode.call(arguments: RunCodeArguments(code: gatedCodeSnippet)))
             let collector = "return (await wait(\"\(pending.completionToken)\", "
                 + "\(Self.removedWaitSecondsArgument))).detail;"
             let answer = try mailProbeEnvelope(
-                try await runCode.call(arguments: RunCodeArguments(code: collector)))
+                try await collectorMount.call(arguments: RunCodeArguments(code: collector)))
             refused.withLock { $0 = answer }
             await gate.release()
             return "the result comes back later"
