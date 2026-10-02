@@ -145,18 +145,23 @@ enum MCPTestSupport {
     /// Builds an `MCPServer` named `name` for a test, not yet connected.
     ///
     /// Each setting has the default of the public initializer, except
-    /// `connectAttemptClock`. Its default is a `GatedClock` that no test
-    /// opens. Thus no connect attempt and no reconnect attempt of the server
-    /// times out, however slow the machine is (card `^zbhjc99`: no test
-    /// checks the speed of the machine). A test of the timeout gives its own
+    /// `clock` and `connectAttemptClock`. The default of `clock` is a
+    /// `ManualClock`. Thus each delay between retries and each coalesce
+    /// window ends at once, and no real time passes. The default of
+    /// `connectAttemptClock` is a `GatedClock` that no test opens. Thus no
+    /// connect attempt and no reconnect attempt of the server times out,
+    /// however slow the machine is (card `^zbhjc99`: no test checks the
+    /// speed of the machine). A test of the timeout gives its own
     /// `GatedClock`, opens it when the attempt is in flight, and reads the
     /// recorded duration.
     ///
     /// - Parameters:
     ///   - name: The name of the server, and so its identity.
     ///   - clock: The clock the server sleeps on — between retries, and for
-    ///     the `tools/list_changed` coalesce window. Defaults to a real
-    ///     clock; a suite of the live catalog passes a `ManualClock`.
+    ///     the `tools/list_changed` coalesce window. Defaults to a
+    ///     `ManualClock`, whose sleeps end at once. A test that reads the
+    ///     backoff schedule gives its own `ManualClock` and reads
+    ///     `recordedSleeps`.
     ///   - clientQueueClock: The clock each bounded wait of the
     ///     client-operation queue sleeps on. Defaults to a real clock.
     ///   - connectAttemptClock: The clock the per-attempt timeout of a
@@ -172,7 +177,7 @@ enum MCPTestSupport {
     /// - Returns: The server, not yet connected.
     static func makeServer(
         name: String,
-        clock: any Clock<Duration> = ContinuousClock(),
+        clock: any Clock<Duration> = ManualClock(),
         clientQueueClock: any Clock<Duration> = ContinuousClock(),
         connectAttemptClock: any Clock<Duration> = GatedClock(),
         callTimeout: Duration = MCPServer.defaultCallTimeout,
@@ -205,8 +210,9 @@ enum MCPTestSupport {
     ///   - kind: The transport to connect over.
     ///   - name: The name of the `MCPServer`, and so its identity.
     ///   - clock: The clock the server sleeps on — between retries, and for
-    ///     the `tools/list_changed` coalesce window. Defaults to a real
-    ///     clock; a suite of the live catalog passes a `ManualClock`.
+    ///     the `tools/list_changed` coalesce window. Defaults to a
+    ///     `ManualClock`, whose sleeps end at once — see
+    ///     ``makeServer(name:clock:clientQueueClock:connectAttemptClock:callTimeout:renderBudget:elicitationHandler:logger:)``.
     ///   - connectAttemptClock: The clock the per-attempt timeout of a
     ///     connect or a reconnect sleeps on. Defaults to a `GatedClock` that
     ///     no test opens — see ``makeServer(name:clock:clientQueueClock:connectAttemptClock:callTimeout:renderBudget:elicitationHandler:logger:)``.
@@ -226,7 +232,7 @@ enum MCPTestSupport {
         to scripted: ScriptedServer,
         over kind: MCPTransportKind,
         name: String,
-        clock: any Clock<Duration> = ContinuousClock(),
+        clock: any Clock<Duration> = ManualClock(),
         connectAttemptClock: any Clock<Duration> = GatedClock(),
         callTimeout: Duration = MCPServer.defaultCallTimeout,
         renderBudget: RenderBudget = .default,

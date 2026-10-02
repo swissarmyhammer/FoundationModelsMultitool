@@ -73,9 +73,10 @@ struct TransportFactoryTests {
     /// ``MCPTestSupport/makeServer(name:clock:clientQueueClock:connectAttemptClock:callTimeout:renderBudget:elicitationHandler:logger:)``.
     ///
     /// - Parameter clock: The clock the retry loop sleeps on. Defaults to a
-    ///   real clock, for a test that exercises no backoff delay.
+    ///   `ManualClock`, whose sleeps end at once. A test that reads the
+    ///   backoff schedule gives its own `ManualClock`.
     /// - Returns: The server, not yet connected.
-    private func makeServer(clock: any Clock<Duration> = ContinuousClock()) -> MCPServer {
+    private func makeServer(clock: any Clock<Duration> = ManualClock()) -> MCPServer {
         MCPTestSupport.makeServer(name: Self.serverName, clock: clock)
     }
 

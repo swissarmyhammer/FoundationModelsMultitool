@@ -124,8 +124,9 @@ struct ResilienceTests {
     /// every other setting at the default of the public initializer.
     ///
     /// - Parameters:
-    ///   - clock: The clock the retry loop sleeps on. Defaults to a real
-    ///     clock, for a test that exercises no backoff delay.
+    ///   - clock: The clock the retry loop sleeps on. Defaults to a
+    ///     `ManualClock`, whose sleeps end at once. A test that reads the
+    ///     backoff schedule gives its own `ManualClock`.
     ///   - clientQueueClock: The clock each bounded wait of the
     ///     client-operation queue sleeps on. Defaults to a real clock.
     ///   - connectAttemptClock: The clock the per-attempt timeout sleeps on.
@@ -135,7 +136,7 @@ struct ResilienceTests {
     ///     the machine).
     /// - Returns: The server, not yet connected.
     private func makeServer(
-        clock: any Clock<Duration> = ContinuousClock(),
+        clock: any Clock<Duration> = ManualClock(),
         clientQueueClock: any Clock<Duration> = ContinuousClock(),
         connectAttemptClock: any Clock<Duration> = GatedClock()
     ) -> MCPServer {

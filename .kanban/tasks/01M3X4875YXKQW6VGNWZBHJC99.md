@@ -52,6 +52,49 @@ comments:
     - evidence: code commit fff0f4b (test(mcp): pass a gated connect-attempt clock through the MCP test helpers); merge commit 97fd6a9. Kanban records go in one local commit "chore(kanban): record the test and commit steps for ^zbhjc99".
     - next: review
   timestamp: 2026-10-02T03:32:45.871520+00:00
+- actor: claude-code
+  id: 01m3xb3ypwztwfmqxfseksbmc5
+  text: |-
+    ### review — findings
+    - evidence: `review sha fff0f4b~1..fff0f4b`. 4 findings, 4 confirmed, 10 refuted. Rule `completeness/invariant-propagation`. Tests/FoundationModelsMultitoolTests/LiveCatalogTests.swift:263, Tests/FoundationModelsMultitoolTests/LiveCatalogTests.swift:287, Tests/FoundationModelsMultitoolTests/LostCallTests.swift:101, Tests/FoundationModelsMultitoolTests/MCPServerDiscoveryTests.swift:106. The merge 97fd6a9 did not change these files. HEAD has the same lines.
+    - next: Do the 4 findings in the dated Review Findings section. Then run the test step, commit, and review again.
+  timestamp: 2026-10-02T03:39:23.228709+00:00
+- actor: claude-code
+  id: 01m3xb4gzz5eahvjp5xtyayw80
+  text: |-
+    ### finish iteration 1 — findings
+    - implement: changed — gated connect-attempt clock through the MCP test helpers; CLIRunner makeServer factory.
+    - test: green — root 1893 tests on merge 97fd6a9; integration filter 9 tests, 5 suites, 0 issues.
+    - commit: fff0f4b (code), 6a8895d (kanban). Merge of origin/main: 97fd6a9.
+    - review: findings — Tests/FoundationModelsMultitoolTests/LiveCatalogTests.swift:263, LiveCatalogTests.swift:287, LostCallTests.swift:101, MCPServerDiscoveryTests.swift:106 (completeness/invariant-propagation)
+  timestamp: 2026-10-02T03:39:41.951896+00:00
+- actor: claude-code
+  id: 01m3xbab3jna02h94ytbngxs4z
+  text: |-
+    Review findings done (not committed).
+    - Root cause: `MCPTestSupport.makeServer` and `MCPTestSupport.connectedMCPServer(to:over:...)` gave `clock` the default `ContinuousClock()`. Thus each delay between retries and each `tools/list_changed` coalesce window slept on real time in every test that gave no clock.
+    - Fix: the default of `clock` in both helpers is now `ManualClock()`. Every root caller that gives no clock gets it: the 4 finding sites, the other `makeServer` calls in LostCallTests, MCPServerDiscoveryTests, MetricsTests, MCPTracePropagationTests, MCPLogRecordTests, MCPSessionSweepTests, StdioServerProcessTests (`connectServer`), GatedServerMaker, OverBudgetSelectionOrderTests, and each `connectedMCPServer` / `connectedRecordingMCPServer` / `connectedLoopbackMCPServer` caller.
+    - `ResilienceTests.makeServer` and `TransportFactoryTests.makeServer` had their own default `ContinuousClock()` and passed it on. Their default is now `ManualClock()` too.
+    - Why ManualClock and not GatedClock: `clock` is a delay to skip (backoff, coalesce window), not a bound to hold. The live-catalog suite and the backoff tests already use `ManualClock` for it. A GatedClock would stop each retry and each re-list until a test opens it.
+    - `clientQueueClock` keeps the real clock. The source says a queue bound that never waits lets a queued operation run beside its predecessor. The findings do not name it.
+    - No test needs real time on `clock`: no test read a backoff delay or a coalesce window without its own `ManualClock`.
+    - The finding lines keep `MCPTestSupport.makeServer(name: Self.serverName)`. The shared default covers them (the rule `invariant-propagation` exempts a change in a shared helper that all callers inherit).
+    - `update task` result was too large to show (the tool returns the whole board). Check the description.
+  timestamp: 2026-10-02T03:42:52.530891+00:00
+- actor: claude-code
+  id: 01m3xbanfdsyms6r7fspe8wkwj
+  text: |-
+    ### implement — changed
+    - evidence: 3 files — Tests/FoundationModelsMultitoolTests/Support/MCPTestSupport.swift (`clock` default `ManualClock()` in `makeServer` and `connectedMCPServer(to:over:...)`), Tests/FoundationModelsMultitoolTests/ResilienceTests.swift and Tests/FoundationModelsMultitoolTests/TransportFactoryTests.swift (local `makeServer` default `ManualClock()`). 4 of 4 findings checked. `swift test --filter <22 affected suites>`: 205 tests in 22 suites passed. Root `swift test`: 1893 tests in 155 suites passed, 0 issues. Only warning: the existing SwiftPM line "missing creator for mutated node" for the mlx Cmlx bundle (not this change).
+    - next: /review
+  timestamp: 2026-10-02T03:43:03.149786+00:00
+- actor: claude-code
+  id: 01m3xbbf7xkwp95kq6ps3jswpj
+  text: |-
+    ### commit — changed
+    - evidence: One local commit of 3 test files and the task files. The base sha is 6a8895d. No `.git/index.lock` was present and no git process ran. The commit sha is in the git log, because the commit holds this comment.
+    - next: review. Nothing was pushed.
+  timestamp: 2026-10-02T03:43:29.533352+00:00
 position_column: doing
 position_ordinal: '80'
 title: Pass a gated connect-attempt clock through the MCPTestSupport connect helpers
@@ -68,3 +111,15 @@ title: Pass a gated connect-attempt clock through the MCPTestSupport connect hel
 
 ## Tests
 - [x] Root `swift test` passes once.
+
+## Review Findings (2026-10-01 21:33)
+
+> Scope: `review sha fff0f4b~1..fff0f4b` — reviewed the diffs only — lines this change added or modified. 18 file(s) reviewed, 4 not reviewed.
+
+> 4 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 4 file(s)
+
+- [x] `Tests/FoundationModelsMultitoolTests/LiveCatalogTests.swift:263` `completeness/invariant-propagation` — MCPServer creation should pass a gated clock to prevent timeout-based test flakiness, following the pattern established in MCPLogRecordTests.swift:108 which passes `clock: ManualClock()`. All test server constructions via MCPTestSupport.makeServer should receive this parameter. Pass `clock: ManualClock()` to the makeServer call: `let server = MCPTestSupport.makeServer(name: Self.serverName, clock: ManualClock())`.
+- [x] `Tests/FoundationModelsMultitoolTests/LiveCatalogTests.swift:287` `completeness/invariant-propagation` — MCPServer creation should pass a gated clock to prevent timeout-based test flakiness. This test performs a reconnect operation that requires the clock gate. Pass `clock: ManualClock()` to the makeServer call: `let server = MCPTestSupport.makeServer(name: Self.serverName, clock: ManualClock())`.
+- [x] `Tests/FoundationModelsMultitoolTests/LostCallTests.swift:101` `completeness/invariant-propagation` — MCPServer creation should pass a gated clock. This test connects and immediately triggers transport drop scenarios that can timeout without a test clock. Pass `clock: ManualClock()` to the makeServer call: `let server = MCPTestSupport.makeServer(name: Self.serverName, clock: ManualClock())`.
+- [x] `Tests/FoundationModelsMultitoolTests/MCPServerDiscoveryTests.swift:106` `completeness/invariant-propagation` — MCPServer creation should pass a gated clock to gate the connect failure scenario this test exercises. Pass `clock: ManualClock()` to the makeServer call: `let server = MCPTestSupport.makeServer(name: Self.serverName, clock: ManualClock())`.
