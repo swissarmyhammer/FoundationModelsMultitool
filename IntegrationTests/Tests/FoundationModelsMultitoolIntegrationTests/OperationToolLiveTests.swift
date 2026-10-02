@@ -123,7 +123,8 @@ struct OperationToolLiveTests {
         try await withLiveRouterFixture(name: operationDiscoveryScenarioName) { fixture in
             let notes = try IntegrationNotesTool.make(store: IntegrationNotesStore())
             try await makeFilesAndShellSurface(over: fixture, adding: [notes])
-                .driveGradedGroup(operationToolQueries, recordedBy: fixture, reportedAs: operationDiscoveryScenarioName)
+                .driveGradedGroup(
+                    of: operationToolQueries, recordedBy: fixture, reportedAs: operationDiscoveryScenarioName)
         }
     }
 
@@ -179,10 +180,10 @@ struct OperationToolLiveTests {
             ),
             ScenarioCheck(
                 name: storeHoldsTheNoteCheckName,
-                held: Self.holdsTheExpectedNote(stored),
+                held: Self.expectedNoteIsTheOnlyOne(in: stored),
                 failureMessage:
                     "expected the store to hold one note titled \(groceriesTitle) with the tag \(shoppingTag), "
-                    + "but it holds \(Self.describe(stored))"
+                    + "but it holds \(Self.descriptions(of: stored))"
             ),
         ]
         // The id of a stored note, and never a literal: the reply is graded
@@ -197,7 +198,7 @@ struct OperationToolLiveTests {
     ///
     /// - Parameter stored: the notes the fixture store holds.
     /// - Returns: `true` for the one expected note.
-    private static func holdsTheExpectedNote(_ stored: [IntegrationNote]) -> Bool {
+    private static func expectedNoteIsTheOnlyOne(in stored: [IntegrationNote]) -> Bool {
         stored.count == 1 && stored.allSatisfy { $0.title == groceriesTitle && $0.tags.contains(shoppingTag) }
     }
 
@@ -205,7 +206,7 @@ struct OperationToolLiveTests {
     ///
     /// - Parameter stored: the notes the fixture store holds.
     /// - Returns: the notes, readable on one printed line.
-    private static func describe(_ stored: [IntegrationNote]) -> [String] {
+    private static func descriptions(of stored: [IntegrationNote]) -> [String] {
         stored.map { "\($0.id) \"\($0.title)\" \($0.tags)" }
     }
 
@@ -221,7 +222,7 @@ struct OperationToolLiveTests {
     /// - Returns: the reading to print after the scenario label.
     private static func resultLine(turn: StreamedTurn, stored: [IntegrationNote], elapsed: TimeInterval) -> String {
         let route = "elapsed=\(elapsed)s toolCalls=\(turn.toolCallCount) calls=\(turn.calls.map(\.name)) "
-        let outcome = "stored=\(Self.describe(stored)) failedCalls=\(turn.failedCalls) "
+        let outcome = "stored=\(Self.descriptions(of: stored)) failedCalls=\(turn.failedCalls) "
         return route + outcome + "reply=\"\(turn.answer.prefix(operationToolReplyPreviewCharacters))\""
     }
 }

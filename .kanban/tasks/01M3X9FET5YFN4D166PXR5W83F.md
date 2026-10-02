@@ -78,6 +78,57 @@ comments:
     - evidence: this commit, "test(integration): check the properties of a discovery answer, not the model score". It holds the 10 Swift files of the implement step and the .kanban files.
     - next: review. The CI run id of the last acceptance item stays open.
   timestamp: 2026-10-02T05:26:07.715581+00:00
+- actor: claude-code
+  id: 01m3xhh7bfdp344rxftg3bsmps
+  text: |-
+    ### review — findings
+    - evidence: review sha HEAD~1..HEAD (commit 4757f51): 1 finding (1 confirmed, 0 refuted) — IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Support/FilesAndShellSurface.swift:57 (swift/fluent-usage). `git diff --name-status -M HEAD~1..HEAD` shows no renamed file, thus no file-scoped review was necessary. The rule code-hygiene/dead-code-swift did not run: it tried to remove .build/checkouts/FoundationModelsRouter and got "Operation not permitted". Its findings are missing from this pass. The .build/ directory was not changed.
+    - next: implement the finding, and remove the same cause from the whole file. Then run /review again. The task stays in `review`. Also when a later review is clean, the task stays in `review` (not `done`) until the user pushes and the CI run id of the last acceptance item is recorded.
+  timestamp: 2026-10-02T05:31:29.519905+00:00
+- actor: claude-code
+  id: 01m3xhhr9k67j9g7ja1mztxycx
+  text: |-
+    ### finish iteration 1 — findings
+    - implement: changed — 10 files (DiscoveryAnswerCheck, DiscoveryAnswerCheckTests, fixed scores removed)
+    - test: green — swift test 1882 passed; IntegrationTests build passes; DiscoveryAnswerCheckTests 6 passed; 6 discovery suites on the real models, 7 tests passed
+    - commit: 4757f51
+    - review: findings — IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Support/FilesAndShellSurface.swift:57 (swift/fluent-usage); the rule code-hygiene/dead-code-swift did not run, because it could not remove .build/checkouts/FoundationModelsRouter ("Operation not permitted")
+  timestamp: 2026-10-02T05:31:46.867865+00:00
+- actor: claude-code
+  id: 01m3xhrnykk4ra3x45gg164fwp
+  text: |-
+    Finding swift/fluent-usage (FilesAndShellSurface.swift `driveGradedGroup`) is corrected. I looked for the same cause (an unlabeled first parameter on a function that is not a value-preserving conversion) in all 10 Swift files of commit 4757f51, and corrected each one:
+    - `FilesAndShellSurface.driveGradedGroup(_:recordedBy:reportedAs:)` is now `driveGradedGroup(of:recordedBy:reportedAs:)`. I updated the 3 call sites in AgentSurfaceDiscoveryTests, HeldOutSurfaceDiscoveryTests and OperationToolLiveTests.
+    - OverBudgetSurfaceDiscoveryTests: `reportOverBudgetLine(_:)` is now `reportOverBudget(line:)` (2 call sites).
+    - OperationToolLiveTests: `holdsTheExpectedNote(_:)` is now `expectedNoteIsTheOnlyOne(in:)` (1 call site). `describe(_:)` is now `descriptions(of:)` (2 call sites). Each side-effect-free function now has a noun-phrase name or an assertion name.
+    - RetrievalTextSurfaceDiscoveryTests: `format(_:)` is now `renderedMean(of:)` (1 call site).
+    - NoDescriptionSurfaceDiscoveryTests: `Sequence.mappedInOrder(_:)` is now `mappedInOrder(by:)`. The 2 trailing-closure call sites do not change. The recursive call now passes `by:`.
+    Not changed: `SubstitutingTextEmbedding.embed(_:)` in RetrievalTextSurfaceDiscoveryTests. It is the witness of the `TextEmbedding.embed(_:)` requirement in FoundationModelsRanker (TextEmbedding.swift). The protocol sets the label, so a different label does not compile as a conformance. DiscoveryAnswerCheck.swift, DiscoveryGrading.swift and DiscoveryAnswerCheckTests.swift already label each first parameter.
+    Behavior did not change: only labels and names changed, so no new test is necessary. The compiler checks each call site.
+  timestamp: 2026-10-02T05:35:33.843990+00:00
+- actor: claude-code
+  id: 01m3xhrsh4bdwwxvqxan55sjga
+  text: |-
+    ### implement — changed
+    - evidence: 7 files — IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/{Support/FilesAndShellSurface.swift, AgentSurfaceDiscoveryTests.swift, HeldOutSurfaceDiscoveryTests.swift, OperationToolLiveTests.swift, OverBudgetSurfaceDiscoveryTests.swift, RetrievalTextSurfaceDiscoveryTests.swift, NoDescriptionSurfaceDiscoveryTests.swift}. `swift build --build-tests --package-path IntegrationTests`: Build complete, 0 errors, 0 warnings from IntegrationTests sources (the "missing creator for mutated node ... mlx-swift_Cmlx.bundle" warning comes from SwiftPM and was there before this change). `swift test --package-path IntegrationTests --filter DiscoveryAnswerCheckTests`: 6 tests in 1 suite passed. The finding is checked. The default .build path worked; .build/ was not changed by hand.
+    - next: /review. The task stays in `doing`. The CI run id of the last acceptance item is still open.
+  timestamp: 2026-10-02T05:35:37.508373+00:00
+- actor: claude-code
+  id: 01m3xj1edr5nfy1gbrp7nh6am3
+  text: |-
+    ### test - green
+    - evidence: `swift test` at root: 1882 tests in 154 suites passed, 0 failed, 0 skipped. `swift build --build-tests --package-path IntegrationTests`: Build complete, 0 errors. `swift test --package-path IntegrationTests --filter DiscoveryAnswerCheckTests`: 6 tests in 1 suite passed.
+    - warnings: 0 from this package's sources. The only warnings come from the mlx-swift dependency (C++17 extension in Metal headers) and from the build system ("missing creator for mutated node").
+    - not run: live-model suites (the change only renames labels).
+    - next: review.
+  timestamp: 2026-10-02T05:40:21.048445+00:00
+- actor: claude-code
+  id: 01m3xj20afz573hw4dj4jdqjf1
+  text: |-
+    ### commit — changed
+    - evidence: this commit, "fix(integration): label the first parameter of action functions". It holds the 7 Swift files of the fluent-usage fix and the .kanban files.
+    - next: review. The task stays in `doing`/`review`. The CI run id of the last acceptance item stays open.
+  timestamp: 2026-10-02T05:40:39.375856+00:00
 position_column: doing
 position_ordinal: '8180'
 title: Replace the fixed discovery scores in the integration tests with checks that do not depend on model quality
@@ -110,4 +161,18 @@ A fixed score is a measurement of model quality, and it is written as a test of 
 - [x] No integration test asserts a fixed number of correct discovery paths, in total or for each query.
 - [x] Each discovery test asserts the properties of item 1 of Work, and prints its correct and wrong counts.
 - [x] A test shows that a catalog path that does not exist in an answer fails the check.
-- [ ] `swift build --build-tests --package-path IntegrationTests` passes, and the discovery suites pass in one real integration run (record the run id). Local part done on 2026-10-02 (build passes; 13 tests in 7 suites pass on the M3 Ultra). The CI run id is still open: the implement step cannot produce a CI run. #ci
+- [ ] `swift build --build-tests --package-path IntegrationTests` passes, and the discovery suites pass in one real integration run (record the run id). Local part done on 2026-10-02 (build passes; 13 tests in 7 suites pass on the M3 Ultra). The CI run id is still open: the implement step cannot produce a CI run.
+
+## Review Findings (2026-10-02 00:26)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 10 file(s) reviewed, 4 not reviewed.
+
+> 4 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 4 file(s)
+
+> ⚠️ tool rule 'code-hygiene/dead-code-swift' failed — the tool judged nothing, so its findings are missing:
+> error: 'foundationmodelsrouter': Error Domain=NSCocoaErrorDomain Code=513 "“FoundationModelsRouter” couldn’t be removed because you don’t have permission to access it." UserInfo={NSUserStringVariant=(
+>     Remove
+> ), NSFilePath=/Users/wballard/github/swissarmyhammer/FoundationModelsMultitool/.build/checkouts/FoundationModelsRouter, NSURL=file:///Users/wballard/github/swissarmyhammer/FoundationModelsMultitool/.build/checkouts/FoundationModelsRouter, NSUnderlyingError=0x759eec4540 {Error Domain=NSPOSIXErrorDomain Code=1 "Operation not permitted"}}
+
+- [x] `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Support/FilesAndShellSurface.swift:57` `swift/fluent-usage` — First parameter of an action method should have a label unless it is a value-preserving conversion. `driveGradedGroup` is not a conversion but an action, so the first parameter `queries` should have an external label (e.g., `of:` or `with:`) to form a complete grammatical phrase at the call site. Change the signature to `func driveGradedGroup(of queries: [GradedDiscoveryQuery], recordedBy fixture: LiveRouterFixture, reportedAs scenario: String) async throws` so the call reads `.driveGradedGroup(of: agentSurfaceQueries, recordedBy: fixture, reportedAs: agentSurfaceScenarioName)`. #ci

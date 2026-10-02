@@ -146,7 +146,7 @@ struct AgentSurfaceDiscoveryTests {
     func agentQueriesAnswerOnlyRealCatalogPaths() async throws {
         try await withLiveRouterFixture(name: agentSurfaceScenarioName, profile: agentDiscoveryProfile) { fixture in
             try await makeFilesAndShellSurface(over: fixture)
-                .driveGradedGroup(agentSurfaceQueries, recordedBy: fixture, reportedAs: agentSurfaceScenarioName)
+                .driveGradedGroup(of: agentSurfaceQueries, recordedBy: fixture, reportedAs: agentSurfaceScenarioName)
         }
     }
 }

@@ -398,7 +398,7 @@ private func groupLine(
     let counts = "setting=\(setting.rawValue) group=\(group.name) queries=\(readings.count) "
         + "bestRankOne=\(readings.filter { $0.bestRank == retrievalTextFirstPlace }.count) "
         + "bestRankTopThree=\(readings.filter(\.foundNearTheTop).count)"
-    let means = "meanBestRank=\(format(meanBestRank(of: readings))) "
+    let means = "meanBestRank=\(renderedMean(of: meanBestRank(of: readings))) "
         + "declaredRanked=\(declaredRanks.count)/\(declared.count) "
         + "declaredTopThree=\(declaredRanks.filter { $0 <= retrievalTextTopPlaces }.count)"
     return "\(counts) \(means)"
@@ -409,7 +409,7 @@ private func groupLine(
 ///
 /// - Parameter value: the mean to render.
 /// - Returns: the rendered mean.
-private func format(_ value: Double?) -> String {
+private func renderedMean(of value: Double?) -> String {
     let specifier = "%.\(meanBestRankPlacesAfterThePoint)f"
     return value.map { String(format: specifier, $0) } ?? "-"
 }

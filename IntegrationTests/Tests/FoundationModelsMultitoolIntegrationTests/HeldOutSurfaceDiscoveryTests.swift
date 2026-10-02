@@ -144,7 +144,7 @@ struct HeldOutSurfaceDiscoveryTests {
     func heldOutQueriesAnswerOnlyRealCatalogPaths() async throws {
         try await withLiveRouterFixture(name: heldOutScenarioName, profile: agentDiscoveryProfile) { fixture in
             try await makeFilesAndShellSurface(over: fixture)
-                .driveGradedGroup(heldOutQueries, recordedBy: fixture, reportedAs: heldOutScenarioName)
+                .driveGradedGroup(of: heldOutQueries, recordedBy: fixture, reportedAs: heldOutScenarioName)
         }
     }
 }

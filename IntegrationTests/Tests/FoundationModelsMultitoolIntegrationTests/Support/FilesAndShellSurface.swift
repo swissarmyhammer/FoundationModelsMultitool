@@ -55,7 +55,7 @@ extension FilesAndShellSurface {
     ///   - scenario: the label the printed lines carry.
     /// - Throws: whatever the tool call or the transcript read throws.
     func driveGradedGroup(
-        _ queries: [GradedDiscoveryQuery], recordedBy fixture: LiveRouterFixture, reportedAs scenario: String
+        of queries: [GradedDiscoveryQuery], recordedBy fixture: LiveRouterFixture, reportedAs scenario: String
     ) async throws {
         reportCatalogSize(of: registry, reportedAs: scenario)
         let check = DiscoveryAnswerCheck(surfaceOf: registry)

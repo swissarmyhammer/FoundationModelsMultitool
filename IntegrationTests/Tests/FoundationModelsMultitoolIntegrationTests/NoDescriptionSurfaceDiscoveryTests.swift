@@ -262,11 +262,11 @@ private extension Sequence {
     ///   order.
     /// - Throws: whatever `transform` throws, unchanged.
     func mappedInOrder<Transformed>(
-        _ transform: (Element) async throws -> Transformed
+        by transform: (Element) async throws -> Transformed
     ) async rethrows -> [Transformed] {
         let elements = Array(self)
         guard let head = elements.first else { return [] }
         let tail = elements.dropFirst()
-        return try await [transform(head)] + tail.mappedInOrder(transform)
+        return try await [transform(head)] + tail.mappedInOrder(by: transform)
     }
 }

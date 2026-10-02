@@ -131,9 +131,9 @@ struct OverBudgetSurfaceDiscoveryTests {
                 countedSelections = selections.count
 
                 let paths = catalogPaths(in: feedback)
-                reportOverBudgetLine(
-                    "matches=\(paths.count) slices=\(sliceSelections.count) elapsed=\(elapsed) paths=\(paths) "
-                        + "selection=\(sliceSelections.map(\.ids)) query=\"\(query)\""
+                reportOverBudget(
+                    line: "matches=\(paths.count) slices=\(sliceSelections.count) elapsed=\(elapsed) "
+                        + "paths=\(paths) selection=\(sliceSelections.map(\.ids)) query=\"\(query)\""
                 )
                 check.expectNoFault(in: paths, answering: query)
             }
@@ -149,8 +149,8 @@ struct OverBudgetSurfaceDiscoveryTests {
 ///   assembles its prefix from.
 private func reportOverBudgetCatalogSize(of registry: MultiTool.Registry) {
     let entries = registry.surface.entries
-    reportOverBudgetLine(
-        "entries=\(entries.count) prefixCharacters=\(selectionPrefix(of: registry).count) "
+    reportOverBudget(
+        line: "entries=\(entries.count) prefixCharacters=\(selectionPrefix(of: registry).count) "
             + "budget=\(SelectionConfig.defaultCapacityCharacterLimit)"
     )
 }
@@ -158,6 +158,6 @@ private func reportOverBudgetCatalogSize(of registry: MultiTool.Registry) {
 /// Prints one `RESULT` line of this suite under this suite's own label.
 ///
 /// - Parameter line: the reading to print after the label.
-private func reportOverBudgetLine(_ line: String) {
+private func reportOverBudget(line: String) {
     reportGatedResult(scenario: overBudgetScenarioName, line: line)
 }
