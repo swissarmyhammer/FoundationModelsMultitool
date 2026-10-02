@@ -129,6 +129,56 @@ comments:
     - evidence: this commit, "fix(integration): label the first parameter of action functions". It holds the 7 Swift files of the fluent-usage fix and the .kanban files.
     - next: review. The task stays in `doing`/`review`. The CI run id of the last acceptance item stays open.
   timestamp: 2026-10-02T05:40:39.375856+00:00
+- actor: claude-code
+  id: 01m3xjexgs0xt356ayyrbd73wm
+  text: |-
+    ### review — findings
+    - evidence: review sha HEAD~1..HEAD (commit bc26800): 1 finding (1 confirmed, 2 refuted, 7 attempted, 0 failed) — IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/OverBudgetSurfaceDiscoveryTests.swift:152 (swift/fluent-usage). The prior finding (Support/FilesAndShellSurface.swift:57, swift/fluent-usage) is checked, and this pass found nothing on that line. `git diff --name-status -M HEAD~1..HEAD` shows no renamed file, thus no file-scoped review was necessary. The rule code-hygiene/dead-code-swift ran this time: the report has no tool-rule failure warning, and `failed` is 0. The .build/ directory was not changed.
+    - next: implement the finding (the label `reportOverBudget(line:)` at each call site in OverBudgetSurfaceDiscoveryTests.swift, and the same cause in the whole file). Then run /review again. The task stays in `review`. Also when a later review is clean, the task stays in `review` (not `done`) until the user pushes and the CI run id of the last acceptance item is recorded.
+  timestamp: 2026-10-02T05:47:42.489418+00:00
+- actor: claude-code
+  id: 01m3xjfp82gm8vyq35ymme09zc
+  text: |-
+    ### finish iteration 2 — findings
+    - implement: changed — 7 files (labels on the first parameter of action functions)
+    - test: green — swift test 1882 passed; IntegrationTests build passes; DiscoveryAnswerCheckTests 6 passed
+    - commit: bc26800
+    - review: findings — IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/OverBudgetSurfaceDiscoveryTests.swift:152 (swift/fluent-usage, same cause at line 134); the prior finding at Support/FilesAndShellSurface.swift:57 is fixed; code-hygiene/dead-code-swift ran
+  timestamp: 2026-10-02T05:48:07.810865+00:00
+- actor: claude-code
+  id: 01m3xjkqy1phw1fjsxgwe3pjdr
+  text: |-
+    Finding swift/fluent-usage (OverBudgetSurfaceDiscoveryTests `reportOverBudget(line:)`) is corrected. The function is now `report(overBudgetLine:)`, so each call reads "report over-budget line". I changed the declaration and the 2 call sites (in the test body and in `reportOverBudgetCatalogSize(of:)`). The doc key stays `- Parameter line:`, because it names the internal parameter.
+    I read the other names that commit bc26800 added, at each call site. Each one already reads as a grammatical phrase, so I did not change them:
+    - `driveGradedGroup(of:recordedBy:reportedAs:)`: "drive graded group of queries, recorded by fixture, reported as scenario".
+    - `expectedNoteIsTheOnlyOne(in:)`: a Boolean assertion, "expected note is the only one in stored".
+    - `descriptions(of:)` and `renderedMean(of:)`: noun phrases for functions with no side effect.
+    - `mappedInOrder(by:)`: the same shape as `sorted(by:)`. The 2 call sites use a trailing closure.
+    - `reportOverBudgetCatalogSize(of:)` was not added by bc26800, and it reads "report over-budget catalog size of registry".
+    Only labels changed, and behavior did not change. The compiler checks each call site.
+  timestamp: 2026-10-02T05:50:20.609455+00:00
+- actor: claude-code
+  id: 01m3xjkwhe3jk835dgt8m9szvb
+  text: |-
+    ### implement — changed
+    - evidence: 1 file — IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/OverBudgetSurfaceDiscoveryTests.swift (`reportOverBudget(line:)` is now `report(overBudgetLine:)`, with 2 call sites). `swift build --build-tests --package-path IntegrationTests`: Build complete, 0 errors, 0 warnings from IntegrationTests sources (the SwiftPM "missing creator for mutated node ... mlx-swift_Cmlx.bundle" warning was there before). `swift test --package-path IntegrationTests --filter DiscoveryAnswerCheckTests`: 6 tests in 1 suite passed. The 2026-10-02 00:41 finding is checked. The default .build path worked; .build/ was not changed by hand.
+    - next: /review. The task stays in `doing`. The CI run id of the last acceptance item is still open.
+  timestamp: 2026-10-02T05:50:25.326570+00:00
+- actor: claude-code
+  id: 01m3xjqd8hygqa1d0pev7eak5s
+  text: |-
+    ### test - green
+    - evidence: swift test (root) - 1882 tests in 154 suites passed, 0 failed. swift build --build-tests --package-path IntegrationTests - build complete, 0 errors. swift test --package-path IntegrationTests --filter DiscoveryAnswerCheckTests - 6 tests in 1 suite passed.
+    - note: SwiftPM prints one build-system warning: "missing creator for mutated node" for the mlx-swift_Cmlx.bundle path under .build. It comes from a dependency bundle, not from package sources.
+    - next: review. No live-model suite was run. No commit was made.
+  timestamp: 2026-10-02T05:52:20.753919+00:00
+- actor: claude-code
+  id: 01m3xjqz8dnj0k6xjkqmats9tm
+  text: |-
+    ### commit — changed
+    - evidence: this commit, "fix(integration): name the over-budget report helper as a phrase". It holds OverBudgetSurfaceDiscoveryTests.swift (`reportOverBudget(line:)` is now `report(overBudgetLine:)`, 2 call sites) and the .kanban files.
+    - next: review. The task stays in `review`. The CI run id of the last acceptance item stays open.
+  timestamp: 2026-10-02T05:52:39.181355+00:00
 position_column: doing
 position_ordinal: '8180'
 title: Replace the fixed discovery scores in the integration tests with checks that do not depend on model quality
@@ -175,4 +225,13 @@ A fixed score is a measurement of model quality, and it is written as a test of 
 >     Remove
 > ), NSFilePath=/Users/wballard/github/swissarmyhammer/FoundationModelsMultitool/.build/checkouts/FoundationModelsRouter, NSURL=file:///Users/wballard/github/swissarmyhammer/FoundationModelsMultitool/.build/checkouts/FoundationModelsRouter, NSUnderlyingError=0x759eec4540 {Error Domain=NSPOSIXErrorDomain Code=1 "Operation not permitted"}}
 
-- [x] `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Support/FilesAndShellSurface.swift:57` `swift/fluent-usage` — First parameter of an action method should have a label unless it is a value-preserving conversion. `driveGradedGroup` is not a conversion but an action, so the first parameter `queries` should have an external label (e.g., `of:` or `with:`) to form a complete grammatical phrase at the call site. Change the signature to `func driveGradedGroup(of queries: [GradedDiscoveryQuery], recordedBy fixture: LiveRouterFixture, reportedAs scenario: String) async throws` so the call reads `.driveGradedGroup(of: agentSurfaceQueries, recordedBy: fixture, reportedAs: agentSurfaceScenarioName)`. #ci
+- [x] `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Support/FilesAndShellSurface.swift:57` `swift/fluent-usage` — First parameter of an action method should have a label unless it is a value-preserving conversion. `driveGradedGroup` is not a conversion but an action, so the first parameter `queries` should have an external label (e.g., `of:` or `with:`) to form a complete grammatical phrase at the call site. Change the signature to `func driveGradedGroup(of queries: [GradedDiscoveryQuery], recordedBy fixture: LiveRouterFixture, reportedAs scenario: String) async throws` so the call reads `.driveGradedGroup(of: agentSurfaceQueries, recordedBy: fixture, reportedAs: agentSurfaceScenarioName)`.
+
+## Review Findings (2026-10-02 00:41)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 7 file(s) reviewed, 2 not reviewed.
+
+> 2 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 2 file(s)
+
+- [x] `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/OverBudgetSurfaceDiscoveryTests.swift:152` `swift/fluent-usage` — `reportOverBudget(line: ...)` does not form a grammatical phrase at the call site, same issue as line 134. Same as line 134. #ci
