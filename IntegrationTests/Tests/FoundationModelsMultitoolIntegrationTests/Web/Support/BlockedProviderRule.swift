@@ -1,41 +1,34 @@
 // `BlockedProviderRule` — the one written rule for a blocked search provider
-// in the live web search tests (web.md § "Testing", "The blocked provider
-// rule", and `IntegrationTests/Package.swift`).
+// in the live web tests (web.md § "Testing", "The blocked provider rule", and
+// `IntegrationTests/Package.swift`).
 
 import Testing
 
 @testable import FoundationModelsMultitool
 
-/// The written rule for a blocked provider in the live web search tests.
+/// The written rule for the result of a live web search.
 ///
-/// **The rule (decided by the user, 2026-10-01, card `^kghyac5`).** A blocked
-/// provider (HTTP 429, or a challenge page) does not fail a live test, on the
-/// condition that at least one provider gives results. When no provider gives
-/// results, the test fails.
+/// **The rule (decided by the user, 2026-10-02, card `^vn1899e`).** "If the
+/// provider blocks, we managed to talk to it, didn't we." A block that the
+/// code recognizes (HTTP 429, or a challenge page) proves that the request
+/// reached the provider. Thus a live web test passes on exactly one of two
+/// outcomes:
 ///
-/// **How a test applies it.** A live search test sends its search through
-/// ``search(providers:site:environment:sourceLocation:)``. When the result is
-/// a correction that names a block of a provider of the test, the rule does
-/// two things:
+/// 1. **Results.** The search gave hits. The test runs its checks of the hits.
+/// 2. **A recognized block.** The search gave a correction, and the rule
+///    checks what the code controls: the correction names each provider of
+///    the search in order (the chain went on to the next provider as
+///    designed), each part names the provider and the kind of block, and the
+///    result holds no hit, no provider, and no note (no invented hits).
 ///
-/// 1. It records the correction as a known issue. That is the evidence of the
-///    block in the test report.
-/// 2. It sends the same query one time to the providers of
-///    ``replacementProviders(for:blocked:)``: the providers of the test, with
-///    each blocked provider replaced by the keyless providers that the first
-///    search did not try.
+/// Each other outcome fails the test: a transport error, a timeout, a
+/// response that the code cannot read, an HTTP status that is not a block, no
+/// hit with no correction, or a correction that does not report each
+/// provider.
 ///
-/// The test then runs all its checks on the result of the second search. Thus
-/// a hit check that the blocked provider could not pass is done on the hits
-/// of a provider that works, and a correction of the second search fails the
-/// test. When the first search tried each keyless provider, there is no
-/// provider to try, and the test runs its checks on the first result: the
-/// correction fails the test.
-///
-/// This is not a retry, because no provider gets a second request for the
-/// query. It is not a skip, because each check of the test runs on a result.
-/// A failure that is not a block (a markup change, no results, a server
-/// error, a refused key) is not changed by the rule.
+/// This is not a skip and not a known issue: a block is a pass with checks.
+/// It is not a retry: the test sends one search, and the rule reads its
+/// result.
 enum BlockedProviderRule {
     /// The reasons of a block, as the correction gives them after the name of
     /// the provider and `: `.
@@ -44,89 +37,171 @@ enum BlockedProviderRule {
     /// `WebSearchChain.swift` for `.rateLimited` and `.challenge`, with the
     /// end period of the correction. The product keeps that text private,
     /// thus the rule states it here.
-    static let blockReasons = ["blocked (HTTP 429).", "blocked by a challenge page."]
+    private static let blockReasons: Set<String> = ["blocked (HTTP 429).", "blocked by a challenge page."]
 
-    /// The comment of the known issue that records a block.
-    static let blockComment: Comment =
-        "A provider of this test was blocked. By the blocked provider rule (web.md), the test checks the results of a keyless provider that the first search did not try."
+    /// The text between the name of a provider and its reason in the
+    /// correction.
+    private static let reasonSeparator = ": "
 
-    /// The result that a test checks, and the providers of the search that
-    /// gave it.
-    struct RuledSearch {
-        /// The result to check: the result of the first search, or of the
-        /// second search when the rule replaced a blocked provider.
-        let result: SearchResult
+    /// The text between two parts of the correction.
+    private static let partSeparator = " "
 
-        /// The providers of the search that gave ``result``, in the order to
-        /// try.
-        let providers: [WebSearchProvider]
+    /// The first word of the line that tells the outcome of one live search
+    /// in the test log.
+    private static let traceLinePrefix = "LIVE-SEARCH"
+
+    /// The outcome of one live search under the rule.
+    enum Outcome: Equatable {
+        /// The search gave hits. The test runs its checks of the hits.
+        case results
+
+        /// The search reached each provider, and the named providers blocked
+        /// it. The rule did the checks of the block, and the test passes.
+        case blocked(providers: [String])
+
+        /// The result is not results and not a recognized block. The test
+        /// fails.
+        case failed(Failure)
     }
 
-    /// Sends the live search of a test under the rule.
-    ///
-    /// - Parameters:
-    ///   - providers: The providers of the test, in the order to try.
-    ///   - site: The one host of the hits, or `nil` for all hosts.
-    ///   - environment: The environment dictionary that each `.environment`
-    ///     key reads.
-    ///   - sourceLocation: The location of the call, for the known issue.
-    /// - Returns: The first result and `providers` when no provider of the
-    ///   test is blocked, or when no keyless provider is left to try. Else the
-    ///   result of the second search and its providers.
-    /// - Throws: When the verb throws, or when the task is cancelled during
-    ///   the wait for a turn of ``LiveSearch/searchSpacing``.
-    static func search(
-        providers: [WebSearchProvider], site: String? = nil, environment: [String: String] = [:],
-        sourceLocation: SourceLocation = #_sourceLocation
-    ) async throws -> RuledSearch {
-        let first = try await LiveSearch.search(providers: providers, site: site, environment: environment)
-        let blocked = blockedProviderNames(in: first, providers: providers)
-        let replacement = replacementProviders(for: providers, blocked: blocked)
-        guard let correction = first.correction, !blocked.isEmpty, !replacement.isEmpty else {
-            return RuledSearch(result: first, providers: providers)
-        }
-        withKnownIssue(blockComment) {
-            Issue.record(LiveSearch.correctionComment(correction), sourceLocation: sourceLocation)
-        }
-        let second = try await LiveSearch.search(providers: replacement, site: site, environment: environment)
-        return RuledSearch(result: second, providers: replacement)
+    /// Why the result of a live search fails the rule.
+    enum Failure: Equatable {
+        /// The search gave no hit and no correction.
+        case noHitAndNoCorrection
+
+        /// The search gave a correction, and also hits, a provider, or notes.
+        /// A correction has none of them, thus they are invented.
+        case hitsBesideCorrection
+
+        /// The correction does not name each provider of the search in
+        /// order, with the lead sentence of the chain first.
+        case providersNotReported
+
+        /// The correction gives this reason for this provider, and the reason
+        /// is not a block. Examples: a transport error, a timeout, a server
+        /// error, a response that the code cannot read.
+        case notABlock(provider: String, reason: String)
+
+        /// Each part of the correction is a failure that the test excused,
+        /// thus no provider blocked the search.
+        case noBlock
     }
 
-    /// The names of the providers that a correction names as blocked.
+    /// One part of the correction: a provider and the reason that the chain
+    /// gives for it.
+    private struct ProviderFailurePart {
+        /// The name of the provider.
+        let provider: String
+
+        /// The reason, with its end period, for example `blocked (HTTP 429).`.
+        let reason: String
+    }
+
+    /// Classifies the result of one live search.
     ///
     /// - Parameters:
     ///   - result: The result of the `search` verb.
-    ///   - providers: The providers of the search.
-    /// - Returns: The name of each provider whose part of the correction is
-    ///   one of ``blockReasons``, in the order of `providers`. Empty when the
-    ///   result has no correction.
-    static func blockedProviderNames(in result: SearchResult, providers: [WebSearchProvider]) -> [String] {
-        let correction = result.correction ?? ""
-        return providers.map(\.name).filter { name in
-            blockReasons.contains { reason in correction.contains("\(name): \(reason)") }
+    ///   - providers: The providers of the search, in the order to try.
+    ///   - excused: The names of the providers whose failure the test expects
+    ///     by design, for example a key that is not valid. The test checks
+    ///     the failure of such a provider itself.
+    /// - Returns: ``Outcome/results`` for hits with no correction,
+    ///   ``Outcome/blocked(providers:)`` for a recognized block, else
+    ///   ``Outcome/failed(_:)`` with the reason.
+    static func outcome(
+        of result: SearchResult, providers: [WebSearchProvider], excusing excused: Set<String> = []
+    ) -> Outcome {
+        guard let correction = result.correction else {
+            return result.results.isEmpty ? .failed(.noHitAndNoCorrection) : .results
+        }
+        guard result.results.isEmpty, result.provider.isEmpty, result.notes == nil else {
+            return .failed(.hitsBesideCorrection)
+        }
+        guard let parts = failureParts(of: correction, providers: providers.map(\.name)) else {
+            return .failed(.providersNotReported)
+        }
+        let judged = parts.filter { !excused.contains($0.provider) }
+        if let unrecognized = judged.first(where: { !blockReasons.contains($0.reason) }) {
+            return .failed(.notABlock(provider: unrecognized.provider, reason: unrecognized.reason))
+        }
+        guard !judged.isEmpty else { return .failed(.noBlock) }
+        return .blocked(providers: judged.map(\.provider))
+    }
+
+    /// Applies the rule to the result of one live search.
+    ///
+    /// On results, the test runs `checkResults`. On a recognized block, the
+    /// rule has done the checks, and the test passes. On each other outcome,
+    /// the rule records one failure that names the cause and gives the
+    /// result. For results and for a block, the rule writes one
+    /// ``traceLinePrefix`` line to standard out, thus a log reader sees
+    /// which outcome each live search gave.
+    ///
+    /// - Parameters:
+    ///   - result: The result of the `search` verb.
+    ///   - providers: The providers of the search, in the order to try.
+    ///   - excused: The names of the providers whose failure the test expects
+    ///     by design. See ``outcome(of:providers:excusing:)``.
+    ///   - sourceLocation: The location of the call, for the failure record.
+    ///   - checkResults: The checks of the hits of the test.
+    /// - Throws: What `checkResults` throws.
+    static func expectResultsOrBlock(
+        _ result: SearchResult, providers: [WebSearchProvider], excusing excused: Set<String> = [],
+        sourceLocation: SourceLocation = #_sourceLocation, checkResults: () throws -> Void
+    ) rethrows {
+        switch outcome(of: result, providers: providers, excusing: excused) {
+        case .results:
+            reportTraceLine(
+                "\(traceLinePrefix) outcome=results provider=\(result.provider) hits=\(result.results.count)")
+            try checkResults()
+        case .blocked(let blocked):
+            reportTraceLine(
+                "\(traceLinePrefix) outcome=blocked providers=\(blocked) correction=\(result.correction ?? "")")
+        case .failed(let failure):
+            Issue.record(failureComment(failure, result: result), sourceLocation: sourceLocation)
         }
     }
 
-    /// The providers of the second search: the providers of the test, with
-    /// each blocked provider replaced by the keyless providers that the first
-    /// search did not try.
-    ///
-    /// The providers that are not blocked keep their order, and the keyless
-    /// providers come after them, in the order of `WebConfiguration.keyless`.
-    /// Thus a test that checks the fallback from a keyed provider still sends
-    /// its keyed provider first.
+    /// Splits a correction into one part for each provider, in order.
     ///
     /// - Parameters:
-    ///   - providers: The providers of the first search.
-    ///   - blocked: The names of the blocked providers.
-    /// - Returns: The providers of the second search. Empty when no provider
-    ///   is blocked, or when the first search tried each keyless provider.
-    static func replacementProviders(
-        for providers: [WebSearchProvider], blocked: [String]
-    ) -> [WebSearchProvider] {
-        let triedNames = Set(providers.map(\.name))
-        let untriedKeyless = WebConfiguration.keyless.providers.filter { !triedNames.contains($0.name) }
-        guard !blocked.isEmpty, !untriedKeyless.isEmpty else { return [] }
-        return providers.filter { !blocked.contains($0.name) } + untriedKeyless
+    ///   - correction: The text of the correction.
+    ///   - names: The names of the providers of the search, in order.
+    /// - Returns: One part for each name, or `nil` when the correction does
+    ///   not start with `WebSearchChain.correctionLead` and then name each
+    ///   provider in order. The reason of a provider runs to the label of the
+    ///   next provider, and the reason of the last provider runs to the end of
+    ///   the correction.
+    private static func failureParts(of correction: String, providers names: [String]) -> [ProviderFailurePart]? {
+        let lead = WebSearchChain.correctionLead + partSeparator
+        guard correction.hasPrefix(lead), !names.isEmpty else { return nil }
+        var rest = Substring(correction.dropFirst(lead.count))
+        var parts: [ProviderFailurePart] = []
+        for (index, name) in names.enumerated() {
+            let label = name + reasonSeparator
+            guard rest.hasPrefix(label) else { return nil }
+            rest = rest.dropFirst(label.count)
+            let nextLabel = names.dropFirst(index + 1).first.map { partSeparator + $0 + reasonSeparator }
+            let end = nextLabel.flatMap { rest.range(of: $0)?.lowerBound } ?? rest.endIndex
+            parts.append(ProviderFailurePart(provider: name, reason: String(rest[..<end])))
+            rest = rest[end...].dropFirst(partSeparator.count)
+        }
+        return parts
+    }
+
+    /// The comment of the failure that the rule records.
+    ///
+    /// - Parameters:
+    ///   - failure: Why the result fails the rule.
+    ///   - result: The result of the `search` verb.
+    /// - Returns: The cause, then the provider, the hit count, and the
+    ///   correction of the result.
+    private static func failureComment(_ failure: Failure, result: SearchResult) -> Comment {
+        Comment(
+            rawValue: """
+                the search gave neither results nor a recognized block (\(failure)): \
+                provider "\(result.provider)", \(result.results.count) hits, \
+                correction: \(result.correction ?? "none")
+                """)
     }
 }

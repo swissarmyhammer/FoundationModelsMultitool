@@ -510,38 +510,42 @@ longer time limit: each test still sends one request. A 429 that comes with
 the spacing obeys "The blocked provider rule". `LiveSearchSpacingTests`
 checks the turns with no network and no wait.
 
-**The blocked provider rule. (Decided by the user, 2026-10-01, card
-`^kghyac5`.)** The Brave results page gave HTTP 429 to the first request of a
-new test process, and DuckDuckGo gave its challenge page: the network address
-was blocked, and the spacing cannot prevent that. The user said: "set a rule
-for the blocked provider - as long as some provider works we are OK for now".
-The rule:
+**The blocked provider rule. (Decided by the user, 2026-10-02, card
+`^vn1899e`. This replaces the rule of 2026-10-01, card `^kghyac5`.)** The
+rule of 2026-10-01 recorded a block as a known issue and sent the query a
+second time to the other keyless provider. In CI run 37061505863, Brave gave
+HTTP 429 and DuckDuckGo gave its challenge page to the same runner, thus the
+second search was blocked too, and 7 live tests failed. The user said: "If
+the provider blocks, we managed to talk to it, didn't we." A block that the
+code recognizes proves that the request reached the provider. The rule:
 
-- A blocked provider (HTTP 429, or a challenge page) does not fail a live web
-  search test, on the condition that at least one provider gives results.
-- When no provider gives results, the test fails.
-- `Support/BlockedProviderRule.swift` holds the one rule. When the correction
-  of a search names a block of a provider of the test, the rule records the
-  correction as a known issue (`withKnownIssue`). That is the evidence of the
-  block in the test report. Then it sends the same query one time to the
-  providers of the test, with each blocked provider replaced by the keyless
-  providers that the first search did not try. The test runs all its checks
-  on that result.
-- Thus `BraveHTMLLiveTests` checks the hits of `duckDuckGoHTML` when Brave is
-  blocked, `DuckDuckGoHTMLLiveTests` checks the hits of `braveHTML` when
-  DuckDuckGo is blocked, and `KeyedFallbackLiveTests` sends
-  `[braveAPI, duckDuckGoHTML]` when `braveHTML` is blocked. A keyed test of
-  `KeyedProviderLiveTests` sends the keyless chain when its provider is
-  blocked.
-- `KeylessChainLiveTests` and `WebRunCodeLiveTests` send the full keyless
-  chain. The chain goes to the next provider after a block, thus the chain
-  itself applies the rule. The first search tried each keyless provider, thus
-  the rule has no provider to add, and a correction fails the test.
-- Each other failure still fails the test. Examples: a markup change, no
-  results, a server error, a hit on a wrong host.
-- This is not a retry: no provider gets a second request for the query. It
-  is not a skip: each check of the test runs on a result. It does not change
-  a time limit.
+- Each live web search test passes on exactly one of two outcomes:
+  1. **Results.** The search gave hits. The test runs its checks of the hits.
+  2. **A recognized block.** The search gave a correction, and each provider
+     of the test that the test does not excuse is reported with a block:
+     `<name>: blocked (HTTP 429).` or `<name>: blocked by a challenge page.`.
+     The rule checks what the code controls: the correction starts with
+     `No search provider gave results.` and names each provider of the
+     search in order (the chain went on to the next provider as designed),
+     and the result holds no hit, no provider, and no note (no invented
+     hits).
+- Each other outcome fails the test. Examples: a transport error, a timeout,
+  a response that the code cannot read, an HTTP status that is not a block
+  (for example a server error), no hit with no correction, a correction that
+  does not report each provider, a markup change, a hit on a wrong host.
+- `Support/BlockedProviderRule.swift` holds the one rule. Its
+  `outcome(of:providers:excusing:)` classifies a result, and its
+  `expectResultsOrBlock` runs the checks of the hits on results, passes a
+  recognized block, and records one failure for each other outcome. For
+  results and for a block, it writes one line to the test log, for example
+  `LIVE-SEARCH outcome=blocked providers=["braveHTML"] correction=…`. Thus
+  the log of each run shows which outcome each live search gave.
+- A test can excuse a provider whose failure is by design.
+  `KeyedFallbackLiveTests` excuses `braveAPI`, because its key is not valid.
+  That test checks the refused-key report itself, in both outcomes.
+- This is not a skip and not a known issue: a block is a pass with checks.
+  It is not a retry: each test sends one search, and the rule sends no
+  second search. It does not change a time limit, and it adds no score.
 - The rule is for the live web search tests only. It does not apply to the
   model scenarios, for example `CLISmokeTests` and
   `AgentSurfaceDiscoveryTests`.
@@ -555,15 +559,14 @@ test does not retry. When Brave changes its markup, `BraveHTMLLiveTests`
 fails. That failure is the signal that we want.
 
 **The DuckDuckGo challenge page. (Decided, 2026-09-26. Replaced on 2026-10-01
-by "The blocked provider rule".)** After many requests in a short time from
-one address, DuckDuckGo can serve its challenge page and not the results.
-Then the search gives the correction "duckDuckGoHTML: blocked by a challenge
-page." This is a known condition of the live service. It is not markup drift,
-and it is not a defect of the provider. Thus:
+and again on 2026-10-02 by "The blocked provider rule".)** After many requests
+in a short time from one address, DuckDuckGo can serve its challenge page and
+not the results. Then the search gives the correction "duckDuckGoHTML:
+blocked by a challenge page." This is a known condition of the live service.
+It is not markup drift, and it is not a defect of the provider. Thus:
 
-- A challenge page obeys "The blocked provider rule". The earlier exception
-  let `DuckDuckGoHTMLLiveTests` pass also when no provider gave results. The
-  rule of 2026-10-01 fails the test in that case.
+- A challenge page obeys "The blocked provider rule": it is a recognized
+  block, and the test passes with the checks of the rule.
 - Each other correction still fails the test. Examples: a markup change, no
   results, a hit on a wrong host.
 - A test does not retry. The assertion rule stays true.
@@ -574,17 +577,17 @@ and it is not a defect of the provider. Thus:
 
 | Suite | Tests |
 |---|---|
-| `BraveHTMLLiveTests` | Providers `[.braveHTML]` only. Query `swift programming language`: at least 3 hits, each URL is `https`, a hit host is `swift.org` or ends in `.swift.org`. Query with `site: "developer.apple.com"`: each hit host ends in `apple.com`. A block of Brave obeys "The blocked provider rule": a known issue, and the same checks on the hits of `duckDuckGoHTML`. |
-| `DuckDuckGoHTMLLiveTests` | The same two tests, with `[.duckDuckGoHTML]` only. A challenge page obeys "The blocked provider rule": a known issue, and the same checks on the hits of `braveHTML`. Each other correction fails. |
-| `KeylessChainLiveTests` | `.keyless`: the query gives hits, and `provider` is one of the two keyless names. The chain itself applies "The blocked provider rule". |
+| `BraveHTMLLiveTests` | Providers `[.braveHTML]` only. Query `swift programming language`: at least 3 hits, each URL is `https`, a hit host is `swift.org` or ends in `.swift.org`. Query with `site: "developer.apple.com"`: each hit host ends in `apple.com`. A block of Brave is a recognized block of "The blocked provider rule". |
+| `DuckDuckGoHTMLLiveTests` | The same two tests, with `[.duckDuckGoHTML]` only. A challenge page is a recognized block of "The blocked provider rule". Each other correction fails. |
+| `KeylessChainLiveTests` | `.keyless` has the two keyless providers. On results, `provider` is one of the two keyless names. A block of both providers is a recognized block of "The blocked provider rule". |
 | `FetchLiveTests` | `https://example.com`: title `Example Domain`, content contains `This domain is for use in documentation examples without needing permission.` (the page has no `<h1>` since 2026-09, so the title is not in the content). `http://github.com`: final `url` starts with `https://github.com`. `https://en.wikipedia.org/wiki/Swift_(programming_language)` with `maxCharacters: 2000`: `nextOffset` is set; a second call with that offset gives the next text and no second download (cache). `https://api.github.com/zen`: `contentType` is `text/plain`, content is not empty. `https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf`: correction for a binary type. |
 | `GuardLiveTests` | `http://localtest.me/` (a public DNS name that resolves to `127.0.0.1`): the correction names the loopback address. This proves that the guard checks the resolved address, not only the host name. `http://169.254.169.254/latest/meta-data/`: correction. |
-| `KeyedProviderLiveTests` | Six `@Test` functions (`braveAPI`, `tavily`, `exa`, `serper`, `kagi`, `searxng`), with a shared helper. Each test has the trait `.enabled(whenSet:)` of `Support/LiveProviderSetting.swift` (see "The environment rule"). The test runs when its variable is set and not empty (`BRAVE_SEARCH_API_KEY` or `BRAVE_API_KEY`, `TAVILY_API_KEY`, `EXA_API_KEY`, `SERPER_API_KEY`, `KAGI_API_KEY`, `SEARXNG_URL`). Else the test is skipped, and the skip comment names the variable, for example `TAVILY_API_KEY is not set`. Thus a run on a computer with no keys has six skipped tests and no failure. Each test builds `WebConfiguration.fromEnvironment()`, and takes only its provider. When the variable is set but `fromEnvironment()` does not have the provider (for example a `SEARXNG_URL` that is not an `http` or `https` URL), the test fails with a message that names the variable. Each test: query `swift programming language`, at least 3 hits, `provider` is the name of the provider, and the key value is not in the hits, the notes, or the correction. A block of the provider obeys "The blocked provider rule": a known issue, and the same checks on the hits of the keyless chain, where `provider` is a keyless provider. |
+| `KeyedProviderLiveTests` | Six `@Test` functions (`braveAPI`, `tavily`, `exa`, `serper`, `kagi`, `searxng`), with a shared helper. Each test has the trait `.enabled(whenSet:)` of `Support/LiveProviderSetting.swift` (see "The environment rule"). The test runs when its variable is set and not empty (`BRAVE_SEARCH_API_KEY` or `BRAVE_API_KEY`, `TAVILY_API_KEY`, `EXA_API_KEY`, `SERPER_API_KEY`, `KAGI_API_KEY`, `SEARXNG_URL`). Else the test is skipped, and the skip comment names the variable, for example `TAVILY_API_KEY is not set`. Thus a run on a computer with no keys has six skipped tests and no failure. Each test builds `WebConfiguration.fromEnvironment()`, and takes only its provider. When the variable is set but `fromEnvironment()` does not have the provider (for example a `SEARXNG_URL` that is not an `http` or `https` URL), the test fails with a message that names the variable. Each test: query `swift programming language`, at least 3 hits, `provider` is the name of the provider, and the key value is not in the hits, the notes, or the correction. A block of the provider is a recognized block of "The blocked provider rule", and the key check still runs. |
 | `LiveProviderSettingTests` | No network and no real key. The enable condition of each keyed live test, with a given environment dictionary: true when a variable of the provider is set, false when no variable is set or the variable is empty, and `BRAVE_API_KEY` alone enables `braveAPI`. When the variables are set, `fromEnvironment()` has the provider. The skip comment names each variable. |
 | `LiveSearchSpacingTests` | No network and no wait. The turns of the search spacing, with given instants: the first turn starts at once, a turn 0.6 s after the previous one starts one interval after it, a turn after the interval starts at once, and turns that come together start one interval apart. See "The search spacing". |
-| `BlockedProviderRuleTests` | No network. The parts of "The blocked provider rule" that need no request: HTTP 429 and a challenge page are a block, a refused key and a server error are not a block, a result with no correction has no block. A blocked `braveHTML` is replaced by `duckDuckGoHTML`, a blocked `duckDuckGoHTML` by `braveHTML`, a provider that is not blocked keeps its place before the replacement, and the full keyless chain has no replacement. |
-| `KeyedFallbackLiveTests` | `[.braveAPI(.literal("invalid-key")), .braveHTML]`: `provider` is `braveHTML`, at least 3 hits, `notes` has the refused-key note of `braveAPI` (`braveAPI: skipped, the API key was refused (HTTP <status>).`, today with status 422), and the text `invalid-key` is not in the hits, the notes, or the correction. It needs no real key, thus it can pass on a computer with no keys. A block of `braveHTML` obeys "The blocked provider rule": a known issue, and the same checks on `[.braveAPI(.literal("invalid-key")), .duckDuckGoHTML]`, where `provider` is `duckDuckGoHTML`. |
-| `WebRunCodeLiveTests` | A real `MultiTool` with `.withWeb(configuration: .keyless)` and no model. The snippet at the top of this document runs, and returns 1 to 3 pages, each with a title and content. The chain itself applies "The blocked provider rule". |
+| `BlockedProviderRuleTests` | No network. The outcomes of "The blocked provider rule": hits are results, also after a skipped blocked provider. HTTP 429, a challenge page, a block of each provider of the keyless chain, and an excused refused key then a block are a recognized block. A transport error, an unclassified HTTP status, a server error, a block then a transport error, a refused key that is not excused, an excused failure with no block, a correction that does not name each provider, a correction beside hits, and no hit with no correction each fail. |
+| `KeyedFallbackLiveTests` | `[.braveAPI(.literal("invalid-key")), .braveHTML]`, with `braveAPI` excused. On results: `provider` is `braveHTML`, at least 3 hits, and `notes` has the refused-key note of `braveAPI` (`braveAPI: skipped, the API key was refused (HTTP <status>).`, today with status 422). On a recognized block of `braveHTML`: the correction has the refused-key part `braveAPI: the API key was refused (HTTP <status>).`. In both outcomes, the text `invalid-key` is not in the hits, the notes, or the correction. It needs no real key, thus it can pass on a computer with no keys. |
+| `WebRunCodeLiveTests` | A real `MultiTool` with `.withWeb(configuration: .keyless)` and no model. The snippet at the top of this document runs, with one added line after the search: `if (hits.correction) return hits;`. On results, it returns 1 to 3 pages, each with a title and content. On a block of both keyless providers, it returns the search, and the test checks that search with "The blocked provider rule", not as pages. The snippet of the top of this document returns `[]` for a blocked search, thus its output does not carry the correction, and the uncarried-return notice of `runCode` is correct for it: the snippet did not return the value that the model needs. |
 
 ### Level 3: one real-model scenario (existing `IntegrationTests/`)
 
@@ -620,8 +623,7 @@ capability follows the pattern of the sibling repositories.)
   runs the keyed live tests on a computer where the keys are set.
 - `DuckDuckGoHTMLLiveTests` runs in the normal integration job on each
   trigger. A challenge page obeys "The blocked provider rule" in Level 2: it
-  is a known issue when another keyless provider gives results, and a failure
-  when no provider gives results.
+  is a recognized block, and the test passes with the checks of the rule.
 
 ## Work items
 

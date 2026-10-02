@@ -55,16 +55,18 @@ private let mlxPackage = "mlx-swift-lm"
 /// enable condition, and `Web/LiveProviderSettingTests.swift` checks it with
 /// no real key. No other test reads the environment to decide if it runs.
 ///
-/// **The blocked provider rule.** By the user's decision of 2026-10-01 (card
-/// `^kghyac5`, web.md § "Testing", Level 2): a blocked search provider (HTTP
-/// 429, or a challenge page) does not fail a live web search test, on the
-/// condition that at least one provider gives results. When no provider gives
-/// results, the test fails. `Web/Support/BlockedProviderRule.swift` holds the
-/// one rule: it records the block as a known issue, and the test does its
-/// checks on the results of a keyless provider that the first search did not
-/// try. `Web/BlockedProviderRuleTests.swift` checks the rule with no network.
-/// The rule does not change a time limit, and it is not for the model
-/// scenarios.
+/// **The blocked provider rule.** By the user's decision of 2026-10-02 (card
+/// `^vn1899e`, web.md § "Testing", Level 2): "If the provider blocks, we
+/// managed to talk to it, didn't we." A block that the code recognizes (HTTP
+/// 429, or a challenge page) proves that the request reached the provider.
+/// Thus each live web search test passes on results, with the checks of the
+/// hits, or on a recognized block, with the checks of what the code controls:
+/// the correction reports each provider of the search in order, each blocked
+/// provider with its kind of block, and the result holds no hit. Each other
+/// outcome fails. `Web/Support/BlockedProviderRule.swift` holds the one rule,
+/// and `Web/BlockedProviderRuleTests.swift` checks it with no network. A block
+/// is not a skip and not a known issue. The rule sends no second search,
+/// does not change a time limit, and is not for the model scenarios.
 ///
 /// **No test checks the speed of the machine.** By the user's decision of
 /// 2026-10-01 (card `^tm4x2hp`, web.md § "Testing"): a time check in a test

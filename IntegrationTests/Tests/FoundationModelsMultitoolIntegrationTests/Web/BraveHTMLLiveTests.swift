@@ -9,11 +9,11 @@ import Testing
 /// comes from Brave. When Brave changes its markup, this suite fails. That
 /// failure is the signal that we want.
 ///
-/// When Brave blocks the request (HTTP 429, or a challenge page),
-/// ``BlockedProviderRule`` decides the case: the test records the block as a
-/// known issue, and does the same checks on the hits of a keyless provider
-/// that the first search did not try. When that provider gives no results
-/// too, the test fails.
+/// ``BlockedProviderRule`` decides the outcome. When Brave gives results, the
+/// test checks the hits. When Brave blocks the request (HTTP 429, or a
+/// challenge page), the request reached Brave: the test passes when the
+/// correction reports the block of `braveHTML` and the result holds no hit.
+/// Each other outcome fails the test.
 @Suite(
     "Live: the Brave results page gives stable hits",
     .serialized,

@@ -60,13 +60,13 @@ struct KeyedProviderLiveTests {
     }
 
     /// The shared test of one provider: `fromEnvironment()` has the
-    /// provider, ``LiveSearch/swiftQuery`` gives at least
-    /// ``LiveSearch/minimumHitCount`` hits from a provider of the search, and
-    /// no key value is in the result.
+    /// provider, and no key value is in the result.
     ///
-    /// The search obeys ``BlockedProviderRule``: when the provider is blocked
-    /// (HTTP 429, or a challenge page), the test records the block as a known
-    /// issue, and does the same checks on the hits of a keyless provider.
+    /// The search obeys ``BlockedProviderRule``. On results,
+    /// ``LiveSearch/swiftQuery`` gives at least ``LiveSearch/minimumHitCount``
+    /// hits from that provider. On a recognized block of the provider (HTTP
+    /// 429, or a challenge page), the request reached the provider, and the
+    /// test passes with the checks of the rule. Each other outcome fails.
     ///
     /// - Parameters:
     ///   - setting: The provider and its environment variables.
@@ -82,16 +82,15 @@ struct KeyedProviderLiveTests {
         let provider = try #require(
             configured.first { $0.name == setting.name }, setting.notConfiguredComment,
             sourceLocation: sourceLocation)
-        let search = try await BlockedProviderRule.search(
-            providers: [provider], environment: environment, sourceLocation: sourceLocation)
-        let result = search.result
+        let result = try await LiveSearch.search(providers: [provider], environment: environment)
 
-        LiveSearch.expectNoCorrection(result, sourceLocation: sourceLocation)
-        #expect(search.providers.map(\.name).contains(result.provider), sourceLocation: sourceLocation)
-        #expect(
-            result.results.count >= LiveSearch.minimumHitCount,
-            "expected at least \(LiveSearch.minimumHitCount) hits, got \(result.results.map(\.url))",
-            sourceLocation: sourceLocation)
+        BlockedProviderRule.expectResultsOrBlock(result, providers: [provider], sourceLocation: sourceLocation) {
+            #expect(result.provider == setting.name, sourceLocation: sourceLocation)
+            #expect(
+                result.results.count >= LiveSearch.minimumHitCount,
+                "expected at least \(LiveSearch.minimumHitCount) hits, got \(result.results.map(\.url))",
+                sourceLocation: sourceLocation)
+        }
         for key in setting.keyValues(in: environment) {
             LiveSearch.expectNoLeak(of: key, in: result, sourceLocation: sourceLocation)
         }

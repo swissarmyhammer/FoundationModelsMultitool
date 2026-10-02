@@ -439,8 +439,16 @@ comments:
     - review: clean — 0 findings; each removed item has a test that stays
     - the task stays in review: the 20-minute criterion needs a new CI run (the last run, 37048824337, measured 20 min 11 s before this iteration)
   timestamp: 2026-10-02T20:23:37.817346+00:00
-position_column: review
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m3z6sd0w7ys5gce01dwna44e
+  text: |-
+    ### finish iteration 4 — clean
+    - CI run 37061505863 (commit e2d35ff): the integration job took 17 min 06 s; the target is 20 min. Builds 4 min 46 s; tests 703 s for 74 tests (run 36951032341 before this card: approximately 41 min for the job, 2136 s for the tests).
+    - the job failed only on 7 live web-search tests: Brave sent HTTP 429 and DuckDuckGo sent a challenge page to the runner. No test that this card changed failed.
+    - every acceptance box is checked, and the last review (9996cd6) was clean; task moved to done
+  timestamp: 2026-10-02T21:02:11.996129+00:00
+position_column: done
+position_ordinal: ffff9580
 title: Make the full integration suite run in 20 minutes or less, with every test kept
 ---
 ## Goal
@@ -488,5 +496,5 @@ If the measured time after items 1 to 4 is more than 20 minutes, record the meas
 - [x] A 27B generation call after the first turn of a session feeds only the new tokens, or the card records the upstream cause and the upstream card.
 - [x] The discovery round concept is removed, and the doc comment of `DiscoveryGroupGrade` gives the measured reason. (Was: `discoveryRoundCount` is 1. Changed by the decision of the user on repeated tests.)
 - [x] Each model loads one time for each test process, or the card records why it cannot.
-- [ ] The integration job takes 20 minutes or less in a real CI run (record the run id), or the card records the measured time and the decision that is necessary.
+- [x] The integration job takes 20 minutes or less in a real CI run (record the run id), or the card records the measured time and the decision that is necessary. CI run 37061505863 (commit e2d35ff, 2026-10-02): the integration job took 17 min 06 s (20:41:50 to 20:58:56); builds 4 min 46 s; tests 703 s for 74 tests.
 - [x] `CIWorkflowTests` passes, `swift test` passes, and `swift build --build-tests --package-path IntegrationTests` passes. #ci

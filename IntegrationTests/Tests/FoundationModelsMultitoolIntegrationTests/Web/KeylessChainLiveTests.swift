@@ -9,11 +9,12 @@ import Testing
 /// assert which of the two gives the hits: a fallback to the second provider
 /// is correct behavior of the chain.
 ///
-/// The chain itself applies ``BlockedProviderRule``: it goes to the next
-/// provider after a block, thus a blocked provider does not fail this test
-/// when the other provider gives results. When no provider gives results, the
-/// correction fails the test. The chain tries each keyless provider, thus the
-/// rule has no provider to add, and the test sends one search.
+/// ``BlockedProviderRule`` decides the outcome. The chain goes to the next
+/// provider after a block, thus one blocked provider gives results from the
+/// other provider. When each provider blocks the request, the requests
+/// reached both providers: the test passes when the correction reports the
+/// block of `braveHTML`, then of `duckDuckGoHTML`, and the result holds no
+/// hit. Each other outcome fails. The test sends one search.
 @Suite(
     "Live: the keyless chain gives hits from a keyless provider",
     .serialized,
@@ -29,12 +30,14 @@ struct KeylessChainLiveTests {
 
     @Test("the keyless chain gives hits, and the provider is braveHTML or duckDuckGoHTML")
     func keylessChainGivesHits() async throws {
-        let result = try await LiveSearch.search(providers: WebConfiguration.keyless.providers)
+        let providers = WebConfiguration.keyless.providers
+        let result = try await LiveSearch.search(providers: providers)
 
-        LiveSearch.expectNoCorrection(result)
-        #expect(!result.results.isEmpty, "the keyless chain gave no hit")
-        #expect(
-            Self.keylessNames.contains(result.provider),
-            "the provider \(result.provider) is not one of \(Self.keylessNames.sorted())")
+        #expect(Set(providers.map(\.name)) == Self.keylessNames)
+        BlockedProviderRule.expectResultsOrBlock(result, providers: providers) {
+            #expect(
+                Self.keylessNames.contains(result.provider),
+                "the provider \(result.provider) is not one of \(Self.keylessNames.sorted())")
+        }
     }
 }

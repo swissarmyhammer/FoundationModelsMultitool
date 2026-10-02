@@ -112,11 +112,11 @@ enum LiveSearch {
 
     // MARK: The shared tests
 
-    /// The query test of one provider list: ``swiftQuery`` gives at least
+    /// The query test of one provider list. The search obeys
+    /// ``BlockedProviderRule``: on results, ``swiftQuery`` gives at least
     /// ``minimumHitCount`` hits, each hit URL is `https`, and a hit host is
-    /// ``swiftHost`` or is under it. A correction records one failure, and
-    /// the checks of the hits do not run. The search obeys
-    /// ``BlockedProviderRule``.
+    /// ``swiftHost`` or is under it. A recognized block passes with the
+    /// checks of the rule, and each other outcome records one failure.
     ///
     /// - Parameters:
     ///   - providers: The providers, in the order to try.
@@ -125,83 +125,48 @@ enum LiveSearch {
     static func expectSwiftHomePageHit(
         providers: [WebSearchProvider], sourceLocation: SourceLocation = #_sourceLocation
     ) async throws {
-        let result = try await BlockedProviderRule.search(
-            providers: providers, sourceLocation: sourceLocation
-        ).result
-        guard hasHits(result, sourceLocation: sourceLocation) else { return }
-        #expect(
-            result.results.count >= minimumHitCount,
-            "expected at least \(minimumHitCount) hits, got \(result.results.map(\.url))",
-            sourceLocation: sourceLocation)
-        for hit in result.results {
+        let result = try await search(providers: providers)
+        BlockedProviderRule.expectResultsOrBlock(result, providers: providers, sourceLocation: sourceLocation) {
             #expect(
-                URL(string: hit.url)?.scheme?.lowercased() == secureScheme,
-                "the hit URL \(hit.url) is not \(secureScheme)", sourceLocation: sourceLocation)
+                result.results.count >= minimumHitCount,
+                "expected at least \(minimumHitCount) hits, got \(result.results.map(\.url))",
+                sourceLocation: sourceLocation)
+            for hit in result.results {
+                #expect(
+                    URL(string: hit.url)?.scheme?.lowercased() == secureScheme,
+                    "the hit URL \(hit.url) is not \(secureScheme)", sourceLocation: sourceLocation)
+            }
+            let hosts = hosts(of: result)
+            #expect(
+                hosts.contains { isHost($0, under: swiftHost) },
+                "expected a hit on \(swiftHost), got the hosts \(hosts)", sourceLocation: sourceLocation)
         }
-        let hosts = hosts(of: result)
-        #expect(
-            hosts.contains { isHost($0, under: swiftHost) },
-            "expected a hit on \(swiftHost), got the hosts \(hosts)", sourceLocation: sourceLocation)
     }
 
-    /// The `site` test of one provider list: ``swiftQuery`` with the site
+    /// The `site` test of one provider list. The search obeys
+    /// ``BlockedProviderRule``: on results, ``swiftQuery`` with the site
     /// ``appleDeveloperSite`` gives hits, and each hit host is under
-    /// ``appleDomain``. A correction records one failure, and the checks of
-    /// the hits do not run. The search obeys ``BlockedProviderRule``.
+    /// ``appleDomain``. A recognized block passes with the checks of the
+    /// rule, and each other outcome records one failure.
     ///
     /// - Parameters:
     ///   - providers: The providers, in the order to try.
     ///   - sourceLocation: The location of the call, for the failure record.
-    /// - Throws: When the search gives no hit, or when the verb throws.
+    /// - Throws: When the verb throws. The verb must not throw.
     static func expectHitsOnAppleSite(
         providers: [WebSearchProvider], sourceLocation: SourceLocation = #_sourceLocation
     ) async throws {
-        let result = try await BlockedProviderRule.search(
-            providers: providers, site: appleDeveloperSite, sourceLocation: sourceLocation
-        ).result
-        guard hasHits(result, sourceLocation: sourceLocation) else { return }
-        try #require(!result.results.isEmpty, "the site search gave no hit", sourceLocation: sourceLocation)
-        for host in hosts(of: result) {
-            #expect(
-                isHost(host, under: appleDomain),
-                "the hit host \(host) is not under \(appleDomain)", sourceLocation: sourceLocation)
+        let result = try await search(providers: providers, site: appleDeveloperSite)
+        BlockedProviderRule.expectResultsOrBlock(result, providers: providers, sourceLocation: sourceLocation) {
+            for host in hosts(of: result) {
+                #expect(
+                    isHost(host, under: appleDomain),
+                    "the hit host \(host) is not under \(appleDomain)", sourceLocation: sourceLocation)
+            }
         }
     }
 
     // MARK: The checks
-
-    /// Records a failure when the result is a correction, with the text of
-    /// the correction.
-    ///
-    /// - Parameters:
-    ///   - result: The result of the `search` verb.
-    ///   - sourceLocation: The location of the call, for the failure record.
-    static func expectNoCorrection(
-        _ result: SearchResult, sourceLocation: SourceLocation = #_sourceLocation
-    ) {
-        #expect(
-            result.correction == nil, correctionComment(result.correction ?? ""),
-            sourceLocation: sourceLocation)
-    }
-
-    /// Tells if a result has hits to check, and records one failure when the
-    /// result is a correction.
-    ///
-    /// A correction has no hits, thus the caller does not run the checks of
-    /// the hits for it. The one failure has the comment
-    /// ``correctionComment(_:)``, thus the failure gives the exact text of the
-    /// correction.
-    ///
-    /// - Parameters:
-    ///   - result: The result of the `search` verb.
-    ///   - sourceLocation: The location of the call, for the failure record.
-    /// - Returns: `true` when the result is not a correction, thus the caller
-    ///   runs the checks of the hits. `false` when the result is a correction.
-    static func hasHits(_ result: SearchResult, sourceLocation: SourceLocation = #_sourceLocation) -> Bool {
-        guard let correction = result.correction else { return true }
-        Issue.record(correctionComment(correction), sourceLocation: sourceLocation)
-        return false
-    }
 
     /// Records one failure when a part of a result holds a secret text, for
     /// example an API key value.
@@ -221,14 +186,6 @@ enum LiveSearch {
         let texts = hitTexts + (result.notes ?? []) + [result.correction ?? ""]
         let leakCount = texts.filter { $0.contains(secret) }.count
         #expect(leakCount == 0, "the secret is in \(leakCount) parts of the result", sourceLocation: sourceLocation)
-    }
-
-    /// The comment of the failure that a correction records.
-    ///
-    /// - Parameter correction: The text of the correction.
-    /// - Returns: The comment, with the text of the correction at the end.
-    static func correctionComment(_ correction: String) -> Comment {
-        Comment(rawValue: "the search gave a correction: \(correction)")
     }
 
     /// The hosts of the hits of a result, in rank order.

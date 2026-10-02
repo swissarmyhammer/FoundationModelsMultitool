@@ -10,12 +10,13 @@ import Testing
 /// suite fails. That failure is the signal that we want.
 ///
 /// DuckDuckGo can serve its challenge page and not the results, after many
-/// requests in a short time. ``BlockedProviderRule`` decides that case: the
-/// test records the challenge page as a known issue, and does the same checks
-/// on the hits of a keyless provider that the first search did not try. When
-/// that provider gives no results too, the test fails. All other failures (a
-/// markup change, no results, a wrong host) still fail the test. A test does
-/// not retry.
+/// requests in a short time. ``BlockedProviderRule`` decides the outcome. When
+/// DuckDuckGo gives results, the test checks the hits. When DuckDuckGo blocks
+/// the request (a challenge page, or HTTP 429), the request reached
+/// DuckDuckGo: the test passes when the correction reports the block of
+/// `duckDuckGoHTML` and the result holds no hit. All other outcomes (a markup
+/// change, no results, a transport error, a wrong host) fail the test. A test
+/// does not retry.
 @Suite(
     "Live: the DuckDuckGo HTML results page gives stable hits",
     .serialized,
