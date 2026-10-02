@@ -72,6 +72,13 @@ comments:
     - no web failure from a blocked network address. No file edited in this step.
     - next: review.
   timestamp: 2026-10-02T00:40:51.745039+00:00
+- actor: claude-code
+  id: 01m3x0y1cpyt5xjx5b2e0z7h8a
+  text: |-
+    ### commit — changed
+    - evidence: 959b87d feat(web): state verb ranges in the schema and inject a fetch time limit clock. Base sha before the commit: 56379b8. One commit, because WebVerbArgumentTests.swift holds both parts. Card ^5pabcnw is in the same commit. Not pushed.
+    - next: review
+  timestamp: 2026-10-02T00:41:23.606786+00:00
 position_column: doing
 position_ordinal: '80'
 title: Put the bounds of the web verb integer arguments in their generation schemas
