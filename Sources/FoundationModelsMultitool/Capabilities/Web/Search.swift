@@ -85,8 +85,7 @@ extension Search {
 
     /// The bound on `count`: a result count in ``SearchArguments/countRange``.
     private static let countBound = BoundParameter(
-        parameterName: "count", typeDescription: "result count",
-        minimum: SearchArguments.countRange.lowerBound, maximum: SearchArguments.countRange.upperBound)
+        parameterName: "count", typeDescription: "result count", range: SearchArguments.countRange)
 
     /// The characters of a host name other than the ASCII letters and
     /// digits.

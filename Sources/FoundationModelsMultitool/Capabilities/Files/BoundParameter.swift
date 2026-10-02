@@ -47,6 +47,25 @@ struct BoundParameter {
         self.maximum = maximum
     }
 
+    /// Makes a bounded parameter from an inclusive range.
+    ///
+    /// A verb keeps the range of a parameter in one constant. The generation
+    /// guide of the argument and this bound both read that constant, thus the
+    /// schema and the corrective message cannot drift apart.
+    ///
+    /// - Parameters:
+    ///   - parameterName: The parameter name, as it appears in backticks in a
+    ///     corrective message.
+    ///   - typeDescription: The kind of value expected, as it reads in a
+    ///     corrective message.
+    ///   - range: The acceptable values. Its lower end is the minimum and its
+    ///     upper end is the maximum.
+    init(parameterName: String, typeDescription: String, range: ClosedRange<Int>) {
+        self.init(
+            parameterName: parameterName, typeDescription: typeDescription,
+            minimum: range.lowerBound, maximum: range.upperBound)
+    }
+
     /// The corrective message naming this parameter's valid, inclusive range.
     var correctiveMessage: String {
         let lead = "The `\(parameterName)` parameter must be a \(typeDescription)"

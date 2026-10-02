@@ -114,16 +114,14 @@ extension Read {
     private static let offsetBound = BoundParameter(
         parameterName: "offset",
         typeDescription: "1-based line number",
-        minimum: ReadArguments.offsetRange.lowerBound,
-        maximum: ReadArguments.offsetRange.upperBound
+        range: ReadArguments.offsetRange
     )
 
     /// The bound on `limit`: a line count in ``ReadArguments/limitRange``.
     private static let limitBound = BoundParameter(
         parameterName: "limit",
         typeDescription: "line count",
-        minimum: ReadArguments.limitRange.lowerBound,
-        maximum: ReadArguments.limitRange.upperBound
+        range: ReadArguments.limitRange
     )
 
     // MARK: Format names

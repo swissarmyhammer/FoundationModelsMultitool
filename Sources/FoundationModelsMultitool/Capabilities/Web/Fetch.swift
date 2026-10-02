@@ -137,14 +137,12 @@ extension Fetch {
     /// The bound on `maxCharacters`: a character count in
     /// ``FetchArguments/maxCharactersRange``.
     private static let maxCharactersBound = BoundParameter(
-        parameterName: "maxCharacters", typeDescription: "character count",
-        minimum: FetchArguments.maxCharactersRange.lowerBound, maximum: FetchArguments.maxCharactersRange.upperBound)
+        parameterName: "maxCharacters", typeDescription: "character count", range: FetchArguments.maxCharactersRange)
 
     /// The bound on `timeout`: a number of seconds in
     /// ``FetchArguments/timeoutRange``.
     private static let timeoutBound = BoundParameter(
-        parameterName: "timeout", typeDescription: "number of seconds",
-        minimum: FetchArguments.timeoutRange.lowerBound, maximum: FetchArguments.timeoutRange.upperBound)
+        parameterName: "timeout", typeDescription: "number of seconds", range: FetchArguments.timeoutRange)
 
     /// The URL schemes that the verb fetches.
     private static let fetchSchemes: Set<String> = ["http", "https"]
