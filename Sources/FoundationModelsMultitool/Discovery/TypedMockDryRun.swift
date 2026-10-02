@@ -94,9 +94,9 @@ enum TypedMockDryRun {
         in snippet: String,
         against entries: [APISurface.Entry],
         using interpreter: any Interpreter
-    ) -> String? {
+    ) async -> String? {
         do {
-            _ = try interpreter.run(code: "\(harness(for: entries))\n\(snippet)", installing: [])
+            _ = try await interpreter.run(code: "\(harness(for: entries))\n\(snippet)", installing: [])
             return nil
         } catch let error as InterpreterError {
             return error.message

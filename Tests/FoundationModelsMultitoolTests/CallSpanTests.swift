@@ -184,7 +184,11 @@ struct CallSpanTests {
         }
     }
 
-    @Test("a tools.* call that throws sets the error status on its span")
+    /// The key that `TracedCall.run` of FoundationModelsExtras uses for the type
+    /// of the error of a failed call.
+    private static let errorTypeKey = "error.type"
+
+    @Test("a tools.* call that throws sets the error status and the error type on its span, and records no error event")
     func thrownErrorSetsTheErrorStatus() async throws {
         let multiTool = try Self.makeMultiTool()
         try await TelemetryCapture.run(forbidding: [Self.argumentMarker]) { context in
@@ -196,7 +200,10 @@ struct CallSpanTests {
 
             let dispatch = try #require(Self.spans(.toolsDispatch, in: context).first)
             #expect(dispatch.status?.code == .error)
-            #expect(dispatch.errors.count == 1)
+            // The span has no error event, because the description of an error can hold content.
+            #expect(dispatch.errors.isEmpty)
+            #expect(
+                dispatch.attributes.get(Self.errorTypeKey) == .string("FoundationModelsMultitoolTests.ThrowingToolError"))
             #expect(Self.attribute(.outcome, of: dispatch) == Self.outcomeAttribute(.threw))
         }
     }

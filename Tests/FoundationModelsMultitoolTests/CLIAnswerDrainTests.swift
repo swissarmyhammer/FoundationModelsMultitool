@@ -190,6 +190,29 @@ struct CLIAnswerDrainTests {
         #expect(answer.reply == "NYC is warmest")
     }
 
+    @Test("a reasoning stop is one output line and leaves the answer as it is")
+    func reasoningStopIsPrinted() async throws {
+        let output = OutputCollector()
+        let stop = ReasoningStop(
+            reasoningTokens: 3_000,
+            limit: 2_048,
+            passFinishReason: .reasoningTokenLimit,
+            detection: RepetitionDetection(),
+            recovery: 1
+        )
+        let answer = try await CLIRunner.drainAnswer(
+            scriptedEvents([
+                .textDelta("NYC"), .reasoningStopped(stop), .textDelta(" is warmest"), answered("NYC is warmest"),
+            ]),
+            output: output.append
+        )
+
+        // The line is the one-line report of Router, for the reason the
+        // repetition test above gives.
+        #expect(output.lines == [stop.description])
+        #expect(answer.reply == "NYC is warmest")
+    }
+
     @Test("a background run that settles is reported under its tool, its token and its outcome")
     func runSettlementIsPrinted() async throws {
         let output = OutputCollector()

@@ -34,8 +34,8 @@ struct TypedMockDryRunTests {
     /// - Parameter snippet: the JavaScript to dry-run.
     /// - Returns: the first failure message, or `nil` when the snippet ran
     ///   clean.
-    static func failure(for snippet: String) throws -> String? {
-        failure(for: snippet, against: try surface().entries)
+    static func failure(for snippet: String) async throws -> String? {
+        await failure(for: snippet, against: try surface().entries)
     }
 
     /// Runs `snippet` against the typed mocks of `entries`, in an interpreter
@@ -46,8 +46,9 @@ struct TypedMockDryRunTests {
     ///   - entries: the catalog entries to mock.
     /// - Returns: the first failure message, or `nil` when the snippet ran
     ///   clean.
-    static func failure(for snippet: String, against entries: [APISurface.Entry]) -> String? {
-        TypedMockDryRun.apiUsageFailure(in: snippet, against: entries, using: JSCInterpreter.makeWithHeldWatchdog())
+    static func failure(for snippet: String, against entries: [APISurface.Entry]) async -> String? {
+        await TypedMockDryRun.apiUsageFailure(
+            in: snippet, against: entries, using: JSCInterpreter.makeWithHeldWatchdog())
     }
 
     /// Two typed entries: `notes.addNote`, whose result is a parsed JSON
@@ -91,8 +92,8 @@ struct TypedMockDryRunTests {
     // MARK: - False failures: idioms a correct snippet uses, which must pass clean
 
     @Test("a chained call passing one tool's returned field as the next tool's argument passes clean")
-    func chainedCallThroughAReturnedFieldPassesClean() throws {
-        let failure = try Self.failure(
+    func chainedCallThroughAReturnedFieldPassesClean() async throws {
+        let failure = try await Self.failure(
             for: """
             const trip = await tools.getCities({});
             const temp = await tools.getTemperature({ city: trip.cities[0] });
@@ -103,8 +104,8 @@ struct TypedMockDryRunTests {
     }
 
     @Test("passing a whole mocked result where its own declared shape is the parameter passes clean")
-    func mockPassedWhereItsOwnDeclaredShapeIsExpectedPassesClean() throws {
-        let failure = try Self.failure(
+    func mockPassedWhereItsOwnDeclaredShapeIsExpectedPassesClean() async throws {
+        let failure = try await Self.failure(
             for: """
             const trip = await tools.getCities({});
             return await tools.summarizeTrip({ trip: trip });
@@ -114,8 +115,8 @@ struct TypedMockDryRunTests {
     }
 
     @Test("awaiting several calls through Promise.all passes clean")
-    func promiseAllOverSeveralCallsPassesClean() throws {
-        let failure = try Self.failure(
+    func promiseAllOverSeveralCallsPassesClean() async throws {
+        let failure = try await Self.failure(
             for: """
             const both = await Promise.all([tools.getCities({}), tools.getCities({})]);
             return both[0].cities.length + both[1].cities.length;
@@ -125,8 +126,8 @@ struct TypedMockDryRunTests {
     }
 
     @Test("interpolating a mocked scalar into a template literal passes clean")
-    func templateLiteralInterpolationPassesClean() throws {
-        let failure = try Self.failure(
+    func templateLiteralInterpolationPassesClean() async throws {
+        let failure = try await Self.failure(
             for: """
             const trip = await tools.getCities({});
             return `first ${trip.cities[0]} of ${trip.cities.length}`;
@@ -136,8 +137,8 @@ struct TypedMockDryRunTests {
     }
 
     @Test("destructuring and spreading a mocked array passes clean")
-    func arrayDestructuringAndSpreadPassClean() throws {
-        let failure = try Self.failure(
+    func arrayDestructuringAndSpreadPassClean() async throws {
+        let failure = try await Self.failure(
             for: """
             const trip = await tools.getCities({});
             const [first] = trip.cities;
@@ -151,8 +152,8 @@ struct TypedMockDryRunTests {
     }
 
     @Test("JSON.stringify of a mocked object passes clean")
-    func jsonStringifyOfAMockedObjectPassesClean() throws {
-        let failure = try Self.failure(
+    func jsonStringifyOfAMockedObjectPassesClean() async throws {
+        let failure = try await Self.failure(
             for: """
             const trip = await tools.getCities({});
             return JSON.stringify(trip);
@@ -162,11 +163,11 @@ struct TypedMockDryRunTests {
     }
 
     @Test("the mock's own type tag is hidden: a mocked object enumerates only its declared fields")
-    func mockTypeTagIsNotEnumerable() throws {
+    func mockTypeTagIsNotEnumerable() async throws {
         // The snippet throws when the tag leaks into `Object.keys`, so a `nil`
         // failure here is the assertion that it stays hidden — a leaked tag
         // would also corrupt every `JSON.stringify` and object spread.
-        let failure = try Self.failure(
+        let failure = try await Self.failure(
             for: """
             const trip = await tools.getCities({});
             const keys = Object.keys(trip);
@@ -180,8 +181,8 @@ struct TypedMockDryRunTests {
     }
 
     @Test("length, map, and filter on a mocked array pass clean")
-    func arrayProtocolMembersPassClean() throws {
-        let failure = try Self.failure(
+    func arrayProtocolMembersPassClean() async throws {
+        let failure = try await Self.failure(
             for: """
             const trip = await tools.getCities({});
             const upper = trip.cities.map(function (city) { return city.toUpperCase(); });
@@ -193,8 +194,8 @@ struct TypedMockDryRunTests {
     }
 
     @Test("an argument object carrying extra properties beyond the declared ones passes clean")
-    func extraArgumentPropertiesPassClean() throws {
-        let failure = try Self.failure(
+    func extraArgumentPropertiesPassClean() async throws {
+        let failure = try await Self.failure(
             for: """
             const temp = await tools.getTemperature({ city: "PDX", note: "ignored", depth: { more: 1 } });
             return temp.tempC;
@@ -204,16 +205,17 @@ struct TypedMockDryRunTests {
     }
 
     @Test("omitting an optional declared argument passes clean, and supplying it passes clean")
-    func optionalArgumentIsOptionalBothWays() throws {
-        #expect(try Self.failure(for: "return (await tools.getForecast({ city: \"PDX\" })).summary;") == nil)
+    func optionalArgumentIsOptionalBothWays() async throws {
+        #expect(try await Self.failure(for: "return (await tools.getForecast({ city: \"PDX\" })).summary;") == nil)
         #expect(
-            try Self.failure(for: "return (await tools.getForecast({ city: \"PDX\", days: \"7\" })).summary;") == nil
+            try await Self.failure(for: "return (await tools.getForecast({ city: \"PDX\", days: \"7\" })).summary;")
+                == nil
         )
     }
 
     @Test("reading an optional declared field on a result passes clean")
-    func readingAnOptionalDeclaredResultFieldPassesClean() throws {
-        let failure = try Self.failure(
+    func readingAnOptionalDeclaredResultFieldPassesClean() async throws {
+        let failure = try await Self.failure(
             for: """
             const forecast = await tools.getForecast({ city: "PDX" });
             return { summary: forecast.summary, advisory: forecast.advisory };
@@ -223,8 +225,8 @@ struct TypedMockDryRunTests {
     }
 
     @Test("a grouped tools.<group>.<name> path is mocked under its qualified path")
-    func groupedPathIsMocked() throws {
-        let failure = try Self.failure(
+    func groupedPathIsMocked() async throws {
+        let failure = try await Self.failure(
             for: """
             const issues = await tools.github.getIssueCount({ repo: "swift" });
             return issues.count;
@@ -236,46 +238,46 @@ struct TypedMockDryRunTests {
     // MARK: - True failures: each with the specific message fed back
 
     @Test("an unknown tools.* path fails")
-    func unknownPathFails() throws {
-        let failure = try #require(try Self.failure(for: "return await tools.getItinerary({});"))
+    func unknownPathFails() async throws {
+        let failure = try #require(try await Self.failure(for: "return await tools.getItinerary({});"))
         #expect(failure.contains("getItinerary"))
     }
 
     @Test("passing more than one argument fails, naming the arity")
-    func wrongArityFails() throws {
+    func wrongArityFails() async throws {
         let failure = try #require(
-            try Self.failure(for: "return await tools.getTemperature({ city: \"PDX\" }, \"extra\");")
+            try await Self.failure(for: "return await tools.getTemperature({ city: \"PDX\" }, \"extra\");")
         )
         #expect(failure.contains("exactly one arguments object"))
         #expect(failure.contains("tools.getTemperature"))
     }
 
     @Test("passing a bare string where an arguments object is declared fails")
-    func nonObjectArgumentFails() throws {
-        let failure = try #require(try Self.failure(for: "return await tools.getTemperature(\"PDX\");"))
+    func nonObjectArgumentFails() async throws {
+        let failure = try #require(try await Self.failure(for: "return await tools.getTemperature(\"PDX\");"))
         #expect(failure.contains("tools.getTemperature"))
         #expect(failure.contains("{ city: string }"))
         #expect(failure.contains("string"))
     }
 
     @Test("omitting a required argument field fails, naming the field")
-    func missingRequiredArgumentFieldFails() throws {
-        let failure = try #require(try Self.failure(for: "return await tools.getTemperature({});"))
+    func missingRequiredArgumentFieldFails() async throws {
+        let failure = try #require(try await Self.failure(for: "return await tools.getTemperature({});"))
         #expect(failure.contains("missing the required field \"city\""))
     }
 
     @Test("passing the wrong type for a declared argument field fails, naming the field and the declared type")
-    func wrongArgumentFieldTypeFails() throws {
-        let failure = try #require(try Self.failure(for: "return await tools.getTemperature({ city: 7 });"))
+    func wrongArgumentFieldTypeFails() async throws {
+        let failure = try #require(try await Self.failure(for: "return await tools.getTemperature({ city: 7 });"))
         #expect(failure.contains("city"))
         #expect(failure.contains("must be string"))
         #expect(failure.contains("received number"))
     }
 
     @Test("passing a mocked object where a string field is declared fails")
-    func mockPassedWhereAScalarIsDeclaredFails() throws {
+    func mockPassedWhereAScalarIsDeclaredFails() async throws {
         let failure = try #require(
-            try Self.failure(
+            try await Self.failure(
                 for: """
                 const trip = await tools.getCities({});
                 return await tools.getTemperature({ city: trip });
@@ -286,9 +288,9 @@ struct TypedMockDryRunTests {
     }
 
     @Test("reading a field the declared result type does not have fails, naming the declared type")
-    func undeclaredResultFieldReadFails() throws {
+    func undeclaredResultFieldReadFails() async throws {
         let failure = try #require(
-            try Self.failure(
+            try await Self.failure(
                 for: """
                 const trip = await tools.getCities({});
                 return trip.itinerary;
@@ -300,9 +302,9 @@ struct TypedMockDryRunTests {
     }
 
     @Test("treating an object result as the array it contains fails — the recorded getTrip/cities mistake")
-    func treatingAnObjectResultAsAnArrayFails() throws {
+    func treatingAnObjectResultAsAnArrayFails() async throws {
         let failure = try #require(
-            try Self.failure(
+            try await Self.failure(
                 for: """
                 const trip = await tools.getCities({});
                 return trip.map(function (city) { return city; });
@@ -314,9 +316,9 @@ struct TypedMockDryRunTests {
     }
 
     @Test("reading a property off a call that was never awaited fails, asking for await")
-    func forgottenAwaitFails() throws {
+    func forgottenAwaitFails() async throws {
         let failure = try #require(
-            try Self.failure(
+            try await Self.failure(
                 for: """
                 const trip = tools.getCities({});
                 return trip.cities;
@@ -328,8 +330,10 @@ struct TypedMockDryRunTests {
     }
 
     @Test("passing the wrong element type inside a declared array argument fails")
-    func wrongArrayElementTypeFails() throws {
-        let failure = try #require(try Self.failure(for: "return await tools.summarizeTrip({ trip: { cities: [7] } });"))
+    func wrongArrayElementTypeFails() async throws {
+        let failure = try #require(
+            try await Self.failure(for: "return await tools.summarizeTrip({ trip: { cities: [7] } });")
+        )
         #expect(failure.contains("must be string"))
     }
 
@@ -339,11 +343,11 @@ struct TypedMockDryRunTests {
     @Test(
         "a snippet that cannot finish against instant mocks fails rather than passing",
         .timeLimit(TestHangGuard.timeLimit))
-    func nonTerminatingSnippetFails() throws {
+    func nonTerminatingSnippetFails() async throws {
         let clock = GatedClock()
         clock.open()
         let failure = try #require(
-            TypedMockDryRun.apiUsageFailure(
+            await TypedMockDryRun.apiUsageFailure(
                 in: "while (true) {}",
                 against: try Self.surface().entries,
                 using: JSCInterpreter(timeLimit: Self.dryRunTimeLimit, watchdogClock: clock)
@@ -360,8 +364,8 @@ struct TypedMockDryRunTests {
     // MARK: - Parsed JSON values, which carry no declared structure
 
     @Test("reading a field of a parsed JSON result passes clean")
-    func jsonResultFieldReadPassesClean() throws {
-        let failure = try Self.failure(
+    func jsonResultFieldReadPassesClean() async throws {
+        let failure = try await Self.failure(
             for: """
             const n = await tools.notes.addNote({ title: "x" });
             return n.id;
@@ -372,8 +376,8 @@ struct TypedMockDryRunTests {
     }
 
     @Test("filtering a parsed JSON result as an array, and reading its length, passes clean")
-    func jsonResultFiltersAsAnArray() throws {
-        let failure = try Self.failure(
+    func jsonResultFiltersAsAnArray() async throws {
+        let failure = try await Self.failure(
             for: """
             const notes = await tools.notes.listNote({});
             return notes.filter((n) => n.id).length;
@@ -384,8 +388,8 @@ struct TypedMockDryRunTests {
     }
 
     @Test("iterating a parsed JSON result with for...of, and passing a field of each element to a verb, passes clean")
-    func jsonResultIteratesAsAnArray() throws {
-        let failure = try Self.failure(
+    func jsonResultIteratesAsAnArray() async throws {
+        let failure = try await Self.failure(
             for: """
             const notes = await tools.notes.listNote({});
             for (const note of notes) { await tools.notes.tagNote({ id: note.id, tag: "due" }); }
@@ -396,8 +400,8 @@ struct TypedMockDryRunTests {
     }
 
     @Test("calling a string method on a field of a parsed JSON element passes clean")
-    func jsonElementFieldMethodCallPassesClean() throws {
-        let failure = try Self.failure(
+    func jsonElementFieldMethodCallPassesClean() async throws {
+        let failure = try await Self.failure(
             for: """
             const notes = await tools.notes.listNote({});
             const hits = notes.filter((note) => note.body.includes("Friday"));
@@ -409,8 +413,8 @@ struct TypedMockDryRunTests {
     }
 
     @Test("passing an object where a parsed JSON argument is declared passes clean")
-    func jsonArgumentAcceptsAnObject() throws {
-        let failure = try Self.failure(
+    func jsonArgumentAcceptsAnObject() async throws {
+        let failure = try await Self.failure(
             for: "return await tools.store({ payload: { a: 1 } });",
             against: Self.jsonEntries()
         )
@@ -418,9 +422,9 @@ struct TypedMockDryRunTests {
     }
 
     @Test("passing a string where a parsed JSON argument is declared fails, naming the declared type")
-    func jsonArgumentRejectsAScalar() throws {
+    func jsonArgumentRejectsAScalar() async throws {
         let failure = try #require(
-            try Self.failure(for: "return await tools.store({ payload: \"x\" });", against: Self.jsonEntries())
+            try await Self.failure(for: "return await tools.store({ payload: \"x\" });", against: Self.jsonEntries())
         )
         #expect(failure.contains("must be object"))
     }

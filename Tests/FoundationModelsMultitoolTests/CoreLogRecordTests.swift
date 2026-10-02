@@ -150,7 +150,7 @@ struct CoreLogRecordTests {
         let code = "return '\(Self.sourceMarker)'.length;"
 
         let records = try await TelemetryCapture.run(forbidding: [Self.sourceMarker]) { context in
-            _ = try JSCInterpreter.makeWithHeldWatchdog().run(code: code, installing: [])
+            _ = try await JSCInterpreter.makeWithHeldWatchdog().run(code: code, installing: [])
             return context.logRecords
         }
 
@@ -168,8 +168,8 @@ struct CoreLogRecordTests {
     @Test("a snippet that throws logs its end with the error type, and not the text of the error")
     func throwingSnippetLogsItsEnd() async throws {
         let records = try await TelemetryCapture.run(forbidding: [Self.errorMarker]) { context in
-            #expect(throws: InterpreterError.self) {
-                try JSCInterpreter.makeWithHeldWatchdog().run(
+            await #expect(throws: InterpreterError.self) {
+                try await JSCInterpreter.makeWithHeldWatchdog().run(
                     code: "throw new Error('\(Self.errorMarker)');", installing: [])
             }
             return context.logRecords

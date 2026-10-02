@@ -212,7 +212,7 @@ struct MCPCapabilityTests {
             #expect(feedback.contains(entry.block), "feedback was: \(feedback)")
             #expect(feedback.contains("Example: \(entry.qualifiedExample)"))
             #expect(entry.qualifiedExample.hasPrefix("await tools.\(path)("))
-            let dryRunFailure = TypedMockDryRun.apiUsageFailure(
+            let dryRunFailure = await TypedMockDryRun.apiUsageFailure(
                 in: entry.qualifiedExample,
                 against: [entry],
                 using: JSCInterpreter.makeWithHeldWatchdog())

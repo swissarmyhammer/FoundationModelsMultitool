@@ -31,12 +31,11 @@ import FoundationModelsExtras
 ///   number of sessions concurrently without cross-routing (see
 ///   `RunBinding`), which is exactly the property a fork would otherwise have
 ///   to buy by copying.
-/// - **The other reference-typed members are shared on purpose too.** A fork
-///   keeps the one `interpreter`, and `liveContexts` counts the live contexts of
-///   *that* interpreter. Handing a fork a fresh counter would let every fork
-///   open a full `configuration.liveContextLimit` worth of suspended contexts
-///   on the same sandbox, which is the pile-up the cap exists to prevent.
+/// - **The interpreter keeps no per-run state.** A fork would keep the one
+///   `interpreter`, and each `run` of it makes a sandbox and a job queue of
+///   its own (see `JSCInterpreter`), so two sessions that share it never
+///   share a run.
 ///
 /// A real `forked()` would therefore have to copy a box whose whole job is to
-/// be shared, and split a counter whose whole job is to be shared.
+/// be shared.
 extension MultiTool: ForkableTool {}

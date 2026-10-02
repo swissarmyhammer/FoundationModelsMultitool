@@ -3,8 +3,6 @@ import FoundationModels
 import FoundationModelsExtras
 import FoundationModelsMetadataRegistry
 import Logging
-import Metrics
-import os
 import Tracing
 
 extension MultiTool {
@@ -307,7 +305,8 @@ public struct RunCodeArguments {
 ///    for a standalone tool, nested `tools.<group>.<name>` for a grouped
 ///    one — see "tools.* glue" below;
 /// 2. runs the glue followed by the snippet in a fresh `Interpreter` sandbox
-///    off the calling thread (see "Off-cooperative-thread dispatch"), with
+///    as jobs on an event loop, so a snippet that waits holds no thread
+///    (see "Running the snippet"), with
 ///    `help()`/`docs()` and the five ambient globals — `status()`,
 ///    `cancel()`, `elicit()`, `notify()`, `progress()`, see
 ///    `MultiTool+SandboxGlobals.swift` — also installed, together with the
@@ -382,10 +381,6 @@ public struct MultiTool: Tool {
     /// it (see `MultiTool+Background.swift`).
     let configuration: MultiToolConfiguration
 
-    /// How many of this tool's `runCode` contexts are live right now, capped
-    /// at `configuration.liveContextLimit` — see ``LiveContextCounter``.
-    private let liveContexts: LiveContextCounter
-
     /// The sandbox this tool runs every snippet in. `any Interpreter` (not
     /// `JSCInterpreter` directly) so a test can substitute a fake — matching
     /// `Interpreter`'s own stated purpose ("the engine is swappable without
@@ -442,7 +437,7 @@ public struct MultiTool: Tool {
     ///     expose as `tools.*`, and everything precomputed from them. Shared
     ///     with the `searchTools` mounted beside this tool, when there is one.
     ///   - configuration: the hardening knobs — the work clock's ceiling, the
-    ///     live-context cap, the return and console caps — this tool
+    ///     inline settle grace, the return and console caps — this tool
     ///     enforces. Defaults to `MultiToolConfiguration.default`. An
     ///     explicitly supplied `limits` wins over the value derived from it;
     ///     an explicitly supplied `interpreter` does NOT, and is still armed
@@ -473,7 +468,6 @@ public struct MultiTool: Tool {
     ) {
         self.holder = holder
         self.configuration = configuration
-        self.liveContexts = LiveContextCounter()
         // One arming path for every sandbox this tool runs, injected or
         // built here: the configured ceiling always wins, so a caller who
         // passes a `JSCInterpreter()` never silently gets that interpreter's
@@ -520,10 +514,9 @@ public struct MultiTool: Tool {
     /// went on to do, so the engine settles this run as `.lost` — see
     /// ``LostRunRecord``.
     ///
-    /// A call that would push this tool past `configuration
-    /// .liveContextLimit` never reaches the sandbox at all: it renders the
-    /// same repairable error text instead, naming the cap and the three
-    /// globals that collect a background run (see ``LiveContextCounter``).
+    /// No number limits how many calls run at the same time. A snippet that
+    /// waits for a `tools.*` call holds no thread, only its context in memory
+    /// (see the event-loop documentation of `JSCInterpreter`).
     ///
     /// - Parameter arguments: the snippet to run.
     /// - Returns: the rendered `runCode` result — the snippet's return
@@ -551,18 +544,13 @@ public struct MultiTool: Tool {
 
     /// Runs one `runCode` call, inside the span ``call(arguments:)`` opened.
     ///
-    /// Split out so the span wraps the *whole* call, `liveContexts` claim
-    /// included: a call refused at the cap, or one blocked before it ever
-    /// reaches the sandbox, has to be as visible as one that reaches the
-    /// interpreter.
+    /// Split out so the span wraps the *whole* call: a call cancelled before
+    /// it ever reaches the sandbox has to be as visible as one that reaches
+    /// the interpreter.
     ///
     /// Returns and throws what ``call(arguments:)`` does.
     private func runSnippet(arguments: RunCodeArguments) async throws -> String {
         try Task.checkCancellation()
-        guard liveContexts.claim(upTo: configuration.liveContextLimit) else {
-            return ResultRenderer.render(Self.liveContextCapError(limit: configuration.liveContextLimit))
-        }
-        defer { liveContexts.release() }
         // Read one time, here, and kept to the end of this run: a registry
         // staged on the holder is applied at the next submission boundary, and
         // "an in-flight run keeps the registry that it started with" — see
@@ -663,19 +651,39 @@ public struct MultiTool: Tool {
         return ledger.notice(forReturnValue: returnValue)
     }
 
-    // MARK: - Off-cooperative-thread dispatch
+    // MARK: - Running the snippet
 
     /// Runs one snippet and captures its outcome instead of throwing it, so
     /// `call(arguments:)` can flush the invocation's notice chain on both the
     /// success and the failure path before deciding what to hand back.
     ///
+    /// The call awaits the run directly. `Interpreter.run` is `async`, and a
+    /// run that waits for a `tools.*` call holds no thread (see the
+    /// event-loop documentation of `JSCInterpreter`), so no bridge to a
+    /// dispatch queue stands between this call and the run.
+    ///
+    /// Cancelling the `Task` running `call(arguments:)` reaches the run
+    /// through the cancellation of this task, and reaches every inner
+    /// `tools.*` call of the run that is in flight at once, through
+    /// `inFlight` (see ``InFlightInnerCalls`` for why).
+    ///
     /// A cancelled call answers `CancellationError` whatever the snippet did
     /// once the cancellation reached it. The cancellation reaches the inner
-    /// `tools.*` calls first (see ``InFlightInnerCalls``), and a snippet that
-    /// catches the rejection of one — or that fails on it — can finish with
-    /// a value or a repairable error before the watchdog reads the flag.
-    /// Neither is the answer of a cancelled call: `call(arguments:)` promises
-    /// that a cancellation "always propagates unchanged".
+    /// `tools.*` calls first, and a snippet that catches the rejection of
+    /// one — or that fails on it — can finish with a value or a repairable
+    /// error before the run reads the cancellation. Neither is the answer of
+    /// a cancelled call: `call(arguments:)` promises that a cancellation
+    /// "always propagates unchanged".
+    ///
+    /// - Parameters:
+    ///   - code: the JavaScript source to run.
+    ///   - installing: host functions to expose as globals for this run only.
+    ///   - installingAsync: asynchronous host functions to expose as globals
+    ///     for this run only.
+    ///   - interpreter: the sandbox to run the snippet in.
+    ///   - inFlight: the inner `tools.*` calls of this run, cancelled with it.
+    /// - Returns: the outcome of the run, or `CancellationError` when the
+    ///   calling `Task` was cancelled.
     private static func runCapturingOutcome(
         code: String,
         installing: [HostFunction],
@@ -686,129 +694,17 @@ public struct MultiTool: Tool {
         let outcome: Result<InterpreterResult, Error>
         do {
             outcome = .success(
-                try await run(
-                    code: code,
-                    installing: installing,
-                    installingAsync: installingAsync,
-                    using: interpreter,
-                    cancelling: inFlight
-                )
+                try await withTaskCancellationHandler {
+                    try await interpreter.run(code: code, installing: installing, installingAsync: installingAsync)
+                } onCancel: {
+                    inFlight.cancelAll()
+                }
             )
         } catch {
             outcome = .failure(error)
         }
         guard !Task.isCancelled else { return .failure(CancellationError()) }
         return outcome
-    }
-
-    /// Runs `interpreter.run(code:installing:)` — a synchronous, blocking
-    /// call — without blocking the calling `async` context's own
-    /// cooperative-pool thread for its duration.
-    ///
-    /// `Interpreter.run` already guarantees it never runs on the caller's
-    /// thread, by dispatching internally onto the run's own dedicated worker
-    /// queue with `DispatchQueue.sync`. But calling that *synchronously* from
-    /// here would still tie up whichever cooperative-pool thread is running
-    /// this `async` `call(arguments:)` for the run's entire duration.
-    /// Wrapping it in `withCheckedThrowingContinuation` and dispatching onto
-    /// a plain, elastic GCD global queue instead means this `async` function
-    /// *suspends* — freeing its cooperative-pool thread for other work —
-    /// rather than *blocks* while the snippet runs. It is the second,
-    /// independent half of the same "never block the caller" principle
-    /// `JSCInterpreter` established for the interpreter's own worker thread,
-    /// applied here to the tool-call boundary above it.
-    ///
-    /// It also threads this `async` context's own `Task` cancellation into
-    /// the interpreter's `isCancelled` hook, so cancelling the `Task` running
-    /// `call(arguments:)` reaches all the way into the running snippet rather
-    /// than only being observed after it finishes — and into every inner
-    /// `tools.*` call of the run that is in flight, at once, through
-    /// `inFlight` (see ``InFlightInnerCalls`` for why the hook alone is not
-    /// enough).
-    ///
-    /// - Parameters:
-    ///   - code: the JavaScript source to run.
-    ///   - installing: host functions to expose as globals for this run only.
-    ///   - installingAsync: asynchronous host functions to expose as globals
-    ///     for this run only.
-    ///   - interpreter: the sandbox to run the snippet in.
-    ///   - inFlight: the inner `tools.*` calls of this run, cancelled with it.
-    /// - Throws: `CancellationError` if the calling `Task` is cancelled
-    ///   before or during the run; otherwise whatever
-    ///   `interpreter.run(code:installing:installingAsync:isCancelled:)`
-    ///   itself throws.
-    private static func run(
-        code: String,
-        installing: [HostFunction],
-        installingAsync: [AsyncHostFunction],
-        using interpreter: any Interpreter,
-        cancelling inFlight: InFlightInnerCalls
-    ) async throws -> InterpreterResult {
-        // Lock-protected (not a plain `Bool`) for the same reason
-        // `JSCInterpreter`'s own `WatchdogState` is: `onCancel` below can run
-        // concurrently with the polling read `isCancelled` performs from the
-        // interpreter's worker thread.
-        let cancelledBox = OSAllocatedUnfairLock(initialState: false)
-        return try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation { continuation in
-                dispatchRun(
-                    code: code,
-                    installing: installing,
-                    installingAsync: installingAsync,
-                    using: interpreter,
-                    cancelledBox: cancelledBox,
-                    continuation: continuation
-                )
-            }
-        } onCancel: {
-            cancelledBox.withLock { $0 = true }
-            inFlight.cancelAll()
-        }
-    }
-
-    /// The GCD-queue half of `run(code:installing:installingAsync:using:)`'s
-    /// bridge: performs the actual blocking `interpreter.run` off the
-    /// cooperative pool and settles `continuation` with its outcome. Pulled
-    /// out of `run` itself so that function's cancellation-handler and
-    /// continuation nesting does not also have to carry the dispatch-queue
-    /// and do-catch levels below it.
-    ///
-    /// `cancelledBox` is polled as `interpreter.run`'s `isCancelled` hook,
-    /// and `run(code:installing:installingAsync:using:)`'s `onCancel` is what
-    /// flips it to `true`.
-    ///
-    /// The GCD queue has no task-local value. Thus this function reads the
-    /// logger and the metrics factory of the calling task first, and binds
-    /// them again on the queue, so that the interpreter writes its records to
-    /// the logger of the `runCode` call and records its run to the factory of
-    /// that call.
-    private static func dispatchRun(
-        code: String,
-        installing: [HostFunction],
-        installingAsync: [AsyncHostFunction],
-        using interpreter: any Interpreter,
-        cancelledBox: OSAllocatedUnfairLock<Bool>,
-        continuation: CheckedContinuation<InterpreterResult, Error>
-    ) {
-        let logger = MultitoolTelemetry.logger
-        let metricsFactory = MetricsSystem.factory
-        DispatchQueue.global(qos: .userInitiated).async {
-            do {
-                let result = try MultitoolTelemetry.$boundLogger.withValue(logger) {
-                    try withMetricsFactory(metricsFactory) {
-                        try interpreter.run(
-                            code: code,
-                            installing: installing,
-                            installingAsync: installingAsync,
-                            isCancelled: { cancelledBox.withLock { $0 } }
-                        )
-                    }
-                }
-                continuation.resume(returning: result)
-            } catch {
-                continuation.resume(throwing: error)
-            }
-        }
     }
 
     // MARK: - tools.* glue

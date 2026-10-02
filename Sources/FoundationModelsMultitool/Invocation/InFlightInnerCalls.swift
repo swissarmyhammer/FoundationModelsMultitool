@@ -6,22 +6,21 @@ import Synchronization
 /// **The gap this closes.** The JS bridge runs each `tools.*` call in a
 /// `Task` of its own, started from a JSC callback outside every task tree
 /// (see `RunBinding`). Cancelling the `Task` that runs `MultiTool.call`
-/// therefore reaches the snippet — the interpreter's watchdog polls the
-/// cancellation flag and terminates the run — and reaches no inner call
-/// directly: the promise pump cancels the pending bridge tasks only on its
-/// next poll, after the cancellation was requested. eventplan.md § "Background
-/// tools and the completion token" fixes an order at session end: "MCP
-/// requests get the advisory cancel and post `.cancelled` before the
-/// transport closes." The sweep that cancels a parked `runCode` run returns
-/// as soon as the cancellation is requested, and the host closes the
-/// transports right after it. A cancel that reaches the in-flight MCP call one
-/// poll later reaches it after the transport closed.
+/// therefore reaches the snippet — the interpreter cancels the run — and
+/// reaches no inner call directly: the run cancels the pending bridge tasks
+/// in a cancel job on its own job queue, after the cancellation was
+/// requested. eventplan.md § "Background tools and the completion token"
+/// fixes an order at session end: "MCP requests get the advisory cancel and
+/// post `.cancelled` before the transport closes." The sweep that cancels a
+/// parked `runCode` run returns as soon as the cancellation is requested, and
+/// the host closes the transports right after it. A cancel that reaches the
+/// in-flight MCP call one job later can reach it after the transport closed.
 ///
 /// So each inner call runs in a `Task` this record holds, and
-/// `MultiTool.run(code:installing:installingAsync:using:cancelling:)` cancels
-/// every one of them from its own cancellation handler — synchronously, in the
-/// same `cancel()` that reached the invocation. The cancellation then reaches
-/// `MCPServer.call` before the sweep returns.
+/// `MultiTool.runCapturingOutcome(code:installing:installingAsync:using:cancelling:)`
+/// cancels every one of them from its own cancellation handler —
+/// synchronously, in the same `cancel()` that reached the invocation. The
+/// cancellation then reaches `MCPServer.call` before the sweep returns.
 ///
 /// A reference type guarded by a `Mutex`, rather than an `actor`, for
 /// `LostRunRecord`'s reason: the recording side runs inside

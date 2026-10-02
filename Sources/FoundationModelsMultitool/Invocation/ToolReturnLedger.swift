@@ -47,8 +47,8 @@ import os
 /// `{ started: true }` cost the whole class.
 ///
 /// A reference type guarded by `OSAllocatedUnfairLock`, rather than an `actor`,
-/// for `MultiTool.LiveContextCounter`'s reason: every operation is a
-/// synchronous decision on a small value, and the recording side runs inside
+/// because every operation is a synchronous decision on a small value, and
+/// the recording side runs inside
 /// `AsyncHostFunction` bodies the interpreter's promise pump starts on whatever
 /// thread it likes.
 final class ToolReturnLedger: Sendable {
@@ -66,9 +66,9 @@ final class ToolReturnLedger: Sendable {
     /// The notice a snippet gets back when it called `tools.*` and returned a
     /// value carrying nothing those calls returned.
     ///
-    /// Written as `MultiTool+Background.swift`'s `liveContextCapError` is: the
-    /// fact first, then the consequence the model cannot otherwise see, then
-    /// the action. The last of the three is what `RepairDirective.closingLine`
+    /// Written in the order every repairable message of this package takes:
+    /// the fact first, then the consequence the model cannot otherwise see,
+    /// then the action. The last of the three is what `RepairDirective.closingLine`
     /// puts last for the same reason — it is what the model reads immediately
     /// before deciding what to do next.
     ///

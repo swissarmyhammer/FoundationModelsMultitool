@@ -82,9 +82,10 @@ extension SearchToolsTool {
     /// `mlx-community/Qwen3-4B-4bit` answered eight of the ten with
     /// `{"ids":[]}` — every query for a way to write, edit or run — and the
     /// bench run ended with an empty patch. Ranker card `^zxm99zs` moved the
-    /// deciding sentence into `String.selectionDefault` itself: "Prefer the
-    /// closest candidates over an empty answer; answer with an empty list only
-    /// when no candidate is related to the task at all."
+    /// deciding sentence into `String.selectionDefault` itself. Ranker commit
+    /// `dbda1ae` then gave the default new words for this model, and the
+    /// deciding sentence is now: "Answer with an empty list only when no
+    /// candidate is related to the request at all."
     ///
     /// Card `^46j5hqw` then measured the two wordings against each other on
     /// the same model, the same catalog and the same grammar, three rounds of

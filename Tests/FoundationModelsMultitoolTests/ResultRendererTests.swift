@@ -198,7 +198,7 @@ struct ResultRendererTests {
     }
 
     @Test("a ToolInvoker validation error's field and constraint text survive rendering intact")
-    func toolInvokerValidationErrorFieldTextSurvivesRendering() throws {
+    func toolInvokerValidationErrorFieldTextSurvivesRendering() async throws {
         // Mirrors the real pipeline exactly: `JSCInterpreter.install` wraps
         // any thrown Swift error (here, a `ToolInvokerError` a host function
         // representing a wrapped tool would throw) as a JS exception whose
@@ -216,7 +216,7 @@ struct ResultRendererTests {
 
         var caught: InterpreterError?
         do {
-            _ = try interpreter.run(code: "return getWeather({});", installing: [failingTool])
+            _ = try await interpreter.run(code: "return getWeather({});", installing: [failingTool])
         } catch let error as InterpreterError {
             caught = error
         }

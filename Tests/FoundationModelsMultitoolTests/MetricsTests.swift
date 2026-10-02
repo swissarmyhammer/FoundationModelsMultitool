@@ -282,8 +282,8 @@ struct MetricsTests {
     @Test("a JS run that throws records the interpreter timer with the outcome threw")
     func throwingRunRecordsThrew() async throws {
         try await TelemetryCapture.run(forbidding: [Self.errorMarker]) { context in
-            #expect(throws: InterpreterError.self) {
-                try JSCInterpreter.makeWithHeldWatchdog().run(
+            await #expect(throws: InterpreterError.self) {
+                try await JSCInterpreter.makeWithHeldWatchdog().run(
                     code: "throw new Error('\(Self.errorMarker)');", installing: [])
             }
 
@@ -301,8 +301,8 @@ struct MetricsTests {
         let clock = GatedClock()
         clock.open()
         try await TelemetryCapture.run(forbidding: []) { context in
-            #expect(throws: InterpreterError.self) {
-                try JSCInterpreter(timeLimit: Self.shortTimeLimit, watchdogClock: clock)
+            await #expect(throws: InterpreterError.self) {
+                try await JSCInterpreter(timeLimit: Self.shortTimeLimit, watchdogClock: clock)
                     .run(code: "while (true) {}", installing: [])
             }
             #expect(clock.recordedSleeps == [.seconds(Self.shortTimeLimit)])

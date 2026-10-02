@@ -2,7 +2,12 @@ import Foundation
 import FoundationModelsExtras
 
 /// plan.md M10 — "Limits tuned + configurable": the knobs `MultiTool` uses to
-/// bound one `runCode` call and the number of calls that stay live.
+/// bound one `runCode` call.
+///
+/// No knob limits the number of calls that run or wait at the same time. A
+/// run that waits for a `tools.*` call holds no thread, only its JSC context
+/// in memory (see `JSCInterpreter`), so the machine bounds that number, and
+/// no constant in code does.
 ///
 /// This type carries no turn budget. A host mounts the vended tools on a
 /// session of its own (a Router session in the sample CLI), and that
@@ -25,16 +30,17 @@ public struct MultiToolConfiguration: Sendable, Equatable {
     /// ``defaultExecutionTimeLimit``.
     ///
     /// The engine enforces its own bound through the same cancellation path a
-    /// cancelled `Task` uses: `MultiTool` wraps the run in a
-    /// `withTaskCancellationHandler` whose `onCancel` sets a flag, and the
-    /// sandbox polls that flag as `Interpreter.run`'s `isCancelled` hook. That
-    /// is how the engine's clock reaches a running snippet at all.
+    /// cancelled `Task` uses: `MultiTool` awaits `Interpreter.run`, and the
+    /// cancellation of that task cancels the run — a job that executes JS
+    /// stops at its next watchdog poll, and a run that waits ends at once.
+    /// That is how the engine's clock reaches a running snippet at all.
     ///
     /// The two clocks are not the same kind. The engine resets its clock on
-    /// every progress event. This one does not: the `WatchdogState` measures
-    /// from sandbox creation, and neither progress nor a suspension on
-    /// `elicit()` moves that reference point (`deadline` is a `let`, and
-    /// `rearm()` re-arms the poll interval, not the deadline). So a snippet
+    /// every progress event. This one does not: the `WatchdogState` and the
+    /// wall-clock timer of the run measure from sandbox creation, and neither
+    /// progress nor a suspension on `elicit()` moves that reference point
+    /// (both read one `deadline`, which is a `let`, and `rearm()` re-arms the
+    /// poll interval, not the deadline). So a snippet
     /// that keeps resetting the engine's clock is force-terminated here, at
     /// this ceiling. That absolute cap is the intended safety property, and
     /// it is why progress reports cannot keep a suspended context alive
@@ -46,20 +52,6 @@ public struct MultiToolConfiguration: Sendable, Equatable {
     /// `JSCInterpreter()`, whose own stock limit is 5 seconds, is armed from
     /// here like any other.
     public let executionTimeLimit: TimeInterval
-
-    /// How many `runCode` snippets may be live at once. A further call is
-    /// refused with a repairable in-band error.
-    ///
-    /// A snippet stays live after its call has answered only in the background
-    /// (`LiveContextCounter`: the background run is the only way a call stays
-    /// live after it answered), so this is the cap on suspended JSC contexts
-    /// (eventplan.md § "The constraint boundary, and the escape hatch").
-    ///
-    /// Each one holds a real JS context and the thread its run occupies. A
-    /// model that has backgrounded this many snippets has lost track of them,
-    /// and the error tells it to end its answer, so that the results come back
-    /// as mail, or to stop one with `cancel()`, instead of starting another.
-    public let liveContextLimit: Int
 
     /// How long a `runCode` call waits for its own snippet before it answers
     /// with a completion token.
@@ -113,31 +105,30 @@ public struct MultiToolConfiguration: Sendable, Equatable {
     /// value this package states against that rule.
     public static let defaultInlineSettleGrace: TimeInterval = 5
 
-    /// The stock number of live `runCode` contexts — see ``liveContextLimit``
-    /// for why a handful, rather than an unbounded set, is the right shape.
-    public static let defaultLiveContextLimit = 8
-
-    /// The stock limits. ``executionTimeLimit`` and ``defaultLiveContextLimit``
-    /// give the sizing for the work clock and the live-context cap. The two
-    /// character caps are sized on
+    /// The stock limits. ``defaultExecutionTimeLimit`` and
+    /// ``defaultInlineSettleGrace`` give the sizing for the work clock and the
+    /// wait. The two character caps are sized on
     /// `ResultRendererLimits.defaultReturnValueCharacterLimit` and
     /// `ResultRendererLimits.defaultConsoleCharacterLimit`, which state why
     /// each number is what it is.
     public static let `default` = MultiToolConfiguration()
 
-    /// Creates a hardening configuration. Each limit is clamped into its valid
-    /// range: `liveContextLimit` up to at least `1`, and each other limit up
-    /// to at least `0`. A stray negative value in a host's configuration thus
+    /// Creates a hardening configuration. Each limit is clamped up to at
+    /// least `0`. A stray negative value in a host's configuration thus
     /// cannot disable a bound or crash a `runCode` turn.
+    ///
+    /// - Parameters:
+    ///   - executionTimeLimit: see ``executionTimeLimit``.
+    ///   - inlineSettleGrace: see ``inlineSettleGrace``.
+    ///   - returnValueCharacterLimit: see ``returnValueCharacterLimit``.
+    ///   - consoleCharacterLimit: see ``consoleCharacterLimit``.
     public init(
         executionTimeLimit: TimeInterval = MultiToolConfiguration.defaultExecutionTimeLimit,
-        liveContextLimit: Int = MultiToolConfiguration.defaultLiveContextLimit,
         inlineSettleGrace: TimeInterval = MultiToolConfiguration.defaultInlineSettleGrace,
         returnValueCharacterLimit: Int = ResultRendererLimits.default.returnValueCharacterLimit,
         consoleCharacterLimit: Int = ResultRendererLimits.default.consoleCharacterLimit
     ) {
         self.executionTimeLimit = max(0, executionTimeLimit)
-        self.liveContextLimit = max(1, liveContextLimit)
         self.inlineSettleGrace = max(0, inlineSettleGrace)
         self.returnValueCharacterLimit = max(0, returnValueCharacterLimit)
         self.consoleCharacterLimit = max(0, consoleCharacterLimit)

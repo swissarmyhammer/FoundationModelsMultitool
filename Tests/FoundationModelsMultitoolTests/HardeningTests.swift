@@ -23,7 +23,6 @@ struct HardeningTests {
         // it served — see `MultiToolConfiguration.executionTimeLimit`.
         #expect(configuration.executionTimeLimit == MultiToolConfiguration.defaultExecutionTimeLimit)
         #expect(MultiToolConfiguration.defaultExecutionTimeLimit == 120)
-        #expect(configuration.liveContextLimit == MultiToolConfiguration.defaultLiveContextLimit)
         #expect(configuration.returnValueCharacterLimit == ResultRendererLimits.default.returnValueCharacterLimit)
         #expect(configuration.consoleCharacterLimit == ResultRendererLimits.default.consoleCharacterLimit)
     }
@@ -32,14 +31,10 @@ struct HardeningTests {
     func configurationClampsInvalidLimits() {
         let configuration = MultiToolConfiguration(
             executionTimeLimit: -1,
-            liveContextLimit: 0,
             returnValueCharacterLimit: -5,
             consoleCharacterLimit: -5
         )
         #expect(configuration.executionTimeLimit == 0)
-        // One live context, never none: a cap of zero would refuse every
-        // `runCode` call outright.
-        #expect(configuration.liveContextLimit == 1)
         #expect(configuration.returnValueCharacterLimit == 0)
         #expect(configuration.consoleCharacterLimit == 0)
     }
@@ -96,9 +91,8 @@ struct HardeningTests {
     func cancellationCancelsWhileAwaitingAPendingToolCall() async throws {
         // Regression for the async host-function bridge (eventplan.md "Async
         // JavaScript"): unlike `while (true) {}` above, this snippet spends
-        // its time in the interpreter's promise pump
-        // (`pumpUntilSettled`) waiting on a pending `tools.*` call, not
-        // spinning the JS thread — a different code path M10's cancellation
+        // its time waiting on a pending `tools.*` call, with no job of its
+        // run executing JS — a different code path M10's cancellation
         // guarantee must also reach.
         let slowTool = WindowRecordingTool(name: "slow", delayNanoseconds: Self.unreachedToolDelayNanoseconds)
         let registry = try MultiTool.Builder().addTool(slowTool).buildRegistry()
