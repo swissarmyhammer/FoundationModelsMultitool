@@ -38,6 +38,10 @@ struct WebStubRecord: Sendable, Equatable {
 
     /// The header fields of the request, as the session sent them.
     let headers: [String: String]
+
+    /// The `timeoutInterval` of the request, in seconds: the time limit of
+    /// the session timer of the request.
+    let timeoutInterval: TimeInterval
 }
 
 /// A table of replies for one test, and a record of each request it got.
@@ -57,8 +61,9 @@ final class WebStub: Sendable {
     /// The number of seconds in ``ampleTimeout``.
     private static let ampleTimeoutSeconds = 10
 
-    /// The time limit of a stub request that must not time out. The stub
-    /// answers at once, thus the limit is far from each answer.
+    /// The time limit of a stub request that must not time out. The limit
+    /// sleeps on the closed `GatedClock` of ``makeFetcher(policy:timeLimitClock:)``,
+    /// thus it never ends a load before the stub answers.
     static let ampleTimeout: Duration = .seconds(ampleTimeoutSeconds)
 
     /// The stubs that exist now, by identifier. A stub removes its own entry
@@ -112,24 +117,34 @@ final class WebStub: Sendable {
     /// Makes a fetcher whose session sends each request to this stub, and
     /// whose guard resolves each host name to a public address.
     ///
-    /// - Parameter policy: The limits and the user agent of the fetcher.
+    /// - Parameters:
+    ///   - policy: The limits and the user agent of the fetcher.
+    ///   - timeLimitClock: The clock that the time limit of each load sleeps
+    ///     on. The default is a `GatedClock` that no test opens, thus the time
+    ///     limit cannot end a load before the stub answers, however slow the
+    ///     machine is. A test of the time limit gives its own `GatedClock`
+    ///     and opens it.
     /// - Returns: The fetcher.
-    func makeFetcher(policy: WebFetchPolicy = WebFetchPolicy()) -> WebFetcher {
+    func makeFetcher(
+        policy: WebFetchPolicy = WebFetchPolicy(), timeLimitClock: any Clock<Duration> = GatedClock()
+    ) -> WebFetcher {
         WebFetcher(
             sessionConfiguration: sessionConfiguration,
             policy: policy,
-            addressGuard: WebAddressGuard(resolver: PublicHostResolver())
+            addressGuard: WebAddressGuard(resolver: PublicHostResolver()),
+            timeLimitClock: timeLimitClock
         )
     }
 
     /// Records a request and gives its reply.
     ///
     /// - Parameters:
-    ///   - url: The URL of the request that the protocol loads.
-    ///   - headers: The header fields of that request.
+    ///   - request: The request that the protocol loads.
+    ///   - url: The URL of `request`.
     /// - Returns: The reply of the row for `url`, else a `404` response.
-    func reply(to url: URL, headers: [String: String]) -> WebStubReply {
-        let record = WebStubRecord(url: url, headers: headers)
+    func reply(to request: URLRequest, url: URL) -> WebStubReply {
+        let record = WebStubRecord(
+            url: url, headers: request.allHTTPHeaderFields ?? [:], timeoutInterval: request.timeoutInterval)
         recorded.withLock { $0.append(record) }
         return routes[url.absoluteString] ?? .respond(status: Self.notFoundStatus, headers: [:], body: Data())
     }
@@ -186,7 +201,7 @@ final class WebStubURLProtocol: URLProtocol {
             client?.urlProtocol(self, didFailWithError: WebStubMissing())
             return
         }
-        switch stub.reply(to: url, headers: request.allHTTPHeaderFields ?? [:]) {
+        switch stub.reply(to: request, url: url) {
         case .respond(let status, let headers, let body):
             respond(url: url, status: status, headers: headers, body: body)
         case .redirect(let target):

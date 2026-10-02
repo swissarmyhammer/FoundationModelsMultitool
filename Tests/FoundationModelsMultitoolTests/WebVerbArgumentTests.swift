@@ -313,10 +313,15 @@ extension WebVerbArgumentTests {
         #expect(result.correction == Self.timeoutCorrection)
     }
 
+    /// The time limit of the load sleeps on the closed `GatedClock` of the
+    /// fixture, thus it cannot end the load before the stub answers, however
+    /// slow the machine is. The clock records the limit that the load armed.
     @Test("a timeout of 1 or 120 is accepted", arguments: [1, maximumTimeout])
     func boundTimeoutIsAccepted(timeout: Int) async throws {
-        let result = try await Self.pageFixture().fetch(timeout: timeout)
+        let fixture = try Self.pageFixture()
+        let result = try await fixture.fetch(timeout: timeout)
         #expect(result.correction == nil)
+        #expect(fixture.timeLimitClock.recordedSleeps == [.seconds(timeout)])
     }
 
     @Test("a stubbed HTML page gives the URL, the status, the type, the title, and the content")
@@ -392,5 +397,57 @@ extension WebVerbArgumentTests {
             #expect(description.contains("tools.web.fetch"))
             #expect(description.contains("Promise.all"))
         }
+    }
+}
+
+/// The tests of the bounds in the generation schemas of the two web verbs.
+///
+/// A guided generator reads each bound from the schema, thus it cannot write
+/// a value that the verb always refuses. The renderer writes each numeric
+/// guide of the schema as a `(range …)` or a `(minimum …)` clause, thus the
+/// rendered documentation shows the bounds that a guided generator reads.
+extension WebVerbArgumentTests {
+    // MARK: Bounds in the generation schema
+
+    /// The smallest `offset` of a fetch.
+    private static let minimumOffset = 0
+
+    /// The smallest `timeout`, in seconds.
+    private static let minimumTimeout = 1
+
+    /// The smallest `count` of a search.
+    private static let minimumCount = 1
+
+    /// Renders the surface documentation of a web verb from its generation
+    /// schema.
+    ///
+    /// - Parameter tool: The verb to render.
+    /// - Returns: The rendered documentation of the verb.
+    private static func renderedDoc(of tool: some Tool) throws -> String {
+        try ToolAPIRenderer.render(tool).doc
+    }
+
+    @Test("the search schema bounds count to the range the verb accepts")
+    func searchSchemaBoundsCount() throws {
+        let doc = try Self.renderedDoc(of: Search(context: try WebVerbFixture().context))
+        #expect(doc.contains("(range \(Self.minimumCount)…\(Self.maximumCount))"), "doc was: \(doc)")
+    }
+
+    @Test("the fetch schema bounds offset to the minimum the verb accepts")
+    func fetchSchemaBoundsOffset() throws {
+        let doc = try Self.renderedDoc(of: Fetch(context: try WebVerbFixture().context))
+        #expect(doc.contains("(minimum \(Self.minimumOffset))"), "doc was: \(doc)")
+    }
+
+    @Test("the fetch schema bounds maxCharacters to the range the verb accepts")
+    func fetchSchemaBoundsMaxCharacters() throws {
+        let doc = try Self.renderedDoc(of: Fetch(context: try WebVerbFixture().context))
+        #expect(doc.contains("(range \(Self.minimumMaxCharacters)…\(Self.maximumMaxCharacters))"), "doc was: \(doc)")
+    }
+
+    @Test("the fetch schema bounds timeout to the range the verb accepts")
+    func fetchSchemaBoundsTimeout() throws {
+        let doc = try Self.renderedDoc(of: Fetch(context: try WebVerbFixture().context))
+        #expect(doc.contains("(range \(Self.minimumTimeout)…\(Self.maximumTimeout))"), "doc was: \(doc)")
     }
 }

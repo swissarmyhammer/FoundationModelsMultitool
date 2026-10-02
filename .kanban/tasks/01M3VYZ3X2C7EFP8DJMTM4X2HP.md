@@ -193,8 +193,24 @@ comments:
     - evidence: e1bab62 fix(files): state the range of offset and limit in the read tool schema (part 1); 05aed3a test(timing): use injected clocks and events so no test checks machine speed (part 2)
     - next: review
   timestamp: 2026-10-01T23:50:52.256279+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m3wyma8cetaecmvwnznbgs0e
+  text: |-
+    ### review — clean
+    - evidence: `review sha 5eae064..HEAD` (e1bab62, 05aed3a, 56379b8). The engine reviewed 56 files and did 35 attempts. Counts: findings 0, confirmed 0, refuted 1, failed 0, skipped 0. An ignore rule excluded 8 `.kanban/` files. No validator matched `web.md`. This card had no earlier `## Review Findings` sections.
+    - next: The task moved to done. Do not push.
+  timestamp: 2026-10-02T00:01:07.852762+00:00
+- actor: claude-code
+  id: 01m3wymnnd0bgxtz8brfzgdtss
+  text: |-
+    ### finish iteration 3 — clean
+    - implement: changed — no test checks machine speed (injected clocks and events, TestHangGuard 10 min, IntegrationHangGuard 30 min); low-load rule removed.
+    - test: green — root swift test 1881 tests, 0 issues; full integration 74 tests, 35 suites, 0 issues, 6 keyed skips (written exception).
+    - commit: e1bab62, 05aed3a, 56379b8
+    - review: clean — review sha 5eae064..HEAD, 0 findings. Task is in done.
+  timestamp: 2026-10-02T00:01:19.533471+00:00
+position_column: done
+position_ordinal: ffff8c80
 title: Integration tests fail on time limits and a wrong model answer under machine load
 ---
 ## What

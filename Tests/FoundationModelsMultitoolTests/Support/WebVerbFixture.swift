@@ -35,6 +35,12 @@ struct WebVerbFixture {
     /// The web context of the test.
     let context: WebContext
 
+    /// The clock that the time limit of each load of ``context`` sleeps on.
+    /// No test opens it, thus a time limit cannot end a load before the stub
+    /// answers, however slow the machine is. It records each time limit that
+    /// a load armed.
+    let timeLimitClock = GatedClock()
+
     /// Makes a fixture.
     ///
     /// - Parameters:
@@ -52,7 +58,7 @@ struct WebVerbFixture {
         let configuration = try WebConfiguration(providers: providers ?? [Self.searxngProvider()], fetch: policy)
         context = WebContext(
             configuration: configuration, sessionConfiguration: stub.sessionConfiguration,
-            resolver: PublicHostResolver())
+            resolver: PublicHostResolver(), timeLimitClock: timeLimitClock)
     }
 
     /// The SearXNG provider of the suite, at the base URL of
