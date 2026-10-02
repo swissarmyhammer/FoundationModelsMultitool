@@ -179,8 +179,25 @@ comments:
     - evidence: this commit, "fix(integration): name the over-budget report helper as a phrase". It holds OverBudgetSurfaceDiscoveryTests.swift (`reportOverBudget(line:)` is now `report(overBudgetLine:)`, 2 call sites) and the .kanban files.
     - next: review. The task stays in `review`. The CI run id of the last acceptance item stays open.
   timestamp: 2026-10-02T05:52:39.181355+00:00
-position_column: doing
-position_ordinal: '8180'
+- actor: claude-code
+  id: 01m3xjxb6wdhpcw65ag769jj14
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (commit 402cdf8): 0 findings (0 confirmed, 0 refuted, 7 attempted, 0 failed, 0 skipped). 1 file reviewed (OverBudgetSurfaceDiscoveryTests.swift); 2 .kanban files excluded by .reviewignore. The prior finding (OverBudgetSurfaceDiscoveryTests.swift:152, swift/fluent-usage, same cause at line 134) is fixed: the declaration and the 2 call sites use `report(overBudgetLine:)`, and a search finds no `reportOverBudget(line:)` in IntegrationTests/Tests. All prior review items are checked. `git diff --name-status -M HEAD~1..HEAD` shows no renamed file, thus no file-scoped review was necessary. The report has no tool-rule failure warning. The .build/ directory was not changed.
+    - next: the task stays in `review`, not `done`. The last acceptance item needs a real CI run id, and that run cannot exist until the user pushes. After the push, record the run id, check the item, and then move the task to `done`.
+  timestamp: 2026-10-02T05:55:35.260723+00:00
+- actor: claude-code
+  id: 01m3xjxv7xk9hdstnb1xd0thmc
+  text: |-
+    ### finish iteration 3 — clean
+    - implement: changed — 1 file (report(overBudgetLine:))
+    - test: green — swift test 1882 passed; IntegrationTests build passes; DiscoveryAnswerCheckTests 6 passed
+    - commit: 402cdf8
+    - review: clean — 0 findings; every prior finding checked
+    - the task stays in review: the last acceptance criterion needs a real CI run id, and that needs a push that the user approves
+  timestamp: 2026-10-02T05:55:51.677095+00:00
+position_column: review
+position_ordinal: '80'
 title: Replace the fixed discovery scores in the integration tests with checks that do not depend on model quality
 ---
 ## Problem
