@@ -38,9 +38,12 @@ private let storeHoldsTheNoteCheckName = "storeHoldsTheNote"
 /// the notes tool a reader of the five operation descriptions says answers
 /// it.
 ///
-/// The first three are the queries the card names. The last two are
-/// semantic: neither names a verb, a noun of the surface or a note id, so a
-/// match rests on the description of the verb and on nothing else.
+/// These are the three queries the card names, one for each verb they
+/// declare. Card `^3vtvrzg` removed two more, because each declared the same
+/// verb as a query that stays and so proved nothing more (approximately 7 s
+/// of selection each on the CI runner `mini`): "attach a label to a note"
+/// (`tagNote`, the same as "put the tag urgent on note-2") and "show every
+/// note" (`listNote`, the same as "how many notes are there").
 let operationToolQueries = [
     GradedDiscoveryQuery(
         task: "add a note titled Groceries",
@@ -50,12 +53,6 @@ let operationToolQueries = [
         correctPaths: [IntegrationNotesTool.tagNotePath]),
     GradedDiscoveryQuery(
         task: "how many notes are there",
-        correctPaths: [IntegrationNotesTool.listNotePath]),
-    GradedDiscoveryQuery(
-        task: "attach a label to a note",
-        correctPaths: [IntegrationNotesTool.tagNotePath]),
-    GradedDiscoveryQuery(
-        task: "show every note",
         correctPaths: [IntegrationNotesTool.listNotePath]),
 ]
 
@@ -77,7 +74,7 @@ let operationToolQueries = [
 ///    entries, so a query has distractors to miss it among. The group
 ///    ``operationToolQueries`` runs through
 ///    `FilesAndShellSurface.driveGradedGroup`, exactly as
-///    `HeldOutSurfaceDiscoveryTests` runs its group. It holds that each verb
+///    `AgentSurfaceDiscoveryTests` runs its group. It holds that each verb
 ///    path a query declares is a path of the catalog, so the `@Operation`
 ///    macro expanded the notes tool into those verbs, and that each answer
 ///    holds only catalog paths, each one time, inside the limit. It prints

@@ -23,8 +23,9 @@ import Testing
 /// never a query: they name the tasks a reader of the tool would bring, so a
 /// description rewritten back into implementation terms fails here.
 ///
-/// The gated `HeldOutSurfaceDiscoveryTests` measures whether the wording works
-/// on a live model. This suite is the fast guard that the wording is still
+/// The gated `AgentSurfaceDiscoveryTests` drives the wording on a live model,
+/// and the gated `RetrievalTextSurfaceDiscoveryTests` ranks the held-out
+/// queries against it. This suite is the fast guard that the wording is still
 /// there at all.
 @Suite("SelectionWordingTests")
 struct SelectionWordingTests {
@@ -87,7 +88,7 @@ struct SelectionWordingTests {
     /// The nine-entry files-and-shell surface, rendered over a temporary root
     /// this test owns.
     ///
-    /// The same mount the two gated discovery suites drive, so the text this
+    /// The same mount the gated discovery suites drive, so the text this
     /// suite reads is the text the selection tier reads there.
     ///
     /// - Returns: The rendered surface.

@@ -464,7 +464,7 @@ let plumbingProbeProfile = ProfileDefinition(
 /// a host runs, and `plumbingProbeModel` names the model the plumbing probes
 /// resolve. This constant names the model one suite grades the *selection
 /// tier* on: `AgentSurfaceDiscoveryTests` asks whether that tier, given the
-/// whole files-and-shell catalog and the agent's own ten queries, selects the
+/// whole files-and-shell catalog and the agent's own recorded queries, selects the
 /// write, edit and shell entries. That is a capability claim about this one
 /// model, so no other suite may take this constant, and this suite may take no
 /// other model — a pass on the 27B says nothing about the 4B the agent ships.
@@ -473,10 +473,10 @@ let plumbingProbeProfile = ProfileDefinition(
 /// choice, not a version lock.
 let agentFlashModel: ModelRef = CLIRunner.flashModel
 
-/// The profile `AgentSurfaceDiscoveryTests` and `HeldOutSurfaceDiscoveryTests`
-/// resolve, built over `agentFlashModel`.
+/// The profile `AgentSurfaceDiscoveryTests` resolves, built over
+/// `agentFlashModel`.
 ///
-/// `flash` is `agentFlashModel`, the model these suites grade. `standard` is
+/// `flash` is `agentFlashModel`, the model that suite grades. `standard` is
 /// `plumbingProbeModel`, a different model, because `searchTools` runs the
 /// selection tier on `flash` from inside a tool call of the session on
 /// `standard`: when one model serves both slots, the work-queue Router refuses
@@ -484,8 +484,8 @@ let agentFlashModel: ModelRef = CLIRunner.flashModel
 /// `GenerationQueueError.waitInsideOpenSubmission(model:)`, and a later Router
 /// may refuse such a profile at `Router.resolve`. The agent's own profile puts
 /// two different models in the two slots too. `plumbingProbeModel` because it
-/// is small and already in the local cache; these suites call `searchTools`
-/// directly and grade no generation on `standard`.
+/// is small and already in the local cache; that suite calls `searchTools`
+/// directly and grades no generation on `standard`.
 ///
 /// The shared embedding model, so the profile names an embedder the way the
 /// agent's profile does. `nil` context so the model's own window is resolved,

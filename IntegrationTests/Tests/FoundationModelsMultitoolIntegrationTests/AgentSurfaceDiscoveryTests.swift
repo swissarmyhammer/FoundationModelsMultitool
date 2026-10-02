@@ -6,20 +6,33 @@ import Testing
 /// The label the printed result and skip lines carry.
 private let agentSurfaceScenarioName = "agentSurfaceDiscovery"
 
-/// The ten `task` strings the `acp-agent` gave to `searchTools` on the
-/// SWE-bench instance `astropy__astropy-12907`, in the order it gave them,
-/// each beside the catalog paths a reader says answer it.
+/// Eight of the ten `task` strings the `acp-agent` gave to `searchTools` on
+/// the SWE-bench instance `astropy__astropy-12907`, in the order it gave
+/// them, each beside the catalog paths a reader says answer it.
 ///
 /// Read out of the unified log of that run and recorded on card `^zqz1zan`.
-/// The numbers that card assigns them are one-based positions in this array.
+/// That card numbers the ten strings 1 to 10 in the order the agent gave
+/// them. A printed `q` number is the position in this array, and not the
+/// number of the card.
+///
+/// **Eight of the ten.** Card `^3vtvrzg` removed the two strings that
+/// declare the same paths, with the same kind of phrase, as a string that
+/// stays. Each one cost a selection call of approximately 6.5 s on the CI
+/// runner `mini` and proved nothing the kept string does not:
+///
+/// - "run pytest tests, execute" (card number 5, `shell.execute`), the same
+///   as "run a shell command or python script, execute code" (card number 4).
+/// - "apply changes to a file, save file contents" (card number 8,
+///   `files.write`, `files.edit` and `files.patch`), the same as "write file,
+///   edit file, create file" (card number 6).
 ///
 /// **This group is a regression record, and it is not a held-out set.** The
 /// preamble the selection tier runs was chosen by measurement against these
-/// same ten strings, so a pass here shows that the wording works for the
-/// queries that selected it and shows nothing about a query nobody has seen.
-/// `HeldOutSurfaceDiscoveryTests` carries the group that answers that second
-/// question. The two groups never mix, and each is reported under its own
-/// label.
+/// strings, so the printed counts show that the wording works for the
+/// queries that selected it and show nothing about a query nobody has seen.
+/// `heldOutQueries` holds the group that answers that second question, and
+/// `RetrievalTextSurfaceDiscoveryTests` drives both groups under their own
+/// labels.
 ///
 /// The correct paths were declared by reading the nine tool descriptions of
 /// the surface: `files.glob` finds files by pattern, `files.read` reads one,
@@ -42,17 +55,11 @@ let agentSurfaceQueries = [
         task: "run a shell command or python script, execute code",
         correctPaths: ["shell.execute"]),
     GradedDiscoveryQuery(
-        task: "run pytest tests, execute",
-        correctPaths: ["shell.execute"]),
-    GradedDiscoveryQuery(
         task: "write file, edit file, create file",
         correctPaths: ["files.write", "files.edit", "files.patch"]),
     GradedDiscoveryQuery(
         task: "edit code, modify source file, patch",
         correctPaths: ["files.edit", "files.patch"]),
-    GradedDiscoveryQuery(
-        task: "apply changes to a file, save file contents",
-        correctPaths: ["files.write", "files.edit", "files.patch"]),
     GradedDiscoveryQuery(
         task: "file operations: create, write, append, delete, move",
         correctPaths: ["files.write", "files.edit", "files.patch", "shell.execute"]),
@@ -69,8 +76,20 @@ let agentSurfaceQueries = [
 /// query for a way to write, edit or run. The main session never saw the
 /// write, edit or shell verb, and the run ended with an empty patch. This
 /// suite builds that surface, mounts `searchTools` through the production
-/// path, and drives the same ten queries through the selection tier on the
-/// agent's own flash model.
+/// path, and drives eight of the same ten queries (see
+/// ``agentSurfaceQueries``) through the selection tier on the agent's own
+/// flash model.
+///
+/// **The one selection suite over this surface.** Until card `^3vtvrzg`,
+/// `HeldOutSurfaceDiscoveryTests` drove the twelve ``heldOutQueries`` over
+/// the same surface, on the same model, through the same mount and the same
+/// checks (81.0 s on the CI runner `mini`, run `37048824337`). Card `^xr5w83f`
+/// removed each assertion on a score, so the two suites held the same
+/// properties, and the difference between a regression record and a
+/// held-out group was only in the printed counts. This suite now proves those
+/// properties for the surface. `RetrievalTextSurfaceDiscoveryTests` still
+/// drives the held-out group, and holds each path it declares to be a path
+/// of the catalog.
 ///
 /// **What it holds.** Only what the code of this package controls: each call
 /// answers without an error, and each answer holds only paths the catalog
@@ -132,7 +151,7 @@ let agentSurfaceQueries = [
     .timeLimit(IntegrationHangGuard.timeLimit)
 )
 struct AgentSurfaceDiscoveryTests {
-    @Test("the ten recorded queries each answer only real catalog paths, one time each, inside the limit")
+    @Test("the recorded queries each answer only real catalog paths, one time each, inside the limit")
     func agentQueriesAnswerOnlyRealCatalogPaths() async throws {
         try await withLiveRouterFixture(name: agentSurfaceScenarioName, profile: agentDiscoveryProfile) { fixture in
             try await makeFilesAndShellSurface(over: fixture)

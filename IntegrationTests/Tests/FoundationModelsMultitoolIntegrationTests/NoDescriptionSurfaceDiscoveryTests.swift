@@ -36,75 +36,6 @@ private let noDescriptionQueries = [
         correctPaths: ["database.explain_query"]),
 ]
 
-/// One candidate text for the selection block of a tool that gives no
-/// description.
-///
-/// Card `^cfyj4gc` names two candidates — the name of the tool alone, and the
-/// names of its arguments — and asks for both to be measured. ``banner`` is
-/// the third reading, and it is the defect itself: it is what the surface
-/// rendered before this card, when an empty description left the banner
-/// standing alone under the heading.
-private enum NoDescriptionCandidate: String, CaseIterable, Sendable {
-
-    /// The banner alone — what the defect gives the selection model.
-    case banner
-
-    /// The banner, then the name of the tool.
-    case name
-
-    /// The banner, then the sentence the surface now renders, which names the
-    /// verb and the names of its arguments.
-    case arguments
-
-    /// The selection block this candidate gives for `entry`.
-    ///
-    /// An entry that publishes a description keeps the text the surface
-    /// renders for it, whichever candidate is under measurement. Only an
-    /// entry with no description varies, thus the three readings differ in
-    /// the one text this card decides and in nothing else. An entry rewritten
-    /// under every candidate would measure the described entries beside it.
-    ///
-    /// - Parameter entry: the catalog entry to render.
-    /// - Returns: the text the selection model reads for that entry.
-    func summaryBlock(of entry: APISurface.Entry) -> String {
-        let described = entry.descriptor.description
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard described.isEmpty else { return entry.summaryBlock }
-        switch self {
-        case .banner:
-            return "// tools.\(entry.path)"
-        case .name:
-            return "// tools.\(entry.path)\n\(entry.descriptor.name)"
-        case .arguments:
-            return entry.summaryBlock
-        }
-    }
-}
-
-/// One catalog entry under one candidate text.
-///
-/// The searcher reads the whole item, so a candidate is measured by giving
-/// the same entry a different ``renderSummaryBlock()`` and nothing else. The
-/// block the main session would read is the entry's own, unchanged, because
-/// no rule of this card reaches it.
-private struct NoDescriptionItem: SearchableMetadata {
-
-    /// The entry this item stands for.
-    let entry: APISurface.Entry
-
-    /// The candidate whose text this item's summary block holds.
-    let candidate: NoDescriptionCandidate
-
-    /// The entry's fully-qualified call path.
-    var id: String { entry.id }
-
-    /// The entry's own full block, unchanged.
-    func renderBlock() -> String { entry.renderBlock() }
-
-    /// The candidate's text for this entry.
-    func renderSummaryBlock() -> String { candidate.summaryBlock(of: entry) }
-}
-
 /// The gated discovery test over a surface of tools that publish no
 /// description.
 ///
@@ -116,21 +47,27 @@ private struct NoDescriptionItem: SearchableMetadata {
 /// `APISurface.Entry.summaryBlock` now writes a sentence in its place, which
 /// names the verb and the names of its arguments.
 ///
-/// **What it measures.** The same catalog, three times, under the three texts
-/// of ``NoDescriptionCandidate``: the banner alone, which is the reading
-/// before this card; the name of the tool; and the sentence the surface now
-/// renders. Each text is driven over the same queries one time, on the same
-/// model, so the printed totals are comparable.
+/// **What it measures.** The catalog of the shipped text: each entry reads
+/// its own `summaryBlock`, through the conformance of `APISurface.Entry`, so
+/// the searcher reads what a host gives the selection tier. Each query is
+/// driven one time, on one model.
 ///
-/// **What it holds.** Only what the code of this package controls, under each
-/// of the three texts: each search answers without an error, each declared
-/// path is a path of the catalog, and each answer holds only catalog paths,
-/// each one time, inside the limit (``DiscoveryAnswerCheck``). How many
-/// declared paths each text finds is a measurement of the model: the suite
-/// prints it and asserts nothing on it. Card `^xr5w83f` removed the earlier
-/// floor, that the shipped text find at least one declared path over the run,
-/// because that floor failed when the model changed, also when the code was
-/// correct.
+/// **One text, not three.** Card `^cfyj4gc` measured three texts here: the
+/// banner alone, the banner and the name of the tool, and the shipped
+/// sentence. The first two are texts this test built and the package never
+/// renders, so the checks on them proved nothing about the code. Card
+/// `^3vtvrzg` removed them: they cost 6 of the 9 selection calls of this
+/// suite, approximately 23 s of its 37.6 s on the CI runner `mini` (run
+/// `37048824337`).
+///
+/// **What it holds.** Only what the code of this package controls: each
+/// search answers without an error, each declared path is a path of the
+/// catalog, and each answer holds only catalog paths, each one time, inside
+/// the limit (``DiscoveryAnswerCheck``). How many declared paths the text
+/// finds is a measurement of the model: the suite prints it and asserts
+/// nothing on it. Card `^xr5w83f` removed the earlier floor, that the shipped
+/// text find at least one declared path over the run, because that floor
+/// failed when the model changed, also when the code was correct.
 ///
 /// **Why the plumbing probe model.** `agentFlashModel` is reserved to
 /// `AgentSurfaceDiscoveryTests` by a written rule on that constant — "no
@@ -148,8 +85,8 @@ private struct NoDescriptionItem: SearchableMetadata {
     .timeLimit(IntegrationHangGuard.timeLimit)
 )
 struct NoDescriptionSurfaceDiscoveryTests {
-    @Test("each text for a tool with no description gives answers of real catalog paths, one time each")
-    func eachTextForAToolWithNoDescriptionAnswersRealCatalogPaths() async throws {
+    @Test("the shipped text for a tool with no description gives answers of real catalog paths, one time each")
+    func theShippedTextForAToolWithNoDescriptionAnswersRealCatalogPaths() async throws {
         try await withLiveRouterFixture(
             name: noDescriptionScenarioName, profile: plumbingProbeProfile
         ) { fixture in
@@ -173,25 +110,10 @@ struct NoDescriptionSurfaceDiscoveryTests {
             let check = DiscoveryAnswerCheck(surfaceOf: mounted.registry)
             check.expectEveryDeclaredPathIsInTheCatalog(of: noDescriptionQueries)
 
-            let readings = try await NoDescriptionCandidate.allCases.mappedInOrder {
-                candidate in
-                let items = entries.map { NoDescriptionItem(entry: $0, candidate: candidate) }
-                let searcher = MetadataSearcher(
-                    items: items, mode: .selection, embedder: nil, selection: selection)
-                let group = try await measure(
-                    candidate: candidate, through: searcher, limit: check.limit)
-                check.expectNoFault(in: group, answering: noDescriptionQueries)
-                return (candidate, group)
-            }
-            let groups = Dictionary(uniqueKeysWithValues: readings)
-
-            reportGatedResult(
-                scenario: noDescriptionScenarioName,
-                line: NoDescriptionCandidate.allCases
-                    .map {
-                        "\($0.rawValue)=\(groups[$0]?.correctCount ?? 0)/\(groups[$0]?.wrongCount ?? 0)"
-                    }
-                    .joined(separator: " "))
+            let searcher = MetadataSearcher(
+                items: entries, mode: .selection, embedder: nil, selection: selection)
+            let group = try await measure(through: searcher, limit: check.limit)
+            check.expectNoFault(in: group, answering: noDescriptionQueries)
             withExtendedLifetime(mounted.servers) {}
         }
     }
@@ -205,16 +127,14 @@ struct NoDescriptionSurfaceDiscoveryTests {
 /// suites read, so a line of this suite reads like a line of theirs.
 ///
 /// - Parameters:
-///   - candidate: the text under measurement, which labels each printed line.
-///   - searcher: the searcher over that text.
+///   - searcher: the searcher over the shipped text.
 ///   - limit: how many matches each search asks for. The whole catalog, so
 ///     the reading is the order the model answered in and never a cut this
 ///     test made.
 /// - Returns: the grade of each query, in the order this suite lists them.
 /// - Throws: what the search throws.
 private func measure(
-    candidate: NoDescriptionCandidate,
-    through searcher: MetadataSearcher<NoDescriptionItem>,
+    through searcher: MetadataSearcher<APISurface.Entry>,
     limit: Int
 ) async throws -> DiscoveryGroupGrade {
     let grades = try await noDescriptionQueries.mappedInOrder { query in
@@ -223,8 +143,7 @@ private func measure(
         let grade = DiscoveryGrade(query: query, matchedPaths: matches.map(\.id))
         reportGatedResult(
             scenario: noDescriptionScenarioName,
-            line: "candidate=\(candidate.rawValue) "
-                + "matches=\(grade.matchedPaths.count) correct=\(grade.correctCount) "
+            line: "matches=\(grade.matchedPaths.count) correct=\(grade.correctCount) "
                 + "wrong=\(grade.wrongCount) paths=\(grade.matchedPaths) "
                 + "query=\"\(query.task)\"")
         return grade
@@ -232,8 +151,7 @@ private func measure(
     let group = DiscoveryGroupGrade(grades: grades)
     reportGatedResult(
         scenario: noDescriptionScenarioName,
-        line: "candidate=\(candidate.rawValue) "
-            + "correctTotal=\(group.correctCount) wrongTotal=\(group.wrongCount)")
+        line: "correctTotal=\(group.correctCount) wrongTotal=\(group.wrongCount)")
     return group
 }
 

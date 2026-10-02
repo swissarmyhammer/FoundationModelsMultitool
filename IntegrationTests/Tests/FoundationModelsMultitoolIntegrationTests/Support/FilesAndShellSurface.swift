@@ -11,10 +11,10 @@ private let filesAndShellStoreDirectoryName = ".shell"
 /// The nine-entry files-and-shell surface the `acp-agent` had, mounted with
 /// the production `searchTools` over it.
 ///
-/// The gated discovery suites drive the same surface — one with the ten
-/// queries of card `^zqz1zan`, one with the held-out queries of card
-/// `^kn9ay20`, one with the wrong `tools.*` paths of card `^2rwvx3h` — so the
-/// mount stands here rather than in any of them.
+/// The gated discovery suites drive the same surface — one with the recorded
+/// queries of card `^zqz1zan`, one with the recorded and the held-out queries
+/// in each retrieval setting, one with the wrong `tools.*` paths of card
+/// `^2rwvx3h` — so the mount stands here rather than in any of them.
 struct FilesAndShellSurface {
 
     /// The built registry, whose `surface.entries` are the nine catalog

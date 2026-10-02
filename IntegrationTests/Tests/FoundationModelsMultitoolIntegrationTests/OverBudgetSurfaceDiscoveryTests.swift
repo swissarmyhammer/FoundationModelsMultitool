@@ -12,16 +12,21 @@ private let overBudgetScenarioName = "overBudgetSurfaceDiscovery"
 /// The name of the shell store directory inside the session root.
 private let overBudgetShellStoreDirectoryName = ".shell"
 
-/// The two `task` strings this suite drives.
+/// The `task` strings this suite drives.
 ///
-/// Two, because the card asks for one surface above the budget and a short
-/// run, and because the two together reach across the catalog: the first
-/// asks for a verb of the files capability, which stands at the head of the
-/// catalog, and the second for a verb of a connected platform server, which
-/// stands far below it.
+/// One, because the card asks for one surface above the budget and a short
+/// run, and because one query already reaches across the whole catalog: the
+/// tier prompts every slice for each query, in order, and splices what each
+/// slice answers. The string asks for a verb of the files capability, which
+/// stands at the head of the catalog.
+///
+/// Card `^3vtvrzg` removed a second string, "run a SQL query against the
+/// database and read the rows", which asked for a verb far below the head.
+/// It went through the same two slices and the same splice as the string
+/// that stays, so it proved nothing more, and it cost 10.8 s on the CI
+/// runner `mini` (run `37048824337`).
 private let overBudgetQueries = [
-    "read the contents of a file on disk",
-    "run a SQL query against the database and read the rows",
+    "read the contents of a file on disk"
 ]
 
 /// The gated discovery test over a surface above the selection budget.

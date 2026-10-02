@@ -310,8 +310,109 @@ comments:
     - review: clean — 0 findings; each removed test has a test that stays
     - the task stays in review: the 20-minute criterion needs a real CI run, and that needs a push that the user approves
   timestamp: 2026-10-02T15:06:13.021291+00:00
-position_column: review
-position_ordinal: '8180'
+- actor: claude-code
+  id: 01m3z0cepb0n7fn877pxjdye67
+  text: |-
+    ### CI measurement — run 37048824337 (commit abe79da, 2026-10-02)
+    - integration job: 18:45:33 to 19:05:44 = 20 min 11 s. The target is 20 min; the job is 11 s over.
+    - builds: 4 min 49 s ("Build the nested integration package" 1 min 53 s, "Build the root products the integration suite starts" 2 min 56 s).
+    - tests: 883 s (14.7 min) for 75 tests in 35 suites. Before this card: 2136 s for 60 tests (run 36951032341). The pull of 2026-10-02 added 15 short tests.
+    - largest tests: web research 115.6 s, CLI demo with MCP 93.8 s, discovery under distractors 89.7 s, shell background 82.6 s, held-out discovery 81.0 s, agent-surface discovery 71.5 s, delayed-echo canary 70.1 s, notes search-then-call 59.9 s, repair 50.3 s.
+    - failures: 5 live web-search tests only (DuckDuckGoHTML x2, KeyedFallback, KeylessChain, WebRunCode goal snippet). Cause: Brave sent HTTP 429 and DuckDuckGo sent a challenge page to the runner, so the keyless chain gave no results. No failure is in a test that this card changed.
+    - next: the job must lose at least 11 s more, with a margin. The 20-minute criterion is not met.
+  timestamp: 2026-10-02T19:10:16.267640+00:00
+- actor: claude-code
+  id: 01m3z0qkswezypbpqy18dxc2w6
+  text: |-
+    ### Research for iteration 3 (run 37048824337: job 20 min 11 s; aim 18 min or less)
+
+    Data: job log of job 110979006910 and the Router recordings of run 37048824337 (`gh run download`).
+
+    **Cost of one selection call on `mini`** (from the recordings): 4B over the files-and-shell surface (approximately 2384 tokens fed) approximately 6.5 s; 4B over files-and-shell plus notes (2556 tokens) approximately 7.1 s; 1.7B over the database catalog (2700 tokens) 2.8 to 4.9 s; 1.7B over-budget query (two slices) 10.8 s after the first.
+
+    **Duplication found (the same properties over the same surface).** Since card `^xr5w83f`, each discovery suite asserts only: no error, real catalog paths, each one time, inside the limit, and each declared path in the catalog.
+    - `HeldOutSurfaceDiscoveryTests` (81.0 s, 12 queries) and `AgentSurfaceDiscoveryTests` (71.5 s, 10 queries): the same nine-entry surface, the same model (`agentDiscoveryProfile`), the same production mount, the same `driveGradedGroup` checks. The difference "held-out against regression record" is only a difference of the printed score, which no test asserts. The declared-in-catalog check of the held-out paths (`shell.getLines`, `shell.grepHistory`) stays in `RetrievalTextSurfaceDiscoveryTests`, which drives both groups.
+    - `AgentSurfaceDiscoveryTests` q5 "run pytest tests, execute" declares the same set as q4 (`shell.execute`); q8 "apply changes to a file, save file contents" declares the same set as q6 (`files.write`, `files.edit`, `files.patch`). The rule is the one iteration 2 used for the held-out group.
+    - `OperationToolLiveTests` notes discovery: q4 "attach a label to a note" declares `notes.tagNote` like q2; q5 "show every note" declares `notes.listNote` like q3.
+    - `NoDescriptionSurfaceDiscoveryTests`: the candidates `banner` and `name` are texts the test builds and the package never renders. Only `arguments` is `APISurface.Entry.summaryBlock`, the shipped text. The checks on the two other texts prove nothing about the code. 6 of 9 selection calls.
+    - `OverBudgetSurfaceDiscoveryTests`: each query prompts every slice (slices=2 for both queries). The second query goes through the same slices and the same splice.
+    - `RetrievalTextSurfaceDiscoveryTests` (6.5 s): no model generates; 66 searches cost less than 5 s. Nothing to win; it stays.
+
+    **Model turns.** The reasoning and reply of each 27B scenario are short (42 to 364 characters of reasoning). Each scenario makes the smallest number of turns its route permits, except the web research: its 4 `runCode` calls come from the providers (Brave HTTP 429, DuckDuckGo challenge page). The first snippet returned `r.results` = `[]`, the model then tried 2 other queries and at last fetched swift.org. Not the prompt and not the fixture. In run 36951032341 (providers answered) it took 77.1 s. No change in this iteration (live web test, separate matter).
+
+    **CLI demo (93.8 s).** 3 27B calls (searchTools, runCode, answer) with the production `demoPrompt`; `CLIRunner` has no prompt flag. No change.
+  timestamp: 2026-10-02T19:16:21.948992+00:00
+- actor: claude-code
+  id: 01m3z21crtsxcefjy0dr0tf8rm
+  text: |-
+    ### Implementation of iteration 3 landed (not committed)
+
+    **Removed duplication.** For each: what was removed, the test that still proves its behavior, and the seconds saved on `mini` (measured in run 37048824337 from the Router recordings and the job log).
+
+    | Removed | Test that still proves the behavior | Seconds saved |
+    |---|---|---|
+    | `HeldOutSurfaceDiscoveryTests` (whole suite, 12 selection calls) | `AgentSurfaceDiscoveryTests`: the same nine-entry files-and-shell surface, the same model (`agentDiscoveryProfile`), the same production mount and the same `driveGradedGroup` checks (no error, catalog paths only, each one time, inside the limit, declared paths in the catalog). The held-out group stays in `RetrievalTextSurfaceDiscoveryTests`, which also holds its declared paths (`shell.getLines`, `shell.grepHistory`) to be catalog paths. `heldOutQueries` moved there (its one user) | 81.0 |
+    | `AgentSurfaceDiscoveryTests` q5 "run pytest tests, execute" | the same test, q4 "run a shell command or python script, execute code": the same declared set (`shell.execute`), the same kind of phrase | 6.5 |
+    | `AgentSurfaceDiscoveryTests` q8 "apply changes to a file, save file contents" | the same test, "write file, edit file, create file": the same declared set (`files.write`, `files.edit`, `files.patch`) | 6.5 |
+    | `OperationToolLiveTests` notes discovery q4 "attach a label to a note" | the same test, "put the tag urgent on note-2" (`notes.tagNote`) | 7.1 |
+    | `OperationToolLiveTests` notes discovery q5 "show every note" | the same test, "how many notes are there" (`notes.listNote`) | 7.1 |
+    | `NoDescriptionSurfaceDiscoveryTests` candidates `banner` and `name` (6 of 9 selection calls; `NoDescriptionCandidate` and `NoDescriptionItem` deleted) | the same test, now over the shipped text only: the entries of the surface through their own `SearchableMetadata` conformance (`summaryBlock`). The two removed texts were built by the test and never rendered by the package | approximately 23 |
+    | `OverBudgetSurfaceDiscoveryTests` query "run a SQL query against the database and read the rows" | the same test, "read the contents of a file on disk": each query prompts both slices and goes through the same splice | 10.8 |
+
+    Total: approximately 142 s.
+
+    **Examined and not changed.**
+    - `RetrievalTextSurfaceDiscoveryTests`: no model generates; 6.5 s on `mini`, 2.5 s local. Nothing to win.
+    - Web research (115.6 s, 4 `runCode`): the provider block (Brave HTTP 429, DuckDuckGo challenge page) caused the 3 extra snippets, not the prompt or the fixture. Live web test: not changed in this iteration.
+    - CLI demo with MCP (93.8 s): 3 turns, the smallest for the production `demoPrompt`; `CLIRunner` has no prompt flag.
+    - The other 27B scenarios make the smallest number of turns for their route; reasoning and replies are short.
+
+    **Doc references updated** (no `HeldOutSurfaceDiscoveryTests` left): `AgentSurfaceDiscoveryTests`, `RetrievalTextSurfaceDiscoveryTests` ("twenty queries"), `OperationToolLiveTests`, `UnknownToolHintLiveTests`, `Support/FilesAndShellSurface.swift`, `Support/LiveRouterFixture.swift`, and the root `Tests/FoundationModelsMultitoolTests/SelectionWordingTests.swift`.
+
+    **Verification.**
+    - `swift build --build-tests --package-path IntegrationTests`: build complete. The only warning is the build-system note "missing creator for mutated node" for the mlx-swift_Cmlx bundle (not from the sources).
+    - `swift test` (root): 1895 tests in 155 suites passed.
+    - Live, one time, `--no-parallel` (M3 Ultra): AgentSurface 18.7 s (8 queries), NoDescription 15.1 s, notes discovery 8.4 s (3 queries), OverBudget 5.2 s, RetrievalText 2.5 s. 5 tests in 5 suites passed, 49.9 s.
+
+    **New estimate of the job on `mini`.** Run 37048824337: 20 min 11 s (1211 s). Less approximately 142 s = approximately 1069 s, **17 min 49 s**. Builds (289 s) do not change. Known variation: the web research took 77.1 s in run 36951032341, when the providers answered, against 115.6 s here. If more margin is necessary, the options that remain need a decision of the user: the shared-workflow build inputs (iteration 1, up to approximately 180 s), or a change of the CLI demo test.
+  timestamp: 2026-10-02T19:39:11.002177+00:00
+- actor: claude-code
+  id: 01m3z21gjkw6ezjqnvww4femyz
+  text: |-
+    ### implement — changed
+    - evidence: 10 source files — deleted `IntegrationTests/.../HeldOutSurfaceDiscoveryTests.swift`; changed `IntegrationTests/.../{AgentSurfaceDiscoveryTests, NoDescriptionSurfaceDiscoveryTests, OperationToolLiveTests, OverBudgetSurfaceDiscoveryTests, RetrievalTextSurfaceDiscoveryTests, UnknownToolHintLiveTests}.swift`, `IntegrationTests/.../Support/{FilesAndShellSurface, LiveRouterFixture}.swift`, `Tests/FoundationModelsMultitoolTests/SelectionWordingTests.swift`. `swift build --build-tests --package-path IntegrationTests` complete; `swift test` 1895 passed in 155 suites; 5 changed live suites passed locally with `--no-parallel` (49.9 s).
+    - estimate: job approximately 17 min 49 s on `mini` (was 20 min 11 s), approximately 142 s saved.
+    - open: the time criterion needs a real CI run after a push (unchecked).
+    - next: review. No commit made. The task stays in `doing`.
+  timestamp: 2026-10-02T19:39:14.899248+00:00
+- actor: claude-code
+  id: 01m3z23x3dm62n9bvsk0v8q03c
+  text: 'Addition to the implement record: `UnknownToolHintLiveTests` (doc comment changed only) also ran one time with `--no-parallel`: 1 test in 1 suite passed, 5.6 s. Each changed live suite has now run one time.'
+  timestamp: 2026-10-02T19:40:33.261661+00:00
+- actor: claude-code
+  id: 01m3z243rb0tn6nq91tm8yc09d
+  text: |-
+    ### implement — changed
+    - evidence: 10 source files (see the implement record above); `swift build --build-tests --package-path IntegrationTests` complete; `swift test` 1895 passed in 155 suites; 6 changed live suites passed locally, one time each, `--no-parallel`.
+    - estimate: job approximately 17 min 49 s on `mini` (run 37048824337: 20 min 11 s).
+    - next: review. No commit. The time criterion stays unchecked until a CI run after a push.
+  timestamp: 2026-10-02T19:40:40.075840+00:00
+- actor: claude-code
+  id: 01m3z2j5jqj6bggxjw5qwrrgax
+  text: |-
+    ### test - green
+    - evidence: `swift test` at the root: 1895 tests in 155 suites passed, 0 failed, 0 skipped. `swift build --build-tests --package-path IntegrationTests`: build complete, 0 errors. The only warning in both runs is the build tool message "missing creator for mutated node" for the mlx-swift_Cmlx bundle. It is not from the sources of this package. Live suites (one run, `--no-parallel`, real models): 7 tests in 6 suites passed (AgentSurfaceDiscovery, NoDescriptionSurfaceDiscovery, OperationToolLive, OverBudgetSurfaceDiscovery, RetrievalTextSurfaceDiscovery, UnknownToolHintLive), 85.8 s, 0 failed, 0 skipped.
+    - next: review. No code was changed in this step.
+  timestamp: 2026-10-02T19:48:20.695613+00:00
+- actor: claude-code
+  id: 01m3z2k4fqwmw6qvd6kgephd9w
+  text: |-
+    ### commit — changed
+    - evidence: this commit. Subject: test(integration): remove duplicate discovery queries
+    - next: review. The time criterion stays open until a CI run on the pushed commit shows the integration job at 20 minutes or less.
+  timestamp: 2026-10-02T19:48:52.343473+00:00
+position_column: doing
+position_ordinal: '80'
 title: Make the full integration suite run in 20 minutes or less, with every test kept
 ---
 ## Goal

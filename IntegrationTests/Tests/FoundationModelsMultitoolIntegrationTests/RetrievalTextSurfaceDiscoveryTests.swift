@@ -162,11 +162,92 @@ private struct GradedDiscoveryGroup: Sendable {
     let queries: [GradedDiscoveryQuery]
 }
 
+/// Twelve `task` strings nobody chose the selection preamble with, each
+/// beside the catalog paths a reader says answer it.
+///
+/// **Where they are driven.** Until card `^3vtvrzg`,
+/// `HeldOutSurfaceDiscoveryTests` also drove them through the selection tier.
+/// That suite held the same properties over the same surface, on the same
+/// model and through the same mount as `AgentSurfaceDiscoveryTests`, so card
+/// `^3vtvrzg` removed it (81.0 s on the CI runner `mini`, run `37048824337`).
+/// This suite is their one user now: it ranks them in each retrieval setting,
+/// and holds each path they declare to be a path of the catalog.
+///
+/// **Twelve of the fifteen.** The group had fifteen strings. Card `^3vtvrzg`
+/// removed three that test the same tool, with the same declared paths and
+/// the same kind of phrase, as a string that stays:
+///
+/// - "open a file and look at one region of it closely" (`files.read`), the
+///   same as "i need to read the source file where the defect lives".
+/// - "run only the one test that reproduces the bug" and "run a shell command
+///   in the project directory" (`shell.execute`), the same kind of "run …"
+///   phrase as "i want to run the project test suite now".
+///
+/// **How these were written, which is the whole value of the group.** A model
+/// wrote them in a context of its own, with no file, no repository and no tool
+/// call at all. It was given a task description and nothing else: an
+/// autonomous coding agent works on a checkout of a Python library; for one
+/// episode it must find where a reported defect lives, read the code around
+/// it, change the source, confirm the fix by running the test suite, and
+/// between episodes inspect the workspace, look at logs and clean up scratch
+/// output; it holds no fixed tool list, and before it can act it must ask a
+/// discovery service for capabilities by writing a short phrase saying what it
+/// wants to do. The instruction told it to write from the work, and forbade
+/// any dotted identifier, camelCase name or brand name of any kind. No tool
+/// name of this surface was in that context, so no phrase can copy one.
+///
+/// That is what makes this group different from ``agentSurfaceQueries``.
+/// Those chose the wording the selection tier runs, so a reading of that
+/// wording on them grades an answer against its own answer key. Nothing chose
+/// anything with these strings.
+///
+/// The correct paths were declared afterwards, once the phrases were fixed, by
+/// a reader of the nine tool descriptions of the surface. The declaration
+/// therefore cannot have steered the wording.
+private let heldOutQueries = [
+    GradedDiscoveryQuery(
+        task: "show me the files and folders in this checkout",
+        correctPaths: ["files.glob", "shell.execute"]),
+    GradedDiscoveryQuery(
+        task: "i need to read the source file where the defect lives",
+        correctPaths: ["files.read"]),
+    GradedDiscoveryQuery(
+        task: "find every place in the code that mentions this function name",
+        correctPaths: ["files.grep"]),
+    GradedDiscoveryQuery(
+        task: "change a few lines in an existing source file",
+        correctPaths: ["files.edit", "files.patch"]),
+    GradedDiscoveryQuery(
+        task: "rewrite the whole contents of a module",
+        correctPaths: ["files.write", "files.patch"]),
+    GradedDiscoveryQuery(
+        task: "create a new file to hold a regression test",
+        correctPaths: ["files.write", "files.patch"]),
+    GradedDiscoveryQuery(
+        task: "i want to run the project test suite now",
+        correctPaths: ["shell.execute"]),
+    GradedDiscoveryQuery(
+        task: "i need to see what the failing test printed",
+        correctPaths: ["shell.getLines", "shell.grepHistory"]),
+    GradedDiscoveryQuery(
+        task: "read the log file that the last run wrote",
+        correctPaths: ["files.read", "shell.getLines"]),
+    GradedDiscoveryQuery(
+        task: "delete a leftover temporary directory",
+        correctPaths: ["shell.execute"]),
+    GradedDiscoveryQuery(
+        task: "remove a scratch file i made earlier",
+        correctPaths: ["files.patch", "shell.execute"]),
+    GradedDiscoveryQuery(
+        task: "check which source files i have changed so far",
+        correctPaths: ["shell.execute"]),
+]
+
 /// The two graded groups this measurement drives, in report order.
 ///
-/// Both lists are taken from the suites that own them — the ten of card
-/// `^zqz1zan` and the fifteen of card `^kn9ay20` — so no query is written
-/// twice.
+/// The recorded queries of card `^zqz1zan` (``agentSurfaceQueries``) and the
+/// held-out queries of card `^kn9ay20` (``heldOutQueries``), each written in
+/// one place, so no query is written twice.
 private let retrievalTextGroups = [
     GradedDiscoveryGroup(name: "agentSurface", queries: agentSurfaceQueries),
     GradedDiscoveryGroup(name: "heldOut", queries: heldOutQueries),
@@ -183,7 +264,7 @@ private let retrievalTextGroups = [
 ///
 /// **How it is answered.** Three settings, named by ``RetrievalTextSetting``,
 /// over the same nine-entry files-and-shell surface, the same embedder and
-/// the same twenty-five queries. The selection tier is switched off in every
+/// the same twenty queries. The selection tier is switched off in every
 /// one of them — each searcher runs in `.retrieval` mode with no
 /// `SelectionConfig` — so the ranking is the retrieval tier's alone and no
 /// model picks anything. Each query asks for the whole catalog, so a

@@ -196,8 +196,15 @@ comments:
     - review: clean — 0 findings; every prior finding checked
     - the task stays in review: the last acceptance criterion needs a real CI run id, and that needs a push that the user approves
   timestamp: 2026-10-02T05:55:51.677095+00:00
-position_column: review
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m3z0ck53w4xzv24tgdhsprnt
+  text: |-
+    ### finish iteration 4 — clean
+    - CI run 37048824337 (commit abe79da): the nested package built, and every discovery suite passed. The last acceptance box is checked with this run id.
+    - every review finding is checked, and the last review (402cdf8) was clean; task moved to done
+  timestamp: 2026-10-02T19:10:20.835551+00:00
+position_column: done
+position_ordinal: ffff9480
 title: Replace the fixed discovery scores in the integration tests with checks that do not depend on model quality
 ---
 ## Problem
@@ -228,7 +235,7 @@ A fixed score is a measurement of model quality, and it is written as a test of 
 - [x] No integration test asserts a fixed number of correct discovery paths, in total or for each query.
 - [x] Each discovery test asserts the properties of item 1 of Work, and prints its correct and wrong counts.
 - [x] A test shows that a catalog path that does not exist in an answer fails the check.
-- [ ] `swift build --build-tests --package-path IntegrationTests` passes, and the discovery suites pass in one real integration run (record the run id). Local part done on 2026-10-02 (build passes; 13 tests in 7 suites pass on the M3 Ultra). The CI run id is still open: the implement step cannot produce a CI run.
+- [x] `swift build --build-tests --package-path IntegrationTests` passes, and the discovery suites pass in one real integration run (record the run id). Local part done on 2026-10-02 (build passes; 13 tests in 7 suites pass on the M3 Ultra). CI run 37048824337 (commit abe79da, 2026-10-02): the nested package built, and every discovery suite passed (agent surface, held-out, operation tool, no description, over budget, retrieval text). The job failed only on live web-search tests, which this card does not touch.
 
 ## Review Findings (2026-10-02 00:26)
 
@@ -251,4 +258,5 @@ A fixed score is a measurement of model quality, and it is written as a test of 
 > 2 file(s) not reviewed — excluded by an ignore rule:
 > - `.kanban/ (from .reviewignore)` — 2 file(s)
 
-- [x] `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/OverBudgetSurfaceDiscoveryTests.swift:152` `swift/fluent-usage` — `reportOverBudget(line: ...)` does not form a grammatical phrase at the call site, same issue as line 134. Same as line 134. #ci
+- [x] `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/OverBudgetSurfaceDiscoveryTests.swift:152` `swift/fluent-usage` — `reportOverBudget(line: ...)` does not form a grammatical phrase at the call site, same issue as line 134. Same as line 134.
+#ci

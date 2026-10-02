@@ -131,9 +131,9 @@ let imaginedToolPaths = [
 /// six wrong paths against it.
 ///
 /// **It never goes through `searchTools`.** That tool forwards to the other
-/// searcher of the bundle — `.auto` mode with a selection tier — and the two
-/// suites that grade it are `AgentSurfaceDiscoveryTests` and
-/// `HeldOutSurfaceDiscoveryTests`. The searcher here is the retrieval-only one
+/// searcher of the bundle — `.auto` mode with a selection tier — and the
+/// suite that grades it over this surface is `AgentSurfaceDiscoveryTests`.
+/// The searcher here is the retrieval-only one
 /// a repair costs, and it is reached the one way a run reaches it:
 /// `UnknownToolHint.hint(message:snippet:surface:searcher:)`.
 ///
