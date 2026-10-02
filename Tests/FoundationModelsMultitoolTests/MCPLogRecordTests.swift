@@ -105,7 +105,7 @@ struct MCPLogRecordTests {
             error: MarkedConnectError())
 
         let records = try await TelemetryCapture.run(forbidding: [Self.errorMarker]) { context in
-            let server = MCPServer(name: Self.serverName, clock: ManualClock(), logger: context.logger)
+            let server = MCPTestSupport.makeServer(name: Self.serverName, clock: ManualClock(), logger: context.logger)
             await #expect(throws: MCPServerError.self) {
                 try await server.connect(via: flaky, backoffPolicy: Self.failingPolicy)
             }
@@ -135,7 +135,7 @@ struct MCPLogRecordTests {
         let respawning = RespawningTransport.makeServingFreshScriptedServers { ScriptedServer() }
 
         let records = try await TelemetryCapture.run(forbidding: []) { context in
-            let server = MCPServer(name: Self.serverName, logger: context.logger)
+            let server = MCPTestSupport.makeServer(name: Self.serverName, logger: context.logger)
             try await server.connect(via: respawning, backoffPolicy: .default)
             await respawning.disconnect()
             try await server.reconnect()
@@ -162,7 +162,7 @@ struct MCPLogRecordTests {
         }
 
         let records = try await TelemetryCapture.run(forbidding: [Self.argumentMarker]) { context in
-            let server = MCPServer(name: Self.serverName, logger: context.logger)
+            let server = MCPTestSupport.makeServer(name: Self.serverName, logger: context.logger)
             try await server.connect(via: respawning, backoffPolicy: .default)
             let call = Task {
                 try await server.call(

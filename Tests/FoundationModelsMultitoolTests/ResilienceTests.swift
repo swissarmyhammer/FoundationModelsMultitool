@@ -139,16 +139,9 @@ struct ResilienceTests {
         clientQueueClock: any Clock<Duration> = ContinuousClock(),
         connectAttemptClock: any Clock<Duration> = GatedClock()
     ) -> MCPServer {
-        MCPServer(
-            name: Self.serverName,
-            version: MCPServer.defaultClientVersion,
-            clock: clock,
-            clientQueueClock: clientQueueClock,
-            connectAttemptClock: connectAttemptClock,
-            callTimeout: MCPServer.defaultCallTimeout,
-            renderBudget: .default,
-            elicitationHandler: nil,
-            logger: MCPServer.defaultLogger)
+        MCPTestSupport.makeServer(
+            name: Self.serverName, clock: clock, clientQueueClock: clientQueueClock,
+            connectAttemptClock: connectAttemptClock)
     }
 
     /// Starts a fresh `ScriptedServer` on the server end of an in-memory pair

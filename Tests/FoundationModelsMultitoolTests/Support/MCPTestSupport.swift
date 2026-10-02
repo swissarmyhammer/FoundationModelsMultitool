@@ -142,6 +142,56 @@ enum MCPTestSupport {
         }
     }
 
+    /// Builds an `MCPServer` named `name` for a test, not yet connected.
+    ///
+    /// Each setting has the default of the public initializer, except
+    /// `connectAttemptClock`. Its default is a `GatedClock` that no test
+    /// opens. Thus no connect attempt and no reconnect attempt of the server
+    /// times out, however slow the machine is (card `^zbhjc99`: no test
+    /// checks the speed of the machine). A test of the timeout gives its own
+    /// `GatedClock`, opens it when the attempt is in flight, and reads the
+    /// recorded duration.
+    ///
+    /// - Parameters:
+    ///   - name: The name of the server, and so its identity.
+    ///   - clock: The clock the server sleeps on — between retries, and for
+    ///     the `tools/list_changed` coalesce window. Defaults to a real
+    ///     clock; a suite of the live catalog passes a `ManualClock`.
+    ///   - clientQueueClock: The clock each bounded wait of the
+    ///     client-operation queue sleeps on. Defaults to a real clock.
+    ///   - connectAttemptClock: The clock the per-attempt timeout of a
+    ///     connect sleeps on. Defaults to a `GatedClock` that no test opens.
+    ///   - callTimeout: The bound of a call made with no ambient
+    ///     `ToolContext`. Defaults to `MCPServer.defaultCallTimeout`.
+    ///   - renderBudget: The render budget every rendered result of the
+    ///     server obeys. Defaults to `RenderBudget.default`.
+    ///   - elicitationHandler: The host's answerer for an elicitation that
+    ///     arrives under no `ToolContext`. Defaults to `nil`.
+    ///   - logger: The logger of the server. Defaults to
+    ///     `MCPServer.defaultLogger`.
+    /// - Returns: The server, not yet connected.
+    static func makeServer(
+        name: String,
+        clock: any Clock<Duration> = ContinuousClock(),
+        clientQueueClock: any Clock<Duration> = ContinuousClock(),
+        connectAttemptClock: any Clock<Duration> = GatedClock(),
+        callTimeout: Duration = MCPServer.defaultCallTimeout,
+        renderBudget: RenderBudget = .default,
+        elicitationHandler: MCPServer.ElicitationHandler? = nil,
+        logger: Logger = MCPServer.defaultLogger
+    ) -> MCPServer {
+        MCPServer(
+            name: name,
+            version: MCPServer.defaultClientVersion,
+            clock: clock,
+            clientQueueClock: clientQueueClock,
+            connectAttemptClock: connectAttemptClock,
+            callTimeout: callTimeout,
+            renderBudget: renderBudget,
+            elicitationHandler: elicitationHandler,
+            logger: logger)
+    }
+
     /// Starts `scripted` on the server end of a transport of `kind`, and
     /// returns an `MCPServer` named `name` connected — and so `.ready` —
     /// against the client end.
@@ -157,6 +207,9 @@ enum MCPTestSupport {
     ///   - clock: The clock the server sleeps on — between retries, and for
     ///     the `tools/list_changed` coalesce window. Defaults to a real
     ///     clock; a suite of the live catalog passes a `ManualClock`.
+    ///   - connectAttemptClock: The clock the per-attempt timeout of a
+    ///     connect or a reconnect sleeps on. Defaults to a `GatedClock` that
+    ///     no test opens — see ``makeServer(name:clock:clientQueueClock:connectAttemptClock:callTimeout:renderBudget:elicitationHandler:logger:)``.
     ///   - callTimeout: The bound of a call made with no ambient
     ///     `ToolContext`. Defaults to `MCPServer.defaultCallTimeout`; a
     ///     suite of the bare call passes a short one.
@@ -174,12 +227,14 @@ enum MCPTestSupport {
         over kind: MCPTransportKind,
         name: String,
         clock: any Clock<Duration> = ContinuousClock(),
+        connectAttemptClock: any Clock<Duration> = GatedClock(),
         callTimeout: Duration = MCPServer.defaultCallTimeout,
         renderBudget: RenderBudget = .default,
         elicitationHandler: MCPServer.ElicitationHandler? = nil
     ) async throws -> MCPServer {
-        let server = MCPServer(
-            name: name, clock: clock, callTimeout: callTimeout, renderBudget: renderBudget,
+        let server = makeServer(
+            name: name, clock: clock, connectAttemptClock: connectAttemptClock,
+            callTimeout: callTimeout, renderBudget: renderBudget,
             elicitationHandler: elicitationHandler)
         let transport = try await clientTransport(serving: scripted, over: kind)
         try await closingOnFailure(transport) {
@@ -205,6 +260,9 @@ enum MCPTestSupport {
     ///     default is the default of `MCPServer`.
     ///   - logger: The logger of the `MCPServer`. The default is the default
     ///     of `MCPServer`.
+    ///   - connectAttemptClock: The clock the per-attempt timeout of a
+    ///     connect or a reconnect sleeps on. Defaults to a `GatedClock` that
+    ///     no test opens — see ``makeServer(name:clock:clientQueueClock:connectAttemptClock:callTimeout:renderBudget:elicitationHandler:logger:)``.
     /// - Returns: The connected server, and the recording transport it
     ///   connected over.
     /// - Throws: What `ScriptedServer.startOnInMemoryPair()` or
@@ -212,10 +270,13 @@ enum MCPTestSupport {
     static func connectedRecordingMCPServer(
         to scripted: ScriptedServer, name: String,
         callTimeout: Duration = MCPServer.defaultCallTimeout,
-        logger: Logger = MCPServer.defaultLogger
+        logger: Logger = MCPServer.defaultLogger,
+        connectAttemptClock: any Clock<Duration> = GatedClock()
     ) async throws -> (server: MCPServer, wire: WireRecordingTransport) {
         let wire = WireRecordingTransport(wrapping: try await scripted.startOnInMemoryPair())
-        let server = MCPServer(name: name, callTimeout: callTimeout, logger: logger)
+        let server = makeServer(
+            name: name, connectAttemptClock: connectAttemptClock, callTimeout: callTimeout,
+            logger: logger)
         try await server.connect(via: wire)
         return (server, wire)
     }
@@ -226,12 +287,15 @@ enum MCPTestSupport {
     /// the verb starts from.
     ///
     /// - Important: The caller keeps the returned `ScriptedServer` alive for
-    ///   the whole test, as ``connectedMCPServer(to:over:name:clock:callTimeout:renderBudget:elicitationHandler:)``
+    ///   the whole test, as ``connectedMCPServer(to:over:name:clock:connectAttemptClock:callTimeout:renderBudget:elicitationHandler:)``
     ///   requires.
     ///
     /// - Parameters:
     ///   - tools: The tools to register before the connect.
     ///   - name: The name of the `MCPServer`, and so its identity.
+    ///   - connectAttemptClock: The clock the per-attempt timeout of a
+    ///     connect or a reconnect sleeps on. Defaults to a `GatedClock` that
+    ///     no test opens — see ``makeServer(name:clock:clientQueueClock:connectAttemptClock:callTimeout:renderBudget:elicitationHandler:logger:)``.
     ///   - callTimeout: The bound of a bare call of the server. Defaults to
     ///     `MCPServer.defaultCallTimeout`.
     ///   - renderBudget: The render budget of the server. Defaults to
@@ -242,6 +306,7 @@ enum MCPTestSupport {
     static func connectedMCPServer(
         serving tools: [ScriptedTool],
         name: String,
+        connectAttemptClock: any Clock<Duration> = GatedClock(),
         callTimeout: Duration = MCPServer.defaultCallTimeout,
         renderBudget: RenderBudget = .default
     ) async throws -> (scripted: ScriptedServer, server: MCPServer) {
@@ -250,8 +315,8 @@ enum MCPTestSupport {
             await scripted.addTool(tool)
         }
         let server = try await connectedMCPServer(
-            to: scripted, over: .inMemory, name: name, callTimeout: callTimeout,
-            renderBudget: renderBudget)
+            to: scripted, over: .inMemory, name: name, connectAttemptClock: connectAttemptClock,
+            callTimeout: callTimeout, renderBudget: renderBudget)
         return (scripted, server)
     }
 
@@ -262,13 +327,16 @@ enum MCPTestSupport {
     /// parameterized case runs over both transports.
     ///
     /// - Important: The caller keeps the returned `ScriptedServer` alive for
-    ///   the whole test, as ``connectedMCPServer(to:over:name:clock:callTimeout:renderBudget:elicitationHandler:)``
+    ///   the whole test, as ``connectedMCPServer(to:over:name:clock:connectAttemptClock:callTimeout:renderBudget:elicitationHandler:)``
     ///   requires.
     ///
     /// - Parameters:
     ///   - kind: The transport to connect over.
     ///   - name: The name of the `MCPServer`, and so its identity and the
     ///     noun its verbs render under.
+    ///   - connectAttemptClock: The clock the per-attempt timeout of a
+    ///     connect or a reconnect sleeps on. Defaults to a `GatedClock` that
+    ///     no test opens — see ``makeServer(name:clock:clientQueueClock:connectAttemptClock:callTimeout:renderBudget:elicitationHandler:logger:)``.
     ///   - elicitationHandler: The host's answerer for an elicitation that
     ///     arrives under no `ToolContext`. Defaults to `nil`.
     /// - Returns: The scripted server, which the test keeps alive, and the
@@ -276,12 +344,14 @@ enum MCPTestSupport {
     /// - Throws: What the connect throws.
     static func connectedLoopbackMCPServer(
         over kind: MCPTransportKind, name: String,
+        connectAttemptClock: any Clock<Duration> = GatedClock(),
         elicitationHandler: MCPServer.ElicitationHandler? = nil
     ) async throws -> (scripted: ScriptedServer, server: MCPServer) {
         let scripted = ScriptedServer()
         await scripted.addLoopbackTools()
         let server = try await connectedMCPServer(
-            to: scripted, over: kind, name: name, elicitationHandler: elicitationHandler)
+            to: scripted, over: kind, name: name, connectAttemptClock: connectAttemptClock,
+            elicitationHandler: elicitationHandler)
         return (scripted, server)
     }
 }

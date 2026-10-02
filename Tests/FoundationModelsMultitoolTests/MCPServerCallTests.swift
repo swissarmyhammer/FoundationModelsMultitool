@@ -130,7 +130,7 @@ struct MCPServerCallTests {
 
     /// A scripted server that serves `tools`, connected to a fresh
     /// `MCPServer` named ``serverName`` over the in-memory transport — the
-    /// shared ``MCPTestSupport/connectedMCPServer(serving:name:callTimeout:renderBudget:)``
+    /// shared ``MCPTestSupport/connectedMCPServer(serving:name:connectAttemptClock:callTimeout:renderBudget:)``
     /// under this suite's own name.
     ///
     /// - Parameters:

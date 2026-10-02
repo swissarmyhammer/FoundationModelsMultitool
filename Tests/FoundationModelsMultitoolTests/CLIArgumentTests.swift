@@ -243,19 +243,34 @@ struct CLIArgumentTests {
     func runMCPCommandThatDoesNotStartExitsUsageError() async {
         let output = OutputCollector()
         let resolveCalls = CallCounter()
+        let maker = GatedServerMaker()
         let exitCode = await CLIRunner.run(
             arguments: ["--mcp", "\(Self.mcpServerNoun)=\(Self.absentCommand)"],
             resolve: { _, _, _ in
                 resolveCalls.increment()
                 throw CLIArgumentTestsError.shouldNotBeCalled
             },
-            output: output.append
+            output: output.append,
+            makeServer: maker.makeServer(name:)
         )
 
         #expect(exitCode == CLIRunner.ExitCode.usageError)
         #expect(resolveCalls.count == 0)
         let reported = output.lines.filter { $0.contains("did not start") }
         #expect(reported.count == Self.oneLine, "output was: \(output.lines)")
+    }
+
+    @Test("run(...) builds the server of each --mcp option with the server maker it is given")
+    func runBuildsEachMCPServerWithTheGivenMaker() async {
+        let maker = GatedServerMaker()
+        _ = await CLIRunner.run(
+            arguments: ["--mcp", "\(Self.mcpServerNoun)=\(Self.absentCommand)"],
+            resolve: { _, _, _ in throw CLIArgumentTestsError.shouldNotBeCalled },
+            output: OutputCollector().append,
+            makeServer: maker.makeServer(name:)
+        )
+
+        #expect(maker.built.map(\.name) == [Self.mcpServerNoun])
     }
 
     // MARK: - `--mcp`: the server, its verbs, and its shutdown
@@ -278,9 +293,14 @@ struct CLIArgumentTests {
     /// Builds the registry of a `--direct` demo run that attaches one
     /// `mcp-test-server` in echo mode, exactly as `run(...)` builds it.
     ///
+    /// - Parameter maker: Builds the server of the attached process. Its
+    ///   connect-attempt clock is one that no test opens, so the connect never
+    ///   times out, however slow the machine is.
     /// - Returns: the built registry, its servers and its pool.
-    /// - Throws: what the locator or `CLIRunner.makeDemoRegistry(direct:web:mcpServers:)` throws.
-    private static func makeEchoDemo() async throws -> CLIRunner.DemoRegistry {
+    /// - Throws: what the locator or `CLIRunner.makeDemoRegistry(direct:web:mcpServers:makeServer:)` throws.
+    private static func makeEchoDemo(
+        maker: GatedServerMaker = GatedServerMaker()
+    ) async throws -> CLIRunner.DemoRegistry {
         try await CLIRunner.makeDemoRegistry(
             direct: true,
             web: false,
@@ -289,7 +309,19 @@ struct CLIArgumentTests {
                     name: mcpServerNoun,
                     command: TestServerLocator.executableURL().path,
                     arguments: [ServerMode.flagName, ServerMode.echo.rawValue])
-            ])
+            ],
+            makeServer: maker.makeServer(name:))
+    }
+
+    @Test("the demo attaches the server that the server maker built")
+    func demoAttachesTheServerTheMakerBuilt() async throws {
+        let maker = GatedServerMaker()
+        let demo = try await Self.makeEchoDemo(maker: maker)
+
+        let attached = try #require(demo.servers.first?.server)
+        #expect(maker.built.count == demo.servers.count)
+        #expect(maker.built.first?.server === attached)
+        await demo.pool.shutdownAll()
     }
 
     @Test("the surface listing names every verb of the attached server")

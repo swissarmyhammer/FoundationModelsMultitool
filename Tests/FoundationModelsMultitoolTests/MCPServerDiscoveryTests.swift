@@ -90,7 +90,7 @@ struct MCPServerDiscoveryTests {
         let scripted = ScriptedServer()
         await scripted.addEchoTool()
         let transport = try await MCPTestSupport.clientTransport(serving: scripted, over: .inMemory)
-        let server = MCPServer(name: Self.serverName)
+        let server = MCPTestSupport.makeServer(name: Self.serverName)
         #expect(await server.state == .connecting)
 
         try await server.connect(via: transport)
@@ -103,7 +103,7 @@ struct MCPServerDiscoveryTests {
         let (clientTransport, _) = await InMemoryTransport.createConnectedPair()
         let flaky = FlakyConnectTransport(
             wrapping: clientTransport, failingConnectAttempts: Self.oneFailingAttempt)
-        let server = MCPServer(name: Self.serverName)
+        let server = MCPTestSupport.makeServer(name: Self.serverName)
 
         await #expect(throws: (any Error).self) {
             try await server.connect(via: flaky)
@@ -116,7 +116,7 @@ struct MCPServerDiscoveryTests {
     }
 
     @Test func mcpToolsThrowsBeforeReady() async throws {
-        let server = MCPServer(name: Self.serverName)
+        let server = MCPTestSupport.makeServer(name: Self.serverName)
 
         await #expect(throws: MCPServerError.self) {
             _ = try await server.mcpTools()
@@ -136,7 +136,7 @@ struct MCPServerDiscoveryTests {
             )
         )
         let transport = try await MCPTestSupport.clientTransport(serving: scripted, over: .inMemory)
-        let server = MCPServer(name: Self.serverName)
+        let server = MCPTestSupport.makeServer(name: Self.serverName)
 
         await #expect(throws: (any Error).self) {
             try await server.connect(via: transport)
@@ -167,7 +167,7 @@ struct MCPServerDiscoveryTests {
     }
 
     @Test func catalogThrowsBeforeReady() async throws {
-        let server = MCPServer(name: Self.serverName)
+        let server = MCPTestSupport.makeServer(name: Self.serverName)
 
         await #expect(throws: MCPServerError.self) {
             _ = try await server.catalog

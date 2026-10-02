@@ -68,13 +68,15 @@ struct TransportFactoryTests {
     /// The factory-call count after one connect and one reconnect.
     private static let connectPlusReconnect = 2
 
-    /// A `MCPServer` named ``serverName`` over `clock`.
+    /// A `MCPServer` named ``serverName`` over `clock`, whose connect-attempt
+    /// timeout sleeps on a clock that no test opens — see
+    /// ``MCPTestSupport/makeServer(name:clock:clientQueueClock:connectAttemptClock:callTimeout:renderBudget:elicitationHandler:logger:)``.
     ///
     /// - Parameter clock: The clock the retry loop sleeps on. Defaults to a
     ///   real clock, for a test that exercises no backoff delay.
     /// - Returns: The server, not yet connected.
     private func makeServer(clock: any Clock<Duration> = ContinuousClock()) -> MCPServer {
-        MCPServer(name: Self.serverName, clock: clock)
+        MCPTestSupport.makeServer(name: Self.serverName, clock: clock)
     }
 
     /// A `RespawningTransport` over a fresh echo `ScriptedServer` per

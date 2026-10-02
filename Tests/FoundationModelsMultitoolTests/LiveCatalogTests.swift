@@ -260,7 +260,7 @@ struct LiveCatalogTests {
             try await scripted.start(transport: transport)
             return (client, scripted)
         }
-        let server = MCPServer(name: Self.serverName)
+        let server = MCPTestSupport.makeServer(name: Self.serverName)
         try await server.connect(via: respawning, backoffPolicy: .default)
         let recording = await recordCatalogUpdates(from: server)
         defer { recording.task.cancel() }
@@ -284,7 +284,7 @@ struct LiveCatalogTests {
     @Test func failedReconnectEmitsFaultedSnapshot() async throws {
         let scripted = await Self.scriptedServerWithInitialTool()
         let transport = try await MCPTestSupport.clientTransport(serving: scripted, over: .inMemory)
-        let server = MCPServer(name: Self.serverName)
+        let server = MCPTestSupport.makeServer(name: Self.serverName)
         try await server.connect(via: transport)
         let recording = await recordCatalogUpdates(from: server)
         defer { recording.task.cancel() }

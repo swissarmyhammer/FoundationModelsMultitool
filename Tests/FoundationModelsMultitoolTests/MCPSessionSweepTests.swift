@@ -337,7 +337,7 @@ struct MCPSessionSweepTests {
             command: TestServerLocator.executableURL().path,
             args: [ServerMode.flagName, ServerMode.echo.rawValue],
             name: Self.subprocessServerName)
-        let server = MCPServer(name: Self.subprocessServerName)
+        let server = MCPTestSupport.makeServer(name: Self.subprocessServerName)
         try await server.connect(via: stdio.respawn)
         let pid = try #require(stdio.currentPid)
         #expect(ProcessLiveness.isAlive(pid))

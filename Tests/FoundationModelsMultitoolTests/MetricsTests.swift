@@ -264,7 +264,7 @@ struct MetricsTests {
     func reconnectRecordsARestart() async throws {
         let respawning = RespawningTransport.makeServingFreshScriptedServers { ScriptedServer() }
         try await TelemetryCapture.run(forbidding: []) { context in
-            let server = MCPServer(name: Self.serverName, logger: context.logger)
+            let server = MCPTestSupport.makeServer(name: Self.serverName, logger: context.logger)
             try await server.connect(via: respawning, backoffPolicy: .default)
             #expect(Self.counters(.mcpServerRestarts, in: context).isEmpty)
 

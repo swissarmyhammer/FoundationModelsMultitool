@@ -98,7 +98,7 @@ struct LostCallTests {
             await scripted.addEchoTool()
             return scripted
         }
-        let server = MCPServer(name: Self.serverName)
+        let server = MCPTestSupport.makeServer(name: Self.serverName)
         try await server.connect(via: respawning, backoffPolicy: .default)
         let run = try await makeStubRun()
         let engine = MCPCallProbe.mountedRunToCompletion(
@@ -149,7 +149,7 @@ struct LostCallTests {
             await scripted.addTool(Self.hangingTool(counting: counter))
             return scripted
         }
-        let server = MCPServer(name: Self.serverName)
+        let server = MCPTestSupport.makeServer(name: Self.serverName)
         try await server.connect(via: respawning, backoffPolicy: .default)
         let context = try await makeOuterRunContext()
 

@@ -153,19 +153,24 @@ struct OverBudgetSelectionOrderTests {
     /// Mounts the large surface under a temporary directory this suite owns.
     ///
     /// The mount itself is
-    /// ``makeLargeCatalogSurface(root:shellStoreDirectoryName:)`` in the
+    /// ``makeLargeCatalogSurface(root:shellStoreDirectoryName:domains:describing:makeServer:)`` in the
     /// `MCPTestServer` product, which the gated
     /// `OverBudgetSurfaceDiscoveryTests` in the nested `IntegrationTests`
     /// package calls too. A package cannot import another package's test
     /// target, so a mount both suites read stands in a product, and that
     /// product already holds the verbs the mount connects.
     ///
+    /// Each server of the mount comes from
+    /// ``MCPTestSupport/makeServer(name:clock:clientQueueClock:connectAttemptClock:callTimeout:renderBudget:elicitationHandler:logger:)``,
+    /// so no connect of the mount can time out on a busy machine.
+    ///
     /// - Returns: the registry and the servers behind it.
     /// - Throws: what `makeDirectory(prefix:)` or the mount throws.
     private func makeOverBudgetSurface() async throws -> LargeCatalogSurface {
         try await makeLargeCatalogSurface(
             root: scratch.makeDirectory(prefix: Self.testDirectoryNamePrefix),
-            shellStoreDirectoryName: Self.shellStoreDirectoryName)
+            shellStoreDirectoryName: Self.shellStoreDirectoryName,
+            makeServer: { name in MCPTestSupport.makeServer(name: name) })
     }
 
     /// Runs one `searchTools` call over `registry` through a selection tier

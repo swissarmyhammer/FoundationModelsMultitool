@@ -270,7 +270,7 @@ struct MCPTracePropagationTests {
             await Self.scriptedServer(serving: [Self.hangingTool(counting: counter)])
         }
         try await TelemetryCapture.run(forbidding: [Self.argumentMarker]) { context in
-            let server = MCPServer(name: Self.serverName, logger: context.logger)
+            let server = MCPTestSupport.makeServer(name: Self.serverName, logger: context.logger)
             try await server.connect(via: respawning, backoffPolicy: .default)
             let call = Task { try await server.call(name: Self.hangingToolName, arguments: Self.arguments) }
             try await TestPoll.waitUntil("the handler ran") { counter.count == Self.oneCallInFlight }
@@ -292,7 +292,7 @@ struct MCPTracePropagationTests {
             await Self.scriptedServer(serving: [Self.hangingTool(counting: counter)])
         }
         try await TelemetryCapture.run(forbidding: [Self.argumentMarker]) { context in
-            let server = MCPServer(name: Self.serverName, logger: context.logger)
+            let server = MCPTestSupport.makeServer(name: Self.serverName, logger: context.logger)
             try await server.connect(via: respawning, backoffPolicy: .default)
             let call = Task { try await server.call(name: Self.hangingToolName, arguments: Self.arguments) }
             try await TestPoll.waitUntil("the handler ran") { counter.count == Self.oneCallInFlight }

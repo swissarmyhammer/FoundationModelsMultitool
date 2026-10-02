@@ -6,7 +6,7 @@ import FoundationModelsRouter
 
 /// Why the demo has no answer to print.
 ///
-/// `CLIRunner.run(arguments:resolve:output:errorOutput:)` writes the
+/// `CLIRunner.run(arguments:resolve:output:errorOutput:cancellation:makeServer:)` writes the
 /// description to standard error and returns `CLIRunner.ExitCode.answerFailed`.
 enum CLIAnswerError: Error, Equatable, CustomStringConvertible {
     /// The chain of submissions that answers the message ended with no
