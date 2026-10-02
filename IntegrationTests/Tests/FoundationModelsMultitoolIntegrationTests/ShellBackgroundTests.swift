@@ -42,9 +42,9 @@ import Testing
     // machine (card `^tm4x2hp`).
     //
     // The harness bounds a turn that never reaches `tools.shell.execute` with
-    // `shellRunArrivalDeadline`, eight minutes, after which it reports what it
-    // read rather than hanging. The hang guard stands far above that bound, so
-    // it is not the primary detector of anything.
+    // the shared poll hang guard `IntegrationPoll.deadline`, after which it
+    // reports what it read rather than hanging. The time limit stands above
+    // that bound, so it is not the primary detector of anything.
     .timeLimit(IntegrationHangGuard.timeLimit)
 )
 struct ShellBackgroundTests {

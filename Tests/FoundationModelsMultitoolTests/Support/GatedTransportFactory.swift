@@ -33,12 +33,18 @@ actor GatedTransportFactory {
         self.build = build
     }
 
+    /// Whether ``make()`` was called. It becomes true before the call waits
+    /// on the gate, thus a test can wait for this event to know that the
+    /// factory call is in flight (card `^kdtrmhv`).
+    private(set) var makeWasCalled = false
+
     /// Blocks the calling factory invocation until ``release()`` is called,
     /// then invokes `build`.
     ///
     /// - Returns: What `build` returns.
     /// - Throws: What `build` throws.
     func make() async throws -> any Transport {
+        makeWasCalled = true
         await gate.wait()
         return try await build()
     }

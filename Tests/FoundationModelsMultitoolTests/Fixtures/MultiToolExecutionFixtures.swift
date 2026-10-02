@@ -152,14 +152,14 @@ final class DelayedTool: Tool, Sendable {
     }
 }
 
-// MARK: - Promise.all concurrency fixture (eventplan.md "Async JavaScript")
+// MARK: - Window-recording fixture (eventplan.md "Async JavaScript")
 
-/// A tool that records the wall-clock window (`start`, `end`) its own `call`
-/// ran in — the concurrency-proving counterpart to `DelayedTool`: two of
-/// these, called through a snippet's `Promise.all([...])`, prove the
-/// underlying Swift `Task`s the async bridge starts for each `tools.*` call
-/// actually overlap in wall-clock time, rather than running one after
-/// another the way the retired v1 blocking bridge always did.
+/// A tool that sleeps for a fixed duration and records the wall-clock window
+/// (`start`, `end`) its own `call` ran in.
+///
+/// No test compares two windows to prove concurrency: that compares the speed
+/// of the machine (card `^kdtrmhv`). The `Promise.all` concurrency tests meet
+/// at a ``Rendezvous`` instead.
 ///
 /// `final class ... Sendable` (rather than a `struct`), the same pattern as
 /// `DelayedTool`: the test inspects `window` after `MultiTool.call` returns,
@@ -197,3 +197,4 @@ final class WindowRecordingTool: Tool, Sendable {
         return "\(name)-result"
     }
 }
+

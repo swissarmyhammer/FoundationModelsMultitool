@@ -10,8 +10,10 @@ import Testing
 /// `GenerationQueueError.waitInsideOpenSubmission(model:)`: its queue sees
 /// the open submission of the same model and throws before it queues
 /// anything. This probe makes that nested call from inside a tool call and
-/// passes only when the nested call gets the refusal inside
-/// `integrationNestedRefusalTimeLimit`.
+/// passes only when the nested call gets the refusal at once: the queue of
+/// the model, read at the refusal, shows the outer submission still running
+/// and no job waiting behind it. The order of events decides, and no
+/// real-time bound (card `^kdtrmhv`: no test checks the speed of the machine).
 ///
 /// **What it replaced.** Before the work-queue Router, the same nested call
 /// hung for ever: the old `RoutedModel.generationGate` was an
@@ -31,8 +33,11 @@ import Testing
 ///
 /// **How to read a run.**
 ///
-/// - `nestedGenerationRefused` and `nestedRefusalInTime` hold: Router refused
+/// - `nestedGenerationRefused` and `nestedRefusalAtOnce` hold: Router refused
 ///   the nested call at once, which is the contract.
+/// - `nestedRefusalAtOnce` fails alone: Router refused, but not at once. The
+///   message names the queue reading at the refusal: a job waited behind the
+///   outer submission, or no job ran because the outer submission had closed.
 /// - `nestedGenerationRefused` fails with "a reply": Router let the nested
 ///   call through. The refusal is gone.
 /// - `nestedGenerationRefused` fails with "a different error": the nested

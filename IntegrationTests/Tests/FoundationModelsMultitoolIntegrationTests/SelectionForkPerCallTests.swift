@@ -27,8 +27,11 @@ private let selectionForkScenario = "selectionFork"
 /// every child came off the same single root. The mechanism is asserted from
 /// the recording rather than assumed.
 ///
-/// It also times the two calls and holds the second to being no slower than
-/// the first. That is a timing observation and nothing more — see below.
+/// What the second call saves is the root: it forks a child off the root the
+/// first call left cached, and builds no root of its own. The recording
+/// states that as counts — one child session per call, and one root session
+/// for both calls — so the suite asserts the counts, and never the time a
+/// call took (card `^kdtrmhv`: no test checks the speed of the machine).
 ///
 /// ## What this suite CANNOT establish, and why it was renamed
 ///
@@ -38,9 +41,9 @@ private let selectionForkScenario = "selectionFork"
 /// re-prefilled the whole surface from scratch satisfies it exactly as well
 /// as a run that skipped a prefill. Measured 2026-08-16, both candidate
 /// models pass and neither passes decisively — Muse Glimmer `first=7.75s
-/// second=3.31s`, Qwen3.8 `first=5.81s second=3.58s`. The assertion is kept
-/// because "the second call is not slower" is true and worth holding; it is
-/// not evidence of prefix reuse, and no reader should take it for any.
+/// second=3.31s`, Qwen3.8 `first=5.81s second=3.58s`. That timing assertion
+/// is gone: it was a check of the speed of the machine, a busy machine could
+/// fail it, and it was never evidence of prefix reuse.
 ///
 /// The recorded entries cannot rescue it either. That was checked against the
 /// shipped build before this suite was narrowed, rather than assumed:
@@ -139,20 +142,14 @@ struct SelectionForkPerCallTests {
             let searchToolsTool = try SearchToolsTool(
                 registry: registry, selection: fixture.discoverySeams.selection)
 
-            let firstStart = Date()
             _ = try await searchToolsTool.call(
                 arguments: SearchToolsArguments(task: "list trip cities and get weather for each")
             )
-            let firstElapsed = Date().timeIntervalSince(firstStart)
-
-            let secondStart = Date()
             _ = try await searchToolsTool.call(arguments: SearchToolsArguments(task: "convert 100 USD to EUR"))
-            let secondElapsed = Date().timeIntervalSince(secondStart)
 
             let trace = SelectionForkTrace(events: try fixture.transcriptEvents())
             expectForkPerCall(trace)
-            expectSecondCallNoSlower(first: firstElapsed, second: secondElapsed)
-            reportDiagnostics(trace, first: firstElapsed, second: secondElapsed)
+            reportDiagnostics(trace)
 
             await fixture.tearDown()
         } catch GenerationError.notWiredForLiveInference {
@@ -236,43 +233,17 @@ private func expectForkPerCall(_ trace: SelectionForkTrace) {
     )
 }
 
-/// Holds the second selection call to being no slower than the first.
-///
-/// A timing comparison and nothing more. The first call pays model warm-up
-/// the second never pays, so this holds on a run that re-prefills the whole
-/// surface exactly as it holds on one that skips a prefill — see this file's
-/// suite documentation, and never read a pass here as prefix reuse.
-///
-/// - Parameters:
-///   - first: the first `searchTools` call's wall-clock duration.
-///   - second: the second call's wall-clock duration.
-private func expectSecondCallNoSlower(first: TimeInterval, second: TimeInterval) {
-    #expect(
-        second <= first,
-        """
-        expected the second searchTools call to be no slower than the first, which pays the cold \
-        model warm-up: first=\(first)s second=\(second)s. This is a warm-vs-cold timing check, not a \
-        prefix-reuse check — a failure means the second call got slower than a COLD first call, which \
-        no warm path should manage
-        """
-    )
-}
-
-/// Prints what the run measured, including the numbers nothing asserts on.
+/// Prints what the run recorded, including the numbers nothing asserts on.
 ///
 /// `tokensIn` is here as a diagnostic only. It is the whole rendered prompt of
 /// the turn, so it reads the same whether a prefix was reused or re-prefilled,
 /// and on this build it has been observed not to move with the prompt at all.
 ///
-/// - Parameters:
-///   - trace: the run's own recorded selection trace.
-///   - first: the first `searchTools` call's wall-clock duration.
-///   - second: the second call's wall-clock duration.
-private func reportDiagnostics(_ trace: SelectionForkTrace, first: TimeInterval, second: TimeInterval) {
+/// - Parameter trace: the run's own recorded selection trace.
+private func reportDiagnostics(_ trace: SelectionForkTrace) {
     reportGatedResult(
         scenario: selectionForkScenario,
-        line: "first=\(first)s second=\(second)s "
-            + "children=\(trace.childSessionIds.count) roots=\(trace.rootSessionIds.count)"
+        line: "children=\(trace.childSessionIds.count) roots=\(trace.rootSessionIds.count)"
     )
     for generation in trace.generations {
         reportGatedResult(

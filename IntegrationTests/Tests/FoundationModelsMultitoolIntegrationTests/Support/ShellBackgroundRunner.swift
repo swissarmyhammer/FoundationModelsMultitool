@@ -106,58 +106,6 @@ private let shellExecutePath = "shell.execute"
 /// itself and be swept as a finished run.
 private let sweptRunSleepSeconds = 600
 
-/// How many seconds the harness waits for the model to reach
-/// `tools.shell.execute`.
-///
-/// This bounds the whole model-driven half: discovery, the `runCode` call, and
-/// the snippet reaching the verb. It is generous because a live turn on the
-/// shipped 30-billion-parameter pin takes minutes, and it is bounded because a
-/// turn that never calls the verb must report that rather than hang until the
-/// hang guard of the suite fires and reads as a hang of something else.
-private let shellRunArrivalDeadlineSeconds = 480
-
-/// How long the harness waits for the model to reach `tools.shell.execute`.
-private let shellRunArrivalDeadline = Duration.seconds(shellRunArrivalDeadlineSeconds)
-
-/// How many seconds the harness waits for the started run to reach the run
-/// plane.
-///
-/// Generous rather than derived. A call reaches the plane as soon as the engine
-/// tracks it, so this bounds a live model's own pace and not a wait of the
-/// verb's.
-private let shellRunPlaneDeadlineSeconds = 90
-
-/// How long the harness waits for the started run to reach the run plane.
-private let shellRunPlaneDeadline = Duration.seconds(shellRunPlaneDeadlineSeconds)
-
-/// How many seconds the harness waits for the live run to have written a line.
-private let shellRunOutputDeadlineSeconds = 30
-
-/// How long the harness waits for the live run to have written a line.
-private let shellRunOutputDeadline = Duration.seconds(shellRunOutputDeadlineSeconds)
-
-/// How many seconds the harness waits for the killed process group to go away.
-///
-/// A poll and not slack: `killpg` kills the tree at once, and the leader of the
-/// group then stays an unreaped child of this process until swift-subprocess
-/// reaps it. A group that still holds a zombie still answers the probe.
-private let killedProcessGroupDeadlineSeconds = 30
-
-/// How long the harness waits for the killed process group to go away.
-private let killedProcessGroupDeadline = Duration.seconds(killedProcessGroupDeadlineSeconds)
-
-/// How many seconds the harness waits for the swept terminal to reach the
-/// transcript.
-///
-/// `RoutedSessionActor.close()` journals the sweep's terminals before it
-/// returns, and the journal write is chained through the outbox — but the
-/// recorder writes the transcript to disk, and this poll is the synchronization
-/// point onto that file rather than a claim about how long the write takes.
-private let journaledTerminalDeadlineSeconds = 30
-
-/// How long the harness waits for the swept terminal to reach the transcript.
-private let journaledTerminalDeadline = Duration.seconds(journaledTerminalDeadlineSeconds)
-
 /// The signal `killpg` takes to ASK whether a process group is still there.
 ///
 /// Signal 0 sends NOTHING. `killpg` performs the checks of a signal it is about
@@ -357,8 +305,12 @@ private func observeShellRunPlane(
 ) async -> ShellRunPlaneObservation {
     var observation = ShellRunPlaneObservation()
 
+    // Every wait below is a poll with the one shared hang-guard deadline of
+    // this target, `IntegrationPoll.deadline`, and never a deadline of its
+    // own: a live model decides when each reading becomes possible, and no
+    // test checks the speed of the machine (card `^kdtrmhv`).
     var context: ToolContext?
-    _ = await IntegrationPoll.holds(before: shellRunArrivalDeadline) {
+    _ = await IntegrationPoll.holds {
         context = probe.observedContexts.first
         return context != nil
     }
@@ -370,7 +322,7 @@ private func observeShellRunPlane(
     // `MultiTool.makeBackgroundRunHostFunctions(binding:)` — so this is the same
     // snapshot a snippet reads, taken through the same call.
     var background: BackgroundRun?
-    _ = await IntegrationPoll.holds(before: shellRunPlaneDeadline) {
+    _ = await IntegrationPoll.holds {
         background = await context.backgroundRuns().first { $0.completionToken == token }
         return background != nil
     }
@@ -391,7 +343,11 @@ private func observeShellRunPlane(
 
     observation.cancelOutcome = cancelReport(of: await context.cancel(completionToken: token))
     if let group = observation.childProcessGroup {
-        observation.childGone = await IntegrationPoll.holds(before: killedProcessGroupDeadline) {
+        // A poll and not slack: `killpg` kills the tree at once, and the leader
+        // of the group then stays an unreaped child of this process until
+        // swift-subprocess reaps it. A group that still holds a zombie still
+        // answers the probe.
+        observation.childGone = await IntegrationPoll.holds {
             !processGroupStands(group)
         }
     }
@@ -414,7 +370,7 @@ private func observeShellRunPlane(
 private func liveOutput(of token: String, in registry: MultiTool.Registry) async -> [String] {
     guard let getLines = registry.tools[shellGetLinesPath] as? GetLines else { return [] }
     var lines: [String] = []
-    _ = await IntegrationPoll.holds(before: shellRunOutputDeadline) {
+    _ = await IntegrationPoll.holds {
         lines = (try? await getLines.call(arguments: GetLinesArguments(commandID: token)))?.lines ?? []
         return !lines.isEmpty
     }
@@ -490,7 +446,7 @@ private func startSweptRun(
         )
     }
     var token: String?
-    _ = await IntegrationPoll.holds(before: shellRunPlaneDeadline) {
+    _ = await IntegrationPoll.holds {
         token = await context.backgroundRuns()
             .first { $0.kind == .process && $0.completionToken != other }?
             .completionToken
@@ -547,7 +503,7 @@ private func journaledRunEvents(
     awaiting token: String?, in fixture: LiveRouterFixture
 ) async -> [OperationEvent] {
     var events: [OperationEvent] = []
-    _ = await IntegrationPoll.holds(before: journaledTerminalDeadline) {
+    _ = await IntegrationPoll.holds {
         events = journaledOperationEvents(in: (try? fixture.transcriptEvents()) ?? [])
         guard let token else { return true }
         return !terminals(in: events, of: token).isEmpty

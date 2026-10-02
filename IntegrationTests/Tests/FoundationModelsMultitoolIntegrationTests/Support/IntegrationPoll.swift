@@ -13,9 +13,10 @@ import Foundation
 // The loop is `TestPoll`, the one poll of the test support code. It stands in
 // the `MultitoolTestSupport` product of the root package, thus this target
 // takes it from there and does not write the loop again. This file holds only
-// the values of this target: `TestPoll` waits ten seconds and reads every 25
-// milliseconds, which bounds the hang of a unit test. One live-model turn takes
-// minutes, thus this target waits longer and reads less frequently.
+// the values of this target: `TestPoll` reads every 25 milliseconds and gives
+// up after the hang guard of a unit test. One live-model turn takes minutes,
+// thus this target reads less frequently and gives up after a hang guard of
+// its own.
 
 /// The poll a gated scenario takes while it waits for a reading to become true.
 enum IntegrationPoll {
@@ -30,30 +31,34 @@ enum IntegrationPoll {
     /// minutes.
     static let interval = Duration.milliseconds(intervalMilliseconds)
 
-    /// How many seconds a poll keeps reading before it gives up, when its caller
-    /// names no deadline of its own.
-    private static let deadlineSeconds = 60
+    /// How many minutes a poll keeps reading before it gives up: twenty.
+    private static let deadlineMinutes = 20
 
-    /// How long a poll keeps reading before it gives up.
+    /// How long a poll keeps reading before it gives up. Every poll of this
+    /// target takes this one value.
     ///
-    /// A poll is a synchronization point and never a timing assertion, thus this
-    /// bounds a genuine hang and states nothing about how quickly the reading
-    /// becomes true.
-    static let deadline = Duration.seconds(deadlineSeconds)
+    /// This is a hang guard, and not a speed check. No test checks the speed
+    /// of the machine (decision of the user, cards `^tm4x2hp` and
+    /// `^kdtrmhv`). A poll is a synchronization point, thus this bounds a
+    /// genuine hang and states nothing about how quickly the reading becomes
+    /// true. The value is far above the slowest step seen on a busy machine
+    /// (one model turn of 362 s, a model load of 359 s), and below
+    /// ``IntegrationHangGuard/timeLimit``, thus a poll that never holds
+    /// reports what it read before the time limit of its test stops it.
+    static let deadline = Duration.seconds(deadlineMinutes * secondsPerMinute)
 
-    /// Polls `condition` until it holds, or until `deadline` passes.
+    /// The seconds in one minute, for ``deadline``.
+    private static let secondsPerMinute = 60
+
+    /// Polls `condition` until it holds, or until ``deadline`` passes.
     ///
     /// The answer is a reading and never a failure: a gated scenario collects
     /// every reading it took and grades them together, so a poll that gave up
     /// reports that and lets the verdict say what it means.
     ///
-    /// - Parameters:
-    ///   - deadline: How long to keep reading.
-    ///   - condition: The reading to take.
+    /// - Parameter condition: The reading to take.
     /// - Returns: `true` when the condition held before the deadline.
-    static func holds(
-        before deadline: Duration = IntegrationPoll.deadline, _ condition: () async -> Bool
-    ) async -> Bool {
+    static func holds(_ condition: () async -> Bool) async -> Bool {
         await TestPoll.holds(before: deadline, every: interval, condition)
     }
 }

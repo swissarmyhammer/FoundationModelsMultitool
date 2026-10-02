@@ -98,34 +98,39 @@ struct JSCInterpreterTests {
         #expect(result.returnValue == .number(42))
     }
 
-    @Test("an infinite loop is terminated by the watchdog within the configured limit")
+    /// The `.timeout` kind is the outcome that proves the watchdog ended the
+    /// loop. The test reads no real time (card `^kdtrmhv`: no test checks the
+    /// speed of the machine): a watchdog that never fires is a hang, and the
+    /// hang guard reports it.
+    @Test(
+        "an infinite loop is terminated by the watchdog within the configured limit",
+        .timeLimit(TestHangGuard.timeLimit))
     func infiniteLoopTerminatedByWatchdog() throws {
         let interpreter = JSCInterpreter(timeLimit: 1.0)
-        let start = ContinuousClock.now
         #expect {
             try interpreter.run(code: "while (true) {}", installing: [])
         } throws: { error in
             guard let interpreterError = error as? InterpreterError else { return false }
             return interpreterError.kind == .timeout
         }
-        // Generous CI-safe bound: the watchdog should fire close to the
-        // configured limit, not hang the test indefinitely.
-        #expect(start.duration(to: .now) < .seconds(10))
     }
 
-    @Test("withTimeLimit returns an interpreter armed with the given limit, not the receiver's")
+    /// The receiver's limit is ``unreachedTimeLimit``, thus only the limit
+    /// that `withTimeLimit` gives can end the loop. The `.timeout` kind is the
+    /// outcome that proves the returned interpreter carries that limit, and
+    /// the test reads no real time (card `^kdtrmhv`). An interpreter that kept
+    /// the receiver's limit hangs, and the hang guard reports it.
+    @Test(
+        "withTimeLimit returns an interpreter armed with the given limit, not the receiver's",
+        .timeLimit(TestHangGuard.timeLimit))
     func withTimeLimitReturnsAnInterpreterArmedWithTheGivenLimit() throws {
-        let interpreter = JSCInterpreter(timeLimit: 30.0).withTimeLimit(0.3)
-        let start = ContinuousClock.now
+        let interpreter = JSCInterpreter(timeLimit: Self.unreachedTimeLimit).withTimeLimit(0.3)
         #expect {
             try interpreter.run(code: "while (true) {}", installing: [])
         } throws: { error in
             guard let interpreterError = error as? InterpreterError else { return false }
             return interpreterError.kind == .timeout
         }
-        // Far below the 30s limit the receiver was constructed with — proves
-        // the returned interpreter carries the requested limit instead.
-        #expect(start.duration(to: .now) < .seconds(10))
     }
 
     @Test("a host function that throws surfaces as InterpreterError")
@@ -363,15 +368,14 @@ struct JSCInterpreterTests {
 
     @Test("checkSyntax executes nothing: an infinite loop parses instead of hitting the watchdog")
     func syntaxCheckExecutesNothing() throws {
-        // `run` on this source terminates only via the watchdog, after the
-        // whole time limit. Parsing it returns at once, which is the
-        // observable difference between checking and running.
+        // `run` on this source terminates only via the watchdog, with a
+        // `.timeout` error. Parsing it throws nothing, which is the observable
+        // difference between checking and running. The outcome decides, and
+        // the test reads no real time (card `^kdtrmhv`).
         let interpreter = JSCInterpreter(timeLimit: 30.0)
-        let start = ContinuousClock.now
         #expect(throws: Never.self) {
             try interpreter.checkSyntax(of: "while (true) {}")
         }
-        #expect(start.duration(to: .now) < .seconds(1))
     }
 
     @Test("checkSyntax installs nothing: a snippet naming an uninstalled global still parses")
@@ -432,18 +436,21 @@ struct JSCInterpreterTests {
         #expect(result.returnValue == .number(3))
     }
 
-    @Test("Promise.all over two async host functions runs them concurrently")
+    /// Each call waits at one ``Rendezvous`` until the other call has
+    /// arrived. A bridge that ran them one after another leaves the first call
+    /// waiting for a call that cannot start, and the hang guard reports it.
+    /// Thus the run returns "done" only when both calls ran at the same time,
+    /// and the test reads no real time (card `^kdtrmhv`: no test checks the
+    /// speed of the machine).
+    @Test(
+        "Promise.all over two async host functions runs them concurrently",
+        .timeLimit(TestHangGuard.timeLimit))
     func promiseAllRunsAsyncHostFunctionsConcurrently() throws {
-        let interpreter = JSCInterpreter()
-        let windows = OSAllocatedUnfairLock<[(start: ContinuousClock.Instant, end: ContinuousClock.Instant)]>(
-            initialState: []
-        )
-        func makeDelayed(name: String) -> AsyncHostFunction {
+        let interpreter = JSCInterpreter(timeLimit: Self.unreachedTimeLimit)
+        let rendezvous = Rendezvous(partySize: Self.concurrentCallCount)
+        func makeMeeting(name: String) -> AsyncHostFunction {
             AsyncHostFunction(name: name) { _ in
-                let start = ContinuousClock.now
-                try await Task.sleep(nanoseconds: 200_000_000)
-                let end = ContinuousClock.now
-                windows.withLock { $0.append((start, end)) }
+                await rendezvous.arrive()
                 return .null
             }
         }
@@ -453,17 +460,14 @@ struct JSCInterpreterTests {
             return "done";
             """,
             installing: [],
-            installingAsync: [makeDelayed(name: "slowA"), makeDelayed(name: "slowB")]
+            installingAsync: [makeMeeting(name: "slowA"), makeMeeting(name: "slowB")]
         )
         #expect(result.returnValue == .string("done"))
-        let recorded = windows.withLock { $0 }
-        #expect(recorded.count == 2)
-        // Real concurrency, not serialization: each call's window overlaps
-        // the other's — if the bridge ran them one after another, one
-        // window would start only after the other had already ended.
-        let overlap = recorded[0].start < recorded[1].end && recorded[1].start < recorded[0].end
-        #expect(overlap)
     }
+
+    /// How many async host functions the `Promise.all` snippet starts
+    /// together.
+    private static let concurrentCallCount = 2
 
     @Test("a floating async host-function call completes before the run returns")
     func floatingAsyncCallSettlesBeforeReturn() throws {
@@ -1034,24 +1038,30 @@ struct JSCInterpreterTests {
         }
     }
 
-    @Test("isCancelled mid-await cancels a pending async host function and returns within the time limit")
-    func cancellationCancelsPendingAsyncHostFunction() throws {
-        let interpreter = JSCInterpreter(timeLimit: 10.0)
+    /// The pending call never settles by itself, and the watchdog limit is
+    /// never reached, thus only the cancel can end the run, and the
+    /// `CancellationError` is the outcome that proves it did. The cancel flag
+    /// is set by an event — the pending call started — and never after a real
+    /// delay, and the test waits for the cancelled call's own event and never
+    /// for a fixed time (card `^kdtrmhv`: no test checks the speed of the
+    /// machine).
+    @Test(
+        "isCancelled mid-await cancels a pending async host function and returns within the time limit",
+        .timeLimit(TestHangGuard.timeLimit))
+    func cancellationCancelsPendingAsyncHostFunction() async throws {
+        let interpreter = JSCInterpreter(timeLimit: Self.unreachedTimeLimit)
         let cancelledBox = OSAllocatedUnfairLock(initialState: false)
         let taskWasCancelled = OSAllocatedUnfairLock(initialState: false)
         let slow = AsyncHostFunction(name: "slowAsync") { _ in
+            cancelledBox.withLock { $0 = true }
             do {
-                try await Task.sleep(nanoseconds: 5_000_000_000)
+                try await Task.sleep(for: Self.unsettledCallDuration)
             } catch {
                 taskWasCancelled.withLock { $0 = true }
                 throw error
             }
             return .null
         }
-        DispatchQueue.global().asyncAfter(deadline: .now() + 0.2) {
-            cancelledBox.withLock { $0 = true }
-        }
-        let start = ContinuousClock.now
         #expect {
             try interpreter.run(
                 code: "await slowAsync(); return \"done\";",
@@ -1062,12 +1072,17 @@ struct JSCInterpreterTests {
         } throws: { error in
             error is CancellationError
         }
-        #expect(start.duration(to: .now) < .seconds(3))
-        // Give the abandoned background Task a moment to observe its own
-        // cancellation after `run` has already returned.
-        Thread.sleep(forTimeInterval: 0.3)
-        #expect(taskWasCancelled.withLock { $0 })
+        // The abandoned background Task observes its own cancellation after
+        // `run` has already returned: wait for that event.
+        try await TestPoll.waitUntil("the pending call saw its cancellation") {
+            taskWasCancelled.withLock { $0 }
+        }
     }
+
+    /// How long a pending call of the cancellation tests sleeps: one day. No
+    /// test reaches it, thus only the cancel can end the call while the test
+    /// runs.
+    private static let unsettledCallDuration = Duration.seconds(86_400)
 
     /// The snippet the cancellation pin and both of its controls run
     /// unchanged: it witnesses that it entered the `try` block, that an
@@ -1120,9 +1135,10 @@ struct JSCInterpreterTests {
     }
 
     @Test(
-        "cancelling a snippet that waits on a pending call runs none of its author-written .catch() or finally {}"
+        "cancelling a snippet that waits on a pending call runs none of its author-written .catch() or finally {}",
+        .timeLimit(TestHangGuard.timeLimit)
     )
-    func cancellationSkipsAuthorCatchAndFinally() throws {
+    func cancellationSkipsAuthorCatchAndFinally() async throws {
         // Pins the ruled cancellation contract (eventplan.md "Async
         // JavaScript"): `cancel` is terminate-without-settling, NOT
         // reject-and-unwind. `PromiseRegistry.cancelAllPending` cancels each
@@ -1136,19 +1152,31 @@ struct JSCInterpreterTests {
         // this pins the same path `cancel(completionToken)` drives. The
         // witness is `record` (see `makeRecorder(into:)`), and the snippet is
         // the one both controls below run unchanged.
-        let interpreter = JSCInterpreter(timeLimit: 10.0)
+        //
+        // The cancel lands on an event, and never after a real delay: the
+        // pending call waits until the author's handler is attached, and only
+        // then sets the cancel flag. The test then waits for the cancelled
+        // call's own event, and never for a fixed time (card `^kdtrmhv`: no
+        // test checks the speed of the machine).
+        let interpreter = JSCInterpreter(timeLimit: Self.unreachedTimeLimit)
         let cancelledBox = OSAllocatedUnfairLock(initialState: false)
         let markers = OSAllocatedUnfairLock<[InterpreterValue]>(initialState: [])
         let pendingCallStarted = OSAllocatedUnfairLock(initialState: false)
+        let pendingCallCancelled = OSAllocatedUnfairLock(initialState: false)
         let slow = AsyncHostFunction(name: "slowAsync") { _ in
             pendingCallStarted.withLock { $0 = true }
-            try await Task.sleep(nanoseconds: 5_000_000_000)
+            try await TestPoll.waitUntil("the author's handler is attached") {
+                markers.withLock { $0.contains(.string("attached")) }
+            }
+            cancelledBox.withLock { $0 = true }
+            do {
+                try await Task.sleep(for: Self.unsettledCallDuration)
+            } catch {
+                pendingCallCancelled.withLock { $0 = true }
+                throw error
+            }
             return .null
         }
-        DispatchQueue.global().asyncAfter(deadline: .now() + 0.2) {
-            cancelledBox.withLock { $0 = true }
-        }
-        let start = ContinuousClock.now
         #expect {
             try interpreter.run(
                 code: Self.cleanupWitnessSnippet,
@@ -1159,14 +1187,13 @@ struct JSCInterpreterTests {
         } throws: { error in
             error is CancellationError
         }
-        #expect(start.duration(to: .now) < .seconds(3))
-        // The sandbox is torn down by the time `run` returns. This sleep buys
-        // the cancelled backing Task time to unwind, and gives any late
-        // resumption of the suspended continuation a window to land a marker
-        // before the markers are read. It does not reach the five seconds at
-        // which the pending call would have settled on its own — nothing in
-        // this test waits that long.
-        Thread.sleep(forTimeInterval: 0.3)
+        // The sandbox is torn down by the time `run` returns. Wait until the
+        // cancelled backing Task unwound: `cancelAllPending` dropped its entry
+        // first, thus after that event no resumption of the suspended
+        // continuation can land a marker.
+        try await TestPoll.waitUntil("the pending call saw its cancellation") {
+            pendingCallCancelled.withLock { $0 }
+        }
         // `entered` and `attached`, and nothing after them. `entered` witnesses
         // that the snippet really did start; `attached` witnesses that the
         // author's `.catch()` was installed on the pending call before the

@@ -78,9 +78,9 @@ import ScenarioGrading
     // It stops a turn that cannot end. It does not check the speed of the
     // machine (card `^tm4x2hp`).
     //
-    // On the mail contract, the runner stops at `mailAnswerDeadline`, twelve
-    // minutes after the turn starts, and grades what it read. So a run that
-    // gets no mail answer fails with a reading, inside the hang guard.
+    // On the mail contract, the runner stops at the shared poll hang guard
+    // `IntegrationPoll.deadline`, and grades what it read. So a run that gets
+    // no mail answer fails with a reading, inside the hang guard.
     .timeLimit(IntegrationHangGuard.timeLimit)
 )
 struct InBandCollectionCanaryTests {

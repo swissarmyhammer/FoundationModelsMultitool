@@ -66,8 +66,8 @@ actor NestedGenerationOutcomeLog {
 /// `GenerationQueueError.waitInsideOpenSubmission(model:)`, because the queue
 /// sees that the outer submission of the same model is open
 /// (`GenerationQueue.refuseWaitInsideOpenSubmission()`). This fixture makes
-/// that nested call and records how it ended, with the time it took, in a
-/// `NestedGenerationOutcomeLog`. `nestedGenerationChecks(for:)` grades the
+/// that nested call and records how it ended, with the queue reading at the
+/// refusal, in a `NestedGenerationOutcomeLog`. `nestedGenerationChecks(for:)` grades the
 /// record.
 ///
 /// **No grammar.** The body calls `makeSession()` with every argument
@@ -134,11 +134,14 @@ struct IntegrationNestedGenerationTool: Tool {
 
     /// Makes the nested call on ``slot`` and says how it ended.
     ///
-    /// - Returns: `.refused` with the time the refusal took, `.returned` when
-    ///   the nested call gave a reply, or `.threw` for any other error.
+    /// The refusal records the order of events, and no time: the queue of the
+    /// model is read at the instant the refusal arrives, while this tool body
+    /// still holds the outer submission open (card `^kdtrmhv`: no test checks
+    /// the speed of the machine).
+    ///
+    /// - Returns: `.refused` with the queue reading at the refusal, `.returned`
+    ///   when the nested call gave a reply, or `.threw` for any other error.
     private func nestedCallOutcome() async -> NestedGenerationOutcome {
-        let clock = ContinuousClock()
-        let start = clock.now
         do {
             _ = try await slot.makeSession().respond(
                 to: integrationNestedGenerationPrompt,
@@ -146,9 +149,19 @@ struct IntegrationNestedGenerationTool: Tool {
             )
             return .returned
         } catch GenerationQueueError.waitInsideOpenSubmission {
-            return .refused(after: clock.now - start)
+            return .refused(queueAtRefusal: await queueReading())
         } catch {
             return .threw(description: "\(error)")
         }
+    }
+
+    /// Reads the generation queue of the model of ``slot``: the queue the
+    /// outer submission runs on.
+    ///
+    /// - Returns: whether a job runs and how many jobs wait, or `nil` when the
+    ///   backend of the model names no generation queue.
+    private func queueReading() async -> GenerationQueueReading? {
+        guard let queue = slot.residentGenerationQueue else { return nil }
+        return GenerationQueueReading(isRunning: await queue.isRunning, waitingCount: await queue.waitingCount)
     }
 }

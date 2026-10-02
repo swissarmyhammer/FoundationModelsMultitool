@@ -476,10 +476,12 @@ struct StubMetadata: MetadataSource {
 /// - Parameters:
 ///   - session: The session whose runs to read.
 ///   - count: How many settled runs to wait for.
-///   - seconds: How long to wait before giving up.
+///   - deadline: How long to wait before giving up. The default is the
+///     shared hang guard of `TestPoll`: a hang guard, and never a speed check
+///     (card `^kdtrmhv`: no test checks the speed of the machine).
 /// - Returns: The terminal events, in arrival order, or fewer on a timeout.
 func settledEvents(
-    on session: RoutedSession, count: Int, seconds: Double = 10
+    on session: RoutedSession, count: Int, deadline: Duration = TestPoll.deadline
 ) async -> [OperationEvent] {
     // The deadline races the stream rather than being checked inside it. A
     // `for await` over `streamSessionEvents()` suspends until the next event,
@@ -495,7 +497,7 @@ func settledEvents(
             return settled
         }
         group.addTask {
-            try? await Task.sleep(for: .seconds(seconds))
+            try? await Task.sleep(for: deadline)
             return nil
         }
         var collected: [OperationEvent] = []
@@ -527,49 +529,6 @@ func recordedOperationEvents(
     let events = await run.recorder.operationEvents
     guard let kind else { return events }
     return events.filter { $0.kind == kind }
-}
-
-/// The terminal `OperationEvent`s of `session` that carry `correlationID`.
-///
-/// A snippet that makes an inner call settles more than one run, and the
-/// stream carries each. A test that wants one run's terminal asks for it by
-/// correlation rather than by arrival position.
-///
-/// Subscribe BEFORE the run settles: `streamSessionEvents()` is live and has
-/// no replay.
-///
-/// - Parameters:
-///   - session: The session whose runs to read.
-///   - correlationID: The run whose terminal to keep.
-///   - count: How many matching terminals to wait for.
-///   - seconds: How long to wait before giving up.
-/// - Returns: The matching terminal events, in arrival order.
-func settledEvents(
-    on session: RoutedSession, correlationID: String, count: Int = 1, seconds: Double = 10
-) async -> [OperationEvent] {
-    await withTaskGroup(of: [OperationEvent]?.self) { group in
-        group.addTask {
-            var settled: [OperationEvent] = []
-            for await event in await session.streamSessionEvents() {
-                guard case .runSettled(let operation) = event else { continue }
-                guard operation.correlationID == correlationID else { continue }
-                settled.append(operation)
-                if settled.count >= count { break }
-            }
-            return settled
-        }
-        group.addTask {
-            try? await Task.sleep(for: .seconds(seconds))
-            return nil
-        }
-        var collected: [OperationEvent] = []
-        for await result in group {
-            if let result { collected = result }
-            group.cancelAll()
-            break
-        }
-        return collected
-    }
 }
 
 /// The recorded `OperationEvent`s of `run` of one kind, on the runs

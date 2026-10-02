@@ -77,9 +77,10 @@ public let nestedCallEnteredCheckName = "nestedCallEntered"
 /// `GenerationQueueError.waitInsideOpenSubmission`.
 public let nestedGenerationRefusedCheckName = "nestedGenerationRefused"
 
-/// The label of the check that grades the refusal of the nested call as
-/// inside `integrationNestedRefusalTimeLimit`.
-public let nestedRefusalInTimeCheckName = "nestedRefusalInTime"
+/// The label of the check that grades the refusal of the nested call as at
+/// once: it came while the outer submission still held the model, and with
+/// no job queued behind that submission.
+public let nestedRefusalAtOnceCheckName = "nestedRefusalAtOnce"
 
 /// Both spellings of one integer a model may write in prose: the bare digits
 /// and the locale's grouped form (`41,739`).
@@ -364,17 +365,53 @@ public func mailCollectionChecks(
     return checks
 }
 
+/// What the generation queue of the model read at the instant the nested call
+/// of the nested-generation probe got the refusal.
+///
+/// The probe grades the order of events, and never a time (card `^kdtrmhv`:
+/// no test checks the speed of the machine). A refusal at once comes while the
+/// outer submission still runs on the queue, and before any job waits behind
+/// it: the queue throws before it queues anything. A nested call that the
+/// queue takes waits behind the outer submission, which cannot end while its
+/// own tool body waits. That is the old defect, and the hang guard of the
+/// probe suite reports it.
+///
+/// Plain values, for `MailCollectionEvidence`'s reason: the grading rule is
+/// then exercised without live inference.
+public struct GenerationQueueReading: Equatable, Sendable {
+    /// Whether a job ran on the queue: the outer submission still held the
+    /// model.
+    public let isRunning: Bool
+
+    /// How many jobs waited behind the running job.
+    public let waitingCount: Int
+
+    /// Records one reading of the queue.
+    ///
+    /// Explicit because a `public` struct's synthesized memberwise
+    /// initializer is `internal` only.
+    ///
+    /// - Parameters:
+    ///   - isRunning: whether a job ran on the queue.
+    ///   - waitingCount: how many jobs waited behind the running job.
+    public init(isRunning: Bool, waitingCount: Int) {
+        self.isRunning = isRunning
+        self.waitingCount = waitingCount
+    }
+}
+
 /// How the nested call of the nested-generation probe ended.
 ///
 /// Router refuses a `respond` on a model from inside an open submission of the
 /// same model, with `GenerationQueueError.waitInsideOpenSubmission(model:)`.
 /// The probe tool records which of these three ends its nested call got. A
-/// nested call that hangs records nothing, and the time limit of the probe
+/// nested call that hangs records nothing, and the hang guard of the probe
 /// suite reports it.
 public enum NestedGenerationOutcome: Equatable, Sendable {
-    /// Router refused the nested call with `waitInsideOpenSubmission`, after
-    /// the given time.
-    case refused(after: Duration)
+    /// Router refused the nested call with `waitInsideOpenSubmission`. The
+    /// value is what the generation queue of the model read at that instant,
+    /// or `nil` when the backend of the model names no generation queue.
+    case refused(queueAtRefusal: GenerationQueueReading?)
 
     /// The nested call came back with a reply. Router did not refuse it.
     case returned
@@ -424,8 +461,9 @@ public struct NestedGenerationEvidence {
 /// the conjunction of.
 ///
 /// The probe passes when the nested call was entered, got
-/// `waitInsideOpenSubmission`, and got it inside
-/// `integrationNestedRefusalTimeLimit`.
+/// `waitInsideOpenSubmission`, and got it at once: the order of events, and
+/// never a real-time bound (card `^kdtrmhv`: no test checks the speed of the
+/// machine).
 ///
 /// - Parameter evidence: what the run produced.
 /// - Returns: every condition this run is graded on, in reporting order.
@@ -443,34 +481,45 @@ public func nestedGenerationChecks(for evidence: NestedGenerationEvidence) -> [S
         ),
         ScenarioCheck(
             name: nestedGenerationRefusedCheckName,
-            held: evidence.outcome?.refusalTime != nil,
+            held: evidence.outcome?.isRefusal ?? false,
             failureMessage:
                 "expected the nested `respond` inside `\(path)` to get "
                 + "`GenerationQueueError.waitInsideOpenSubmission`, but it ended as \(outcomeDescription)"
         ),
         ScenarioCheck(
-            name: nestedRefusalInTimeCheckName,
-            held: evidence.outcome?.refusalTime.map { $0 <= integrationNestedRefusalTimeLimit } ?? false,
+            name: nestedRefusalAtOnceCheckName,
+            held: evidence.outcome?.isRefusalAtOnce ?? false,
             failureMessage:
-                "expected the refusal inside \(integrationNestedRefusalTimeLimit), but the nested call "
+                "expected the refusal at once — while the outer submission still held the model "
+                + "(running=true) and with no job queued behind it (waiting=0) — but the nested call "
                 + "ended as \(outcomeDescription)"
         ),
     ]
 }
 
 extension NestedGenerationOutcome {
-    /// The time the refusal took, or `nil` when the nested call was not
-    /// refused.
-    public var refusalTime: Duration? {
-        guard case .refused(let time) = self else { return nil }
-        return time
+    /// Whether Router refused the nested call with `waitInsideOpenSubmission`.
+    var isRefusal: Bool {
+        guard case .refused = self else { return false }
+        return true
+    }
+
+    /// Whether Router refused the nested call at once: the queue read at the
+    /// refusal shows the outer submission still running, and no job waiting
+    /// behind it.
+    var isRefusalAtOnce: Bool {
+        guard case .refused(let queue?) = self else { return false }
+        return queue.isRunning && queue.waitingCount == 0
     }
 
     /// Says how the nested call ended, for a failure message.
     var failureDescription: String {
         switch self {
-        case .refused(let time):
-            "a refusal after \(time)"
+        case .refused(let queue?):
+            "a refusal while the queue read running=\(queue.isRunning) waiting=\(queue.waitingCount)"
+        case .refused(nil):
+            "a refusal, but the backend of the model names no generation queue, so the order of "
+                + "events is not known"
         case .returned:
             "a reply: Router did not refuse the nested call on the same model"
         case .threw(let description):

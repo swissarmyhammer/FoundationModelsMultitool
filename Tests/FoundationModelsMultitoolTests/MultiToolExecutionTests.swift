@@ -5,6 +5,7 @@ import Testing
 import os
 
 @testable import FoundationModelsMultitool
+@testable import MultitoolTestSupport
 
 /// M4a coverage for `MultiTool`: the `runCode` `Tool` conformance that wires
 /// together every prior milestone — `JSCInterpreter` (M1), `ArgumentMarshaler`
@@ -136,19 +137,24 @@ struct MultiToolExecutionTests {
         #expect(delayedTool.ranOnMainThread == false)
     }
 
-    @Test("Promise.all over two slow tools.* calls completes in ~max, not ~sum, of their durations")
+    /// Each call waits at one ``Rendezvous`` until the other call has
+    /// arrived. A bridge that ran the calls one after another leaves the first
+    /// call waiting for a call that cannot start, and the hang guard reports
+    /// it. Calls that ran concurrently always meet, thus the test reads no real
+    /// time (card `^kdtrmhv`: no test checks the speed of the machine).
+    @Test(
+        "Promise.all over two tools.* calls runs both at the same time",
+        .timeLimit(TestHangGuard.timeLimit))
     func promiseAllRunsToolCallsConcurrently() async throws {
-        let toolA = WindowRecordingTool(name: "slowA", delayNanoseconds: 150_000_000)
-        let toolB = WindowRecordingTool(name: "slowB", delayNanoseconds: 150_000_000)
+        let rendezvous = Rendezvous(partySize: Self.concurrentCallCount)
         let registry = try MultiTool.Builder()
-            .addTool(toolA)
-            .addTool(toolB)
+            .addTool(RendezvousTool(rendezvous: rendezvous))
             .buildRegistry()
         let multiTool = MultiTool(registry: registry)
 
         let output = try await multiTool.call(
             arguments: RunCodeArguments(code: """
-                await Promise.all([tools.slowA(), tools.slowB()]);
+                await Promise.all([tools.\(RendezvousTool.toolName)(), tools.\(RendezvousTool.toolName)()]);
                 return "done";
                 """)
         )
@@ -158,28 +164,10 @@ struct MultiToolExecutionTests {
         // rather than noise — the whole output is asserted, not a loosened
         // comparison, so a reword of the notice reaches this test too.
         #expect(output == "\"done\"\n\n\(ToolReturnLedger.uncarriedReturnNotice)")
-
-        let windowA = try #require(toolA.window)
-        let windowB = try #require(toolB.window)
-        let callA = windowA.start.duration(to: windowA.end)
-        let callB = windowB.start.duration(to: windowB.end)
-        let span = min(windowA.start, windowB.start)
-            .duration(to: max(windowA.end, windowB.end))
-        // How much of the two calls ran at the same time: their durations added
-        // together, less the span they jointly occupy. Serialized calls leave
-        // disjoint windows, so this is zero or negative however slow the box is.
-        let overlap = (callA + callB) - span
-        // Half of the shorter call. Serialized execution overlaps by nothing at
-        // all, so any positive share separates the two cases; a half leaves room
-        // for scheduling jitter without pinning the test to a wall-clock speed.
-        let minimumOverlapShare = 0.5
-        // Read from the calls' own clocks rather than the turn's, so machine load
-        // stretches both sides of the comparison together. No absolute budget on
-        // the whole turn can separate these cases: a genuinely concurrent run has
-        // been measured at 319ms under load, slower than the 321ms a serialized
-        // control measures on an idle box.
-        #expect(overlap >= min(callA, callB) * minimumOverlapShare)
     }
+
+    /// How many `tools.*` calls the `Promise.all` snippet starts together.
+    private static let concurrentCallCount = 2
 
     @Test("a floating (unawaited) tools.* call still completes its real work before runCode returns")
     func floatingToolCallSettlesBeforeReturn() async throws {

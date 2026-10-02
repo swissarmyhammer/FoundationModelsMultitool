@@ -65,8 +65,10 @@ struct ScriptedServerSelfTests {
     /// The reason the cancellation test sends.
     private static let cancellationReason = "self-test cancel"
 
-    /// How long a test waits for the server to record a notification.
-    private static let recordedNotificationTimeout: Duration = .seconds(2)
+    /// How long a test waits for the server to record a notification: the
+    /// shared hang guard of `TestPoll`. A hang guard, and never a speed check
+    /// (card `^kdtrmhv`: no test checks the speed of the machine).
+    private static let recordedNotificationTimeout = TestPoll.deadline
 
     /// How many steps the slow-build success test registers.
     private static let slowBuildSuccessSteps = 3

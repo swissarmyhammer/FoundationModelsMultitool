@@ -39,8 +39,24 @@ comments:
     - evidence: one local commit holds the .kanban changes only. Base is 4a7a2d9. Commit 959b87d already holds all code for this card. No push.
     - next: review
   timestamp: 2026-10-02T01:04:04.571614+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m3x2d82926dc3jg1253t3r6n
+  text: |-
+    ### review — clean
+    - evidence: `review sha 56379b8..959b87d` — 0 findings, 0 confirmed, 0 refuted (7 attempted, 0 failed). 9 files reviewed. 6 `.kanban/` files are excluded by `.reviewignore`. The task has no earlier review findings.
+    - next: The task is in done. No more work is necessary.
+  timestamp: 2026-10-02T01:07:10.537957+00:00
+- actor: claude-code
+  id: 01m3x2djtss9hfvvxhrsyhgyat
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: no-change — HEAD 959b87d (^gmhbe7g) satisfies each item.
+    - test: green — root swift test at HEAD, 1888 tests, 155 suites, 0 issues (run in the implement step; no code change after it).
+    - commit: 4211657 (kanban only)
+    - review: clean — review sha 56379b8..959b87d, 0 findings. Task is in done.
+  timestamp: 2026-10-02T01:07:21.561114+00:00
+position_column: done
+position_ordinal: ffff8e80
 title: Remove the real 1-second clock from the web fetch timeout test
 ---
 ## What

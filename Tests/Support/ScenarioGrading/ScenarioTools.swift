@@ -882,24 +882,6 @@ public let integrationNestedGenerationPath = "checkModelReadiness"
 /// `NestedGenerationOutcome` records.
 public let integrationNestedGenerationToken = "READY-7Q4X"
 
-/// The count of seconds in `integrationNestedRefusalTimeLimit`.
-///
-/// This declaration names the number directly, so no call site passes a raw
-/// literal. The reason for the value stands on that constant.
-public let integrationNestedRefusalTimeLimitSeconds = 5
-
-/// The longest time the nested call of the probe can take to get
-/// `GenerationQueueError.waitInsideOpenSubmission`.
-///
-/// Router refuses the nested call at once: the queue sees that the outer
-/// submission of the same model is open, and throws before it queues anything
-/// (`GenerationQueue.refuseWaitInsideOpenSubmission()`). So a healthy refusal
-/// takes a small part of one second. Five seconds is far above that, and far
-/// below the one-minute time limit of the probe suite. A nested call that
-/// takes longer than this did not get the refusal at once, and that is the
-/// defect the probe finds.
-public let integrationNestedRefusalTimeLimit = Duration.seconds(integrationNestedRefusalTimeLimitSeconds)
-
 // MARK: - Scenario 9: the delayed echo (background-run mechanism, task `^nhxj8hx`)
 
 /// The count of seconds in `integrationDelayedEchoDelay`.
