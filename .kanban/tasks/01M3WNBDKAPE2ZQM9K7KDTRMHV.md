@@ -65,6 +65,13 @@ comments:
     - other failures: none. No code changed, no rerun.
     - next: review.
   timestamp: 2026-10-02T02:24:36.066686+00:00
+- actor: claude-code
+  id: 01m3x6w2m34ncca5ts82ba3spf
+  text: |-
+    ### commit — changed
+    - evidence: 4d75201 test: replace real-clock speed checks with counts, events and GatedClock; base sha before it: 4211657
+    - next: review
+  timestamp: 2026-10-02T02:25:10.787149+00:00
 position_column: doing
 position_ordinal: '80'
 title: Remaining real-clock time checks after the "no load testing" decision
