@@ -411,7 +411,35 @@ comments:
     - evidence: this commit. Subject: test(integration): remove duplicate discovery queries
     - next: review. The time criterion stays open until a CI run on the pushed commit shows the integration job at 20 minutes or less.
   timestamp: 2026-10-02T19:48:52.343473+00:00
-position_column: doing
+- actor: claude-code
+  id: 01m3z4j09qj2v10n1yz09wd6gv
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit 9996cd6): 0 findings, 0 confirmed, 0 refuted; 7 validator runs attempted, 0 failed, 0 skipped. 10 files reviewed; 4 `.kanban/` files not reviewed (`.reviewignore`). `git diff --name-status -M HEAD~1..HEAD` shows no renamed file, so no file-scoped review was necessary. The hygiene rules declined only `HeldOutSurfaceDiscoveryTests.swift`, which this commit deletes.
+    - removed-test check (diff read in full): each removed suite, query or text has a test that stays and proves the same property on the same surface.
+      - `HeldOutSurfaceDiscoveryTests` (whole suite) -> `AgentSurfaceDiscoveryTests`: the deleted test called `withLiveRouterFixture(profile: agentDiscoveryProfile)`, then `makeFilesAndShellSurface(over:)`, then `driveGradedGroup`. The kept test makes the same three calls. `driveGradedGroup` holds `expectEveryDeclaredPathIsInTheCatalog` and `expectNoFault` (no error, catalog paths only, each one time, inside the limit). Same nine-entry surface, same 4B model, same production mount. The held-out group stays in `RetrievalTextSurfaceDiscoveryTests` (`heldOutQueries`, 12 strings, unchanged); that suite holds each declared path of both groups to be a catalog path (`shell.getLines`, `shell.grepHistory` included).
+      - `AgentSurfaceDiscoveryTests` "run pytest tests, execute" -> "run a shell command or python script, execute code": same declared set (`shell.execute`).
+      - `AgentSurfaceDiscoveryTests` "apply changes to a file, save file contents" -> "write file, edit file, create file": same declared set (`files.write`, `files.edit`, `files.patch`).
+      - `OperationToolLiveTests` "attach a label to a note" -> "put the tag urgent on note-2" (`notes.tagNote`); "show every note" -> "how many notes are there" (`notes.listNote`). Each verb of the notes tool still has a query, so the `@Operation` expansion is still held.
+      - `NoDescriptionSurfaceDiscoveryTests` candidates `banner` and `name` -> the same test over the shipped text: the searcher now reads `APISurface.Entry` through its own `SearchableMetadata` conformance (`summaryBlock`). The removed texts were built by the test and the package never renders them, so no behavior of the package code lost its test.
+      - `OverBudgetSurfaceDiscoveryTests` "run a SQL query against the database and read the rows" -> "read the contents of a file on disk": the kept query still prompts every slice and goes through the same splice (slices=2 for both queries in run 37048824337); the suite still asserts the surface is above the budget and `expectNoFault` on the answer.
+    - user rules: the diff adds no nightly or scheduled workflow, no skipped or disabled test, no repeated round, no fixed model-quality score, and no smaller model.
+    - column: moved from `doing` to `review`, and stays in `review` by the rule of this run. The review is clean, but the last acceptance item (integration job 20 minutes or less) needs a real CI run on the pushed commit, which cannot exist until the user pushes. Do not move to `done` before that run is recorded.
+    - next: the user pushes; record the CI run id and the job time on this card; then move to `done` if the job takes 20 minutes or less.
+
+    task: ^3vtvrzg
+  timestamp: 2026-10-02T20:23:12.439404+00:00
+- actor: claude-code
+  id: 01m3z4js2sze1b2g0pht0djwe4
+  text: |-
+    ### finish iteration 3 — clean
+    - implement: changed — duplicate discovery work removed (held-out suite, 2 agent-surface queries, 2 notes queries, 2 no-description texts, 1 over-budget query); approximately 142 s saved on `mini`; estimate 17 min 49 s for the job
+    - test: green — swift test 1895 passed; IntegrationTests build passes; 7 changed live tests passed in 85.8 s
+    - commit: 9996cd6
+    - review: clean — 0 findings; each removed item has a test that stays
+    - the task stays in review: the 20-minute criterion needs a new CI run (the last run, 37048824337, measured 20 min 11 s before this iteration)
+  timestamp: 2026-10-02T20:23:37.817346+00:00
+position_column: review
 position_ordinal: '80'
 title: Make the full integration suite run in 20 minutes or less, with every test kept
 ---
