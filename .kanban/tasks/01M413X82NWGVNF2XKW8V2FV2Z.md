@@ -33,10 +33,26 @@ comments:
   id: 01m416bj5gbdpfwndpn2tna91m
   text: 'Correction to the two comments above: seven code files changed, not eight. The card lists five files (it says "six"), and this work added two (`MetricsTests.swift`, `TypedMockDryRunTests.swift`). The file list in the step record is complete.'
   timestamp: 2026-10-03T15:33:07.376024+00:00
+- actor: claude-code
+  id: 01m416pmr8b3ke653wq6h3vvr7
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit aa92c41). 0 findings, 0 confirmed, 0 refuted. 7 files reviewed, 0 failed. 6 `.kanban/` files are excluded by `.reviewignore`. The commit has no renamed files.
+    - next: The task is in done. Task ^71cbg70 removes `withTimeLimit(_:)`. Task ^1rymb3e updates docs/SECURITY.md.
+  timestamp: 2026-10-03T15:39:10.472417+00:00
+- actor: claude-code
+  id: 01m416qcr5sz5zgwz1ezmh0hhp
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 7 files
+    - test: green — swift test, 1890 tests in 156 suites passed, 0 warnings in this package
+    - commit: aa92c41
+    - review: clean — 0 findings
+  timestamp: 2026-10-03T15:39:35.045965+00:00
 depends_on:
 - 01M413WCH2DEDEQ4DNYE2XVHTK
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffff9980
 title: Remove the deadline and the wall-clock timer from JSCInterpreter
 ---
 ## What

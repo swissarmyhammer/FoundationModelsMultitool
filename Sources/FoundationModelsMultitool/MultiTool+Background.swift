@@ -105,31 +105,25 @@ extension MultiTool: BackgroundTool {
     /// change the mount or the wait, because `RunCodeArguments` carries no
     /// clock at all.
     ///
-    /// The engine reads ``timeout(from:)`` ahead of the mount's own clock, so
-    /// a clock here would never be consulted.
+    /// The mount states no clock. The one clock of a `runCode` call is the
+    /// tool-level timeout of ``timeout(from:)``, and the engine reads it ahead
+    /// of the clock of the mount. Thus a clock here would never be consulted.
     public var mount: ToolMount? {
         ToolMount(mode: .background, timeout: nil)
     }
 
-    /// The per-call work bound every `runCode` call carries: this package's
-    /// own ceiling, `configuration.executionTimeLimit`. Every call gets the
-    /// same bound, so `arguments` is unread.
+    /// The tool-level timeout every `runCode` call carries:
+    /// `configuration.executionTimeLimit`. Every call gets the same timeout,
+    /// so `arguments` is unread.
     ///
-    /// Always answered, never left to the mount. That limit is both this
-    /// package's default work clock and its hard ceiling (see
-    /// `MultiToolConfiguration.executionTimeLimit` for the full
-    /// reconciliation of the two clocks). A background snippet is exactly what
-    /// needs a ceiling, since nothing is blocking on it to notice that it ran
-    /// away. Answering it here is what keeps the engine's clock at or under
-    /// the limit the watchdog of the sandbox `MultiTool.init` runs is armed
-    /// with, so the engine's own timeout is what a well-behaved suspended
-    /// context meets first.
+    /// Always answered, never left to the mount. It is the one clock of a
+    /// `runCode` call, and the interpreter has no clock of its own (see
+    /// `MultiToolConfiguration.executionTimeLimit`). A background snippet is
+    /// exactly what needs a clock, since nothing is blocking on it to notice
+    /// that it ran away.
     ///
-    /// It is a bound, not a promise of survival. The engine's clock and the
-    /// sandbox watchdog's are not the same kind, and a snippet that keeps
-    /// resetting the engine's clock is still force-terminated at the ceiling
-    /// its watchdog was armed with. That absolute cap is the intended safety
-    /// property, not a gap. The reconciliation named above states why.
+    /// Each progress event of the snippet resets the clock. When the clock
+    /// fires, the engine cancels the run, and the call ends as timed out.
     public func timeout(from arguments: GeneratedContent) -> TimeInterval? {
         configuration.executionTimeLimit
     }

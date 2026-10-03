@@ -103,19 +103,6 @@ struct JSCInterpreterTests {
         #expect(result.returnValue == .number(42))
     }
 
-    /// The limit, in seconds, that the `withTimeLimit` test gives.
-    private static let givenTimeLimit: TimeInterval = 0.3
-
-    /// The sandbox has no clock. The one outer timeout of a `runCode` call is
-    /// the engine clock of the tool. Thus `withTimeLimit` has no limit to arm,
-    /// and it gives back the same interpreter.
-    @Test("withTimeLimit returns the receiver, because the sandbox has no clock")
-    func withTimeLimitReturnsTheReceiver() {
-        let interpreter = JSCInterpreter()
-        let returned = interpreter.withTimeLimit(Self.givenTimeLimit)
-        #expect((returned as? JSCInterpreter) === interpreter)
-    }
-
     @Test("a host function that throws surfaces as InterpreterError")
     func hostFunctionThrowSurfacesAsInterpreterError() async throws {
         let interpreter = JSCInterpreter.makeWithHeldWatchdog()

@@ -272,18 +272,6 @@ public final class JSCInterpreter: Interpreter {
     /// stops a run (see the type documentation).
     public init() {}
 
-    /// Returns this interpreter.
-    ///
-    /// The interpreter has no wall-clock mechanism, thus it has no limit to
-    /// arm. The protocol documentation of ``Interpreter/withTimeLimit(_:)``
-    /// allows such a conformer to return itself.
-    ///
-    /// - Parameter seconds: not used.
-    /// - Returns: this interpreter.
-    public func withTimeLimit(_ seconds: TimeInterval) -> any Interpreter {
-        self
-    }
-
     /// Runs `code` as jobs on a job queue of its own, in a fresh, isolated
     /// sandbox with `installing`/`installingAsync` made available as
     /// globals — the sole `run` requirement of `Interpreter` this type

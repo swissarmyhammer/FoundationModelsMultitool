@@ -249,6 +249,10 @@ public struct InterpreterError: Error, Sendable, Equatable, CustomStringConverti
 /// selection is an implementation detail behind this protocol. `JSCInterpreter`
 /// (JavaScriptCore) is the only conformer today, but the seam exists so the
 /// engine is swappable without touching callers.
+///
+/// A conformer has no clock. It stops a run only when the calling `Task` is
+/// cancelled. The host that owns the time budget cancels that `Task`: for
+/// `runCode`, this is the one tool-level timeout (`MultiTool.timeout(from:)`).
 public protocol Interpreter: Sendable {
     /// Runs `code` with `installing` and `installingAsync` made available as
     /// globals, in a fresh, isolated execution environment reachable from
@@ -287,7 +291,7 @@ public protocol Interpreter: Sendable {
     /// - Returns: the snippet's return value and captured console output.
     /// - Throws: `CancellationError` if the calling `Task` was cancelled
     ///   before the run otherwise completed; `InterpreterError` for a
-    ///   thrown/syntax exception, a timeout, or a floating rejection.
+    ///   thrown/syntax exception or a floating rejection.
     func run(
         code: String,
         installing: [HostFunction],
@@ -308,46 +312,17 @@ public protocol Interpreter: Sendable {
     /// syntax error, so a snippet naming a global this check never installed
     /// still parses.
     ///
-    /// Like ``withTimeLimit(_:)``, this requirement deliberately has no default
-    /// conformance below. Either default would answer for a conformer that has
-    /// no parser to ask: one that never throws turns the gate into a rubber
-    /// stamp, and one that always throws turns off sample generation entirely.
-    /// A conformer answers for itself instead.
+    /// This requirement deliberately has no default conformance below. Either
+    /// default would answer for a conformer that has no parser to ask: one
+    /// that never throws turns the gate into a rubber stamp, and one that
+    /// always throws turns off sample generation entirely. A conformer answers
+    /// for itself instead.
     ///
     /// - Parameter code: the JavaScript source to parse.
     /// - Throws: `InterpreterError` of kind `.exception`, carrying the
     ///   engine's own parse-failure message and the line it blames, when
     ///   `code` does not parse.
     func checkSyntax(of code: String) throws
-
-    /// Returns an interpreter that runs exactly as this one does, bounded by
-    /// `seconds` in place of whatever wall-clock ceiling this one carries.
-    ///
-    /// This is how a host that owns the time budget arms the sandbox it is
-    /// about to run in. `MultiTool.init` calls it on every interpreter it
-    /// runs — the one it builds for itself and one a caller injects alike —
-    /// with `MultiToolConfiguration.executionTimeLimit`, so a snippet's
-    /// ceiling is the configured one no matter how its interpreter was
-    /// constructed.
-    ///
-    /// The receiver is left alone: a conformer answers with a configured
-    /// copy, so the caller that handed its interpreter over keeps the
-    /// ceiling it constructed.
-    ///
-    /// This requirement deliberately has no default conformance below. A
-    /// default returning `self` would let a conformer silently keep its own
-    /// ceiling under a host that configured a different one — the exact
-    /// mismatch this member exists to make impossible, and one that put a
-    /// `JSCInterpreter()`'s stock limit within collision range of the
-    /// engine's own clocks. A conformer with no
-    /// wall-clock mechanism of its own has nothing to arm and returns
-    /// `self`, and says so in its own documentation.
-    ///
-    /// - Parameter seconds: the wall-clock ceiling a single `run` may reach
-    ///   before the conformer terminates it.
-    /// - Returns: an interpreter equivalent to this one, bounded by
-    ///   `seconds`.
-    func withTimeLimit(_ seconds: TimeInterval) -> any Interpreter
 }
 
 extension Interpreter {

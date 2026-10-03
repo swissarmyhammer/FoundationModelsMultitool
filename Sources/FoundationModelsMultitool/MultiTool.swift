@@ -400,16 +400,11 @@ public struct MultiTool: Tool {
     ///   - configuration: the hardening knobs — the work clock's ceiling, the
     ///     inline settle grace, the return and console caps — this tool
     ///     enforces. Defaults to `MultiToolConfiguration.default`. An
-    ///     explicitly supplied `limits` wins over the value derived from it;
-    ///     an explicitly supplied `interpreter` does NOT, and is still armed
-    ///     with `configuration.executionTimeLimit` as below.
+    ///     explicitly supplied `limits` wins over the value derived from it.
     ///   - interpreter: the sandbox to run every snippet in. Defaults to a
-    ///     fresh `JSCInterpreter`. Whichever sandbox is used, it is armed
-    ///     here with `configuration.executionTimeLimit` — the work clock's
-    ///     ceiling, and the only clock the interpreter itself owns (see
-    ///     `MultiToolConfiguration.executionTimeLimit`) — so an injected
-    ///     interpreter runs under the configured ceiling rather than
-    ///     whatever its own constructor received.
+    ///     fresh `JSCInterpreter`. This tool runs the sandbox as it is. An
+    ///     interpreter has no clock: the one outer timeout of a call is the
+    ///     tool-level timeout (``timeout(from:)``), and it cancels the run.
     ///   - limits: the size caps `ResultRenderer` enforces on this tool's
     ///     rendered output. Defaults to `configuration.resultLimits`.
     ///   - searchTools: the mounted discovery tool a snippet reaches as
@@ -429,11 +424,7 @@ public struct MultiTool: Tool {
     ) {
         self.holder = holder
         self.configuration = configuration
-        // One arming path for every sandbox this tool runs, injected or
-        // built here: the configured ceiling always wins, so a caller who
-        // passes a `JSCInterpreter()` never silently gets that interpreter's
-        // own stock limit instead (see `Interpreter.withTimeLimit(_:)`).
-        self.interpreter = (interpreter ?? JSCInterpreter()).withTimeLimit(configuration.executionTimeLimit)
+        self.interpreter = interpreter ?? JSCInterpreter()
         self.limits = limits ?? configuration.resultLimits
         self.searchTools = searchTools
         self.depth = depth

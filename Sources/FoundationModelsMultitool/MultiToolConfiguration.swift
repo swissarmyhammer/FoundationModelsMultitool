@@ -15,42 +15,26 @@ import FoundationModelsExtras
 /// budgeting. The retired `MultiToolAgent` knobs `maxAgentTurns` and
 /// `maxRepairTurns` went with it, and only the `runCode`-sandbox limits stay.
 public struct MultiToolConfiguration: Sendable, Equatable {
-    /// Wall-clock ceiling, in seconds, on a single `runCode` snippet's work.
-    /// It is also the per-call work bound `runCode` answers the engine (see
-    /// `MultiTool.timeout(from:)`).
+    /// The tool-level timeout, in seconds, of a single `runCode` call. It is
+    /// the one clock of `runCode`: the call answers it to the engine as its
+    /// work bound (`MultiTool.timeout(from:)`). The default is
+    /// ``defaultExecutionTimeLimit``.
     ///
     /// A mounted `runCode` call that does not settle inside
     /// ``inlineSettleGrace`` answers its pending envelope, and the snippet
     /// goes on in the background, so the suspended JSC context lives
-    /// past the call. This value arms the watchdog of every sandbox
-    /// `MultiTool.init` runs (`Interpreter.withTimeLimit(_:)`), and it must
-    /// never be a second clock that races the engine's. `runCode` states this
-    /// same value to the engine as its work bound (`MultiTool.timeout(from:)`),
-    /// so the two clocks come from one value. The default is
-    /// ``defaultExecutionTimeLimit``.
+    /// past the call. This clock bounds that background snippet too.
     ///
-    /// The engine enforces its own bound through the same cancellation path a
+    /// Each progress event of the snippet resets the clock. Thus a snippet
+    /// that reports progress inside each window keeps running, and a snippet
+    /// that stops its progress ends one window after its last event.
+    ///
+    /// The engine enforces the bound through the same cancellation path a
     /// cancelled `Task` uses: `MultiTool` awaits `Interpreter.run`, and the
     /// cancellation of that task cancels the run — a job that executes JS
     /// stops at its next watchdog poll, and a run that waits ends at once.
-    /// That is how the engine's clock reaches a running snippet at all.
-    ///
-    /// The two clocks are not the same kind. The engine resets its clock on
-    /// every progress event. This one does not: the `WatchdogState` and the
-    /// wall-clock timer of the run measure from sandbox creation, and neither
-    /// progress nor a suspension on `elicit()` moves that reference point
-    /// (both read one `deadline`, which is a `let`, and `rearm()` re-arms the
-    /// poll interval, not the deadline). So a snippet
-    /// that keeps resetting the engine's clock is force-terminated here, at
-    /// this ceiling. That absolute cap is the intended safety property, and
-    /// it is why progress reports cannot keep a suspended context alive
-    /// without end.
-    ///
-    /// The arming covers an injected sandbox too: an `interpreter:` a caller
-    /// hands to `MultiTool.init` is re-armed with this ceiling. So injection
-    /// cannot put a second, different limit under a `runCode` call — a plain
-    /// `JSCInterpreter()`, whose own stock limit is 5 seconds, is armed from
-    /// here like any other.
+    /// The interpreter has no clock of its own, thus this cancellation is
+    /// the only way the clock reaches a running snippet.
     public let executionTimeLimit: TimeInterval
 
     /// How long a `runCode` call waits for its own snippet before it answers
@@ -81,7 +65,7 @@ public struct MultiToolConfiguration: Sendable, Equatable {
     /// output — see `ResultRendererLimits.consoleCharacterLimit`.
     public let consoleCharacterLimit: Int
 
-    /// The stock ceiling on one `runCode` snippet's work, in seconds — see
+    /// The stock tool-level timeout of one `runCode` call, in seconds — see
     /// ``executionTimeLimit``.
     ///
     /// 120 seconds. This package owns the value. The hosting engine of
