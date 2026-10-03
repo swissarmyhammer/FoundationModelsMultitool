@@ -21,10 +21,26 @@ comments:
     - `OutcomeValue.timedOut` and `ErrorKindValue.timeout` stay: `MCPServer+CallSpan.swift` uses them.
     - next: run `/review` on this task.
   timestamp: 2026-10-03T19:08:55.753986+00:00
+- actor: claude-code
+  id: 01m41k1yrfxaaev5vj1zq1c9fz
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit 1002945) — 0 findings, 0 confirmed, 0 refuted; 7 files reviewed, 4 `.kanban/` files not reviewed (`.reviewignore`). The commit renames no file, so no file-scoped review is necessary.
+    - next: none. The task is in done.
+  timestamp: 2026-10-03T19:15:04.079397+00:00
+- actor: claude-code
+  id: 01m41k2f7gg08ggee5kq0wpzj4
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 7 files
+    - test: green — swift test 1809 tests in 151 suites passed; IntegrationTests build-tests passed
+    - commit: 1002945
+    - review: clean — 0 findings
+  timestamp: 2026-10-03T19:15:20.944381+00:00
 depends_on:
 - 01M413YDNNJSNTFCJEY71CBG70
-position_column: doing
-position_ordinal: '8180'
+position_column: done
+position_ordinal: ffffa180
 title: Remove the dead InterpreterError.Kind.timeout and its readers
 ---
 ## What

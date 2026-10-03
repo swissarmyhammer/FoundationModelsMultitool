@@ -8,12 +8,11 @@ import Testing
 /// `WebRunCodeLiveTests` row).
 ///
 /// The registry comes from `MultiTool.Builder().withWeb(configuration:
-/// .keyless, sessionConfiguration:)`, the public mount of a host, with the
-/// short timeouts of ``LiveSearch/makeSessionConfiguration()``. The
-/// snippet goes through `MultiTool.call(arguments:)`: the JSC interpreter, the
-/// `tools.web` bindings, and `ToolInvoker`. The search goes to the real
-/// keyless providers, and each fetch goes to a real page. A test does not
-/// retry.
+/// .keyless)`, the public mount of a host, with the default `.ephemeral`
+/// session. The snippet goes through `MultiTool.call(arguments:)`: the JSC
+/// interpreter, the `tools.web` bindings, and `ToolInvoker`. The search goes
+/// to the real keyless providers, and each fetch goes to a real page. A test
+/// does not retry.
 ///
 /// **A blocked provider (``BlockedProviderRule``, web.md).** The chain of
 /// `.keyless` tries `braveHTML`, then `duckDuckGoHTML`, and goes to the next
@@ -50,7 +49,7 @@ struct WebRunCodeLiveTests {
     @Test("the goal snippet returns pages with a URL and a title, one with content, or a recognized block")
     func goalSnippetReturnsPages() async throws {
         let registry = try MultiTool.Builder()
-            .withWeb(configuration: .keyless, sessionConfiguration: LiveSearch.makeSessionConfiguration())
+            .withWeb(configuration: .keyless)
             .buildRegistry()
 
         let output = try await MultiTool(registry: registry).call(arguments: RunCodeArguments(code: Self.goalSnippet))

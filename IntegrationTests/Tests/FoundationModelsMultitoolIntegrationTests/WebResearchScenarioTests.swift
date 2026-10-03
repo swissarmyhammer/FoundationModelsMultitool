@@ -26,16 +26,6 @@ private let webSearchPath = "web.search"
 /// `tools.web.search`.
 private let searchedTheWebCheckName = "searchedTheWeb"
 
-/// How many seconds one web request can wait for more data before it fails.
-///
-/// A request that waits longer than this fails, and the search chain then
-/// tries the next provider. Thus a provider that does not answer cannot use
-/// the hang guard of the test.
-private let webRequestTimeoutSeconds: TimeInterval = 15
-
-/// How many seconds one web request can take from start to end.
-private let webResourceTimeoutSeconds: TimeInterval = 30
-
 /// How many characters of the reply the `RESULT` line shows.
 private let webResearchReplyPreviewCharacters = 120
 
@@ -48,8 +38,9 @@ private let webResearchReplyPreviewCharacters = 120
 /// This is the wiring that a Router host makes. `.keyless` reads no
 /// environment, thus this scenario needs no API key, and it always runs, as
 /// the environment rule of `IntegrationTests/Package.swift` asks. The web
-/// requests go to the public keyless providers, with the short timeouts
-/// above.
+/// requests go to the public keyless providers. The outer timeout of
+/// `runCode` bounds each snippet, and ``IntegrationHangGuard/timeLimit``
+/// bounds the test.
 ///
 /// **The grade.** Two checks, from `web.md`:
 ///
@@ -83,10 +74,7 @@ struct WebResearchScenarioTests {
     func searchesTheWebAndNamesTheSwiftHomePage() async throws {
         try await withLiveRouterFixture(name: webResearchScenarioName) { fixture in
             let registry = try MultiTool.Builder()
-                .withWeb(
-                    configuration: .keyless,
-                    sessionConfiguration: ShortTimeoutSession.makeConfiguration(
-                        requestTimeout: webRequestTimeoutSeconds, resourceTimeout: webResourceTimeoutSeconds))
+                .withWeb(configuration: .keyless)
                 .buildRegistry()
             // No instructions, for the reason `runNativeIntegrationScenario`
             // gives: mounting the tools is the whole product surface.

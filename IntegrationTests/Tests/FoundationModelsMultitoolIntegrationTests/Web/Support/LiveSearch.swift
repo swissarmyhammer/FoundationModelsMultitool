@@ -1,12 +1,14 @@
 // `LiveSearch` — the shared setup of the live search suites: one real web
-// context with short timeouts, the call of the `search` verb, and the stable
-// facts that the suites assert (web.md § "Testing", Level 2).
+// context, the call of the `search` verb, and the stable facts that the
+// suites assert (web.md § "Testing", Level 2).
 //
 // The context uses the real session and the real resolver of the address
-// guard, thus each request goes to the real provider. The search goes through
-// `WebVerbCall.search` of `MultitoolTestSupport`, the call that the unit
-// suites make too. A test asserts only facts that are stable for years: a
-// well-known host in the hits, the `https` scheme, and the host that `site`
+// guard, thus each request goes to the real provider. The session has no
+// timeout of its own: the fetcher sets no time limit on a request, and
+// ``IntegrationHangGuard/timeLimit`` bounds each test. The search goes
+// through `WebVerbCall.search` of `MultitoolTestSupport`, the call that the
+// unit suites make too. A test asserts only facts that are stable for years:
+// a well-known host in the hits, the `https` scheme, and the host that `site`
 // asks for. It asserts no rank, no snippet, and no count of more than 3. A
 // test does not retry.
 
@@ -37,12 +39,6 @@ enum LiveSearch {
 
     /// The URL scheme of each hit.
     static let secureScheme = "https"
-
-    /// How many seconds one request can wait for more data before it fails.
-    static let requestTimeoutSeconds: TimeInterval = 10
-
-    /// How many seconds one request can take from start to end.
-    static let resourceTimeoutSeconds: TimeInterval = 15
 
     /// The shortest time, in seconds, between the starts of two live
     /// searches of the test process.
@@ -84,24 +80,8 @@ enum LiveSearch {
     ) async throws -> SearchResult {
         try await searchSpacing.waitForTurn()
         let configuration = WebConfiguration(providers: providers, environment: environment)
-        let context = WebContext(
-            configuration: configuration, sessionConfiguration: makeSessionConfiguration())
+        let context = WebContext(configuration: configuration, sessionConfiguration: .ephemeral)
         return try await WebVerbCall.search(swiftQuery, site: site, context: context)
-    }
-
-    /// Makes the configuration of the one session of a live context, with
-    /// ``requestTimeoutSeconds`` and ``resourceTimeoutSeconds``.
-    ///
-    /// `ShortTimeoutSession` of `MultitoolTestSupport` makes the
-    /// configuration. This function gives it only the timeouts of the `Web/`
-    /// suites. The live fetch suites and the live `runCode` suite also use
-    /// it, thus each live request of the `Web/` suites has the same short
-    /// timeouts.
-    ///
-    /// - Returns: The configuration.
-    static func makeSessionConfiguration() -> URLSessionConfiguration {
-        ShortTimeoutSession.makeConfiguration(
-            requestTimeout: requestTimeoutSeconds, resourceTimeout: resourceTimeoutSeconds)
     }
 
     // MARK: The shared tests
