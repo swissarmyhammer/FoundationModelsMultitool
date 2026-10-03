@@ -9,11 +9,9 @@ import Testing
 /// Proves the one outer timeout of a `runCode` call: the engine clock that
 /// ``MultiTool/timeout(from:)`` gives and the session mount enforces.
 ///
-/// Each test mounts `MultiTool` the way a Router session mounts it, and
-/// injects an interpreter whose watchdog is held
-/// (`JSCInterpreter.makeWithHeldWatchdog`). Thus the sandbox clock cannot end
-/// a run, and only the engine clock can. The tests stay correct when the
-/// sandbox deadline is removed.
+/// Each test mounts `MultiTool` the way a Router session mounts it. The
+/// sandbox of `JSCInterpreter` has no clock, thus only the engine clock can
+/// end a run.
 ///
 /// The engine clock sleeps on real time, thus a test waits for it. No test
 /// reads the time that a run took (card `^3np5yzj`: no test checks the speed
@@ -36,8 +34,8 @@ struct RunCodeToolTimeoutTests {
 
         let rendered = try await mounted.call(arguments: RunCodeArguments(code: "while (true) {}"))
 
-        // The held watchdog cannot end the loop, thus the outcome comes from
-        // the engine clock.
+        // The sandbox has no clock to end the loop, thus the outcome comes
+        // from the engine clock.
         let terminal = try await Self.terminal(of: rendered, on: context)
         #expect(terminal.outcome == .timedOut)
         #expect(terminal.detail == Self.timedOutText(window: Self.stallWindowSeconds))
@@ -144,8 +142,8 @@ struct RunCodeToolTimeoutTests {
 
     /// Mounts a `runCode` tool the way a Router session mounts every tool.
     ///
-    /// The watchdog of its interpreter is held, thus only the engine clock can
-    /// end a run.
+    /// The sandbox of its interpreter has no clock, thus only the engine clock
+    /// can end a run.
     ///
     /// - Parameters:
     ///   - registry: The registry that the snippets call into.
@@ -158,7 +156,7 @@ struct RunCodeToolTimeoutTests {
         let runCode = MultiTool(
             registry: registry,
             configuration: MultiToolConfiguration(executionTimeLimit: window),
-            interpreter: JSCInterpreter.makeWithHeldWatchdog()
+            interpreter: JSCInterpreter()
         )
         return try #require(context.mount(runCode, as: .synchronous) as? any Tool<RunCodeArguments, String>)
     }

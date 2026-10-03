@@ -280,7 +280,7 @@ struct MetricsTests {
     func throwingRunRecordsThrew() async throws {
         try await TelemetryCapture.run(forbidding: [Self.errorMarker]) { context in
             await #expect(throws: InterpreterError.self) {
-                try await JSCInterpreter.makeWithHeldWatchdog().run(
+                try await JSCInterpreter().run(
                     code: "throw new Error('\(Self.errorMarker)');", installing: [])
             }
 

@@ -215,7 +215,7 @@ struct MCPCapabilityTests {
             let dryRunFailure = await TypedMockDryRun.apiUsageFailure(
                 in: entry.qualifiedExample,
                 against: [entry],
-                using: JSCInterpreter.makeWithHeldWatchdog())
+                using: JSCInterpreter())
             #expect(dryRunFailure == nil, "the example of \(path) failed its dry run: \(dryRunFailure ?? "")")
         }
 

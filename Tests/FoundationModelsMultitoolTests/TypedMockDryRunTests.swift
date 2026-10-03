@@ -39,7 +39,7 @@ struct TypedMockDryRunTests {
     }
 
     /// Runs `snippet` against the typed mocks of `entries`, in an interpreter
-    /// whose watchdog is held: only the snippet can end the run.
+    /// whose sandbox has no clock: only the snippet can end the run.
     ///
     /// - Parameters:
     ///   - snippet: the JavaScript to dry-run.
@@ -48,7 +48,7 @@ struct TypedMockDryRunTests {
     ///   clean.
     static func failure(for snippet: String, against entries: [APISurface.Entry]) async -> String? {
         await TypedMockDryRun.apiUsageFailure(
-            in: snippet, against: entries, using: JSCInterpreter.makeWithHeldWatchdog())
+            in: snippet, against: entries, using: JSCInterpreter())
     }
 
     /// Two typed entries: `notes.addNote`, whose result is a parsed JSON

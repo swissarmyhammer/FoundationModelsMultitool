@@ -43,19 +43,19 @@ struct HardeningTests {
 
     // MARK: - Cancellation (plan.md M10 acceptance: "no leaked JS thread or semaphore deadlock")
 
-    /// Makes the `runCode` tool of the cancellation tests: its watchdog is
-    /// held (`JSCInterpreter.makeWithHeldWatchdog`).
+    /// Makes the `runCode` tool of the cancellation tests: its sandbox has no
+    /// clock.
     ///
-    /// Thus the watchdog cannot end the run while the test runs. The only
-    /// event that can end the run is the cancellation. A cancellation that
-    /// does not reach the run makes the test hang, and
-    /// ``TestHangGuard/timeLimit`` then fails it. Thus the tests read no
-    /// clock (card `^3np5yzj`: no test checks the speed of the machine).
+    /// Thus no clock can end the run while the test runs. The only event that
+    /// can end the run is the cancellation. A cancellation that does not
+    /// reach the run makes the test hang, and ``TestHangGuard/timeLimit``
+    /// then fails it. Thus the tests read no clock (card `^3np5yzj`: no test
+    /// checks the speed of the machine).
     ///
     /// - Parameter registry: The registry of the tool.
-    /// - Returns: A `runCode` tool whose watchdog cannot fire.
-    private static func makeHeldMultiTool(registry: MultiTool.Registry) -> MultiTool {
-        MultiTool(registry: registry, interpreter: JSCInterpreter.makeWithHeldWatchdog())
+    /// - Returns: A `runCode` tool that only a cancellation can stop.
+    private static func makeMultiTool(registry: MultiTool.Registry) -> MultiTool {
+        MultiTool(registry: registry, interpreter: JSCInterpreter())
     }
 
     /// How long the slow tool of the pending-promise test sleeps: one day, in
@@ -72,10 +72,9 @@ struct HardeningTests {
         "cancelling the task running MultiTool.call terminates an infinite-loop snippet and throws CancellationError",
         .timeLimit(TestHangGuard.timeLimit))
     func cancellationTerminatesInfiniteLoopSnippet() async throws {
-        // A held watchdog: if cancellation only worked by waiting out the
-        // ordinary watchdog timeout, the test would hang until its hang guard
-        // fails it.
-        let multiTool = Self.makeHeldMultiTool(registry: Self.emptyRegistry)
+        // The sandbox has no clock: if cancellation did not reach the loop,
+        // the test would hang until its hang guard fails it.
+        let multiTool = Self.makeMultiTool(registry: Self.emptyRegistry)
 
         let task = Task {
             try await multiTool.call(arguments: RunCodeArguments(code: "while (true) {}"))
@@ -98,7 +97,7 @@ struct HardeningTests {
         // guarantee must also reach.
         let slowTool = WindowRecordingTool(name: "slow", delayNanoseconds: Self.unreachedToolDelayNanoseconds)
         let registry = try MultiTool.Builder().addTool(slowTool).buildRegistry()
-        let multiTool = Self.makeHeldMultiTool(registry: registry)
+        let multiTool = Self.makeMultiTool(registry: registry)
 
         let task = Task {
             try await multiTool.call(arguments: RunCodeArguments(code: "return await tools.slow();"))
@@ -111,7 +110,7 @@ struct HardeningTests {
         await Self.expectCancellationError { _ = try await task.value }
     }
 
-    /// Each run has a held watchdog, thus only its cancellation can end it,
+    /// No run has a clock, thus only its cancellation can end it,
     /// and a busy machine cannot turn a cancelled run into a timed-out one. A
     /// cancellation that does not reach its run makes the test hang, and the
     /// hang guard fails it (card `^3np5yzj`).
@@ -125,7 +124,7 @@ struct HardeningTests {
         try await withThrowingTaskGroup(of: Void.self) { group in
             for _ in 0..<iterations {
                 group.addTask {
-                    let multiTool = Self.makeHeldMultiTool(registry: Self.emptyRegistry)
+                    let multiTool = Self.makeMultiTool(registry: Self.emptyRegistry)
                     let task = Task {
                         try await multiTool.call(arguments: RunCodeArguments(code: "while (true) {}"))
                     }

@@ -150,7 +150,7 @@ struct CoreLogRecordTests {
         let code = "return '\(Self.sourceMarker)'.length;"
 
         let records = try await TelemetryCapture.run(forbidding: [Self.sourceMarker]) { context in
-            _ = try await JSCInterpreter.makeWithHeldWatchdog().run(code: code, installing: [])
+            _ = try await JSCInterpreter().run(code: code, installing: [])
             return context.logRecords
         }
 
@@ -169,7 +169,7 @@ struct CoreLogRecordTests {
     func throwingSnippetLogsItsEnd() async throws {
         let records = try await TelemetryCapture.run(forbidding: [Self.errorMarker]) { context in
             await #expect(throws: InterpreterError.self) {
-                try await JSCInterpreter.makeWithHeldWatchdog().run(
+                try await JSCInterpreter().run(
                     code: "throw new Error('\(Self.errorMarker)');", installing: [])
             }
             return context.logRecords
