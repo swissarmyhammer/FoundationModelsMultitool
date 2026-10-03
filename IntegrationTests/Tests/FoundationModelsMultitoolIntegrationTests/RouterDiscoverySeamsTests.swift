@@ -3,17 +3,16 @@ import FoundationModelsExtras
 import FoundationModelsMetadataRegistry
 import FoundationModelsMultitool
 import FoundationModelsRouter
+import ScenarioGrading
 import Synchronization
 import Testing
 
-@testable import MultitoolCLI
-
-/// Coverage for the Router adapters of the sample CLI (`RouterDiscoverySeams`,
+/// Coverage for the Router adapters of this suite (`RouterDiscoverySeams`,
 /// `SelectionGrammar`, `RoutedAgentSession`, and the pooled embedder of
 /// `RouterDiscoverySeams.acquireEmbedder`).
 ///
 /// Discovery takes the registry seams and knows nothing of Router. These
-/// adapters are where the host turns the Router handles of a resolved profile
+/// adapters are where the suite turns the Router handles of a resolved profile
 /// into those seams. Every Router handle here comes from `makeStubProfile()`,
 /// so no test loads a model.
 @Suite("RouterDiscoverySeams")
@@ -49,6 +48,23 @@ struct RouterDiscoverySeamsTests {
         return try #require(properties["ids"] as? [String: Any])
     }
 
+    /// The session factory of `source`, or `nil` when the source holds one
+    /// fixed session.
+    ///
+    /// - Parameter source: the session source of a selection configuration.
+    /// - Returns: the factory that makes one session per instruction text, or
+    ///   `nil`.
+    private static func sessionFactory(
+        of source: SelectionSessionSource
+    ) -> (@Sendable (String) async throws -> any AgentSession)? {
+        if case .factory(let makeSession) = source { return makeSession }
+        return nil
+    }
+
+    /// The group name of the qualified path in the registry of
+    /// ``grammarConstrainedToSurfaceEntryPaths()``.
+    private static let weatherGroup = "weather"
+
     // MARK: - SelectionGrammar
 
     @Test("the schema's top-level type is object with ids required")
@@ -83,16 +99,19 @@ struct RouterDiscoverySeamsTests {
 
     @Test("the grammar over a real registry's entry paths constrains the enum to exactly those paths, qualified paths included")
     func grammarConstrainedToSurfaceEntryPaths() throws {
+        let log = ScenarioCallLog()
         let registry = try MultiTool.Builder()
-            .addTool(TripCitiesTool())
-            .addGroup(named: "github", [GithubCreateIssueTool()])
+            .addTool(IntegrationTripTool(log: log))
+            .addGroup(named: Self.weatherGroup, [IntegrationWeatherTool(log: log)])
             .buildRegistry()
 
         let idsSchema = try Self.idsSchema(
             of: Self.decodeSchema(SelectionGrammar.idEnumGrammar(ids: registry.surface.entries.map(\.path))))
 
         let items = try #require(idsSchema["items"] as? [String: Any])
-        #expect(items["enum"] as? [String] == ["getTrip", "github.createIssue"])
+        #expect(
+            items["enum"] as? [String]
+                == [IntegrationTripTool.path, "\(Self.weatherGroup).\(IntegrationWeatherTool.path)"])
     }
 
     // MARK: - The selection factory
@@ -109,7 +128,7 @@ struct RouterDiscoverySeamsTests {
             recordedGrammars.withLock { $0.append(grammar) }
             return profile.flash.makeGuidedSession(grammar: grammar, instructions: instructions)
         }
-        let makeSession = try factory(ids).sessionSource.sessionFactory()
+        let makeSession = try #require(Self.sessionFactory(of: factory(ids).sessionSource))
         let first = try await makeSession("first instructions")
         let second = try await makeSession("second instructions")
 
@@ -188,8 +207,8 @@ struct RouterDiscoverySeamsTests {
         RouterDiscoverySeams.acquireEmbedder(for: profile.embedding)
     }
 
-    /// The pool key of the embedding model of the sample CLI.
-    private static let embeddingKey = ModelPoolKey(ref: CLIRunner.embeddingModel, role: .embedding)
+    /// The pool key of the embedding model of this suite, `embeddingModel`.
+    private static let embeddingKey = ModelPoolKey(ref: embeddingModel, role: .embedding)
 
     /// The texts each embed call of this suite sends.
     private static let texts = ["one", "two"]
@@ -212,7 +231,7 @@ struct RouterDiscoverySeamsTests {
         // The Router resolves into its own pool, so the discovery pool below
         // starts empty, and no stub container goes into `ModelPool.shared`
         // under the key of a real model.
-        let profile = try await makeStubProfile(embeddingModel: CLIRunner.embeddingModel, pool: ModelPool())
+        let profile = try await makeStubProfile(embeddingModel: embeddingModel, pool: ModelPool())
         let loader = CountingEmbeddingLoader()
         let pool = ModelPool(loader: loader)
 
@@ -223,9 +242,9 @@ struct RouterDiscoverySeamsTests {
         withExtendedLifetime(embedder) {}
     }
 
-    @Test("two embedders of the CLI embedding model in one pool load the model one time, through the loader of the pool")
+    @Test("two embedders of the embedding model in one pool load the model one time, through the loader of the pool")
     func twoEmbeddersOfTheEmbeddingModelLoadOneModel() async throws {
-        let profile = try await makeStubProfile(embeddingModel: CLIRunner.embeddingModel, pool: ModelPool())
+        let profile = try await makeStubProfile(embeddingModel: embeddingModel, pool: ModelPool())
         let loader = CountingEmbeddingLoader()
         let pool = ModelPool(loader: loader)
 
@@ -244,7 +263,7 @@ struct RouterDiscoverySeamsTests {
     func embeddingSlotAndDiscoveryEmbedderShareOneResidentModel() async throws {
         let loader = CountingEmbeddingLoader()
         let pool = ModelPool(loader: loader)
-        let profile = try await makeStubProfile(embeddingModel: CLIRunner.embeddingModel, pool: pool)
+        let profile = try await makeStubProfile(embeddingModel: embeddingModel, pool: pool)
         let residentBefore = pool.residentModelCount
 
         let embedder = RouterDiscoverySeams.acquireEmbedder(for: profile.embedding, from: pool)
@@ -282,7 +301,7 @@ struct RouterDiscoverySeamsTests {
     // MARK: - The same-model refusal names the fix (^zhmqvxb)
 
     /// The model the refusal names: the model of the calling session.
-    private static let callerModel: ModelRef = "stub/standard"
+    private static let callerModel = stubStandardModel
 
     /// The sentence of ``SameModelDiscoveryError`` that names the fix, written
     /// out here so that a reword of the error fails this suite.
@@ -303,18 +322,18 @@ struct RouterDiscoverySeamsTests {
 
     @Test("the adapter passes every other error through unchanged")
     func otherErrorsPassThroughUnchanged() {
-        let explained = RoutedAgentSession.explained(SelectionSearchFailure())
+        let explained = RoutedAgentSession.explained(DiscoverySearchFailure())
 
-        #expect(explained as? SelectionSearchFailure == SelectionSearchFailure())
+        #expect(explained as? DiscoverySearchFailure == DiscoverySearchFailure())
     }
 
     @Test("a searchTools call whose librarian is refused on the model of the calling session gives the error that names the fix")
     func refusedLibrarianGivesTheFixAsTheToolError() async throws {
-        let registry = try MultiTool.Builder().addTool(TripCitiesTool()).buildRegistry()
+        let registry = try MultiTool.Builder().addTool(IntegrationTripTool(log: ScenarioCallLog())).buildRegistry()
         let explained = RoutedAgentSession.explained(
             GenerationQueueError.waitInsideOpenSubmission(model: Self.callerModel))
         let tool = try SearchToolsTool(registry: registry, selection: { _ in
-            SelectionConfig(model: { _ in FailingSelectionRootSession(error: explained) }, capacityCharacterLimit: .max)
+            SelectionConfig(model: { _ in FailingAgentSession(error: explained) }, capacityCharacterLimit: .max)
         })
 
         let thrown = await #expect(throws: SameModelDiscoveryError.self) {
@@ -324,5 +343,30 @@ struct RouterDiscoverySeamsTests {
         // Router shows a failed tool call to the model as
         // `String(describing: error)`, so that text must name the fix.
         #expect(String(describing: try #require(thrown)).contains(Self.fixSentence))
+    }
+}
+
+/// An error that is not Router's same-model refusal, so
+/// `RoutedAgentSession.explained(_:)` must give it back unchanged.
+private struct DiscoverySearchFailure: Error, Equatable {}
+
+/// A selection root that fails each call with one error.
+private final class FailingAgentSession: AgentSession, Sendable {
+    /// The error each call throws.
+    private let error: any Error
+
+    /// Makes a session that fails with `error`.
+    ///
+    /// - Parameter error: the error each call throws.
+    init(error: any Error) {
+        self.error = error
+    }
+
+    func respond(to prompt: String) async throws -> String {
+        throw error
+    }
+
+    func fork() async throws -> any AgentSession {
+        throw error
     }
 }

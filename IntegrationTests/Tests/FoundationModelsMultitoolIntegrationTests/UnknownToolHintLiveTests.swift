@@ -156,7 +156,7 @@ let imaginedToolPaths = [
 ///
 /// **Why the plumbing probe model.** No verdict here depends on how well a
 /// model generates: this path generates nothing. The ranking is the embedder's,
-/// and every profile of this target names the same `CLIRunner.embeddingModel`,
+/// and every profile of this target names the same `embeddingModel`,
 /// so the reading is the same under any of them and the suite takes the
 /// cheapest generation weights to resolve. See `plumbingProbeModel` for the
 /// plumbing-versus-intelligence test a suite must pass to take it.

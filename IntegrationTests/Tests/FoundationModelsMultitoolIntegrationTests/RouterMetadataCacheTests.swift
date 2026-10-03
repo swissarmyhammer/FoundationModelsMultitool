@@ -55,27 +55,6 @@ struct RouterMetadataCacheTests {
     }
 }
 
-/// A metadata source that gives the sizing metadata of one small model for
-/// each repo: a `config.json` with the fields that Router reads, and a tree
-/// with one weights file.
-private struct SizedMetadataSource: MetadataSource {
-    /// The `config.json` of the small model.
-    private static let configJSON = """
-        {"num_hidden_layers":4,"num_attention_heads":4,\
-        "num_key_value_heads":4,"head_dim":32,"hidden_size":128,\
-        "max_position_embeddings":4096}
-        """
-
-    /// The tree listing of the small model: one weights file.
-    private static let treeJSON = """
-        [{"type":"file","path":"model.safetensors","size":4096000}]
-        """
-
-    func fetchRawMetadata(repo: String, revision: String?) async throws -> RawRepoMetadata {
-        RawRepoMetadata(configJSON: Data(Self.configJSON.utf8), treeJSON: Data(Self.treeJSON.utf8))
-    }
-}
-
 /// A metadata source whose fetch always times out, as the fetch of the
 /// failed run did.
 private struct TimedOutMetadataSource: MetadataSource {

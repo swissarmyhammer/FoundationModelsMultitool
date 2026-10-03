@@ -289,7 +289,7 @@ private let retrievalTextGroups = [
 ///
 /// **Why the plumbing profile.** Nothing here generates. The reading is the
 /// embedder's, and every profile of this target names the same
-/// `CLIRunner.embeddingModel`, so this suite passes the test
+/// `embeddingModel`, so this suite passes the test
 /// `plumbingProbeProfile` states: it grades plumbing, not capability.
 ///
 /// Packaged like every gated suite: in the nested `IntegrationTests`

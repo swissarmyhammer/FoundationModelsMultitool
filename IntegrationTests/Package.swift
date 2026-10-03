@@ -129,11 +129,13 @@ let package = Package(
         // target CI runs in a job of its own. The suites of `Web/` send real
         // web requests and load no model.
         //
-        // `MultitoolCLI` is the library half of the sample CLI. The suite
-        // resolves `CLIRunner.demoProfile` rather than a pin of its own, so it
-        // measures the configuration a host really gets; a package cannot
-        // depend on another package's executable target, which is why that
-        // logic is a library in the first place.
+        // `MultitoolCLI` is the library half of the sample CLI. Only the CLI
+        // suites (`CLISmokeTests`, `CLISignalExitTests` and
+        // `Support/OTLPTestCollector.swift`) import it. The model pins and the
+        // Router discovery seams stand in this target
+        // (`Support/LiveRouterFixture.swift`, `Support/RouterDiscoverySeams.swift`).
+        // A package cannot depend on another package's executable target,
+        // which is why the CLI logic is a library in the first place.
         //
         // `LiveModelLoader()` takes no downloader and no tokenizer loader, thus
         // the one MLX product here is the live-inference wiring that remains:

@@ -4,8 +4,8 @@ import FoundationModelsRouter
 
 /// Every profile constant a session suite of this target resolves.
 ///
-/// `multitoolTinyProfile` is `CLIRunner.demoProfile`, which the answer-grading
-/// suites resolve. `plumbingProbeProfile` is what the plumbing probes resolve.
+/// `multitoolTinyProfile` is what the answer-grading suites resolve.
+/// `plumbingProbeProfile` is what the plumbing probes resolve.
 /// `agentDiscoveryProfile` is what the agent discovery suites resolve. A new
 /// profile constant that a suite resolves goes in this list too.
 let sessionSuiteProfiles = [multitoolTinyProfile, plumbingProbeProfile, agentDiscoveryProfile]
@@ -43,5 +43,12 @@ struct ProfileSlotSeparationTests {
     func eachSessionProfileIsListedOnce() {
         let names = sessionSuiteProfiles.map(\.name)
         #expect(Set(names).count == names.count)
+    }
+
+    @Test("multitoolTinyProfile names generationModel in standard, flashModel in flash, and embeddingModel in embedding")
+    func tinyProfileSlotsNameTheirPins() {
+        #expect(multitoolTinyProfile.standard == [generationModel])
+        #expect(multitoolTinyProfile.flash == [flashModel])
+        #expect(multitoolTinyProfile.embedding == [embeddingModel])
     }
 }

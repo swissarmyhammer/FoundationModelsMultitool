@@ -255,8 +255,8 @@ struct CLIRouterUnavailableError: Error, CustomStringConvertible {
 /// the two telemetry types of `CLITelemetry.swift`. `main.swift` in the
 /// `multitool-cli` executable calls `run(arguments:)`, and its telemetry
 /// bootstrap reads `CLITelemetryBackend`, `CLILogHandler` and
-/// `standardErrorOutput`. The nested integration package reads `demoProfile`,
-/// `embeddingModel`, `run(arguments:resolve:output:errorOutput:cancellation:makeServer:)` and `ExitCode`. Every
+/// `standardErrorOutput`. The nested integration package reads
+/// `run(arguments:resolve:output:errorOutput:cancellation:makeServer:)` and `ExitCode`. Every
 /// other declaration of this library stays `internal`, where the unit test
 /// target reaches it with `@testable import MultitoolCLI`.
 public enum CLIRunner {
@@ -438,28 +438,17 @@ public enum CLIRunner {
             """
     }
 
-    /// The generation model of the `standard` slot — with ``flashModel``,
-    /// **one of the two places a generation model is named in this
-    /// package.**
+    /// The generation model of the `standard` slot of `demoProfile`.
     ///
-    /// `demoProfile` below puts it in `standard`, and the
-    /// integration suite's `multitoolTinyProfile` *is* `demoProfile`
-    /// (`IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Support/LiveRouterFixture.swift`),
-    /// so changing this one line moves the CLI and every graded scenario
-    /// together. That matters more than it sounds: the suite exists to measure
-    /// what a host actually runs, and while the two lists were written out
-    /// separately they were free to disagree — the CLI and the suite each named
-    /// their own models, and nothing failed when they drifted.
+    /// The integration suite keeps its own pins
+    /// (`IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Support/LiveRouterFixture.swift`).
+    /// The user decided that the package has no CLI, and card `^c4fecne`
+    /// deletes this library. Until that card is done, a model swap changes
+    /// both files. `LiveRouterFixture.swift` carries the measurement history
+    /// behind every model that has held this slot.
     ///
-    /// `LiveRouterFixture.swift` carries the measurement history behind every
-    /// model that has held this slot, because that history is a record of
-    /// real-model runs. This is where the choice lives; that is where the
-    /// evidence lives.
-    ///
-    /// Deliberately `internal`, not `public`: the integration package reads
-    /// `demoProfile` and `embeddingModel` and never this constant, so keeping
-    /// it out of the library's public surface holds the model choice inside the
-    /// one module that makes it.
+    /// Deliberately `internal`, not `public`: no other module reads the pins
+    /// or the profile of the CLI.
     ///
     /// No `@revision`: this tracks the repository's default revision, so it is
     /// a model *choice* rather than a version lock.
@@ -476,31 +465,23 @@ public enum CLIRunner {
     /// selection session on a different model waits its turn on its own
     /// queue, and the search completes.
     ///
-    /// This model, because the integration suite already grades the
-    /// selection tier on it (`AgentSurfaceDiscoveryTests`), and the
-    /// integration package reads this constant, so the name is in one place.
+    /// This model, because the integration suite grades the selection tier
+    /// on it (`AgentSurfaceDiscoveryTests`).
     ///
     /// No `@revision`, for the same reason as ``generationModel``.
-    public static let flashModel: ModelRef = "mlx-community/Qwen3-4B-4bit"
+    static let flashModel: ModelRef = "mlx-community/Qwen3-4B-4bit"
 
     /// The embedding model, unchanged across every generation-model swap and
     /// shared with Router's own gated suite so the weights are already cached.
-    public static let embeddingModel: ModelRef = "mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ"
+    static let embeddingModel: ModelRef = "mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ"
 
-    /// The profile used for the demo run, and by the integration suite.
+    /// The profile used for the demo run.
     ///
-    /// Deliberate use of tool-calling-capable models. The integration suite
-    /// resolves this exact value rather than a parallel definition of its
-    /// own — see `generationModel` above for why.
-    public static let demoProfile = ProfileDefinition(
+    /// Deliberate use of tool-calling-capable models. See `generationModel`
+    /// for the pins of the integration suite.
+    static let demoProfile = ProfileDefinition(
         name: "multitool-cli-demo",
         description: "Tool-calling-capable models for the multitool-cli sample.",
-        // **This is the one place any model is named.** The integration suite
-        // does not keep its own pin: `multitoolTinyProfile` is this value
-        // (`LiveRouterFixture.swift`), so the suite measures the models the CLI
-        // ships and a swap here moves both. Two lists drifted apart once and
-        // the suite spent its runs grading a configuration no host had.
-        //
         // Two models, and they must stay different: `standard` drives the
         // main session, and `flash` runs the selection tier of `searchTools`.
         // `searchTools` is synchronous, so its selection session runs inside
@@ -512,8 +493,7 @@ public enum CLIRunner {
         flash: [flashModel],
         embedding: [embeddingModel],
         // `nil`, not a number: resolve the model's own context window rather
-        // than imposing one, exactly as the integration suite's
-        // `multitoolTinyProfile` does. A pinned figure is always wrong on the
+        // than imposing one. A pinned figure is always wrong on the
         // wrong side — too small, and a generation turn loses the very tool
         // definitions and discovery output it is supposed to act on.
         // `ProfileDefinition.defaultContext` remains the fallback if the

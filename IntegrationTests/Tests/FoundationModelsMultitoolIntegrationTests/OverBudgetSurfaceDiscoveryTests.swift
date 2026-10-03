@@ -100,7 +100,7 @@ struct OverBudgetSurfaceDiscoveryTests {
                 root: LiveRouterFixture.makeTempDir(),
                 shellStoreDirectoryName: overBudgetShellStoreDirectoryName)
             // The production mount, never a reimplementation of its wiring:
-            // the same call `CLIRunner.runDemo` makes, with the profile's
+            // the same call a Router host makes, with the profile's
             // flash slot as the librarian and its embedding handle beside it,
             // through the same `RouterDiscoverySeams` adapter.
             let seams = fixture.discoverySeams

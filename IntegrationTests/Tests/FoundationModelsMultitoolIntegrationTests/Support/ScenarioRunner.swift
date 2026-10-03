@@ -53,8 +53,8 @@ let scenarioDiscoveryPriming: DiscoveryPriming? = nil
 /// profile, using the session-driven design — no `MultiToolAgent`, no
 /// `TurnFormat`, no hand-rolled turn parsing. Mounts what the registry vends
 /// on a `RoutedSession` the resolved `.standard` slot vends
-/// (`makeSession(tools:discoveryPriming:)`) — the exact wiring
-/// `CLIRunner.runDemo` ships, never a reimplementation of it — with
+/// (`makeSession(tools:discoveryPriming:)`) — the exact wiring a Router host
+/// makes, never a reimplementation of it — with
 /// `searchToolsTool` backed by the resolved `.flash` slot, mirroring the
 /// "librarian on flash" split, and lets the session's own tool-calling loop
 /// decide when to call each.
@@ -626,9 +626,9 @@ struct ScenarioSurface {
 
 /// Builds the model-facing tool surface every scenario drives, by asking the
 /// registry for it — `MultiTool.Registry.makeSessionTools(selection:embedder:sampleSession:)`,
-/// with the seams of `LiveRouterFixture.discoverySeams`: the same call
-/// `CLIRunner.runDemo` makes, with the selection tier on the resolved `.flash`
-/// slot (the "librarian on flash" split the CLI ships).
+/// with the seams of `LiveRouterFixture.discoverySeams`: the same call a
+/// Router host makes, with the selection tier on the resolved `.flash` slot
+/// (the "librarian on flash" split).
 ///
 /// Vended rather than assembled here on purpose. Under the suite's intent
 /// statement the harness must mount `MultiTool` exactly the way a host does,
@@ -636,9 +636,9 @@ struct ScenarioSurface {
 /// would let the suite measure an order the product does not recommend.
 ///
 /// **No sample-snippet generator, because the product ships without one.**
-/// `makeSessionTools`'s `sampleSession:` defaults to `nil`, and the
-/// `RouterDiscoverySeams` that `CLIRunner.runDemo` makes carries none, so an
-/// arm that wires one measures a configuration no host runs.
+/// `makeSessionTools`'s `sampleSession:` defaults to `nil`, and
+/// `LiveRouterFixture.discoverySeams` carries none, so an arm that wires one
+/// measures a configuration no host runs.
 ///
 /// It was wired here, and removing it was not a preference. Each generated
 /// sample is a nested generation on the `.standard` slot with up to three
@@ -659,12 +659,10 @@ struct ScenarioSurface {
 ///   - tools: the scenario's fixed tool set.
 ///   - fixture: the resolved live fixture whose `.flash` slot backs the
 ///     selection tier.
-///   - direct: when `true`, apply `registry.directMode()` before the mount,
-///     exactly as `CLIRunner.runDemo` does under its `--direct` flag. A
-///     direct-mode registry vends `runCode` and no `searchTools`, so the
+///   - direct: when `true`, apply `registry.directMode()` before the mount.
+///     A direct-mode registry vends `runCode` and no `searchTools`, so the
 ///     scenario pays for no discovery. The discovery seams stay the same in
-///     both modes, because the CLI passes them in both modes and this harness
-///     must mount what the CLI mounts.
+///     both modes, so the two modes differ in the registry alone.
 /// - Returns: the tools to register with the session, and the catalog paths
 ///   behind them.
 /// - Throws: whatever `MultiTool.Builder.buildRegistry()` or
@@ -681,7 +679,7 @@ func makeScenarioSurface(
     }
     let seams = fixture.discoverySeams
     return ScenarioSurface(
-        // The selection and embedder seams, exactly as `CLIRunner.runDemo`
+        // The selection and embedder seams, exactly as a Router host
         // mounts them. No `sampleSession:` — the seams carry none, so the
         // product ships without one and this harness must too.
         tools: try registry.makeSessionTools(
@@ -760,9 +758,8 @@ private let mailCanaryReplyPreviewCharacters = 120
 /// delayed-echo mechanism shape, which already graded every condition they
 /// graded but one. That one, the `pendingEnvelope` check of the
 /// background-in-code-mode runner, is graded here now. The surface is the
-/// direct-mode surface — `runCode`, no `searchTools` — exactly as
-/// `CLIRunner.runDemo` mounts it under `--direct`, so the run pays for no
-/// discovery. A pending envelope on the discovery surface is graded by
+/// direct-mode surface — `runCode`, no `searchTools` — that
+/// `registry.directMode()` vends, so the run pays for no discovery. A pending envelope on the discovery surface is graded by
 /// `ShellBackgroundTests`.
 ///
 /// **One turn, not two.** Splitting a background scenario into a "start it"

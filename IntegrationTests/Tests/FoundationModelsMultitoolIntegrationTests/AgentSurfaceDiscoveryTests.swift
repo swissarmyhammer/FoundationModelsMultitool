@@ -113,9 +113,9 @@ let agentSurfaceQueries = [
 /// pass of two CI runs printed the same answers (see `DiscoveryGroupGrade`).
 ///
 /// **Why the flash model is pinned here.** The selection tier's answer is a
-/// property of the model that gives it: the 27B the CLI ships selects where
-/// the 4B the agent ships answered empty. `agentFlashModel` states the pin
-/// and the rule that no other suite takes it.
+/// property of the model that gives it: the 27B of `generationModel` selects
+/// where the 4B the agent ships answered empty. `agentFlashModel` states the
+/// pin and the rule that no other suite takes it.
 ///
 /// **What the fix was, as this suite measured it.** Before the fix this
 /// suite reproduced the agent's log exactly: two of ten queries answered,

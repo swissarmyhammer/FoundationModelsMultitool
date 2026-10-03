@@ -16,8 +16,8 @@ import Testing
 ///    first search, and every query once — through the discovery searcher
 ///    and through the hint searcher alike.
 /// 2. The host-facing factories take the host's embedder through the
-///    registry's `TextEmbedding` seam. The Router adapter of the sample CLI
-///    has its own suite, `RouterDiscoverySeamsTests`.
+///    registry's `TextEmbedding` seam. The Router adapter has its own suite,
+///    `RouterDiscoverySeamsTests`, in the nested `IntegrationTests` package.
 /// 3. A catalog embed that fails leaves the searcher answering keyword-only
 ///    for the life of its bundle, and the next bundle embeds again.
 ///

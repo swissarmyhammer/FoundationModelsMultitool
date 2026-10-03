@@ -13,9 +13,8 @@ private let packageName = "FoundationModelsMultitool"
 /// rather than part of the executable, for one structural reason: a package
 /// cannot depend on another package's *executable* target at all, and the
 /// nested integration package (`IntegrationTests/Package.swift`) has to reach
-/// `CLIRunner.demoProfile`, `CLIRunner.embeddingModel`,
 /// `CLIRunner.run(arguments:resolve:output:)` and `CLIRunner.ExitCode`. Those
-/// four, and the two telemetry types that `cliTargetName` calls
+/// two, and the two telemetry types that `cliTargetName` calls
 /// (`CLITelemetryBackend` and `CLILogHandler`), are the library's whole
 /// `public` surface; everything else stays `internal`, where
 /// `"\(packageName)Tests"` reaches it with `@testable`.
@@ -145,8 +144,8 @@ private let liveLoaderMLXProducts: [Target.Dependency] = [
     // binary. Without this link a checkpoint registered in `VLMModelFactory`
     // alone throws `unsupportedModelType` after paying for the whole
     // download. Which checkpoint is pinned is not this manifest's to state:
-    // `CLIRunner.generationModel` is the single place this package names a
-    // generation model, and the pin it names today carries `model_type:
+    // `CLIRunner.generationModel` names the generation model of the CLI, and
+    // the pin it names today carries `model_type:
     // qwen3_5`, which both `LLMModelFactory` and `VLMModelFactory` register.
     // So this link is what keeps a swap to a VLM-only checkpoint resolving —
     // Muse Glimmer (`muse_glimmer`), which held the slot before, is one —

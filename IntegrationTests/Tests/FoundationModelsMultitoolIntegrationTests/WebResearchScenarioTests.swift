@@ -45,7 +45,7 @@ private let webResearchReplyPreviewCharacters = 120
 /// **The mount.** `MultiTool.Builder().withWeb(configuration: .keyless)`,
 /// vended through `MultiTool.Registry.makeSessionTools(selection:embedder:sampleSession:)` and
 /// mounted on the `RoutedSession` that the resolved `.standard` slot vends.
-/// This is the wiring that `CLIRunner.runDemo` ships. `.keyless` reads no
+/// This is the wiring that a Router host makes. `.keyless` reads no
 /// environment, thus this scenario needs no API key, and it always runs, as
 /// the environment rule of `IntegrationTests/Package.swift` asks. The web
 /// requests go to the public keyless providers, with the short timeouts
@@ -90,7 +90,7 @@ struct WebResearchScenarioTests {
                 .buildRegistry()
             // No instructions, for the reason `runNativeIntegrationScenario`
             // gives: mounting the tools is the whole product surface.
-            // Discovery is mounted through the seams `CLIRunner.runDemo` uses.
+            // Discovery is mounted through `LiveRouterFixture.discoverySeams`.
             let seams = fixture.discoverySeams
             let session = fixture.profile.standard.makeSession(
                 tools: try registry.makeSessionTools(selection: seams.selection, embedder: seams.embedder),

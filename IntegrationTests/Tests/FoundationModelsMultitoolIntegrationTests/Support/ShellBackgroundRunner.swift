@@ -141,8 +141,8 @@ private let terminalEventsPerRun = 1
 /// The surface is `MultiTool.Builder().withShell(...)` vended through
 /// `MultiTool.Registry.makeSessionTools(selection:embedder:sampleSession:)`,
 /// with the seams of `LiveRouterFixture.discoverySeams`, and mounted on a
-/// `RoutedSession` the resolved `.standard` slot vends — the same wiring
-/// `CLIRunner.runDemo` ships, with `searchTools` backed by the resolved `.flash`
+/// `RoutedSession` the resolved `.standard` slot vends — the same wiring a
+/// Router host makes, with `searchTools` backed by the resolved `.flash`
 /// slot. Never a bare `LanguageModelSession`: the background path exists only
 /// under Router's own per-session tool wiring, so a bare session would have no
 /// background path to prove.

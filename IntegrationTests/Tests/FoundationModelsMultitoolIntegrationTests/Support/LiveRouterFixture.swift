@@ -11,7 +11,6 @@ import Testing
 import FoundationModelsExtras
 import FoundationModelsMetadataRegistry
 import FoundationModelsRouter
-import MultitoolCLI
 import TestConcurrency
 
 /// The deliberately small, tool-calling-capable `mlx-community` models this
@@ -215,9 +214,9 @@ import TestConcurrency
 /// rather than a swap between generation and selection on every search. The
 /// work-queue Router refuses the nested selection generation on the model that
 /// the outer submission holds open
-/// (`GenerationQueueError.waitInsideOpenSubmission(model:)`), so
-/// `CLIRunner.demoProfile` and every profile of this target now put a
-/// different model in `standard` and `flash`, and `ProfileSlotSeparationTests`
+/// (`GenerationQueueError.waitInsideOpenSubmission(model:)`), so every
+/// profile of this target now puts a different model in `standard` and
+/// `flash`, and `ProfileSlotSeparationTests`
 /// holds that. The history below is kept because it is the record of this
 /// suite's runs.
 ///
@@ -285,7 +284,7 @@ import TestConcurrency
 ///
 /// **This comparison is one run each**, and Muse's own numbers moved run to
 /// run, so nothing here is a reliability claim. Which of the two holds the
-/// slot is stated in one place only, `CLIRunner.generationModel`; everything
+/// slot is stated in one place only, `generationModel` below; everything
 /// above is the evidence behind that choice, never a second pin.
 ///
 /// **And the old `PrefixReuseTests` passing on Qwen3.8 was not evidence of
@@ -356,28 +355,74 @@ import TestConcurrency
 /// default revision rather than a fixed commit — these are model *choices*,
 /// not version locks, whatever the surrounding prose calls them.
 
+/// The generation model of the `standard` slot of `multitoolTinyProfile`:
+/// the model that drives the main session of every suite that grades an
+/// answer.
+///
+/// The measurement history above is the evidence behind this choice. This
+/// constant is the choice, and the history is never a second pin.
+///
+/// No `@revision`: this tracks the repository's default revision, so it is a
+/// model *choice* rather than a version lock.
+let generationModel: ModelRef = "mlx-community/Qwen3.8-27B-mxfp4"
+
+/// The generation model of the `flash` slot of `multitoolTinyProfile`, which
+/// the selection tier of `searchTools` runs on.
+///
+/// **It must not be `generationModel`.** `searchTools` is synchronous, so its
+/// selection session runs inside the open submission of the main session on
+/// `standard`. Router runs the work of each model on its own FIFO queue, and
+/// refuses at once a wait on the queue of the open submission
+/// (`GenerationQueueError.waitInsideOpenSubmission`). A selection session on a
+/// different model waits its turn on its own queue, and the search completes.
+/// `ProfileSlotSeparationTests` holds the two slots apart.
+///
+/// This model, because `AgentSurfaceDiscoveryTests` grades the selection tier
+/// on it.
+///
+/// No `@revision`, for the same reason as `generationModel`.
+let flashModel: ModelRef = "mlx-community/Qwen3-4B-4bit"
+
+/// The embedding model of every profile of this target, unchanged across
+/// every generation-model swap and shared with Router's own gated suite, so
+/// the weights are already cached.
+let embeddingModel: ModelRef = "mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ"
+
 /// The profile this suite resolves once per test.
 ///
-/// **`CLIRunner.demoProfile` itself — this suite keeps no pin of its own.**
-/// The models, the slot layout and the `nil` context all come from the value
-/// the CLI ships, so a real-model run measures the configuration a host really
-/// gets and a model swap is one edit in one file
-/// (`CLIRunner.generationModel`).
+/// **This target names each model in one place: `generationModel`,
+/// `flashModel` and `embeddingModel` above, and `plumbingProbeModel` below.**
+/// Each profile of this target names its models through those constants, so
+/// a model swap is one edit in one file.
 ///
-/// It was two definitions until 2026-08-16, and nothing held them together:
-/// the CLI named its models and this file named its own, so the suite was
-/// free to grade a configuration no host had. The measurement history for
-/// every model that has held the slot stays here, above, because it is a
-/// record of *this suite's* runs; only the choice moved.
-let multitoolTinyProfile = CLIRunner.demoProfile
+/// Two models, and they must stay different: `standard` drives the main
+/// session, and `flash` runs the selection tier of `searchTools`. See
+/// `flashModel`.
+///
+/// `nil` context, not a number: resolve the model's own context window rather
+/// than impose one. A pinned figure is always wrong on the wrong side — too
+/// small, and a generation turn loses the tool definitions and the discovery
+/// output it must act on. `ProfileDefinition.defaultContext` is the fallback
+/// when the lookup fails, so this cannot resolve to nothing.
+///
+/// The measurement history for every model that has held the slot stays
+/// here, above, because it is a record of *this suite's* runs.
+let multitoolTinyProfile = ProfileDefinition(
+    name: "multitool-tiny",
+    description: "Tool-calling-capable models for the integration suite.",
+    standard: [generationModel],
+    flash: [flashModel],
+    embedding: [embeddingModel],
+    context: nil
+)
 
 /// The small model of the plumbing probes — in `flash` of
 /// `plumbingProbeProfile` and in `standard` of `agentDiscoveryProfile` —
 /// **not a second generation pin, and never a stand-in for
-/// `CLIRunner.generationModel`.**
+/// `generationModel`.**
 ///
-/// `CLIRunner.generationModel` remains the single place this package names the
-/// model a *host* runs, and every suite that grades an answer resolves it
+/// `generationModel` remains the single place this target names the model a
+/// *host* runs, and every suite that grades an answer resolves it
 /// through `multitoolTinyProfile` above. This constant is a different kind of
 /// thing: it names a model for the suites that grade **plumbing**, where the
 /// model's only job is to emit tokens and call the one tool mounted, and where
@@ -404,18 +449,17 @@ let multitoolTinyProfile = CLIRunner.demoProfile
 /// what the did-you-mean hint names for a wrong `tools.*` path, and that path
 /// generates nothing at all: its ranker is retrieval-only, so the reading is
 /// the embedder's, and every profile of this target names the same
-/// `CLIRunner.embeddingModel`.
+/// `embeddingModel`.
 ///
 /// Qwen3-1.7B rather than a smaller model of another family: the shipped pin is
 /// Qwen3.8, so this exercises the same chat/tool template shape the product
 /// does, which is the part of the path a probe should not vary by accident.
 ///
-/// No `@revision`, exactly as `CLIRunner.generationModel` carries none — a model
+/// No `@revision`, exactly as `generationModel` carries none — a model
 /// choice, not a version lock.
 let plumbingProbeModel: ModelRef = "mlx-community/Qwen3-1.7B-4bit"
 
-/// The model in the `standard` slot of `plumbingProbeProfile`: the shipped
-/// `CLIRunner.flashModel`.
+/// The model in the `standard` slot of `plumbingProbeProfile`: `flashModel`.
 ///
 /// **It must not be `plumbingProbeModel`, which holds `flash`.** `searchTools`
 /// is synchronous: it runs the selection tier on `flash` from inside a tool
@@ -430,7 +474,7 @@ let plumbingProbeModel: ModelRef = "mlx-community/Qwen3-1.7B-4bit"
 /// as `plumbingProbeModel`, and it is already in the local cache from every
 /// `multitoolTinyProfile` run, so the change costs no download. Its only job
 /// in a probe is to emit tokens and call the one tool mounted.
-let plumbingProbeStandardModel: ModelRef = CLIRunner.flashModel
+let plumbingProbeStandardModel: ModelRef = flashModel
 
 /// The profile the plumbing probes resolve.
 ///
@@ -443,7 +487,7 @@ let plumbingProbeStandardModel: ModelRef = CLIRunner.flashModel
 /// `nil` context, so the model's own window is resolved, as
 /// `multitoolTinyProfile` does.
 ///
-/// The embedding model is `CLIRunner.embeddingModel` unchanged: it is already
+/// The embedding model is `embeddingModel` unchanged: it is already
 /// resident from every other real-model run on this machine, so naming it here costs
 /// nothing and naming a second one would cost a download for no reading.
 let plumbingProbeProfile = ProfileDefinition(
@@ -451,7 +495,7 @@ let plumbingProbeProfile = ProfileDefinition(
     description: "Small models for the gated probes that grade plumbing rather than capability.",
     standard: [plumbingProbeStandardModel],
     flash: [plumbingProbeModel],
-    embedding: [CLIRunner.embeddingModel],
+    embedding: [embeddingModel],
     context: nil
 )
 
@@ -460,7 +504,7 @@ let plumbingProbeProfile = ProfileDefinition(
 /// answered eight of ten `searchTools` calls with an empty selection on the
 /// SWE-bench run card `^zqz1zan` records.
 ///
-/// **Not a third generation pin.** `CLIRunner.generationModel` names the model
+/// **Not a third generation pin.** `generationModel` names the model
 /// a host runs, and `plumbingProbeModel` names the model the plumbing probes
 /// resolve. This constant names the model one suite grades the *selection
 /// tier* on: `AgentSurfaceDiscoveryTests` asks whether that tier, given the
@@ -471,7 +515,7 @@ let plumbingProbeProfile = ProfileDefinition(
 ///
 /// No `@revision`, exactly as the two constants above carry none — a model
 /// choice, not a version lock.
-let agentFlashModel: ModelRef = CLIRunner.flashModel
+let agentFlashModel: ModelRef = flashModel
 
 /// The profile `AgentSurfaceDiscoveryTests` resolves, built over
 /// `agentFlashModel`.
@@ -495,7 +539,7 @@ let agentDiscoveryProfile = ProfileDefinition(
     description: "The acp-agent flash model, for the suite that grades the selection tier on it.",
     standard: [plumbingProbeModel],
     flash: [agentFlashModel],
-    embedding: [CLIRunner.embeddingModel],
+    embedding: [embeddingModel],
     context: nil
 )
 
@@ -559,7 +603,7 @@ let liveProfileTurnstile = ConcurrencyGate()
 /// One resolved, live `Router` + `LanguageModelProfile` pair, together with
 /// the recording root its sessions write their JSONL transcript under —
 /// everything an integration scenario needs to vend a `RoutedSession` over
-/// `profile.standard` (the wiring `CLIRunner.runDemo` ships), to back
+/// `profile.standard` (the wiring a host makes), to back
 /// `searchToolsTool`'s own selection tier with `profile.flash`, and then to
 /// read back the selection tier's own recorded trace
 /// (`NativeTranscript.selections(in:slot:)`). Both sessions are Router-vended,
@@ -590,9 +634,8 @@ struct LiveRouterFixture {
     /// and the pooled embedder of `profile.embedding`, with no sample
     /// generator.
     ///
-    /// `CLIRunner.runDemo` makes the same value, and each scenario mounts
-    /// discovery through it. Thus the suite measures the discovery wiring that
-    /// a host gets. Discovery takes seams and not Router handles (task
+    /// Each scenario mounts discovery through it, the same way that a Router
+    /// host does. Discovery takes seams and not Router handles (task
     /// `^kzaefgz`), and `RouterDiscoverySeams` is the one adapter between the
     /// two.
     var discoverySeams: RouterDiscoverySeams {
