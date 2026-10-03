@@ -7,14 +7,10 @@ import os
 
 /// M1 coverage for `JSCInterpreter`: return-value capture, console capture,
 /// exception mapping, cross-run statelessness, host-function round-trips,
-/// the execution-time watchdog, and the event loop that settles async host
+/// the cancellation watchdog, and the event loop that settles async host
 /// functions (task `^cf57dtd`). No model is needed for any of this.
 @Suite("JSCInterpreter", .serialized)
 struct JSCInterpreterTests {
-    /// The wall-clock limit that the wall-clock test arms. The gated clock
-    /// reaches it only when the test opens the clock.
-    private static let shortTimeLimit: TimeInterval = 0.3
-
     /// How long a call that "never completes" sleeps: far longer than any
     /// test waits, so only a cancellation ends it.
     private static let neverCompletingCallDuration: Duration = .seconds(3600)
@@ -107,60 +103,18 @@ struct JSCInterpreterTests {
         #expect(result.returnValue == .number(42))
     }
 
-    /// The watchdog sleeps on a gated clock, and the test opens the clock. Thus
-    /// the deadline is an event, and no real time passes (card `^3np5yzj`: no
-    /// test checks the speed of the machine). The recorded sleep proves that
-    /// the watchdog armed the configured limit, and the `.timeout` kind proves
-    /// that the deadline ended the loop. A watchdog that does not hear the
-    /// deadline is a hang, and the hang guard reports it.
-    @Test(
-        "an infinite loop is terminated by the watchdog when its clock reaches the configured limit",
-        .timeLimit(TestHangGuard.timeLimit))
-    func infiniteLoopTerminatedByWatchdog() async throws {
-        let clock = GatedClock()
-        let interpreter = JSCInterpreter(timeLimit: Self.watchdogTestLimit, watchdogClock: clock)
-        clock.open()
-        await #expect {
-            try await interpreter.run(code: "while (true) {}", installing: [])
-        } throws: { error in
-            guard let interpreterError = error as? InterpreterError else { return false }
-            return interpreterError.kind == .timeout
-        }
-        #expect(clock.recordedSleeps == [.seconds(Self.watchdogTestLimit)])
-    }
-
-    /// The limit, in seconds, that the watchdog tests arm. The gated clock
-    /// reaches it only when the test opens the clock.
-    private static let watchdogTestLimit: TimeInterval = 1
-
-    /// The receiver arms ``watchdogTestLimit`` on a gated clock, and
-    /// `withTimeLimit` gives a different limit. The recorded sleep proves that
-    /// the returned interpreter armed the given limit, and that it kept the
-    /// clock of the receiver. The `.timeout` kind proves that the deadline on
-    /// that clock ended the loop. The test reads no real time (card
-    /// `^3np5yzj`). An interpreter that lost the clock hangs, and the hang
-    /// guard reports it.
-    @Test(
-        "withTimeLimit returns an interpreter armed with the given limit, not the receiver's",
-        .timeLimit(TestHangGuard.timeLimit))
-    func withTimeLimitReturnsAnInterpreterArmedWithTheGivenLimit() async throws {
-        let clock = GatedClock()
-        let interpreter = JSCInterpreter(timeLimit: Self.watchdogTestLimit, watchdogClock: clock)
-            .withTimeLimit(Self.givenTimeLimit)
-        clock.open()
-        await #expect {
-            try await interpreter.run(code: "while (true) {}", installing: [])
-        } throws: { error in
-            guard let interpreterError = error as? InterpreterError else { return false }
-            return interpreterError.kind == .timeout
-        }
-        #expect(clock.recordedSleeps == [.seconds(Self.givenTimeLimit)])
-    }
-
-    /// The limit, in seconds, that the `withTimeLimit` test gives. It differs
-    /// from ``watchdogTestLimit``, thus the recorded sleep tells which limit
-    /// the watchdog armed.
+    /// The limit, in seconds, that the `withTimeLimit` test gives.
     private static let givenTimeLimit: TimeInterval = 0.3
+
+    /// The sandbox has no clock. The one outer timeout of a `runCode` call is
+    /// the engine clock of the tool. Thus `withTimeLimit` has no limit to arm,
+    /// and it gives back the same interpreter.
+    @Test("withTimeLimit returns the receiver, because the sandbox has no clock")
+    func withTimeLimitReturnsTheReceiver() {
+        let interpreter = JSCInterpreter()
+        let returned = interpreter.withTimeLimit(Self.givenTimeLimit)
+        #expect((returned as? JSCInterpreter) === interpreter)
+    }
 
     @Test("a host function that throws surfaces as InterpreterError")
     func hostFunctionThrowSurfacesAsInterpreterError() async throws {
@@ -249,13 +203,11 @@ struct JSCInterpreterTests {
         #expect(result.returnValue == .number(1))
     }
 
-    /// The watchdog of this test is held (`makeWithHeldWatchdog`), thus only
-    /// the cancellation can end the loop. The watchdog ends a timed-out run
-    /// with `InterpreterError`, and a cancelled run with `CancellationError`,
-    /// thus the error alone tells which one ended the run. The cancel comes
-    /// at an event — the loop started — and never after a real delay. A
-    /// cancellation that the watchdog does not read makes the test hang, and
-    /// the hang guard fails it. The test reads no real time (card
+    /// The sandbox has no clock, thus only the cancellation can end the loop,
+    /// and the `CancellationError` is the outcome that proves it did. The
+    /// cancel comes at an event — the loop started — and never after a real
+    /// delay. A cancellation that the watchdog does not read makes the test
+    /// hang, and the hang guard fails it. The test reads no real time (card
     /// `^3np5yzj`: no test checks the speed of the machine).
     @Test(
         "cancelling the calling task forces early termination of an infinite loop",
@@ -395,12 +347,11 @@ struct JSCInterpreterTests {
         "checkSyntax executes nothing: an infinite loop parses instead of hitting the watchdog",
         .timeLimit(TestHangGuard.timeLimit))
     func syntaxCheckExecutesNothing() throws {
-        // `run` on this source terminates only via the watchdog, with a
-        // `.timeout` error, and this watchdog is held. Parsing it throws
-        // nothing and returns, which is the observable difference between
-        // checking and running: a check that ran the loop hangs, and the hang
-        // guard reports it. The outcome decides, and the test reads no real
-        // time (card `^3np5yzj`).
+        // `run` on this source ends only when its task is cancelled. Parsing
+        // it throws nothing and returns, which is the observable difference
+        // between checking and running: a check that ran the loop hangs, and
+        // the hang guard reports it. The outcome decides, and the test reads
+        // no real time (card `^3np5yzj`).
         let interpreter = JSCInterpreter.makeWithHeldWatchdog()
         #expect(throws: Never.self) {
             try interpreter.checkSyntax(of: "while (true) {}")
@@ -1077,55 +1028,7 @@ struct JSCInterpreterTests {
         }
     }
 
-    // MARK: - The two clocks and cancellation
-
-    /// No job executes JS while the run waits, so the CPU watchdog has
-    /// nothing to stop: only the wall-clock timer of the run can end it. The
-    /// timer sleeps on a gated clock, and the test opens the clock only after
-    /// the call started. Thus the deadline is an event that comes while the
-    /// run waits, and the test reads no real time (card `^3np5yzj`: no test
-    /// checks the speed of the machine). The recorded sleep proves that the
-    /// timer armed the configured limit, and the `.timeout` kind proves that
-    /// the deadline ended the run. A timer that does not hear the deadline is
-    /// a hang, and the hang guard reports it.
-    @Test(
-        "the wall-clock limit ends a run that waits for a call that never completes, and cancels that call",
-        .timeLimit(TestHangGuard.timeLimit))
-    func wallClockLimitEndsARunThatWaitsForever() async throws {
-        let clock = GatedClock()
-        let interpreter = JSCInterpreter(timeLimit: Self.shortTimeLimit, watchdogClock: clock)
-        let callStarted = OSAllocatedUnfairLock(initialState: false)
-        let callWasCancelled = OSAllocatedUnfairLock(initialState: false)
-        let never = AsyncHostFunction(name: "neverAsync") { _ in
-            callStarted.withLock { $0 = true }
-            do {
-                try await Task.sleep(for: Self.neverCompletingCallDuration)
-            } catch {
-                callWasCancelled.withLock { $0 = true }
-                throw error
-            }
-            return .null
-        }
-        let run = Task {
-            try await interpreter.run(
-                code: "return await neverAsync();",
-                installing: [],
-                installingAsync: [never]
-            )
-        }
-        try await TestPoll.waitUntil("the call started") { callStarted.withLock { $0 } }
-        clock.open()
-
-        await #expect {
-            try await run.value
-        } throws: { error in
-            (error as? InterpreterError)?.kind == .timeout
-        }
-        #expect(clock.recordedSleeps == [.seconds(Self.shortTimeLimit)])
-        try await TestPoll.waitUntil("the pending call saw its cancellation") {
-            callWasCancelled.withLock { $0 }
-        }
-    }
+    // MARK: - Cancellation
 
     /// The pending call never settles by itself, and the watchdog is held,
     /// thus only the cancel can end the run, and the `CancellationError` is

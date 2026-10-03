@@ -52,9 +52,6 @@ struct MetricsTests {
     /// ends soon.
     private static let shortCallTimeout = Duration.milliseconds(100)
 
-    /// The time limit of the interpreter in the time limit case, in seconds.
-    private static let shortTimeLimit = 0.2
-
     /// The name of the inner tool of the `runCode` cases.
     private static let innerToolName = TempTool().name
 
@@ -289,26 +286,6 @@ struct MetricsTests {
 
             let run = try context.metricsFactory.expectTimer(
                 MultitoolTelemetry.MetricName.interpreterRunDuration.rawValue, Self.runDimensions(.threw))
-            #expect(run.values.count == Self.once)
-        }
-    }
-
-    @Test("a JS run that passes its time limit records the interpreter timer with the outcome timedOut")
-    func timedOutRunRecordsTimedOut() async throws {
-        // The watchdog sleeps on a gated clock that the test opens. Thus the
-        // deadline is an event, and the run reads no real time (card
-        // `^3np5yzj`).
-        let clock = GatedClock()
-        clock.open()
-        try await TelemetryCapture.run(forbidding: []) { context in
-            await #expect(throws: InterpreterError.self) {
-                try await JSCInterpreter(timeLimit: Self.shortTimeLimit, watchdogClock: clock)
-                    .run(code: "while (true) {}", installing: [])
-            }
-            #expect(clock.recordedSleeps == [.seconds(Self.shortTimeLimit)])
-
-            let run = try context.metricsFactory.expectTimer(
-                MultitoolTelemetry.MetricName.interpreterRunDuration.rawValue, Self.runDimensions(.timedOut))
             #expect(run.values.count == Self.once)
         }
     }

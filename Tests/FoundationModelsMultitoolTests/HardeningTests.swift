@@ -8,9 +8,11 @@ import FoundationModelsRouter
 @testable import MultitoolTestSupport
 
 /// M10 coverage: cancellation reaching into an in-flight `runCode` snippet,
-/// every `MultiToolConfiguration` limit enforced at its boundary, the
-/// sandbox's reachable-global surface, and the machine-checked README↔code
-/// sync of that surface's documented list (plan.md M10 acceptance criteria).
+/// each character limit of `MultiToolConfiguration` enforced at its boundary,
+/// the sandbox's reachable-global surface, and the machine-checked
+/// README↔code sync of that surface's documented list (plan.md M10
+/// acceptance criteria). `RunCodeToolTimeoutTests` covers the boundary of
+/// `executionTimeLimit`: it is the tool-level timeout of `runCode`.
 @Suite("Hardening")
 struct HardeningTests {
     // MARK: - MultiToolConfiguration itself
@@ -155,146 +157,6 @@ struct HardeningTests {
     }
 
     // MARK: - Configuration limits enforced at their boundary
-
-    // Each boundary test injects an interpreter whose watchdog sleeps on a
-    // `GatedClock`. `MultiTool.init` re-arms that interpreter with the
-    // configured limit and keeps the clock. The recorded sleep tells which
-    // limit the watchdog armed, and the test opens the clock to make the
-    // deadline an event. No test reads the real time the run took (card
-    // `^3np5yzj`: no test checks the speed of the machine).
-
-    /// The small configured limit of the boundary tests, in seconds.
-    private static let smallExecutionTimeLimit: TimeInterval = 0.3
-
-    /// The stock limit of `JSCInterpreter()`, in seconds: the limit of the
-    /// injected interpreter that a smaller configured limit must replace.
-    private static let stockInterpreterTimeLimit: TimeInterval = 5
-
-    @Test(
-        "a small configured executionTimeLimit terminates a runaway snippet at that limit, not the (larger) default",
-        .timeLimit(TestHangGuard.timeLimit))
-    func executionTimeLimitBoundaryTerminatesNearConfiguredLimit() async throws {
-        let configuration = MultiToolConfiguration(executionTimeLimit: Self.smallExecutionTimeLimit)
-        let clock = GatedClock()
-        let multiTool = MultiTool(
-            registry: Self.emptyRegistry,
-            configuration: configuration,
-            interpreter: JSCInterpreter(
-                timeLimit: MultiToolConfiguration.defaultExecutionTimeLimit, watchdogClock: clock)
-        )
-        clock.open()
-
-        let output = try await multiTool.call(arguments: RunCodeArguments(code: "while (true) {}"))
-
-        // The deadline ended the run, and the watchdog was armed with the
-        // configured limit, not the package's own default work clock.
-        try await Self.expectTimedOut(output, armedWith: configuration.executionTimeLimit, on: clock)
-    }
-
-    @Test(
-        "a snippet finishing under a small configured executionTimeLimit succeeds normally",
-        .timeLimit(TestHangGuard.timeLimit))
-    func executionTimeLimitBoundaryAllowsAFastSnippet() async throws {
-        let configuration = MultiToolConfiguration(executionTimeLimit: Self.smallExecutionTimeLimit)
-        let clock = GatedClock()
-        let multiTool = MultiTool(
-            registry: Self.emptyRegistry,
-            configuration: configuration,
-            interpreter: JSCInterpreter(
-                timeLimit: MultiToolConfiguration.defaultExecutionTimeLimit, watchdogClock: clock)
-        )
-
-        // The clock stays closed: the snippet finishes before its deadline.
-        let output = try await multiTool.call(arguments: RunCodeArguments(code: "return 1 + 1;"))
-
-        #expect(output == "2")
-        try await Self.expectArmed(clock, with: configuration.executionTimeLimit)
-    }
-
-    @Test(
-        "a configured executionTimeLimit below an injected interpreter's own limit is the one enforced",
-        .timeLimit(TestHangGuard.timeLimit))
-    func executionTimeLimitBelowAnInjectedInterpretersOwnLimitIsEnforced() async throws {
-        // An injected interpreter with the stock time limit of
-        // `JSCInterpreter()` — the shape a caller reaches for first — far
-        // larger than this configuration's. The configured ceiling is the one
-        // that has to fire.
-        let configuration = MultiToolConfiguration(executionTimeLimit: Self.smallExecutionTimeLimit)
-        let clock = GatedClock()
-        let multiTool = MultiTool(
-            registry: Self.emptyRegistry,
-            configuration: configuration,
-            interpreter: JSCInterpreter(timeLimit: Self.stockInterpreterTimeLimit, watchdogClock: clock)
-        )
-        clock.open()
-
-        let output = try await multiTool.call(arguments: RunCodeArguments(code: "while (true) {}"))
-
-        // The deadline ended the run, and the watchdog was armed with the
-        // configured ceiling, not the injected interpreter's own stock limit.
-        try await Self.expectTimedOut(output, armedWith: configuration.executionTimeLimit, on: clock)
-    }
-
-    /// Records a failure unless `output` is the timeout text of a run that the
-    /// watchdog ended at `limit`, and `clock` recorded the one deadline of
-    /// `limit`.
-    ///
-    /// The watchdog names the limit it was armed with in its timeout message,
-    /// and it sleeps on `clock` until that limit. Thus the test reads which
-    /// limit fired from the output and from the clock, and not from the real
-    /// time the run took.
-    ///
-    /// - Parameters:
-    ///   - output: The rendered output of the `runCode` call.
-    ///   - limit: The limit, in seconds, the watchdog must have been armed
-    ///     with.
-    ///   - clock: The gated clock the watchdog slept on.
-    private static func expectTimedOut(
-        _ output: String, armedWith limit: TimeInterval, on clock: GatedClock
-    ) async throws {
-        #expect(output.contains(InterpreterError.Kind.timeout.repairableErrorSummary), "output was: \(output)")
-        #expect(output.contains("Execution exceeded the \(limit)s time limit."), "output was: \(output)")
-        try await expectArmed(clock, with: limit)
-    }
-
-    /// Records a failure unless the watchdog slept on `clock` one time, until
-    /// `limit`.
-    ///
-    /// The deadline timer of a run starts as its own task. A run that ends
-    /// first can return before that task records its sleep. Thus the check
-    /// waits for the event "a sleep is recorded", and it never waits a fixed
-    /// time.
-    ///
-    /// - Parameters:
-    ///   - clock: The gated clock the watchdog sleeps on.
-    ///   - limit: The limit, in seconds, the watchdog must have armed.
-    private static func expectArmed(_ clock: GatedClock, with limit: TimeInterval) async throws {
-        try await TestPoll.waitUntil("the watchdog armed its deadline") { !clock.recordedSleeps.isEmpty }
-        #expect(clock.recordedSleeps == [.seconds(limit)])
-    }
-
-    @Test(
-        "a configured executionTimeLimit above an injected interpreter's own limit is the one enforced",
-        .timeLimit(TestHangGuard.timeLimit))
-    func executionTimeLimitAboveAnInjectedInterpretersOwnLimitIsEnforced() async throws {
-        // The mirror direction: a configured ceiling well above
-        // `JSCInterpreter`'s own stock limit, and an injected interpreter
-        // armed far tighter. The watchdog must arm the configured ceiling, and
-        // the snippet reaches its `return`.
-        let configuredLimit: TimeInterval = 20.0
-        let configuration = MultiToolConfiguration(executionTimeLimit: configuredLimit)
-        let clock = GatedClock()
-        let multiTool = MultiTool(
-            registry: Self.emptyRegistry,
-            configuration: configuration,
-            interpreter: JSCInterpreter(timeLimit: Self.smallExecutionTimeLimit, watchdogClock: clock)
-        )
-
-        let output = try await multiTool.call(arguments: RunCodeArguments(code: "return \"done\";"))
-
-        #expect(output == "\"done\"")
-        try await Self.expectArmed(clock, with: configuredLimit)
-    }
 
     @Test("a return value serialized to exactly the configured returnValueCharacterLimit is not truncated")
     func returnValueCharacterLimitBoundaryAtLimitIsNotTruncated() async throws {

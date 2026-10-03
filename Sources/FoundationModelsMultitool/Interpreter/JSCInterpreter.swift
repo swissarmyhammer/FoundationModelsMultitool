@@ -21,7 +21,7 @@ import os
 // the linkable stub the linker resolves imported-framework symbols against —
 // so an extern declaration links cleanly with no extra linker flags, and
 // `swift build`/`swift test` confirm it at both compile and run time (see
-// `JSCInterpreterTests.infiniteLoopTerminatedByWatchdog`). The documented
+// `JSCInterpreterTests.cancellationForcesEarlyTerminationOfAnInfiniteLoop`). The documented
 // fallback (a dedicated thread that abandons its `JSContext` on timeout) was
 // **not** needed.
 
@@ -79,47 +79,35 @@ private func JSContextGroupClearExecutionTimeLimit(_ group: JSContextGroupRef)
 /// invocation per `watchdogPollInterval` (5 invocations at ~100ms spacing,
 /// clean termination at ~0.5s in the isolated repro) for as long as the
 /// script keeps running. So the group is armed at `makeSandbox` time with a
-/// short, fixed poll interval (`JSCInterpreter.watchdogPollInterval`) — far
-/// below any realistic configured `timeLimit` — and this state's own
-/// `shouldTerminate()` (called from `jscTerminateCallback` every time that
-/// poll interval elapses) re-arms the *same* short interval itself whenever
-/// it decides not to terminate yet, rather than relying on JSC's own
-/// "return false" contract. `shouldTerminate()` is what actually decides, in
-/// Swift, whether the *real* configured deadline is reached or
-/// `isCancelled` has reported `true` — this state is effectively the *real*
-/// watchdog, with JSC's own limit reduced to a self-renewing polling tick.
+/// short, fixed poll interval (`JSCInterpreter.watchdogPollInterval`), and
+/// this state's own `shouldTerminate()` (called from `jscTerminateCallback`
+/// every time that poll interval elapses) re-arms the *same* short interval
+/// itself whenever it decides not to terminate yet, rather than relying on
+/// JSC's own "return false" contract. `shouldTerminate()` is what actually
+/// decides, in Swift, whether `isCancelled` has reported `true` — this state
+/// is effectively the *real* watchdog, with JSC's own limit reduced to a
+/// self-renewing polling tick. The watchdog has no clock of its own: the one
+/// outer timeout of a call is the tool-level timeout, and it reaches the run
+/// as a cancellation.
 ///
 /// JSC's documentation does not commit to which thread invokes
 /// `JSShouldTerminateCallback` (in practice it is checked from the
 /// interpreter loop itself, but that is not a guarantee this code should
-/// lean on) — so the recorded cause is lock-protected rather than a plain
-/// `Bool`/enum, keeping correctness independent of that unstated
+/// lean on) — so the recorded cancellation is lock-protected rather than a
+/// plain `Bool`, keeping correctness independent of that unstated
 /// thread-affinity detail.
 ///
 /// `@unchecked`: `group` is an opaque C pointer (`OpaquePointer` itself
 /// isn't `Sendable`), used only to re-issue calls into the thread-safe JSC C
 /// API — it's never dereferenced or mutated by this type. Every other
 /// stored property is either immutable-and-`Sendable` or, for the one
-/// genuinely mutable piece of state (`cause`), guarded by `lock`.
+/// genuinely mutable piece of state (`isCancellationRecorded`), guarded by
+/// `lock`.
 private final class WatchdogState: @unchecked Sendable {
-    /// Why this state decided to terminate — recorded once; first cause
-    /// wins, since a run ends with one error only.
-    fileprivate enum Cause: Sendable {
-        /// The run exceeded its configured wall-clock time limit.
-        case timedOut
-        /// The calling `Task` was cancelled before the real time limit
-        /// elapsed.
-        case cancelled
-    }
-
-    private let lock: OSAllocatedUnfairLock<Cause?>
-
-    /// The *real* configured time limit this state enforces, as a deadline on
-    /// the watchdog clock — independent of whatever short poll interval the
-    /// group's own `JSContextGroupSetExecutionTimeLimit` was actually armed
-    /// with (see this type's documentation). It is armed when this state is
-    /// made.
-    private let deadline: WatchdogDeadline
+    /// Whether this state decided to terminate the run because the calling
+    /// `Task` was cancelled. It changes from `false` to `true` one time and
+    /// never back.
+    private let lock = OSAllocatedUnfairLock(initialState: false)
 
     /// Polled once per `jscTerminateCallback` invocation — the M10
     /// cancellation hook.
@@ -141,31 +129,20 @@ private final class WatchdogState: @unchecked Sendable {
     ///   - group: the context group this state's watchdog polls against.
     ///   - pollInterval: the short window re-armed on every callback
     ///     invocation that isn't yet ready to terminate.
-    ///   - deadline: the real ceiling this state enforces, already armed.
     ///   - isCancelled: polled once per callback invocation to detect
     ///     external (M10 `Task`) cancellation.
     fileprivate init(
         group: JSContextGroupRef,
         pollInterval: TimeInterval,
-        deadline: WatchdogDeadline,
         isCancelled: @escaping @Sendable () -> Bool
     ) {
-        self.lock = OSAllocatedUnfairLock(initialState: nil)
-        self.deadline = deadline
         self.group = group
         self.pollInterval = pollInterval
         self.isCancelled = isCancelled
     }
 
-    /// Stops the deadline timer of this run. The sandbox calls it at
-    /// teardown, thus no timer outlives its run.
-    fileprivate func disarm() {
-        deadline.disarm()
-    }
-
-    /// The recorded cause, or `nil` if this state hasn't decided to
-    /// terminate yet.
-    fileprivate var cause: Cause? {
+    /// Whether this state recorded the cancellation of the run.
+    fileprivate var isCancellationRecorded: Bool {
         lock.withLock { $0 }
     }
 
@@ -176,35 +153,26 @@ private final class WatchdogState: @unchecked Sendable {
     /// required — JSC's own "return `false`" contract does not reschedule
     /// anything on this SDK).
     ///
-    /// - Returns: `true` (terminate) the first time either `isCancelled`
-    ///   reports `true` or the clock reached the real deadline, recording which
-    ///   caused it; `false` (having just re-armed one more poll-interval
-    ///   window) otherwise.
+    /// - Returns: `true` (terminate), with the cancellation recorded, when
+    ///   `isCancelled` reports `true`; `false` (having just re-armed one more
+    ///   poll-interval window) otherwise.
     fileprivate func shouldTerminate() -> Bool {
         if isCancelled() {
-            recordCause(.cancelled)
-            return true
-        }
-        if deadline.isReached {
-            recordCause(.timedOut)
+            recordCancellation()
             return true
         }
         rearm()
         return false
     }
 
-    /// Records why this run is terminating, keeping whichever cause reached
-    /// this method first.
+    /// Records that this run terminates because the calling `Task` was
+    /// cancelled.
     ///
-    /// A run reports one cause (see `cause`), so a later decision must never
-    /// overwrite the one already recorded. The run itself calls this too,
-    /// from its job queue, when its wall-clock timer fires or a cancellation
+    /// The run itself calls this too, from its job queue, when a cancellation
     /// reaches it while no job executes JS: then no callback is there to
     /// decide.
-    ///
-    /// - Parameter cause: why the run terminates now.
-    fileprivate func recordCause(_ cause: Cause) {
-        lock.withLock { if $0 == nil { $0 = cause } }
+    fileprivate func recordCancellation() {
+        lock.withLock { $0 = true }
     }
 
     /// Re-arms the group's execution time limit with a fresh short window,
@@ -221,71 +189,10 @@ private final class WatchdogState: @unchecked Sendable {
 /// The watchdog callback itself: defers the actual terminate/continue
 /// decision to `WatchdogState.shouldTerminate()` — see that type's
 /// documentation for why the group is armed with a short, fixed poll
-/// interval rather than the run's real configured time limit.
+/// interval that this state re-arms.
 private func jscTerminateCallback(_: JSContextRef?, _ info: UnsafeMutableRawPointer?) -> Bool {
     guard let info else { return true }
     return Unmanaged<WatchdogState>.fromOpaque(info).takeUnretainedValue().shouldTerminate()
-}
-
-/// The time limit of one run, as a deadline on the watchdog clock.
-///
-/// The deadline is reached by one of two paths:
-///
-/// 1. **The timer.** A task sleeps on the clock until the deadline, then
-///    marks the deadline as reached and calls `onReached`. Thus the deadline
-///    is an event of the clock. A run uses `onReached` as its wall-clock
-///    timer: it ends a run that waits for a call past its time limit, while
-///    no job executes JS. A clock that a test controls ends the sleep when
-///    the test lets it, and the run ends at that event and at no real time
-///    (`JSCInterpreter.init(timeLimit:watchdogClock:)`).
-/// 2. **The reading of `now`.** Each check of the CPU watchdog also compares
-///    the current instant of the clock with the deadline. The JS thread
-///    makes the checks, thus this path needs no other thread. It is the
-///    backstop when every thread of the cooperative pool is busy and the
-///    timer cannot run.
-private final class WatchdogDeadline: Sendable {
-    /// Whether the clock reached the deadline, by either path.
-    private let hasPassed: @Sendable () -> Bool
-
-    /// The task that sleeps until the deadline. ``disarm()`` cancels it.
-    private let timer: Task<Void, Never>
-
-    /// Arms the deadline `timeLimit` after the current instant of `clock`.
-    ///
-    /// - Parameters:
-    ///   - timeLimit: the time from now to the deadline.
-    ///   - clock: the clock that the deadline is on.
-    ///   - onReached: called one time, from the timer task, when the timer
-    ///     reaches the deadline. It is not called after ``disarm()``.
-    init<WatchdogClock: Clock<Duration>>(
-        timeLimit: Duration,
-        on clock: WatchdogClock,
-        onReached: @escaping @Sendable () -> Void
-    ) {
-        let deadline = clock.now.advanced(by: timeLimit)
-        let timerFired = OSAllocatedUnfairLock(initialState: false)
-        hasPassed = { timerFired.withLock { $0 } || clock.now >= deadline }
-        timer = Task {
-            do {
-                try await clock.sleep(until: deadline, tolerance: nil)
-            } catch {
-                // Cancelled by `disarm()`: the run ended first.
-                return
-            }
-            timerFired.withLock { $0 = true }
-            onReached()
-        }
-    }
-
-    /// Whether the clock reached the deadline.
-    var isReached: Bool {
-        hasPassed()
-    }
-
-    /// Cancels the timer. A cancelled timer does not mark the deadline.
-    func disarm() {
-        timer.cancel()
-    }
 }
 
 /// JavaScriptCore-backed `Interpreter`.
@@ -339,33 +246,19 @@ private final class WatchdogDeadline: Sendable {
 /// do not build a semaphore-based park mechanism and its thread guards only
 /// to delete them later."
 ///
-/// Two clocks bound a run. The CPU watchdog (`WatchdogState`) stops a job
-/// that executes JS for too long, such as `while (true) {}`. A wall-clock
-/// timer stops a run that waits past its time limit for a call that does not
-/// complete: when it fires, it puts a job on the job queue. Both read one
-/// deadline (`WatchdogDeadline`) on the watchdog clock of the interpreter.
+/// Cancellation of the calling `Task` is the only stop of a run. The
+/// interpreter has no clock: the one outer timeout of a `runCode` call is the
+/// tool-level timeout (`MultiTool.timeout(from:)`), and it cancels the run.
+/// The CPU watchdog (`WatchdogState`) reads that cancellation while a job
+/// executes JS, thus it stops `while (true) {}` at the next poll. A run that
+/// waits for a call executes no JS, and its cancel job ends it.
 public final class JSCInterpreter: Interpreter {
     /// How often `WatchdogState.shouldTerminate()` is invoked while a job
-    /// executes JS — see that type's documentation for why this, not the
-    /// run's real configured `timeLimit`, is the value actually armed via
-    /// `JSContextGroupSetExecutionTimeLimit`. 20ms bounds the latency of a
-    /// cancellation that arrives while JS executes well below any realistic
-    /// `timeLimit`, at negligible overhead. A run that executes no JS is not
-    /// polled at all.
+    /// executes JS — see that type's documentation for why this is the value
+    /// actually armed via `JSContextGroupSetExecutionTimeLimit`. 20ms bounds
+    /// the latency of a cancellation that arrives while JS executes, at
+    /// negligible overhead. A run that executes no JS is not polled at all.
     private static let watchdogPollInterval: TimeInterval = 0.02
-
-    /// Wall-clock ceiling for a single `run`, enforced by `WatchdogState`.
-    private let timeLimit: TimeInterval
-
-    /// The clock that the deadline of each run is on (see
-    /// `WatchdogDeadline`). The CPU watchdog and the wall-clock timer of a
-    /// run both use this one deadline.
-    ///
-    /// A host always gets the continuous clock. A test gives a clock that it
-    /// opens on command. Thus the watchdog fires when the test lets it, and a
-    /// busy machine cannot end a run that the test does not end (web.md §
-    /// "Testing": no test checks the speed of the machine).
-    private let watchdogClock: any Clock<Duration>
 
     /// The label the job queue of every run carries (see the type doc for
     /// why each run has a queue of its own). Shared rather than made unique
@@ -373,61 +266,22 @@ public final class JSCInterpreter: Interpreter {
     /// depends on it being distinct.
     private static let queueLabel = "FoundationModelsMultitool.JSCInterpreter"
 
-    /// Creates a JavaScriptCore-backed interpreter that enforces the given
-    /// per-run time limit.
+    /// Creates a JavaScriptCore-backed interpreter.
     ///
-    /// The default applies to an interpreter constructed without an explicit
-    /// `timeLimit` and run directly. Standing alone like that, this watchdog
-    /// is the only clock in play — there is no `runCode` wait clock for it to
-    /// race, because the background path belongs to a `MultiTool` mount.
-    ///
-    /// It does not survive that mount. `MultiTool.init` arms every
-    /// interpreter it runs — the sandbox it builds for itself, and one a
-    /// caller hands it as its `interpreter:`, alike — with
-    /// `MultiToolConfiguration.executionTimeLimit` through
-    /// ``withTimeLimit(_:)``, so under a `MultiTool` the watchdog always
-    /// fires at the configured ceiling, whatever this interpreter was
-    /// constructed with. `MultiTool.timeout(from:)` answers that same ceiling
-    /// as the per-call work bound (see that method's own documentation), so
-    /// the watchdog and the engine's clock come from one value. An injecting
-    /// caller does not have to align the two.
-    ///
-    /// - Parameter timeLimit: seconds a single `run` may execute before the
-    ///   watchdog terminates it. Defaults to a ceiling sized for a
-    ///   directly-constructed interpreter running a self-contained snippet;
-    ///   a `MultiTool` replaces it with its own configured ceiling.
-    public convenience init(timeLimit: TimeInterval = 5.0) {
-        self.init(timeLimit: timeLimit, watchdogClock: ContinuousClock())
-    }
+    /// The interpreter has no clock. Only cancellation of the calling `Task`
+    /// stops a run (see the type documentation).
+    public init() {}
 
-    /// Creates a JavaScriptCore-backed interpreter whose watchdog deadline is
-    /// on `watchdogClock` — the initializer every other one forwards to.
+    /// Returns this interpreter.
     ///
-    /// - Parameters:
-    ///   - timeLimit: See ``init(timeLimit:)``.
-    ///   - watchdogClock: The clock that the deadline of each run is on — see
-    ///     ``watchdogClock``. ``withTimeLimit(_:)`` keeps it.
-    init(timeLimit: TimeInterval, watchdogClock: any Clock<Duration>) {
-        self.timeLimit = timeLimit
-        self.watchdogClock = watchdogClock
-    }
-
-    /// Returns a `JSCInterpreter` whose watchdog is armed with `seconds` in
-    /// place of this one's own limit.
+    /// The interpreter has no wall-clock mechanism, thus it has no limit to
+    /// arm. The protocol documentation of ``Interpreter/withTimeLimit(_:)``
+    /// allows such a conformer to return itself.
     ///
-    /// A fresh instance rather than a mutation: the limit is the whole of
-    /// this type's state, and the caller that constructed this interpreter
-    /// keeps the ceiling it asked for. Every other piece of a run's state is
-    /// created per `run` anyway (see this type's own documentation), so the
-    /// returned interpreter differs in nothing but the ceiling. It keeps the
-    /// watchdog clock of this one.
-    ///
-    /// - Parameter seconds: seconds a single `run` of the returned
-    ///   interpreter may execute before its watchdog terminates it.
-    /// - Returns: an interpreter that runs exactly as this one does, armed
-    ///   with `seconds`.
+    /// - Parameter seconds: not used.
+    /// - Returns: this interpreter.
     public func withTimeLimit(_ seconds: TimeInterval) -> any Interpreter {
-        JSCInterpreter(timeLimit: seconds, watchdogClock: watchdogClock)
+        self
     }
 
     /// Runs `code` as jobs on a job queue of its own, in a fresh, isolated
@@ -453,7 +307,7 @@ public final class JSCInterpreter: Interpreter {
     /// - Returns: the snippet's return value and captured console output.
     /// - Throws: `CancellationError` if the calling `Task` was cancelled
     ///   before the run otherwise completed; `InterpreterError` for a
-    ///   thrown/syntax exception, a timeout, or a floating rejection.
+    ///   thrown/syntax exception or a floating rejection.
     public func run(
         code: String,
         installing: [HostFunction],
@@ -469,8 +323,6 @@ public final class JSCInterpreter: Interpreter {
         telemetry.recordStart(characterCount: code.count)
         let run = Run(
             snippet: Run.Snippet(code: code, installing: installing, installingAsync: installingAsync),
-            timeLimit: timeLimit,
-            watchdogClock: watchdogClock,
             telemetry: telemetry
         )
         do {
@@ -581,28 +433,22 @@ public final class JSCInterpreter: Interpreter {
 
         fileprivate func tearDown() {
             JSContextGroupClearExecutionTimeLimit(group)
-            watchdogState.disarm()
             JSGlobalContextRelease(globalContextRef)
             JSContextGroupRelease(group)
         }
     }
 
     /// Creates a fresh, isolated sandbox with `installing` bound in and the
-    /// watchdog armed — at `Self.watchdogPollInterval`, not `timeLimit`
-    /// itself; see `WatchdogState`'s documentation for why. Cleans up any
-    /// partially-created pieces on the way out if a later step fails.
+    /// watchdog armed at `Self.watchdogPollInterval`; see `WatchdogState`'s
+    /// documentation for why. Cleans up any partially-created pieces on the
+    /// way out if a later step fails.
     ///
     /// - Parameters:
     ///   - installing: the synchronous host functions to install.
     ///   - installingAsync: the asynchronous host functions to install.
     ///   - promiseRegistry: the registry the bridge records each promise of
     ///     an `installingAsync` call in.
-    ///   - timeLimit: the real wall-clock ceiling the watchdog enforces.
-    ///   - watchdogClock: the clock that the deadline of the run is on.
     ///   - isCancelled: read by the watchdog at each poll.
-    ///   - onDeadline: called one time when the timer of the deadline fires
-    ///     (see `WatchdogDeadline`). The sandbox arms the deadline only after
-    ///     every step that can throw, thus a failed sandbox leaves no timer.
     /// - Returns: the sandbox, with its watchdog armed.
     /// - Throws: `InterpreterError` when JavaScriptCore cannot make the
     ///   group or the context.
@@ -610,10 +456,7 @@ public final class JSCInterpreter: Interpreter {
         installing: [HostFunction],
         installingAsync: [AsyncHostFunction],
         promiseRegistry: PromiseRegistry,
-        timeLimit: TimeInterval,
-        watchdogClock: any Clock<Duration>,
-        isCancelled: @escaping @Sendable () -> Bool,
-        onDeadline: @escaping @Sendable () -> Void
+        isCancelled: @escaping @Sendable () -> Bool
     ) throws -> Sandbox {
         guard let group = JSContextGroupCreate() else {
             throw InterpreterError(kind: .exception, message: "Failed to create a JSContextGroup.")
@@ -641,7 +484,6 @@ public final class JSCInterpreter: Interpreter {
         let watchdogState = WatchdogState(
             group: group,
             pollInterval: watchdogPollInterval,
-            deadline: WatchdogDeadline(timeLimit: .seconds(timeLimit), on: watchdogClock, onReached: onDeadline),
             isCancelled: isCancelled
         )
         let statePointer = Unmanaged.passUnretained(watchdogState).toOpaque()
@@ -728,9 +570,8 @@ public final class JSCInterpreter: Interpreter {
     }
 
     /// The part of a run that exists from its start job to its finish step:
-    /// the sandbox (with the deadline that is also the wall-clock timer of
-    /// the run), the object the wrapped snippet reports its outcome into, and
-    /// what the jobs record on the way.
+    /// the sandbox, the object the wrapped snippet reports its outcome into,
+    /// and what the jobs record on the way.
     ///
     /// Confined to the job queue of its run, like every `JSValue` it holds.
     private final class LiveRun {
@@ -751,7 +592,7 @@ public final class JSCInterpreter: Interpreter {
 
         /// Creates the live part of a run.
         ///
-        /// - Parameter sandbox: the run's sandbox, with its deadline armed.
+        /// - Parameter sandbox: the run's sandbox, with its watchdog armed.
         init(sandbox: Sandbox) {
             self.sandbox = sandbox
             sandbox.context.exceptionHandler = { [capturedException] _, exception in
@@ -759,8 +600,8 @@ public final class JSCInterpreter: Interpreter {
             }
         }
 
-        /// Stops the timer, cancels each pending call, breaks the reference
-        /// the context's exception handler holds, and releases the sandbox.
+        /// Cancels each pending call, breaks the reference the context's
+        /// exception handler holds, and releases the sandbox.
         func tearDown() {
             sandbox.promiseRegistry.cancelAllPending()
             sandbox.context.exceptionHandler = nil
@@ -811,13 +652,6 @@ public final class JSCInterpreter: Interpreter {
             case failed
         }
 
-        /// The wall-clock ceiling of the run.
-        private let timeLimit: TimeInterval
-
-        /// The clock that the deadline of the run is on (see
-        /// `JSCInterpreter.watchdogClock`).
-        private let watchdogClock: any Clock<Duration>
-
         /// The telemetry of the calling task.
         private let telemetry: RunTelemetry
 
@@ -845,13 +679,9 @@ public final class JSCInterpreter: Interpreter {
         ///
         /// - Parameters:
         ///   - snippet: what the start job installs and evaluates.
-        ///   - timeLimit: the wall-clock ceiling of the run.
-        ///   - watchdogClock: the clock that the deadline of the run is on.
         ///   - telemetry: the telemetry of the calling task.
-        init(snippet: Snippet, timeLimit: TimeInterval, watchdogClock: any Clock<Duration>, telemetry: RunTelemetry) {
+        init(snippet: Snippet, telemetry: RunTelemetry) {
             self.state = .queued(snippet)
-            self.timeLimit = timeLimit
-            self.watchdogClock = watchdogClock
             self.telemetry = telemetry
         }
 
@@ -943,33 +773,27 @@ public final class JSCInterpreter: Interpreter {
             case .queued:
                 state = .cancelled
             case .awaiting(let live):
-                live.sandbox.watchdogState.recordCause(.cancelled)
+                live.sandbox.watchdogState.recordCancellation()
                 endJob(live)
             case .settled, .cancelled, .failed:
                 break
             }
         }
 
-        /// The wall-clock timer job: ends a run that waits past its time
-        /// limit, as timed out.
-        private func wallClockExpired() {
-            guard case .awaiting(let live) = state else { return }
-            live.sandbox.watchdogState.recordCause(.timedOut)
-            endJob(live)
-        }
-
         /// The finish step that ends each job.
         ///
-        /// A run whose watchdog recorded a cause (a timeout or a
-        /// cancellation) ends now: each pending call is cancelled and its
-        /// promise is not settled (see `PromiseRegistry.cancelAllPending`).
+        /// A run whose watchdog recorded a cancellation ends now: each pending
+        /// call is cancelled and its promise is not settled (see
+        /// `PromiseRegistry.cancelAllPending`).
         /// Otherwise a run with a pending bridge promise keeps waiting, and a
         /// run with none ends with its outcome.
         ///
         /// - Parameter live: the live part of the run.
         private func endJob(_ live: LiveRun) {
-            guard live.sandbox.watchdogState.cause != nil || live.sandbox.promiseRegistry.isEmpty else { return }
-            let result = Result { try JSCInterpreter.outcome(of: live, timeLimit: timeLimit) }
+            guard live.sandbox.watchdogState.isCancellationRecorded || live.sandbox.promiseRegistry.isEmpty else {
+                return
+            }
+            let result = Result { try JSCInterpreter.outcome(of: live) }
             live.tearDown()
             complete(with: result)
         }
@@ -997,13 +821,10 @@ public final class JSCInterpreter: Interpreter {
 
         // MARK: Setup
 
-        /// Makes the sandbox and arms its deadline, which is also the
-        /// wall-clock timer of the run.
+        /// Makes the sandbox, with its watchdog armed.
         ///
-        /// The timer of the deadline sleeps on ``watchdogClock`` and puts the
-        /// wall-clock timer job on the job queue when it fires. It replaces a
-        /// poll: a run that waits is not woken until a call completes, the
-        /// run is cancelled, or the deadline fires.
+        /// A run that waits is not woken until a call completes or the run is
+        /// cancelled.
         ///
         /// - Parameter snippet: the host functions to install.
         /// - Returns: the live part of the run.
@@ -1017,10 +838,7 @@ public final class JSCInterpreter: Interpreter {
                 installing: snippet.installing,
                 installingAsync: snippet.installingAsync,
                 promiseRegistry: registry,
-                timeLimit: timeLimit,
-                watchdogClock: watchdogClock,
-                isCancelled: { [cancelled] in cancelled.withLock { $0 } },
-                onDeadline: { [weak self] in self?.enqueue { $0.wallClockExpired() } }
+                isCancelled: { [cancelled] in cancelled.withLock { $0 } }
             )
             return LiveRun(sandbox: sandbox)
         }
@@ -1030,28 +848,20 @@ public final class JSCInterpreter: Interpreter {
     /// and console lines, or the error.
     ///
     /// The order of the checks is the order of authority. A recorded
-    /// watchdog cause comes first: a forced termination (timeout or
-    /// cancellation) does not always also make a normal, catchable JS
-    /// exception. A floating rejection — a bridge promise that rejected and
+    /// cancellation comes first: a forced termination does not always also
+    /// make a normal, catchable JS exception. A floating rejection — a bridge promise that rejected and
     /// that the snippet never consumed (`.then`/`.catch`/`.finally`/`await`)
     /// — becomes the run's error, per eventplan.md "Async JavaScript": "A
     /// floating rejection becomes the run's error. It does not disappear."
     /// It is decided one time, here, when no bridge promise is pending —
     /// never at each settlement (see `install(asyncHostFunction:into:registry:)`).
     ///
-    /// - Parameters:
-    ///   - live: the live part of the run.
-    ///   - timeLimit: the wall-clock ceiling, named in a timeout message.
+    /// - Parameter live: the live part of the run.
     /// - Returns: the result of the run.
     /// - Throws: `CancellationError` or `InterpreterError`.
-    private static func outcome(of live: LiveRun, timeLimit: TimeInterval) throws -> InterpreterResult {
-        switch live.sandbox.watchdogState.cause {
-        case .cancelled:
+    private static func outcome(of live: LiveRun) throws -> InterpreterResult {
+        if live.sandbox.watchdogState.isCancellationRecorded {
             throw CancellationError()
-        case .timedOut:
-            throw InterpreterError(kind: .timeout, message: "Execution exceeded the \(timeLimit)s time limit.")
-        case nil:
-            break
         }
         if let exception = live.capturedException.value {
             throw makeError(from: exception)
@@ -1185,7 +995,7 @@ public final class JSCInterpreter: Interpreter {
     /// `Promise.all([...])` (which all route through `.then` per spec) all
     /// mark it, however late. Checked only once, by the finish step of the
     /// run when no bridge promise is pending — see
-    /// `outcome(of:timeLimit:)` and `install(asyncHostFunction:into:registry:)`
+    /// `outcome(of:)` and `install(asyncHostFunction:into:registry:)`
     /// for why checking per-settlement instead would be wrong.
     /// Confined to the job queue of its run, like `ConsoleLines`: `.then` is
     /// only ever invoked while a job executes JS.
@@ -1318,7 +1128,7 @@ public final class JSCInterpreter: Interpreter {
         }
 
         /// Cancels every still-pending entry's backing `Task` and drops it
-        /// — used when a run ends (a timeout or a cancellation) before they
+        /// — used when a run ends (a cancellation) before they
         /// settle. Never calls `resolve`/`reject`: doing so would resume
         /// author JS in a run that is ending, where no armed watchdog can
         /// stop it again (eventplan.md "Async JavaScript": "Cancellation is
@@ -1750,7 +1560,7 @@ public final class JSCInterpreter: Interpreter {
     /// and `.then` was called on it, however late — see
     /// `install(asyncHostFunction:into:registry:)`) or is stuck on an
     /// unrelated always-pending promise (the "never settled" case of
-    /// `outcome(of:timeLimit:)`), so a still-unconsumed failure at that point
+    /// `outcome(of:)`), so a still-unconsumed failure at that point
     /// is genuinely floating.
     ///
     /// Both failure modes carry the `"<name>: <error>"` shape, including the

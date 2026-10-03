@@ -18,15 +18,6 @@ public struct SampleSnippetConfig: Sendable {
     /// signatures alone.
     public static let defaultAttemptLimit = 3
 
-    /// The wall-clock ceiling for the sandbox that parses and dry-runs a
-    /// candidate.
-    ///
-    /// Small on purpose: nothing real runs, every mock resolves immediately,
-    /// and this budget is spent inside a `searchTools` call the model is waiting
-    /// on. A candidate that cannot finish in it is reported as a failure and
-    /// fed back.
-    public static let defaultCheckTimeLimit: TimeInterval = 2.0
-
     /// Opens the generation session, given the instructions to run it under.
     ///
     /// The session must mount **no tools** — it writes a snippet, it does not
@@ -56,12 +47,13 @@ public struct SampleSnippetConfig: Sendable {
     ///   - makeSession: opens the generation session for a set of
     ///     instructions. Must mount no tools.
     ///   - interpreter: the sandbox a candidate is parsed and dry-run in.
-    ///     Defaults to a `JSCInterpreter` bounded by ``defaultCheckTimeLimit``.
+    ///     Defaults to a `JSCInterpreter`. The check has no timeout: it is
+    ///     simple and runs in process.
     ///   - attemptLimit: how many turns one generation gets in total.
     ///     Defaults to ``defaultAttemptLimit``.
     public init(
         makeSession: @escaping @Sendable (String) -> any AgentSession,
-        interpreter: any Interpreter = JSCInterpreter(timeLimit: SampleSnippetConfig.defaultCheckTimeLimit),
+        interpreter: any Interpreter = JSCInterpreter(),
         attemptLimit: Int = SampleSnippetConfig.defaultAttemptLimit
     ) {
         self.makeSession = makeSession
