@@ -43,7 +43,10 @@ struct SizedMetadataSource: MetadataSource {
 ///
 /// The seam tests make sessions and read their type. No test sends a prompt
 /// through one, so the text only has to be a valid response.
-final class StubSessionBackend: LanguageModelSessionBackend, @unchecked Sendable {
+///
+/// The class has no stored properties. Thus the compiler checks its plain
+/// `Sendable` conformance, and the class needs no lock.
+final class StubSessionBackend: LanguageModelSessionBackend, Sendable {
     /// The text of each response.
     private static let answer = "stub"
 

@@ -37,6 +37,33 @@ comments:
     - Acceptance rg (`CLIRunner|import MultitoolCLI`, three CLI files excluded): no match. Pins: one line each, in Support/LiveRouterFixture.swift.
     - next: /review. Expect duplication rows between the integration Support seam files and Sources/MultitoolCLI; see the comment above — known state until ^c4fecne.
   timestamp: 2026-10-03T17:38:42.821187+00:00
+- actor: claude-code
+  id: 01m41ecbanvx1v46262kjq8kev
+  text: |-
+    ### review — findings
+    - evidence: `review sha HEAD~1..HEAD` (commit 2d43012): 1 finding, 1 confirmed, 0 refuted — IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Support/StubRouterProfile.swift:46 (`code-hygiene/disallowed-constructs-swift` no_unchecked_sendable). `review file IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/RouterDiscoverySeamsTests.swift` (renamed file, new path): 0 findings.
+    - next: Remove `@unchecked Sendable` from StubRouterProfile.swift, or add the swiftlint disable line with the synchronization invariant. Do this for each `@unchecked Sendable` in the file. Then run the review again.
+  timestamp: 2026-10-03T17:53:21.749258+00:00
+- actor: claude-code
+  id: 01m41edar3csnw57wsmrn98hg0
+  text: |-
+    ### finish iteration 1 — findings
+    - implement: changed — 20 files
+    - test: green — root swift test 1877 tests in 156 suites passed; IntegrationTests build-tests passed; model-free filter 18 tests in 3 suites passed
+    - commit: 2d43012
+    - review: findings — IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Support/StubRouterProfile.swift:46
+  timestamp: 2026-10-03T17:53:53.923080+00:00
+- actor: claude-code
+  id: 01m41emngscvw9b2ewnhhjj3jf
+  text: 'Fix of the review finding (no_unchecked_sendable). `StubSessionBackend` in Support/StubRouterProfile.swift has no stored properties (only a `private static let`). Thus a plain `Sendable` conformance compiles with no lock and no disable comment. The class now says `LanguageModelSessionBackend, Sendable`, and its doc comment gives the reason. A search for `@unchecked` in the Support folder (StubRouterProfile.swift, RouterDiscoverySeams.swift, RoutedAgentSession.swift, SelectionGrammar.swift and the other files) now finds nothing. No new test: the change has no behavior, and the compiler is the check (a stored `var` would now fail the build). The existing seam tests make `StubSessionBackend` sessions and pass.'
+  timestamp: 2026-10-03T17:57:54.329200+00:00
+- actor: claude-code
+  id: 01m41ems4zbz7x8xmsnker0en7
+  text: |-
+    ### implement — changed
+    - evidence: 1 file — IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Support/StubRouterProfile.swift (`@unchecked Sendable` -> `Sendable`). `rg -n "@unchecked" IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Support/`: no match. `cd IntegrationTests && swift build --build-tests`: pass. `swift test --skip-build --no-parallel --filter 'RouterDiscoverySeamsTests|ProfileSlotSeparationTests|RouterMetadataCacheTests'`: 18 tests in 3 suites passed. Root `swift build --build-tests`: pass. Root `swift test`: 1877 tests in 156 suites passed. The only build message is the known mlx-swift bundle message ("missing creator for mutated node"), not a compiler warning. Live model and live web suites not run, by instruction.
+    - next: /review. The finding is checked.
+  timestamp: 2026-10-03T17:57:58.047756+00:00
 position_column: doing
 position_ordinal: '8180'
 title: Move the Router discovery seams and the demo model pins out of MultitoolCLI into integration-test support
@@ -65,4 +92,30 @@ Subtasks:
 - [x] `swift test` in the root package passes.
 
 ## Workflow
-- Use `/tdd` — write failing tests first, then implement to make them pass. #cleanup #router #timeouts
+- Use `/tdd` — write failing tests first, then implement to make them pass.
+
+## Review Findings (2026-10-03 12:41)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 21 file(s) reviewed, 2 not reviewed.
+
+> 2 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 2 file(s)
+
+> ⚠️ tool rule 'code-hygiene/disallowed-constructs-swift' declined an item — it judged the rest of the code, and this it could not judge:
+> disallowed-constructs-swift found no file at Tests/FoundationModelsMultitoolTests/RouterDiscoverySeamsTests.swift, so its constructs are unread
+
+> ⚠️ tool rule 'code-hygiene/function-length-swift' declined an item — it judged the rest of the code, and this it could not judge:
+> function-length-swift found no file at Tests/FoundationModelsMultitoolTests/RouterDiscoverySeamsTests.swift, so its bodies are unread
+
+> ⚠️ tool rule 'code-hygiene/idioms-swift' declined an item — it judged the rest of the code, and this it could not judge:
+> idioms-swift found no file at Tests/FoundationModelsMultitoolTests/RouterDiscoverySeamsTests.swift, so its declarations are unread
+
+> ⚠️ tool rule 'code-hygiene/magic-numbers-swift' declined an item — it judged the rest of the code, and this it could not judge:
+> magic-numbers-swift found no file at Tests/FoundationModelsMultitoolTests/RouterDiscoverySeamsTests.swift, so its literals are unread
+
+> ⚠️ tool rule 'code-hygiene/missing-docs-swift' declined an item — it judged the rest of the code, and this it could not judge:
+> missing-docs-swift found no file at Tests/FoundationModelsMultitoolTests/RouterDiscoverySeamsTests.swift, so its declarations are unread
+
+> The file-scoped review `review file IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/RouterDiscoverySeamsTests.swift` (2026-10-03 12:49) read the renamed file at its new path. It ran 7 rules and found 0 findings. The declined items above are thus covered.
+
+- [x] `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Support/StubRouterProfile.swift:46` `code-hygiene/disallowed-constructs-swift` — no_unchecked_sendable: Instead of @unchecked Sendable, write a plain Sendable conformance or a @preconcurrency import. If the type really must be @unchecked Sendable, write // swiftlint:disable:next no_unchecked_sendable above it with the synchronization invariant that makes the type thread-safe. #cleanup #router #timeouts
