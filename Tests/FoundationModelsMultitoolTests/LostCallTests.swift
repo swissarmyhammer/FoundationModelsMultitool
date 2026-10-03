@@ -86,11 +86,27 @@ struct LostCallTests {
         }
     }
 
+    /// Whether `error` is `MCPServerError.lost`.
+    ///
+    /// A test asserts on this value. A `guard` in the test would stop the
+    /// test before its other assertions run.
+    ///
+    /// - Parameter error: The error that a call threw, or `nil`.
+    /// - Returns: `true` when `error` is `MCPServerError.lost`.
+    private static func isLost(_ error: (any Error)?) -> Bool {
+        guard case .lost? = error as? MCPServerError else { return false }
+        return true
+    }
+
     // MARK: - A transport drop settles the call as lost
 
     /// The transport is severed before the call is made, so the request
     /// meets a dead connection — the "scripted transport drop" of
     /// `ResilienceTests`, for this suite's own outcome assertion.
+    ///
+    /// The test reads the sink of the mounted run itself. The run gives its
+    /// terminal event to that sink before the call throws, thus the test
+    /// reads the sink one time, with no wait.
     @Test("a transport dropped before the call throws lost, and the run posts exactly one completed event with outcome lost")
     func aTransportDroppedBeforeTheCallThrowsLost() async throws {
         let respawning = RespawningTransport.makeServingFreshScriptedServers {
@@ -100,33 +116,23 @@ struct LostCallTests {
         }
         let server = MCPTestSupport.makeServer(name: Self.serverName)
         try await server.connect(via: respawning, backoffPolicy: .default)
-        let run = try await makeStubRun()
+        let sink = RecordingEventSink()
         let engine = MCPCallProbe.mountedRunToCompletion(
             MCPCallProbeTool(
                 server: server, toolName: ScriptedServer.echoToolName,
                 callArguments: [ScriptedServer.echoTextArgument: .string(Self.echoText)]),
-            on: run.context)
+            on: try await makeOuterRunContext(), postingTo: sink)
 
         await respawning.disconnect()
         try await TestPoll.waitUntil("the server noticed the drop") {
             await server.isTransportDropped
         }
-        // Subscribed BEFORE the call. `streamSessionEvents()` is live and has
-        // no replay, so a stream opened after the run settled sees nothing.
-        let collecting = Task {
-            await settledEvents(on: run.session, count: Self.terminalEventCount)
-        }
         let thrown = await MCPCallProbe.thrownError {
             _ = try await engine.call(arguments: NoArguments())
         }
 
-        guard case .lost? = thrown as? MCPServerError else {
-            Issue.record("expected MCPServerError.lost, got \(String(describing: thrown))")
-            return
-        }
-        // `SessionEvent.runSettled` carries a run's one terminal
-        // `OperationEvent`, and a host cannot inject a sink of its own.
-        let completed = await collecting.value
+        #expect(Self.isLost(thrown), "expected MCPServerError.lost, got \(String(describing: thrown))")
+        let completed = await sink.events.filter { $0.kind == .completed }
         #expect(completed.count == Self.terminalEventCount)
         // `.lost` must never flatten into `.failed` in the shared envelope
         // vocabulary — the outcome is unknowable, not a reported failure.
@@ -164,10 +170,7 @@ struct LostCallTests {
         let thrown = await MCPCallProbe.thrownError {
             _ = try await callTask.value
         }
-        guard case .lost? = thrown as? MCPServerError else {
-            Issue.record("expected MCPServerError.lost, got \(String(describing: thrown))")
-            return
-        }
+        #expect(Self.isLost(thrown), "expected MCPServerError.lost, got \(String(describing: thrown))")
 
         try await server.reconnect()
         #expect(await server.state == .ready)

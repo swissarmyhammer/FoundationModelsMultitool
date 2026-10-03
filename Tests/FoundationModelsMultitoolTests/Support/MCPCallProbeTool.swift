@@ -46,29 +46,33 @@ struct MCPCallProbeTool: FoundationModels.Tool {
 /// The mount and the error capture the call suites share.
 enum MCPCallProbe {
     /// Mounts `probe` on the shared engine of Router in run-to-completion
-    /// mode, over `mailbox`, with `sink` as the upstream sink — the mount
-    /// `RoutedModel.makeSession` applies to every tool of a session.
+    /// mode, with `sink` as the sink of each mounted run.
     ///
-    /// The mount supplies the sink itself, so every event a run posts carries
-    /// that run's own `completionToken` as its `correlationID`, which is what
-    /// a test of the correlation of two concurrent runs reads.
+    /// Each event that a run posts reaches `sink` with the `completionToken`
+    /// of that run as its `correlationID`, and the terminal event of the run
+    /// reaches `sink` as a `.completed` event. The run gives its terminal
+    /// event to `sink` before the call returns or throws, thus a test reads
+    /// `sink` right after the call, with no wait. (The engine gives no
+    /// terminal event for a run that succeeded and posted no event before.)
+    ///
+    /// The mount with no sink of its own is not used here. Its sink sends each
+    /// event on through the mounting context: it puts the token of the
+    /// mounting run on each event, and it sends the terminal event of the
+    /// mounted run as a `.progress` event of the mounting run. Then two
+    /// concurrent runs have one correlation, and no terminal event of the
+    /// mounted run is visible.
     ///
     /// - Parameters:
     ///   - probe: The probe to mount.
     ///   - context: The session context the engine mounts on. Take one from
     ///     ``makeStubRun(in:)``.
-    ///   - sink: The upstream sink each run's events reach, or `nil` to let the
-    ///     mount supply its own. A caller-supplied sink observes each run's OWN
-    ///     `completionToken` as the `correlationID`; the mount's own sink
-    ///     re-stamps every event onto the mounting run's token, which makes two
-    ///     concurrent runs indistinguishable.
+    ///   - sink: The sink of each mounted run.
     /// - Returns: The mounted engine.
     static func mountedRunToCompletion(
         _ probe: MCPCallProbeTool, on context: ToolContext,
-        postingTo sink: (any OperationEventSink)? = nil
+        postingTo sink: any OperationEventSink
     ) -> any FoundationModels.Tool<NoArguments, String> {
-        guard let sink else { return context.mount(probe, as: .synchronous) }
-        return context.mount(probe, as: .synchronous, postingTo: sink)
+        context.mount(probe, as: .synchronous, postingTo: sink)
     }
 
     /// The error `body` threw, or `nil` when it returned.

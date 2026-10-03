@@ -10,8 +10,15 @@ import Testing
 /// It goes out through whichever ambient context the tool ran under.
 private let recorderProgressDetail = "recorder ran"
 
+/// What that same tool returns, and the detail of the terminal event of its
+/// call.
+///
+/// An inner call is mounted on the `runCode` context, thus its terminal event
+/// reaches the session as a progress event with this detail.
+private let recorderResult = "recorder-result"
+
 /// What `ResultRenderer` makes of that same tool's returned value.
-private let renderedRecorderResult = "\"recorder-result\""
+private let renderedRecorderResult = "\"\(recorderResult)\""
 
 /// Phase-1 coverage for eventplan.md § "MultiTool is a host and an emitter".
 ///
@@ -115,7 +122,7 @@ struct HostAndEmitterTests {
         #expect(output == renderedRecorderResult)
         #expect(
             await recordedOperationEvents(of: run, ofKind: .progress).map(\.detail)
-                == [recorderProgressDetail])
+                == [recorderProgressDetail, recorderResult])
         #expect(recorder.observations.first?.sessionID == context.sessionID)
     }
 }

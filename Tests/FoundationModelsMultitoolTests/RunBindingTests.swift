@@ -75,7 +75,12 @@ struct RunBindingTests {
         #expect(Set(observations.compactMap(\.completionToken)).count == 2)
         #expect(observations.allSatisfy { $0.completionToken != context.completionToken })
         #expect(observations.allSatisfy { $0.sessionID == context.sessionID })
-        #expect(Set(await recordedOperationEvents(of: run, ofKind: .progress).map(\.detail)) == ["alpha ran", "beta ran"])
+        // Each inner call posts its own progress detail. The terminal event of
+        // each inner call also reaches the session as a progress event, with
+        // the output of that call as its detail.
+        #expect(
+            Set(await recordedOperationEvents(of: run, ofKind: .progress).map(\.detail))
+                == ["alpha ran", "beta ran", "alpha-result", "beta-result"])
     }
 
     // MARK: - Binding capture, not inheritance

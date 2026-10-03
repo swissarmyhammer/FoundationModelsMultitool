@@ -400,17 +400,22 @@ struct MCPServerCallTests {
 
     /// The engine posts every progress event before the one terminal event,
     /// and the terminal event carries the outcome.
+    ///
+    /// The test reads the sink of the mounted run itself. The mounting run
+    /// does not show the terminal event of a mounted run as a terminal: it
+    /// gets that event as one more `.progress` event.
     @Test("a mounted call posts its progress events then exactly one completed, in that order")
     func progressThenExactlyOneCompleted() async throws {
         let (scripted, server) = try await Self.connected(serving: [])
         await Self.addProgressTool(to: scripted)
-        let run = try await makeStubRun()
+        let sink = RecordingEventSink()
         let engine = MCPCallProbe.mountedRunToCompletion(
-            Self.probe(server, tool: Self.progressToolName), on: run.context)
+            Self.probe(server, tool: Self.progressToolName), on: try await makeOuterRunContext(),
+            postingTo: sink)
 
         _ = try await engine.call(arguments: NoArguments())
 
-        let events = await recordedOperationEvents(of: run)
+        let events = await sink.events
         let kinds = events.map(\.kind)
         #expect(kinds.count == Self.progressSteps + Self.terminalEventCount, "kinds were: \(kinds)")
         #expect(kinds.last == .completed)

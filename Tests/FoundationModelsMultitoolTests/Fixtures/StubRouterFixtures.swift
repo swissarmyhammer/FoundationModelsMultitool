@@ -453,50 +453,6 @@ struct StubMetadata: MetadataSource {
     }
 }
 
-/// The terminal `OperationEvent` of each settled run of `session`, read off
-/// the session's own event stream.
-///
-/// `SessionEvent.runSettled` is the only public route to a run's terminal
-/// event: a host cannot inject an `OperationEventSink`, because nothing public
-/// of Router accepts one.
-///
-/// - Parameters:
-///   - session: The session whose runs to read.
-///   - count: How many settled runs to wait for.
-///   - deadline: How long to wait before giving up. The default is the
-///     shared hang guard of `TestPoll`: a hang guard, and never a speed check
-///     (card `^kdtrmhv`: no test checks the speed of the machine).
-/// - Returns: The terminal events, in arrival order, or fewer on a timeout.
-func settledEvents(
-    on session: RoutedSession, count: Int, deadline: Duration = TestPoll.deadline
-) async -> [OperationEvent] {
-    // The deadline races the stream rather than being checked inside it. A
-    // `for await` over `streamSessionEvents()` suspends until the next event,
-    // and the stream does not end on its own, so a deadline tested in the loop
-    // body is never reached when no event arrives — the call blocks forever.
-    await withTaskGroup(of: [OperationEvent]?.self) { group in
-        group.addTask {
-            var settled: [OperationEvent] = []
-            for await event in await session.streamSessionEvents() {
-                if case .runSettled(let operation) = event { settled.append(operation) }
-                if settled.count >= count { break }
-            }
-            return settled
-        }
-        group.addTask {
-            try? await Task.sleep(for: deadline)
-            return nil
-        }
-        var collected: [OperationEvent] = []
-        for await result in group {
-            if let result { collected = result }
-            group.cancelAll()
-            break
-        }
-        return collected
-    }
-}
-
 /// Every `OperationEvent` the runs of `run` recorded, read off the session's
 /// own recorded transcript.
 ///
