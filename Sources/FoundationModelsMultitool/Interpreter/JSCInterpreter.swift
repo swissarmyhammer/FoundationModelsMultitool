@@ -544,7 +544,7 @@ public final class JSCInterpreter: Interpreter {
                     metadata: MultitoolTelemetry.errorMetadata(of: error)
                         .merging(MultitoolTelemetry.durationMetadata(since: start)) { $1 })
                 MultitoolTelemetry.recordInterpreterRun(
-                    outcome: MultitoolTelemetry.interpreterOutcome(of: error), duration: duration,
+                    outcome: MultitoolTelemetry.outcome(of: error), duration: duration,
                     factory: metricsFactory)
             }
         }

@@ -122,7 +122,6 @@ extension InterpreterError.Kind {
     var repairableErrorSummary: String {
         switch self {
         case .exception: "The snippet failed"
-        case .timeout: "The snippet timed out"
         }
     }
 }

@@ -72,22 +72,19 @@ enum TypedMockDryRun {
     /// Runs `snippet` against typed mocks of `entries` and returns the first
     /// failure its API usage produced.
     ///
-    /// A watchdog timeout counts as a failure and is reported as one: a
-    /// snippet that cannot finish against mocks that resolve instantly cannot
-    /// finish against real tools either.
-    ///
-    /// Any other thrown error — a cancelled enclosing `Task`, say — yields
-    /// `nil` rather than a failure, so the gate this backs degrades to "no
-    /// opinion" instead of rejecting a snippet for a reason that has nothing
-    /// to do with the snippet.
+    /// Only an `InterpreterError` counts as a failure. Any other thrown
+    /// error — a cancelled enclosing `Task`, say — yields `nil` rather than a
+    /// failure, so the gate this backs degrades to "no opinion" instead of
+    /// rejecting a snippet for a reason that has nothing to do with the
+    /// snippet.
     ///
     /// - Parameters:
     ///   - snippet: the candidate JavaScript to dry-run.
     ///   - entries: the matched catalog entries to mock. A `tools.*` path
     ///     outside this set is simply never defined, so calling one fails as
     ///     an ordinary JavaScript `TypeError`.
-    ///   - interpreter: the sandbox to run the mocked snippet in. Its own time
-    ///     limit bounds the run.
+    ///   - interpreter: the sandbox to run the mocked snippet in. It has no
+    ///     clock: only the cancellation of the calling `Task` stops the run.
     /// - Returns: the failure message to feed back, or `nil` when the snippet
     ///   ran clean.
     static func apiUsageFailure(

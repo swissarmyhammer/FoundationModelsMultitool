@@ -187,16 +187,6 @@ struct ResultRendererTests {
         #expect(rendered.lowercased().contains("retry") || rendered.lowercased().contains("again"))
     }
 
-    @Test("a timeout InterpreterError is distinguishable from a thrown-exception error")
-    func timeoutErrorIsDistinguishableFromException() {
-        let timeout = InterpreterError(kind: .timeout, message: "Execution exceeded the 5.0s time limit.")
-
-        let rendered = ResultRenderer.render(timeout)
-
-        #expect(rendered.lowercased().contains("time"))
-        #expect(rendered.contains("Execution exceeded the 5.0s time limit."))
-    }
-
     @Test("a ToolInvoker validation error's field and constraint text survive rendering intact")
     func toolInvokerValidationErrorFieldTextSurvivesRendering() async throws {
         // Mirrors the real pipeline exactly: `JSCInterpreter.install` wraps

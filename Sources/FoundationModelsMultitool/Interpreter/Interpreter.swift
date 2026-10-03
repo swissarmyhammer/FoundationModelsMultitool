@@ -198,13 +198,16 @@ public struct InterpreterResult: Sendable, Equatable {
 /// A typed failure from `Interpreter.run`.
 public struct InterpreterError: Error, Sendable, Equatable, CustomStringConvertible {
     /// What kind of failure produced this error.
+    ///
+    /// The one kind is `.exception`. A run has no clock, thus no kind tells
+    /// of a timeout: a run that its caller stops ends with
+    /// `CancellationError`, not with an `InterpreterError`. The enum stays,
+    /// so that each conformer and caller that writes
+    /// `InterpreterError(kind: .exception, ...)` compiles with no change.
     public enum Kind: Sendable, Equatable {
         /// The snippet threw, or a syntax/runtime error occurred while
         /// parsing or evaluating it.
         case exception
-        /// The watchdog terminated a run that exceeded its configured time
-        /// limit.
-        case timeout
     }
 
     /// What kind of failure this was.
@@ -220,14 +223,12 @@ public struct InterpreterError: Error, Sendable, Equatable, CustomStringConverti
     /// Creates an error describing a failure from `Interpreter.run`.
     ///
     /// - Parameters:
-    ///   - kind: whether this is a thrown/syntax exception or a watchdog
-    ///     timeout.
+    ///   - kind: what kind of failure this was: a thrown or syntax exception.
     ///   - message: a human-readable description of the failure.
     ///   - line: the 1-based source line the failure is attributed to.
     ///     Populated when the engine can attribute the failure to a specific
     ///     line — e.g. a thrown exception or a syntax error — and `nil` when
-    ///     it can't, as with a `.timeout` (the watchdog terminates execution
-    ///     without a specific line to blame).
+    ///     it can't, as with a floating rejection that no line awaited.
     public init(kind: Kind, message: String, line: Int? = nil) {
         self.kind = kind
         self.message = message

@@ -111,18 +111,6 @@ extension MultitoolTelemetry {
         .record(duration: duration)
     }
 
-    /// The outcome of an interpreter run that threw `error`.
-    ///
-    /// - Parameter error: The error of the run.
-    /// - Returns: ``OutcomeValue/timedOut`` for an `InterpreterError` of kind
-    ///   `.timeout`, or else the outcome of the error (see ``outcome(of:)``).
-    static func interpreterOutcome(of error: any Error) -> OutcomeValue {
-        if let interpreterError = error as? InterpreterError, interpreterError.kind == .timeout {
-            return .timedOut
-        }
-        return outcome(of: error)
-    }
-
     /// The dimensions of `metric`, in the order of
     /// ``MetricName/dimensionKeys``.
     ///

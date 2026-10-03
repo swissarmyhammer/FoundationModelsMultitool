@@ -456,8 +456,8 @@ public struct MultiTool: Tool {
     /// Runs `arguments.code` against `tools.*` and renders the outcome.
     ///
     /// Never throws for an ordinary snippet failure. A thrown
-    /// `InterpreterError` — a JS exception, a syntax error, or a watchdog
-    /// timeout — is caught here and rendered as `ResultRenderer`'s
+    /// `InterpreterError` — a JS exception or a syntax error — is caught
+    /// here and rendered as `ResultRenderer`'s
     /// repairable-error text instead, because errors are returned to the
     /// model to fix and retry. A cancelled enclosing `Task`, however, is
     /// never rendered as text: cancelling the task running this call

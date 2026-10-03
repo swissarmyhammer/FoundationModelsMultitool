@@ -19,11 +19,27 @@ comments:
     - evidence: 2 files — docs/SECURITY.md, Tests/FoundationModelsMultitoolTests/ExamplesTests.swift. RED: `swift test --filter shippedContractDocumentDescribesNoRemovedClock` failed on docs/SECURITY.md (5 sightings). `swift test --filter 'ExamplesTests|WebDocumentationTests|HardeningTests'`: 20 tests in 3 suites passed. `swift test`: 1810 tests in 151 suites passed. The card rg finds nothing.
     - next: review
   timestamp: 2026-10-03T18:54:59.788294+00:00
+- actor: claude-code
+  id: 01m41j8qxtfvqa7d22qck77cqe
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit c61c6bf): 0 findings, 0 confirmed, 1 refuted. The engine reviewed `Tests/FoundationModelsMultitoolTests/ExamplesTests.swift`. No validator matches `docs/SECURITY.md`, thus a manual check examined it against the acceptance criteria. The rewritten "Execution time", "Inner-call time", "Web time", "Cancellation" and concurrent-run bullets agree with `MultiTool.timeout(from:)` and the type doc of `JSCInterpreter`. The acceptance `rg` finds nothing in `docs/SECURITY.md` or `README.md`. The commit renames no file.
+    - next: none. The task moved to done.
+  timestamp: 2026-10-03T19:01:17.882843+00:00
+- actor: claude-code
+  id: 01m41j99yxkd5530w6ynxpf07n
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 2 files (docs/SECURITY.md, ExamplesTests.swift)
+    - test: green — swift test 1810 tests in 151 suites passed
+    - commit: c61c6bf
+    - review: clean — 0 findings; SECURITY.md checked by hand
+  timestamp: 2026-10-03T19:01:36.349574+00:00
 depends_on:
 - 01M413X82NWGVNF2XKW8V2FV2Z
 - 01M413YDNNJSNTFCJEY71CBG70
-position_column: doing
-position_ordinal: '8180'
+position_column: done
+position_ordinal: ffffa080
 title: 'Update docs/SECURITY.md: the snippet ceiling is the tool-level timeout, not a sandbox clock'
 ---
 ## What
