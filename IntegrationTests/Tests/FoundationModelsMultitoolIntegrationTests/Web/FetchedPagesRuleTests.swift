@@ -37,6 +37,13 @@ struct FetchedPagesRuleTests {
         #expect(FetchedPagesRule.failures(of: pages).isEmpty)
     }
 
+    @Test("a page with an upper-case URL scheme passes, because URL schemes are not case-sensitive")
+    func pageWithUpperCaseSchemePasses() {
+        let upperCaseURL = "HTTPS://www.swift.org/documentation/"
+        let page = WebPageHead(url: upperCaseURL, title: "Documentation | Swift.org", head: "Swift is a language.")
+        #expect(FetchedPagesRule.failures(of: [page]).isEmpty)
+    }
+
     // MARK: The failures
 
     @Test("pages with no content at all fail")

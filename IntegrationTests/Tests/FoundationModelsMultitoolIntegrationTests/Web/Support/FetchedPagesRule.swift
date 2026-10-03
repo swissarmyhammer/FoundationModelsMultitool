@@ -2,9 +2,9 @@
 // fetched in `WebRunCodeLiveTests` (web.md § "Testing", the
 // `WebRunCodeLiveTests` row).
 
-import Foundation
 import Testing
 
+@testable import FoundationModelsMultitool
 @testable import MultitoolTestSupport
 
 /// The written check of the pages that the goal snippet fetched.
@@ -24,15 +24,14 @@ import Testing
 /// title, or no page with content fails the test. The check sends no request,
 /// and it does not retry.
 enum FetchedPagesRule {
-    /// The URL schemes of a valid page URL.
-    private static let pageSchemes: Set<String> = ["http", "https"]
-
     /// Why the pages fail the check.
     enum Failure: Equatable {
         /// The fetch of the page gave this correction.
         case fetchFailed(url: String, correction: String)
 
-        /// The URL of the page is not an absolute `http` or `https` URL.
+        /// The URL of the page is not an absolute `http` or `https` URL with a
+        /// host. The check is the URL rule of the `fetch` verb,
+        /// `Fetch.httpURL(_:)`.
         case invalidURL(String)
 
         /// The page has no title, or an empty title.
@@ -80,17 +79,8 @@ enum FetchedPagesRule {
         if let correction = page.correction {
             return .fetchFailed(url: page.url, correction: correction)
         }
-        guard isPageURL(page.url) else { return .invalidURL(page.url) }
+        guard Fetch.httpURL(page.url) != nil else { return .invalidURL(page.url) }
         guard page.title?.isEmpty == false else { return .noTitle(url: page.url) }
         return nil
-    }
-
-    /// Tells if a text is an absolute `http` or `https` URL with a host.
-    ///
-    /// - Parameter text: The URL of a page.
-    /// - Returns: `true` when the text is a valid page URL.
-    private static func isPageURL(_ text: String) -> Bool {
-        guard let url = URL(string: text), let scheme = url.scheme?.lowercased() else { return false }
-        return pageSchemes.contains(scheme) && url.host()?.isEmpty == false
     }
 }

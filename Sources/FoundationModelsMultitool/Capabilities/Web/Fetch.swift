@@ -228,10 +228,14 @@ extension Fetch {
     ///
     /// URL schemes are not case-sensitive, thus `HTTPS://` is also correct.
     ///
+    /// This is the one URL rule of the web capability. The member is
+    /// `internal`, not `private`, because the integration tests also use it
+    /// (through `@testable import`) to check the URL of a fetched page.
+    ///
     /// - Parameter text: The value of `url`.
     /// - Returns: The URL, or `nil` when the text is not an absolute `http` or
     ///   `https` URL with a host.
-    private static func httpURL(_ text: String) -> URL? {
+    static func httpURL(_ text: String) -> URL? {
         guard let url = URL(string: text),
             let scheme = url.scheme?.lowercased(),
             fetchSchemes.contains(scheme),
