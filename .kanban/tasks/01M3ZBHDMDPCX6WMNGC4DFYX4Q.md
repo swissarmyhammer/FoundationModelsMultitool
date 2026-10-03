@@ -130,8 +130,15 @@ comments:
     - review: clean — 0 findings; both prior findings fixed
     - the task stays in review: the last criterion needs a real CI run that gives results
   timestamp: 2026-10-03T13:29:29.602129+00:00
-position_column: review
-position_ordinal: '8180'
+- actor: claude-code
+  id: 01m41225b7zpsz28gjqnkf84hr
+  text: |-
+    ### finish iteration 3 — clean
+    - the user accepted the evidence for the last criterion: CI run 37126362300 is green, the live search on the runner was blocked, and the page check passed on live results locally and offline in CI.
+    - every acceptance box is checked, and the last review (0390cce) was clean; task moved to done
+  timestamp: 2026-10-03T14:18:05.031989+00:00
+position_column: done
+position_ordinal: ffff9780
 title: 'WebRunCodeLiveTests: a search hit that renders with JavaScript gives a page with no content and fails the test'
 ---
 ## Problem
@@ -154,7 +161,7 @@ The assertion rule of web.md permits only facts that are stable for years. The t
 - [x] The user decides the stable check for the pages of the goal snippet.
 - [x] `WebRunCodeLiveTests` asserts only that stable check on results, and still uses `BlockedProviderRule` for a block.
 - [x] web.md (the `WebRunCodeLiveTests` row) states the check.
-- [ ] The live web suites pass in a real CI run that gives results (record the run id).
+- [x] The live web suites pass in a real CI run that gives results (record the run id). Decision of the user (2026-10-03): the evidence is accepted. CI run 37126362300 (commit 888036c) passed all 89 integration tests, but every live search on the runner was blocked (braveHTML HTTP 429, duckDuckGoHTML challenge page), so WebRunCodeLiveTests passed on the block outcome. The page check passed on live results in a local run on 2026-10-03, and its offline cases (FetchedPagesRuleTests) pass in every CI run.
 
 
 ## Review Findings (2026-10-03 06:55)
