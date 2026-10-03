@@ -17,10 +17,26 @@ comments:
     - evidence: 11 test files (10 modified, 1 deleted: `Support/JSCInterpreter+HeldWatchdog.swift`). `rg -i "makeWithHeldWatchdog|heldWatchdog|held watchdog" Tests` finds nothing. `swift build --build-tests` passes. `swift test --filter` over the 10 touched suites: 10 suites pass. `swift test`: 1890 tests in 157 suites pass, 0 failures. No `@Test` line changed, thus the count is the same. The only warning is `missing creator for mutated node` for the mlx-swift_Cmlx bundle, which comes from the build system of a dependency and not from changed code.
     - next: /review
   timestamp: 2026-10-03T16:04:12.698378+00:00
+- actor: claude-code
+  id: 01m418hr9cnjjnw6xjw2spqbvh
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit de8e04f). 0 findings, 0 confirmed, 0 refuted. 11 files reviewed. 4 `.kanban/` files are excluded by `.reviewignore`. Five code-hygiene rules declined only the deleted file `Support/JSCInterpreter+HeldWatchdog.swift`, because the file does not exist. No file is renamed in this commit.
+    - next: none. The task is in done.
+  timestamp: 2026-10-03T16:11:27.404184+00:00
+- actor: claude-code
+  id: 01m418j6v7e8naqykn5jw8jw6r
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 11 test files (10 edited, 1 deleted)
+    - test: green — swift test, 1890 tests in 157 suites passed, 0 warnings in this package
+    - commit: de8e04f
+    - review: clean — 0 findings
+  timestamp: 2026-10-03T16:11:42.311195+00:00
 depends_on:
 - 01M413X82NWGVNF2XKW8V2FV2Z
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffff9b80
 title: Remove the makeWithHeldWatchdog test helper
 ---
 ## What

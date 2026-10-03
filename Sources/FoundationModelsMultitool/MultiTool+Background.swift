@@ -112,19 +112,26 @@ extension MultiTool: BackgroundTool {
         ToolMount(mode: .background, timeout: nil)
     }
 
-    /// The tool-level timeout every `runCode` call carries:
-    /// `configuration.executionTimeLimit`. Every call gets the same timeout,
-    /// so `arguments` is unread.
+    /// The tool-level timeout of a `runCode` call:
+    /// `configuration.executionTimeLimit` for a top-level run, and `nil` for a
+    /// nested `tools.runCode` run. Every call at one depth gets the same
+    /// timeout, so `arguments` is unread.
     ///
-    /// Always answered, never left to the mount. It is the one clock of a
-    /// `runCode` call, and the interpreter has no clock of its own (see
+    /// A top-level run always answers, and never leaves the clock to the
+    /// mount. It is the one clock of a `runCode` call, and the interpreter
+    /// has no clock of its own (see
     /// `MultiToolConfiguration.executionTimeLimit`). A background snippet is
     /// exactly what needs a clock, since nothing is blocking on it to notice
     /// that it ran away.
     ///
+    /// A nested run (`depth > 0`) answers `nil`. It runs inside the outer
+    /// `runCode` call, and the clock of that call bounds it. A clock here
+    /// would be a second clock under the outer one.
+    ///
     /// Each progress event of the snippet resets the clock. When the clock
     /// fires, the engine cancels the run, and the call ends as timed out.
     public func timeout(from arguments: GeneratedContent) -> TimeInterval? {
-        configuration.executionTimeLimit
+        guard depth == 0 else { return nil }
+        return configuration.executionTimeLimit
     }
 }

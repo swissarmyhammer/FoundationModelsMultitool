@@ -42,28 +42,28 @@ import FoundationModelsExtras
 /// ``invoke(_:arguments:journalOp:)`` mounts each inner call on the shared
 /// engine as a `RunToCompletionRunner` — "two mounts, one engine, two
 /// policies." Only the outer `runCode` call goes to the background; an inner
-/// call runs to completion, bounded by its `timeout`, unless the called tool
-/// declares a mount of its own. The engine still owns correlation, events,
-/// and outcomes for inner calls: it mints each one a fresh `completionToken`
-/// and re-binds `ToolContext.$current` explicitly around it, which is what
-/// lets two parallel calls under a snippet's `Promise.all` correlate
-/// independently while posting to the one session's mailbox and sink.
+/// call runs to completion, bounded by the clock of the outer `runCode` call,
+/// unless the called tool declares a mount of its own. The engine still owns
+/// correlation, events, and outcomes for inner calls: it mints each one a
+/// fresh `completionToken` and re-binds `ToolContext.$current` explicitly
+/// around it, which is what lets two parallel calls under a snippet's
+/// `Promise.all` correlate independently while posting to the one session's
+/// mailbox and sink.
 struct RunBinding: Sendable {
-    /// The code-mode mount: run to completion, under the stock clock. Inner
-    /// `tools.*` calls run to completion, bounded only by the engine's
-    /// per-call `timeout` — the constraint boundary (eventplan.md "The
-    /// constraint boundary, and the escape hatch"): a snippet never receives
-    /// a pending envelope in place of a value it awaited, unless the tool it
-    /// called declares the background for itself.
+    /// The code-mode mount: run to completion, with no clock. Inner
+    /// `tools.*` calls run to completion — the constraint boundary
+    /// (eventplan.md "The constraint boundary, and the escape hatch"): a
+    /// snippet never receives a pending envelope in place of a value it
+    /// awaited, unless the tool it called declares the background for itself.
     ///
-    /// The timeout is stated here, because `ToolMount(mode:)` of
-    /// FoundationModelsExtras has no timeout of its own. Router commit
-    /// `70db984` removed it, before the type moved to FoundationModelsExtras.
-    /// The value is ``MultiToolConfiguration/defaultExecutionTimeLimit``,
-    /// the same stock clock inner calls had before that commit.
-    static let innerCallMount = ToolMount(
-        mode: .runToCompletion, timeout: MultiToolConfiguration.defaultExecutionTimeLimit
-    )
+    /// The mount states no clock. Each call path has one outer, tool-level
+    /// timeout, and for an inner call that is the clock of the enclosing
+    /// `runCode` call (`MultiTool.timeout(from:)`). When that clock ends the
+    /// outer run, the cancellation of the run reaches each inner call in
+    /// flight through `InFlightInnerCalls`. A clock here would be a second
+    /// clock under the outer one: with a host limit of more than its value,
+    /// it would cut an inner call that the outer clock still allows.
+    static let innerCallMount = ToolMount(mode: .runToCompletion)
 
     /// The ambient context captured at the top of the enclosing `runCode`
     /// invocation — its session identity, mailbox, upstream sink, and the
@@ -145,8 +145,9 @@ struct RunBinding: Sendable {
     /// - Returns: the tool's `Output`, exactly as `tool.call(arguments:)`
     ///   produced it.
     /// - Throws: whatever the wrapped tool throws, unchanged; or
-    ///   `ToolMountError.timedOut(tool:timeoutSeconds:)` when the mount's
-    ///   `timeout` ends the call.
+    ///   `ToolMountError.timedOut(tool:timeoutSeconds:)` when an injected
+    ///   ``innerMount`` states a `timeout` and that timeout ends the call.
+    ///   ``innerCallMount`` states none.
     func invoke<T: Tool>(
         _ tool: T, arguments: T.Arguments, journalOp: String? = nil
     ) async throws -> T.Output {

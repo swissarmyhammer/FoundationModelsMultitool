@@ -440,8 +440,10 @@ public struct MultiTool: Tool {
     /// How many enclosing `tools.runCode` calls this run sits inside.
     ///
     /// `0` for a run the model started. Each nested call runs at one deeper,
-    /// and ``maxRunCodeDepth`` is where nesting stops.
-    private let depth: Int
+    /// and ``maxRunCodeDepth`` is where nesting stops. Internal, because
+    /// `timeout(from:)` in `MultiTool+Background.swift` reads it: a nested run
+    /// states no clock of its own.
+    let depth: Int
 
     /// How deeply `tools.runCode` may nest before a call is refused.
     ///

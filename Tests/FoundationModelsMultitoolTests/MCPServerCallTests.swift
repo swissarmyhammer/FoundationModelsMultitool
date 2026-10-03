@@ -102,8 +102,11 @@ struct MCPServerCallTests {
     /// the test proves it bounds real time.
     private static let innerCallBoundSeconds: TimeInterval = 0.05
 
-    /// The inner-call mount of the context case: the mount of
-    /// `RunBinding.innerCallMount`, with the short bound injected.
+    /// The inner-call mount of the context case: the run-to-completion mode
+    /// of `RunBinding.innerCallMount`, with a short engine clock of its own.
+    /// `RunBinding.innerCallMount` states no clock, because the outer
+    /// `runCode` clock bounds an inner call. This test has no outer `runCode`,
+    /// thus it injects this mount to put an engine clock over the MCP call.
     private static let shortInnerCallMount = ToolMount(
         mode: .runToCompletion, timeout: innerCallBoundSeconds)
 
@@ -358,11 +361,13 @@ struct MCPServerCallTests {
 
     /// The file header of `MCPServer+Call.swift`: "the engine's clock ... is
     /// what bounds every call made under a context". An inner `tools.*` call
-    /// goes through `RunBinding.invoke(_:arguments:journalOp:)`, so the bound
-    /// is the `timeout` of its inner-call mount. The server makes no progress,
-    /// so only that bound can end the call: it throws the timeout error of the
-    /// mount, and the MCP call itself ends with `notifications/cancelled` on
-    /// the wire and no entry left in flight.
+    /// goes through `RunBinding.invoke(_:arguments:journalOp:)`. In a real run
+    /// the outer `runCode` clock is that engine clock. This test calls the
+    /// binding with no outer `runCode`, thus it injects a mount with a short
+    /// clock of its own (``shortInnerCallMount``). The server makes no
+    /// progress, so only that clock can end the call: it throws the timeout
+    /// error of the mount, and the MCP call itself ends with
+    /// `notifications/cancelled` on the wire and no entry left in flight.
     @Test("a call under a context to a server that makes no progress ends at the inner-call bound")
     func aCallUnderAContextEndsAtTheInnerCallBound() async throws {
         let (scripted, server) = try await Self.connected(serving: [Self.hangingTool])

@@ -48,6 +48,21 @@ struct MultiToolExecutionTests {
         #expect(bound == ceiling)
     }
 
+    /// A nested `tools.runCode` runs inside the outer `runCode` call. The
+    /// clock of the outer call bounds it, thus the nested run states no clock
+    /// of its own.
+    @Test("a nested runCode states no tool-level timeout, so the outer runCode clock is its one clock")
+    func nestedRunCodeStatesNoTimeout() throws {
+        let ceiling: TimeInterval = 30
+        let registry = try MultiTool.Builder().addTool(TempTool()).buildRegistry()
+        let nested = MultiTool(
+            registry: registry, configuration: MultiToolConfiguration(executionTimeLimit: ceiling), depth: 1)
+
+        let bound = nested.timeout(from: RunCodeArguments(code: "return 1;").generatedContent)
+
+        #expect(bound == nil)
+    }
+
     @Test("runCode arguments carrying only code still decode")
     func runCodeArgumentsDecodeFromCodeAlone() async throws {
         let registry = try MultiTool.Builder().addTool(TempTool()).buildRegistry()

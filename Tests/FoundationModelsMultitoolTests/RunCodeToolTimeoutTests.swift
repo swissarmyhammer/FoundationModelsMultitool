@@ -9,9 +9,10 @@ import Testing
 /// Proves the one outer timeout of a `runCode` call: the engine clock that
 /// ``MultiTool/timeout(from:)`` gives and the session mount enforces.
 ///
-/// Each test mounts `MultiTool` the way a Router session mounts it. The
-/// sandbox of `JSCInterpreter` has no clock, thus only the engine clock can
-/// end a run.
+/// Each test mounts `MultiTool` the way a Router session mounts it. One test
+/// puts ``SmallClockRunCode`` in front of `MultiTool`, so that the outer clock
+/// is small and the host config is long. The sandbox of `JSCInterpreter` has
+/// no clock, thus only the engine clock can end a run.
 ///
 /// The engine clock sleeps on real time, thus a test waits for it. No test
 /// reads the time that a run took (card `^3np5yzj`: no test checks the speed
@@ -45,24 +46,22 @@ struct RunCodeToolTimeoutTests {
         "a mounted runCode that awaits a tools.* call that never completes ends as timedOut at the engine clock",
         .timeLimit(TestHangGuard.timeLimit))
     func pendingToolCallEndsAtTheEngineClock() async throws {
-        let latch = ToolReleaseLatch()
-        let gated = GatedTool(latch: latch)
-        let context = try await makeOuterRunContext()
-        let mounted = try Self.mountedRunCode(
-            registry: try MultiTool.Builder().addTool(gated).buildRegistry(),
-            window: Self.stallWindowSeconds,
-            on: context
-        )
+        try await Self.expectGatedCallEndsAtTheEngineClock { registry, context in
+            try Self.mountedRunCode(registry: registry, window: Self.stallWindowSeconds, on: context)
+        }
+    }
 
-        let rendered = try await mounted.call(arguments: RunCodeArguments(code: "return await tools.gated();"))
-
-        let terminal = try await Self.terminal(of: rendered, on: context)
-        #expect(terminal.outcome == .timedOut)
-        #expect(terminal.detail == Self.timedOutText(window: Self.stallWindowSeconds))
-        // Nothing released the gate. The timeout cancelled the pending call,
-        // and the call records that as it unwinds.
-        #expect(!latch.isReleased)
-        try await TestPoll.waitUntil("the gated call unwound") { gated.wasCancelled }
+    /// The host gives more than the 120 seconds of the clock that inner calls
+    /// had before. A small test clock is the outer `runCode` clock, so that
+    /// the test stays fast. The run ends with the timeout text of the outer
+    /// clock, and not with a `ToolMountError.timedOut` of the inner call.
+    @Test(
+        "an inner tools.* call under a host config of more than 120 seconds ends at the outer runCode clock",
+        .timeLimit(TestHangGuard.timeLimit))
+    func pendingToolCallUnderALongHostConfigEndsAtTheOuterClock() async throws {
+        try await Self.expectGatedCallEndsAtTheEngineClock { registry, context in
+            try Self.mountedSmallClockRunCode(registry: registry, on: context)
+        }
     }
 
     // MARK: - A run with progress
@@ -92,11 +91,19 @@ struct RunCodeToolTimeoutTests {
 
     // MARK: - Fixtures
 
-    /// The engine window of the two tests with no progress, in seconds.
+    /// The engine window of the tests with no progress, in seconds.
     ///
     /// Small, so that the suite stays fast. A run with no progress ends after
     /// one window.
     private static let stallWindowSeconds: TimeInterval = 0.3
+
+    /// The configured `executionTimeLimit` of the long host config, in
+    /// seconds.
+    ///
+    /// More than the 120 seconds of the clock that inner calls had before.
+    /// The test with this config never waits for it: the small test clock of
+    /// ``SmallClockRunCode`` ends the run first.
+    private static let longHostWindowSeconds: TimeInterval = 600
 
     /// The engine window of the progress test, in seconds.
     ///
@@ -161,6 +168,57 @@ struct RunCodeToolTimeoutTests {
         return try #require(context.mount(runCode, as: .synchronous) as? any Tool<RunCodeArguments, String>)
     }
 
+    /// Mounts a ``SmallClockRunCode`` the way a Router session mounts every
+    /// tool.
+    ///
+    /// The wrapped `runCode` has the long host config
+    /// (``longHostWindowSeconds``). The small test clock
+    /// (``stallWindowSeconds``) is the outer clock of the call.
+    ///
+    /// - Parameters:
+    ///   - registry: The registry that the snippets call into.
+    ///   - context: The session context that tracks the runs.
+    /// - Returns: The composed, model-facing `runCode`.
+    private static func mountedSmallClockRunCode(
+        registry: MultiTool.Registry, on context: ToolContext
+    ) throws -> any Tool<RunCodeArguments, String> {
+        let runCode = SmallClockRunCode(
+            wrapped: MultiTool(
+                registry: registry,
+                configuration: MultiToolConfiguration(executionTimeLimit: longHostWindowSeconds),
+                interpreter: JSCInterpreter()
+            ),
+            window: stallWindowSeconds
+        )
+        return try #require(context.mount(runCode, as: .synchronous) as? any Tool<RunCodeArguments, String>)
+    }
+
+    /// Runs a snippet that awaits a `tools.gated` call that never completes,
+    /// and expects the outer clock of ``stallWindowSeconds`` to end the run.
+    ///
+    /// The run ends as `.timedOut` with the timeout text of the outer
+    /// `runCode` clock. Nothing releases the gate, thus the timeout cancels
+    /// the pending inner call, and the call records that as it unwinds.
+    ///
+    /// - Parameter mount: Makes the mounted `runCode` over the registry of the
+    ///   gated tool, on the session context.
+    private static func expectGatedCallEndsAtTheEngineClock(
+        mounting mount: (MultiTool.Registry, ToolContext) throws -> any Tool<RunCodeArguments, String>
+    ) async throws {
+        let latch = ToolReleaseLatch()
+        let gated = GatedTool(latch: latch)
+        let context = try await makeOuterRunContext()
+        let mounted = try mount(try MultiTool.Builder().addTool(gated).buildRegistry(), context)
+
+        let rendered = try await mounted.call(arguments: RunCodeArguments(code: "return await tools.gated();"))
+
+        let terminal = try await Self.terminal(of: rendered, on: context)
+        #expect(terminal.outcome == .timedOut)
+        #expect(terminal.detail == Self.timedOutText(window: Self.stallWindowSeconds))
+        #expect(!latch.isReleased)
+        try await TestPoll.waitUntil("the gated call unwound") { gated.wasCancelled }
+    }
+
     /// Waits for the terminal event of the run that a mounted call started.
     ///
     /// The call answers with the settled envelope or with the pending
@@ -187,4 +245,38 @@ struct RunCodeToolTimeoutTests {
     /// The tool name that the timeout text names: the model-facing name of
     /// `MultiTool`.
     private static let runCodeToolName = "runCode"
+}
+
+/// A `runCode` with a small test clock in place of the clock of its host
+/// config.
+///
+/// The engine reads the tool-level timeout of `MultiTool` ahead of the clock
+/// of the mount. Thus a test that wants a long host config and a short outer
+/// clock puts this decorator in front of `MultiTool`. It has the same name,
+/// so that the timeout text names `runCode`, and it declares the background
+/// mount of `runCode` with ``window`` as the clock. Each call goes to the
+/// wrapped `MultiTool` unchanged.
+private struct SmallClockRunCode: Tool, BackgroundTool {
+    /// The `runCode` that runs each snippet.
+    let wrapped: MultiTool
+
+    /// The small test clock: the outer clock of each call, in seconds.
+    let window: TimeInterval
+
+    /// The name of the wrapped `runCode`.
+    var name: String { wrapped.name }
+
+    /// The description of the wrapped `runCode`.
+    var description: String { wrapped.description }
+
+    /// The background mount of `runCode`, with ``window`` as its clock.
+    var mount: ToolMount? { ToolMount(mode: .background, timeout: window) }
+
+    /// Runs the snippet on the wrapped `runCode`.
+    ///
+    /// - Parameter arguments: The snippet to run.
+    /// - Returns: The rendered result of the wrapped `runCode`.
+    func call(arguments: RunCodeArguments) async throws -> String {
+        try await wrapped.call(arguments: arguments)
+    }
 }

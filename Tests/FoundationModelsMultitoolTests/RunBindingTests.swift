@@ -27,7 +27,13 @@ struct RunBindingTests {
     @Test("the inner-call mount runs to completion, so a snippet never receives a handle in place of a value")
     func theInnerCallMountRunsToCompletion() {
         #expect(RunBinding.innerCallMount.mode == .runToCompletion)
-        #expect(RunBinding.innerCallMount.timeout == MultiToolConfiguration.defaultExecutionTimeLimit)
+    }
+
+    /// The outer `runCode` clock is the one clock of a snippet. An inner call
+    /// has no clock of its own.
+    @Test("the inner-call mount has no clock, so only the outer runCode clock bounds an inner call")
+    func theInnerCallMountHasNoClock() {
+        #expect(RunBinding.innerCallMount.timeout == nil)
     }
 
     @Test("a slow inner call still returns its real value, and never goes to the background")
