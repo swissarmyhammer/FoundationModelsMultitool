@@ -23,8 +23,8 @@ public struct SampleSnippetConfig: Sendable {
     /// The session must mount **no tools** — it writes a snippet, it does not
     /// execute one, and a session holding `searchTools` could call `searchTools`
     /// from inside a `searchTools` call. The host supplies the session
-    /// factory, and the factory of the sample CLI (`RouterDiscoverySeams` in
-    /// `MultitoolCLI`) mounts no tools.
+    /// factory. The factory of the integration suite (`RouterDiscoverySeams`
+    /// in `IntegrationTests/`) mounts no tools.
     ///
     /// The session must also not run on the model of the session that calls
     /// `searchTools` — see ``SearchToolsTool/SessionFactory``.

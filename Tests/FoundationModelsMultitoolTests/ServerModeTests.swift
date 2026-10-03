@@ -178,13 +178,4 @@ struct ServerModeTests {
         #expect(try await registeredToolNames(on: server) == ScriptedServer.loopbackToolNames)
         #expect(ScriptedServer.loopbackToolNames == ["echo", "elicitEcho", "elicitURL"])
     }
-
-    @Test(".stall registers no tool and answers no request; each other mode answers")
-    func stallModeRegistersNothingAndAnswersNothing() async throws {
-        let server = ScriptedServer(name: "mode-test")
-        await ServerMode.stall.registerTools(on: server)
-
-        #expect(try await registeredToolNames(on: server).isEmpty)
-        #expect(ServerMode.allCases.filter { !$0.answersRequests } == [.stall])
-    }
 }

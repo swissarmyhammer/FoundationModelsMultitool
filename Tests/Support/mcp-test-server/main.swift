@@ -19,12 +19,8 @@ let serverName = "mcp-test-server"
 let serverVersion = "1.0.0"
 
 let mode = ServerMode.parse(from: CommandLine.arguments)
-if mode.answersRequests {
-    let server = ScriptedServer(name: serverName, version: serverVersion)
-    await mode.registerTools(on: server)
+let server = ScriptedServer(name: serverName, version: serverVersion)
+await mode.registerTools(on: server)
 
-    try await server.start(transport: StdioTransport())
-    await server.waitUntilCompleted()
-} else {
-    ServerMode.readInputToEnd()
-}
+try await server.start(transport: StdioTransport())
+await server.waitUntilCompleted()

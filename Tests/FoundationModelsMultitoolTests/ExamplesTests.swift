@@ -25,9 +25,8 @@ import Testing
 /// .makeSessionTools(selection:))`, drained through `streamEvents(to:)` — and
 /// only that session puts each tool through Router's mounting path, where the
 /// background mount that `MultiTool` declares for `runCode` takes effect.
-/// `README.md` and `Sources/MultitoolCLI/CLIRunner.swift`
-/// state the contract; these examples show the catalog and call shapes it
-/// carries.
+/// `README.md` states the contract; these examples show the catalog and call
+/// shapes it carries.
 ///
 /// Every example here runs fully offline — no live model, no network, no
 /// real-model package — via `ScriptedLanguageModel` below, the
@@ -60,10 +59,9 @@ struct ExamplesTests {
     /// .LanguageModel`/`LanguageModelExecutor` — the same pluggable-model
     /// seam `MLXLanguageModel` fills in production, where Router's
     /// `LiveModelLoader` builds it and a `RoutedSession` runs the turn over
-    /// it (`Sources/MultitoolCLI/CLIRunner.swift` is the host half).
-    /// `LanguageModelSession`
-    /// drives its own real native multi-turn tool-calling loop against this
-    /// stub exactly as it would against a real model: it calls
+    /// it. `LanguageModelSession` drives its own real native multi-turn
+    /// tool-calling loop against this stub exactly as it would against a
+    /// real model: it calls
     /// `nextTurn(transcript)` once per round, and — for a `.callTool`
     /// turn — actually executes the named tool for real (via whatever `Tool`
     /// conformers this suite registered) before looping back with the

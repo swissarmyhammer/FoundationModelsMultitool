@@ -107,7 +107,10 @@ private let mlxPackage = "mlx-swift-lm"
 /// therefore restated here rather than shared, and each URL and requirement
 /// matches `../Package.swift` exactly — a mismatch is a resolution conflict,
 /// not a second opinion. `../Package.swift` carries the reasoning behind each
-/// one; this manifest carries only what SwiftPM needs to resolve them.
+/// one; this manifest carries only what SwiftPM needs to resolve them. The one
+/// exception is `mlxPackage`: the root manifest does not declare it. Router
+/// declares it on the same `stable` branch, and SwiftPM resolves the two
+/// declarations as one package.
 let package = Package(
     name: "FoundationModelsMultitoolIntegrationTests",
     // Commit to macOS 27 / FoundationModels v2, exactly as `../Package.swift`
@@ -129,32 +132,27 @@ let package = Package(
         // target CI runs in a job of its own. The suites of `Web/` send real
         // web requests and load no model.
         //
-        // `MultitoolCLI` is the library half of the sample CLI. Only the CLI
-        // suites (`CLISmokeTests`, `CLISignalExitTests` and
-        // `Support/OTLPTestCollector.swift`) import it. The model pins and the
-        // Router discovery seams stand in this target
+        // The model pins and the Router discovery seams stand in this target
         // (`Support/LiveRouterFixture.swift`, `Support/RouterDiscoverySeams.swift`).
-        // A package cannot depend on another package's executable target,
-        // which is why the CLI logic is a library in the first place.
         //
         // `LiveModelLoader()` takes no downloader and no tokenizer loader, thus
         // the one MLX product here is the live-inference wiring that remains:
-        // `MLXVLM`, for its model registry alone. `MLXLMCommon`'s
+        // `MLXVLM`, for its model registry alone, as Router links it
+        // (`../FoundationModelsRouter/Package.swift`). `MLXLMCommon`'s
         // `ModelFactoryRegistry` resolves its built-in trampolines with
         // `NSClassFromString`, so a checkpoint registered in `VLMModelFactory`
         // alone throws `unsupportedModelType` after paying for the whole
-        // download unless that module is linked into the binary.
-        // `../Package.swift`'s `liveLoaderMLXProducts` states this at length.
+        // download unless that module is linked into the binary. This target
+        // is the one target of the two packages that loads a real model, thus
+        // the root manifest declares no MLX product.
         .testTarget(
             name: "FoundationModelsMultitoolIntegrationTests",
             dependencies: [
                 .product(name: productPackageName, package: productPackageName),
-                .product(name: "MultitoolCLI", package: productPackageName),
                 // The scripted MCP test server, a test-support product of the
                 // root package — `../Package.swift`'s `testServerTargetName`.
                 // A gated MCP scenario scripts its server in-process through
-                // it, or spawns the `mcp-test-server` binary the root build
-                // produces.
+                // it.
                 .product(name: "MCPTestServer", package: productPackageName),
                 // The shared gate of the test support code, another test-support
                 // product of the root package — `../Package.swift`'s
@@ -175,8 +173,8 @@ let package = Package(
                 // `multitoolTestSupportTargetName`. The live web suites of
                 // `Web/` call each web verb through its `WebVerbCall`, and
                 // decode a `runCode` output through its `RunOutput`, the same
-                // helpers that the unit tests use. `IntegrationPoll` and
-                // `CLISignalExitTests` poll through its `TestPoll`.
+                // helpers that the unit tests use. `IntegrationPoll` polls
+                // through its `TestPoll`.
                 .product(name: "MultitoolTestSupport", package: productPackageName),
                 // The `@Operation` macro and `OperationTool` — see
                 // `extrasDependencyName`. The root package expands an

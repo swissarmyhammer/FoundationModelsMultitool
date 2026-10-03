@@ -75,8 +75,8 @@ import TestConcurrency
 /// minutes) — this 2B hybrid-attention `mxfp4` checkpoint is markedly slower
 /// per-token and follows the `ACTION:`/`TASK:`/`CODE:` and guided-JSON
 /// conventions noticeably less reliably than the settled 1.5B pin. A
-/// dedicated `CLISmokeTests` check (isolating a pre-existing, unrelated
-/// stale-cache read issue in the persistent `~/Library/Caches/
+/// dedicated check of the former `CLISmokeTests` (isolating a pre-existing,
+/// unrelated stale-cache read issue in the persistent `~/Library/Caches/
 /// FoundationModelsRouter` repo-metadata cache, cleared to get a clean
 /// read) confirmed this isn't just a cache artifact: even resolved and
 /// loaded cleanly, the model twice answered the demo prompt without ever
@@ -98,9 +98,9 @@ import TestConcurrency
 /// regression: the suite now called `SelectionForkPerCallTests` passed all 3
 /// real attempts — which, then as now, graded no prefix reuse; see the
 /// paragraph on it far below — and
-/// `CLISmokeTests` passed 2 of 3 (the third run's failure — and that run's
-/// blanket "no *.safetensors weight files in the repo tree" sizing error
-/// across every non-embedding resolution — was a one-off, non-reproducing
+/// the former `CLISmokeTests` passed 2 of 3 (the third run's failure — and
+/// that run's blanket "no *.safetensors weight files in the repo tree" sizing
+/// error across every non-embedding resolution — was a one-off, non-reproducing
 /// artifact, most likely transient HF API/rate-limit pressure from a burst
 /// of resolution calls right after a 485-second first test, not a Router or
 /// model defect: a manual, repeated `curl` against the same tree-listing
@@ -205,7 +205,7 @@ import TestConcurrency
 /// deliberately: its processor returns a pure-text input when no image is
 /// supplied. Being registered in `VLMModelFactory` alone, it reached the
 /// runtime factory registry only because `Package.swift` links `MLXVLM` (see
-/// `liveLoaderMLXProducts`) and this file imports it above. That link and
+/// the comment on the test target there) and this file imports it above. That link and
 /// that import are still here, and still needed, for any pin with the same
 /// property.
 ///

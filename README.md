@@ -46,8 +46,8 @@ The library does not depend on FoundationModelsRouter. Tool hosting comes from
 FoundationModelsExtras: `ToolContext`, `BackgroundTool`, `ToolMount`,
 `ToolMounting`, `SubmissionBoundaryTool`, `ToolCallReport` and the `RunPlane`
 that mints each completion token. A host that mounts the tools on a
-`RoutedSession` adds Router itself. In this repository, only the sample CLI
-(`MultitoolCLI`) and the test targets link Router.
+`RoutedSession` adds Router itself. In this repository, only the test targets
+link Router.
 
 ## Capabilities
 
@@ -166,14 +166,13 @@ synchronous, so its sessions run inside the open submission of the calling
 session. Router runs the work of each model in order, and it refuses at once
 a wait on the model of that open submission. With Router, give the `flash`
 slot a model that is different from the `standard` slot, and give
-`profile.flash` to the librarian. The sample CLI does this in
-`CLIRunner.demoProfile`.
+`profile.flash` to the librarian.
 
 `searchTools` does not hide a failed session. An error of the librarian is the
 error of the `searchTools` call. An error of the sample session is a note
 beside the signatures. When the librarian and the calling session use the
-same model, the sample CLI gives an error that tells you to use a different
-flash model.
+same model, the `searchTools` call fails with the refusal of Router. Use a
+different flash model.
 
 ## Operation tools
 
@@ -241,20 +240,3 @@ hand; change the fixture and the golden first.
   top of each, because this README and the source state the shipped contract.
 - `Tests/FoundationModelsMultitoolTests/ExamplesTests.swift` — each test is a
   self-contained, copy-pasteable "how do I…" against the public API.
-
-## The demo CLI
-
-`multitool-cli` prints the rendered tool surface, then drives one turn. Its
-repeatable `--mcp <name>=<command> [args...]` option attaches a stdio MCP
-server under that name:
-
-```sh
-swift build --product mcp-test-server
-multitool-cli --mcp echo=.build/debug/mcp-test-server --mode echo
-```
-
-The listing then names `tools.echo.echo` beside the fixture tools, and a
-snippet calls it like any other verb.
-
-The `--web` flag mounts the web capability with `withWeb()`. The provider keys
-come from the environment variables in the table of the `### Web` section.

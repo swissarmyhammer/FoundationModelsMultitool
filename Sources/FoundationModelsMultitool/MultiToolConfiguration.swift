@@ -10,10 +10,10 @@ import FoundationModelsExtras
 /// no constant in code does.
 ///
 /// This type carries no turn budget. A host mounts the vended tools on a
-/// session of its own (a Router session in the sample CLI), and that
-/// session's own tool-calling loop owns turn
-/// budgeting. The retired `MultiToolAgent` knobs `maxAgentTurns` and
-/// `maxRepairTurns` went with it, and only the `runCode`-sandbox limits stay.
+/// session of its own (for example a Router session), and that session's own
+/// tool-calling loop owns turn budgeting. The retired `MultiToolAgent` knobs
+/// `maxAgentTurns` and `maxRepairTurns` went with it, and only the
+/// `runCode`-sandbox limits stay.
 public struct MultiToolConfiguration: Sendable, Equatable {
     /// The tool-level timeout, in seconds, of a single `runCode` call. It is
     /// the one clock of `runCode`: the call answers it to the engine as its

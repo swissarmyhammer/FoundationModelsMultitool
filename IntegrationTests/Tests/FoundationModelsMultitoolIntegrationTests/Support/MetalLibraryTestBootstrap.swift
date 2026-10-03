@@ -35,7 +35,7 @@
 // GPU-touching test evaluates an array; call `MetalLibraryTestBootstrap
 // .ensureColocatedMetallib` (a `static let`, so Swift's once-only semantics
 // make repeat calls free) before any gated scenario resolves a live model —
-// see `LiveRouterFixture.resolve()` and `CLISmokeTests`.
+// see `LiveRouterFixture.resolve()`.
 //
 // The fix is idempotent (skips if the symlink already exists) and a
 // harmless no-op under `xcodebuild` -- there, an earlier probe already

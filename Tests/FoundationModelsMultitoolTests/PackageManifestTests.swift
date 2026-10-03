@@ -6,9 +6,9 @@ import Testing
 /// FoundationModelsExtras owns the tool hosting: `ToolContext`,
 /// `BackgroundTool`, `ToolMount`, `SubmissionBoundaryTool`, `LostRunError`,
 /// `RunPlane` and the types near them. The library target takes these types
-/// from Extras, and it does not depend on FoundationModelsRouter. Of the
-/// shipped targets, Router is a dependency of the application only, which is
-/// the `MultitoolCLI` target.
+/// from Extras, and it does not depend on FoundationModelsRouter. No shipped
+/// target links Router. Only the test support code and the test target link
+/// it.
 ///
 /// A Router that re-exports an Extras type lets a library file that imports
 /// Router still compile. Thus the build alone does not show the boundary. This
@@ -18,7 +18,8 @@ import Testing
 /// The suite also guards the telemetry boundary. A library uses the telemetry
 /// APIs only: `swift-log` and `swift-metrics`, and `swift-distributed-tracing`
 /// through FoundationModelsExtras. Only an executable links `swift-otel` and
-/// bootstraps an exporter.
+/// bootstraps an exporter, and this package ships no executable: the one
+/// executable target is the stdio MCP test server of the test support code.
 ///
 /// The suite reads the CODE of the manifest and not its comments, because the
 /// comments of the manifest tell the history of the Router dependency.
@@ -32,9 +33,6 @@ struct PackageManifestTests {
 
     /// The name the manifest gives to the library target.
     private static let libraryTargetName = "packageName"
-
-    /// The name the manifest gives to the application library target.
-    private static let applicationTargetName = "cliLibraryTargetName"
 
     /// The dependency declaration of the Router product, as the manifest
     /// writes it.
@@ -64,15 +62,18 @@ struct PackageManifestTests {
             """)
     }
 
-    @Test("the MultitoolCLI target declares the FoundationModelsRouter dependency")
-    func applicationTargetDeclaresRouter() throws {
-        let declaration = try #require(try Self.targetDeclaration(named: Self.applicationTargetName))
+    @Test("the one executable target is the stdio MCP test server")
+    func theOneExecutableTargetIsTheTestServer() throws {
+        let executables = try Self.declarations()
+            .filter { $0.first == Self.executableDeclarationStart }
+            .map { $0.joined(separator: "\n") }
+        let testServer = try #require(try Self.targetDeclaration(named: Self.testServerExecutableTargetName))
         #expect(
-            declaration.contains(Self.routerProductDeclaration),
+            executables == [testServer],
             """
-            The application target does not link the Router product. The \
-            application makes the routed session, thus it needs Router:
-            \(declaration)
+            The package ships no executable. Only the stdio MCP test server of \
+            the test support code is an executable target. These are:
+            \(executables.joined(separator: "\n\n"))
             """)
     }
 
@@ -126,42 +127,12 @@ struct PackageManifestTests {
         }
     }
 
-    @Test("only the multitool-cli executable target links a swift-otel product")
-    func onlyTheExecutableLinksOTel() throws {
-        let otelDeclarations = try Self.declarations()
-            .map { $0.joined(separator: "\n") }
-            .filter { $0.lowercased().contains(Self.otelMarker) }
-        let executable = try #require(try Self.targetDeclaration(named: Self.executableTargetName))
-        #expect(
-            otelDeclarations == [executable],
-            """
-            The multitool-cli executable target must be the one target that \
-            links swift-otel. It bootstraps the exporters. These targets link it:
-            \(otelDeclarations.joined(separator: "\n\n"))
-            """)
-        #expect(
-            executable.hasPrefix(Self.executableDeclarationStart),
-            "The target that links swift-otel is not an executable target:\n\(executable)")
-        let products = try #require(try Self.productGroupDeclaration(named: Self.otelProductsName))
-        #expect(
-            products.contains(Self.otelProductDeclaration),
-            """
-            \(Self.otelProductsName) does not list \(Self.otelProductDeclaration):
-            \(products)
-            """)
-    }
-
-    /// The name the manifest gives to the executable target of the CLI.
-    private static let executableTargetName = "cliTargetName"
-
     /// The text that starts the declaration of an executable target.
     private static let executableDeclarationStart = ".executableTarget("
 
-    /// The name the manifest gives to the product group of swift-otel.
-    private static let otelProductsName = "otelProducts"
-
-    /// The product declaration of the OTel backend, as the manifest writes it.
-    private static let otelProductDeclaration = #".product(name: "OTel", package: otelPackage)"#
+    /// The name the manifest gives to the executable target of the stdio MCP
+    /// test server.
+    private static let testServerExecutableTargetName = "testServerExecutableName"
 
     /// The name the manifest gives to the product group of the telemetry
     /// APIs.

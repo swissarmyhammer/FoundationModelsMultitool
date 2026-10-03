@@ -7,30 +7,9 @@ import PackageDescription
 /// The name of this Swift package.
 private let packageName = "FoundationModelsMultitool"
 
-/// The name of the M9 sample CLI library target (and its Sources/ subdirectory).
-///
-/// The CLI's whole implementation — `CLIRunner`, `DemoTools` — is a library
-/// rather than part of the executable, for one structural reason: a package
-/// cannot depend on another package's *executable* target at all, and the
-/// nested integration package (`IntegrationTests/Package.swift`) has to reach
-/// `CLIRunner.run(arguments:resolve:output:)` and `CLIRunner.ExitCode`. Those
-/// two, and the two telemetry types that `cliTargetName` calls
-/// (`CLITelemetryBackend` and `CLILogHandler`), are the library's whole
-/// `public` surface; everything else stays `internal`, where
-/// `"\(packageName)Tests"` reaches it with `@testable`.
-private let cliLibraryTargetName = "MultitoolCLI"
-
-/// The name of the M9 sample CLI executable target (and its Sources/ subdirectory).
-///
-/// `main.swift` calls `CLIRunner.run(arguments:)` from `cliLibraryTargetName`.
-/// Beside it, `TelemetryBootstrap.swift` and `TelemetryServices.swift`
-/// bootstrap the telemetry backend and flush it at exit. They stand here and
-/// not in the library, because only an executable links `otelProducts`.
-private let cliTargetName = "multitool-cli"
-
 /// The git branch tracked by the `.package(url:branch:)` declaration for
-/// `metadataRegistryDependencyName` below, and the default for
-/// `swissArmyHammerPackage(name:branch:)`.
+/// `metadataRegistryDependencyName` below, and the branch that
+/// `swissArmyHammerPackage(name:)` tracks.
 ///
 /// The `mcpPackage` declaration below names it too. That dependency is a fork
 /// this package follows on its `main` branch, and it does not go through the
@@ -40,8 +19,7 @@ private let mainBranch = "main"
 /// The name of the FoundationModelsRouter dependency package.
 ///
 /// The library target does not link it: FoundationModelsExtras owns tool
-/// hosting (`extrasDependencyName`). `cliLibraryTargetName` links it, because
-/// the CLI runs a Router session. `scenarioGradingTargetName` and the unit
+/// hosting (`extrasDependencyName`). `scenarioGradingTargetName` and the unit
 /// test target link it for `TranscriptEvent` and `SubmissionID`, which stay
 /// in Router.
 private let routerDependencyName = "FoundationModelsRouter"
@@ -82,76 +60,13 @@ private let extrasDependencyName = "FoundationModelsExtras"
 private let swissArmyHammerPackageOrgURL = "git@github.com:swissarmyhammer/"
 
 /// Builds a `.package(url:branch:)` dependency for a package hosted under
-/// `swissArmyHammerPackageOrgURL`, tracking `branch` (`mainBranch` by default).
+/// `swissArmyHammerPackageOrgURL`, tracking `mainBranch`.
 ///
 /// This is used for `routerDependencyName`,
-/// `metadataRegistryDependencyName` and `extrasDependencyName` (the default
-/// branch), and for `mlxPackage` (its published `stable` branch).
-private func swissArmyHammerPackage(name: String, branch: String = mainBranch) -> Package.Dependency {
-    .package(url: "\(swissArmyHammerPackageOrgURL)\(name).git", branch: branch)
+/// `metadataRegistryDependencyName` and `extrasDependencyName`.
+private func swissArmyHammerPackage(name: String) -> Package.Dependency {
+    .package(url: "\(swissArmyHammerPackageOrgURL)\(name).git", branch: mainBranch)
 }
-
-/// The MLX-backed model package `FoundationModelsRouter` itself depends on
-/// (`../FoundationModelsRouter/Package.swift`'s `mlxPackage`).
-///
-/// Taken by URL from its published `stable` branch — see `mlxStableBranch`.
-///
-/// Only one of its products is declared directly here (not Router's own
-/// broader `mlxProducts` set): `MLXVLM`, in `liveLoaderMLXProducts`, for its
-/// model registry alone. A live `LiveModelLoader` takes no downloader and no
-/// tokenizer loader from its caller — `LiveModelLoader()` loads each model
-/// through the `MLXModelLoader` of FoundationModelsExtras — thus no target
-/// here names a symbol of `MLXLMCommon` or `MLXHuggingFace`, and neither is
-/// declared.
-///
-/// `MLXFoundationModels` — the module `LiveModelLoader` is written over — is
-/// deliberately *not* declared here. Router's own library target names it, so
-/// it reaches every target below through the `FoundationModelsRouter` product,
-/// and no target here names a symbol of it: this package builds no model and
-/// no session of its own. Dropping it was verified against the case that
-/// would break a wrong drop — a real-model run of `CLISmokeTests`, which
-/// resolves and loads a real model — as well as `swift build --build-tests`
-/// and `swift test`.
-///
-/// This package's resolved dependency graph already carries all of
-/// mlx-swift-lm transitively (Router's own library target needs the *full*
-/// product set to build at all), so declaring this one directly for the
-/// targets below adds no new MLX/C++ compilation, only linking.
-private let mlxPackage = "mlx-swift-lm"
-
-/// The `mlxPackage` branch this package builds against.
-///
-/// `stable` rather than the sibling checkout this used to take by path. Both
-/// carry the same fork work — the local `catch-up-upstream` branch has merged
-/// `stable` — but a published branch is a *snapshot*, and a working copy is
-/// whatever another session happens to have saved. Building against a working
-/// copy is how this package spent a morning failing on someone else's
-/// half-finished edit (`^ev0zca7`).
-///
-/// `stable` also carries `ml-explore/mlx-swift-lm` upstream: the fork has
-/// caught up, so this is upstream plus the fork's own landed work rather than
-/// a divergent branch.
-private let mlxStableBranch = "stable"
-
-/// The `mlx-swift-lm` products a live `LiveModelLoader` needs — linked by the
-/// M9 `MultitoolCLI` library. See `mlxPackage`'s documentation above.
-private let liveLoaderMLXProducts: [Target.Dependency] = [
-    // Linked for its model registry, not for vision, exactly as Router links
-    // it (`../FoundationModelsRouter/Package.swift`). `loadModelContainer`
-    // finds a factory through `MLXLMCommon`'s `ModelFactoryRegistry`, which
-    // resolves its built-in trampolines with `NSClassFromString`, so a
-    // factory reaches that registry only when its module is linked into the
-    // binary. Without this link a checkpoint registered in `VLMModelFactory`
-    // alone throws `unsupportedModelType` after paying for the whole
-    // download. Which checkpoint is pinned is not this manifest's to state:
-    // `CLIRunner.generationModel` names the generation model of the CLI, and
-    // the pin it names today carries `model_type:
-    // qwen3_5`, which both `LLMModelFactory` and `VLMModelFactory` register.
-    // So this link is what keeps a swap to a VLM-only checkpoint resolving —
-    // Muse Glimmer (`muse_glimmer`), which held the slot before, is one —
-    // rather than what the shipped pin needs today.
-    .product(name: "MLXVLM", package: mlxPackage),
-]
 
 /// The child-process package the shell capability spawns commands with.
 ///
@@ -164,8 +79,8 @@ private let subprocessPackage = "swift-subprocess"
 /// The products of `subprocessPackage`, linked by the library target and the
 /// unit test target below.
 ///
-/// The shell capability is the one consumer. `liveLoaderMLXProducts` above
-/// groups its own products the same way.
+/// The shell capability is the one consumer. `mcpProducts` below groups its
+/// own products the same way.
 private let shellProducts: [Target.Dependency] = [
     .product(name: "Subprocess", package: subprocessPackage)
 ]
@@ -194,7 +109,7 @@ private let shellProducts: [Target.Dependency] = [
 /// reads this URL and fails on a change back to upstream, thus a commit that
 /// goes back must change that suite too.
 ///
-/// The helper above does not fit it. `swissArmyHammerPackage(name:branch:)`
+/// The helper above does not fit it. `swissArmyHammerPackage(name:)`
 /// builds the `git@github.com:` URL of the three packages this repository
 /// develops. This one is a public fork, and it keeps the HTTPS URL it always
 /// had, thus a machine with no SSH key resolves it. The organization name is
@@ -208,8 +123,8 @@ private let mcpPackage = "swift-sdk"
 /// The products of `mcpPackage`, linked by the library target and the unit
 /// test target below.
 ///
-/// The MCP capability is the one consumer. `liveLoaderMLXProducts` and
-/// `shellProducts` group their own products the same way.
+/// The MCP capability is the one consumer. `shellProducts` groups its own
+/// products the same way.
 private let mcpProducts: [Target.Dependency] = [
     .product(name: "MCP", package: mcpPackage)
 ]
@@ -242,40 +157,6 @@ private let metricsPackage = "swift-metrics"
 private let telemetryProducts: [Target.Dependency] = [
     .product(name: "Logging", package: loggingPackage),
     .product(name: "Metrics", package: metricsPackage),
-]
-
-/// The OpenTelemetry backend package (swift-otel): the OTLP exporters for
-/// logs, traces and metrics.
-///
-/// The design of 2026-09-28 lets only an executable depend on it. The
-/// `cliTargetName` executable bootstraps it one time at startup, and the
-/// standard `OTEL_*` environment variables configure it at run time. No
-/// library target links it: `PackageManifestTests` reads this manifest and
-/// fails when a target other than `cliTargetName` names a swift-otel product.
-///
-/// The version floor is the release that FoundationModelsACPClient uses, thus
-/// the two command-line clients of the family resolve one version.
-private let otelPackage = "swift-otel"
-
-/// The lifecycle package (swift-server/swift-service-lifecycle) that runs the
-/// export services of `otelPackage`.
-///
-/// `OTel.bootstrap` and `OTel.makeLoggingBackend` each give back a `Service`.
-/// An exporter sends its records in batches from that service, thus the
-/// executable runs the services in a `ServiceGroup` while the command runs,
-/// and gives the group a graceful shutdown, which flushes each exporter,
-/// before the process exits. The version floor is the release that
-/// FoundationModelsACPClient uses.
-private let serviceLifecyclePackage = "swift-service-lifecycle"
-
-/// The products of `otelPackage` and `serviceLifecyclePackage`, linked by the
-/// `cliTargetName` executable target ONLY.
-///
-/// The name holds `otel`: `PackageManifestTests` finds each swift-otel
-/// product, package and group by that text.
-private let otelProducts: [Target.Dependency] = [
-    .product(name: "OTel", package: otelPackage),
-    .product(name: "ServiceLifecycle", package: serviceLifecyclePackage),
 ]
 
 /// The products that the unit test target uses to read back the telemetry of
@@ -400,11 +281,10 @@ private let scenarioGradingTargetName = "ScenarioGrading"
 /// `WebPageHead`, the value of each page of the goal snippet of web.md;
 /// `ShortTimeoutSession`, the one session configuration with short timeouts
 /// of the live web suites and `WebResearchScenarioTests`; and `TestPoll`, the
-/// one poll loop of the test support code, which `IntegrationPoll` and
-/// `CLISignalExitTests` of the nested package use too. A
-/// package can import the products of another package only, thus a helper
-/// that both of them read must stand in a product. Before this target, the
-/// nested package held a copy of each one.
+/// one poll loop of the test support code, which `IntegrationPoll` of the
+/// nested package uses too. A package can import the products of another
+/// package only, thus a helper that both of them read must stand in a product.
+/// Before this target, the nested package held a copy of each one.
 ///
 /// A target of its own, and not a file of `scenarioGradingTargetName`: that
 /// target links Router and no target of this package. The helpers here name
@@ -447,8 +327,8 @@ private let testSupportPath = "\(testsPath)Support/"
 ///
 /// A code-mode tool over the system FoundationModels and JavaScriptCore
 /// frameworks. The library takes tool hosting from FoundationModelsExtras and
-/// does not depend on FoundationModelsRouter. Only the CLI and the test
-/// targets link Router.
+/// does not depend on FoundationModelsRouter. Only the test support code and
+/// the test target link Router.
 ///
 /// **This manifest declares no integration test target, and that is the whole
 /// unit/integration split.** The integration suite — the real-model scenarios
@@ -469,12 +349,6 @@ let package = Package(
         .library(
             name: packageName,
             targets: [packageName]
-        ),
-        // Consumed by `IntegrationTests/Package.swift`, which cannot depend on
-        // the `cliTargetName` executable — see `cliLibraryTargetName`.
-        .library(
-            name: cliLibraryTargetName,
-            targets: [cliLibraryTargetName]
         ),
         // Test support. Consumed by `IntegrationTests/Package.swift`, which
         // can import products only — see `testServerTargetName`.
@@ -515,9 +389,6 @@ let package = Package(
         swissArmyHammerPackage(name: routerDependencyName),
         swissArmyHammerPackage(name: metadataRegistryDependencyName),
         swissArmyHammerPackage(name: extrasDependencyName),
-        // Only the M9 `cliLibraryTargetName` library below links a product
-        // from this one — see its documentation above.
-        swissArmyHammerPackage(name: mlxPackage, branch: mlxStableBranch),
         // The package of `shellProducts`. It stands under an organization of
         // its own, so the helper above does not fit it.
         //
@@ -555,11 +426,6 @@ let package = Package(
         // not fit them.
         .package(url: "https://github.com/apple/\(loggingPackage).git", from: "1.15.1"),
         .package(url: "https://github.com/apple/\(metricsPackage).git", from: "2.11.0"),
-        // The packages of `otelProducts` — see `otelPackage` and
-        // `serviceLifecyclePackage`. Each one stands under an organization of
-        // its own, so the helper above does not fit them.
-        .package(url: "https://github.com/swift-otel/\(otelPackage).git", from: "1.5.1"),
-        .package(url: "https://github.com/swift-server/\(serviceLifecyclePackage).git", from: "2.12.0"),
     ],
     targets: [
         // Links `shellProducts` for the shell capability this library takes
@@ -572,8 +438,7 @@ let package = Package(
         // It does NOT link Router. FoundationModelsExtras owns the tool
         // hosting — `ToolContext`, `BackgroundTool`, `ToolMount`,
         // `SubmissionBoundaryTool`, `LostRunError` and `RunPlane` — and the
-        // library takes each one from there. Of the shipped targets, only the
-        // application, `cliLibraryTargetName`, links Router.
+        // library takes each one from there. No shipped target links Router.
         // `PackageManifestTests` reads this declaration and fails when Router
         // comes back.
         .target(
@@ -583,56 +448,6 @@ let package = Package(
                 .product(name: extrasDependencyName, package: extrasDependencyName),
             ] + shellProducts + mcpProducts + webProducts + ulidProducts + telemetryProducts,
             path: "\(sourcesPath)\(packageName)"
-        ),
-        // M9: the sample CLI's whole implementation — plan.md "M9 — Sample CLI.
-        // A prompt that triggers searchTools then a multi-tool runCode." Links
-        // `liveLoaderMLXProducts` (see its documentation above) so its
-        // default, production model-resolution path can construct a real
-        // `LiveModelLoader()` and resolve any pinned checkpoint — the same
-        // live-inference wiring the nested integration package drives —
-        // making this a genuinely runnable demo rather than a stub.
-        //
-        // It links the `Logging` API of swift-log for `CLILogHandler`, the
-        // handler that the executable bootstraps when no OTLP endpoint is set,
-        // and for `CLITelemetryBackend`, the pure choice between the two
-        // paths. Both stand here, and not in the executable, so that the unit
-        // test target reads them. It does NOT link swift-otel: the executable
-        // alone links `otelProducts`.
-        .target(
-            name: cliLibraryTargetName,
-            dependencies: [
-                .target(name: packageName),
-                .product(name: routerDependencyName, package: routerDependencyName),
-                .product(name: extrasDependencyName, package: extrasDependencyName),
-                .product(name: "Logging", package: loggingPackage),
-            ] + liveLoaderMLXProducts,
-            path: "\(sourcesPath)\(cliLibraryTargetName)"
-        ),
-        // The process entry point: `main.swift` and the telemetry bootstrap.
-        // It links the library above, so every product that library declares
-        // reaches this binary transitively — `MLXVLM`'s runtime factory
-        // registry included.
-        //
-        // It is the one target that links `otelProducts`: only an executable
-        // bootstraps an exporter. `main.swift` bootstraps logging, tracing and
-        // metrics before the first log record, and flushes the exporters
-        // before the process exits.
-        .executableTarget(
-            name: cliTargetName,
-            dependencies: [
-                .target(name: cliLibraryTargetName),
-                .product(name: "Logging", package: loggingPackage),
-            ] + otelProducts,
-            path: "\(sourcesPath)\(cliTargetName)"
-            // No custom linker settings needed: the rpath workaround that
-            // used to live here existed only because the retired
-            // `Agent/AgentEvaluators.swift` made the *library* target import
-            // Apple's test-only `Evaluations` framework, whose autolink
-            // metadata propagated into this executable and broke its launch
-            // (`dyld: Library not loaded`). With that file deleted, the
-            // library no longer imports `Evaluations` and the executable
-            // launches with SwiftPM's default rpaths — verified by running
-            // the built binary directly.
         ),
         // The scripted MCP test server — see `testServerTargetName`. Links
         // `mcpProducts` for the sdk's `Server`, which is what it wraps.
@@ -707,7 +522,6 @@ let package = Package(
             name: "\(packageName)Tests",
             dependencies: [
                 .target(name: packageName),
-                .target(name: cliLibraryTargetName),
                 .target(name: testServerTargetName),
                 .target(name: testConcurrencyTargetName),
                 .target(name: scenarioGradingTargetName),

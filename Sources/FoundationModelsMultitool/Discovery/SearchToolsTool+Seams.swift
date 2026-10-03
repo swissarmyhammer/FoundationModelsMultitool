@@ -4,9 +4,9 @@
 // gives them through the seams of FoundationModelsMetadataRegistry, which
 // re-exports them from FoundationModelsRanker: a `SelectionConfig` for the
 // selection tier, an `any TextEmbedding` for the searchers, and an
-// `AgentSession` factory for the sample snippet. The adapters from Router
-// handles to these seams are in `MultitoolCLI` (`RouterDiscoverySeams`), which
-// is the host this package ships.
+// `AgentSession` factory for the sample snippet. This package ships no host.
+// The integration suite holds the adapters from Router handles to these seams
+// (`RouterDiscoverySeams` in `IntegrationTests/`).
 //
 // The models of these sessions must not be the model of the session that
 // calls `searchTools` — see `SelectionFactory`.
@@ -93,9 +93,10 @@ extension SearchToolsTool {
     /// write, edit or shell verb in every one of queries 4 to 9 in all three
     /// rounds, and assembled a 7,601-character prefix against the local
     /// wording's 7,600. So the local constant was deleted and the default
-    /// takes its place. The preamble is now the host's choice, and the host
-    /// this package ships keeps the default — `RouterDiscoverySeamsTests`
-    /// holds the deciding sentence as the guard the old constant carried.
+    /// takes its place. The preamble is now the host's choice. The Router
+    /// discovery seams of the integration suite keep the default, and
+    /// `RouterDiscoverySeamsTests` there holds the deciding sentence as the
+    /// guard the old constant carried.
     ///
     /// - Parameters:
     ///   - factory: the host's selection factory, or `nil`.

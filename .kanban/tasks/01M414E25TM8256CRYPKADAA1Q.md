@@ -64,8 +64,24 @@ comments:
     - evidence: 1 file — IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Support/StubRouterProfile.swift (`@unchecked Sendable` -> `Sendable`). `rg -n "@unchecked" IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Support/`: no match. `cd IntegrationTests && swift build --build-tests`: pass. `swift test --skip-build --no-parallel --filter 'RouterDiscoverySeamsTests|ProfileSlotSeparationTests|RouterMetadataCacheTests'`: 18 tests in 3 suites passed. Root `swift build --build-tests`: pass. Root `swift test`: 1877 tests in 156 suites passed. The only build message is the known mlx-swift bundle message ("missing creator for mutated node"), not a compiler warning. Live model and live web suites not run, by instruction.
     - next: /review. The finding is checked.
   timestamp: 2026-10-03T17:57:58.047756+00:00
-position_column: doing
-position_ordinal: '8180'
+- actor: claude-code
+  id: 01m41f04vptk2ytvv9gkfq47mx
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit 9fd7245). 1 file reviewed (`IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Support/StubRouterProfile.swift`). 7 validator runs, 0 findings, 0 failed. The commit renames no file. The prior finding on `StubRouterProfile.swift:46` (`no_unchecked_sendable`) is checked.
+    - next: Task moved to done. The item "integration suites that use discoverySeams pass in CI" is open. Only CI can check it.
+  timestamp: 2026-10-03T18:04:10.486014+00:00
+- actor: claude-code
+  id: 01m41f0st9zyytsxr387japzvr
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — 1 file (Support/StubRouterProfile.swift, plain Sendable)
+    - test: green — root swift test 1877 tests in 156 suites passed; IntegrationTests model-free filter 18 tests in 3 suites passed
+    - commit: 9fd7245
+    - review: clean — 0 findings; prior finding checked
+  timestamp: 2026-10-03T18:04:31.945960+00:00
+position_column: done
+position_ordinal: ffff9e80
 title: Move the Router discovery seams and the demo model pins out of MultitoolCLI into integration-test support
 ---
 ## What
