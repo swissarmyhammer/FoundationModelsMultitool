@@ -22,8 +22,24 @@ comments:
     - evidence: 8 files. Deleted with `git rm`: Tests/Support/MultitoolTestSupport/ShortTimeoutSession.swift, Tests/FoundationModelsMultitoolTests/ShortTimeoutSessionTests.swift. Changed: IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Web/Support/LiveSearch.swift, Web/Support/LiveFetch.swift, Web/WebRunCodeLiveTests.swift, WebResearchScenarioTests.swift, Package.swift (doc comment). Root `swift build --build-tests`: Build complete. Root `swift test`: 1806 tests in 150 suites passed, 0 failures. `cd IntegrationTests && swift build --build-tests`: Build complete. Live tests not run. `rg -n "ShortTimeoutSession" Tests IntegrationTests Sources`: no match.
     - next: /review
   timestamp: 2026-10-03T19:20:55.359576+00:00
-position_column: doing
-position_ordinal: '8180'
+- actor: claude-code
+  id: 01m41kpfs78732ydwsz00632g6
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (commit 5a9904b): 0 findings, 0 confirmed, 0 refuted; 7 files reviewed, 4 .kanban files ignored by .reviewignore. The commit renames no file, thus no file-scoped review was necessary. Hygiene rules declined only the two deleted files, which have no content.
+    - next: task moved to done.
+  timestamp: 2026-10-03T19:26:16.871293+00:00
+- actor: claude-code
+  id: 01m41kq1z4mphnt1k49nnnh8xf
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 7 files (2 deleted, 5 modified)
+    - test: green — swift test 1806 tests in 150 suites passed; IntegrationTests build-tests passed
+    - commit: 5a9904b
+    - review: clean — 0 findings
+  timestamp: 2026-10-03T19:26:35.492832+00:00
+position_column: done
+position_ordinal: ffffa280
 title: Remove ShortTimeoutSession and the short timeouts of the live web suites
 ---
 ## What
