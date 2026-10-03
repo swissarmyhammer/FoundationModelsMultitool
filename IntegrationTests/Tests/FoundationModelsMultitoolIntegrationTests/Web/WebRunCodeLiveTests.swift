@@ -20,30 +20,34 @@ import Testing
 /// provider after a block. When each provider blocks the search, the search
 /// gives a correction and no hit. The goal snippet of web.md then returns
 /// `[]`, and the correction does not reach the output. Thus the snippet of
-/// this test is the goal snippet with one added line: a search with a
-/// correction returns the search itself. The output is then the block report,
+/// this test has one added line: a search with a correction returns the
+/// search itself. The output is then the block report,
 /// and the rule checks it. The test does not decode that output as pages.
+///
+/// **The pages (``FetchedPagesRule``, card `^4dfyx4q`).** The snippet also
+/// returns the `correction` of each fetch, thus the test sees a failed fetch.
+/// Each page must have a valid URL and a title, and its fetch must not fail.
+/// At least one page must have content. A page that JavaScript draws gives
+/// empty content, and it passes with those checks.
 @Suite(
     "Live: the search-then-fetch snippet of web.md runs through runCode",
     .serialized,
     .timeLimit(IntegrationHangGuard.timeLimit)
 )
 struct WebRunCodeLiveTests {
-    /// The snippet of web.md § "Goal", word for word, with one added line
-    /// after the search: `if (hits.correction) return hits;`.
+    /// The snippet of web.md § "Goal", with two changes: one added line
+    /// after the search, `if (hits.correction) return hits;`, and the
+    /// `correction` of each fetch in the returned pages.
     private static let goalSnippet = """
         const hits = await tools.web.search({ query: "swift structured concurrency" });
         if (hits.correction) return hits;
         const pages = await Promise.all(
           hits.results.slice(0, 3).map(r => tools.web.fetch({ url: r.url, maxCharacters: 4000 })));
-        return pages.map(p => ({ url: p.url, title: p.title, head: p.content.slice(0, 400) }));
+        return pages.map(p => ({
+          url: p.url, title: p.title, head: p.content.slice(0, 400), correction: p.correction }));
         """
 
-    /// The number of pages that the snippet can return: at least one hit,
-    /// and at most the three hits of its `slice`.
-    private static let pageCountRange = 1...3
-
-    @Test("the goal snippet returns 1 to 3 pages, each with a title and content, or the search of a recognized block")
+    @Test("the goal snippet returns pages with a URL and a title, one with content, or a recognized block")
     func goalSnippetReturnsPages() async throws {
         let registry = try MultiTool.Builder()
             .withWeb(configuration: .keyless, sessionConfiguration: LiveSearch.makeSessionConfiguration())
@@ -53,28 +57,13 @@ struct WebRunCodeLiveTests {
 
         switch try RunOutput.decoded(GoalSnippetOutput.self, from: output) {
         case .pages(let heads):
-            Self.expectPages(heads, output: output)
+            FetchedPagesRule.expectPages(heads, output: output)
         case .search(let search):
             BlockedProviderRule.expectResultsOrBlock(
                 search.result, providers: WebConfiguration.keyless.providers
             ) {
                 Issue.record("the snippet returned the search, and the search has hits: \(output)")
             }
-        }
-    }
-
-    /// Checks the pages of the snippet: 1 to 3 pages, each with a title and
-    /// content.
-    ///
-    /// - Parameters:
-    ///   - heads: The pages that the snippet returned.
-    ///   - output: The rendered output of the snippet, for the failure
-    ///     comment.
-    private static func expectPages(_ heads: [WebPageHead], output: String) {
-        #expect(pageCountRange.contains(heads.count), "the snippet returned: \(output)")
-        for page in heads {
-            #expect(page.title?.isEmpty == false, "the page \(page.url) has no title")
-            #expect(!page.head.isEmpty, "the page \(page.url) has no content")
         }
     }
 }

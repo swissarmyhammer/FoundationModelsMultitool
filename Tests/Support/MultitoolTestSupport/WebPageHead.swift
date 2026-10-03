@@ -17,4 +17,12 @@ struct WebPageHead: Decodable, Equatable {
 
     /// The first characters of the content of the page.
     let head: String
+
+    /// Why the fetch gave no page, or `nil` when the page stands.
+    ///
+    /// The goal snippet of web.md does not return it. The live suite
+    /// `WebRunCodeLiveTests` adds it to the snippet, because a failed fetch
+    /// must fail that test (card `^4dfyx4q`). A snippet that does not return
+    /// it decodes as `nil`.
+    var correction: String?
 }
