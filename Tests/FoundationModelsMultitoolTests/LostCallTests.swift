@@ -53,10 +53,16 @@ struct LostCallTests {
     /// never returns during the lifetime of this test.
     private static let hangingToolSleep = Duration.seconds(3600)
 
-    /// How long the no-auto-retry case waits after the reconnect before it
-    /// asserts the handler never ran again — giving an (incorrect) auto-retry
-    /// a fair chance to have fired first.
-    private static let autoRetryGraceWindow = Duration.milliseconds(300)
+    /// The marker the no-auto-retry case puts in the wire ledger after the
+    /// lost call threw and before the reconnect starts.
+    private static let reconnectMarker = "reconnect starts"
+
+    /// The wire entry of one `tools/call` request.
+    private static let callEntry = WireRecordingTransport.Entry.sent(method: CallTool.name)
+
+    /// How many `tools/call` requests go out after the reconnect starts: the
+    /// probe call only.
+    private static let oneCallAfterReconnect = 1
 
     /// How many times the handler of the hanging tool ran: exactly the one
     /// call the test made.
@@ -141,22 +147,47 @@ struct LostCallTests {
 
     // MARK: - Never auto-retried, regardless of ToolAnnotations
 
+    /// How many `tools/call` requests the client sent after `marker` in the
+    /// ledger of `wire`.
+    ///
+    /// - Parameters:
+    ///   - marker: The marker the count starts at.
+    ///   - wire: The transport whose ledger to read.
+    /// - Returns: The count.
+    /// - Throws: When the ledger does not hold `marker`.
+    private static func callsSent(after marker: String, on wire: WireRecordingTransport) async throws -> Int {
+        let ledger = await wire.ledger
+        let markerPosition = try #require(
+            await wire.position(of: .marker(marker)), "the ledger holds no marker \(marker): \(ledger)")
+        return ledger[markerPosition...].filter { $0 == callEntry }.count
+    }
+
     /// A forward-looking regression guard, not a test of the `lost`
-    /// classification itself: this package never resends a request, so this
-    /// call counter stays at one. What it locks in is the decision — never
-    /// wire `idempotentHint`, or any other `ToolAnnotations` hint, into an
-    /// auto-retry later, even for a `lost` call — so a future change that
-    /// adds one trips this test.
+    /// classification itself: this package never resends a request, so the
+    /// wire carries no second request for the lost call. What it locks in is
+    /// the decision — never wire `idempotentHint`, or any other
+    /// `ToolAnnotations` hint, into an auto-retry later, even for a `lost`
+    /// call — so a future change that adds one trips this test.
+    ///
+    /// The proof is an order on the wire, not a wait. After the reconnect,
+    /// the test makes one probe call on the same connection. A re-send that
+    /// the reconnect makes goes on the wire before the probe, thus when the
+    /// probe answers, the ledger holds each such re-send. The counter of the
+    /// handler is not this proof: the server starts each request handler in
+    /// a task of its own, thus the probe can answer before the handler of an
+    /// earlier request starts.
     @Test("no call is re-sent after reconnect, even for a tool annotated idempotentHint: true")
     func noAutoRetryAfterReconnectEvenForIdempotentHintedTool() async throws {
         let counter = CallCounter()
         let respawning = RespawningTransport.makeServingFreshScriptedServers {
             let scripted = ScriptedServer()
             await scripted.addTool(Self.hangingTool(counting: counter))
+            await scripted.addEchoTool()
             return scripted
         }
+        let wire = WireRecordingTransport(wrapping: respawning)
         let server = MCPTestSupport.makeServer(name: Self.serverName)
-        try await server.connect(via: respawning, backoffPolicy: .default)
+        try await server.connect(via: wire, backoffPolicy: .default)
         let context = try await makeOuterRunContext()
 
         let callTask = Task {
@@ -172,11 +203,18 @@ struct LostCallTests {
         }
         #expect(Self.isLost(thrown), "expected MCPServerError.lost, got \(String(describing: thrown))")
 
+        await wire.mark(as: Self.reconnectMarker)
         try await server.reconnect()
         #expect(await server.state == .ready)
-        // Give an (incorrect) auto-retry a fair chance to have fired before
-        // asserting it never did.
-        try await Task.sleep(for: Self.autoRetryGraceWindow)
+        let probe = try await ToolContext.$current.withValue(context) {
+            try await server.call(
+                name: ScriptedServer.echoToolName,
+                arguments: [ScriptedServer.echoTextArgument: .string(Self.echoText)])
+        }
+        #expect(probe.isError != true, "the probe call failed: \(probe)")
+        let callsAfterReconnect = try await Self.callsSent(after: Self.reconnectMarker, on: wire)
+        let ledger = await wire.ledger
+        #expect(callsAfterReconnect == Self.oneCallAfterReconnect, "the ledger: \(ledger)")
         #expect(counter.count == Self.oneInvocation)
     }
 }
