@@ -23,9 +23,25 @@ comments:
     - evidence: 6 files — Tests/FoundationModelsMultitoolTests/MCPServerCallTests.swift, LostCallTests.swift, RunBindingTests.swift, HostAndEmitterTests.swift, Support/MCPCallProbeTool.swift, Fixtures/StubRouterFixtures.swift. `swift build --build-tests` clean (no warning in Sources or Tests). `swift test --filter 'MCPServerCallTests|LostCallTests|RunBindingTests|HostAndEmitterTests|InnerTerminalEventTests'`: 23 tests in 5 suites passed. `swift test`: 1808 tests in 151 suites passed, 0 failed, 0 skipped. No library code changed; no clock added.
     - next: /review. Follow-up ^2v197d8 (300 ms grace window in the no-auto-retry test).
   timestamp: 2026-10-03T21:35:39.543693+00:00
+- actor: claude-code
+  id: 01m41vfpc4wegenmzcsqem24bx
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit 3202bf5). 0 findings (0 confirmed, 0 refuted; 7 attempted, 0 failed). 6 Swift test files reviewed. 6 `.kanban/` files not reviewed (.reviewignore). The commit renames no file, so no file-scoped review was necessary. The task has no earlier review findings.
+    - next: none. Task moved to done.
+  timestamp: 2026-10-03T21:42:22.852871+00:00
+- actor: claude-code
+  id: 01m41vg95593az8kvsebt68h4c
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 6 test files
+    - test: green — swift test 1808 tests in 151 suites passed; Extras at 130eb40
+    - commit: 3202bf5
+    - review: clean — 0 findings
+  timestamp: 2026-10-03T21:42:42.085784+00:00
 depends_on: []
-position_column: doing
-position_ordinal: '8180'
+position_column: done
+position_ordinal: ffffa380
 title: Update four tests that read an inner terminal through the mount sink, after the Extras fix e7e09a6
 ---
 ## What
