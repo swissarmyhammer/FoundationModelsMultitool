@@ -340,6 +340,21 @@ struct ExamplesTests {
     /// `wait tool`, and that snippet describes no tool.
     static let waitToolPhrases = ["`wait` tool", " wait tool", "Wait tool"]
 
+    /// The phrases that describe a clock the code removed. The sandbox has no
+    /// clock, an inner `tools.*` call has no clock, and the web verbs have no
+    /// clock. The one outer timeout of a `runCode` call is
+    /// `MultiTool.timeout(from:)`.
+    ///
+    /// Each phrase stands on one line of the document, because the scan reads
+    /// one line at a time.
+    static let removedClockPhrases = [
+        "timeLimit:",
+        "withTimeLimit",
+        "wall-clock timer",
+        "sandbox creation",
+        "snippet ceiling",
+    ]
+
     @Test("A contract document names no symbol that the code removed", arguments: contractDocuments)
     func contractDocumentNamesNoRemovedSymbol(_ documentPath: String) throws {
         let sightings = try RepositoryFile.sightings(of: Self.removedNames, inRelativeFile: documentPath)
@@ -350,5 +365,11 @@ struct ExamplesTests {
     func shippedContractDocumentDescribesNoWaitTool(_ documentPath: String) throws {
         let sightings = try RepositoryFile.sightings(of: Self.waitToolPhrases, inRelativeFile: documentPath)
         #expect(sightings.isEmpty, "\(documentPath) describes a wait tool: \(sightings)")
+    }
+
+    @Test("A shipped contract document describes no removed clock", arguments: shippedContractDocuments)
+    func shippedContractDocumentDescribesNoRemovedClock(_ documentPath: String) throws {
+        let sightings = try RepositoryFile.sightings(of: Self.removedClockPhrases, inRelativeFile: documentPath)
+        #expect(sightings.isEmpty, "\(documentPath) describes a removed clock: \(sightings)")
     }
 }

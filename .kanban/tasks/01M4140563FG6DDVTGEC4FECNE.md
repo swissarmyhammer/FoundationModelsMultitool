@@ -25,10 +25,26 @@ comments:
     - evidence: 43 files (25 deleted with git rm, 18 changed). `swift build` OK; `swift test` 1809 tests in 151 suites passed; `cd IntegrationTests && swift build --build-tests` OK; `swift package describe` lists no `multitool-cli`.
     - next: /review
   timestamp: 2026-10-03T18:43:23.531383+00:00
+- actor: claude-code
+  id: 01m41hmcn4j617fssgxp08r0ts
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit 0f481eb). 0 findings, 0 confirmed, 0 refuted. 37 files reviewed. The commit renames no file, so no file-scoped run is necessary. The tool rules declined only on deleted files, because these files have no content to read.
+    - next: The task is in done.
+  timestamp: 2026-10-03T18:50:10.980301+00:00
+- actor: claude-code
+  id: 01m41hmwxkzr1panmdnv6dkyxe
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 43 files (25 deleted, 18 modified)
+    - test: green — root swift test 1809 tests in 151 suites passed; IntegrationTests build-tests passed
+    - commit: 0f481eb
+    - review: clean — 0 findings
+  timestamp: 2026-10-03T18:50:27.635380+00:00
 depends_on:
 - 01M414E25TM8256CRYPKADAA1Q
-position_column: doing
-position_ordinal: '8180'
+position_column: done
+position_ordinal: ffff9f80
 title: Delete the MultitoolCLI library, the multitool-cli executable, and their tests
 ---
 ## What

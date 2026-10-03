@@ -120,34 +120,38 @@ as it gets file access from the files capability. The web verbs are such tools.
 
 ## What the watchdog and caps bound
 
-- **Execution time** — a runaway/infinite-loop snippet is force-terminated by
-  the interpreter's watchdog (`JSContextGroupSetExecutionTimeLimit`), not left
-  to run forever. A snippet that waits for a `tools.*` call that never
-  completes executes no JS, so the watchdog has nothing to stop: the
-  wall-clock timer of the run ends it at the same ceiling, and cancels the
-  pending call. Under a `MultiTool` the ceiling it terminates at is always
+- **Execution time** — a `runCode` call has one outer timeout: the
+  tool-level timeout `MultiTool.timeout(from:)`. Its value is
   `MultiToolConfiguration.executionTimeLimit`, which defaults to
-  `MultiToolConfiguration.defaultExecutionTimeLimit` (120 seconds). That holds for
-  the sandbox `MultiTool.init` builds for itself and for one injected through
-  its `interpreter:` parameter alike: `MultiTool.init` re-arms whatever
-  interpreter it is given from the configured ceiling
-  (`Interpreter.withTimeLimit(_:)`), so a caller cannot leave a sandbox
-  running under some other limit by handing over a `JSCInterpreter()` built
-  with its own. A `JSCInterpreter` run directly, outside any `MultiTool`,
-  terminates at the limit its constructor received
-  (`JSCInterpreter(timeLimit:)`). The ceiling is absolute: it is measured from
-  sandbox creation, and neither reporting progress nor suspending on `elicit()`
-  moves that reference point, so no snippet can hold a context open
-  indefinitely.
+  `MultiToolConfiguration.defaultExecutionTimeLimit` (120 seconds). Each
+  progress event of the snippet resets this timeout. When the timeout ends,
+  the engine cancels the run, and the call ends as timed out. The same
+  timeout bounds a snippet that continues in the background after the call
+  answers its completion token. The sandbox has no clock of its own. The
+  interpreter's watchdog (`JSContextGroupSetExecutionTimeLimit`) is only a
+  short poll: at each poll it examines whether the task of the run is
+  cancelled. Thus a runaway JS loop stops at the next poll after the
+  cancellation, and a snippet that waits for a `tools.*` call ends at once
+  and cancels the pending call. The interpreter that a `MultiTool` gets
+  through its `interpreter:` parameter has no clock either, thus the
+  tool-level timeout bounds it the same way. A `JSCInterpreter` run directly,
+  outside any `MultiTool`, has no timeout: it ends only when its snippet
+  ends, or when its task is cancelled.
 - **Inner-call time** — each `tools.*` call inside a snippet runs to
-  completion under its own bound, `RunBinding.innerCallMount`. Its timeout is
-  `MultiToolConfiguration.defaultExecutionTimeLimit` (120 seconds). Router
-  gives a tool a timeout only when the tool states one, thus this mount
-  states it. An inner call does not move the reference point of the snippet
-  ceiling above, which is measured from sandbox creation.
+  completion under `RunBinding.innerCallMount`, and that mount states no
+  timeout. A nested `tools.runCode` call has no timeout of its own either:
+  `MultiTool.timeout(from:)` gives `nil` for a run at a depth more than 0.
+  The tool-level timeout of the outer `runCode` call bounds each inner call.
+  When that timeout cancels the outer run, the cancellation goes to each
+  inner call in flight.
+- **Web time** — the web verbs have no clock of their own.
+  `tools.web.fetch` has no `timeout` argument, a search provider has no
+  timeout, and the `URLSession` that the capability uses has no request or
+  resource timer. The tool-level timeout of the outer `runCode` call bounds
+  each web request, through the same cancellation.
 - **Cancellation** — cancelling the Swift `Task` running
-  `MultiTool.call(arguments:)` force-terminates the in-flight snippet
-  through that same watchdog path, cancels each pending `tools.*` call, and
+  `MultiTool.call(arguments:)` stops the in-flight snippet through the
+  same watchdog poll, cancels each pending `tools.*` call, and
   propagates `CancellationError` — no leaked interpreter thread, no
   semaphore deadlock.
 - **Return-value size** (`MultiToolConfiguration.returnValueCharacterLimit`,
@@ -161,8 +165,8 @@ as it gets file access from the files capability. The web verbs are such tools.
   wait at the same time. A snippet executes JS only in short jobs, and a
   snippet that waits for a `tools.*` call holds no thread, only its
   JavaScriptCore context in memory (see `JSCInterpreter`). Each live snippet
-  is still bounded by the execution-time ceiling above, so no suspended
-  context lives past it.
+  is still bounded by the tool-level timeout above, so no suspended context
+  lives past it without progress events.
 
 ### The detail of a finished background run
 
