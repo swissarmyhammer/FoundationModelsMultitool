@@ -29,8 +29,24 @@ comments:
     - evidence: 1 file — Tests/FoundationModelsMultitoolTests/LostCallTests.swift. `swift build --build-tests` complete. `swift test --filter LostCallTests`: 2 of 2 passed. Mutation run (library re-sends the lost call on reconnect, reverted): 1 of 2 failed, `callsAfterReconnect` 2 (expected 1). `swift test`: 1808 tests in 151 suites passed. No change under Sources/.
     - next: /review
   timestamp: 2026-10-03T21:55:54.522366+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m41wgc1xm4wer3f396fsh35s
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit 805261f). 0 findings, 0 confirmed, 0 refuted. 7 validator passes attempted, 0 failed. 1 file reviewed (LostCallTests.swift). 4 `.kanban/` files are excluded by `.reviewignore`. The commit renames no file, thus no file-scoped review was necessary.
+    - next: none. The task moved to done.
+  timestamp: 2026-10-03T22:00:13.629318+00:00
+- actor: claude-code
+  id: 01m41wgrzd261zm7sk6rsc3r3q
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 1 file (LostCallTests.swift); mutation run proved the test fails on a re-send
+    - test: green — swift test 1808 tests in 151 suites passed
+    - commit: 805261f
+    - review: clean — 0 findings
+  timestamp: 2026-10-03T22:00:26.861833+00:00
+position_column: done
+position_ordinal: ffffa580
 title: LostCallTests no-auto-retry case waits 300 ms to learn that no retry came
 ---
 ## What
