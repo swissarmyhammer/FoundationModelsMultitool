@@ -111,8 +111,27 @@ comments:
     - evidence: this commit: fix(integration): reuse Fetch.httpURL in FetchedPagesRule and test an uppercase scheme
     - next: the CI criterion stays open until a real CI run gives results; record the run id.
   timestamp: 2026-10-03T13:24:24.581214+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m40z8n7pz5nv53wxyw8pzwm2
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit 0390cce): 0 findings (0 confirmed, 1 refuted, 7 validators attempted, 0 failed, 0 skipped). 3 files reviewed; 2 `.kanban/` files excluded by `.reviewignore`. No tool gap: no validator failed, including `code-hygiene/dead-code-swift`.
+    - evidence: no renamed files in `git diff --name-status -M HEAD~1..HEAD` (all 5 entries are `M`), thus no file-scoped review was necessary.
+    - evidence: both findings of `## Review Findings (2026-10-03 06:55)` are fixed and checked. `reuse/reuse`: `isPageURL` and `pageSchemes` are removed; `FetchedPagesRule` calls `Fetch.httpURL(page.url) != nil`, and `Fetch.httpURL(_:)` is `internal`. `completeness/case-sensitivity-coverage`: `FetchedPagesRuleTests.pageWithUpperCaseSchemePasses` uses "HTTPS://www.swift.org/documentation/".
+    - next: the task stays in `review`, not `done`. The last acceptance criterion (the live web suites pass in a real CI run that gives results, with the run id) is open. It needs a push and a CI run.
+  timestamp: 2026-10-03T13:29:12.182197+00:00
+- actor: claude-code
+  id: 01m40z9682z1cvd3bb2ya30n99
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — 3 files; FetchedPagesRule uses Fetch.httpURL (now internal); uppercase-scheme test added
+    - test: green — swift test 1895 passed; IntegrationTests build passes; 24 offline rule tests passed; 6 live fetch and web runCode tests passed
+    - commit: 0390cce
+    - review: clean — 0 findings; both prior findings fixed
+    - the task stays in review: the last criterion needs a real CI run that gives results
+  timestamp: 2026-10-03T13:29:29.602129+00:00
+position_column: review
+position_ordinal: '8180'
 title: 'WebRunCodeLiveTests: a search hit that renders with JavaScript gives a page with no content and fails the test'
 ---
 ## Problem
