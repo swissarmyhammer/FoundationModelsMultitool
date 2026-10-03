@@ -38,10 +38,6 @@ enum LiveSearch {
     /// The URL scheme of each hit.
     static let secureScheme = "https"
 
-    /// How many seconds one search provider can take before the chain goes to
-    /// the next provider.
-    static let searchTimeoutSeconds: TimeInterval = 10
-
     /// How many seconds one request can wait for more data before it fails.
     static let requestTimeoutSeconds: TimeInterval = 10
 
@@ -87,9 +83,7 @@ enum LiveSearch {
         providers: [WebSearchProvider], site: String? = nil, environment: [String: String] = [:]
     ) async throws -> SearchResult {
         try await searchSpacing.waitForTurn()
-        let configuration = WebConfiguration(
-            providers: providers, fetch: WebFetchPolicy(searchTimeout: searchTimeoutSeconds),
-            environment: environment)
+        let configuration = WebConfiguration(providers: providers, environment: environment)
         let context = WebContext(
             configuration: configuration, sessionConfiguration: makeSessionConfiguration())
         return try await WebVerbCall.search(swiftQuery, site: site, context: context)

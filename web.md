@@ -52,7 +52,9 @@ The Rust source is in `../swissarmyhammer/crates/`:
 - **The keyless search request.**
   `GET https://search.brave.com/search?q=<percent-encoded>&source=web`, with
   `Accept: text/html` and a desktop browser `User-Agent`
-  (`brave.rs:53-107`). The timeout is 10 seconds.
+  (`brave.rs:53-107`). We do not copy its 10-second timeout, because a web
+  request has no time limit of its own. The tool-level timeout of `runCode` is
+  the one time limit.
 - **The parse rules** (`brave.rs:116-240`):
   - A result container is `[data-pos]`.
   - The title is `a .title`. When there is no title, use the text of the first
@@ -136,7 +138,6 @@ The Rust tool has defects. We do not port them.
 | `format` | `String?` | `markdown` | `markdown`, `text`, `raw`. |
 | `offset` | `Int?` | 0 | The character offset of the window, for a long page. |
 | `maxCharacters` | `Int?` | 20000 | 500 to 200000. |
-| `timeout` | `Int?` | 30 | 1 to 120 seconds. |
 
 `@Generable struct FetchResult`:
 
@@ -154,7 +155,7 @@ The Rust tool has defects. We do not port them.
 
 A non-2xx status is not a correction. The model gets `status` and the body,
 because a 404 page often tells the model what is wrong. A network failure, a
-guard refusal, a timeout, or an unsupported binary type is a correction.
+guard refusal, or an unsupported binary type is a correction.
 
 ### Corrections, not throws
 
@@ -164,7 +165,6 @@ not throw. Examples of the text:
 
 - ``The `url` parameter must be an absolute http or https URL: ftp://x``
 - `The address is not allowed: localtest.me resolves to 127.0.0.1, a loopback address.`
-- `The request timed out after 30 seconds: https://example.org/slow`
 - `The content type is not text: application/pdf. fetch reads text, HTML, JSON, and XML.`
 - `No search provider gave results. braveHTML: blocked (HTTP 429). duckDuckGoHTML: no results.`
 
@@ -296,8 +296,11 @@ when a provider:
 - returns 429 or 5xx,
 - returns a challenge page (HTTP 200, but no `[data-pos]` and a known
   challenge marker, for `braveHTML`),
-- returns no results,
-- does not answer in its timeout.
+- returns no results.
+
+A provider has no time limit of its own. The chain goes to the next provider
+only when a provider fails or is blocked, never on time. The tool-level timeout
+of `runCode` ends a search that does not answer.
 
 Each skip adds one line to `notes`. The note of a bad key names the HTTP
 status, for example `braveAPI: skipped, the API key was refused (HTTP 422).`
@@ -451,7 +454,7 @@ can examine the headers.
 | `WebConfigurationTests` | `fromEnvironment` with a given dictionary: order, `BRAVE_API_KEY` alias, `SEARXNG_URL`, keyless fallback at the end. `.keyless` reads no environment. |
 | `WebAddressGuardTests` | Each blocked host, suffix, and range, IPv6, IPv4-mapped IPv6, user info, bad scheme. A resolver stub gives many addresses, and one private address is sufficient for a refusal. |
 | `WebRedirectGuardTests` | A redirect to `http://127.0.0.1/` is refused. Eleven hops are refused. |
-| `WebFetcherTests` | Content types, charset, byte limit, non-2xx status, timeout correction, `User-Agent` handling, the unguarded request for host configuration. |
+| `WebFetcherTests` | Content types, charset, byte limit, non-2xx status, no session timer, the cancel of a load whose server never answers, `User-Agent` handling, the unguarded request for host configuration. |
 | `WebPageReaderTests` | Windows (`offset`, `nextOffset`, `totalCharacters`), formats, page cache hit (also after a redirect), eviction. |
 | `HTMLMarkdownTests` | Goldens: `WebGoldens/*.html` to `*.md`. Headings, lists, code fences with language, relative links made absolute, tables, removed elements, title order. |
 | `WebRunCodeTests` | JavaScript snippets through `MultiTool.call`, the shape of `FilesCrossOpFlowTests`: search then fetch; `Promise.all` over three fetches; a correction reaches the snippet as a value, not as an exception; a key value never appears in the return value or the console. |
@@ -672,9 +675,10 @@ All five decisions are confirmed.
    has no option to fetch result pages. It gives hits only. The snippet
    selects the pages and fetches them with `fetch`, for example with
    `Promise.all`. That is the product idea ("composition").
-3. **Synchronous verbs, not background. (Confirmed, 2026-09-24.)** Each call has a hard timeout
-   (search: 10 seconds for each provider; fetch: 30 seconds by default, 120 at
-   most). `executionTimeLimit` (120 seconds) bounds the snippet. If a verb is
+3. **Synchronous verbs, not background. (Confirmed, 2026-09-24.)** No verb call has a
+   time limit of its own. The one time limit is the tool-level timeout of the
+   `runCode` call (`executionTimeLimit`, 120 seconds). Its cancel stops each
+   pending request (changed 2026-10-03, card `^q586aqm`). If a verb is
    often slower than `inlineSettleGrace`, we can declare `BackgroundTool` on
    it later. This is only an addition.
 4. **All six keyed providers. (Confirmed, 2026-09-24.)** Brave API, Tavily,

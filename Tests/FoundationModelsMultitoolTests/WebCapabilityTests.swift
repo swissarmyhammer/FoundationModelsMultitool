@@ -198,7 +198,7 @@ struct WebCapabilityTests {
 
         let result = try await fetch.call(
             arguments: .init(
-                url: Self.rejectedURL, format: nil, offset: nil, maxCharacters: nil, timeout: nil))
+                url: Self.rejectedURL, format: nil, offset: nil, maxCharacters: nil))
 
         #expect(result.correction != nil)
         #expect(await context.backgroundRuns().isEmpty)

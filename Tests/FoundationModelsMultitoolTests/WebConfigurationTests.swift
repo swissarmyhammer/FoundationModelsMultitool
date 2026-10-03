@@ -146,8 +146,6 @@ struct WebConfigurationTests {
         let policy = WebConfiguration.keyless.fetch
         #expect(policy.maxBytes == 5 * 1024 * 1024)
         #expect(policy.maxRedirects == 10)
-        #expect(policy.searchTimeout == 10)
-        #expect(policy.defaultFetchTimeout == 30)
         #expect(policy.userAgent.contains("FoundationModelsMultitool"))
     }
 

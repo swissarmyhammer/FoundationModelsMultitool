@@ -115,11 +115,10 @@ actor WebPageReader {
     ///     negative. An offset at or past the end gives empty content.
     ///   - maxCharacters: The maximum number of characters in the window. It
     ///     must be more than zero.
-    ///   - timeout: The time limit of a load.
     /// - Returns: The window, or the failure of the load. A non-2xx status is
     ///   a window, not a failure.
     func read(
-        url: URL, format: WebPageFormat, offset: Int, maxCharacters: Int, timeout: Duration
+        url: URL, format: WebPageFormat, offset: Int, maxCharacters: Int
     ) async -> Result<PageWindow, WebFetchFailure> {
         precondition(offset >= 0, "the window offset must not be negative")
         precondition(maxCharacters > 0, "the window size must be more than zero")
@@ -127,7 +126,7 @@ actor WebPageReader {
         if let page = cache.page(for: key) {
             return .success(page.window(offset: offset, maxCharacters: maxCharacters))
         }
-        let loaded = await load(url, format: format, timeout: timeout)
+        let loaded = await load(url, format: format)
         if case .success(let page) = loaded {
             cache.insert(page, keys: [key, WebPageCacheKey(url: page.url, format: format)])
         }
@@ -139,14 +138,11 @@ actor WebPageReader {
     /// - Parameters:
     ///   - url: The URL of the page.
     ///   - format: The form of the content.
-    ///   - timeout: The time limit of the load.
     /// - Returns: The converted page, or the failure.
-    private func load(
-        _ url: URL, format: WebPageFormat, timeout: Duration
-    ) async -> Result<ConvertedWebPage, WebFetchFailure> {
+    private func load(_ url: URL, format: WebPageFormat) async -> Result<ConvertedWebPage, WebFetchFailure> {
         networkLoadCount += 1
         let fetcher = fetcher
-        return await fetcher.load(URLRequest(url: url), timeout: timeout).flatMap { body in
+        return await fetcher.load(URLRequest(url: url)).flatMap { body in
             fetcher.decodeText(body).flatMap { text in Self.convert(text, of: body, format: format) }
         }
     }

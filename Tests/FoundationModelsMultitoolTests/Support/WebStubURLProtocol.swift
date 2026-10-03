@@ -40,7 +40,8 @@ struct WebStubRecord: Sendable, Equatable {
     let headers: [String: String]
 
     /// The `timeoutInterval` of the request, in seconds: the time limit of
-    /// the session timer of the request.
+    /// the session timer of the request. `.infinity` when the session has no
+    /// timer for the request.
     let timeoutInterval: TimeInterval
 }
 
@@ -58,14 +59,6 @@ final class WebStub: Sendable {
     /// The HTTP status of a redirect reply.
     static let redirectStatus = 302
 
-    /// The number of seconds in ``ampleTimeout``.
-    private static let ampleTimeoutSeconds = 10
-
-    /// The time limit of a stub request that must not time out. The limit
-    /// sleeps on the closed `GatedClock` of ``makeFetcher(policy:timeLimitClock:)``,
-    /// thus it never ends a load before the stub answers.
-    static let ampleTimeout: Duration = .seconds(ampleTimeoutSeconds)
-
     /// The stubs that exist now, by identifier. A stub removes its own entry
     /// when it goes away.
     private static let registry = Mutex<[String: WeakWebStub]>([:])
@@ -78,6 +71,9 @@ final class WebStub: Sendable {
 
     /// Each request that the stub got, in order.
     private let recorded = Mutex<[WebStubRecord]>([])
+
+    /// The URL of each load that the session stopped, in order.
+    private let stopped = Mutex<[URL]>([])
 
     /// Makes a stub and registers it.
     ///
@@ -114,25 +110,25 @@ final class WebStub: Sendable {
         requests.map(\.url.absoluteString)
     }
 
+    /// The URL text of each load that the session stopped, in order.
+    ///
+    /// The session stops a load when the load completes and when its task is
+    /// cancelled. A ``WebStubReply/hang`` load never completes, thus the
+    /// session stops it only on a cancel.
+    var stoppedURLs: [String] {
+        stopped.withLock { $0 }.map(\.absoluteString)
+    }
+
     /// Makes a fetcher whose session sends each request to this stub, and
     /// whose guard resolves each host name to a public address.
     ///
-    /// - Parameters:
-    ///   - policy: The limits and the user agent of the fetcher.
-    ///   - timeLimitClock: The clock that the time limit of each load sleeps
-    ///     on. The default is a `GatedClock` that no test opens, thus the time
-    ///     limit cannot end a load before the stub answers, however slow the
-    ///     machine is. A test of the time limit gives its own `GatedClock`
-    ///     and opens it.
+    /// - Parameter policy: The limits and the user agent of the fetcher.
     /// - Returns: The fetcher.
-    func makeFetcher(
-        policy: WebFetchPolicy = WebFetchPolicy(), timeLimitClock: any Clock<Duration> = GatedClock()
-    ) -> WebFetcher {
+    func makeFetcher(policy: WebFetchPolicy = WebFetchPolicy()) -> WebFetcher {
         WebFetcher(
             sessionConfiguration: sessionConfiguration,
             policy: policy,
-            addressGuard: WebAddressGuard(resolver: PublicHostResolver()),
-            timeLimitClock: timeLimitClock
+            addressGuard: WebAddressGuard(resolver: PublicHostResolver())
         )
     }
 
@@ -147,6 +143,13 @@ final class WebStub: Sendable {
             url: url, headers: request.allHTTPHeaderFields ?? [:], timeoutInterval: request.timeoutInterval)
         recorded.withLock { $0.append(record) }
         return routes[url.absoluteString] ?? .respond(status: Self.notFoundStatus, headers: [:], body: Data())
+    }
+
+    /// Records that the session stopped the load of a URL.
+    ///
+    /// - Parameter url: The URL of the stopped load.
+    func recordStop(of url: URL) {
+        stopped.withLock { $0.append(url) }
     }
 
     /// Makes a `GET` request to a URL text.
@@ -213,7 +216,10 @@ final class WebStubURLProtocol: URLProtocol {
         }
     }
 
-    override func stopLoading() {}
+    override func stopLoading() {
+        guard let url = request.url else { return }
+        WebStub.stub(for: request)?.recordStop(of: url)
+    }
 
     /// Sends a whole response to the client.
     ///

@@ -64,6 +64,35 @@ struct RunCodeToolTimeoutTests {
         }
     }
 
+    /// The fetch has no clock of its own, thus only the outer `runCode` clock
+    /// can end a fetch whose server never answers. The timeout cancels the
+    /// pending inner call, and the cancel stops the request at the stub.
+    @Test(
+        "a mounted runCode that awaits a tools.web.fetch whose server never answers ends as timedOut at the engine clock",
+        .timeLimit(TestHangGuard.timeLimit))
+    func hangingFetchEndsAtTheEngineClock() async throws {
+        let stub = WebStub(routes: [Self.hangingPageURL: .hang])
+        let web = WebCapability(
+            configuration: .keyless, sessionConfiguration: stub.sessionConfiguration, resolver: PublicHostResolver())
+        let context = try await makeOuterRunContext()
+        let mounted = try Self.mountedRunCode(
+            registry: try MultiTool.Builder().withCapability(web).buildRegistry(),
+            window: Self.stallWindowSeconds,
+            on: context
+        )
+
+        let snippet = "return await tools.web.fetch({ url: \"\(Self.hangingPageURL)\" });"
+        let rendered = try await mounted.call(arguments: RunCodeArguments(code: snippet))
+
+        let terminal = try await Self.terminal(of: rendered, on: context)
+        #expect(terminal.outcome == .timedOut)
+        #expect(terminal.detail == Self.timedOutText(window: Self.stallWindowSeconds))
+        try await TestPoll.waitUntil("the session stopped the fetch request") {
+            stub.stoppedURLs == [Self.hangingPageURL]
+        }
+        #expect(stub.requestedURLs == [Self.hangingPageURL])
+    }
+
     // MARK: - A run with progress
 
     /// The pauses of the snippet fill more than one window, and a sleep is a
@@ -104,6 +133,9 @@ struct RunCodeToolTimeoutTests {
     /// The test with this config never waits for it: the small test clock of
     /// ``SmallClockRunCode`` ends the run first.
     private static let longHostWindowSeconds: TimeInterval = 600
+
+    /// The page of the hanging fetch test. Its stub route never answers.
+    private static let hangingPageURL = "https://site.example/hang"
 
     /// The engine window of the progress test, in seconds.
     ///

@@ -12,10 +12,13 @@
 // is synchronous and does not conform to `BackgroundTool` (web.md
 // § "Decisions", item 3).
 //
+// The verb has no time limit of its own. It runs as an inner `tools.web.*`
+// call of `runCode`, thus the tool-level timeout of that call is its one time
+// limit, and the timeout cancels the request.
+//
 // A non-2xx status is a normal result with the status and the content. A bad
-// argument, a guard refusal, a timeout, a network failure, and a type that is
-// not text each stay IN BAND, as a `correction`. The verb never throws for
-// them.
+// argument, a guard refusal, a network failure, and a type that is not text
+// each stay IN BAND, as a `correction`. The verb never throws for them.
 
 import Foundation
 import FoundationModels
@@ -50,15 +53,6 @@ struct FetchArguments {
         description: "The maximum number of characters in the window, 500 to 200000. Omit it for 20000.",
         .range(FetchArguments.maxCharactersRange))
     var maxCharacters: Int?
-
-    /// The time limit in seconds, or `nil` for the default of the policy.
-    ///
-    /// The guide carries ``timeoutRange``, thus a guided generator cannot
-    /// write a value that the verb refuses.
-    @Guide(
-        description: "The time limit of the download in seconds, 1 to 120. Omit it for 30.",
-        .range(FetchArguments.timeoutRange))
-    var timeout: Int?
 }
 
 extension FetchArguments {
@@ -76,12 +70,6 @@ extension FetchArguments {
     /// The generation schema and the verb's own bound check read this one
     /// range, thus the two cannot disagree.
     static let maxCharactersRange = 500...200_000
-
-    /// The accepted `timeout` values: 1 to 120 seconds.
-    ///
-    /// The generation schema and the verb's own bound check read this one
-    /// range, thus the two cannot disagree.
-    static let timeoutRange = 1...120
 }
 
 /// The result of `tools.web.fetch`: one window of the page, or the
@@ -139,11 +127,6 @@ extension Fetch {
     private static let maxCharactersBound = BoundParameter(
         parameterName: "maxCharacters", typeDescription: "character count", range: FetchArguments.maxCharactersRange)
 
-    /// The bound on `timeout`: a number of seconds in
-    /// ``FetchArguments/timeoutRange``.
-    private static let timeoutBound = BoundParameter(
-        parameterName: "timeout", typeDescription: "number of seconds", range: FetchArguments.timeoutRange)
-
     /// The URL schemes that the verb fetches.
     private static let fetchSchemes: Set<String> = ["http", "https"]
 
@@ -180,13 +163,13 @@ extension Fetch {
     ///   argument or a failed fetch.
     func call(arguments: FetchArguments) async throws -> FetchResult {
         let corrective: (String) -> FetchResult = { message in Self.corrective(message, url: arguments.url) }
-        let policy = context.fetcher.policy
-        return await Self.request(from: arguments, policy: policy).resolveAsync(corrective: corrective) { request in
+        let byteLimit = context.fetcher.policy.maxBytes
+        return await Self.request(from: arguments).resolveAsync(corrective: corrective) { request in
             await context.reader.read(
                 url: request.url, format: request.format, offset: request.offset,
-                maxCharacters: request.maxCharacters, timeout: request.timeout
+                maxCharacters: request.maxCharacters
             )
-            .resolve(corrective: corrective) { window in Self.result(of: window, byteLimit: policy.maxBytes) }
+            .resolve(corrective: corrective) { window in Self.result(of: window, byteLimit: byteLimit) }
         }
     }
 
@@ -195,13 +178,9 @@ extension Fetch {
     /// The checks run in the order of the arguments and stop at the first
     /// failure, because a correction is one message.
     ///
-    /// - Parameters:
-    ///   - arguments: The arguments of the call.
-    ///   - policy: The fetch policy, which gives the default time limit.
+    /// - Parameter arguments: The arguments of the call.
     /// - Returns: The request, or the rejection with its correction.
-    private static func request(
-        from arguments: FetchArguments, policy: WebFetchPolicy
-    ) -> Result<PageRequest, CorrectiveRejection> {
+    private static func request(from arguments: FetchArguments) -> Result<PageRequest, CorrectiveRejection> {
         guard let url = httpURL(arguments.url) else {
             return .failure(CorrectiveRejection(correctiveMessage: urlCorrection(arguments.url)))
         }
@@ -211,17 +190,15 @@ extension Fetch {
         }
         let bounds = [
             offsetBound.violation(arguments.offset),
-            maxCharactersBound.violation(arguments.maxCharacters),
-            timeoutBound.violation(arguments.timeout)
+            maxCharactersBound.violation(arguments.maxCharacters)
         ]
         if let message = bounds.compactMap({ $0 }).first {
             return .failure(CorrectiveRejection(correctiveMessage: message))
         }
-        let timeout = arguments.timeout.map { Duration.seconds($0) } ?? .seconds(policy.defaultFetchTimeout)
         return .success(
             PageRequest(
                 url: url, format: format, offset: arguments.offset ?? 0,
-                maxCharacters: arguments.maxCharacters ?? defaultMaxCharacters, timeout: timeout))
+                maxCharacters: arguments.maxCharacters ?? defaultMaxCharacters))
     }
 
     /// Reads an absolute `http` or `https` URL with a host.
@@ -287,9 +264,6 @@ private struct PageRequest {
 
     /// The maximum number of characters in the window.
     let maxCharacters: Int
-
-    /// The time limit of the download.
-    let timeout: Duration
 }
 
 /// Fetches one URL, and gives the page as markdown, text, or raw content, in
@@ -318,11 +292,11 @@ struct Fetch: Tool {
         Promise.all(urls.map(url => tools.web.fetch({ url, maxCharacters: 5000 }))). url must be an \
         absolute http or https URL. format is markdown (the default), text, or raw. The content \
         comes in windows: maxCharacters is 500 to 200000 (default 20000), and nextOffset is the \
-        offset of the next window, or null at the end. timeout is 1 to 120 seconds (default 30). A \
-        page with a status that is not 2xx is still a result: read status and content. notes tell \
-        when the download stopped at the byte limit. A bad argument, a refused address, a timeout, \
-        or a type that is not text comes back as a correction rather than as an error — read it, \
-        correct the call, and ask again.
+        offset of the next window, or null at the end. A page with a status that is not 2xx is \
+        still a result: read status and content. notes tell when the download stopped at the byte \
+        limit. A bad argument, a refused address, a failed download, or a type that is not text \
+        comes back as a correction rather than as an error — read it, correct the call, and ask \
+        again.
         """
 
     /// The web context that this verb fetches with, which the web capability

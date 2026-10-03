@@ -155,14 +155,10 @@ public struct WebFetchPolicy: Sendable, Equatable {
     /// The maximum number of redirect hops for one request.
     public var maxRedirects: Int
 
-    /// The time limit of one search provider, in seconds.
-    public var searchTimeout: TimeInterval
-
-    /// The time limit of one fetch, in seconds, when the call does not give
-    /// its own.
-    public var defaultFetchTimeout: TimeInterval
-
     /// Makes a fetch policy.
+    ///
+    /// The policy has no time limit. The one time limit of a web request is
+    /// the tool-level timeout of the `runCode` call that makes it.
     ///
     /// - Parameters:
     ///   - maxBytes: The maximum number of body bytes to read from one
@@ -171,22 +167,14 @@ public struct WebFetchPolicy: Sendable, Equatable {
     ///     own. The default is ``packageUserAgent``.
     ///   - maxRedirects: The maximum number of redirect hops. The default is
     ///     10.
-    ///   - searchTimeout: The time limit of one search provider, in seconds.
-    ///     The default is 10.
-    ///   - defaultFetchTimeout: The time limit of one fetch, in seconds, when
-    ///     the call does not give its own. The default is 30.
     public init(
         maxBytes: Int = 5_242_880,
         userAgent: String = WebFetchPolicy.packageUserAgent,
-        maxRedirects: Int = 10,
-        searchTimeout: TimeInterval = 10,
-        defaultFetchTimeout: TimeInterval = 30
+        maxRedirects: Int = 10
     ) {
         self.maxBytes = maxBytes
         self.userAgent = userAgent
         self.maxRedirects = maxRedirects
-        self.searchTimeout = searchTimeout
-        self.defaultFetchTimeout = defaultFetchTimeout
     }
 }
 

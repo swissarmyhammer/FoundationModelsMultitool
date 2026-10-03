@@ -66,7 +66,7 @@ struct WebPageReaderTests {
         .respond(status: WebStub.okStatus, headers: [contentType: htmlType], body: Data(html.utf8))
     }
 
-    /// Reads one window of `url` with the ample time limit of the stub.
+    /// Reads one window of `url`.
     ///
     /// - Parameters:
     ///   - reader: The reader.
@@ -83,8 +83,7 @@ struct WebPageReaderTests {
         maxCharacters: Int = wholeWindow
     ) async throws -> Result<PageWindow, WebFetchFailure> {
         try await reader.read(
-            url: #require(URL(string: url)), format: format, offset: offset, maxCharacters: maxCharacters,
-            timeout: WebStub.ampleTimeout
+            url: #require(URL(string: url)), format: format, offset: offset, maxCharacters: maxCharacters
         )
     }
 

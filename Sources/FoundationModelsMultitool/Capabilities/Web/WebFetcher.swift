@@ -8,6 +8,11 @@
 // most `WebFetchPolicy.maxBytes` of the body. `decodeText(_:)` then decodes a
 // text body with its charset.
 //
+// The fetcher has no clock. The one time limit of a request is the tool-level
+// timeout of the `runCode` call (`MultiTool.timeout(from:)`): when it fires,
+// it cancels the task of the call, and the cancel stops the request. Thus the
+// session and each request have no timer that can fire before it.
+//
 // A failure is a correction in the files vocabulary (`CorrectiveResult.swift`).
 // The fetcher does not throw. A non-2xx status is not a failure: the caller
 // gets the status and the body.
@@ -53,11 +58,9 @@ enum WebFetchFailure: CorrectiveFailure, Equatable, Sendable {
     /// The request made more redirect hops than the limit.
     case tooManyRedirects(url: String, limit: Int)
 
-    /// The request did not complete in its time limit.
-    case timeout(url: String, limit: Duration)
-
     /// The request failed before a response came, for example because the
-    /// host did not accept the connection.
+    /// host did not accept the connection, or because the task of the call
+    /// was cancelled.
     case network(url: String, reason: String)
 
     /// The media type of the response is not text.
@@ -73,8 +76,6 @@ enum WebFetchFailure: CorrectiveFailure, Equatable, Sendable {
             refusal.correctiveMessage
         case .tooManyRedirects(let url, let limit):
             "The request made more than \(limit) redirects: \(url)"
-        case .timeout(let url, let limit):
-            "The request timed out after \(Self.secondsPhrase(limit)): \(url)"
         case .network(let url, let reason):
             "The request to \(url) failed: \(reason)"
         case .notText(let contentType):
@@ -83,35 +84,13 @@ enum WebFetchFailure: CorrectiveFailure, Equatable, Sendable {
             "The page at \(url) could not be converted: \(reason)"
         }
     }
-
-    /// States a time limit in seconds, for example `30 seconds`, `1 second`,
-    /// or `0.5 seconds`.
-    ///
-    /// - Parameter limit: The time limit.
-    /// - Returns: The number of seconds and the unit word.
-    private static func secondsPhrase(_ limit: Duration) -> String {
-        let seconds = limit.timeInterval
-        guard seconds == seconds.rounded() else { return "\(seconds) seconds" }
-        let whole = Int(seconds)
-        return whole == 1 ? "1 second" : "\(whole) seconds"
-    }
-}
-
-private extension Duration {
-    /// The number of attoseconds in one second.
-    static let attosecondsPerSecond = 1e18
-
-    /// The duration in seconds, with the part of a second.
-    var timeInterval: TimeInterval {
-        TimeInterval(components.seconds) + TimeInterval(components.attoseconds) / Self.attosecondsPerSecond
-    }
 }
 
 /// Sends the requests of the web capability, with the guard, the redirect
 /// limit, and the byte limit.
 ///
 /// The fetcher makes one `URLSession` that sends no cookies, keeps no cookies,
-/// and has no URL cache.
+/// has no URL cache, and has no timer.
 final class WebFetcher: Sendable {
     /// The request header that names the client program.
     static let userAgentHeader = "User-Agent"
@@ -136,48 +115,48 @@ final class WebFetcher: Sendable {
     /// example `application/ld+json` and `application/xhtml+xml`.
     static let textMediaTypeSuffixes = ["+json", "+xml"]
 
+    /// The time limit of each session timer: no limit.
+    ///
+    /// The session applies a request timer and a resource timer to each
+    /// task. The one time limit of a request is the tool-level timeout of
+    /// the `runCode` call, thus no session timer may fire before it.
+    /// URLSession accepts `.infinity` for the request timer, the resource
+    /// timer, and `URLRequest.timeoutInterval`, and a cancel still stops the
+    /// task.
+    static let noTimeLimit = TimeInterval.infinity
+
     /// The session that sends each request. It is internal, thus a test can
     /// read its configuration.
     let session: URLSession
 
     /// The limits and the user agent of each request. It is internal, thus
-    /// the search chain reads the time limit of a provider from it.
+    /// the verbs read the byte limit from it.
     let policy: WebFetchPolicy
 
     /// The guard that checks each URL and each redirect hop.
     private let addressGuard: WebAddressGuard
 
-    /// The clock that the time limit of each load sleeps on. A host uses the
-    /// continuous clock. A test gives a clock that it controls, thus no test
-    /// races its stub against the real time (web.md § "Testing": no test
-    /// checks the speed of the machine).
-    let timeLimitClock: any Clock<Duration>
-
     /// Makes a fetcher.
     ///
     /// - Parameters:
     ///   - sessionConfiguration: The configuration of the session. The
-    ///     fetcher uses a copy with no cookies and no URL cache, thus the
-    ///     caller's object does not change. A test gives a configuration
-    ///     whose `protocolClasses` holds a stub.
+    ///     fetcher uses a copy with no cookies, no URL cache, and no timer,
+    ///     thus the caller's object does not change. A test gives a
+    ///     configuration whose `protocolClasses` holds a stub.
     ///   - policy: The limits and the user agent of each request.
     ///   - addressGuard: The guard that checks each URL and each redirect hop.
-    ///   - timeLimitClock: The clock that the time limit of each load sleeps
-    ///     on — see ``timeLimitClock``. The default is the continuous clock.
-    init(
-        sessionConfiguration: URLSessionConfiguration, policy: WebFetchPolicy, addressGuard: WebAddressGuard,
-        timeLimitClock: any Clock<Duration> = ContinuousClock()
-    ) {
+    init(sessionConfiguration: URLSessionConfiguration, policy: WebFetchPolicy, addressGuard: WebAddressGuard) {
         let configuration = (sessionConfiguration.copy() as? URLSessionConfiguration) ?? sessionConfiguration
         configuration.httpShouldSetCookies = false
         configuration.httpCookieAcceptPolicy = .never
         configuration.httpCookieStorage = nil
         configuration.urlCache = nil
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+        configuration.timeoutIntervalForRequest = Self.noTimeLimit
+        configuration.timeoutIntervalForResource = Self.noTimeLimit
         session = URLSession(configuration: configuration)
         self.policy = policy
         self.addressGuard = addressGuard
-        self.timeLimitClock = timeLimitClock
     }
 
     /// Sends `request` and reads its body.
@@ -185,31 +164,20 @@ final class WebFetcher: Sendable {
     /// When the request has no `User-Agent` header, the fetcher sets the one
     /// of the policy. A request that sets its own `User-Agent` keeps it.
     ///
+    /// The load has no time limit of its own. A cancel of the calling task,
+    /// for example from the timeout of the `runCode` call, stops the request
+    /// and ends the load with the network failure.
+    ///
     /// - Parameters:
     ///   - request: The request.
-    ///   - timeout: The time limit of the whole load: the guard, each
-    ///     redirect hop, and the body. It sleeps on ``timeLimitClock``.
     ///   - guarded: `true` to check the URL of the request with the guard.
     ///     `false` is only for a URL of the host configuration, for example
     ///     the base URL of a SearXNG instance. The guard still checks each
     ///     redirect hop of an unguarded request.
     /// - Returns: The body, or the failure. A non-2xx status is a body, not a
     ///   failure.
-    func load(_ request: URLRequest, timeout: Duration, guarded: Bool = true) async
-        -> Result<FetchedBody, WebFetchFailure>
-    {
-        let prepared = prepare(request, timeout: timeout)
-        let target = request.url?.absoluteString ?? ""
-        return await withTaskGroup(of: Result<FetchedBody, WebFetchFailure>.self) { group in
-            group.addTask { await self.send(prepared, timeout: timeout, guarded: guarded) }
-            group.addTask {
-                try? await self.timeLimitClock.sleep(for: timeout)
-                return .failure(.timeout(url: target, limit: timeout))
-            }
-            let first = await group.next() ?? .failure(.timeout(url: target, limit: timeout))
-            group.cancelAll()
-            return first
-        }
+    func load(_ request: URLRequest, guarded: Bool = true) async -> Result<FetchedBody, WebFetchFailure> {
+        await send(prepare(request), guarded: guarded)
     }
 
     /// Decodes a text body.
@@ -220,7 +188,7 @@ final class WebFetcher: Sendable {
     /// of the response, else with UTF-8. A byte sequence that is not correct
     /// UTF-8, for example at the end of a truncated body, becomes U+FFFD.
     ///
-    /// - Parameter body: The body that ``load(_:timeout:guarded:)`` read.
+    /// - Parameter body: The body that ``load(_:guarded:)`` read.
     /// - Returns: The text, or the failure for a media type that is not text.
     func decodeText(_ body: FetchedBody) -> Result<String, WebFetchFailure> {
         guard Self.isText(body.contentType) else {
@@ -236,26 +204,21 @@ final class WebFetcher: Sendable {
         return .success(String(decoding: body.bytes, as: UTF8.self))
     }
 
-    /// Adds the policy `User-Agent` when the request has none, and makes the
-    /// session timer of the request a backstop only.
+    /// Adds the policy `User-Agent` when the request has none, and removes the
+    /// session timer of the request.
     ///
-    /// The time limit of the load sleeps on ``timeLimitClock``, and it ends
-    /// the load when it fires. The session timer of the request is a second
-    /// timer on the real clock. Thus it is never shorter than the time limit
-    /// of the load, and never shorter than the timer that the request has of
-    /// its own. It cannot end a load before the time limit does, and a time
-    /// limit of one second does not start a real one-second timer.
+    /// A request that the caller made has a timer of its own (60 seconds by
+    /// default), and that timer replaces the request timer of the session.
+    /// Thus the fetcher sets it to ``noTimeLimit`` on each request.
     ///
-    /// - Parameters:
-    ///   - request: The request of the caller.
-    ///   - timeout: The time limit of the load.
+    /// - Parameter request: The request of the caller.
     /// - Returns: The request to send.
-    private func prepare(_ request: URLRequest, timeout: Duration) -> URLRequest {
+    private func prepare(_ request: URLRequest) -> URLRequest {
         var prepared = request
         if prepared.value(forHTTPHeaderField: Self.userAgentHeader) == nil {
             prepared.setValue(policy.userAgent, forHTTPHeaderField: Self.userAgentHeader)
         }
-        prepared.timeoutInterval = max(prepared.timeoutInterval, timeout.timeInterval)
+        prepared.timeoutInterval = Self.noTimeLimit
         return prepared
     }
 
@@ -263,12 +226,9 @@ final class WebFetcher: Sendable {
     ///
     /// - Parameters:
     ///   - request: The request to send.
-    ///   - timeout: The time limit of the load, for the timeout failure.
     ///   - guarded: `true` to check the URL of the request with the guard.
     /// - Returns: The body, or the failure.
-    private func send(_ request: URLRequest, timeout: Duration, guarded: Bool) async
-        -> Result<FetchedBody, WebFetchFailure>
-    {
+    private func send(_ request: URLRequest, guarded: Bool) async -> Result<FetchedBody, WebFetchFailure> {
         let target = request.url?.absoluteString ?? ""
         if guarded, let refusal = await checkURL(of: request) {
             return .failure(.refused(refusal))
@@ -282,7 +242,7 @@ final class WebFetcher: Sendable {
             }
             return try .success(await read(bytes, response: response))
         } catch {
-            return .failure(redirects.failure ?? Self.failure(for: error, url: target, timeout: timeout))
+            return .failure(redirects.failure ?? .network(url: target, reason: error.localizedDescription))
         }
     }
 
@@ -346,21 +306,6 @@ final class WebFetcher: Sendable {
             .flatMap { $0.dropFirst().first }
             .map { $0.trimmingCharacters(in: CharacterSet(charactersIn: "\" ")) }
         return (type, charset)
-    }
-
-    /// Makes the failure for an error of the session.
-    ///
-    /// - Parameters:
-    ///   - error: The error of the session.
-    ///   - url: The URL of the request.
-    ///   - timeout: The time limit of the load.
-    /// - Returns: The timeout failure for `URLError.timedOut`, else the
-    ///   network failure.
-    private static func failure(for error: any Error, url: String, timeout: Duration) -> WebFetchFailure {
-        if let urlError = error as? URLError, urlError.code == .timedOut {
-            return .timeout(url: url, limit: timeout)
-        }
-        return .network(url: url, reason: error.localizedDescription)
     }
 
     /// Tells if a media type has a text body.

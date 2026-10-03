@@ -31,11 +31,6 @@ struct ProviderFallbackTests {
     /// The status of a server that is not available.
     private static let unavailableStatus = 503
 
-    /// The time limit of a provider in the timeout test, in seconds. The
-    /// limit applies to each provider of the chain, the one that answers
-    /// included, thus it is long: no answer of the stub comes near it.
-    private static let providerTimeoutSeconds: TimeInterval = 10
-
     /// The number of hits that a provider with hits gives.
     private static let hitCount = 3
 
@@ -130,29 +125,23 @@ struct ProviderFallbackTests {
     ///   - providers: The providers and their adapters, in order.
     ///   - stub: The stub that answers each request.
     ///   - environment: The environment dictionary of the call.
-    ///   - policy: The fetch policy.
     /// - Returns: The chain.
     private static func chain(
         _ providers: [(WebSearchProvider, any SearchProviderAdapter)],
         stub: WebStub,
-        environment: [String: String] = [:],
-        policy: WebFetchPolicy = WebFetchPolicy()
+        environment: [String: String] = [:]
     ) -> WebSearchChain {
-        WebSearchChain(providers: providers, fetcher: stub.makeFetcher(policy: policy), environment: environment)
+        WebSearchChain(providers: providers, fetcher: stub.makeFetcher(), environment: environment)
     }
 
     /// Runs a search whose first provider, `braveHTML`, gets `failing` and
     /// whose second provider, `duckDuckGoHTML`, gives hits.
     ///
-    /// - Parameters:
-    ///   - failing: The reply to the first provider.
-    ///   - policy: The fetch policy.
+    /// - Parameter failing: The reply to the first provider.
     /// - Returns: The notes of the outcome.
-    private static func notesAfterFirstProvider(
-        gets failing: WebStubReply, policy: WebFetchPolicy = WebFetchPolicy()
-    ) async throws -> [String] {
+    private static func notesAfterFirstProvider(gets failing: WebStubReply) async throws -> [String] {
         let stub = WebStub(routes: [endpoint("braveHTML"): failing, endpoint("duckDuckGoHTML"): hitsReply()])
-        let outcome = try await chain([braveHTML(), duckDuckGoHTML()], stub: stub, policy: policy)
+        let outcome = try await chain([braveHTML(), duckDuckGoHTML()], stub: stub)
             .search(SearchQuery(text: "swift"))
         let notes = try #require(outcome.hitNotes)
         #expect(outcome == .hits(provider: "duckDuckGoHTML", hits: expectedHits(), notes: notes))
@@ -211,21 +200,6 @@ struct ProviderFallbackTests {
     func parseFailureSkips() async throws {
         let notes = try await Self.notesAfterFirstProvider(gets: Self.textReply("garbage"))
         #expect(notes == ["braveHTML: skipped, the response could not be read: bad line: garbage."])
-    }
-
-    /// The session of the first provider reports a time-out at once, and the
-    /// chain must skip that provider with one note that names the limit.
-    ///
-    /// The time-out comes from the stub and not from a wall-clock limit. A
-    /// short limit would also bound the second provider, and under machine
-    /// load its answer could miss that limit too. `WebFetcherTests` proves
-    /// that a request that hangs reaches the time-out failure.
-    @Test("a timeout skips the provider with one note")
-    func timeoutSkips() async throws {
-        let policy = WebFetchPolicy(searchTimeout: Self.providerTimeoutSeconds)
-        let notes = try await Self.notesAfterFirstProvider(gets: .fail(.timedOut), policy: policy)
-        let endpoint = Self.endpoint("braveHTML")
-        #expect(notes == ["braveHTML: skipped, the request timed out after 10 seconds: \(endpoint)."])
     }
 
     @Test("a network failure skips the provider with one note")

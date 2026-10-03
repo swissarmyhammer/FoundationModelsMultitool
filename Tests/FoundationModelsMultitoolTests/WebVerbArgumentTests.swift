@@ -52,9 +52,6 @@ struct WebVerbArgumentTests {
     /// The largest `maxCharacters`.
     private static let maximumMaxCharacters = 200_000
 
-    /// The largest `timeout`, in seconds.
-    private static let maximumTimeout = 120
-
     /// The correction for a bad `url`, before the value.
     private static let urlCorrectionLead = "The `url` parameter must be an absolute http or https URL: "
 
@@ -67,9 +64,6 @@ struct WebVerbArgumentTests {
     /// The correction for a bad `maxCharacters`.
     private static let maxCharactersCorrection =
         "The `maxCharacters` parameter must be a character count between 500 and 200000."
-
-    /// The correction for a bad `timeout`.
-    private static let timeoutCorrection = "The `timeout` parameter must be a number of seconds between 1 and 120."
 
     /// The HTTP status of a rate limit.
     private static let tooManyRequestsStatus = 429
@@ -307,23 +301,6 @@ extension WebVerbArgumentTests {
         #expect(result.correction == nil)
     }
 
-    @Test("a timeout out of 1 to 120 gives the timeout correction", arguments: [0, maximumTimeout + 1])
-    func badTimeoutIsCorrected(timeout: Int) async throws {
-        let result = try await WebVerbFixture().fetch(timeout: timeout)
-        #expect(result.correction == Self.timeoutCorrection)
-    }
-
-    /// The time limit of the load sleeps on the closed `GatedClock` of the
-    /// fixture, thus it cannot end the load before the stub answers, however
-    /// slow the machine is. The clock records the limit that the load armed.
-    @Test("a timeout of 1 or 120 is accepted", arguments: [1, maximumTimeout])
-    func boundTimeoutIsAccepted(timeout: Int) async throws {
-        let fixture = try Self.pageFixture()
-        let result = try await fixture.fetch(timeout: timeout)
-        #expect(result.correction == nil)
-        #expect(fixture.timeLimitClock.recordedSleeps == [.seconds(timeout)])
-    }
-
     @Test("a stubbed HTML page gives the URL, the status, the type, the title, and the content")
     func fetchResultShape() async throws {
         let fixture = try WebVerbFixture(routes: [
@@ -412,9 +389,6 @@ extension WebVerbArgumentTests {
     /// The smallest `offset` of a fetch.
     private static let minimumOffset = 0
 
-    /// The smallest `timeout`, in seconds.
-    private static let minimumTimeout = 1
-
     /// The smallest `count` of a search.
     private static let minimumCount = 1
 
@@ -445,9 +419,13 @@ extension WebVerbArgumentTests {
         #expect(doc.contains("(range \(Self.minimumMaxCharacters)…\(Self.maximumMaxCharacters))"), "doc was: \(doc)")
     }
 
-    @Test("the fetch schema bounds timeout to the range the verb accepts")
-    func fetchSchemaBoundsTimeout() throws {
-        let doc = try Self.renderedDoc(of: Fetch(context: try WebVerbFixture().context))
-        #expect(doc.contains("(range \(Self.minimumTimeout)…\(Self.maximumTimeout))"), "doc was: \(doc)")
+    /// The one time limit of a fetch is the tool-level timeout of the
+    /// `runCode` call, thus the schema gives the model no time limit to set.
+    @Test("the fetch schema has the url, format, offset, and maxCharacters fields, and no timeout field")
+    func fetchSchemaHasNoTimeout() throws {
+        let data = try JSONEncoder().encode(FetchArguments.generationSchema)
+        let schema = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let properties = try #require(schema["properties"] as? [String: Any])
+        #expect(properties.keys.sorted() == ["format", "maxCharacters", "offset", "url"])
     }
 }

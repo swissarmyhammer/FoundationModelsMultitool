@@ -48,7 +48,7 @@ struct WebRedirectGuardTests {
             Self.startURL: .redirect(location: #require(URL(string: Self.loopbackURL))),
         ])
         let result = try await stub.makeFetcher()
-            .load(WebStub.request(to: Self.startURL), timeout: WebStub.ampleTimeout)
+            .load(WebStub.request(to: Self.startURL))
         let expected = WebGuardRefusal(reason: "the host 127.0.0.1 is on the blocklist")
         #expect(throws: WebFetchFailure.refused(expected)) { try result.get() }
         #expect(stub.requestedURLs == [Self.startURL])
@@ -59,7 +59,7 @@ struct WebRedirectGuardTests {
         let hops = WebFetchPolicy().maxRedirects
         let stub = try Self.chainStub(hops: hops)
         let result = try await stub.makeFetcher()
-            .load(WebStub.request(to: Self.hopURL(0)), timeout: WebStub.ampleTimeout)
+            .load(WebStub.request(to: Self.hopURL(0)))
         let body = try result.get()
         #expect(body.url.absoluteString == Self.hopURL(hops))
         #expect(body.bytes == Self.finalBody)
@@ -70,7 +70,7 @@ struct WebRedirectGuardTests {
         let limit = WebFetchPolicy().maxRedirects
         let stub = try Self.chainStub(hops: limit + 1)
         let result = try await stub.makeFetcher()
-            .load(WebStub.request(to: Self.hopURL(0)), timeout: WebStub.ampleTimeout)
+            .load(WebStub.request(to: Self.hopURL(0)))
         #expect(throws: WebFetchFailure.tooManyRedirects(url: Self.hopURL(0), limit: limit)) {
             try result.get()
         }
@@ -82,7 +82,7 @@ struct WebRedirectGuardTests {
         let limit = 2
         let stub = try Self.chainStub(hops: limit + 1)
         let result = try await stub.makeFetcher(policy: WebFetchPolicy(maxRedirects: limit))
-            .load(WebStub.request(to: Self.hopURL(0)), timeout: WebStub.ampleTimeout)
+            .load(WebStub.request(to: Self.hopURL(0)))
         #expect(throws: WebFetchFailure.tooManyRedirects(url: Self.hopURL(0), limit: limit)) {
             try result.get()
         }
@@ -94,7 +94,7 @@ struct WebRedirectGuardTests {
             Self.searxngURL: .redirect(location: #require(URL(string: Self.metadataURL))),
         ])
         let result = try await stub.makeFetcher()
-            .load(WebStub.request(to: Self.searxngURL), timeout: WebStub.ampleTimeout, guarded: false)
+            .load(WebStub.request(to: Self.searxngURL), guarded: false)
         let expected = WebGuardRefusal(reason: "the host 169.254.169.254 is on the blocklist")
         #expect(throws: WebFetchFailure.refused(expected)) { try result.get() }
         #expect(stub.requestedURLs == [Self.searxngURL])

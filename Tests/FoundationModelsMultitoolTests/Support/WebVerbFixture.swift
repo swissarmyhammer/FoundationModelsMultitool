@@ -35,12 +35,6 @@ struct WebVerbFixture {
     /// The web context of the test.
     let context: WebContext
 
-    /// The clock that the time limit of each load of ``context`` sleeps on.
-    /// No test opens it, thus a time limit cannot end a load before the stub
-    /// answers, however slow the machine is. It records each time limit that
-    /// a load armed.
-    let timeLimitClock = GatedClock()
-
     /// Makes a fixture.
     ///
     /// - Parameters:
@@ -58,7 +52,7 @@ struct WebVerbFixture {
         let configuration = try WebConfiguration(providers: providers ?? [Self.searxngProvider()], fetch: policy)
         context = WebContext(
             configuration: configuration, sessionConfiguration: stub.sessionConfiguration,
-            resolver: PublicHostResolver(), timeLimitClock: timeLimitClock)
+            resolver: PublicHostResolver())
     }
 
     /// The SearXNG provider of the suite, at the base URL of
@@ -130,14 +124,11 @@ struct WebVerbFixture {
     ///   - format: The format name, or `nil`.
     ///   - offset: The character offset, or `nil`.
     ///   - maxCharacters: The window size, or `nil`.
-    ///   - timeout: The time limit in seconds, or `nil`.
     /// - Returns: The result of the verb.
     /// - Throws: When the verb throws. The verb must not throw.
     func fetch(
-        _ url: String = pageURL, format: String? = nil, offset: Int? = nil, maxCharacters: Int? = nil,
-        timeout: Int? = nil
+        _ url: String = pageURL, format: String? = nil, offset: Int? = nil, maxCharacters: Int? = nil
     ) async throws -> FetchResult {
-        try await WebVerbCall.fetch(
-            url, format: format, offset: offset, maxCharacters: maxCharacters, timeout: timeout, context: context)
+        try await WebVerbCall.fetch(url, format: format, offset: offset, maxCharacters: maxCharacters, context: context)
     }
 }

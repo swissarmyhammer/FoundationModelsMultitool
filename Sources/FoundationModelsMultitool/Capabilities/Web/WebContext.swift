@@ -40,20 +40,15 @@ final class WebContext: Sendable {
     ///   - resolver: The resolver of the address guard. The default is
     ///     ``SystemHostResolver``. A test gives a stub, thus no lookup goes to
     ///     the network.
-    ///   - timeLimitClock: The clock that the time limit of each load of the
-    ///     fetcher sleeps on. The default is the continuous clock. A test
-    ///     gives a clock that it controls (see `WebFetcher.timeLimitClock`).
     init(
         configuration: WebConfiguration,
         sessionConfiguration: URLSessionConfiguration,
-        resolver: any HostResolver = SystemHostResolver(),
-        timeLimitClock: any Clock<Duration> = ContinuousClock()
+        resolver: any HostResolver = SystemHostResolver()
     ) {
         let fetcher = WebFetcher(
             sessionConfiguration: sessionConfiguration,
             policy: configuration.fetch,
-            addressGuard: WebAddressGuard(resolver: resolver),
-            timeLimitClock: timeLimitClock)
+            addressGuard: WebAddressGuard(resolver: resolver))
         self.fetcher = fetcher
         reader = WebPageReader(fetcher: fetcher)
         searchChain = WebSearchChain(

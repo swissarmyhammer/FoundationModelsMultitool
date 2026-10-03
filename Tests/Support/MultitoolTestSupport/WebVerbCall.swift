@@ -41,17 +41,15 @@ enum WebVerbCall {
     ///   - format: The format name, or `nil` for the default.
     ///   - offset: The character offset of the window, or `nil` for 0.
     ///   - maxCharacters: The window size, or `nil` for the default.
-    ///   - timeout: The time limit in seconds, or `nil` for the default.
     ///   - context: The web context that the verb uses. Two calls that share
     ///     one context share one page cache.
     /// - Returns: The result of the verb.
     /// - Throws: When the verb throws. The verb must not throw.
     static func fetch(
         _ url: String, format: String? = nil, offset: Int? = nil, maxCharacters: Int? = nil,
-        timeout: Int? = nil, context: WebContext
+        context: WebContext
     ) async throws -> FetchResult {
         try await Fetch(context: context).call(
-            arguments: .init(
-                url: url, format: format, offset: offset, maxCharacters: maxCharacters, timeout: timeout))
+            arguments: .init(url: url, format: format, offset: offset, maxCharacters: maxCharacters))
     }
 }

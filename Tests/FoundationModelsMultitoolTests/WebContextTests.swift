@@ -56,8 +56,7 @@ struct WebContextTests {
         let stub = WebStub(routes: [Self.searxngSearchURL: reply])
         let context = WebContext(
             configuration: WebConfiguration(providers: [.searxng(base)]),
-            sessionConfiguration: stub.sessionConfiguration, resolver: PublicHostResolver(),
-            timeLimitClock: GatedClock())
+            sessionConfiguration: stub.sessionConfiguration, resolver: PublicHostResolver())
         let outcome = await context.searchChain.search(SearchQuery(text: "swift"))
         let expectedHits = try KeyedProviderCase.searxng.parse(body)
         #expect(outcome == .hits(provider: "searxng", hits: expectedHits, notes: []))

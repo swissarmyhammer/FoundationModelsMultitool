@@ -4,8 +4,9 @@ import Foundation
 import Testing
 
 /// Tests for `WebFetcher`: the byte limit, the status, the response fields,
-/// the text decode, the timeout, the `User-Agent`, the cookies, and the
-/// unguarded request for host configuration.
+/// the text decode, the session timers, the cancel of a load, the
+/// `User-Agent`, the cookies, and the unguarded request for host
+/// configuration.
 ///
 /// A `WebStub` answers each request, thus no test uses the network.
 @Suite("WebFetcher")
@@ -31,38 +32,25 @@ struct WebFetcherTests {
     /// A body size that is larger than ``smallLimit``.
     private static let oversizeCount = 64
 
-    /// The time limit of a request that must time out.
-    private static let shortTimeout: Duration = .milliseconds(200)
+    /// The time limit of a session timer that never fires.
+    private static let noTimer = TimeInterval.infinity
 
-    /// The default fetch time limit of the design, in whole seconds.
-    private static let defaultTimeout: Duration = .seconds(30)
-
-    /// A time limit that is part of a second.
-    private static let halfSecond: Duration = .milliseconds(500)
-
-    /// The smallest time limit of the `fetch` verb: shorter than the time
-    /// limit that a request has of its own.
-    private static let shortestFetchTimeout: Duration = .seconds(FetchArguments.timeoutRange.lowerBound)
-
-    /// The largest time limit of the `fetch` verb: longer than the time limit
-    /// that a request has of its own.
-    private static let longestFetchTimeout: Duration = .seconds(FetchArguments.timeoutRange.upperBound)
+    /// A session timer, in seconds, that a caller sets on a request or on a
+    /// session configuration. The fetcher must remove it.
+    private static let callerTimerSeconds: TimeInterval = 1
 
     /// Loads ``pageURL`` from a stub that gives `reply` for it.
     ///
     /// - Parameters:
     ///   - reply: What the stub does with the request.
     ///   - policy: The policy of the fetcher.
-    ///   - timeout: The time limit of the load.
     /// - Returns: The stub, and the result of the load.
     private static func loadPage(
         _ reply: WebStubReply,
-        policy: WebFetchPolicy = WebFetchPolicy(),
-        timeout: Duration = WebStub.ampleTimeout
+        policy: WebFetchPolicy = WebFetchPolicy()
     ) async throws -> (stub: WebStub, result: Result<FetchedBody, WebFetchFailure>) {
         let stub = WebStub(routes: [pageURL: reply])
-        let result = try await stub.makeFetcher(policy: policy)
-            .load(WebStub.request(to: pageURL), timeout: timeout)
+        let result = try await stub.makeFetcher(policy: policy).load(WebStub.request(to: pageURL))
         return (stub, result)
     }
 
@@ -80,7 +68,7 @@ struct WebFetcherTests {
         let headers = type.map { [contentType: $0] } ?? [:]
         let stub = WebStub(routes: [pageURL: .respond(status: WebStub.okStatus, headers: headers, body: body)])
         let fetcher = stub.makeFetcher()
-        let fetched = try await fetcher.load(WebStub.request(to: pageURL), timeout: WebStub.ampleTimeout).get()
+        let fetched = try await fetcher.load(WebStub.request(to: pageURL)).get()
         return fetcher.decodeText(fetched)
     }
 
@@ -129,8 +117,7 @@ struct WebFetcherTests {
                 status: WebStub.okStatus, headers: [Self.contentType: #"Text/HTML; Charset="UTF-8""#], body: Data()
             ),
         ])
-        let result = try await stub.makeFetcher()
-            .load(WebStub.request(to: Self.pageURL), timeout: WebStub.ampleTimeout)
+        let result = try await stub.makeFetcher().load(WebStub.request(to: Self.pageURL))
         let fetched = try result.get()
         #expect(fetched.url.absoluteString == Self.secondPageURL)
         #expect(fetched.status == WebStub.okStatus)
@@ -186,57 +173,61 @@ struct WebFetcherTests {
         #expect(try decoded.get() == text)
     }
 
-    // MARK: - Failures
+    // MARK: - No clock
 
-    /// The time limit sleeps on a `GatedClock`, thus it ends the load only
-    /// when the test opens the clock, and the clock records the limit that
-    /// the load armed. The test reads no real time (card `^tm4x2hp`: no test
-    /// checks the speed of the machine).
-    @Test("a request that does not answer in time gives the timeout failure", .timeLimit(TestHangGuard.timeLimit))
-    func hangingRequestTimesOut() async throws {
+    /// The one time limit of a web request is the tool-level timeout of the
+    /// `runCode` call. Thus the request carries no session timer of its own,
+    /// also when the caller set a timer on the request.
+    @Test("a request goes out with no session timer, also when the caller set one")
+    func requestHasNoSessionTimer() async throws {
+        let stub = WebStub(routes: [Self.pageURL: .respond(status: WebStub.okStatus, headers: [:], body: Data())])
+        var request = try WebStub.request(to: Self.pageURL)
+        request.timeoutInterval = Self.callerTimerSeconds
+        _ = try await stub.makeFetcher().load(request).get()
+        #expect(stub.requests.map(\.timeoutInterval) == [Self.noTimer])
+    }
+
+    /// The session has no request timer and no resource timer, thus no
+    /// session timer can end a load before the `runCode` timeout does. The
+    /// fetcher changes a copy, thus the configuration of the caller keeps
+    /// its own timers.
+    @Test("the session has no request timer and no resource timer")
+    func sessionHasNoTimers() {
+        let callerConfiguration = WebStub(routes: [:]).sessionConfiguration
+        callerConfiguration.timeoutIntervalForRequest = Self.callerTimerSeconds
+        callerConfiguration.timeoutIntervalForResource = Self.callerTimerSeconds
+        let fetcher = WebFetcher(
+            sessionConfiguration: callerConfiguration, policy: WebFetchPolicy(),
+            addressGuard: WebAddressGuard(resolver: PublicHostResolver())
+        )
+        let configuration = fetcher.session.configuration
+        #expect(configuration.timeoutIntervalForRequest == Self.noTimer)
+        #expect(configuration.timeoutIntervalForResource == Self.noTimer)
+        #expect(callerConfiguration.timeoutIntervalForRequest == Self.callerTimerSeconds)
+        #expect(callerConfiguration.timeoutIntervalForResource == Self.callerTimerSeconds)
+    }
+
+    /// The stub never answers, thus only the cancel of the calling task can
+    /// end the load. The test waits for the request at the stub, then
+    /// cancels, then reads the result. It reads no real time (card
+    /// `^tm4x2hp`: no test checks the speed of the machine).
+    @Test(
+        "a cancel of the calling task ends a load whose server never answers, and stops the request",
+        .timeLimit(TestHangGuard.timeLimit))
+    func cancelEndsHangingLoad() async throws {
         let stub = WebStub(routes: [Self.pageURL: .hang])
-        let clock = GatedClock()
-        let fetcher = stub.makeFetcher(timeLimitClock: clock)
+        let fetcher = stub.makeFetcher()
         let request = try WebStub.request(to: Self.pageURL)
-        let loading = Task { await fetcher.load(request, timeout: Self.shortTimeout) }
-        try await TestPoll.waitUntil("the load armed its time limit") { !clock.recordedSleeps.isEmpty }
-        clock.open()
+        let loading = Task { await fetcher.load(request) }
+        try await TestPoll.waitUntil("the stub got the request") { !stub.requests.isEmpty }
+        loading.cancel()
         let result = await loading.value
-        #expect(throws: WebFetchFailure.timeout(url: Self.pageURL, limit: Self.shortTimeout)) {
-            try result.get()
-        }
-        #expect(clock.recordedSleeps == [Self.shortTimeout])
+        let failure = #expect(throws: WebFetchFailure.self) { try result.get() }
+        #expect(failure?.correctiveMessage.hasPrefix("The request to \(Self.pageURL) failed: ") == true)
+        try await TestPoll.waitUntil("the session stopped the request") { stub.stoppedURLs == [Self.pageURL] }
     }
 
-    /// The session timer of a request is a backstop only: it never ends a
-    /// load before the time limit on the clock does, and it never shortens
-    /// the time limit that the request has of its own. Thus a time limit of
-    /// one second does not start a real one-second timer.
-    @Test(
-        "the session timer of a request never ends before the time limit of the load",
-        arguments: [shortestFetchTimeout, longestFetchTimeout]
-    )
-    func sessionTimerIsABackstop(limit: Duration) async throws {
-        let (stub, result) = try await Self.loadPage(
-            .respond(status: WebStub.okStatus, headers: [:], body: Data()), timeout: limit)
-        _ = try result.get()
-        let ownInterval = try WebStub.request(to: Self.pageURL).timeoutInterval
-        let recorded = try #require(stub.requests.first?.timeoutInterval)
-        #expect(recorded >= Double(limit.components.seconds))
-        #expect(recorded >= ownInterval)
-    }
-
-    @Test(
-        "the timeout correction states the limit in seconds",
-        arguments: [
-            (defaultTimeout, "30 seconds"), (Duration.seconds(1), "1 second"),
-            (halfSecond, "0.5 seconds"),
-        ]
-    )
-    func timeoutMessageStatesSeconds(limit: Duration, words: String) {
-        let failure = WebFetchFailure.timeout(url: "https://example.org/slow", limit: limit)
-        #expect(failure.correctiveMessage == "The request timed out after \(words): https://example.org/slow")
-    }
+    // MARK: - Failures
 
     @Test("a connection failure gives the network failure with the URL")
     func connectionFailureIsNetworkFailure() async throws {
@@ -266,7 +257,7 @@ struct WebFetcherTests {
         ])
         var request = try WebStub.request(to: Self.pageURL)
         request.setValue(agent, forHTTPHeaderField: Self.userAgent)
-        _ = try await stub.makeFetcher().load(request, timeout: WebStub.ampleTimeout).get()
+        _ = try await stub.makeFetcher().load(request).get()
         #expect(stub.requests.map { $0.headers[Self.userAgent] } == [agent])
     }
 
@@ -292,8 +283,7 @@ struct WebFetcherTests {
         let stub = WebStub(routes: [
             Self.searxngURL: .respond(status: WebStub.okStatus, headers: [:], body: Data()),
         ])
-        let result = try await stub.makeFetcher()
-            .load(WebStub.request(to: Self.searxngURL), timeout: WebStub.ampleTimeout)
+        let result = try await stub.makeFetcher().load(WebStub.request(to: Self.searxngURL))
         let expected = WebGuardRefusal(reason: "the host 127.0.0.1 is on the blocklist")
         #expect(throws: WebFetchFailure.refused(expected)) { try result.get() }
         #expect(stub.requests.isEmpty)
@@ -305,8 +295,7 @@ struct WebFetcherTests {
         let stub = WebStub(routes: [
             Self.searxngURL: .respond(status: WebStub.okStatus, headers: [:], body: body),
         ])
-        let result = try await stub.makeFetcher()
-            .load(WebStub.request(to: Self.searxngURL), timeout: WebStub.ampleTimeout, guarded: false)
+        let result = try await stub.makeFetcher().load(WebStub.request(to: Self.searxngURL), guarded: false)
         #expect(try result.get().bytes == body)
         #expect(stub.requestedURLs == [Self.searxngURL])
     }

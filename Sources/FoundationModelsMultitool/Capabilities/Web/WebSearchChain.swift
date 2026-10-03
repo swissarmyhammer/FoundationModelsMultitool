@@ -44,8 +44,9 @@ struct WebSearchChain: Sendable {
     ///   - providers: The providers and their adapters, in the order to try.
     ///     The provider gives the API key. The adapter makes the request and
     ///     reads the response.
-    ///   - fetcher: The fetcher that sends each provider request. Its
-    ///     `searchTimeout` is the time limit of one provider.
+    ///   - fetcher: The fetcher that sends each provider request. A provider
+    ///     has no time limit of its own: the chain goes to the next provider
+    ///     only when a provider fails or is blocked.
     ///   - environment: The environment dictionary that each `.environment`
     ///     key reads at the time of a call.
     init(
@@ -98,8 +99,7 @@ struct WebSearchChain: Sendable {
         } catch {
             return .failure(error)
         }
-        let timeout = Duration.seconds(fetcher.policy.searchTimeout)
-        switch await fetcher.load(request, timeout: timeout, guarded: !adapter.isHostConfiguration) {
+        switch await fetcher.load(request, guarded: !adapter.isHostConfiguration) {
         case .failure(let failure):
             return .failure(.fetch(failure))
         case .success(let body):
@@ -222,7 +222,8 @@ private enum ProviderSkip: Error {
     /// The adapter could not make the request, with the text of its error.
     case requestFailed(String)
 
-    /// The fetcher failed: a guard refusal, a timeout, or a network failure.
+    /// The fetcher failed: a guard refusal, too many redirects, or a network
+    /// failure.
     case fetch(WebFetchFailure)
 
     /// The provider answered with no hits.
