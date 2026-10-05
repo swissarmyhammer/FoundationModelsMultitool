@@ -307,7 +307,7 @@ enum MultitoolTelemetry {
         case imaginedPath = "FoundationModelsMultitool.hint.imagined_path"
 
         /// The tier that answered an imagined path: `resemblance`,
-        /// `relevance`, `none` or `group`.
+        /// `relevance`, `none`, `group` or `alias`.
         case suggestionTier = "FoundationModelsMultitool.hint.tier"
 
         /// The catalog paths that the hint of an imagined path names, as an

@@ -43,10 +43,26 @@ comments:
     - files: WebSearchChain.swift, ProviderFallbackTests.swift, WebVerbArgumentTests.swift, BlockedProviderRule.swift, BlockedProviderRuleTests.swift, IntegrationTests/Package.swift, web.md, all .kanban changes (ledger of ^rxyfn65 included)
     - next: review
   timestamp: 2026-10-05T17:09:48.330613+00:00
+- actor: claude-code
+  id: 01m46gwnjs0xktrxrckfjqz03g
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (ac23dc5) — 0 findings, 0 confirmed, 0 refuted; 7 validator runs attempted, 0 failed, 0 skipped. 6 files reviewed. Not reviewed: 4 .kanban files (.reviewignore), web.md (no validator matches it). No renames in the commit (git diff -M), thus no file-scoped review was necessary.
+    - next: none; the task moved to done.
+  timestamp: 2026-10-05T17:13:25.849301+00:00
+- actor: claude-code
+  id: 01m46gxp0c4wtzbshvmj0kq9pa
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 7 files (WebSearchChain.swift, ProviderFallbackTests.swift, WebVerbArgumentTests.swift, BlockedProviderRule.swift, BlockedProviderRuleTests.swift, IntegrationTests/Package.swift, web.md)
+    - test: green — swift test, 1832 passed in 152 suites; IntegrationTests build complete; BlockedProviderRuleTests 17 passed
+    - commit: ac23dc5
+    - review: clean — 0 findings, 7 of 7 checks ran
+  timestamp: 2026-10-05T17:13:59.052987+00:00
 depends_on:
 - 01M46D11GRTDDPJMYQQRXYFN65
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffffa880
 title: 'Web search: the correction tells the model what to do'
 ---
 ## Problem

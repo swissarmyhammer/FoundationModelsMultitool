@@ -86,6 +86,13 @@ struct ImaginedToolPath: Sendable {
 /// outvoted the BM25 list and the cosine list, which both named
 /// `shell.execute`. See ``MultiTool/hintSearchWeights`` for the reading of
 /// each signal.
+///
+/// **Why the two made-up verbs stand here too.** Card `^dj4egen` added them
+/// from a SWE-bench run, where the model called `tools.files.find` and
+/// `tools.shell.run`. Each one is a real group and a verb that the group does
+/// not have, so tier 1 sees the group prefix and never reaches tier 2. The
+/// alias table of `UnknownToolHint` answers them, and no ranker runs. Thus
+/// these two lines measure the table over the real surface, not a model.
 let imaginedToolPaths = [
     ImaginedToolPath(
         shape: "a spelling mistake",
@@ -117,6 +124,16 @@ let imaginedToolPaths = [
         imaginedPath: "weather.getForecast",
         tier: .catalogRelevance,
         bestPath: nil),
+    ImaginedToolPath(
+        shape: "a made-up verb in a real group",
+        imaginedPath: "files.find",
+        tier: .verbAlias,
+        bestPath: "files.glob"),
+    ImaginedToolPath(
+        shape: "a made-up verb in a real group",
+        imaginedPath: "shell.run",
+        tier: .verbAlias,
+        bestPath: "shell.execute"),
 ]
 
 /// The gated did-you-mean test over the surface the `acp-agent` had.
@@ -128,7 +145,7 @@ let imaginedToolPaths = [
 /// exactly where a scripted searcher says nothing. This suite mounts the
 /// nine-entry files-and-shell surface through the production call, takes the
 /// bundle's own `hintSearcher` off the holder that mount vends, and resolves
-/// six wrong paths against it.
+/// eight wrong paths against it.
 ///
 /// **It never goes through `searchTools`.** That tool forwards to the other
 /// searcher of the bundle — `.auto` mode with a selection tier — and the

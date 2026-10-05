@@ -580,9 +580,12 @@ public struct MultiTool: Tool {
             if let resolution {
                 Self.logImaginedTool(resolution)
             }
+            // The `tools.*` hint comes first. A message that names an
+            // unknown path is about that path, and a message about a missing
+            // Node.js global (see ``UnavailableGlobalHint``) names no path.
             return ResultRenderer.render(
                 interpreterError,
-                hint: resolution?.text,
+                hint: resolution?.text ?? UnavailableGlobalHint.hint(message: interpreterError.message),
                 directive: resolution?.directive ?? .repairSnippet
             )
         case .failure(let error):
