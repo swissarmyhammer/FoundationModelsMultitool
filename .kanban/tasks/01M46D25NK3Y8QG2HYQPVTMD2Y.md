@@ -46,6 +46,63 @@ comments:
     - evidence: one local commit with subject "fix: put DuckDuckGo first and skip a provider after HTTP 429". It holds the new ProviderCooldowns.swift and its tests, the chain, fetcher, configuration and provider changes, README.md, web.md, the integration tests, and all .kanban changes (with the ledger of ^dj4egen). The sha is in the step record of the reply. No push.
     - next: review
   timestamp: 2026-10-05T17:57:56.010231+00:00
+- actor: claude-code
+  id: 01m46ktzacgamhqq99gb0n9v9m
+  text: |-
+    ### review — findings
+    - evidence: review sha HEAD~1..HEAD — 2 findings (2 confirmed, 0 refuted, 14 files attempted, 0 failed). Sources/FoundationModelsMultitool/Capabilities/Web/ProviderCooldowns.swift:25, Sources/FoundationModelsMultitool/Capabilities/Web/ProviderCooldowns.swift:29 (code-hygiene/magic-numbers-swift). The commit renames no file, thus no file-scoped review was necessary.
+    - next: implement the findings in the 2026-10-05 12:58 section. Remove all magic numbers from ProviderCooldowns.swift, not only the two lines.
+
+    ```
+    step: review
+    outcome: findings
+    evidence: 2 findings — Sources/FoundationModelsMultitool/Capabilities/Web/ProviderCooldowns.swift:25, Sources/FoundationModelsMultitool/Capabilities/Web/ProviderCooldowns.swift:29
+    task: ^pvtmd2y
+    ```
+  timestamp: 2026-10-05T18:04:56.012488+00:00
+- actor: claude-code
+  id: 01m46kvfp3cpkkp8b89v5jqxka
+  text: |-
+    ### finish iteration 1 — findings
+    - implement: changed — 16 files (ProviderCooldowns.swift new, ProviderCooldownTests.swift new, WebSearchChain.swift, WebFetcher.swift, WebConfiguration.swift, provider files, tests, README.md, web.md, IntegrationTests web files)
+    - test: green — swift test, 1854 passed in 155 suites; IntegrationTests build complete; BlockedProviderRuleTests 19 passed
+    - commit: d4507d5
+    - review: findings — Sources/FoundationModelsMultitool/Capabilities/Web/ProviderCooldowns.swift:25, Sources/FoundationModelsMultitool/Capabilities/Web/ProviderCooldowns.swift:29 (code-hygiene/magic-numbers-swift)
+  timestamp: 2026-10-05T18:05:12.771723+00:00
+- actor: claude-code
+  id: 01m46m35828447v21yzw1f9mv1
+  text: |-
+    Review findings fixed.
+    - ProviderCooldowns.swift: the literals 60 and 600 were arguments of `Duration.seconds(...)` in the initializer of a `static let`. swiftlint `no_magic_numbers` reports a literal in a call argument, also inside a `static let`. The fix adds two private constants, `defaultCooldownSeconds: Int64 = 60` and `maximumCooldownSeconds: Int64 = 600`, each with a doc comment. `defaultCooldown` and `maximumCooldown` keep their names and values.
+    - Check: swiftlint 0.65.1 with `only_rules: [no_magic_numbers]` and `allowed_numbers: [0, 1, -1, 100]` (the config of the rule), on all Swift files of HEAD~1..HEAD and the working tree. Before the fix: 2 violations, both in ProviderCooldowns.swift. After the fix: 0. WebSearchChain.swift and WebFetcher.swift had no violation.
+    - No new test: the change keeps the behavior, and ProviderCooldownTests already compares the results to 60 s and 600 s that the tests state themselves.
+  timestamp: 2026-10-05T18:09:24.226122+00:00
+- actor: claude-code
+  id: 01m46m3838k0s0hyb32mhf1k2d
+  text: |-
+    ### implement — changed
+    - evidence: 1 file — Sources/FoundationModelsMultitool/Capabilities/Web/ProviderCooldowns.swift. Commands: swiftlint no_magic_numbers on all changed Swift files, 0 violations (2 before); `swift build --build-tests` complete, 0 errors, only the known mlx-swift warning (missing creator for mutated node); `swift test --filter 'ProviderCooldownTests|ProviderFallbackTests|WebFetcherTests'` 56 tests in 3 suites passed; `swift test` 1854 tests in 155 suites passed. Both findings of 2026-10-05 12:58 are checked.
+    - next: /review
+  timestamp: 2026-10-05T18:09:27.144796+00:00
+- actor: claude-code
+  id: 01m46m6jnf6hvj4n713vce5jqt
+  text: |-
+    ### test — green
+    - evidence: swift test — 1854 tests in 155 suites passed, 0 failed, 0 skipped; cd IntegrationTests && swift build --build-tests — Build complete. Only warning: the known mlx-swift_Cmlx.bundle "missing creator for mutated node" from the dependency.
+    - next: review
+  timestamp: 2026-10-05T18:11:16.271064+00:00
+- actor: claude-code
+  id: 01m46m7fm657ne3d7xz2cq1vcy
+  text: |-
+    ### commit — changed
+    - evidence: local commit "refactor: name the cooldown seconds in ProviderCooldowns" (the sha is the commit with this subject, made right after this comment so that no amend is needed). It has ProviderCooldowns.swift and the .kanban changes. Not pushed.
+    - next: review iteration 2.
+
+    step: commit
+    outcome: changed
+    evidence: refactor: name the cooldown seconds in ProviderCooldowns
+    task: ^pvtmd2y
+  timestamp: 2026-10-05T18:11:45.926085+00:00
 depends_on:
 - 01M46D1NAKY1H93EN24ARTZPVB
 position_column: doing
@@ -84,4 +141,18 @@ In the SWE-bench run (reported by the FoundationModelsACPAgent session), the fre
 ## Acceptance
 
 - `swift build` and `swift test` pass with no new warnings.
-- No test sleeps in real time for the cooldown. #web #defect
+- No test sleeps in real time for the cooldown.
+
+## Review Findings (2026-10-05 12:58)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 14 file(s) reviewed, 6 not reviewed.
+
+> 4 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 4 file(s)
+
+> 2 file(s) not reviewed — no validator matched:
+> - `README.md` — no validator matches this file
+> - `web.md` — no validator matches this file
+
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Web/ProviderCooldowns.swift:25` `code-hygiene/magic-numbers-swift` — Magic numbers should be replaced by named constants.
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Web/ProviderCooldowns.swift:29` `code-hygiene/magic-numbers-swift` — Magic numbers should be replaced by named constants. #web #defect

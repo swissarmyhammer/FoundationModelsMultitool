@@ -20,13 +20,19 @@ import Synchronization
 /// short read and write of one dictionary, with no suspension point, and each
 /// copy of the `Sendable` chain struct must share one store.
 final class ProviderCooldowns: Sendable {
+    /// The number of seconds in ``defaultCooldown``.
+    private static let defaultCooldownSeconds: Int64 = 60
+
+    /// The number of seconds in ``maximumCooldown``: 10 minutes.
+    private static let maximumCooldownSeconds: Int64 = 600
+
     /// The time of a cooldown when the response gives no `Retry-After` time
     /// that the store can read.
-    static let defaultCooldown = Duration.seconds(60)
+    static let defaultCooldown = Duration.seconds(defaultCooldownSeconds)
 
     /// The longest cooldown: 10 minutes. A longer `Retry-After` time gives
     /// this time.
-    static let maximumCooldown = Duration.seconds(600)
+    static let maximumCooldown = Duration.seconds(maximumCooldownSeconds)
 
     /// The time since the store was made, read from the clock of the store.
     private let elapsed: @Sendable () -> Duration
