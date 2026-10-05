@@ -1,4 +1,4 @@
-// `DuckDuckGoHTMLProvider` — the second keyless search provider (web.md §
+// `DuckDuckGoHTMLProvider` — the first keyless search provider (web.md §
 // "The provider list").
 //
 // The provider posts the query as a form to the HTML results page of

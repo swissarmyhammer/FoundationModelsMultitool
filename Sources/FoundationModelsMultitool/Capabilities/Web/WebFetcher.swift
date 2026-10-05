@@ -45,6 +45,12 @@ struct FetchedBody: Sendable, Equatable {
     /// `true` when the body is longer than the byte limit, and the fetcher
     /// stopped at the limit.
     let truncated: Bool
+
+    /// The `Retry-After` header of the final response, as the response gives
+    /// it, or `nil` when the response has none. The fetcher has no clock,
+    /// thus it does not read the time in the header; the search chain does
+    /// (``ProviderCooldowns/cooldown(forRetryAfter:at:)``).
+    let retryAfter: String?
 }
 
 /// A failure of the fetcher, with the correction for the model.
@@ -97,6 +103,10 @@ final class WebFetcher: Sendable {
 
     /// The response header that gives the media type of the body.
     static let contentTypeHeader = "Content-Type"
+
+    /// The response header that tells how long to wait before the next
+    /// request (RFC 9110, section 10.2.3).
+    static let retryAfterHeader = "Retry-After"
 
     /// The media type parameter that names the character encoding.
     static let charsetParameter = "charset"
@@ -283,7 +293,7 @@ final class WebFetcher: Sendable {
         let (contentType, charset) = Self.mediaType(of: http.value(forHTTPHeaderField: Self.contentTypeHeader))
         return FetchedBody(
             url: url, status: http.statusCode, contentType: contentType, charset: charset, bytes: data,
-            truncated: truncated
+            truncated: truncated, retryAfter: http.value(forHTTPHeaderField: Self.retryAfterHeader)
         )
     }
 

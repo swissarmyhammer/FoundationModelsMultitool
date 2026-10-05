@@ -26,6 +26,15 @@ struct WebFetcherTests {
     /// The `User-Agent` header name.
     private static let userAgent = "User-Agent"
 
+    /// The `Retry-After` header name.
+    private static let retryAfter = "Retry-After"
+
+    /// A `Retry-After` value: a number of seconds.
+    private static let retryAfterValue = "120"
+
+    /// The status of a rate limit.
+    private static let rateLimitStatus = 429
+
     /// A byte limit that is small, so a test body can go past it.
     private static let smallLimit = 16
 
@@ -107,6 +116,20 @@ struct WebFetcherTests {
         let fetched = try result.get()
         #expect(fetched.status == WebStub.notFoundStatus)
         #expect(fetched.bytes == body)
+    }
+
+    @Test("the Retry-After header of the response is in the body")
+    func retryAfterIsRead() async throws {
+        let (_, result) = try await Self.loadPage(
+            .respond(status: Self.rateLimitStatus, headers: [Self.retryAfter: Self.retryAfterValue], body: Data())
+        )
+        #expect(try result.get().retryAfter == Self.retryAfterValue)
+    }
+
+    @Test("a response with no Retry-After header gives nil")
+    func missingRetryAfterIsNil() async throws {
+        let (_, result) = try await Self.loadPage(.respond(status: Self.rateLimitStatus, headers: [:], body: Data()))
+        #expect(try result.get().retryAfter == nil)
     }
 
     @Test("the final URL, the media type, and the charset come from the last response")

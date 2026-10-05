@@ -15,7 +15,7 @@ import Testing
 /// does not retry.
 ///
 /// **A blocked provider (``BlockedProviderRule``, web.md).** The chain of
-/// `.keyless` tries `braveHTML`, then `duckDuckGoHTML`, and goes to the next
+/// `.keyless` tries `duckDuckGoHTML`, then `braveHTML`, and goes to the next
 /// provider after a block. When each provider blocks the search, the search
 /// gives a correction and no hit. The goal snippet of web.md then returns
 /// `[]`, and the correction does not reach the output. Thus the snippet of

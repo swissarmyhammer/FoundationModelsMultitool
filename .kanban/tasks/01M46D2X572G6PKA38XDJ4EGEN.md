@@ -59,8 +59,24 @@ comments:
     - evidence: local commit "fix: give better repair hints for made-up verbs and missing globals". It includes all source, test, and .kanban changes (also the ledger of ^artzpvb). Not pushed. The sha is in `git log -1`; a comment cannot hold its own commit sha.
     - next: review
   timestamp: 2026-10-05T17:35:54.076401+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m46jdfr06tx5b4detshw0zqj
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit 539d9d0). counts: findings 0, confirmed 0, refuted 0, attempted 7, failed 0, skipped 0. The engine did not read 4 .kanban files because of the .reviewignore rule. `git diff -M` shows no renamed files, thus a file-scoped review was not necessary.
+    - next: none. The task moved to done.
+  timestamp: 2026-10-05T17:40:05.504581+00:00
+- actor: claude-code
+  id: 01m46je18z7rzztrpnef2qetgj
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 7 files (UnknownToolHint.swift, UnavailableGlobalHint.swift, MultiTool.swift, MultitoolTelemetry.swift, VerbAliasHintTests.swift, UnavailableGlobalHintTests.swift, UnknownToolHintLiveTests.swift)
+    - test: green — swift test, 1843 passed in 154 suites; IntegrationTests build complete
+    - commit: 539d9d0
+    - review: clean — 0 findings, 7 of 7 checks ran
+  timestamp: 2026-10-05T17:40:23.455175+00:00
+position_column: done
+position_ordinal: ffffa980
 title: 'runCode: better repair hints for made-up verbs and missing globals (Buffer)'
 ---
 ## Priority

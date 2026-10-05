@@ -38,8 +38,20 @@ struct BlockedProviderRuleTests {
     /// The reason of a server error.
     private static let serverErrorReason = "server error (HTTP 503)."
 
-    /// The part of the correction for no results of `duckDuckGoHTML`.
-    private static let duckDuckGoNoResults = "duckDuckGoHTML: no results."
+    /// The part of the correction for no results of `braveHTML`.
+    private static let braveNoResults = "braveHTML: no results."
+
+    /// The part of the correction for a skip of `braveHTML` in its cooldown
+    /// after HTTP 429.
+    private static let braveCooldown = "braveHTML: rate limited for 42 more seconds."
+
+    /// The part of the correction for a skip of `braveHTML` in the last
+    /// second of its cooldown.
+    private static let braveLastSecondCooldown = "braveHTML: rate limited for 1 more second."
+
+    /// The reason of a cooldown skip with no number of seconds. The chain
+    /// never writes it.
+    private static let cooldownWithoutSecondsReason = "rate limited for some more seconds."
 
     /// Makes a result with a correction, as the chain gives it when all
     /// providers fail.
@@ -72,7 +84,8 @@ struct BlockedProviderRuleTests {
     @Test("hits after a skipped blocked provider are results")
     func hitsAfterABlockAreResults() {
         let result = SearchResult(
-            provider: "duckDuckGoHTML", results: [Self.hit], notes: ["braveHTML: skipped, blocked (HTTP 429)."],
+            provider: "braveHTML", results: [Self.hit],
+            notes: ["duckDuckGoHTML: skipped, blocked by a challenge page."],
             correction: nil)
         #expect(BlockedProviderRule.outcome(of: result, providers: WebConfiguration.keyless.providers) == .results)
     }
@@ -94,10 +107,20 @@ struct BlockedProviderRuleTests {
 
     @Test("a block of each provider of the keyless chain is a recognized block")
     func keylessChainBlockIsABlock() {
-        let result = Self.correction(Self.braveRateLimit, Self.duckDuckGoChallenge)
+        let result = Self.correction(Self.duckDuckGoChallenge, Self.braveRateLimit)
         #expect(
             BlockedProviderRule.outcome(of: result, providers: WebConfiguration.keyless.providers)
-                == .blocked(providers: ["braveHTML", "duckDuckGoHTML"]))
+                == .blocked(providers: ["duckDuckGoHTML", "braveHTML"]))
+    }
+
+    @Test(
+        "a skip in the cooldown after HTTP 429 is a recognized block",
+        arguments: [braveCooldown, braveLastSecondCooldown])
+    func cooldownSkipIsABlock(skip: String) {
+        let result = Self.correction(Self.duckDuckGoChallenge, skip)
+        #expect(
+            BlockedProviderRule.outcome(of: result, providers: WebConfiguration.keyless.providers)
+                == .blocked(providers: ["duckDuckGoHTML", "braveHTML"]))
     }
 
     @Test("an excused refused key, then a block, is a recognized block")
@@ -137,19 +160,27 @@ struct BlockedProviderRuleTests {
 
     @Test("a block, then a transport error of the next provider, fails")
     func blockThenTransportErrorFails() {
-        let result = Self.correction(Self.braveRateLimit, "duckDuckGoHTML: \(Self.transportReason)")
+        let result = Self.correction(Self.duckDuckGoChallenge, "braveHTML: \(Self.transportReason)")
         #expect(
             BlockedProviderRule.outcome(of: result, providers: WebConfiguration.keyless.providers)
-                == .failed(.notABlock(provider: "duckDuckGoHTML", reason: Self.transportReason)))
+                == .failed(.notABlock(provider: "braveHTML", reason: Self.transportReason)))
     }
 
     @Test("a block, then no results of the next provider, fails, and the next step is not in the reason")
     func blockThenNoResultsFails() {
         let result = Self.correction(
-            Self.braveRateLimit, Self.duckDuckGoNoResults, nextStep: WebSearchChain.correctionNextStep)
+            Self.duckDuckGoChallenge, Self.braveNoResults, nextStep: WebSearchChain.correctionNextStep)
         #expect(
             BlockedProviderRule.outcome(of: result, providers: WebConfiguration.keyless.providers)
-                == .failed(.notABlock(provider: "duckDuckGoHTML", reason: "no results.")))
+                == .failed(.notABlock(provider: "braveHTML", reason: "no results.")))
+    }
+
+    @Test("a cooldown reason with no number of seconds fails")
+    func cooldownReasonWithoutSecondsFails() {
+        let result = Self.correction("braveHTML: \(Self.cooldownWithoutSecondsReason)")
+        #expect(
+            BlockedProviderRule.outcome(of: result, providers: [.braveHTML])
+                == .failed(.notABlock(provider: "braveHTML", reason: Self.cooldownWithoutSecondsReason)))
     }
 
     @Test("a correction with no next step at the end fails")

@@ -210,8 +210,11 @@ public struct WebConfiguration: Sendable {
         self.environment = environment
     }
 
-    /// `braveHTML`, then `duckDuckGoHTML`. Reads no environment.
-    public static let keyless = WebConfiguration(providers: [.braveHTML, .duckDuckGoHTML])
+    /// `duckDuckGoHTML`, then `braveHTML`. Reads no environment.
+    ///
+    /// The free Brave page blocks a burst of requests with HTTP 429, thus
+    /// DuckDuckGo comes first and Brave is the fallback.
+    public static let keyless = WebConfiguration(providers: [.duckDuckGoHTML, .braveHTML])
 
     /// Each keyed provider whose variable is set, in table order, then the
     /// keyless providers as the last fallback.
@@ -219,7 +222,7 @@ public struct WebConfiguration: Sendable {
     /// The order is `braveAPI` (`BRAVE_SEARCH_API_KEY`, else `BRAVE_API_KEY`),
     /// `tavily` (`TAVILY_API_KEY`), `exa` (`EXA_API_KEY`), `serper`
     /// (`SERPER_API_KEY`), `kagi` (`KAGI_API_KEY`), `searxng` (`SEARXNG_URL`),
-    /// `braveHTML`, `duckDuckGoHTML`. An empty variable is not set.
+    /// `duckDuckGoHTML`, `braveHTML`. An empty variable is not set.
     ///
     /// A keyed provider holds `.environment(<name>)` and not the value. Thus
     /// the capability reads the value from ``environment`` at the time of

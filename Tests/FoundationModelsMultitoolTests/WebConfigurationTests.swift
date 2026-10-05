@@ -37,8 +37,8 @@ struct WebConfigurationTests {
             .serper(.environment("SERPER_API_KEY")),
             .kagi(.environment("KAGI_API_KEY")),
             .searxng(try #require(URL(string: searxngBase))),
-            .braveHTML,
             .duckDuckGoHTML,
+            .braveHTML,
         ]
         #expect(configuration.providers == expected)
     }
@@ -48,22 +48,22 @@ struct WebConfigurationTests {
         let names = WebConfiguration.fromEnvironment(fullEnvironment).providers.map(\.name)
         #expect(
             names == [
-                "braveAPI", "tavily", "exa", "serper", "kagi", "searxng", "braveHTML",
-                "duckDuckGoHTML",
+                "braveAPI", "tavily", "exa", "serper", "kagi", "searxng", "duckDuckGoHTML",
+                "braveHTML",
             ])
     }
 
     @Test("an empty environment gives only the keyless fallback")
     func emptyEnvironmentGivesTheKeylessFallback() {
         let configuration = WebConfiguration.fromEnvironment([:])
-        #expect(configuration.providers == [.braveHTML, .duckDuckGoHTML])
+        #expect(configuration.providers == [.duckDuckGoHTML, .braveHTML])
     }
 
     @Test("the keyless providers come last after one keyed provider")
     func keylessFallbackComesLast() {
         let configuration = WebConfiguration.fromEnvironment(["EXA_API_KEY": "test-exa"])
         #expect(
-            configuration.providers == [.exa(.environment("EXA_API_KEY")), .braveHTML, .duckDuckGoHTML])
+            configuration.providers == [.exa(.environment("EXA_API_KEY")), .duckDuckGoHTML, .braveHTML])
     }
 
     @Test("BRAVE_SEARCH_API_KEY wins over the BRAVE_API_KEY alias")
@@ -91,7 +91,7 @@ struct WebConfigurationTests {
     @Test("an empty key variable adds no provider")
     func emptyVariableAddsNoProvider() {
         let configuration = WebConfiguration.fromEnvironment(["TAVILY_API_KEY": ""])
-        #expect(configuration.providers == [.braveHTML, .duckDuckGoHTML])
+        #expect(configuration.providers == [.duckDuckGoHTML, .braveHTML])
     }
 
     @Test("a keyed provider holds the variable name, and resolves the value at call time")
@@ -109,7 +109,7 @@ struct WebConfigurationTests {
     func searxngURLAddsAProvider() throws {
         let configuration = WebConfiguration.fromEnvironment(["SEARXNG_URL": searxngBase])
         let base = try #require(URL(string: searxngBase))
-        #expect(configuration.providers == [.searxng(base), .braveHTML, .duckDuckGoHTML])
+        #expect(configuration.providers == [.searxng(base), .duckDuckGoHTML, .braveHTML])
     }
 
     @Test("a SEARXNG_URL with an upper-case scheme adds a searxng provider")
@@ -117,7 +117,7 @@ struct WebConfigurationTests {
         let value = "HTTPS://search.example.com"
         let configuration = WebConfiguration.fromEnvironment(["SEARXNG_URL": value])
         let base = try #require(URL(string: value))
-        #expect(configuration.providers == [.searxng(base), .braveHTML, .duckDuckGoHTML])
+        #expect(configuration.providers == [.searxng(base), .duckDuckGoHTML, .braveHTML])
     }
 
     @Test("a SEARXNG_URL that is not an http or https URL adds no provider", arguments: [
@@ -125,7 +125,7 @@ struct WebConfigurationTests {
     ])
     func invalidSearxngURLAddsNoProvider(value: String) {
         let configuration = WebConfiguration.fromEnvironment(["SEARXNG_URL": value])
-        #expect(configuration.providers == [.braveHTML, .duckDuckGoHTML])
+        #expect(configuration.providers == [.duckDuckGoHTML, .braveHTML])
     }
 
     @Test("fromEnvironment keeps the given dictionary for call-time key reads")
@@ -137,7 +137,7 @@ struct WebConfigurationTests {
     @Test("keyless has the two keyless providers and reads no environment")
     func keylessReadsNoEnvironment() {
         let configuration = WebConfiguration.keyless
-        #expect(configuration.providers == [.braveHTML, .duckDuckGoHTML])
+        #expect(configuration.providers == [.duckDuckGoHTML, .braveHTML])
         #expect(configuration.environment.isEmpty)
     }
 

@@ -10,9 +10,9 @@ import Testing
 ///
 /// **The rule (decided by the user, 2026-10-02, card `^vn1899e`).** "If the
 /// provider blocks, we managed to talk to it, didn't we." A block that the
-/// code recognizes (HTTP 429, or a challenge page) proves that the request
-/// reached the provider. Thus a live web test passes on exactly one of two
-/// outcomes:
+/// code recognizes (HTTP 429, a skip in the cooldown after HTTP 429, or a
+/// challenge page) proves that the request reached the provider. Thus a live
+/// web test passes on exactly one of two outcomes:
 ///
 /// 1. **Results.** The search gave hits. The test runs its checks of the hits.
 /// 2. **A recognized block.** The search gave a correction, and the rule
@@ -39,6 +39,22 @@ enum BlockedProviderRule {
     /// end period of the correction. The product keeps that text private,
     /// thus the rule states it here.
     private static let blockReasons: Set<String> = ["blocked (HTTP 429).", "blocked by a challenge page."]
+
+    /// Tells if a reason of the correction is a block.
+    ///
+    /// A block is one of ``blockReasons``, or the skip of a provider in its
+    /// cooldown after HTTP 429: `rate limited for 42 more seconds.`, or
+    /// `rate limited for 1 more second.` in the last second. The text is the
+    /// text of `ProviderSkip.coolingDownReason(remaining:)` in
+    /// `WebSearchChain.swift`, with the end period of the correction. The
+    /// cooldown lives as long as the `WebContext`, thus a test that sends two
+    /// searches in one context can get this reason for its second search.
+    ///
+    /// - Parameter reason: The reason, with its end period.
+    /// - Returns: `true` when the reason is a block.
+    private static func isBlock(_ reason: String) -> Bool {
+        blockReasons.contains(reason) || reason.wholeMatch(of: /rate limited for \d+ more seconds?\./) != nil
+    }
 
     /// The text between the name of a provider and its reason in the
     /// correction.
@@ -136,7 +152,7 @@ enum BlockedProviderRule {
             return .failed(.providersNotReported)
         }
         let judged = parts.filter { !excused.contains($0.provider) }
-        if let unrecognized = judged.first(where: { !blockReasons.contains($0.reason) }) {
+        if let unrecognized = judged.first(where: { !isBlock($0.reason) }) {
             return .failed(.notABlock(provider: unrecognized.provider, reason: unrecognized.reason))
         }
         guard !judged.isEmpty else { return .failed(.noBlock) }

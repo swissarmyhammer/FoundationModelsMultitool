@@ -1,4 +1,4 @@
-// `BraveHTMLProvider` — the first keyless search provider (web.md § "What we
+// `BraveHTMLProvider` — the second keyless search provider (web.md § "What we
 // copy" and § "The provider list").
 //
 // The provider sends the query to the Brave results page with the headers of

@@ -1,10 +1,55 @@
 ---
 assignees:
 - claude-code
+comments:
+- actor: claude-code
+  id: 01m46jncp51egd0hnbbswcm92q
+  text: |-
+    Research done.
+    - `WebSearchChain.run` calls `attempt` for each provider. The relaxed run goes through `run` too, thus a cooldown check at the start of `attempt` also applies to the relaxed run.
+    - `nextStep(after:)` selects `correctionNextStep` only for `.provider(.noResults)`. A new skip case for a cooldown is not "no results", thus the step stays `correctionWaitStep` for a block.
+    - `FetchedBody` is made only in `WebFetcher.read`. The fetcher has no clock (file header). Plan: `FetchedBody` keeps the raw `Retry-After` text; the cooldown code parses it.
+    - `ProviderFallbackTests.relaxedFailureGivesExactCorrection` expects a second request to `braveHTML` in the relaxed run after HTTP 429. With the cooldown, that request must not go out; the test must change.
+    - IntegrationTests `BlockedProviderRule` knows only "blocked (HTTP 429)." and "blocked by a challenge page.". A cooldown skip in the correction must also be a recognized block. `BlockedProviderRuleTests` builds keyless corrections in the order braveHTML, duckDuckGoHTML with `WebConfiguration.keyless.providers`; those tests must follow the new order.
+    - `Tests/.../Support/ManualClock.swift` exists; its time moves only with `sleep`, which does not wait in real time.
+  timestamp: 2026-10-05T17:44:24.517041+00:00
+- actor: claude-code
+  id: 01m46ka9pfn9f0t80gnf2bxk5g
+  text: |-
+    Implementation landed. Facts for the next agent:
+    - New file `Sources/.../Web/ProviderCooldowns.swift`: a `final class` with a `Mutex<[String: Duration]>`, keyed by `adapter.name`. It reads the time from an injected `some Clock<Duration>` through one elapsed-time closure, thus an `any Clock<Duration>` works. `defaultCooldown` = 60 s, `maximumCooldown` = 600 s. `cooldown(forRetryAfter:at:)` parses seconds and the IMF-fixdate HTTP date (`Date(_, strategy: .http)`). The obsolete RFC 850 and asctime forms give the default; `.http` does not parse them. A date in the past gives zero.
+    - `FetchedBody.retryAfter: String?` holds the raw header. The fetcher stays clockless; the chain parses the value with `Date.now`.
+    - `WebSearchChain.attempt` checks the cooldown first and returns `ProviderSkip.coolingDown(remaining:)` with no request; after `.rateLimited` it starts the cooldown. The relaxed run goes through `attempt`, thus it respects the cooldown. A cooldown skip is not `.noResults`, thus `nextStep(after:)` gives `correctionWaitStep`.
+    - Note text: `<name>: skipped, rate limited for <n> more seconds.` (`1 more second.` for one second; a part of a second counts as one more second).
+    - `ProviderFallbackTests.relaxedFailureGivesExactCorrection` changed: the relaxed run now sends no request to `braveHTML`.
+    - IntegrationTests `BlockedProviderRule` now accepts the cooldown reason (regex `rate limited for \d+ more seconds?\.`) as a block. `BlockedProviderRuleTests` follow the new keyless order and test the cooldown reason.
+    - Problem seen: a `@Test` name must be one string literal; a `+` concatenation does not compile.
+  timestamp: 2026-10-05T17:55:49.583253+00:00
+- actor: claude-code
+  id: 01m46kadse95sh3bmn723pekv8
+  text: |-
+    ### implement — changed
+    - evidence: 16 files — new Sources/FoundationModelsMultitool/Capabilities/Web/ProviderCooldowns.swift, new Tests/FoundationModelsMultitoolTests/ProviderCooldownTests.swift; changed WebSearchChain.swift, WebFetcher.swift, WebConfiguration.swift, Providers/BraveHTMLProvider.swift, Providers/DuckDuckGoHTMLProvider.swift, ProviderFallbackTests.swift, WebConfigurationTests.swift, WebFetcherTests.swift, README.md, web.md, IntegrationTests Web/Support/BlockedProviderRule.swift, Web/BlockedProviderRuleTests.swift, Web/KeylessChainLiveTests.swift, Web/WebRunCodeLiveTests.swift. Commands: `swift build --build-tests` (0 warnings, 0 errors); `swift test` 1854 tests in 155 suites passed; `cd IntegrationTests && swift test --filter BlockedProviderRuleTests` 19 tests passed; `cd IntegrationTests && swift build --build-tests` build complete, 0 warnings.
+    - next: /review
+  timestamp: 2026-10-05T17:55:53.774624+00:00
+- actor: claude-code
+  id: 01m46kdbw4xgr2p1vdh0tmv6zp
+  text: |-
+    ### test — green
+    - evidence: swift test — 1854 tests in 155 suites passed, 0 failed, 0 skipped; IntegrationTests swift build --build-tests — complete, only the known mlx-swift warning (missing creator for mutated node); IntegrationTests swift test --filter BlockedProviderRuleTests — 19 tests in 1 suite passed
+    - next: review
+  timestamp: 2026-10-05T17:57:30.116747+00:00
+- actor: claude-code
+  id: 01m46ke55a7t1arrprvdm3rgw5
+  text: |-
+    ### commit — changed
+    - evidence: one local commit with subject "fix: put DuckDuckGo first and skip a provider after HTTP 429". It holds the new ProviderCooldowns.swift and its tests, the chain, fetcher, configuration and provider changes, README.md, web.md, the integration tests, and all .kanban changes (with the ledger of ^dj4egen). The sha is in the step record of the reply. No push.
+    - next: review
+  timestamp: 2026-10-05T17:57:56.010231+00:00
 depends_on:
 - 01M46D1NAKY1H93EN24ARTZPVB
-position_column: todo
-position_ordinal: '8280'
+position_column: doing
+position_ordinal: '80'
 title: 'Web search: put DuckDuckGo first, and skip a provider for a cooldown after HTTP 429'
 ---
 ## Problem

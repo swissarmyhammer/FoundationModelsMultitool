@@ -11,6 +11,11 @@
 // failure for the exact query, and then gives the next step for the model.
 // Before a note or the correction goes out, the chain replaces each key value
 // of the call with `<redacted>`.
+//
+// A provider that sends HTTP 429 gets a cooldown (`ProviderCooldowns`). Until
+// the cooldown ends, each run of the chain, the relaxed run too, skips that
+// provider with no request and adds one note for it. The cooldown store lives
+// as long as the chain, thus the cooldown stays from one call to the next.
 
 import Foundation
 
@@ -47,14 +52,15 @@ struct WebSearchChain: Sendable {
     /// the next step for the model.
     ///
     /// Decision: the step is about the providers, not about the query. Each
-    /// failure is then a block (HTTP 429 or a challenge page), a server
-    /// error, a network failure, a response that the code cannot read, or a
-    /// key problem. No provider read the query and found nothing, thus a
-    /// different query does not help. A block, a server error, and a
-    /// network failure can go away after some time, thus the step tells the
-    /// model to wait. When one provider gave no results and another provider
-    /// was blocked, the correction gives ``correctionNextStep``, because the
-    /// query is the cause that the model can change.
+    /// failure is then a block (HTTP 429, a skip in the cooldown after HTTP
+    /// 429, or a challenge page), a server error, a network failure, a
+    /// response that the code cannot read, or a key problem. No provider read
+    /// the query and found nothing, thus a different query does not help. A
+    /// block, a server error, and a network failure can go away after some
+    /// time, thus the step tells the model to wait. When one provider gave no
+    /// results and another provider was blocked, the correction gives
+    /// ``correctionNextStep``, because the query is the cause that the model
+    /// can change.
     static let correctionWaitStep = "Wait, then search again."
 
     /// The first words of the note of a relaxed run. The relaxed text comes
@@ -88,6 +94,10 @@ struct WebSearchChain: Sendable {
     /// time of a call.
     private let environment: [String: String]
 
+    /// The cooldown of each provider that sent HTTP 429. Each copy of the
+    /// chain shares this one store.
+    private let cooldowns: ProviderCooldowns
+
     /// Makes a chain.
     ///
     /// - Parameters:
@@ -99,14 +109,19 @@ struct WebSearchChain: Sendable {
     ///     only when a provider fails or is blocked.
     ///   - environment: The environment dictionary that each `.environment`
     ///     key reads at the time of a call.
+    ///   - clock: The clock of the cooldowns. The default is
+    ///     `ContinuousClock`. A test gives a clock that it moves itself, thus
+    ///     it does not wait in real time.
     init(
         providers: [(WebSearchProvider, any SearchProviderAdapter)],
         fetcher: WebFetcher,
-        environment: [String: String]
+        environment: [String: String],
+        clock: any Clock<Duration> = ContinuousClock()
     ) {
         self.providers = providers
         self.fetcher = fetcher
         self.environment = environment
+        cooldowns = ProviderCooldowns(clock: clock)
     }
 
     /// Searches with each provider in order, until one gives hits.
@@ -246,6 +261,9 @@ struct WebSearchChain: Sendable {
 
     /// Sends the request of one provider and reads its hits.
     ///
+    /// A provider in its cooldown gets no request. A response with HTTP 429
+    /// starts the cooldown of the provider.
+    ///
     /// - Parameters:
     ///   - query: The query.
     ///   - provider: The provider, which gives the API key.
@@ -254,6 +272,9 @@ struct WebSearchChain: Sendable {
     private func attempt(
         _ query: SearchQuery, provider: WebSearchProvider, adapter: any SearchProviderAdapter
     ) async -> Result<[WebHit], ProviderSkip> {
+        if let remaining = cooldowns.remainingCooldown(of: adapter.name) {
+            return .failure(.coolingDown(remaining: remaining))
+        }
         let request: URLRequest
         do {
             request = try makeRequest(for: query, provider: provider, adapter: adapter)
@@ -264,7 +285,11 @@ struct WebSearchChain: Sendable {
         case .failure(let failure):
             return .failure(.fetch(failure))
         case .success(let body):
-            return Self.hits(in: body, adapter: adapter, limit: query.count).mapError(ProviderSkip.provider)
+            let hits = Self.hits(in: body, adapter: adapter, limit: query.count)
+            if case .failure(.rateLimited) = hits {
+                cooldowns.startCooldown(of: adapter.name, retryAfter: body.retryAfter)
+            }
+            return hits.mapError(ProviderSkip.provider)
         }
     }
 
@@ -406,6 +431,10 @@ private enum ProviderSkip: Error {
     /// The provider answered with no hits.
     case provider(ProviderFailure)
 
+    /// The provider is in its cooldown after HTTP 429, with this time left.
+    /// The chain sent no request to it.
+    case coolingDown(remaining: Duration)
+
     /// The reason in the note, with no end period, for example
     /// `no results`.
     var reason: String {
@@ -414,7 +443,21 @@ private enum ProviderSkip: Error {
         case .requestFailed(let text): "the request could not be made: \(text)"
         case .fetch(let failure): failure.correctiveMessage.startingLowercase
         case .provider(let failure): failure.reason
+        case .coolingDown(let remaining): Self.coolingDownReason(remaining: remaining)
         }
+    }
+
+    /// The reason of a skip in the cooldown, for example
+    /// `rate limited for 42 more seconds`. A part of a second counts as one
+    /// more second, thus the text never says 0 seconds.
+    ///
+    /// - Parameter remaining: The time that is left in the cooldown.
+    /// - Returns: The reason, with no end period.
+    private static func coolingDownReason(remaining: Duration) -> String {
+        let (seconds, attoseconds) = remaining.components
+        let wholeSeconds = attoseconds > 0 ? seconds + 1 : seconds
+        let unit = wholeSeconds == 1 ? "second" : "seconds"
+        return "rate limited for \(wholeSeconds) more \(unit)"
     }
 }
 

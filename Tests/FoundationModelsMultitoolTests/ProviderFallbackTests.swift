@@ -85,14 +85,14 @@ struct ProviderFallbackTests {
         try FakeSearchAdapter(name: name, endpoint: url(endpoint(name)), supports: supports)
     }
 
-    /// The keyless first provider, `braveHTML`, with a fake adapter.
+    /// The keyless provider `braveHTML`, with a fake adapter.
     ///
     /// - Returns: The provider and its adapter.
     private static func braveHTML() throws -> (WebSearchProvider, any SearchProviderAdapter) {
         try (.braveHTML, adapter("braveHTML"))
     }
 
-    /// The keyless second provider, `duckDuckGoHTML`, with a fake adapter.
+    /// The keyless provider `duckDuckGoHTML`, with a fake adapter.
     ///
     /// - Parameter supports: The query fields that the provider supports.
     /// - Returns: The provider and its adapter.
@@ -467,13 +467,12 @@ struct ProviderFallbackTests {
                     notes: [Self.relaxedNoteLead + Self.relaxedQuotedText, "braveHTML: skipped, blocked (HTTP 429)."]))
     }
 
-    @Test("when the relaxed run fails too, the correction is the one of the exact query, after one second run")
+    @Test("when the relaxed run fails too, the correction is the exact one, and the cooled provider gets no request")
     func relaxedFailureGivesExactCorrection() async throws {
-        let rateLimit = Self.textReply("slow down", status: Self.rateLimitStatus)
         let stub = WebStub(routes: [
-            Self.endpoint("braveHTML", run: Self.exactRun): rateLimit,
+            Self.endpoint("braveHTML", run: Self.exactRun): Self.textReply("slow down", status: Self.rateLimitStatus),
             Self.endpoint("duckDuckGoHTML", run: Self.exactRun): Self.textReply(""),
-            Self.endpoint("braveHTML", run: Self.relaxedRun): rateLimit,
+            Self.endpoint("braveHTML", run: Self.relaxedRun): Self.hitsReply(),
             Self.endpoint("duckDuckGoHTML", run: Self.relaxedRun): Self.textReply(FakeSearchAdapter.challengeMarker)
         ])
         let outcome = try await Self.chain(
@@ -488,7 +487,7 @@ struct ProviderFallbackTests {
         #expect(
             stub.requestedURLs == [
                 Self.endpoint("braveHTML", run: Self.exactRun), Self.endpoint("duckDuckGoHTML", run: Self.exactRun),
-                Self.endpoint("braveHTML", run: Self.relaxedRun), Self.endpoint("duckDuckGoHTML", run: Self.relaxedRun)
+                Self.endpoint("duckDuckGoHTML", run: Self.relaxedRun)
             ])
     }
 

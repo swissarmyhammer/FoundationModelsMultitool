@@ -84,8 +84,8 @@ return pages.map(p => ({ url: p.url, title: p.title, head: p.content.slice(0, 40
 
 `withWeb()` with no arguments uses `WebConfiguration.fromEnvironment()`. That
 configuration puts each keyed provider whose environment variable is set first,
-in this order. The two keyless providers, `braveHTML` and `duckDuckGoHTML`,
-come last. When no variable is set, the search is keyless.
+in this order. The two keyless providers, `duckDuckGoHTML` and then
+`braveHTML`, come last. When no variable is set, the search is keyless.
 
 | Provider | Environment variable |
 |---|---|
@@ -97,7 +97,9 @@ come last. When no variable is set, the search is keyless.
 | `searxng` | `SEARXNG_URL` (the base URL of your instance, not a key) |
 
 The capability tries the providers in list order. When a provider fails, the
-capability tries the next provider and adds a line to `notes`. Use
+capability tries the next provider and adds a line to `notes`. A provider that
+sends HTTP 429 gets no request until its cooldown ends: the `Retry-After` time
+of the response, else 60 seconds, and never more than 10 minutes. Use
 `withWeb(configuration: .keyless)` to read no environment, or give a
 `WebConfiguration` with your own provider list. A second `withWeb` call
 replaces the first: the last call wins. A key stays in Swift. The sandbox, the
