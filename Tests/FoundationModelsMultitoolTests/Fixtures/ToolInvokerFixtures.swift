@@ -110,6 +110,38 @@ struct RangedTool: Tool {
     }
 }
 
+// MARK: - `LabelsTool` — a tool with an optional array-of-strings argument
+//
+// Exercises the string-to-array normalization of `ToolInvoker.invoke`: a
+// model often sends one string where the schema has an array of strings
+// (the `find` and `replace` arguments of `tools.files.edit` are the case
+// that the SWE-bench run found). The tool echoes the decoded array, thus a
+// test can read what `T.Arguments(content)` received.
+
+/// `LabelsTool`'s arguments — one optional array of strings.
+@Generable
+struct LabelsToolArguments {
+    @Guide(description: "The labels to echo.")
+    var labels: [String]?
+}
+
+/// `LabelsTool`'s `Output` — the decoded labels, unchanged.
+@Generable
+struct LabelsToolOutput {
+    var labels: [String]
+}
+
+/// A `Tool` that echoes its decoded `labels` argument, or an empty array
+/// when the argument is absent.
+struct LabelsTool: Tool {
+    let name = "labelsTool"
+    let description = "Echoes the labels it receives."
+
+    func call(arguments: LabelsToolArguments) async throws -> LabelsToolOutput {
+        LabelsToolOutput(labels: arguments.labels ?? [])
+    }
+}
+
 /// Wraps `CountedArrayArgument` (`ratings: [Int]`, `.count(1...3)`) so
 /// `ToolInvokerTests` can exercise an array-count guide violation through a
 /// real `Tool`.

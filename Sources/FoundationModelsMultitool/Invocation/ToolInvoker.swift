@@ -121,6 +121,12 @@ public struct ToolInvokerError: Error, Sendable, Equatable, CustomStringConverti
 ///    scalar constraints against already-marshaled values, a much narrower
 ///    job scoped to the arguments' own top level.
 ///
+/// Before both layers, one normalization step runs
+/// (`wrappingStringsInStringArrays`): a string value for a top-level
+/// array-of-strings property becomes an array that holds that one string.
+/// Both layers then read the same normalized content. No other kind of value
+/// changes, thus each other type mismatch still fails in layer 1.
+///
 /// A tool's own `call(arguments:)` throw is never wrapped in
 /// `ToolInvokerError` — it propagates unchanged, so a caller can always
 /// distinguish "never called" (`ToolInvokerError`) from "called and
@@ -187,10 +193,12 @@ public enum ToolInvoker {
         binding: RunBinding?,
         journalOp: String? = nil
     ) async throws -> T.Output {
-        try validate(content, against: tool.parameters, toolName: tool.name)
+        let schema = try decodeArgumentsSchema(tool.parameters, toolName: tool.name)
+        let normalized = wrappingStringsInStringArrays(content, against: schema)
+        try validate(normalized, against: schema, toolName: tool.name)
         let arguments: T.Arguments
         do {
-            arguments = try T.Arguments(content)
+            arguments = try T.Arguments(normalized)
         } catch {
             throw ToolInvokerError(
                 kind: .invalidArguments,
@@ -216,12 +224,13 @@ public enum ToolInvoker {
     /// (`GenerationSchema` has no field-enumeration API; encode-then-decode
     /// is the read path, the same technique `ToolAPIRenderer.SchemaNode`
     /// uses for a different purpose). Deliberately much narrower than that
-    /// type: no `$ref`/`$defs`/`items`/`anyOf` — this invoker only ever
-    /// validates the *Arguments* struct's immediate top-level scalar
-    /// properties (see this file's top-level documentation), never
-    /// recurses into nested structure.
+    /// type: no `$ref`/`$defs`/`anyOf`, and of `items` only the element
+    /// `type` — this invoker only ever validates the *Arguments* struct's
+    /// immediate top-level scalar properties (see this file's top-level
+    /// documentation), never recurses into nested structure.
     private struct ArgumentPropertySchema: Decodable {
         let type: String?
+        let items: ArgumentItemSchema?
         let enumValues: [String]?
         let minimum: Double?
         let maximum: Double?
@@ -230,9 +239,29 @@ public enum ToolInvoker {
 
         enum CodingKeys: String, CodingKey {
             case type
+            case items
             case enumValues = "enum"
             case minimum, maximum, minItems, maxItems
         }
+
+        /// The JSON Schema `"type"` of an array.
+        static let arrayType = "array"
+
+        /// The JSON Schema `"type"` of a string.
+        static let stringType = "string"
+
+        /// Whether this property is an array whose elements are strings. An
+        /// array schema with no element `type` also counts, because nothing
+        /// in it forbids a string element.
+        var isStringArray: Bool {
+            type == Self.arrayType && (items?.type ?? Self.stringType) == Self.stringType
+        }
+    }
+
+    /// The element schema of an array property — only its JSON Schema
+    /// `"type"`, which `wrappingStringsInStringArrays` reads.
+    private struct ArgumentItemSchema: Decodable {
+        let type: String?
     }
 
     /// The top-level shape of an encoded `Tool.Arguments` `GenerationSchema`
@@ -280,8 +309,48 @@ public enum ToolInvoker {
         }
     }
 
+    /// Replaces each string value of an array-of-strings property in
+    /// `content` with an array that holds that one string. A string is the
+    /// same as an array with one item.
+    ///
+    /// The reason is evidence from a SWE-bench run: the most frequent real
+    /// tool error was `Tool "edit" argument "find" must be array, got a
+    /// string instead.`, on most instances. The model sent one string for
+    /// the `find` and `replace` arguments of `tools.files.edit`, then
+    /// corrected the snippet and called again, and each retry cost one
+    /// generation. The same mistake can occur on each array-of-strings
+    /// argument of each tool, thus the normalization is here in the invoker
+    /// and not in one tool.
+    ///
+    /// Only a string for an array of strings changes. A number, a boolean,
+    /// or an object for an array, and a string for an array of a different
+    /// element type, stay as they are, thus `validateType` reports them with
+    /// the same message as before. The step runs before `validate` and
+    /// before `T.Arguments(content)`, thus both read the same content.
+    ///
+    /// - Parameters:
+    ///   - content: the marshaled call arguments.
+    ///   - schema: the decoded argument schema of the tool.
+    /// - Returns: `content` with each string of an array-of-strings property
+    ///   wrapped in a one-item array, or `content` unchanged when no
+    ///   property needs it or `content` is not a `.structure`.
+    private static func wrappingStringsInStringArrays(
+        _ content: GeneratedContent,
+        against schema: ArgumentsSchema
+    ) -> GeneratedContent {
+        guard let properties = schema.properties,
+            case .structure(var contentProperties, let orderedKeys) = content.kind
+        else { return content }
+        for (field, propertySchema) in properties where propertySchema.isStringArray {
+            if let value = contentProperties[field], case .string = value.kind {
+                contentProperties[field] = GeneratedContent(kind: .array([value]))
+            }
+        }
+        return GeneratedContent(kind: .structure(properties: contentProperties, orderedKeys: orderedKeys))
+    }
+
     /// Validates `content` — a marshaled call's arguments — against
-    /// `parameters`, `tool`'s declared argument schema, before `call` ever
+    /// `schema`, `tool`'s decoded argument schema, before `call` ever
     /// runs. See this file's top-level documentation for what this checks
     /// versus what's left to `T.Arguments(content)`'s own decoding.
     ///
@@ -304,18 +373,17 @@ public enum ToolInvoker {
     ///
     /// - Parameters:
     ///   - content: the marshaled call arguments to validate.
-    ///   - parameters: `tool`'s declared argument schema.
+    ///   - schema: `tool`'s argument schema, as `decodeArgumentsSchema`
+    ///     decoded it.
     ///   - toolName: the owning tool's name, for error messages.
     /// - Throws: `ToolInvokerError` with kind `.missingRequiredField`,
     ///   `.typeMismatch`, or `.guideViolation` for the first violation
-    ///   found; `.invalidArguments` if `parameters` itself can't be
-    ///   decoded.
+    ///   found.
     private static func validate(
         _ content: GeneratedContent,
-        against parameters: GenerationSchema,
+        against schema: ArgumentsSchema,
         toolName: String
     ) throws {
-        let schema = try decodeArgumentsSchema(parameters, toolName: toolName)
         guard let properties = schema.properties, !properties.isEmpty else { return }
 
         guard case .structure(let contentProperties, _) = content.kind else {

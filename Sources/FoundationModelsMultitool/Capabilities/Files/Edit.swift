@@ -44,19 +44,24 @@ struct EditArguments {
 
     /// The `find` values to locate: one for a scalar edit, several for a
     /// parallel-array batch. Each value is a literal text or a hashline
-    /// anchor.
+    /// anchor. One string is also accepted: `ToolInvoker` wraps it in an
+    /// array of one item.
     @Guide(
         description:
-            "The find values to locate: one for a single edit, several for a batch. Each value "
-            + "is a literal text, one N:HH|text hashline anchor from a prior read or write, or a "
-            + "run of tagged lines pasted back as one value, which names that whole span.")
+            "The find values to locate: one for a single edit, several for a batch, for example "
+            + "find: [\"old text\"], replace: [\"new text\"]. One string is also accepted as one "
+            + "value. Each value is a literal text, one N:HH|text hashline anchor from a prior "
+            + "read or write, or a run of tagged lines pasted back as one value, which names that "
+            + "whole span.")
     var find: [String]?
 
     /// The `replace` values: one per `find`, or a single value broadcast
-    /// across every `find`.
+    /// across every `find`. One string is also accepted: `ToolInvoker`
+    /// wraps it in an array of one item.
     @Guide(
         description:
-            "The replace values: one per find, or a single value applied to every find.")
+            "The replace values: one per find, or a single value applied to every find, for "
+            + "example replace: [\"new text\"]. One string is also accepted as one value.")
     var replace: [String]?
 
     /// Whether every occurrence of each `find` is rewritten rather than a

@@ -176,6 +176,49 @@ struct ToolInvokerTests {
         #expect(tool.recorded == nil)
     }
 
+    // MARK: - A string where the schema has an array of strings
+
+    @Test("a string for an array-of-strings argument becomes an array that holds that one string")
+    func stringForStringArrayArgumentBecomesOneItemArray() async throws {
+        let content = try ArgumentMarshaler.marshalArguments(.object(["labels": .string("alpha")]))
+
+        let output = try await ToolInvoker.invoke(LabelsTool(), content: content)
+
+        #expect(output.labels == ["alpha"])
+    }
+
+    @Test("a number for an array argument still fails with the same type-mismatch message")
+    func numberForArrayArgumentStillFailsAsTypeMismatch() async throws {
+        let content = try ArgumentMarshaler.marshalArguments(.object(["ratings": .number(2)]))
+
+        await #expect {
+            try await ToolInvoker.invoke(CountedTool(), content: content)
+        } throws: { error in
+            (error as? ToolInvokerError)
+                == ToolInvokerError(
+                    kind: .typeMismatch,
+                    field: "ratings",
+                    message: "Tool \"countedTool\" argument \"ratings\" must be array, got a number instead."
+                )
+        }
+    }
+
+    @Test("a string for an array-of-integers argument is not coerced and fails as a type mismatch")
+    func stringForIntegerArrayArgumentIsNotCoerced() async throws {
+        let content = try ArgumentMarshaler.marshalArguments(.object(["ratings": .string("2")]))
+
+        await #expect {
+            try await ToolInvoker.invoke(CountedTool(), content: content)
+        } throws: { error in
+            (error as? ToolInvokerError)
+                == ToolInvokerError(
+                    kind: .typeMismatch,
+                    field: "ratings",
+                    message: "Tool \"countedTool\" argument \"ratings\" must be array, got a string instead."
+                )
+        }
+    }
+
     // MARK: - The T.Arguments(content) fallback layer
 
     @Test("a mismatch invisible to the top-level guide check (an array element's own type) is still caught by T.Arguments's own decoding, before call")

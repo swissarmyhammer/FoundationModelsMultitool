@@ -31,9 +31,10 @@ import Testing
 /// snippet against a temporary root.
 ///
 /// The flows: write then read; glob then grep; a hashline read then an edit
-/// by an anchor from that read; a patch then a read; a corrective answer
-/// inside JavaScript that the snippet corrects in the same run; and a
-/// `Promise.all` over two reads.
+/// by an anchor from that read; an edit that sends one string for `find`
+/// and `replace`, against the same edit with arrays; a patch then a read; a
+/// corrective answer inside JavaScript that the snippet corrects in the same
+/// run; and a `Promise.all` over two reads.
 ///
 /// Each test roots its session in a temporary directory of its own, thus the
 /// tests are independent and they run in parallel safely.
@@ -87,8 +88,9 @@ struct FilesCrossOpFlowTests {
     /// The file the edit flow and the patch flow change.
     private static let threeLineFileName = "code.txt"
 
-    /// The file the patch flow updates. A name of its own, thus the two
-    /// mutation flows cannot mask each other.
+    /// The file the patch flow updates, and the file the array edit of the
+    /// scalar-edit flow changes. A name of its own, thus two mutations in one
+    /// flow cannot mask each other.
     private static let patchFileName = "update.txt"
 
     /// The seeded content of the two mutation flows: three lines, and the
@@ -99,7 +101,7 @@ struct FilesCrossOpFlowTests {
     /// rewritten in upper case.
     private static let editedThreeLineContent = "one\nTWO\nthree\n"
 
-    /// The `find` text of the patch envelope.
+    /// The `find` text of the patch envelope and of the scalar-edit flow.
     private static let patchFindText = "two"
 
     /// The `replace` text of the edit call and of the patch envelope.
@@ -303,6 +305,48 @@ struct FilesCrossOpFlowTests {
             value.outcomes.contains { $0.contains(Self.anchorOutcomeFragment) },
             "outcomes were: \(value.outcomes)")
         #expect(value.lines == Hashline.taggedLines(of: Self.editedThreeLineContent))
+        #expect(
+            try Self.diskContents(Self.threeLineFileName, in: root)
+                == Self.editedThreeLineContent)
+    }
+
+    // MARK: - An edit with one string for find and replace
+
+    /// The value the scalar-edit snippet returns: the statuses and the
+    /// committed contents of the two edits.
+    private struct ScalarEditValue: Decodable {
+        /// The status of the edit that sends one string for `find` and `replace`.
+        let scalarStatus: String
+
+        /// The committed content of the scalar edit, with its hashline anchors.
+        let scalarLines: [String]
+
+        /// The status of the edit that sends an array of one string.
+        let arrayStatus: String
+
+        /// The committed content of the array edit, with its hashline anchors.
+        let arrayLines: [String]
+    }
+
+    @Test("an edit with one string for find and replace applies the same as an array of one string")
+    func aScalarFindAndReplaceEditAppliesTheSameAsAnArrayEdit() async throws {
+        let root = Self.makeRoot()
+        try Self.seed(Self.threeLineFileName, Self.threeLineContent, in: root)
+        try Self.seed(Self.patchFileName, Self.threeLineContent, in: root)
+
+        let output = try await Self.run(
+            """
+            const scalar = await tools.files.edit({ path: "\(Self.threeLineFileName)", find: "\(Self.patchFindText)", replace: "\(Self.replacementText)" });
+            if (scalar.correction) { return scalar.correction; }
+            const array = await tools.files.edit({ path: "\(Self.patchFileName)", find: ["\(Self.patchFindText)"], replace: ["\(Self.replacementText)"] });
+            if (array.correction) { return array.correction; }
+            return { scalarStatus: scalar.status, scalarLines: scalar.taggedContent, arrayStatus: array.status, arrayLines: array.taggedContent };
+            """, root: root)
+
+        let value = try RunOutput.decoded(ScalarEditValue.self, from: output)
+        #expect(value.scalarStatus == EditOutcomeProjection.appliedStatus)
+        #expect(value.scalarStatus == value.arrayStatus)
+        #expect(value.scalarLines == value.arrayLines)
         #expect(
             try Self.diskContents(Self.threeLineFileName, in: root)
                 == Self.editedThreeLineContent)

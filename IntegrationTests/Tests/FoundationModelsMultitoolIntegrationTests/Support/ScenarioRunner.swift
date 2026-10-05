@@ -518,6 +518,16 @@ func streamTurn(of session: RoutedSession, prompt: String) async throws -> Strea
             // discovery output it is meant to act on, which looks from the
             // outside exactly like a model that will not use its tools.
             turn.compactions.append("\(result)")
+        case .compactionStarted(let start):
+            // Router announces a compaction before it runs. The start is
+            // kept with the finished ones, so a turn that began a compaction
+            // and never finished it shows both facts.
+            turn.compactions.append("started \(start)")
+        case .compactionFailed(let failure):
+            // A compaction that failed leaves the session context as it was.
+            // It is kept with the other compactions, so a turn that lost
+            // the chance to shrink its context is not read as a clean turn.
+            turn.compactions.append("failed \(failure)")
         case .toolStatus, .reasoningDelta, .toolInvocation, .toolCallReport, .entryRecorded,
             .elicitationRequested, .runSettled, .generationCall, .submissionQueued, .submissionStarted,
             .submissionEnded, .answered, .answerFailed, .mailDeliveryPaused:
