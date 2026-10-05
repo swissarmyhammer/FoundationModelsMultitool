@@ -8,8 +8,9 @@
 // with the relaxed text of the query: the text with no quote marks and no
 // search operators. When that run fails too, or when the chain does not run
 // again, the result is one correction that names each provider and its
-// failure for the exact query. Before a note or the correction goes out, the
-// chain replaces each key value of the call with `<redacted>`.
+// failure for the exact query, and then gives the next step for the model.
+// Before a note or the correction goes out, the chain replaces each key value
+// of the call with `<redacted>`.
 
 import Foundation
 
@@ -22,7 +23,7 @@ enum SearchOutcome: Sendable, Equatable {
     case hits(provider: String, hits: [WebHit], notes: [String])
 
     /// The correction when no provider gave hits. It names each provider and
-    /// its failure, in order.
+    /// its failure, in order, and then gives the next step for the model.
     case correction(String)
 }
 
@@ -31,6 +32,30 @@ enum SearchOutcome: Sendable, Equatable {
 struct WebSearchChain: Sendable {
     /// The first sentence of the correction when all providers fail.
     static let correctionLead = "No search provider gave results."
+
+    /// The last sentence of the correction when one or more providers gave
+    /// no results: the next step for the model.
+    ///
+    /// A provider that gave no results read the query and found nothing. A
+    /// wider query can find results, thus the step tells the model to make
+    /// the query wider. The step stays correct after a relaxed run that
+    /// failed too: the relaxed text removes quote marks and operators, but
+    /// it keeps each word, so fewer words can still help.
+    static let correctionNextStep = "Search again with fewer words, with no quote marks and no names of persons."
+
+    /// The last sentence of the correction when no provider gave no results:
+    /// the next step for the model.
+    ///
+    /// Decision: the step is about the providers, not about the query. Each
+    /// failure is then a block (HTTP 429 or a challenge page), a server
+    /// error, a network failure, a response that the code cannot read, or a
+    /// key problem. No provider read the query and found nothing, thus a
+    /// different query does not help. A block, a server error, and a
+    /// network failure can go away after some time, thus the step tells the
+    /// model to wait. When one provider gave no results and another provider
+    /// was blocked, the correction gives ``correctionNextStep``, because the
+    /// query is the cause that the model can change.
+    static let correctionWaitStep = "Wait, then search again."
 
     /// The first words of the note of a relaxed run. The relaxed text comes
     /// after them.
@@ -95,18 +120,30 @@ struct WebSearchChain: Sendable {
     /// - Returns: The hits of the first provider that gives hits, with the
     ///   notes. Else the hits of the relaxed run, with the relaxed note first.
     ///   Else one correction that names each provider and its failure for the
-    ///   exact query. No note and no correction holds a key value of this
-    ///   call.
+    ///   exact query, and then gives ``correctionNextStep`` or
+    ///   ``correctionWaitStep``. No note and no correction holds a key value
+    ///   of this call.
     func search(_ query: SearchQuery) async -> SearchOutcome {
         let keys = providers.compactMap { provider, _ in provider.apiKey?.resolve(in: environment) }
         switch await run(query) {
         case .hits(let provider, let hits, let notes):
             return Self.hitsOutcome(provider: provider, hits: hits, notes: notes, keys: keys)
         case .allFailed(let skipped):
-            let correction = ([Self.correctionLead] + skipped.map(\.failure)).joined(separator: " ")
+            let correction = ([Self.correctionLead] + skipped.map(\.failure) + [Self.nextStep(after: skipped)])
+                .joined(separator: " ")
             let exactOutcome = SearchOutcome.correction(KeyRedaction.redactingKeys(correction, keys: keys))
             return await relaxedSearch(query, after: skipped, keys: keys) ?? exactOutcome
         }
+    }
+
+    /// Selects the last sentence of the correction.
+    ///
+    /// - Parameter skipped: The providers that the run of the exact query
+    ///   skipped, in order.
+    /// - Returns: ``correctionNextStep`` when one or more providers gave no
+    ///   results, else ``correctionWaitStep``.
+    private static func nextStep(after skipped: [SkippedProvider]) -> String {
+        skipped.contains(where: \.gaveNoResults) ? correctionNextStep : correctionWaitStep
     }
 
     /// Makes the relaxed text of a query text: the text with no quote marks

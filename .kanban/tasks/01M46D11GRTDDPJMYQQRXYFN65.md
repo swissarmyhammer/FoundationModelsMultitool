@@ -43,8 +43,24 @@ comments:
     - evidence: 9a10746 fix: run the web search chain again with a relaxed query
     - next: test and review
   timestamp: 2026-10-05T16:51:50.092508+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m46fy05yfjfs7vngbhre1967
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (commit b0771ed; the commit comment above names 9a10746, which the amend changed to b0771ed). Counts: findings 0, confirmed 0, refuted 0, attempted 7, failed 0, skipped 0. 6 files reviewed. Not reviewed: 4 .kanban files (.reviewignore); duckduckgo-no-results.html and web.md (no validator matches). No renamed files in git diff -M, thus no file-scoped review was necessary. No earlier Review Findings section.
+    - next: none — task moved to done
+  timestamp: 2026-10-05T16:56:40.894555+00:00
+- actor: claude-code
+  id: 01m46fyh89rw9myms8yae4401m
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 8 files (WebSearchChain.swift, RelaxedQueryTests.swift, QueryRoutedAdapter.swift, duckduckgo-no-results.html, ProviderFallbackTests.swift, DuckDuckGoHTMLProviderTests.swift, FakeSearchAdapter.swift, web.md)
+    - test: green — swift test, 1829 passed in 152 suites; IntegrationTests build complete
+    - commit: b0771ed
+    - review: clean — 0 findings, 7 of 7 checks ran
+  timestamp: 2026-10-05T16:56:58.377903+00:00
+position_column: done
+position_ordinal: ffffa780
 title: 'Web search: run the chain again with a relaxed query when no provider has results'
 ---
 ## Problem

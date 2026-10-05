@@ -183,6 +183,19 @@ struct ProviderFallbackTests {
         WebSearchChain(providers: providers, fetcher: stub.makeFetcher(), environment: environment)
     }
 
+    /// The full text of the correction when all providers fail.
+    ///
+    /// - Parameters:
+    ///   - failures: The part of the correction for each provider, in order.
+    ///   - nextStep: The last sentence of the correction:
+    ///     ``WebSearchChain/correctionNextStep`` or
+    ///     ``WebSearchChain/correctionWaitStep``.
+    /// - Returns: The lead sentence, the parts, and the next step, with one
+    ///   space between them.
+    private static func correctionText(_ failures: String..., nextStep: String) -> String {
+        ([WebSearchChain.correctionLead] + failures + [nextStep]).joined(separator: " ")
+    }
+
     /// Runs a search whose first provider, `braveHTML`, gets `failing` and
     /// whose second provider, `duckDuckGoHTML`, gives hits.
     ///
@@ -342,7 +355,56 @@ struct ProviderFallbackTests {
         #expect(
             outcome
                 == .correction(
-                    "No search provider gave results. braveHTML: blocked (HTTP 429). duckDuckGoHTML: no results."))
+                    Self.correctionText(
+                        "braveHTML: blocked (HTTP 429).", "duckDuckGoHTML: no results.",
+                        nextStep: WebSearchChain.correctionNextStep)))
+    }
+
+    @Test("a correction with a provider that gave no results ends with the step to search with fewer words")
+    func noResultsCorrectionEndsWithFewerWordsStep() async throws {
+        let stub = WebStub(routes: [
+            Self.endpoint("braveHTML"): Self.textReply("broken", status: Self.unavailableStatus),
+            Self.endpoint("duckDuckGoHTML"): Self.textReply("")
+        ])
+        let outcome = try await Self.chain([Self.braveHTML(), Self.duckDuckGoHTML()], stub: stub)
+            .search(SearchQuery(text: "swift"))
+        #expect(
+            outcome
+                == .correction(
+                    Self.correctionText(
+                        "braveHTML: server error (HTTP 503).", "duckDuckGoHTML: no results.",
+                        nextStep: WebSearchChain.correctionNextStep)))
+    }
+
+    @Test("a correction where each provider is blocked ends with the step to wait")
+    func blockOnlyCorrectionEndsWithWaitStep() async throws {
+        let stub = WebStub(routes: [
+            Self.endpoint("braveHTML"): Self.textReply("slow down", status: Self.rateLimitStatus),
+            Self.endpoint("duckDuckGoHTML"): Self.textReply(FakeSearchAdapter.challengeMarker)
+        ])
+        let outcome = try await Self.chain([Self.braveHTML(), Self.duckDuckGoHTML()], stub: stub)
+            .search(SearchQuery(text: "swift"))
+        #expect(
+            outcome
+                == .correction(
+                    Self.correctionText(
+                        "braveHTML: blocked (HTTP 429).", "duckDuckGoHTML: blocked by a challenge page.",
+                        nextStep: WebSearchChain.correctionWaitStep)))
+    }
+
+    @Test("a correction where no provider gave no results ends with the step to wait")
+    func correctionWithoutNoResultsEndsWithWaitStep() async throws {
+        let stub = WebStub(routes: [
+            Self.endpoint("braveHTML"): Self.textReply("broken", status: Self.internalErrorStatus)
+        ])
+        let outcome = try await Self.chain([Self.braveAPI(), Self.braveHTML()], stub: stub)
+            .search(SearchQuery(text: "swift"))
+        #expect(
+            outcome
+                == .correction(
+                    Self.correctionText(
+                        "braveAPI: BRAVE_SEARCH_API_KEY is not set.", "braveHTML: server error (HTTP 500).",
+                        nextStep: WebSearchChain.correctionWaitStep)))
     }
 
     // MARK: - The relaxed second run
@@ -357,7 +419,10 @@ struct ProviderFallbackTests {
             .search(SearchQuery(text: "swift actors"))
         #expect(
             outcome
-                == .correction("No search provider gave results. braveHTML: no results. duckDuckGoHTML: no results."))
+                == .correction(
+                    Self.correctionText(
+                        "braveHTML: no results.", "duckDuckGoHTML: no results.",
+                        nextStep: WebSearchChain.correctionNextStep)))
         #expect(stub.requestedURLs == [Self.endpoint("braveHTML"), Self.endpoint("duckDuckGoHTML")])
     }
 
@@ -375,8 +440,9 @@ struct ProviderFallbackTests {
         #expect(
             outcome
                 == .correction(
-                    "No search provider gave results. braveHTML: blocked (HTTP 429). "
-                        + "duckDuckGoHTML: blocked by a challenge page."))
+                    Self.correctionText(
+                        "braveHTML: blocked (HTTP 429).", "duckDuckGoHTML: blocked by a challenge page.",
+                        nextStep: WebSearchChain.correctionWaitStep)))
         #expect(
             stub.requestedURLs == [
                 Self.endpoint("braveHTML", run: Self.exactRun), Self.endpoint("duckDuckGoHTML", run: Self.exactRun)
@@ -416,7 +482,9 @@ struct ProviderFallbackTests {
         #expect(
             outcome
                 == .correction(
-                    "No search provider gave results. braveHTML: blocked (HTTP 429). duckDuckGoHTML: no results."))
+                    Self.correctionText(
+                        "braveHTML: blocked (HTTP 429).", "duckDuckGoHTML: no results.",
+                        nextStep: WebSearchChain.correctionNextStep)))
         #expect(
             stub.requestedURLs == [
                 Self.endpoint("braveHTML", run: Self.exactRun), Self.endpoint("duckDuckGoHTML", run: Self.exactRun),
@@ -493,7 +561,8 @@ struct ProviderFallbackTests {
         #expect(!correction.contains(Self.keyValue))
         #expect(
             correction
-                == "No search provider gave results. braveAPI: the response could not be read: "
-                + "bad line: key <redacted> is bad. braveHTML: no results.")
+                == Self.correctionText(
+                    "braveAPI: the response could not be read: bad line: key <redacted> is bad.",
+                    "braveHTML: no results.", nextStep: WebSearchChain.correctionNextStep))
     }
 }

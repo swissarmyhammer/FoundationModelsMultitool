@@ -38,13 +38,22 @@ struct BlockedProviderRuleTests {
     /// The reason of a server error.
     private static let serverErrorReason = "server error (HTTP 503)."
 
+    /// The part of the correction for no results of `duckDuckGoHTML`.
+    private static let duckDuckGoNoResults = "duckDuckGoHTML: no results."
+
     /// Makes a result with a correction, as the chain gives it when all
     /// providers fail.
     ///
-    /// - Parameter failures: The part of the correction for each provider.
+    /// - Parameters:
+    ///   - failures: The part of the correction for each provider.
+    ///   - nextStep: The last sentence of the correction. The default is
+    ///     `WebSearchChain.correctionWaitStep`, which the chain gives when no
+    ///     provider gave no results.
     /// - Returns: The result, with no provider, no hit, and no note.
-    private static func correction(_ failures: String...) -> SearchResult {
-        let text = ([WebSearchChain.correctionLead] + failures).joined(separator: " ")
+    private static func correction(
+        _ failures: String..., nextStep: String = WebSearchChain.correctionWaitStep
+    ) -> SearchResult {
+        let text = ([WebSearchChain.correctionLead] + failures + [nextStep]).joined(separator: " ")
         return SearchResult(provider: "", results: [], notes: nil, correction: text)
     }
 
@@ -134,6 +143,23 @@ struct BlockedProviderRuleTests {
                 == .failed(.notABlock(provider: "duckDuckGoHTML", reason: Self.transportReason)))
     }
 
+    @Test("a block, then no results of the next provider, fails, and the next step is not in the reason")
+    func blockThenNoResultsFails() {
+        let result = Self.correction(
+            Self.braveRateLimit, Self.duckDuckGoNoResults, nextStep: WebSearchChain.correctionNextStep)
+        #expect(
+            BlockedProviderRule.outcome(of: result, providers: WebConfiguration.keyless.providers)
+                == .failed(.notABlock(provider: "duckDuckGoHTML", reason: "no results.")))
+    }
+
+    @Test("a correction with no next step at the end fails")
+    func correctionWithoutNextStepFails() {
+        let result = SearchResult(
+            provider: "", results: [], notes: nil,
+            correction: [WebSearchChain.correctionLead, Self.braveRateLimit].joined(separator: " "))
+        #expect(BlockedProviderRule.outcome(of: result, providers: [.braveHTML]) == .failed(.nextStepMissing))
+    }
+
     @Test("a refused key that the test does not excuse fails")
     func refusedKeyThatIsNotExcusedFails() {
         let result = Self.correction(Self.refusedKey, Self.braveRateLimit)
@@ -161,9 +187,8 @@ struct BlockedProviderRuleTests {
 
     @Test("a correction beside hits fails, because the hits are invented")
     func correctionBesideHitsFails() {
-        let result = SearchResult(
-            provider: "", results: [Self.hit], notes: nil,
-            correction: [WebSearchChain.correctionLead, Self.braveRateLimit].joined(separator: " "))
+        let correction = Self.correction(Self.braveRateLimit).correction
+        let result = SearchResult(provider: "", results: [Self.hit], notes: nil, correction: correction)
         #expect(BlockedProviderRule.outcome(of: result, providers: [.braveHTML]) == .failed(.hitsBesideCorrection))
     }
 

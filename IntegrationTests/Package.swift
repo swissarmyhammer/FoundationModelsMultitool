@@ -62,7 +62,8 @@ private let mlxPackage = "mlx-swift-lm"
 /// Thus each live web search test passes on results, with the checks of the
 /// hits, or on a recognized block, with the checks of what the code controls:
 /// the correction reports each provider of the search in order, each blocked
-/// provider with its kind of block, and the result holds no hit. Each other
+/// provider with its kind of block, the correction ends with a next step of
+/// the chain, and the result holds no hit. Each other
 /// outcome fails. `Web/Support/BlockedProviderRule.swift` holds the one rule,
 /// and `Web/BlockedProviderRuleTests.swift` checks it with no network. A block
 /// is not a skip and not a known issue. The rule sends no second search,

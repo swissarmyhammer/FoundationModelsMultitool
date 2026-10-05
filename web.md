@@ -166,7 +166,7 @@ not throw. Examples of the text:
 - ``The `url` parameter must be an absolute http or https URL: ftp://x``
 - `The address is not allowed: localtest.me resolves to 127.0.0.1, a loopback address.`
 - `The content type is not text: application/pdf. fetch reads text, HTML, JSON, and XML.`
-- `No search provider gave results. braveHTML: blocked (HTTP 429). duckDuckGoHTML: no results.`
+- `No search provider gave results. braveHTML: blocked (HTTP 429). duckDuckGoHTML: no results. Search again with fewer words, with no quote marks and no names of persons.`
 
 The description of each verb (`let description = """..."""`) tells the model
 three things: when to use the verb, that `search` then `fetch` in one snippet
@@ -305,7 +305,27 @@ of `runCode` ends a search that does not answer.
 Each skip adds one line to `notes`. The note of a bad key names the HTTP
 status, for example `braveAPI: skipped, the API key was refused (HTTP 422).`
 When all providers fail, the result has a `correction` that names each
-provider and its failure.
+provider and its failure, and then gives the next step for the model. The
+first sentence is `No search provider gave results.` The last sentence is the
+next step (`WebSearchChain.correctionNextStep` and
+`WebSearchChain.correctionWaitStep`):
+
+- When one or more providers returned no results:
+  `Search again with fewer words, with no quote marks and no names of persons.`
+  A provider read the query and found nothing, thus a wider query can help.
+- Else: `Wait, then search again.` Each failure is then a block (HTTP 429 or
+  a challenge page), a server error, a network failure, a response that the
+  code cannot read, or a key problem. No provider found nothing for the
+  query, thus a different query does not help, and a block or a server error
+  can go away after some time.
+
+Example of each:
+
+- `No search provider gave results. braveHTML: blocked (HTTP 429). duckDuckGoHTML: no results. Search again with fewer words, with no quote marks and no names of persons.`
+- `No search provider gave results. braveHTML: blocked (HTTP 429). duckDuckGoHTML: blocked by a challenge page. Wait, then search again.`
+
+A correction without a next step stopped the model in a SWE-bench run: the
+model read only what failed, and did not search again with a wider query.
 
 When all providers fail and one or more of them returns no results, the chain
 runs one more time with a relaxed text: the query text with no quote marks
@@ -317,7 +337,11 @@ the relaxed text is empty or is the same as the query text. When the second
 run gives hits, the first note is
 `No results for the exact query; these are the results for: <relaxed>`, and the
 skip notes of the second run come after it. When the second run fails too, the
-result is the `correction` of the exact query.
+result is the `correction` of the exact query. One or more providers returned
+no results for the exact query, thus that correction ends with
+`Search again with fewer words, with no quote marks and no names of persons.`
+That step stays correct: the relaxed text removes quote marks and operators,
+but it keeps each word.
 
 ## Fetch
 
@@ -460,7 +484,7 @@ can examine the headers.
 | `BraveHTMLProviderTests` | Parse of a recorded Brave page in `WebGoldens/brave-*.html`. Titles, URLs, snippets, entity decode, duplicates, `count` limit, title fallback, snippet fallback, challenge page. |
 | `DuckDuckGoHTMLProviderTests` | Parse of recorded pages. Decode of the `uddg=` redirect links. |
 | `KeyedProviderTests` | For each keyed provider: the request (method, URL, auth header, body) and the parse of a recorded JSON response. The key is in the header and nowhere else. |
-| `ProviderFallbackTests` | Each failure kind in "Fallback" goes to the next provider and adds a note. All failures give one correction that names each provider. |
+| `ProviderFallbackTests` | Each failure kind in "Fallback" goes to the next provider and adds a note. All failures give one correction that names each provider and ends with the next step: the fewer-words step when a provider gave no results, else the wait step. |
 | `WebAPIKeyTests` | `.environment` reads at call time. A missing variable skips the provider. `description`, `dump`, and `String(reflecting:)` show no value. |
 | `KeyRedactionTests` | A provider error that echoes the key is redacted in `notes` and in `correction`. |
 | `WebConfigurationTests` | `fromEnvironment` with a given dictionary: order, `BRAVE_API_KEY` alias, `SEARXNG_URL`, keyless fallback at the end. `.keyless` reads no environment. |
@@ -540,14 +564,16 @@ code recognizes proves that the request reached the provider. The rule:
      of the test that the test does not excuse is reported with a block:
      `<name>: blocked (HTTP 429).` or `<name>: blocked by a challenge page.`.
      The rule checks what the code controls: the correction starts with
-     `No search provider gave results.` and names each provider of the
+     `No search provider gave results.`, names each provider of the
      search in order (the chain went on to the next provider as designed),
-     and the result holds no hit, no provider, and no note (no invented
-     hits).
+     and ends with a next step of "Fallback". The rule removes the next step
+     before it reads the reason of the last provider. The result holds no
+     hit, no provider, and no note (no invented hits).
 - Each other outcome fails the test. Examples: a transport error, a timeout,
   a response that the code cannot read, an HTTP status that is not a block
   (for example a server error), no hit with no correction, a correction that
-  does not report each provider, a markup change, a hit on a wrong host.
+  does not report each provider, a correction with no next step, a markup
+  change, a hit on a wrong host.
 - `Support/BlockedProviderRule.swift` holds the one rule. Its
   `outcome(of:providers:excusing:)` classifies a result, and its
   `expectResultsOrBlock` runs the checks of the hits on results, passes a
@@ -600,7 +626,7 @@ It is not markup drift, and it is not a defect of the provider. Thus:
 | `KeyedProviderLiveTests` | Six `@Test` functions (`braveAPI`, `tavily`, `exa`, `serper`, `kagi`, `searxng`), with a shared helper. Each test has the trait `.enabled(whenSet:)` of `Support/LiveProviderSetting.swift` (see "The environment rule"). The test runs when its variable is set and not empty (`BRAVE_SEARCH_API_KEY` or `BRAVE_API_KEY`, `TAVILY_API_KEY`, `EXA_API_KEY`, `SERPER_API_KEY`, `KAGI_API_KEY`, `SEARXNG_URL`). Else the test is skipped, and the skip comment names the variable, for example `TAVILY_API_KEY is not set`. Thus a run on a computer with no keys has six skipped tests and no failure. Each test builds `WebConfiguration.fromEnvironment()`, and takes only its provider. When the variable is set but `fromEnvironment()` does not have the provider (for example a `SEARXNG_URL` that is not an `http` or `https` URL), the test fails with a message that names the variable. Each test: query `swift programming language`, at least 3 hits, `provider` is the name of the provider, and the key value is not in the hits, the notes, or the correction. A block of the provider is a recognized block of "The blocked provider rule", and the key check still runs. |
 | `LiveProviderSettingTests` | No network and no real key. The enable condition of each keyed live test, with a given environment dictionary: true when a variable of the provider is set, false when no variable is set or the variable is empty, and `BRAVE_API_KEY` alone enables `braveAPI`. When the variables are set, `fromEnvironment()` has the provider. The skip comment names each variable. |
 | `LiveSearchSpacingTests` | No network and no wait. The turns of the search spacing, with given instants: the first turn starts at once, a turn 0.6 s after the previous one starts one interval after it, a turn after the interval starts at once, and turns that come together start one interval apart. See "The search spacing". |
-| `BlockedProviderRuleTests` | No network. The outcomes of "The blocked provider rule": hits are results, also after a skipped blocked provider. HTTP 429, a challenge page, a block of each provider of the keyless chain, and an excused refused key then a block are a recognized block. A transport error, an unclassified HTTP status, a server error, a block then a transport error, a refused key that is not excused, an excused failure with no block, a correction that does not name each provider, a correction beside hits, and no hit with no correction each fail. |
+| `BlockedProviderRuleTests` | No network. The outcomes of "The blocked provider rule": hits are results, also after a skipped blocked provider. HTTP 429, a challenge page, a block of each provider of the keyless chain, and an excused refused key then a block are a recognized block. A transport error, an unclassified HTTP status, a server error, a block then a transport error, a block then no results (the next step is not in the reason of the last provider), a refused key that is not excused, an excused failure with no block, a correction that does not name each provider, a correction with no next step, a correction beside hits, and no hit with no correction each fail. |
 | `FetchedPagesRuleTests` | No network. The check of `WebRunCodeLiveTests` for the pages: a page with content and a page with empty content pass. Pages with no content at all, no page, a page with no title or an empty title, a page with no URL or with a URL that is not an absolute `http` or `https` URL, and a failed fetch each fail. |
 | `KeyedFallbackLiveTests` | `[.braveAPI(.literal("invalid-key")), .braveHTML]`, with `braveAPI` excused. On results: `provider` is `braveHTML`, at least 3 hits, and `notes` has the refused-key note of `braveAPI` (`braveAPI: skipped, the API key was refused (HTTP <status>).`, today with status 422). On a recognized block of `braveHTML`: the correction has the refused-key part `braveAPI: the API key was refused (HTTP <status>).`. In both outcomes, the text `invalid-key` is not in the hits, the notes, or the correction. It needs no real key, thus it can pass on a computer with no keys. |
 | `WebRunCodeLiveTests` | A real `MultiTool` with `.withWeb(configuration: .keyless)` and no model. The snippet at the top of this document runs, with two changes: one added line after the search, `if (hits.correction) return hits;`, and the `correction` of each fetch in the returned pages. On results, `Support/FetchedPagesRule.swift` checks the pages (decided by the user, 2026-10-03, card `^4dfyx4q`): each page has an absolute `http` or `https` URL and a title, and its fetch did not give a correction; at least one page has content. A page with empty content passes with those checks, for example a page that JavaScript draws, whose text is only inside `<noscript>` (see "HTML to markdown"). A transport error, a failed fetch, a page with no URL or no title, or no page with content fails the test. The search rank and the render method of a live hit are not stable, thus the test does not assert content on each page. On a block of both keyless providers, it returns the search, and the test checks that search with "The blocked provider rule", not as pages. The snippet of the top of this document returns `[]` for a blocked search, thus its output does not carry the correction, and the uncarried-return notice of `runCode` is correct for it: the snippet did not return the value that the model needs. |

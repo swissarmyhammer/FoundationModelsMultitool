@@ -222,7 +222,10 @@ struct WebVerbArgumentTests {
         let blocked = WebVerbFixture.textReply(status: Self.tooManyRequestsStatus, contentType: "text/plain", body: "")
         let fixture = try WebVerbFixture(routes: [WebVerbFixture.searxngSearchURL(): blocked])
         let result = try await fixture.search()
-        #expect(result.correction == "No search provider gave results. searxng: blocked (HTTP 429).")
+        #expect(
+            result.correction
+                == [WebSearchChain.correctionLead, "searxng: blocked (HTTP 429).", WebSearchChain.correctionWaitStep]
+                .joined(separator: " "))
         #expect(result.results.isEmpty)
         #expect(result.provider.isEmpty)
     }

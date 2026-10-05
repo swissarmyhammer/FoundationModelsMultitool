@@ -18,13 +18,14 @@ import Testing
 /// 2. **A recognized block.** The search gave a correction, and the rule
 ///    checks what the code controls: the correction names each provider of
 ///    the search in order (the chain went on to the next provider as
-///    designed), each part names the provider and the kind of block, and the
-///    result holds no hit, no provider, and no note (no invented hits).
+///    designed), each part names the provider and the kind of block, the
+///    correction ends with a next step of the chain, and the result holds no
+///    hit, no provider, and no note (no invented hits).
 ///
 /// Each other outcome fails the test: a transport error, a timeout, a
 /// response that the code cannot read, an HTTP status that is not a block, no
-/// hit with no correction, or a correction that does not report each
-/// provider.
+/// hit with no correction, a correction that does not report each provider,
+/// or a correction with no next step.
 ///
 /// This is not a skip and not a known issue: a block is a pass with checks.
 /// It is not a retry: the test sends one search, and the rule reads its
@@ -45,6 +46,12 @@ enum BlockedProviderRule {
 
     /// The text between two parts of the correction.
     private static let partSeparator = " "
+
+    /// The sentences that the chain puts at the end of a correction, after
+    /// the part of the last provider. The rule removes the sentence before
+    /// it reads the parts, thus the sentence is not in the reason of the
+    /// last provider.
+    private static let nextSteps = [WebSearchChain.correctionNextStep, WebSearchChain.correctionWaitStep]
 
     /// The first word of the line that tells the outcome of one live search
     /// in the test log.
@@ -76,6 +83,11 @@ enum BlockedProviderRule {
         /// The correction does not name each provider of the search in
         /// order, with the lead sentence of the chain first.
         case providersNotReported
+
+        /// The correction does not end with a next step of the chain:
+        /// `WebSearchChain.correctionNextStep` or
+        /// `WebSearchChain.correctionWaitStep`.
+        case nextStepMissing
 
         /// The correction gives this reason for this provider, and the reason
         /// is not a block. Examples: a transport error, a timeout, a server
@@ -117,7 +129,10 @@ enum BlockedProviderRule {
         guard result.results.isEmpty, result.provider.isEmpty, result.notes == nil else {
             return .failed(.hitsBesideCorrection)
         }
-        guard let parts = failureParts(of: correction, providers: providers.map(\.name)) else {
+        guard let failures = failureText(of: correction) else {
+            return .failed(.nextStepMissing)
+        }
+        guard let parts = failureParts(of: failures, providers: providers.map(\.name)) else {
             return .failed(.providersNotReported)
         }
         let judged = parts.filter { !excused.contains($0.provider) }
@@ -162,20 +177,34 @@ enum BlockedProviderRule {
         }
     }
 
-    /// Splits a correction into one part for each provider, in order.
+    /// Removes the next step from the end of a correction.
+    ///
+    /// - Parameter correction: The text of the correction.
+    /// - Returns: The correction with no next step and no separator before
+    ///   it, or `nil` when the correction does not end with one of
+    ///   ``nextSteps``.
+    private static func failureText(of correction: String) -> String? {
+        nextSteps.map { partSeparator + $0 }
+            .first(where: correction.hasSuffix)
+            .map { String(correction.dropLast($0.count)) }
+    }
+
+    /// Splits the text of a correction with no next step into one part for
+    /// each provider, in order.
     ///
     /// - Parameters:
-    ///   - correction: The text of the correction.
+    ///   - failures: The text of the correction, with no next step. See
+    ///     ``failureText(of:)``.
     ///   - names: The names of the providers of the search, in order.
-    /// - Returns: One part for each name, or `nil` when the correction does
-    ///   not start with `WebSearchChain.correctionLead` and then name each
+    /// - Returns: One part for each name, or `nil` when the text does not
+    ///   start with `WebSearchChain.correctionLead` and then name each
     ///   provider in order. The reason of a provider runs to the label of the
     ///   next provider, and the reason of the last provider runs to the end of
-    ///   the correction.
-    private static func failureParts(of correction: String, providers names: [String]) -> [ProviderFailurePart]? {
+    ///   the text.
+    private static func failureParts(of failures: String, providers names: [String]) -> [ProviderFailurePart]? {
         let lead = WebSearchChain.correctionLead + partSeparator
-        guard correction.hasPrefix(lead), !names.isEmpty else { return nil }
-        var rest = Substring(correction.dropFirst(lead.count))
+        guard failures.hasPrefix(lead), !names.isEmpty else { return nil }
+        var rest = Substring(failures.dropFirst(lead.count))
         var parts: [ProviderFailurePart] = []
         for (index, name) in names.enumerated() {
             let label = name + reasonSeparator
