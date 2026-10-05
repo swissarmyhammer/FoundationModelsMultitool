@@ -26,6 +26,10 @@ struct DuckDuckGoHTMLProviderTests {
     /// The hand-written challenge page.
     private static let challengePage = "duckduckgo-challenge"
 
+    /// The page with no results, made from ``resultsPage``. The doc comment
+    /// of `RelaxedQueryTests` tells how it was made.
+    private static let noResultsPage = "duckduckgo-no-results"
+
     /// The number of organic results in ``resultsPage``.
     private static let recordedOrganicCount = 10
 
@@ -229,6 +233,12 @@ struct DuckDuckGoHTMLProviderTests {
     func challengePageIsChallenge() throws {
         let data = try Self.recorded(Self.challengePage)
         #expect(throws: ProviderFailure.challenge) { try Self.parse(data) }
+    }
+
+    @Test("the page with no results gives .noResults, not .challenge")
+    func noResultsPageIsNoResults() throws {
+        let data = try Self.recorded(Self.noResultsPage)
+        #expect(throws: ProviderFailure.noResults) { try Self.parse(data) }
     }
 
     @Test("a page with no results and no challenge gives .noResults")

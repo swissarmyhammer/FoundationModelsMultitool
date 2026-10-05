@@ -1,7 +1,49 @@
 ---
 assignees:
 - claude-code
-position_column: todo
+comments:
+- actor: claude-code
+  id: 01m46f401bvq54tdam89xgj71t
+  text: |-
+    Research (implement step):
+    - The real service did not give the no-results page. Two POSTs to https://html.duckduckgo.com/html/ with packageUserAgent and the task query (30 s apart) gave HTTP 202 and the anomaly form (a challenge page, 46 matches of anomaly-modal/challenge-form). Thus duckduckgo-no-results.html is made from duckduckgo-results.html: the head and the search form are kept (the title and the q value hold the task query), each result container (ads and organic) and the "Next" nav-link form are removed, and the #links.results container is empty. The test doc comment tells this.
+    - WebStub routes by the URL only. The DuckDuckGo request is a POST to one fixed URL, so the exact query and the relaxed query have the same URL. To read the form body in the URLProtocol, the stub must read httpBodyStream. LoopbackURLProtocol.body(of:) (MCPTestServer) already does this, but it is private and outside this change, and the duplication rule forbids a copy and forbids an edit of the counterpart. Thus the chain test uses a test-only adapter that wraps DuckDuckGoHTMLProvider: it sends the real POST and parses with the real provider, but it sets the URL of each request from the query text. The stub then gives the no-results page to the URL of the exact query and the results page to the URL of the relaxed query.
+    - SkippedProvider keeps only the reason text now. To find .noResults, it will keep the ProviderSkip value and make the reason from it.
+    - web.md § "Fallback" is the spec of the chain. It gets one paragraph about the relaxed second run.
+  timestamp: 2026-10-05T16:42:28.779872+00:00
+- actor: claude-code
+  id: 01m46fhexx556qcs66wd5yt9w7
+  text: |-
+    Implementation landed (TDD: RED watched with a stub relaxedText that gave back the text; 14 new tests failed for the missing feature, then GREEN).
+    - WebSearchChain.search now calls run(query) (one pass over the providers, returns ChainRun .hits or .allFailed). On .allFailed, relaxedSearch runs one more pass only when a SkippedProvider gaveNoResults, and the relaxed text is not empty and is not equal to query.text. Hits of that pass get the note "No results for the exact query; these are the results for: <relaxed>" first, then the notes of that pass; all notes are redacted. Else the correction of the exact query is returned.
+    - WebSearchChain.relaxedText(of:) is one static function with its own doc comment. Decisions to know: the value after site:/intitle:/inurl:/filetype: stays as a word (only the operator goes); the operator match is case-insensitive (test with SITE: and InTitle:); OR/AND are removed only in upper case, because lower case "or"/"and" are normal words (test); typographic single quote marks stay, because the right single quote is also the apostrophe.
+    - SkippedProvider now keeps the ProviderSkip value, not the reason text, so the chain can find .provider(.noResults).
+    - Test seam: Tests/.../Support/QueryRoutedAdapter.swift wraps an adapter and sets the request URL from the query text, so the WebStub gives one reply to the exact query and another to the relaxed query.
+    - web.md § "Fallback" has one new paragraph about the relaxed run.
+    - Integration tests: the live queries are plain text (for example "swift programming language"), so their relaxed text is the same and no live test changes behavior. The integration package was not run in this step.
+  timestamp: 2026-10-05T16:49:50.013992+00:00
+- actor: claude-code
+  id: 01m46fhk72qqgs4x6qhmnfjz5p
+  text: |-
+    ### implement — changed
+    - evidence: 9 files — Sources/FoundationModelsMultitool/Capabilities/Web/WebSearchChain.swift, Tests/FoundationModelsMultitoolTests/RelaxedQueryTests.swift (new), Tests/FoundationModelsMultitoolTests/Support/QueryRoutedAdapter.swift (new), Tests/FoundationModelsMultitoolTests/WebGoldens/duckduckgo-no-results.html (new, made from duckduckgo-results.html because the real service gave HTTP 202 and a challenge page two times), Tests/FoundationModelsMultitoolTests/ProviderFallbackTests.swift, Tests/FoundationModelsMultitoolTests/DuckDuckGoHTMLProviderTests.swift, Tests/FoundationModelsMultitoolTests/Support/FakeSearchAdapter.swift, web.md. Commands: `swift test --filter "RelaxedQueryTests|ProviderFallbackTests|DuckDuckGoHTMLProviderTests"` RED 14 failing tests (18 issues) of 51, then GREEN 51/51; `swift build --build-tests` complete; `swift test` 1829 tests in 152 suites passed, 0 failures. The one warning ("missing creator for mutated node" on the mlx-swift_Cmlx bundle) comes from the dependency build, not from this change.
+    - next: /review
+  timestamp: 2026-10-05T16:49:54.402105+00:00
+- actor: claude-code
+  id: 01m46fmav3ch3cnpedsha3772m
+  text: |-
+    ### test — green
+    - evidence: swift test — 1829 tests in 152 suites passed, 0 failed, 0 skipped; cd IntegrationTests && swift build --build-tests — Build complete, 0 errors. Only warning: known mlx-swift "missing creator for mutated node" (dependency).
+    - next: review
+  timestamp: 2026-10-05T16:51:24.131345+00:00
+- actor: claude-code
+  id: 01m46fn46cs4kqsqvs1cwnpeqp
+  text: |-
+    ### commit — changed
+    - evidence: 9a10746 fix: run the web search chain again with a relaxed query
+    - next: test and review
+  timestamp: 2026-10-05T16:51:50.092508+00:00
+position_column: doing
 position_ordinal: '80'
 title: 'Web search: run the chain again with a relaxed query when no provider has results'
 ---

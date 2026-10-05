@@ -307,6 +307,18 @@ status, for example `braveAPI: skipped, the API key was refused (HTTP 422).`
 When all providers fail, the result has a `correction` that names each
 provider and its failure.
 
+When all providers fail and one or more of them returns no results, the chain
+runs one more time with a relaxed text: the query text with no quote marks
+(straight and typographic double), no `site:`, `intitle:`, `inurl:`, or
+`filetype:` operator (the value after the operator stays), no leading `-` or
+`+` on a word, and no `OR` or `AND` word, with the whitespace collapsed. The
+`site` field does not change. The chain runs again only one time, and not when
+the relaxed text is empty or is the same as the query text. When the second
+run gives hits, the first note is
+`No results for the exact query; these are the results for: <relaxed>`, and the
+skip notes of the second run come after it. When the second run fails too, the
+result is the `correction` of the exact query.
+
 ## Fetch
 
 ### The pipeline

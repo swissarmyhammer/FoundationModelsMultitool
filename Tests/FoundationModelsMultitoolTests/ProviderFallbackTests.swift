@@ -4,10 +4,13 @@ import Testing
 
 /// Tests for `WebSearchChain`: each failure kind goes to the next provider and
 /// adds one note, the first provider with hits wins, the all-fail correction,
-/// the unsupported-field note, and the redaction of key values.
+/// the relaxed second run, the unsupported-field note, and the redaction of key
+/// values.
 ///
 /// Each provider is a ``FakeSearchAdapter``, and a `WebStub` answers each
-/// request, thus no test uses the network.
+/// request, thus no test uses the network. A test of the relaxed second run
+/// wraps each fake in a ``QueryRoutedAdapter``, thus the exact query and the
+/// relaxed query get different replies.
 @Suite("ProviderFallback")
 struct ProviderFallbackTests {
     /// The environment variable of the keyed provider in the tests.
@@ -36,6 +39,21 @@ struct ProviderFallbackTests {
 
     /// The query count that is less than ``hitCount``, for the limit test.
     private static let limitedHitCount = 2
+
+    /// A query text with quote marks, thus its relaxed text is different.
+    private static let quotedText = "\"swift actors\""
+
+    /// The relaxed text of ``quotedText``.
+    private static let relaxedQuotedText = "swift actors"
+
+    /// The last path part of the endpoint of the exact query.
+    private static let exactRun = "exact"
+
+    /// The last path part of the endpoint of the relaxed query.
+    private static let relaxedRun = "relaxed"
+
+    /// The first words of the note of a relaxed second run.
+    private static let relaxedNoteLead = "No results for the exact query; these are the results for: "
 
     /// The URL of the endpoint of the fake provider `name`.
     ///
@@ -82,6 +100,37 @@ struct ProviderFallbackTests {
         supports: Set<SearchFeature> = []
     ) throws -> (WebSearchProvider, any SearchProviderAdapter) {
         try (.duckDuckGoHTML, adapter("duckDuckGoHTML", supports: supports))
+    }
+
+    /// The URL of the endpoint of the fake provider `name` for one run of the
+    /// chain.
+    ///
+    /// - Parameters:
+    ///   - name: The name of the provider.
+    ///   - run: ``exactRun`` or ``relaxedRun``.
+    /// - Returns: The URL text.
+    private static func endpoint(_ name: String, run: String) -> String {
+        "https://\(name.lowercased()).example/\(run)"
+    }
+
+    /// A provider whose fake adapter sends the exact query and the relaxed
+    /// query to two different endpoints, thus the stub gives each run its own
+    /// reply.
+    ///
+    /// - Parameters:
+    ///   - provider: The provider, which gives the API key.
+    ///   - name: The name of the provider.
+    ///   - exact: The exact query text, sent to ``endpoint(_:run:)`` of
+    ///     ``exactRun``.
+    ///   - relaxed: The relaxed query text, sent to ``endpoint(_:run:)`` of
+    ///     ``relaxedRun``.
+    /// - Returns: The provider and its adapter.
+    private static func routed(
+        _ provider: WebSearchProvider, _ name: String,
+        exact: String = quotedText, relaxed: String = relaxedQuotedText
+    ) throws -> (WebSearchProvider, any SearchProviderAdapter) {
+        let routes = try [exact: url(endpoint(name, run: exactRun)), relaxed: url(endpoint(name, run: relaxedRun))]
+        return try (provider, QueryRoutedAdapter(wrapping: adapter(name), routes: routes))
     }
 
     /// The keyed provider, `braveAPI`, whose key is in ``keyVariable``.
@@ -294,6 +343,102 @@ struct ProviderFallbackTests {
             outcome
                 == .correction(
                     "No search provider gave results. braveHTML: blocked (HTTP 429). duckDuckGoHTML: no results."))
+    }
+
+    // MARK: - The relaxed second run
+
+    @Test("no results for a text with no quote marks and no operators sends no second request")
+    func plainTextSendsNoSecondRequest() async throws {
+        let stub = WebStub(routes: [
+            Self.endpoint("braveHTML"): Self.textReply(""),
+            Self.endpoint("duckDuckGoHTML"): Self.textReply("")
+        ])
+        let outcome = try await Self.chain([Self.braveHTML(), Self.duckDuckGoHTML()], stub: stub)
+            .search(SearchQuery(text: "swift actors"))
+        #expect(
+            outcome
+                == .correction("No search provider gave results. braveHTML: no results. duckDuckGoHTML: no results."))
+        #expect(stub.requestedURLs == [Self.endpoint("braveHTML"), Self.endpoint("duckDuckGoHTML")])
+    }
+
+    @Test("failures with no .noResults send no second request")
+    func failuresWithoutNoResultsSendNoSecondRequest() async throws {
+        let stub = WebStub(routes: [
+            Self.endpoint("braveHTML", run: Self.exactRun): Self.textReply("slow down", status: Self.rateLimitStatus),
+            Self.endpoint("duckDuckGoHTML", run: Self.exactRun): Self.textReply(FakeSearchAdapter.challengeMarker),
+            Self.endpoint("braveHTML", run: Self.relaxedRun): Self.hitsReply(),
+            Self.endpoint("duckDuckGoHTML", run: Self.relaxedRun): Self.hitsReply()
+        ])
+        let outcome = try await Self.chain(
+            [Self.routed(.braveHTML, "braveHTML"), Self.routed(.duckDuckGoHTML, "duckDuckGoHTML")], stub: stub
+        ).search(SearchQuery(text: Self.quotedText))
+        #expect(
+            outcome
+                == .correction(
+                    "No search provider gave results. braveHTML: blocked (HTTP 429). "
+                        + "duckDuckGoHTML: blocked by a challenge page."))
+        #expect(
+            stub.requestedURLs == [
+                Self.endpoint("braveHTML", run: Self.exactRun), Self.endpoint("duckDuckGoHTML", run: Self.exactRun)
+            ])
+    }
+
+    @Test("hits of the relaxed run come with the relaxed note first, then the skip notes of that run")
+    func relaxedHitsHaveNoteFirst() async throws {
+        let stub = WebStub(routes: [
+            Self.endpoint("braveHTML", run: Self.exactRun): Self.textReply(""),
+            Self.endpoint("duckDuckGoHTML", run: Self.exactRun): Self.textReply(""),
+            Self.endpoint("braveHTML", run: Self.relaxedRun): Self.textReply("slow down", status: Self.rateLimitStatus),
+            Self.endpoint("duckDuckGoHTML", run: Self.relaxedRun): Self.hitsReply()
+        ])
+        let outcome = try await Self.chain(
+            [Self.routed(.braveHTML, "braveHTML"), Self.routed(.duckDuckGoHTML, "duckDuckGoHTML")], stub: stub
+        ).search(SearchQuery(text: Self.quotedText))
+        #expect(
+            outcome
+                == .hits(
+                    provider: "duckDuckGoHTML", hits: Self.expectedHits(),
+                    notes: [Self.relaxedNoteLead + Self.relaxedQuotedText, "braveHTML: skipped, blocked (HTTP 429)."]))
+    }
+
+    @Test("when the relaxed run fails too, the correction is the one of the exact query, after one second run")
+    func relaxedFailureGivesExactCorrection() async throws {
+        let rateLimit = Self.textReply("slow down", status: Self.rateLimitStatus)
+        let stub = WebStub(routes: [
+            Self.endpoint("braveHTML", run: Self.exactRun): rateLimit,
+            Self.endpoint("duckDuckGoHTML", run: Self.exactRun): Self.textReply(""),
+            Self.endpoint("braveHTML", run: Self.relaxedRun): rateLimit,
+            Self.endpoint("duckDuckGoHTML", run: Self.relaxedRun): Self.textReply(FakeSearchAdapter.challengeMarker)
+        ])
+        let outcome = try await Self.chain(
+            [Self.routed(.braveHTML, "braveHTML"), Self.routed(.duckDuckGoHTML, "duckDuckGoHTML")], stub: stub
+        ).search(SearchQuery(text: Self.quotedText))
+        #expect(
+            outcome
+                == .correction(
+                    "No search provider gave results. braveHTML: blocked (HTTP 429). duckDuckGoHTML: no results."))
+        #expect(
+            stub.requestedURLs == [
+                Self.endpoint("braveHTML", run: Self.exactRun), Self.endpoint("duckDuckGoHTML", run: Self.exactRun),
+                Self.endpoint("braveHTML", run: Self.relaxedRun), Self.endpoint("duckDuckGoHTML", run: Self.relaxedRun)
+            ])
+    }
+
+    @Test("a key value in the relaxed text shows <redacted> in the relaxed note")
+    func relaxedNoteRedactsKey() async throws {
+        let stub = WebStub(routes: [
+            Self.endpoint("braveAPI", run: Self.exactRun): Self.textReply(""),
+            Self.endpoint("braveAPI", run: Self.relaxedRun): Self.hitsReply()
+        ])
+        let provider = try Self.routed(
+            .braveAPI(.environment(Self.keyVariable)), "braveAPI",
+            exact: "\"swift\" \(Self.keyValue)", relaxed: "swift \(Self.keyValue)")
+        let outcome = await Self.chain([provider], stub: stub, environment: [Self.keyVariable: Self.keyValue])
+            .search(SearchQuery(text: "\"swift\" \(Self.keyValue)"))
+        #expect(
+            outcome
+                == .hits(
+                    provider: "braveAPI", hits: Self.expectedHits(), notes: [Self.relaxedNoteLead + "swift <redacted>"]))
     }
 
     // MARK: - Unsupported fields

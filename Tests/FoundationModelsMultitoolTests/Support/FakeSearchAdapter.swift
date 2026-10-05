@@ -108,6 +108,13 @@ struct FakeSearchAdapter: SearchProviderAdapter {
 }
 
 extension SearchOutcome {
+    /// The hits of a `.hits` outcome, or `nil` for a correction. A test
+    /// unwraps it with `#require`.
+    var hitList: [WebHit]? {
+        guard case .hits(_, let hits, _) = self else { return nil }
+        return hits
+    }
+
     /// The notes of a `.hits` outcome, or `nil` for a correction. A test
     /// unwraps it with `#require`.
     var hitNotes: [String]? {
