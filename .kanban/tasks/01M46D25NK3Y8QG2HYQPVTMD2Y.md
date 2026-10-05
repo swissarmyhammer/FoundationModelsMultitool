@@ -103,10 +103,26 @@ comments:
     evidence: refactor: name the cooldown seconds in ProviderCooldowns
     task: ^pvtmd2y
   timestamp: 2026-10-05T18:11:45.926085+00:00
+- actor: claude-code
+  id: 01m46mc95wqv0z8js8fsmdvgg1
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (65337be) — findings 0, confirmed 0, refuted 0, attempted 7, failed 0. 1 file reviewed. No file was renamed. The 2 prior items (ProviderCooldowns.swift:25, :29, magic-numbers-swift) are fixed. The literals 60 and 600 are now defaultCooldownSeconds and maximumCooldownSeconds.
+    - next: none. The task is in done.
+  timestamp: 2026-10-05T18:14:23.164174+00:00
+- actor: claude-code
+  id: 01m46mcp14f7961w5dpdeq0xej
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — 1 file (ProviderCooldowns.swift: named constants defaultCooldownSeconds, maximumCooldownSeconds)
+    - test: green — swift test, 1854 passed in 155 suites; IntegrationTests build complete
+    - commit: 65337be
+    - review: clean — 0 findings, 7 of 7 checks ran; prior items ProviderCooldowns.swift:25 and :29 fixed
+  timestamp: 2026-10-05T18:14:36.324265+00:00
 depends_on:
 - 01M46D1NAKY1H93EN24ARTZPVB
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffffaa80
 title: 'Web search: put DuckDuckGo first, and skip a provider for a cooldown after HTTP 429'
 ---
 ## Problem
