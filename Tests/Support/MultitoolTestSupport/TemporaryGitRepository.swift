@@ -52,6 +52,12 @@ final class TemporaryGitRepository {
     /// The ref name that names the commit HEAD points at.
     private static let headReference = "HEAD"
 
+    /// The prefix that makes a branch name into the full name of its ref.
+    private static let branchReferencePrefix = "refs/heads/"
+
+    /// The text of each blob that ``markConflicted(_:)`` records.
+    private static let conflictText = "conflict\n"
+
     /// The work folder of the repository.
     ///
     /// The URL keeps the spelling of the process temporary folder (`/var/...`
@@ -128,14 +134,47 @@ final class TemporaryGitRepository {
         return String(cString: git_oid_tostr_s(&commitID))
     }
 
-    /// Adds the file at `path` to the index, and writes the index. No commit
-    /// is made, thus the file is tracked but is in no commit.
+    /// Stages the file at `path`, and writes the index. No commit is made.
+    ///
+    /// A file in the work folder goes into the index, thus a new file is
+    /// tracked but is in no commit. A file that the work folder no longer
+    /// holds goes out of the index, thus its removal is staged.
     ///
     /// - Parameter path: The path of the file, relative to the work folder.
     /// - Throws: ``LibGit2Error`` when a libgit2 call fails.
     func stage(_ path: String) throws {
+        let isInWorkFolder = FileManager.default.fileExists(
+            atPath: workDirectory.appendingPathComponent(path, isDirectory: false).path)
         try withIndex { index in
-            try LibGit2.check(git_index_add_bypath(index, path))
+            try LibGit2.check(isInWorkFolder ? git_index_add_bypath(index, path) : git_index_remove_bypath(index, path))
+            try LibGit2.check(git_index_write(index))
+        }
+    }
+
+    /// Records a merge conflict on the file at `path` in the index, and
+    /// writes the index. The work folder does not change.
+    ///
+    /// The index gets the three conflict stages (ancestor, ours, theirs) for
+    /// the path, each with the blob of ``conflictText``, and loses the normal
+    /// entry of the path. Thus git reads the file as conflicted.
+    ///
+    /// - Parameter path: The path of the file, relative to the work folder.
+    /// - Throws: ``LibGit2Error`` when a libgit2 call fails.
+    func markConflicted(_ path: String) throws {
+        var blobID = git_oid()
+        try LibGit2.check(
+            Self.conflictText.withCString { text in
+                git_blob_create_from_buffer(&blobID, repository, text, strlen(text))
+            })
+        try withIndex { index in
+            try LibGit2.check(
+                path.withCString { cPath in
+                    var entry = git_index_entry()
+                    entry.path = cPath
+                    entry.mode = GIT_FILEMODE_BLOB.rawValue
+                    entry.id = blobID
+                    return withUnsafePointer(to: entry) { stage in git_index_conflict_add(index, stage, stage, stage) }
+                })
             try LibGit2.check(git_index_write(index))
         }
     }
@@ -157,6 +196,38 @@ final class TemporaryGitRepository {
         git_reference_free(branch)
     }
 
+    /// Points HEAD at the branch `name`. The work folder and the index do not
+    /// change.
+    ///
+    /// - Parameter name: The branch name, without `refs/heads/`.
+    /// - Throws: ``LibGit2Error`` when a libgit2 call fails.
+    func pointHead(atBranch name: String) throws {
+        try LibGit2.check(git_repository_set_head(repository, "\(Self.branchReferencePrefix)\(name)"))
+    }
+
+    /// Points HEAD directly at the commit that it names now, thus HEAD names
+    /// no branch (a detached HEAD).
+    ///
+    /// - Throws: ``LibGit2Error`` when HEAD names no commit, or when a
+    ///   libgit2 call fails.
+    func detachHead() throws {
+        try LibGit2.check(git_repository_detach_head(repository))
+    }
+
+    /// Deletes the local branch `name`. The commits stay.
+    ///
+    /// - Parameter name: The branch name, without `refs/heads/`. HEAD must
+    ///   not name it.
+    /// - Throws: ``LibGit2Error`` when the branch does not exist, when HEAD
+    ///   names it, or when a libgit2 call fails.
+    func deleteBranch(named name: String) throws {
+        let branch = try LibGit2.makeHandle { branch in
+            git_branch_lookup(&branch, repository, name, GIT_BRANCH_LOCAL)
+        }
+        defer { git_reference_free(branch) }
+        try LibGit2.check(git_branch_delete(branch))
+    }
+
     // MARK: - Steps
 
     /// Starts libgit2, makes the repository at `directory`, and points HEAD
@@ -169,7 +240,7 @@ final class TemporaryGitRepository {
             git_repository_init(&repository, directory.path, workFolderRepositoryFlag)
         }
         do {
-            try LibGit2.check(git_repository_set_head(repository, "refs/heads/\(defaultBranch)"))
+            try LibGit2.check(git_repository_set_head(repository, "\(branchReferencePrefix)\(defaultBranch)"))
         } catch {
             git_repository_free(repository)
             throw error

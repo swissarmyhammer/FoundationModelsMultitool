@@ -37,6 +37,11 @@ enum LibGit2 {
     /// this text and not a crash.
     private static let missingErrorText = "libgit2 gave no error text"
 
+    /// The value that a libgit2 test function returns for true, for example
+    /// `git_oid_is_zero`, `git_repository_head_unborn`, and
+    /// `git_reference_is_branch`.
+    static let trueValue: Int32 = 1
+
     /// Starts libgit2, or throws when it cannot start.
     ///
     /// Each entry point of the layer calls this before its first libgit2 call.

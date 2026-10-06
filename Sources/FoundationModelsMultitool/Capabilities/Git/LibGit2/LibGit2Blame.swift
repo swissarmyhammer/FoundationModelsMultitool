@@ -58,10 +58,6 @@ extension LibGit2Repository {
     /// The index stage of a file with no merge conflict.
     private static let normalIndexStage = Int32(GIT_INDEX_STAGE_NORMAL.rawValue)
 
-    /// The value of `git_oid_is_zero` for the zero commit id, and of
-    /// `git_repository_head_unborn` for a HEAD with no commit.
-    private static let libGit2True: Int32 = 1
-
     /// Blames each line of `content`, the text of the file at `path` in the
     /// work folder, against the history of HEAD.
     ///
@@ -79,7 +75,7 @@ extension LibGit2Repository {
     func blameLines(atPath path: String, content: Data, lineCount: Int) throws(LibGit2Error) -> [LibGit2LineBlame] {
         guard lineCount > 0 else { return [] }
         guard isTracked(path) else { return Array(repeating: .untracked, count: lineCount) }
-        guard git_repository_head_unborn(handle) != Self.libGit2True else {
+        guard git_repository_head_unborn(handle) != LibGit2.trueValue else {
             return Array(repeating: .uncommitted, count: lineCount)
         }
         let base: OpaquePointer
@@ -195,7 +191,7 @@ extension LibGit2Repository {
         commits: inout [String: LibGit2Commit]
     ) throws(LibGit2Error) -> LibGit2LineBlame {
         var commitID = hunk.final_commit_id
-        guard git_oid_is_zero(&commitID) != Self.libGit2True else { return .uncommitted }
+        guard git_oid_is_zero(&commitID) != LibGit2.trueValue else { return .uncommitted }
         let sha = String(cString: git_oid_tostr_s(&commitID))
         if let commit = commits[sha] { return .committed(commit) }
         let commit = try commitFacts(withID: commitID)

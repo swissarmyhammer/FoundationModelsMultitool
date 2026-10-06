@@ -1,0 +1,59 @@
+import Foundation
+import Testing
+
+@testable import FoundationModelsMultitool
+@testable import MultitoolTestSupport
+
+/// Coverage for the branch part of the `LibGit2` layer: the names of the
+/// local branches, and the branch that HEAD names.
+///
+/// Each test makes its own repository, thus the tests are independent and
+/// they run in parallel safely.
+@Suite("LibGit2BranchesTests")
+struct LibGit2BranchesTests {
+
+    /// The layer gives each local branch, and HEAD names the default branch.
+    @Test("the layer gives each local branch and the branch of HEAD")
+    func theLayerGivesEachLocalBranchAndTheBranchOfHead() throws {
+        let (repository, _) = try GitTestHistory.makeThreeCommits()
+        let opened = try LibGit2Repository(discoveringFrom: repository.workDirectory)
+
+        #expect(Set(try opened.localBranchNames()) == [TemporaryGitRepository.defaultBranch, GitTestHistory.featureBranch])
+        #expect(try opened.currentBranchName() == TemporaryGitRepository.defaultBranch)
+    }
+
+    /// A HEAD that names another branch gives that branch.
+    @Test("a HEAD that names another branch gives that branch")
+    func aHeadThatNamesAnotherBranchGivesThatBranch() throws {
+        let (repository, _) = try GitTestHistory.makeThreeCommits()
+        try repository.pointHead(atBranch: GitTestHistory.featureBranch)
+
+        let opened = try LibGit2Repository(discoveringFrom: repository.workDirectory)
+
+        #expect(try opened.currentBranchName() == GitTestHistory.featureBranch)
+    }
+
+    /// A detached HEAD names no branch.
+    @Test("a detached HEAD names no branch")
+    func aDetachedHeadNamesNoBranch() throws {
+        let (repository, _) = try GitTestHistory.makeThreeCommits()
+        try repository.detachHead()
+
+        let opened = try LibGit2Repository(discoveringFrom: repository.workDirectory)
+
+        #expect(try opened.currentBranchName() == nil)
+        #expect(Set(try opened.localBranchNames()) == [TemporaryGitRepository.defaultBranch, GitTestHistory.featureBranch])
+    }
+
+    /// A repository with no commit has no branch, and its HEAD names no
+    /// branch that exists.
+    @Test("a repository with no commit has no branch")
+    func aRepositoryWithNoCommitHasNoBranch() throws {
+        let repository = try TemporaryGitRepository()
+
+        let opened = try LibGit2Repository(discoveringFrom: repository.workDirectory)
+
+        #expect(try opened.localBranchNames().isEmpty)
+        #expect(try opened.currentBranchName() == nil)
+    }
+}

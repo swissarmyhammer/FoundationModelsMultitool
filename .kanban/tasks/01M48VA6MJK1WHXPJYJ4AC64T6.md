@@ -47,10 +47,26 @@ comments:
     - evidence: one local commit "feat: add Java, C, C++, C#, Ruby, and PHP to git semantic". It holds Package.swift (six grammar packages), CodeLanguageConfig.swift, the changed tests, the new golden folders (java, c, cpp, csharp, ruby, php), git.md, and all .kanban/ changes. The sha is in the step block the commit step returns. It is not in this text, because this comment is part of the commit. No push.
     - next: review
   timestamp: 2026-10-06T19:14:32.993969+00:00
+- actor: claude-code
+  id: 01m49ad8zzxwd4x82q0a725mdd
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (commit f05171e). Counts: 0 findings, 0 confirmed, 0 refuted; 7 attempted, 0 failed. The commit renames no file, thus no file-scoped review was necessary. The validators read 4 files. 133 golden fixture files and git.md had no matching validator. 6 .kanban files are ignored by .reviewignore.
+    - next: The task is in done.
+  timestamp: 2026-10-06T19:17:53.279952+00:00
+- actor: claude-code
+  id: 01m49adn6sn42bch0x08kn8kev
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 4 files and 44 golden cases (Package.swift, CodeLanguageConfig.swift, 2 test files, golden folders for java, c, cpp, csharp, ruby, php)
+    - test: green — swift test, 2041 passed in 173 suites; fresh grammar build has no warning; IntegrationTests build complete
+    - commit: f05171e
+    - review: clean — 0 findings, 7 validators on 4 files
+  timestamp: 2026-10-06T19:18:05.785383+00:00
 depends_on:
 - 01M48V9SN2MNFZGXZ9R6DGD0H1
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffffb280
 title: 'git semantic: Java, C, C++, C#, Ruby, and PHP'
 ---
 ## Goal
