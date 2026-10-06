@@ -16,7 +16,8 @@ import Testing
 /// The card names each case: `HEAD`, an older commit, a branch name, an
 /// unknown ref, an unknown path, a path outside the root, a binary file, and
 /// content over the cap. A root in a subfolder, a folder path, and a root in no
-/// repository are here too.
+/// repository are here too. Task `^5a8vaqk` adds a file in a folder that a
+/// later commit removed, and such a path outside the root.
 @Suite("GitShowTests")
 struct GitShowTests {
 
@@ -70,6 +71,28 @@ struct GitShowTests {
         #expect(parent.ref == "HEAD~1")
         #expect(parent.content == Self.secondText)
         #expect(grandparent.content == Self.firstText)
+    }
+
+    /// A file in a folder that a later commit removed reads at an older ref.
+    /// The file comes from the commit, not from the work folder, thus the
+    /// absent folder is not a correction. At HEAD the commit holds no file
+    /// at the path, and that is the correction.
+    @Test("show of a file whose folder a later commit removed reads the older ref")
+    func showOfAFileWhoseFolderALaterCommitRemovedReadsTheOlderRef() async throws {
+        let (repository, _) = try GitTestHistory.makeRemovedFolder(
+            firstText: Self.firstText, secondText: Self.secondText)
+        let context = GitContext(root: repository.workDirectory)
+        let path = GitTestHistory.removedFolderFile
+
+        let parent = try await Self.show(path, in: context, ref: "HEAD~1")
+        let grandparent = try await Self.show(path, in: context, ref: "HEAD~2")
+        let head = try await Self.show(path, in: context)
+
+        #expect(parent.correction == nil)
+        #expect(parent.path == path)
+        #expect(parent.content == Self.secondText)
+        #expect(grandparent.content == Self.firstText)
+        try Self.expectCorrection(head, contains: "holds no file at this path")
     }
 
     /// A branch name gives the file at the commit of that branch.
@@ -170,6 +193,31 @@ struct GitShowTests {
             let refusal = try #require(throws: PathViolation.self) {
                 try context.pathGuard.validatePath(path).get()
             }
+            try Self.expectCorrection(result, contains: refusal.message)
+        }
+    }
+
+    /// A path outside the root is a correction also when its folders are
+    /// absent: a removed folder of the repository above a root in a
+    /// subfolder, and an absent folder in another folder.
+    @Test("a path in an absent folder outside the root is a correction")
+    func aPathInAnAbsentFolderOutsideTheRootIsACorrection() async throws {
+        let (repository, _) = try GitTestHistory.makeRemovedFolder(
+            firstText: Self.firstText, secondText: Self.secondText)
+        let context = GitContext(
+            root: repository.workDirectory.appendingPathComponent(GitTestHistory.keptFolder, isDirectory: true))
+        let removedFile = repository.workDirectory.appendingPathComponent(
+            GitTestHistory.removedFolderFile, isDirectory: false)
+        let outside = TestSupport.makeTemporaryDirectory(named: Self.testDirectoryName)
+        let outsideFile = outside.appendingPathComponent("gone/x.txt", isDirectory: false)
+
+        for path in [removedFile.path, outsideFile.path] {
+            let result = try await Self.show(path, in: context, ref: "HEAD~1")
+
+            let refusal = try #require(throws: PathViolation.self) {
+                try context.pathGuard.validatePath(path, absentFolders: .accepted).get()
+            }
+            #expect(refusal.message.contains("outside workspace"))
             try Self.expectCorrection(result, contains: refusal.message)
         }
     }

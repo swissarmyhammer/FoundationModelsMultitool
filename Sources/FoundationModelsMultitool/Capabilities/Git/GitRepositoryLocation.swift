@@ -81,15 +81,8 @@ struct GitRepositoryLocation: Equatable, Sendable {
     ///   a path that goes above the work folder.
     func repositoryPath(fromRootRelativePath rootRelativePath: String) -> String? {
         guard !rootRelativePath.hasPrefix(Self.separator) else { return nil }
-        var components = rootComponents
-        for component in PathContainment.components(of: rootRelativePath) where component != Self.currentFolder {
-            if component == Self.parentFolder {
-                guard components.popLast() != nil else { return nil }
-            } else {
-                components.append(String(component))
-            }
-        }
-        return Self.joined(components)
+        return Self.appending(PathContainment.components(of: rootRelativePath), to: rootComponents)
+            .map { Self.joined($0) }
     }
 
     /// Changes the URL of a file in the work folder into a repository path.
@@ -99,32 +92,76 @@ struct GitRepositoryLocation: Equatable, Sendable {
     /// `/var/...` spelling finds its place in a `/private/var/...` work
     /// folder. A verb gives this helper the URL that the path guard gave.
     ///
-    /// The file can be absent from the disk: a verb that reads a file at an
-    /// older ref names a file that a later commit removed. `realpath` cannot
-    /// resolve an absent file, thus the helper resolves its folder.
+    /// The file and its folders can be absent from the disk: a verb that
+    /// reads a file at an older ref names a file, or a folder, that a later
+    /// commit removed. `realpath` cannot resolve an absent part, thus the
+    /// helper resolves the deepest folder that the disk holds, and adds the
+    /// absent parts after it.
     ///
     /// - Parameter file: The URL of a file.
     /// - Returns: The path relative to the work folder, as libgit2 reads it,
     ///   or `nil` when the file is not below the work folder.
     func repositoryPath(ofFile file: URL) -> String? {
-        let workComponents = PathContainment.components(of: workDirectory.path)
-        let fileComponents = PathContainment.components(of: Self.realPath(of: file))
-        guard fileComponents.count > workComponents.count, fileComponents.starts(with: workComponents) else {
+        let workComponents = PathContainment.components(of: workDirectory.path).map(String.init)
+        guard let fileComponents = Self.realComponents(of: file),
+            fileComponents.count > workComponents.count, fileComponents.starts(with: workComponents)
+        else {
             return nil
         }
-        return Self.joined(fileComponents.dropFirst(workComponents.count).map(String.init))
+        return Self.joined(fileComponents.dropFirst(workComponents.count))
     }
 
-    /// The real path of a file: `realpath` of the file, or, for a file that
-    /// the disk does not hold, `realpath` of its folder with the file name
-    /// after it.
+    /// The parts of the real path of a file.
+    ///
+    /// The parts start with `realpath` of the deepest part of the path that
+    /// the disk holds: the file itself, or, for an absent file, its deepest
+    /// folder on the disk. The absent parts follow, and a `.` or `..` part
+    /// among them folds the same way as in
+    /// ``repositoryPath(fromRootRelativePath:)``: the disk cannot resolve an
+    /// absent part, and an absent part is not a symlink.
     ///
     /// - Parameter file: The URL of a file.
-    /// - Returns: The real path.
-    private static func realPath(of file: URL) -> String {
-        guard !FileManager.default.fileExists(atPath: file.path) else { return resolvedPath(file.path) }
-        return URL(fileURLWithPath: resolvedPath(file.deletingLastPathComponent().path), isDirectory: true)
-            .appendingPathComponent(file.lastPathComponent, isDirectory: false).path
+    /// - Returns: The parts of the real path, or `nil` when a `..` part goes
+    ///   above the filesystem root.
+    private static func realComponents(of file: URL) -> [String]? {
+        let components = PathContainment.components(of: file.path)
+        let heldCount =
+            (0...components.count).last { count in
+                FileManager.default.fileExists(atPath: absolutePath(of: components.prefix(count)))
+            } ?? 0
+        let realPrefix = PathContainment.components(of: resolvedPath(absolutePath(of: components.prefix(heldCount))))
+        return appending(components.dropFirst(heldCount), to: realPrefix.map(String.init))
+    }
+
+    /// Adds path parts after a folder, one at a time: a `.` part is dropped,
+    /// and a `..` part removes the part before it.
+    ///
+    /// - Parameters:
+    ///   - components: The path parts to add.
+    ///   - folder: The parts of the folder.
+    /// - Returns: The parts, or `nil` when a `..` part goes above the first
+    ///   part of `folder`.
+    private static func appending<Components: Sequence<Substring>>(
+        _ components: Components,
+        to folder: [String]
+    ) -> [String]? {
+        var result = folder
+        for component in components where component != currentFolder {
+            if component == parentFolder {
+                guard result.popLast() != nil else { return nil }
+            } else {
+                result.append(String(component))
+            }
+        }
+        return result
+    }
+
+    /// The absolute path of some path parts.
+    ///
+    /// - Parameter components: The path parts, from the filesystem root.
+    /// - Returns: The path, `/` for no part.
+    private static func absolutePath<Components: Collection<Substring>>(of components: Components) -> String {
+        separator + components.joined(separator: separator)
     }
 
     /// Joins path parts with the separator, or gives `.` for no part.

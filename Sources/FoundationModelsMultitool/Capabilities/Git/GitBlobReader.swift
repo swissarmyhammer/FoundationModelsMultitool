@@ -9,9 +9,11 @@
 //
 // git.md § "Decisions", item 8: the path argument goes through the
 // `PathGuard` of `GitContext`, thus a path cannot go out of the root. The
-// guard checks the path with `validatePath`, not with the `read` permission:
-// the file at an older ref can be absent from the work folder, and the guard
-// accepts an absent file whose folder is present.
+// guard checks the path with `validatePath(_:absentFolders: .accepted)`, not
+// with the `read` permission: the file at an older ref can be absent from the
+// work folder, and a later commit can have removed its folders too. The guard
+// then bounds the path from the deepest folder that the disk holds, and
+// refuses an absent folder that is a dangling symlink (task `^5a8vaqk`).
 //
 // The reader gives the whole text, with no cap. Each verb applies its own cap
 // to what it shows.
@@ -72,6 +74,10 @@ extension GitContext {
     /// Sends a path argument through the path guard, and changes it into a
     /// repository path.
     ///
+    /// The guard accepts a path whose folders are absent from the work
+    /// folder, because the path names a file or a folder in the history of
+    /// the repository. The path still cannot go out of the root.
+    ///
     /// - Parameters:
     ///   - path: The path argument, absolute or relative to the root.
     ///   - location: The repository of the root.
@@ -79,7 +85,7 @@ extension GitContext {
     ///   or the correction for a path that the guard refuses or that is not
     ///   in the work folder.
     func repositoryPath(of path: String, in location: GitRepositoryLocation) -> Result<String, CorrectiveRejection> {
-        pathGuard.validatePath(path)
+        pathGuard.validatePath(path, absentFolders: .accepted)
             .mapError { violation in CorrectiveRejection(correctiveMessage: violation.correctiveMessage) }
             .flatMap { url in
                 guard let repositoryPath = location.repositoryPath(ofFile: url) else {

@@ -17,6 +17,8 @@ import Testing
 /// unknown ref. The default limit, a limit out of range, a path in a root in
 /// a subfolder, a path outside the root, and a root in no repository are here
 /// too. Most tests read the history of `GitTestHistory.makeThreeCommits()`.
+/// Task `^5a8vaqk` adds a path in a folder that a later commit removed, and
+/// such a path outside the root.
 @Suite("GitLogTests")
 struct GitLogTests {
 
@@ -89,6 +91,22 @@ struct GitLogTests {
         #expect(result.commits.map(\.sha) == [shas[2], shas[0]])
     }
 
+    /// A path whose folder a later commit removed keeps the commits that
+    /// change it, the removal too. The absent folder is not a correction,
+    /// for the file and for the folder itself.
+    @Test("a path whose folder a later commit removed keeps the commits that change it")
+    func aPathWhoseFolderALaterCommitRemovedKeepsTheCommitsThatChangeIt() async throws {
+        let (repository, shas) = try GitTestHistory.makeRemovedFolder(firstText: "1\n", secondText: "2\n")
+        let context = GitContext(root: repository.workDirectory)
+
+        for path in [GitTestHistory.removedFolderFile, GitTestHistory.removedFolder] {
+            let result = try await Self.log(in: context, path: path)
+
+            #expect(result.correction == nil, "path: \(path)")
+            #expect(result.commits.map(\.sha) == shas.reversed(), "path: \(path)")
+        }
+    }
+
     /// A path in a root in a subfolder is relative to that root.
     @Test("a path in a root in a subfolder is relative to that root")
     func aPathInARootInASubfolderIsRelativeToThatRoot() async throws {
@@ -152,6 +170,30 @@ struct GitLogTests {
             let refusal = try #require(throws: PathViolation.self) {
                 try context.pathGuard.validatePath(path).get()
             }
+            try Self.expectCorrection(result, contains: refusal.message)
+        }
+    }
+
+    /// A path outside the root is a correction also when its folders are
+    /// absent: a removed folder of the repository above a root in a
+    /// subfolder, and an absent folder in another folder.
+    @Test("a path in an absent folder outside the root is a correction")
+    func aPathInAnAbsentFolderOutsideTheRootIsACorrection() async throws {
+        let (repository, _) = try GitTestHistory.makeRemovedFolder(firstText: "1\n", secondText: "2\n")
+        let context = GitContext(
+            root: repository.workDirectory.appendingPathComponent(GitTestHistory.keptFolder, isDirectory: true))
+        let removedFile = repository.workDirectory.appendingPathComponent(
+            GitTestHistory.removedFolderFile, isDirectory: false)
+        let outside = TestSupport.makeTemporaryDirectory(named: Self.testDirectoryName)
+        let outsideFile = outside.appendingPathComponent("gone/x.txt", isDirectory: false)
+
+        for path in [removedFile.path, outsideFile.path] {
+            let result = try await Self.log(in: context, path: path)
+
+            let refusal = try #require(throws: PathViolation.self) {
+                try context.pathGuard.validatePath(path, absentFolders: .accepted).get()
+            }
+            #expect(refusal.message.contains("outside workspace"))
             try Self.expectCorrection(result, contains: refusal.message)
         }
     }

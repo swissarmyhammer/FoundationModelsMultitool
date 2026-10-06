@@ -258,6 +258,76 @@ import Testing
         }
     }
 
+    // MARK: Absent folders
+
+    /// The default rule refuses a path whose folders are absent. The
+    /// `.accepted` rule takes the same path, and gives the resolved path below
+    /// the session root. The git verbs read a file at an older ref, and a
+    /// later commit can have removed its folders.
+    @Test func acceptsAbsentFoldersInsideWorkspaceOnlyWhenTheRuleAcceptsThem() throws {
+        let workspace = TestSupport.makeTemporaryDirectory(named: "PathGuardTests")
+        let guardUnderTest = PathGuard(root: workspace, workspaceRoot: workspace)
+
+        let refusal = try #require(throws: PathViolation.self) {
+            try guardUnderTest.validatePath("gone/dir/a.txt").get()
+        }
+        let resolved = try guardUnderTest.validatePath("gone/dir/a.txt", absentFolders: .accepted).get()
+
+        #expect(refusal.message.contains("Parent directory does not exist"))
+        #expect(resolved.path.contains(Self.uniqueName(workspace)))
+        #expect(resolved.path.hasSuffix("/gone/dir/a.txt"))
+    }
+
+    /// Absent folders outside the workspace stay outside: the boundary check
+    /// starts from the deepest folder that the disk holds.
+    @Test func rejectsAbsentFoldersOutsideWorkspace() throws {
+        let workspace = TestSupport.makeTemporaryDirectory(named: "PathGuardTests")
+        let outside = TestSupport.makeTemporaryDirectory(named: "PathGuardTests")
+        let target = outside.appendingPathComponent("gone/dir/a.txt", isDirectory: false)
+
+        let guardUnderTest = PathGuard(root: workspace, workspaceRoot: workspace)
+        let violation = try #require(throws: PathViolation.self) {
+            try guardUnderTest.validatePath(target.path, absentFolders: .accepted).get()
+        }
+
+        #expect(violation.message.lowercased().contains("outside workspace"))
+    }
+
+    /// A symlink folder that points out of the workspace does not let absent
+    /// folders below it escape: the guard resolves the symlink and bounds its
+    /// target, the same as for a missing file whose folder is present.
+    @Test func rejectsAbsentFoldersBelowASymlinkThatPointsOutsideWorkspace() throws {
+        let workspace = TestSupport.makeTemporaryDirectory(named: "PathGuardTests")
+        let outside = TestSupport.makeTemporaryDirectory(named: "PathGuardTests")
+        let link = workspace.appendingPathComponent("link", isDirectory: true)
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: outside)
+
+        let guardUnderTest = PathGuard(root: workspace, workspaceRoot: workspace)
+        let violation = try #require(throws: PathViolation.self) {
+            try guardUnderTest.validatePath("link/gone/a.txt", absentFolders: .accepted).get()
+        }
+
+        #expect(violation.message.lowercased().contains("outside workspace"))
+    }
+
+    /// A dangling symlink reads as absent, but it is not absent. The guard
+    /// refuses it among the absent folders, also when symlinks are opted in,
+    /// thus a symlink cannot get past the guard because its target is gone.
+    @Test(arguments: [false, true])
+    func rejectsADanglingSymlinkAmongAbsentFolders(isSymlinkAllowed: Bool) throws {
+        let workspace = TestSupport.makeTemporaryDirectory(named: "PathGuardTests")
+        let link = workspace.appendingPathComponent("dangling", isDirectory: true)
+        let target = workspace.appendingPathComponent("nowhere", isDirectory: true)
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: target)
+
+        let guardUnderTest = PathGuard(root: workspace, workspaceRoot: workspace, allowSymlinks: isSymlinkAllowed)
+        let violation = try #require(throws: PathViolation.self) {
+            try guardUnderTest.validatePath("dangling/dir/a.txt", absentFolders: .accepted).get()
+        }
+
+        #expect(violation.message.lowercased().contains("symlink"))
+    }
+
     // MARK: Multi-root confinement
 
     /// A path inside a secondary root validates. A sibling path outside each

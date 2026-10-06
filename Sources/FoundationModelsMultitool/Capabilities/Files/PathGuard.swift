@@ -76,6 +76,22 @@ enum FileOperation: Sendable {
 /// never against the process current directory, because the host can run
 /// with an unrelated current directory while it serves multiple sessions.
 struct PathGuard: Sendable {
+    /// How ``validatePath(_:absentFolders:)`` treats a path whose parent
+    /// folder is absent from the disk.
+    ///
+    /// The file verbs use ``refused``: a file verb cannot use a folder that
+    /// is not there. The git verbs use ``accepted``: they read a file at an
+    /// older ref, and a later commit can have removed its folders.
+    enum AbsentFolderRule: Sendable {
+        /// The guard refuses the path with the "Parent directory does not
+        /// exist" correction.
+        case refused
+        /// The guard accepts the path. The workspace boundary still applies,
+        /// from the deepest folder that the disk holds, and an absent folder
+        /// that is a dangling symlink is still refused.
+        case accepted
+    }
+
     /// The session working directory relative paths resolve against.
     ///
     /// Never the process current directory: the host process can run with an
@@ -246,12 +262,17 @@ struct PathGuard: Sendable {
     ///
     /// For an existing path the result is the resolved canonical URL. For a
     /// not-yet-created target whose parent exists the result is the resolved
-    /// (uncanonicalized) absolute URL, thus a write can create it.
+    /// (uncanonicalized) absolute URL, thus a write can create it. A target
+    /// whose parent is absent gets the same result when `absentFolders` is
+    /// ``AbsentFolderRule/accepted``.
     ///
-    /// - Parameter path: the raw path string (absolute or relative to ``root``).
+    /// - Parameters:
+    ///   - path: the raw path string (absolute or relative to ``root``).
+    ///   - absentFolders: what to do with a target whose parent folder is
+    ///     absent; ``AbsentFolderRule/refused`` (the default) refuses it.
     /// - Returns: `.success` with the resolved absolute URL, or `.failure`
     ///   with a corrective ``PathViolation``.
-    func validatePath(_ path: String) -> Result<URL, PathViolation> {
+    func validatePath(_ path: String, absentFolders: AbsentFolderRule = .refused) -> Result<URL, PathViolation> {
         if let violation = Self.emptyViolation(path) { return .failure(violation) }
         if let violation = Self.lengthViolation(path) { return .failure(violation) }
         if let violation = Self.blockedPatternViolation(path) { return .failure(violation) }
@@ -264,7 +285,7 @@ struct PathGuard: Sendable {
         if let violation = Self.lengthViolation(resolvedPath) { return .failure(violation) }
         if let violation = symlinkBeforeCanonicalizationViolation(resolvedPath) { return .failure(violation) }
 
-        return handleCanonicalizeResult(resolvedPath).flatMap { validatedPath in
+        return handleCanonicalizeResult(resolvedPath, absentFolders: absentFolders).flatMap { validatedPath in
             finishValidation(originalPath: resolvedPath, validatedPath: validatedPath)
         }
     }
@@ -275,18 +296,24 @@ struct PathGuard: Sendable {
     /// `Result`: a resolved path succeeds; a failure goes by its POSIX
     /// `errno` through ``canonicalizeFailureViolation(_:resolvedPath:)``.
     /// The `ENOENT` case is not itself a violation — a not-yet-created
-    /// target with an existing parent yields the uncanonicalized
-    /// `resolvedPath`.
+    /// target with an existing parent (or, under
+    /// ``AbsentFolderRule/accepted``, an absent parent) yields the
+    /// uncanonicalized `resolvedPath`.
     ///
-    /// - Parameter resolvedPath: the resolved absolute path to canonicalize.
+    /// - Parameters:
+    ///   - resolvedPath: the resolved absolute path to canonicalize.
+    ///   - absentFolders: what to do with a target whose parent is absent.
     /// - Returns: `.success` with the path to operate on, or `.failure` with
     ///   a corrective ``PathViolation``.
-    private func handleCanonicalizeResult(_ resolvedPath: String) -> Result<String, PathViolation> {
+    private func handleCanonicalizeResult(
+        _ resolvedPath: String,
+        absentFolders: AbsentFolderRule
+    ) -> Result<String, PathViolation> {
         switch Self.canonicalize(resolvedPath) {
         case .resolved(let canonical):
             return .success(canonical)
         case .failed(let errorNumber):
-            return canonicalizeFailureViolation(errorNumber, resolvedPath: resolvedPath)
+            return canonicalizeFailureViolation(errorNumber, resolvedPath: resolvedPath, absentFolders: absentFolders)
         }
     }
 
@@ -296,20 +323,24 @@ struct PathGuard: Sendable {
     /// not exist) is acceptable for a not-yet-created write target as long
     /// as the parent directory exists, thus it yields the uncanonicalized
     /// `resolvedPath`; `EACCES`, `EINVAL`, and every other `errno` become
-    /// corrective violations.
+    /// corrective violations. Under ``AbsentFolderRule/accepted``, `ENOENT`
+    /// is acceptable also when the parent is absent, as long as no absent
+    /// folder is a dangling symlink.
     ///
     /// - Parameters:
     ///   - errorNumber: the POSIX `errno` from the failed `realpath`.
     ///   - resolvedPath: the resolved absolute path that failed to canonicalize.
+    ///   - absentFolders: what to do with a target whose parent is absent.
     /// - Returns: `.success` with `resolvedPath` for an acceptable `ENOENT`,
     ///   or `.failure` with a corrective ``PathViolation``.
     private func canonicalizeFailureViolation(
         _ errorNumber: Int32,
-        resolvedPath: String
+        resolvedPath: String,
+        absentFolders: AbsentFolderRule
     ) -> Result<String, PathViolation> {
         switch errorNumber {
         case ENOENT:
-            return parentDirectoryMissing(resolvedPath).map { resolvedPath }
+            return missingTargetViolation(resolvedPath, absentFolders: absentFolders).map { resolvedPath }
         case EACCES:
             return .failure(PathViolation("Permission denied accessing path: \(resolvedPath)"))
         case EINVAL:
@@ -433,6 +464,54 @@ struct PathGuard: Sendable {
     private func parentDirectoryMissing(_ path: String) -> Result<Void, PathViolation> {
         if let parent = Self.parentPath(path), !fileExists(parent) {
             return .failure(PathViolation("\(Self.parentDirectoryMissingMessage) \(parent)"))
+        }
+        return .success(())
+    }
+
+    /// The folder rule for a target that does not exist.
+    ///
+    /// ``AbsentFolderRule/refused`` applies ``parentDirectoryMissing(_:)``.
+    /// ``AbsentFolderRule/accepted`` applies
+    /// ``danglingSymlinkFolderViolation(_:)`` in its place.
+    ///
+    /// - Parameters:
+    ///   - path: the resolved path of the target that does not exist.
+    ///   - absentFolders: what to do with a target whose parent is absent.
+    /// - Returns: `.success` when the rule accepts the target, or `.failure`
+    ///   with a corrective ``PathViolation``.
+    private func missingTargetViolation(
+        _ path: String,
+        absentFolders: AbsentFolderRule
+    ) -> Result<Void, PathViolation> {
+        switch absentFolders {
+        case .refused:
+            return parentDirectoryMissing(path)
+        case .accepted:
+            return danglingSymlinkFolderViolation(path)
+        }
+    }
+
+    /// A `.failure` when an absent folder of `path` is a dangling symlink,
+    /// else `.success`.
+    ///
+    /// ``fileExists(_:)`` follows a symlink, thus a symlink whose target is
+    /// gone reads as absent. This walks up from the parent of `path` while
+    /// each folder reads as absent, and refuses a folder that `lstat` sees as
+    /// a symlink, whatever ``allowSymlinks`` says: a dangling symlink cannot
+    /// resolve, thus the guard cannot bound it. Thus each absent folder is
+    /// truly absent, and the boundary check of the deepest folder that the
+    /// disk holds covers the whole path.
+    ///
+    /// - Parameter path: the resolved path of the target that does not exist.
+    /// - Returns: `.success` when no absent folder is a symlink, or `.failure`
+    ///   with a corrective ``PathViolation`` that names the symlink.
+    private func danglingSymlinkFolderViolation(_ path: String) -> Result<Void, PathViolation> {
+        var current = path
+        while let parent = Self.parentPath(current), !fileExists(parent) {
+            if isSymlink(parent) {
+                return .failure(PathViolation("Path goes through a dangling symlink: \(parent)"))
+            }
+            current = parent
         }
         return .success(())
     }

@@ -241,7 +241,11 @@ and 11 close them, except the question in "Open questions after the spike".
    one `PathGuard` with the same rules as `files`. Each path argument goes
    through the guard. The repository is the one that contains the root (the
    root can be a subfolder of the repository). Each path in a result is
-   relative to the root.
+   relative to the root. One exception (task `^5a8vaqk`): a path that reads
+   history (`show`, `log`, and `diff` with `path@ref`) goes through the guard
+   with `absentFolders: .accepted`. Thus a folder that a later commit removed
+   is not refused. All the other guard checks stay the same, and a path still
+   cannot go out of the root.
 9. Names (question 6). Each verb uses the word of the git command. Each
    argument name and each result field name uses `camelCase`, the same as
    `tools.files.*`. `diff` is one verb with three modes, the same as the

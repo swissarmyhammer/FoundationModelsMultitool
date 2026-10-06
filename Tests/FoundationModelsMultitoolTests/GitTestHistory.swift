@@ -19,6 +19,19 @@ enum GitTestHistory {
     /// move to it.
     static let featureBranch = "feature"
 
+    /// The folder that the last commit of
+    /// ``makeRemovedFolder(firstText:secondText:)`` removes from the work
+    /// folder, relative to the work folder.
+    static let removedFolder = "old"
+
+    /// The file of ``makeRemovedFolder(firstText:secondText:)``, relative to
+    /// the work folder. It is two folders below ``removedFolder``.
+    static let removedFolderFile = "\(removedFolder)/dir/a.txt"
+
+    /// The folder that ``makeRemovedFolder(firstText:secondText:)`` keeps in
+    /// the work folder. A test can use it as a root in a subfolder.
+    static let keptFolder = "src"
+
     /// Makes a repository with three commits on the branch of HEAD:
     ///
     /// 1. `first` writes `a.txt`.
@@ -61,5 +74,33 @@ enum GitTestHistory {
         try repository.write(secondText, to: path)
         try repository.commit(message: "second")
         return repository
+    }
+
+    /// Makes a repository with three commits on the branch of HEAD:
+    ///
+    /// 1. `first` writes ``removedFolderFile`` with `firstText`, and
+    ///    `keep.txt` in ``keptFolder``.
+    /// 2. `second` writes ``removedFolderFile`` with `secondText`.
+    /// 3. `third` removes ``removedFolder`` from the work folder.
+    ///
+    /// - Parameters:
+    ///   - firstText: The text of the first commit.
+    ///   - secondText: The text of the second commit.
+    /// - Returns: The repository, and the sha of each commit, oldest first.
+    /// - Throws: When a write, a removal, or a commit fails.
+    static func makeRemovedFolder(
+        firstText: String,
+        secondText: String
+    ) throws -> (repository: TemporaryGitRepository, shas: [String]) {
+        let repository = try TemporaryGitRepository()
+        try repository.write(firstText, to: removedFolderFile)
+        try repository.write("keep\n", to: "\(keptFolder)/keep.txt")
+        let first = try repository.commit(message: "first")
+        try repository.write(secondText, to: removedFolderFile)
+        let second = try repository.commit(message: "second")
+        try FileManager.default.removeItem(
+            at: repository.workDirectory.appendingPathComponent(removedFolder, isDirectory: true))
+        let third = try repository.commit(message: "third")
+        return (repository, [first, second, third])
     }
 }

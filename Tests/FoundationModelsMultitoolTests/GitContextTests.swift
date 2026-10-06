@@ -241,6 +241,33 @@ struct GitContextTests {
         #expect(location.repositoryPath(ofFile: file) == "src/deep/missing.txt")
     }
 
+    /// A file whose folders the work folder does not hold (for example, a
+    /// file in a folder that a later commit removed) becomes a repository
+    /// path too. `realpath` cannot resolve its folder either, thus the helper
+    /// resolves the deepest folder that the disk holds.
+    @Test("a file in an absent folder becomes a repository path")
+    func aFileInAnAbsentFolderBecomesARepositoryPath() throws {
+        let repository = try TemporaryGitRepository()
+        try repository.write("one\n", to: "src/b.txt")
+        let location = try GitContext(root: repository.workDirectory).repository.get()
+        let file = repository.workDirectory.appendingPathComponent("old/dir/a.txt", isDirectory: false)
+
+        #expect(location.repositoryPath(ofFile: file) == "old/dir/a.txt")
+    }
+
+    /// The parts `.` and `..` below an absent folder fold the same way as in
+    /// ``GitRepositoryLocation/repositoryPath(fromRootRelativePath:)``: the
+    /// disk cannot resolve them, because the folder is absent.
+    @Test("the parts . and .. below an absent folder fold")
+    func thePartsDotAndDotDotBelowAnAbsentFolderFold() throws {
+        let repository = try TemporaryGitRepository()
+        try repository.write("one\n", to: "src/b.txt")
+        let location = try GitContext(root: repository.workDirectory).repository.get()
+        let file = repository.workDirectory.appendingPathComponent("old/./dir/..", isDirectory: false)
+
+        #expect(location.repositoryPath(ofFile: file) == "old")
+    }
+
     /// A file URL outside the work folder has no repository path.
     @Test("a file URL outside the work folder has no repository path")
     func aFileURLOutsideTheWorkFolderHasNoRepositoryPath() throws {
