@@ -8,7 +8,8 @@
 // **Each verb task adds its verb.** Each verb task of git.md § "Proposed order
 // of the tasks" (`status`, `branches`, `changes`, `show`, `log`, `blame`,
 // `diff`) adds its verb to ``GitCapability/tools``, over ``context``. The
-// first verb is `blame` (`Blame.swift`).
+// verbs so far are `blame` (`Blame.swift`), `show` (`Show.swift`), and `log`
+// (`Log.swift`).
 //
 // **The capability is off by default**, and nothing here makes it otherwise.
 // eventplan.md § "The capability contract": "The modules are opt-in ... They
@@ -68,6 +69,6 @@ public struct GitCapability: Capability {
     ///   The root can be a subfolder of the repository.
     public init(root: URL) {
         context = GitContext(root: root)
-        tools = [Blame(context: context)]
+        tools = [Blame(context: context), Show(context: context), Log(context: context)]
     }
 }

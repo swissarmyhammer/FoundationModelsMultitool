@@ -228,6 +228,19 @@ struct GitContextTests {
         #expect(location.repositoryPath(ofFile: file) == "src/deep/b.txt")
     }
 
+    /// A file that the work folder does not hold (for example, a file that a
+    /// later commit removed) becomes a repository path too. `realpath` cannot
+    /// resolve a missing file, thus the helper resolves its folder.
+    @Test("a missing file in the work folder becomes a repository path")
+    func aMissingFileInTheWorkFolderBecomesARepositoryPath() throws {
+        let repository = try TemporaryGitRepository()
+        try repository.write("one\n", to: "src/deep/b.txt")
+        let location = try GitContext(root: repository.workDirectory).repository.get()
+        let file = repository.workDirectory.appendingPathComponent("src/deep/missing.txt", isDirectory: false)
+
+        #expect(location.repositoryPath(ofFile: file) == "src/deep/missing.txt")
+    }
+
     /// A file URL outside the work folder has no repository path.
     @Test("a file URL outside the work folder has no repository path")
     func aFileURLOutsideTheWorkFolderHasNoRepositoryPath() throws {

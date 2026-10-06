@@ -101,10 +101,26 @@ comments:
     - evidence: one local commit "refactor: rename capped to isCapped in git blame" with Blame.swift, GitBlameTests.swift and the .kanban changes. The sha is in the git log. Not pushed.
     - next: review
   timestamp: 2026-10-06T16:42:07.274464+00:00
+- actor: claude-code
+  id: 01m491m4r75gkdjckgmqagtvxn
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit f02b427). 0 findings, 0 confirmed, 0 refuted. 7 validator runs, 0 failed. 2 files reviewed. 2 `.kanban/` files are excluded by `.reviewignore`. The commit renames no file. The prior item (Blame.swift, `capped` to `isCapped`) is checked.
+    - next: The task is in `done`. No work remains for this task.
+  timestamp: 2026-10-06T16:44:21.127294+00:00
+- actor: claude-code
+  id: 01m491mgtc6nekdyf28ydrbrh0
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — 2 files (Blame.swift, GitBlameTests.swift); finding Blame.swift:119 checked
+    - test: green — swift test, 1904 passed in 161 suites; IntegrationTests build complete
+    - commit: f02b427
+    - review: clean — 0 findings, 7 validators on 2 files
+  timestamp: 2026-10-06T16:44:33.484032+00:00
 depends_on:
 - 01M48V80WKJ4QSW2TXPQ01E3QN
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffffad80
 title: 'git: tools.git.blame'
 ---
 ## Goal

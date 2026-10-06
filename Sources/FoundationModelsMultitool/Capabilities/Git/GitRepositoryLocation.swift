@@ -99,16 +99,32 @@ struct GitRepositoryLocation: Equatable, Sendable {
     /// `/var/...` spelling finds its place in a `/private/var/...` work
     /// folder. A verb gives this helper the URL that the path guard gave.
     ///
+    /// The file can be absent from the disk: a verb that reads a file at an
+    /// older ref names a file that a later commit removed. `realpath` cannot
+    /// resolve an absent file, thus the helper resolves its folder.
+    ///
     /// - Parameter file: The URL of a file.
     /// - Returns: The path relative to the work folder, as libgit2 reads it,
     ///   or `nil` when the file is not below the work folder.
     func repositoryPath(ofFile file: URL) -> String? {
         let workComponents = PathContainment.components(of: workDirectory.path)
-        let fileComponents = PathContainment.components(of: resolvedPath(file.path))
+        let fileComponents = PathContainment.components(of: Self.realPath(of: file))
         guard fileComponents.count > workComponents.count, fileComponents.starts(with: workComponents) else {
             return nil
         }
         return Self.joined(fileComponents.dropFirst(workComponents.count).map(String.init))
+    }
+
+    /// The real path of a file: `realpath` of the file, or, for a file that
+    /// the disk does not hold, `realpath` of its folder with the file name
+    /// after it.
+    ///
+    /// - Parameter file: The URL of a file.
+    /// - Returns: The real path.
+    private static func realPath(of file: URL) -> String {
+        guard !FileManager.default.fileExists(atPath: file.path) else { return resolvedPath(file.path) }
+        return URL(fileURLWithPath: resolvedPath(file.deletingLastPathComponent().path), isDirectory: true)
+            .appendingPathComponent(file.lastPathComponent, isDirectory: false).path
     }
 
     /// Joins path parts with the separator, or gives `.` for no part.

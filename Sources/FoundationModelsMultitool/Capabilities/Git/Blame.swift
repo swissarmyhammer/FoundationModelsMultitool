@@ -169,16 +169,9 @@ extension Blame {
     private static let binaryDescription =
         "The file is not valid UTF-8 text and appears to be binary, so it cannot be blamed"
 
-    /// The description of a file that is not in the work folder of the
-    /// repository, before the `: path` suffix.
-    private static let outsideWorkFolderDescription = "The file is not in the work folder of the git repository"
-
     /// The description of a blame that libgit2 could not make, before the
     /// `: path` suffix.
     private static let failedBlameDescription = "git blame failed"
-
-    /// The form of each `date` field: ISO 8601 in UTC.
-    private static let dateStyle = Date.ISO8601FormatStyle(timeZone: .gmt)
 
     // MARK: Execution
 
@@ -229,7 +222,7 @@ extension Blame {
             return pathFailure(binaryDescription, path: arguments.path)
         }
         guard let repositoryPath = location.repositoryPath(ofFile: url) else {
-            return pathFailure(outsideWorkFolderDescription, path: arguments.path)
+            return pathFailure(GitContext.outsideWorkFolderDescription, path: arguments.path)
         }
         let lines = GitPatch.lines(of: text).map(\.text)
         return window(of: arguments, lineCount: lines.count).flatMap { window in
@@ -299,7 +292,7 @@ extension Blame {
     private static func row(number: Int, text: String, attribution: LibGit2LineBlame) -> BlameLine {
         let (state, commit) = stateAndCommit(of: attribution)
         return BlameLine(
-            line: number, sha: commit?.sha, author: commit?.author, date: commit.map { dateStyle.format($0.date) },
+            line: number, sha: commit?.sha, author: commit?.author, date: commit?.formattedDate,
             text: text, state: state.rawValue)
     }
 
@@ -310,7 +303,7 @@ extension Blame {
     ///   line.
     private static func stateAndCommit(
         of attribution: LibGit2LineBlame
-    ) -> (state: BlameLineState, commit: LibGit2BlameCommit?) {
+    ) -> (state: BlameLineState, commit: LibGit2Commit?) {
         switch attribution {
         case .committed(let commit): (.committed, commit)
         case .uncommitted: (.uncommitted, nil)

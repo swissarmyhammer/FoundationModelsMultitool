@@ -141,7 +141,7 @@ struct LibGit2BlameTests {
     ///
     /// - Parameter line: The attribution.
     /// - Returns: The commit.
-    private static func commit(_ line: LibGit2LineBlame) -> LibGit2BlameCommit? {
+    private static func commit(_ line: LibGit2LineBlame) -> LibGit2Commit? {
         guard case .committed(let commit) = line else { return nil }
         return commit
     }

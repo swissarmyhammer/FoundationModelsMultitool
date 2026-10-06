@@ -226,7 +226,8 @@ enum GitPatch {
     /// patch that reports the change reproduces the new bytes.
     ///
     /// Internal, not private: the `tools.git.blame` verb reads the same line
-    /// model, because libgit2 counts the lines of a blame the same way.
+    /// model, because libgit2 counts the lines of a blame the same way, and
+    /// the `tools.git.show` verb counts its line cap in it.
     struct Line: Equatable {
         /// The line's text, with the newline that ended it excluded.
         let text: String

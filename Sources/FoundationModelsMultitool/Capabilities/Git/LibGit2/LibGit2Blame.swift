@@ -20,9 +20,10 @@
 // as "not yet blamable", and this layer keeps that contract. Any other
 // failure is a `LibGit2Error`; the verb changes it into one correction.
 //
-// The author and the date come from the commit (`git_commit_author`), not
-// from the hunk. `git_blame_buffer` splits a hunk around a changed line, and
-// the second part of the split has the commit id but no signature.
+// The author and the date come from the commit (`git_commit_author`, through
+// `LibGit2Commit.swift`), not from the hunk. `git_blame_buffer` splits a hunk
+// around a changed line, and the second part of the split has the commit id
+// but no signature.
 //
 // git.md § "Spike result", fact 3: the hunks are read with
 // `git_blame_hunkcount` and `git_blame_hunk_byindex`, not with the deprecated
@@ -31,26 +32,13 @@
 import Foundation
 import libgit2
 
-/// The commit that last changed one line.
-struct LibGit2BlameCommit: Equatable, Sendable {
-
-    /// The 40-hex sha of the commit.
-    let sha: String
-
-    /// The name of the author of the commit.
-    let author: String
-
-    /// The author date of the commit.
-    let date: Date
-}
-
 /// Where one line of a file comes from: the `LineBlame` kinds of the source,
 /// less `Failed`, which the layer throws as a ``LibGit2Error``.
 enum LibGit2LineBlame: Equatable, Sendable {
 
     /// A commit holds the line. The payload is the commit that last changed
     /// it.
-    case committed(LibGit2BlameCommit)
+    case committed(LibGit2Commit)
 
     /// No commit holds the line: the work folder changed it, or git tracks
     /// the file but no commit holds the file yet.
@@ -73,14 +61,6 @@ extension LibGit2Repository {
     /// The value of `git_oid_is_zero` for the zero commit id, and of
     /// `git_repository_head_unborn` for a HEAD with no commit.
     private static let libGit2True: Int32 = 1
-
-    /// The text of the ``LibGit2Error`` for a commit with no author.
-    ///
-    /// libgit2 reads the author when it parses a commit, thus a commit that
-    /// `git_commit_lookup` gives always has one. The guard stays, thus a
-    /// later libgit2 that breaks that promise gives this text and not a
-    /// crash.
-    private static let missingAuthorText = "the commit has no author"
 
     /// Blames each line of `content`, the text of the file at `path` in the
     /// work folder, against the history of HEAD.
@@ -189,7 +169,7 @@ extension LibGit2Repository {
     /// - Throws: ``LibGit2Error`` when the commit of a hunk cannot be read.
     private func attributions(of blame: OpaquePointer, lineCount: Int) throws(LibGit2Error) -> [LibGit2LineBlame] {
         var lines = Array(repeating: LibGit2LineBlame.uncommitted, count: lineCount)
-        var commits: [String: LibGit2BlameCommit] = [:]
+        var commits: [String: LibGit2Commit] = [:]
         for index in 0..<git_blame_hunkcount(blame) {
             guard let hunk = git_blame_hunk_byindex(blame, index)?.pointee else { continue }
             let first = Int(hunk.final_start_line_number) - 1
@@ -212,34 +192,14 @@ extension LibGit2Repository {
     /// - Throws: ``LibGit2Error`` when the commit cannot be read.
     private func attribution(
         of hunk: git_blame_hunk,
-        commits: inout [String: LibGit2BlameCommit]
+        commits: inout [String: LibGit2Commit]
     ) throws(LibGit2Error) -> LibGit2LineBlame {
         var commitID = hunk.final_commit_id
         guard git_oid_is_zero(&commitID) != Self.libGit2True else { return .uncommitted }
         let sha = String(cString: git_oid_tostr_s(&commitID))
         if let commit = commits[sha] { return .committed(commit) }
-        let commit = try self.commit(withID: commitID, sha: sha)
+        let commit = try commitFacts(withID: commitID)
         commits[sha] = commit
         return .committed(commit)
-    }
-
-    /// Reads the author and the author date of one commit.
-    ///
-    /// - Parameters:
-    ///   - id: The id of the commit.
-    ///   - sha: The 40-hex text of `id`.
-    /// - Returns: The commit.
-    /// - Throws: ``LibGit2Error`` when the commit cannot be read.
-    private func commit(withID id: git_oid, sha: String) throws(LibGit2Error) -> LibGit2BlameCommit {
-        var id = id
-        let commit = try LibGit2.makeHandle { commit in git_commit_lookup(&commit, handle, &id) }
-        defer { git_commit_free(commit) }
-        guard let author = git_commit_author(commit)?.pointee else {
-            throw LibGit2Error(code: GIT_ERROR.rawValue, message: Self.missingAuthorText)
-        }
-        return LibGit2BlameCommit(
-            sha: sha,
-            author: String(cString: author.name),
-            date: Date(timeIntervalSince1970: TimeInterval(author.when.time)))
     }
 }
