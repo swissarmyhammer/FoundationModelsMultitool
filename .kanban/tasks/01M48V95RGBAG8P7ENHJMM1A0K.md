@@ -52,6 +52,55 @@ comments:
     - evidence: one local commit "feat: add git blame to the git capability" with all working tree changes (Blame.swift, LibGit2Blame.swift, two test suites, Git and GitPatch changes, test support, .kanban). The sha is in the final report of this step.
     - next: review
   timestamp: 2026-10-06T16:29:12.519314+00:00
+- actor: claude-code
+  id: 01m4915xtrjq1g9h39tk7tc9qr
+  text: |-
+    ### review — findings
+    - evidence: review sha HEAD~1..HEAD (commit a5280f6); 1 finding, 1 confirmed, 0 refuted; 12 files reviewed, 4 .kanban files not reviewed (.reviewignore); no renamed file. Sources/FoundationModelsMultitool/Capabilities/Git/Blame.swift:119 (swift/naming-clarity: rename `capped` to `isCapped`).
+    - next: implement the open item in the 2026-10-06 11:29 Review Findings section, then review again.
+  timestamp: 2026-10-06T16:36:35.288168+00:00
+- actor: claude-code
+  id: 01m4916d8n4njjc2hs8q144aap
+  text: |-
+    ### finish iteration 1 — findings
+    - implement: changed — 12 files (Blame.swift, LibGit2Blame.swift, 2 new test suites, 8 changed)
+    - test: green — swift test, 1904 passed in 161 suites; IntegrationTests build complete
+    - commit: a5280f6
+    - review: findings — Sources/FoundationModelsMultitool/Capabilities/Git/Blame.swift:119 (swift/naming-clarity: `capped` -> `isCapped`)
+  timestamp: 2026-10-06T16:36:51.093752+00:00
+- actor: claude-code
+  id: 01m491c55jrqs0fbt70dn97wxk
+  text: |-
+    Finding work (swift/naming-clarity, Blame.swift:119): `BlameResult.capped` is now `BlameResult.isCapped`.
+    - Whole-file scan: in Blame.swift, `capped` was the only Boolean member with a bare adjective. In LibGit2Blame.swift, the Boolean members are `isTracked`, `isInIndex`, `isInHeadTree`; they already read as assertions. `libGit2True` is an `Int32` constant, not a Boolean.
+    - Changed uses: the property, the two `BlameResult(...)` initializer calls, the doc comment of `lineCap`, the doc comment of `Blame`, and the `description` text that the model reads ("when isCapped is true"). The model-facing field name is the property name of the `@Generable` result, thus the description must name `isCapped`.
+    - Tests: GitBlameTests (three assertions and one doc comment). LibGit2BlameTests had no `capped` use.
+    - Out of scope, not changed: `GlobResult.capped` and the files capability.
+    - Discovery: the sah `edit file` op with `replace_all: true` changed only the first of three sites. Check `replacements_made` after a `replace_all` edit.
+    - TDD: RED was the compile failure "value of type 'BlameResult' has no member 'isCapped'" at three test sites. GREEN: the two blame suites, 19 tests in 2 suites pass.
+  timestamp: 2026-10-06T16:39:59.410211+00:00
+- actor: claude-code
+  id: 01m491c7he8ac5ss314vhnasdf
+  text: |-
+    ### implement — changed
+    - evidence: 2 files — Sources/FoundationModelsMultitool/Capabilities/Git/Blame.swift, Tests/FoundationModelsMultitoolTests/GitBlameTests.swift. `swift build --build-tests`: Build complete, 0 errors, only the known mlx-swift "missing creator for mutated node" warning. `swift test`: 1904 tests in 161 suites passed, 0 failed. Finding Blame.swift:119 is `- [x]`.
+    - next: /review. The task stays in `doing`.
+  timestamp: 2026-10-06T16:40:01.838273+00:00
+- actor: claude-code
+  id: 01m491fgaf340t65p1985dtape
+  text: |-
+    ### test - green
+    - evidence: swift build --build-tests - complete. swift test - 1904 tests in 161 suites passed, 0 failed, 0 skipped. IntegrationTests swift build --build-tests - complete.
+    - warnings: only one warning in each build, "missing creator for mutated node" for mlx-swift_Cmlx.bundle. It is a known dependency warning from before this change. It is not counted as red.
+    - next: review
+  timestamp: 2026-10-06T16:41:49.135981+00:00
+- actor: claude-code
+  id: 01m491g21aga4pnf4wz5yz36kt
+  text: |-
+    ### commit — changed
+    - evidence: one local commit "refactor: rename capped to isCapped in git blame" with Blame.swift, GitBlameTests.swift and the .kanban changes. The sha is in the git log. Not pushed.
+    - next: review
+  timestamp: 2026-10-06T16:42:07.274464+00:00
 depends_on:
 - 01M48V80WKJ4QSW2TXPQ01E3QN
 position_column: doing
@@ -85,4 +134,13 @@ Add the `blame` read verb (git.md, "Verbs").
 
 ## Acceptance
 
-- `swift build` and `swift test` pass with no new warnings. #git
+- `swift build` and `swift test` pass with no new warnings.
+
+## Review Findings (2026-10-06 11:29)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 12 file(s) reviewed, 4 not reviewed.
+
+> 4 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 4 file(s)
+
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Git/Blame.swift:119` `swift/naming-clarity` — Boolean property uses bare adjective instead of `is` prefix. Non-mutating Boolean members should read as assertions using the `is`/`has` prefix pattern per Swift naming conventions. `capped` is a bare adjective like the discouraged `empty`/`enabled`. Rename `capped` to `isCapped` to match Swift naming conventions for boolean properties. #git

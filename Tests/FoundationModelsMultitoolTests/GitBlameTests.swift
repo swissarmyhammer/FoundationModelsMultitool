@@ -58,7 +58,7 @@ struct GitBlameTests {
 
         #expect(result.correction == nil)
         #expect(result.path == Self.filePath)
-        #expect(!result.capped)
+        #expect(!result.isCapped)
         #expect(result.lines.map(\.line) == [1, 2, 3])
         #expect(result.lines.map(\.text) == Self.secondLines)
         #expect(result.lines.map(\.sha) == [first, second, first])
@@ -158,7 +158,7 @@ struct GitBlameTests {
     // MARK: - The line cap
 
     /// A file longer than the cap gives the first ``Blame/lineCap`` lines of
-    /// the range, and `capped` says that the cap cut the result.
+    /// the range, and `isCapped` says that the cap cut the result.
     @Test("a file longer than the cap gives the cap and says so")
     func aFileLongerThanTheCapGivesTheCapAndSaysSo() async throws {
         let repository = try TemporaryGitRepository()
@@ -169,7 +169,7 @@ struct GitBlameTests {
         let result = try await Self.blame(Self.filePath, in: GitContext(root: repository.workDirectory))
 
         #expect(result.correction == nil)
-        #expect(result.capped)
+        #expect(result.isCapped)
         #expect(result.lines.count == Blame.lineCap)
         #expect(result.lines.last?.line == Blame.lineCap)
     }
@@ -314,6 +314,6 @@ struct GitBlameTests {
         let correction = try #require(result.correction)
         #expect(correction.contains(fragment), "correction was: \(correction)")
         #expect(result.lines.isEmpty)
-        #expect(!result.capped)
+        #expect(!result.isCapped)
     }
 }

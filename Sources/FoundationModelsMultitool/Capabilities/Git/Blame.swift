@@ -116,7 +116,7 @@ struct BlameResult {
         description:
             "True when the range had more lines than the cap; ask again with startLine after the last line "
             + "to read the next lines.")
-    var capped: Bool
+    var isCapped: Bool
 
     /// Why the blame answered no line, or `nil` when the lines stand.
     @Guide(description: "Why the blame answered no line; null when the lines stand.")
@@ -143,7 +143,7 @@ extension Blame {
     // MARK: Bounds
 
     /// The largest number of rows in one result. A longer range gives its
-    /// first `lineCap` lines and sets `capped`.
+    /// first `lineCap` lines and sets `isCapped`.
     static let lineCap = 1_000
 
     /// The bound on `startLine`: a 1-based line number in
@@ -246,7 +246,7 @@ extension Blame {
             return .success(
                 BlameResult(
                     path: location.rootRelativePath(fromRepositoryPath: repositoryPath) ?? arguments.path,
-                    lines: rows, capped: window.count > lineCap, correction: nil))
+                    lines: rows, isCapped: window.count > lineCap, correction: nil))
         }
     }
 
@@ -340,7 +340,7 @@ extension Blame {
     ///   - path: The requested path.
     /// - Returns: The corrective ``BlameResult``.
     private static func corrective(_ message: String, path: String) -> BlameResult {
-        BlameResult(path: path, lines: [], capped: false, correction: message)
+        BlameResult(path: path, lines: [], isCapped: false, correction: message)
     }
 }
 
@@ -357,7 +357,7 @@ extension Blame {
 /// work folder changed, and each line of a staged file that no commit holds,
 /// is `uncommitted`. Each line of a file that git does not track is
 /// `untracked`. A result holds at most ``lineCap`` rows, with an honest
-/// `capped` flag. The path is bounded through the session's ``PathGuard``. A
+/// `isCapped` flag. The path is bounded through the session's ``PathGuard``. A
 /// bad range, a path outside the root, a missing or binary file, a root in no
 /// repository, and a failed blame each come back as a `correction`, not as an
 /// error.
@@ -374,7 +374,7 @@ struct Blame: Tool {
         them to blame the whole file. Each row has the line number, the text, and a state: \
         committed rows name the sha, the author, and the date; uncommitted rows are lines that \
         no commit holds yet; untracked rows are lines of a file that git does not track. A result \
-        holds at most \(Blame.lineCap) rows; when capped is true, ask again with startLine after the last \
+        holds at most \(Blame.lineCap) rows; when isCapped is true, ask again with startLine after the last \
         row. A bad range, a path outside the session root, a missing or binary file, and a root \
         in no git repository each come back as a correction rather than as an error — read it, \
         correct the call, and ask again.
