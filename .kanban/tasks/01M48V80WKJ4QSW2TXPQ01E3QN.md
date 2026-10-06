@@ -49,10 +49,26 @@ comments:
     - evidence: one local commit "feat: add the git capability on libgit2" holds the Git capability sources, the test support, 4 test suites, Package.swift, the builder change, and the .kanban changes. The sha is in the final step record; this comment is inside the commit, so it cannot name the sha.
     - next: review. Nothing was pushed.
   timestamp: 2026-10-06T16:07:13.085314+00:00
+- actor: claude-code
+  id: 01m48zs5ta421hga1mk72x9j65
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (commit b35727b). 0 findings, 0 confirmed, 0 refuted. 7 validators ran. 13 files reviewed. 4 .kanban files not reviewed (.reviewignore). No file is renamed, so no file-scoped review was necessary.
+    - next: The task is in done. No work remains from this review.
+  timestamp: 2026-10-06T16:12:08.906208+00:00
+- actor: claude-code
+  id: 01m48zsh950sa3mfyxevbh10wp
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 13 files (6 source in Capabilities/Git/, TemporaryGitRepository, 4 test suites, Package.swift, MultiToolBuilder+Capabilities.swift)
+    - test: green — swift test, 1881 passed in 159 suites; IntegrationTests build complete
+    - commit: b35727b
+    - review: clean — 0 findings, 7 validators on 13 files
+  timestamp: 2026-10-06T16:12:20.645094+00:00
 depends_on:
 - 01M48V7FH0DA0YA7D28TJV0B4Z
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffffac80
 title: 'git: GitCapability, GitContext, and withGit(root:)'
 ---
 ## Goal

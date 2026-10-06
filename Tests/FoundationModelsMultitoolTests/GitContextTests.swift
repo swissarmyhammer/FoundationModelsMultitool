@@ -211,6 +211,35 @@ struct GitContextTests {
         #expect(location.repositoryPath(fromRootRelativePath: rootPath) == repositoryPath)
     }
 
+    // MARK: - File URL to repository path
+
+    /// A file URL in the work folder becomes a repository path. The URL keeps
+    /// the `/var/...` spelling of the temporary folder, and the work folder
+    /// is a real path (`/private/var/...`), thus the helper must compare real
+    /// paths.
+    @Test("a file URL in the work folder becomes a repository path")
+    func aFileURLInTheWorkFolderBecomesARepositoryPath() throws {
+        let repository = try TemporaryGitRepository()
+        try repository.write("one\n", to: "src/deep/b.txt")
+        let root = try Self.makeSubfolderRoot(in: repository)
+        let location = try GitContext(root: root).repository.get()
+        let file = repository.workDirectory.appendingPathComponent("src/deep/b.txt", isDirectory: false)
+
+        #expect(location.repositoryPath(ofFile: file) == "src/deep/b.txt")
+    }
+
+    /// A file URL outside the work folder has no repository path.
+    @Test("a file URL outside the work folder has no repository path")
+    func aFileURLOutsideTheWorkFolderHasNoRepositoryPath() throws {
+        let repository = try TemporaryGitRepository()
+        let location = try GitContext(root: repository.workDirectory).repository.get()
+        let outside = TestSupport.makeTemporaryDirectory(named: Self.testDirectoryName)
+        let file = outside.appendingPathComponent("a.txt", isDirectory: false)
+        try "one\n".write(to: file, atomically: true, encoding: .utf8)
+
+        #expect(location.repositoryPath(ofFile: file) == nil)
+    }
+
     // MARK: - Helpers
 
     /// Makes the ``rootSubfolder`` folder in `repository`, and gives its URL.

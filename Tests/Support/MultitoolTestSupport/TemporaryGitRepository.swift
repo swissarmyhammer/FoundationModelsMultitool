@@ -21,7 +21,7 @@ import libgit2
 /// A git repository with a work folder that a test builds with libgit2 only.
 ///
 /// The helper makes the repository in a new temporary folder, writes files
-/// into the work folder, commits them, and makes branches. HEAD names
+/// into the work folder, stages or commits them, and makes branches. HEAD names
 /// ``defaultBranch`` whatever `init.defaultBranch` the host sets (git.md §
 /// "Spike result", fact 2), thus a test that reads HEAD does not depend on
 /// the host configuration. The folder is removed when the helper is released.
@@ -128,6 +128,18 @@ final class TemporaryGitRepository {
         return String(cString: git_oid_tostr_s(&commitID))
     }
 
+    /// Adds the file at `path` to the index, and writes the index. No commit
+    /// is made, thus the file is tracked but is in no commit.
+    ///
+    /// - Parameter path: The path of the file, relative to the work folder.
+    /// - Throws: ``LibGit2Error`` when a libgit2 call fails.
+    func stage(_ path: String) throws {
+        try withIndex { index in
+            try LibGit2.check(git_index_add_bypath(index, path))
+            try LibGit2.check(git_index_write(index))
+        }
+    }
+
     /// Makes the branch `name` at the commit that HEAD names. HEAD does not
     /// move.
     ///
@@ -171,14 +183,26 @@ final class TemporaryGitRepository {
     ///
     /// - Returns: The tree of the index. The caller frees it.
     private func stageWorkFolder() throws -> OpaquePointer {
+        try withIndex { index in
+            try LibGit2.check(git_index_add_all(index, nil, GIT_INDEX_ADD_DEFAULT.rawValue, nil, nil))
+            try LibGit2.check(git_index_update_all(index, nil, nil, nil))
+            try LibGit2.check(git_index_write(index))
+            var treeID = git_oid()
+            try LibGit2.check(git_index_write_tree(&treeID, index))
+            return try LibGit2.makeHandle { tree in git_tree_lookup(&tree, repository, &treeID) }
+        }
+    }
+
+    /// Opens the index of the repository, runs `body` with it, and frees it.
+    ///
+    /// - Parameter body: The work to do with the index.
+    /// - Returns: The value of `body`.
+    /// - Throws: ``LibGit2Error`` when the index cannot be opened, or the
+    ///   error of `body`.
+    private func withIndex<Value>(_ body: (OpaquePointer) throws -> Value) throws -> Value {
         let index = try LibGit2.makeHandle { index in git_repository_index(&index, repository) }
         defer { git_index_free(index) }
-        try LibGit2.check(git_index_add_all(index, nil, GIT_INDEX_ADD_DEFAULT.rawValue, nil, nil))
-        try LibGit2.check(git_index_update_all(index, nil, nil, nil))
-        try LibGit2.check(git_index_write(index))
-        var treeID = git_oid()
-        try LibGit2.check(git_index_write_tree(&treeID, index))
-        return try LibGit2.makeHandle { tree in git_tree_lookup(&tree, repository, &treeID) }
+        return try body(index)
     }
 
     /// The commit that HEAD names, or `nil` when the branch of HEAD has no

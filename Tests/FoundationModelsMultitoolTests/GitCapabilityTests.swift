@@ -11,8 +11,8 @@ import Testing
 /// Three properties carry this suite, and each one is a sentence of
 /// eventplan.md § "The capability contract":
 ///
-/// 1. The capability owns ONE noun, `git`. The base has no verb yet: each verb
-///    task adds its verb to `GitCapability.tools`.
+/// 1. The capability owns ONE noun, `git`. Each verb task adds its verb to
+///    `GitCapability.tools` and to ``verbNames``.
 /// 2. Git is OFF by default: a builder that never calls `withGit(root:)`
 ///    renders no entry under that noun, and a second registration of the noun
 ///    fails loudly at `buildRegistry()`.
@@ -32,6 +32,9 @@ struct GitCapabilityTests {
     /// separator.
     private static let gitPathPrefix = "\(gitNoun)."
 
+    /// The verbs of the capability, in render order.
+    private static let verbNames = ["blame"]
+
     /// The rendered call path of the one tool the off-by-default test
     /// registers instead, which proves that test reads a surface that was
     /// really built.
@@ -39,15 +42,26 @@ struct GitCapabilityTests {
 
     // MARK: - The noun
 
-    /// The capability owns the `git` noun, and the base holds no verb.
-    @Test("the capability owns the git noun and holds no verb yet")
-    func theCapabilityOwnsTheGitNounAndHoldsNoVerbYet() throws {
+    /// The capability owns the `git` noun, and holds each verb that a verb
+    /// task added, in render order.
+    @Test("the capability owns the git noun and holds its verbs")
+    func theCapabilityOwnsTheGitNounAndHoldsItsVerbs() throws {
         let repository = try TemporaryGitRepository()
 
         let capability = GitCapability(root: repository.workDirectory)
 
         #expect(capability.noun == Self.gitNoun)
-        #expect(capability.tools.isEmpty)
+        #expect(capability.tools.map(\.name) == Self.verbNames)
+    }
+
+    /// `withGit(root:)` renders each verb under the `git` noun.
+    @Test("withGit renders each verb under the git noun")
+    func withGitRendersEachVerbUnderTheGitNoun() throws {
+        let repository = try TemporaryGitRepository()
+
+        let surface = try MultiTool.Builder().withGit(root: repository.workDirectory).build()
+
+        #expect(surface.entries.map(\.path) == Self.verbNames.map { Self.gitPathPrefix + $0 })
     }
 
     /// The capability holds the one context of its root, and that context
@@ -81,8 +95,10 @@ struct GitCapabilityTests {
         }
     }
 
-    /// A second `withGit(root:)` is a second claim on the same noun, and it
-    /// fails loudly at `buildRegistry()`.
+    /// A second `withGit(root:)` is a second claim on the same noun. Its verbs
+    /// collide path by path, so `buildRegistry()` reports the first path
+    /// collision, the same as a second `withFiles(root:)` — loudly, and never
+    /// a quiet merge.
     @Test("a second withGit registration makes buildRegistry() throw")
     func aSecondWithGitRegistrationThrows() throws {
         let repository = try TemporaryGitRepository()
@@ -93,7 +109,8 @@ struct GitCapabilityTests {
                 .withGit(root: repository.workDirectory)
                 .buildRegistry()
         } throws: { error in
-            Self.isDuplicateGitNoun(error)
+            guard let builderError = error as? MultiToolBuilderError else { return false }
+            return builderError.kind == .duplicateName && builderError.name == Self.verbNames.first
         }
     }
 
@@ -122,7 +139,8 @@ struct GitCapabilityTests {
             .addTool(WeatherTool())
             .buildRegistry()
 
-        #expect(registry.surface.entries.map(\.path) == [Self.unrelatedToolPath])
+        let expectedPaths = Self.verbNames.map { Self.gitPathPrefix + $0 } + [Self.unrelatedToolPath]
+        #expect(Set(registry.surface.entries.map(\.path)) == Set(expectedPaths))
     }
 
     // MARK: - Helpers

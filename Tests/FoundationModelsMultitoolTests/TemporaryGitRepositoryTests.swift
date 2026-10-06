@@ -98,6 +98,20 @@ struct TemporaryGitRepositoryTests {
         #expect(tip == "\(sha)\n")
     }
 
+    /// `stage` writes the file into the index (`.git/index`), and makes no
+    /// commit: the default branch has no ref file yet.
+    @Test("stage writes the file into the index and makes no commit")
+    func stageWritesTheFileIntoTheIndexAndMakesNoCommit() throws {
+        let repository = try TemporaryGitRepository()
+        try repository.write(Self.fileText, to: Self.filePath)
+
+        try repository.stage(Self.filePath)
+
+        let index = try Data(contentsOf: Self.gitFile(repository, "index"))
+        #expect(index.range(of: Data(Self.filePath.utf8)) != nil)
+        #expect(!FileManager.default.fileExists(atPath: Self.gitFile(repository, Self.defaultBranchRef).path))
+    }
+
     /// The URL of a file under the `.git` folder of `repository`.
     ///
     /// - Parameters:

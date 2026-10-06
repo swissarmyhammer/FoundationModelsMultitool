@@ -224,7 +224,10 @@ enum GitPatch {
     /// Termination is part of the identity: a final line that gains or loses
     /// its newline is a *changed* line, exactly as git treats it, thus a
     /// patch that reports the change reproduces the new bytes.
-    private struct Line: Equatable {
+    ///
+    /// Internal, not private: the `tools.git.blame` verb reads the same line
+    /// model, because libgit2 counts the lines of a blame the same way.
+    struct Line: Equatable {
         /// The line's text, with the newline that ended it excluded.
         let text: String
 
@@ -243,7 +246,7 @@ enum GitPatch {
     ///
     /// - Parameter content: the content to split.
     /// - Returns: the lines, in order.
-    private static func lines(of content: String) -> [Line] {
+    static func lines(of content: String) -> [Line] {
         var lines: [Line] = []
         var text = String.UnicodeScalarView()
         for scalar in content.unicodeScalars {

@@ -92,6 +92,25 @@ struct GitRepositoryLocation: Equatable, Sendable {
         return Self.joined(components)
     }
 
+    /// Changes the URL of a file in the work folder into a repository path.
+    ///
+    /// The file and ``workDirectory`` are both compared as real paths
+    /// (`realpath`, git.md § "Spike result", fact 1), thus a URL in the
+    /// `/var/...` spelling finds its place in a `/private/var/...` work
+    /// folder. A verb gives this helper the URL that the path guard gave.
+    ///
+    /// - Parameter file: The URL of a file.
+    /// - Returns: The path relative to the work folder, as libgit2 reads it,
+    ///   or `nil` when the file is not below the work folder.
+    func repositoryPath(ofFile file: URL) -> String? {
+        let workComponents = PathContainment.components(of: workDirectory.path)
+        let fileComponents = PathContainment.components(of: resolvedPath(file.path))
+        guard fileComponents.count > workComponents.count, fileComponents.starts(with: workComponents) else {
+            return nil
+        }
+        return Self.joined(fileComponents.dropFirst(workComponents.count).map(String.init))
+    }
+
     /// Joins path parts with the separator, or gives `.` for no part.
     ///
     /// - Parameter components: The path parts.

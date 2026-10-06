@@ -5,11 +5,10 @@
 // own. It names the noun one time, it makes the one `GitContext` of the
 // session, and it composes the verbs over that context.
 //
-// **The base has no verb yet.** Each verb task of git.md § "Proposed order of
-// the tasks" (`status`, `branches`, `changes`, `show`, `log`, `blame`,
-// `diff`) adds its verb to ``GitCapability/tools``, over ``context``. Until
-// then the capability claims the `tools.git` namespace and renders nothing
-// under it.
+// **Each verb task adds its verb.** Each verb task of git.md § "Proposed order
+// of the tasks" (`status`, `branches`, `changes`, `show`, `log`, `blame`,
+// `diff`) adds its verb to ``GitCapability/tools``, over ``context``. The
+// first verb is `blame` (`Blame.swift`).
 //
 // **The capability is off by default**, and nothing here makes it otherwise.
 // eventplan.md § "The capability contract": "The modules are opt-in ... They
@@ -47,8 +46,8 @@ public struct GitCapability: Capability {
     /// dispatch. The claim holds with no verb, too.
     public let noun = "git"
 
-    /// The verbs of the git session, in the order they render. Empty in the
-    /// base: each verb task adds its verb here.
+    /// The verbs of the git session, in the order they render. Each verb task
+    /// adds its verb here.
     ///
     /// Each one supplies its own second segment through `Tool.name`, so this
     /// array and the noun above are the whole of what the surface needs.
@@ -69,6 +68,6 @@ public struct GitCapability: Capability {
     ///   The root can be a subfolder of the repository.
     public init(root: URL) {
         context = GitContext(root: root)
-        tools = []
+        tools = [Blame(context: context)]
     }
 }

@@ -27,7 +27,11 @@ final class LibGit2Repository {
     private static let discoveryFlags: UInt32 = 0
 
     /// The open `git_repository *`. This instance owns it.
-    private let handle: OpaquePointer
+    ///
+    /// Internal, not private, thus the functions of the `LibGit2` layer in
+    /// other files (for example `LibGit2Blame.swift`) can call libgit2 with
+    /// it. A verb never reads it: no verb calls the C API directly.
+    let handle: OpaquePointer
 
     /// Opens the repository that contains `directory`.
     ///
