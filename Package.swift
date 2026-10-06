@@ -592,6 +592,11 @@ let package = Package(
                 // loads these through `Bundle.module`, as `HashlineTests`
                 // loads its goldens.
                 .copy("WebGoldens"),
+                // Golden vectors that pin the hash of the git semantic diff
+                // against the Rust `swissarmyhammer-sem` crate
+                // (`utils/hash.rs`). `SemanticHashTests` loads these through
+                // `Bundle.module`, as `HashlineTests` loads its goldens.
+                .copy("GitGoldens"),
             ]
         ),
     ]

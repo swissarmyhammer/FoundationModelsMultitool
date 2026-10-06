@@ -46,8 +46,24 @@ comments:
     - files: PathGuard.swift, GitRepositoryLocation.swift, GitBlobReader.swift, the changed git and PathGuard tests, git.md (decision 8 names the exception), and .kanban/ changes.
     - next: review. The commit was not pushed.
   timestamp: 2026-10-06T17:28:22.524768+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m494dbfv934pv8y2rk8kn7qm
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (commit e065354). 0 findings, 0 confirmed, 0 refuted. 7 validator runs, 0 failed. The engine reviewed 8 files, which include Capabilities/Files/PathGuard.swift. The commit does not rename a file. The engine did not review 4 .kanban files (.reviewignore) and git.md (no validator matches).
+    - next: none. The task moved to done.
+  timestamp: 2026-10-06T17:33:04.379632+00:00
+- actor: claude-code
+  id: 01m494dt3mf8sry5zmhcss8srj
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 8 files (PathGuard.swift, GitRepositoryLocation.swift, GitBlobReader.swift, 5 test files); git.md decision 8 updated by the orchestrator
+    - test: green — swift test, 1950 passed in 166 suites (all 9 files suites pass); IntegrationTests build complete
+    - commit: e065354
+    - review: clean — 0 findings, 7 validators on 8 files (PathGuard.swift included)
+  timestamp: 2026-10-06T17:33:19.348763+00:00
+position_column: done
+position_ordinal: ffffaf80
 title: 'git: show and log for a path whose folder is gone from the work folder'
 ---
 ## Problem
