@@ -339,6 +339,30 @@ private let treeSitterCSharpPackage = "tree-sitter-c-sharp"
 /// tests show each such difference.
 private let treeSitterPHPPackage = "tree-sitter-php"
 
+/// The Fortran grammar package of the code plugin
+/// (stadelmanma/tree-sitter-fortran).
+///
+/// Its product `TreeSitterFortran` gives the language of `.f90`, `.f95`,
+/// `.f03`, `.f08`, `.f`, and `.for` files. The version is the version of the
+/// Rust `swissarmyhammer-sem` crate, thus the two crates parse each Fortran
+/// file the same way.
+private let treeSitterFortranPackage = "tree-sitter-fortran"
+
+/// The Elixir grammar package of the code plugin
+/// (elixir-lang/tree-sitter-elixir).
+///
+/// Its product `TreeSitterElixir` gives the language of `.ex` and `.exs`
+/// files. The version is the version of the Rust `swissarmyhammer-sem` crate,
+/// thus the two crates parse each Elixir file the same way.
+private let treeSitterElixirPackage = "tree-sitter-elixir"
+
+/// The Bash grammar package of the code plugin (tree-sitter/tree-sitter-bash).
+///
+/// Its product `TreeSitterBash` gives the language of `.sh` files. The
+/// version is the version of the Rust `swissarmyhammer-sem` crate, thus the
+/// two crates parse each Bash file the same way.
+private let treeSitterBashPackage = "tree-sitter-bash"
+
 /// The Swift grammar package of the code plugin
 /// (alex-pinkus/tree-sitter-swift).
 ///
@@ -378,7 +402,10 @@ private let codeParserProducts: [Target.Dependency] = [
     .product(name: "TreeSitterRuby", package: treeSitterRubyPackage),
     .product(name: "TreeSitterCSharp", package: treeSitterCSharpPackage),
     .product(name: "TreeSitterPHP", package: treeSitterPHPPackage),
+    .product(name: "TreeSitterFortran", package: treeSitterFortranPackage),
     .product(name: "TreeSitterSwift", package: treeSitterSwiftPackage),
+    .product(name: "TreeSitterElixir", package: treeSitterElixirPackage),
+    .product(name: "TreeSitterBash", package: treeSitterBashPackage),
 ]
 
 /// The name of the scripted MCP test server library target, and of the
@@ -592,9 +619,9 @@ let package = Package(
         // one copy of libgit2, thus the two pins must stay equal.
         .package(url: "https://github.com/danielctull-forks/\(libgit2Package).git", exact: "1.9.7"),
         // The packages of `codeParserProducts` — see `treeSitterPackage` and
-        // each grammar package. SwiftTreeSitter and the Swift grammar stand
-        // under organizations of their own, so the grammar helper above does
-        // not fit them.
+        // each grammar package. SwiftTreeSitter and the Fortran, Swift, and
+        // Elixir grammars stand under organizations of their own, so the
+        // grammar helper above does not fit them.
         .package(url: "https://github.com/ChimeHQ/\(treeSitterPackage).git", exact: "0.25.0"),
         .package(url: "\(treeSitterGrammarOrgURL)\(treeSitterRuntimePackage)", exact: "0.25.10"),
         treeSitterGrammarPackage(name: treeSitterRustPackage, version: "0.24.2"),
@@ -605,9 +632,12 @@ let package = Package(
         treeSitterGrammarPackage(name: treeSitterRubyPackage, version: "0.23.1"),
         treeSitterGrammarPackage(name: treeSitterCSharpPackage, version: "0.23.5"),
         treeSitterGrammarPackage(name: treeSitterPHPPackage, version: "0.25.0"),
+        .package(url: "https://github.com/stadelmanma/\(treeSitterFortranPackage).git", exact: "0.6.0"),
         .package(
             url: "https://github.com/alex-pinkus/\(treeSitterSwiftPackage).git",
             exact: "0.7.4-with-generated-files"),
+        .package(url: "https://github.com/elixir-lang/\(treeSitterElixirPackage).git", exact: "0.3.5"),
+        treeSitterGrammarPackage(name: treeSitterBashPackage, version: "0.25.1"),
         // The package of `ulidProducts` — see `ulidPackage`. It stands under
         // an organization of its own, so the helper above does not fit it.
         .package(url: "https://github.com/yaslab/\(ulidPackage).git", from: "1.3.1"),

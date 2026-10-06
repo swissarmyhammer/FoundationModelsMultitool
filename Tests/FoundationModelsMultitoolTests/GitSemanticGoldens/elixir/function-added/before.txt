@@ -1,0 +1,5 @@
+defmodule Shapes do
+  def area(width, height) do
+    width * height
+  end
+end

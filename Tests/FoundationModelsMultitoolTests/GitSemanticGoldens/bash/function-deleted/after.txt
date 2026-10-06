@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+
+area() {
+  echo $(( $1 * $2 ))
+}

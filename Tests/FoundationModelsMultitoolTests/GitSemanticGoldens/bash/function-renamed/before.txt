@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+
+total_price() {
+  local subtotal=0
+  for price in "$@"; do
+    subtotal=$(( subtotal + price ))
+  done
+  echo "$subtotal"
+}

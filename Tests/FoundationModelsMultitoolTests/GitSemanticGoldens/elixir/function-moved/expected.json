@@ -1,0 +1,48 @@
+{
+  "summary": {
+    "files": 1,
+    "added": 0,
+    "modified": 0,
+    "deleted": 2,
+    "moved": 2,
+    "renamed": 0
+  },
+  "changes": [
+    {
+      "changeType": "moved",
+      "entityType": "module",
+      "entityName": "Shapes",
+      "filePath": "inline.ex",
+      "oldFilePath": "old/inline.ex",
+      "entityId": "inline.ex::module::Shapes",
+      "beforeContent": "defmodule Shapes do\n  def perimeter(width, height) do\n    2 * (width + height)\n  end\nend",
+      "afterContent": "defmodule Shapes do\n  def perimeter(width, height) do\n    2 * (width + height)\n  end\nend"
+    },
+    {
+      "changeType": "moved",
+      "entityType": "function",
+      "entityName": "perimeter",
+      "filePath": "inline.ex",
+      "oldFilePath": "old/inline.ex",
+      "entityId": "inline.ex::inline.ex::module::Shapes::perimeter",
+      "beforeContent": "def perimeter(width, height) do\n    2 * (width + height)\n  end",
+      "afterContent": "def perimeter(width, height) do\n    2 * (width + height)\n  end"
+    },
+    {
+      "changeType": "deleted",
+      "entityType": "module",
+      "entityName": "Geometry",
+      "filePath": "old/inline.ex",
+      "entityId": "old/inline.ex::module::Geometry",
+      "beforeContent": "defmodule Geometry do\n  def area(width, height) do\n    width * height\n  end\nend"
+    },
+    {
+      "changeType": "deleted",
+      "entityType": "function",
+      "entityName": "area",
+      "filePath": "old/inline.ex",
+      "entityId": "old/inline.ex::old/inline.ex::module::Geometry::area",
+      "beforeContent": "def area(width, height) do\n    width * height\n  end"
+    }
+  ]
+}

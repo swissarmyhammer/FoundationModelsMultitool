@@ -12,9 +12,17 @@ import Testing
 /// 0.26.9, tree-sitter-rust 0.24.2, tree-sitter-go 0.25.0, tree-sitter-swift
 /// 0.7.2, tree-sitter-java 0.23.5, tree-sitter-c 0.24.2, tree-sitter-cpp
 /// 0.23.4, tree-sitter-c-sharp 0.23.5, tree-sitter-ruby 0.23.1,
-/// tree-sitter-php 0.24.2) in the shape of the sah `git` tool (`get diff`),
-/// with camelCase field names. For each case with one path, the program also
-/// ran the inline mode of that tool (`inline.<ext>`) and found the same JSON.
+/// tree-sitter-php 0.24.2, tree-sitter-fortran 0.6.0, tree-sitter-elixir
+/// 0.3.5, tree-sitter-bash 0.25.1) in the shape of the sah `git` tool
+/// (`get diff`), with camelCase field names. For each case with one path, the
+/// program also ran the inline mode of that tool (`inline.<ext>`) and found
+/// the same changes.
+///
+/// The Fortran grammar keeps the name of a function, a subroutine, and a
+/// module in a `*_statement` child. That node has no `name` field and no
+/// identifier child, thus the Rust crate reads no Fortran entity, and each
+/// Fortran case has no change (`files` is 0). The Fortran cases show that the
+/// port does the same.
 ///
 /// The `function-moved` case gives the old side the path `old/inline.<ext>`:
 /// the matcher reports `moved` only when the file path differs, and the
@@ -26,7 +34,9 @@ import Testing
 /// holds it too. Java and C# have no method outside a type, thus their
 /// `function-modified` and `whitespace-and-comments` cases put the method
 /// in a `record`: a record is not an entity in Rust, thus the method is the
-/// one `modified` change.
+/// one `modified` change. An Elixir `def` is in a module, thus the Elixir
+/// cases of the same names put each `def` in a `quote` block that
+/// `Module.create` reads: a `quote` call is not an entity.
 @Suite("CodeParserPluginGoldenTests")
 struct CodeParserPluginGoldenTests {
 
@@ -36,18 +46,28 @@ struct CodeParserPluginGoldenTests {
     /// The name of the case whose old side has another path.
     private static let movedCaseName = "function-moved"
 
-    /// The folder of each language, the file extension of its cases, and the
-    /// cases that only that language has: a C++ namespace and a C# property.
-    private static let languages: [(folder: String, fileExtension: String, extraCaseNames: [String])] = [
-        ("rust", ".rs", []), ("go", ".go", []), ("swift", ".swift", []), ("java", ".java", []), ("c", ".c", []),
-        ("cpp", ".cpp", ["namespace"]), ("csharp", ".cs", ["property"]), ("ruby", ".rb", []), ("php", ".php", []),
+    /// The folder of each language, the file extension of its cases, and its
+    /// cases. Some languages have more cases: a C++ namespace, a C# property,
+    /// a Fortran module and subroutine, and an Elixir `defp`. Bash has no
+    /// types, thus it has only the function cases.
+    private static let languages: [(folder: String, fileExtension: String, caseNames: [String])] = [
+        ("rust", ".rs", typeCaseNames), ("go", ".go", typeCaseNames), ("swift", ".swift", typeCaseNames),
+        ("java", ".java", typeCaseNames), ("c", ".c", typeCaseNames),
+        ("cpp", ".cpp", typeCaseNames + ["namespace"]), ("csharp", ".cs", typeCaseNames + ["property"]),
+        ("ruby", ".rb", typeCaseNames), ("php", ".php", typeCaseNames),
+        ("fortran", ".f90", typeCaseNames + ["module", "subroutine"]),
+        ("elixir", ".ex", typeCaseNames + ["private-function"]), ("bash", ".sh", functionCaseNames),
     ]
 
-    /// The cases that each language has.
-    private static let caseNames = [
+    /// The cases of a function: each language has them.
+    private static let functionCaseNames = [
         "function-added", "function-deleted", "function-modified", "function-renamed", movedCaseName,
-        "type-with-methods", "whitespace-and-comments",
+        "whitespace-and-comments",
     ]
+
+    /// The cases of a language with types: the function cases and a type
+    /// with methods.
+    private static let typeCaseNames = functionCaseNames + ["type-with-methods"]
 
     /// One case: a language folder, its file extension, and a case name.
     struct GoldenCase: CustomTestStringConvertible, Sendable {
@@ -60,7 +80,7 @@ struct CodeParserPluginGoldenTests {
 
     /// Each case of each language.
     static let cases: [GoldenCase] = languages.flatMap { language in
-        (caseNames + language.extraCaseNames).map {
+        language.caseNames.map {
             GoldenCase(language: language.folder, fileExtension: language.fileExtension, name: $0)
         }
     }

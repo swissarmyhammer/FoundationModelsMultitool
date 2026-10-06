@@ -1,0 +1,11 @@
+defmodule Geometry do
+  def area(width, height) do
+    width * height
+  end
+end
+
+defmodule Shapes do
+  def perimeter(width, height) do
+    2 * (width + height)
+  end
+end

@@ -1,0 +1,30 @@
+{
+  "summary": {
+    "files": 1,
+    "added": 1,
+    "modified": 1,
+    "deleted": 0,
+    "moved": 0,
+    "renamed": 0
+  },
+  "changes": [
+    {
+      "changeType": "modified",
+      "entityType": "module",
+      "entityName": "Greeter",
+      "filePath": "inline.ex",
+      "structuralChange": true,
+      "entityId": "inline.ex::module::Greeter",
+      "beforeContent": "defmodule Greeter do\n  def greet(name) do\n    salutation() <> \", \" <> name\n  end\n\n  defp salutation do\n    \"Hello\"\n  end\nend",
+      "afterContent": "defmodule Greeter do\n  def greet(name) do\n    salutation() <> \", \" <> name\n  end\n\n  defp salutation do\n    \"Hello\"\n  end\n\n  defp farewell do\n    \"Goodbye\"\n  end\nend"
+    },
+    {
+      "changeType": "added",
+      "entityType": "function",
+      "entityName": "farewell",
+      "filePath": "inline.ex",
+      "entityId": "inline.ex::inline.ex::module::Greeter::farewell",
+      "afterContent": "defp farewell do\n    \"Goodbye\"\n  end"
+    }
+  ]
+}

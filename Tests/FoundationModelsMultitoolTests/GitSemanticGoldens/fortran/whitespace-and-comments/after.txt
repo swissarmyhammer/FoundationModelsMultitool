@@ -1,0 +1,6 @@
+function area(width,   height) result(res)
+  real, intent(in) :: width, height
+  real :: res
+  ! The area of the rectangle.
+  res = width   *   height
+end function area

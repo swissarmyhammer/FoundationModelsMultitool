@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+
+area() {
+  echo $(( $1 * $2 / 2 ))
+}
+
+perimeter() {
+  echo $(( 2 * ($1 + $2) ))
+}

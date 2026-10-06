@@ -1,0 +1,5 @@
+function perimeter(width, height) result(res)
+  real, intent(in) :: width, height
+  real :: res
+  res = 2.0 * (width + height)
+end function perimeter

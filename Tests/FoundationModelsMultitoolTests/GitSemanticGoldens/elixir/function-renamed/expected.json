@@ -1,0 +1,31 @@
+{
+  "summary": {
+    "files": 1,
+    "added": 0,
+    "modified": 1,
+    "deleted": 0,
+    "moved": 0,
+    "renamed": 1
+  },
+  "changes": [
+    {
+      "changeType": "modified",
+      "entityType": "module",
+      "entityName": "Orders",
+      "filePath": "inline.ex",
+      "structuralChange": true,
+      "entityId": "inline.ex::module::Orders",
+      "beforeContent": "defmodule Orders do\n  def total_price(prices, tax_rate) do\n    subtotal = Enum.sum(prices)\n    subtotal + subtotal * tax_rate\n  end\nend",
+      "afterContent": "defmodule Orders do\n  def order_total(prices, tax_rate) do\n    subtotal = Enum.sum(prices)\n    subtotal + subtotal * tax_rate\n  end\nend"
+    },
+    {
+      "changeType": "renamed",
+      "entityType": "function",
+      "entityName": "order_total",
+      "filePath": "inline.ex",
+      "entityId": "inline.ex::inline.ex::module::Orders::order_total",
+      "beforeContent": "def total_price(prices, tax_rate) do\n    subtotal = Enum.sum(prices)\n    subtotal + subtotal * tax_rate\n  end",
+      "afterContent": "def order_total(prices, tax_rate) do\n    subtotal = Enum.sum(prices)\n    subtotal + subtotal * tax_rate\n  end"
+    }
+  ]
+}

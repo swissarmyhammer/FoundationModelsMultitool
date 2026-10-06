@@ -1,0 +1,30 @@
+{
+  "summary": {
+    "files": 1,
+    "added": 1,
+    "modified": 1,
+    "deleted": 0,
+    "moved": 0,
+    "renamed": 0
+  },
+  "changes": [
+    {
+      "changeType": "modified",
+      "entityType": "module",
+      "entityName": "Counter",
+      "filePath": "inline.ex",
+      "structuralChange": true,
+      "entityId": "inline.ex::module::Counter",
+      "beforeContent": "defmodule Counter do\n  defstruct count: 0\n\n  def increment(%Counter{count: count} = counter) do\n    %Counter{counter | count: count + 1}\n  end\nend",
+      "afterContent": "defmodule Counter do\n  defstruct count: 0\n\n  def increment(%Counter{count: count} = counter) do\n    %Counter{counter | count: count + 1}\n  end\n\n  def value(%Counter{count: count}), do: count\nend"
+    },
+    {
+      "changeType": "added",
+      "entityType": "function",
+      "entityName": "value",
+      "filePath": "inline.ex",
+      "entityId": "inline.ex::inline.ex::module::Counter::value",
+      "afterContent": "def value(%Counter{count: count}), do: count"
+    }
+  ]
+}

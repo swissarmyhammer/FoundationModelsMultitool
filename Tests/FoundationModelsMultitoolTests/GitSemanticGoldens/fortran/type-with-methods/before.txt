@@ -1,0 +1,13 @@
+module counters
+  implicit none
+  type :: counter
+    integer :: count = 0
+  contains
+    procedure :: increment
+  end type counter
+contains
+  subroutine increment(self)
+    class(counter), intent(inout) :: self
+    self%count = self%count + 1
+  end subroutine increment
+end module counters

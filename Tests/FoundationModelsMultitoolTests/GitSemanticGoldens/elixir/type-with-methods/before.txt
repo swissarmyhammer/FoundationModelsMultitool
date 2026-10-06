@@ -1,0 +1,7 @@
+defmodule Counter do
+  defstruct count: 0
+
+  def increment(%Counter{count: count} = counter) do
+    %Counter{counter | count: count + 1}
+  end
+end

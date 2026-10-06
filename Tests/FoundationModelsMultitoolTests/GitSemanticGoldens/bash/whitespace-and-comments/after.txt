@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+
+area() {
+  # The area of the rectangle.
+  echo   $(( $1 * $2 ))
+}

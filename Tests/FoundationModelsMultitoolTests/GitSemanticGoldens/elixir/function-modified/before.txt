@@ -1,0 +1,12 @@
+shapes =
+  quote do
+    def area(width, height) do
+      width * height
+    end
+
+    def perimeter(width, height) do
+      2 * (width + height)
+    end
+  end
+
+Module.create(Shapes, shapes, Macro.Env.location(__ENV__))

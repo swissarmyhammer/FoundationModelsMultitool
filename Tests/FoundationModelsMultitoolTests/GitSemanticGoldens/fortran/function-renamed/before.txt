@@ -1,0 +1,8 @@
+function total_price(prices, tax_rate) result(total)
+  real, intent(in) :: prices(:)
+  real, intent(in) :: tax_rate
+  real :: total
+  real :: subtotal
+  subtotal = sum(prices)
+  total = subtotal + subtotal * tax_rate
+end function total_price

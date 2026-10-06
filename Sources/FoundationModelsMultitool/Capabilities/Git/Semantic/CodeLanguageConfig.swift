@@ -1,7 +1,10 @@
 import SwiftTreeSitter
+import TreeSitterBash
 import TreeSitterC
 import TreeSitterCPP
 import TreeSitterCSharp
+import TreeSitterElixir
+import TreeSitterFortran
 import TreeSitterGo
 import TreeSitterJava
 import TreeSitterPHP
@@ -138,6 +141,17 @@ extension CodeLanguageConfig {
             containerNodeTypes: ["declaration_list", "enum_declaration_list"], callEntityIdentifiers: []),
         language: Language(tree_sitter_php()))
 
+    /// Fortran: `FORTRAN_CONFIG`. The grammar keeps the name of a function,
+    /// a subroutine, and a module in a `*_statement` child, not in a `name`
+    /// field or an identifier child. Thus the name reader finds no name and
+    /// the language gives no entity, as in Rust.
+    static let fortran = CodeLanguageConfig(
+        id: "fortran", extensions: [".f90", ".f95", ".f03", ".f08", ".f", ".for"],
+        vocabulary: EntityVocabulary(
+            entityNodeTypes: ["function", "subroutine", "module", "program", "interface", "type_declaration"],
+            containerNodeTypes: [], callEntityIdentifiers: []),
+        language: Language(tree_sitter_fortran()))
+
     /// Swift: `SWIFT_CONFIG`. The grammar gives a `class`, a `struct`, an
     /// `enum`, and an `extension` the one kind `class_declaration`.
     static let swift = CodeLanguageConfig(
@@ -151,8 +165,30 @@ extension CodeLanguageConfig {
             containerNodeTypes: ["class_body", "protocol_body", "enum_class_body"], callEntityIdentifiers: []),
         language: Language(tree_sitter_swift()))
 
+    /// Elixir: `ELIXIR_CONFIG`. A definition is a call, such as `def` or
+    /// `defmodule`, thus each entity comes from a declaring call, and the
+    /// entities in the `do` block of a module are its children.
+    static let elixir = CodeLanguageConfig(
+        id: "elixir", extensions: [".ex", ".exs"],
+        vocabulary: EntityVocabulary(
+            entityNodeTypes: [], containerNodeTypes: ["do_block"],
+            callEntityIdentifiers: [
+                "defmodule", "def", "defp", "defmacro", "defmacrop", "defguard", "defguardp", "defprotocol",
+                "defimpl", "defstruct", "defexception", "defdelegate",
+            ]),
+        language: Language(tree_sitter_elixir()))
+
+    /// Bash: `BASH_CONFIG`. The table claims `.sh` only, as in Rust.
+    static let bash = CodeLanguageConfig(
+        id: "bash", extensions: [".sh"],
+        vocabulary: EntityVocabulary(
+            entityNodeTypes: ["function_definition"], containerNodeTypes: [], callEntityIdentifiers: []),
+        language: Language(tree_sitter_bash()))
+
     /// Each language of the code plugin, in the order of `ALL_CONFIGS`.
-    static let all: [CodeLanguageConfig] = [go, rust, java, c, cpp, ruby, csharp, php, swift]
+    static let all: [CodeLanguageConfig] = [
+        go, rust, java, c, cpp, ruby, csharp, php, fortran, swift, elixir, bash,
+    ]
 
     /// The extensions of each language, in the order of ``all``: the
     /// extensions of the code plugin (`get_all_code_extensions`).

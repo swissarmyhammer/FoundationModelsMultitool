@@ -1,0 +1,6 @@
+defmodule Orders do
+  def order_total(prices, tax_rate) do
+    subtotal = Enum.sum(prices)
+    subtotal + subtotal * tax_rate
+  end
+end

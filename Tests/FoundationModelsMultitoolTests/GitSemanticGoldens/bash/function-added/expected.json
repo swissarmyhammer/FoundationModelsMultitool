@@ -1,0 +1,20 @@
+{
+  "summary": {
+    "files": 1,
+    "added": 1,
+    "modified": 0,
+    "deleted": 0,
+    "moved": 0,
+    "renamed": 0
+  },
+  "changes": [
+    {
+      "changeType": "added",
+      "entityType": "function",
+      "entityName": "perimeter",
+      "filePath": "inline.sh",
+      "entityId": "inline.sh::function::perimeter",
+      "afterContent": "perimeter() {\n  echo $(( 2 * ($1 + $2) ))\n}"
+    }
+  ]
+}

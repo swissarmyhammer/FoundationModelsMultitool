@@ -1,0 +1,30 @@
+{
+  "summary": {
+    "files": 1,
+    "added": 0,
+    "modified": 0,
+    "deleted": 1,
+    "moved": 1,
+    "renamed": 0
+  },
+  "changes": [
+    {
+      "changeType": "moved",
+      "entityType": "function",
+      "entityName": "perimeter",
+      "filePath": "inline.sh",
+      "oldFilePath": "old/inline.sh",
+      "entityId": "inline.sh::function::perimeter",
+      "beforeContent": "perimeter() {\n  echo $(( 2 * ($1 + $2) ))\n}",
+      "afterContent": "perimeter() {\n  echo $(( 2 * ($1 + $2) ))\n}"
+    },
+    {
+      "changeType": "deleted",
+      "entityType": "function",
+      "entityName": "area",
+      "filePath": "old/inline.sh",
+      "entityId": "old/inline.sh::function::area",
+      "beforeContent": "area() {\n  echo $(( $1 * $2 ))\n}"
+    }
+  ]
+}

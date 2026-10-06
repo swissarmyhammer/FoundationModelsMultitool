@@ -1,0 +1,10 @@
+module geometry
+  implicit none
+contains
+  subroutine scale(width, height, factor)
+    real, intent(inout) :: width, height
+    real, intent(in) :: factor
+    width = width * factor
+    height = height * factor
+  end subroutine scale
+end module geometry

@@ -30,7 +30,9 @@ struct CodeParserPluginTests {
         arguments: [
             "src/main.rs", "cmd/main.go", "Sources/App.swift", "SRC/MAIN.RS", "src/Main.java", "lib/list.c",
             "include/list.h", "src/app.cpp", "src/app.cc", "src/app.cxx", "include/app.hpp", "include/app.hh",
-            "include/app.hxx", "src/Program.cs", "lib/app.rb", "public/index.php",
+            "include/app.hxx", "src/Program.cs", "lib/app.rb", "public/index.php", "src/solver.f90",
+            "src/solver.f95", "src/solver.f03", "src/solver.f08", "src/solver.f", "src/solver.for", "lib/app.ex",
+            "test/app_test.exs", "scripts/deploy.sh",
         ])
     func theDefaultRegistrySelectsTheCodePlugin(filePath: String) {
         #expect(ParserRegistry.makeDefault().plugin(forFilePath: filePath)?.id == CodeParserPlugin.pluginID)
@@ -50,19 +52,22 @@ struct CodeParserPluginTests {
         #expect(
             CodeParserPlugin().extensions == [
                 ".go", ".rs", ".java", ".c", ".h", ".cpp", ".cc", ".cxx", ".hpp", ".hh", ".hxx", ".rb", ".cs",
-                ".php", ".swift",
+                ".php", ".f90", ".f95", ".f03", ".f08", ".f", ".for", ".swift", ".ex", ".exs", ".sh",
             ])
     }
 
     /// The table gives each extension its language, and no language to an
     /// extension that it does not list. C comes before C++ in the table,
-    /// thus `.h` is C, as in `languages.rs`.
+    /// thus `.h` is C, as in `languages.rs`. Bash claims `.sh` only, thus
+    /// `.bash` has no language, as in `languages.rs`.
     @Test(
         "the language table maps each extension to its language",
         arguments: [
             (".rs", "rust"), (".go", "go"), (".swift", "swift"), (".java", "java"), (".c", "c"), (".h", "c"),
             (".cpp", "cpp"), (".cc", "cpp"), (".cxx", "cpp"), (".hpp", "cpp"), (".hh", "cpp"), (".hxx", "cpp"),
-            (".cs", "csharp"), (".rb", "ruby"), (".php", "php"), (".txt", nil),
+            (".cs", "csharp"), (".rb", "ruby"), (".php", "php"), (".f90", "fortran"), (".f95", "fortran"),
+            (".f03", "fortran"), (".f08", "fortran"), (".f", "fortran"), (".for", "fortran"), (".ex", "elixir"),
+            (".exs", "elixir"), (".sh", "bash"), (".bash", nil), (".txt", nil),
         ] as [(String, String?)])
     func theLanguageTableMapsEachExtension(fileExtension: String, languageID: String?) {
         #expect(CodeLanguageConfig.config(forExtension: fileExtension)?.id == languageID)

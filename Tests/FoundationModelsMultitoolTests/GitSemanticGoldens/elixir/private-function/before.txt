@@ -1,0 +1,9 @@
+defmodule Greeter do
+  def greet(name) do
+    salutation() <> ", " <> name
+  end
+
+  defp salutation do
+    "Hello"
+  end
+end

@@ -1,0 +1,21 @@
+{
+  "summary": {
+    "files": 1,
+    "added": 0,
+    "modified": 0,
+    "deleted": 0,
+    "moved": 0,
+    "renamed": 1
+  },
+  "changes": [
+    {
+      "changeType": "renamed",
+      "entityType": "function",
+      "entityName": "order_total",
+      "filePath": "inline.sh",
+      "entityId": "inline.sh::function::order_total",
+      "beforeContent": "total_price() {\n  local subtotal=0\n  for price in \"$@\"; do\n    subtotal=$(( subtotal + price ))\n  done\n  echo \"$subtotal\"\n}",
+      "afterContent": "order_total() {\n  local subtotal=0\n  for price in \"$@\"; do\n    subtotal=$(( subtotal + price ))\n  done\n  echo \"$subtotal\"\n}"
+    }
+  ]
+}

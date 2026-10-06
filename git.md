@@ -324,7 +324,12 @@ add them: task `^6dgd0h1` added SwiftTreeSitter 0.25.0, the tree-sitter
 runtime 0.25.10 (for UTF-8 byte offsets, the same as Rust), and the Rust, Go,
 and Swift grammars. Task `^4ac64t6` added the Java, C, C++, C#, Ruby, and PHP
 grammars. The Rust crate uses tree-sitter-php 0.24.2 and this package uses
-0.25.0; the PHP goldens show no difference.
+0.25.0; the PHP goldens show no difference. Task `^bt90anx` added the
+Fortran, Elixir, and Bash grammars, at the same versions as the Rust crate.
+The Fortran grammar keeps the name of a function, a subroutine, and a module
+in a `*_statement` child. That node has no `name` field and no identifier
+child, thus the Rust crate reads no Fortran entity, and the port does the
+same. The Fortran goldens show this (each one has no change).
 
 A throwaway test (`import libgit2`, removed after the spike) made a temporary
 repository with libgit2 only: commits c1, c2, c3 on `main` (c3 renames
