@@ -233,10 +233,13 @@ private let webProducts: [Target.Dependency] = [
 /// change of the version here needs the same change in FoundationModelsExtras.
 private let libgit2Package = "swift-libgit2"
 
-/// The products of `libgit2Package`, linked by the library target below.
+/// The products of `libgit2Package`, linked by the library target and by the
+/// `multitoolTestSupportTargetName` target below.
 ///
-/// The git capability is the one consumer. `shellProducts`, `mcpProducts` and
-/// `webProducts` group their own products the same way.
+/// The git capability is the one consumer in the library. In the test
+/// support code, `TemporaryGitRepository` builds the repository of a test
+/// with it. `shellProducts`, `mcpProducts` and `webProducts` group their own
+/// products the same way.
 private let gitProducts: [Target.Dependency] = [
     .product(name: "libgit2", package: libgit2Package)
 ]
@@ -302,9 +305,11 @@ private let scenarioGradingTargetName = "ScenarioGrading"
 /// `testServerTargetName`. The unit test target and the live web suites of the
 /// nested `IntegrationTests` package use the same helpers: `RunOutput`, the
 /// decode of a `runCode` output; `WebVerbCall`, the one call of each web verb;
-/// `WebPageHead`, the value of each page of the goal snippet of web.md; and
+/// `WebPageHead`, the value of each page of the goal snippet of web.md;
 /// `TestPoll`, the one poll loop of the test support code, which
-/// `IntegrationPoll` of the nested package uses too. A package can import the
+/// `IntegrationPoll` of the nested package uses too; and
+/// `TemporaryGitRepository`, the git repository of one test, which the git
+/// suites of both packages make with libgit2. A package can import the
 /// products of another package only, thus a helper that both of them read
 /// must stand in a product.
 /// Before this target, the nested package held a copy of each one.
@@ -312,11 +317,12 @@ private let scenarioGradingTargetName = "ScenarioGrading"
 /// A target of its own, and not a file of `scenarioGradingTargetName`: that
 /// target links Router and no target of this package. The helpers here name
 /// the `internal` web verbs, thus this target links the library target and
-/// reads it with `@testable import`. Each consumer reads this target with
-/// `@testable import` too, because a helper whose signature names an
-/// `internal` type of the library cannot be `public`. SwiftPM builds each
-/// target with testability in a debug build, and each test build is a debug
-/// build.
+/// reads it with `@testable import`. It also links `gitProducts`, because
+/// `TemporaryGitRepository` calls the libgit2 C API to build its repository.
+/// Each consumer reads this target with `@testable import` too, because a
+/// helper whose signature names an `internal` type of the library cannot be
+/// `public`. SwiftPM builds each target with testability in a debug build,
+/// and each test build is a debug build.
 private let multitoolTestSupportTargetName = "MultitoolTestSupport"
 
 /// The name of the stdio executable over `testServerTargetName`, and of the
@@ -523,12 +529,13 @@ let package = Package(
             path: "\(testSupportPath)\(scenarioGradingTargetName)"
         ),
         // The helpers that the unit tests and the live web suites share — see
-        // `multitoolTestSupportTargetName`. It links the library target alone.
+        // `multitoolTestSupportTargetName`. It links the library target, and
+        // `gitProducts` for the libgit2 calls of `TemporaryGitRepository`.
         .target(
             name: multitoolTestSupportTargetName,
             dependencies: [
                 .target(name: packageName)
-            ],
+            ] + gitProducts,
             path: "\(testSupportPath)\(multitoolTestSupportTargetName)"
         ),
         // The stdio entry point over the test server — see

@@ -95,6 +95,29 @@ extension MultiTool.Builder {
         )
     }
 
+    /// Queues the git capability under the noun `git`, through
+    /// `withCapability(_:)`. Each verb task of git.md adds its verb to the
+    /// capability, as `tools.git.<verb>`.
+    ///
+    /// **Git is OFF by default.** A builder that never calls this renders
+    /// no `tools.git` namespace at all.
+    ///
+    /// Like `withFiles(...)`, this method does not throw. The git
+    /// capability acquires no resource that can fail at construction: a
+    /// root in no repository is not an error here, and each verb answers it
+    /// as a correction in its own result.
+    ///
+    /// A second call is a second claim on the noun `git`, and it is the
+    /// `.duplicateNoun` failure of `buildRegistry()`.
+    ///
+    /// - Parameter root: the session working directory: the boundary every
+    ///   path is confined to, and the base a relative path resolves against.
+    ///   It can be a subfolder of the repository.
+    @discardableResult
+    public func withGit(root: URL) -> Self {
+        withCapability(GitCapability(root: root))
+    }
+
     /// Queues the two verbs of the web capability — `tools.web.search`
     /// and `tools.web.fetch` — under the noun `web`, through
     /// `withCapability(_:)`.

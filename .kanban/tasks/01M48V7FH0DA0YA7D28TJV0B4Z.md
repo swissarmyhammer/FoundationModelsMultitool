@@ -195,8 +195,24 @@ comments:
     - evidence: 57a984c chore: plan the git capability and add the libgit2 package
     - next: the commit is local only. It is not pushed.
   timestamp: 2026-10-06T15:44:38.276943+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m48yb0w9hscwns3gm15sarpc
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit 7bf6994). Counts: 0 findings, 0 confirmed, 0 refuted; 7 validator runs, 0 failed. The engine reviewed 1 file (`Package.swift`). The `.reviewignore` file excludes 30 `.kanban/` files. No validator matches `git.md`. The commit renames no file, so a file-scoped review was not necessary.
+    - next: The task is in `done`. No action is necessary.
+  timestamp: 2026-10-06T15:46:56.521137+00:00
+- actor: claude-code
+  id: 01m48ybe7k9mpzzjjjqf4sadbn
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — 2 files (Package.swift, git.md); 14 libgit2 C functions work, no GAP
+    - test: green — swift test, 1854 passed in 155 suites; IntegrationTests build complete (only mlx-swift dependency warnings)
+    - commit: 7bf6994
+    - review: clean — 0 findings, 7 of 7 checks ran
+  timestamp: 2026-10-06T15:47:10.195323+00:00
+position_column: done
+position_ordinal: ffffab80
 title: 'git: spike the swift-libgit2 C API'
 ---
 ## Goal
