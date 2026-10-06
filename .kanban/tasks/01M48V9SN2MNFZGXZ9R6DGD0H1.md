@@ -52,6 +52,52 @@ comments:
     - evidence: one local commit "feat: add the code parser plugin core with Swift, Rust, and Go to git semantic". The sha is in the git log, not here, so the commit stays unchanged.
     - next: review
   timestamp: 2026-10-06T18:41:24.814279+00:00
+- actor: claude-code
+  id: 01m498w6hp7gearmxbzryrapdj
+  text: |-
+    ### review — findings
+    - evidence: `review sha HEAD~1..HEAD` (commit 01a319c). The commit renames no file, thus no file-scoped review was necessary. Counts: 2 findings, 2 confirmed, 0 refuted. Findings: Tests/FoundationModelsMultitoolTests/Support/FakeSyntaxTree.swift:65, Tests/FoundationModelsMultitoolTests/Support/FakeSyntaxTree.swift:73 (`code-hygiene/idioms-swift` UseLetInEveryBoundCaseVariable).
+    - next: Move each 'let' keyword inside the 'case' pattern in FakeSyntaxTree.swift. Do this for all bound case patterns in the file. Then review again.
+  timestamp: 2026-10-06T18:51:05.142560+00:00
+- actor: claude-code
+  id: 01m498xs5zmr1aq1n6zgd6akaz
+  text: |-
+    ### finish iteration 1 — findings
+    - implement: changed — 13 paths (Package.swift, 5 Semantic sources, 3 test suites, FakeSyntaxTree.swift, 21 golden cases)
+    - test: green — swift test, 2041 passed in 173 suites; IntegrationTests build complete; no grammar warning
+    - commit: 01a319c
+    - review: findings — Tests/FoundationModelsMultitoolTests/Support/FakeSyntaxTree.swift:65, Tests/FoundationModelsMultitoolTests/Support/FakeSyntaxTree.swift:73 (code-hygiene/idioms-swift: UseLetInEveryBoundCaseVariable)
+  timestamp: 2026-10-06T18:51:56.991236+00:00
+- actor: claude-code
+  id: 01m4995rj1c2hc3yk8yjpx52bp
+  text: |-
+    Review findings worked (code-hygiene/idioms-swift UseLetInEveryBoundCaseVariable).
+    - FakeSyntaxTree.swift: `case let .leaf(kind, text, field, isNamed)` is now `case .leaf(let kind, let text, let field, let isNamed)`, and `case let .node(kind, children, field)` is now `case .node(let kind, let children, let field)`. These were the only two bound case patterns in the file.
+    - Sweep: I searched each Swift file that commit 01a319c added or changed (Package.swift, the 5 Semantic sources, the 3 test suites, FakeSyntaxTree.swift) for `case let` / `case var`, which also finds `if case let` and `guard case let`. There was no other match. Outside the commit, `RepositoryFile.swift` has `for case let fileURL as URL`. It binds one value through a type cast, so the rule does not apply, and the file is not in the scope.
+    - Both findings are now `- [x]`.
+  timestamp: 2026-10-06T18:56:18.497407+00:00
+- actor: claude-code
+  id: 01m4995vtbdbjmp41yj06ytseb
+  text: |-
+    ### implement — changed
+    - evidence: 1 file — Tests/FoundationModelsMultitoolTests/Support/FakeSyntaxTree.swift. `swift build --build-tests`: Build complete, no new warning (only the known mlx-swift_Cmlx.bundle "missing creator" line). `swift test`: 2041 tests in 173 suites passed, 0 failed.
+    - next: /review
+  timestamp: 2026-10-06T18:56:21.835778+00:00
+- actor: claude-code
+  id: 01m49992k3p2xptxzbn2asf2xm
+  text: |-
+    ### test - green
+    - evidence: swift build --build-tests - Build complete. swift test - 2041 tests in 173 suites passed, 0 failed, 0 skipped. IntegrationTests: swift build --build-tests - Build complete.
+    - dependency warning only: "missing creator for mutated node" for mlx-swift_Cmlx.bundle (known, before this change). No other warning.
+    - next: review
+  timestamp: 2026-10-06T18:58:07.075002+00:00
+- actor: claude-code
+  id: 01m4999jk5zemn01krepfykew4
+  text: |-
+    ### commit — changed
+    - evidence: refactor: move let inside each case pattern in FakeSyntaxTree (the sha is the commit that holds this comment; read it with git log)
+    - next: review
+  timestamp: 2026-10-06T18:58:23.461943+00:00
 depends_on:
 - 01M48V9CB973V4MPTJV8GEXZCT
 position_column: doing
@@ -82,4 +128,80 @@ The Rust code is the reference. For each language, make fixtures with the sah to
 ## Acceptance
 
 - `swift build` and `swift test` pass with no new warnings.
-- Each golden of the three languages passes. #git
+- Each golden of the three languages passes.
+
+## Review Findings (2026-10-06 13:41)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 10 file(s) reviewed, 68 not reviewed.
+
+> 4 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 4 file(s)
+
+> 64 file(s) not reviewed — no validator matched:
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/go/function-added/after.txt` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/go/function-added/before.txt` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/go/function-added/expected.json` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/go/function-deleted/after.txt` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/go/function-deleted/before.txt` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/go/function-deleted/expected.json` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/go/function-modified/after.txt` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/go/function-modified/before.txt` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/go/function-modified/expected.json` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/go/function-moved/after.txt` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/go/function-moved/before.txt` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/go/function-moved/expected.json` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/go/function-renamed/after.txt` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/go/function-renamed/before.txt` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/go/function-renamed/expected.json` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/go/type-with-methods/after.txt` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/go/type-with-methods/before.txt` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/go/type-with-methods/expected.json` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/go/whitespace-and-comments/after.txt` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/go/whitespace-and-comments/before.txt` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/go/whitespace-and-comments/expected.json` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/rust/function-added/after.txt` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/rust/function-added/before.txt` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/rust/function-added/expected.json` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/rust/function-deleted/after.txt` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/rust/function-deleted/before.txt` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/rust/function-deleted/expected.json` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/rust/function-modified/after.txt` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/rust/function-modified/before.txt` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/rust/function-modified/expected.json` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/rust/function-moved/after.txt` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/rust/function-moved/before.txt` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/rust/function-moved/expected.json` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/rust/function-renamed/after.txt` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/rust/function-renamed/before.txt` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/rust/function-renamed/expected.json` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/rust/type-with-methods/after.txt` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/rust/type-with-methods/before.txt` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/rust/type-with-methods/expected.json` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/rust/whitespace-and-comments/after.txt` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/rust/whitespace-and-comments/before.txt` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/rust/whitespace-and-comments/expected.json` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/swift/function-added/after.txt` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/swift/function-added/before.txt` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/swift/function-added/expected.json` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/swift/function-deleted/after.txt` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/swift/function-deleted/before.txt` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/swift/function-deleted/expected.json` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/swift/function-modified/after.txt` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/swift/function-modified/before.txt` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/swift/function-modified/expected.json` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/swift/function-moved/after.txt` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/swift/function-moved/before.txt` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/swift/function-moved/expected.json` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/swift/function-renamed/after.txt` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/swift/function-renamed/before.txt` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/swift/function-renamed/expected.json` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/swift/type-with-methods/after.txt` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/swift/type-with-methods/before.txt` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/swift/type-with-methods/expected.json` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/swift/whitespace-and-comments/after.txt` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/swift/whitespace-and-comments/before.txt` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/swift/whitespace-and-comments/expected.json` — no validator matches this file
+> - `git.md` — no validator matches this file
+
+- [x] `Tests/FoundationModelsMultitoolTests/Support/FakeSyntaxTree.swift:65` `code-hygiene/idioms-swift` — UseLetInEveryBoundCaseVariable: move this 'let' keyword inside the 'case' pattern, before each of the bound variables.
+- [x] `Tests/FoundationModelsMultitoolTests/Support/FakeSyntaxTree.swift:73` `code-hygiene/idioms-swift` — UseLetInEveryBoundCaseVariable: move this 'let' keyword inside the 'case' pattern, before each of the bound variables. #git

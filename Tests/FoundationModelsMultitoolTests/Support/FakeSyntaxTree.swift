@@ -62,7 +62,7 @@ enum FakeSyntaxTree {
     /// The node of `shape`, with its leaves appended to `source`.
     private static func node(of shape: FakeSyntaxShape, source: inout [UInt8]) -> FakeSyntaxNode {
         switch shape {
-        case let .leaf(kind, text, field, isNamed):
+        case .leaf(let kind, let text, let field, let isNamed):
             let start = source.count
             source.append(contentsOf: text.utf8)
             let end = source.count
@@ -70,7 +70,7 @@ enum FakeSyntaxTree {
             return FakeSyntaxNode(
                 kind: kind, isNamed: isNamed, fieldName: field, startByte: start, endByte: end, startRow: 0,
                 endRow: 0, children: [])
-        case let .node(kind, children, field):
+        case .node(let kind, let children, let field):
             let start = source.count
             let built = children.map { node(of: $0, source: &source) }
             let end = built.last?.endByte ?? start
