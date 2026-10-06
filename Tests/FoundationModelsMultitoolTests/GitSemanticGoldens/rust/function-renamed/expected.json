@@ -1,0 +1,21 @@
+{
+  "summary": {
+    "files": 1,
+    "added": 0,
+    "modified": 0,
+    "deleted": 0,
+    "moved": 0,
+    "renamed": 1
+  },
+  "changes": [
+    {
+      "changeType": "renamed",
+      "entityType": "function",
+      "entityName": "order_total",
+      "filePath": "inline.rs",
+      "entityId": "inline.rs::function::order_total",
+      "beforeContent": "fn total_price(items: &[Item], tax_rate: f64) -> f64 {\n    let subtotal: f64 = items.iter().map(|item| item.price).sum();\n    let tax = subtotal * tax_rate;\n    subtotal + tax\n}",
+      "afterContent": "fn order_total(items: &[Item], tax_rate: f64) -> f64 {\n    let subtotal: f64 = items.iter().map(|item| item.price).sum();\n    let tax = subtotal * tax_rate;\n    subtotal + tax\n}"
+    }
+  ]
+}

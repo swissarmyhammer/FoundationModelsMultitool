@@ -1,0 +1,21 @@
+{
+  "summary": {
+    "files": 1,
+    "added": 0,
+    "modified": 0,
+    "deleted": 0,
+    "moved": 0,
+    "renamed": 1
+  },
+  "changes": [
+    {
+      "changeType": "renamed",
+      "entityType": "function",
+      "entityName": "orderTotal",
+      "filePath": "inline.swift",
+      "entityId": "inline.swift::function::orderTotal",
+      "beforeContent": "func totalPrice(items: [Item], taxRate: Double) -> Double {\n    let subtotal = items.map { item in item.price }.reduce(0, +)\n    let tax = subtotal * taxRate\n    return subtotal + tax\n}",
+      "afterContent": "func orderTotal(items: [Item], taxRate: Double) -> Double {\n    let subtotal = items.map { item in item.price }.reduce(0, +)\n    let tax = subtotal * taxRate\n    return subtotal + tax\n}"
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+final class Counter {
+    private var count = 0
+
+    init() {}
+
+    func increment() {
+        count += 1
+    }
+}

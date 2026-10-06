@@ -1,0 +1,7 @@
+func area(width: Double, height: Double) -> Double {
+    width * height
+}
+
+func perimeter(width: Double, height: Double) -> Double {
+    2 * (width + height)
+}

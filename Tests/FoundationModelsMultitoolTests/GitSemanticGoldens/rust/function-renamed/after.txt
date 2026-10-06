@@ -1,0 +1,5 @@
+fn order_total(items: &[Item], tax_rate: f64) -> f64 {
+    let subtotal: f64 = items.iter().map(|item| item.price).sum();
+    let tax = subtotal * tax_rate;
+    subtotal + tax
+}

@@ -1,0 +1,30 @@
+{
+  "summary": {
+    "files": 1,
+    "added": 1,
+    "modified": 1,
+    "deleted": 0,
+    "moved": 0,
+    "renamed": 0
+  },
+  "changes": [
+    {
+      "changeType": "modified",
+      "entityType": "class",
+      "entityName": "Counter",
+      "filePath": "inline.swift",
+      "structuralChange": true,
+      "entityId": "inline.swift::class::Counter",
+      "beforeContent": "final class Counter {\n    private var count = 0\n\n    init() {}\n\n    func increment() {\n        count += 1\n    }\n}",
+      "afterContent": "final class Counter {\n    private var count = 0\n\n    init() {}\n\n    func increment() {\n        count += 1\n    }\n\n    func value() -> Int {\n        count\n    }\n}"
+    },
+    {
+      "changeType": "added",
+      "entityType": "function",
+      "entityName": "value",
+      "filePath": "inline.swift",
+      "entityId": "inline.swift::inline.swift::class::Counter::value",
+      "afterContent": "func value() -> Int {\n        count\n    }"
+    }
+  ]
+}

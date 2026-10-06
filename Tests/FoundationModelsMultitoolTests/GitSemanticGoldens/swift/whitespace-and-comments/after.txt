@@ -1,0 +1,4 @@
+func area(width: Double,   height: Double) -> Double {
+    // The area of the rectangle.
+    width   *   height
+}

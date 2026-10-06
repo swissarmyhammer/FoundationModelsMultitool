@@ -1,0 +1,22 @@
+{
+  "summary": {
+    "files": 1,
+    "added": 0,
+    "modified": 1,
+    "deleted": 0,
+    "moved": 0,
+    "renamed": 0
+  },
+  "changes": [
+    {
+      "changeType": "modified",
+      "entityType": "function",
+      "entityName": "Area",
+      "filePath": "inline.go",
+      "structuralChange": true,
+      "entityId": "inline.go::function::Area",
+      "beforeContent": "func Area(width, height float64) float64 {\n\treturn width * height\n}",
+      "afterContent": "func Area(width, height float64) float64 {\n\treturn width * height / 2\n}"
+    }
+  ]
+}

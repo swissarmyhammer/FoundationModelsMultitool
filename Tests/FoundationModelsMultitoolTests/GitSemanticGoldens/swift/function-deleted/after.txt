@@ -1,0 +1,3 @@
+func area(width: Double, height: Double) -> Double {
+    width * height
+}

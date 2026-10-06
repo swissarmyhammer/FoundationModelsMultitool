@@ -1,0 +1,5 @@
+func totalPrice(items: [Item], taxRate: Double) -> Double {
+    let subtotal = items.map { item in item.price }.reduce(0, +)
+    let tax = subtotal * taxRate
+    return subtotal + tax
+}

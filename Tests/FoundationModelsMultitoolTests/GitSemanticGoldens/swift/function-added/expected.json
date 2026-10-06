@@ -1,0 +1,20 @@
+{
+  "summary": {
+    "files": 1,
+    "added": 1,
+    "modified": 0,
+    "deleted": 0,
+    "moved": 0,
+    "renamed": 0
+  },
+  "changes": [
+    {
+      "changeType": "added",
+      "entityType": "function",
+      "entityName": "perimeter",
+      "filePath": "inline.swift",
+      "entityId": "inline.swift::function::perimeter",
+      "afterContent": "func perimeter(width: Double, height: Double) -> Double {\n    2 * (width + height)\n}"
+    }
+  ]
+}

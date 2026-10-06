@@ -1,0 +1,4 @@
+fn area(width: f64,   height: f64) -> f64 {
+    // The area of the rectangle.
+    width   *   height
+}

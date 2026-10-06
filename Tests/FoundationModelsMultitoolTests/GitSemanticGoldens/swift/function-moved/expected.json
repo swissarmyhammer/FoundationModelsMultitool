@@ -1,0 +1,30 @@
+{
+  "summary": {
+    "files": 1,
+    "added": 0,
+    "modified": 0,
+    "deleted": 1,
+    "moved": 1,
+    "renamed": 0
+  },
+  "changes": [
+    {
+      "changeType": "moved",
+      "entityType": "function",
+      "entityName": "perimeter",
+      "filePath": "inline.swift",
+      "oldFilePath": "old/inline.swift",
+      "entityId": "inline.swift::function::perimeter",
+      "beforeContent": "func perimeter(width: Double, height: Double) -> Double {\n    2 * (width + height)\n}",
+      "afterContent": "func perimeter(width: Double, height: Double) -> Double {\n    2 * (width + height)\n}"
+    },
+    {
+      "changeType": "deleted",
+      "entityType": "function",
+      "entityName": "area",
+      "filePath": "old/inline.swift",
+      "entityId": "old/inline.swift::function::area",
+      "beforeContent": "func area(width: Double, height: Double) -> Double {\n    width * height\n}"
+    }
+  ]
+}

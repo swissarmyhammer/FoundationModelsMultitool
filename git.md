@@ -314,8 +314,10 @@ The library target links the product `libgit2` (`gitProducts`). The doc
 comment of `libgit2Package` says that the version must stay equal to the
 version in FoundationModelsExtras. SwiftPM resolves one copy of the package.
 `swift build --build-tests` has no target-name conflict, no error, and no new
-warning. The tree-sitter packages are not in `Package.swift`: the language
-tasks add them.
+warning. The spike did not add the tree-sitter packages. The language tasks
+add them: task `^6dgd0h1` added SwiftTreeSitter 0.25.0, the tree-sitter
+runtime 0.25.10 (for UTF-8 byte offsets, the same as Rust), and the Rust, Go,
+and Swift grammars.
 
 A throwaway test (`import libgit2`, removed after the spike) made a temporary
 repository with libgit2 only: commits c1, c2, c3 on `main` (c3 renames

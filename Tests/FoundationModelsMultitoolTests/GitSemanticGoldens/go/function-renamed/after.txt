@@ -1,0 +1,9 @@
+package orders
+
+func OrderTotal(items []Item, taxRate float64) float64 {
+	subtotal := 0.0
+	for _, item := range items {
+		subtotal += item.Price
+	}
+	return subtotal + subtotal*taxRate
+}

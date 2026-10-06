@@ -3,9 +3,11 @@
 //
 // A port of `parser/registry.rs` in
 // `../swissarmyhammer/crates/swissarmyhammer-sem/src/`: the struct
-// `ParserRegistry` and the function `get_extension`. The registry maps each
-// extension to the plugin that registered it last. A file with no mapped
-// extension gets the plugin whose id is `fallback`, when there is one.
+// `ParserRegistry` and the function `get_extension`, and of
+// `create_default_registry` in `parser/plugins/mod.rs`. The registry maps
+// each extension to the plugin that registered it last. A file with no
+// mapped extension gets the plugin whose id is `fallback`, when there is
+// one.
 
 /// The plugins of the semantic diff, by file extension:
 /// `ParserRegistry` in `parser/registry.rs`.
@@ -21,6 +23,21 @@ struct ParserRegistry: Sendable {
     /// The index in ``plugins`` of the plugin for each extension:
     /// `extension_map` in Rust.
     private var pluginIndexByExtension: [String: Int] = [:]
+
+    /// The registry of the semantic diff: `create_default_registry` in
+    /// `parser/plugins/mod.rs`.
+    ///
+    /// The Rust registry has, in this order, the JSON, code, Vue, YAML,
+    /// TOML, CSV, and Markdown plugins, and the fallback plugin last. The
+    /// code plugin is the one plugin that is ported now. Each task that
+    /// ports another plugin registers it here, in the Rust order.
+    ///
+    /// - Returns: A registry with each ported plugin.
+    static func makeDefault() -> ParserRegistry {
+        var registry = ParserRegistry()
+        registry.register(CodeParserPlugin())
+        return registry
+    }
 
     /// Adds `plugin` and maps each of its extensions to it: `register` in
     /// `parser/registry.rs`. A later plugin for the same extension
@@ -62,7 +79,11 @@ struct ParserRegistry: Sendable {
     /// the text after the last dot of the file name. A file name with no
     /// dot, or with only a leading dot (`.gitignore`), has no extension. A
     /// `.` component of the path is not a file name.
-    private static func fileExtension(of filePath: String) -> String {
+    ///
+    /// The code plugin reads the language of a file with this function too.
+    /// Its Rust source has a copy with the same rules
+    /// (`dotted_lowercase_extension` in `parser/plugins/code/languages.rs`).
+    static func fileExtension(of filePath: String) -> String {
         let fileName = filePath.split(separator: "/").last { $0 != "." }
         guard let fileName, fileName != "..",
             let dot = fileName.lastIndex(of: "."), dot != fileName.startIndex

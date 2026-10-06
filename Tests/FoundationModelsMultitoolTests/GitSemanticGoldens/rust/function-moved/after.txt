@@ -1,0 +1,3 @@
+fn perimeter(width: f64, height: f64) -> f64 {
+    2.0 * (width + height)
+}

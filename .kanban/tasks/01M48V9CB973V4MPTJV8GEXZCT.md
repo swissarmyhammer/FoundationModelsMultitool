@@ -48,10 +48,26 @@ comments:
     - evidence: one local commit "feat: port the semantic model, matcher, differ, and plugin registry to the git capability". It holds the Semantic sources, the new test suites, the semantic hash golden file, the GitGoldens resource in Package.swift, and the .kanban changes. The sha is in the git log. The commit is not pushed.
     - next: review
   timestamp: 2026-10-06T17:56:22.764197+00:00
+- actor: claude-code
+  id: 01m496aa0zjwvnjjk0shfb2wv4
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (commit aa95985). 0 findings, 0 confirmed, 0 refuted. 14 files attempted, 0 failed. Not reviewed: 4 .kanban files (from .reviewignore), and semantic-hash-golden.json (no validator matches it). The commit renames no file, thus no file-scoped review was necessary.
+    - next: The task is in done.
+  timestamp: 2026-10-06T18:06:21.727713+00:00
+- actor: claude-code
+  id: 01m496apj7zzhbxt8pb6jyjsr9
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 16 files (Package.swift GitGoldens resource, 9 files in Git/Semantic/, 4 test suites, test plugins, hash golden json)
+    - test: green — swift test, 2012 passed in 170 suites; IntegrationTests build complete
+    - commit: aa95985
+    - review: clean — 0 findings, 14 files reviewed
+  timestamp: 2026-10-06T18:06:34.567290+00:00
 depends_on:
 - 01M48V7FH0DA0YA7D28TJV0B4Z
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffffb080
 title: 'git semantic: port the model, the matcher, the differ, and the plugin registry'
 ---
 ## Goal
