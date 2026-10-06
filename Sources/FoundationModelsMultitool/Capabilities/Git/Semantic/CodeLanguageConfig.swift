@@ -1,5 +1,11 @@
 import SwiftTreeSitter
+import TreeSitterC
+import TreeSitterCPP
+import TreeSitterCSharp
 import TreeSitterGo
+import TreeSitterJava
+import TreeSitterPHP
+import TreeSitterRuby
 import TreeSitterRust
 import TreeSitterSwift
 
@@ -64,6 +70,74 @@ extension CodeLanguageConfig {
             containerNodeTypes: ["declaration_list"], callEntityIdentifiers: []),
         language: Language(tree_sitter_rust()))
 
+    /// Java: `JAVA_CONFIG`. A `record` is not an entity, thus a method of a
+    /// record has no parent, as in Rust.
+    static let java = CodeLanguageConfig(
+        id: "java", extensions: [".java"],
+        vocabulary: EntityVocabulary(
+            entityNodeTypes: [
+                "class_declaration", "method_declaration", "interface_declaration", "enum_declaration",
+                "field_declaration", "constructor_declaration", "annotation_type_declaration",
+            ],
+            containerNodeTypes: ["class_body", "interface_body", "enum_body"], callEntityIdentifiers: []),
+        language: Language(tree_sitter_java()))
+
+    /// C: `C_CONFIG`. C comes before C++ in the table, thus C claims `.h`.
+    static let c = CodeLanguageConfig(
+        id: "c", extensions: [".c", ".h"],
+        vocabulary: EntityVocabulary(
+            entityNodeTypes: [
+                "function_definition", "struct_specifier", "enum_specifier", "union_specifier", "type_definition",
+                "declaration",
+            ],
+            containerNodeTypes: [], callEntityIdentifiers: []),
+        language: Language(tree_sitter_c()))
+
+    /// C++: `CPP_CONFIG`. A namespace is a `module` entity, and the
+    /// functions in it are its children.
+    static let cpp = CodeLanguageConfig(
+        id: "cpp", extensions: [".cpp", ".cc", ".cxx", ".hpp", ".hh", ".hxx"],
+        vocabulary: EntityVocabulary(
+            entityNodeTypes: [
+                "function_definition", "class_specifier", "struct_specifier", "enum_specifier",
+                "namespace_definition", "template_declaration", "declaration", "type_definition",
+            ],
+            containerNodeTypes: ["field_declaration_list", "declaration_list"], callEntityIdentifiers: []),
+        language: Language(tree_sitter_cpp()))
+
+    /// Ruby: `RUBY_CONFIG`.
+    static let ruby = CodeLanguageConfig(
+        id: "ruby", extensions: [".rb"],
+        vocabulary: EntityVocabulary(
+            entityNodeTypes: ["method", "singleton_method", "class", "module"],
+            containerNodeTypes: ["body_statement"], callEntityIdentifiers: []),
+        language: Language(tree_sitter_ruby()))
+
+    /// C#: `CSHARP_CONFIG`. A `record` is not an entity, thus a method of a
+    /// record has no parent, as in Rust.
+    static let csharp = CodeLanguageConfig(
+        id: "csharp", extensions: [".cs"],
+        vocabulary: EntityVocabulary(
+            entityNodeTypes: [
+                "method_declaration", "class_declaration", "interface_declaration", "enum_declaration",
+                "struct_declaration", "namespace_declaration", "property_declaration", "constructor_declaration",
+                "field_declaration",
+            ],
+            containerNodeTypes: ["declaration_list"], callEntityIdentifiers: []),
+        language: Language(tree_sitter_c_sharp()))
+
+    /// PHP: `PHP_CONFIG`, with the grammar of PHP in HTML
+    /// (`LANGUAGE_PHP`), not of PHP only.
+    static let php = CodeLanguageConfig(
+        id: "php", extensions: [".php"],
+        vocabulary: EntityVocabulary(
+            entityNodeTypes: [
+                "function_definition", "class_declaration", "method_declaration", "interface_declaration",
+                "trait_declaration", "enum_declaration", "namespace_definition",
+            ],
+            containerNodeTypes: ["declaration_list", "enum_declaration_list"], callEntityIdentifiers: []),
+        language: Language(tree_sitter_php()))
+
     /// Swift: `SWIFT_CONFIG`. The grammar gives a `class`, a `struct`, an
     /// `enum`, and an `extension` the one kind `class_declaration`.
     static let swift = CodeLanguageConfig(
@@ -78,7 +152,7 @@ extension CodeLanguageConfig {
         language: Language(tree_sitter_swift()))
 
     /// Each language of the code plugin, in the order of `ALL_CONFIGS`.
-    static let all: [CodeLanguageConfig] = [go, rust, swift]
+    static let all: [CodeLanguageConfig] = [go, rust, java, c, cpp, ruby, csharp, php, swift]
 
     /// The extensions of each language, in the order of ``all``: the
     /// extensions of the code plugin (`get_all_code_extensions`).

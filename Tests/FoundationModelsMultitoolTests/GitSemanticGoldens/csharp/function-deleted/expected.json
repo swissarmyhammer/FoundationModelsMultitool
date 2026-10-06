@@ -1,0 +1,30 @@
+{
+  "summary": {
+    "files": 1,
+    "added": 0,
+    "modified": 1,
+    "deleted": 1,
+    "moved": 0,
+    "renamed": 0
+  },
+  "changes": [
+    {
+      "changeType": "modified",
+      "entityType": "class",
+      "entityName": "Shapes",
+      "filePath": "inline.cs",
+      "structuralChange": true,
+      "entityId": "inline.cs::class::Shapes",
+      "beforeContent": "public class Shapes\n{\n    public static double Area(double width, double height)\n    {\n        return width * height;\n    }\n\n    public static double Perimeter(double width, double height)\n    {\n        return 2 * (width + height);\n    }\n}",
+      "afterContent": "public class Shapes\n{\n    public static double Area(double width, double height)\n    {\n        return width * height;\n    }\n}"
+    },
+    {
+      "changeType": "deleted",
+      "entityType": "method",
+      "entityName": "Perimeter",
+      "filePath": "inline.cs",
+      "entityId": "inline.cs::inline.cs::class::Shapes::Perimeter",
+      "beforeContent": "public static double Perimeter(double width, double height)\n    {\n        return 2 * (width + height);\n    }"
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+<?php
+
+function totalPrice(array $prices, float $taxRate): float {
+    $subtotal = 0.0;
+    foreach ($prices as $price) {
+        $subtotal += $price;
+    }
+    return $subtotal + $subtotal * $taxRate;
+}

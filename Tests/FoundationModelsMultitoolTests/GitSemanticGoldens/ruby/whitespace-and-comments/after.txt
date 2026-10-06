@@ -1,0 +1,4 @@
+def area(width,   height)
+  # The area of the rectangle.
+  width   *   height
+end

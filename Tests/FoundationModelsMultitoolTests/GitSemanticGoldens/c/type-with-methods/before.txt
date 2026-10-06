@@ -1,0 +1,7 @@
+struct counter {
+    int count;
+};
+
+void counter_increment(struct counter *c) {
+    c->count++;
+}

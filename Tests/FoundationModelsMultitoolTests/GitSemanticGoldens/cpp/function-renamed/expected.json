@@ -1,0 +1,21 @@
+{
+  "summary": {
+    "files": 1,
+    "added": 0,
+    "modified": 0,
+    "deleted": 0,
+    "moved": 0,
+    "renamed": 1
+  },
+  "changes": [
+    {
+      "changeType": "renamed",
+      "entityType": "function",
+      "entityName": "orderTotal",
+      "filePath": "inline.cpp",
+      "entityId": "inline.cpp::function::orderTotal",
+      "beforeContent": "double totalPrice(const std::vector<double>& prices, double taxRate) {\n    double subtotal = 0.0;\n    for (double price : prices) {\n        subtotal += price;\n    }\n    return subtotal + subtotal * taxRate;\n}",
+      "afterContent": "double orderTotal(const std::vector<double>& prices, double taxRate) {\n    double subtotal = 0.0;\n    for (double price : prices) {\n        subtotal += price;\n    }\n    return subtotal + subtotal * taxRate;\n}"
+    }
+  ]
+}

@@ -98,10 +98,26 @@ comments:
     - evidence: refactor: move let inside each case pattern in FakeSyntaxTree (the sha is the commit that holds this comment; read it with git log)
     - next: review
   timestamp: 2026-10-06T18:58:23.461943+00:00
+- actor: claude-code
+  id: 01m499dgm90wrq410x55cwk5vb
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (commit 125a935). Findings 0, confirmed 0, refuted 0. Attempted 7, failed 0. Tests/FoundationModelsMultitoolTests/Support/FakeSyntaxTree.swift was reviewed. The commit has no renamed file. The two items of Review Findings (2026-10-06 13:41) are checked.
+    - next: The task moves to done.
+  timestamp: 2026-10-06T19:00:32.521170+00:00
+- actor: claude-code
+  id: 01m499e38hx2ymkx977dyy3v6v
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — 1 file (FakeSyntaxTree.swift); findings :65 and :73 checked
+    - test: green — swift test, 2041 passed in 173 suites; IntegrationTests build complete
+    - commit: 125a935
+    - review: clean — 0 findings, 7 validators on 1 file
+  timestamp: 2026-10-06T19:00:51.601340+00:00
 depends_on:
 - 01M48V9CB973V4MPTJV8GEXZCT
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffffb180
 title: 'git semantic: code plugin core, with Swift, Rust, and Go'
 ---
 ## Goal

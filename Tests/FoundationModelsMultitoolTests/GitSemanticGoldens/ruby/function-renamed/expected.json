@@ -1,0 +1,21 @@
+{
+  "summary": {
+    "files": 1,
+    "added": 0,
+    "modified": 0,
+    "deleted": 0,
+    "moved": 0,
+    "renamed": 1
+  },
+  "changes": [
+    {
+      "changeType": "renamed",
+      "entityType": "method",
+      "entityName": "order_total",
+      "filePath": "inline.rb",
+      "entityId": "inline.rb::method::order_total",
+      "beforeContent": "def total_price(prices, tax_rate)\n  subtotal = 0.0\n  prices.each do |price|\n    subtotal += price\n  end\n  subtotal + subtotal * tax_rate\nend",
+      "afterContent": "def order_total(prices, tax_rate)\n  subtotal = 0.0\n  prices.each do |price|\n    subtotal += price\n  end\n  subtotal + subtotal * tax_rate\nend"
+    }
+  ]
+}

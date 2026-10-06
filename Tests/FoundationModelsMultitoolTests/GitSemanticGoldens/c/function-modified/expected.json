@@ -1,0 +1,22 @@
+{
+  "summary": {
+    "files": 1,
+    "added": 0,
+    "modified": 1,
+    "deleted": 0,
+    "moved": 0,
+    "renamed": 0
+  },
+  "changes": [
+    {
+      "changeType": "modified",
+      "entityType": "function",
+      "entityName": "area",
+      "filePath": "inline.c",
+      "structuralChange": true,
+      "entityId": "inline.c::function::area",
+      "beforeContent": "double area(double width, double height) {\n    return width * height;\n}",
+      "afterContent": "double area(double width, double height) {\n    return width * height / 2;\n}"
+    }
+  ]
+}

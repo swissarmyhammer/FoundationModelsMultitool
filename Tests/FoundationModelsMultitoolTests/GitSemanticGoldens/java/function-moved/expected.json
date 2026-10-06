@@ -1,0 +1,48 @@
+{
+  "summary": {
+    "files": 1,
+    "added": 0,
+    "modified": 0,
+    "deleted": 2,
+    "moved": 2,
+    "renamed": 0
+  },
+  "changes": [
+    {
+      "changeType": "moved",
+      "entityType": "class",
+      "entityName": "Shapes",
+      "filePath": "inline.java",
+      "oldFilePath": "old/inline.java",
+      "entityId": "inline.java::class::Shapes",
+      "beforeContent": "class Shapes {\n    public static double perimeter(double width, double height) {\n        return 2 * (width + height);\n    }\n}",
+      "afterContent": "class Shapes {\n    public static double perimeter(double width, double height) {\n        return 2 * (width + height);\n    }\n}"
+    },
+    {
+      "changeType": "moved",
+      "entityType": "method",
+      "entityName": "perimeter",
+      "filePath": "inline.java",
+      "oldFilePath": "old/inline.java",
+      "entityId": "inline.java::inline.java::class::Shapes::perimeter",
+      "beforeContent": "public static double perimeter(double width, double height) {\n        return 2 * (width + height);\n    }",
+      "afterContent": "public static double perimeter(double width, double height) {\n        return 2 * (width + height);\n    }"
+    },
+    {
+      "changeType": "deleted",
+      "entityType": "class",
+      "entityName": "Geometry",
+      "filePath": "old/inline.java",
+      "entityId": "old/inline.java::class::Geometry",
+      "beforeContent": "class Geometry {\n    public static double area(double width, double height) {\n        return width * height;\n    }\n}"
+    },
+    {
+      "changeType": "deleted",
+      "entityType": "method",
+      "entityName": "area",
+      "filePath": "old/inline.java",
+      "entityId": "old/inline.java::old/inline.java::class::Geometry::area",
+      "beforeContent": "public static double area(double width, double height) {\n        return width * height;\n    }"
+    }
+  ]
+}

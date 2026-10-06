@@ -1,0 +1,4 @@
+public class Account
+{
+    public string Owner { get; set; }
+}

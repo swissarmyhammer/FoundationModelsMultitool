@@ -1,0 +1,30 @@
+{
+  "summary": {
+    "files": 1,
+    "added": 0,
+    "modified": 1,
+    "deleted": 1,
+    "moved": 0,
+    "renamed": 0
+  },
+  "changes": [
+    {
+      "changeType": "modified",
+      "entityType": "class",
+      "entityName": "Shapes",
+      "filePath": "inline.java",
+      "structuralChange": true,
+      "entityId": "inline.java::class::Shapes",
+      "beforeContent": "public class Shapes {\n    public static double area(double width, double height) {\n        return width * height;\n    }\n\n    public static double perimeter(double width, double height) {\n        return 2 * (width + height);\n    }\n}",
+      "afterContent": "public class Shapes {\n    public static double area(double width, double height) {\n        return width * height;\n    }\n}"
+    },
+    {
+      "changeType": "deleted",
+      "entityType": "method",
+      "entityName": "perimeter",
+      "filePath": "inline.java",
+      "entityId": "inline.java::inline.java::class::Shapes::perimeter",
+      "beforeContent": "public static double perimeter(double width, double height) {\n        return 2 * (width + height);\n    }"
+    }
+  ]
+}

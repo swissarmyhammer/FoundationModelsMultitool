@@ -1,0 +1,13 @@
+class Counter {
+public:
+    void increment() {
+        ++count;
+    }
+
+    int value() const {
+        return count;
+    }
+
+private:
+    int count = 0;
+};

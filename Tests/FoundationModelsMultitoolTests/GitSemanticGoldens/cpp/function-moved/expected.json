@@ -1,0 +1,30 @@
+{
+  "summary": {
+    "files": 1,
+    "added": 0,
+    "modified": 0,
+    "deleted": 1,
+    "moved": 1,
+    "renamed": 0
+  },
+  "changes": [
+    {
+      "changeType": "moved",
+      "entityType": "function",
+      "entityName": "perimeter",
+      "filePath": "inline.cpp",
+      "oldFilePath": "old/inline.cpp",
+      "entityId": "inline.cpp::function::perimeter",
+      "beforeContent": "double perimeter(double width, double height) {\n    return 2 * (width + height);\n}",
+      "afterContent": "double perimeter(double width, double height) {\n    return 2 * (width + height);\n}"
+    },
+    {
+      "changeType": "deleted",
+      "entityType": "function",
+      "entityName": "area",
+      "filePath": "old/inline.cpp",
+      "entityId": "old/inline.cpp::function::area",
+      "beforeContent": "double area(double width, double height) {\n    return width * height;\n}"
+    }
+  ]
+}

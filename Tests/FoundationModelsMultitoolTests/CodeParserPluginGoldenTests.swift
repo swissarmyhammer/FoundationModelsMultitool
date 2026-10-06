@@ -10,9 +10,11 @@ import Testing
 /// after file, and the expected JSON. A throwaway Rust program wrote each
 /// expected JSON with `compute_semantic_diff` of the Rust crate (tree-sitter
 /// 0.26.9, tree-sitter-rust 0.24.2, tree-sitter-go 0.25.0, tree-sitter-swift
-/// 0.7.2) in the shape of the sah `git` tool (`get diff`), with camelCase
-/// field names. For each case with one path, the program also ran the
-/// inline mode of that tool (`inline.<ext>`) and found the same JSON.
+/// 0.7.2, tree-sitter-java 0.23.5, tree-sitter-c 0.24.2, tree-sitter-cpp
+/// 0.23.4, tree-sitter-c-sharp 0.23.5, tree-sitter-ruby 0.23.1,
+/// tree-sitter-php 0.24.2) in the shape of the sah `git` tool (`get diff`),
+/// with camelCase field names. For each case with one path, the program also
+/// ran the inline mode of that tool (`inline.<ext>`) and found the same JSON.
 ///
 /// The `function-moved` case gives the old side the path `old/inline.<ext>`:
 /// the matcher reports `moved` only when the file path differs, and the
@@ -20,7 +22,11 @@ import Testing
 ///
 /// The Rust matcher walks a `HashMap` in phase 1, thus the order of two
 /// `modified` changes is not fixed in Rust. Each case has at most one
-/// `modified` change.
+/// `modified` change. A change to a nested entity modifies the entity that
+/// holds it too. Java and C# have no method outside a type, thus their
+/// `function-modified` and `whitespace-and-comments` cases put the method
+/// in a `record`: a record is not an entity in Rust, thus the method is the
+/// one `modified` change.
 @Suite("CodeParserPluginGoldenTests")
 struct CodeParserPluginGoldenTests {
 
@@ -30,12 +36,14 @@ struct CodeParserPluginGoldenTests {
     /// The name of the case whose old side has another path.
     private static let movedCaseName = "function-moved"
 
-    /// The folder of each language, and the file extension of its cases.
-    private static let languages: [(folder: String, fileExtension: String)] = [
-        ("rust", ".rs"), ("go", ".go"), ("swift", ".swift"),
+    /// The folder of each language, the file extension of its cases, and the
+    /// cases that only that language has: a C++ namespace and a C# property.
+    private static let languages: [(folder: String, fileExtension: String, extraCaseNames: [String])] = [
+        ("rust", ".rs", []), ("go", ".go", []), ("swift", ".swift", []), ("java", ".java", []), ("c", ".c", []),
+        ("cpp", ".cpp", ["namespace"]), ("csharp", ".cs", ["property"]), ("ruby", ".rb", []), ("php", ".php", []),
     ]
 
-    /// The cases of each language.
+    /// The cases that each language has.
     private static let caseNames = [
         "function-added", "function-deleted", "function-modified", "function-renamed", movedCaseName,
         "type-with-methods", "whitespace-and-comments",
@@ -52,7 +60,9 @@ struct CodeParserPluginGoldenTests {
 
     /// Each case of each language.
     static let cases: [GoldenCase] = languages.flatMap { language in
-        caseNames.map { GoldenCase(language: language.folder, fileExtension: language.fileExtension, name: $0) }
+        (caseNames + language.extraCaseNames).map {
+            GoldenCase(language: language.folder, fileExtension: language.fileExtension, name: $0)
+        }
     }
 
     // MARK: Expected JSON model

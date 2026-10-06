@@ -1,0 +1,7 @@
+def total_price(prices, tax_rate)
+  subtotal = 0.0
+  prices.each do |price|
+    subtotal += price
+  end
+  subtotal + subtotal * tax_rate
+end

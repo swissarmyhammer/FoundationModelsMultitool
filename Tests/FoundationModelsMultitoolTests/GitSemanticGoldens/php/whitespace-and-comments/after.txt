@@ -1,0 +1,6 @@
+<?php
+
+function area($width,   $height) {
+    // The area of the rectangle.
+    return $width   *   $height;
+}

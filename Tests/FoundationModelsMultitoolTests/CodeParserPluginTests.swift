@@ -27,7 +27,11 @@ struct CodeParserPluginTests {
     /// in any case, as `get_plugin` lowercases the extension.
     @Test(
         "the default registry selects the code plugin for each code extension",
-        arguments: ["src/main.rs", "cmd/main.go", "Sources/App.swift", "SRC/MAIN.RS"])
+        arguments: [
+            "src/main.rs", "cmd/main.go", "Sources/App.swift", "SRC/MAIN.RS", "src/Main.java", "lib/list.c",
+            "include/list.h", "src/app.cpp", "src/app.cc", "src/app.cxx", "include/app.hpp", "include/app.hh",
+            "include/app.hxx", "src/Program.cs", "lib/app.rb", "public/index.php",
+        ])
     func theDefaultRegistrySelectsTheCodePlugin(filePath: String) {
         #expect(ParserRegistry.makeDefault().plugin(forFilePath: filePath)?.id == CodeParserPlugin.pluginID)
     }
@@ -43,14 +47,23 @@ struct CodeParserPluginTests {
     /// the order of the table.
     @Test("the plugin claims the extension of each language")
     func thePluginClaimsTheExtensionOfEachLanguage() {
-        #expect(CodeParserPlugin().extensions == [".go", ".rs", ".swift"])
+        #expect(
+            CodeParserPlugin().extensions == [
+                ".go", ".rs", ".java", ".c", ".h", ".cpp", ".cc", ".cxx", ".hpp", ".hh", ".hxx", ".rb", ".cs",
+                ".php", ".swift",
+            ])
     }
 
     /// The table gives each extension its language, and no language to an
-    /// extension that it does not list.
+    /// extension that it does not list. C comes before C++ in the table,
+    /// thus `.h` is C, as in `languages.rs`.
     @Test(
         "the language table maps each extension to its language",
-        arguments: [(".rs", "rust"), (".go", "go"), (".swift", "swift"), (".txt", nil)] as [(String, String?)])
+        arguments: [
+            (".rs", "rust"), (".go", "go"), (".swift", "swift"), (".java", "java"), (".c", "c"), (".h", "c"),
+            (".cpp", "cpp"), (".cc", "cpp"), (".cxx", "cpp"), (".hpp", "cpp"), (".hh", "cpp"), (".hxx", "cpp"),
+            (".cs", "csharp"), (".rb", "ruby"), (".php", "php"), (".txt", nil),
+        ] as [(String, String?)])
     func theLanguageTableMapsEachExtension(fileExtension: String, languageID: String?) {
         #expect(CodeLanguageConfig.config(forExtension: fileExtension)?.id == languageID)
     }

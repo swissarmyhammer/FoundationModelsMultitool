@@ -1,0 +1,12 @@
+struct counter {
+    int count;
+    int limit;
+};
+
+void counter_increment(struct counter *c) {
+    c->count++;
+}
+
+int counter_value(const struct counter *c) {
+    return c->count;
+}

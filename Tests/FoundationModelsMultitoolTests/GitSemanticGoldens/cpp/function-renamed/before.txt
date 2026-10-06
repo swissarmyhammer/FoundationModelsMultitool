@@ -1,0 +1,7 @@
+double totalPrice(const std::vector<double>& prices, double taxRate) {
+    double subtotal = 0.0;
+    for (double price : prices) {
+        subtotal += price;
+    }
+    return subtotal + subtotal * taxRate;
+}

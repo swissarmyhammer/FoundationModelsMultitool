@@ -1,0 +1,7 @@
+namespace geometry {
+
+double area(double width, double height) {
+    return width * height;
+}
+
+}

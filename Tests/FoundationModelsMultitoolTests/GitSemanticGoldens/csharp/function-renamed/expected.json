@@ -1,0 +1,31 @@
+{
+  "summary": {
+    "files": 1,
+    "added": 0,
+    "modified": 1,
+    "deleted": 0,
+    "moved": 0,
+    "renamed": 1
+  },
+  "changes": [
+    {
+      "changeType": "modified",
+      "entityType": "class",
+      "entityName": "Orders",
+      "filePath": "inline.cs",
+      "structuralChange": true,
+      "entityId": "inline.cs::class::Orders",
+      "beforeContent": "public class Orders\n{\n    public static double TotalPrice(double[] prices, double taxRate)\n    {\n        double subtotal = 0.0;\n        foreach (double price in prices)\n        {\n            subtotal += price;\n        }\n        return subtotal + subtotal * taxRate;\n    }\n}",
+      "afterContent": "public class Orders\n{\n    public static double OrderTotal(double[] prices, double taxRate)\n    {\n        double subtotal = 0.0;\n        foreach (double price in prices)\n        {\n            subtotal += price;\n        }\n        return subtotal + subtotal * taxRate;\n    }\n}"
+    },
+    {
+      "changeType": "renamed",
+      "entityType": "method",
+      "entityName": "OrderTotal",
+      "filePath": "inline.cs",
+      "entityId": "inline.cs::inline.cs::class::Orders::OrderTotal",
+      "beforeContent": "public static double TotalPrice(double[] prices, double taxRate)\n    {\n        double subtotal = 0.0;\n        foreach (double price in prices)\n        {\n            subtotal += price;\n        }\n        return subtotal + subtotal * taxRate;\n    }",
+      "afterContent": "public static double OrderTotal(double[] prices, double taxRate)\n    {\n        double subtotal = 0.0;\n        foreach (double price in prices)\n        {\n            subtotal += price;\n        }\n        return subtotal + subtotal * taxRate;\n    }"
+    }
+  ]
+}

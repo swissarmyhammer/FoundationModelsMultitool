@@ -1,0 +1,30 @@
+{
+  "summary": {
+    "files": 1,
+    "added": 1,
+    "modified": 1,
+    "deleted": 0,
+    "moved": 0,
+    "renamed": 0
+  },
+  "changes": [
+    {
+      "changeType": "modified",
+      "entityType": "class",
+      "entityName": "Account",
+      "filePath": "inline.cs",
+      "structuralChange": true,
+      "entityId": "inline.cs::class::Account",
+      "beforeContent": "public class Account\n{\n    public string Owner { get; set; }\n}",
+      "afterContent": "public class Account\n{\n    public string Owner { get; set; }\n\n    public decimal Balance { get; private set; }\n}"
+    },
+    {
+      "changeType": "added",
+      "entityType": "property",
+      "entityName": "Balance",
+      "filePath": "inline.cs",
+      "entityId": "inline.cs::inline.cs::class::Account::Balance",
+      "afterContent": "public decimal Balance { get; private set; }"
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "summary": {
+    "files": 1,
+    "added": 0,
+    "modified": 0,
+    "deleted": 0,
+    "moved": 0,
+    "renamed": 1
+  },
+  "changes": [
+    {
+      "changeType": "renamed",
+      "entityType": "function",
+      "entityName": "orderTotal",
+      "filePath": "inline.php",
+      "entityId": "inline.php::function::orderTotal",
+      "beforeContent": "function totalPrice(array $prices, float $taxRate): float {\n    $subtotal = 0.0;\n    foreach ($prices as $price) {\n        $subtotal += $price;\n    }\n    return $subtotal + $subtotal * $taxRate;\n}",
+      "afterContent": "function orderTotal(array $prices, float $taxRate): float {\n    $subtotal = 0.0;\n    foreach ($prices as $price) {\n        $subtotal += $price;\n    }\n    return $subtotal + $subtotal * $taxRate;\n}"
+    }
+  ]
+}

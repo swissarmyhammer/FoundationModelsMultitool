@@ -1,0 +1,7 @@
+class Shapes
+{
+    public static double Perimeter(double width, double height)
+    {
+        return 2 * (width + height);
+    }
+}

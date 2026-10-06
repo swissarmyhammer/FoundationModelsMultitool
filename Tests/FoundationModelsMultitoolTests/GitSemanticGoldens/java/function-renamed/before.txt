@@ -1,0 +1,9 @@
+public class Orders {
+    public static double totalPrice(double[] prices, double taxRate) {
+        double subtotal = 0.0;
+        for (double price : prices) {
+            subtotal += price;
+        }
+        return subtotal + subtotal * taxRate;
+    }
+}

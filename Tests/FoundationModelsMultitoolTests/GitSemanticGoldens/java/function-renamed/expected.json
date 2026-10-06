@@ -1,0 +1,31 @@
+{
+  "summary": {
+    "files": 1,
+    "added": 0,
+    "modified": 1,
+    "deleted": 0,
+    "moved": 0,
+    "renamed": 1
+  },
+  "changes": [
+    {
+      "changeType": "modified",
+      "entityType": "class",
+      "entityName": "Orders",
+      "filePath": "inline.java",
+      "structuralChange": true,
+      "entityId": "inline.java::class::Orders",
+      "beforeContent": "public class Orders {\n    public static double totalPrice(double[] prices, double taxRate) {\n        double subtotal = 0.0;\n        for (double price : prices) {\n            subtotal += price;\n        }\n        return subtotal + subtotal * taxRate;\n    }\n}",
+      "afterContent": "public class Orders {\n    public static double orderTotal(double[] prices, double taxRate) {\n        double subtotal = 0.0;\n        for (double price : prices) {\n            subtotal += price;\n        }\n        return subtotal + subtotal * taxRate;\n    }\n}"
+    },
+    {
+      "changeType": "renamed",
+      "entityType": "method",
+      "entityName": "orderTotal",
+      "filePath": "inline.java",
+      "entityId": "inline.java::inline.java::class::Orders::orderTotal",
+      "beforeContent": "public static double totalPrice(double[] prices, double taxRate) {\n        double subtotal = 0.0;\n        for (double price : prices) {\n            subtotal += price;\n        }\n        return subtotal + subtotal * taxRate;\n    }",
+      "afterContent": "public static double orderTotal(double[] prices, double taxRate) {\n        double subtotal = 0.0;\n        for (double price : prices) {\n            subtotal += price;\n        }\n        return subtotal + subtotal * taxRate;\n    }"
+    }
+  ]
+}

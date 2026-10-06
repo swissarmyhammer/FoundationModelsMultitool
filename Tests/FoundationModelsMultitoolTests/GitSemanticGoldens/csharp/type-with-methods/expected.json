@@ -1,0 +1,30 @@
+{
+  "summary": {
+    "files": 1,
+    "added": 1,
+    "modified": 1,
+    "deleted": 0,
+    "moved": 0,
+    "renamed": 0
+  },
+  "changes": [
+    {
+      "changeType": "modified",
+      "entityType": "class",
+      "entityName": "Counter",
+      "filePath": "inline.cs",
+      "structuralChange": true,
+      "entityId": "inline.cs::class::Counter",
+      "beforeContent": "public class Counter\n{\n    private int count;\n\n    public Counter()\n    {\n        count = 0;\n    }\n\n    public void Increment()\n    {\n        count++;\n    }\n}",
+      "afterContent": "public class Counter\n{\n    private int count;\n\n    public Counter()\n    {\n        count = 0;\n    }\n\n    public void Increment()\n    {\n        count++;\n    }\n\n    public int Value()\n    {\n        return count;\n    }\n}"
+    },
+    {
+      "changeType": "added",
+      "entityType": "method",
+      "entityName": "Value",
+      "filePath": "inline.cs",
+      "entityId": "inline.cs::inline.cs::class::Counter::Value",
+      "afterContent": "public int Value()\n    {\n        return count;\n    }"
+    }
+  ]
+}

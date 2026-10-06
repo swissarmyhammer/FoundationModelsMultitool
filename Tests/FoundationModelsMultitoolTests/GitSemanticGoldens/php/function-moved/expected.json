@@ -1,0 +1,30 @@
+{
+  "summary": {
+    "files": 1,
+    "added": 0,
+    "modified": 0,
+    "deleted": 1,
+    "moved": 1,
+    "renamed": 0
+  },
+  "changes": [
+    {
+      "changeType": "moved",
+      "entityType": "function",
+      "entityName": "perimeter",
+      "filePath": "inline.php",
+      "oldFilePath": "old/inline.php",
+      "entityId": "inline.php::function::perimeter",
+      "beforeContent": "function perimeter($width, $height) {\n    return 2 * ($width + $height);\n}",
+      "afterContent": "function perimeter($width, $height) {\n    return 2 * ($width + $height);\n}"
+    },
+    {
+      "changeType": "deleted",
+      "entityType": "function",
+      "entityName": "area",
+      "filePath": "old/inline.php",
+      "entityId": "old/inline.php::function::area",
+      "beforeContent": "function area($width, $height) {\n    return $width * $height;\n}"
+    }
+  ]
+}

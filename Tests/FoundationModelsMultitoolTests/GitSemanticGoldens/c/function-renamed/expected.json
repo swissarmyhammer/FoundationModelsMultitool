@@ -1,0 +1,21 @@
+{
+  "summary": {
+    "files": 1,
+    "added": 0,
+    "modified": 0,
+    "deleted": 0,
+    "moved": 0,
+    "renamed": 1
+  },
+  "changes": [
+    {
+      "changeType": "renamed",
+      "entityType": "function",
+      "entityName": "order_total",
+      "filePath": "inline.c",
+      "entityId": "inline.c::function::order_total",
+      "beforeContent": "double total_price(const double *prices, int count, double tax_rate) {\n    double subtotal = 0.0;\n    for (int i = 0; i < count; i++) {\n        subtotal += prices[i];\n    }\n    return subtotal + subtotal * tax_rate;\n}",
+      "afterContent": "double order_total(const double *prices, int count, double tax_rate) {\n    double subtotal = 0.0;\n    for (int i = 0; i < count; i++) {\n        subtotal += prices[i];\n    }\n    return subtotal + subtotal * tax_rate;\n}"
+    }
+  ]
+}

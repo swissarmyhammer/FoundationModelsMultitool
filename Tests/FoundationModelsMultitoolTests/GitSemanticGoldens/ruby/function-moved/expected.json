@@ -1,0 +1,30 @@
+{
+  "summary": {
+    "files": 1,
+    "added": 0,
+    "modified": 0,
+    "deleted": 1,
+    "moved": 1,
+    "renamed": 0
+  },
+  "changes": [
+    {
+      "changeType": "moved",
+      "entityType": "method",
+      "entityName": "perimeter",
+      "filePath": "inline.rb",
+      "oldFilePath": "old/inline.rb",
+      "entityId": "inline.rb::method::perimeter",
+      "beforeContent": "def perimeter(width, height)\n  2 * (width + height)\nend",
+      "afterContent": "def perimeter(width, height)\n  2 * (width + height)\nend"
+    },
+    {
+      "changeType": "deleted",
+      "entityType": "method",
+      "entityName": "area",
+      "filePath": "old/inline.rb",
+      "entityId": "old/inline.rb::method::area",
+      "beforeContent": "def area(width, height)\n  width * height\nend"
+    }
+  ]
+}

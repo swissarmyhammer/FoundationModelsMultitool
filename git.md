@@ -177,8 +177,8 @@ decides them.
    (Decided: see decision 9.)
 
 All the open questions have a decision. The first run of the spike
-(`^tjv0b4z`) found gaps in SwiftGitX and in two grammar packages. Decisions 10
-and 11 close them, except the question in "Open questions after the spike".
+(`^tjv0b4z`) found gaps in SwiftGitX and in the grammar packages. Decisions
+10, 11, and 12 close them.
 
 ## Decisions
 
@@ -282,17 +282,22 @@ and 11 close them, except the question in "Open questions after the spike".
 11. Grammars after the spike (decision 7). CSV and Vue need no tree-sitter
     grammar: the Rust plugins `csv_plugin.rs` and `vue.rs` do not use one, and
     the port follows them. Swift uses the exact tag `0.7.4-with-generated-files`.
-    JavaScript, Python, and YAML: see "Open questions after the spike".
+    JavaScript, Python, and YAML: see decision 12.
+
+12. Grammar versions (2026-10-06, the user decided). Use the current grammar
+    versions, the same as the Rust crate: JavaScript 0.25 and Python 0.25. Do
+    not use the older 0.23 tags. The 0.25 packages do not link as a SwiftPM
+    dependency (see note 1 of "Tree-sitter packages"), thus the task
+    `^fdvr81s` must work around that bug. The workaround must not need a step
+    on the host and must not publish anything (for example a GitHub fork)
+    without the user's approval. A local C target that holds the 0.25
+    `parser.c`, `scanner.c`, and headers of each grammar, with its license
+    file, is an example of a workaround that fits. YAML needs no grammar,
+    because the Rust `yaml.rs` uses none.
 
 ## Open questions after the spike
 
-1. JavaScript (0.23.1) and Python (0.23.6) link only at an older version than
-   the Rust crate uses (JavaScript 0.25, Python 0.25). The golden tests can
-   then show a different result for some files. Accept the older versions, or
-   do something else? This question blocks only the task for TypeScript,
-   JavaScript, Python, and Vue (`^fdvr81s`). YAML has the same problem, but the
-   Rust `yaml.rs` uses no grammar, thus the port possibly needs no YAML
-   grammar.
+None. Decision 12 closes the grammar-version question.
 
 ## Spike result
 
@@ -317,7 +322,9 @@ version in FoundationModelsExtras. SwiftPM resolves one copy of the package.
 warning. The spike did not add the tree-sitter packages. The language tasks
 add them: task `^6dgd0h1` added SwiftTreeSitter 0.25.0, the tree-sitter
 runtime 0.25.10 (for UTF-8 byte offsets, the same as Rust), and the Rust, Go,
-and Swift grammars.
+and Swift grammars. Task `^4ac64t6` added the Java, C, C++, C#, Ruby, and PHP
+grammars. The Rust crate uses tree-sitter-php 0.24.2 and this package uses
+0.25.0; the PHP goldens show no difference.
 
 A throwaway test (`import libgit2`, removed after the spike) made a temporary
 repository with libgit2 only: commits c1, c2, c3 on `main` (c3 renames

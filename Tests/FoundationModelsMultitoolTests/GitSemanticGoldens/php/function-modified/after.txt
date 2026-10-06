@@ -1,0 +1,9 @@
+<?php
+
+function area($width, $height) {
+    return $width * $height / 2;
+}
+
+function perimeter($width, $height) {
+    return 2 * ($width + $height);
+}

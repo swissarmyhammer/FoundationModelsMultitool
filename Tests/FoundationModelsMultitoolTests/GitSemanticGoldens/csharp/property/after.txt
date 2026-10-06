@@ -1,0 +1,6 @@
+public class Account
+{
+    public string Owner { get; set; }
+
+    public decimal Balance { get; private set; }
+}

@@ -1,0 +1,48 @@
+{
+  "summary": {
+    "files": 1,
+    "added": 0,
+    "modified": 0,
+    "deleted": 2,
+    "moved": 2,
+    "renamed": 0
+  },
+  "changes": [
+    {
+      "changeType": "moved",
+      "entityType": "class",
+      "entityName": "Shapes",
+      "filePath": "inline.cs",
+      "oldFilePath": "old/inline.cs",
+      "entityId": "inline.cs::class::Shapes",
+      "beforeContent": "class Shapes\n{\n    public static double Perimeter(double width, double height)\n    {\n        return 2 * (width + height);\n    }\n}",
+      "afterContent": "class Shapes\n{\n    public static double Perimeter(double width, double height)\n    {\n        return 2 * (width + height);\n    }\n}"
+    },
+    {
+      "changeType": "moved",
+      "entityType": "method",
+      "entityName": "Perimeter",
+      "filePath": "inline.cs",
+      "oldFilePath": "old/inline.cs",
+      "entityId": "inline.cs::inline.cs::class::Shapes::Perimeter",
+      "beforeContent": "public static double Perimeter(double width, double height)\n    {\n        return 2 * (width + height);\n    }",
+      "afterContent": "public static double Perimeter(double width, double height)\n    {\n        return 2 * (width + height);\n    }"
+    },
+    {
+      "changeType": "deleted",
+      "entityType": "class",
+      "entityName": "Geometry",
+      "filePath": "old/inline.cs",
+      "entityId": "old/inline.cs::class::Geometry",
+      "beforeContent": "class Geometry\n{\n    public static double Area(double width, double height)\n    {\n        return width * height;\n    }\n}"
+    },
+    {
+      "changeType": "deleted",
+      "entityType": "method",
+      "entityName": "Area",
+      "filePath": "old/inline.cs",
+      "entityId": "old/inline.cs::old/inline.cs::class::Geometry::Area",
+      "beforeContent": "public static double Area(double width, double height)\n    {\n        return width * height;\n    }"
+    }
+  ]
+}

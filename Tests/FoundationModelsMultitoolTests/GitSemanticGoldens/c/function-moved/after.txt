@@ -1,0 +1,3 @@
+double perimeter(double width, double height) {
+    return 2 * (width + height);
+}

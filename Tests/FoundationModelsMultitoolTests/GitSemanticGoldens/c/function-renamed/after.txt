@@ -1,0 +1,7 @@
+double order_total(const double *prices, int count, double tax_rate) {
+    double subtotal = 0.0;
+    for (int i = 0; i < count; i++) {
+        subtotal += prices[i];
+    }
+    return subtotal + subtotal * tax_rate;
+}

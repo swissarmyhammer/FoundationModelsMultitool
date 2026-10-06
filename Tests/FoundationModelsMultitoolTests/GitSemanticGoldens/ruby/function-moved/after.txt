@@ -1,0 +1,3 @@
+def perimeter(width, height)
+  2 * (width + height)
+end

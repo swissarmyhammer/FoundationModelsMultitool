@@ -293,6 +293,52 @@ private let treeSitterRustPackage = "tree-sitter-rust"
 /// crates parse each Go file the same way.
 private let treeSitterGoPackage = "tree-sitter-go"
 
+/// The Java grammar package of the code plugin (tree-sitter/tree-sitter-java).
+///
+/// Its product `TreeSitterJava` gives the language of `.java` files. The
+/// version is the version of the Rust `swissarmyhammer-sem` crate, thus the
+/// two crates parse each Java file the same way.
+private let treeSitterJavaPackage = "tree-sitter-java"
+
+/// The C grammar package of the code plugin (tree-sitter/tree-sitter-c).
+///
+/// Its product `TreeSitterC` gives the language of `.c` and `.h` files. The
+/// version is the version of the Rust `swissarmyhammer-sem` crate, thus the
+/// two crates parse each C file the same way.
+private let treeSitterCPackage = "tree-sitter-c"
+
+/// The C++ grammar package of the code plugin (tree-sitter/tree-sitter-cpp).
+///
+/// Its product `TreeSitterCPP` gives the language of `.cpp`, `.cc`, `.cxx`,
+/// `.hpp`, `.hh`, and `.hxx` files. The version is the version of the Rust
+/// `swissarmyhammer-sem` crate, thus the two crates parse each C++ file the
+/// same way.
+private let treeSitterCPPPackage = "tree-sitter-cpp"
+
+/// The Ruby grammar package of the code plugin (tree-sitter/tree-sitter-ruby).
+///
+/// Its product `TreeSitterRuby` gives the language of `.rb` files. The
+/// version is the version of the Rust `swissarmyhammer-sem` crate, thus the
+/// two crates parse each Ruby file the same way.
+private let treeSitterRubyPackage = "tree-sitter-ruby"
+
+/// The C# grammar package of the code plugin
+/// (tree-sitter/tree-sitter-c-sharp).
+///
+/// Its product `TreeSitterCSharp` gives the language of `.cs` files. The
+/// version is the version of the Rust `swissarmyhammer-sem` crate, thus the
+/// two crates parse each C# file the same way.
+private let treeSitterCSharpPackage = "tree-sitter-c-sharp"
+
+/// The PHP grammar package of the code plugin (tree-sitter/tree-sitter-php).
+///
+/// Its product `TreeSitterPHP` gives the language of `.php` files. The pin is
+/// the version that git.md § "Spike result" ("Tree-sitter packages")
+/// records. The Rust `swissarmyhammer-sem` crate uses the grammar at 0.24.2,
+/// thus the two crates can parse some PHP source differently. The golden
+/// tests show each such difference.
+private let treeSitterPHPPackage = "tree-sitter-php"
+
 /// The Swift grammar package of the code plugin
 /// (alex-pinkus/tree-sitter-swift).
 ///
@@ -326,6 +372,12 @@ private let codeParserProducts: [Target.Dependency] = [
     .product(name: "TreeSitter", package: treeSitterRuntimePackage),
     .product(name: "TreeSitterRust", package: treeSitterRustPackage),
     .product(name: "TreeSitterGo", package: treeSitterGoPackage),
+    .product(name: "TreeSitterJava", package: treeSitterJavaPackage),
+    .product(name: "TreeSitterC", package: treeSitterCPackage),
+    .product(name: "TreeSitterCPP", package: treeSitterCPPPackage),
+    .product(name: "TreeSitterRuby", package: treeSitterRubyPackage),
+    .product(name: "TreeSitterCSharp", package: treeSitterCSharpPackage),
+    .product(name: "TreeSitterPHP", package: treeSitterPHPPackage),
     .product(name: "TreeSitterSwift", package: treeSitterSwiftPackage),
 ]
 
@@ -547,6 +599,12 @@ let package = Package(
         .package(url: "\(treeSitterGrammarOrgURL)\(treeSitterRuntimePackage)", exact: "0.25.10"),
         treeSitterGrammarPackage(name: treeSitterRustPackage, version: "0.24.2"),
         treeSitterGrammarPackage(name: treeSitterGoPackage, version: "0.25.0"),
+        treeSitterGrammarPackage(name: treeSitterJavaPackage, version: "0.23.5"),
+        treeSitterGrammarPackage(name: treeSitterCPackage, version: "0.24.2"),
+        treeSitterGrammarPackage(name: treeSitterCPPPackage, version: "0.23.4"),
+        treeSitterGrammarPackage(name: treeSitterRubyPackage, version: "0.23.1"),
+        treeSitterGrammarPackage(name: treeSitterCSharpPackage, version: "0.23.5"),
+        treeSitterGrammarPackage(name: treeSitterPHPPackage, version: "0.25.0"),
         .package(
             url: "https://github.com/alex-pinkus/\(treeSitterSwiftPackage).git",
             exact: "0.7.4-with-generated-files"),

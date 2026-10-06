@@ -1,0 +1,8 @@
+public record Rectangle(double Width, double Height)
+{
+    public double Area()
+    {
+        // The area of the rectangle.
+        return Width   *   Height;
+    }
+}

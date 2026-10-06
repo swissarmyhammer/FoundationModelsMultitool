@@ -10,6 +10,15 @@ comments:
     - A person must decide whether the older versions are acceptable before this task starts. If no decision is recorded here when the task starts, add the tag `stuck` and stop.
     - Vue needs no tree-sitter grammar: `vue.rs` splits the blocks itself (git.md decision 11).
   timestamp: 2026-10-06T15:28:10.670990+00:00
+- actor: claude-code
+  id: 01m499hd9ve5ftr5bz4v2bctaj
+  text: |-
+    ### decision — use the current grammar versions
+    - The user decided (2026-10-06): use JavaScript 0.25 and Python 0.25, the same versions as the Rust crate. Do not use the older 0.23 tags. See git.md decision 12.
+    - The 0.25 packages do not link as a SwiftPM dependency: their manifests add `src/scanner.c` only when `FileManager.default.fileExists(atPath: "src/scanner.c")` is true, and that path is relative to the build folder. This task must work around that bug.
+    - The workaround must need no host step and must publish nothing (no GitHub fork) without the user's approval. A local C target that holds the 0.25 `parser.c`, `scanner.c`, and headers of each grammar, with its license file, is one workaround that fits.
+    - The open question in the earlier comment is closed. Do not add the tag `stuck` for it.
+  timestamp: 2026-10-06T19:02:40.187988+00:00
 depends_on:
 - 01M48V9SN2MNFZGXZ9R6DGD0H1
 position_column: todo

@@ -1,0 +1,12 @@
+public class Shapes
+{
+    public static double Area(double width, double height)
+    {
+        return width * height;
+    }
+
+    public static double Perimeter(double width, double height)
+    {
+        return 2 * (width + height);
+    }
+}

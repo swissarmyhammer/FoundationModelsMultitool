@@ -1,0 +1,7 @@
+def area(width, height)
+  width * height
+end
+
+def perimeter(width, height)
+  2 * (width + height)
+end

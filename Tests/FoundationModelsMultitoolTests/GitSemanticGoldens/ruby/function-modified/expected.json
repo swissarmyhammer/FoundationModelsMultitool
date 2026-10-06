@@ -1,0 +1,22 @@
+{
+  "summary": {
+    "files": 1,
+    "added": 0,
+    "modified": 1,
+    "deleted": 0,
+    "moved": 0,
+    "renamed": 0
+  },
+  "changes": [
+    {
+      "changeType": "modified",
+      "entityType": "method",
+      "entityName": "area",
+      "filePath": "inline.rb",
+      "structuralChange": true,
+      "entityId": "inline.rb::method::area",
+      "beforeContent": "def area(width, height)\n  width * height\nend",
+      "afterContent": "def area(width, height)\n  width * height / 2\nend"
+    }
+  ]
+}
