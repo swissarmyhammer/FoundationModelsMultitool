@@ -1,0 +1,1 @@
+{"id":"01M48V7FH3YP9B3GZVG4FRB8P0","timestamp":"2026-10-06T14:52:34.723575Z","op":"create","item_id":"01M48V7FH2AM6G7R01NEY8ZVRC","forward_patch":"--- original\n+++ modified\n@@ -0,0 +1,2 @@\n+color: '008672'\n+tag_name: git\n","reverse_patch":"--- original\n+++ modified\n@@ -1,2 +0,0 @@\n-color: '008672'\n-tag_name: git\n","transaction_id":null}

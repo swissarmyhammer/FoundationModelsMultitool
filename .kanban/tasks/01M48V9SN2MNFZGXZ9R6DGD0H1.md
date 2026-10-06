@@ -1,0 +1,34 @@
+---
+assignees:
+- claude-code
+depends_on:
+- 01M48V9CB973V4MPTJV8GEXZCT
+position_column: todo
+position_ordinal: '8780'
+title: 'git semantic: code plugin core, with Swift, Rust, and Go'
+---
+## Goal
+
+Port the tree-sitter code plugin of `swissarmyhammer-sem`, and the first three languages (git.md decisions 6 and 7).
+
+## Source
+
+`../swissarmyhammer/crates/swissarmyhammer-sem/src/parser/plugins/code/`:
+- `entity_extractor.rs`
+- `languages.rs` (the table of each language: grammar, node kinds, extensions)
+- `mod.rs`: ONLY the parts that `extract_entities` and `compute_similarity` use. Do not port the parts for duplication, commented code, test census, or public surface.
+
+## Work
+
+1. The code plugin over the tree-sitter Swift package that the spike selected. One language table entry for each language, in the same form as `languages.rs`, thus the next language tasks only add entries and grammars.
+2. Add the grammar packages for Swift, Rust, and Go to `Package.swift` (the spike recorded the URLs). Write a doc comment for each dependency.
+3. Register the plugin for `.swift`, `.rs`, `.go` in the registry.
+
+## Golden tests
+
+The Rust code is the reference. For each language, make fixtures with the sah tool `git` op `get diff` in inline mode (`left_text`, `right_text`, `language`). Each fixture is a before file, an after file, and the expected JSON. Cover: a function added, deleted, modified, renamed, moved; a type with methods; a change that is only in whitespace or comments. Commit the fixtures under a new test resource folder (declare it in `Package.swift`, as `FilesGoldens` is). The Swift output must equal the expected JSON (after the change to camelCase field names).
+
+## Acceptance
+
+- `swift build` and `swift test` pass with no new warnings.
+- Each golden of the three languages passes. #git

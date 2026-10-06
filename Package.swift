@@ -217,6 +217,30 @@ private let webProducts: [Target.Dependency] = [
     .product(name: "SwiftSoup", package: htmlParserPackage)
 ]
 
+/// The libgit2 package that the git capability reads repositories with.
+///
+/// git.md § "Decisions", item 10, selects it. The package compiles libgit2
+/// from C source as a SwiftPM target, thus there is no binary artifact and no
+/// host setup. The code calls the C API directly through the `libgit2`
+/// module. There is no Swift wrapper package between them.
+///
+/// **The version must stay equal to the version in FoundationModelsExtras.**
+/// That package declares the same URL with the same exact version for its
+/// `Marketplace` target, thus SwiftPM resolves one copy. Two exact versions
+/// that are not equal do not resolve. A second libgit2 package stops the
+/// build, because two packages cannot declare a target with the same name
+/// `libgit2` — the first spike of git.md found this with SwiftGitX. Thus a
+/// change of the version here needs the same change in FoundationModelsExtras.
+private let libgit2Package = "swift-libgit2"
+
+/// The products of `libgit2Package`, linked by the library target below.
+///
+/// The git capability is the one consumer. `shellProducts`, `mcpProducts` and
+/// `webProducts` group their own products the same way.
+private let gitProducts: [Target.Dependency] = [
+    .product(name: "libgit2", package: libgit2Package)
+]
+
 /// The name of the scripted MCP test server library target, and of the
 /// product that exports it.
 ///
@@ -417,6 +441,13 @@ let package = Package(
         // under an organization of its own, so the helper above does not fit
         // it.
         .package(url: "https://github.com/scinfu/\(htmlParserPackage).git", from: "2.13.9"),
+        // The package of `gitProducts` — see `libgit2Package`. It stands under
+        // an organization of its own, so the helper above does not fit it.
+        //
+        // The version is an EXACT pin, and it is the pin
+        // FoundationModelsExtras states today. The two packages must resolve
+        // one copy of libgit2, thus the two pins must stay equal.
+        .package(url: "https://github.com/danielctull-forks/\(libgit2Package).git", exact: "1.9.7"),
         // The package of `ulidProducts` — see `ulidPackage`. It stands under
         // an organization of its own, so the helper above does not fit it.
         .package(url: "https://github.com/yaslab/\(ulidPackage).git", from: "1.3.1"),
@@ -432,7 +463,8 @@ let package = Package(
         // MCP capability it takes over from `../FoundationModelsMCP`, and
         // `webProducts` for the HTML parser of the web capability, and
         // `ulidProducts` for the identifier of each elicitation, and
-        // `telemetryProducts` for the logging and metrics APIs.
+        // `telemetryProducts` for the logging and metrics APIs, and
+        // `gitProducts` for the libgit2 C API of the git capability.
         //
         // It does NOT link Router. FoundationModelsExtras owns the tool
         // hosting — `ToolContext`, `BackgroundTool`, `ToolMount`,
@@ -445,7 +477,7 @@ let package = Package(
             dependencies: [
                 .product(name: metadataRegistryDependencyName, package: metadataRegistryDependencyName),
                 .product(name: extrasDependencyName, package: extrasDependencyName),
-            ] + shellProducts + mcpProducts + webProducts + ulidProducts + telemetryProducts,
+            ] + shellProducts + mcpProducts + webProducts + ulidProducts + telemetryProducts + gitProducts,
             path: "\(sourcesPath)\(packageName)"
         ),
         // The scripted MCP test server — see `testServerTargetName`. Links
