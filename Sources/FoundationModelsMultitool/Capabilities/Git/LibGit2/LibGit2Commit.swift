@@ -3,7 +3,8 @@
 //
 // `tools.git.blame` reads the author and the date of the commit of each line.
 // `tools.git.log` reads the same facts and the subject of each commit that it
-// walks. `tools.git.show` and `tools.git.log` find the commit that a ref names.
+// walks. `tools.git.show` and `tools.git.log` find the commit that a ref names,
+// and `tools.git.changes` finds the id of the commit at each end of a range.
 // Thus each of these reads is one function here, and no verb file holds its
 // own copy.
 //
@@ -68,6 +69,19 @@ extension LibGit2Repository {
         }
         defer { git_object_free(object) }
         return try LibGit2.makeHandle { commit in git_object_peel(&commit, object, GIT_OBJECT_COMMIT) }
+    }
+
+    /// Finds the id of the commit that `revision` names.
+    ///
+    /// - Parameter revision: A ref, as `git_revparse_single` reads it.
+    /// - Returns: The id, or `nil` when no object has that name
+    ///   (`GIT_ENOTFOUND`).
+    /// - Throws: ``LibGit2Error`` when the ref is not valid, or when the
+    ///   object that it names is not a commit and does not peel to one.
+    func commitID(forRevision revision: String) throws(LibGit2Error) -> git_oid? {
+        guard let commit = try commit(forRevision: revision) else { return nil }
+        defer { git_commit_free(commit) }
+        return git_commit_id(commit).pointee
     }
 
     /// Reads the facts of the commit with the id `id`.

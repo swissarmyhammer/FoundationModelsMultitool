@@ -15,7 +15,9 @@
 // The main branch follows `main_branch` of the source: `main` when that local
 // branch exists, else `master`, else none. The source gives an error for none;
 // this verb gives `nil`, because a repository with no such branch is a fact,
-// not a mistake of the model.
+// not a mistake of the model. The choice is one function of the layer
+// (`LibGit2Repository.mainBranchName(among:)`), because the merge target of
+// `tools.git.changes` reads the same choice.
 //
 // A branch list the verb cannot read stays IN BAND, as a `correction` beside
 // no branch. It is never thrown: a root in no repository and a list that
@@ -61,11 +63,6 @@ struct BranchesResult {
 
 extension Branches {
 
-    // MARK: Main branch
-
-    /// The names that can be the main branch, in the order of preference.
-    private static let mainBranchCandidates = ["main", "master"]
-
     // MARK: Corrective text
 
     /// The description of a branch list that libgit2 could not read, before
@@ -106,7 +103,7 @@ extension Branches {
         } catch {
             return .failure(CorrectiveRejection(correctiveMessage: "\(failedBranchesDescription): \(error)"))
         }
-        let main = mainBranchCandidates.first { candidate in names.contains(candidate) }
+        let main = LibGit2Repository.mainBranchName(among: names)
         return .success(BranchesResult(branches: names, current: current, main: main, correction: nil))
     }
 

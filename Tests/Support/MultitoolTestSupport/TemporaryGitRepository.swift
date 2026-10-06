@@ -122,15 +122,8 @@ final class TemporaryGitRepository {
         defer { git_tree_free(tree) }
         let parent = try headCommit()
         defer { git_commit_free(parent) }
-        var parents: [OpaquePointer?] = parent.map { [$0] } ?? []
-        var signature: UnsafeMutablePointer<git_signature>?
-        try LibGit2.check(git_signature_now(&signature, Self.signatureName, Self.signatureEmail))
-        defer { git_signature_free(signature) }
-        var commitID = git_oid()
-        try LibGit2.check(
-            git_commit_create(
-                &commitID, repository, Self.headReference, signature, signature, nil, message, tree,
-                parents.count, &parents))
+        var commitID = try createCommit(
+            of: tree, parents: parent.map { [$0] } ?? [], updating: Self.headReference, message: message)
         return String(cString: git_oid_tostr_s(&commitID))
     }
 
@@ -190,10 +183,27 @@ final class TemporaryGitRepository {
             git_revparse_single(&commit, repository, Self.headReference)
         }
         defer { git_object_free(commit) }
-        let branch = try LibGit2.makeHandle { branch in
-            git_branch_create(&branch, repository, name, commit, Self.keepExistingBranch)
-        }
-        git_reference_free(branch)
+        try makeBranch(named: name, at: commit)
+    }
+
+    /// Commits each change of the work folder as a commit with no parent,
+    /// and makes the branch `name` at that commit. HEAD does not move.
+    ///
+    /// The new branch has no history in common with the other branches (an
+    /// orphan branch).
+    ///
+    /// - Parameters:
+    ///   - name: The branch name, without `refs/heads/`.
+    ///   - message: The commit message.
+    /// - Throws: ``LibGit2Error`` when the branch exists, or when a libgit2
+    ///   call fails.
+    func createOrphanBranch(named name: String, message: String) throws {
+        let tree = try stageWorkFolder()
+        defer { git_tree_free(tree) }
+        var commitID = try createCommit(of: tree, parents: [], updating: nil, message: message)
+        let commit = try LibGit2.makeHandle { commit in git_commit_lookup(&commit, repository, &commitID) }
+        defer { git_commit_free(commit) }
+        try makeBranch(named: name, at: commit)
     }
 
     /// Points HEAD at the branch `name`. The work folder and the index do not
@@ -262,6 +272,50 @@ final class TemporaryGitRepository {
             try LibGit2.check(git_index_write_tree(&treeID, index))
             return try LibGit2.makeHandle { tree in git_tree_lookup(&tree, repository, &treeID) }
         }
+    }
+
+    /// Makes the branch `name` at `commit`.
+    ///
+    /// - Parameters:
+    ///   - name: The branch name, without `refs/heads/`.
+    ///   - commit: The commit, or an object that peels to a commit. The
+    ///     caller keeps it and frees it.
+    /// - Throws: ``LibGit2Error`` when the branch exists, or when a libgit2
+    ///   call fails.
+    private func makeBranch(named name: String, at commit: OpaquePointer) throws {
+        let branch = try LibGit2.makeHandle { branch in
+            git_branch_create(&branch, repository, name, commit, Self.keepExistingBranch)
+        }
+        git_reference_free(branch)
+    }
+
+    /// Writes one commit with the signature of this helper.
+    ///
+    /// - Parameters:
+    ///   - tree: The tree of the commit.
+    ///   - parents: The parent commits, oldest first. Empty for a commit
+    ///     with no parent.
+    ///   - reference: The ref that moves to the new commit, or `nil` to move
+    ///     no ref.
+    ///   - message: The commit message.
+    /// - Returns: The id of the new commit.
+    /// - Throws: ``LibGit2Error`` when a libgit2 call fails.
+    private func createCommit(
+        of tree: OpaquePointer,
+        parents: [OpaquePointer?],
+        updating reference: String?,
+        message: String
+    ) throws -> git_oid {
+        var parents = parents
+        var signature: UnsafeMutablePointer<git_signature>?
+        try LibGit2.check(git_signature_now(&signature, Self.signatureName, Self.signatureEmail))
+        defer { git_signature_free(signature) }
+        var commitID = git_oid()
+        try LibGit2.check(
+            git_commit_create(
+                &commitID, repository, reference, signature, signature, nil, message, tree, parents.count,
+                &parents))
+        return commitID
     }
 
     /// Opens the index of the repository, runs `body` with it, and frees it.

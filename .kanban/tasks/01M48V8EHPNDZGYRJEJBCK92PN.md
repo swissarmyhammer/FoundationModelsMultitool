@@ -59,10 +59,26 @@ comments:
     - scope: Status, Branches, GitStatusReader, LibGit2Status, LibGit2Branches, changed Git and LibGit2 files, test support, tests, .kanban changes.
     - next: review. No push was done.
   timestamp: 2026-10-06T19:33:09.525902+00:00
+- actor: claude-code
+  id: 01m49bq64h7tvbmsgd6rmhqvgn
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (commit 2aaf8ac). The engine reviewed 15 files. It found 0 findings (0 confirmed, 0 refuted, 7 attempted, 0 failed). The .reviewignore rule excluded 4 .kanban files. The commit renames no file, thus no file-scoped review was necessary. The task has no prior Review Findings sections.
+    - next: none. The task moved to done.
+  timestamp: 2026-10-06T19:40:46.609371+00:00
+- actor: claude-code
+  id: 01m49bqjr7zhses0e26m8f2cb0
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 15 files (Status, Branches, GitStatusReader, LibGit2Status, LibGit2Branches, 5 new test suites, helper and capability changes)
+    - test: green — swift test, 2068 passed in 178 suites; IntegrationTests build complete
+    - commit: 2aaf8ac
+    - review: clean — 0 findings, 7 validators on 15 files
+  timestamp: 2026-10-06T19:40:59.527220+00:00
 depends_on:
 - 01M48V80WKJ4QSW2TXPQ01E3QN
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffffb380
 title: 'git: tools.git.status and tools.git.branches'
 ---
 ## Goal

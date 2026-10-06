@@ -2,10 +2,10 @@
 // uncommitted files below the root, or the correction that says why there is
 // no list.
 //
-// `tools.git.status` reads through this reader. The later `changes` and
-// `diff` verbs need the same uncommitted-file list, thus they read through it
-// too, and the lists, the root rule, and the text of each correction are the
-// same in each verb.
+// `tools.git.status` and `tools.git.changes` read through this reader. The
+// later `diff` verb needs the same uncommitted-file list, thus it reads
+// through it too, and the lists, the root rule, and the text of each
+// correction are the same in each verb.
 //
 // git.md § "Decisions", item 8: each path in a result is relative to the root,
 // and the root is the boundary of the capability. libgit2 reads the status of
@@ -41,6 +41,16 @@ struct GitStatus: Equatable, Sendable {
     /// Whether no file below the root differs from HEAD: each list is empty.
     var isClean: Bool {
         staged.isEmpty && unstaged.isEmpty && untracked.isEmpty && renamed.isEmpty
+    }
+
+    /// Each file of the four lists, in path order, one time each.
+    ///
+    /// A port of `get_uncommitted_changes` of the `changes` operation of the
+    /// source: the staged, unstaged, renamed, and untracked files, sorted,
+    /// with no file two times. `tools.git.changes` adds this list to its
+    /// result.
+    var allFiles: [String] {
+        Set(staged + unstaged + untracked + renamed).sorted()
     }
 }
 

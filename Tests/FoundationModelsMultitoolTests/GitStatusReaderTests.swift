@@ -53,6 +53,82 @@ struct GitStatusReaderTests {
         #expect(status.isClean)
     }
 
+    /// A clean status has no file in its list of all files. A port of
+    /// `test_get_uncommitted_changes_clean_repo`.
+    @Test("a clean status has no file in all files")
+    func aCleanStatusHasNoFileInAllFiles() throws {
+        let repository = try TemporaryGitRepository()
+        try repository.write("initial content", to: "initial.txt")
+        try repository.commit(message: "Initial commit")
+
+        #expect(try GitContext(root: repository.workDirectory).status().get().allFiles.isEmpty)
+    }
+
+    /// A staged new file is in the list of all files. A port of
+    /// `test_get_uncommitted_changes_staged_files`.
+    @Test("a staged file is in all files")
+    func aStagedFileIsInAllFiles() throws {
+        let repository = try TemporaryGitRepository()
+        try repository.write("initial", to: "initial.txt")
+        try repository.commit(message: "Initial commit")
+        try repository.write("staged content", to: "staged.txt")
+        try repository.stage("staged.txt")
+
+        #expect(try GitContext(root: repository.workDirectory).status().get().allFiles == ["staged.txt"])
+    }
+
+    /// A changed file that is not staged is in the list of all files. A port
+    /// of `test_get_uncommitted_changes_unstaged_modifications`.
+    @Test("an unstaged change is in all files")
+    func anUnstagedChangeIsInAllFiles() throws {
+        let repository = try TemporaryGitRepository()
+        try repository.write("original", to: "file.txt")
+        try repository.commit(message: "Initial commit")
+        try repository.write("modified", to: "file.txt")
+
+        #expect(try GitContext(root: repository.workDirectory).status().get().allFiles == ["file.txt"])
+    }
+
+    /// A file that git does not track is in the list of all files. A port of
+    /// `test_get_uncommitted_changes_untracked_files`.
+    @Test("an untracked file is in all files")
+    func anUntrackedFileIsInAllFiles() throws {
+        let repository = try TemporaryGitRepository()
+        try repository.write("initial", to: "initial.txt")
+        try repository.commit(message: "Initial commit")
+        try repository.write("untracked content", to: "untracked.txt")
+
+        #expect(try GitContext(root: repository.workDirectory).status().get().allFiles == ["untracked.txt"])
+    }
+
+    /// The list of all files holds each file of the four lists one time, in
+    /// path order: a staged rename under its new path, and a file that is in
+    /// two lists one time. A port of
+    /// `test_get_uncommitted_changes_mixed_changes`, with a rename and a file
+    /// in two lists added.
+    @Test("all files holds each file one time in path order")
+    func allFilesHoldsEachFileOneTimeInPathOrder() throws {
+        let repository = try TemporaryGitRepository()
+        try repository.write("existing", to: "existing.txt")
+        try repository.write("old name\n", to: "old.txt")
+        try repository.commit(message: "Initial commit")
+        try repository.write("untracked", to: "untracked.txt")
+        try repository.write("modified", to: "existing.txt")
+        try repository.stage("existing.txt")
+        try repository.write("modified again", to: "existing.txt")
+        try repository.write("staged", to: "staged.txt")
+        try repository.stage("staged.txt")
+        try FileManager.default.moveItem(
+            at: repository.workDirectory.appendingPathComponent("old.txt"),
+            to: repository.workDirectory.appendingPathComponent("new.txt"))
+        try repository.stage("old.txt")
+        try repository.stage("new.txt")
+
+        let status = try GitContext(root: repository.workDirectory).status().get()
+
+        #expect(status.allFiles == ["existing.txt", "new.txt", "staged.txt", "untracked.txt"])
+    }
+
     /// A root in no repository is the correction of the context.
     @Test("a root in no repository is a correction")
     func aRootInNoRepositoryIsACorrection() throws {

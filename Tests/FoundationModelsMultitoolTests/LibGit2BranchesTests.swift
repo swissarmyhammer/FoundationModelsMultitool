@@ -56,4 +56,23 @@ struct LibGit2BranchesTests {
         #expect(try opened.localBranchNames().isEmpty)
         #expect(try opened.currentBranchName() == nil)
     }
+
+    /// A local branch is there, and a name that no local branch has is not.
+    @Test("the layer tells a local branch from an unknown name")
+    func theLayerTellsALocalBranchFromAnUnknownName() throws {
+        let (repository, _) = try GitTestHistory.makeThreeCommits()
+
+        let opened = try LibGit2Repository(discoveringFrom: repository.workDirectory)
+
+        #expect(try opened.hasLocalBranch(named: GitTestHistory.featureBranch))
+        #expect(try !opened.hasLocalBranch(named: "no-such-branch"))
+    }
+
+    /// The main branch is `main`, else `master`, else none.
+    @Test("the main branch is main, else master, else none")
+    func theMainBranchIsMainElseMasterElseNone() {
+        #expect(LibGit2Repository.mainBranchName(among: ["master", "main", "develop"]) == "main")
+        #expect(LibGit2Repository.mainBranchName(among: ["develop", "master"]) == "master")
+        #expect(LibGit2Repository.mainBranchName(among: ["develop"]) == nil)
+    }
 }
