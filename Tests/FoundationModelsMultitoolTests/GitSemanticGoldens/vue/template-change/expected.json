@@ -1,0 +1,21 @@
+{
+  "summary": {
+    "files": 1,
+    "added": 0,
+    "modified": 1,
+    "deleted": 0,
+    "moved": 0,
+    "renamed": 0
+  },
+  "changes": [
+    {
+      "changeType": "modified",
+      "entityType": "sfc_block",
+      "entityName": "template",
+      "filePath": "inline.vue",
+      "entityId": "inline.vue::sfc_block::template",
+      "beforeContent": "<template>\n  <button @click=\"increment\">{{ count }}</button>\n</template>",
+      "afterContent": "<template>\n  <button @click=\"increment\">Count: {{ count }}</button>\n</template>"
+    }
+  ]
+}

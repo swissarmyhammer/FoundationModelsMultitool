@@ -1,0 +1,30 @@
+{
+  "summary": {
+    "files": 1,
+    "added": 1,
+    "modified": 1,
+    "deleted": 0,
+    "moved": 0,
+    "renamed": 0
+  },
+  "changes": [
+    {
+      "changeType": "modified",
+      "entityType": "class",
+      "entityName": "Counter",
+      "filePath": "inline.py",
+      "structuralChange": true,
+      "entityId": "inline.py::class::Counter",
+      "beforeContent": "class Counter:\n    def __init__(self):\n        self.count = 0\n\n    def increment(self):\n        self.count += 1",
+      "afterContent": "class Counter:\n    def __init__(self):\n        self.count = 0\n\n    def increment(self):\n        self.count += 1\n\n    def value(self):\n        return self.count"
+    },
+    {
+      "changeType": "added",
+      "entityType": "function",
+      "entityName": "value",
+      "filePath": "inline.py",
+      "entityId": "inline.py::inline.py::class::Counter::value",
+      "afterContent": "def value(self):\n        return self.count"
+    }
+  ]
+}

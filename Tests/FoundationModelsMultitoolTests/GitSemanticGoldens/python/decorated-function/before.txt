@@ -1,0 +1,6 @@
+from functools import cache
+
+
+@cache
+def area(width, height):
+    return width * height

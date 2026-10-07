@@ -1,0 +1,30 @@
+{
+  "summary": {
+    "files": 1,
+    "added": 1,
+    "modified": 1,
+    "deleted": 0,
+    "moved": 0,
+    "renamed": 0
+  },
+  "changes": [
+    {
+      "changeType": "modified",
+      "entityType": "class",
+      "entityName": "Counter",
+      "filePath": "inline.tsx",
+      "structuralChange": true,
+      "entityId": "inline.tsx::class::Counter",
+      "beforeContent": "class Counter extends React.Component<{}, { count: number }> {\n  state = { count: 0 };\n\n  increment(): void {\n    this.setState({ count: this.state.count + 1 });\n  }\n}",
+      "afterContent": "class Counter extends React.Component<{}, { count: number }> {\n  state = { count: 0 };\n\n  increment(): void {\n    this.setState({ count: this.state.count + 1 });\n  }\n\n  render() {\n    return <button onClick={() => this.increment()}>{this.state.count}</button>;\n  }\n}"
+    },
+    {
+      "changeType": "added",
+      "entityType": "method",
+      "entityName": "render",
+      "filePath": "inline.tsx",
+      "entityId": "inline.tsx::inline.tsx::class::Counter::render",
+      "afterContent": "render() {\n    return <button onClick={() => this.increment()}>{this.state.count}</button>;\n  }"
+    }
+  ]
+}

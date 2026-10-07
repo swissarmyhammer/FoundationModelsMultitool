@@ -1,0 +1,30 @@
+{
+  "summary": {
+    "files": 1,
+    "added": 0,
+    "modified": 0,
+    "deleted": 1,
+    "moved": 1,
+    "renamed": 0
+  },
+  "changes": [
+    {
+      "changeType": "moved",
+      "entityType": "function",
+      "entityName": "perimeter",
+      "filePath": "inline.py",
+      "oldFilePath": "old/inline.py",
+      "entityId": "inline.py::function::perimeter",
+      "beforeContent": "def perimeter(width, height):\n    return 2 * (width + height)",
+      "afterContent": "def perimeter(width, height):\n    return 2 * (width + height)"
+    },
+    {
+      "changeType": "deleted",
+      "entityType": "function",
+      "entityName": "area",
+      "filePath": "old/inline.py",
+      "entityId": "old/inline.py::function::area",
+      "beforeContent": "def area(width, height):\n    return width * height"
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+class Counter extends React.Component<{}, { count: number }> {
+  state = { count: 0 };
+
+  increment(): void {
+    this.setState({ count: this.state.count + 1 });
+  }
+}

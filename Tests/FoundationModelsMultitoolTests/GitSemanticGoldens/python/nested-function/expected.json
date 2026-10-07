@@ -1,0 +1,30 @@
+{
+  "summary": {
+    "files": 1,
+    "added": 1,
+    "modified": 1,
+    "deleted": 0,
+    "moved": 0,
+    "renamed": 0
+  },
+  "changes": [
+    {
+      "changeType": "modified",
+      "entityType": "function",
+      "entityName": "make_counter",
+      "filePath": "inline.py",
+      "structuralChange": true,
+      "entityId": "inline.py::function::make_counter",
+      "beforeContent": "def make_counter():\n    count = 0\n\n    def increment():\n        nonlocal count\n        count += 1\n        return count\n\n    return increment",
+      "afterContent": "def make_counter():\n    count = 0\n\n    def increment():\n        nonlocal count\n        count += 1\n        return count\n\n    def reset():\n        nonlocal count\n        count = 0\n\n    return increment, reset"
+    },
+    {
+      "changeType": "added",
+      "entityType": "function",
+      "entityName": "reset",
+      "filePath": "inline.py",
+      "entityId": "inline.py::inline.py::function::make_counter::reset",
+      "afterContent": "def reset():\n        nonlocal count\n        count = 0"
+    }
+  ]
+}

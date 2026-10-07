@@ -1,0 +1,7 @@
+function area(width: number, height: number): number {
+  return width * height;
+}
+
+function perimeter(width: number, height: number): number {
+  return 2 * (width + height);
+}

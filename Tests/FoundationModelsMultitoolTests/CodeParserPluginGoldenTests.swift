@@ -4,7 +4,8 @@ import Testing
 @testable import FoundationModelsMultitool
 
 /// Golden tests for ``CodeParserPlugin`` — the port of the code plugin of
-/// `../swissarmyhammer/crates/swissarmyhammer-sem/src/parser/plugins/code/`.
+/// `../swissarmyhammer/crates/swissarmyhammer-sem/src/parser/plugins/code/` —
+/// and for ``VueParserPlugin``, the port of `parser/plugins/vue.rs`.
 ///
 /// Each case in `GitSemanticGoldens/<language>/<case>/` has a before file, an
 /// after file, and the expected JSON. A throwaway Rust program wrote each
@@ -13,10 +14,15 @@ import Testing
 /// 0.7.2, tree-sitter-java 0.23.5, tree-sitter-c 0.24.2, tree-sitter-cpp
 /// 0.23.4, tree-sitter-c-sharp 0.23.5, tree-sitter-ruby 0.23.1,
 /// tree-sitter-php 0.24.2, tree-sitter-fortran 0.6.0, tree-sitter-elixir
-/// 0.3.5, tree-sitter-bash 0.25.1) in the shape of the sah `git` tool
-/// (`get diff`), with camelCase field names. For each case with one path, the
-/// program also ran the inline mode of that tool (`inline.<ext>`) and found
-/// the same changes.
+/// 0.3.5, tree-sitter-bash 0.25.1, tree-sitter-typescript 0.23.2,
+/// tree-sitter-javascript 0.25.0, tree-sitter-python 0.25.0) in the shape of
+/// the sah `git` tool (`get diff`), with camelCase field names. For each case
+/// with one path, the program also ran the inline mode of that tool
+/// (`inline.<ext>`) and found the same changes.
+///
+/// A change in the `<script>` block of a `.vue` file modifies the block
+/// entity too. Thus the Vue script case adds a function: the block is the one
+/// `modified` change, and the function is an `added` change.
 ///
 /// The Fortran grammar keeps the name of a function, a subroutine, and a
 /// module in a `*_statement` child. That node has no `name` field and no
@@ -47,16 +53,22 @@ struct CodeParserPluginGoldenTests {
     private static let movedCaseName = "function-moved"
 
     /// The folder of each language, the file extension of its cases, and its
-    /// cases. Some languages have more cases: a C++ namespace, a C# property,
-    /// a Fortran module and subroutine, and an Elixir `defp`. Bash has no
-    /// types, thus it has only the function cases.
+    /// cases. Some languages have more cases: a TypeScript interface and type
+    /// alias, a Python decorated function and nested function, a C++
+    /// namespace, a C# property, a Fortran module and subroutine, and an
+    /// Elixir `defp`. Bash has no types, thus it has only the function cases.
+    /// Vue has a change in the script block and a change in the template.
     private static let languages: [(folder: String, fileExtension: String, caseNames: [String])] = [
+        ("typescript", ".ts", typeCaseNames + ["interface", "type-alias"]), ("tsx", ".tsx", typeCaseNames),
+        ("javascript", ".js", typeCaseNames), ("jsx", ".jsx", typeCaseNames),
+        ("python", ".py", typeCaseNames + ["decorated-function", "nested-function"]),
         ("rust", ".rs", typeCaseNames), ("go", ".go", typeCaseNames), ("swift", ".swift", typeCaseNames),
         ("java", ".java", typeCaseNames), ("c", ".c", typeCaseNames),
         ("cpp", ".cpp", typeCaseNames + ["namespace"]), ("csharp", ".cs", typeCaseNames + ["property"]),
         ("ruby", ".rb", typeCaseNames), ("php", ".php", typeCaseNames),
         ("fortran", ".f90", typeCaseNames + ["module", "subroutine"]),
         ("elixir", ".ex", typeCaseNames + ["private-function"]), ("bash", ".sh", functionCaseNames),
+        ("vue", ".vue", ["script-change", "template-change"]),
     ]
 
     /// The cases of a function: each language has them.

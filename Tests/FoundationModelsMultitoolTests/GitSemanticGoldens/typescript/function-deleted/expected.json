@@ -1,0 +1,20 @@
+{
+  "summary": {
+    "files": 1,
+    "added": 0,
+    "modified": 0,
+    "deleted": 1,
+    "moved": 0,
+    "renamed": 0
+  },
+  "changes": [
+    {
+      "changeType": "deleted",
+      "entityType": "function",
+      "entityName": "perimeter",
+      "filePath": "inline.ts",
+      "entityId": "inline.ts::function::perimeter",
+      "beforeContent": "function perimeter(width: number, height: number): number {\n  return 2 * (width + height);\n}"
+    }
+  ]
+}

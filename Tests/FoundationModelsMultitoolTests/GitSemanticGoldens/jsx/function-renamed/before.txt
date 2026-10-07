@@ -1,0 +1,4 @@
+function UserCard(props) {
+  const fullName = `${props.user.first} ${props.user.last}`;
+  return <div className="card">{fullName}</div>;
+}

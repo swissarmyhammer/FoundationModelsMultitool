@@ -1,0 +1,21 @@
+{
+  "summary": {
+    "files": 1,
+    "added": 0,
+    "modified": 0,
+    "deleted": 0,
+    "moved": 0,
+    "renamed": 1
+  },
+  "changes": [
+    {
+      "changeType": "renamed",
+      "entityType": "function",
+      "entityName": "orderTotal",
+      "filePath": "inline.ts",
+      "entityId": "inline.ts::function::orderTotal",
+      "beforeContent": "function totalPrice(items: Item[], taxRate: number): number {\n  const subtotal = items.reduce((sum, item) => sum + item.price, 0);\n  const tax = subtotal * taxRate;\n  return subtotal + tax;\n}",
+      "afterContent": "function orderTotal(items: Item[], taxRate: number): number {\n  const subtotal = items.reduce((sum, item) => sum + item.price, 0);\n  const tax = subtotal * taxRate;\n  return subtotal + tax;\n}"
+    }
+  ]
+}

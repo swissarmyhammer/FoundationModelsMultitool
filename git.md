@@ -295,6 +295,14 @@ All the open questions have a decision. The first run of the spike
     file, is an example of a workaround that fits. YAML needs no grammar,
     because the Rust `yaml.rs` uses none.
 
+13. Fortran (2026-10-06, the user decided): drop Fortran. With grammar 0.6.0
+    the Rust crate finds no Fortran entity (the grammar keeps each name in a
+    `*_statement` child, where the Rust name reader does not look), thus
+    Fortran support gave no value. The port removes the Fortran grammar
+    dependency, the `fortran` table entry, and the Fortran goldens (task
+    `^q102ags`). A `.f90` file then goes to the fallback plugin. This changes
+    decision 7: the language set has no Fortran.
+
 ## Open questions after the spike
 
 None. Decision 12 closes the grammar-version question.
@@ -329,7 +337,19 @@ Fortran, Elixir, and Bash grammars, at the same versions as the Rust crate.
 The Fortran grammar keeps the name of a function, a subroutine, and a module
 in a `*_statement` child. That node has no `name` field and no identifier
 child, thus the Rust crate reads no Fortran entity, and the port does the
-same. The Fortran goldens show this (each one has no change).
+same. The Fortran goldens show this (each one has no change). Task
+`^fdvr81s` added the TypeScript and TSX grammars (package 0.23.2), the
+JavaScript and Python grammars at 0.25.0 (decision 12), and the Vue plugin,
+all at the same versions as the Rust crate. The JavaScript and Python
+grammars are local C targets, `Sources/TreeSitterJavaScript` and
+`Sources/TreeSitterPython`: each holds the `src/` files, the Swift header,
+and the license of the upstream tag `v0.25.0` with no change (the files are
+byte-equal to the cargo crates of the Rust crate). The doc comments of
+`treeSitterJavaScriptTargetName` and `treeSitterPythonTargetName` in
+`Package.swift` give the reason (note 1 below). The C compiler of a root
+package gives three `-Wshorten-64-to-32` warnings for the Python scanner,
+thus the target compiles it through `scanner_build.c`, which stops that one
+warning and includes the upstream file.
 
 A throwaway test (`import libgit2`, removed after the spike) made a temporary
 repository with libgit2 only: commits c1, c2, c3 on `main` (c3 renames
@@ -460,9 +480,9 @@ grammars added no new build warning.
 | Rust | `https://github.com/tree-sitter/tree-sitter-rust` | 0.24.2 | `TreeSitterRust` | Links and parses |
 | TypeScript | `https://github.com/tree-sitter/tree-sitter-typescript` | 0.23.2 | `TreeSitterTypeScript` (module `TreeSitterTypeScript`) | Links and parses |
 | TSX | same as TypeScript | 0.23.2 | `TreeSitterTypeScript` (module `TreeSitterTSX`) | Links and parses |
-| JavaScript | `https://github.com/tree-sitter/tree-sitter-javascript` | 0.23.1 | `TreeSitterJavaScript` | Links and parses. See note 1. |
-| JSX | same as JavaScript (the grammar has JSX) | 0.23.1 | `TreeSitterJavaScript` | Links and parses. See note 1. |
-| Python | `https://github.com/tree-sitter/tree-sitter-python` | 0.23.6 | `TreeSitterPython` | Links and parses. See note 1. |
+| JavaScript | `https://github.com/tree-sitter/tree-sitter-javascript` | 0.23.1 | `TreeSitterJavaScript` | Links and parses. See note 1: the package uses 0.25.0 as a local target. |
+| JSX | same as JavaScript (the grammar has JSX) | 0.23.1 | `TreeSitterJavaScript` | Links and parses. See note 1: the package uses 0.25.0 as a local target. |
+| Python | `https://github.com/tree-sitter/tree-sitter-python` | 0.23.6 | `TreeSitterPython` | Links and parses. See note 1: the package uses 0.25.0 as a local target. |
 | Go | `https://github.com/tree-sitter/tree-sitter-go` | 0.25.0 | `TreeSitterGo` | Links and parses |
 | Java | `https://github.com/tree-sitter/tree-sitter-java` | 0.23.5 | `TreeSitterJava` | Links and parses |
 | C | `https://github.com/tree-sitter/tree-sitter-c` | 0.24.2 | `TreeSitterC` | Links and parses |
@@ -490,8 +510,11 @@ Notes:
    compiled when the package is a dependency. The link fails with undefined
    `tree_sitter_*_external_scanner_*` symbols. The older tags in the table
    list the scanner in the manifest and link. The Rust crate uses JavaScript
-   0.25 and Python 0.25. Thus the Swift port and the Rust crate can parse
-   some source differently. The golden tests must show this.
+   0.25 and Python 0.25. Decision 12 selects 0.25, thus task `^fdvr81s` put
+   the files of the tag `v0.25.0` of each grammar in a local C target of this
+   package (`Sources/TreeSitterJavaScript`, `Sources/TreeSitterPython`). The
+   Swift port and the Rust crate use the same JavaScript and Python
+   grammars.
 2. The tag `0.7.4` of tree-sitter-swift has no `src/parser.c`. Only the tag
    `0.7.4-with-generated-files` has it. A `from: "0.7.4"` rule selects the
    tag without the parser, thus the rule must be `exact:` on the

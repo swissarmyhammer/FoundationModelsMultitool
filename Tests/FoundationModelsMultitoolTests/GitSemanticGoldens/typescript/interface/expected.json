@@ -1,0 +1,22 @@
+{
+  "summary": {
+    "files": 1,
+    "added": 0,
+    "modified": 1,
+    "deleted": 0,
+    "moved": 0,
+    "renamed": 0
+  },
+  "changes": [
+    {
+      "changeType": "modified",
+      "entityType": "interface",
+      "entityName": "Shape",
+      "filePath": "inline.ts",
+      "structuralChange": true,
+      "entityId": "inline.ts::interface::Shape",
+      "beforeContent": "interface Shape {\n  area(): number;\n}",
+      "afterContent": "interface Shape {\n  area(): number;\n  perimeter(): number;\n}"
+    }
+  ]
+}

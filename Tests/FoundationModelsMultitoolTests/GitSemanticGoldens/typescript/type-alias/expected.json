@@ -1,0 +1,22 @@
+{
+  "summary": {
+    "files": 1,
+    "added": 0,
+    "modified": 1,
+    "deleted": 0,
+    "moved": 0,
+    "renamed": 0
+  },
+  "changes": [
+    {
+      "changeType": "modified",
+      "entityType": "type",
+      "entityName": "Point",
+      "filePath": "inline.ts",
+      "structuralChange": true,
+      "entityId": "inline.ts::type::Point",
+      "beforeContent": "type Point = { x: number; y: number };",
+      "afterContent": "type Point = { x: number; y: number; z: number };"
+    }
+  ]
+}

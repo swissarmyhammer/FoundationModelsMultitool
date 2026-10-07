@@ -1,0 +1,7 @@
+function Greeting(props) {
+  return <h1 className="title">Hello, {props.name}!</h1>;
+}
+
+function Farewell(props) {
+  return <p>Goodbye, {props.name}</p>;
+}

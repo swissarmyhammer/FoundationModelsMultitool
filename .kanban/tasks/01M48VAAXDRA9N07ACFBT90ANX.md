@@ -50,10 +50,26 @@ comments:
     - evidence: one local commit "feat: add Fortran, Elixir, and Bash to git semantic". The sha is in git log. The commit includes this comment.
     - next: review. No push was done.
   timestamp: 2026-10-06T21:36:16.142979+00:00
+- actor: claude-code
+  id: 01m49jmptbnaaf89bk7mn5mgv7
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit bffa9aa). The engine found 0 findings (0 confirmed, 0 refuted). It ran 7 validator attempts with 0 failed and 0 skipped. It reviewed 4 files: Package.swift, CodeLanguageConfig.swift, CodeParserPluginGoldenTests.swift, CodeParserPluginTests.swift. No validator matches the golden fixtures or git.md. The .reviewignore file excludes the .kanban files. The commit renames no file, so a file-scoped review was not necessary.
+    - next: The task is in done.
+  timestamp: 2026-10-06T21:41:45.419755+00:00
+- actor: claude-code
+  id: 01m49jn7sa51kjfmdse2cf3eqc
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 5 files and 23 golden cases (Package.swift, CodeLanguageConfig.swift, 2 test files, git.md, golden folders for fortran, elixir, bash); new task ^q102ags
+    - test: green — swift test, 2104 passed in 181 suites; fresh grammar build has no warning; IntegrationTests build complete
+    - commit: bffa9aa
+    - review: clean — 0 findings, 7 validators on 4 files
+  timestamp: 2026-10-06T21:42:02.794248+00:00
 depends_on:
 - 01M48V9SN2MNFZGXZ9R6DGD0H1
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffffb580
 title: 'git semantic: Fortran, Elixir, and Bash'
 ---
 ## Goal

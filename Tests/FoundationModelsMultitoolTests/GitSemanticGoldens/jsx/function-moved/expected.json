@@ -1,0 +1,30 @@
+{
+  "summary": {
+    "files": 1,
+    "added": 0,
+    "modified": 0,
+    "deleted": 1,
+    "moved": 1,
+    "renamed": 0
+  },
+  "changes": [
+    {
+      "changeType": "moved",
+      "entityType": "function",
+      "entityName": "Farewell",
+      "filePath": "inline.jsx",
+      "oldFilePath": "old/inline.jsx",
+      "entityId": "inline.jsx::function::Farewell",
+      "beforeContent": "function Farewell(props) {\n  return <p>Goodbye, {props.name}</p>;\n}",
+      "afterContent": "function Farewell(props) {\n  return <p>Goodbye, {props.name}</p>;\n}"
+    },
+    {
+      "changeType": "deleted",
+      "entityType": "function",
+      "entityName": "Greeting",
+      "filePath": "old/inline.jsx",
+      "entityId": "old/inline.jsx::function::Greeting",
+      "beforeContent": "function Greeting(props) {\n  return <h1>Hello, {props.name}</h1>;\n}"
+    }
+  ]
+}

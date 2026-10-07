@@ -1,0 +1,21 @@
+{
+  "summary": {
+    "files": 1,
+    "added": 0,
+    "modified": 0,
+    "deleted": 0,
+    "moved": 0,
+    "renamed": 1
+  },
+  "changes": [
+    {
+      "changeType": "renamed",
+      "entityType": "function",
+      "entityName": "order_total",
+      "filePath": "inline.py",
+      "entityId": "inline.py::function::order_total",
+      "beforeContent": "def total_price(items, tax_rate):\n    subtotal = sum(item.price for item in items)\n    tax = subtotal * tax_rate\n    return subtotal + tax",
+      "afterContent": "def order_total(items, tax_rate):\n    subtotal = sum(item.price for item in items)\n    tax = subtotal * tax_rate\n    return subtotal + tax"
+    }
+  ]
+}

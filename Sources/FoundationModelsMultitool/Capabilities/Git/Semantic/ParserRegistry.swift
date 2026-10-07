@@ -29,13 +29,14 @@ struct ParserRegistry: Sendable {
     ///
     /// The Rust registry has, in this order, the JSON, code, Vue, YAML,
     /// TOML, CSV, and Markdown plugins, and the fallback plugin last. The
-    /// code plugin is the one plugin that is ported now. Each task that
-    /// ports another plugin registers it here, in the Rust order.
+    /// code and Vue plugins are the plugins that are ported now. Each task
+    /// that ports another plugin registers it here, in the Rust order.
     ///
     /// - Returns: A registry with each ported plugin.
     static func makeDefault() -> ParserRegistry {
         var registry = ParserRegistry()
         registry.register(CodeParserPlugin())
+        registry.register(VueParserPlugin())
         return registry
     }
 

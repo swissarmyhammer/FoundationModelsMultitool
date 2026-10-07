@@ -1,0 +1,7 @@
+class Counter {
+  private count = 0;
+
+  increment(): void {
+    this.count += 1;
+  }
+}

@@ -1,0 +1,4 @@
+function area(width: number,   height: number): number {
+  // The area of the rectangle.
+  return width   *   height;
+}

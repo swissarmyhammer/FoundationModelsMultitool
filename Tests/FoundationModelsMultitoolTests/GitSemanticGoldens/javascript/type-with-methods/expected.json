@@ -1,0 +1,30 @@
+{
+  "summary": {
+    "files": 1,
+    "added": 1,
+    "modified": 1,
+    "deleted": 0,
+    "moved": 0,
+    "renamed": 0
+  },
+  "changes": [
+    {
+      "changeType": "modified",
+      "entityType": "class",
+      "entityName": "Counter",
+      "filePath": "inline.js",
+      "structuralChange": true,
+      "entityId": "inline.js::class::Counter",
+      "beforeContent": "class Counter {\n  count = 0;\n\n  increment() {\n    this.count += 1;\n  }\n}",
+      "afterContent": "class Counter {\n  count = 0;\n\n  increment() {\n    this.count += 1;\n  }\n\n  value() {\n    return this.count;\n  }\n}"
+    },
+    {
+      "changeType": "added",
+      "entityType": "method",
+      "entityName": "value",
+      "filePath": "inline.js",
+      "entityId": "inline.js::inline.js::class::Counter::value",
+      "afterContent": "value() {\n    return this.count;\n  }"
+    }
+  ]
+}

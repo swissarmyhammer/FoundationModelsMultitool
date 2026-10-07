@@ -1,0 +1,4 @@
+function Greeting(  props) {
+  // The heading of the page.
+  return   <h1>Hello, {props.name}</h1>;
+}

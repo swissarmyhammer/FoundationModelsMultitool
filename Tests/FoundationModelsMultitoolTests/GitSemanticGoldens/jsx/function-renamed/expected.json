@@ -1,0 +1,21 @@
+{
+  "summary": {
+    "files": 1,
+    "added": 0,
+    "modified": 0,
+    "deleted": 0,
+    "moved": 0,
+    "renamed": 1
+  },
+  "changes": [
+    {
+      "changeType": "renamed",
+      "entityType": "function",
+      "entityName": "ProfileCard",
+      "filePath": "inline.jsx",
+      "entityId": "inline.jsx::function::ProfileCard",
+      "beforeContent": "function UserCard(props) {\n  const fullName = `${props.user.first} ${props.user.last}`;\n  return <div className=\"card\">{fullName}</div>;\n}",
+      "afterContent": "function ProfileCard(props) {\n  const fullName = `${props.user.first} ${props.user.last}`;\n  return <div className=\"card\">{fullName}</div>;\n}"
+    }
+  ]
+}

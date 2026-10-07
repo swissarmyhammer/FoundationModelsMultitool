@@ -1,0 +1,4 @@
+def total_price(items, tax_rate):
+    subtotal = sum(item.price for item in items)
+    tax = subtotal * tax_rate
+    return subtotal + tax

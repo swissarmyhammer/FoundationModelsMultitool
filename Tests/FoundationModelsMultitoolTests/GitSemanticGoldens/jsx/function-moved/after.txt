@@ -1,0 +1,3 @@
+function Farewell(props) {
+  return <p>Goodbye, {props.name}</p>;
+}

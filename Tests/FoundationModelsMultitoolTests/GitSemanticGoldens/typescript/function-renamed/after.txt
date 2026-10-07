@@ -1,0 +1,5 @@
+function orderTotal(items: Item[], taxRate: number): number {
+  const subtotal = items.reduce((sum, item) => sum + item.price, 0);
+  const tax = subtotal * taxRate;
+  return subtotal + tax;
+}

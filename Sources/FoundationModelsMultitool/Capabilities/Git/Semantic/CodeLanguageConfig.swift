@@ -7,10 +7,14 @@ import TreeSitterElixir
 import TreeSitterFortran
 import TreeSitterGo
 import TreeSitterJava
+import TreeSitterJavaScript
 import TreeSitterPHP
+import TreeSitterPython
 import TreeSitterRuby
 import TreeSitterRust
 import TreeSitterSwift
+import TreeSitterTSX
+import TreeSitterTypeScript
 
 // `CodeLanguageConfig` — the table of the languages that the code plugin of
 // the semantic diff parses: for each one, its extensions, its tree-sitter
@@ -19,7 +23,8 @@ import TreeSitterSwift
 // A port of `parser/plugins/code/languages.rs` in
 // `../swissarmyhammer/crates/swissarmyhammer-sem/src/`: the struct
 // `LanguageConfig`, one entry for each language of the package, the table
-// `ALL_CONFIGS`, `get_language_config`, and `get_all_code_extensions`.
+// `ALL_CONFIGS`, `typescript_family_config`, `get_language_config`, and
+// `get_all_code_extensions`.
 //
 // git.md decision 7 ports each language of the Rust table. A language task
 // adds its grammar package to `Package.swift`, one entry here, and the entry
@@ -49,6 +54,61 @@ struct CodeLanguageConfig: Sendable {
 }
 
 extension CodeLanguageConfig {
+
+    /// The entry of one language of the TypeScript family:
+    /// `typescript_family_config` in `languages.rs`.
+    ///
+    /// The TSX grammar gives the node kinds of TypeScript with the same
+    /// names, thus one vocabulary serves the two languages, and a node kind
+    /// that TypeScript gets reaches TSX in the same edit.
+    ///
+    /// - Parameters:
+    ///   - id: The id of the language.
+    ///   - extensions: The extensions of the language.
+    ///   - language: The grammar of the language.
+    /// - Returns: The entry of the language.
+    private static func typeScriptFamily(id: String, extensions: [String], language: Language) -> CodeLanguageConfig {
+        CodeLanguageConfig(
+            id: id, extensions: extensions,
+            vocabulary: EntityVocabulary(
+                entityNodeTypes: [
+                    "function_declaration", "class_declaration", "interface_declaration", "type_alias_declaration",
+                    "enum_declaration", "export_statement", "lexical_declaration", "variable_declaration",
+                    "method_definition", "public_field_definition",
+                ],
+                containerNodeTypes: ["class_body", "interface_body", "enum_body"], callEntityIdentifiers: []),
+            language: language)
+    }
+
+    /// TypeScript: `TYPESCRIPT_CONFIG`.
+    static let typescript = typeScriptFamily(
+        id: "typescript", extensions: [".ts"], language: Language(tree_sitter_typescript()))
+
+    /// TSX: `TSX_CONFIG`.
+    static let tsx = typeScriptFamily(id: "tsx", extensions: [".tsx"], language: Language(tree_sitter_tsx()))
+
+    /// JavaScript: `JAVASCRIPT_CONFIG`. The grammar has JSX, thus JavaScript
+    /// claims `.jsx` too. The grammar comes from the local target
+    /// `TreeSitterJavaScript` (see `Package.swift`).
+    static let javascript = CodeLanguageConfig(
+        id: "javascript", extensions: [".js", ".jsx", ".mjs", ".cjs"],
+        vocabulary: EntityVocabulary(
+            entityNodeTypes: [
+                "function_declaration", "class_declaration", "export_statement", "lexical_declaration",
+                "variable_declaration", "method_definition", "field_definition",
+            ],
+            containerNodeTypes: ["class_body"], callEntityIdentifiers: []),
+        language: Language(tree_sitter_javascript()))
+
+    /// Python: `PYTHON_CONFIG`. A function in the `block` of a class or of a
+    /// function is a child of that class or function. The grammar comes from
+    /// the local target `TreeSitterPython` (see `Package.swift`).
+    static let python = CodeLanguageConfig(
+        id: "python", extensions: [".py"],
+        vocabulary: EntityVocabulary(
+            entityNodeTypes: ["function_definition", "class_definition", "decorated_definition"],
+            containerNodeTypes: ["block"], callEntityIdentifiers: []),
+        language: Language(tree_sitter_python()))
 
     /// Go: `GO_CONFIG`. A Go type declaration has no `name` field and no
     /// identifier child, thus it is not an entity, as in Rust.
@@ -187,7 +247,7 @@ extension CodeLanguageConfig {
 
     /// Each language of the code plugin, in the order of `ALL_CONFIGS`.
     static let all: [CodeLanguageConfig] = [
-        go, rust, java, c, cpp, ruby, csharp, php, fortran, swift, elixir, bash,
+        typescript, tsx, javascript, python, go, rust, java, c, cpp, ruby, csharp, php, fortran, swift, elixir, bash,
     ]
 
     /// The extensions of each language, in the order of ``all``: the

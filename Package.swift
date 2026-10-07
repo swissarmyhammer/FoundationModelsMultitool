@@ -279,6 +279,76 @@ private let treeSitterRuntimePackage = "tree-sitter"
 /// builds the URL of each one.
 private let treeSitterGrammarOrgURL = "https://github.com/tree-sitter/"
 
+/// The TypeScript grammar package of the code plugin
+/// (tree-sitter/tree-sitter-typescript).
+///
+/// Its product `TreeSitterTypeScript` has two modules: `TreeSitterTypeScript`
+/// gives the language of `.ts` files, and `TreeSitterTSX` gives the language
+/// of `.tsx` files. The version is the version of the Rust
+/// `swissarmyhammer-sem` crate, thus the two crates parse each TypeScript and
+/// TSX file the same way.
+private let treeSitterTypeScriptPackage = "tree-sitter-typescript"
+
+/// The name of the local C target that holds the JavaScript grammar of the
+/// code plugin, and of its module.
+///
+/// The target gives the language of `.js`, `.jsx`, `.mjs`, and `.cjs` files.
+/// It holds the files of the tag `v0.25.0` of
+/// `https://github.com/tree-sitter/tree-sitter-javascript` with no change:
+/// `src/parser.c`, `src/scanner.c`, the headers in `src/tree_sitter/`, the
+/// header `bindings/swift/TreeSitterJavaScript/javascript.h` (here
+/// `include/javascript.h`), and the MIT license of the grammar (`LICENSE`).
+/// The Rust `swissarmyhammer-sem` crate uses this version (git.md
+/// § "Decisions", item 12), thus the two crates parse each JavaScript file
+/// the same way.
+///
+/// **Why a local target and not the package.** The manifest of that tag adds
+/// `src/scanner.c` to its sources only when
+/// `FileManager.default.fileExists(atPath: "src/scanner.c")` is true. That
+/// path is relative to the folder of the build, not to the package, thus a
+/// package that depends on the grammar does not compile the scanner, and the
+/// link fails on the undefined `tree_sitter_javascript_external_scanner_*`
+/// symbols (git.md § "Spike result", "Tree-sitter packages", note 1). A local
+/// target needs no step on the host and publishes nothing. When a released
+/// tag lists the scanner in its manifest, the package can replace this
+/// target.
+private let treeSitterJavaScriptTargetName = "TreeSitterJavaScript"
+
+/// The name of the local C target that holds the Python grammar of the code
+/// plugin, and of its module.
+///
+/// The target gives the language of `.py` files. It holds the files of the
+/// tag `v0.25.0` of `https://github.com/tree-sitter/tree-sitter-python` with
+/// no change: `src/parser.c`, `src/scanner.c`, the headers in
+/// `src/tree_sitter/`, the header
+/// `bindings/swift/TreeSitterPython/python.h` (here `include/python.h`), and
+/// the MIT license of the grammar (`LICENSE`). The Rust `swissarmyhammer-sem`
+/// crate uses this version (git.md § "Decisions", item 12), thus the two
+/// crates parse each Python file the same way.
+///
+/// The manifest of that tag has the scanner defect of
+/// `treeSitterJavaScriptTargetName`, thus this grammar is a local target for
+/// the same reason.
+///
+/// The target compiles its scanner through the file `scanner_build.c`, which
+/// includes `src/scanner.c` — see `treeSitterPythonScannerSource`.
+private let treeSitterPythonTargetName = "TreeSitterPython"
+
+/// The upstream scanner of `treeSitterPythonTargetName`, which the target
+/// does not compile directly.
+///
+/// The C compiler of a root package enables `-Wshorten-64-to-32`, and this
+/// file gives three such warnings. SwiftPM shows no warning of a remote
+/// package, and the Rust crate builds the file with no such warning. The
+/// build unit `scanner_build.c` of the target stops that one warning and
+/// includes this file, thus the upstream file stays with no change.
+private let treeSitterPythonScannerSource = "src/scanner.c"
+
+/// The name of the license file of a local grammar target. The target
+/// excludes it from its sources: it is a text file for a person, not an input
+/// of the build.
+private let grammarLicenseFileName = "LICENSE"
+
 /// The Rust grammar package of the code plugin (tree-sitter/tree-sitter-rust).
 ///
 /// Its product `TreeSitterRust` gives the language of `.rs` files. The
@@ -384,16 +454,19 @@ private func treeSitterGrammarPackage(name: String, version: Version) -> Package
     .package(url: "\(treeSitterGrammarOrgURL)\(name).git", exact: version)
 }
 
-/// The products of `treeSitterPackage` and of the grammar packages, linked by
-/// the library target below.
+/// The products of `treeSitterPackage` and of the grammar packages, and the
+/// local grammar targets, linked by the library target below.
 ///
 /// The code plugin of the git semantic diff is the one consumer.
 /// `shellProducts`, `mcpProducts` and `webProducts` group their own products
-/// the same way. Each language task of git.md adds the product of its
-/// grammar here.
+/// the same way. Each language task of git.md adds the product (or the local
+/// target) of its grammar here, in the order of the Rust `ALL_CONFIGS`.
 private let codeParserProducts: [Target.Dependency] = [
     .product(name: "SwiftTreeSitter", package: treeSitterPackage),
     .product(name: "TreeSitter", package: treeSitterRuntimePackage),
+    .product(name: "TreeSitterTypeScript", package: treeSitterTypeScriptPackage),
+    .target(name: treeSitterJavaScriptTargetName),
+    .target(name: treeSitterPythonTargetName),
     .product(name: "TreeSitterRust", package: treeSitterRustPackage),
     .product(name: "TreeSitterGo", package: treeSitterGoPackage),
     .product(name: "TreeSitterJava", package: treeSitterJavaPackage),
@@ -502,6 +575,22 @@ private let testServerExecutableName = "mcp-test-server"
 /// The `Sources/` subdirectory prefix used by every source target's `path`
 /// below.
 private let sourcesPath = "Sources/"
+
+/// Builds the local C target of a grammar under `sourcesPath`:
+/// `treeSitterJavaScriptTargetName` and `treeSitterPythonTargetName`.
+///
+/// SwiftPM compiles each `.c` file of the folder, and the folder `include/`
+/// holds the public header. The upstream files keep their upstream place in
+/// `src/`, thus `#include "tree_sitter/parser.h"` finds the header next to
+/// the file.
+///
+/// - Parameters:
+///   - name: The name of the target and of its folder.
+///   - includedSources: The upstream `.c` files that a build unit of the
+///     target includes, thus SwiftPM must not compile them a second time.
+private func localGrammarTarget(name: String, includedSources: [String] = []) -> Target {
+    .target(name: name, path: "\(sourcesPath)\(name)", exclude: [grammarLicenseFileName] + includedSources)
+}
 
 /// The `Tests/` subdirectory prefix used by every test target's `path`
 /// below.
@@ -624,6 +713,7 @@ let package = Package(
         // grammar helper above does not fit them.
         .package(url: "https://github.com/ChimeHQ/\(treeSitterPackage).git", exact: "0.25.0"),
         .package(url: "\(treeSitterGrammarOrgURL)\(treeSitterRuntimePackage)", exact: "0.25.10"),
+        treeSitterGrammarPackage(name: treeSitterTypeScriptPackage, version: "0.23.2"),
         treeSitterGrammarPackage(name: treeSitterRustPackage, version: "0.24.2"),
         treeSitterGrammarPackage(name: treeSitterGoPackage, version: "0.25.0"),
         treeSitterGrammarPackage(name: treeSitterJavaPackage, version: "0.23.5"),
@@ -672,6 +762,11 @@ let package = Package(
                 + codeParserProducts,
             path: "\(sourcesPath)\(packageName)"
         ),
+        // The JavaScript and Python grammars of `codeParserProducts` — see
+        // `treeSitterJavaScriptTargetName` and `treeSitterPythonTargetName`
+        // for the upstream tag and for the reason that they are local.
+        localGrammarTarget(name: treeSitterJavaScriptTargetName),
+        localGrammarTarget(name: treeSitterPythonTargetName, includedSources: [treeSitterPythonScannerSource]),
         // The scripted MCP test server — see `testServerTargetName`. Links
         // `mcpProducts` for the sdk's `Server`, which is what it wraps.
         // `FlakyConnectTransport` names `Logging.Logger` because the

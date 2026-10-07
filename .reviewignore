@@ -7,3 +7,15 @@
 #
 # Auto-generated on the first review; edit freely — it is never overwritten.
 .kanban/
+
+# The upstream files of the local tree-sitter grammar targets (git.md,
+# decision 12). They are the files of an upstream tag with no change, thus a
+# review finding in them has no fix in this repository. The files that this
+# repository writes in those targets (for example `scanner_build.c`) stay in
+# the review.
+Sources/TreeSitterJavaScript/src/
+Sources/TreeSitterJavaScript/include/
+Sources/TreeSitterJavaScript/LICENSE
+Sources/TreeSitterPython/src/
+Sources/TreeSitterPython/include/
+Sources/TreeSitterPython/LICENSE
