@@ -39,6 +39,47 @@ comments:
     - local environment note: after `swift package update`, FoundationModelsRanker main (commit 1c4cf12, "feat!: take FoundationModels LanguageModel and Extras PooledEmbedding") removed `TextEmbedding`. FoundationModelsMetadataRegistry main still uses it, so the build failed in that dependency. I set the git-ignored Package.resolved pin of FoundationModelsRanker to d75a67c (the parent of 1c4cf12). No tracked file changed for this. The upstream MetadataRegistry must move to the new Ranker API.
     - next: review.
   timestamp: 2026-10-07T21:36:52.305944+00:00
+- actor: claude-code
+  id: 01m4c516fb6855br91ne60meea
+  text: |-
+    ### review — findings
+    - evidence: review sha HEAD~1..HEAD (2ab491b); 1 finding (1 confirmed, 4 refuted) — Tests/FoundationModelsMultitoolTests/LibGit2BlameTests.swift:151 `duplication/duplication`
+    - next: implement the open finding. The task stays in review.
+  timestamp: 2026-10-07T21:41:37.899159+00:00
+- actor: claude-code
+  id: 01m4c51n79btzkwtkhz8qy5w9v
+  text: |-
+    ### finish iteration 1 — findings
+    - implement: changed — 7 files
+    - test: green — swift test, 2257 passed (local Ranker pin d75a67c in git-ignored Package.resolved; upstream MetadataRegistry still uses the removed TextEmbedding)
+    - commit: 2ab491b
+    - review: findings — Tests/FoundationModelsMultitoolTests/LibGit2BlameTests.swift:151 (duplication/duplication)
+  timestamp: 2026-10-07T21:41:53.001602+00:00
+- actor: claude-code
+  id: 01m4c56ez4cpv4yfg38zt511bj
+  text: |-
+    Finding fix (duplication/duplication, LibGit2BlameTests.swift):
+    - Added `private static func commitTwice(in:)` and `private static func commitThrice(in:)` to `LibGit2BlameTests`. They have the same shape as the helpers in `GitBlameTests`. `eachLineComesFromTheLastCommitThatChangedIt` calls `commitTwice`. `eachLineAtARevisionComesFromTheLastCommitAtOrBeforeIt` calls `commitThrice`.
+    - `GitBlameTests.swift` already uses its own `commitTwice`/`commitThrice` helpers for this sequence. Thus no change there.
+    - `aChangedLineThatIsNotCommittedIsUncommitted` makes one commit and keeps the second text uncommitted. It is not the two-commit or three-commit sequence, thus it stays the same. `GitBlameTests` has the same shape for this test.
+    - No production code changed. The suite is a refactor of test setup only.
+  timestamp: 2026-10-07T21:44:30.436003+00:00
+- actor: claude-code
+  id: 01m4c56gng8n8bpz5s4a5r53m2
+  text: |-
+    ### implement — changed
+    - evidence: 1 file — Tests/FoundationModelsMultitoolTests/LibGit2BlameTests.swift. `swift test`: 2257 tests in 195 suites passed. The one warning is the mlx-swift_Cmlx.bundle warning that was there before this change. The local Package.resolved pin of FoundationModelsRanker (d75a67c) stays.
+    - next: review
+  timestamp: 2026-10-07T21:44:32.176161+00:00
+- actor: claude-code
+  id: 01m4c5955n9whbpyy69vwge4a5
+  text: |-
+    ### test — green
+    - evidence: `swift test` ran 2257 tests in 195 suites. All passed. 0 failed, 0 skipped.
+    - warnings: 1 build warning, "missing creator for mutated node" for mlx-swift_Cmlx.bundle. It comes from the mlx dependency. It is not caused by project code. No project warning is present.
+    - no code change was made in this step. Package.resolved is unchanged (FoundationModelsRanker pin d75a67c kept). `swift package update` was not run.
+    - next: review
+  timestamp: 2026-10-07T21:45:58.709995+00:00
 position_column: doing
 position_ordinal: '80'
 title: 'git: add an optional rev argument to tools.git.blame'
@@ -74,4 +115,17 @@ Steps:
 - [x] Run `swift test --filter Blame`. All tests must pass. Then run `swift test`. The full suite must pass with no new warnings.
 
 ## Workflow
-- Use `/tdd` — write failing tests first, then implement to make them pass. #git
+- Use `/tdd` — write failing tests first, then implement to make them pass.
+
+## Review Findings (2026-10-07 16:37)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 5 file(s) reviewed, 6 not reviewed.
+
+> 4 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 4 file(s)
+
+> 2 file(s) not reviewed — no validator matched:
+> - `README.md` — no validator matches this file
+> - `git.md` — no validator matches this file
+
+- [x] `Tests/FoundationModelsMultitoolTests/LibGit2BlameTests.swift:151` `duplication/duplication` — The setup of the new test `eachLineAtARevisionComesFromTheLastCommitAtOrBeforeIt` copies the commit sequence of the existing test `eachLineComesFromTheLastCommitThatChangedIt`: write first text, commit, write second text, commit. Edits to the fixture would have to be made in both copies. Move the three-commit fixture into a shared helper in this suite, for example `private static func commitThrice(in:)` returning the three shas, or reuse `GitTestHistory`, and call it from the new test and from the existing one. #git

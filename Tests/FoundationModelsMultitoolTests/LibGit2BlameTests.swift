@@ -43,10 +43,7 @@ struct LibGit2BlameTests {
     @Test("each line comes from the last commit that changed it")
     func eachLineComesFromTheLastCommitThatChangedIt() throws {
         let repository = try TemporaryGitRepository()
-        try repository.write(Self.firstText, to: Self.filePath)
-        let first = try repository.commit(message: "first")
-        try repository.write(Self.secondText, to: Self.filePath)
-        let second = try repository.commit(message: "second")
+        let (first, second) = try Self.commitTwice(in: repository)
 
         let lines = try Self.blame(Self.secondText, in: repository)
 
@@ -148,12 +145,7 @@ struct LibGit2BlameTests {
     @Test("each line at a revision comes from the last commit at or before it")
     func eachLineAtARevisionComesFromTheLastCommitAtOrBeforeIt() throws {
         let repository = try TemporaryGitRepository()
-        try repository.write(Self.firstText, to: Self.filePath)
-        let first = try repository.commit(message: "first")
-        try repository.write(Self.secondText, to: Self.filePath)
-        let second = try repository.commit(message: "second")
-        try repository.write(Self.thirdText, to: Self.filePath)
-        try repository.commit(message: "third")
+        let (first, second, _) = try Self.commitThrice(in: repository)
 
         let lines = try LibGit2Repository(discoveringFrom: repository.workDirectory)
             .blameLines(atPath: Self.filePath, revision: second, lineCount: Self.lineCount)
@@ -197,6 +189,32 @@ struct LibGit2BlameTests {
     private static func blame(_ text: String, in repository: TemporaryGitRepository) throws -> [LibGit2LineBlame] {
         try LibGit2Repository(discoveringFrom: repository.workDirectory)
             .blameLines(atPath: filePath, content: Data(text.utf8), lineCount: lineCount)
+    }
+
+    /// Commits ``firstText``, then ``secondText``, then ``thirdText`` to
+    /// ``filePath``. Each commit after the first changes one line.
+    ///
+    /// - Parameter repository: The repository.
+    /// - Returns: The sha of each commit.
+    /// - Throws: When a write or a commit fails.
+    private static func commitThrice(in repository: TemporaryGitRepository) throws -> (String, String, String) {
+        let (first, second) = try commitTwice(in: repository)
+        try repository.write(thirdText, to: filePath)
+        let third = try repository.commit(message: "third")
+        return (first, second, third)
+    }
+
+    /// Commits ``firstText`` and then ``secondText`` to ``filePath``.
+    ///
+    /// - Parameter repository: The repository.
+    /// - Returns: The sha of each commit.
+    /// - Throws: When a write or a commit fails.
+    private static func commitTwice(in repository: TemporaryGitRepository) throws -> (String, String) {
+        try repository.write(firstText, to: filePath)
+        let first = try repository.commit(message: "first")
+        try repository.write(secondText, to: filePath)
+        let second = try repository.commit(message: "second")
+        return (first, second)
     }
 
     /// The commit of `line`, or `nil` when no commit holds it.
