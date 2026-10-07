@@ -45,8 +45,24 @@ comments:
     - evidence: one local commit of all working tree changes: OutputProgressCollector.swift (new), Execute.swift, ShellRunner.swift, ShellExecuteTests.swift, the six test fixes for Router c30d1d41 (read the journal after close), and all .kanban/ changes (including ^m3em6nf). Subject: "feat(shell): collect execute output into fewer progress events". The sha is in the reply of the commit step (the comment is in the commit, so it cannot hold the sha). No push.
     - next: review.
   timestamp: 2026-10-07T15:18:09.236611+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m4bfey7520qjae1wc6x7cv5n
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (commit 79d671e). 0 findings, 0 confirmed, 0 refuted. 14 attempted, 0 failed. 10 files reviewed. 6 .kanban files not reviewed because of .reviewignore. The commit renames no file, so a file-scoped review is not necessary.
+    - next: The task is in done. No work remains.
+  timestamp: 2026-10-07T15:24:39.525462+00:00
+- actor: claude-code
+  id: 01m4bffbqe7vpfhebwrw8b67f6
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 4 files (OutputProgressCollector.swift new, Execute.swift, ShellRunner.swift, ShellExecuteTests.swift); 4 new tests
+    - test: green — swift test, 2238 passed in 194 suites; 6 tests fixed for Router c30d1d41 (read the journal after close), recorded on ^m3em6nf
+    - commit: 79d671e
+    - review: clean — 0 findings, 14 checks on 10 files
+  timestamp: 2026-10-07T15:24:53.358559+00:00
+position_column: done
+position_ordinal: ffffbe80
 title: 'shell: collect execute output chunks into fewer progress events'
 ---
 ## Source

@@ -28,8 +28,9 @@ import Foundation
 ///   --exclude-standard`) is used, thus ignored files — and, crucially,
 ///   whole ignored directories such as a `build/` tree — are never descended
 ///   into; otherwise a plain `FileManager` walk is used.
-/// - **Collect-filter-assemble** — ``walkAndFilter(walkRoot:sessionRoot:respectGitIgnore:accept:build:)``
-///   is the single loop that enumerates, computes relative paths, applies a
+/// - **Collect-filter-assemble** — ``walkAndFilter(walkRoot:sessionRoot:respectGitIgnore:excludePatterns:accept:build:)``
+///   is the single loop that enumerates, computes relative paths, skips the
+///   files that the host ``ExcludePatterns`` exclude, applies a
 ///   caller-supplied acceptance predicate, and builds a caller-supplied
 ///   result type, thus neither engine hand-rolls that loop.
 ///
@@ -67,23 +68,35 @@ enum FileWalker {
     ///
     /// Enumerates the candidate files under `walkRoot` via
     /// ``collectFiles(walkRoot:respectGitIgnore:)``, computes each file's
-    /// path relative to the walk root (skipping any that fall outside it),
-    /// offers that pair to `accept`, and — for the accepted files — computes
-    /// the path relative to `sessionRoot` and hands both to `build`,
+    /// path relative to the walk root and to `sessionRoot` (skipping any
+    /// that fall outside either), skips a file that `excludePatterns`
+    /// excludes, offers the walk-relative pair to `accept`, and — for the
+    /// accepted files — hands the session-relative pair to `build`,
     /// collecting the non-`nil` results in enumeration order. `build` may
     /// return `nil` to drop a file (for example when an attribute it needs
     /// cannot be read).
     ///
     /// This is the single collect-filter-assemble loop both engines share:
-    /// the enumeration, the two relative-path computations, and the
-    /// skip-on-outside bookkeeping live here one time, while each engine
-    /// supplies its own acceptance predicate and its own result type through
-    /// the closures.
+    /// the enumeration, the two relative-path computations, the host
+    /// exclude patterns, and the skip-on-outside bookkeeping live here one
+    /// time, while each engine supplies its own acceptance predicate and its
+    /// own result type through the closures.
+    ///
+    /// The host patterns go through ``ExcludePatterns`` here and not through
+    /// git, because `git ls-files --exclude` applies to untracked files only,
+    /// and the plain walk does not run git. Thus one matcher applies the
+    /// host patterns to each walk.
     ///
     /// - Parameters:
     ///   - walkRoot: the canonical directory to enumerate.
     ///   - sessionRoot: the canonical session root the built results are relative to.
-    ///   - respectGitIgnore: whether a present repository's ignore rules are honored.
+    ///   - respectGitIgnore: whether a present repository's ignore rules are
+    ///     honored. It does not turn off `excludePatterns`: the model sets
+    ///     `respectGitIgnore` in a call, but the host patterns are the rule
+    ///     of the host, and the model must not turn them off.
+    ///   - excludePatterns: the host exclude patterns, matched against the
+    ///     path relative to `sessionRoot`; they apply whatever
+    ///     `respectGitIgnore` says.
     ///   - accept: whether to keep a file, given its absolute path and its walk-relative path.
     ///   - build: builds a result from a kept file's absolute path and its
     ///     session-relative path, or `nil` to drop it.
@@ -92,14 +105,16 @@ enum FileWalker {
         walkRoot: URL,
         sessionRoot: URL,
         respectGitIgnore: Bool,
+        excludePatterns: ExcludePatterns,
         accept: (_ absolutePath: String, _ walkRelativePath: String) -> Bool,
         build: (_ absolutePath: String, _ sessionRelativePath: String) -> Element?
     ) -> [Element] {
         var results: [Element] = []
         for absolute in collectFiles(walkRoot: walkRoot, respectGitIgnore: respectGitIgnore) {
             guard let relativeToWalk = relativePath(ofAbsolute: absolute, under: walkRoot.path) else { continue }
-            guard accept(absolute, relativeToWalk) else { continue }
             guard let relativeToSession = relativePath(ofAbsolute: absolute, under: sessionRoot.path) else { continue }
+            guard !excludePatterns.excludes(relativePath: relativeToSession) else { continue }
+            guard accept(absolute, relativeToWalk) else { continue }
             guard let element = build(absolute, relativeToSession) else { continue }
             results.append(element)
         }

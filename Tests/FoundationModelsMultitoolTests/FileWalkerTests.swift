@@ -115,6 +115,7 @@ import Testing
             walkRoot: walkRoot,
             sessionRoot: root,
             respectGitIgnore: false,
+            excludePatterns: ExcludePatterns([]),
             accept: { _, walkRelativePath in walkRelativePath == "b.txt" },
             build: { _, sessionRelativePath in sessionRelativePath }
         )
@@ -124,6 +125,7 @@ import Testing
             walkRoot: root,
             sessionRoot: root,
             respectGitIgnore: false,
+            excludePatterns: ExcludePatterns([]),
             accept: { _, _ in true },
             build: { _, sessionRelativePath in sessionRelativePath == rootFile ? nil : sessionRelativePath }
         )

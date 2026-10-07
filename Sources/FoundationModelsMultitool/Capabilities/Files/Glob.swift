@@ -47,6 +47,13 @@ struct GlobArguments {
 
     /// Whether a present repository's ignore rules are honored, or `nil` for
     /// the default (`true`).
+    ///
+    /// `false` turns off the `.gitignore` rules only. The host exclude
+    /// patterns of the files capability stay on: the model sets this
+    /// argument, but the host patterns are the rule of the host, and the
+    /// model must not turn them off. Otherwise one glob with
+    /// `respectGitIgnore: false` finds the hidden files (for example the
+    /// transcripts of an agent) again.
     @Guide(
         description:
             "Whether the ignore rules of a git repository are honored. Omit it to honor them; "

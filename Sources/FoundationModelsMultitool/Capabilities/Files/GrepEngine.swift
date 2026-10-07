@@ -340,6 +340,7 @@ struct GrepEngine: Sendable {
                 let candidates = Self.candidateFiles(
                     target: target,
                     sessionRoot: sessionRoot,
+                    excludePatterns: context.excludePatterns,
                     glob: compiledGlob,
                     typeExtensions: typeExtensions
                 )
@@ -600,12 +601,15 @@ struct GrepEngine: Sendable {
     /// - Parameters:
     ///   - target: the resolved search target.
     ///   - sessionRoot: the canonical session root the relative paths are formed against.
+    ///   - excludePatterns: the host exclude patterns, which apply to a
+    ///     directory walk only.
     ///   - glob: the optional compiled filename filter.
     ///   - typeExtensions: the optional set of extensions the file-type filter selects.
     /// - Returns: the candidate files to scan.
     private static func candidateFiles(
         target: SearchTarget,
         sessionRoot: URL,
+        excludePatterns: ExcludePatterns,
         glob: GlobPattern?,
         typeExtensions: Set<String>?
     ) -> [Candidate] {
@@ -617,7 +621,8 @@ struct GrepEngine: Sendable {
             return [Candidate(absolutePath: file.path, relativePath: relativePath)]
         case .directory(let walkRoot):
             return directoryCandidates(
-                walkRoot: walkRoot, sessionRoot: sessionRoot, glob: glob, typeExtensions: typeExtensions)
+                walkRoot: walkRoot, sessionRoot: sessionRoot, excludePatterns: excludePatterns, glob: glob,
+                typeExtensions: typeExtensions)
         }
     }
 
@@ -626,12 +631,15 @@ struct GrepEngine: Sendable {
     /// - Parameters:
     ///   - walkRoot: the canonical directory to enumerate.
     ///   - sessionRoot: the canonical session root the relative paths are formed against.
+    ///   - excludePatterns: the host exclude patterns; a file they match is
+    ///     not a candidate.
     ///   - glob: the optional compiled filename filter, matched against the walk-relative path.
     ///   - typeExtensions: the optional set of extensions the file-type filter selects.
     /// - Returns: the filtered candidate files, sorted by session-relative path.
     private static func directoryCandidates(
         walkRoot: URL,
         sessionRoot: URL,
+        excludePatterns: ExcludePatterns,
         glob: GlobPattern?,
         typeExtensions: Set<String>?
     ) -> [Candidate] {
@@ -639,6 +647,7 @@ struct GrepEngine: Sendable {
             walkRoot: walkRoot,
             sessionRoot: sessionRoot,
             respectGitIgnore: true,
+            excludePatterns: excludePatterns,
             accept: { absolute, relativeToWalk in
                 if let glob, !glob.matches(relativePath: relativeToWalk, caseSensitive: false) { return false }
                 if let typeExtensions, !typeExtensions.contains(fileExtension(path: absolute)) { return false }

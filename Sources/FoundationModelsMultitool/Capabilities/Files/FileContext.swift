@@ -22,7 +22,8 @@ import Foundation
 ///
 /// A `FileContext` bundles everything one agent session's file tools need:
 /// the session ``root`` directory, the ``pathGuard`` that validates every
-/// path against it, a ``readOnly`` flag, and the ``changes`` journal. It is
+/// path against it, a ``readOnly`` flag, the ``changes`` journal, and the
+/// host ``excludePatterns`` of the search walks. It is
 /// a reference type, thus the verbs share one instance — one change journal
 /// — for the life of the session.
 ///
@@ -30,7 +31,7 @@ import Foundation
 /// verb is confined to the session root by default.
 ///
 /// - Note: Every stored property is immutable and `Sendable` (``root``,
-///   ``pathGuard``, ``readOnly``, and the ``changes`` journal — whose own
+///   ``pathGuard``, ``readOnly``, ``excludePatterns``, and the ``changes`` journal — whose own
 ///   mutable state is isolated to that actor), thus the type is a checked
 ///   `Sendable`.
 final class FileContext: Sendable {
@@ -56,6 +57,18 @@ final class FileContext: Sendable {
     /// the retained content.
     let changes: FileChangeJournal
 
+    /// The host exclude patterns: the files that each search walk skips.
+    ///
+    /// The search verbs that walk a folder tree (`glob` and `grep`) skip a
+    /// file that these patterns exclude. A verb that takes one explicit path
+    /// does not use them. The patterns stay on when a call sets
+    /// `respectGitIgnore` to `false`: the model sets that argument, but the
+    /// patterns are the rule of the host, and the model must not turn them
+    /// off. Otherwise one search with `respectGitIgnore: false` finds the
+    /// files that the host hides (for example the transcripts of an agent)
+    /// again.
+    let excludePatterns: ExcludePatterns
+
     /// Creates a session context rooted at a working directory.
     ///
     /// - Parameters:
@@ -71,14 +84,18 @@ final class FileContext: Sendable {
     ///     rejecting them; defaults to `false` (the secure default).
     ///   - recordsChanges: whether the mutating verbs record what they
     ///     changed into ``changes``; defaults to `false`.
+    ///   - excludePatterns: the host exclude patterns, in gitignore syntax,
+    ///     that become ``excludePatterns``; defaults to none.
     init(
         root: URL,
         additionalRoots: Set<URL> = [],
         readOnly: Bool = false,
         allowSymlinks: Bool = false,
-        recordsChanges: Bool = false
+        recordsChanges: Bool = false,
+        excludePatterns: [String] = []
     ) {
         self.root = root
+        self.excludePatterns = ExcludePatterns(excludePatterns)
         self.readOnly = readOnly
         self.pathGuard = PathGuard(
             root: root, workspaceRoot: root, additionalWorkspaceRoots: additionalRoots, allowSymlinks: allowSymlinks

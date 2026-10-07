@@ -121,8 +121,12 @@ struct GlobEngine: Sendable {
     ///   - path: the directory to search, or `nil` to search the session root.
     ///   - caseSensitive: whether matching is case-sensitive; defaults to `false`.
     ///   - respectGitIgnore: whether a present repository's ignore rules are
-    ///     honored (via `git ls-files`); defaults to `true`.
-    ///   - context: the shared session context supplying the path guard and root.
+    ///     honored (via `git ls-files`); defaults to `true`. `false` does not
+    ///     turn off the host exclude patterns of `context`: the model sets
+    ///     this argument, but the host patterns are the rule of the host,
+    ///     and the model must not turn them off.
+    ///   - context: the shared session context supplying the path guard,
+    ///     the root, and the host exclude patterns.
     /// - Returns: the ``GlobOutput/content(_:)`` matches on success, or a
     ///   ``GlobOutput/corrective(_:)`` message the model can act on.
     func run(
@@ -138,6 +142,7 @@ struct GlobEngine: Sendable {
                     compiled: prepared.compiled,
                     caseSensitive: caseSensitive,
                     respectGitIgnore: respectGitIgnore,
+                    excludePatterns: context.excludePatterns,
                     walkRoot: prepared.walkRoot,
                     sessionRoot: FileWalker.canonicalDirectory(context.root)
                 )
@@ -254,6 +259,8 @@ struct GlobEngine: Sendable {
     ///   - compiled: the compiled glob pattern.
     ///   - caseSensitive: whether matching is case-sensitive.
     ///   - respectGitIgnore: whether a present repository's ignore rules are honored.
+    ///   - excludePatterns: the host exclude patterns, which apply whatever
+    ///     `respectGitIgnore` says.
     ///   - walkRoot: the canonical search root.
     ///   - sessionRoot: the canonical session root the returned paths are relative to.
     /// - Returns: the matches sorted newest first.
@@ -261,6 +268,7 @@ struct GlobEngine: Sendable {
         compiled: GlobPattern,
         caseSensitive: Bool,
         respectGitIgnore: Bool,
+        excludePatterns: ExcludePatterns,
         walkRoot: URL,
         sessionRoot: URL
     ) -> [Match] {
@@ -268,6 +276,7 @@ struct GlobEngine: Sendable {
             walkRoot: walkRoot,
             sessionRoot: sessionRoot,
             respectGitIgnore: respectGitIgnore,
+            excludePatterns: excludePatterns,
             accept: { _, relativeToWalk in
                 compiled.matches(relativePath: relativeToWalk, caseSensitive: caseSensitive)
             },
@@ -475,16 +484,24 @@ struct GlobPattern {
     /// The compiled path components of the pattern.
     private let components: [Component]
 
-    /// Whether the pattern targets the filename alone (no `/` and no `**`).
+    /// Whether the pattern targets the filename alone (no `/`, no `**`, and
+    /// not compiled to match the whole path).
     let isFilenameOnly: Bool
 
     /// Compiles a raw glob pattern.
     ///
-    /// - Parameter pattern: the raw glob pattern.
+    /// - Parameters:
+    ///   - pattern: the raw glob pattern.
+    ///   - matchesWholePath: whether the pattern always matches the whole
+    ///     relative path. The default, `false`, makes a pattern with no `/`
+    ///     and no `**` match the filename alone. The host exclude patterns
+    ///     pass `true`, because an anchored gitignore pattern such as `/out.txt`
+    ///     matches `out.txt` at the root and not `sub/out.txt`.
     /// - Throws: ``GlobPatternError`` when the pattern contains invalid syntax
     ///   (currently an unterminated `[` character class).
-    init(_ pattern: String) throws {
-        isFilenameOnly = !pattern.contains("/") && !pattern.contains(Self.recursiveComponent)
+    init(_ pattern: String, matchesWholePath: Bool = false) throws {
+        isFilenameOnly =
+            !matchesWholePath && !pattern.contains("/") && !pattern.contains(Self.recursiveComponent)
         var compiled: [Component] = []
         for part in pattern.split(separator: "/", omittingEmptySubsequences: false) {
             if String(part) == Self.recursiveComponent {

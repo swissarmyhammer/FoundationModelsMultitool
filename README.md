@@ -63,6 +63,38 @@ nothing but the tools you gave it. The guarantees and the escape hatches are
 written down in [`docs/SECURITY.md`](docs/SECURITY.md) — read that before
 mounting the shell capability or the web capability.
 
+### Files
+
+The files capability is off by default. Call `withFiles(root:)` on the
+builder to mount it. The capability adds six verbs under `tools.files`:
+`read`, `write`, `edit`, `patch`, `glob`, and `grep`. Each path stays in
+`root` (and in the `additionalRoots` that you give).
+
+Give `excludePatterns` to hide files from the search verbs. The patterns use
+the gitignore syntax, and they are relative to `root`:
+
+```swift
+let builder = MultiTool.Builder()
+    .withFiles(root: workspaceURL, excludePatterns: [".acp-agent/", "*.log", "!keep.log"])
+```
+
+These are the rules of the option:
+
+- `tools.files.glob` and `tools.files.grep` skip each file that the patterns
+  exclude when they walk a folder tree, the same as a file that `.gitignore`
+  ignores. A folder pattern (`dir/`), a negated pattern (`!`), an anchored
+  pattern (`/name`), and the wildcards `*`, `?`, `[...]`, and `**` work as in
+  gitignore. The match is not sensitive to case.
+- A call with an explicit path does not change: a read, a write, an edit, a
+  patch, or a grep of one file can still get to an excluded file.
+- The patterns stay on when a call sets `respectGitIgnore` to `false`. The
+  model sets that argument, but the patterns are the rule of the host, and
+  the model must not turn them off.
+- The package has no default pattern. The host names its own folders (for
+  example, the ACP agent gives `.acp-agent/` to hide its transcripts).
+
+`FilesCapability(root:excludePatterns:)` takes the same option.
+
 ### Web
 
 The web capability is off by default. Call

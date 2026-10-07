@@ -23,9 +23,11 @@
 // **The boundary of the session is the initializer's whole configuration.**
 // The `root` and the `additionalRoots` become the `PathGuard` workspace
 // boundaries, `readOnly` gates the mutating verbs, `allowSymlinks` selects
-// whether the guard resolves a symlink or rejects it, and `recordsChanges`
-// turns the change journal on — see `FileContext`, which owns each of those
-// decisions.
+// whether the guard resolves a symlink or rejects it, `recordsChanges`
+// turns the change journal on, and `excludePatterns` names the files that
+// each search walk skips — see `FileContext`, which owns each of those
+// decisions. Multitool gives no default exclude pattern: the host knows
+// which folders are its own (the ACP agent gives `.acp-agent/`).
 
 import Foundation
 import FoundationModels
@@ -38,9 +40,9 @@ import FoundationModels
 ///     .build()                            //   .patch, .glob, .grep
 /// ```
 ///
-/// `MultiTool.Builder.withFiles(root:additionalRoots:readOnly:allowSymlinks:recordsChanges:)`
+/// `MultiTool.Builder.withFiles(root:additionalRoots:readOnly:allowSymlinks:recordsChanges:excludePatterns:)`
 /// is the short form of `withCapability(FilesCapability(...))`, and it takes
-/// the same five arguments. Register this type directly where a host builds
+/// the same six arguments. Register this type directly where a host builds
 /// the capability once and hands it on.
 ///
 /// The six verbs render in the order they are listed:
@@ -72,7 +74,7 @@ public struct FilesCapability: Capability {
 
     /// Makes the files capability over one session context.
     ///
-    /// The initializer builds one `FileContext` from its five arguments and
+    /// The initializer builds one `FileContext` from its six arguments and
     /// hands that context to each verb, which is what makes the six verbs one
     /// session. It never throws: the context validates nothing at
     /// construction, and every path question is answered per call, as a
@@ -95,12 +97,24 @@ public struct FilesCapability: Capability {
     ///     host reads it with `FileChangeSet.init(operationEventDetail:)`.
     ///     A verb called with no session keeps them in the change journal
     ///     for a drain. The default, `false`, records nothing.
+    ///   - excludePatterns: The host exclude patterns, in gitignore syntax
+    ///     (for example `.acp-agent/`, `*.log`, `!keep.log`), relative to
+    ///     `root`. `tools.files.glob` and `tools.files.grep` skip each file
+    ///     that the patterns exclude when they walk a folder tree, the same
+    ///     way they skip a file that `.gitignore` ignores. A read, a write,
+    ///     an edit, a patch, or a grep of one explicit file does not change.
+    ///     The patterns stay on when a call sets `respectGitIgnore` to
+    ///     `false`: the model sets that argument, but the patterns are the
+    ///     rule of the host, and the model must not turn them off. Otherwise
+    ///     one search with `respectGitIgnore: false` finds the hidden files
+    ///     again. The default, empty, excludes nothing.
     public init(
         root: URL,
         additionalRoots: Set<URL> = [],
         readOnly: Bool = false,
         allowSymlinks: Bool = false,
-        recordsChanges: Bool = false
+        recordsChanges: Bool = false,
+        excludePatterns: [String] = []
     ) {
         // The one context of the session. Every verb holds it, which is why
         // a read sees a write and the journal is one journal.
@@ -109,7 +123,8 @@ public struct FilesCapability: Capability {
             additionalRoots: additionalRoots,
             readOnly: readOnly,
             allowSymlinks: allowSymlinks,
-            recordsChanges: recordsChanges)
+            recordsChanges: recordsChanges,
+            excludePatterns: excludePatterns)
 
         self.tools = [
             Read(context: context),

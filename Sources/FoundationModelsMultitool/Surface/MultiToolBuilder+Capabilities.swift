@@ -76,13 +76,22 @@ extension MultiTool.Builder {
     ///     `FileChangeSet.init(operationEventDetail:)`. A verb called
     ///     with no session keeps them in the change journal for a drain.
     ///     Defaults to recording nothing.
+    ///   - excludePatterns: the host exclude patterns, in gitignore syntax
+    ///     (for example `.acp-agent/`, `*.log`, `!keep.log`), relative to
+    ///     `root`. `tools.files.glob` and `tools.files.grep` skip each file
+    ///     that the patterns exclude when they walk a folder tree. A call
+    ///     with an explicit path does not change. The patterns stay on when
+    ///     a call sets `respectGitIgnore` to `false`: the model sets that
+    ///     argument, but the patterns are the rule of the host, and the
+    ///     model must not turn them off. Defaults to none.
     @discardableResult
     public func withFiles(
         root: URL,
         additionalRoots: Set<URL> = [],
         readOnly: Bool = false,
         allowSymlinks: Bool = false,
-        recordsChanges: Bool = false
+        recordsChanges: Bool = false,
+        excludePatterns: [String] = []
     ) -> Self {
         withCapability(
             FilesCapability(
@@ -90,7 +99,8 @@ extension MultiTool.Builder {
                 additionalRoots: additionalRoots,
                 readOnly: readOnly,
                 allowSymlinks: allowSymlinks,
-                recordsChanges: recordsChanges
+                recordsChanges: recordsChanges,
+                excludePatterns: excludePatterns
             )
         )
     }
