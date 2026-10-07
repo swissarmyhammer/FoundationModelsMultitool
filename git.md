@@ -227,11 +227,11 @@ All the open questions have a decision. The first run of the spike
      The language set is open question 4a.
    - Each verb that reads a file at a ref (`diff` with `path@ref`, `show`)
      reads the blob through libgit2 (decision 10).
-7. Languages (question 4a). The first release has the full language set of
+7. Languages (question 4a). The first release has the language set of
    `swissarmyhammer-sem`: Rust, TypeScript, TSX, JavaScript, JSX, Python, Go,
-   Java, C, C++, Ruby, C#, PHP, Fortran, Swift, Elixir, Bash, and the data
-   formats JSON, YAML, TOML, CSV, Markdown, and Vue. The `fallback` plugin
-   is for all other files. The spike must find a SwiftPM package for each
+   Java, C, C++, Ruby, C#, PHP, Swift, Elixir, Bash, and the data formats
+   JSON, YAML, TOML, CSV, Markdown, and Vue. Decision 13 removes one language
+   of the Rust set. The `fallback` plugin is for all other files. The spike must find a SwiftPM package for each
    tree-sitter grammar, and must report each grammar that has no package.
    Result: each code grammar has a package that links. Three of them link
    only at an older tag. CSV and Vue have no usable package. See "Spike
@@ -374,12 +374,9 @@ runtime 0.25.10 (for UTF-8 byte offsets, the same as Rust), and the Rust, Go,
 and Swift grammars. Task `^4ac64t6` added the Java, C, C++, C#, Ruby, and PHP
 grammars. The Rust crate uses tree-sitter-php 0.24.2 and this package uses
 0.25.0; the PHP goldens show no difference. Task `^bt90anx` added the
-Fortran, Elixir, and Bash grammars, at the same versions as the Rust crate.
-The Fortran grammar keeps the name of a function, a subroutine, and a module
-in a `*_statement` child. That node has no `name` field and no identifier
-child, thus the Rust crate reads no Fortran entity, and the port does the
-same. The Fortran goldens show this (each one has no change). Task
-`^fdvr81s` added the TypeScript and TSX grammars (package 0.23.2), the
+Elixir and Bash grammars, at the same versions as the Rust crate. That task
+also added one more grammar, which decision 13 removes. Task `^fdvr81s`
+added the TypeScript and TSX grammars (package 0.23.2), the
 JavaScript and Python grammars at 0.25.0 (decision 12), and the Vue plugin,
 all at the same versions as the Rust crate. The JavaScript and Python
 grammars are local C targets, `Sources/TreeSitterJavaScript` and
@@ -514,7 +511,8 @@ SwiftPM does not resolve those. Thus there is no conflict.
 
 The spike linked each package below into one throwaway test target and parsed
 one small file of each language. All 21 parses had no error node. The
-grammars added no new build warning.
+grammars added no new build warning. The table does not show one grammar that
+the spike linked, because decision 13 removes it.
 
 | Language | Package URL | Version | Product (module) | Result |
 |---|---|---|---|---|
@@ -531,7 +529,6 @@ grammars added no new build warning.
 | Ruby | `https://github.com/tree-sitter/tree-sitter-ruby` | 0.23.1 | `TreeSitterRuby` | Links and parses |
 | C# | `https://github.com/tree-sitter/tree-sitter-c-sharp` | 0.23.5 | `TreeSitterCSharp` | Links and parses |
 | PHP | `https://github.com/tree-sitter/tree-sitter-php` | 0.25.0 | `TreeSitterPHP` | Links and parses |
-| Fortran | `https://github.com/stadelmanma/tree-sitter-fortran` | 0.6.0 | `TreeSitterFortran` | Links and parses |
 | Swift | `https://github.com/alex-pinkus/tree-sitter-swift` | `0.7.4-with-generated-files` | `TreeSitterSwift` | Links and parses. See note 2. |
 | Elixir | `https://github.com/elixir-lang/tree-sitter-elixir` | 0.3.5 | `TreeSitterElixir` | Links and parses |
 | Bash | `https://github.com/tree-sitter/tree-sitter-bash` | 0.25.1 | `TreeSitterBash` | Links and parses |

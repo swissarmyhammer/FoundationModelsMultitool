@@ -103,13 +103,29 @@ comments:
     - evidence: one local commit "refactor: add explicit internal access to git diff types" with Diff.swift, GitWorkTreeReader.swift, and .kanban changes. No build product staged. Not pushed. The sha is in the git log of this branch (the comment is inside the commit, so the sha cannot be written here).
     - next: review
   timestamp: 2026-10-07T03:08:45.544356+00:00
+- actor: claude-code
+  id: 01m4a5gma841fncwxasep11000
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (commit cc23287). 0 findings, 0 confirmed, 0 refuted, 7 attempted, 0 failed. 2 files reviewed (Diff.swift, GitWorkTreeReader.swift). The commit renames no file. All 3 prior items of "Review Findings (2026-10-06 21:53)" are checked.
+    - next: The task is in done. No work remains.
+  timestamp: 2026-10-07T03:11:34.728071+00:00
+- actor: claude-code
+  id: 01m4a5h15y4k033mw1wtthnb9b
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — 2 files (Diff.swift, GitWorkTreeReader.swift: explicit internal access); 3 findings of 2026-10-06 21:53 checked
+    - test: green — swift test, 2218 passed in 191 suites; IntegrationTests build complete
+    - commit: cc23287
+    - review: clean — 0 findings, 7 validators on 2 files; 3/3 prior items checked
+  timestamp: 2026-10-07T03:11:47.902330+00:00
 depends_on:
 - 01M48V90Q7SZFS78K85W0YEYA3
 - 01M48V8EHPNDZGYRJEJBCK92PN
 - 01M48V9SN2MNFZGXZ9R6DGD0H1
 - 01M48VAGF2ZD5J4G0FNP9B4CM5
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffffb880
 title: 'git: tools.git.diff with three modes over the semantic engine'
 ---
 ## Goal

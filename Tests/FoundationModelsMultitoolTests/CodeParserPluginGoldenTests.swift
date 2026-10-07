@@ -16,9 +16,9 @@ import Testing
 /// 0.26.9, tree-sitter-rust 0.24.2, tree-sitter-go 0.25.0, tree-sitter-swift
 /// 0.7.2, tree-sitter-java 0.23.5, tree-sitter-c 0.24.2, tree-sitter-cpp
 /// 0.23.4, tree-sitter-c-sharp 0.23.5, tree-sitter-ruby 0.23.1,
-/// tree-sitter-php 0.24.2, tree-sitter-fortran 0.6.0, tree-sitter-elixir
-/// 0.3.5, tree-sitter-bash 0.25.1, tree-sitter-typescript 0.23.2,
-/// tree-sitter-javascript 0.25.0, tree-sitter-python 0.25.0) in the shape of
+/// tree-sitter-php 0.24.2, tree-sitter-elixir 0.3.5, tree-sitter-bash
+/// 0.25.1, tree-sitter-typescript 0.23.2, tree-sitter-javascript 0.25.0,
+/// tree-sitter-python 0.25.0) in the shape of
 /// the sah `git` tool (`get diff`), with camelCase field names. For each case
 /// with one path, the program also ran the inline mode of that tool
 /// (`inline.<ext>`) and found the same changes.
@@ -26,12 +26,6 @@ import Testing
 /// A change in the `<script>` block of a `.vue` file modifies the block
 /// entity too. Thus the Vue script case adds a function: the block is the one
 /// `modified` change, and the function is an `added` change.
-///
-/// The Fortran grammar keeps the name of a function, a subroutine, and a
-/// module in a `*_statement` child. That node has no `name` field and no
-/// identifier child, thus the Rust crate reads no Fortran entity, and each
-/// Fortran case has no change (`files` is 0). The Fortran cases show that the
-/// port does the same.
 ///
 /// Each case whose name ends in `-moved` (for example `function-moved`)
 /// gives the old side the path `old/inline.<ext>`:
@@ -62,8 +56,7 @@ struct CodeParserPluginGoldenTests {
     /// The folder of each language, the file extension of its cases, and its
     /// cases. Some languages have more cases: a TypeScript interface and type
     /// alias, a Python decorated function and nested function, a C++
-    /// namespace, a C# property, a Fortran module and subroutine, and an
-    /// Elixir `defp`. Bash has no types, thus it has only the function cases.
+    /// namespace, a C# property, and an Elixir `defp`. Bash has no types, thus it has only the function cases.
     /// Vue has a change in the script block and a change in the template.
     ///
     /// The data formats (JSON, YAML, TOML, CSV, Markdown) and the fallback
@@ -79,7 +72,6 @@ struct CodeParserPluginGoldenTests {
         ("java", ".java", typeCaseNames), ("c", ".c", typeCaseNames),
         ("cpp", ".cpp", typeCaseNames + ["namespace"]), ("csharp", ".cs", typeCaseNames + ["property"]),
         ("ruby", ".rb", typeCaseNames), ("php", ".php", typeCaseNames),
-        ("fortran", ".f90", typeCaseNames + ["module", "subroutine"]),
         ("elixir", ".ex", typeCaseNames + ["private-function"]), ("bash", ".sh", functionCaseNames),
         ("vue", ".vue", ["script-change", "template-change"]),
         ("json", ".json", ["key-added", "key-deleted", "key-modified", "key-moved", "key-renamed", "whitespace-only"]),

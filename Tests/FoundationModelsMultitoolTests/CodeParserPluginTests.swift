@@ -32,8 +32,7 @@ struct CodeParserPluginTests {
             "app/main.py", "src/main.rs", "cmd/main.go", "Sources/App.swift", "SRC/MAIN.RS", "src/Main.java",
             "lib/list.c", "include/list.h", "src/app.cpp", "src/app.cc", "src/app.cxx", "include/app.hpp",
             "include/app.hh", "include/app.hxx", "src/Program.cs", "lib/app.rb", "public/index.php",
-            "src/solver.f90", "src/solver.f95", "src/solver.f03", "src/solver.f08", "src/solver.f",
-            "src/solver.for", "lib/app.ex", "test/app_test.exs", "scripts/deploy.sh",
+            "lib/app.ex", "test/app_test.exs", "scripts/deploy.sh",
         ])
     func theDefaultRegistrySelectsTheCodePlugin(filePath: String) {
         #expect(ParserRegistry.makeDefault().plugin(forFilePath: filePath)?.id == CodeParserPlugin.pluginID)
@@ -46,6 +45,19 @@ struct CodeParserPluginTests {
         #expect(ParserRegistry.makeDefault().plugin(forFilePath: "notes.txt")?.id == ParserRegistry.fallbackPluginID)
     }
 
+    /// No language of the table claims `.f90` or the other extensions of
+    /// that grammar, thus the default registry gives such a file to the
+    /// fallback plugin (git.md decision 13).
+    @Test(
+        "the default registry gives an f90 file to the fallback plugin",
+        arguments: [".f90", ".f95", ".f03", ".f08", ".f", ".for"])
+    func theDefaultRegistryGivesAnF90FileToTheFallbackPlugin(fileExtension: String) {
+        #expect(CodeLanguageConfig.config(forExtension: fileExtension) == nil)
+        #expect(
+            ParserRegistry.makeDefault().plugin(forFilePath: "src/solver" + fileExtension)?.id
+                == ParserRegistry.fallbackPluginID)
+    }
+
     /// The plugin claims the extensions of each language of the table, in
     /// the order of the table.
     @Test("the plugin claims the extension of each language")
@@ -53,8 +65,7 @@ struct CodeParserPluginTests {
         #expect(
             CodeParserPlugin().extensions == [
                 ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".py", ".go", ".rs", ".java", ".c", ".h", ".cpp",
-                ".cc", ".cxx", ".hpp", ".hh", ".hxx", ".rb", ".cs", ".php", ".f90", ".f95", ".f03", ".f08", ".f",
-                ".for", ".swift", ".ex", ".exs", ".sh",
+                ".cc", ".cxx", ".hpp", ".hh", ".hxx", ".rb", ".cs", ".php", ".swift", ".ex", ".exs", ".sh",
             ])
     }
 
@@ -70,9 +81,7 @@ struct CodeParserPluginTests {
             (".mjs", "javascript"), (".cjs", "javascript"), (".py", "python"), (".rs", "rust"), (".go", "go"),
             (".swift", "swift"), (".java", "java"), (".c", "c"), (".h", "c"),
             (".cpp", "cpp"), (".cc", "cpp"), (".cxx", "cpp"), (".hpp", "cpp"), (".hh", "cpp"), (".hxx", "cpp"),
-            (".cs", "csharp"), (".rb", "ruby"), (".php", "php"), (".f90", "fortran"), (".f95", "fortran"),
-            (".f03", "fortran"), (".f08", "fortran"), (".f", "fortran"), (".for", "fortran"), (".ex", "elixir"),
-            (".exs", "elixir"), (".sh", "bash"), (".bash", nil), (".txt", nil),
+            (".cs", "csharp"), (".rb", "ruby"), (".php", "php"), (".ex", "elixir"), (".exs", "elixir"), (".sh", "bash"), (".bash", nil), (".txt", nil),
         ] as [(String, String?)])
     func theLanguageTableMapsEachExtension(fileExtension: String, languageID: String?) {
         #expect(CodeLanguageConfig.config(forExtension: fileExtension)?.id == languageID)

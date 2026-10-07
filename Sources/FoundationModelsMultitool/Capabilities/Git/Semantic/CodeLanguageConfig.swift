@@ -4,7 +4,6 @@ import TreeSitterC
 import TreeSitterCPP
 import TreeSitterCSharp
 import TreeSitterElixir
-import TreeSitterFortran
 import TreeSitterGo
 import TreeSitterJava
 import TreeSitterJavaScript
@@ -26,10 +25,11 @@ import TreeSitterTypeScript
 // `ALL_CONFIGS`, `typescript_family_config`, `get_language_config`, and
 // `get_all_code_extensions`.
 //
-// git.md decision 7 ports each language of the Rust table. A language task
-// adds its grammar package to `Package.swift`, one entry here, and the entry
-// in ``all``. The entries are in the order of `ALL_CONFIGS`, thus the
-// extensions of the plugin are in the same order as in Rust.
+// git.md decision 7 ports each language of the Rust table, but not the one
+// language that git.md decision 13 drops. A language task adds its grammar
+// package to `Package.swift`, one entry here, and the entry in ``all``. The
+// entries are in the order of `ALL_CONFIGS`, thus the extensions of the
+// plugin are in the same order as in Rust.
 //
 // Not ported: `extensions_for_language`, `dotted_lowercase_extension`, and
 // `is_code_file` serve other Rust crates. The code plugin reads the extension
@@ -201,17 +201,6 @@ extension CodeLanguageConfig {
             containerNodeTypes: ["declaration_list", "enum_declaration_list"], callEntityIdentifiers: []),
         language: Language(tree_sitter_php()))
 
-    /// Fortran: `FORTRAN_CONFIG`. The grammar keeps the name of a function,
-    /// a subroutine, and a module in a `*_statement` child, not in a `name`
-    /// field or an identifier child. Thus the name reader finds no name and
-    /// the language gives no entity, as in Rust.
-    static let fortran = CodeLanguageConfig(
-        id: "fortran", extensions: [".f90", ".f95", ".f03", ".f08", ".f", ".for"],
-        vocabulary: EntityVocabulary(
-            entityNodeTypes: ["function", "subroutine", "module", "program", "interface", "type_declaration"],
-            containerNodeTypes: [], callEntityIdentifiers: []),
-        language: Language(tree_sitter_fortran()))
-
     /// Swift: `SWIFT_CONFIG`. The grammar gives a `class`, a `struct`, an
     /// `enum`, and an `extension` the one kind `class_declaration`.
     static let swift = CodeLanguageConfig(
@@ -247,7 +236,7 @@ extension CodeLanguageConfig {
 
     /// Each language of the code plugin, in the order of `ALL_CONFIGS`.
     static let all: [CodeLanguageConfig] = [
-        typescript, tsx, javascript, python, go, rust, java, c, cpp, ruby, csharp, php, fortran, swift, elixir, bash,
+        typescript, tsx, javascript, python, go, rust, java, c, cpp, ruby, csharp, php, swift, elixir, bash,
     ]
 
     /// The extensions of each language, in the order of ``all``: the

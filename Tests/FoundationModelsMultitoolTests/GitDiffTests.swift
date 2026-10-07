@@ -203,17 +203,23 @@ struct GitDiffTests {
         #expect(result.changes.isEmpty)
     }
 
-    /// An unknown language goes to the fallback plugin, which cuts the text
-    /// into chunks of lines.
-    @Test("inline mode with an unknown language uses the fallback plugin")
-    func inlineModeWithAnUnknownLanguageUsesTheFallbackPlugin() async throws {
-        let result = try await Self.inlineDiff(left: "one\ntwo\n", right: "one\nTWO\n", language: "brainfuck")
+    /// A language with no plugin of its own goes to the fallback plugin,
+    /// which cuts the text into chunks of lines. An unknown language gives
+    /// `.txt`. The `f90` language gives `.f90`, and no code language claims
+    /// that extension (git.md decision 13).
+    @Test(
+        "inline mode with a language that no plugin claims uses the fallback plugin",
+        arguments: [("brainfuck", "inline.txt"), ("f90", "inline.f90")])
+    func inlineModeWithALanguageThatNoPluginClaimsUsesTheFallbackPlugin(
+        language: String, inlinePath: String
+    ) async throws {
+        let result = try await Self.inlineDiff(left: "one\ntwo\n", right: "one\nTWO\n", language: language)
 
         #expect(result.correction == nil)
         #expect(result.summary.modified == 1)
         let modified = try #require(result.changes.first)
         #expect(modified.entityType == FallbackParserPlugin.chunkEntityType)
-        #expect(modified.filePath == "inline.txt")
+        #expect(modified.filePath == inlinePath)
     }
 
     /// Each missing part of the inline mode is a correction that names the

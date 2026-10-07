@@ -1,9 +1,0 @@
-subroutine print_area(width, height)
-  real, intent(in) :: width, height
-  print *, width * height
-end subroutine print_area
-
-subroutine print_perimeter(width, height)
-  real, intent(in) :: width, height
-  print *, 'perimeter:', 2.0 * (width + height)
-end subroutine print_perimeter
