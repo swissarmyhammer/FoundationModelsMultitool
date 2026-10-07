@@ -40,8 +40,24 @@ comments:
     - evidence: one local commit, subject "fix: list rename from below root to outside root in git status". It holds GitStatusReader.swift, Diff.swift, GitStatusReaderTests.swift, GitDiffTests.swift and all .kanban changes (with the leftover task files from the review of ^wvmh7vf). No build product is staged. No push.
     - next: test and review
   timestamp: 2026-10-07T03:55:28.683135+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m4a8952s9mkh5msgknrfm9a6
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit 25d910d). 0 findings, 0 confirmed, 0 refuted. 7 pairs attempted, 0 failed. 4 source files reviewed. 4 `.kanban/` files are excluded by `.reviewignore`. The commit renames no file, thus no file-scoped review was necessary.
+    - next: The task is in `done`. No work stays open.
+  timestamp: 2026-10-07T03:59:55.481519+00:00
+- actor: claude-code
+  id: 01m4a89gdy34vpczf9jzkrqfmk
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 4 files (GitStatusReader.swift, Diff.swift, GitStatusReaderTests.swift, GitDiffTests.swift)
+    - test: green — swift test, 2227 passed in 191 suites; IntegrationTests build complete
+    - commit: 25d910d
+    - review: clean — 0 findings, 7 validators on 4 files
+  timestamp: 2026-10-07T04:00:07.102292+00:00
+position_column: done
+position_ordinal: ffffbb80
 title: 'git: a rename from below the root to outside the root is in no status list'
 ---
 ## Goal

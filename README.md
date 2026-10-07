@@ -51,10 +51,11 @@ link Router.
 
 ## Capabilities
 
-Four capabilities ship with the package, each a set of ordinary `Tool`s you
+Five capabilities ship with the package, each a set of ordinary `Tool`s you
 add to a catalog like any other: **files** (read, edit, patch, search),
 **shell** (a sandboxed `execute` plus its history verbs), **web** (search the
-web and fetch a page), and **MCP** (attach a stdio or HTTP server and register
+web and fetch a page), **git** (read the status, the history, and a semantic
+diff of a repository), and **MCP** (attach a stdio or HTTP server and register
 its catalog under a noun).
 
 Every shell command runs under a seatbelt sandbox, and a snippet reaches
@@ -104,6 +105,61 @@ of the response, else 60 seconds, and never more than 10 minutes. Use
 `WebConfiguration` with your own provider list. A second `withWeb` call
 replaces the first: the last call wins. A key stays in Swift. The sandbox, the
 rendered surface, and each result never show a key value.
+
+### Git
+
+The git capability is off by default. Call `withGit(root:)` on the builder to
+mount it. The capability adds seven verbs under `tools.git`:
+
+| Verb | Arguments | Result |
+|---|---|---|
+| `tools.git.status` | none | `staged`, `unstaged`, `untracked`, and `renamed` paths, and `isClean` |
+| `tools.git.branches` | none | the local `branches`, the `current` branch, and the `main` branch |
+| `tools.git.changes` | `branch?`, `range?` | `branch`, `parentBranch`, `range`, and the changed `files` |
+| `tools.git.show` | `path`, `ref?` | the `content` of the file at the ref (HEAD when you omit it) |
+| `tools.git.log` | `ref?`, `path?`, `limit?` | `commits`, newest first: `sha`, `shortSha`, `author`, `date`, and `subject` |
+| `tools.git.blame` | `path`, `startLine?`, `endLine?` | one row for each line: `line`, `text`, `state`, and the `sha`, `author`, and `date` of the commit |
+| `tools.git.diff` | `left?`, `right?`, `leftText?`, `rightText?`, `language?` | a semantic diff: a `summary` of the counts and the `changes`, one for each entity |
+
+A snippet reads the changed files, and then diffs each file against HEAD, in
+parallel:
+
+```js
+const changes = await tools.git.changes({});
+const diffs = await Promise.all(
+  changes.files.slice(0, 5).map(path => tools.git.diff({ left: `${path}@HEAD`, right: path })));
+return { branch: changes.branch, parent: changes.parentBranch, diffs };
+```
+
+These are the rules of the capability:
+
+- The capability is read-only. No verb changes the repository. To change a
+  file, use `tools.files.*`. To run a different git command, use
+  `tools.shell.*`, when the host mounts those capabilities.
+- The repository is the one that contains the root, and the root can be a
+  folder below the top of the repository. Each path argument goes through the
+  same path guard as the files capability, thus a path cannot go out of the
+  root. Each path in a result is relative to the root, and a file outside the
+  root is in no result. One exception: a path that reads history (`show`,
+  `log`, and `diff` with `path@ref`) goes through the guard with
+  `absentFolders: .accepted`. Thus the guard does not refuse a folder that a
+  later commit removed. All the other checks of the guard stay the same.
+- A mistake that the model can correct (an unknown ref, an unknown path, a
+  bad range, or a root in no repository) does not throw. It comes back in the
+  result as a `correction` field.
+- The capability links libgit2. It does not need the `git` command on the
+  machine.
+
+`tools.git.diff` compares entities (functions, classes, keys, and other
+entities), not lines. It has three modes: two inline texts with a `language`,
+two files (`left` and `right`, each a path or `path@ref`), or no argument,
+which diffs each changed file of the work folder against HEAD. It finds the
+entities with tree-sitter for these languages: Rust, TypeScript, TSX,
+JavaScript, JSX, Python, Go, Java, C, C++, C#, Ruby, PHP, Swift, Elixir, and
+Bash. It reads these data formats: JSON, YAML, TOML, CSV, and Markdown. A Vue
+file gives its `<script>` block to the TypeScript or JavaScript parser. A file
+of each other type goes to the fallback plugin, which compares chunks of
+lines.
 
 ### Injected globals
 

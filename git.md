@@ -8,12 +8,9 @@ project.
 
 ## Status of this document
 
-This document is a draft plan. The section "Decisions" holds the answers to
-the open questions. The kanban tasks have the tag `git` (14 tasks). The first
-task is the spike (`^tjv0b4z`); all other tasks depend on it. The first run of
-the spike found that SwiftGitX does not fit. Decision 10 replaces it with the
-libgit2 package that is already in the graph. The second run of the spike
-proved each C function of that package. See "Spike result".
+This document was the design plan. The code of the capability has shipped.
+When this document and the code or `README.md` are different, the code and
+`README.md` are correct, and this document is the record of why.
 
 ## Goal
 
