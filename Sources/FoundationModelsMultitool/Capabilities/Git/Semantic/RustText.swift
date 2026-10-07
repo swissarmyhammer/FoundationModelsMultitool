@@ -88,17 +88,19 @@ enum RustText {
     /// - Parameter text: The text.
     /// - Returns: The quoted text.
     static func debugQuoted(_ text: String) -> String {
-        var result = "\""
-        for scalar in text.unicodeScalars {
-            if let escape = debugShortEscapes[scalar] {
-                result += escape
-            } else if !debugPrintableASCII.contains(scalar.value) && needsUnicodeEscape(scalar) {
-                result += "\\u{" + String(scalar.value, radix: 16) + "}"
-            } else {
-                result.unicodeScalars.append(scalar)
-            }
+        "\"" + text.unicodeScalars.map(debugText).joined() + "\""
+    }
+
+    /// The text of one scalar in the Rust `Debug` of a `str`: its short
+    /// escape, its `\u{<hex>}` escape, or the scalar itself.
+    private static func debugText(of scalar: Unicode.Scalar) -> String {
+        if let escape = debugShortEscapes[scalar] {
+            return escape
         }
-        return result + "\""
+        if !debugPrintableASCII.contains(scalar.value) && needsUnicodeEscape(scalar) {
+            return "\\u{" + String(scalar.value, radix: NumberRadix.hexadecimal) + "}"
+        }
+        return String(scalar)
     }
 
     /// Whether the Rust `Debug` of a `str` writes `scalar` as `\u{…}`.

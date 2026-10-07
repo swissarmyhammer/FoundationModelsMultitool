@@ -188,18 +188,18 @@ enum JSONText {
     /// - Parameter text: The text.
     /// - Returns: The quoted text.
     static func quoted(_ text: String) -> String {
-        var result = "\""
-        for scalar in text.unicodeScalars {
-            if let escape = shortEscapes[scalar] {
-                result += escape
-            } else if scalar.value < firstPlainScalar {
-                let hex = String(scalar.value, radix: 16)
-                result += "\\u00" + String(repeating: "0", count: controlEscapeDigits - hex.count) + hex
-            } else {
-                result.unicodeScalars.append(scalar)
-            }
+        "\"" + text.unicodeScalars.map(escapedText).joined() + "\""
+    }
+
+    /// The text of one scalar in a JSON string: its short escape, its
+    /// `\u00XX` escape, or the scalar itself.
+    private static func escapedText(of scalar: Unicode.Scalar) -> String {
+        if let escape = shortEscapes[scalar] {
+            return escape
         }
-        return result + "\""
+        guard scalar.value < firstPlainScalar else { return String(scalar) }
+        let hex = String(scalar.value, radix: NumberRadix.hexadecimal)
+        return "\\u00" + String(repeating: "0", count: controlEscapeDigits - hex.count) + hex
     }
 }
 
@@ -227,26 +227,26 @@ struct TOMLTimeSpellings {
     /// The count of minutes in one hour.
     private static let minutesPerHour = 60
 
-    /// The base of a decimal digit.
-    private static let decimalBase = 10
-
     /// The first spelling of each time in the source.
-    private var spellings: [TimeKey: String] = [:]
+    private let spellings: [TimeKey: String]
 
-    /// The spellings of the times in `source`.
+    /// The spellings of the times in `source`. When the source writes the
+    /// same time two or more times, the first spelling is kept.
     ///
     /// - Parameter source: The TOML text.
     init(source: String) {
-        for literal in TOMLSourceScanner.timeLiterals(in: Array(source.utf8)) {
-            let key = TimeKey(
-                hour: literal.hour, minute: literal.minute, second: literal.second ?? 0,
-                nanosecond: literal.fraction.map(Self.nanoseconds) ?? 0)
-            if spellings[key] == nil {
-                spellings[key] = Self.timeText(
-                    hour: literal.hour, minute: literal.minute, second: literal.second,
-                    nanosecond: literal.fraction.map(Self.nanoseconds))
-            }
-        }
+        spellings = Dictionary(
+            TOMLSourceScanner.timeLiterals(in: Array(source.utf8)).map(Self.spelling),
+            uniquingKeysWith: { first, _ in first })
+    }
+
+    /// The key and the spelling of one time of the source.
+    private static func spelling(of literal: TOMLTimeLiteral) -> (TimeKey, String) {
+        let nanosecond = literal.fraction.map(nanoseconds)
+        let key = TimeKey(
+            hour: literal.hour, minute: literal.minute, second: literal.second ?? 0, nanosecond: nanosecond ?? 0)
+        let text = timeText(hour: literal.hour, minute: literal.minute, second: literal.second, nanosecond: nanosecond)
+        return (key, text)
     }
 
     /// The `Display` text of a TOMLDecoder datetime value, or `nil` when
@@ -316,7 +316,7 @@ struct TOMLTimeSpellings {
     private static func nanoseconds(_ fraction: [UInt8]) -> Int {
         let digits = fraction.prefix(nanosecondDigits).map { Int($0 - UInt8(ascii: "0")) }
         let padding = Array(repeating: 0, count: nanosecondDigits - digits.count)
-        return (digits + padding).reduce(0) { $0 * decimalBase + $1 }
+        return (digits + padding).reduce(0) { $0 * NumberRadix.decimal + $1 }
     }
 
     /// `value` in decimal with leading zeros to `width` digits.

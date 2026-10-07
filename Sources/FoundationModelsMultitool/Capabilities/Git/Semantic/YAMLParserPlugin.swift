@@ -95,17 +95,16 @@ struct YAMLParserPlugin: SemanticParserPlugin {
     /// key that is not a text has the `Debug` text of its value; a later key
     /// with the same text wins, as in the Rust `HashMap`.
     private static func valueTexts(of mapping: YAMLMapping) -> [[UInt8]: (text: String, isSection: Bool)] {
-        var texts: [[UInt8]: (text: String, isSection: Bool)] = [:]
-        for entry in mapping.entries {
-            let keyText: String
-            if case .string(let text) = entry.key.untagged {
-                keyText = text
-            } else {
-                keyText = entry.key.debugText
-            }
-            texts[Array(keyText.utf8)] = valueText(of: entry.value)
-        }
-        return texts
+        Dictionary(
+            mapping.entries.map { (Array(keyText(of: $0.key).utf8), valueText(of: $0.value)) },
+            uniquingKeysWith: { _, later in later })
+    }
+
+    /// The text of one key of the parsed mapping: the text of a text key,
+    /// else the `Debug` text of the key.
+    private static func keyText(of key: YAMLValue) -> String {
+        guard case .string(let text) = key.untagged else { return key.debugText }
+        return text
     }
 
     /// The value text of one value and whether it is a section.

@@ -152,11 +152,14 @@ enum YAMLNumber: Hashable {
     /// A float (`N::Float`). serde_yaml_ng keeps one NaN.
     case float(Double)
 
-    /// The number of an `i64`: `From<i64>` for `Number`, which gives a
-    /// positive number for zero and more.
-    init(_ value: Int64) {
-        self = value < 0 ? .negative(value) : .positive(UInt64(value))
-    }
+    /// The first value that ``hash(into:)`` combines for a positive integer.
+    private static let positiveHashKind = 0
+
+    /// The first value that ``hash(into:)`` combines for a negative integer.
+    private static let negativeHashKind = 1
+
+    /// The value that ``hash(into:)`` combines for a float.
+    private static let floatHashKind = 2
 
     /// The equality of `N` in serde_yaml_ng: two NaN floats are equal.
     static func == (lhs: YAMLNumber, rhs: YAMLNumber) -> Bool {
@@ -177,13 +180,13 @@ enum YAMLNumber: Hashable {
     func hash(into hasher: inout Hasher) {
         switch self {
         case .positive(let value):
-            hasher.combine(0)
+            hasher.combine(Self.positiveHashKind)
             hasher.combine(value)
         case .negative(let value):
-            hasher.combine(1)
+            hasher.combine(Self.negativeHashKind)
             hasher.combine(value)
         case .float:
-            hasher.combine(2)
+            hasher.combine(Self.floatHashKind)
         }
     }
 

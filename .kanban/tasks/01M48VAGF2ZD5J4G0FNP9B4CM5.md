@@ -48,6 +48,60 @@ comments:
     - evidence: one local commit "feat: add JSON, YAML, TOML, CSV, Markdown, and fallback plugins to git semantic". It holds Package.swift, the plugin sources, the tests, the golden files, git.md, and all .kanban changes. No build product is staged. The sha is in the git log. No amend was done and no push was done.
     - next: none for this step
   timestamp: 2026-10-07T01:28:46.975106+00:00
+- actor: claude-code
+  id: 01m4a1aqfcq8epksbk3as0n9pe
+  text: |-
+    ### review — findings
+    - evidence: `review sha HEAD~1..HEAD` (commit 6410c1b). The commit has no renames, so no file-scoped review was necessary. Counts: 12 findings, 16 confirmed, 4 refuted, 28 attempted, 0 failed. Findings: JSONParserPlugin.swift:200, JSONParserPlugin.swift:259, RustText.swift:96, TOMLSourceScanner.swift:51, TOMLSourceScanner.swift:187, TOMLValue.swift:196, YAMLEmitter.swift:75, YAMLEmitter.swift:100, YAMLParserPlugin.swift:98, YAMLScalarRules.swift:79, YAMLValue.swift:157, YAMLValue.swift:186.
+    - next: Correct each finding in the "Review Findings (2026-10-06 20:29)" section. Remove each cause from the full file. Then run the review again.
+  timestamp: 2026-10-07T01:58:27.052528+00:00
+- actor: claude-code
+  id: 01m4a1ber76xjab289jxcs2khn
+  text: |-
+    ### finish iteration 1 — findings
+    - implement: changed — Package.swift, six data plugins and helpers in Git/Semantic/, test files, 34 diff goldens and entity goldens, git.md
+    - test: green — swift test, 2186 passed in 189 suites; fresh build of TOMLDecoder and Yams has no warning; IntegrationTests build complete
+    - commit: 6410c1b
+    - review: findings — JSONParserPlugin.swift:200, JSONParserPlugin.swift:259, RustText.swift:96, TOMLSourceScanner.swift:51, TOMLSourceScanner.swift:187, TOMLValue.swift:196, YAMLEmitter.swift:75, YAMLEmitter.swift:100, YAMLParserPlugin.swift:98, YAMLScalarRules.swift:79, YAMLValue.swift:157, YAMLValue.swift:186 (all in Sources/FoundationModelsMultitool/Capabilities/Git/Semantic/)
+  timestamp: 2026-10-07T01:58:50.887449+00:00
+- actor: claude-code
+  id: 01m4a1tjbv3txdmdqgy5shj9cj
+  text: |-
+    Review findings (2026-10-06 20:29) are corrected. What changed:
+    - New `NumberRadix.swift` (Git/Semantic): `binary`, `octal`, `decimal`, `hexadecimal`. It replaces the radix numbers in RustText, TOMLValue (JSONText), TOMLSourceScanner, and YAMLScalarRules, and the local `decimalBase`/`decimalRadix` constants in those files.
+    - JSONParserPlugin: for-in loop in place of `forEach`; `rootDepth`/`entryValueDepth` in place of the depth numbers; `extractEntities` is now a `compactMap` over a new helper `entity(of:lines:boundary:filePath:)` and gives no entity when one entry fails (same as the old early `return []`).
+    - RustText.debugQuoted and JSONText.quoted: `map` + `joined` over a per-scalar helper, not a `var` accumulator.
+    - TOMLSourceScanner: `escapeLength = 2` for the escape step.
+    - TOMLTimeSpellings: `spellings` is a `let`, built with `Dictionary(_:uniquingKeysWith:)` that keeps the first spelling (same rule as before).
+    - YAMLEmitter: `var used: Set<Unicode.Scalar> = []`; `masks`/`originals` are `let`, built from `zip(wide, free)` (zip stops when no free private use scalar is left, same as the old `break`); `replacing` uses `map`.
+    - YAMLParserPlugin.valueTexts: `Dictionary(_:uniquingKeysWith: { _, later in later })` (a later key with the same text wins, as in the Rust `HashMap`), with a helper `keyText(of:)`. `uniqueKeysWithValues` is not correct here, because two keys can have the same text.
+    - YAMLNumber: the unused `init(_ value: Int64)` is removed; `positiveHashKind`/`negativeHashKind`/`floatHashKind` name the hash numbers.
+    Scan of every Swift file that 6410c1b added (sources and tests), with the tools of the rules: swiftlint `no_magic_numbers` (allowed 0, 1, -1, 100) gives 0; `swift format lint` with the 7 idiom rules gives 0; periphery 3.8.0 (index store `.build/out`, `--retain-public`, tests report-excluded) gives no finding in an added file.
+    Not changed, on purpose: the `var` collections in the stateful scanners (TOMLSourceScanner.timeLiterals, TOMLParserPlugin.entries, MarkdownSection.sections, CSVParserPlugin.cells, YAMLLoader sequence/mapping/events). Each loop moves an index or a state that the next step reads, so a `map` over a collection cannot replace it.
+    Discovery: periphery reports "Superfluous ignore comment" for `parentID` and `metadata` in SemanticEntity.swift (a file that 6410c1b changed, not added; the markers are older). Not changed in this pass.
+  timestamp: 2026-10-07T02:07:06.107127+00:00
+- actor: claude-code
+  id: 01m4a1tn2zwqz8faajb1nq62n6
+  text: |-
+    ### implement — changed
+    - evidence: 10 files — Git/Semantic/NumberRadix.swift (new), JSONParserPlugin.swift, RustText.swift, TOMLSourceScanner.swift, TOMLValue.swift, YAMLEmitter.swift, YAMLParserPlugin.swift, YAMLScalarRules.swift, YAMLValue.swift, and this task (12 of 12 findings checked). `swift build --build-tests`: Build complete, only the known mlx-swift "missing creator" note. `swift test`: 2186 tests in 189 suites passed, all goldens included.
+    - next: /review. Not committed and not pushed.
+  timestamp: 2026-10-07T02:07:08.895414+00:00
+- actor: claude-code
+  id: 01m4a1z4qd6n6vgmkb3wj5pjmp
+  text: |-
+    ### test — green
+    - evidence: swift build --build-tests: Build complete, 0 errors. swift test: 2186 tests in 189 suites passed, 0 failed, 0 skipped. IntegrationTests swift build --build-tests: Build complete.
+    - warnings: only the known "missing creator for mutated node" for mlx-swift_Cmlx.bundle (dependency warning, not from this change). No other warnings.
+    - next: review
+  timestamp: 2026-10-07T02:09:35.981512+00:00
+- actor: claude-code
+  id: 01m4a1zpv4pj44fdph0ezn5szc
+  text: |-
+    ### commit — changed
+    - evidence: one local commit, subject "refactor: fix 12 review findings in git semantic parsers". It holds NumberRadix.swift, the changed files in Capabilities/Git/Semantic/, and the .kanban/ changes. No build product is staged. No push was done.
+    - next: review. Read the sha with `git log -1`. The sha is not in this comment, because the comment is part of the commit.
+  timestamp: 2026-10-07T02:09:54.532171+00:00
 depends_on:
 - 01M48V9CB973V4MPTJV8GEXZCT
 position_column: doing
@@ -76,4 +130,28 @@ Make fixtures with the sah tool `git` op `get diff` (inline mode, `language` = `
 ## Acceptance
 
 - `swift build` and `swift test` pass with no new warnings.
-- Each golden passes. #git
+- Each golden passes.
+
+## Review Findings (2026-10-06 20:29)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 29 file(s) reviewed, 125 not reviewed.
+
+> 4 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 4 file(s)
+
+> 121 file(s) not reviewed — no validator matched:
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/**` (golden fixtures: `after.txt`, `before.txt`, `expected.json`, `entities/*.json`) — 120 file(s), no validator matches these files
+> - `git.md` — no validator matches this file
+
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Git/Semantic/JSONParserPlugin.swift:200` `code-hygiene/idioms-swift` — ReplaceForEachWithForLoop: replace use of '.forEach { ... }' with for-in loop.
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Git/Semantic/JSONParserPlugin.swift:259` `code-hygiene/magic-numbers-swift` — Magic numbers should be replaced by named constants.
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Git/Semantic/RustText.swift:96` `code-hygiene/magic-numbers-swift` — Magic numbers should be replaced by named constants.
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Git/Semantic/TOMLSourceScanner.swift:51` `code-hygiene/magic-numbers-swift` — Magic numbers should be replaced by named constants.
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Git/Semantic/TOMLSourceScanner.swift:187` `code-hygiene/magic-numbers-swift` — Magic numbers should be replaced by named constants.
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Git/Semantic/TOMLValue.swift:196` `code-hygiene/magic-numbers-swift` — Magic numbers should be replaced by named constants.
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Git/Semantic/YAMLEmitter.swift:75` `swift/idioms` — Empty-collection variables must use a literal with a type annotation, not a call. This code uses `var used = Set<Unicode.Scalar>()` which is the non-idiomatic form. Change to `var used: Set<Unicode.Scalar> = []`.
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Git/Semantic/YAMLEmitter.swift:100` `swift/immutability` — Building a collection through a mutable accumulator in a loop should be replaced with `map`/`compactMap`. This code uses `var result = String.UnicodeScalarView()` followed by a loop that appends to it. Rewrite to use functional composition: `let result = String(text.unicodeScalars.map { replacements[$0] ?? $0 })`.
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Git/Semantic/YAMLParserPlugin.swift:98` `swift/immutability` — Building a collection through a mutable accumulator in a loop should be replaced with `map`/`compactMap`. This code uses `var texts: [[UInt8]: (text: String, isSection: Bool)] = [:]` followed by a for loop that assigns to it. Rewrite using `Dictionary(uniqueKeysWithValues:)` with a map over `mapping.entries` instead of mutating a local dictionary in a loop.
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Git/Semantic/YAMLScalarRules.swift:79` `code-hygiene/magic-numbers-swift` — Magic numbers should be replaced by named constants.
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Git/Semantic/YAMLValue.swift:157` `code-hygiene/dead-code-swift` — function.constructor `init(_:)` is unused.
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Git/Semantic/YAMLValue.swift:186` `code-hygiene/magic-numbers-swift` — Magic numbers should be replaced by named constants. #git

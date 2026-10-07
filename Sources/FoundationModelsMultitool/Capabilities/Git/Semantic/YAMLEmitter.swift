@@ -62,25 +62,23 @@ private struct YAMLWideScalarMask {
     private static let privateUseScalars: ClosedRange<UInt32> = 0xE000...0xF8FF
 
     /// The private use scalar of each wide scalar.
-    private var masks: [Unicode.Scalar: Unicode.Scalar] = [:]
+    private let masks: [Unicode.Scalar: Unicode.Scalar]
 
     /// The wide scalar of each private use scalar.
-    private var originals: [Unicode.Scalar: Unicode.Scalar] = [:]
+    private let originals: [Unicode.Scalar: Unicode.Scalar]
 
     /// A mask for the texts of `value`. A wide scalar gets no mask when no
     /// free private use scalar is left.
     ///
     /// - Parameter value: The value to write.
     init(_ value: YAMLValue) {
-        var used = Set<Unicode.Scalar>()
+        var used: Set<Unicode.Scalar> = []
         Self.collectScalars(of: value, into: &used)
-        var free = Self.privateUseScalars.lazy.compactMap(Unicode.Scalar.init).filter { !used.contains($0) }
-            .makeIterator()
-        for scalar in used.sorted(by: { $0.value < $1.value }) where scalar.value >= Self.firstWideScalar {
-            guard let mask = free.next() else { break }
-            masks[scalar] = mask
-            originals[mask] = scalar
-        }
+        let wide = used.filter { $0.value >= Self.firstWideScalar }.sorted { $0.value < $1.value }
+        let free = Self.privateUseScalars.lazy.compactMap(Unicode.Scalar.init).filter { !used.contains($0) }
+        let pairs = Array(zip(wide, free))
+        masks = Dictionary(uniqueKeysWithValues: pairs)
+        originals = Dictionary(uniqueKeysWithValues: pairs.map { ($1, $0) })
     }
 
     /// `text` with each wide scalar replaced by its mask.
@@ -97,11 +95,7 @@ private struct YAMLWideScalarMask {
 
     /// `text` with each scalar that `replacements` holds replaced.
     private static func replacing(_ text: String, with replacements: [Unicode.Scalar: Unicode.Scalar]) -> String {
-        var result = String.UnicodeScalarView()
-        for scalar in text.unicodeScalars {
-            result.append(replacements[scalar] ?? scalar)
-        }
-        return String(result)
+        String(String.UnicodeScalarView(text.unicodeScalars.map { replacements[$0] ?? $0 }))
     }
 
     /// Adds each scalar of the texts and tags of `value` to `scalars`.

@@ -50,15 +50,22 @@ struct JSONParserPlugin: SemanticParserPlugin {
         guard RustText.trimmed(content).unicodeScalars.first == "{" else { return [] }
         let lines = RustText.lines(of: content)
         let entries = JSONEntryScanner.entries(in: content)
-        var entities: [SemanticEntity] = []
-        for (index, entry) in entries.enumerated() {
+        let entities = entries.indices.compactMap { index in
             let boundary = index + 1 < entries.count ? entries[index + 1].startLine : Self.closingBraceLine(of: lines)
-            guard let endLine = Self.endLine(of: lines, start: entry.startLine, boundary: boundary),
-                entry.startLine - 1 <= endLine, endLine <= lines.count
-            else { return [] }
-            entities.append(Self.entity(of: entry, lines: lines[(entry.startLine - 1)..<endLine], filePath: filePath))
+            return Self.entity(of: entries[index], lines: lines, boundary: boundary, filePath: filePath)
         }
-        return entities
+        return entities.count == entries.count ? entities : []
+    }
+
+    /// The entity of one entry that stops before `boundary`, or `nil` where
+    /// the Rust plugin slices outside the lines (and panics).
+    private static func entity(
+        of entry: JSONEntry, lines: [String], boundary: Int, filePath: String
+    ) -> SemanticEntity? {
+        guard let endLine = endLine(of: lines, start: entry.startLine, boundary: boundary),
+            entry.startLine - 1 <= endLine, endLine <= lines.count
+        else { return nil }
+        return entity(of: entry, lines: lines[(entry.startLine - 1)..<endLine], filePath: filePath)
     }
 
     /// The entity of one entry.
@@ -167,6 +174,12 @@ private struct JSONEntry {
 /// a key, and the `:` opens an entry.
 private struct JSONEntryScanner {
 
+    /// The depth of the root object.
+    private static let rootDepth = 1
+
+    /// The depth of a container that is the value of a top-level entry.
+    private static let entryValueDepth = rootDepth + 1
+
     /// The entries found so far.
     private var entries: [JSONEntry] = []
 
@@ -197,7 +210,9 @@ private struct JSONEntryScanner {
     /// The entries of `content`: `find_top_level_entries` in `json.rs`.
     static func entries(in content: String) -> [JSONEntry] {
         var scanner = JSONEntryScanner()
-        content.unicodeScalars.forEach { scanner.read($0) }
+        for scalar in content.unicodeScalars {
+            scanner.read(scalar)
+        }
         scanner.closeLastEntry()
         return scanner.entries
     }
@@ -245,23 +260,23 @@ private struct JSONEntryScanner {
         switch scalar {
         case "\"":
             isInString = true
-            if depth == 1 && currentKey == nil && !isEntryOpen {
+            if depth == Self.rootDepth && currentKey == nil && !isEntryOpen {
                 isReadingKey = true
                 keyText = ""
             }
-        case ":" where depth == 1:
+        case ":" where depth == Self.rootDepth:
             if let currentKey {
                 entries.append(JSONEntry(key: currentKey, startLine: lineNumber))
                 isEntryOpen = true
             }
         case "{", "[":
             depth += 1
-            if depth == 2 && isEntryOpen && !entries.isEmpty {
+            if depth == Self.entryValueDepth && isEntryOpen && !entries.isEmpty {
                 entries[entries.count - 1].entityType = JSONParserPlugin.objectEntityType
             }
         case "}", "]":
             depth -= 1
-        case "," where depth == 1:
+        case "," where depth == Self.rootDepth:
             closeLastEntry()
             currentKey = nil
             isEntryOpen = false

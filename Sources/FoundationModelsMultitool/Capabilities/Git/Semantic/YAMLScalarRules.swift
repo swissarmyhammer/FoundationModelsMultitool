@@ -76,13 +76,12 @@ enum YAMLScalarRules {
     private static let notANumberTexts: Set = [".nan", ".NaN", ".NAN"]
 
     /// The prefix of each radix that `parse_unsigned_int` tries, in order.
-    private static let radixPrefixes: [(prefix: String, radix: Int)] = [("0x", 16), ("0o", 8), ("0b", 2)]
-
-    /// The radix of a decimal integer.
-    private static let decimalRadix = 10
+    private static let radixPrefixes: [(prefix: String, radix: Int)] = [
+        ("0x", NumberRadix.hexadecimal), ("0o", NumberRadix.octal), ("0b", NumberRadix.binary),
+    ]
 
     /// The value of the digit `a` (and `A`): the first letter digit.
-    private static let letterDigitBase = 10
+    private static let letterDigitBase = NumberRadix.decimal
 
     /// Whether `text` is null: `parse_null` in `de.rs`.
     static func isNull(_ text: String) -> Bool {
@@ -131,7 +130,7 @@ enum YAMLScalarRules {
             }
         }
         guard !startsWithSign(unpositive), !isDigitsButNotNumber(text) else { return nil }
-        return rustInteger(unpositive, radix: decimalRadix)
+        return rustInteger(unpositive, radix: NumberRadix.decimal)
     }
 
     /// `parse_negative_int` in `de.rs`.
@@ -143,7 +142,7 @@ enum YAMLScalarRules {
             }
         }
         guard !isDigitsButNotNumber(text) else { return nil }
-        return rustInteger(text, radix: decimalRadix)
+        return rustInteger(text, radix: NumberRadix.decimal)
     }
 
     /// The float of `text`, or `nil`: `parse_f64` in `de.rs`. An infinite

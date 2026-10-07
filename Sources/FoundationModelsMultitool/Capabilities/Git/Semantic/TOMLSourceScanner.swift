@@ -41,14 +41,15 @@ enum TOMLSourceScanner {
     /// The count of digits of a part of a time.
     private static let partDigits = 2
 
-    /// The base of a decimal digit.
-    private static let decimalBase = 10
+    /// The count of bytes of an escape in a basic string: `\` and one byte.
+    private static let escapeLength = 2
 
     /// The prefixes of the integer forms that are not decimal, and their bases.
     /// The match is case-sensitive, as in TOML and the `toml` crate: `0X1` is
     /// not an integer.
     private static let radixPrefixes: [(prefix: [UInt8], radix: Int)] = [
-        (Array("0x".utf8), 16), (Array("0o".utf8), 8), (Array("0b".utf8), 2),
+        (Array("0x".utf8), NumberRadix.hexadecimal), (Array("0o".utf8), NumberRadix.octal),
+        (Array("0b".utf8), NumberRadix.binary),
     ]
 
     /// The bytes that open a nested value: an array or an inline table.
@@ -164,7 +165,7 @@ enum TOMLSourceScanner {
             sign = first == UInt8(ascii: "-") ? [first] : []
             body = body.dropFirst()
         }
-        var radix = decimalBase
+        var radix = NumberRadix.decimal
         for form in radixPrefixes where body.starts(with: form.prefix) {
             radix = form.radix
             body = body.dropFirst(form.prefix.count)
@@ -184,7 +185,7 @@ enum TOMLSourceScanner {
         while index < bytes.count {
             let byte = bytes[index]
             if isBasic && byte == UInt8(ascii: "\\") {
-                index += 2
+                index += escapeLength
                 continue
             }
             if byte == quote && (!isMultiLine || bytes[index...].prefix(multiLineQuoteCount).allSatisfy { $0 == quote }) {
@@ -225,12 +226,12 @@ enum TOMLSourceScanner {
     /// The value of the two digits at `index`, or `nil`.
     private static func number(in bytes: [UInt8], at index: Int) -> Int? {
         guard index + partDigits <= bytes.count, isDigit(bytes[index]), isDigit(bytes[index + 1]) else { return nil }
-        return Int(bytes[index] - UInt8(ascii: "0")) * decimalBase + Int(bytes[index + 1] - UInt8(ascii: "0"))
+        return Int(bytes[index] - UInt8(ascii: "0")) * NumberRadix.decimal + Int(bytes[index + 1] - UInt8(ascii: "0"))
     }
 
     /// Whether `byte` is a digit of `radix` (decimal when not given). The
     /// letters of a hexadecimal digit can be in either case, as TOML permits.
-    private static func isDigit(_ byte: UInt8, radix: Int = decimalBase) -> Bool {
+    private static func isDigit(_ byte: UInt8, radix: Int = NumberRadix.decimal) -> Bool {
         guard let value = Character(Unicode.Scalar(byte)).hexDigitValue else { return false }
         return value < radix
     }
