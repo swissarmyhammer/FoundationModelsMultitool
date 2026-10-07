@@ -32,8 +32,24 @@ comments:
     - evidence: one local commit "fix(git): do not name tools.files.read in the git.show description" with Show.swift, GitCapabilityTests.swift, and all .kanban changes (includes leftover files of ^m3em6nf). The sha is in the final step record of the caller. No push.
     - next: review
   timestamp: 2026-10-07T16:37:27.893554+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m4bkyaxgw01agvec2y2rgxna
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit c3e4848). findings 0, confirmed 0, refuted 0, attempted 7, failed 0. 2 files reviewed: Sources/FoundationModelsMultitool/Capabilities/Git/Show.swift, Tests/FoundationModelsMultitoolTests/GitCapabilityTests.swift. 4 .kanban files not reviewed (.reviewignore). The commit renames no file.
+    - next: none. The task is in done.
+  timestamp: 2026-10-07T16:42:58.352791+00:00
+- actor: claude-code
+  id: 01m4bkyvk9erm2gvq6vpra7whp
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 2 files (Show.swift description, GitCapabilityTests.swift new test); git live scenario 27.9 s, 2 tool calls
+    - test: green — swift test, 2267 passed in 196 suites; IntegrationTests build complete
+    - commit: c3e4848
+    - review: clean — 0 findings, 7 validator runs
+  timestamp: 2026-10-07T16:43:15.433704+00:00
+position_column: done
+position_ordinal: ffffc180
 title: 'git: the git.show description names tools.files.read, also when no files capability is mounted'
 ---
 ## Problem
