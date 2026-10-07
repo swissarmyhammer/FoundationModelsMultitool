@@ -10,9 +10,9 @@ import Testing
 /// tasks", item 11).
 ///
 /// **The mount.** `MultiTool.Builder().withGit(root:)` over the work folder of
-/// ``GitScenarioHistory``, vended through
-/// `MultiTool.Registry.makeSessionTools(selection:embedder:)` and mounted on
-/// the `RoutedSession` that the resolved `.standard` slot vends. This is the
+/// ``GitScenarioHistory``, vended through `makeSessionTools(of:on:)` and
+/// mounted by `runGatedTurnScenario(named:prompt:tools:reading:)` on the
+/// `RoutedSession` that the resolved `.standard` slot vends. This is the
 /// wiring that a Router host makes, the same as `WebResearchScenarioTests`.
 /// The session gets no instructions: the tool descriptions are the whole
 /// product surface.
@@ -57,7 +57,7 @@ struct GitScenarioTests {
         let verbPaths: Set<String>
 
         /// Whether the repository also holds a staged new file and an
-        /// untracked file (``GitScenarioHistory/addUncommittedFiles(to:)``).
+        /// untracked file (``GitScenarioTests/addUncommittedFiles(to:)``).
         let hasUncommittedFiles: Bool
 
         /// The facts that a correct answer names, from the sha of each
@@ -81,8 +81,24 @@ struct GitScenarioTests {
     /// The length of the short sha that git prints by default.
     private static let shortShaLength = 7
 
-    /// The line of the blame scenario.
-    private static let blameLine = GitScenarioHistory.greetingLine
+    /// The line of the blame scenario: the line of
+    /// `GitScenarioHistory.greeterPath` that holds the greeting, from 1.
+    /// `GitScenarioHistory.greeterText(greeting:)` puts the greeting on its
+    /// second line.
+    private static let blameLine = 2
+
+    /// The subject of each commit of ``GitScenarioHistory``, oldest first.
+    private static let subjects = [
+        GitScenarioHistory.firstSubject, GitScenarioHistory.secondSubject, GitScenarioHistory.thirdSubject,
+    ]
+
+    /// The file that ``addUncommittedFiles(to:)`` stages, relative to the work
+    /// folder. HEAD does not hold it.
+    private static let stagedNewPath = "Sources/Farewell.swift"
+
+    /// The file that ``addUncommittedFiles(to:)`` writes and does not stage,
+    /// relative to the work folder.
+    private static let untrackedPath = "TODO.md"
 
     /// How many characters of the reply the `RESULT` line shows.
     private static let replyPreviewCharacters = 160
@@ -120,14 +136,14 @@ struct GitScenarioTests {
             verbPaths: ["git.status"],
             hasUncommittedFiles: true,
             answerFacts: { _ in
-                [GitScenarioHistory.geometryPath, GitScenarioHistory.stagedNewPath, GitScenarioHistory.untrackedPath]
+                [GitScenarioHistory.geometryPath, stagedNewPath, untrackedPath]
             }),
         GitScenario(
             name: "gitLog",
             prompt: "What are the subjects of the last three commits of the git repository, newest first?",
             verbPaths: ["git.log"],
             hasUncommittedFiles: false,
-            answerFacts: { _ in GitScenarioHistory.subjects }),
+            answerFacts: { _ in subjects }),
         GitScenario(
             name: "gitShow",
             prompt: "What did the file \(GitScenarioHistory.greeterPath) hold two commits ago, at HEAD~2, "
@@ -155,29 +171,35 @@ struct GitScenarioTests {
     @Test("the model calls the git verbs of the scenario from a snippet, and no verb answers a correction",
           arguments: scenarios)
     func theModelReadsTheRepository(_ scenario: GitScenario) async throws {
-        try await withLiveRouterFixture(name: scenario.name) { fixture in
-            let (repository, shas) = try GitScenarioHistory.make()
-            if scenario.hasUncommittedFiles {
-                try GitScenarioHistory.addUncommittedFiles(to: repository)
-            }
-            let registry = try MultiTool.Builder().withGit(root: repository.workDirectory).buildRegistry()
-            // No instructions, for the reason `runNativeIntegrationScenario`
-            // gives: mounting the tools is the whole product surface.
-            let seams = fixture.discoverySeams
-            let session = fixture.profile.standard.makeSession(
-                tools: try registry.makeSessionTools(selection: seams.selection, embedder: seams.embedder),
-                discoveryPriming: scenarioDiscoveryPriming
-            )
-
-            let start = Date()
-            let turn = try await streamTurn(of: session, prompt: scenario.prompt + Self.shortAnswerRequest)
-            let elapsed = Date().timeIntervalSince(start)
-
-            grade(scenario: scenario.name, checks: Self.checks(for: scenario, turn: turn))
-            reportGatedResult(
-                scenario: scenario.name,
-                line: Self.resultLine(turn: turn, facts: scenario.answerFacts(shas), elapsed: elapsed))
+        let (repository, shas) = try GitScenarioHistory.make()
+        if scenario.hasUncommittedFiles {
+            try Self.addUncommittedFiles(to: repository)
         }
+        let registry = try MultiTool.Builder().withGit(root: repository.workDirectory).buildRegistry()
+        // The release of `repository` removes its work folder, thus the
+        // repository must live until the turn ends.
+        defer { withExtendedLifetime(repository) {} }
+        try await runGatedTurnScenario(
+            named: scenario.name,
+            prompt: scenario.prompt + Self.shortAnswerRequest,
+            tools: { try makeSessionTools(of: registry, on: $0) },
+            reading: { turn, elapsed in
+                GatedTurnReading(
+                    checks: Self.checks(for: scenario, turn: turn),
+                    resultLine: Self.resultLine(turn: turn, facts: scenario.answerFacts(shas), elapsed: elapsed))
+            })
+    }
+
+    /// Adds two uncommitted files to `repository`: ``stagedNewPath``, staged,
+    /// and ``untrackedPath``, not staged.
+    ///
+    /// - Parameter repository: A repository that `GitScenarioHistory.make()`
+    ///   made.
+    /// - Throws: When a write or the stage fails.
+    private static func addUncommittedFiles(to repository: TemporaryGitRepository) throws {
+        try repository.write("struct Farewell {}\n", to: stagedNewPath)
+        try repository.stage(stagedNewPath)
+        try repository.write("- Add a farewell.\n", to: untrackedPath)
     }
 
     /// The conditions that one scenario is graded on: the verbs, then the
@@ -188,16 +210,9 @@ struct GitScenarioTests {
     ///   - turn: The streamed turn, with each session tool call it made.
     /// - Returns: Each condition, for `grade(scenario:checks:)`.
     private static func checks(for scenario: GitScenario, turn: StreamedTurn) -> [ScenarioCheck] {
-        let typedPaths = NativeTranscript.typedToolPaths(in: turn.calls)
         let correctedOutputs = runCodeOutputs(of: turn).filter { $0.contains(correctionField) }
         return [
-            ScenarioCheck(
-                name: calledTheVerbsCheckName,
-                held: scenario.verbPaths.isSubset(of: typedPaths),
-                failureMessage:
-                    "expected the \(MultiTool.runCodePath) snippets to call \(scenario.verbPaths.sorted()), "
-                    + "but they called \(typedPaths.sorted()) and the calls were \(turn.calls.map(\.name))"
-            ),
+            calledTheVerbsCheck(named: calledTheVerbsCheckName, verbPaths: scenario.verbPaths, in: turn),
             ScenarioCheck(
                 name: noCorrectionCheckName,
                 held: correctedOutputs.isEmpty,
@@ -227,9 +242,7 @@ struct GitScenarioTests {
     /// - Returns: The reading to print after the scenario label.
     private static func resultLine(turn: StreamedTurn, facts: [String], elapsed: TimeInterval) -> String {
         let namedFacts = facts.filter { turn.answer.localizedCaseInsensitiveContains($0) }
-        let route =
-            "elapsed=\(elapsed)s tokens=\(turn.tokenUsage ?? "n/a") toolCalls=\(turn.toolCallCount) "
-            + "calls=\(turn.calls.map(\.name)) "
+        let route = routeReading(of: turn, elapsed: elapsed) + "tokens=\(turn.tokenUsage ?? "n/a") "
         let snippets = "typed=\(NativeTranscript.typedToolPaths(in: turn.calls).sorted()) "
         let score = "answerFacts=\(namedFacts.count)/\(facts.count) named=\(namedFacts) "
         let failures = "priming=\(primingLabel(turn)) failedCalls=\(turn.failedCalls) "

@@ -119,29 +119,18 @@ struct OperationToolLiveTests {
 
     @Test("the model searches, runs one snippet that adds and tags the note, and names the id of the stored note")
     func searchThenCallStoresTheNoteAndNamesItsID() async throws {
-        try await withLiveRouterFixture(name: operationSearchThenCallScenarioName) { fixture in
-            let store = IntegrationNotesStore()
-            let notes = try IntegrationNotesTool.make(store: store)
-            let surface = try makeScenarioSurface(over: [notes], on: fixture)
-            // No instructions, for the reason `runNativeIntegrationScenario`
-            // gives: mounting the tools is the whole product surface.
-            let session = fixture.profile.standard.makeSession(
-                tools: surface.tools,
-                discoveryPriming: scenarioDiscoveryPriming
-            )
-
-            let start = Date()
-            let turn = try await streamTurn(of: session, prompt: operationSearchThenCallPrompt)
-            let elapsed = Date().timeIntervalSince(start)
-            let stored = await store.list()
-
-            grade(
-                scenario: operationSearchThenCallScenarioName,
-                checks: Self.searchThenCallChecks(turn: turn, stored: stored))
-            reportGatedResult(
-                scenario: operationSearchThenCallScenarioName,
-                line: Self.resultLine(turn: turn, stored: stored, elapsed: elapsed))
-        }
+        let store = IntegrationNotesStore()
+        let notes = try IntegrationNotesTool.make(store: store)
+        try await runGatedTurnScenario(
+            named: operationSearchThenCallScenarioName,
+            prompt: operationSearchThenCallPrompt,
+            tools: { try makeScenarioSurface(over: [notes], on: $0).tools },
+            reading: { turn, elapsed in
+                let stored = await store.list()
+                return GatedTurnReading(
+                    checks: Self.searchThenCallChecks(turn: turn, stored: stored),
+                    resultLine: Self.resultLine(turn: turn, stored: stored, elapsed: elapsed))
+            })
     }
 
     /// The conditions the search-then-call run is graded on, in reporting
@@ -210,7 +199,7 @@ struct OperationToolLiveTests {
     ///   - elapsed: how long the turn took, in seconds.
     /// - Returns: the reading to print after the scenario label.
     private static func resultLine(turn: StreamedTurn, stored: [IntegrationNote], elapsed: TimeInterval) -> String {
-        let route = "elapsed=\(elapsed)s toolCalls=\(turn.toolCallCount) calls=\(turn.calls.map(\.name)) "
+        let route = routeReading(of: turn, elapsed: elapsed)
         let outcome = "stored=\(Self.descriptions(of: stored)) failedCalls=\(turn.failedCalls) "
         return route + outcome + "reply=\"\(turn.answer.prefix(operationToolReplyPreviewCharacters))\""
     }

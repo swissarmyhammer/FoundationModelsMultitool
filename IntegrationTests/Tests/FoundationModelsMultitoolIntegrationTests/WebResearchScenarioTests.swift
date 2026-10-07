@@ -72,28 +72,18 @@ struct WebResearchScenarioTests {
 
     @Test("the model calls tools.web.search from a snippet and answers with swift.org")
     func searchesTheWebAndNamesTheSwiftHomePage() async throws {
-        try await withLiveRouterFixture(name: webResearchScenarioName) { fixture in
-            let registry = try MultiTool.Builder()
-                .withWeb(configuration: .keyless)
-                .buildRegistry()
-            // No instructions, for the reason `runNativeIntegrationScenario`
-            // gives: mounting the tools is the whole product surface.
-            // Discovery is mounted through `LiveRouterFixture.discoverySeams`.
-            let seams = fixture.discoverySeams
-            let session = fixture.profile.standard.makeSession(
-                tools: try registry.makeSessionTools(selection: seams.selection, embedder: seams.embedder),
-                discoveryPriming: scenarioDiscoveryPriming
-            )
-
-            let start = Date()
-            let turn = try await streamTurn(of: session, prompt: webResearchPrompt)
-            let elapsed = Date().timeIntervalSince(start)
-
-            grade(scenario: webResearchScenarioName, checks: Self.webResearchChecks(turn: turn))
-            reportGatedResult(
-                scenario: webResearchScenarioName,
-                line: Self.resultLine(turn: turn, elapsed: elapsed))
-        }
+        let registry = try MultiTool.Builder()
+            .withWeb(configuration: .keyless)
+            .buildRegistry()
+        try await runGatedTurnScenario(
+            named: webResearchScenarioName,
+            prompt: webResearchPrompt,
+            tools: { try makeSessionTools(of: registry, on: $0) },
+            reading: { turn, elapsed in
+                GatedTurnReading(
+                    checks: Self.webResearchChecks(turn: turn),
+                    resultLine: Self.resultLine(turn: turn, elapsed: elapsed))
+            })
     }
 
     /// The conditions that the web research run is graded on, in reporting
@@ -103,18 +93,8 @@ struct WebResearchScenarioTests {
     ///   made.
     /// - Returns: each condition, for `grade(scenario:checks:)`.
     private static func webResearchChecks(turn: StreamedTurn) -> [ScenarioCheck] {
-        let typedPaths = NativeTranscript.typedToolPaths(in: turn.calls)
-        var checks = [
-            ScenarioCheck(
-                name: searchedTheWebCheckName,
-                held: typedPaths.contains(webSearchPath),
-                failureMessage:
-                    "expected a \(MultiTool.runCodePath) snippet to call tools.\(webSearchPath), "
-                    + "but the snippets called \(typedPaths.sorted()) and the calls were \(turn.calls.map(\.name))"
-            )
-        ]
-        checks += answerChecks(turn.answer, containsOneOf: [swiftHomePageHost], mustNotContain: [])
-        return checks
+        [calledTheVerbsCheck(named: searchedTheWebCheckName, verbPaths: [webSearchPath], in: turn)]
+            + answerChecks(turn.answer, containsOneOf: [swiftHomePageHost], mustNotContain: [])
     }
 
     /// The `RESULT` line of the web research run.
@@ -127,7 +107,7 @@ struct WebResearchScenarioTests {
     ///   - elapsed: how long the turn took, in seconds.
     /// - Returns: the reading to print after the scenario label.
     private static func resultLine(turn: StreamedTurn, elapsed: TimeInterval) -> String {
-        let route = "elapsed=\(elapsed)s toolCalls=\(turn.toolCallCount) calls=\(turn.calls.map(\.name)) "
+        let route = routeReading(of: turn, elapsed: elapsed)
         let snippets = "typed=\(NativeTranscript.typedToolPaths(in: turn.calls).sorted()) "
         let failures = "priming=\(primingLabel(turn)) failedCalls=\(turn.failedCalls) "
         return route + snippets + failures

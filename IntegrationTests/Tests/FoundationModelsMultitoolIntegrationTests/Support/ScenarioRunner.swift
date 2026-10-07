@@ -687,13 +687,11 @@ func makeScenarioSurface(
     if direct {
         registry = registry.directMode()
     }
-    let seams = fixture.discoverySeams
     return ScenarioSurface(
         // The selection and embedder seams, exactly as a Router host
         // mounts them. No `sampleSession:` — the seams carry none, so the
         // product ships without one and this harness must too.
-        tools: try registry.makeSessionTools(
-            selection: seams.selection, embedder: seams.embedder, sampleSession: seams.sampleSession),
+        tools: try makeSessionTools(of: registry, on: fixture),
         // Unioned with the sibling paths the sandbox binds itself, so a
         // snippet calling `tools.searchTools` or `tools.runCode` is not
         // graded as having invented a path it can really call (task

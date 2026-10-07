@@ -42,6 +42,61 @@ comments:
     - evidence: one local commit, subject "feat: add git live model tests, README section, and git status shipped". The sha is in git log (a comment cannot hold its own sha). No build product or log file is staged.
     - next: review
   timestamp: 2026-10-07T11:14:44.257518+00:00
+- actor: claude-code
+  id: 01m4b1m8wvrsfdt9yfxa3fhzx4
+  text: |-
+    ### review — findings
+    - evidence: `review sha HEAD~1..HEAD` (commit 1d44dc3). The commit renames no file. Counts: 7 findings, 7 confirmed, 2 refuted. Findings: GitScenarioTests.swift:157, GitScenarioTests.swift:190, GitScenarioHistory.swift:33, :51, :55, :59, :108. The engine did not review README.md and git.md, because no validator matches these files.
+    - next: Do the 7 items in the "Review Findings (2026-10-07 06:15)" section. The task stays in `review`.
+  timestamp: 2026-10-07T11:22:54.235796+00:00
+- actor: claude-code
+  id: 01m4b1mycqneawzd1cjjxjbxmx
+  text: |-
+    ### finish iteration 2 — findings
+    - implement: (done in iteration 1; work in the tree)
+    - test: green — swift test, 2234 passed in 194 suites; integration 107 tests in 35 suites passed in 328.251 s (wall 6m2.783s); git suite 119.291 s
+    - commit: 1d44dc3
+    - review: findings — IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/GitScenarioTests.swift:157, GitScenarioTests.swift:190 (reuse/reuse); Tests/Support/MultitoolTestSupport/GitScenarioHistory.swift:33, :51, :55, :59, :108 (code-hygiene/dead-code-swift)
+  timestamp: 2026-10-07T11:23:16.247777+00:00
+- actor: claude-code
+  id: 01m4b3bqh765nrsyc3q0nf9acs
+  text: |-
+    Implement (review findings 2026-10-07 06:15) — what changed and why:
+    - New shared helper file `IntegrationTests/.../Support/GatedTurnScenario.swift`: `runGatedTurnScenario(named:prompt:tools:reading:)` (fixture, session with no instructions, one streamed turn, elapsed time, grade, RESULT line), `GatedTurnReading`, `makeSessionTools(of:on:)` (registry + discovery seams), `calledTheVerbsCheck(named:verbPaths:in:)`, and `routeReading(of:elapsed:)`.
+    - GitScenarioTests, WebResearchScenarioTests and OperationToolLiveTests (search-then-call test) now use `runGatedTurnScenario`. Git and web use `calledTheVerbsCheck` (web: `["web.search"]`, the same `held` value as before). `makeScenarioSurface` uses `makeSessionTools(of:on:)`. The check names and `held` conditions did not change; only the web failure message text now has the shared form.
+    - The operation search-then-call checks hold no verb-path check (searchedFirst, oneRunCode, storeHoldsTheNote, answer). To keep its assertions as they are, it does not call `calledTheVerbsCheck`; it uses the shared scenario runner and `routeReading`.
+    - Dead code: the five members were used only by the nested IntegrationTests package, which the dead-code validator does not read. They moved into `GitScenarioTests` as private members (`blameLine = 2`, `subjects`, `stagedNewPath`, `untrackedPath`, `addUncommittedFiles(to:)`). `GitScenarioHistory` now holds only what `make()` and the unit test use. The three unit test files hold no unused member.
+    - Git test: the repository is now made before the fixture resolves. A `defer { withExtendedLifetime(repository) {} }` keeps the work folder alive until the turn ends (the async form of `withExtendedLifetime` does not exist in this toolchain; the first try did not compile).
+    - Environment problem found: a background index build wrote a read-only, deeply nested `.build/index-build` tree inside `IntegrationTests/.build/checkouts/FoundationModelsRouter`. SwiftPM then could not replace that checkout (NSCocoaErrorDomain 513). Removing that `.build` folder (chmod u+w, rm) fixed the build. If the integration build fails with "couldn't be removed because you don't have permission", look there first.
+    - Not changed (out of scope of the findings): `ShellBackgroundRunner` and other support files also call `registry.makeSessionTools(selection:embedder:...)` with the fixture seams; they can use `makeSessionTools(of:on:)` in a later task.
+  timestamp: 2026-10-07T11:53:11.463845+00:00
+- actor: claude-code
+  id: 01m4b3bxxg5zncjvgck3xazk5b
+  text: |-
+    ### implement — changed
+    - evidence: 6 files — IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Support/GatedTurnScenario.swift (new), Support/ScenarioRunner.swift, GitScenarioTests.swift, WebResearchScenarioTests.swift, OperationToolLiveTests.swift; Tests/Support/MultitoolTestSupport/GitScenarioHistory.swift. 7 of 7 findings flipped to [x].
+    - swift build --build-tests: exit 0; only the known mlx-swift_Cmlx.bundle "missing creator for mutated node" warning.
+    - swift test: "Test run with 2234 tests in 194 suites passed after 11.281 seconds."
+    - swift test --package-path IntegrationTests --no-parallel: "Test run with 107 tests in 35 suites passed after 362.141 seconds." Wall time 386 s (6 min 26 s). Git suite 145.907 s (6 of 6 PASS, answerFacts all full); webResearch PASS 36.449 s; operationToolSearchThenCall PASS. The same 6 tests skip as before because a provider key is not set (BRAVE, TAVILY, EXA, SERPER, KAGI, SEARXNG_URL).
+    - Nothing committed or pushed.
+    - next: review
+  timestamp: 2026-10-07T11:53:18.000694+00:00
+- actor: claude-code
+  id: 01m4b3g7azrm1ee4n4a0eqazfw
+  text: |-
+    ### test — green
+    - evidence: `swift build --build-tests` complete. `swift test` passed: 2234 tests in 194 suites, 0 failed, 0 skipped. `cd IntegrationTests && swift build --build-tests` complete.
+    - warnings: only the known `missing creator for mutated node` for mlx-swift_Cmlx.bundle. It was there before. No other warning.
+    - live suite: not run again. The implement step ran it: 107 tests in 35 suites passed after 362.141 s.
+    - next: review
+  timestamp: 2026-10-07T11:55:38.719758+00:00
+- actor: claude-code
+  id: 01m4b3gwgpv2f8sv24cn5t6gd8
+  text: |-
+    ### commit — changed
+    - evidence: one local commit of all working tree changes. It adds GatedTurnScenario.swift and changes ScenarioRunner, GitScenarioTests, WebResearchScenarioTests, OperationToolLiveTests, GitScenarioHistory, and .kanban files. No build product is staged. The commit removes two tracked .kanban mcp log files from the index. The commit sha is in the git log, subject "test: add gated turn scenario for live model tests".
+    - next: review. No push was done.
+  timestamp: 2026-10-07T11:56:00.406955+00:00
 depends_on:
 - 01M48VAY56DD7FRP5ZN9F4RD5E
 - 01M48V8V37DM9YG6EQ1ZDB38Q4
@@ -70,4 +125,23 @@ Close the `git` capability: prove it with the real model, document it, and mark 
 ## Acceptance
 
 - `swift build` and `swift test` pass with no new warnings.
-- `swift test --package-path IntegrationTests --no-parallel` passes, in 20 minutes or less in total. #git
+- `swift test --package-path IntegrationTests --no-parallel` passes, in 20 minutes or less in total.
+
+## Review Findings (2026-10-07 06:15)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 5 file(s) reviewed, 6 not reviewed.
+
+> 4 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 4 file(s)
+
+> 2 file(s) not reviewed — no validator matched:
+> - `README.md` — no validator matches this file
+> - `git.md` — no validator matches this file
+
+- [x] `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/GitScenarioTests.swift:157` `reuse/reuse` — Test function `theModelReadsTheRepository` is 93–94% similar to existing test functions in `WebResearchScenarioTests` and `OperationToolLiveTests`. The scenario test pattern—creating a registry, running a scenario, grading results, and reporting—should be extracted to a shared helper or base class instead of duplicated across multiple test suites. Create a shared test helper function or base class for scenario tests, parameterized by the capability being tested, to eliminate duplication across `GitScenarioTests`, `WebResearchScenarioTests`, and `OperationToolLiveTests`.
+- [x] `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/GitScenarioTests.swift:190` `reuse/reuse` — Function `checks` is 90–91% similar to existing `checks` functions in `WebResearchScenarioTests` and `OperationToolLiveTests`. The logic of verifying that expected verbs were called and that no corrections occurred is a generic pattern shared across scenario tests and should not be duplicated. Extract `checks` to a shared test helper function that both scenario test suites can call, parameterized by the expected verb paths.
+- [x] `Tests/Support/MultitoolTestSupport/GitScenarioHistory.swift:33` `code-hygiene/dead-code-swift` — var.static `greetingLine` is unused.
+- [x] `Tests/Support/MultitoolTestSupport/GitScenarioHistory.swift:51` `code-hygiene/dead-code-swift` — var.static `subjects` is unused.
+- [x] `Tests/Support/MultitoolTestSupport/GitScenarioHistory.swift:55` `code-hygiene/dead-code-swift` — var.static `stagedNewPath` is unused.
+- [x] `Tests/Support/MultitoolTestSupport/GitScenarioHistory.swift:59` `code-hygiene/dead-code-swift` — var.static `untrackedPath` is unused.
+- [x] `Tests/Support/MultitoolTestSupport/GitScenarioHistory.swift:108` `code-hygiene/dead-code-swift` — function.method.static `addUncommittedFiles(to:)` is unused. #git

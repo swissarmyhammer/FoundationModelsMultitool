@@ -29,9 +29,6 @@ enum GitScenarioHistory {
     /// The greeting of the third commit.
     static let changedGreeting = "Good morning"
 
-    /// The line of ``greeterPath`` that holds the greeting, from 1.
-    static let greetingLine = 2
-
     /// The name of the function of the second commit.
     static let functionName = "area"
 
@@ -47,20 +44,9 @@ enum GitScenarioHistory {
     /// The subject of the third commit, which HEAD names.
     static let thirdSubject = "Change the greeting"
 
-    /// The subject of each commit, oldest first.
-    static let subjects = [firstSubject, secondSubject, thirdSubject]
-
-    /// The file that ``addUncommittedFiles(to:)`` stages, relative to the work
-    /// folder. HEAD does not hold it.
-    static let stagedNewPath = "Sources/Farewell.swift"
-
-    /// The file that ``addUncommittedFiles(to:)`` writes and does not stage,
-    /// relative to the work folder.
-    static let untrackedPath = "TODO.md"
-
     /// The text of ``greeterPath`` with one greeting.
     ///
-    /// - Parameter greeting: The greeting, on line ``greetingLine``.
+    /// - Parameter greeting: The greeting, on the second line.
     /// - Returns: The Swift text.
     static func greeterText(greeting: String) -> String {
         "struct Greeter {\n    let greeting = \"\(greeting)\"\n}\n"
@@ -76,12 +62,12 @@ enum GitScenarioHistory {
             + "    return product\n}\n"
     }
 
-    /// Makes the repository. The branch of HEAD holds three commits, with the
-    /// subjects of ``subjects``:
+    /// Makes the repository. The branch of HEAD holds three commits:
     ///
-    /// 1. ``greeterPath`` with ``firstGreeting``.
-    /// 2. ``geometryPath`` with the function ``functionName``.
-    /// 3. ``greeterPath`` with ``changedGreeting``.
+    /// 1. ``firstSubject``: ``greeterPath`` with ``firstGreeting``.
+    /// 2. ``secondSubject``: ``geometryPath`` with the function
+    ///    ``functionName``.
+    /// 3. ``thirdSubject``: ``greeterPath`` with ``changedGreeting``.
     ///
     /// Then the work folder renames the function to ``renamedFunctionName``,
     /// and stages nothing. Thus ``geometryPath`` is the one changed file.
@@ -98,16 +84,5 @@ enum GitScenarioHistory {
         let third = try repository.commit(message: thirdSubject)
         try repository.write(geometryText(functionName: renamedFunctionName), to: geometryPath)
         return (repository, [first, second, third])
-    }
-
-    /// Adds two uncommitted files to `repository`: ``stagedNewPath``, staged,
-    /// and ``untrackedPath``, not staged.
-    ///
-    /// - Parameter repository: A repository that ``make()`` made.
-    /// - Throws: When a write or the stage fails.
-    static func addUncommittedFiles(to repository: TemporaryGitRepository) throws {
-        try repository.write("struct Farewell {}\n", to: stagedNewPath)
-        try repository.stage(stagedNewPath)
-        try repository.write("- Add a farewell.\n", to: untrackedPath)
     }
 }
