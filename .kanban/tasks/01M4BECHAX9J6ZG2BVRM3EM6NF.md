@@ -103,8 +103,24 @@ comments:
     - evidence: One local commit: refactor(tests): use plural names for progress event lists. It includes the two test files and the .kanban changes. The sha is in the commit log.
     - next: review
   timestamp: 2026-10-07T16:20:28.093283+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m4bjtqyksy0ve08b3veqm6hs
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit 11d35bd). 0 findings, 0 confirmed, 0 refuted. 7 validator runs, 0 failed. The commit renames no file. The one prior item is checked.
+    - next: The task is in `done`.
+  timestamp: 2026-10-07T16:23:32.051812+00:00
+- actor: claude-code
+  id: 01m4bjv4r6p266wqjwv9fhbqw4
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — 2 files (FileChangeRunCodeTests.swift, MCPServerCallTests.swift: plural names); finding FileChangeRunCodeTests.swift:176 checked
+    - test: green — swift test, 2266 passed in 196 suites; IntegrationTests build complete
+    - commit: 11d35bd
+    - review: clean — 0 findings, 7 validators on 2 files
+  timestamp: 2026-10-07T16:23:45.158041+00:00
+position_column: done
+position_ordinal: ffffc080
 title: 'tests: six progress-event tests fail after Router c30d1d41 merges progress rows'
 ---
 ## Problem

@@ -64,6 +64,24 @@ struct GitCapabilityTests {
         #expect(surface.entries.map(\.path) == Self.verbNames.map { Self.gitPathPrefix + $0 })
     }
 
+    /// A host can mount git alone. Then a path of another noun, such as
+    /// `tools.files.read`, names a verb that does not exist, and the model
+    /// calls it in vain. Thus the text the model reads for each git verb —
+    /// its description, each argument guide, and its example — names only
+    /// paths under the git noun.
+    @Test("with git mounted alone, each git verb names no tool path outside the git noun")
+    func eachGitVerbNamesNoToolPathOutsideTheGitNoun() throws {
+        let repository = try TemporaryGitRepository()
+
+        let surface = try MultiTool.Builder().withGit(root: repository.workDirectory).build()
+
+        let foreignPathsByVerb = Dictionary(
+            uniqueKeysWithValues: surface.entries.map { entry in (entry.path, Self.foreignToolPaths(in: entry.block)) })
+        let noForeignPath = Dictionary(
+            uniqueKeysWithValues: Self.verbNames.map { verb in (Self.gitPathPrefix + verb, [String]()) })
+        #expect(foreignPathsByVerb == noForeignPath)
+    }
+
     /// The capability holds the one context of its root, and that context
     /// found the repository of the root.
     @Test("the capability holds the context of its root")
@@ -144,6 +162,18 @@ struct GitCapabilityTests {
     }
 
     // MARK: - Helpers
+
+    /// The `tools.<noun>.<verb>` paths in `text` whose noun is not `git`.
+    ///
+    /// - Parameter text: The rendered text of one surface entry.
+    /// - Returns: Each such path, in text order.
+    private static func foreignToolPaths(in text: String) -> [String] {
+        // A `tools.<noun>.<verb>` call path. The capture is the noun.
+        let toolPathPattern = /tools\.(\w+)\.\w+/
+        return text.matches(of: toolPathPattern)
+            .filter { match in match.output.1 != gitNoun }
+            .map { match in String(match.output.0) }
+    }
 
     /// Whether `error` is the `.duplicateNoun` failure for the `git` noun.
     ///

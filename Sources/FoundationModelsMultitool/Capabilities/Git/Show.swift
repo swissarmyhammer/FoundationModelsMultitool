@@ -160,13 +160,13 @@ struct Show: Tool {
     /// The usage instructions, as the model reads them.
     let description = """
         show gives the content of a file as a commit holds it: the file at a branch, a tag, a \
-        sha, or a form such as HEAD~1. Omit ref to read the file at HEAD; tools.files.read \
-        reads the file in the work folder instead. A file that a later commit removed can be \
-        read at an older ref. A result holds at most \(Show.lineCap) lines; when isCapped is \
-        true, content holds only the first lines. An unknown ref, a path that the commit does \
-        not hold, a folder, a binary file, a path outside the session root, and a root in no \
-        git repository each come back as a correction rather than as an error — read it, \
-        correct the call, and ask again.
+        sha, or a form such as HEAD~1. Omit ref to read the file at HEAD. To compare it with the \
+        work folder, use tools.git.diff: a path with no ref reads the work folder. A file that \
+        a later commit removed can be read at an older ref. A result holds at most \
+        \(Show.lineCap) lines; when isCapped is true, content holds only the first lines. An \
+        unknown ref, a path that the commit does not hold, a folder, a binary file, a path \
+        outside the session root, and a root in no git repository each come back as a \
+        correction rather than as an error — read it, correct the call, and ask again.
         """
 
     /// The session context this verb reads against, which the git capability
