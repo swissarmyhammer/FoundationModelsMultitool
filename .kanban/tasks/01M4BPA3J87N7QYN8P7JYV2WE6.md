@@ -57,8 +57,24 @@ comments:
     - evidence: Package.swift, README.md, git.md, eventplan.md; Sources Git/Semantic: CodeParserPlugin, SemanticEntity, ParserRegistry, Vue/Markdown/CSV/TOML/YAML/JSON/Fallback plugins; 5 Swift sources + Sources/TreeSitterJavaScript + Sources/TreeSitterPython deleted; tests: CodeParserPluginTests rewritten, 6 plugin/matcher suites + SemanticTestPlugins switched, CodeEntityExtractorTests, SemanticHashTests, FakeSyntaxTree, GitGoldens deleted. `swift build --build-tests` OK, 0 compiler warnings; `swift test`: 2239 tests in 194 suites passed, 0 failures; no golden file changed.
     - next: /review. ACP agent graph check after the commit is pushed.
   timestamp: 2026-10-07T17:54:43.510112+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m4brqxznm3sn1xy2m24kbdb4
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (44cd1a3). counts: 0 findings, 0 confirmed, 0 refuted; 15 pairs attempted, 0 failed. 28 files reviewed. 16 files excluded by .reviewignore (.kanban, local tree-sitter grammar copies). 4 files have no validator (README.md, git.md, eventplan.md, semantic-hash-golden.json). The commit renames no file. The declined items are only on deleted files.
+    - next: none. Task moved to done.
+  timestamp: 2026-10-07T18:06:51.381227+00:00
+- actor: claude-code
+  id: 01m4brraw2jh9a701wh915rtsr
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — Package.swift, CodeParserPlugin, SemanticEntity, the data/Vue/fallback plugins, docs; deleted all tree-sitter code, XXH3, SemanticHash, and the moved tests
+    - test: green — swift test, 2239 passed in 194 suites; IntegrationTests and WebIntegrationTests build
+    - commit: 44cd1a3
+    - review: clean — 0 findings, 28 files
+  timestamp: 2026-10-07T18:07:04.578579+00:00
+position_column: done
+position_ordinal: ffffc280
 title: 'git: get the code entities of a file from FoundationModelsCodeContext; remove all tree-sitter code from Multitool'
 ---
 ## What
