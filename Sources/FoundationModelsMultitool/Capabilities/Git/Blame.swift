@@ -1,10 +1,16 @@
 // `Blame` — the `tools.git.blame` verb.
 //
-// git.md § "Verbs": `tools.git.blame` takes `path`, `startLine?`, and
-// `endLine?`, and gives one row for each line. The source is `blame_lines` in
+// git.md § "Verbs": `tools.git.blame` takes `path`, `startLine?`, `endLine?`,
+// and `rev?`, and gives one row for each line. The source is `blame_lines` in
 // `../swissarmyhammer/crates/swissarmyhammer-git/src/operations.rs`; the
 // `LibGit2` layer (`LibGit2Blame.swift`) ports it, and this verb calls only
 // that layer, never the C API (git.md § "Decisions", item 10).
+//
+// The `rev` argument comes from the `git_blame` tool of docker-agent (task
+// `^t9rh6bn`). With no `rev`, the verb blames the file in the work folder.
+// With a `rev`, the verb reads the file at that rev through the shared blob
+// reader (`GitBlobReader.swift`), the same as `tools.git.show`, and blames it
+// against the history up to the commit of the rev.
 //
 // The verb is a plain `FoundationModels.Tool` that holds the context of the
 // git capability, in the pattern of `Capabilities/Files/Glob.swift`. The
@@ -13,15 +19,16 @@
 //
 // A blame the verb cannot make stays IN BAND, as a `correction` beside no
 // line. It is never thrown: a bad line range, a path outside the root, a
-// missing, unreadable, or binary file, a root in no repository, and a failed
-// blame are each a mistake or a fact the model reads inside the turn, and a
-// thrown error would end the turn instead.
+// missing, unreadable, or binary file, an unknown rev, a file that the commit
+// of the rev does not hold, a root in no repository, and a failed blame are
+// each a mistake or a fact the model reads inside the turn, and a thrown
+// error would end the turn instead.
 
 import Foundation
 import FoundationModels
 
-/// The arguments of `tools.git.blame`: the file to blame, and the lines to
-/// blame.
+/// The arguments of `tools.git.blame`: the file to blame, the lines to blame,
+/// and the rev to blame the file at.
 @Generable
 struct BlameArguments {
 
@@ -46,6 +53,14 @@ struct BlameArguments {
         description: "The 1-based last line to blame; that line is included. Omit it to blame to the last line.",
         .range(BlameArguments.lineRange))
     var endLine: Int?
+
+    /// The rev to blame the file at, or `nil` for the file in the work
+    /// folder.
+    @Guide(
+        description:
+            "The rev to blame the file at: a branch, a tag, a sha, or a form such as HEAD~1. "
+            + "Omit it to blame the file in the work folder.")
+    var rev: String?
 }
 
 extension BlameArguments {
@@ -179,28 +194,85 @@ extension Blame {
     /// there is none.
     ///
     /// Checks the line bounds and the order of `startLine` and `endLine`,
-    /// then the repository of the root, then the path through the context's
-    /// ``PathGuard``, then reads and UTF-8-decodes the file, checks the range
-    /// against its line count, and blames it through the `LibGit2` layer.
+    /// then the repository of the root. With no `rev`, it then checks the
+    /// path through the context's ``PathGuard``, reads and UTF-8-decodes the
+    /// file in the work folder, and blames it against the history of HEAD.
+    /// With a `rev`, it reads the file at that rev through the shared blob
+    /// reader of the context, and blames it against the history up to the
+    /// commit of the rev. Then it checks the range against the line count.
     /// Each recoverable failure comes back as the `correction` field of the
     /// result; nothing here throws.
     ///
-    /// - Parameter arguments: The file and the line range.
+    /// - Parameter arguments: The file, the line range, and the rev.
     /// - Returns: One row for each line of the range, or the correction.
     func call(arguments: BlameArguments) async throws -> BlameResult {
         let corrective = { (message: String) in Self.corrective(message, path: arguments.path) }
         if let message = Self.rangeViolation(arguments) { return corrective(message) }
         return context.repository.resolve(corrective: corrective) { location in
-            context.pathGuard.validate(arguments.path, for: .read).resolve(corrective: corrective) { url in
-                PathCorrective.readData(at: url, path: arguments.path).resolve(corrective: corrective) { data in
-                    Self.blame(data, at: url, in: location, arguments: arguments)
-                        .resolve(corrective: corrective) { $0 }
-                }
+            guard let rev = arguments.rev else {
+                return blameWorkFolder(in: location, arguments: arguments, corrective: corrective)
             }
+            return blame(atRev: rev, in: location, arguments: arguments, corrective: corrective)
         }
     }
 
     // MARK: Steps
+
+    /// Blames the file in the work folder against the history of HEAD.
+    ///
+    /// - Parameters:
+    ///   - location: The repository of the root.
+    ///   - arguments: The arguments of the call.
+    ///   - corrective: Makes the result for a correction.
+    /// - Returns: The result with its rows, or the correction for a path that
+    ///   the guard refuses, an unreadable file, or a failure of
+    ///   ``blame(_:at:in:arguments:)``.
+    private func blameWorkFolder(
+        in location: GitRepositoryLocation,
+        arguments: BlameArguments,
+        corrective: (String) -> BlameResult
+    ) -> BlameResult {
+        context.pathGuard.validate(arguments.path, for: .read).resolve(corrective: corrective) { url in
+            PathCorrective.readData(at: url, path: arguments.path).resolve(corrective: corrective) { data in
+                Self.blame(data, at: url, in: location, arguments: arguments)
+                    .resolve(corrective: corrective) { $0 }
+            }
+        }
+    }
+
+    /// Blames the file at `rev` against the history up to the commit of
+    /// `rev`. The work folder has no effect.
+    ///
+    /// The path goes through ``GitContext/repositoryPath(of:in:)``, the same
+    /// as in `tools.git.show`, thus a file that a later commit removed from
+    /// the work folder is accepted.
+    ///
+    /// - Parameters:
+    ///   - rev: The rev of the call.
+    ///   - location: The repository of the root.
+    ///   - arguments: The arguments of the call.
+    ///   - corrective: Makes the result for a correction.
+    /// - Returns: The result with its rows, or the correction for a path that
+    ///   the guard refuses, an unknown rev, a path that the commit of the rev
+    ///   does not hold, a binary file, a range past the end, or a failed
+    ///   blame.
+    private func blame(
+        atRev rev: String,
+        in location: GitRepositoryLocation,
+        arguments: BlameArguments,
+        corrective: (String) -> BlameResult
+    ) -> BlameResult {
+        context.repositoryPath(of: arguments.path, in: location).resolve(corrective: corrective) { repositoryPath in
+            GitContext.readBlob(atPath: repositoryPath, ref: rev, in: location, requestedPath: arguments.path)
+                .flatMap { blob in
+                    Self.result(of: blob.text, path: blob.path, arguments: arguments) { lineCount throws(LibGit2Error) in
+                        try LibGit2Repository(discoveringFrom: location.workDirectory)
+                            .blameLines(atPath: repositoryPath, revision: rev, lineCount: lineCount)
+                    }
+                }
+                .resolve(corrective: corrective) { $0 }
+        }
+    }
 
     /// Blames the file bytes that the path guard let through.
     ///
@@ -224,22 +296,42 @@ extension Blame {
         guard let repositoryPath = location.repositoryPath(ofFile: url) else {
             return pathFailure(GitContext.outsideWorkFolderDescription, path: arguments.path)
         }
+        let path = location.rootRelativePath(fromRepositoryPath: repositoryPath) ?? arguments.path
+        return result(of: text, path: path, arguments: arguments) { lineCount throws(LibGit2Error) in
+            try LibGit2Repository(discoveringFrom: location.workDirectory)
+                .blameLines(atPath: repositoryPath, content: data, lineCount: lineCount)
+        }
+    }
+
+    /// The rows of the range of `text`, from the attributions that
+    /// `attributions` gives. Both kinds of blame make their result here.
+    ///
+    /// - Parameters:
+    ///   - text: The text of the file that the blame reads.
+    ///   - path: The path of the file, relative to the session root.
+    ///   - arguments: The arguments of the call.
+    ///   - attributions: Blames the file: it takes the number of lines in
+    ///     `text`, and gives one attribution for each line.
+    /// - Returns: The result with its rows, or the correction for a range past
+    ///   the end or a failed blame.
+    private static func result(
+        of text: String,
+        path: String,
+        arguments: BlameArguments,
+        attributions: (_ lineCount: Int) throws(LibGit2Error) -> [LibGit2LineBlame]
+    ) -> Result<BlameResult, CorrectiveRejection> {
         let lines = GitPatch.lines(of: text).map(\.text)
         return window(of: arguments, lineCount: lines.count).flatMap { window in
-            let attributions: [LibGit2LineBlame]
+            let lineAttributions: [LibGit2LineBlame]
             do {
-                attributions = try LibGit2Repository(discoveringFrom: location.workDirectory)
-                    .blameLines(atPath: repositoryPath, content: data, lineCount: lines.count)
+                lineAttributions = try attributions(lines.count)
             } catch {
                 return pathFailure(failedBlameDescription, path: "\(arguments.path) (\(error))")
             }
             let rows = window.prefix(lineCap).map { index in
-                row(number: index + 1, text: lines[index], attribution: attributions[index])
+                row(number: index + 1, text: lines[index], attribution: lineAttributions[index])
             }
-            return .success(
-                BlameResult(
-                    path: location.rootRelativePath(fromRepositoryPath: repositoryPath) ?? arguments.path,
-                    lines: rows, isCapped: window.count > lineCap, correction: nil))
+            return .success(BlameResult(path: path, lines: rows, isCapped: window.count > lineCap, correction: nil))
         }
     }
 
@@ -349,11 +441,14 @@ extension Blame {
 /// the author date of the commit that last changed the line. A line that the
 /// work folder changed, and each line of a staged file that no commit holds,
 /// is `uncommitted`. Each line of a file that git does not track is
-/// `untracked`. A result holds at most ``lineCap`` rows, with an honest
-/// `isCapped` flag. The path is bounded through the session's ``PathGuard``. A
-/// bad range, a path outside the root, a missing or binary file, a root in no
-/// repository, and a failed blame each come back as a `correction`, not as an
-/// error.
+/// `untracked`. With a `rev`, each row gives the text of the line at that rev
+/// and the commit that last changed it at or before the commit of the rev; a
+/// later commit and the work folder have no effect. A result holds at most
+/// ``lineCap`` rows, with an honest `isCapped` flag. The path is bounded
+/// through the session's ``PathGuard``. A bad range, a path outside the root,
+/// a missing or binary file, an unknown rev, a file that the commit of the rev
+/// does not hold, a root in no repository, and a failed blame each come back
+/// as a `correction`, not as an error.
 struct Blame: Tool {
 
     /// The verb this tool renders as, which the git noun stands in front of:
@@ -366,11 +461,14 @@ struct Blame: Tool {
         It gives one row for each line from startLine to endLine (1-based, both included); omit \
         them to blame the whole file. Each row has the line number, the text, and a state: \
         committed rows name the sha, the author, and the date; uncommitted rows are lines that \
-        no commit holds yet; untracked rows are lines of a file that git does not track. A result \
+        no commit holds yet; untracked rows are lines of a file that git does not track. Omit rev \
+        to blame the file in the work folder; give rev (a branch, a tag, a sha, or a form such as \
+        HEAD~1) to blame the file as that commit holds it, with no commit after it. A result \
         holds at most \(Blame.lineCap) rows; when isCapped is true, ask again with startLine after the last \
-        row. A bad range, a path outside the session root, a missing or binary file, and a root \
-        in no git repository each come back as a correction rather than as an error — read it, \
-        correct the call, and ask again.
+        row. A bad range, a path outside the session root, a missing or binary file, an unknown \
+        rev, a file that the commit of the rev does not hold, and a root in no git repository \
+        each come back as a correction rather than as an error — read it, correct the call, and \
+        ask again.
         """
 
     /// The session context this verb blames against, which the git capability

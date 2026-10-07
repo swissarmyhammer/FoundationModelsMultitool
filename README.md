@@ -150,7 +150,7 @@ mount it. The capability adds seven verbs under `tools.git`:
 | `tools.git.changes` | `branch?`, `range?` | `branch`, `parentBranch`, `range`, and the changed `files` |
 | `tools.git.show` | `path`, `ref?` | the `content` of the file at the ref (HEAD when you omit it) |
 | `tools.git.log` | `ref?`, `path?`, `limit?` | `commits`, newest first: `sha`, `shortSha`, `author`, `date`, and `subject` |
-| `tools.git.blame` | `path`, `startLine?`, `endLine?` | one row for each line: `line`, `text`, `state`, and the `sha`, `author`, and `date` of the commit |
+| `tools.git.blame` | `path`, `startLine?`, `endLine?`, `rev?` | one row for each line: `line`, `text`, `state`, and the `sha`, `author`, and `date` of the commit (the work folder when you omit `rev`) |
 | `tools.git.diff` | `left?`, `right?`, `leftText?`, `rightText?`, `language?` | a semantic diff: a `summary` of the counts and the `changes`, one for each entity |
 
 A snippet reads the changed files, and then diffs each file against HEAD, in
@@ -173,9 +173,10 @@ These are the rules of the capability:
   same path guard as the files capability, thus a path cannot go out of the
   root. Each path in a result is relative to the root, and a file outside the
   root is in no result. One exception: a path that reads history (`show`,
-  `log`, and `diff` with `path@ref`) goes through the guard with
-  `absentFolders: .accepted`. Thus the guard does not refuse a folder that a
-  later commit removed. All the other checks of the guard stay the same.
+  `log`, `blame` with `rev`, and `diff` with `path@ref`) goes through the
+  guard with `absentFolders: .accepted`. Thus the guard does not refuse a
+  folder that a later commit removed. All the other checks of the guard stay
+  the same.
 - A mistake that the model can correct (an unknown ref, an unknown path, a
   bad range, or a root in no repository) does not throw. It comes back in the
   result as a `correction` field.

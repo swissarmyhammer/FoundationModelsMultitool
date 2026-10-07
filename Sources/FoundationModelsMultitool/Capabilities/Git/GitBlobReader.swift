@@ -2,10 +2,11 @@
 // file at one ref, or the correction that says why there is none.
 //
 // git.md § "Decisions", item 6: each verb that reads a file at a ref reads the
-// blob through libgit2. `tools.git.show` reads through this reader, and
-// `tools.git.diff` reads each `path@ref` side through it too. Thus the path
+// blob through libgit2. `tools.git.show` reads through this reader,
+// `tools.git.diff` reads each `path@ref` side through it too, and
+// `tools.git.blame` reads the file at its `rev` through it. Thus the path
 // rules, the binary rule, and the text of each correction are the same in the
-// two verbs.
+// three verbs.
 //
 // git.md § "Decisions", item 8: the path argument goes through the
 // `PathGuard` of `GitContext`, thus a path cannot go out of the root. The
@@ -109,13 +110,17 @@ extension GitContext {
 
     /// Reads the blob at a repository path through the `LibGit2` layer.
     ///
+    /// `tools.git.blame` with a `rev` calls this step directly, after
+    /// ``repositoryPath(of:in:)``, because it needs the repository path for
+    /// its blame too.
+    ///
     /// - Parameters:
     ///   - repositoryPath: The path relative to the work folder.
     ///   - ref: The ref of the call.
     ///   - location: The repository of the root.
     ///   - path: The path argument, for the text of a correction.
     /// - Returns: The blob, or the correction.
-    private static func readBlob(
+    static func readBlob(
         atPath repositoryPath: String,
         ref: String,
         in location: GitRepositoryLocation,

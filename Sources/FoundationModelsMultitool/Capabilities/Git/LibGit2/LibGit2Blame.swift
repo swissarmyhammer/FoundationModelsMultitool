@@ -20,6 +20,12 @@
 // as "not yet blamable", and this layer keeps that contract. Any other
 // failure is a `LibGit2Error`; the verb changes it into one correction.
 //
+// A blame at a revision (the `rev` argument of `tools.git.blame`) has one
+// step only: `git_blame_file` with `newest_commit` set to the commit of the
+// revision. libgit2 then reads the blob of that commit, not the work folder,
+// thus no buffer layer runs. Both kinds of blame read their hunks through one
+// shared function.
+//
 // The author and the date come from the commit (`git_commit_author`, through
 // `LibGit2Commit.swift`), not from the hunk. `git_blame_buffer` splits a hunk
 // around a changed line, and the second part of the split has the commit id
@@ -58,6 +64,12 @@ extension LibGit2Repository {
     /// The index stage of a file with no merge conflict.
     private static let normalIndexStage = Int32(GIT_INDEX_STAGE_NORMAL.rawValue)
 
+    /// The version of `git_blame_options` that this layer fills.
+    private static let blameOptionsVersion = UInt32(GIT_BLAME_OPTIONS_VERSION)
+
+    /// The text of the ``LibGit2Error`` for a revision that names no object.
+    private static let unknownRevisionText = "the revision names no commit"
+
     /// Blames each line of `content`, the text of the file at `path` in the
     /// work folder, against the history of HEAD.
     ///
@@ -88,6 +100,37 @@ extension LibGit2Repository {
         let layered = try Self.blame(base, against: content)
         defer { git_blame_free(layered) }
         return try attributions(of: layered, lineCount: lineCount)
+    }
+
+    /// Blames each line of the file at `path` as the commit that `revision`
+    /// names holds it, against the history up to that commit.
+    ///
+    /// The blame reads the blob of that commit, not the work folder, thus no
+    /// line is uncommitted and no line is untracked. A commit after the
+    /// commit of `revision` is in no attribution.
+    ///
+    /// - Parameters:
+    ///   - path: The path of the file relative to the work folder, as libgit2
+    ///     reads it (for example `src/a.txt`).
+    ///   - revision: A ref, as `git_revparse_single` reads it.
+    ///   - lineCount: The number of lines in the blob of that commit, in
+    ///     git's line model (split on `\n`; a last line with no `\n` counts).
+    /// - Returns: One attribution for each line, never more and never fewer
+    ///   than `lineCount`.
+    /// - Throws: ``LibGit2Error`` with `GIT_ENOTFOUND` when `revision` names
+    ///   no object, and ``LibGit2Error`` when the ref is not valid, when the
+    ///   commit holds no file at `path`, or when the blame fails.
+    func blameLines(atPath path: String, revision: String, lineCount: Int) throws(LibGit2Error) -> [LibGit2LineBlame] {
+        guard lineCount > 0 else { return [] }
+        guard let commitID = try commitID(forRevision: revision) else {
+            throw LibGit2Error(code: GIT_ENOTFOUND.rawValue, message: Self.unknownRevisionText)
+        }
+        var options = git_blame_options()
+        try LibGit2.check(git_blame_options_init(&options, Self.blameOptionsVersion))
+        options.newest_commit = commitID
+        let blame = try LibGit2.makeHandle { blame in git_blame_file(&blame, handle, path, &options) }
+        defer { git_blame_free(blame) }
+        return try attributions(of: blame, lineCount: lineCount)
     }
 
     // MARK: - Tracked paths
@@ -159,7 +202,7 @@ extension LibGit2Repository {
     /// source does not stop on a line that has no hunk.
     ///
     /// - Parameters:
-    ///   - blame: The layered blame.
+    ///   - blame: The layered blame, or the blame at a revision.
     ///   - lineCount: The number of lines.
     /// - Returns: One attribution for each line.
     /// - Throws: ``LibGit2Error`` when the commit of a hunk cannot be read.

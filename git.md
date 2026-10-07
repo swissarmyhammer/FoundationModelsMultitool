@@ -125,7 +125,7 @@ and `web.md`.
 | `tools.git.diff` | `left?`, `right?`, `leftText?`, `rightText?`, `language?` | `{ summary, changes[] }` | `get diff` |
 | `tools.git.log` | `ref?`, `path?`, `limit?` | commits: sha, author, date, subject | revwalk (new) |
 | `tools.git.show` | `path`, `ref?` | the content of the file at the ref | blob read (new) |
-| `tools.git.blame` | `path`, `startLine?`, `endLine?` | one row for each line: sha, author, date | `blame_lines` |
+| `tools.git.blame` | `path`, `startLine?`, `endLine?`, `rev?` | one row for each line: sha, author, date; at `rev`, or in the work folder when `rev` is omitted | `blame_lines` |
 | `tools.git.branches` | none | local branches, the current branch, the main branch | `list_local_branches`, `main_branch` |
 
 The fields of each result are not final. The first task for each verb
@@ -224,8 +224,8 @@ All the open questions have a decision. The first run of the spike
      `ChimeHQ/SwiftTreeSitter`), and one grammar package for each language.
      The language set is open question 4a. Decision 15 moves the parse to
      FoundationModelsCodeContext: this package does not parse.
-   - Each verb that reads a file at a ref (`diff` with `path@ref`, `show`)
-     reads the blob through libgit2 (decision 10).
+   - Each verb that reads a file at a ref (`diff` with `path@ref`, `show`,
+     `blame` with `rev`) reads the blob through libgit2 (decision 10).
 7. Languages (question 4a). The first release has the language set of
    `swissarmyhammer-sem`: Rust, TypeScript, TSX, JavaScript, JSX, Python, Go,
    Java, C, C++, Ruby, C#, PHP, Swift, Elixir, Bash, and the data formats
@@ -241,10 +241,10 @@ All the open questions have a decision. The first run of the spike
    through the guard. The repository is the one that contains the root (the
    root can be a subfolder of the repository). Each path in a result is
    relative to the root. One exception (task `^5a8vaqk`): a path that reads
-   history (`show`, `log`, and `diff` with `path@ref`) goes through the guard
-   with `absentFolders: .accepted`. Thus a folder that a later commit removed
-   is not refused. All the other guard checks stay the same, and a path still
-   cannot go out of the root.
+   history (`show`, `log`, `blame` with `rev` (task `^t9rh6bn`), and `diff`
+   with `path@ref`) goes through the guard with `absentFolders: .accepted`.
+   Thus a folder that a later commit removed is not refused. All the other
+   guard checks stay the same, and a path still cannot go out of the root.
 9. Names (question 6). Each verb uses the word of the git command. Each
    argument name and each result field name uses `camelCase`, the same as
    `tools.files.*`. `diff` is one verb with three modes, the same as the

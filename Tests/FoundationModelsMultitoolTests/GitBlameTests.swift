@@ -16,7 +16,9 @@ import Testing
 /// The card names each case: a file with lines from two commits, a line
 /// range, a file with an uncommitted change, an untracked file, a bad range,
 /// and a path outside the root. The line cap, a root in a subfolder, a root
-/// in no repository, and a binary file are here too.
+/// in no repository, and a binary file are here too. Task `^t9rh6bn` adds the
+/// `rev` argument: one test for each of its acceptance criteria, and a file
+/// that a later commit removed.
 @Suite("GitBlameTests")
 struct GitBlameTests {
 
@@ -32,6 +34,9 @@ struct GitBlameTests {
 
     /// The lines of the second commit of ``filePath``: only line 2 changes.
     private static let secondLines = ["one", "TWO", "three"]
+
+    /// The lines of the third commit of ``filePath``: only line 3 changes.
+    private static let thirdLines = ["one", "TWO", "THREE"]
 
     /// The name that `TemporaryGitRepository` records on each commit.
     private static let commitAuthor = "Test"
@@ -261,6 +266,112 @@ struct GitBlameTests {
         try Self.expectCorrection(result, contains: "binary")
     }
 
+    // MARK: - At a rev (task `^t9rh6bn`)
+
+    /// With `rev` at an earlier commit, each row gives the text of the line at
+    /// that commit and the commit that last changed it at or before that
+    /// commit.
+    @Test("a rev gives the text and the commit of each line at that rev")
+    func aRevGivesTheTextAndTheCommitOfEachLineAtThatRev() async throws {
+        let repository = try TemporaryGitRepository()
+        let (first, second, _) = try Self.commitThrice(in: repository)
+
+        let result = try await Self.blame(Self.filePath, in: GitContext(root: repository.workDirectory), rev: second)
+
+        #expect(result.correction == nil)
+        #expect(result.path == Self.filePath)
+        #expect(result.lines.map(\.line) == [1, 2, 3])
+        #expect(result.lines.map(\.text) == Self.secondLines)
+        #expect(result.lines.map(\.sha) == [first, second, first])
+        #expect(result.lines.allSatisfy { $0.state == Self.committedState })
+    }
+
+    /// A commit after `rev` is in no row, and a change in the work folder
+    /// has no effect on a blame at a rev.
+    @Test("a commit after the rev is in no row")
+    func aCommitAfterTheRevIsInNoRow() async throws {
+        let repository = try TemporaryGitRepository()
+        let (_, second, third) = try Self.commitThrice(in: repository)
+        try repository.write(Self.text(of: Self.firstLines), to: Self.filePath)
+
+        let result = try await Self.blame(Self.filePath, in: GitContext(root: repository.workDirectory), rev: second)
+
+        #expect(result.correction == nil)
+        #expect(!result.lines.isEmpty)
+        #expect(result.lines.allSatisfy { $0.sha != third })
+    }
+
+    /// With no `rev`, the verb blames the file in the work folder, not the
+    /// file at HEAD: a line that the work folder changed is uncommitted.
+    @Test("with no rev the verb blames the work folder, not HEAD")
+    func withNoRevTheVerbBlamesTheWorkFolderNotHead() async throws {
+        let repository = try TemporaryGitRepository()
+        try Self.commitThrice(in: repository)
+        try repository.write(Self.text(of: Self.firstLines), to: Self.filePath)
+        let context = GitContext(root: repository.workDirectory)
+
+        let workFolder = try await Self.blame(Self.filePath, in: context)
+        let head = try await Self.blame(Self.filePath, in: context, rev: GitContext.defaultRef)
+
+        #expect(workFolder.lines.map(\.text) == Self.firstLines)
+        #expect(workFolder.lines.map(\.state) == [Self.committedState, Self.uncommittedState, Self.uncommittedState])
+        #expect(head.lines.map(\.text) == Self.thirdLines)
+        #expect(head.lines.allSatisfy { $0.state == Self.committedState })
+    }
+
+    /// An unknown `rev` is a correction that names the rev, not a throw.
+    @Test("an unknown rev is a correction")
+    func anUnknownRevIsACorrection() async throws {
+        let repository = try TemporaryGitRepository()
+        try Self.commitThrice(in: repository)
+
+        let result = try await Self.blame(
+            Self.filePath, in: GitContext(root: repository.workDirectory), rev: "no-such-ref")
+
+        try Self.expectCorrection(result, contains: "no-such-ref")
+    }
+
+    /// A path that the commit of `rev` does not hold is a correction.
+    @Test("a path that does not exist at the rev is a correction")
+    func aPathThatDoesNotExistAtTheRevIsACorrection() async throws {
+        let (repository, shas) = try GitTestHistory.makeThreeCommits()
+
+        let result = try await Self.blame("src/b.txt", in: GitContext(root: repository.workDirectory), rev: shas[0])
+
+        try Self.expectCorrection(result, contains: "holds no file at this path")
+    }
+
+    /// `startLine` and `endLine` select the lines of the file at `rev`.
+    @Test("a line range works with a rev")
+    func aLineRangeWorksWithARev() async throws {
+        let repository = try TemporaryGitRepository()
+        let (first, second, _) = try Self.commitThrice(in: repository)
+
+        let result = try await Self.blame(
+            Self.filePath, in: GitContext(root: repository.workDirectory), startLine: 2, endLine: 3, rev: second)
+
+        #expect(result.correction == nil)
+        #expect(result.lines.map(\.line) == [2, 3])
+        #expect(result.lines.map(\.sha) == [second, first])
+        #expect(result.lines.map(\.text) == ["TWO", "three"])
+    }
+
+    /// A file that a later commit removed from the work folder, with its
+    /// folders, is accepted by the path step and blamed at an older `rev`.
+    @Test("a file that a later commit removed is blamed at an older rev")
+    func aFileThatALaterCommitRemovedIsBlamedAtAnOlderRev() async throws {
+        let (repository, shas) = try GitTestHistory.makeRemovedFolder(
+            firstText: Self.text(of: Self.firstLines), secondText: Self.text(of: Self.secondLines))
+
+        let result = try await Self.blame(
+            GitTestHistory.removedFolderFile, in: GitContext(root: repository.workDirectory), rev: shas[1])
+
+        #expect(result.correction == nil)
+        #expect(result.path == GitTestHistory.removedFolderFile)
+        #expect(result.lines.map(\.text) == Self.secondLines)
+        #expect(result.lines.map(\.sha) == [shas[0], shas[1], shas[0]])
+    }
+
     // MARK: - Helpers
 
     /// Calls the `tools.git.blame` verb over a context.
@@ -270,15 +381,31 @@ struct GitBlameTests {
     ///   - context: The context of the verb.
     ///   - startLine: The first line, or `nil`.
     ///   - endLine: The last line, or `nil`.
+    ///   - rev: The rev to blame the file at, or `nil` for the work folder.
     /// - Returns: The result of the verb.
     private static func blame(
         _ path: String,
         in context: GitContext,
         startLine: Int? = nil,
-        endLine: Int? = nil
+        endLine: Int? = nil,
+        rev: String? = nil
     ) async throws -> BlameResult {
         try await Blame(context: context)
-            .call(arguments: BlameArguments(path: path, startLine: startLine, endLine: endLine))
+            .call(arguments: BlameArguments(path: path, startLine: startLine, endLine: endLine, rev: rev))
+    }
+
+    /// Commits ``firstLines``, then ``secondLines``, then ``thirdLines`` to
+    /// ``filePath``. Each commit after the first changes one line.
+    ///
+    /// - Parameter repository: The repository.
+    /// - Returns: The sha of each commit.
+    /// - Throws: When a write or a commit fails.
+    @discardableResult
+    private static func commitThrice(in repository: TemporaryGitRepository) throws -> (String, String, String) {
+        let (first, second) = try commitTwice(in: repository)
+        try repository.write(text(of: thirdLines), to: filePath)
+        let third = try repository.commit(message: "third")
+        return (first, second, third)
     }
 
     /// Commits ``firstLines`` and then ``secondLines`` to ``filePath``.

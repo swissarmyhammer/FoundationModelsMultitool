@@ -24,7 +24,11 @@ struct LibGit2BlameTests {
     /// The text of the second commit of ``filePath``: only line 2 changes.
     private static let secondText = "one\nTWO\nthree\n"
 
-    /// The number of lines in ``firstText`` and in ``secondText``.
+    /// The text of the third commit of ``filePath``: only line 3 changes.
+    private static let thirdText = "one\nTWO\nTHREE\n"
+
+    /// The number of lines in ``firstText``, ``secondText``, and
+    /// ``thirdText``.
     private static let lineCount = 3
 
     /// The name that `TemporaryGitRepository` records on each commit.
@@ -121,6 +125,64 @@ struct LibGit2BlameTests {
             .blameLines(atPath: Self.filePath, content: Data(), lineCount: 0)
 
         #expect(lines.isEmpty)
+    }
+
+    // MARK: - At a revision
+
+    /// At an earlier commit, the line comes from the commit at or before that
+    /// commit. The later commit that changed the line, and the work folder
+    /// that holds the later text, have no effect.
+    @Test("a blame at a revision ignores a later commit and the work folder")
+    func aBlameAtARevisionIgnoresALaterCommitAndTheWorkFolder() throws {
+        let (repository, shas) = try GitTestHistory.makeThreeCommits()
+        try repository.write("changed\n", to: "a.txt")
+
+        let lines = try LibGit2Repository(discoveringFrom: repository.workDirectory)
+            .blameLines(atPath: "a.txt", revision: shas[1], lineCount: 1)
+
+        #expect(lines.map { Self.commit($0)?.sha } == [shas[0]])
+    }
+
+    /// Each commit changes one line. At the second commit, each line comes
+    /// from the last commit at or before the second commit that changed it.
+    @Test("each line at a revision comes from the last commit at or before it")
+    func eachLineAtARevisionComesFromTheLastCommitAtOrBeforeIt() throws {
+        let repository = try TemporaryGitRepository()
+        try repository.write(Self.firstText, to: Self.filePath)
+        let first = try repository.commit(message: "first")
+        try repository.write(Self.secondText, to: Self.filePath)
+        let second = try repository.commit(message: "second")
+        try repository.write(Self.thirdText, to: Self.filePath)
+        try repository.commit(message: "third")
+
+        let lines = try LibGit2Repository(discoveringFrom: repository.workDirectory)
+            .blameLines(atPath: Self.filePath, revision: second, lineCount: Self.lineCount)
+
+        #expect(lines.map { Self.commit($0)?.sha } == [first, second, first])
+    }
+
+    /// A revision that names no commit throws the not-found error.
+    @Test("a revision that names no commit throws not found")
+    func aRevisionThatNamesNoCommitThrowsNotFound() throws {
+        let (repository, _) = try GitTestHistory.makeThreeCommits()
+        let opened = try LibGit2Repository(discoveringFrom: repository.workDirectory)
+
+        let error = try #require(throws: LibGit2Error.self) {
+            try opened.blameLines(atPath: "a.txt", revision: "no-such-ref", lineCount: 1)
+        }
+
+        #expect(error.isNotFound)
+    }
+
+    /// A path that the commit of the revision does not hold throws.
+    @Test("a path that the revision does not hold throws")
+    func aPathThatTheRevisionDoesNotHoldThrows() throws {
+        let (repository, shas) = try GitTestHistory.makeThreeCommits()
+        let opened = try LibGit2Repository(discoveringFrom: repository.workDirectory)
+
+        #expect(throws: LibGit2Error.self) {
+            try opened.blameLines(atPath: "src/b.txt", revision: shas[0], lineCount: 1)
+        }
     }
 
     // MARK: - Helpers

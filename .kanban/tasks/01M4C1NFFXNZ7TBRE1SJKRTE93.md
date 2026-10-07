@@ -66,8 +66,24 @@ comments:
     - dependency warning (not ours): "missing creator for mutated node" for mlx-swift_Cmlx.bundle.
     - next: review
   timestamp: 2026-10-07T21:16:02.876644+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m4c3r89ehcz7wkzgzq6nchh5
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit 28b2580). 0 findings, 0 confirmed, 0 refuted. 7 validator runs attempted, 0 failed. 1 file reviewed. 2 `.kanban/` files are excluded by `.reviewignore`. All items in the prior Review Findings section are checked.
+    - next: none. The task is in done.
+  timestamp: 2026-10-07T21:19:16.270711+00:00
+- actor: claude-code
+  id: 01m4c3rmvymdxry19att4ne128
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — 1 file (periphery:ignore markers on LibGit2FileStat, per the dead-code-swift staging contract)
+    - test: green — swift test, 2246 passed
+    - commit: 28b2580
+    - review: clean — 0 findings; task in done
+  timestamp: 2026-10-07T21:19:29.150534+00:00
+position_column: done
+position_ordinal: ffffc380
 title: 'git: read the full message and the per-file line counts of one commit in the LibGit2 layer'
 ---
 ## What
