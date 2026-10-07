@@ -38,9 +38,19 @@ extension LibGit2Commit {
     /// The form of each date that a verb result writes: ISO 8601 in UTC.
     private static let dateStyle = Date.ISO8601FormatStyle(timeZone: .gmt)
 
+    /// The number of hex characters in a short sha, the same as the default
+    /// of `git log --abbrev-commit`.
+    private static let shortShaLength = 7
+
     /// The author date in ISO 8601 (UTC), as each verb result writes it.
     var formattedDate: String {
         Self.dateStyle.format(date)
+    }
+
+    /// The first characters of the sha, as each verb result writes the short
+    /// form.
+    var shortSha: String {
+        String(sha.prefix(Self.shortShaLength))
     }
 }
 

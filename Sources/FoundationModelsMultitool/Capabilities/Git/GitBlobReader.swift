@@ -24,6 +24,10 @@
 // root in no repository each come back as a `CorrectiveRejection`. A libgit2
 // failure of another kind comes back as a correction with the libgit2 text,
 // the same as a failed blame.
+//
+// `tools.git.log` and `tools.git.commit` do not read a file, but each reads
+// at one ref through `read(at:in:failedDescription:_:)` here. Thus the
+// correction for an unknown ref has the same text in each verb.
 
 import Foundation
 
@@ -104,6 +108,39 @@ extension GitContext {
     static func unknownRefMessage(_ ref: String) -> String {
         "The ref `\(ref)` names no commit in the git repository. Give a branch, a tag, a sha, "
             + "or a form such as HEAD~1."
+    }
+
+    /// Opens the repository of the root, and runs one read at a ref through
+    /// the `LibGit2` layer.
+    ///
+    /// `tools.git.log` and `tools.git.commit` each read at one ref, and each
+    /// read has the same two failures. Thus the two corrections have the same
+    /// text in each verb.
+    ///
+    /// - Parameters:
+    ///   - ref: The ref of the call.
+    ///   - location: The repository of the root.
+    ///   - failedDescription: The description of a read that libgit2 could not
+    ///     make, before the `: ref` suffix.
+    ///   - read: The read. It gives `nil` when the ref names no object.
+    /// - Returns: The value of the read, or the correction for an unknown ref
+    ///   or a failed read.
+    static func read<Value>(
+        at ref: String,
+        in location: GitRepositoryLocation,
+        failedDescription: String,
+        _ read: (_ repository: LibGit2Repository) throws(LibGit2Error) -> Value?
+    ) -> Result<Value, CorrectiveRejection> {
+        let value: Value?
+        do {
+            value = try read(LibGit2Repository(discoveringFrom: location.workDirectory))
+        } catch {
+            return .failure(pathRejection(failedDescription, path: "\(ref) (\(error))"))
+        }
+        guard let value else {
+            return .failure(CorrectiveRejection(correctiveMessage: unknownRefMessage(ref)))
+        }
+        return .success(value)
     }
 
     // MARK: Steps

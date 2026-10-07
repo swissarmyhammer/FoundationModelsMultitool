@@ -119,10 +119,6 @@ extension Log {
     /// The number of commits when the call names no limit.
     static let defaultLimit = 20
 
-    /// The number of hex characters in a short sha, the same as the default
-    /// of `git log --abbrev-commit`.
-    private static let shortShaLength = 7
-
     /// The bound on `limit`: a commit count in ``LogArguments/limitRange``.
     private static let limitBound = BoundParameter(
         parameterName: "limit",
@@ -192,20 +188,11 @@ extension Log {
         limit: Int,
         in location: GitRepositoryLocation
     ) -> Result<LogResult, CorrectiveRejection> {
-        let log: LibGit2Log?
-        do {
-            log = try LibGit2Repository(discoveringFrom: location.workDirectory)
-                .log(fromRevision: ref, touching: path, limit: limit)
-        } catch {
-            return .failure(
-                CorrectiveRejection(
-                    correctiveMessage: PathCorrective.pathErrorMessage(
-                        description: failedLogDescription, path: "\(ref) (\(error))")))
+        GitContext.read(at: ref, in: location, failedDescription: failedLogDescription) {
+            repository throws(LibGit2Error) in
+            try repository.log(fromRevision: ref, touching: path, limit: limit)
         }
-        guard let log else {
-            return .failure(CorrectiveRejection(correctiveMessage: GitContext.unknownRefMessage(ref)))
-        }
-        return .success(LogResult(commits: log.commits.map(row), isCapped: log.hasMore, correction: nil))
+        .map { log in LogResult(commits: log.commits.map(row), isCapped: log.hasMore, correction: nil) }
     }
 
     /// The row of one commit.
@@ -214,7 +201,7 @@ extension Log {
     /// - Returns: The row.
     private static func row(_ commit: LibGit2Commit) -> LogCommit {
         LogCommit(
-            sha: commit.sha, shortSha: String(commit.sha.prefix(shortShaLength)), author: commit.author,
+            sha: commit.sha, shortSha: commit.shortSha, author: commit.author,
             date: commit.formattedDate, subject: commit.subject)
     }
 

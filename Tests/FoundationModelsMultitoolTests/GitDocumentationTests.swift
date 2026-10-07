@@ -33,6 +33,7 @@ struct GitDocumentationTests {
         "tools.git.changes",
         "tools.git.show",
         "tools.git.log",
+        "tools.git.commit",
         "tools.git.blame",
         "tools.git.diff",
         "read-only",

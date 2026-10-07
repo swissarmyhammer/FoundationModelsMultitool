@@ -49,50 +49,48 @@ struct LibGit2FileStat: Equatable, Sendable {
 
     /// The path of the file after the commit, relative to the work folder. For
     /// a deleted file, the path before the commit.
-    // The `tools.git.commit` verb reads it. Until then, only the synthesized
-    // `Equatable` conformance reads it, and periphery sees no caller.
-    // periphery:ignore
     let path: String
 
     /// The path of the file before the commit, only for a renamed file.
-    // The `tools.git.commit` verb reads it. Until then, only the synthesized
-    // `Equatable` conformance reads it, and periphery sees no caller.
-    // periphery:ignore
     let oldPath: String?
 
-    /// The change: `added`, `modified`, `deleted`, or `renamed`.
-    // The `tools.git.commit` verb reads it. Until then, only the synthesized
-    // `Equatable` conformance reads it, and periphery sees no caller.
-    // periphery:ignore
+    /// The change: ``addedStatus``, ``modifiedStatus``, ``deletedStatus``, or
+    /// ``renamedStatus``.
     let status: String
 
     /// The number of lines that the commit adds to the file, or `nil` for a
     /// binary file.
-    // The `tools.git.commit` verb reads it. Until then, only the synthesized
-    // `Equatable` conformance reads it, and periphery sees no caller.
-    // periphery:ignore
     let additions: Int?
 
     /// The number of lines that the commit removes from the file, or `nil` for
     /// a binary file.
-    // The `tools.git.commit` verb reads it. Until then, only the synthesized
-    // `Equatable` conformance reads it, and periphery sees no caller.
-    // periphery:ignore
     let deletions: Int?
+}
+
+extension LibGit2FileStat {
+
+    /// The status of a file that the commit adds.
+    static let addedStatus = "added"
+
+    /// The status of a file that the commit changes, and of a delta that has
+    /// no name of its own, for example a change of the file type.
+    static let modifiedStatus = "modified"
+
+    /// The status of a file that the commit removes.
+    static let deletedStatus = "deleted"
+
+    /// The status of a file that the commit moves to a new path.
+    static let renamedStatus = "renamed"
 }
 
 extension LibGit2Repository {
 
-    /// The status of a delta that ``statusNames`` does not hold, for example a
-    /// change of the file type.
-    private static let modifiedStatus = "modified"
-
     /// The status text of each delta kind that has a name of its own.
     private static let statusNames: [git_delta_t.RawValue: String] = [
-        GIT_DELTA_ADDED.rawValue: "added",
-        GIT_DELTA_MODIFIED.rawValue: modifiedStatus,
-        GIT_DELTA_DELETED.rawValue: "deleted",
-        GIT_DELTA_RENAMED.rawValue: "renamed",
+        GIT_DELTA_ADDED.rawValue: LibGit2FileStat.addedStatus,
+        GIT_DELTA_MODIFIED.rawValue: LibGit2FileStat.modifiedStatus,
+        GIT_DELTA_DELETED.rawValue: LibGit2FileStat.deletedStatus,
+        GIT_DELTA_RENAMED.rawValue: LibGit2FileStat.renamedStatus,
     ]
 
     /// The version of `git_diff_find_options` that this layer fills.
@@ -162,7 +160,7 @@ extension LibGit2Repository {
         return LibGit2FileStat(
             path: String(cString: delta.new_file.path),
             oldPath: delta.status == GIT_DELTA_RENAMED ? String(cString: delta.old_file.path) : nil,
-            status: statusNames[delta.status.rawValue] ?? modifiedStatus,
+            status: statusNames[delta.status.rawValue] ?? LibGit2FileStat.modifiedStatus,
             additions: counts?.additions,
             deletions: counts?.deletions)
     }

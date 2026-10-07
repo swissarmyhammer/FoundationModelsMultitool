@@ -124,6 +124,7 @@ and `web.md`.
 | `tools.git.changes` | `branch?`, `range?` | `{ branch, parentBranch, range, files }` | `get changes` |
 | `tools.git.diff` | `left?`, `right?`, `leftText?`, `rightText?`, `language?` | `{ summary, changes[] }` | `get diff` |
 | `tools.git.log` | `ref?`, `path?`, `limit?` | commits: sha, author, date, subject | revwalk (new) |
+| `tools.git.commit` | `ref?` | one commit: sha, author, date, full message, parents, changed files with +/- line counts | first-parent diff (new), the same as `git_show` of docker-agent |
 | `tools.git.show` | `path`, `ref?` | the content of the file at the ref | blob read (new) |
 | `tools.git.blame` | `path`, `startLine?`, `endLine?`, `rev?` | one row for each line: sha, author, date; at `rev`, or in the work folder when `rev` is omitted | `blame_lines` |
 | `tools.git.branches` | none | local branches, the current branch, the main branch | `list_local_branches`, `main_branch` |

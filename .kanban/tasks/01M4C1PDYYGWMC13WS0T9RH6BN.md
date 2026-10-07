@@ -80,8 +80,24 @@ comments:
     - no code change was made in this step. Package.resolved is unchanged (FoundationModelsRanker pin d75a67c kept). `swift package update` was not run.
     - next: review
   timestamp: 2026-10-07T21:45:58.709995+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m4c5e78m980wr74sqy1bghp4
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (39679a0). 0 findings, 0 confirmed, 0 refuted. 7 validator runs attempted, 0 failed. 1 file reviewed (LibGit2BlameTests.swift). 2 .kanban files are excluded by .reviewignore. All prior Review Findings items are checked.
+    - next: none. The task moved to done.
+  timestamp: 2026-10-07T21:48:44.692523+00:00
+- actor: claude-code
+  id: 01m4c5en4y4zwhde1zxhc2k9pw
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — 1 file (shared commitTwice/commitThrice helpers in LibGit2BlameTests.swift)
+    - test: green — swift test, 2257 passed
+    - commit: 39679a0
+    - review: clean — 0 findings; task in done
+  timestamp: 2026-10-07T21:48:58.910806+00:00
+position_column: done
+position_ordinal: ffffc480
 title: 'git: add an optional rev argument to tools.git.blame'
 ---
 ## What

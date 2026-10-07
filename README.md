@@ -141,7 +141,7 @@ rendered surface, and each result never show a key value.
 ### Git
 
 The git capability is off by default. Call `withGit(root:)` on the builder to
-mount it. The capability adds seven verbs under `tools.git`:
+mount it. The capability adds eight verbs under `tools.git`:
 
 | Verb | Arguments | Result |
 |---|---|---|
@@ -150,6 +150,7 @@ mount it. The capability adds seven verbs under `tools.git`:
 | `tools.git.changes` | `branch?`, `range?` | `branch`, `parentBranch`, `range`, and the changed `files` |
 | `tools.git.show` | `path`, `ref?` | the `content` of the file at the ref (HEAD when you omit it) |
 | `tools.git.log` | `ref?`, `path?`, `limit?` | `commits`, newest first: `sha`, `shortSha`, `author`, `date`, and `subject` |
+| `tools.git.commit` | `ref?` | one commit (HEAD when you omit `ref`): `sha`, `shortSha`, `author`, `date`, the full `message`, the `parents`, and the changed `files`, each with `status`, `additions`, and `deletions` |
 | `tools.git.blame` | `path`, `startLine?`, `endLine?`, `rev?` | one row for each line: `line`, `text`, `state`, and the `sha`, `author`, and `date` of the commit (the work folder when you omit `rev`) |
 | `tools.git.diff` | `left?`, `right?`, `leftText?`, `rightText?`, `language?` | a semantic diff: a `summary` of the counts and the `changes`, one for each entity |
 
