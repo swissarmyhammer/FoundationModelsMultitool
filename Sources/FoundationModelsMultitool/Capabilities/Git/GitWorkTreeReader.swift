@@ -36,7 +36,7 @@ extension GitContext {
     ///   correction for a root in no repository, a path that the guard
     ///   refuses, a path outside the work folder, a file that cannot be read,
     ///   or a file that is not UTF-8 text.
-    func workTreeFile(path: String) -> Result<GitBlob, CorrectiveRejection> {
+    internal func workTreeFile(path: String) -> Result<GitBlob, CorrectiveRejection> {
         repository.flatMap { location in
             pathGuard.validate(path, for: .read)
                 .mapError { violation in CorrectiveRejection(correctiveMessage: violation.correctiveMessage) }

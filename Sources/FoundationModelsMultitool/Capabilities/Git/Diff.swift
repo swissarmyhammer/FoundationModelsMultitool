@@ -46,6 +46,11 @@
 // change. It is never thrown: a missing argument, a path outside the root, an
 // unknown ref, an unknown path, a file that is not text, and a root in no
 // repository are each a mistake or a fact the model reads inside the turn.
+//
+// Each type here is `internal`, and the declaration says so. The host gets
+// the verb only through `GitCapability.tools` (`[any Tool]`), the same as the
+// other git verbs and the files verbs. No other module uses `Diff`, its
+// arguments, or its result, thus no type here is `public`.
 
 import Foundation
 import FoundationModels
@@ -53,7 +58,7 @@ import FoundationModels
 /// The arguments of `tools.git.diff`: the two texts of the inline mode, the
 /// two files of the file mode, or none for the automatic mode.
 @Generable
-struct DiffArguments {
+internal struct DiffArguments {
 
     /// The old side of the file mode: a path, or `path@ref`.
     @Guide(
@@ -87,7 +92,7 @@ struct DiffArguments {
 
 /// The counts of the changes of `tools.git.diff`.
 @Generable(description: "the counts of the changes of the diff.")
-struct DiffSummary {
+internal struct DiffSummary {
 
     /// The number of files with at least one change. The inline mode counts
     /// its one text pair, as in Rust.
@@ -120,7 +125,7 @@ struct DiffSummary {
 /// The fields keep the order of the source: what changed, where, and how,
 /// then the content.
 @Generable(description: "one change to one entity: a function, a class, a key, or another entity.")
-struct DiffChange {
+internal struct DiffChange {
 
     /// What happened: `added`, `modified`, `deleted`, `moved`, or `renamed`.
     @Guide(description: "What happened to the entity: added, modified, deleted, moved, or renamed.")
@@ -176,7 +181,7 @@ struct DiffChange {
 /// `correction` and the changes are exclusive. A diff that answers changes
 /// carries no correction, and a correction carries no change and zero counts.
 @Generable(description: "the counts and the changes of the diff, or the correction that says why there are none.")
-struct GitDiffResult {
+internal struct GitDiffResult {
 
     /// The counts of the changes.
     @Guide(description: "The counts of the changes.")
@@ -192,7 +197,7 @@ struct GitDiffResult {
 }
 
 /// One side of the file mode: a path, and the ref to read it at.
-struct DiffFileSpec: Equatable, Sendable {
+internal struct DiffFileSpec: Equatable, Sendable {
 
     /// The path of the file, absolute or relative to the root.
     let path: String
@@ -304,7 +309,7 @@ extension Diff {
     ///
     /// - Parameter arguments: The texts, the files, or none.
     /// - Returns: The counts and the changes, or the correction.
-    func call(arguments: DiffArguments) async throws -> GitDiffResult {
+    internal func call(arguments: DiffArguments) async throws -> GitDiffResult {
         switch DiffMode(arguments) {
         case .inline:
             Self.inlineDiff(arguments)
@@ -535,7 +540,7 @@ private enum DiffMode {
 /// ``PathGuard``. A missing argument, a path outside the root, an unknown
 /// ref, an unknown path, a file that is not text, and a root in no
 /// repository each come back as a `correction`, not as an error.
-struct Diff: Tool {
+internal struct Diff: Tool {
 
     /// The verb this tool renders as, which the git noun stands in front of:
     /// `tools.git.diff`.

@@ -54,6 +54,55 @@ comments:
     - evidence: one local commit "feat: add tools.git.diff with three modes over the semantic engine". The commit has Diff.swift, GitWorkTreeReader.swift, the changed GitCapability.swift and GitBlobReader.swift, the test files, and all .kanban changes (the leftover files from the review of ^p9b4cm5 and the new follow-up task ^wvmh7vf). The .build folder and Package.resolved are git-ignored. No build product is staged. The sha is in the final report of this step. Nothing was pushed.
     - next: review
   timestamp: 2026-10-07T02:52:44.151884+00:00
+- actor: claude-code
+  id: 01m4a4yskarqny6qws6sqd5z0v
+  text: |-
+    ### review — findings
+    - evidence: review sha HEAD~1..HEAD (commit 303361a). 3 findings, 3 confirmed, 2 refuted. The commit renames no file, so no file-scoped review was necessary. Findings: Sources/FoundationModelsMultitool/Capabilities/Git/Diff.swift:90, Sources/FoundationModelsMultitool/Capabilities/Git/Diff.swift:179, Sources/FoundationModelsMultitool/Capabilities/Git/Diff.swift:538 (all swift/access-control).
+    - next: Do the 3 open items in the "Review Findings (2026-10-06 21:53)" section. The task stays in review.
+  timestamp: 2026-10-07T03:01:50.314777+00:00
+- actor: claude-code
+  id: 01m4a4zdtz25771r4xnks2n06x
+  text: |-
+    ### finish iteration 1 — findings
+    - implement: changed — 6 files (Diff.swift, GitWorkTreeReader.swift, GitDiffTests.swift new; GitCapability.swift, GitBlobReader.swift, GitCapabilityTests.swift); follow-up ^wvmh7vf
+    - test: green — swift test, 2218 passed in 191 suites; IntegrationTests build complete
+    - commit: 303361a
+    - review: findings — Sources/FoundationModelsMultitool/Capabilities/Git/Diff.swift:90, Diff.swift:179, Diff.swift:538 (swift/access-control)
+  timestamp: 2026-10-07T03:02:11.039673+00:00
+- actor: claude-code
+  id: 01m4a574gmhkhfkdrk5325zfr0
+  text: |-
+    Review findings (swift/access-control, Diff.swift:90, :179, :538): research and decision.
+    - The premise of the findings is not correct: `Diff.call(arguments:)` is not `public`. It had no modifier, thus it was implicit `internal`. No member of Diff.swift or GitWorkTreeReader.swift is `public`.
+    - The package contract: a capability is `public` (`GitCapability`, `FilesCapability`), and the host gets each verb only as `[any Tool]` through `tools`. Each verb (Blame, Show, Log, Status, Branches, Changes, files Glob) and its arguments and result are `internal`. `GitContext` and `GitBlob` are `internal`. Many Files headers say "this package keeps them internal". The rule body also says "Library code defaults to `internal`; add `public` only for intended cross-module API."
+    - `public struct Diff: Tool` would make `call`, `name`, `description`, `DiffArguments`, `GitDiffResult`, `DiffSummary`, and `DiffChange` public too (a public conformance needs public witnesses), with no other module as a user. Thus `call` has no reason to be public.
+    - Fix: each type in Diff.swift states its access level explicitly: `internal struct DiffArguments`, `DiffSummary`, `DiffChange`, `GitDiffResult`, `DiffFileSpec`, `Diff`; `DiffMode` stays `private`. `call(arguments:)` is now `internal func`, and `GitContext.workTreeFile(path:)` in GitWorkTreeReader.swift is now `internal func`. GitWorkTreeReader.swift declares no type (only an extension of `GitContext`). The file header of Diff.swift now says why each type is `internal`.
+    - No test: an access modifier that is the same as the default changes no behavior, thus no test can fail first. The compiler is the check.
+  timestamp: 2026-10-07T03:06:23.636414+00:00
+- actor: claude-code
+  id: 01m4a576zbwrazjrhx07a671y7
+  text: |-
+    ### implement — changed
+    - evidence: 2 files — Sources/FoundationModelsMultitool/Capabilities/Git/Diff.swift (explicit `internal` on 6 types and on `call`, header note), Sources/FoundationModelsMultitool/Capabilities/Git/GitWorkTreeReader.swift (`internal func workTreeFile`). 3 of 3 findings checked. `swift build --build-tests`: Build complete, 0 errors, only the known mlx-swift "missing creator for mutated node" warning. `swift test`: 2218 tests in 191 suites passed.
+    - next: /review. The task stays in `doing`. Not committed, not pushed.
+  timestamp: 2026-10-07T03:06:26.155224+00:00
+- actor: claude-code
+  id: 01m4a5avx4wa4bphn5f23x80sz
+  text: |-
+    ### test — green
+    - evidence: swift build --build-tests: Build complete. swift test: 2218 tests in 191 suites passed, 0 failed. IntegrationTests swift build --build-tests: Build complete.
+    - warnings: only the known mlx-swift_Cmlx.bundle "missing creator for mutated node" warning. It comes from a dependency and was there before this change.
+    - skipped: none. The word "skipped" appears only in test names.
+    - next: review.
+  timestamp: 2026-10-07T03:08:25.892103+00:00
+- actor: claude-code
+  id: 01m4a5bf38f56p65nk5jfh45s1
+  text: |-
+    ### commit — changed
+    - evidence: one local commit "refactor: add explicit internal access to git diff types" with Diff.swift, GitWorkTreeReader.swift, and .kanban changes. No build product staged. Not pushed. The sha is in the git log of this branch (the comment is inside the commit, so the sha cannot be written here).
+    - next: review
+  timestamp: 2026-10-07T03:08:45.544356+00:00
 depends_on:
 - 01M48V90Q7SZFS78K85W0YEYA3
 - 01M48V8EHPNDZGYRJEJBCK92PN
@@ -92,4 +141,17 @@ Port the `get diff` operation of the sah MCP tool `git` (git.md, "Layer 1", item
 
 ## Acceptance
 
-- `swift build` and `swift test` pass with no new warnings. #git
+- `swift build` and `swift test` pass with no new warnings.
+
+## Review Findings (2026-10-06 21:53)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 6 file(s) reviewed, 6 not reviewed.
+
+> 6 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 6 file(s)
+
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Git/Diff.swift:90` `swift/access-control` — DiffSummary is nested in the return type GitDiffResult of the public call method and should have an explicit public access modifier; the rule requires spelling access modifiers explicitly on library declarations when the intent is API-shaping. Add `public` modifier: `@Generable(description: "the counts of the changes of the diff.")
+public struct DiffSummary {`.
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Git/Diff.swift:179` `swift/access-control` — GitDiffResult is the return type of the public call method (line 307) and should have an explicit public access modifier; the rule requires spelling access modifiers explicitly on library declarations when the intent is API-shaping, and this type is the primary return value of the public Tool interface. Add `public` modifier: `@Generable(description: "the counts and the changes of the diff, or the correction that says why there are none.")
+public struct GitDiffResult {`.
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Git/Diff.swift:538` `swift/access-control` — Diff struct implements the Tool protocol and is the public interface of this verb; it should have an explicit public access modifier. The rule requires spelling access modifiers explicitly on library declarations when the intent is API-shaping. Add `public` modifier: `public struct Diff: Tool {`. #git
