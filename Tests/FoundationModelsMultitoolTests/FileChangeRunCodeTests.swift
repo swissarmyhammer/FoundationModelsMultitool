@@ -173,11 +173,11 @@ struct FileChangeRunCodeTests {
         // shows that the event is alone.
         let outerEventsAtReturn = await recordedOperationEvents(
             of: ground.run, ofKind: .progress, correlatedTo: [ground.run.context.completionToken])
-        let everyProgressEvent = await settledOperationEvents(of: ground.run, ofKind: .progress)
+        let everyProgressEvents = await settledOperationEvents(of: ground.run, ofKind: .progress)
 
         #expect(output == Self.writtenByteCountText, "output was: \(output)")
         #expect(outerEventsAtReturn.count == Self.eventsPerCall, "events were: \(outerEventsAtReturn)")
-        #expect(everyProgressEvent.count == Self.eventsPerCall, "events were: \(everyProgressEvent)")
+        #expect(everyProgressEvents.count == Self.eventsPerCall, "events were: \(everyProgressEvents)")
         #expect(outerEventsAtReturn.allSatisfy { FileChangeSet(operationEventDetail: $0.detail) != nil })
     }
 

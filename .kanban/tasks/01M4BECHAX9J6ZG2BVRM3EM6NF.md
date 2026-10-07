@@ -55,6 +55,54 @@ comments:
     - evidence: one local commit "test: read the journal after close in file-change tests". Files: FileChangeEventTests.swift, FileChangeRunCodeTests.swift, all .kanban/ changes (includes leftover files of ^8rf1he5). Sha is in the commit reply.
     - next: none. The commit is local. No push.
   timestamp: 2026-10-07T16:07:12.832729+00:00
+- actor: claude-code
+  id: 01m4bj8r1rgm2p07fcjywp07kb
+  text: |-
+    ### review — findings
+    - evidence: `review sha HEAD~1..HEAD` (commit db05d29). The commit renames no file, thus no file-scoped review was necessary. Counts: 1 finding, 1 confirmed, 1 refuted, 7 attempted, 0 failed. Open finding: Tests/FoundationModelsMultitoolTests/FileChangeRunCodeTests.swift:176 (`swift/naming-clarity`).
+    - next: Correct the open finding in the dated `## Review Findings` section. Remove the cause from the full file. Then commit and review again.
+  timestamp: 2026-10-07T16:13:42.328198+00:00
+- actor: claude-code
+  id: 01m4bj96qcg4bz0tnmj677v7br
+  text: |-
+    ### finish iteration 1 — findings
+    - implement: changed — 2 files (FileChangeEventTests.swift, FileChangeRunCodeTests.swift); the six tests were fixed earlier in 79d671e
+    - test: green — swift test, 2266 passed in 196 suites; IntegrationTests build complete
+    - commit: db05d29
+    - review: findings — Tests/FoundationModelsMultitoolTests/FileChangeRunCodeTests.swift:176 (swift/naming-clarity: everyProgressEvent holds many events)
+  timestamp: 2026-10-07T16:13:57.356435+00:00
+- actor: claude-code
+  id: 01m4bjfwzexr4yz8xndv7rxyda
+  text: |-
+    ### implement - naming-clarity fix
+    - Finding: `everyProgressEvent` in FileChangeRunCodeTests.swift is now `everyProgressEvents`, at the declaration and at the two uses.
+    - Same cause, one more place: MCPServerCallTests "a progress notification during a call reaches ToolContext.progress ..." held the event list in `progress`. It is now `progressEvents`. The message text is now "progress events were:".
+    - Checked with no change needed: FileChangeRunCodeTests (all names), FileChangeEventTests (all names; `drained` holds one drain result, `set` holds one FileChangeSet), and the six tests of 79d671e in SandboxGlobalsTests, HostAndEmitterTests, RunBindingTests, FileChangeEventAbsenceTests, plus `settledOperationEvents` in Fixtures/StubRouterFixtures.swift. Their names (`events`, `notices`, `changeSets`, `observations`, `registry`) agree with their content.
+    - Tool note: the `files` edit with `replace_all: true` changed only 1 of 3 uses. The build found the 2 others. Do not trust its count; build after a rename.
+    - Finding flipped to `- [x]`.
+  timestamp: 2026-10-07T16:17:36.750152+00:00
+- actor: claude-code
+  id: 01m4bjfytay61vpmyajw9tspck
+  text: |-
+    ### implement — changed
+    - evidence: 2 files — Tests/FoundationModelsMultitoolTests/FileChangeRunCodeTests.swift, Tests/FoundationModelsMultitoolTests/MCPServerCallTests.swift; swift build --build-tests: Build complete (only the known SwiftPM warning "missing creator for mutated node" on mlx-swift_Cmlx.bundle); swift test: 2266 tests in 196 suites passed, 0 failures
+    - next: /review
+  timestamp: 2026-10-07T16:17:38.634919+00:00
+- actor: claude-code
+  id: 01m4bjmd2s04931nxe308cm3wc
+  text: |-
+    ### test - green
+    - evidence: swift build --build-tests - complete, 0 own warnings. swift test - 2266 tests in 196 suites passed, 0 failed, 0 skipped. IntegrationTests swift build --build-tests - complete, 0 own warnings.
+    - known dependency warning (not red): missing creator for mutated node for mlx-swift_Cmlx.bundle, seen in both builds.
+    - next: review
+  timestamp: 2026-10-07T16:20:04.313944+00:00
+- actor: claude-code
+  id: 01m4bjn49xwfpyazwqtrny3fe6
+  text: |-
+    ### commit — changed
+    - evidence: One local commit: refactor(tests): use plural names for progress event lists. It includes the two test files and the .kanban changes. The sha is in the commit log.
+    - next: review
+  timestamp: 2026-10-07T16:20:28.093283+00:00
 position_column: doing
 position_ordinal: '80'
 title: 'tests: six progress-event tests fail after Router c30d1d41 merges progress rows'
@@ -82,4 +130,13 @@ These tests fail on `HEAD` with no local change (checked with `git stash` during
 
 ## Acceptance
 
-- The six tests pass. `swift build --build-tests` and `swift test` pass with no new warnings. #tests
+- The six tests pass. `swift build --build-tests` and `swift test` pass with no new warnings.
+
+## Review Findings (2026-10-07 11:07)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 2 file(s) reviewed, 4 not reviewed.
+
+> 4 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 4 file(s)
+
+- [x] `Tests/FoundationModelsMultitoolTests/FileChangeRunCodeTests.swift:176` `swift/naming-clarity` — Variable `everyProgressEvent` is singular but holds multiple events (the return value of `settledOperationEvents`). The name misleads readers about what the variable contains. Rename to `everyProgressEvents` (plural) to match the actual content. #tests

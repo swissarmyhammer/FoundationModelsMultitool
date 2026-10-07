@@ -239,9 +239,9 @@ struct MCPServerCallTests {
 
         _ = try await Self.call(server, tool: Self.progressToolName, under: context)
 
-        let progress = await settledOperationEvents(of: run, ofKind: .progress)
-        #expect(progress.count == Self.progressSteps, "progress was: \(progress)")
-        #expect(progress.allSatisfy { $0.correlationID == context.completionToken })
+        let progressEvents = await settledOperationEvents(of: run, ofKind: .progress)
+        #expect(progressEvents.count == Self.progressSteps, "progress events were: \(progressEvents)")
+        #expect(progressEvents.allSatisfy { $0.correlationID == context.completionToken })
         withExtendedLifetime(scripted) {}
     }
 
