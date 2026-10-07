@@ -20,7 +20,8 @@ import Testing
 /// The card names each case: the inline mode with a missing argument and
 /// with an unknown language; the file mode with `a.swift@HEAD~1` against
 /// `a.swift`, a path outside the root, and an unknown ref; and the automatic
-/// mode with a clean tree and with one staged and one unstaged file.
+/// mode with a clean tree and with one staged and one unstaged file. The
+/// staged-rename cases of the automatic mode come from task `^wvmh7vf`.
 @Suite("GitDiffTests")
 struct GitDiffTests {
 
@@ -43,6 +44,26 @@ struct GitDiffTests {
 
     /// The name of the function of ``firstSwift`` and ``secondSwift``.
     private static let swiftFunctionName = "greet"
+
+    /// The folder of the repository that is the root of a test with a root
+    /// below the work folder.
+    private static let subfolder = "src"
+
+    /// A Swift file with one function whose body has several lines. A change
+    /// of one line keeps most of its tokens, thus the engine pairs the two
+    /// versions of the function across two paths (phase 3 of the matcher).
+    private static let sumSwift =
+        "func total(of values: [Int]) -> Int {\n    var sum = 0\n    for value in values {\n"
+        + "        sum += value\n    }\n    return sum\n}\n"
+
+    /// ``sumSwift`` with one changed line: the function returns twice the
+    /// sum.
+    private static let doubledSumSwift =
+        "func total(of values: [Int]) -> Int {\n    var sum = 0\n    for value in values {\n"
+        + "        sum += value\n    }\n    return sum * 2\n}\n"
+
+    /// The name of the function of ``sumSwift`` and ``doubledSumSwift``.
+    private static let sumFunctionName = "total"
 
     // MARK: - parse_file_ref
 
@@ -406,6 +427,80 @@ struct GitDiffTests {
         let added = try #require(result.changes.first)
         #expect(added.filePath == Self.otherSwiftFile)
         #expect(added.changeType == "added")
+    }
+
+    /// A staged rename with no change of content reads HEAD at the old path
+    /// (task `^wvmh7vf`): the entity is the same on each side, thus it moved
+    /// to the new file, and no entity is added or deleted.
+    @Test("automatic mode gives the entity of a staged rename as moved")
+    func automaticModeGivesTheEntityOfAStagedRenameAsMoved() async throws {
+        let repository = try TemporaryGitRepository()
+        try repository.write(Self.firstSwift, to: Self.swiftFile)
+        try repository.commit(message: "first")
+        try repository.stageRename(from: Self.swiftFile, to: Self.otherSwiftFile)
+
+        let result = try await Self.diff(Self.arguments(), in: GitContext(root: repository.workDirectory))
+
+        #expect(result.correction == nil)
+        #expect(result.summary.added == 0)
+        #expect(result.summary.deleted == 0)
+        #expect(result.summary.modified == 0)
+        #expect(result.summary.moved == 1)
+        let moved = try #require(result.changes.first)
+        #expect(result.changes.count == 1)
+        #expect(moved.changeType == "moved")
+        #expect(moved.filePath == Self.otherSwiftFile)
+        #expect(moved.oldFilePath == Self.swiftFile)
+        #expect(moved.beforeContent == moved.afterContent)
+    }
+
+    /// A staged rename, then a change of the function in the work folder:
+    /// the old side is the function at the old path, thus the function
+    /// moved with its new body, and it is not added.
+    @Test("automatic mode gives a changed function of a staged rename as moved")
+    func automaticModeGivesAChangedFunctionOfAStagedRenameAsMoved() async throws {
+        let repository = try TemporaryGitRepository()
+        try repository.write(Self.sumSwift, to: Self.swiftFile)
+        try repository.commit(message: "first")
+        try repository.stageRename(from: Self.swiftFile, to: Self.otherSwiftFile)
+        try repository.write(Self.doubledSumSwift, to: Self.otherSwiftFile)
+
+        let result = try await Self.diff(Self.arguments(), in: GitContext(root: repository.workDirectory))
+
+        #expect(result.summary.added == 0)
+        #expect(result.summary.deleted == 0)
+        let moved = try #require(result.changes.first)
+        #expect(result.changes.count == 1)
+        #expect(moved.changeType == "moved")
+        #expect(moved.entityName == Self.sumFunctionName)
+        #expect(moved.filePath == Self.otherSwiftFile)
+        #expect(moved.oldFilePath == Self.swiftFile)
+        #expect(moved.beforeContent?.contains("return sum\n") == true)
+        #expect(moved.afterContent?.contains("return sum * 2\n") == true)
+    }
+
+    /// A rename from a path outside the root: the old path is never read
+    /// (git.md § "Decisions", item 8), thus the file is new below the root
+    /// and its entity is `added`, with no old path.
+    @Test("automatic mode gives a rename from outside the root as added")
+    func automaticModeGivesARenameFromOutsideTheRootAsAdded() async throws {
+        let repository = try TemporaryGitRepository()
+        try repository.write(Self.firstSwift, to: Self.swiftFile)
+        try repository.write("kept\n", to: "\(Self.subfolder)/kept.txt")
+        try repository.commit(message: "first")
+        try repository.stageRename(from: Self.swiftFile, to: "\(Self.subfolder)/\(Self.otherSwiftFile)")
+        let root = repository.workDirectory.appendingPathComponent(Self.subfolder, isDirectory: true)
+
+        let result = try await Self.diff(Self.arguments(), in: GitContext(root: root))
+
+        #expect(result.correction == nil)
+        #expect(result.summary.added == 1)
+        #expect(result.summary.deleted == 0)
+        let added = try #require(result.changes.first)
+        #expect(result.changes.count == 1)
+        #expect(added.changeType == "added")
+        #expect(added.filePath == Self.otherSwiftFile)
+        #expect(added.oldFilePath == nil)
     }
 
     /// A root in no repository is a correction.

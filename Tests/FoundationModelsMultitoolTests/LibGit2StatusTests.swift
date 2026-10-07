@@ -100,6 +100,25 @@ struct LibGit2StatusTests {
         #expect(status.paths(in: .untracked).isEmpty)
     }
 
+    /// A staged rename keeps its old path beside its new path, and a file
+    /// with no rename has no old path.
+    @Test("a staged rename keeps its old path")
+    func aStagedRenameKeepsItsOldPath() throws {
+        let repository = try TemporaryGitRepository()
+        try repository.write("the text of the file\n", to: "old.txt")
+        try repository.write("a\n", to: "a.txt")
+        try repository.commit(message: "first")
+        try repository.stageRename(from: "old.txt", to: "new.txt")
+        try repository.write("a2\n", to: "a.txt")
+        try repository.stage("a.txt")
+
+        let status = try Self.status(of: repository)
+
+        #expect(status.oldPathsOfRenamedFiles == ["new.txt": "old.txt"])
+        let changed = try #require(status.entries.first { $0.path == "a.txt" })
+        #expect(changed.oldPath == nil)
+    }
+
     /// A file with a merge conflict is unstaged: the work folder must change
     /// before the file can be staged.
     @Test("a conflicted file is unstaged")

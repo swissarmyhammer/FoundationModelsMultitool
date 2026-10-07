@@ -38,6 +38,14 @@ struct GitStatus: Equatable, Sendable {
     /// The files with a staged rename, under their new paths.
     let renamed: [String]
 
+    /// The old path of each staged rename, keyed by its new path in
+    /// ``renamed``.
+    ///
+    /// A rename from a path outside the root has no entry: the root is the
+    /// boundary of the capability (git.md § "Decisions", item 8), thus no
+    /// verb reads that path, and the file is new below the root.
+    internal let oldPathsOfRenamedFiles: [String: String]
+
     /// Whether no file below the root differs from HEAD: each list is empty.
     var isClean: Bool {
         staged.isEmpty && unstaged.isEmpty && untracked.isEmpty && renamed.isEmpty
@@ -87,6 +95,35 @@ extension GitContext {
             status.paths(in: group).compactMap(location.rootRelativePath(fromRepositoryPath:))
         }
         return .success(
-            GitStatus(staged: paths(.staged), unstaged: paths(.unstaged), untracked: paths(.untracked), renamed: paths(.renamed)))
+            GitStatus(
+                staged: paths(.staged), unstaged: paths(.unstaged), untracked: paths(.untracked),
+                renamed: paths(.renamed), oldPathsOfRenamedFiles: rootRelativeRenames(of: status, in: location)))
+    }
+
+    /// The old path of each staged rename, keyed by its new path, with each
+    /// path relative to the root.
+    ///
+    /// A rename keeps its entry only when both paths are below the root. A
+    /// rename from outside the root has no entry, thus no verb reads the old
+    /// path (git.md § "Decisions", item 8). Two repository paths never give
+    /// the same root path, thus no entry replaces another.
+    ///
+    /// - Parameters:
+    ///   - status: The status of the repository.
+    ///   - location: The repository of the root.
+    /// - Returns: The old root path of each rename, keyed by its new root
+    ///   path.
+    private static func rootRelativeRenames(
+        of status: LibGit2Status, in location: GitRepositoryLocation
+    ) -> [String: String] {
+        let renames = status.oldPathsOfRenamedFiles.compactMap { newPath, oldPath -> (String, String)? in
+            guard let rootNewPath = location.rootRelativePath(fromRepositoryPath: newPath),
+                let rootOldPath = location.rootRelativePath(fromRepositoryPath: oldPath)
+            else {
+                return nil
+            }
+            return (rootNewPath, rootOldPath)
+        }
+        return Dictionary(renames, uniquingKeysWith: { first, _ in first })
     }
 }

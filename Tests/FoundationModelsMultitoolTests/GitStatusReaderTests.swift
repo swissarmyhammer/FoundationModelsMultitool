@@ -36,7 +36,10 @@ struct GitStatusReaderTests {
 
         let status = try GitContext(root: root).status().get()
 
-        #expect(status == GitStatus(staged: ["lib/n.txt"], unstaged: ["a.txt"], untracked: [], renamed: []))
+        #expect(
+            status
+                == GitStatus(
+                    staged: ["lib/n.txt"], unstaged: ["a.txt"], untracked: [], renamed: [], oldPathsOfRenamedFiles: [:]))
         #expect(!status.isClean)
     }
 
@@ -49,7 +52,8 @@ struct GitStatusReaderTests {
 
         let status = try GitContext(root: repository.workDirectory).status().get()
 
-        #expect(status == GitStatus(staged: [], unstaged: [], untracked: [], renamed: []))
+        #expect(
+            status == GitStatus(staged: [], unstaged: [], untracked: [], renamed: [], oldPathsOfRenamedFiles: [:]))
         #expect(status.isClean)
     }
 
@@ -127,6 +131,40 @@ struct GitStatusReaderTests {
         let status = try GitContext(root: repository.workDirectory).status().get()
 
         #expect(status.allFiles == ["existing.txt", "new.txt", "staged.txt", "untracked.txt"])
+    }
+
+    /// A staged rename below the root gives its old path, relative to the
+    /// root, beside its new path.
+    @Test("a staged rename gives its old path relative to the root")
+    func aStagedRenameGivesItsOldPathRelativeToTheRoot() throws {
+        let repository = try TemporaryGitRepository()
+        try repository.write("the text of the file\n", to: "src/old.txt")
+        try repository.commit(message: "first")
+        try repository.stageRename(from: "src/old.txt", to: "src/lib/new.txt")
+        let root = repository.workDirectory.appendingPathComponent("src", isDirectory: true)
+
+        let status = try GitContext(root: root).status().get()
+
+        #expect(status.renamed == ["lib/new.txt"])
+        #expect(status.oldPathsOfRenamedFiles == ["lib/new.txt": "old.txt"])
+    }
+
+    /// A rename from a path outside the root keeps its new path in
+    /// `renamed`, and has no old path: the reader never gives a path outside
+    /// the root (git.md § "Decisions", item 8).
+    @Test("a rename from outside the root has no old path")
+    func aRenameFromOutsideTheRootHasNoOldPath() throws {
+        let repository = try TemporaryGitRepository()
+        try repository.write("the text of the file\n", to: "old.txt")
+        try repository.write("kept\n", to: "src/kept.txt")
+        try repository.commit(message: "first")
+        try repository.stageRename(from: "old.txt", to: "src/new.txt")
+        let root = repository.workDirectory.appendingPathComponent("src", isDirectory: true)
+
+        let status = try GitContext(root: root).status().get()
+
+        #expect(status.renamed == ["new.txt"])
+        #expect(status.oldPathsOfRenamedFiles.isEmpty)
     }
 
     /// A root in no repository is the correction of the context.

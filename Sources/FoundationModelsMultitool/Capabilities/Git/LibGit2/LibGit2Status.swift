@@ -39,7 +39,8 @@ enum LibGit2StatusGroup: CaseIterable, Sendable {
     /// A file in the work folder that git does not track.
     case untracked
 
-    /// A rename that is in the index. The file has its new path.
+    /// A rename that is in the index. The file has its new path, and
+    /// ``LibGit2StatusEntry/oldPath`` holds its old path.
     case renamed
 
     /// The libgit2 status flags that put a file in this group.
@@ -65,6 +66,10 @@ struct LibGit2StatusEntry: Equatable, Sendable {
     /// The path relative to the work folder. For a rename, the new path.
     let path: String
 
+    /// The path relative to the work folder before a staged rename, or `nil`
+    /// when the index holds no rename of the file.
+    internal let oldPath: String?
+
     /// The libgit2 status flags of the file (`git_status_t`).
     let flags: UInt32
 }
@@ -82,6 +87,17 @@ struct LibGit2Status: Equatable, Sendable {
     ///   ``entries``.
     func paths(in group: LibGit2StatusGroup) -> [String] {
         entries.filter { entry in entry.flags & group.flags != 0 }.map(\.path)
+    }
+
+    /// The old path of each staged rename, keyed by its new path. Each path
+    /// is relative to the work folder.
+    ///
+    /// libgit2 gives each new path one time. If two entries have the same
+    /// new path, the first entry stands.
+    internal var oldPathsOfRenamedFiles: [String: String] {
+        Dictionary(
+            entries.compactMap { entry in entry.oldPath.map { oldPath in (entry.path, oldPath) } },
+            uniquingKeysWith: { first, _ in first })
     }
 }
 
@@ -117,7 +133,7 @@ extension LibGit2Repository {
         return LibGit2Status(entries: entries)
     }
 
-    /// Copies the path and the flags of one status entry.
+    /// Copies the paths and the flags of one status entry.
     ///
     /// The path is the new path of the index change, or, when the index has
     /// no change, the new path of the work folder change. libgit2 fills both
@@ -129,6 +145,22 @@ extension LibGit2Repository {
         guard let delta = entry.head_to_index ?? entry.index_to_workdir, let path = delta.pointee.new_file.path else {
             return nil
         }
-        return LibGit2StatusEntry(path: String(cString: path), flags: entry.status.rawValue)
+        return LibGit2StatusEntry(
+            path: String(cString: path), oldPath: renameOldPath(of: entry), flags: entry.status.rawValue)
+    }
+
+    /// Copies the old path of a staged rename: the old file of the HEAD to
+    /// index delta.
+    ///
+    /// - Parameter entry: The entry, which the status list owns.
+    /// - Returns: The old path, or `nil` when the entry is not a staged
+    ///   rename.
+    private static func renameOldPath(of entry: git_status_entry) -> String? {
+        guard entry.status.rawValue & GIT_STATUS_INDEX_RENAMED.rawValue != 0,
+            let oldPath = entry.head_to_index?.pointee.old_file.path
+        else {
+            return nil
+        }
+        return String(cString: oldPath)
     }
 }

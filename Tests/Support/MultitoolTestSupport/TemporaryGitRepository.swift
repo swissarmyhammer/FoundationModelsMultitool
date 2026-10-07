@@ -144,6 +144,29 @@ final class TemporaryGitRepository {
         }
     }
 
+    /// Moves the file at `oldPath` to `newPath` in the work folder, and
+    /// stages the two paths. Thus the index holds a rename. No commit is
+    /// made.
+    ///
+    /// Each parent folder of `newPath` that is missing is made first.
+    ///
+    /// - Parameters:
+    ///   - oldPath: The path of the file before the move, relative to the
+    ///     work folder.
+    ///   - newPath: The path of the file after the move, relative to the
+    ///     work folder.
+    /// - Throws: The error of `FileManager`, or ``LibGit2Error`` when a
+    ///   libgit2 call fails.
+    func stageRename(from oldPath: String, to newPath: String) throws {
+        let newURL = workDirectory.appendingPathComponent(newPath, isDirectory: false)
+        try FileManager.default.createDirectory(
+            at: newURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try FileManager.default.moveItem(
+            at: workDirectory.appendingPathComponent(oldPath, isDirectory: false), to: newURL)
+        try stage(oldPath)
+        try stage(newPath)
+    }
+
     /// Records a merge conflict on the file at `path` in the index, and
     /// writes the index. The work folder does not change.
     ///

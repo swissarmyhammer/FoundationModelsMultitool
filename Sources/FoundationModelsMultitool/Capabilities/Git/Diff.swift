@@ -28,8 +28,17 @@
 // (Rust then diffs HEAD~1 against HEAD). As in Rust, a side that cannot be
 // read is no side (`git_show_content` and `read_to_string(...).ok()` give
 // `None`): a file that HEAD does not hold is new, and a file that the work
-// folder does not hold is gone. As in Rust, a staged rename reads HEAD at the
-// new path, thus its entities are `added`.
+// folder does not hold is gone.
+//
+// A staged rename reads HEAD at its OLD path, and the changed file carries
+// that path as `oldFilePath` (task `^wvmh7vf`). This is a deliberate fix of
+// a gap that the Rust source also has: `populate_staged_contents` reads
+// `HEAD:<new path>`, which HEAD does not hold, thus each entity of a renamed
+// file is `added` there. Here the entities of the file are `moved` (or
+// `modified`), not `added`. A rename from a path outside the root is the
+// exception: the root rule (git.md § "Decisions", item 8) never reads a path
+// outside the root, thus the status gives no old path, the file is new below
+// the root, and each of its entities is `added`.
 //
 // Each path in a result is relative to the root (git.md § "Decisions",
 // item 8). The card names the field `structuralChange`; the field is
@@ -361,7 +370,10 @@ extension Diff {
     ///   a root in no repository and for a status that cannot be read.
     private func automaticDiff() -> GitDiffResult {
         context.status().resolve(corrective: Self.corrective) { status in
-            let diff = Self.semanticDiff(of: status.allFiles.map(automaticChange(ofFile:)))
+            let files = status.allFiles.map { path in
+                automaticChange(ofFile: path, renamedFrom: status.oldPathsOfRenamedFiles[path])
+            }
+            let diff = Self.semanticDiff(of: files)
             return Self.result(of: diff, fileCount: diff.fileCount)
         }
     }
@@ -381,17 +393,22 @@ extension Diff {
     /// The changed file of one file of the status: the file at HEAD against
     /// the file in the work folder.
     ///
-    /// A side that cannot be read is no side, as in Rust: the file is new,
-    /// gone, or (for a binary file) has no entity.
+    /// A staged rename reads HEAD at its old path, and the engine reads the
+    /// old entities at that path. A side that cannot be read is no side, as
+    /// in Rust: the file is new, gone, or (for a binary file) has no entity.
     ///
-    /// - Parameter path: The path of the file, relative to the root.
+    /// - Parameters:
+    ///   - path: The path of the file, relative to the root.
+    ///   - oldPath: The path of the file at HEAD for a staged rename,
+    ///     relative to the root, or `nil` when the file has no rename below
+    ///     the root.
     /// - Returns: The changed file.
-    private func automaticChange(ofFile path: String) -> SemanticFileChange {
-        let before = try? context.blob(path: path, ref: GitContext.defaultRef).get().text
+    private func automaticChange(ofFile path: String, renamedFrom oldPath: String?) -> SemanticFileChange {
+        let before = try? context.blob(path: oldPath ?? path, ref: GitContext.defaultRef).get().text
         let after = try? context.workTreeFile(path: path).get().text
         return SemanticFileChange(
-            filePath: path, status: Self.fileStatus(before: before, after: after), oldFilePath: nil,
-            beforeContent: before, afterContent: after)
+            filePath: path, status: Self.fileStatus(before: before, after: after, isRenamed: oldPath != nil),
+            oldFilePath: oldPath, beforeContent: before, afterContent: after)
     }
 
     /// What happened to a file, from the sides that it has.
@@ -399,16 +416,17 @@ extension Diff {
     /// - Parameters:
     ///   - before: The old text, or `nil`.
     ///   - after: The new text, or `nil`.
+    ///   - isRenamed: Whether the old text comes from another path.
     /// - Returns: `added` with no old text, `deleted` with no new text, else
-    ///   `modified`.
-    private static func fileStatus(before: String?, after: String?) -> FileStatus {
+    ///   `renamed` for a rename and `modified` for a file at one path.
+    private static func fileStatus(before: String?, after: String?, isRenamed: Bool) -> FileStatus {
         switch (before, after) {
         case (.none, _):
             .added
         case (.some, .none):
             .deleted
         case (.some, .some):
-            .modified
+            isRenamed ? .renamed : .modified
         }
     }
 
