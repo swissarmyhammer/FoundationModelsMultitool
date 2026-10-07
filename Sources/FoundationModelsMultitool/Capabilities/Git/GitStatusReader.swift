@@ -10,7 +10,9 @@
 // git.md § "Decisions", item 8: each path in a result is relative to the root,
 // and the root is the boundary of the capability. libgit2 reads the status of
 // the whole work folder; the reader keeps only the files below the root, and
-// changes each path into a root path (`GitRepositoryLocation`).
+// changes each path into a root path (`GitRepositoryLocation`). A staged
+// rename from below the root to a path outside the root keeps its old path,
+// as a staged removal (task `^pt6fyf0`); its new path is never given.
 //
 // git.md § "Decisions", item 10: the reader calls only the `LibGit2` layer
 // (`LibGit2Status.swift`), never the C API. A root in no repository and a
@@ -26,6 +28,10 @@ import Foundation
 struct GitStatus: Equatable, Sendable {
 
     /// The files with a change in the index: new, changed, or removed.
+    ///
+    /// A staged rename from below the root to a path outside the root is a
+    /// removal here, under its old path: the root does not hold the new
+    /// path (git.md § "Decisions", item 8).
     let staged: [String]
 
     /// The files with a change in the work folder that is not in the index,
@@ -96,8 +102,32 @@ extension GitContext {
         }
         return .success(
             GitStatus(
-                staged: paths(.staged), unstaged: paths(.unstaged), untracked: paths(.untracked),
-                renamed: paths(.renamed), oldPathsOfRenamedFiles: rootRelativeRenames(of: status, in: location)))
+                staged: paths(.staged) + removalsOfRenamesOutOfTheRoot(of: status, in: location),
+                unstaged: paths(.unstaged), untracked: paths(.untracked), renamed: paths(.renamed),
+                oldPathsOfRenamedFiles: rootRelativeRenames(of: status, in: location)))
+    }
+
+    /// The old path of each staged rename from below the root to a path
+    /// outside the root, relative to the root, in path order.
+    ///
+    /// For the root, such a rename is a staged removal of the old path: the
+    /// root held the file, and the root does not hold the new path. libgit2
+    /// gives no separate removal entry for the old path of a rename, thus
+    /// without this list no list holds the file, and the status is clean.
+    /// The new path is outside the root, thus no list gives it (git.md §
+    /// "Decisions", item 8).
+    ///
+    /// - Parameters:
+    ///   - status: The status of the repository.
+    ///   - location: The repository of the root.
+    /// - Returns: The old root path of each rename out of the root.
+    private static func removalsOfRenamesOutOfTheRoot(
+        of status: LibGit2Status, in location: GitRepositoryLocation
+    ) -> [String] {
+        status.oldPathsOfRenamedFiles
+            .filter { newPath, _ in location.rootRelativePath(fromRepositoryPath: newPath) == nil }
+            .compactMap { _, oldPath in location.rootRelativePath(fromRepositoryPath: oldPath) }
+            .sorted()
     }
 
     /// The old path of each staged rename, keyed by its new path, with each

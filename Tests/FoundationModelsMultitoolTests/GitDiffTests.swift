@@ -21,7 +21,8 @@ import Testing
 /// with an unknown language; the file mode with `a.swift@HEAD~1` against
 /// `a.swift`, a path outside the root, and an unknown ref; and the automatic
 /// mode with a clean tree and with one staged and one unstaged file. The
-/// staged-rename cases of the automatic mode come from task `^wvmh7vf`.
+/// staged-rename cases of the automatic mode come from task `^wvmh7vf`, and
+/// the rename to a path outside the root comes from task `^pt6fyf0`.
 @Suite("GitDiffTests")
 struct GitDiffTests {
 
@@ -501,6 +502,32 @@ struct GitDiffTests {
         #expect(added.changeType == "added")
         #expect(added.filePath == Self.otherSwiftFile)
         #expect(added.oldFilePath == nil)
+    }
+
+    /// A rename from below the root to a path outside the root: the old file
+    /// is gone from the root, thus its entity is `deleted` at the old path.
+    /// The new path is never read (git.md § "Decisions", item 8).
+    @Test("automatic mode gives a rename to outside the root as deleted")
+    func automaticModeGivesARenameToOutsideTheRootAsDeleted() async throws {
+        let repository = try TemporaryGitRepository()
+        try repository.write(Self.firstSwift, to: "\(Self.subfolder)/\(Self.swiftFile)")
+        try repository.write("kept\n", to: "\(Self.subfolder)/kept.txt")
+        try repository.commit(message: "first")
+        try repository.stageRename(from: "\(Self.subfolder)/\(Self.swiftFile)", to: Self.otherSwiftFile)
+        let root = repository.workDirectory.appendingPathComponent(Self.subfolder, isDirectory: true)
+
+        let result = try await Self.diff(Self.arguments(), in: GitContext(root: root))
+
+        #expect(result.correction == nil)
+        #expect(result.summary.added == 0)
+        #expect(result.summary.deleted == 1)
+        let deleted = try #require(result.changes.first)
+        #expect(result.changes.count == 1)
+        #expect(deleted.changeType == "deleted")
+        #expect(deleted.entityName == Self.swiftFunctionName)
+        #expect(deleted.filePath == Self.swiftFile)
+        #expect(deleted.oldFilePath == nil)
+        #expect(deleted.afterContent == nil)
     }
 
     /// A root in no repository is a correction.

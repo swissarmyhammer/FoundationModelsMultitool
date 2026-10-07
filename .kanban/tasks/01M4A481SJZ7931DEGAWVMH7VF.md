@@ -47,8 +47,24 @@ comments:
     - evidence: one local commit with subject "fix: read old path of staged rename in git diff automatic mode". It holds LibGit2Status.swift, GitStatusReader.swift, Diff.swift, TemporaryGitRepository.swift, three test files, and all .kanban changes (review leftovers of ^q102ags and new task ^pt6fyf0). The sha is in the commit itself. Run `git log -1` to read it.
     - next: none. The commit is local only. It is not pushed.
   timestamp: 2026-10-07T03:40:02.549024+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m4a7dpf01g7w59xpfd25hzy3
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (commit 1fc29d3). 0 findings, 0 confirmed, 0 refuted. 7 files reviewed, 0 failed. 6 .kanban files are excluded by .reviewignore. The commit renames no file, thus no file-scoped review is necessary.
+    - next: The task is in done. No more work.
+  timestamp: 2026-10-07T03:44:55.776515+00:00
+- actor: claude-code
+  id: 01m4a7e3f68ce7pkrnb2e874mj
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 7 files (LibGit2Status.swift, GitStatusReader.swift, Diff.swift, TemporaryGitRepository.swift, 3 test files); follow-up ^pt6fyf0
+    - test: green — swift test, 2225 passed in 191 suites; IntegrationTests build complete
+    - commit: 1fc29d3
+    - review: clean — 0 findings, 7 files reviewed
+  timestamp: 2026-10-07T03:45:09.094795+00:00
+position_column: done
+position_ordinal: ffffba80
 title: 'git: diff automatic mode reads the old path of a staged rename'
 ---
 ## Goal

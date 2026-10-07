@@ -38,7 +38,11 @@
 // `modified`), not `added`. A rename from a path outside the root is the
 // exception: the root rule (git.md § "Decisions", item 8) never reads a path
 // outside the root, thus the status gives no old path, the file is new below
-// the root, and each of its entities is `added`.
+// the root, and each of its entities is `added`. A rename from below the root
+// to a path outside the root is the opposite case (task `^pt6fyf0`): the
+// status gives the old path as a staged removal, the work folder of the root
+// does not hold that path, thus each entity of the old file is `deleted`. The
+// new path is outside the root, thus no verb reads it.
 //
 // Each path in a result is relative to the root (git.md § "Decisions",
 // item 8). The card names the field `structuralChange`; the field is
