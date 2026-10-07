@@ -1,0 +1,42 @@
+{
+  "summary": {
+    "files": 1,
+    "added": 0,
+    "modified": 0,
+    "deleted": 0,
+    "moved": 3,
+    "renamed": 0
+  },
+  "changes": [
+    {
+      "changeType": "moved",
+      "entityType": "property",
+      "entityName": "name",
+      "filePath": "inline.yaml",
+      "oldFilePath": "old/inline.yaml",
+      "entityId": "inline.yaml::property::name",
+      "beforeContent": "name: my-app",
+      "afterContent": "name: my-app"
+    },
+    {
+      "changeType": "moved",
+      "entityType": "property",
+      "entityName": "version",
+      "filePath": "inline.yaml",
+      "oldFilePath": "old/inline.yaml",
+      "entityId": "inline.yaml::property::version",
+      "beforeContent": "version: 1.0.0",
+      "afterContent": "version: 1.0.0"
+    },
+    {
+      "changeType": "moved",
+      "entityType": "section",
+      "entityName": "scripts",
+      "filePath": "inline.yaml",
+      "oldFilePath": "old/inline.yaml",
+      "entityId": "inline.yaml::section::scripts",
+      "beforeContent": "scripts:\n  build: tsc\n  test: jest",
+      "afterContent": "scripts:\n  build: tsc\n  test: jest"
+    }
+  ]
+}

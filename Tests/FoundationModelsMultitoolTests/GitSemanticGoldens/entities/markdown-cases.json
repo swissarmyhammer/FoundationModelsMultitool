@@ -1,0 +1,92 @@
+[
+  {
+    "name": "single-heading",
+    "path": "doc.md",
+    "content": "# Hello\n\nSome content here.\n"
+  },
+  {
+    "name": "hierarchy",
+    "path": "doc.md",
+    "content": "# Parent\n\nIntro.\n\n## Child\n\nDetails.\n"
+  },
+  {
+    "name": "three-levels",
+    "path": "readme.md",
+    "content": "# Top\n## Mid\n### Deep\n"
+  },
+  {
+    "name": "preamble",
+    "path": "guide.md",
+    "content": "This is preamble text.\nMore preamble.\n\n# Section\n\nContent.\n"
+  },
+  {
+    "name": "blank-before-preamble",
+    "path": "guide.md",
+    "content": "\n\n  \ntext\n# H\n"
+  },
+  {
+    "name": "preamble-only",
+    "path": "notes.md",
+    "content": "just text\nmore\n"
+  },
+  {
+    "name": "siblings",
+    "path": "doc.md",
+    "content": "# Top\n## First\n## Second\n"
+  },
+  {
+    "name": "empty",
+    "path": "empty.md",
+    "content": ""
+  },
+  {
+    "name": "not-headings",
+    "path": "doc.md",
+    "content": "# Top\n#Title\n####### Seven\n#\n###### Six\n"
+  },
+  {
+    "name": "spaced-names",
+    "path": "doc.md",
+    "content": "##   Spaced  name  \n#  \n"
+  },
+  {
+    "name": "tab-and-nbsp",
+    "path": "doc.md",
+    "content": "#\tTab\n## Nbsp\n"
+  },
+  {
+    "name": "level-up-and-down",
+    "path": "doc.md",
+    "content": "### Deep\n# Top\n## Mid\n### Deeper\n## Mid2\n"
+  },
+  {
+    "name": "duplicate-names",
+    "path": "doc.md",
+    "content": "# A\nx\n# A\ny\n"
+  },
+  {
+    "name": "code-fence",
+    "path": "doc.md",
+    "content": "# Real\n```\n# not real?\n```\n"
+  },
+  {
+    "name": "crlf",
+    "path": "doc.md",
+    "content": "# A\r\nbody\r\n\r\n# B\r\n"
+  },
+  {
+    "name": "trailing-blank-lines",
+    "path": "doc.md",
+    "content": "# Section\nLine one.\nLine two.\n\n"
+  },
+  {
+    "name": "mdx",
+    "path": "page.mdx",
+    "content": "# Page\n<Component />\n"
+  },
+  {
+    "name": "unicode",
+    "path": "doc.md",
+    "content": "# Café 日本\né\n"
+  }
+]

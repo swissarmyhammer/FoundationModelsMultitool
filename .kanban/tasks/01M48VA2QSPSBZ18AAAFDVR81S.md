@@ -113,10 +113,26 @@ comments:
     - evidence: one local commit holds VueParserPlugin.swift (doc comments on the case-sensitive matches), VueParserPluginTests.swift (5 new case-sensitivity tests), and the .kanban/ changes. No build product is staged (.build is git-ignored). The sha is in the commit log; the commit is not amended and not pushed.
     - next: none. The commit step is done.
   timestamp: 2026-10-07T00:19:10.135510+00:00
+- actor: claude-code
+  id: 01m49vvcyjgg22t0dp6cbmqdeq
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit 284f4c2). The engine found 0 findings (0 confirmed, 0 refuted). It attempted 7 validator runs: 0 failed and 0 skipped. It reviewed 2 files. It did not review 2 files in `.kanban/` because `.reviewignore` excludes them. The commit renames no file. The 2 items in `## Review Findings (2026-10-06 19:02)` are checked.
+    - next: The task is in `done`. No work stays open.
+  timestamp: 2026-10-07T00:22:41.874303+00:00
+- actor: claude-code
+  id: 01m49vvyghqtdk9x5x0ph13p2e
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — 2 files (VueParserPlugin.swift doc comments, VueParserPluginTests.swift 5 case-sensitivity tests); findings :217 and :287 checked
+    - test: green — swift test, 2123 passed in 182 suites; IntegrationTests build complete
+    - commit: 284f4c2
+    - review: clean — 0 findings, 7 validators on 2 files
+  timestamp: 2026-10-07T00:22:59.857989+00:00
 depends_on:
 - 01M48V9SN2MNFZGXZ9R6DGD0H1
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffffb680
 title: 'git semantic: TypeScript, TSX, JavaScript, JSX, Python, and Vue'
 ---
 ## Goal

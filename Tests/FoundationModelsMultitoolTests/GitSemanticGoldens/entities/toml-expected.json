@@ -1,0 +1,1747 @@
+[
+  {
+    "name": "line-positions",
+    "pluginId": "toml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "Cargo.toml::section::package",
+        "filePath": "Cargo.toml",
+        "entityType": "section",
+        "name": "package",
+        "parentId": null,
+        "content": "[package]\nname = \"my-app\"\nversion = \"1.0.0\"",
+        "contentHash": "195055d1ecae9ed8",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 3,
+        "metadata": null
+      },
+      {
+        "id": "Cargo.toml::section::dependencies",
+        "filePath": "Cargo.toml",
+        "entityType": "section",
+        "name": "dependencies",
+        "parentId": null,
+        "content": "[dependencies]\nserde = \"1.0\"\ntokio = { version = \"1\", features = [\"full\"] }",
+        "contentHash": "7d3bdb2b0bcf86fd",
+        "structuralHash": null,
+        "startLine": 5,
+        "endLine": 7,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "table-hash",
+    "pluginId": "toml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "Cargo.toml::section::package",
+        "filePath": "Cargo.toml",
+        "entityType": "section",
+        "name": "package",
+        "parentId": null,
+        "content": "[package]\nversion = \"1.0.0\"\nname = \"my-app\"",
+        "contentHash": "195055d1ecae9ed8",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 3,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "root-keys",
+    "pluginId": "toml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "c.toml::property::title",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "title",
+        "parentId": null,
+        "content": "title = \"demo\"",
+        "contentHash": "07f72fb3af456330",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 1,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::port",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "port",
+        "parentId": null,
+        "content": "port = 8080",
+        "contentHash": "4406aca6780a5ccc",
+        "structuralHash": null,
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::section::server",
+        "filePath": "c.toml",
+        "entityType": "section",
+        "name": "server",
+        "parentId": null,
+        "content": "[server]\nhost = \"x\"",
+        "contentHash": "7cf0a1cd1a2718d4",
+        "structuralHash": null,
+        "startLine": 4,
+        "endLine": 5,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "dotted-header",
+    "pluginId": "toml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "c.toml::property::a.b",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "a.b",
+        "parentId": null,
+        "content": "[a.b]\nc = 1",
+        "contentHash": "e2acd62b1c60e792",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 2,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "missing-value",
+    "pluginId": "toml",
+    "panicked": false,
+    "entities": []
+  },
+  {
+    "name": "duplicate-key",
+    "pluginId": "toml",
+    "panicked": false,
+    "entities": []
+  },
+  {
+    "name": "duplicate-table",
+    "pluginId": "toml",
+    "panicked": false,
+    "entities": []
+  },
+  {
+    "name": "empty",
+    "pluginId": "toml",
+    "panicked": false,
+    "entities": []
+  },
+  {
+    "name": "comment-only",
+    "pluginId": "toml",
+    "panicked": false,
+    "entities": []
+  },
+  {
+    "name": "strings",
+    "pluginId": "toml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "c.toml::property::a",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "a",
+        "parentId": null,
+        "content": "a = \"basic \\u00e9 \\t \\\" \\\\\"",
+        "contentHash": "f454f43448fd10b0",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 1,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::b",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "b",
+        "parentId": null,
+        "content": "b = 'literal \\n'",
+        "contentHash": "665848e63dbc2986",
+        "structuralHash": null,
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::c",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "c",
+        "parentId": null,
+        "content": "c = \"\"\"\nmulti\nline\"\"\"",
+        "contentHash": "388e4e251458a68b",
+        "structuralHash": null,
+        "startLine": 3,
+        "endLine": 5,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::d",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "d",
+        "parentId": null,
+        "content": "d = '''\nraw\n'''",
+        "contentHash": "5a40f19add4fbaa5",
+        "structuralHash": null,
+        "startLine": 6,
+        "endLine": 8,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::e",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "e",
+        "parentId": null,
+        "content": "e = \"esc \\e \\x41\"",
+        "contentHash": "d4468ed7b64f370e",
+        "structuralHash": null,
+        "startLine": 9,
+        "endLine": 9,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::f",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "f",
+        "parentId": null,
+        "content": "f = \"\"",
+        "contentHash": "2d06800538d394c2",
+        "structuralHash": null,
+        "startLine": 10,
+        "endLine": 10,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "integers",
+    "pluginId": "toml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "c.toml::property::a",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "a",
+        "parentId": null,
+        "content": "a = 42",
+        "contentHash": "1217cb28c0ef2191",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 1,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::b",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "b",
+        "parentId": null,
+        "content": "b = -17",
+        "contentHash": "8a57f108a9cc9aed",
+        "structuralHash": null,
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::c",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "c",
+        "parentId": null,
+        "content": "c = +5",
+        "contentHash": "dedb980100c87e72",
+        "structuralHash": null,
+        "startLine": 3,
+        "endLine": 3,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::d",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "d",
+        "parentId": null,
+        "content": "d = 0xDEADBEEF",
+        "contentHash": "e2a1309729859045",
+        "structuralHash": null,
+        "startLine": 4,
+        "endLine": 4,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::e",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "e",
+        "parentId": null,
+        "content": "e = 0o755",
+        "contentHash": "1c0b76f1e270eed3",
+        "structuralHash": null,
+        "startLine": 5,
+        "endLine": 5,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::f",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "f",
+        "parentId": null,
+        "content": "f = 0b1101",
+        "contentHash": "90a0338accf546ca",
+        "structuralHash": null,
+        "startLine": 6,
+        "endLine": 6,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::g",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "g",
+        "parentId": null,
+        "content": "g = 1_000",
+        "contentHash": "ca214f37512d292c",
+        "structuralHash": null,
+        "startLine": 7,
+        "endLine": 7,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::h",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "h",
+        "parentId": null,
+        "content": "h = 0",
+        "contentHash": "1982e3a7bb241055",
+        "structuralHash": null,
+        "startLine": 8,
+        "endLine": 8,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::i",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "i",
+        "parentId": null,
+        "content": "i = -0",
+        "contentHash": "1982e3a7bb241055",
+        "structuralHash": null,
+        "startLine": 9,
+        "endLine": 9,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::j",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "j",
+        "parentId": null,
+        "content": "j = 9223372036854775807",
+        "contentHash": "8e412f1dd5b046a3",
+        "structuralHash": null,
+        "startLine": 10,
+        "endLine": 10,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::k",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "k",
+        "parentId": null,
+        "content": "k = -9223372036854775808",
+        "contentHash": "ed867b9f25e14491",
+        "structuralHash": null,
+        "startLine": 11,
+        "endLine": 11,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "floats",
+    "pluginId": "toml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "c.toml::property::a",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "a",
+        "parentId": null,
+        "content": "a = 1.0",
+        "contentHash": "65cd25028f98f158",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 1,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::b",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "b",
+        "parentId": null,
+        "content": "b = 1e10",
+        "contentHash": "af168beaff19b5ff",
+        "structuralHash": null,
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::c",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "c",
+        "parentId": null,
+        "content": "c = 1E-7",
+        "contentHash": "d7c757fecc5c277f",
+        "structuralHash": null,
+        "startLine": 3,
+        "endLine": 3,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::d",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "d",
+        "parentId": null,
+        "content": "d = 3.14",
+        "contentHash": "c00a0804d15b22e1",
+        "structuralHash": null,
+        "startLine": 4,
+        "endLine": 4,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::e",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "e",
+        "parentId": null,
+        "content": "e = -0.0",
+        "contentHash": "773d18eedb6ed630",
+        "structuralHash": null,
+        "startLine": 5,
+        "endLine": 5,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::f",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "f",
+        "parentId": null,
+        "content": "f = inf",
+        "contentHash": "2e3e523f67ae4813",
+        "structuralHash": null,
+        "startLine": 6,
+        "endLine": 6,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::g",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "g",
+        "parentId": null,
+        "content": "g = -inf",
+        "contentHash": "e5bacda2ab99e6c1",
+        "structuralHash": null,
+        "startLine": 7,
+        "endLine": 7,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::h",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "h",
+        "parentId": null,
+        "content": "h = nan",
+        "contentHash": "43de75858bed490b",
+        "structuralHash": null,
+        "startLine": 8,
+        "endLine": 8,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::i",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "i",
+        "parentId": null,
+        "content": "i = +nan",
+        "contentHash": "43de75858bed490b",
+        "structuralHash": null,
+        "startLine": 9,
+        "endLine": 9,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::j",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "j",
+        "parentId": null,
+        "content": "j = 1_000.5",
+        "contentHash": "7ca09188d168c73e",
+        "structuralHash": null,
+        "startLine": 10,
+        "endLine": 10,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::k",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "k",
+        "parentId": null,
+        "content": "k = 5e+22",
+        "contentHash": "fac21ed2e6b73e41",
+        "structuralHash": null,
+        "startLine": 11,
+        "endLine": 11,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::l",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "l",
+        "parentId": null,
+        "content": "l = 1.5e300",
+        "contentHash": "e76657c3a1c8a966",
+        "structuralHash": null,
+        "startLine": 12,
+        "endLine": 12,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::m",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "m",
+        "parentId": null,
+        "content": "m = 0.1",
+        "contentHash": "8c32a5fa76d5c8a2",
+        "structuralHash": null,
+        "startLine": 13,
+        "endLine": 13,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::n",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "n",
+        "parentId": null,
+        "content": "n = 123456789012345680.0",
+        "contentHash": "b16b097eb7fdcbfe",
+        "structuralHash": null,
+        "startLine": 14,
+        "endLine": 14,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::o",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "o",
+        "parentId": null,
+        "content": "o = 1e16",
+        "contentHash": "dd957b7f76de3a0e",
+        "structuralHash": null,
+        "startLine": 15,
+        "endLine": 15,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::p",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "p",
+        "parentId": null,
+        "content": "p = 1e15",
+        "contentHash": "6c135535197b851f",
+        "structuralHash": null,
+        "startLine": 16,
+        "endLine": 16,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::q",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "q",
+        "parentId": null,
+        "content": "q = 0.000001",
+        "contentHash": "9ef1797bd9311d87",
+        "structuralHash": null,
+        "startLine": 17,
+        "endLine": 17,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::r",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "r",
+        "parentId": null,
+        "content": "r = 0.0000001",
+        "contentHash": "d7c757fecc5c277f",
+        "structuralHash": null,
+        "startLine": 18,
+        "endLine": 18,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "booleans",
+    "pluginId": "toml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "c.toml::property::a",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "a",
+        "parentId": null,
+        "content": "a = true",
+        "contentHash": "40bbd512750b7629",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 1,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::b",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "b",
+        "parentId": null,
+        "content": "b = false",
+        "contentHash": "43e71bbe0316e682",
+        "structuralHash": null,
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "datetimes-root",
+    "pluginId": "toml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "c.toml::property::a",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "a",
+        "parentId": null,
+        "content": "a = 1979-05-27T07:32:00Z",
+        "contentHash": "cda8507601b8de2f",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 1,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::b",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "b",
+        "parentId": null,
+        "content": "b = 1979-05-27T00:32:00-07:00",
+        "contentHash": "95c29d530bca0c69",
+        "structuralHash": null,
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::c",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "c",
+        "parentId": null,
+        "content": "c = 1979-05-27T00:32:00.999999-07:00",
+        "contentHash": "1c7627fb3057e773",
+        "structuralHash": null,
+        "startLine": 3,
+        "endLine": 3,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::d",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "d",
+        "parentId": null,
+        "content": "d = 1979-05-27 07:32:00Z",
+        "contentHash": "cda8507601b8de2f",
+        "structuralHash": null,
+        "startLine": 4,
+        "endLine": 4,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::e",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "e",
+        "parentId": null,
+        "content": "e = 1979-05-27T07:32:00",
+        "contentHash": "e7007b27a531252a",
+        "structuralHash": null,
+        "startLine": 5,
+        "endLine": 5,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::f",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "f",
+        "parentId": null,
+        "content": "f = 1979-05-27",
+        "contentHash": "7041f106b8d3e283",
+        "structuralHash": null,
+        "startLine": 6,
+        "endLine": 6,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::g",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "g",
+        "parentId": null,
+        "content": "g = 07:32:00",
+        "contentHash": "ede106d29a71d749",
+        "structuralHash": null,
+        "startLine": 7,
+        "endLine": 7,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::h",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "h",
+        "parentId": null,
+        "content": "h = 00:32:00.999999",
+        "contentHash": "554f346775048906",
+        "structuralHash": null,
+        "startLine": 8,
+        "endLine": 8,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::i",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "i",
+        "parentId": null,
+        "content": "i = 1979-05-27t07:32:00z",
+        "contentHash": "cda8507601b8de2f",
+        "structuralHash": null,
+        "startLine": 9,
+        "endLine": 9,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::j",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "j",
+        "parentId": null,
+        "content": "j = 1979-05-27T07:32:00+00:00",
+        "contentHash": "b4fe6b38fd8b2997",
+        "structuralHash": null,
+        "startLine": 10,
+        "endLine": 10,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::k",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "k",
+        "parentId": null,
+        "content": "k = 1979-05-27T07:32:00-00:00",
+        "contentHash": "b4fe6b38fd8b2997",
+        "structuralHash": null,
+        "startLine": 11,
+        "endLine": 11,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::o",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "o",
+        "parentId": null,
+        "content": "o = 07:32:00.1234567891",
+        "contentHash": "65d21deffd54fc1c",
+        "structuralHash": null,
+        "startLine": 12,
+        "endLine": 12,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "time-spellings",
+    "pluginId": "toml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "c.toml::property::l",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "l",
+        "parentId": null,
+        "content": "l = 07:32",
+        "contentHash": "bf24de82bfb5efdd",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 1,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::m",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "m",
+        "parentId": null,
+        "content": "m = 1979-05-27T08:15Z",
+        "contentHash": "425c55a59a5920d7",
+        "structuralHash": null,
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::n",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "n",
+        "parentId": null,
+        "content": "n = 09:45:00.000",
+        "contentHash": "dedd81a1f9ebe0b2",
+        "structuralHash": null,
+        "startLine": 3,
+        "endLine": 3,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "datetimes-section",
+    "pluginId": "toml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "c.toml::section::dates",
+        "filePath": "c.toml",
+        "entityType": "section",
+        "name": "dates",
+        "parentId": null,
+        "content": "[dates]\na = 1979-05-27T07:32:00Z\nb = 1979-05-27T00:32:00.5+05:30\nc = 1979-05-27\nd = 08:15\ne = 09:45:00.000\nf = [1979-05-27, 07:32:01]",
+        "contentHash": "713798b5e844e7c5",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 7,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "integer-out-of-range-hex",
+    "pluginId": "toml",
+    "panicked": false,
+    "entities": []
+  },
+  {
+    "name": "integer-out-of-range-negative",
+    "pluginId": "toml",
+    "panicked": false,
+    "entities": []
+  },
+  {
+    "name": "integer-out-of-range-in-array",
+    "pluginId": "toml",
+    "panicked": false,
+    "entities": []
+  },
+  {
+    "name": "integer-out-of-range-in-inline-table",
+    "pluginId": "toml",
+    "panicked": false,
+    "entities": []
+  },
+  {
+    "name": "integer-key-in-range-text",
+    "pluginId": "toml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "c.toml::property::99999999999999999999",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "99999999999999999999",
+        "parentId": null,
+        "content": "99999999999999999999 = 1",
+        "contentHash": "65cd25028f98f158",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 1,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::t.99999999999999999999",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "t.99999999999999999999",
+        "parentId": null,
+        "content": "[t.99999999999999999999]\nx = \"99999999999999999999\" # 99999999999999999999\ny = { 99999999999999999999 = 2 }",
+        "contentHash": "b546941479eb5476",
+        "structuralHash": null,
+        "startLine": 2,
+        "endLine": 4,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "arrays",
+    "pluginId": "toml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "c.toml::property::a",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "a",
+        "parentId": null,
+        "content": "a = [1, 2, 3]",
+        "contentHash": "c5657d4699e9b248",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 1,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::b",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "b",
+        "parentId": null,
+        "content": "b = [\"x\", \"y\"]",
+        "contentHash": "afd4c50122dc2970",
+        "structuralHash": null,
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::c",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "c",
+        "parentId": null,
+        "content": "c = [[1, 2], [\"a\"]]",
+        "contentHash": "76c3b1b2ac1284a4",
+        "structuralHash": null,
+        "startLine": 3,
+        "endLine": 3,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::d",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "d",
+        "parentId": null,
+        "content": "d = []",
+        "contentHash": "831154110e30ac6a",
+        "structuralHash": null,
+        "startLine": 4,
+        "endLine": 4,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::e",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "e",
+        "parentId": null,
+        "content": "e = [ { x = 1 }, { y = [2] } ]",
+        "contentHash": "72c346015737e009",
+        "structuralHash": null,
+        "startLine": 5,
+        "endLine": 5,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::f",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "f",
+        "parentId": null,
+        "content": "f = [1.5, nan, inf]",
+        "contentHash": "5b2ee8a60556484e",
+        "structuralHash": null,
+        "startLine": 6,
+        "endLine": 6,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::g",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "g",
+        "parentId": null,
+        "content": "g = [\n  1,\n  2, # c\n]",
+        "contentHash": "d58592796bca52ab",
+        "structuralHash": null,
+        "startLine": 7,
+        "endLine": 10,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "inline-tables",
+    "pluginId": "toml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "c.toml::section::a",
+        "filePath": "c.toml",
+        "entityType": "section",
+        "name": "a",
+        "parentId": null,
+        "content": "a = { x = 1, y = { z = \"w\" } }",
+        "contentHash": "df87093ce5d179ae",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 1,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::section::b",
+        "filePath": "c.toml",
+        "entityType": "section",
+        "name": "b",
+        "parentId": null,
+        "content": "b = {}",
+        "contentHash": "1349cde127705c16",
+        "structuralHash": null,
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "array-of-tables",
+    "pluginId": "toml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "c.toml::property::bin",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "bin",
+        "parentId": null,
+        "content": "[[bin]]\nname = \"a\"",
+        "contentHash": "1456b4386778ba87",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 2,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::bin",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "bin",
+        "parentId": null,
+        "content": "[[bin]]\nname = \"b\"\npath = \"src/b.rs\"",
+        "contentHash": "1456b4386778ba87",
+        "structuralHash": null,
+        "startLine": 4,
+        "endLine": 6,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "dotted-root-key",
+    "pluginId": "toml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "c.toml::property::a.b",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "a.b",
+        "parentId": null,
+        "content": "a.b = 1",
+        "contentHash": "f5f6cdb09108d653",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 1,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::a.c",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "a.c",
+        "parentId": null,
+        "content": "a.c = 2",
+        "contentHash": "aa1914516d29d563",
+        "structuralHash": null,
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::d",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "d",
+        "parentId": null,
+        "content": "d = 3",
+        "contentHash": "7324dc1e7e9474f0",
+        "structuralHash": null,
+        "startLine": 3,
+        "endLine": 3,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "quoted-key",
+    "pluginId": "toml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "c.toml::property::\"x y\"",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "\"x y\"",
+        "parentId": null,
+        "content": "\"x y\" = 1",
+        "contentHash": "5385fe3e05b0a9bc",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 1,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::'lit'",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "'lit'",
+        "parentId": null,
+        "content": "'lit' = 2",
+        "contentHash": "79a0448835326373",
+        "structuralHash": null,
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "sub-tables",
+    "pluginId": "toml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "c.toml::section::a",
+        "filePath": "c.toml",
+        "entityType": "section",
+        "name": "a",
+        "parentId": null,
+        "content": "[a]\nx = 1",
+        "contentHash": "b0539874249c6654",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 2,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::a.b",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "a.b",
+        "parentId": null,
+        "content": "[a.b]\ny = 2",
+        "contentHash": "e9673d0a31b579f0",
+        "structuralHash": null,
+        "startLine": 3,
+        "endLine": 4,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::a.b.c",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "a.b.c",
+        "parentId": null,
+        "content": "[a.b.c]\nz = 3",
+        "contentHash": "afeccb06b483f95a",
+        "structuralHash": null,
+        "startLine": 5,
+        "endLine": 6,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "header-spacing",
+    "pluginId": "toml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "c.toml::section::a",
+        "filePath": "c.toml",
+        "entityType": "section",
+        "name": "a",
+        "parentId": null,
+        "content": "[ a ]\nx = 1",
+        "contentHash": "ec1226afd38e1856",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 2,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::b] # comment",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "b] # comment",
+        "parentId": null,
+        "content": "[b] # comment\ny = 2",
+        "contentHash": "34e412813080fc71",
+        "structuralHash": null,
+        "startLine": 3,
+        "endLine": 4,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "trailing-comments",
+    "pluginId": "toml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "c.toml::section::a",
+        "filePath": "c.toml",
+        "entityType": "section",
+        "name": "a",
+        "parentId": null,
+        "content": "[a]\nx = 1",
+        "contentHash": "ec1226afd38e1856",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 2,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::section::b",
+        "filePath": "c.toml",
+        "entityType": "section",
+        "name": "b",
+        "parentId": null,
+        "content": "[b]\ny = 2",
+        "contentHash": "96823e1509481885",
+        "structuralHash": null,
+        "startLine": 6,
+        "endLine": 7,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "key-order",
+    "pluginId": "toml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "c.toml::section::t",
+        "filePath": "c.toml",
+        "entityType": "section",
+        "name": "t",
+        "parentId": null,
+        "content": "[t]\nb = 1\nB = 2\na = 3\n\"é\" = 4\n_ = 5\n\"1\" = 6",
+        "contentHash": "b42b69666ca7bfdd",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 7,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "nested-tables-in-section",
+    "pluginId": "toml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "c.toml::section::server",
+        "filePath": "c.toml",
+        "entityType": "section",
+        "name": "server",
+        "parentId": null,
+        "content": "[server]\nhost = \"x\"",
+        "contentHash": "e9d183610f33050f",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 2,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::server.tls",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "server.tls",
+        "parentId": null,
+        "content": "[server.tls]\ncert = \"c\"",
+        "contentHash": "2999b35dc38c3bed",
+        "structuralHash": null,
+        "startLine": 3,
+        "endLine": 4,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::server.limits",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "server.limits",
+        "parentId": null,
+        "content": "[server.limits]\nmax = 10",
+        "contentHash": "23e80435db1bb91e",
+        "structuralHash": null,
+        "startLine": 5,
+        "endLine": 6,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "json-escapes",
+    "pluginId": "toml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "c.toml::section::s",
+        "filePath": "c.toml",
+        "entityType": "section",
+        "name": "s",
+        "parentId": null,
+        "content": "[s]\na = \"q\\\"b\\\\c\"\nb = \"\\u0001\\u001f\\u007f\"\nc = \"\\b\\f\\n\\r\\t\"\nd = \"日本 \\u2028\"",
+        "contentHash": "e326f7209da439c8",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 5,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "float-json",
+    "pluginId": "toml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "c.toml::section::f",
+        "filePath": "c.toml",
+        "entityType": "section",
+        "name": "f",
+        "parentId": null,
+        "content": "[f]\na = 1.0\nb = 0.1\nc = 1e300\nd = -0.0\ne = 1e-7\nf = 123456789.0\ng = 1e16\nh = 1e17\ni = 5e-324\nj = 1.7976931348623157e308\nk = 0.00001\nl = 0.000001",
+        "contentHash": "8b32447162512d56",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 13,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "invalid-integer",
+    "pluginId": "toml",
+    "panicked": false,
+    "entities": []
+  },
+  {
+    "name": "invalid-date",
+    "pluginId": "toml",
+    "panicked": false,
+    "entities": []
+  },
+  {
+    "name": "redefine-inline",
+    "pluginId": "toml",
+    "panicked": false,
+    "entities": []
+  },
+  {
+    "name": "crlf",
+    "pluginId": "toml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "c.toml::property::a",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "a",
+        "parentId": null,
+        "content": "a = 1",
+        "contentHash": "65cd25028f98f158",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 1,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::section::b",
+        "filePath": "c.toml",
+        "entityType": "section",
+        "name": "b",
+        "parentId": null,
+        "content": "[b]\nc = 2",
+        "contentHash": "9d94fc1589bfdaaf",
+        "structuralHash": null,
+        "startLine": 2,
+        "endLine": 3,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "unicode",
+    "pluginId": "toml",
+    "panicked": false,
+    "entities": []
+  },
+  {
+    "name": "mixed-root-then-table",
+    "pluginId": "toml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "c.toml::property::x",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "x",
+        "parentId": null,
+        "content": "x = 1",
+        "contentHash": "65cd25028f98f158",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 1,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::section::t",
+        "filePath": "c.toml",
+        "entityType": "section",
+        "name": "t",
+        "parentId": null,
+        "content": "[t]\ny = 2\nz = 3",
+        "contentHash": "a11cd4e0f0809c9c",
+        "structuralHash": null,
+        "startLine": 2,
+        "endLine": 4,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "multiline-inline-table",
+    "pluginId": "toml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "c.toml::section::a",
+        "filePath": "c.toml",
+        "entityType": "section",
+        "name": "a",
+        "parentId": null,
+        "content": "a = {",
+        "contentHash": "5a2335cb9328abdb",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 1,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::x",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "x",
+        "parentId": null,
+        "content": "  x = 1,",
+        "contentHash": "0c5d641181c1dd1d",
+        "structuralHash": null,
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::y",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "y",
+        "parentId": null,
+        "content": "  y = 2,\n}",
+        "contentHash": "492f552664784c40",
+        "structuralHash": null,
+        "startLine": 3,
+        "endLine": 4,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "bare-bracket-key-in-value",
+    "pluginId": "toml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "c.toml::property::a",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "a",
+        "parentId": null,
+        "content": "a = [",
+        "contentHash": "aec2afabdac05036",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 1,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::1],",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "1],",
+        "parentId": null,
+        "content": "[1],\n]",
+        "contentHash": "933002d4ee0df057",
+        "structuralHash": null,
+        "startLine": 2,
+        "endLine": 3,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "unicode-quoted-key",
+    "pluginId": "toml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "c.toml::property::\"café\"",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "\"café\"",
+        "parentId": null,
+        "content": "\"café\" = 1",
+        "contentHash": "dd908eb1c6ac6ba7",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 1,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::section::t",
+        "filePath": "c.toml",
+        "entityType": "section",
+        "name": "t",
+        "parentId": null,
+        "content": "[t]\nk = \"日\"",
+        "contentHash": "a418e40f94cfa7b1",
+        "structuralHash": null,
+        "startLine": 2,
+        "endLine": 3,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "datetime-in-string",
+    "pluginId": "toml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "c.toml::property::a",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "a",
+        "parentId": null,
+        "content": "a = \"07:32\"",
+        "contentHash": "bf24de82bfb5efdd",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 1,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::b",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "b",
+        "parentId": null,
+        "content": "b = 07:32:00",
+        "contentHash": "ede106d29a71d749",
+        "structuralHash": null,
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::c",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "c",
+        "parentId": null,
+        "content": "c = '09:45'",
+        "contentHash": "78988d8ce97592d6",
+        "structuralHash": null,
+        "startLine": 4,
+        "endLine": 4,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::d",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "d",
+        "parentId": null,
+        "content": "d = 1979-05-27T10:00:00+05:30",
+        "contentHash": "37c69c7f8a1c8765",
+        "structuralHash": null,
+        "startLine": 5,
+        "endLine": 5,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "nested-arrays-of-tables",
+    "pluginId": "toml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "c.toml::property::a",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "a",
+        "parentId": null,
+        "content": "[[a]]\nx = 1",
+        "contentHash": "2acf88ba6bc228fc",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 2,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::a.b",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "a.b",
+        "parentId": null,
+        "content": "[[a.b]]\ny = 2",
+        "contentHash": "28a15fb78dfcefe0",
+        "structuralHash": null,
+        "startLine": 3,
+        "endLine": 4,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::property::a",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "a",
+        "parentId": null,
+        "content": "[[a]]\nx = 3",
+        "contentHash": "2acf88ba6bc228fc",
+        "structuralHash": null,
+        "startLine": 5,
+        "endLine": 6,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "integer-root-and-table",
+    "pluginId": "toml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "c.toml::property::n",
+        "filePath": "c.toml",
+        "entityType": "property",
+        "name": "n",
+        "parentId": null,
+        "content": "n = 1",
+        "contentHash": "65cd25028f98f158",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 1,
+        "metadata": null
+      },
+      {
+        "id": "c.toml::section::n2",
+        "filePath": "c.toml",
+        "entityType": "section",
+        "name": "n2",
+        "parentId": null,
+        "content": "[n2]\nm = { k = [1, { z = 1.5 }] }",
+        "contentHash": "9457a79c35309009",
+        "structuralHash": null,
+        "startLine": 2,
+        "endLine": 3,
+        "metadata": null
+      }
+    ]
+  }
+]

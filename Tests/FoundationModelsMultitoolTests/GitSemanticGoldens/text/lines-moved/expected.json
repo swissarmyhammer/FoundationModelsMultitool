@@ -1,0 +1,32 @@
+{
+  "summary": {
+    "files": 1,
+    "added": 0,
+    "modified": 0,
+    "deleted": 0,
+    "moved": 2,
+    "renamed": 0
+  },
+  "changes": [
+    {
+      "changeType": "moved",
+      "entityType": "chunk",
+      "entityName": "lines 1-20",
+      "filePath": "inline.txt",
+      "oldFilePath": "old/inline.txt",
+      "entityId": "inline.txt::chunk::lines 1-20",
+      "beforeContent": "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10\nline 11\nline 12\nline 13\nline 14\nline 15\nline 16\nline 17\nline 18\nline 19\nline 20",
+      "afterContent": "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10\nline 11\nline 12\nline 13\nline 14\nline 15\nline 16\nline 17\nline 18\nline 19\nline 20"
+    },
+    {
+      "changeType": "moved",
+      "entityType": "chunk",
+      "entityName": "lines 21-25",
+      "filePath": "inline.txt",
+      "oldFilePath": "old/inline.txt",
+      "entityId": "inline.txt::chunk::lines 21-25",
+      "beforeContent": "line 21\nline 22\nline 23\nline 24\nline 25",
+      "afterContent": "line 21\nline 22\nline 23\nline 24\nline 25"
+    }
+  ]
+}

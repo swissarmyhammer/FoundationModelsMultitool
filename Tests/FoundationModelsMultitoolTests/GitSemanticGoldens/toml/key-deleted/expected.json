@@ -1,0 +1,20 @@
+{
+  "summary": {
+    "files": 1,
+    "added": 0,
+    "modified": 0,
+    "deleted": 1,
+    "moved": 0,
+    "renamed": 0
+  },
+  "changes": [
+    {
+      "changeType": "deleted",
+      "entityType": "property",
+      "entityName": "title",
+      "filePath": "inline.toml",
+      "entityId": "inline.toml::property::title",
+      "beforeContent": "title = \"demo\""
+    }
+  ]
+}

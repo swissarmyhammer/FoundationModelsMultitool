@@ -1,0 +1,21 @@
+{
+  "summary": {
+    "files": 1,
+    "added": 0,
+    "modified": 1,
+    "deleted": 0,
+    "moved": 0,
+    "renamed": 0
+  },
+  "changes": [
+    {
+      "changeType": "modified",
+      "entityType": "section",
+      "entityName": "scripts",
+      "filePath": "inline.yaml",
+      "entityId": "inline.yaml::section::scripts",
+      "beforeContent": "scripts:\n  build: tsc\n  test: jest",
+      "afterContent": "scripts:\n  build: tsc\n  test: vitest"
+    }
+  ]
+}

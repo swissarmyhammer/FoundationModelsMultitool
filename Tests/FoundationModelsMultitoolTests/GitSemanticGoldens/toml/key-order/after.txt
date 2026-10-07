@@ -1,0 +1,8 @@
+title = "demo"
+
+[package]
+version = "1.0.0"
+name = "my-app"
+
+[server]
+host = "x"

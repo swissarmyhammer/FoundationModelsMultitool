@@ -1,0 +1,32 @@
+{
+  "summary": {
+    "files": 1,
+    "added": 0,
+    "modified": 0,
+    "deleted": 0,
+    "moved": 2,
+    "renamed": 0
+  },
+  "changes": [
+    {
+      "changeType": "moved",
+      "entityType": "row",
+      "entityName": "row[1]",
+      "filePath": "inline.csv",
+      "oldFilePath": "old/inline.csv",
+      "entityId": "inline.csv::row::row[1]",
+      "beforeContent": "1,Alice,NYC",
+      "afterContent": "1,Alice,NYC"
+    },
+    {
+      "changeType": "moved",
+      "entityType": "row",
+      "entityName": "row[2]",
+      "filePath": "inline.csv",
+      "oldFilePath": "old/inline.csv",
+      "entityId": "inline.csv::row::row[2]",
+      "beforeContent": "2,Bob,LA",
+      "afterContent": "2,Bob,LA"
+    }
+  ]
+}

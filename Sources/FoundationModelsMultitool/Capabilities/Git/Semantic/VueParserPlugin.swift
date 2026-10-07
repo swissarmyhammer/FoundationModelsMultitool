@@ -142,7 +142,7 @@ extension SingleFileComponentBlock {
     /// - Parameter content: The text of the file.
     /// - Returns: The blocks.
     static func blocks(in content: String) -> [SingleFileComponentBlock] {
-        let lines = EditMatch.lines(of: content)
+        let lines = RustText.lines(of: content)
         let spans = Array(
             sequence(state: lines.startIndex) { position -> BlockSpan? in
                 guard let span = BlockSpan.next(in: lines, from: position) else { return nil }
@@ -305,21 +305,5 @@ private struct OpeningTag {
             let closing = bytes[opening.upperBound...].firstIndex(of: quote)
         else { return nil }
         return String(decoding: bytes[opening.upperBound..<closing], as: UTF8.self)
-    }
-}
-
-/// The text rules of the Rust `str` methods that `vue.rs` calls.
-private enum RustText {
-
-    /// `line` with no whitespace at its two ends: the Rust `str::trim`, which
-    /// removes each scalar with the Unicode `White_Space` property.
-    ///
-    /// - Parameter line: The text to trim.
-    /// - Returns: The trimmed text.
-    static func trimmed(_ line: String) -> String {
-        let leading = line.unicodeScalars.drop { $0.properties.isWhitespace }
-        let end =
-            leading.lastIndex { !$0.properties.isWhitespace }.map(leading.index(after:)) ?? leading.startIndex
-        return String(Substring(leading[..<end]))
     }
 }

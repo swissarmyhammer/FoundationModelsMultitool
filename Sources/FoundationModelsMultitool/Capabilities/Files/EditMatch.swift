@@ -538,9 +538,9 @@ enum EditMatch {
     /// - Parameter string: the string to split.
     /// - Returns: the physical lines, terminators excluded; empty for an empty string.
     ///
-    /// Kept visible to the module (not `private`) because the Vue plugin of
-    /// the git semantic diff (`VueParserPlugin`) ports a Rust `str::lines()`
-    /// call too, and it uses this one line model rather than a copy.
+    /// Kept visible to the module (not `private`) because the plugins of the
+    /// git semantic diff (`RustText.lines(of:)`) port Rust `str::lines()`
+    /// calls too, and they use this one line model rather than a copy.
     static func lines(of string: String) -> [String] {
         let bytes = Array(string.utf8)
         return physicalLines(in: bytes).map { text(of: bytes, in: $0) }

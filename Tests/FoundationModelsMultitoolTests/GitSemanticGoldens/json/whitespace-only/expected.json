@@ -1,0 +1,22 @@
+{
+  "summary": {
+    "files": 1,
+    "added": 0,
+    "modified": 1,
+    "deleted": 0,
+    "moved": 0,
+    "renamed": 0
+  },
+  "changes": [
+    {
+      "changeType": "modified",
+      "entityType": "property",
+      "entityName": "name",
+      "filePath": "inline.json",
+      "structuralChange": false,
+      "entityId": "inline.json::property::/name",
+      "beforeContent": "  \"name\": \"my-app\",",
+      "afterContent": "  \"name\":   \"my-app\","
+    }
+  ]
+}

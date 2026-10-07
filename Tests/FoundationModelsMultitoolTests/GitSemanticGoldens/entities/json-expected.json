@@ -1,0 +1,639 @@
+[
+  {
+    "name": "line-positions",
+    "pluginId": "json",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "package.json::property::/name",
+        "filePath": "package.json",
+        "entityType": "property",
+        "name": "name",
+        "parentId": null,
+        "content": "  \"name\": \"my-app\",",
+        "contentHash": "538bef83fe5b2548",
+        "structuralHash": "8b16591d35b035ef",
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": null
+      },
+      {
+        "id": "package.json::property::/version",
+        "filePath": "package.json",
+        "entityType": "property",
+        "name": "version",
+        "parentId": null,
+        "content": "  \"version\": \"1.0.0\",",
+        "contentHash": "b0581679331771af",
+        "structuralHash": "e5a3c002edc045e1",
+        "startLine": 3,
+        "endLine": 3,
+        "metadata": null
+      },
+      {
+        "id": "package.json::object::/scripts",
+        "filePath": "package.json",
+        "entityType": "object",
+        "name": "scripts",
+        "parentId": null,
+        "content": "  \"scripts\": {\n    \"build\": \"tsc\",\n    \"test\": \"jest\"\n  },",
+        "contentHash": "9b10ac7ad7f71d84",
+        "structuralHash": "b5f4dcdc9bc79a4f",
+        "startLine": 4,
+        "endLine": 7,
+        "metadata": null
+      },
+      {
+        "id": "package.json::property::/description",
+        "filePath": "package.json",
+        "entityType": "property",
+        "name": "description",
+        "parentId": null,
+        "content": "  \"description\": \"a test app\"",
+        "contentHash": "c56ed4062d6fc122",
+        "structuralHash": "552f7dbb7f204248",
+        "startLine": 8,
+        "endLine": 8,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "special-pointer",
+    "pluginId": "json",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "special.json::property::/a~1b",
+        "filePath": "special.json",
+        "entityType": "property",
+        "name": "a/b",
+        "parentId": null,
+        "content": "  \"a/b\": 1,",
+        "contentHash": "a5b20db34e62470f",
+        "structuralHash": "65cd25028f98f158",
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": null
+      },
+      {
+        "id": "special.json::property::/c~0d",
+        "filePath": "special.json",
+        "entityType": "property",
+        "name": "c~d",
+        "parentId": null,
+        "content": "  \"c~d\": 2",
+        "contentHash": "5372366b7751f772",
+        "structuralHash": "fb95a7322f5da314",
+        "startLine": 3,
+        "endLine": 3,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "colon-in-value",
+    "pluginId": "json",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "urls.json::property::/url",
+        "filePath": "urls.json",
+        "entityType": "property",
+        "name": "url",
+        "parentId": null,
+        "content": "  \"url\": \"http://example.com:8080\"",
+        "contentHash": "5dc6f5f33027520a",
+        "structuralHash": "a21c43dbbcb864eb",
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "escaped-quote-key",
+    "pluginId": "json",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "escaped.json::property::/say\\\"hi\\\"",
+        "filePath": "escaped.json",
+        "entityType": "property",
+        "name": "say\\\"hi\\\"",
+        "parentId": null,
+        "content": "  \"say\\\"hi\\\"\": \"value\"",
+        "contentHash": "89e7aee8cc726cd8",
+        "structuralHash": "dce32508bb238b38",
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "escaped-backslash",
+    "pluginId": "json",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "e.json::property::/a\\\\",
+        "filePath": "e.json",
+        "entityType": "property",
+        "name": "a\\\\",
+        "parentId": null,
+        "content": "  \"a\\\\\": 1,",
+        "contentHash": "09be24f77a828921",
+        "structuralHash": "65cd25028f98f158",
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": null
+      },
+      {
+        "id": "e.json::property::/b",
+        "filePath": "e.json",
+        "entityType": "property",
+        "name": "b",
+        "parentId": null,
+        "content": "  \"b\": \"x\\\\\"",
+        "contentHash": "bdaa8dd198abd52d",
+        "structuralHash": "61d279529e6be8f3",
+        "startLine": 3,
+        "endLine": 3,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "not-object",
+    "pluginId": "json",
+    "panicked": false,
+    "entities": []
+  },
+  {
+    "name": "empty",
+    "pluginId": "json",
+    "panicked": false,
+    "entities": []
+  },
+  {
+    "name": "blank",
+    "pluginId": "json",
+    "panicked": false,
+    "entities": []
+  },
+  {
+    "name": "empty-object",
+    "pluginId": "json",
+    "panicked": false,
+    "entities": []
+  },
+  {
+    "name": "single-line",
+    "pluginId": "json",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "s.json::property::/a",
+        "filePath": "s.json",
+        "entityType": "property",
+        "name": "a",
+        "parentId": null,
+        "content": "",
+        "contentHash": "2d06800538d394c2",
+        "structuralHash": "2d06800538d394c2",
+        "startLine": 1,
+        "endLine": 0,
+        "metadata": null
+      },
+      {
+        "id": "s.json::object::/b",
+        "filePath": "s.json",
+        "entityType": "object",
+        "name": "b",
+        "parentId": null,
+        "content": "",
+        "contentHash": "2d06800538d394c2",
+        "structuralHash": "2d06800538d394c2",
+        "startLine": 1,
+        "endLine": 0,
+        "metadata": null
+      },
+      {
+        "id": "s.json::object::/c",
+        "filePath": "s.json",
+        "entityType": "object",
+        "name": "c",
+        "parentId": null,
+        "content": "",
+        "contentHash": "2d06800538d394c2",
+        "structuralHash": "2d06800538d394c2",
+        "startLine": 1,
+        "endLine": 0,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "closing-brace-before-entry",
+    "pluginId": "json",
+    "panicked": true,
+    "entities": []
+  },
+  {
+    "name": "blank-and-comma-lines",
+    "pluginId": "json",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "c.json::property::/a",
+        "filePath": "c.json",
+        "entityType": "property",
+        "name": "a",
+        "parentId": null,
+        "content": "  \"a\": 1",
+        "contentHash": "ad356bf0ffe191eb",
+        "structuralHash": "65cd25028f98f158",
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": null
+      },
+      {
+        "id": "c.json::property::/b",
+        "filePath": "c.json",
+        "entityType": "property",
+        "name": "b",
+        "parentId": null,
+        "content": "  \"b\": 2",
+        "contentHash": "bc6ad29222a9cf46",
+        "structuralHash": "fb95a7322f5da314",
+        "startLine": 6,
+        "endLine": 6,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "multi-line-values",
+    "pluginId": "json",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "m.json::object::/list",
+        "filePath": "m.json",
+        "entityType": "object",
+        "name": "list",
+        "parentId": null,
+        "content": "  \"list\": [\n    1,\n\n    2\n  ],",
+        "contentHash": "63b4f0a528c9628c",
+        "structuralHash": "e559355f895895c7",
+        "startLine": 2,
+        "endLine": 6,
+        "metadata": null
+      },
+      {
+        "id": "m.json::object::/obj",
+        "filePath": "m.json",
+        "entityType": "object",
+        "name": "obj",
+        "parentId": null,
+        "content": "  \"obj\": {\n    \"x\": {\"y\": [1, {\"z\": 2}]}\n  }",
+        "contentHash": "df2bc55b2f7e518e",
+        "structuralHash": "e7d76856f562afbe",
+        "startLine": 7,
+        "endLine": 9,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "brace-in-string",
+    "pluginId": "json",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "b.json::property::/a",
+        "filePath": "b.json",
+        "entityType": "property",
+        "name": "a",
+        "parentId": null,
+        "content": "  \"a\": \"{[\",",
+        "contentHash": "b4c32c067d6a484e",
+        "structuralHash": "66b0a02aad1cbab6",
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": null
+      },
+      {
+        "id": "b.json::property::/b",
+        "filePath": "b.json",
+        "entityType": "property",
+        "name": "b",
+        "parentId": null,
+        "content": "  \"b\": \"}]\"",
+        "contentHash": "b42f66377bbe2703",
+        "structuralHash": "533a0d713a1bd28c",
+        "startLine": 3,
+        "endLine": 3,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "duplicate-keys",
+    "pluginId": "json",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "d.json::property::/a",
+        "filePath": "d.json",
+        "entityType": "property",
+        "name": "a",
+        "parentId": null,
+        "content": "  \"a\": 1,",
+        "contentHash": "4c96d86c5c2130c8",
+        "structuralHash": "65cd25028f98f158",
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": null
+      },
+      {
+        "id": "d.json::property::/a",
+        "filePath": "d.json",
+        "entityType": "property",
+        "name": "a",
+        "parentId": null,
+        "content": "  \"a\": 2",
+        "contentHash": "0460fc7eab000784",
+        "structuralHash": "fb95a7322f5da314",
+        "startLine": 3,
+        "endLine": 3,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "unicode",
+    "pluginId": "json",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "u.json::property::/café",
+        "filePath": "u.json",
+        "entityType": "property",
+        "name": "café",
+        "parentId": null,
+        "content": "  \"café\": \"日\",",
+        "contentHash": "4ffd0126bd2ad634",
+        "structuralHash": "e6991769ff326269",
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": null
+      },
+      {
+        "id": "u.json::property::/e\\u00e9",
+        "filePath": "u.json",
+        "entityType": "property",
+        "name": "e\\u00e9",
+        "parentId": null,
+        "content": "  \"e\\u00e9\": 1",
+        "contentHash": "c8e8211e91f32393",
+        "structuralHash": "65cd25028f98f158",
+        "startLine": 3,
+        "endLine": 3,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "crlf",
+    "pluginId": "json",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "w.json::property::/a",
+        "filePath": "w.json",
+        "entityType": "property",
+        "name": "a",
+        "parentId": null,
+        "content": "  \"a\": 1,",
+        "contentHash": "4c96d86c5c2130c8",
+        "structuralHash": "65cd25028f98f158",
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": null
+      },
+      {
+        "id": "w.json::property::/b",
+        "filePath": "w.json",
+        "entityType": "property",
+        "name": "b",
+        "parentId": null,
+        "content": "  \"b\": 2",
+        "contentHash": "bc6ad29222a9cf46",
+        "structuralHash": "fb95a7322f5da314",
+        "startLine": 3,
+        "endLine": 3,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "bom",
+    "pluginId": "json",
+    "panicked": false,
+    "entities": []
+  },
+  {
+    "name": "trailing-text",
+    "pluginId": "json",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "t.json::property::/a",
+        "filePath": "t.json",
+        "entityType": "property",
+        "name": "a",
+        "parentId": null,
+        "content": "  \"a\": 1",
+        "contentHash": "ad356bf0ffe191eb",
+        "structuralHash": "65cd25028f98f158",
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "indented-close",
+    "pluginId": "json",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "i.json::property::/a",
+        "filePath": "i.json",
+        "entityType": "property",
+        "name": "a",
+        "parentId": null,
+        "content": "    \"a\": 1",
+        "contentHash": "b424095f4fae5fd4",
+        "structuralHash": "65cd25028f98f158",
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "leading-whitespace",
+    "pluginId": "json",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "l.json::property::/a",
+        "filePath": "l.json",
+        "entityType": "property",
+        "name": "a",
+        "parentId": null,
+        "content": "",
+        "contentHash": "2d06800538d394c2",
+        "structuralHash": "2d06800538d394c2",
+        "startLine": 4,
+        "endLine": 3,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "value-whitespace",
+    "pluginId": "json",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "v.json::property::/a",
+        "filePath": "v.json",
+        "entityType": "property",
+        "name": "a",
+        "parentId": null,
+        "content": "  \"a\" :   42  ,",
+        "contentHash": "3ece8b04caa09897",
+        "structuralHash": "1217cb28c0ef2191",
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": null
+      },
+      {
+        "id": "v.json::property::/b",
+        "filePath": "v.json",
+        "entityType": "property",
+        "name": "b",
+        "parentId": null,
+        "content": "  \"b\":\"x\"",
+        "contentHash": "761a3301ec54d839",
+        "structuralHash": "bbc5544a8f0ed47d",
+        "startLine": 3,
+        "endLine": 3,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "true-false-null",
+    "pluginId": "json",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "f.json::property::/enabled",
+        "filePath": "f.json",
+        "entityType": "property",
+        "name": "enabled",
+        "parentId": null,
+        "content": "  \"enabled\": true,",
+        "contentHash": "7bcbe5e848b92b71",
+        "structuralHash": "40bbd512750b7629",
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": null
+      },
+      {
+        "id": "f.json::property::/debug",
+        "filePath": "f.json",
+        "entityType": "property",
+        "name": "debug",
+        "parentId": null,
+        "content": "  \"debug\": false,",
+        "contentHash": "b7f4836062c20125",
+        "structuralHash": "43e71bbe0316e682",
+        "startLine": 3,
+        "endLine": 3,
+        "metadata": null
+      },
+      {
+        "id": "f.json::property::/extra",
+        "filePath": "f.json",
+        "entityType": "property",
+        "name": "extra",
+        "parentId": null,
+        "content": "  \"extra\": null",
+        "contentHash": "f0d38e35f9b434f9",
+        "structuralHash": "b785b6ec423c44e1",
+        "startLine": 4,
+        "endLine": 4,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "number-forms",
+    "pluginId": "json",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "n.json::property::/a",
+        "filePath": "n.json",
+        "entityType": "property",
+        "name": "a",
+        "parentId": null,
+        "content": "  \"a\": -1.5e10,",
+        "contentHash": "2995d24082e1ae64",
+        "structuralHash": "ab1698c468e6b8a8",
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": null
+      },
+      {
+        "id": "n.json::property::/b",
+        "filePath": "n.json",
+        "entityType": "property",
+        "name": "b",
+        "parentId": null,
+        "content": "  \"b\": 0",
+        "contentHash": "69e0501bc365a74e",
+        "structuralHash": "1982e3a7bb241055",
+        "startLine": 3,
+        "endLine": 3,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "missing-colon",
+    "pluginId": "json",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "x.json::property::/a",
+        "filePath": "x.json",
+        "entityType": "property",
+        "name": "a",
+        "parentId": null,
+        "content": "  \"a\" \"b\": 1",
+        "contentHash": "c62a3d0d46bfd866",
+        "structuralHash": "65cd25028f98f158",
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": null
+      }
+    ]
+  }
+]

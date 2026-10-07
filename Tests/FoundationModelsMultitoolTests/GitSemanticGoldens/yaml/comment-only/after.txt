@@ -1,0 +1,6 @@
+# header
+name: my-app
+version: 1.0.0
+scripts:
+  build: tsc  # build
+  test: jest

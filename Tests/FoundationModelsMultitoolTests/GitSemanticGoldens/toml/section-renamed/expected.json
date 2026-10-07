@@ -1,0 +1,21 @@
+{
+  "summary": {
+    "files": 1,
+    "added": 0,
+    "modified": 0,
+    "deleted": 0,
+    "moved": 0,
+    "renamed": 1
+  },
+  "changes": [
+    {
+      "changeType": "renamed",
+      "entityType": "section",
+      "entityName": "backend",
+      "filePath": "inline.toml",
+      "entityId": "inline.toml::section::backend",
+      "beforeContent": "[server]\nhost = \"x\"",
+      "afterContent": "[backend]\nhost = \"x\""
+    }
+  ]
+}

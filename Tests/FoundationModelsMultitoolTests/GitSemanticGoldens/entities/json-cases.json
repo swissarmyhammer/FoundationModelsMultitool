@@ -1,0 +1,127 @@
+[
+  {
+    "name": "line-positions",
+    "path": "package.json",
+    "content": "{\n  \"name\": \"my-app\",\n  \"version\": \"1.0.0\",\n  \"scripts\": {\n    \"build\": \"tsc\",\n    \"test\": \"jest\"\n  },\n  \"description\": \"a test app\"\n}\n"
+  },
+  {
+    "name": "special-pointer",
+    "path": "special.json",
+    "content": "{\n  \"a/b\": 1,\n  \"c~d\": 2\n}\n"
+  },
+  {
+    "name": "colon-in-value",
+    "path": "urls.json",
+    "content": "{\n  \"url\": \"http://example.com:8080\"\n}\n"
+  },
+  {
+    "name": "escaped-quote-key",
+    "path": "escaped.json",
+    "content": "{\n  \"say\\\"hi\\\"\": \"value\"\n}\n"
+  },
+  {
+    "name": "escaped-backslash",
+    "path": "e.json",
+    "content": "{\n  \"a\\\\\": 1,\n  \"b\": \"x\\\\\"\n}\n"
+  },
+  {
+    "name": "not-object",
+    "path": "data.json",
+    "content": "[1, 2, 3]"
+  },
+  {
+    "name": "empty",
+    "path": "empty.json",
+    "content": ""
+  },
+  {
+    "name": "blank",
+    "path": "blank.json",
+    "content": "   \n  \n  "
+  },
+  {
+    "name": "empty-object",
+    "path": "e.json",
+    "content": "{}\n"
+  },
+  {
+    "name": "single-line",
+    "path": "s.json",
+    "content": "{\"a\": 1, \"b\": [1, 2], \"c\": {\"d\": 3}}"
+  },
+  {
+    "name": "closing-brace-before-entry",
+    "path": "p.json",
+    "content": "{\"a\": {\n}\n, \"b\": 1}\n"
+  },
+  {
+    "name": "blank-and-comma-lines",
+    "path": "c.json",
+    "content": "{\n  \"a\": 1\n\n  ,\n\n  \"b\": 2\n}\n"
+  },
+  {
+    "name": "multi-line-values",
+    "path": "m.json",
+    "content": "{\n  \"list\": [\n    1,\n\n    2\n  ],\n  \"obj\": {\n    \"x\": {\"y\": [1, {\"z\": 2}]}\n  }\n}\n"
+  },
+  {
+    "name": "brace-in-string",
+    "path": "b.json",
+    "content": "{\n  \"a\": \"{[\",\n  \"b\": \"}]\"\n}\n"
+  },
+  {
+    "name": "duplicate-keys",
+    "path": "d.json",
+    "content": "{\n  \"a\": 1,\n  \"a\": 2\n}\n"
+  },
+  {
+    "name": "unicode",
+    "path": "u.json",
+    "content": "{\n  \"café\": \"日\",\n  \"e\\u00e9\": 1\n}\n"
+  },
+  {
+    "name": "crlf",
+    "path": "w.json",
+    "content": "{\r\n  \"a\": 1,\r\n  \"b\": 2\r\n}\r\n"
+  },
+  {
+    "name": "bom",
+    "path": "bom.json",
+    "content": "﻿{\n  \"a\": 1\n}\n"
+  },
+  {
+    "name": "trailing-text",
+    "path": "t.json",
+    "content": "{\n  \"a\": 1\n}\ntrailing\n"
+  },
+  {
+    "name": "indented-close",
+    "path": "i.json",
+    "content": "  {\n    \"a\": 1\n  }\n"
+  },
+  {
+    "name": "leading-whitespace",
+    "path": "l.json",
+    "content": "\n\n{\n\"a\": 1}\n"
+  },
+  {
+    "name": "value-whitespace",
+    "path": "v.json",
+    "content": "{\n  \"a\" :   42  ,\n  \"b\":\"x\"\n}\n"
+  },
+  {
+    "name": "true-false-null",
+    "path": "f.json",
+    "content": "{\n  \"enabled\": true,\n  \"debug\": false,\n  \"extra\": null\n}\n"
+  },
+  {
+    "name": "number-forms",
+    "path": "n.json",
+    "content": "{\n  \"a\": -1.5e10,\n  \"b\": 0\n}\n"
+  },
+  {
+    "name": "missing-colon",
+    "path": "x.json",
+    "content": "{\n  \"a\" \"b\": 1\n}\n"
+  }
+]

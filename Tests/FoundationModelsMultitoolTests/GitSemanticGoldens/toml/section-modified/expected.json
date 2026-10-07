@@ -1,0 +1,21 @@
+{
+  "summary": {
+    "files": 1,
+    "added": 0,
+    "modified": 1,
+    "deleted": 0,
+    "moved": 0,
+    "renamed": 0
+  },
+  "changes": [
+    {
+      "changeType": "modified",
+      "entityType": "section",
+      "entityName": "package",
+      "filePath": "inline.toml",
+      "entityId": "inline.toml::section::package",
+      "beforeContent": "[package]\nname = \"my-app\"\nversion = \"1.0.0\"",
+      "afterContent": "[package]\nname = \"my-app\"\nversion = \"2.0.0\""
+    }
+  ]
+}

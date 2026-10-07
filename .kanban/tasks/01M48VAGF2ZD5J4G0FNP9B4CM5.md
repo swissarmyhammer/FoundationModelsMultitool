@@ -1,10 +1,57 @@
 ---
 assignees:
 - claude-code
+comments:
+- actor: claude-code
+  id: 01m49wjg02wq7vvt1331tz8gkx
+  text: |-
+    Research done.
+    - json.rs does NOT use serde_json: it scans the text by hand (a character state machine). The port is a hand scanner too; Foundation JSONSerialization is not used (it would lose the key order and the source text).
+    - csv_plugin.rs, markdown.rs (regex `^(#{1,6})\s+(.+)`), fallback.rs (chunks of 20 lines) are plain text. Line numbers of csv count only the non-blank lines (a Rust quirk, ported as is). `file_path.ends_with(".tsv")` is case-sensitive.
+    - yaml.rs: keys come from a line scan; the content hash of each key is `content_hash` of the serde_yaml_ng value text (`to_string(value).trim()` for a mapping/sequence, the scalar text else, `{:?}` for a tagged scalar). serde_yaml_ng 0.10.0 uses unsafe-libyaml 0.2.11 (libyaml 0.2.5) for the parser and the emitter (unicode on, width -1). Yams 6.2.2 (already in the graph through FoundationModelsExtras, exact 6.2.2, the newest tag) carries the same libyaml as its C module `CYaml`. A probe package showed that `import CYaml` compiles with only the `Yams` product. The port uses the libyaml events of CYaml directly, so the loader (anchors, aliases, tags, duplicate keys, the 128 depth limit) and the emitter (tags, scalar styles) follow serde_yaml_ng exactly. Yams' own Node API is not enough: its emitter always marks a scalar tag implicit (a `!Ref x` tag is lost) and its duplicate-key test differs.
+    - toml_plugin.rs: toml 1.1.2+spec-1.1.0 without `preserve_order` (also in the sah workspace), so a table is a BTreeMap (keys in byte order). A section value is `serde_json::to_string_pretty`; a datetime serializes as `{"$__toml_private_datetime": "<Display>"}`; NaN/inf become `null`; floats use ryu. A top-level scalar uses the Rust `Display` (f64 Display has no exponent).
+    - TOML parser: dduan/TOMLDecoder 0.4.5 (newest tag, July 2026, TOML 1.1.0, pure Swift, no dependency). It parses lazily; `Dictionary(table)` validates every value. Its LocalTime loses two facts that toml_datetime displays (seconds omitted in TOML 1.1, and a zero fraction `.000` shown as `.0`); the port reads the time spelling from the source text for these. Known acceptance gap: toml accepts a leap second `:60`, TOMLDecoder refuses it.
+    - Rust `create_default_registry` order: json, code, vue, yaml, toml, csv, markdown, fallback.
+  timestamp: 2026-10-07T00:35:18.658627+00:00
+- actor: claude-code
+  id: 01m49z9tyj2kcesn8pzjna9r9y
+  text: |-
+    ### Discoveries
+
+    - `json.rs`, `csv_plugin.rs`, `markdown.rs`, and `fallback.rs` use no parser crate. They scan the text. The port does the same, with no new dependency.
+    - YAML: Yams 6.2.2 (already in the graph through FoundationModelsExtras). The plugin uses only its `CYaml` module (libyaml 0.2.5) and ports the loader and the serializer of serde_yaml_ng 0.10. One difference: unsafe-libyaml 0.2.11 reads a scalar above U+FFFF as printable, the C libyaml does not. Local work-around: `YAMLWideScalarMask` in `YAMLEmitter.swift`.
+    - TOML: TOMLDecoder 0.4.5 (new, exact pin). Gaps with local work-arounds in `TOMLSourceScanner.swift`: the time spelling (`07:32`, `07:32:00.000`) and an integer out of the `i64` range (TOMLDecoder reads it as a float; Rust refuses the file).
+    - Known gaps that stay (git.md "Data plugin gaps"): a leap second (TOMLDecoder refuses it), and one TOML file that writes the same time in two spellings (the first spelling is used for both).
+    - The data plugins in Rust build each id with no parent, also for a Markdown heading that has a parent. `SemanticEntity.init(filePath:entityType:name:parentID:...)` does the same.
+    - serde_json writes a float exponent with `+` (`1e+300`). `RustFloatText.serdeJSON` does this.
+    - The old test `CodeParserPluginTests` "selects no plugin for another extension" changed: `.txt` now goes to the fallback plugin.
+  timestamp: 2026-10-07T01:23:00.690886+00:00
+- actor: claude-code
+  id: 01m49z9x16rhwkertm4bk9rp47
+  text: |-
+    ### implement — changed
+    - evidence: `swift build --build-tests` has no error and no new warning (one SwiftPM "missing creator" note for the mlx-swift bundle, not from this code). `swift test`: 2186 tests in 189 suites pass. `DataPluginEntityGoldenTests` (6 formats, Rust `pluginentities` output) and 34 new diff goldens in `CodeParserPluginGoldenTests` (json, yaml, toml, csv, markdown, text; Rust `semdiffgolden`, which also checked the inline mode of the tool for each case with one path) pass. Each golden has at most one `modified` change.
+    - next: /review. Not committed and not pushed.
+  timestamp: 2026-10-07T01:23:02.822946+00:00
+- actor: claude-code
+  id: 01m49zkrt18jjbz6fqnnh0dgrh
+  text: |-
+    ### test — green
+    - evidence: swift build --build-tests OK. swift test: 2186 tests in 189 suites passed, 0 failed, 0 skipped. Fresh build of TOMLDecoder, Yams, FoundationModelsMultitool and test target (intermediates removed): no compiler warning, no resource warning for the golden folders. IntegrationTests swift build --build-tests OK (TOMLDecoder and FoundationModelsMultitool built fresh): no new warning.
+    - only warning: "missing creator for mutated node" for mlx-swift_Cmlx.bundle. It is a known dependency warning. It is not counted as red.
+    - next: review
+  timestamp: 2026-10-07T01:28:26.177839+00:00
+- actor: claude-code
+  id: 01m49zmd3zrqjfagm81scczvps
+  text: |-
+    ### commit — changed
+    - evidence: one local commit "feat: add JSON, YAML, TOML, CSV, Markdown, and fallback plugins to git semantic". It holds Package.swift, the plugin sources, the tests, the golden files, git.md, and all .kanban changes. No build product is staged. The sha is in the git log. No amend was done and no push was done.
+    - next: none for this step
+  timestamp: 2026-10-07T01:28:46.975106+00:00
 depends_on:
 - 01M48V9CB973V4MPTJV8GEXZCT
-position_column: todo
-position_ordinal: 8b80
+position_column: doing
+position_ordinal: '80'
 title: 'git semantic: JSON, YAML, TOML, CSV, Markdown, and fallback plugins'
 ---
 ## Goal

@@ -1,0 +1,42 @@
+{
+  "summary": {
+    "files": 1,
+    "added": 0,
+    "modified": 0,
+    "deleted": 0,
+    "moved": 3,
+    "renamed": 0
+  },
+  "changes": [
+    {
+      "changeType": "moved",
+      "entityType": "property",
+      "entityName": "title",
+      "filePath": "inline.toml",
+      "oldFilePath": "old/inline.toml",
+      "entityId": "inline.toml::property::title",
+      "beforeContent": "title = \"demo\"",
+      "afterContent": "title = \"demo\""
+    },
+    {
+      "changeType": "moved",
+      "entityType": "section",
+      "entityName": "package",
+      "filePath": "inline.toml",
+      "oldFilePath": "old/inline.toml",
+      "entityId": "inline.toml::section::package",
+      "beforeContent": "[package]\nname = \"my-app\"\nversion = \"1.0.0\"",
+      "afterContent": "[package]\nname = \"my-app\"\nversion = \"1.0.0\""
+    },
+    {
+      "changeType": "moved",
+      "entityType": "section",
+      "entityName": "server",
+      "filePath": "inline.toml",
+      "oldFilePath": "old/inline.toml",
+      "entityId": "inline.toml::section::server",
+      "beforeContent": "[server]\nhost = \"x\"",
+      "afterContent": "[server]\nhost = \"x\""
+    }
+  ]
+}

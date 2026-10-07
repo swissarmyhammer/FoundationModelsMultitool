@@ -303,6 +303,47 @@ All the open questions have a decision. The first run of the spike
     `^q102ags`). A `.f90` file then goes to the fallback plugin. This changes
     decision 7: the language set has no Fortran.
 
+14. Data parsers (task `^p9b4cm5`). The JSON, CSV, Markdown, and fallback
+    plugins need no parser package: the Rust plugins scan the text
+    themselves (`json.rs` also does not use `serde_json`), and the port scans
+    it in the same way with the Swift standard library. YAML and TOML need a
+    parser that Foundation does not have:
+    - YAML: Yams 6.2.2 (`https://github.com/jpsim/Yams`), product `Yams`. The
+      plugin uses only its C module `CYaml`: libyaml 0.2.5, the same libyaml
+      that serde_yaml_ng 0.10 runs through unsafe-libyaml 0.2.11. The Swift
+      code ports the loader and the serializer of serde_yaml_ng on the libyaml
+      events, thus the value, the scalar rules, and the written text are the
+      same as in Rust.
+    - TOML: TOMLDecoder 0.4.5 (`https://github.com/dduan/TOMLDecoder`),
+      product `TOMLDecoder`. It is maintained, has no dependency, and reads
+      TOML 1.1 (a time with no seconds), as the `toml` crate 1.1.2 does.
+    The doc comments of `yamlPackage` and `tomlPackage` in `Package.swift`
+    give the same reasons. No step on the host and no fork is necessary.
+
+## Data plugin gaps
+
+The data goldens (`GitSemanticGoldens/entities/` for the entities, and the
+`json`, `yaml`, `toml`, `csv`, `markdown`, and `text` folders for the diff)
+show the same result as the Rust crate. These differences stay, and each one
+has a comment in the code:
+
+1. TOML: TOMLDecoder refuses a leap second (`23:59:60`), which the `toml`
+   crate accepts. For such a file the plugin gives no entity.
+2. TOML: TOMLDecoder does not tell where a value is in the text. The plugin
+   reads the spelling of each time (`07:32`, `07:32:00.000`) from the text
+   (`TOMLSourceScanner`). When one file writes the same time in two
+   spellings, the plugin uses the first spelling for both.
+3. TOML: TOMLDecoder reads an integer out of the `i64` range as a float. The
+   `toml` crate refuses it. `TOMLSourceScanner` finds such an integer in the
+   text and the plugin refuses the file, as Rust does.
+4. YAML: the C libyaml of Yams writes a scalar above U+FFFF (for example an
+   emoji) with a `\U` escape; unsafe-libyaml writes it as it is. The
+   emitter replaces each such scalar with a free private use scalar before
+   libyaml reads it, and puts it back after (`YAMLWideScalarMask`).
+5. YAML and the `Debug` text: Swift and Rust can use different Unicode
+   versions. A scalar that only the newer version assigns can get a
+   different escape.
+
 ## Open questions after the spike
 
 None. Decision 12 closes the grammar-version question.
@@ -519,10 +560,10 @@ Notes:
    `0.7.4-with-generated-files` has it. A `from: "0.7.4"` rule selects the
    tag without the parser, thus the rule must be `exact:` on the
    `-with-generated-files` tag.
-3. The Rust crate does not use tree-sitter for the data formats.
-   `json.rs` uses serde_json, `yaml.rs` uses serde_yaml_ng, `toml_plugin.rs`
-   uses the `toml` crate, and `csv_plugin.rs` and `markdown.rs` parse by
-   hand and with regex. `vue.rs` splits the blocks itself and sends each
-   `<script>` block to the TypeScript or JavaScript code plugin. Thus the
-   CSV and Vue gaps do not stop a port that follows the Rust crate. The
-   Swift parser for YAML and TOML is a separate decision.
+3. The Rust crate does not use tree-sitter for the data formats. `yaml.rs`
+   uses serde_yaml_ng, `toml_plugin.rs` uses the `toml` crate, and
+   `json.rs`, `csv_plugin.rs`, and `markdown.rs` scan the text themselves.
+   `vue.rs` splits the blocks itself and sends each `<script>` block to the
+   TypeScript or JavaScript code plugin. Thus the CSV and Vue gaps do not
+   stop a port that follows the Rust crate. Decision 14 selects the Swift
+   parser for YAML and TOML.

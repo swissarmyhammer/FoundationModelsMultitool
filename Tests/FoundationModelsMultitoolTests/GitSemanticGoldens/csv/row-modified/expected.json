@@ -1,0 +1,21 @@
+{
+  "summary": {
+    "files": 1,
+    "added": 0,
+    "modified": 1,
+    "deleted": 0,
+    "moved": 0,
+    "renamed": 0
+  },
+  "changes": [
+    {
+      "changeType": "modified",
+      "entityType": "row",
+      "entityName": "row[2]",
+      "filePath": "inline.csv",
+      "entityId": "inline.csv::row::row[2]",
+      "beforeContent": "2,Bob,LA",
+      "afterContent": "2,Bob,SEA"
+    }
+  ]
+}

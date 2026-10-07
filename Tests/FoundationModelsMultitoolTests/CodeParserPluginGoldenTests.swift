@@ -5,7 +5,10 @@ import Testing
 
 /// Golden tests for ``CodeParserPlugin`` — the port of the code plugin of
 /// `../swissarmyhammer/crates/swissarmyhammer-sem/src/parser/plugins/code/` —
-/// and for ``VueParserPlugin``, the port of `parser/plugins/vue.rs`.
+/// for ``VueParserPlugin``, the port of `parser/plugins/vue.rs`, and for the
+/// data plugins (JSON, YAML, TOML, CSV, Markdown) and the fallback plugin, the
+/// ports of the other files in `parser/plugins/`. All cases run the differ
+/// with the default registry.
 ///
 /// Each case in `GitSemanticGoldens/<language>/<case>/` has a before file, an
 /// after file, and the expected JSON. A throwaway Rust program wrote each
@@ -30,7 +33,8 @@ import Testing
 /// Fortran case has no change (`files` is 0). The Fortran cases show that the
 /// port does the same.
 ///
-/// The `function-moved` case gives the old side the path `old/inline.<ext>`:
+/// Each case whose name ends in `-moved` (for example `function-moved`)
+/// gives the old side the path `old/inline.<ext>`:
 /// the matcher reports `moved` only when the file path differs, and the
 /// inline mode of the tool has one path.
 ///
@@ -49,8 +53,11 @@ struct CodeParserPluginGoldenTests {
     /// The resource folder of the cases.
     private static let goldenFolder = "GitSemanticGoldens"
 
-    /// The name of the case whose old side has another path.
-    private static let movedCaseName = "function-moved"
+    /// The end of the name of each case whose old side has another path.
+    private static let movedCaseSuffix = "-moved"
+
+    /// The name of the code case whose old side has another path.
+    private static let movedCaseName = "function" + movedCaseSuffix
 
     /// The folder of each language, the file extension of its cases, and its
     /// cases. Some languages have more cases: a TypeScript interface and type
@@ -58,6 +65,12 @@ struct CodeParserPluginGoldenTests {
     /// namespace, a C# property, a Fortran module and subroutine, and an
     /// Elixir `defp`. Bash has no types, thus it has only the function cases.
     /// Vue has a change in the script block and a change in the template.
+    ///
+    /// The data formats (JSON, YAML, TOML, CSV, Markdown) and the fallback
+    /// plugin (`text`, a `.txt` file) have their own cases. Some of them give
+    /// no change (`files` is 0): a YAML comment, the key order of a TOML
+    /// table, and a CSV header (the Rust plugin hashes each row without its
+    /// header names).
     private static let languages: [(folder: String, fileExtension: String, caseNames: [String])] = [
         ("typescript", ".ts", typeCaseNames + ["interface", "type-alias"]), ("tsx", ".tsx", typeCaseNames),
         ("javascript", ".js", typeCaseNames), ("jsx", ".jsx", typeCaseNames),
@@ -69,6 +82,27 @@ struct CodeParserPluginGoldenTests {
         ("fortran", ".f90", typeCaseNames + ["module", "subroutine"]),
         ("elixir", ".ex", typeCaseNames + ["private-function"]), ("bash", ".sh", functionCaseNames),
         ("vue", ".vue", ["script-change", "template-change"]),
+        ("json", ".json", ["key-added", "key-deleted", "key-modified", "key-moved", "key-renamed", "whitespace-only"]),
+        (
+            "yaml", ".yaml",
+            ["comment-only", "key-added", "key-deleted", "key-modified", "key-moved", "key-renamed", "section-modified"]
+        ),
+        (
+            "toml", ".toml",
+            [
+                "key-added", "key-deleted", "key-modified", "key-order", "section-added", "section-modified",
+                "section-moved", "section-renamed",
+            ]
+        ),
+        ("csv", ".csv", ["header-changed", "row-added", "row-deleted", "row-modified", "row-moved"]),
+        (
+            "markdown", ".md",
+            [
+                "preamble-added", "section-added", "section-deleted", "section-modified", "section-moved",
+                "section-renamed",
+            ]
+        ),
+        ("text", ".txt", ["lines-added", "lines-deleted", "lines-modified", "lines-moved"]),
     ]
 
     /// The cases of a function: each language has them.
@@ -166,9 +200,9 @@ struct CodeParserPluginGoldenTests {
     @Test("the code plugin diff matches the Rust golden", arguments: cases)
     func theCodePluginDiffMatchesTheRustGolden(_ golden: GoldenCase) throws {
         let filePath = "inline\(golden.fileExtension)"
+        let isMoved = golden.name.hasSuffix(Self.movedCaseSuffix)
         let fileChange = SemanticFileChange(
-            filePath: filePath, status: golden.name == Self.movedCaseName ? .renamed : .modified,
-            oldFilePath: golden.name == Self.movedCaseName ? "old/\(filePath)" : nil,
+            filePath: filePath, status: isMoved ? .renamed : .modified, oldFilePath: isMoved ? "old/\(filePath)" : nil,
             beforeContent: try Self.text("before", of: golden), afterContent: try Self.text("after", of: golden))
         let expected = try TestResource.bundledJSON(
             DiffResponse.self, named: "expected", in: "\(Self.goldenFolder)/\(golden.language)/\(golden.name)")

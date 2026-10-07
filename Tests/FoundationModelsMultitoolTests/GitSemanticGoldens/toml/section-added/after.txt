@@ -1,0 +1,11 @@
+title = "demo"
+
+[package]
+name = "my-app"
+version = "1.0.0"
+
+[server]
+host = "x"
+
+[tools]
+fmt = true

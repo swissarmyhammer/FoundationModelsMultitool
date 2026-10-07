@@ -1,0 +1,569 @@
+[
+  {
+    "name": "single-heading",
+    "pluginId": "markdown",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "doc.md::heading::Hello",
+        "filePath": "doc.md",
+        "entityType": "heading",
+        "name": "Hello",
+        "parentId": null,
+        "content": "# Hello\n\nSome content here.",
+        "contentHash": "d61432652279748d",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 3,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "hierarchy",
+    "pluginId": "markdown",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "doc.md::heading::Parent",
+        "filePath": "doc.md",
+        "entityType": "heading",
+        "name": "Parent",
+        "parentId": null,
+        "content": "# Parent\n\nIntro.",
+        "contentHash": "11eb8d1a56ad4434",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 4,
+        "metadata": null
+      },
+      {
+        "id": "doc.md::heading::Child",
+        "filePath": "doc.md",
+        "entityType": "heading",
+        "name": "Child",
+        "parentId": "doc.md::heading::Parent",
+        "content": "## Child\n\nDetails.",
+        "contentHash": "9c1ed9ce408e8c0f",
+        "structuralHash": null,
+        "startLine": 5,
+        "endLine": 7,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "three-levels",
+    "pluginId": "markdown",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "readme.md::heading::Top",
+        "filePath": "readme.md",
+        "entityType": "heading",
+        "name": "Top",
+        "parentId": null,
+        "content": "# Top",
+        "contentHash": "059212fa882271e4",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 1,
+        "metadata": null
+      },
+      {
+        "id": "readme.md::heading::Mid",
+        "filePath": "readme.md",
+        "entityType": "heading",
+        "name": "Mid",
+        "parentId": "readme.md::heading::Top",
+        "content": "## Mid",
+        "contentHash": "40f440966f9e2b13",
+        "structuralHash": null,
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": null
+      },
+      {
+        "id": "readme.md::heading::Deep",
+        "filePath": "readme.md",
+        "entityType": "heading",
+        "name": "Deep",
+        "parentId": "readme.md::heading::Mid",
+        "content": "### Deep",
+        "contentHash": "48b45f241efd410d",
+        "structuralHash": null,
+        "startLine": 3,
+        "endLine": 3,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "preamble",
+    "pluginId": "markdown",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "guide.md::preamble::(preamble)",
+        "filePath": "guide.md",
+        "entityType": "preamble",
+        "name": "(preamble)",
+        "parentId": null,
+        "content": "This is preamble text.\nMore preamble.",
+        "contentHash": "4e0f02be35a21fb5",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 3,
+        "metadata": null
+      },
+      {
+        "id": "guide.md::heading::Section",
+        "filePath": "guide.md",
+        "entityType": "heading",
+        "name": "Section",
+        "parentId": null,
+        "content": "# Section\n\nContent.",
+        "contentHash": "d92591d3c582eb3f",
+        "structuralHash": null,
+        "startLine": 4,
+        "endLine": 6,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "blank-before-preamble",
+    "pluginId": "markdown",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "guide.md::preamble::(preamble)",
+        "filePath": "guide.md",
+        "entityType": "preamble",
+        "name": "(preamble)",
+        "parentId": null,
+        "content": "text",
+        "contentHash": "4769fd1c60e8a611",
+        "structuralHash": null,
+        "startLine": 4,
+        "endLine": 4,
+        "metadata": null
+      },
+      {
+        "id": "guide.md::heading::H",
+        "filePath": "guide.md",
+        "entityType": "heading",
+        "name": "H",
+        "parentId": null,
+        "content": "# H",
+        "contentHash": "97dd72eff2714ce2",
+        "structuralHash": null,
+        "startLine": 5,
+        "endLine": 5,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "preamble-only",
+    "pluginId": "markdown",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "notes.md::preamble::(preamble)",
+        "filePath": "notes.md",
+        "entityType": "preamble",
+        "name": "(preamble)",
+        "parentId": null,
+        "content": "just text\nmore",
+        "contentHash": "e85180619ac3504f",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 2,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "siblings",
+    "pluginId": "markdown",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "doc.md::heading::Top",
+        "filePath": "doc.md",
+        "entityType": "heading",
+        "name": "Top",
+        "parentId": null,
+        "content": "# Top",
+        "contentHash": "059212fa882271e4",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 1,
+        "metadata": null
+      },
+      {
+        "id": "doc.md::heading::First",
+        "filePath": "doc.md",
+        "entityType": "heading",
+        "name": "First",
+        "parentId": "doc.md::heading::Top",
+        "content": "## First",
+        "contentHash": "06587bdcb5c8722a",
+        "structuralHash": null,
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": null
+      },
+      {
+        "id": "doc.md::heading::Second",
+        "filePath": "doc.md",
+        "entityType": "heading",
+        "name": "Second",
+        "parentId": "doc.md::heading::Top",
+        "content": "## Second",
+        "contentHash": "ca9f6f0dea064a97",
+        "structuralHash": null,
+        "startLine": 3,
+        "endLine": 3,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "empty",
+    "pluginId": "markdown",
+    "panicked": false,
+    "entities": []
+  },
+  {
+    "name": "not-headings",
+    "pluginId": "markdown",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "doc.md::heading::Top",
+        "filePath": "doc.md",
+        "entityType": "heading",
+        "name": "Top",
+        "parentId": null,
+        "content": "# Top\n#Title\n####### Seven\n#",
+        "contentHash": "dea97924e66e5d51",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 4,
+        "metadata": null
+      },
+      {
+        "id": "doc.md::heading::Six",
+        "filePath": "doc.md",
+        "entityType": "heading",
+        "name": "Six",
+        "parentId": "doc.md::heading::Top",
+        "content": "###### Six",
+        "contentHash": "53e467ecfa27456b",
+        "structuralHash": null,
+        "startLine": 5,
+        "endLine": 5,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "spaced-names",
+    "pluginId": "markdown",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "doc.md::heading::Spaced  name",
+        "filePath": "doc.md",
+        "entityType": "heading",
+        "name": "Spaced  name",
+        "parentId": null,
+        "content": "##   Spaced  name",
+        "contentHash": "0b0e4dee41932693",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 1,
+        "metadata": null
+      },
+      {
+        "id": "doc.md::heading::",
+        "filePath": "doc.md",
+        "entityType": "heading",
+        "name": "",
+        "parentId": null,
+        "content": "#",
+        "contentHash": "6a81ae5441d08140",
+        "structuralHash": null,
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "tab-and-nbsp",
+    "pluginId": "markdown",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "doc.md::heading::Tab",
+        "filePath": "doc.md",
+        "entityType": "heading",
+        "name": "Tab",
+        "parentId": null,
+        "content": "#\tTab",
+        "contentHash": "66be9bd16fc71f3e",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 1,
+        "metadata": null
+      },
+      {
+        "id": "doc.md::heading::Nbsp",
+        "filePath": "doc.md",
+        "entityType": "heading",
+        "name": "Nbsp",
+        "parentId": "doc.md::heading::Tab",
+        "content": "## Nbsp",
+        "contentHash": "da909f6ef7f0cdbb",
+        "structuralHash": null,
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "level-up-and-down",
+    "pluginId": "markdown",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "doc.md::heading::Deep",
+        "filePath": "doc.md",
+        "entityType": "heading",
+        "name": "Deep",
+        "parentId": null,
+        "content": "### Deep",
+        "contentHash": "48b45f241efd410d",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 1,
+        "metadata": null
+      },
+      {
+        "id": "doc.md::heading::Top",
+        "filePath": "doc.md",
+        "entityType": "heading",
+        "name": "Top",
+        "parentId": null,
+        "content": "# Top",
+        "contentHash": "059212fa882271e4",
+        "structuralHash": null,
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": null
+      },
+      {
+        "id": "doc.md::heading::Mid",
+        "filePath": "doc.md",
+        "entityType": "heading",
+        "name": "Mid",
+        "parentId": "doc.md::heading::Top",
+        "content": "## Mid",
+        "contentHash": "40f440966f9e2b13",
+        "structuralHash": null,
+        "startLine": 3,
+        "endLine": 3,
+        "metadata": null
+      },
+      {
+        "id": "doc.md::heading::Deeper",
+        "filePath": "doc.md",
+        "entityType": "heading",
+        "name": "Deeper",
+        "parentId": "doc.md::heading::Mid",
+        "content": "### Deeper",
+        "contentHash": "90b8dbf33ad9c385",
+        "structuralHash": null,
+        "startLine": 4,
+        "endLine": 4,
+        "metadata": null
+      },
+      {
+        "id": "doc.md::heading::Mid2",
+        "filePath": "doc.md",
+        "entityType": "heading",
+        "name": "Mid2",
+        "parentId": "doc.md::heading::Top",
+        "content": "## Mid2",
+        "contentHash": "06948987f2b3d8b0",
+        "structuralHash": null,
+        "startLine": 5,
+        "endLine": 5,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "duplicate-names",
+    "pluginId": "markdown",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "doc.md::heading::A",
+        "filePath": "doc.md",
+        "entityType": "heading",
+        "name": "A",
+        "parentId": null,
+        "content": "# A\nx",
+        "contentHash": "fa1048f8b79fc0ab",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 2,
+        "metadata": null
+      },
+      {
+        "id": "doc.md::heading::A",
+        "filePath": "doc.md",
+        "entityType": "heading",
+        "name": "A",
+        "parentId": null,
+        "content": "# A\ny",
+        "contentHash": "42363f0cd0817e31",
+        "structuralHash": null,
+        "startLine": 3,
+        "endLine": 4,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "code-fence",
+    "pluginId": "markdown",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "doc.md::heading::Real",
+        "filePath": "doc.md",
+        "entityType": "heading",
+        "name": "Real",
+        "parentId": null,
+        "content": "# Real\n```",
+        "contentHash": "f8b582fe0d432866",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 2,
+        "metadata": null
+      },
+      {
+        "id": "doc.md::heading::not real?",
+        "filePath": "doc.md",
+        "entityType": "heading",
+        "name": "not real?",
+        "parentId": null,
+        "content": "# not real?\n```",
+        "contentHash": "1c419de3477bcffd",
+        "structuralHash": null,
+        "startLine": 3,
+        "endLine": 4,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "crlf",
+    "pluginId": "markdown",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "doc.md::heading::A",
+        "filePath": "doc.md",
+        "entityType": "heading",
+        "name": "A",
+        "parentId": null,
+        "content": "# A\nbody",
+        "contentHash": "d2b1b6ec08169424",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 3,
+        "metadata": null
+      },
+      {
+        "id": "doc.md::heading::B",
+        "filePath": "doc.md",
+        "entityType": "heading",
+        "name": "B",
+        "parentId": null,
+        "content": "# B",
+        "contentHash": "9f99841c54fa2db4",
+        "structuralHash": null,
+        "startLine": 4,
+        "endLine": 4,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "trailing-blank-lines",
+    "pluginId": "markdown",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "doc.md::heading::Section",
+        "filePath": "doc.md",
+        "entityType": "heading",
+        "name": "Section",
+        "parentId": null,
+        "content": "# Section\nLine one.\nLine two.",
+        "contentHash": "18fb994038a88470",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 4,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "mdx",
+    "pluginId": "markdown",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "page.mdx::heading::Page",
+        "filePath": "page.mdx",
+        "entityType": "heading",
+        "name": "Page",
+        "parentId": null,
+        "content": "# Page\n<Component />",
+        "contentHash": "849491bc56aa9c5b",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 2,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "unicode",
+    "pluginId": "markdown",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "doc.md::heading::Café 日本",
+        "filePath": "doc.md",
+        "entityType": "heading",
+        "name": "Café 日本",
+        "parentId": null,
+        "content": "# Café 日本\né",
+        "contentHash": "eeb1e007f72cb779",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 2,
+        "metadata": null
+      }
+    ]
+  }
+]

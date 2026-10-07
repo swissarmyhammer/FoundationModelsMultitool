@@ -1,0 +1,287 @@
+[
+  {
+    "name": "empty",
+    "pluginId": "fallback",
+    "panicked": false,
+    "entities": []
+  },
+  {
+    "name": "one-line",
+    "pluginId": "fallback",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "notes.txt::chunk::lines 1-1",
+        "filePath": "notes.txt",
+        "entityType": "chunk",
+        "name": "lines 1-1",
+        "parentId": null,
+        "content": "hello",
+        "contentHash": "9555e8555c62dcfd",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 1,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "no-final-newline",
+    "pluginId": "fallback",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "notes.txt::chunk::lines 1-2",
+        "filePath": "notes.txt",
+        "entityType": "chunk",
+        "name": "lines 1-2",
+        "parentId": null,
+        "content": "alpha\nbeta",
+        "contentHash": "1756cc4126608fff",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 2,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "twenty",
+    "pluginId": "fallback",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "file.txt::chunk::lines 1-20",
+        "filePath": "file.txt",
+        "entityType": "chunk",
+        "name": "lines 1-20",
+        "parentId": null,
+        "content": "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10\nline 11\nline 12\nline 13\nline 14\nline 15\nline 16\nline 17\nline 18\nline 19\nline 20",
+        "contentHash": "36120580a219231e",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 20,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "twenty-one",
+    "pluginId": "fallback",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "file.txt::chunk::lines 1-20",
+        "filePath": "file.txt",
+        "entityType": "chunk",
+        "name": "lines 1-20",
+        "parentId": null,
+        "content": "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10\nline 11\nline 12\nline 13\nline 14\nline 15\nline 16\nline 17\nline 18\nline 19\nline 20",
+        "contentHash": "36120580a219231e",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 20,
+        "metadata": null
+      },
+      {
+        "id": "file.txt::chunk::lines 21-21",
+        "filePath": "file.txt",
+        "entityType": "chunk",
+        "name": "lines 21-21",
+        "parentId": null,
+        "content": "line 21",
+        "contentHash": "e5db03146e96227c",
+        "structuralHash": null,
+        "startLine": 21,
+        "endLine": 21,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "forty-five",
+    "pluginId": "fallback",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "file.txt::chunk::lines 1-20",
+        "filePath": "file.txt",
+        "entityType": "chunk",
+        "name": "lines 1-20",
+        "parentId": null,
+        "content": "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10\nline 11\nline 12\nline 13\nline 14\nline 15\nline 16\nline 17\nline 18\nline 19\nline 20",
+        "contentHash": "36120580a219231e",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 20,
+        "metadata": null
+      },
+      {
+        "id": "file.txt::chunk::lines 21-40",
+        "filePath": "file.txt",
+        "entityType": "chunk",
+        "name": "lines 21-40",
+        "parentId": null,
+        "content": "line 21\nline 22\nline 23\nline 24\nline 25\nline 26\nline 27\nline 28\nline 29\nline 30\nline 31\nline 32\nline 33\nline 34\nline 35\nline 36\nline 37\nline 38\nline 39\nline 40",
+        "contentHash": "488a59fda1f1e89a",
+        "structuralHash": null,
+        "startLine": 21,
+        "endLine": 40,
+        "metadata": null
+      },
+      {
+        "id": "file.txt::chunk::lines 41-45",
+        "filePath": "file.txt",
+        "entityType": "chunk",
+        "name": "lines 41-45",
+        "parentId": null,
+        "content": "line 41\nline 42\nline 43\nline 44\nline 45",
+        "contentHash": "1b9d71b3c1a71362",
+        "structuralHash": null,
+        "startLine": 41,
+        "endLine": 45,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "crlf",
+    "pluginId": "fallback",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "file.txt::chunk::lines 1-3",
+        "filePath": "file.txt",
+        "entityType": "chunk",
+        "name": "lines 1-3",
+        "parentId": null,
+        "content": "a\nb\nc",
+        "contentHash": "cb0fb9d5fa164897",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 3,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "lone-cr",
+    "pluginId": "fallback",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "file.txt::chunk::lines 1-2",
+        "filePath": "file.txt",
+        "entityType": "chunk",
+        "name": "lines 1-2",
+        "parentId": null,
+        "content": "a\rb\nc",
+        "contentHash": "75f12deca848f567",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 2,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "blank-lines",
+    "pluginId": "fallback",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "file.txt::chunk::lines 1-3",
+        "filePath": "file.txt",
+        "entityType": "chunk",
+        "name": "lines 1-3",
+        "parentId": null,
+        "content": "\n\n",
+        "contentHash": "61948e40b2ab88ca",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 3,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "unicode",
+    "pluginId": "fallback",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "file.txt::chunk::lines 1-3",
+        "filePath": "file.txt",
+        "entityType": "chunk",
+        "name": "lines 1-3",
+        "parentId": null,
+        "content": "café\n日本語\n😀",
+        "contentHash": "34a08aa23d6df2e5",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 3,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "no-extension",
+    "pluginId": "fallback",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "Makefile::chunk::lines 1-2",
+        "filePath": "Makefile",
+        "entityType": "chunk",
+        "name": "lines 1-2",
+        "parentId": null,
+        "content": "all:\n\tswift build",
+        "contentHash": "b9bd29653b17e740",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 2,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "unknown-extension",
+    "pluginId": "fallback",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "data.xyz::chunk::lines 1-2",
+        "filePath": "data.xyz",
+        "entityType": "chunk",
+        "name": "lines 1-2",
+        "parentId": null,
+        "content": "x\ny",
+        "contentHash": "05186860464f0c4e",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 2,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "dot-file",
+    "pluginId": "fallback",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "src/.gitignore::chunk::lines 1-1",
+        "filePath": "src/.gitignore",
+        "entityType": "chunk",
+        "name": "lines 1-1",
+        "parentId": null,
+        "content": ".build/",
+        "contentHash": "95f7f312d286c31b",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 1,
+        "metadata": null
+      }
+    ]
+  }
+]

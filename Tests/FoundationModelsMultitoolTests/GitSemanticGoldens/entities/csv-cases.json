@@ -1,0 +1,87 @@
+[
+  {
+    "name": "basic",
+    "path": "data.csv",
+    "content": "name,age,city\nAlice,30,NYC\nBob,25,LA\n"
+  },
+  {
+    "name": "tsv",
+    "path": "data.tsv",
+    "content": "name\tage\tcolor\nAlice\t30\tblue\n"
+  },
+  {
+    "name": "tsv-upper-case",
+    "path": "DATA.TSV",
+    "content": "name\tage\nAlice\t30\n"
+  },
+  {
+    "name": "quoted",
+    "path": "data.csv",
+    "content": "name,address\nAlice,\"123 Main St, Apt 4\"\n"
+  },
+  {
+    "name": "escaped-quote",
+    "path": "data.csv",
+    "content": "name,bio\nAlice,\"She said \"\"hello\"\"\"\n"
+  },
+  {
+    "name": "quote-in-cell",
+    "path": "data.csv",
+    "content": "a,b\nx\"y,z\n"
+  },
+  {
+    "name": "empty",
+    "path": "data.csv",
+    "content": ""
+  },
+  {
+    "name": "header-only",
+    "path": "data.csv",
+    "content": "name,age,city\n"
+  },
+  {
+    "name": "blank-lines",
+    "path": "data.csv",
+    "content": "id,name\n\n1,Alice\n  \n2,Bob\n"
+  },
+  {
+    "name": "empty-first-cell",
+    "path": "data.csv",
+    "content": "id,value\n,hello\n  ,x\n"
+  },
+  {
+    "name": "short-row",
+    "path": "data.csv",
+    "content": "a,b,c\n1\n"
+  },
+  {
+    "name": "long-row",
+    "path": "data.csv",
+    "content": "a\n1,2,3\n"
+  },
+  {
+    "name": "duplicate-header",
+    "path": "data.csv",
+    "content": "a,a\n1,2\n"
+  },
+  {
+    "name": "trimmed-cells",
+    "path": "data.csv",
+    "content": "a , b\n  x  , y \n"
+  },
+  {
+    "name": "crlf",
+    "path": "data.csv",
+    "content": "a,b\r\n1,2\r\n3,4\r\n"
+  },
+  {
+    "name": "duplicate-rows",
+    "path": "data.csv",
+    "content": "id,v\n1,a\n1,b\n"
+  },
+  {
+    "name": "unicode",
+    "path": "data.csv",
+    "content": "k,v\né,日\n"
+  }
+]

@@ -39,11 +39,11 @@ struct CodeParserPluginTests {
         #expect(ParserRegistry.makeDefault().plugin(forFilePath: filePath)?.id == CodeParserPlugin.pluginID)
     }
 
-    /// The default registry has no plugin for a file that no plugin reads:
-    /// the fallback plugin is not ported yet.
-    @Test("the default registry selects no plugin for another extension")
-    func theDefaultRegistrySelectsNoPluginForAnotherExtension() {
-        #expect(ParserRegistry.makeDefault().plugin(forFilePath: "notes.txt") == nil)
+    /// The code plugin does not get a file that no language of the table
+    /// claims: the default registry gives it to the fallback plugin.
+    @Test("the default registry gives another extension to the fallback plugin")
+    func theDefaultRegistryGivesAnotherExtensionToTheFallbackPlugin() {
+        #expect(ParserRegistry.makeDefault().plugin(forFilePath: "notes.txt")?.id == ParserRegistry.fallbackPluginID)
     }
 
     /// The plugin claims the extensions of each language of the table, in

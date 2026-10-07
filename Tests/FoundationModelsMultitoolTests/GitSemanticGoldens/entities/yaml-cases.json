@@ -1,0 +1,257 @@
+[
+  {
+    "name": "line-positions",
+    "path": "config.yaml",
+    "content": "name: my-app\nversion: 1.0.0\nscripts:\n  build: tsc\n  test: jest\ndescription: a test app\n"
+  },
+  {
+    "name": "hash-of-section",
+    "path": "config.yaml",
+    "content": "name: my-app\nscripts:\n  build:   tsc\n  test: jest\n"
+  },
+  {
+    "name": "comments-and-markers",
+    "path": "config.yaml",
+    "content": "---\n# a comment\na: 1\n\n\nb: 2\n...\n"
+  },
+  {
+    "name": "unclosed-flow",
+    "path": "c.yaml",
+    "content": "a: [1, 2\n"
+  },
+  {
+    "name": "root-sequence",
+    "path": "c.yaml",
+    "content": "- a: 1\n"
+  },
+  {
+    "name": "two-documents",
+    "path": "c.yaml",
+    "content": "a: 1\n---\nb: 2\n"
+  },
+  {
+    "name": "duplicate-key",
+    "path": "c.yaml",
+    "content": "a: 1\na: 2\n"
+  },
+  {
+    "name": "duplicate-number-key",
+    "path": "c.yaml",
+    "content": "0x1: a\n1: b\n"
+  },
+  {
+    "name": "empty",
+    "path": "c.yaml",
+    "content": ""
+  },
+  {
+    "name": "quoted-key",
+    "path": "c.yaml",
+    "content": "\"q\": 1\n"
+  },
+  {
+    "name": "integers",
+    "path": "c.yaml",
+    "content": "dec: 42\nneg: -17\nplus: +5\nhex: 0x1F\noct: 0o17\nbin: 0b101\nzero: 0\nneg-zero: -0\nlead: 007\nbig: 18446744073709551615\nmin: -9223372036854775808\nneg-hex: -0x10\n"
+  },
+  {
+    "name": "too-big-int",
+    "path": "c.yaml",
+    "content": "a: 18446744073709551616\n"
+  },
+  {
+    "name": "too-small-int",
+    "path": "c.yaml",
+    "content": "a: -9223372036854775809\n"
+  },
+  {
+    "name": "floats",
+    "path": "c.yaml",
+    "content": "a: 1.0\nb: 1e10\nc: .5\nd: -.inf\ne: .nan\nf: 6.02e+23\ng: 1_000\nh: 0.1\ni: 1.5e300\nj: 1e-7\nk: -0.0\nl: +.INF\nm: 123456789012345680.0\nn: 3.0e16\n"
+  },
+  {
+    "name": "booleans-and-nulls",
+    "path": "c.yaml",
+    "content": "a: true\nb: True\nc: FALSE\nd: yes\ne: no\nf: null\ng: ~\nh: Null\ni:\nj: NULL\n"
+  },
+  {
+    "name": "quoted-scalars",
+    "path": "c.yaml",
+    "content": "a: 'single'\nb: \"double\\n\\tx\\u00e9\\x41\"\nc: 'it''s'\nd: \"\"\ne: ''\n"
+  },
+  {
+    "name": "block-scalars",
+    "path": "c.yaml",
+    "content": "lit: |\n  line one\n  line two\nfold: >\n  folded\n  text\nkeep: |+\n  kept\n\nstrip: |-\n  stripped\n"
+  },
+  {
+    "name": "section-of-strings",
+    "path": "c.yaml",
+    "content": "s:\n  t: 'true'\n  n: '123'\n  e: ''\n  x: null\n  c: 'a: b'\n  h: '#x'\n  d: '- x'\n  sp: ' x'\n  trail: 'x '\n  at: '@x'\n  bt: '`x'\n  pc: '%x'\n  amp: '&x'\n  star: '*x'\n  q: \"'\"\n  dq: '\"'\n  ml: \"a\\nb\"\n  tab: \"a\\tb\"\n  bell: \"a\\x07b\"\n  nbsp: \"a\\u00a0b\"\n  ls: \"a\\u2028b\"\n  emoji: \"\\U0001F600\"\n  uni: café\n  long: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\n  oct: '0o17'\n  zero: '00'\n  ver: 1.0.0\n  y: 'yes'\n  tilde: '~'\n  dot: '.inf'\n  colon: 'a:b'\n  comma: 'a, b'\n  brace: '{x'\n  bracket: '[x'\n  qm: '? x'\n  bang: '!x'\n  pipe: '|x'\n  gt: '>x'\n"
+  },
+  {
+    "name": "section-of-numbers",
+    "path": "c.yaml",
+    "content": "n:\n  a: 1\n  b: -2\n  c: 1.5\n  d: .inf\n  e: -.inf\n  f: .nan\n  g: 1e100\n  h: 0x10\n  i: true\n  j: ~\n"
+  },
+  {
+    "name": "sequences",
+    "path": "c.yaml",
+    "content": "list:\n  - 1\n  - two\n  - [3, 4]\n  - {a: 1, b: [x]}\n  - - nested\n    - more\n  - a: 1\n    b: 2\nempty-seq: []\nempty-map: {}\nflow: {a: 1, b: [1, 2], c: {d: e}}\n"
+  },
+  {
+    "name": "anchors",
+    "path": "c.yaml",
+    "content": "base: &b\n  x: 1\n  y: 2\nother: *b\nmerge:\n  <<: *b\n  z: 3\nscalar: &s hello\nref: *s\n"
+  },
+  {
+    "name": "unknown-alias",
+    "path": "c.yaml",
+    "content": "a: *nope\n"
+  },
+  {
+    "name": "tags",
+    "path": "c.yaml",
+    "content": "ref: !Ref Foo\nstr: !!str 123\nint: !!int \"12\"\nfloat: !!float 1\nnull: !!null ''\ncustom: !custom {a: 1}\nseq: !seq [1]\nbare: ! x\nquoted-tag: !Ref 'Foo'\nverbatim: !<tag:example.com,2000:x> v\nsect:\n  r: !Ref Foo\n  n: !Num 12\n  m: !Map {k: v}\n  l: !List [1]\n"
+  },
+  {
+    "name": "bad-core-tag",
+    "path": "c.yaml",
+    "content": "a: !!int abc\n"
+  },
+  {
+    "name": "tags-valid",
+    "path": "c.yaml",
+    "content": "ref: !Ref Foo\nstr: !!str 123\nint: !!int \"12\"\nfloat: !!float 1\nnull: !!null ~\ncustom: !custom {a: 1}\nseq: !seq [1]\nbare: ! x\nquoted-tag: !Ref 'Foo'\nverbatim: !<tag:example.com,2000:x> v\nbool: !!bool True\nsect:\n  r: !Ref Foo\n  n: !Num 12\n  m: !Map {k: v}\n  l: !List [1]\n  q: !Q 'quoted'\n  b: !B true\n  e: !E\n  bang: !<!x> y\n"
+  },
+  {
+    "name": "recursive-alias",
+    "path": "c.yaml",
+    "content": "a: &x [*x]\n"
+  },
+  {
+    "name": "anchor-redefined",
+    "path": "c.yaml",
+    "content": "a: &x 1\nb: &x 2\nc: *x\n"
+  },
+  {
+    "name": "tagged-sequence-section",
+    "path": "c.yaml",
+    "content": "s: !Seq\n  - 1\n  - !T x\n"
+  },
+  {
+    "name": "non-string-keys",
+    "path": "c.yaml",
+    "content": "1: one\ntrue: yes\n~: none\n1.5: f\n[1, 2]: seq\n{a: 1}: map\n"
+  },
+  {
+    "name": "null-key-matches-debug",
+    "path": "c.yaml",
+    "content": "Null: 5\n'Null': 6\n"
+  },
+  {
+    "name": "null-key-order",
+    "path": "c.yaml",
+    "content": "'Null': 6\nNull: 5\n"
+  },
+  {
+    "name": "complex-key",
+    "path": "c.yaml",
+    "content": "? a\n: 1\nb: 2\n"
+  },
+  {
+    "name": "key-spacing",
+    "path": "c.yaml",
+    "content": "key  : v\nurl: http://x:8080\n"
+  },
+  {
+    "name": "no-space-colon",
+    "path": "c.yaml",
+    "content": "a:b\n"
+  },
+  {
+    "name": "crlf",
+    "path": "c.yaml",
+    "content": "a: 1\r\nb:\r\n  c: 2\r\n"
+  },
+  {
+    "name": "tab-value",
+    "path": "c.yaml",
+    "content": "a: \"x\\ty\"\n"
+  },
+  {
+    "name": "indented-root",
+    "path": "c.yaml",
+    "content": "  a: 1\n  b: 2\n"
+  },
+  {
+    "name": "trailing-comments",
+    "path": "c.yaml",
+    "content": "a: 1 # one\n# between\nb:\n  c: 2\n  # inner\n\n# end\n"
+  },
+  {
+    "name": "deep-nesting",
+    "path": "c.yaml",
+    "content": "a: [[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]\n"
+  },
+  {
+    "name": "nested-sections",
+    "path": "c.yaml",
+    "content": "a:\n  b:\n    c:\n      - d: 1\n        e: [x, {f: g}]\n"
+  },
+  {
+    "name": "unicode-keys",
+    "path": "c.yaml",
+    "content": "café: 1\n日本: 語\n"
+  },
+  {
+    "name": "tagged-key",
+    "path": "c.yaml",
+    "content": "!k a: 1\nb: 2\n"
+  },
+  {
+    "name": "tagged-section-key",
+    "path": "c.yaml",
+    "content": "a:\n  !k x: 1\n"
+  },
+  {
+    "name": "single-key-bang-map",
+    "path": "c.yaml",
+    "content": "a:\n  '!x': 1\n"
+  },
+  {
+    "name": "yml-extension",
+    "path": "c.yml",
+    "content": "a: 1\n"
+  },
+  {
+    "name": "version-like",
+    "path": "c.yaml",
+    "content": "a: 1.0.0\nb: '1.0'\nc: 1.0\n"
+  },
+  {
+    "name": "empty-values",
+    "path": "c.yaml",
+    "content": "a:\nb: {}\nc: []\nd: ''\n"
+  },
+  {
+    "name": "explicit-doc",
+    "path": "c.yaml",
+    "content": "--- \na: 1\n"
+  },
+  {
+    "name": "directive",
+    "path": "c.yaml",
+    "content": "%YAML 1.2\n---\na: 1\n"
+  },
+  {
+    "name": "wide-scalars",
+    "path": "c.yaml",
+    "content": "s:\n  plain: \"\\U0001F600 x\"\n  quoted: \"a\\x07\\U0001F600\"\n  \"\\U0001F680k\": 1\n  pua: \"\\uE000\\U0001F600\\uE001\"\n  ml: \"\\U0001F600\\nline\"\n  seq: [\"\\U0001F600\", \"\\U00010000\"]\n  raw: x😀y\n"
+  },
+  {
+    "name": "wide-scalar-tag",
+    "path": "c.yaml",
+    "content": "s:\n  tag: !t😀 v\n  tagged: !t \"a\\U0001F600\"\n"
+  }
+]

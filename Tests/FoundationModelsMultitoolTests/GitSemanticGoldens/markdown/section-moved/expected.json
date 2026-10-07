@@ -1,0 +1,32 @@
+{
+  "summary": {
+    "files": 1,
+    "added": 0,
+    "modified": 0,
+    "deleted": 0,
+    "moved": 2,
+    "renamed": 0
+  },
+  "changes": [
+    {
+      "changeType": "moved",
+      "entityType": "heading",
+      "entityName": "Intro",
+      "filePath": "inline.md",
+      "oldFilePath": "old/inline.md",
+      "entityId": "inline.md::heading::Intro",
+      "beforeContent": "# Intro\n\nHello.",
+      "afterContent": "# Intro\n\nHello."
+    },
+    {
+      "changeType": "moved",
+      "entityType": "heading",
+      "entityName": "Usage",
+      "filePath": "inline.md",
+      "oldFilePath": "old/inline.md",
+      "entityId": "inline.md::heading::Usage",
+      "beforeContent": "# Usage\n\nRun it.",
+      "afterContent": "# Usage\n\nRun it."
+    }
+  ]
+}

@@ -7,10 +7,11 @@ import Testing
 /// `parser/differ.rs` and of the parts of `git_types.rs` that the differ
 /// uses, in `../swissarmyhammer/crates/swissarmyhammer-sem/src/`.
 ///
-/// The Rust tests use the JSON and YAML plugins, which are not ported yet.
-/// These tests use ``LineEntityPlugin`` (one entity for each `name = body`
-/// line) with the same scenarios: an added file, a deleted file, a modified
-/// value, a renamed key, counts over several files, and the commit metadata.
+/// The Rust tests use the JSON and YAML plugins. These tests use
+/// ``LineEntityPlugin`` (one entity for each `name = body` line), so that
+/// each test checks the differ and not a plugin, with the same scenarios: an
+/// added file, a deleted file, a modified value, a renamed key, counts over
+/// several files, and the commit metadata.
 /// They add a moved entity (a file rename), the fallback plugin, and the
 /// similarity of the plugin.
 @Suite("SemanticDifferTests")

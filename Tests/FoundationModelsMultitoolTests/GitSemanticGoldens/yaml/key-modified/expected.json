@@ -1,0 +1,21 @@
+{
+  "summary": {
+    "files": 1,
+    "added": 0,
+    "modified": 1,
+    "deleted": 0,
+    "moved": 0,
+    "renamed": 0
+  },
+  "changes": [
+    {
+      "changeType": "modified",
+      "entityType": "property",
+      "entityName": "version",
+      "filePath": "inline.yaml",
+      "entityId": "inline.yaml::property::version",
+      "beforeContent": "version: 1.0.0",
+      "afterContent": "version: 2.0.0"
+    }
+  ]
+}

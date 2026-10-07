@@ -1,0 +1,440 @@
+[
+  {
+    "name": "basic",
+    "pluginId": "csv",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "data.csv::row::row[Alice]",
+        "filePath": "data.csv",
+        "entityType": "row",
+        "name": "row[Alice]",
+        "parentId": null,
+        "content": "Alice,30,NYC",
+        "contentHash": "0de9bf25719dc8c4",
+        "structuralHash": null,
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": {
+          "age": "30",
+          "city": "NYC",
+          "name": "Alice"
+        }
+      },
+      {
+        "id": "data.csv::row::row[Bob]",
+        "filePath": "data.csv",
+        "entityType": "row",
+        "name": "row[Bob]",
+        "parentId": null,
+        "content": "Bob,25,LA",
+        "contentHash": "a5abc5cb9383c405",
+        "structuralHash": null,
+        "startLine": 3,
+        "endLine": 3,
+        "metadata": {
+          "age": "25",
+          "city": "LA",
+          "name": "Bob"
+        }
+      }
+    ]
+  },
+  {
+    "name": "tsv",
+    "pluginId": "csv",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "data.tsv::row::row[Alice]",
+        "filePath": "data.tsv",
+        "entityType": "row",
+        "name": "row[Alice]",
+        "parentId": null,
+        "content": "Alice\t30\tblue",
+        "contentHash": "b137230aa7a3c58d",
+        "structuralHash": null,
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": {
+          "age": "30",
+          "color": "blue",
+          "name": "Alice"
+        }
+      }
+    ]
+  },
+  {
+    "name": "tsv-upper-case",
+    "pluginId": "csv",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "DATA.TSV::row::row[Alice\t30]",
+        "filePath": "DATA.TSV",
+        "entityType": "row",
+        "name": "row[Alice\t30]",
+        "parentId": null,
+        "content": "Alice\t30",
+        "contentHash": "fd38339c5dabc85d",
+        "structuralHash": null,
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": {
+          "name\tage": "Alice\t30"
+        }
+      }
+    ]
+  },
+  {
+    "name": "quoted",
+    "pluginId": "csv",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "data.csv::row::row[Alice]",
+        "filePath": "data.csv",
+        "entityType": "row",
+        "name": "row[Alice]",
+        "parentId": null,
+        "content": "Alice,\"123 Main St, Apt 4\"",
+        "contentHash": "f61ca03f17d08b78",
+        "structuralHash": null,
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": {
+          "address": "123 Main St, Apt 4",
+          "name": "Alice"
+        }
+      }
+    ]
+  },
+  {
+    "name": "escaped-quote",
+    "pluginId": "csv",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "data.csv::row::row[Alice]",
+        "filePath": "data.csv",
+        "entityType": "row",
+        "name": "row[Alice]",
+        "parentId": null,
+        "content": "Alice,\"She said \"\"hello\"\"\"",
+        "contentHash": "8bd9117f773575a4",
+        "structuralHash": null,
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": {
+          "bio": "She said \"hello\"",
+          "name": "Alice"
+        }
+      }
+    ]
+  },
+  {
+    "name": "quote-in-cell",
+    "pluginId": "csv",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "data.csv::row::row[xy,z]",
+        "filePath": "data.csv",
+        "entityType": "row",
+        "name": "row[xy,z]",
+        "parentId": null,
+        "content": "x\"y,z",
+        "contentHash": "55378d7b6fe57373",
+        "structuralHash": null,
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": {
+          "a": "xy,z",
+          "b": ""
+        }
+      }
+    ]
+  },
+  {
+    "name": "empty",
+    "pluginId": "csv",
+    "panicked": false,
+    "entities": []
+  },
+  {
+    "name": "header-only",
+    "pluginId": "csv",
+    "panicked": false,
+    "entities": []
+  },
+  {
+    "name": "blank-lines",
+    "pluginId": "csv",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "data.csv::row::row[1]",
+        "filePath": "data.csv",
+        "entityType": "row",
+        "name": "row[1]",
+        "parentId": null,
+        "content": "1,Alice",
+        "contentHash": "238bca1da3d3b696",
+        "structuralHash": null,
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": {
+          "id": "1",
+          "name": "Alice"
+        }
+      },
+      {
+        "id": "data.csv::row::row[2]",
+        "filePath": "data.csv",
+        "entityType": "row",
+        "name": "row[2]",
+        "parentId": null,
+        "content": "2,Bob",
+        "contentHash": "ee84f74df57f99e6",
+        "structuralHash": null,
+        "startLine": 3,
+        "endLine": 3,
+        "metadata": {
+          "id": "2",
+          "name": "Bob"
+        }
+      }
+    ]
+  },
+  {
+    "name": "empty-first-cell",
+    "pluginId": "csv",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "data.csv::row::row[row_1]",
+        "filePath": "data.csv",
+        "entityType": "row",
+        "name": "row[row_1]",
+        "parentId": null,
+        "content": ",hello",
+        "contentHash": "6a87c06b60455a73",
+        "structuralHash": null,
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": {
+          "id": "",
+          "value": "hello"
+        }
+      },
+      {
+        "id": "data.csv::row::row[row_2]",
+        "filePath": "data.csv",
+        "entityType": "row",
+        "name": "row[row_2]",
+        "parentId": null,
+        "content": "  ,x",
+        "contentHash": "cc4ca112162c4df7",
+        "structuralHash": null,
+        "startLine": 3,
+        "endLine": 3,
+        "metadata": {
+          "id": "",
+          "value": "x"
+        }
+      }
+    ]
+  },
+  {
+    "name": "short-row",
+    "pluginId": "csv",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "data.csv::row::row[1]",
+        "filePath": "data.csv",
+        "entityType": "row",
+        "name": "row[1]",
+        "parentId": null,
+        "content": "1",
+        "contentHash": "65cd25028f98f158",
+        "structuralHash": null,
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": {
+          "a": "1",
+          "b": "",
+          "c": ""
+        }
+      }
+    ]
+  },
+  {
+    "name": "long-row",
+    "pluginId": "csv",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "data.csv::row::row[1]",
+        "filePath": "data.csv",
+        "entityType": "row",
+        "name": "row[1]",
+        "parentId": null,
+        "content": "1,2,3",
+        "contentHash": "0fb82eb193363fb4",
+        "structuralHash": null,
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": {
+          "a": "1"
+        }
+      }
+    ]
+  },
+  {
+    "name": "duplicate-header",
+    "pluginId": "csv",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "data.csv::row::row[1]",
+        "filePath": "data.csv",
+        "entityType": "row",
+        "name": "row[1]",
+        "parentId": null,
+        "content": "1,2",
+        "contentHash": "cc6f7d340b3d5d39",
+        "structuralHash": null,
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": {
+          "a": "2"
+        }
+      }
+    ]
+  },
+  {
+    "name": "trimmed-cells",
+    "pluginId": "csv",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "data.csv::row::row[x]",
+        "filePath": "data.csv",
+        "entityType": "row",
+        "name": "row[x]",
+        "parentId": null,
+        "content": "  x  , y ",
+        "contentHash": "93cd9211fd2f3769",
+        "structuralHash": null,
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": {
+          "a": "x",
+          "b": "y"
+        }
+      }
+    ]
+  },
+  {
+    "name": "crlf",
+    "pluginId": "csv",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "data.csv::row::row[1]",
+        "filePath": "data.csv",
+        "entityType": "row",
+        "name": "row[1]",
+        "parentId": null,
+        "content": "1,2",
+        "contentHash": "cc6f7d340b3d5d39",
+        "structuralHash": null,
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": {
+          "a": "1",
+          "b": "2"
+        }
+      },
+      {
+        "id": "data.csv::row::row[3]",
+        "filePath": "data.csv",
+        "entityType": "row",
+        "name": "row[3]",
+        "parentId": null,
+        "content": "3,4",
+        "contentHash": "5050dfcb86b4d821",
+        "structuralHash": null,
+        "startLine": 3,
+        "endLine": 3,
+        "metadata": {
+          "a": "3",
+          "b": "4"
+        }
+      }
+    ]
+  },
+  {
+    "name": "duplicate-rows",
+    "pluginId": "csv",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "data.csv::row::row[1]",
+        "filePath": "data.csv",
+        "entityType": "row",
+        "name": "row[1]",
+        "parentId": null,
+        "content": "1,a",
+        "contentHash": "b18706147c6a5ea5",
+        "structuralHash": null,
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": {
+          "id": "1",
+          "v": "a"
+        }
+      },
+      {
+        "id": "data.csv::row::row[1]",
+        "filePath": "data.csv",
+        "entityType": "row",
+        "name": "row[1]",
+        "parentId": null,
+        "content": "1,b",
+        "contentHash": "a2d6edcab93da053",
+        "structuralHash": null,
+        "startLine": 3,
+        "endLine": 3,
+        "metadata": {
+          "id": "1",
+          "v": "b"
+        }
+      }
+    ]
+  },
+  {
+    "name": "unicode",
+    "pluginId": "csv",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "data.csv::row::row[é]",
+        "filePath": "data.csv",
+        "entityType": "row",
+        "name": "row[é]",
+        "parentId": null,
+        "content": "é,日",
+        "contentHash": "24b4421993774723",
+        "structuralHash": null,
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": {
+          "k": "é",
+          "v": "日"
+        }
+      }
+    ]
+  }
+]

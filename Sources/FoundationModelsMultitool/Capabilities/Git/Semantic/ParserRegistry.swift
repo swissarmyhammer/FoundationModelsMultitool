@@ -27,16 +27,22 @@ struct ParserRegistry: Sendable {
     /// The registry of the semantic diff: `create_default_registry` in
     /// `parser/plugins/mod.rs`.
     ///
-    /// The Rust registry has, in this order, the JSON, code, Vue, YAML,
-    /// TOML, CSV, and Markdown plugins, and the fallback plugin last. The
-    /// code and Vue plugins are the plugins that are ported now. Each task
-    /// that ports another plugin registers it here, in the Rust order.
+    /// The registry has, in the Rust order, the JSON, code, Vue, YAML, TOML,
+    /// CSV, and Markdown plugins, and the fallback plugin last. The fallback
+    /// plugin claims no extension: ``plugin(forFilePath:)`` gives it each
+    /// file whose extension no other plugin claims (git.md decision 13).
     ///
-    /// - Returns: A registry with each ported plugin.
+    /// - Returns: A registry with each plugin.
     static func makeDefault() -> ParserRegistry {
         var registry = ParserRegistry()
+        registry.register(JSONParserPlugin())
         registry.register(CodeParserPlugin())
         registry.register(VueParserPlugin())
+        registry.register(YAMLParserPlugin())
+        registry.register(TOMLParserPlugin())
+        registry.register(CSVParserPlugin())
+        registry.register(MarkdownParserPlugin())
+        registry.register(FallbackParserPlugin())
         return registry
     }
 

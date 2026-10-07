@@ -1,0 +1,67 @@
+[
+  {
+    "name": "empty",
+    "path": "file.txt",
+    "content": ""
+  },
+  {
+    "name": "one-line",
+    "path": "notes.txt",
+    "content": "hello\n"
+  },
+  {
+    "name": "no-final-newline",
+    "path": "notes.txt",
+    "content": "alpha\nbeta"
+  },
+  {
+    "name": "twenty",
+    "path": "file.txt",
+    "content": "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10\nline 11\nline 12\nline 13\nline 14\nline 15\nline 16\nline 17\nline 18\nline 19\nline 20"
+  },
+  {
+    "name": "twenty-one",
+    "path": "file.txt",
+    "content": "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10\nline 11\nline 12\nline 13\nline 14\nline 15\nline 16\nline 17\nline 18\nline 19\nline 20\nline 21\n"
+  },
+  {
+    "name": "forty-five",
+    "path": "file.txt",
+    "content": "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10\nline 11\nline 12\nline 13\nline 14\nline 15\nline 16\nline 17\nline 18\nline 19\nline 20\nline 21\nline 22\nline 23\nline 24\nline 25\nline 26\nline 27\nline 28\nline 29\nline 30\nline 31\nline 32\nline 33\nline 34\nline 35\nline 36\nline 37\nline 38\nline 39\nline 40\nline 41\nline 42\nline 43\nline 44\nline 45"
+  },
+  {
+    "name": "crlf",
+    "path": "file.txt",
+    "content": "a\r\nb\r\nc\r\n"
+  },
+  {
+    "name": "lone-cr",
+    "path": "file.txt",
+    "content": "a\rb\nc\n"
+  },
+  {
+    "name": "blank-lines",
+    "path": "file.txt",
+    "content": "\n\n\n"
+  },
+  {
+    "name": "unicode",
+    "path": "file.txt",
+    "content": "café\n日本語\n😀\n"
+  },
+  {
+    "name": "no-extension",
+    "path": "Makefile",
+    "content": "all:\n\tswift build\n"
+  },
+  {
+    "name": "unknown-extension",
+    "path": "data.xyz",
+    "content": "x\ny\n"
+  },
+  {
+    "name": "dot-file",
+    "path": "src/.gitignore",
+    "content": ".build/\n"
+  }
+]

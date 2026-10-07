@@ -1,0 +1,227 @@
+[
+  {
+    "name": "line-positions",
+    "path": "Cargo.toml",
+    "content": "[package]\nname = \"my-app\"\nversion = \"1.0.0\"\n\n[dependencies]\nserde = \"1.0\"\ntokio = { version = \"1\", features = [\"full\"] }\n"
+  },
+  {
+    "name": "table-hash",
+    "path": "Cargo.toml",
+    "content": "[package]\nversion = \"1.0.0\"\nname = \"my-app\"\n"
+  },
+  {
+    "name": "root-keys",
+    "path": "c.toml",
+    "content": "title = \"demo\"\nport = 8080\n\n[server]\nhost = \"x\"\n"
+  },
+  {
+    "name": "dotted-header",
+    "path": "c.toml",
+    "content": "[a.b]\nc = 1\n"
+  },
+  {
+    "name": "missing-value",
+    "path": "c.toml",
+    "content": "a = \n"
+  },
+  {
+    "name": "duplicate-key",
+    "path": "c.toml",
+    "content": "a = 1\na = 2\n"
+  },
+  {
+    "name": "duplicate-table",
+    "path": "c.toml",
+    "content": "[t]\n[t]\n"
+  },
+  {
+    "name": "empty",
+    "path": "c.toml",
+    "content": ""
+  },
+  {
+    "name": "comment-only",
+    "path": "c.toml",
+    "content": "# only\n"
+  },
+  {
+    "name": "strings",
+    "path": "c.toml",
+    "content": "a = \"basic \\u00e9 \\t \\\" \\\\\"\nb = 'literal \\n'\nc = \"\"\"\nmulti\nline\"\"\"\nd = '''\nraw\n'''\ne = \"esc \\e \\x41\"\nf = \"\"\n"
+  },
+  {
+    "name": "integers",
+    "path": "c.toml",
+    "content": "a = 42\nb = -17\nc = +5\nd = 0xDEADBEEF\ne = 0o755\nf = 0b1101\ng = 1_000\nh = 0\ni = -0\nj = 9223372036854775807\nk = -9223372036854775808\n"
+  },
+  {
+    "name": "floats",
+    "path": "c.toml",
+    "content": "a = 1.0\nb = 1e10\nc = 1E-7\nd = 3.14\ne = -0.0\nf = inf\ng = -inf\nh = nan\ni = +nan\nj = 1_000.5\nk = 5e+22\nl = 1.5e300\nm = 0.1\nn = 123456789012345680.0\no = 1e16\np = 1e15\nq = 0.000001\nr = 0.0000001\n"
+  },
+  {
+    "name": "booleans",
+    "path": "c.toml",
+    "content": "a = true\nb = false\n"
+  },
+  {
+    "name": "datetimes-root",
+    "path": "c.toml",
+    "content": "a = 1979-05-27T07:32:00Z\nb = 1979-05-27T00:32:00-07:00\nc = 1979-05-27T00:32:00.999999-07:00\nd = 1979-05-27 07:32:00Z\ne = 1979-05-27T07:32:00\nf = 1979-05-27\ng = 07:32:00\nh = 00:32:00.999999\ni = 1979-05-27t07:32:00z\nj = 1979-05-27T07:32:00+00:00\nk = 1979-05-27T07:32:00-00:00\no = 07:32:00.1234567891\n"
+  },
+  {
+    "name": "time-spellings",
+    "path": "c.toml",
+    "content": "l = 07:32\nm = 1979-05-27T08:15Z\nn = 09:45:00.000\n"
+  },
+  {
+    "name": "datetimes-section",
+    "path": "c.toml",
+    "content": "[dates]\na = 1979-05-27T07:32:00Z\nb = 1979-05-27T00:32:00.5+05:30\nc = 1979-05-27\nd = 08:15\ne = 09:45:00.000\nf = [1979-05-27, 07:32:01]\n"
+  },
+  {
+    "name": "integer-out-of-range-hex",
+    "path": "c.toml",
+    "content": "a = 0xFFFFFFFFFFFFFFFF\n"
+  },
+  {
+    "name": "integer-out-of-range-negative",
+    "path": "c.toml",
+    "content": "a = -9_223_372_036_854_775_809\n"
+  },
+  {
+    "name": "integer-out-of-range-in-array",
+    "path": "c.toml",
+    "content": "[t]\na = [\n  1,\n  99999999999999999999,\n]\n"
+  },
+  {
+    "name": "integer-out-of-range-in-inline-table",
+    "path": "c.toml",
+    "content": "a = { b = 99999999999999999999 }\n"
+  },
+  {
+    "name": "integer-key-in-range-text",
+    "path": "c.toml",
+    "content": "99999999999999999999 = 1\n[t.99999999999999999999]\nx = \"99999999999999999999\" # 99999999999999999999\ny = { 99999999999999999999 = 2 }\n"
+  },
+  {
+    "name": "arrays",
+    "path": "c.toml",
+    "content": "a = [1, 2, 3]\nb = [\"x\", \"y\"]\nc = [[1, 2], [\"a\"]]\nd = []\ne = [ { x = 1 }, { y = [2] } ]\nf = [1.5, nan, inf]\ng = [\n  1,\n  2, # c\n]\n"
+  },
+  {
+    "name": "inline-tables",
+    "path": "c.toml",
+    "content": "a = { x = 1, y = { z = \"w\" } }\nb = {}\n"
+  },
+  {
+    "name": "array-of-tables",
+    "path": "c.toml",
+    "content": "[[bin]]\nname = \"a\"\n\n[[bin]]\nname = \"b\"\npath = \"src/b.rs\"\n"
+  },
+  {
+    "name": "dotted-root-key",
+    "path": "c.toml",
+    "content": "a.b = 1\na.c = 2\nd = 3\n"
+  },
+  {
+    "name": "quoted-key",
+    "path": "c.toml",
+    "content": "\"x y\" = 1\n'lit' = 2\n"
+  },
+  {
+    "name": "sub-tables",
+    "path": "c.toml",
+    "content": "[a]\nx = 1\n[a.b]\ny = 2\n[a.b.c]\nz = 3\n"
+  },
+  {
+    "name": "header-spacing",
+    "path": "c.toml",
+    "content": "[ a ]\nx = 1\n[b] # comment\ny = 2\n"
+  },
+  {
+    "name": "trailing-comments",
+    "path": "c.toml",
+    "content": "[a]\nx = 1\n# trailing\n\n# more\n[b]\ny = 2\n"
+  },
+  {
+    "name": "key-order",
+    "path": "c.toml",
+    "content": "[t]\nb = 1\nB = 2\na = 3\n\"é\" = 4\n_ = 5\n\"1\" = 6\n"
+  },
+  {
+    "name": "nested-tables-in-section",
+    "path": "c.toml",
+    "content": "[server]\nhost = \"x\"\n[server.tls]\ncert = \"c\"\n[server.limits]\nmax = 10\n"
+  },
+  {
+    "name": "json-escapes",
+    "path": "c.toml",
+    "content": "[s]\na = \"q\\\"b\\\\c\"\nb = \"\\u0001\\u001f\\u007f\"\nc = \"\\b\\f\\n\\r\\t\"\nd = \"日本 \\u2028\"\n"
+  },
+  {
+    "name": "float-json",
+    "path": "c.toml",
+    "content": "[f]\na = 1.0\nb = 0.1\nc = 1e300\nd = -0.0\ne = 1e-7\nf = 123456789.0\ng = 1e16\nh = 1e17\ni = 5e-324\nj = 1.7976931348623157e308\nk = 0.00001\nl = 0.000001\n"
+  },
+  {
+    "name": "invalid-integer",
+    "path": "c.toml",
+    "content": "a = 99999999999999999999\n"
+  },
+  {
+    "name": "invalid-date",
+    "path": "c.toml",
+    "content": "a = 1979-02-30\n"
+  },
+  {
+    "name": "redefine-inline",
+    "path": "c.toml",
+    "content": "a = { x = 1 }\n[a]\ny = 2\n"
+  },
+  {
+    "name": "crlf",
+    "path": "c.toml",
+    "content": "a = 1\r\n[b]\r\nc = 2\r\n"
+  },
+  {
+    "name": "unicode",
+    "path": "c.toml",
+    "content": "café = 1\n[t]\nk = \"日\"\n"
+  },
+  {
+    "name": "mixed-root-then-table",
+    "path": "c.toml",
+    "content": "x = 1\n[t]\ny = 2\nz = 3\n"
+  },
+  {
+    "name": "multiline-inline-table",
+    "path": "c.toml",
+    "content": "a = {\n  x = 1,\n  y = 2,\n}\n"
+  },
+  {
+    "name": "bare-bracket-key-in-value",
+    "path": "c.toml",
+    "content": "a = [\n[1],\n]\n"
+  },
+  {
+    "name": "unicode-quoted-key",
+    "path": "c.toml",
+    "content": "\"café\" = 1\n[t]\nk = \"日\"\n"
+  },
+  {
+    "name": "datetime-in-string",
+    "path": "c.toml",
+    "content": "a = \"07:32\"\nb = 07:32:00\n# 08:15 in a comment\nc = '09:45'\nd = 1979-05-27T10:00:00+05:30\n"
+  },
+  {
+    "name": "nested-arrays-of-tables",
+    "path": "c.toml",
+    "content": "[[a]]\nx = 1\n[[a.b]]\ny = 2\n[[a]]\nx = 3\n"
+  },
+  {
+    "name": "integer-root-and-table",
+    "path": "c.toml",
+    "content": "n = 1\n[n2]\nm = { k = [1, { z = 1.5 }] }\n"
+  }
+]

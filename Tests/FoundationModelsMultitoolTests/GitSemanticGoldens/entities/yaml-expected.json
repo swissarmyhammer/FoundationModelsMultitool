@@ -1,0 +1,1864 @@
+[
+  {
+    "name": "line-positions",
+    "pluginId": "yaml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "config.yaml::property::name",
+        "filePath": "config.yaml",
+        "entityType": "property",
+        "name": "name",
+        "parentId": null,
+        "content": "name: my-app",
+        "contentHash": "97768f84a7542bed",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 1,
+        "metadata": null
+      },
+      {
+        "id": "config.yaml::property::version",
+        "filePath": "config.yaml",
+        "entityType": "property",
+        "name": "version",
+        "parentId": null,
+        "content": "version: 1.0.0",
+        "contentHash": "9fb2199fe763b444",
+        "structuralHash": null,
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": null
+      },
+      {
+        "id": "config.yaml::section::scripts",
+        "filePath": "config.yaml",
+        "entityType": "section",
+        "name": "scripts",
+        "parentId": null,
+        "content": "scripts:\n  build: tsc\n  test: jest",
+        "contentHash": "7e1da973978b750c",
+        "structuralHash": null,
+        "startLine": 3,
+        "endLine": 5,
+        "metadata": null
+      },
+      {
+        "id": "config.yaml::property::description",
+        "filePath": "config.yaml",
+        "entityType": "property",
+        "name": "description",
+        "parentId": null,
+        "content": "description: a test app",
+        "contentHash": "b827ab8fa2667924",
+        "structuralHash": null,
+        "startLine": 6,
+        "endLine": 6,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "hash-of-section",
+    "pluginId": "yaml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "config.yaml::property::name",
+        "filePath": "config.yaml",
+        "entityType": "property",
+        "name": "name",
+        "parentId": null,
+        "content": "name: my-app",
+        "contentHash": "97768f84a7542bed",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 1,
+        "metadata": null
+      },
+      {
+        "id": "config.yaml::section::scripts",
+        "filePath": "config.yaml",
+        "entityType": "section",
+        "name": "scripts",
+        "parentId": null,
+        "content": "scripts:\n  build:   tsc\n  test: jest",
+        "contentHash": "7e1da973978b750c",
+        "structuralHash": null,
+        "startLine": 2,
+        "endLine": 4,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "comments-and-markers",
+    "pluginId": "yaml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "config.yaml::property::a",
+        "filePath": "config.yaml",
+        "entityType": "property",
+        "name": "a",
+        "parentId": null,
+        "content": "a: 1",
+        "contentHash": "65cd25028f98f158",
+        "structuralHash": null,
+        "startLine": 3,
+        "endLine": 3,
+        "metadata": null
+      },
+      {
+        "id": "config.yaml::property::b",
+        "filePath": "config.yaml",
+        "entityType": "property",
+        "name": "b",
+        "parentId": null,
+        "content": "b: 2\n...",
+        "contentHash": "fb95a7322f5da314",
+        "structuralHash": null,
+        "startLine": 6,
+        "endLine": 7,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "unclosed-flow",
+    "pluginId": "yaml",
+    "panicked": false,
+    "entities": []
+  },
+  {
+    "name": "root-sequence",
+    "pluginId": "yaml",
+    "panicked": false,
+    "entities": []
+  },
+  {
+    "name": "two-documents",
+    "pluginId": "yaml",
+    "panicked": false,
+    "entities": []
+  },
+  {
+    "name": "duplicate-key",
+    "pluginId": "yaml",
+    "panicked": false,
+    "entities": []
+  },
+  {
+    "name": "duplicate-number-key",
+    "pluginId": "yaml",
+    "panicked": false,
+    "entities": []
+  },
+  {
+    "name": "empty",
+    "pluginId": "yaml",
+    "panicked": false,
+    "entities": []
+  },
+  {
+    "name": "quoted-key",
+    "pluginId": "yaml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "c.yaml::property::\"q\"",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "\"q\"",
+        "parentId": null,
+        "content": "\"q\": 1",
+        "contentHash": "42dc43dbb8219e33",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 1,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "integers",
+    "pluginId": "yaml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "c.yaml::property::dec",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "dec",
+        "parentId": null,
+        "content": "dec: 42",
+        "contentHash": "1217cb28c0ef2191",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 1,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::neg",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "neg",
+        "parentId": null,
+        "content": "neg: -17",
+        "contentHash": "8a57f108a9cc9aed",
+        "structuralHash": null,
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::plus",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "plus",
+        "parentId": null,
+        "content": "plus: +5",
+        "contentHash": "dedb980100c87e72",
+        "structuralHash": null,
+        "startLine": 3,
+        "endLine": 3,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::hex",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "hex",
+        "parentId": null,
+        "content": "hex: 0x1F",
+        "contentHash": "43367a644124ee0b",
+        "structuralHash": null,
+        "startLine": 4,
+        "endLine": 4,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::oct",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "oct",
+        "parentId": null,
+        "content": "oct: 0o17",
+        "contentHash": "d7080b213541ea80",
+        "structuralHash": null,
+        "startLine": 5,
+        "endLine": 5,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::bin",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "bin",
+        "parentId": null,
+        "content": "bin: 0b101",
+        "contentHash": "dedb980100c87e72",
+        "structuralHash": null,
+        "startLine": 6,
+        "endLine": 6,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::zero",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "zero",
+        "parentId": null,
+        "content": "zero: 0",
+        "contentHash": "1982e3a7bb241055",
+        "structuralHash": null,
+        "startLine": 7,
+        "endLine": 7,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::neg-zero",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "neg-zero",
+        "parentId": null,
+        "content": "neg-zero: -0",
+        "contentHash": "1982e3a7bb241055",
+        "structuralHash": null,
+        "startLine": 8,
+        "endLine": 8,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::lead",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "lead",
+        "parentId": null,
+        "content": "lead: 007",
+        "contentHash": "00983b6dd0c94d82",
+        "structuralHash": null,
+        "startLine": 9,
+        "endLine": 9,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::big",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "big",
+        "parentId": null,
+        "content": "big: 18446744073709551615",
+        "contentHash": "9131ab7296c23377",
+        "structuralHash": null,
+        "startLine": 10,
+        "endLine": 10,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::min",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "min",
+        "parentId": null,
+        "content": "min: -9223372036854775808",
+        "contentHash": "ed867b9f25e14491",
+        "structuralHash": null,
+        "startLine": 11,
+        "endLine": 11,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::neg-hex",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "neg-hex",
+        "parentId": null,
+        "content": "neg-hex: -0x10",
+        "contentHash": "c990c9ebaf505ff2",
+        "structuralHash": null,
+        "startLine": 12,
+        "endLine": 12,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "too-big-int",
+    "pluginId": "yaml",
+    "panicked": false,
+    "entities": []
+  },
+  {
+    "name": "too-small-int",
+    "pluginId": "yaml",
+    "panicked": false,
+    "entities": []
+  },
+  {
+    "name": "floats",
+    "pluginId": "yaml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "c.yaml::property::a",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "a",
+        "parentId": null,
+        "content": "a: 1.0",
+        "contentHash": "ed84d7031aa12bce",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 1,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::b",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "b",
+        "parentId": null,
+        "content": "b: 1e10",
+        "contentHash": "7e0ee6bc7ca9f463",
+        "structuralHash": null,
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::c",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "c",
+        "parentId": null,
+        "content": "c: .5",
+        "contentHash": "e1cdb070569256e9",
+        "structuralHash": null,
+        "startLine": 3,
+        "endLine": 3,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::d",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "d",
+        "parentId": null,
+        "content": "d: -.inf",
+        "contentHash": "b6b177426196f2bb",
+        "structuralHash": null,
+        "startLine": 4,
+        "endLine": 4,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::e",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "e",
+        "parentId": null,
+        "content": "e: .nan",
+        "contentHash": "b45c4fbdaf758f34",
+        "structuralHash": null,
+        "startLine": 5,
+        "endLine": 5,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::f",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "f",
+        "parentId": null,
+        "content": "f: 6.02e+23",
+        "contentHash": "8b348dec6dec524e",
+        "structuralHash": null,
+        "startLine": 6,
+        "endLine": 6,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::g",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "g",
+        "parentId": null,
+        "content": "g: 1_000",
+        "contentHash": "65c78a835f1561b2",
+        "structuralHash": null,
+        "startLine": 7,
+        "endLine": 7,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::h",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "h",
+        "parentId": null,
+        "content": "h: 0.1",
+        "contentHash": "8c32a5fa76d5c8a2",
+        "structuralHash": null,
+        "startLine": 8,
+        "endLine": 8,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::i",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "i",
+        "parentId": null,
+        "content": "i: 1.5e300",
+        "contentHash": "e32ceab87b106085",
+        "structuralHash": null,
+        "startLine": 9,
+        "endLine": 9,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::j",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "j",
+        "parentId": null,
+        "content": "j: 1e-7",
+        "contentHash": "40877d6472ada5dd",
+        "structuralHash": null,
+        "startLine": 10,
+        "endLine": 10,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::k",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "k",
+        "parentId": null,
+        "content": "k: -0.0",
+        "contentHash": "a489a3b3226bc580",
+        "structuralHash": null,
+        "startLine": 11,
+        "endLine": 11,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::l",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "l",
+        "parentId": null,
+        "content": "l: +.INF",
+        "contentHash": "9e45551b11b10dd1",
+        "structuralHash": null,
+        "startLine": 12,
+        "endLine": 12,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::m",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "m",
+        "parentId": null,
+        "content": "m: 123456789012345680.0",
+        "contentHash": "f6f66486def17469",
+        "structuralHash": null,
+        "startLine": 13,
+        "endLine": 13,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::n",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "n",
+        "parentId": null,
+        "content": "n: 3.0e16",
+        "contentHash": "a7b731fc658c5834",
+        "structuralHash": null,
+        "startLine": 14,
+        "endLine": 14,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "booleans-and-nulls",
+    "pluginId": "yaml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "c.yaml::property::a",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "a",
+        "parentId": null,
+        "content": "a: true",
+        "contentHash": "40bbd512750b7629",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 1,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::b",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "b",
+        "parentId": null,
+        "content": "b: True",
+        "contentHash": "40bbd512750b7629",
+        "structuralHash": null,
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::c",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "c",
+        "parentId": null,
+        "content": "c: FALSE",
+        "contentHash": "43e71bbe0316e682",
+        "structuralHash": null,
+        "startLine": 3,
+        "endLine": 3,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::d",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "d",
+        "parentId": null,
+        "content": "d: yes",
+        "contentHash": "bb9db50d5f73a9df",
+        "structuralHash": null,
+        "startLine": 4,
+        "endLine": 4,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::e",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "e",
+        "parentId": null,
+        "content": "e: no",
+        "contentHash": "9d08fc5ab702aae8",
+        "structuralHash": null,
+        "startLine": 5,
+        "endLine": 5,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::f",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "f",
+        "parentId": null,
+        "content": "f: null",
+        "contentHash": "b785b6ec423c44e1",
+        "structuralHash": null,
+        "startLine": 6,
+        "endLine": 6,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::g",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "g",
+        "parentId": null,
+        "content": "g: ~",
+        "contentHash": "b785b6ec423c44e1",
+        "structuralHash": null,
+        "startLine": 7,
+        "endLine": 7,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::h",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "h",
+        "parentId": null,
+        "content": "h: Null",
+        "contentHash": "b785b6ec423c44e1",
+        "structuralHash": null,
+        "startLine": 8,
+        "endLine": 8,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::i",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "i",
+        "parentId": null,
+        "content": "i:",
+        "contentHash": "b785b6ec423c44e1",
+        "structuralHash": null,
+        "startLine": 9,
+        "endLine": 9,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::j",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "j",
+        "parentId": null,
+        "content": "j: NULL",
+        "contentHash": "b785b6ec423c44e1",
+        "structuralHash": null,
+        "startLine": 10,
+        "endLine": 10,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "quoted-scalars",
+    "pluginId": "yaml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "c.yaml::property::a",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "a",
+        "parentId": null,
+        "content": "a: 'single'",
+        "contentHash": "ca1c8069db4f6058",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 1,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::b",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "b",
+        "parentId": null,
+        "content": "b: \"double\\n\\tx\\u00e9\\x41\"",
+        "contentHash": "5f71bfdb6d6abca0",
+        "structuralHash": null,
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::c",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "c",
+        "parentId": null,
+        "content": "c: 'it''s'",
+        "contentHash": "1128e8c602e9b11e",
+        "structuralHash": null,
+        "startLine": 3,
+        "endLine": 3,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::d",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "d",
+        "parentId": null,
+        "content": "d: \"\"",
+        "contentHash": "2d06800538d394c2",
+        "structuralHash": null,
+        "startLine": 4,
+        "endLine": 4,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::e",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "e",
+        "parentId": null,
+        "content": "e: ''",
+        "contentHash": "2d06800538d394c2",
+        "structuralHash": null,
+        "startLine": 5,
+        "endLine": 5,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "block-scalars",
+    "pluginId": "yaml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "c.yaml::property::lit",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "lit",
+        "parentId": null,
+        "content": "lit: |\n  line one\n  line two",
+        "contentHash": "2dc14f7ab18ad2da",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 3,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::fold",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "fold",
+        "parentId": null,
+        "content": "fold: >\n  folded\n  text",
+        "contentHash": "320d325398379bbc",
+        "structuralHash": null,
+        "startLine": 4,
+        "endLine": 6,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::keep",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "keep",
+        "parentId": null,
+        "content": "keep: |+\n  kept",
+        "contentHash": "59de790fa1c45c20",
+        "structuralHash": null,
+        "startLine": 7,
+        "endLine": 8,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::strip",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "strip",
+        "parentId": null,
+        "content": "strip: |-\n  stripped",
+        "contentHash": "2ba934c31726f677",
+        "structuralHash": null,
+        "startLine": 10,
+        "endLine": 11,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "section-of-strings",
+    "pluginId": "yaml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "c.yaml::section::s",
+        "filePath": "c.yaml",
+        "entityType": "section",
+        "name": "s",
+        "parentId": null,
+        "content": "s:\n  t: 'true'\n  n: '123'\n  e: ''\n  x: null\n  c: 'a: b'\n  h: '#x'\n  d: '- x'\n  sp: ' x'\n  trail: 'x '\n  at: '@x'\n  bt: '`x'\n  pc: '%x'\n  amp: '&x'\n  star: '*x'\n  q: \"'\"\n  dq: '\"'\n  ml: \"a\\nb\"\n  tab: \"a\\tb\"\n  bell: \"a\\x07b\"\n  nbsp: \"a\\u00a0b\"\n  ls: \"a\\u2028b\"\n  emoji: \"\\U0001F600\"\n  uni: café\n  long: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\n  oct: '0o17'\n  zero: '00'\n  ver: 1.0.0\n  y: 'yes'\n  tilde: '~'\n  dot: '.inf'\n  colon: 'a:b'\n  comma: 'a, b'\n  brace: '{x'\n  bracket: '[x'\n  qm: '? x'\n  bang: '!x'\n  pipe: '|x'\n  gt: '>x'",
+        "contentHash": "f54ce9c10fddf22e",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 39,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "section-of-numbers",
+    "pluginId": "yaml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "c.yaml::section::n",
+        "filePath": "c.yaml",
+        "entityType": "section",
+        "name": "n",
+        "parentId": null,
+        "content": "n:\n  a: 1\n  b: -2\n  c: 1.5\n  d: .inf\n  e: -.inf\n  f: .nan\n  g: 1e100\n  h: 0x10\n  i: true\n  j: ~",
+        "contentHash": "cb83bfb9529e2784",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 11,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "sequences",
+    "pluginId": "yaml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "c.yaml::section::list",
+        "filePath": "c.yaml",
+        "entityType": "section",
+        "name": "list",
+        "parentId": null,
+        "content": "list:\n  - 1\n  - two\n  - [3, 4]\n  - {a: 1, b: [x]}\n  - - nested\n    - more\n  - a: 1\n    b: 2",
+        "contentHash": "4987b4e19d5882e8",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 9,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::section::empty-seq",
+        "filePath": "c.yaml",
+        "entityType": "section",
+        "name": "empty-seq",
+        "parentId": null,
+        "content": "empty-seq: []",
+        "contentHash": "831154110e30ac6a",
+        "structuralHash": null,
+        "startLine": 10,
+        "endLine": 10,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::section::empty-map",
+        "filePath": "c.yaml",
+        "entityType": "section",
+        "name": "empty-map",
+        "parentId": null,
+        "content": "empty-map: {}",
+        "contentHash": "1349cde127705c16",
+        "structuralHash": null,
+        "startLine": 11,
+        "endLine": 11,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::section::flow",
+        "filePath": "c.yaml",
+        "entityType": "section",
+        "name": "flow",
+        "parentId": null,
+        "content": "flow: {a: 1, b: [1, 2], c: {d: e}}",
+        "contentHash": "f28c14976f1de025",
+        "structuralHash": null,
+        "startLine": 12,
+        "endLine": 12,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "anchors",
+    "pluginId": "yaml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "c.yaml::section::base",
+        "filePath": "c.yaml",
+        "entityType": "section",
+        "name": "base",
+        "parentId": null,
+        "content": "base: &b\n  x: 1\n  y: 2",
+        "contentHash": "b49d4e5762eb7278",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 3,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::section::other",
+        "filePath": "c.yaml",
+        "entityType": "section",
+        "name": "other",
+        "parentId": null,
+        "content": "other: *b",
+        "contentHash": "b49d4e5762eb7278",
+        "structuralHash": null,
+        "startLine": 4,
+        "endLine": 4,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::section::merge",
+        "filePath": "c.yaml",
+        "entityType": "section",
+        "name": "merge",
+        "parentId": null,
+        "content": "merge:\n  <<: *b\n  z: 3",
+        "contentHash": "dee6f65feb8a6c70",
+        "structuralHash": null,
+        "startLine": 5,
+        "endLine": 7,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::scalar",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "scalar",
+        "parentId": null,
+        "content": "scalar: &s hello",
+        "contentHash": "9555e8555c62dcfd",
+        "structuralHash": null,
+        "startLine": 8,
+        "endLine": 8,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::ref",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "ref",
+        "parentId": null,
+        "content": "ref: *s",
+        "contentHash": "9555e8555c62dcfd",
+        "structuralHash": null,
+        "startLine": 9,
+        "endLine": 9,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "unknown-alias",
+    "pluginId": "yaml",
+    "panicked": false,
+    "entities": []
+  },
+  {
+    "name": "tags",
+    "pluginId": "yaml",
+    "panicked": false,
+    "entities": []
+  },
+  {
+    "name": "bad-core-tag",
+    "pluginId": "yaml",
+    "panicked": false,
+    "entities": []
+  },
+  {
+    "name": "tags-valid",
+    "pluginId": "yaml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "c.yaml::property::ref",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "ref",
+        "parentId": null,
+        "content": "ref: !Ref Foo",
+        "contentHash": "ad2a405b20ee4f38",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 1,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::str",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "str",
+        "parentId": null,
+        "content": "str: !!str 123",
+        "contentHash": "404a763b3f4c8c9a",
+        "structuralHash": null,
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::int",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "int",
+        "parentId": null,
+        "content": "int: !!int \"12\"",
+        "contentHash": "7ecd2e572c949f74",
+        "structuralHash": null,
+        "startLine": 3,
+        "endLine": 3,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::float",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "float",
+        "parentId": null,
+        "content": "float: !!float 1",
+        "contentHash": "ed84d7031aa12bce",
+        "structuralHash": null,
+        "startLine": 4,
+        "endLine": 4,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::null",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "null",
+        "parentId": null,
+        "content": "null: !!null ~",
+        "contentHash": "d924eb1b63de185d",
+        "structuralHash": null,
+        "startLine": 5,
+        "endLine": 5,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::section::custom",
+        "filePath": "c.yaml",
+        "entityType": "section",
+        "name": "custom",
+        "parentId": null,
+        "content": "custom: !custom {a: 1}",
+        "contentHash": "abe55bff9f51c515",
+        "structuralHash": null,
+        "startLine": 6,
+        "endLine": 6,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::section::seq",
+        "filePath": "c.yaml",
+        "entityType": "section",
+        "name": "seq",
+        "parentId": null,
+        "content": "seq: !seq [1]",
+        "contentHash": "adbbf1cca7666aff",
+        "structuralHash": null,
+        "startLine": 7,
+        "endLine": 7,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::bare",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "bare",
+        "parentId": null,
+        "content": "bare: ! x",
+        "contentHash": "f76b3d316f84ab3f",
+        "structuralHash": null,
+        "startLine": 8,
+        "endLine": 8,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::quoted-tag",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "quoted-tag",
+        "parentId": null,
+        "content": "quoted-tag: !Ref 'Foo'",
+        "contentHash": "ad2a405b20ee4f38",
+        "structuralHash": null,
+        "startLine": 9,
+        "endLine": 9,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::verbatim",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "verbatim",
+        "parentId": null,
+        "content": "verbatim: !<tag:example.com,2000:x> v",
+        "contentHash": "f7042be43fb80714",
+        "structuralHash": null,
+        "startLine": 10,
+        "endLine": 10,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::bool",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "bool",
+        "parentId": null,
+        "content": "bool: !!bool True",
+        "contentHash": "40bbd512750b7629",
+        "structuralHash": null,
+        "startLine": 11,
+        "endLine": 11,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::section::sect",
+        "filePath": "c.yaml",
+        "entityType": "section",
+        "name": "sect",
+        "parentId": null,
+        "content": "sect:\n  r: !Ref Foo\n  n: !Num 12\n  m: !Map {k: v}\n  l: !List [1]\n  q: !Q 'quoted'\n  b: !B true\n  e: !E\n  bang: !<!x> y",
+        "contentHash": "4975b4e4a0df06a7",
+        "structuralHash": null,
+        "startLine": 12,
+        "endLine": 20,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "recursive-alias",
+    "pluginId": "yaml",
+    "panicked": false,
+    "entities": []
+  },
+  {
+    "name": "anchor-redefined",
+    "pluginId": "yaml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "c.yaml::property::a",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "a",
+        "parentId": null,
+        "content": "a: &x 1",
+        "contentHash": "65cd25028f98f158",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 1,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::b",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "b",
+        "parentId": null,
+        "content": "b: &x 2",
+        "contentHash": "fb95a7322f5da314",
+        "structuralHash": null,
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::c",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "c",
+        "parentId": null,
+        "content": "c: *x",
+        "contentHash": "fb95a7322f5da314",
+        "structuralHash": null,
+        "startLine": 3,
+        "endLine": 3,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "tagged-sequence-section",
+    "pluginId": "yaml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "c.yaml::section::s",
+        "filePath": "c.yaml",
+        "entityType": "section",
+        "name": "s",
+        "parentId": null,
+        "content": "s: !Seq\n  - 1\n  - !T x",
+        "contentHash": "c5723d4969b48552",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 3,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "non-string-keys",
+    "pluginId": "yaml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "c.yaml::property::1",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "1",
+        "parentId": null,
+        "content": "1: one",
+        "contentHash": "4b08d2ff2a92e566",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 1,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::true",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "true",
+        "parentId": null,
+        "content": "true: yes",
+        "contentHash": "b7db03ae8bf7f8e2",
+        "structuralHash": null,
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::~",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "~",
+        "parentId": null,
+        "content": "~: none",
+        "contentHash": "6b50e3f3a478a20b",
+        "structuralHash": null,
+        "startLine": 3,
+        "endLine": 3,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::1.5",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "1.5",
+        "parentId": null,
+        "content": "1.5: f",
+        "contentHash": "099a94864f384d1b",
+        "structuralHash": null,
+        "startLine": 4,
+        "endLine": 4,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::[1, 2]",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "[1, 2]",
+        "parentId": null,
+        "content": "[1, 2]: seq",
+        "contentHash": "3a3e7bd6516fe94d",
+        "structuralHash": null,
+        "startLine": 5,
+        "endLine": 5,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::{a",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "{a",
+        "parentId": null,
+        "content": "{a: 1}: map",
+        "contentHash": "017254c6ff3fdf54",
+        "structuralHash": null,
+        "startLine": 6,
+        "endLine": 6,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "null-key-matches-debug",
+    "pluginId": "yaml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "c.yaml::property::Null",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "Null",
+        "parentId": null,
+        "content": "Null: 5",
+        "contentHash": "b564a48862bc4a0d",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 1,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::'Null'",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "'Null'",
+        "parentId": null,
+        "content": "'Null': 6",
+        "contentHash": "8d7faeec3b979147",
+        "structuralHash": null,
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "null-key-order",
+    "pluginId": "yaml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "c.yaml::property::'Null'",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "'Null'",
+        "parentId": null,
+        "content": "'Null': 6",
+        "contentHash": "8d7faeec3b979147",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 1,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::Null",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "Null",
+        "parentId": null,
+        "content": "Null: 5",
+        "contentHash": "dedb980100c87e72",
+        "structuralHash": null,
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "complex-key",
+    "pluginId": "yaml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "c.yaml::property::b",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "b",
+        "parentId": null,
+        "content": "b: 2",
+        "contentHash": "fb95a7322f5da314",
+        "structuralHash": null,
+        "startLine": 3,
+        "endLine": 3,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "key-spacing",
+    "pluginId": "yaml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "c.yaml::property::key",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "key",
+        "parentId": null,
+        "content": "key  : v",
+        "contentHash": "f7042be43fb80714",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 1,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::url",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "url",
+        "parentId": null,
+        "content": "url: http://x:8080",
+        "contentHash": "4cb3cbb5f70e6937",
+        "structuralHash": null,
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "no-space-colon",
+    "pluginId": "yaml",
+    "panicked": false,
+    "entities": []
+  },
+  {
+    "name": "crlf",
+    "pluginId": "yaml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "c.yaml::property::a",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "a",
+        "parentId": null,
+        "content": "a: 1",
+        "contentHash": "65cd25028f98f158",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 1,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::section::b",
+        "filePath": "c.yaml",
+        "entityType": "section",
+        "name": "b",
+        "parentId": null,
+        "content": "b:\n  c: 2",
+        "contentHash": "93ba4541beb545f0",
+        "structuralHash": null,
+        "startLine": 2,
+        "endLine": 3,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "tab-value",
+    "pluginId": "yaml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "c.yaml::property::a",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "a",
+        "parentId": null,
+        "content": "a: \"x\\ty\"",
+        "contentHash": "87b0c76b91f8694f",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 1,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "indented-root",
+    "pluginId": "yaml",
+    "panicked": false,
+    "entities": []
+  },
+  {
+    "name": "trailing-comments",
+    "pluginId": "yaml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "c.yaml::property::a",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "a",
+        "parentId": null,
+        "content": "a: 1 # one\n# between",
+        "contentHash": "65cd25028f98f158",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 2,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::section::b",
+        "filePath": "c.yaml",
+        "entityType": "section",
+        "name": "b",
+        "parentId": null,
+        "content": "b:\n  c: 2\n  # inner\n\n# end",
+        "contentHash": "93ba4541beb545f0",
+        "structuralHash": null,
+        "startLine": 3,
+        "endLine": 7,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "deep-nesting",
+    "pluginId": "yaml",
+    "panicked": false,
+    "entities": []
+  },
+  {
+    "name": "nested-sections",
+    "pluginId": "yaml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "c.yaml::section::a",
+        "filePath": "c.yaml",
+        "entityType": "section",
+        "name": "a",
+        "parentId": null,
+        "content": "a:\n  b:\n    c:\n      - d: 1\n        e: [x, {f: g}]",
+        "contentHash": "26a8078c3d18e2a0",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 5,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "unicode-keys",
+    "pluginId": "yaml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "c.yaml::property::café",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "café",
+        "parentId": null,
+        "content": "café: 1",
+        "contentHash": "65cd25028f98f158",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 1,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::日本",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "日本",
+        "parentId": null,
+        "content": "日本: 語",
+        "contentHash": "a016c0ceae143a2a",
+        "structuralHash": null,
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "tagged-key",
+    "pluginId": "yaml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "c.yaml::property::!k a",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "!k a",
+        "parentId": null,
+        "content": "!k a: 1",
+        "contentHash": "1a2757174dd247cd",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 1,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::b",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "b",
+        "parentId": null,
+        "content": "b: 2",
+        "contentHash": "fb95a7322f5da314",
+        "structuralHash": null,
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "tagged-section-key",
+    "pluginId": "yaml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "c.yaml::section::a",
+        "filePath": "c.yaml",
+        "entityType": "section",
+        "name": "a",
+        "parentId": null,
+        "content": "a:\n  !k x: 1",
+        "contentHash": "2d06800538d394c2",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 2,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "single-key-bang-map",
+    "pluginId": "yaml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "c.yaml::section::a",
+        "filePath": "c.yaml",
+        "entityType": "section",
+        "name": "a",
+        "parentId": null,
+        "content": "a:\n  '!x': 1",
+        "contentHash": "369ba426dd140ac4",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 2,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "yml-extension",
+    "pluginId": "yaml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "c.yml::property::a",
+        "filePath": "c.yml",
+        "entityType": "property",
+        "name": "a",
+        "parentId": null,
+        "content": "a: 1",
+        "contentHash": "65cd25028f98f158",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 1,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "version-like",
+    "pluginId": "yaml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "c.yaml::property::a",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "a",
+        "parentId": null,
+        "content": "a: 1.0.0",
+        "contentHash": "9fb2199fe763b444",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 1,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::b",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "b",
+        "parentId": null,
+        "content": "b: '1.0'",
+        "contentHash": "ed84d7031aa12bce",
+        "structuralHash": null,
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::c",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "c",
+        "parentId": null,
+        "content": "c: 1.0",
+        "contentHash": "ed84d7031aa12bce",
+        "structuralHash": null,
+        "startLine": 3,
+        "endLine": 3,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "empty-values",
+    "pluginId": "yaml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "c.yaml::property::a",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "a",
+        "parentId": null,
+        "content": "a:",
+        "contentHash": "b785b6ec423c44e1",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 1,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::section::b",
+        "filePath": "c.yaml",
+        "entityType": "section",
+        "name": "b",
+        "parentId": null,
+        "content": "b: {}",
+        "contentHash": "1349cde127705c16",
+        "structuralHash": null,
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::section::c",
+        "filePath": "c.yaml",
+        "entityType": "section",
+        "name": "c",
+        "parentId": null,
+        "content": "c: []",
+        "contentHash": "831154110e30ac6a",
+        "structuralHash": null,
+        "startLine": 3,
+        "endLine": 3,
+        "metadata": null
+      },
+      {
+        "id": "c.yaml::property::d",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "d",
+        "parentId": null,
+        "content": "d: ''",
+        "contentHash": "2d06800538d394c2",
+        "structuralHash": null,
+        "startLine": 4,
+        "endLine": 4,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "explicit-doc",
+    "pluginId": "yaml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "c.yaml::property::a",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "a",
+        "parentId": null,
+        "content": "a: 1",
+        "contentHash": "65cd25028f98f158",
+        "structuralHash": null,
+        "startLine": 2,
+        "endLine": 2,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "directive",
+    "pluginId": "yaml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "c.yaml::property::a",
+        "filePath": "c.yaml",
+        "entityType": "property",
+        "name": "a",
+        "parentId": null,
+        "content": "a: 1",
+        "contentHash": "65cd25028f98f158",
+        "structuralHash": null,
+        "startLine": 3,
+        "endLine": 3,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "wide-scalars",
+    "pluginId": "yaml",
+    "panicked": false,
+    "entities": [
+      {
+        "id": "c.yaml::section::s",
+        "filePath": "c.yaml",
+        "entityType": "section",
+        "name": "s",
+        "parentId": null,
+        "content": "s:\n  plain: \"\\U0001F600 x\"\n  quoted: \"a\\x07\\U0001F600\"\n  \"\\U0001F680k\": 1\n  pua: \"\\uE000\\U0001F600\\uE001\"\n  ml: \"\\U0001F600\\nline\"\n  seq: [\"\\U0001F600\", \"\\U00010000\"]\n  raw: x😀y",
+        "contentHash": "ee98a17c42f32127",
+        "structuralHash": null,
+        "startLine": 1,
+        "endLine": 8,
+        "metadata": null
+      }
+    ]
+  },
+  {
+    "name": "wide-scalar-tag",
+    "pluginId": "yaml",
+    "panicked": false,
+    "entities": []
+  }
+]

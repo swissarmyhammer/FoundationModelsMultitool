@@ -481,6 +481,48 @@ private let codeParserProducts: [Target.Dependency] = [
     .product(name: "TreeSitterBash", package: treeSitterBashPackage),
 ]
 
+/// The YAML package that the YAML plugin of the git semantic diff reads and
+/// writes YAML with (jpsim/Yams).
+///
+/// The Rust plugin (`yaml.rs` in `swissarmyhammer-sem`) parses with
+/// serde_yaml_ng, which runs libyaml 0.2.5 (the unsafe-libyaml port) for its
+/// parser and its emitter. The content hash of a YAML key is the hash of the
+/// text that this emitter writes, thus the Swift port must run the same
+/// libyaml. Yams carries that libyaml as its C target `CYaml`, and the YAML
+/// plugin calls the libyaml C API through the `CYaml` module. The plugin does
+/// not use the Swift API of Yams: its emitter always marks a scalar tag as
+/// implicit (a `!Ref Foo` value loses its tag), and its duplicate-key test is
+/// not the test of serde_yaml_ng. The one difference between the two libyaml
+/// copies (a scalar above U+FFFF is printable only in unsafe-libyaml) has a
+/// local work-around in `YAMLEmitter.swift`.
+///
+/// **The version must stay equal to the version in FoundationModelsExtras.**
+/// That package declares the same URL with the same exact version, thus
+/// SwiftPM resolves one copy. `6.2.2` is the newest tag. No new package enters
+/// the dependency graph.
+private let yamlPackage = "Yams"
+
+/// The TOML parser package that the TOML plugin of the git semantic diff
+/// reads TOML with (dduan/TOMLDecoder).
+///
+/// The Rust plugin (`toml_plugin.rs` in `swissarmyhammer-sem`) parses with
+/// the `toml` crate 1.1.2, which reads TOML 1.1.0. Foundation has no TOML
+/// parser. TOMLDecoder reads TOML 1.1.0 too; it is pure Swift, it has no
+/// dependency, and `0.4.5` is its newest tag (July 2026). The pin is exact,
+/// because the golden tests compare each parse with the Rust crate.
+private let tomlPackage = "TOMLDecoder"
+
+/// The products of `yamlPackage` and `tomlPackage`, linked by the library
+/// target below.
+///
+/// The YAML and TOML plugins of the git semantic diff are the consumers.
+/// `shellProducts`, `mcpProducts` and `webProducts` group their own products
+/// the same way.
+private let dataFormatProducts: [Target.Dependency] = [
+    .product(name: "Yams", package: yamlPackage),
+    .product(name: "TOMLDecoder", package: tomlPackage),
+]
+
 /// The name of the scripted MCP test server library target, and of the
 /// product that exports it.
 ///
@@ -728,6 +770,12 @@ let package = Package(
             exact: "0.7.4-with-generated-files"),
         .package(url: "https://github.com/elixir-lang/\(treeSitterElixirPackage).git", exact: "0.3.5"),
         treeSitterGrammarPackage(name: treeSitterBashPackage, version: "0.25.1"),
+        // The packages of `dataFormatProducts` — see `yamlPackage` and
+        // `tomlPackage`. Each stands under an organization of its own, so the
+        // grammar helper above does not fit them. The Yams pin must stay
+        // equal to the pin of FoundationModelsExtras.
+        .package(url: "https://github.com/jpsim/\(yamlPackage).git", exact: "6.2.2"),
+        .package(url: "https://github.com/dduan/\(tomlPackage).git", exact: "0.4.5"),
         // The package of `ulidProducts` — see `ulidPackage`. It stands under
         // an organization of its own, so the helper above does not fit it.
         .package(url: "https://github.com/yaslab/\(ulidPackage).git", from: "1.3.1"),
@@ -745,7 +793,8 @@ let package = Package(
         // `ulidProducts` for the identifier of each elicitation, and
         // `telemetryProducts` for the logging and metrics APIs, and
         // `gitProducts` for the libgit2 C API of the git capability, and
-        // `codeParserProducts` for the tree-sitter parse of its semantic diff.
+        // `codeParserProducts` for the tree-sitter parse of its semantic diff,
+        // and `dataFormatProducts` for the YAML and TOML parse of that diff.
         //
         // It does NOT link Router. FoundationModelsExtras owns the tool
         // hosting — `ToolContext`, `BackgroundTool`, `ToolMount`,
@@ -759,7 +808,7 @@ let package = Package(
                 .product(name: metadataRegistryDependencyName, package: metadataRegistryDependencyName),
                 .product(name: extrasDependencyName, package: extrasDependencyName),
             ] + shellProducts + mcpProducts + webProducts + ulidProducts + telemetryProducts + gitProducts
-                + codeParserProducts,
+                + codeParserProducts + dataFormatProducts,
             path: "\(sourcesPath)\(packageName)"
         ),
         // The JavaScript and Python grammars of `codeParserProducts` — see

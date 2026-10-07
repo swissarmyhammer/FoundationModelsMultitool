@@ -1,0 +1,30 @@
+{
+  "summary": {
+    "files": 1,
+    "added": 1,
+    "modified": 1,
+    "deleted": 0,
+    "moved": 0,
+    "renamed": 0
+  },
+  "changes": [
+    {
+      "changeType": "modified",
+      "entityType": "property",
+      "entityName": "private",
+      "filePath": "inline.json",
+      "structuralChange": false,
+      "entityId": "inline.json::property::/private",
+      "beforeContent": "  \"private\": true",
+      "afterContent": "  \"private\": true,"
+    },
+    {
+      "changeType": "added",
+      "entityType": "property",
+      "entityName": "license",
+      "filePath": "inline.json",
+      "entityId": "inline.json::property::/license",
+      "afterContent": "  \"license\": \"MIT\""
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "summary": {
+    "files": 1,
+    "added": 0,
+    "modified": 0,
+    "deleted": 0,
+    "moved": 0,
+    "renamed": 1
+  },
+  "changes": [
+    {
+      "changeType": "renamed",
+      "entityType": "property",
+      "entityName": "title",
+      "filePath": "inline.json",
+      "entityId": "inline.json::property::/title",
+      "beforeContent": "  \"name\": \"my-app\",",
+      "afterContent": "  \"title\": \"my-app\","
+    }
+  ]
+}

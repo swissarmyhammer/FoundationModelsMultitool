@@ -25,7 +25,8 @@ struct SemanticEntity: Equatable, Sendable {
 
     /// The id of the entity that holds this one, or `nil` for a top-level
     /// entity.
-    // The code plugin writes it, as in Rust; no code of the diff reads it.
+    // The code plugin and the Markdown plugin write it, as in Rust; no code
+    // of the diff reads it.
     // periphery:ignore
     let parentID: String?
 
@@ -67,5 +68,31 @@ extension SemanticEntity {
     /// - Returns: The id.
     static func makeID(filePath: String, entityType: String, name: String, parentID: String?) -> String {
         "\(filePath)::\(parentID ?? entityType)::\(name)"
+    }
+
+    /// An entity of a plugin that parses no tree: its id is
+    /// ``makeID(filePath:entityType:name:parentID:)`` of its own path, type,
+    /// and name with no parent (each data plugin in Rust calls
+    /// `build_entity_id` with `None`, also for a Markdown heading that has a
+    /// parent), and it has no structural hash.
+    ///
+    /// - Parameters:
+    ///   - filePath: The path of the file that holds the entity.
+    ///   - entityType: The kind of the entity.
+    ///   - name: The name of the entity.
+    ///   - parentID: The id of the parent entity, or `nil`.
+    ///   - content: The source text of the entity.
+    ///   - contentHash: The content hash of the entity.
+    ///   - startLine: The 1-based first line.
+    ///   - endLine: The 1-based last line.
+    ///   - metadata: More facts of the plugin, or `nil`.
+    init(
+        filePath: String, entityType: String, name: String, parentID: String? = nil, content: String,
+        contentHash: String, startLine: Int, endLine: Int, metadata: [String: String]? = nil
+    ) {
+        self.init(
+            id: Self.makeID(filePath: filePath, entityType: entityType, name: name, parentID: nil),
+            filePath: filePath, entityType: entityType, name: name, parentID: parentID, content: content,
+            contentHash: contentHash, structuralHash: nil, startLine: startLine, endLine: endLine, metadata: metadata)
     }
 }
