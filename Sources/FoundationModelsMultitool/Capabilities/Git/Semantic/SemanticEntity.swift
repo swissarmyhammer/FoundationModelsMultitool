@@ -33,12 +33,14 @@ struct SemanticEntity: Equatable, Sendable {
     /// The source text of the entity.
     let content: String
 
-    /// ``SemanticHash/contentHash(_:)`` of ``content``.
+    /// `CodeEntities.contentHash(_:)` (FoundationModelsCodeContext) of
+    /// ``content``.
     let contentHash: String
 
-    /// ``SemanticHash/structuralHash(of:source:)`` of the parse tree of the
-    /// entity, or `nil` when the plugin parses no tree. Two entities with
-    /// the same structural hash differ only in comments or in format.
+    /// The structural hash of the parse tree of the entity, which the code
+    /// plugin gets from FoundationModelsCodeContext, or `nil` when the plugin
+    /// parses no tree. Two entities with the same structural hash differ only
+    /// in comments or in format.
     let structuralHash: String?
 
     /// The 1-based first line of the entity in the file.

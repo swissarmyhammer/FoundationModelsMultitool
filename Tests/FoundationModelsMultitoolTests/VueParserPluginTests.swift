@@ -1,4 +1,5 @@
 import Foundation
+import FoundationModelsCodeContext
 import Testing
 
 @testable import FoundationModelsMultitool
@@ -145,7 +146,7 @@ struct VueParserPluginTests {
         #expect(entity.entityType == VueParserPlugin.blockEntityType)
         #expect(entity.parentID == nil)
         #expect(entity.content == block)
-        #expect(entity.contentHash == SemanticHash.contentHash(block))
+        #expect(entity.contentHash == CodeEntities.contentHash(block))
         #expect(entity.structuralHash == nil)
     }
 

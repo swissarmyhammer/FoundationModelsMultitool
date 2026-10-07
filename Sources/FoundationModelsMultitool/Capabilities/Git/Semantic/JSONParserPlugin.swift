@@ -1,3 +1,5 @@
+import FoundationModelsCodeContext
+
 // `JSONParserPlugin` — the plugin of the semantic diff for a JSON file.
 //
 // A port of `parser/plugins/json.rs` in
@@ -75,8 +77,8 @@ struct JSONParserPlugin: SemanticParserPlugin {
             id: SemanticEntity.makeID(
                 filePath: filePath, entityType: entry.entityType, name: entry.pointer, parentID: nil),
             filePath: filePath, entityType: entry.entityType, name: entry.key, parentID: nil, content: content,
-            contentHash: SemanticHash.contentHash(content),
-            structuralHash: SemanticHash.contentHash(valueText(ofEntry: content)),
+            contentHash: CodeEntities.contentHash(content),
+            structuralHash: CodeEntities.contentHash(valueText(ofEntry: content)),
             startLine: entry.startLine, endLine: lines.endIndex, metadata: nil)
     }
 

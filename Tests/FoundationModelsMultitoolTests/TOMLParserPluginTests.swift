@@ -1,4 +1,5 @@
 import Foundation
+import FoundationModelsCodeContext
 import Testing
 
 @testable import FoundationModelsMultitool
@@ -49,7 +50,7 @@ struct TOMLParserPluginTests {
         let entities = Self.entities("[package]\nversion = \"1.0.0\"\nname = \"my-app\"\n")
 
         #expect(entities.map(\.contentHash) == [
-            SemanticHash.contentHash("{\n  \"name\": \"my-app\",\n  \"version\": \"1.0.0\"\n}")
+            CodeEntities.contentHash("{\n  \"name\": \"my-app\",\n  \"version\": \"1.0.0\"\n}")
         ])
     }
 
@@ -61,7 +62,7 @@ struct TOMLParserPluginTests {
 
         #expect(entities.map(\.name) == ["title", "port", "server"])
         #expect(entities.map(\.entityType) == ["property", "property", "section"])
-        #expect(entities.prefix(2).map(\.contentHash) == [SemanticHash.contentHash("demo"), SemanticHash.contentHash("8080")])
+        #expect(entities.prefix(2).map(\.contentHash) == [CodeEntities.contentHash("demo"), CodeEntities.contentHash("8080")])
     }
 
     /// A header that the parsed table does not hold under its text (a dotted
@@ -72,7 +73,7 @@ struct TOMLParserPluginTests {
 
         #expect(entities.map(\.name) == ["a.b"])
         #expect(entities.map(\.entityType) == ["property"])
-        #expect(entities.map(\.contentHash) == [SemanticHash.contentHash("[a.b]\nc = 1")])
+        #expect(entities.map(\.contentHash) == [CodeEntities.contentHash("[a.b]\nc = 1")])
     }
 
     /// A text that the TOML parser refuses gives no entity.
@@ -112,7 +113,7 @@ struct TOMLParserPluginTests {
     func theRadixPrefixIsCaseSensitive() {
         #expect(Self.entities("a = 0XFFFFFFFFFFFFFFFF\n").isEmpty)
         #expect(Self.entities("a = 0xFFFFFFFFFFFFFFF\n").map(\.contentHash) == [
-            SemanticHash.contentHash(String(Int64(0xFFF_FFFF_FFFF_FFFF)))
+            CodeEntities.contentHash(String(Int64(0xFFF_FFFF_FFFF_FFFF)))
         ])
     }
 
@@ -122,7 +123,7 @@ struct TOMLParserPluginTests {
     func aTimeKeepsItsSpelling() {
         let entities = Self.entities("l = 07:32\nn = 09:45:00.000\n")
 
-        #expect(entities.map(\.contentHash) == [SemanticHash.contentHash("07:32"), SemanticHash.contentHash("09:45:00.0")])
+        #expect(entities.map(\.contentHash) == [CodeEntities.contentHash("07:32"), CodeEntities.contentHash("09:45:00.0")])
     }
 
     /// The default registry gives a `.toml` file to this plugin.

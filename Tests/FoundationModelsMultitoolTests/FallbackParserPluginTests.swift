@@ -1,4 +1,5 @@
 import Foundation
+import FoundationModelsCodeContext
 import Testing
 
 @testable import FoundationModelsMultitool
@@ -77,7 +78,7 @@ struct FallbackParserPluginTests {
         let entity = try #require(Self.entities("alpha\nbeta\ngamma\n").first)
 
         #expect(entity.content == "alpha\nbeta\ngamma")
-        #expect(entity.contentHash == SemanticHash.contentHash("alpha\nbeta\ngamma"))
+        #expect(entity.contentHash == CodeEntities.contentHash("alpha\nbeta\ngamma"))
         #expect(entity.structuralHash == nil)
     }
 

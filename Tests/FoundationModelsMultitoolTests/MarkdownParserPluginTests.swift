@@ -1,4 +1,5 @@
 import Foundation
+import FoundationModelsCodeContext
 import Testing
 
 @testable import FoundationModelsMultitool
@@ -99,7 +100,7 @@ struct MarkdownParserPluginTests {
         let entity = try #require(Self.entities("# Section\nLine one.\nLine two.\n\n").first)
 
         #expect(entity.content == "# Section\nLine one.\nLine two.")
-        #expect(entity.contentHash == SemanticHash.contentHash("# Section\nLine one.\nLine two."))
+        #expect(entity.contentHash == CodeEntities.contentHash("# Section\nLine one.\nLine two."))
         #expect(entity.startLine == 1)
         #expect(entity.endLine == 4)
     }

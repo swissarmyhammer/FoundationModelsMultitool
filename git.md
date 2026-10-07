@@ -109,7 +109,8 @@ and `web.md`.
 - New dependencies in `Package.swift`: `swift-libgit2` (the same package and
   exact version as FoundationModelsExtras, decision 10), a tree-sitter Swift
   package, and one grammar package for each language. Each dependency gets a
-  doc comment that says why, the same as the current dependencies.
+  doc comment that says why, the same as the current dependencies. Decision
+  15 replaces the tree-sitter packages with FoundationModelsCodeContext.
 - Tests: unit tests make a temporary repository for each test. Golden tests
   compare the semantic diff of each language with the output of the Rust
   crate. Integration tests use the real model, and run in the 20-minute
@@ -221,7 +222,8 @@ All the open questions have a decision. The first run of the spike
      Those serve the `code_context` tool. We do not port them.
    - The parser in Swift is tree-sitter, through a Swift package (for example
      `ChimeHQ/SwiftTreeSitter`), and one grammar package for each language.
-     The language set is open question 4a.
+     The language set is open question 4a. Decision 15 moves the parse to
+     FoundationModelsCodeContext: this package does not parse.
    - Each verb that reads a file at a ref (`diff` with `path@ref`, `show`)
      reads the blob through libgit2 (decision 10).
 7. Languages (question 4a). The first release has the language set of
@@ -276,6 +278,9 @@ All the open questions have a decision. The first run of the spike
     - The libgit2 objects are not `Sendable`. Each verb opens, uses, and frees
       them inside one call. `GitContext` holds the root and the path of the
       repository, not an open handle.
+    - The same rule applies to the tree-sitter packages: one package of the
+      family declares them. That package is FoundationModelsCodeContext, and
+      this package links no tree-sitter package (decision 15).
 11. Grammars after the spike (decision 7). CSV and Vue need no tree-sitter
     grammar: the Rust plugins `csv_plugin.rs` and `vue.rs` do not use one, and
     the port follows them. Swift uses the exact tag `0.7.4-with-generated-files`.
@@ -291,6 +296,8 @@ All the open questions have a decision. The first run of the spike
     `parser.c`, `scanner.c`, and headers of each grammar, with its license
     file, is an example of a workaround that fits. YAML needs no grammar,
     because the Rust `yaml.rs` uses none.
+    Decision 15 moves these local targets to FoundationModelsCodeContext.
+    This package has no grammar target now.
 
 13. Fortran (2026-10-06, the user decided): drop Fortran. With grammar 0.6.0
     the Rust crate finds no Fortran entity (the grammar keeps each name in a
@@ -316,6 +323,29 @@ All the open questions have a decision. The first run of the spike
       TOML 1.1 (a time with no seconds), as the `toml` crate 1.1.2 does.
     The doc comments of `yamlPackage` and `tomlPackage` in `Package.swift`
     give the same reasons. No step on the host and no fork is necessary.
+
+15. Code entities from FoundationModelsCodeContext (2026-10-07, the user
+    decided, task `^jyv2we6`). FoundationModelsCodeContext owns all
+    tree-sitter work: the runtime, the grammars, the parse, and the read of
+    the entities of a source file. This package does not parse and links no
+    tree-sitter package and no grammar. It does not get grammars from
+    CodeContext. The code plugin calls the public API
+    `CodeEntities.entities(in:filePath:)` and gives each `CodeEntity` to the
+    diff as a `SemanticEntity` with the same values. Its extensions are
+    `CodeEntities.supportedFileExtensions`. Each plugin hashes with
+    `CodeEntities.contentHash(_:)`, thus the code entities and the data
+    entities use one hash.
+    - Reason: the two packages had two copies of the same grammars. The pins
+      went out of step (tree-sitter-swift 0.7.3 against 0.7.4, PHP 0.25.0
+      against 0.25.1), and the two packages declared the same target names
+      `TreeSitterJavaScript` and `TreeSitterPython`. An ACP agent graph with
+      both packages did not build.
+    - CodeContext tests the parse (its `CodeEntitiesGoldenTests`). This
+      package keeps `CodeParserPluginGoldenTests` and the
+      `GitSemanticGoldens` diff goldens, with no change to a golden value.
+    - `Package.swift` declares CodeContext through
+      `swissArmyHammerPackage(name:)` on the `main` branch, the same as
+      Router and Extras.
 
 ## Data plugin gaps
 
@@ -385,6 +415,10 @@ byte-equal to the cargo crates of the Rust crate). The doc comments of
 package gives three `-Wshorten-64-to-32` warnings for the Python scanner,
 thus the target compiles it through `scanner_build.c`, which stops that one
 warning and includes the upstream file.
+
+Task `^jyv2we6` removed all of these packages and the two local targets
+from this package (decision 15). FoundationModelsCodeContext declares them
+now.
 
 A throwaway test (`import libgit2`, removed after the spike) made a temporary
 repository with libgit2 only: commits c1, c2, c3 on `main` (c3 renames
@@ -500,6 +534,9 @@ function (`git_merge_base`, `git_blame_file`, `git_repository_discover`,
 
 ### Tree-sitter packages
 
+This section is the record of the spike. This package does not link these
+packages now: FoundationModelsCodeContext declares them (decision 15).
+
 SwiftTreeSitter: `https://github.com/ChimeHQ/SwiftTreeSitter` `0.25.0`
 (product `SwiftTreeSitter`). It resolves `tree-sitter/tree-sitter` at
 `0.25.10`. Some grammar manifests name it as
@@ -549,7 +586,8 @@ Notes:
    the files of the tag `v0.25.0` of each grammar in a local C target of this
    package (`Sources/TreeSitterJavaScript`, `Sources/TreeSitterPython`). The
    Swift port and the Rust crate use the same JavaScript and Python
-   grammars.
+   grammars. Decision 15 moves the two targets to
+   FoundationModelsCodeContext.
 2. The tag `0.7.4` of tree-sitter-swift has no `src/parser.c`. Only the tag
    `0.7.4-with-generated-files` has it. A `from: "0.7.4"` rule selects the
    tag without the parser, thus the rule must be `exact:` on the

@@ -602,8 +602,11 @@ shape-inferred dispatch of `EditEngine`, `AtomicWriter`, and
 the `DiagnosticsBridge` or `FileDiagnostics`, and we do not add the
 FoundationModelsCodeContext dependency: inline diagnostics make each write
 and each edit wait for an LSP settle window, and this is too slow (decision
-2026-08-11). Corrective results (a payload that cannot resolve; a path
-outside the root) stay in-band. They are never thrown.
+2026-08-11). That decision is about the diagnostics of the files capability
+only. The git semantic diff gets its code entities from
+FoundationModelsCodeContext (git.md decision 15), thus the package depends on
+CodeContext for that capability. Corrective results (a payload that cannot
+resolve; a path outside the root) stay in-band. They are never thrown.
 
 **MCP** (`Capabilities/MCP`) gets `MCPServer`, `StdioServerProcess`, the
 `SchemaConverter` / `GeneratedContentCodec` pair, `ToolContentRenderer` with
@@ -860,10 +863,10 @@ FoundationModelsShelltool repository.
 
 **Phase 3 — files. Tag: `consolidation-3-files`.** `Capabilities/Files` gets
 the six operations, `PathGuard`, `Hashline`, `EditEngine`, `AtomicWriter`, and
-`FileChangeJournal`. It does not get `DiagnosticsBridge`, and it does not
-bring the FoundationModelsCodeContext dependency (decision 2026-08-11, see
-"Consolidation of the siblings"). Exit: ACPAgent and Skills move off
-FileTool, and we archive the FoundationModelsFileTool repository.
+`FileChangeJournal`. It does not get `DiagnosticsBridge`, and the files
+capability does not use FoundationModelsCodeContext for diagnostics (decision
+2026-08-11, see "Consolidation of the siblings"). Exit: ACPAgent and Skills
+move off FileTool, and we archive the FoundationModelsFileTool repository.
 
 **Phase 4 — mcp. Tag: `consolidation-4-mcp`.** `Capabilities/MCP` gets
 `MCPServer`, `StdioServerProcess`, the codec pair, `ToolContentRenderer` +

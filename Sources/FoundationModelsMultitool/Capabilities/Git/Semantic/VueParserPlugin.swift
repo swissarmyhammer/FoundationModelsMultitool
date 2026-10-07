@@ -1,13 +1,15 @@
+import FoundationModelsCodeContext
+
 // `VueParserPlugin` — the plugin of the semantic diff for a Vue single-file
 // component (a `.vue` file).
 //
 // A port of `parser/plugins/vue.rs` in
 // `../swissarmyhammer/crates/swissarmyhammer-sem/src/`: the struct
 // `VueParserPlugin`, `extract_sfc_blocks`, `parse_opening_tag`, and
-// `extract_attr`. The plugin uses no tree-sitter grammar (git.md decision
-// 11): it cuts the file into its `<template>`, `<script>`, and `<style>`
-// blocks line by line, and it sends the text in each `<script>` block to the
-// code plugin with the TypeScript or the JavaScript grammar.
+// `extract_attr`. The plugin uses no grammar (git.md decision 11): it cuts
+// the file into its `<template>`, `<script>`, and `<style>` blocks line by
+// line, and it sends the text in each `<script>` block to the code plugin at
+// a TypeScript or a JavaScript path.
 //
 // Each match of a tag name, an attribute name, the `setup` marker, and a
 // `lang` value is case-sensitive, the same as `vue.rs`. Thus `</Template>`,
@@ -47,7 +49,7 @@ struct VueParserPlugin: SemanticParserPlugin {
         SemanticEntity(
             id: SemanticEntity.makeID(filePath: filePath, entityType: blockEntityType, name: block.name, parentID: nil),
             filePath: filePath, entityType: blockEntityType, name: block.name, parentID: nil,
-            content: block.fullContent, contentHash: SemanticHash.contentHash(block.fullContent), structuralHash: nil,
+            content: block.fullContent, contentHash: CodeEntities.contentHash(block.fullContent), structuralHash: nil,
             startLine: block.startLine, endLine: block.endLine, metadata: nil)
     }
 

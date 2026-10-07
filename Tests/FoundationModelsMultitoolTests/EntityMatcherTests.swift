@@ -1,4 +1,5 @@
 import Foundation
+import FoundationModelsCodeContext
 import Testing
 
 @testable import FoundationModelsMultitool
@@ -20,7 +21,7 @@ struct EntityMatcherTests {
     ) -> SemanticEntity {
         SemanticEntity(
             id: id, filePath: filePath, entityType: "function", name: name, parentID: nil,
-            content: content, contentHash: SemanticHash.contentHash(content), structuralHash: structuralHash,
+            content: content, contentHash: CodeEntities.contentHash(content), structuralHash: structuralHash,
             startLine: 1, endLine: 1, metadata: nil)
     }
 
@@ -258,7 +259,7 @@ struct EntityMatcherTests {
         let after = SemanticEntity(
             id: "a::new", filePath: "a.ts", entityType: "class", name: "new", parentID: nil,
             content: "\(Self.sharedTokens) new_unique",
-            contentHash: SemanticHash.contentHash("\(Self.sharedTokens) new_unique"), structuralHash: nil,
+            contentHash: CodeEntities.contentHash("\(Self.sharedTokens) new_unique"), structuralHash: nil,
             startLine: 1, endLine: 1, metadata: nil)
 
         let result = EntityMatcher.matchEntities(

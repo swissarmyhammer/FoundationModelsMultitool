@@ -1,10 +1,12 @@
+import FoundationModelsCodeContext
+
 // `CSVParserPlugin` — the plugin of the semantic diff for a CSV or TSV file.
 //
 // A port of `parser/plugins/csv_plugin.rs` in
 // `../swissarmyhammer/crates/swissarmyhammer-sem/src/`: the struct
 // `CsvParserPlugin` and the function `parse_csv_line`. The Rust plugin reads
-// the text by hand, with no CSV library and no tree-sitter grammar (git.md
-// note 3 of "Tree-sitter packages"), and so does this port.
+// the text by hand, with no CSV library and no grammar (git.md, note 3 of
+// the spike grammar table), and so does this port.
 //
 // The first line that is not blank is the header. Each later line that is not
 // blank is one `row` entity. The line numbers count only the lines that are
@@ -66,7 +68,7 @@ struct CSVParserPlugin: SemanticParserPlugin {
             headers.indices.map { (headers[$0], $0 < cells.count ? cells[$0] : "") }, uniquingKeysWith: { $1 })
         return SemanticEntity(
             filePath: filePath, entityType: rowEntityType, name: name, content: line,
-            contentHash: SemanticHash.contentHash(line), startLine: index + 1, endLine: index + 1,
+            contentHash: CodeEntities.contentHash(line), startLine: index + 1, endLine: index + 1,
             metadata: metadata)
     }
 

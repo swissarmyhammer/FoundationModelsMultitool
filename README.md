@@ -185,13 +185,13 @@ These are the rules of the capability:
 `tools.git.diff` compares entities (functions, classes, keys, and other
 entities), not lines. It has three modes: two inline texts with a `language`,
 two files (`left` and `right`, each a path or `path@ref`), or no argument,
-which diffs each changed file of the work folder against HEAD. It finds the
-entities with tree-sitter for these languages: Rust, TypeScript, TSX,
-JavaScript, JSX, Python, Go, Java, C, C++, C#, Ruby, PHP, Swift, Elixir, and
-Bash. It reads these data formats: JSON, YAML, TOML, CSV, and Markdown. A Vue
-file gives its `<script>` block to the TypeScript or JavaScript parser. A file
-of each other type goes to the fallback plugin, which compares chunks of
-lines.
+which diffs each changed file of the work folder against HEAD. It gets the
+entities of a source file from FoundationModelsCodeContext for these
+languages: Rust, TypeScript, TSX, JavaScript, JSX, Python, Go, Java, C, C++,
+C#, Ruby, PHP, Swift, Elixir, and Bash. It reads these data formats: JSON,
+YAML, TOML, CSV, and Markdown. A Vue file gives its `<script>` block to the
+TypeScript or JavaScript parser. A file of each other type goes to the
+fallback plugin, which compares chunks of lines.
 
 ### Injected globals
 

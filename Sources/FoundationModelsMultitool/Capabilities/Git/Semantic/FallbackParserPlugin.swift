@@ -1,3 +1,5 @@
+import FoundationModelsCodeContext
+
 // `FallbackParserPlugin` — the plugin of the semantic diff for each file that
 // no other plugin reads.
 //
@@ -39,7 +41,7 @@ struct FallbackParserPlugin: SemanticParserPlugin {
             let name = "lines \(start + 1)-\(end)"
             return SemanticEntity(
                 filePath: filePath, entityType: Self.chunkEntityType, name: name, content: chunk,
-                contentHash: SemanticHash.contentHash(chunk), startLine: start + 1, endLine: end)
+                contentHash: CodeEntities.contentHash(chunk), startLine: start + 1, endLine: end)
         }
     }
 }

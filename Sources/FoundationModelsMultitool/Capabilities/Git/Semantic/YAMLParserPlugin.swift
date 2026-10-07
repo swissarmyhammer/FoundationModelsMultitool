@@ -1,10 +1,12 @@
+import FoundationModelsCodeContext
+
 // `YAMLParserPlugin` — the plugin of the semantic diff for a YAML file.
 //
 // A port of `parser/plugins/yaml.rs` in
 // `../swissarmyhammer/crates/swissarmyhammer-sem/src/`: the struct
 // `YamlParserPlugin` and the functions `find_top_level_keys`,
 // `trim_trailing_blanks_yaml`, and `yaml_value_to_string`. The Rust plugin
-// uses no tree-sitter grammar (git.md decision 12): it finds the keys with a
+// uses no grammar (git.md decision 12): it finds the keys with a
 // line scan and hashes the value of each key after serde_yaml_ng parsed the
 // file. This port reads and writes YAML with ``YAMLLoader`` and
 // ``YAMLEmitter``, the port of serde_yaml_ng over the same libyaml.
@@ -61,7 +63,7 @@ struct YAMLParserPlugin: SemanticParserPlugin {
             let value = valueTexts[Array(key.name.utf8)] ?? (text: text, isSection: false)
             return SemanticEntity(
                 filePath: filePath, entityType: value.isSection ? Self.sectionEntityType : Self.propertyEntityType,
-                name: key.name, content: text, contentHash: SemanticHash.contentHash(value.text), startLine: key.line,
+                name: key.name, content: text, contentHash: CodeEntities.contentHash(value.text), startLine: key.line,
                 endLine: endLine)
         }
     }

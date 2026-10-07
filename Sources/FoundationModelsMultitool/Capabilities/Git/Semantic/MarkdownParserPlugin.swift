@@ -1,11 +1,13 @@
+import FoundationModelsCodeContext
+
 // `MarkdownParserPlugin` — the plugin of the semantic diff for a Markdown
 // file.
 //
 // A port of `parser/plugins/markdown.rs` in
 // `../swissarmyhammer/crates/swissarmyhammer-sem/src/`: the struct
 // `MarkdownParserPlugin`. The Rust plugin finds each heading line with the
-// regular expression `^(#{1,6})\s+(.+)` and uses no tree-sitter grammar
-// (git.md note 3 of "Tree-sitter packages"). This port reads the same lines
+// regular expression `^(#{1,6})\s+(.+)` and uses no grammar (git.md, note 3
+// of the spike grammar table). This port reads the same lines
 // with no regular expression: the rules of ``HeadingLine`` are the rules of
 // that pattern.
 //
@@ -51,7 +53,7 @@ struct MarkdownParserPlugin: SemanticParserPlugin {
             guard !text.isEmpty else { return nil }
             return SemanticEntity(
                 filePath: filePath, entityType: section.entityType, name: section.name, parentID: section.parentID,
-                content: text, contentHash: SemanticHash.contentHash(text), startLine: section.startLine,
+                content: text, contentHash: CodeEntities.contentHash(text), startLine: section.startLine,
                 endLine: section.startLine + section.lines.count - 1)
         }
     }

@@ -87,9 +87,9 @@ struct ParserRegistry: Sendable {
     /// dot, or with only a leading dot (`.gitignore`), has no extension. A
     /// `.` component of the path is not a file name.
     ///
-    /// The code plugin reads the language of a file with this function too.
-    /// Its Rust source has a copy with the same rules
-    /// (`dotted_lowercase_extension` in `parser/plugins/code/languages.rs`).
+    /// The extensions of the code plugin (`CodeEntities.supportedFileExtensions`
+    /// of FoundationModelsCodeContext) have the same form, thus the registry
+    /// maps them with no change.
     static func fileExtension(of filePath: String) -> String {
         let fileName = filePath.split(separator: "/").last { $0 != "." }
         guard let fileName, fileName != "..",

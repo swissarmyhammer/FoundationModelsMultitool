@@ -1,3 +1,5 @@
+import FoundationModelsCodeContext
+
 @testable import FoundationModelsMultitool
 
 /// A small ``SemanticParserPlugin`` for the semantic diff suites: one entity
@@ -34,7 +36,7 @@ struct LineEntityPlugin: SemanticParserPlugin {
             return SemanticEntity(
                 id: SemanticEntity.makeID(filePath: filePath, entityType: Self.entityType, name: name, parentID: nil),
                 filePath: filePath, entityType: Self.entityType, name: name, parentID: nil, content: body,
-                contentHash: SemanticHash.contentHash(body), structuralHash: nil,
+                contentHash: CodeEntities.contentHash(body), structuralHash: nil,
                 startLine: index + 1, endLine: index + 1, metadata: nil)
         }
     }

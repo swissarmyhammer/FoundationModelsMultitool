@@ -54,16 +54,29 @@ private let metadataRegistryDependencyName = "FoundationModelsMetadataRegistry"
 /// library target and the unit test target below both link the product.
 private let extrasDependencyName = "FoundationModelsExtras"
 
+/// The name of the FoundationModelsCodeContext dependency package.
+///
+/// It is wired as a remote dependency (`main` branch) the same way
+/// `routerDependencyName` is. CodeContext owns all tree-sitter work of the
+/// package family: the parser, the grammars, and the read of the entities of
+/// a source file. The git semantic diff calls its `CodeEntities` API and does
+/// not parse. Thus this package links no parser and no grammar, and two
+/// copies of a grammar cannot go out of step in one graph (git.md
+/// § "Decisions", item 15). See `codeContextProducts`.
+private let codeContextDependencyName = "FoundationModelsCodeContext"
+
 /// Base URL for packages published under the swissarmyhammer GitHub
-/// organization — `routerDependencyName`, `metadataRegistryDependencyName`
-/// and `extrasDependencyName` are fetched from here.
+/// organization — `routerDependencyName`, `metadataRegistryDependencyName`,
+/// `extrasDependencyName` and `codeContextDependencyName` are fetched from
+/// here.
 private let swissArmyHammerPackageOrgURL = "git@github.com:swissarmyhammer/"
 
 /// Builds a `.package(url:branch:)` dependency for a package hosted under
 /// `swissArmyHammerPackageOrgURL`, tracking `mainBranch`.
 ///
 /// This is used for `routerDependencyName`,
-/// `metadataRegistryDependencyName` and `extrasDependencyName`.
+/// `metadataRegistryDependencyName`, `extrasDependencyName` and
+/// `codeContextDependencyName`.
 private func swissArmyHammerPackage(name: String) -> Package.Dependency {
     .package(url: "\(swissArmyHammerPackageOrgURL)\(name).git", branch: mainBranch)
 }
@@ -110,7 +123,7 @@ private let shellProducts: [Target.Dependency] = [
 /// goes back must change that suite too.
 ///
 /// The helper above does not fit it. `swissArmyHammerPackage(name:)`
-/// builds the `git@github.com:` URL of the three packages this repository
+/// builds the `git@github.com:` URL of the four packages this organization
 /// develops. This one is a public fork, and it keeps the HTTPS URL it always
 /// had, thus a machine with no SSH key resolves it. The organization name is
 /// the whole change from the upstream URL.
@@ -244,231 +257,17 @@ private let gitProducts: [Target.Dependency] = [
     .product(name: "libgit2", package: libgit2Package)
 ]
 
-/// The tree-sitter package that the code plugin of the git semantic diff
-/// parses source files with (ChimeHQ/SwiftTreeSitter).
+/// The products of `codeContextDependencyName`, linked by the library target
+/// and the unit test target below.
 ///
-/// git.md § "Decisions", item 6, selects tree-sitter, and § "Spike result"
-/// ("Tree-sitter packages") records this package and its version. It wraps
-/// the C runtime of `tree-sitter/tree-sitter`, which it resolves at 0.25.10.
-/// Some grammar manifests name the runtime as `tree-sitter/swift-tree-sitter`,
-/// but only their test targets use it, and SwiftPM does not resolve those.
-/// Thus there is no conflict.
-///
-/// The version is an EXACT pin at the version that the spike linked. The
-/// golden tests of the code plugin compare each parse with the Rust
-/// `swissarmyhammer-sem` crate, thus a new runtime must not come in
-/// without a new run of those tests.
-private let treeSitterPackage = "SwiftTreeSitter"
-
-/// The C runtime package of tree-sitter (tree-sitter/tree-sitter), which
-/// `treeSitterPackage` wraps.
-///
-/// The code plugin imports its `TreeSitter` module for one value:
-/// `TSInputEncodingUTF8`. The plugin parses the UTF-8 bytes of a file, thus
-/// each byte offset of a node is a UTF-8 offset, as in the Rust crate. The
-/// `parse(_:)` call of SwiftTreeSitter parses UTF-16 and gives UTF-16
-/// offsets.
-///
-/// The URL is the URL that `treeSitterPackage` writes (with no `.git`), and
-/// the version is the exact version that it resolves, thus SwiftPM resolves
-/// one copy.
-private let treeSitterRuntimePackage = "tree-sitter"
-
-/// The organization of the tree-sitter grammars that the `tree-sitter`
-/// project itself publishes. `treeSitterGrammarPackage(name:version:)`
-/// builds the URL of each one.
-private let treeSitterGrammarOrgURL = "https://github.com/tree-sitter/"
-
-/// The TypeScript grammar package of the code plugin
-/// (tree-sitter/tree-sitter-typescript).
-///
-/// Its product `TreeSitterTypeScript` has two modules: `TreeSitterTypeScript`
-/// gives the language of `.ts` files, and `TreeSitterTSX` gives the language
-/// of `.tsx` files. The version is the version of the Rust
-/// `swissarmyhammer-sem` crate, thus the two crates parse each TypeScript and
-/// TSX file the same way.
-private let treeSitterTypeScriptPackage = "tree-sitter-typescript"
-
-/// The name of the local C target that holds the JavaScript grammar of the
-/// code plugin, and of its module.
-///
-/// The target gives the language of `.js`, `.jsx`, `.mjs`, and `.cjs` files.
-/// It holds the files of the tag `v0.25.0` of
-/// `https://github.com/tree-sitter/tree-sitter-javascript` with no change:
-/// `src/parser.c`, `src/scanner.c`, the headers in `src/tree_sitter/`, the
-/// header `bindings/swift/TreeSitterJavaScript/javascript.h` (here
-/// `include/javascript.h`), and the MIT license of the grammar (`LICENSE`).
-/// The Rust `swissarmyhammer-sem` crate uses this version (git.md
-/// § "Decisions", item 12), thus the two crates parse each JavaScript file
-/// the same way.
-///
-/// **Why a local target and not the package.** The manifest of that tag adds
-/// `src/scanner.c` to its sources only when
-/// `FileManager.default.fileExists(atPath: "src/scanner.c")` is true. That
-/// path is relative to the folder of the build, not to the package, thus a
-/// package that depends on the grammar does not compile the scanner, and the
-/// link fails on the undefined `tree_sitter_javascript_external_scanner_*`
-/// symbols (git.md § "Spike result", "Tree-sitter packages", note 1). A local
-/// target needs no step on the host and publishes nothing. When a released
-/// tag lists the scanner in its manifest, the package can replace this
-/// target.
-private let treeSitterJavaScriptTargetName = "TreeSitterJavaScript"
-
-/// The name of the local C target that holds the Python grammar of the code
-/// plugin, and of its module.
-///
-/// The target gives the language of `.py` files. It holds the files of the
-/// tag `v0.25.0` of `https://github.com/tree-sitter/tree-sitter-python` with
-/// no change: `src/parser.c`, `src/scanner.c`, the headers in
-/// `src/tree_sitter/`, the header
-/// `bindings/swift/TreeSitterPython/python.h` (here `include/python.h`), and
-/// the MIT license of the grammar (`LICENSE`). The Rust `swissarmyhammer-sem`
-/// crate uses this version (git.md § "Decisions", item 12), thus the two
-/// crates parse each Python file the same way.
-///
-/// The manifest of that tag has the scanner defect of
-/// `treeSitterJavaScriptTargetName`, thus this grammar is a local target for
-/// the same reason.
-///
-/// The target compiles its scanner through the file `scanner_build.c`, which
-/// includes `src/scanner.c` — see `treeSitterPythonScannerSource`.
-private let treeSitterPythonTargetName = "TreeSitterPython"
-
-/// The upstream scanner of `treeSitterPythonTargetName`, which the target
-/// does not compile directly.
-///
-/// The C compiler of a root package enables `-Wshorten-64-to-32`, and this
-/// file gives three such warnings. SwiftPM shows no warning of a remote
-/// package, and the Rust crate builds the file with no such warning. The
-/// build unit `scanner_build.c` of the target stops that one warning and
-/// includes this file, thus the upstream file stays with no change.
-private let treeSitterPythonScannerSource = "src/scanner.c"
-
-/// The name of the license file of a local grammar target. The target
-/// excludes it from its sources: it is a text file for a person, not an input
-/// of the build.
-private let grammarLicenseFileName = "LICENSE"
-
-/// The Rust grammar package of the code plugin (tree-sitter/tree-sitter-rust).
-///
-/// Its product `TreeSitterRust` gives the language of `.rs` files. The
-/// version is the version of the Rust `swissarmyhammer-sem` crate, thus the
-/// two crates parse each Rust file the same way.
-private let treeSitterRustPackage = "tree-sitter-rust"
-
-/// The Go grammar package of the code plugin (tree-sitter/tree-sitter-go).
-///
-/// Its product `TreeSitterGo` gives the language of `.go` files. The version
-/// is the version of the Rust `swissarmyhammer-sem` crate, thus the two
-/// crates parse each Go file the same way.
-private let treeSitterGoPackage = "tree-sitter-go"
-
-/// The Java grammar package of the code plugin (tree-sitter/tree-sitter-java).
-///
-/// Its product `TreeSitterJava` gives the language of `.java` files. The
-/// version is the version of the Rust `swissarmyhammer-sem` crate, thus the
-/// two crates parse each Java file the same way.
-private let treeSitterJavaPackage = "tree-sitter-java"
-
-/// The C grammar package of the code plugin (tree-sitter/tree-sitter-c).
-///
-/// Its product `TreeSitterC` gives the language of `.c` and `.h` files. The
-/// version is the version of the Rust `swissarmyhammer-sem` crate, thus the
-/// two crates parse each C file the same way.
-private let treeSitterCPackage = "tree-sitter-c"
-
-/// The C++ grammar package of the code plugin (tree-sitter/tree-sitter-cpp).
-///
-/// Its product `TreeSitterCPP` gives the language of `.cpp`, `.cc`, `.cxx`,
-/// `.hpp`, `.hh`, and `.hxx` files. The version is the version of the Rust
-/// `swissarmyhammer-sem` crate, thus the two crates parse each C++ file the
-/// same way.
-private let treeSitterCPPPackage = "tree-sitter-cpp"
-
-/// The Ruby grammar package of the code plugin (tree-sitter/tree-sitter-ruby).
-///
-/// Its product `TreeSitterRuby` gives the language of `.rb` files. The
-/// version is the version of the Rust `swissarmyhammer-sem` crate, thus the
-/// two crates parse each Ruby file the same way.
-private let treeSitterRubyPackage = "tree-sitter-ruby"
-
-/// The C# grammar package of the code plugin
-/// (tree-sitter/tree-sitter-c-sharp).
-///
-/// Its product `TreeSitterCSharp` gives the language of `.cs` files. The
-/// version is the version of the Rust `swissarmyhammer-sem` crate, thus the
-/// two crates parse each C# file the same way.
-private let treeSitterCSharpPackage = "tree-sitter-c-sharp"
-
-/// The PHP grammar package of the code plugin (tree-sitter/tree-sitter-php).
-///
-/// Its product `TreeSitterPHP` gives the language of `.php` files. The pin is
-/// the version that git.md § "Spike result" ("Tree-sitter packages")
-/// records. The Rust `swissarmyhammer-sem` crate uses the grammar at 0.24.2,
-/// thus the two crates can parse some PHP source differently. The golden
-/// tests show each such difference.
-private let treeSitterPHPPackage = "tree-sitter-php"
-
-/// The Elixir grammar package of the code plugin
-/// (elixir-lang/tree-sitter-elixir).
-///
-/// Its product `TreeSitterElixir` gives the language of `.ex` and `.exs`
-/// files. The version is the version of the Rust `swissarmyhammer-sem` crate,
-/// thus the two crates parse each Elixir file the same way.
-private let treeSitterElixirPackage = "tree-sitter-elixir"
-
-/// The Bash grammar package of the code plugin (tree-sitter/tree-sitter-bash).
-///
-/// Its product `TreeSitterBash` gives the language of `.sh` files. The
-/// version is the version of the Rust `swissarmyhammer-sem` crate, thus the
-/// two crates parse each Bash file the same way.
-private let treeSitterBashPackage = "tree-sitter-bash"
-
-/// The Swift grammar package of the code plugin
-/// (alex-pinkus/tree-sitter-swift).
-///
-/// Its product `TreeSitterSwift` gives the language of `.swift` files. The
-/// pin is `exact:` on the tag `0.7.4-with-generated-files`, not `from:
-/// "0.7.4"`: git.md § "Spike result", note 2, found that the plain tag
-/// `0.7.4` has no `src/parser.c`, and a `from:` rule selects that tag. The
-/// Rust `swissarmyhammer-sem` crate uses the grammar at 0.7.2, thus the two
-/// crates can parse some Swift source differently. The golden tests show
-/// each such difference.
-private let treeSitterSwiftPackage = "tree-sitter-swift"
-
-/// Builds a `.package(url:exact:)` dependency for a grammar package under
-/// `treeSitterGrammarOrgURL`.
-///
-/// The pin is exact for the reason that `treeSitterPackage` gives: the golden
-/// tests compare each parse with the Rust crate.
-private func treeSitterGrammarPackage(name: String, version: Version) -> Package.Dependency {
-    .package(url: "\(treeSitterGrammarOrgURL)\(name).git", exact: version)
-}
-
-/// The products of `treeSitterPackage` and of the grammar packages, and the
-/// local grammar targets, linked by the library target below.
-///
-/// The code plugin of the git semantic diff is the one consumer.
+/// The git semantic diff is the one consumer in the library: the code plugin
+/// gets the entities of each source file from `CodeEntities`, and each plugin
+/// hashes its entities with `CodeEntities.contentHash(_:)`. The unit test
+/// target imports the module to compare the code plugin with `CodeEntities`.
 /// `shellProducts`, `mcpProducts` and `webProducts` group their own products
-/// the same way. Each language task of git.md adds the product (or the local
-/// target) of its grammar here, in the order of the Rust `ALL_CONFIGS`.
-private let codeParserProducts: [Target.Dependency] = [
-    .product(name: "SwiftTreeSitter", package: treeSitterPackage),
-    .product(name: "TreeSitter", package: treeSitterRuntimePackage),
-    .product(name: "TreeSitterTypeScript", package: treeSitterTypeScriptPackage),
-    .target(name: treeSitterJavaScriptTargetName),
-    .target(name: treeSitterPythonTargetName),
-    .product(name: "TreeSitterRust", package: treeSitterRustPackage),
-    .product(name: "TreeSitterGo", package: treeSitterGoPackage),
-    .product(name: "TreeSitterJava", package: treeSitterJavaPackage),
-    .product(name: "TreeSitterC", package: treeSitterCPackage),
-    .product(name: "TreeSitterCPP", package: treeSitterCPPPackage),
-    .product(name: "TreeSitterRuby", package: treeSitterRubyPackage),
-    .product(name: "TreeSitterCSharp", package: treeSitterCSharpPackage),
-    .product(name: "TreeSitterPHP", package: treeSitterPHPPackage),
-    .product(name: "TreeSitterSwift", package: treeSitterSwiftPackage),
-    .product(name: "TreeSitterElixir", package: treeSitterElixirPackage),
-    .product(name: "TreeSitterBash", package: treeSitterBashPackage),
+/// the same way.
+private let codeContextProducts: [Target.Dependency] = [
+    .product(name: codeContextDependencyName, package: codeContextDependencyName)
 ]
 
 /// The YAML package that the YAML plugin of the git semantic diff reads and
@@ -608,22 +407,6 @@ private let testServerExecutableName = "mcp-test-server"
 /// below.
 private let sourcesPath = "Sources/"
 
-/// Builds the local C target of a grammar under `sourcesPath`:
-/// `treeSitterJavaScriptTargetName` and `treeSitterPythonTargetName`.
-///
-/// SwiftPM compiles each `.c` file of the folder, and the folder `include/`
-/// holds the public header. The upstream files keep their upstream place in
-/// `src/`, thus `#include "tree_sitter/parser.h"` finds the header next to
-/// the file.
-///
-/// - Parameters:
-///   - name: The name of the target and of its folder.
-///   - includedSources: The upstream `.c` files that a build unit of the
-///     target includes, thus SwiftPM must not compile them a second time.
-private func localGrammarTarget(name: String, includedSources: [String] = []) -> Target {
-    .target(name: name, path: "\(sourcesPath)\(name)", exclude: [grammarLicenseFileName] + includedSources)
-}
-
 /// The `Tests/` subdirectory prefix used by every test target's `path`
 /// below.
 private let testsPath = "Tests/"
@@ -703,6 +486,7 @@ let package = Package(
         swissArmyHammerPackage(name: routerDependencyName),
         swissArmyHammerPackage(name: metadataRegistryDependencyName),
         swissArmyHammerPackage(name: extrasDependencyName),
+        swissArmyHammerPackage(name: codeContextDependencyName),
         // The package of `shellProducts`. It stands under an organization of
         // its own, so the helper above does not fit it.
         //
@@ -739,30 +523,10 @@ let package = Package(
         // FoundationModelsExtras states today. The two packages must resolve
         // one copy of libgit2, thus the two pins must stay equal.
         .package(url: "https://github.com/danielctull-forks/\(libgit2Package).git", exact: "1.9.7"),
-        // The packages of `codeParserProducts` — see `treeSitterPackage` and
-        // each grammar package. SwiftTreeSitter and the Swift and Elixir
-        // grammars stand under organizations of their own, so the grammar
-        // helper above does not fit them.
-        .package(url: "https://github.com/ChimeHQ/\(treeSitterPackage).git", exact: "0.25.0"),
-        .package(url: "\(treeSitterGrammarOrgURL)\(treeSitterRuntimePackage)", exact: "0.25.10"),
-        treeSitterGrammarPackage(name: treeSitterTypeScriptPackage, version: "0.23.2"),
-        treeSitterGrammarPackage(name: treeSitterRustPackage, version: "0.24.2"),
-        treeSitterGrammarPackage(name: treeSitterGoPackage, version: "0.25.0"),
-        treeSitterGrammarPackage(name: treeSitterJavaPackage, version: "0.23.5"),
-        treeSitterGrammarPackage(name: treeSitterCPackage, version: "0.24.2"),
-        treeSitterGrammarPackage(name: treeSitterCPPPackage, version: "0.23.4"),
-        treeSitterGrammarPackage(name: treeSitterRubyPackage, version: "0.23.1"),
-        treeSitterGrammarPackage(name: treeSitterCSharpPackage, version: "0.23.5"),
-        treeSitterGrammarPackage(name: treeSitterPHPPackage, version: "0.25.0"),
-        .package(
-            url: "https://github.com/alex-pinkus/\(treeSitterSwiftPackage).git",
-            exact: "0.7.4-with-generated-files"),
-        .package(url: "https://github.com/elixir-lang/\(treeSitterElixirPackage).git", exact: "0.3.5"),
-        treeSitterGrammarPackage(name: treeSitterBashPackage, version: "0.25.1"),
         // The packages of `dataFormatProducts` — see `yamlPackage` and
         // `tomlPackage`. Each stands under an organization of its own, so the
-        // grammar helper above does not fit them. The Yams pin must stay
-        // equal to the pin of FoundationModelsExtras.
+        // helper above does not fit them. The Yams pin must stay equal to the
+        // pin of FoundationModelsExtras.
         .package(url: "https://github.com/jpsim/\(yamlPackage).git", exact: "6.2.2"),
         .package(url: "https://github.com/dduan/\(tomlPackage).git", exact: "0.4.5"),
         // The package of `ulidProducts` — see `ulidPackage`. It stands under
@@ -782,8 +546,9 @@ let package = Package(
         // `ulidProducts` for the identifier of each elicitation, and
         // `telemetryProducts` for the logging and metrics APIs, and
         // `gitProducts` for the libgit2 C API of the git capability, and
-        // `codeParserProducts` for the tree-sitter parse of its semantic diff,
-        // and `dataFormatProducts` for the YAML and TOML parse of that diff.
+        // `codeContextProducts` for the code entities and the content hash of
+        // its semantic diff, and `dataFormatProducts` for the YAML and TOML
+        // parse of that diff.
         //
         // It does NOT link Router. FoundationModelsExtras owns the tool
         // hosting — `ToolContext`, `BackgroundTool`, `ToolMount`,
@@ -797,14 +562,9 @@ let package = Package(
                 .product(name: metadataRegistryDependencyName, package: metadataRegistryDependencyName),
                 .product(name: extrasDependencyName, package: extrasDependencyName),
             ] + shellProducts + mcpProducts + webProducts + ulidProducts + telemetryProducts + gitProducts
-                + codeParserProducts + dataFormatProducts,
+                + codeContextProducts + dataFormatProducts,
             path: "\(sourcesPath)\(packageName)"
         ),
-        // The JavaScript and Python grammars of `codeParserProducts` — see
-        // `treeSitterJavaScriptTargetName` and `treeSitterPythonTargetName`
-        // for the upstream tag and for the reason that they are local.
-        localGrammarTarget(name: treeSitterJavaScriptTargetName),
-        localGrammarTarget(name: treeSitterPythonTargetName, includedSources: [treeSitterPythonScannerSource]),
         // The scripted MCP test server — see `testServerTargetName`. Links
         // `mcpProducts` for the sdk's `Server`, which is what it wraps.
         // `FlakyConnectTransport` names `Logging.Logger` because the
@@ -870,7 +630,8 @@ let package = Package(
         // imports `Subprocess` and `MCP` directly, and this target declares
         // each product it imports, as it does for the two products above.
         // `telemetryTestProducts` gives the log read-back of the suites — see
-        // its documentation.
+        // its documentation. `codeContextProducts` again: `CodeParserPluginTests`
+        // and the plugin suites import `FoundationModelsCodeContext` directly.
         // `testServerTargetName` is the scripted server the MCP suites run
         // against; the executable over it is not a dependency, because a
         // test target cannot depend on an executable, and `swift test`
@@ -886,7 +647,7 @@ let package = Package(
                 .product(name: routerDependencyName, package: routerDependencyName),
                 .product(name: metadataRegistryDependencyName, package: metadataRegistryDependencyName),
                 .product(name: extrasDependencyName, package: extrasDependencyName),
-            ] + shellProducts + mcpProducts + telemetryTestProducts,
+            ] + shellProducts + mcpProducts + telemetryTestProducts + codeContextProducts,
             path: "\(testsPath)\(packageName)Tests",
             resources: [
                 // Golden files pinning `ToolAPIRenderer`'s rendered surface
@@ -911,11 +672,6 @@ let package = Package(
                 // loads these through `Bundle.module`, as `HashlineTests`
                 // loads its goldens.
                 .copy("WebGoldens"),
-                // Golden vectors that pin the hash of the git semantic diff
-                // against the Rust `swissarmyhammer-sem` crate
-                // (`utils/hash.rs`). `SemanticHashTests` loads these through
-                // `Bundle.module`, as `HashlineTests` loads its goldens.
-                .copy("GitGoldens"),
                 // Golden diffs that pin the code plugin of the git semantic
                 // diff against the Rust `swissarmyhammer-sem` crate: for each
                 // language and each case, a before file, an after file, and

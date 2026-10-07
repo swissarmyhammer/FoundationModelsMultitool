@@ -1,4 +1,5 @@
 import Foundation
+import FoundationModelsCodeContext
 import Testing
 
 @testable import FoundationModelsMultitool
@@ -38,7 +39,7 @@ struct YAMLParserPluginTests {
         let entities = Self.entities("name: my-app\nscripts:\n  build:   tsc\n  test: jest\n")
 
         #expect(entities.map(\.contentHash) == [
-            SemanticHash.contentHash("my-app"), SemanticHash.contentHash("build: tsc\ntest: jest"),
+            CodeEntities.contentHash("my-app"), CodeEntities.contentHash("build: tsc\ntest: jest"),
         ])
         #expect(entities.map(\.content) == ["name: my-app", "scripts:\n  build:   tsc\n  test: jest"])
     }
@@ -70,7 +71,7 @@ struct YAMLParserPluginTests {
         let entities = Self.entities("\"q\": 1\n")
 
         #expect(entities.map(\.name) == ["\"q\""])
-        #expect(entities.map(\.contentHash) == [SemanticHash.contentHash("\"q\": 1")])
+        #expect(entities.map(\.contentHash) == [CodeEntities.contentHash("\"q\": 1")])
     }
 
     /// A scalar above U+FFFF is written as it is, as unsafe-libyaml writes it,
@@ -81,7 +82,7 @@ struct YAMLParserPluginTests {
         let entities = Self.entities("s:\n  e: \"\\U0001F600 x\"\n  q: \"a\\x07\\U0001F600\"\n  p: \"\\uE000\\U0001F600\"\n")
 
         #expect(entities.map(\.contentHash) == [
-            SemanticHash.contentHash("e: \u{1F600} x\nq: \"a\\a\u{1F600}\"\np: \u{E000}\u{1F600}")
+            CodeEntities.contentHash("e: \u{1F600} x\nq: \"a\\a\u{1F600}\"\np: \u{E000}\u{1F600}")
         ])
     }
 

@@ -1,10 +1,12 @@
+import FoundationModelsCodeContext
+
 // `TOMLParserPlugin` — the plugin of the semantic diff for a TOML file.
 //
 // A port of `parser/plugins/toml_plugin.rs` in
 // `../swissarmyhammer/crates/swissarmyhammer-sem/src/`: the struct
 // `TomlParserPlugin` and the functions `find_toml_sections`,
 // `has_section_before`, `trim_trailing_blanks_toml`, and
-// `toml_value_to_string`. The Rust plugin uses no tree-sitter grammar: it
+// `toml_value_to_string`. The Rust plugin uses no grammar: it
 // finds the entries with a line scan and hashes the value of each entry after
 // the `toml` crate parsed the file. This port parses with TOMLDecoder through
 // ``TOMLValue``.
@@ -56,7 +58,7 @@ struct TOMLParserPlugin: SemanticParserPlugin {
             let (hashedText, entityType) = Self.hashedText(of: values[Array(entry.key.utf8)], lines: text)
             return SemanticEntity(
                 filePath: filePath, entityType: entityType, name: entry.key, content: text,
-                contentHash: SemanticHash.contentHash(hashedText), startLine: entry.line, endLine: endLine)
+                contentHash: CodeEntities.contentHash(hashedText), startLine: entry.line, endLine: endLine)
         }
     }
 

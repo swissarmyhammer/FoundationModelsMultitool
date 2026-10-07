@@ -1,18 +1,15 @@
 import Foundation
+import FoundationModelsCodeContext
 import Testing
 
 @testable import FoundationModelsMultitool
 
-/// Tests for ``CodeParserPlugin`` and ``CodeLanguageConfig`` — the port of
-/// `parser/plugins/code/mod.rs` (the extraction part) and
-/// `parser/plugins/code/languages.rs` in
-/// `../swissarmyhammer/crates/swissarmyhammer-sem/src/`.
+/// Tests for ``CodeParserPlugin`` — the code plugin of the semantic diff.
 ///
-/// These tests parse real source with the tree-sitter grammars of the
-/// package. They check the routing of a file to its grammar and the parts of
-/// a parse that the golden suite (`CodeParserPluginGoldenTests`) does not
-/// name: the parent of a nested entity, the line numbers, and the UTF-8 byte
-/// offsets.
+/// FoundationModelsCodeContext parses each file and reads its entities
+/// (`CodeEntities`), and its own tests check the parse. These tests check the
+/// part that this package owns: the routing of a file to the code plugin, and
+/// the map from each `CodeEntity` to a ``SemanticEntity``.
 @Suite("CodeParserPluginTests")
 struct CodeParserPluginTests {
 
@@ -45,14 +42,14 @@ struct CodeParserPluginTests {
         #expect(ParserRegistry.makeDefault().plugin(forFilePath: "notes.txt")?.id == ParserRegistry.fallbackPluginID)
     }
 
-    /// No language of the table claims `.f90` or the other extensions of
+    /// CodeContext claims no `.f90` file or a file with another extension of
     /// that grammar, thus the default registry gives such a file to the
     /// fallback plugin (git.md decision 13).
     @Test(
         "the default registry gives an f90 file to the fallback plugin",
         arguments: [".f90", ".f95", ".f03", ".f08", ".f", ".for"])
     func theDefaultRegistryGivesAnF90FileToTheFallbackPlugin(fileExtension: String) {
-        #expect(CodeLanguageConfig.config(forExtension: fileExtension) == nil)
+        #expect(!CodeEntities.supportedFileExtensions.contains(fileExtension))
         #expect(
             ParserRegistry.makeDefault().plugin(forFilePath: "src/solver" + fileExtension)?.id
                 == ParserRegistry.fallbackPluginID)
@@ -69,24 +66,6 @@ struct CodeParserPluginTests {
             ])
     }
 
-    /// The table gives each extension its language, and no language to an
-    /// extension that it does not list. C comes before C++ in the table,
-    /// thus `.h` is C, as in `languages.rs`. Bash claims `.sh` only, thus
-    /// `.bash` has no language, as in `languages.rs`. JavaScript claims
-    /// `.jsx`: no JSX language is in the table.
-    @Test(
-        "the language table maps each extension to its language",
-        arguments: [
-            (".ts", "typescript"), (".tsx", "tsx"), (".js", "javascript"), (".jsx", "javascript"),
-            (".mjs", "javascript"), (".cjs", "javascript"), (".py", "python"), (".rs", "rust"), (".go", "go"),
-            (".swift", "swift"), (".java", "java"), (".c", "c"), (".h", "c"),
-            (".cpp", "cpp"), (".cc", "cpp"), (".cxx", "cpp"), (".hpp", "cpp"), (".hh", "cpp"), (".hxx", "cpp"),
-            (".cs", "csharp"), (".rb", "ruby"), (".php", "php"), (".ex", "elixir"), (".exs", "elixir"), (".sh", "bash"), (".bash", nil), (".txt", nil),
-        ] as [(String, String?)])
-    func theLanguageTableMapsEachExtension(fileExtension: String, languageID: String?) {
-        #expect(CodeLanguageConfig.config(forExtension: fileExtension)?.id == languageID)
-    }
-
     /// A file with an extension that no language claims gives no entity.
     @Test("an unknown extension gives no entity")
     func anUnknownExtensionGivesNoEntity() {
@@ -99,12 +78,14 @@ struct CodeParserPluginTests {
         #expect(Self.entities("", at: "empty.rs").isEmpty)
     }
 
-    // MARK: Parse
+    // MARK: Map
 
-    /// The methods of a Rust `impl` are entities of that `impl`, as in the
-    /// Rust test `test_rust_impl_nested_methods`.
-    @Test("the methods of a Rust impl are entities of the impl")
-    func theMethodsOfARustImplAreEntitiesOfTheImpl() {
+    /// The plugin gives one ``SemanticEntity`` for each `CodeEntity` of
+    /// CodeContext, in the same order, with each value of that entity. The
+    /// source has a nested entity, thus a parent id and a structural hash
+    /// are in the values.
+    @Test("the plugin keeps each value of each CodeContext entity")
+    func thePluginKeepsEachValueOfEachCodeContextEntity() throws {
         let source = """
             pub struct Counter {
                 count: u32,
@@ -116,38 +97,21 @@ struct CodeParserPluginTests {
                 }
             }
             """
+        let codeEntities = CodeEntities.entities(in: source, filePath: "counter.rs")
+        try #require(codeEntities.contains { $0.parentID != nil })
 
         let entities = Self.entities(source, at: "counter.rs")
 
-        #expect(entities.map(\.id) == [
-            "counter.rs::struct::Counter", "counter.rs::impl::Counter", "counter.rs::counter.rs::impl::Counter::new",
-        ])
-        #expect(entities.map(\.parentID) == [nil, nil, "counter.rs::impl::Counter"])
-    }
-
-    /// The lines of an entity are the 1-based rows of its node.
-    @Test("the lines of an entity are the rows of its node")
-    func theLinesOfAnEntityAreTheRowsOfItsNode() throws {
-        let source = "package main\n\nfunc Area(w, h float64) float64 {\n\treturn w * h\n}\n"
-
-        let entity = try #require(Self.entities(source, at: "area.go").first)
-
-        #expect(entity.name == "Area")
-        #expect(entity.startLine == 3)
-        #expect(entity.endLine == 5)
-    }
-
-    /// The plugin parses UTF-8, thus the text of an entity after a
-    /// multi-byte character is the exact text of its node.
-    @Test("an entity after a multi-byte character has its exact text")
-    func anEntityAfterAMultiByteCharacterHasItsExactText() throws {
-        let function = "func greet() -> String {\n    \"héllo\"\n}"
-        let source = "// Café ☕️ crème\n" + function + "\n"
-
-        let entity = try #require(Self.entities(source, at: "greet.swift").first)
-
-        #expect(entity.name == "greet")
-        #expect(entity.content == function)
-        #expect(entity.contentHash == SemanticHash.contentHash(function))
+        #expect(entities.map(\.id) == codeEntities.map(\.id))
+        #expect(entities.map(\.filePath) == codeEntities.map(\.filePath))
+        #expect(entities.map(\.entityType) == codeEntities.map(\.entityType))
+        #expect(entities.map(\.name) == codeEntities.map(\.name))
+        #expect(entities.map(\.parentID) == codeEntities.map(\.parentID))
+        #expect(entities.map(\.content) == codeEntities.map(\.content))
+        #expect(entities.map(\.contentHash) == codeEntities.map(\.contentHash))
+        #expect(entities.map(\.structuralHash) == codeEntities.map(\.structuralHash))
+        #expect(entities.map(\.startLine) == codeEntities.map(\.startLine))
+        #expect(entities.map(\.endLine) == codeEntities.map(\.endLine))
+        #expect(entities.map(\.metadata) == codeEntities.map(\.metadata))
     }
 }
