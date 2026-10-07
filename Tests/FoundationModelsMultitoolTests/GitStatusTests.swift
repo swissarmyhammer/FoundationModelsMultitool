@@ -166,7 +166,36 @@ struct GitStatusTests {
         #expect(result.branch == (try await Self.currentBranch(in: context)))
     }
 
+    /// The `branch` Guide tells the model that a null branch can also mean
+    /// that HEAD could not be read. The lists stand in that case, thus the
+    /// result has no correction that tells it.
+    @Test("the branch guide says a null branch can mean HEAD could not be read")
+    func theBranchGuideSaysANullBranchCanMeanHeadCouldNotBeRead() throws {
+        let data = try JSONEncoder().encode(StatusResult.generationSchema)
+        let schema = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let properties = try #require(schema["properties"] as? [String: Any])
+        let branch = try #require(properties["branch"] as? [String: Any])
+        let guide = try #require(branch["description"] as? String)
+
+        #expect(guide.contains(Self.unreadableHeadText), "guide was: \(guide)")
+    }
+
+    /// The description of the verb tells the model that a null branch can
+    /// also mean that HEAD could not be read.
+    @Test("the status description says a null branch can mean HEAD could not be read")
+    func theStatusDescriptionSaysANullBranchCanMeanHeadCouldNotBeRead() throws {
+        let outside = TestSupport.makeTemporaryDirectory(named: Self.testDirectoryName)
+
+        let description = Status(context: GitContext(root: outside)).description
+
+        #expect(description.contains(Self.unreadableHeadText), "description was: \(description)")
+    }
+
     // MARK: - Helpers
+
+    /// The text that the `branch` Guide and the verb description give for a
+    /// HEAD that libgit2 could not read.
+    private static let unreadableHeadText = "HEAD could not be read"
 
     /// Makes a repository with one uncommitted file of each kind, each in
     /// the folder `folder`:

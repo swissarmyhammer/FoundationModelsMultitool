@@ -22,6 +22,43 @@ comments:
     - note: Package.resolved was not changed. The local FoundationModelsRanker pin to d75a67c stays.
     - next: review.
   timestamp: 2026-10-07T22:11:14.709821+00:00
+- actor: claude-code
+  id: 01m4c6yrwe6z52z4hx9j374frn
+  text: |-
+    ### review — findings
+    - evidence: review sha HEAD~1..HEAD (b2f51b8); 2 findings, 2 confirmed, 0 refuted — Sources/FoundationModelsMultitool/Capabilities/Git/GitStatusReader.swift:127 (completeness/public-output-contract), Sources/FoundationModelsMultitool/Capabilities/Git/GitStatusReader.swift:127 (swift/preconditions)
+    - next: implement the two open items in the "Review Findings (2026-10-07 17:11)" section. Keep the nil branch and the lists. Do not silence the HEAD read error with try?.
+  timestamp: 2026-10-07T22:15:15.598886+00:00
+- actor: claude-code
+  id: 01m4c6z79gm9ek02jsf8ns3wez
+  text: |-
+    ### finish iteration 1 — findings
+    - implement: changed — 6 files
+    - test: green — swift test, 2272 passed
+    - commit: b2f51b8
+    - review: findings — GitStatusReader.swift:127 (completeness/public-output-contract), GitStatusReader.swift:127 (swift/preconditions)
+  timestamp: 2026-10-07T22:15:30.352150+00:00
+- actor: claude-code
+  id: 01m4c72jdq6t8kcxyb00jbsgyy
+  text: 'Research for the two review findings: Sources has no `assertionFailure` yet. The log pattern of the library is `MultitoolTelemetry.logger.log(.<LogMessage case>, level:, metadata: MultitoolTelemetry.errorMetadata(of: error))` (for example `ToolAPIRenderer.reportWidening`, `SurfaceRefresher`). A log message is a constant `MultitoolTelemetry.LogMessage` case; variable values go in metadata only. Plan: add `LogMessage.gitBranchReadFailed` (level `error`), replace `try? repository.currentBranchName()` with a do/catch helper that calls `assertionFailure` and logs, and keeps `branch: nil` and the lists. For finding 1, the status contract keeps the lists, thus a correction beside the lists is not possible (`correction` and the lists are exclusive). The `branch` Guide and the tool description of `tools.git.status` now also say that null can mean HEAD could not be read; thus the Guide is the Guide of `BranchesResult.current` plus that one clause. `tools.git.branches` gives a correction for that failure, thus its Guide does not need the clause. `currentBranchName()` returns nil (not throws) for GIT_EUNBORNBRANCH, thus the no-commit test does not hit the assertion. The failure path itself cannot have a unit test: the assertion stops a debug test run.'
+  timestamp: 2026-10-07T22:17:20.055213+00:00
+- actor: claude-code
+  id: 01m4c798nc7pcctq74mgz32jvh
+  text: |-
+    ### implement — changed
+    - evidence: Sources/FoundationModelsMultitool/Capabilities/Git/GitStatusReader.swift (the `try?` is replaced by `currentBranchName(of:)`: do/catch, `assertionFailure`, an `error` log record `.gitBranchReadFailed` with `errorMetadata`, and `nil`; the lists stand), Sources/FoundationModelsMultitool/Diagnostics/MultitoolTelemetry.swift (new `LogMessage.gitBranchReadFailed`), Sources/FoundationModelsMultitool/Capabilities/Git/Status.swift (the `branch` Guide, the tool description, and the contract comment say that null can also mean HEAD could not be read), Tests/FoundationModelsMultitoolTests/GitStatusTests.swift (2 new tests: the Guide and the description name that case), README.md, git.md. RED: `swift test --filter "GitStatusTests/the"` 2 tests failed (the Guide and the description had no such text). GREEN: `swift test --filter GitStatus` 22 tests in 2 suites passed. Full: `swift test` 2274 tests in 196 suites passed, 0 failed. No test hit the new assertion. The one build line `warning: missing creator for mutated node: ... mlx-swift_Cmlx.bundle` comes from the mlx dependency, as before.
+    - note: the failure path itself has no unit test, because the assertion stops a debug test run. The `branch` Guide is the Guide of `BranchesResult.current` plus one sentence for this verb, because `tools.git.branches` answers that failure with a correction and `tools.git.status` keeps its lists.
+    - next: /review
+  timestamp: 2026-10-07T22:20:59.436802+00:00
+- actor: claude-code
+  id: 01m4c7c14bpfpgc1nnjp6ymz8s
+  text: |-
+    ### test - green
+    - evidence: swift test - 2274 tests in 196 suites passed, 0 failed, 0 skipped.
+    - warnings: one warning only. It is "missing creator for mutated node" for mlx-swift_Cmlx.bundle. It comes from the mlx dependency. It is not ours.
+    - note: Package.resolved was not changed. FoundationModelsRanker pin d75a67c stays. No commit made.
+    - next: review.
+  timestamp: 2026-10-07T22:22:30.027156+00:00
 position_column: doing
 position_ordinal: '80'
 title: 'git: give the current branch in the tools.git.status result'
@@ -51,4 +88,18 @@ The `git_status` tool of docker-agent (https://docker.github.io/docker-agent/too
 - [x] Run `swift test --filter GitStatus`. All tests must pass. Then run `swift test`. The full suite must pass with no new warnings.
 
 ## Workflow
-- Use `/tdd` — write failing tests first, then implement to make them pass. #git
+- Use `/tdd` — write failing tests first, then implement to make them pass.
+
+## Review Findings (2026-10-07 17:11)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 4 file(s) reviewed, 6 not reviewed.
+
+> 4 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 4 file(s)
+
+> 2 file(s) not reviewed — no validator matched:
+> - `README.md` — no validator matches this file
+> - `git.md` — no validator matches this file
+
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Git/GitStatusReader.swift:127` `completeness/public-output-contract` — The branch read uses `try? repository.currentBranchName()`, so a libgit2 failure to read HEAD is silenced and returns `nil`. That is the same value a detached HEAD gives, so the model cannot tell an unreadable HEAD from a detached one. The error is dropped with no warning, log, or correction. Either surface the failure in the result, for example as a correction beside the lists, or state in the `branch` Guide and the tool description that `null` can also mean HEAD could not be read. Add a test for the read-failure path if it is meant to be a supported outcome.
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Git/GitStatusReader.swift:127` `swift/preconditions` — The branch read uses `try?`, so a libgit2 error that reads HEAD is dropped with no assertion and no log. The reader then gives a `nil` branch, the same value as a detached HEAD, and the defect stays hidden. HEAD should always be readable, so this is an unexpected condition that the code answers with silence. Keep the `nil` branch for the lists, but record the failure. Use `do { branch = try repository.currentBranchName() } catch { assertionFailure("HEAD could not be read: \(error)"); logger.error("HEAD could not be read; the branch is left out: \(error)"); branch = nil }`. If the project has no logger in this capability, the reviewer should confirm that before applying this fix. #git

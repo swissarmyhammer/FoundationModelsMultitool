@@ -64,10 +64,15 @@ struct StatusResult {
     var isClean: Bool
 
     /// The branch that HEAD names, or `nil` for a detached HEAD.
+    ///
+    /// The first sentence of the Guide is the Guide of
+    /// `BranchesResult.current`. The second sentence is for this verb only:
+    /// the lists stand when HEAD cannot be read, thus no correction tells the
+    /// model about that failure.
     @Guide(
         description:
             "The branch that HEAD names; null when HEAD is detached (it names a commit, not a branch) or the "
-            + "repository has no commit.")
+            + "repository has no commit. null also when HEAD could not be read; the lists still stand.")
     var branch: String?
 
     /// Why the status answered no list, or `nil` when the lists stand.
@@ -129,9 +134,10 @@ extension Status {
 /// untracked, and renamed), `isClean`, which is true when each list is
 /// empty, and `branch`, the branch that HEAD names (`nil` for a detached
 /// HEAD and for a repository with no commit, the same as the `current` field
-/// of `tools.git.branches`). A file outside the root is in no list. A staged
-/// rename is in `renamed` under its new path. A file with a merge conflict is
-/// in `unstaged`. A root in no repository comes back as a `correction` and a
+/// of `tools.git.branches`; `nil` also when HEAD could not be read, and the
+/// lists stand). A file outside the root is in no list. A staged rename is in
+/// `renamed` under its new path. A file with a merge conflict is in
+/// `unstaged`. A root in no repository comes back as a `correction` and a
 /// `nil` branch, not as an error.
 struct Status: Tool {
 
@@ -145,9 +151,10 @@ struct Status: Tool {
         paths relative to the session root: staged (a change in the index), unstaged (a change \
         in the work folder that is not staged, or a merge conflict), untracked (a file that git \
         does not track), and renamed (a staged rename, under its new path). isClean is true when \
-        each list is empty. branch is the branch that HEAD names; null when HEAD is detached or \
-        the repository has no commit. A file outside the session root is in no list. A root in \
-        no git repository comes back as a correction rather than as an error — read it and act on it.
+        each list is empty. branch is the branch that HEAD names; null when HEAD is detached, \
+        the repository has no commit, or HEAD could not be read (the lists still stand). A file \
+        outside the session root is in no list. A root in no git repository comes back as a \
+        correction rather than as an error — read it and act on it.
         """
 
     /// The session context this verb reads against, which the git capability

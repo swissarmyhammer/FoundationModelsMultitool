@@ -378,6 +378,10 @@ enum MultitoolTelemetry {
         /// The renderer widened a schema element to `any`. Level: `warning`.
         case schemaWidened = "schema element widened to any"
 
+        /// The git status reader could not read HEAD. The status gives no
+        /// branch, and its lists stand. Level: `error`.
+        case gitBranchReadFailed = "git branch read failed"
+
         /// A rebuild of the surface after a change of an MCP server failed,
         /// and the old surface stays. Level: `warning`.
         case surfaceRebuildFailed = "surfaceRebuildFailed"

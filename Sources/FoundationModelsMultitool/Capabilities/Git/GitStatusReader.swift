@@ -16,7 +16,11 @@
 //
 // The status also gives the branch that HEAD names (task `^fn56vsp`). The
 // reader reads it through `LibGit2Repository.currentBranchName()`, the same
-// call that `tools.git.branches` makes, thus the two verbs agree.
+// call that `tools.git.branches` makes, thus the two verbs agree. A HEAD that
+// libgit2 cannot read gives a `nil` branch beside the lists, not a
+// correction: the lists stand without the branch. That failure is unexpected,
+// thus the reader asserts and writes an `error` log record; it never
+// silences the failure.
 //
 // git.md § "Decisions", item 10: the reader calls only the `LibGit2` layer
 // (`LibGit2Status.swift`), never the C API. A root in no repository and a
@@ -24,6 +28,7 @@
 // never as a thrown error.
 
 import Foundation
+import Logging
 
 /// The uncommitted files below the root, in four lists, and the branch that
 /// HEAD names.
@@ -103,7 +108,8 @@ extension GitContext {
     ///
     /// The branch comes from the same open repository, thus the reader
     /// discovers the repository one time. A failure to read the branch gives
-    /// a `nil` branch and keeps the lists.
+    /// a `nil` branch and keeps the lists, and is recorded
+    /// (``currentBranchName(of:)``).
     ///
     /// - Parameter location: The repository of the root.
     /// - Returns: The status, or the correction for a failed read.
@@ -124,7 +130,30 @@ extension GitContext {
                 staged: paths(.staged) + removalsOfRenamesOutOfTheRoot(of: status, in: location),
                 unstaged: paths(.unstaged), untracked: paths(.untracked), renamed: paths(.renamed),
                 oldPathsOfRenamedFiles: rootRelativeRenames(of: status, in: location),
-                branch: try? repository.currentBranchName()))
+                branch: currentBranchName(of: repository)))
+    }
+
+    /// The branch that HEAD names, or `nil` when libgit2 cannot read HEAD.
+    ///
+    /// HEAD is always readable in a repository whose status libgit2 read,
+    /// thus a failure here is unexpected. The failure stops a debug build,
+    /// and an `error` log record tells of it in a release build. The status
+    /// then gives a `nil` branch and keeps its lists, and the `branch` Guide
+    /// of `tools.git.status` tells the model that `nil` can mean this.
+    ///
+    /// - Parameter repository: The open repository of the status.
+    /// - Returns: The name, without `refs/heads/`, or `nil` for a detached
+    ///   HEAD, for a repository with no commit, and for a HEAD that libgit2
+    ///   cannot read.
+    private static func currentBranchName(of repository: LibGit2Repository) -> String? {
+        do {
+            return try repository.currentBranchName()
+        } catch {
+            assertionFailure("HEAD could not be read: \(error)")
+            MultitoolTelemetry.logger.log(
+                .gitBranchReadFailed, level: .error, metadata: MultitoolTelemetry.errorMetadata(of: error))
+            return nil
+        }
     }
 
     /// The old path of each staged rename from below the root to a path
