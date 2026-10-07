@@ -19,8 +19,44 @@ comments:
       - FileChangeEventAbsenceTests: "a notify() beside a write ..." (still expects 1 notice and 1 change set, in the run's correlation). The 300 s poll is gone: close() writes the row before it returns, so no wait is needed.
     - Result: the 5 suites pass (56 tests). Full `swift test`: 2238 tests in 194 suites, 0 failures. FileChangeEventAbsenceTests now takes 0.1 s, not 307 s.
   timestamp: 2026-10-07T15:17:35.323449+00:00
-position_column: todo
-position_ordinal: '8380'
+- actor: claude-code
+  id: 01m4bhqj88jqyk7gn3rtzav5eg
+  text: |-
+    ### implement - verification and one more fix
+    - Router at 6bdf9ae7 (c30d1d41 is an ancestor). Rule from OpenProgressRow.swift and RoutedSessionActorRunJournal.swift: the first progress event of a run is its own row. Each next progress event of the same run goes into the open row. The open row is written when a different event (other kind or other run), a different entry, or close() comes.
+    - Item 1 holds: the doc comment of settledOperationEvents in StubRouterFixtures.swift states this rule.
+    - Item 2 holds for the six tests: they read with settledOperationEvents.
+    - Item 3 did not fully hold. FileChangeEventTests (deliveredChangeSet, 4 tests) and FileChangeRunCodeTests (outerProgressEvents, deliveredChange, the write test, the "alone" test) read while the session is open and expect exactly 1 progress event. A second event of the same run stays in the open row, so these reads cannot see it.
+    - Proof: a temporary change made FileChangeJournal.commit post the event 2 times. On the HEAD tests, all 10 tests of the two suites passed (the duplicate was not seen). With the changed reads, 9 tests failed on "count == eventsPerCall". The temporary change is removed. git diff shows no source change.
+    - Fix: these reads now use settledOperationEvents and filter on the run's completionToken. The "alone" test keeps one read while the session is open (the event is there when the call returns) and adds one read after close() (the event is alone).
+    - Not changed, with reason: ShellExecuteTests posts a .completed of the same run, which writes the open row first, and the byte totals show no hidden event. The isEmpty reads are correct, because the first progress event is always written at once. RunBindingTests correlation check is correct, because an open row holds only events of the correlation of its written start row. Elicitation and sweep reads do not read merged progress.
+    - Result: swift package update, swift build --build-tests (complete; one SwiftPM warning "missing creator for mutated node" on the mlx-swift_Cmlx bundle, not from source), swift test: 2266 tests in 196 suites passed, 0 failures. The six named tests passed.
+  timestamp: 2026-10-07T16:04:19.336337+00:00
+- actor: claude-code
+  id: 01m4bhqm19hd3cw2e5ydsrrmkq
+  text: |-
+    ### implement — changed
+    - evidence: 2 files — Tests/FoundationModelsMultitoolTests/FileChangeEventTests.swift, Tests/FoundationModelsMultitoolTests/FileChangeRunCodeTests.swift; swift test: 2266 tests in 196 suites passed, 0 failures; the six named tests passed
+    - next: /review
+  timestamp: 2026-10-07T16:04:21.161589+00:00
+- actor: claude-code
+  id: 01m4bhvwe7jnete33sb1pw36es
+  text: |-
+    ### test — green
+    - evidence: swift build --build-tests exit 0; swift test 2266 tests in 196 suites passed, 0 failed; cd IntegrationTests && swift build --build-tests exit 0.
+    - warnings: only the known dependency warning "missing creator for mutated node" for mlx-swift_Cmlx.bundle. It was there before. No other warning.
+    - skipped: none. Lines with "skipped" are test names about code behavior.
+    - next: review.
+  timestamp: 2026-10-07T16:06:40.839385+00:00
+- actor: claude-code
+  id: 01m4bhwvp0vhp82m9k0egw0bwc
+  text: |-
+    ### commit — changed
+    - evidence: one local commit "test: read the journal after close in file-change tests". Files: FileChangeEventTests.swift, FileChangeRunCodeTests.swift, all .kanban/ changes (includes leftover files of ^8rf1he5). Sha is in the commit reply.
+    - next: none. The commit is local. No push.
+  timestamp: 2026-10-07T16:07:12.832729+00:00
+position_column: doing
+position_ordinal: '80'
 title: 'tests: six progress-event tests fail after Router c30d1d41 merges progress rows'
 ---
 ## Problem

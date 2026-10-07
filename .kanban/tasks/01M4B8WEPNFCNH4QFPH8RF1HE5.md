@@ -44,8 +44,24 @@ comments:
     - evidence: one local commit "feat(files): add host-given exclude patterns for search verbs". The sha is the commit that holds this comment. Run git log to read it.
     - next: review. No push was done.
   timestamp: 2026-10-07T15:47:34.782661+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m4bh8agkab3tskj9qcneccy4
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit 0ba3e11). 0 findings, 0 confirmed, 0 refuted. 7 validator runs, 0 failed. The commit renames no file, so a file-scoped review is not necessary. The review did not read these files: 4 files in `.kanban/` (`.reviewignore` excludes them), and `README.md` (no validator matches it).
+    - next: The task moved to `done`.
+  timestamp: 2026-10-07T15:55:59.891486+00:00
+- actor: claude-code
+  id: 01m4bh8stf0mz9kg0j20str25y
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 12 files (ExcludePatterns.swift new, files capability files, withFiles, README.md, 3 test files)
+    - test: green — swift test, 2266 passed in 196 suites; IntegrationTests build complete
+    - commit: 0ba3e11
+    - review: clean — 0 findings, 7 validator runs
+  timestamp: 2026-10-07T15:56:15.567870+00:00
+position_column: done
+position_ordinal: ffffbf80
 title: 'files: host-given exclude patterns for the search verbs'
 ---
 ## Source

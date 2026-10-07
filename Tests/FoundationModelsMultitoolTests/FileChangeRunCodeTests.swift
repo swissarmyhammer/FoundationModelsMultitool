@@ -14,7 +14,7 @@
 // Each test runs a JavaScript snippet through a `MultiTool` over the files
 // registry of a `FilesRun` (see `Fixtures/FilesRunFixtures.swift`), and it
 // reads the delivered events off the stub run's transcript with
-// `recordedOperationEvents(of:ofKind:correlatedTo:)`.
+// `settledOperationEvents(of:ofKind:)`, after the session is closed.
 
 import Foundation
 import FoundationModels
@@ -96,14 +96,19 @@ struct FileChangeRunCodeTests {
         writeVerbSnippet(writing: writtenFileName, content: writtenContent)
     }
 
-    /// The `.progress` events of `run` on its own outer correlation, read one
-    /// time with no wait.
+    /// The `.progress` events of `run` on its own outer correlation, read
+    /// after the session is closed.
     ///
-    /// - Parameter run: the stub run whose transcript to read.
+    /// Router keeps a second progress event of a run in an open row that it
+    /// does not write while the session is open. A read after `close()` sees
+    /// every event, so a count of one also shows that no second event came.
+    ///
+    /// - Parameter run: the stub run whose session to close and whose
+    ///   transcript to read.
     /// - Returns: the events, in transcript order.
     private static func outerProgressEvents(of run: StubRun) async -> [OperationEvent] {
-        await recordedOperationEvents(
-            of: run, ofKind: .progress, correlatedTo: [run.context.completionToken])
+        await settledOperationEvents(of: run, ofKind: .progress)
+            .filter { $0.correlationID == run.context.completionToken }
     }
 
     /// The change set one delivered event carries.
@@ -116,14 +121,14 @@ struct FileChangeRunCodeTests {
     }
 
     /// The one `fileChanges` event `run` delivered on its outer correlation,
-    /// read with no wait, and the change set it carries.
+    /// read after the session is closed, and the change set it carries.
     ///
-    /// `SessionOutbox.post(event:)` awaits the journal write, thus the event
-    /// is in the recorder when the `runCode` call that caused it returns. A
-    /// read that comes back with no event is a fault in the route, and no
-    /// race.
+    /// `close()` writes every event the run posted, thus a read that comes
+    /// back with no event, or with more than one, is a fault in the route,
+    /// and no race.
     ///
-    /// - Parameter run: the stub run whose transcript to read.
+    /// - Parameter run: the stub run whose session to close and whose
+    ///   transcript to read.
     /// - Returns: the event and its decoded change set.
     /// - Throws: when no event is there, or its detail is not the envelope.
     private static func deliveredChange(
@@ -143,12 +148,7 @@ struct FileChangeRunCodeTests {
         let path = TestSupport.path(Self.writtenFileName, in: ground.root)
 
         let output = try await runSnippet(Self.writeSnippet, over: ground.registry, under: ground.run.context)
-        let events = await recordedOperationEvents(
-            of: ground.run,
-            ofKind: .progress,
-            correlatedTo: [ground.run.context.completionToken],
-            awaiting: Self.eventsPerCall
-        )
+        let events = await Self.outerProgressEvents(of: ground.run)
         let event = try #require(events.first)
         let set = try Self.changeSet(of: event)
 
@@ -166,13 +166,19 @@ struct FileChangeRunCodeTests {
         let ground = try await makeFilesRun(named: Self.testDirectoryName, recordsChanges: true)
 
         let output = try await runSnippet(Self.writeSnippet, over: ground.registry, under: ground.run.context)
-        let outerEvents = await Self.outerProgressEvents(of: ground.run)
-        let everyProgressEvent = await recordedOperationEvents(of: ground.run, ofKind: .progress)
+        // The first read is while the session is open: it shows that the event
+        // is in the recorder when the call returns. Router writes the first
+        // progress event of a run at once, but it keeps a second one in an
+        // open row until `close()`. Thus the second read, after `close()`,
+        // shows that the event is alone.
+        let outerEventsAtReturn = await recordedOperationEvents(
+            of: ground.run, ofKind: .progress, correlatedTo: [ground.run.context.completionToken])
+        let everyProgressEvent = await settledOperationEvents(of: ground.run, ofKind: .progress)
 
         #expect(output == Self.writtenByteCountText, "output was: \(output)")
-        #expect(outerEvents.count == Self.eventsPerCall, "events were: \(outerEvents)")
+        #expect(outerEventsAtReturn.count == Self.eventsPerCall, "events were: \(outerEventsAtReturn)")
         #expect(everyProgressEvent.count == Self.eventsPerCall, "events were: \(everyProgressEvent)")
-        #expect(outerEvents.allSatisfy { FileChangeSet(operationEventDetail: $0.detail) != nil })
+        #expect(outerEventsAtReturn.allSatisfy { FileChangeSet(operationEventDetail: $0.detail) != nil })
     }
 
     // MARK: - A patch through runCode

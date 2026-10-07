@@ -113,8 +113,12 @@ struct FileChangeEventTests {
 
     /// The one `fileChanges` event the run delivered, and the change set it carries.
     ///
-    /// Waits for the event to be journaled, then asserts the run delivered
-    /// exactly one, and that it decodes.
+    /// Closes the session, then asserts the run delivered exactly one event,
+    /// and that it decodes.
+    ///
+    /// The read comes after `close()`. Router keeps a second progress event of
+    /// a run in an open row that it does not write while the session is open,
+    /// so a read before `close()` cannot see a second event.
     ///
     /// - Parameter ground: the ground whose run to read.
     /// - Returns: the event and its decoded change set.
@@ -122,12 +126,8 @@ struct FileChangeEventTests {
     private static func deliveredChangeSet(
         in ground: Ground
     ) async throws -> (event: OperationEvent, set: FileChangeSet) {
-        let events = await recordedOperationEvents(
-            of: ground.run,
-            ofKind: .progress,
-            correlatedTo: [ground.run.context.completionToken],
-            awaiting: eventsPerCall
-        )
+        let events = await settledOperationEvents(of: ground.run, ofKind: .progress)
+            .filter { $0.correlationID == ground.run.context.completionToken }
         #expect(events.count == eventsPerCall, "events were: \(events)")
         let event = try #require(events.first)
         let set = try #require(FileChangeSet(operationEventDetail: event.detail))
