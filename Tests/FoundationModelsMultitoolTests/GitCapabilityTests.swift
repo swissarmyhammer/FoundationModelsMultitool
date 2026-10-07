@@ -33,7 +33,7 @@ struct GitCapabilityTests {
     private static let gitPathPrefix = "\(gitNoun)."
 
     /// The verbs of the capability, in render order.
-    private static let verbNames = ["blame", "show", "log", "status", "branches", "changes"]
+    private static let verbNames = ["blame", "show", "log", "status", "branches", "changes", "diff"]
 
     /// The rendered call path of the one tool the off-by-default test
     /// registers instead, which proves that test reads a surface that was

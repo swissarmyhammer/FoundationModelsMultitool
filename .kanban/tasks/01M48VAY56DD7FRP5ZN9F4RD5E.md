@@ -1,13 +1,66 @@
 ---
 assignees:
 - claude-code
+comments:
+- actor: claude-code
+  id: 01m4a3v4799pdnpr847vj3mz4v
+  text: |-
+    Research (before code):
+    - Rust dispatch (`changes/mod.rs` `execute_diff`): leftText or rightText set -> inline mode; else left or right set -> file mode; else automatic. `language` alone goes to automatic mode. The port keeps this order. A missing part is a correction that names the missing argument (the Rust text names both).
+    - Inline mode: Rust takes the plugin of `inline<ext>`, extracts both sides, and calls `match_entities` with the plugin similarity and no sha/author. This is the same as `SemanticDiffer.computeSemanticDiff` over one `SemanticFileChange` at `inline<ext>`, except `summary.files`: Rust always writes 1 in inline mode. The port uses the differ and writes 1. The fallback plugin claims every other extension, thus the Rust "no parser plugin" error cannot occur.
+    - File mode: the change path is the right side path (Rust comment: two paths are a content compare, not a rename). In the port it is the root-relative path (git.md decision 8). A `path@ref` side reads through `GitContext.blob(path:ref:)`; a side with no ref reads the work folder through `pathGuard.validate(_:for: .read)` + `PathCorrective.readData` + UTF-8 (the same rule as `tools.files.read`).
+    - Automatic mode: the card says "diff each dirty or staged file against HEAD". The port uses `GitContext.status().allFiles`; before = blob at HEAD, after = the work folder file. A read failure gives `nil` for that side, as the Rust `git_show_content(...)` / `read_to_string(...).ok()` do. Differences from Rust, on purpose (the card is the order): no index content (Rust reads `:path` for a staged file), and a clean tree gives an empty result (Rust falls back to HEAD~1..HEAD).
+    - Rename in automatic mode: Rust reads `HEAD:<new path>` for a rename (thus no before content), and `GitStatus.renamed` holds only the new path. Thus the port gives the same result as Rust: the entities of a renamed file are `added`. Recorded as a follow-up.
+    - Name clash: `DiffResult` is the engine result (`SemanticDiffer.swift`), thus the verb result is `GitDiffResult`.
+    - Naming rule `swift/naming-clarity`: the card field `structuralChange` (Bool?) is `isStructuralChange`, the same as `SemanticChange.isStructuralChange` and the earlier `clean` -> `isClean`, `capped` -> `isCapped`.
+    - Content cap: `ResultRendererLimits.defaultReturnValueCharacterLimit` is 4000 characters for the whole return value. The cap of one content field is a quarter of it (1000 characters), thus one change with both sides uses at most half of the return value. A cut field sets `isContentCapped` on its change. The cut counts `Character`s, the same as `ResultRenderer.capped`.
+    - `language_to_extension` is a table (data-driven rule): a dictionary from the lowercased name to the extension, `.txt` when absent. `fortran`/`f90` stays `.f90` (decision 13: it goes to the fallback plugin).
+  timestamp: 2026-10-07T02:42:21.545283+00:00
+- actor: claude-code
+  id: 01m4a48gxnpy4ht3ykb82aev0q
+  text: |-
+    Implementation landed (TDD: RED was the compile failure "cannot find 'Diff' / 'DiffFileSpec' / 'GitDiffResult' / 'DiffArguments' in scope"; GREEN at the first run: GitDiffTests and GitCapabilityTests, 35 of 35).
+
+    Decisions inside the card:
+    - `Diff.swift`: `DiffArguments`, `DiffSummary`, `DiffChange`, `GitDiffResult` (the engine owns `DiffResult`), `DiffFileSpec(parsing:)` (exact port of `parse_file_ref`), `Diff.fileExtension(forLanguage:)` (the `language_to_extension` table as a dictionary, `.txt` default; `fortran`/`f90` -> `.f90`, no other Fortran entry), and a private `DiffMode` enum for the Rust dispatch order.
+    - `isStructuralChange` in place of the card field `structuralChange` (swift/naming-clarity), the same as the earlier `isClean` and `isCapped`.
+    - Cap: `Diff.contentCharacterCap = ResultRendererLimits.defaultReturnValueCharacterLimit / 4` (1000 characters). A cut field sets the per-change `isContentCapped` (a new field after `afterContent`).
+    - New `GitWorkTreeReader.swift`: `GitContext.workTreeFile(path:)` (guard `.read` + `PathCorrective.readData` + UTF-8, root-relative path). `GitContext.pathRejection` in `GitBlobReader.swift` is now internal (was private), so the new reader reuses it and holds no copy.
+    - Inline mode reads no repository, thus it works in a root outside git, as in Rust. File mode needs the repository of the root, also for two work folder sides (the root-relative path comes from the repository location).
+
+    What did not work / notes:
+    - The kanban `add comment` / `add task` / `move task` calls return the whole board (about 95000 characters), thus the tool result is saved to a file. The write still happens.
+    - Follow-up task ^wvmh7vf: a staged rename in the automatic mode reads HEAD at the new path, thus its entities are `added` (the same gap as Rust).
+  timestamp: 2026-10-07T02:49:40.533346+00:00
+- actor: claude-code
+  id: 01m4a48m9h65p53p46d5ztdy0a
+  text: |-
+    ### implement — changed
+    - evidence: 7 files — new: Sources/FoundationModelsMultitool/Capabilities/Git/Diff.swift, Sources/FoundationModelsMultitool/Capabilities/Git/GitWorkTreeReader.swift, Tests/FoundationModelsMultitoolTests/GitDiffTests.swift; changed: Sources/FoundationModelsMultitool/Capabilities/Git/GitCapability.swift (tools + doc), Sources/FoundationModelsMultitool/Capabilities/Git/GitBlobReader.swift (`pathRejection` internal), Tests/FoundationModelsMultitoolTests/GitCapabilityTests.swift (verb list). `swift package update`: up to date. `swift build --build-tests`: 0 errors, only the known mlx-swift "missing creator for mutated node" warning. `swift test`: 2218 tests in 191 suites passed. IntegrationTests `swift build --build-tests`: Build complete, same known warning only. Follow-up task ^wvmh7vf.
+    - next: /review. The task stays in `doing`. Not committed, not pushed.
+  timestamp: 2026-10-07T02:49:43.985118+00:00
+- actor: claude-code
+  id: 01m4a4dj5ksb05paneahw76nak
+  text: |-
+    ### test - green
+    - evidence: swift build --build-tests - Build complete, 0 errors. swift test - 2218 tests in 191 suites passed, 0 failed, 0 skipped. IntegrationTests swift build --build-tests - Build complete, 0 errors.
+    - warnings: one only, "missing creator for mutated node" for mlx-swift_Cmlx.bundle. It is a known dependency warning from before this change. It is not red.
+    - next: review
+  timestamp: 2026-10-07T02:52:25.651371+00:00
+- actor: claude-code
+  id: 01m4a4e47q957m32khdw1crpjx
+  text: |-
+    ### commit — changed
+    - evidence: one local commit "feat: add tools.git.diff with three modes over the semantic engine". The commit has Diff.swift, GitWorkTreeReader.swift, the changed GitCapability.swift and GitBlobReader.swift, the test files, and all .kanban changes (the leftover files from the review of ^p9b4cm5 and the new follow-up task ^wvmh7vf). The .build folder and Package.resolved are git-ignored. No build product is staged. The sha is in the final report of this step. Nothing was pushed.
+    - next: review
+  timestamp: 2026-10-07T02:52:44.151884+00:00
 depends_on:
 - 01M48V90Q7SZFS78K85W0YEYA3
 - 01M48V8EHPNDZGYRJEJBCK92PN
 - 01M48V9SN2MNFZGXZ9R6DGD0H1
 - 01M48VAGF2ZD5J4G0FNP9B4CM5
-position_column: todo
-position_ordinal: 8c80
+position_column: doing
+position_ordinal: '80'
 title: 'git: tools.git.diff with three modes over the semantic engine'
 ---
 ## Goal

@@ -158,13 +158,14 @@ extension GitContext {
     }
 
     /// A rejection in the `<description>: <path>` shape of the files
-    /// capability.
+    /// capability. The work folder reader (`GitWorkTreeReader.swift`) makes
+    /// its rejections with it too.
     ///
     /// - Parameters:
     ///   - description: What went wrong.
     ///   - path: The requested path.
     /// - Returns: The rejection.
-    private static func pathRejection(_ description: String, path: String) -> CorrectiveRejection {
+    static func pathRejection(_ description: String, path: String) -> CorrectiveRejection {
         CorrectiveRejection(correctiveMessage: PathCorrective.pathErrorMessage(description: description, path: path))
     }
 }

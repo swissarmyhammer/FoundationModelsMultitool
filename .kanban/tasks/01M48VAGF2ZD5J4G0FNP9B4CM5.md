@@ -150,10 +150,26 @@ comments:
     - files: 11 Swift files in Capabilities/Git/Semantic, new RustTextTests.swift, and .kanban changes. No build product is staged (.build is ignored).
     - next: review
   timestamp: 2026-10-07T02:29:08.966465+00:00
+- actor: claude-code
+  id: 01m4a3e3w0nnkzxdkfnycd2t72
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit 6075927). The engine reviewed 12 files. It did not review 2 files, because `.reviewignore` excludes `.kanban/`. Counts: 0 findings, 0 confirmed, 0 refuted, 7 attempted, 0 failed. The commit renames no file, so a file-scoped review was not necessary. All 17 prior items (sections 2026-10-06 20:29 and 2026-10-06 21:10) are checked.
+    - next: The task moved to `done`.
+  timestamp: 2026-10-07T02:35:15.200286+00:00
+- actor: claude-code
+  id: 01m4a3eg60sn3tcymk56hnkp1d
+  text: |-
+    ### finish iteration 3 — clean
+    - implement: changed — 13 files (11 Semantic sources, RustTextTests.swift new); 5 findings of 2026-10-06 21:10 checked
+    - test: green — swift test, 2190 passed in 190 suites; IntegrationTests build complete
+    - commit: 6075927
+    - review: clean — 0 findings, 7 validators on 12 files; 17/17 prior items checked
+  timestamp: 2026-10-07T02:35:27.808656+00:00
 depends_on:
 - 01M48V9CB973V4MPTJV8GEXZCT
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffffb780
 title: 'git semantic: JSON, YAML, TOML, CSV, Markdown, and fallback plugins'
 ---
 ## Goal

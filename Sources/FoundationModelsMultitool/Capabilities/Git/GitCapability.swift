@@ -10,7 +10,7 @@
 // `diff`) adds its verb to ``GitCapability/tools``, over ``context``. The
 // verbs so far are `blame` (`Blame.swift`), `show` (`Show.swift`), `log`
 // (`Log.swift`), `status` (`Status.swift`), `branches` (`Branches.swift`),
-// and `changes` (`Changes.swift`).
+// `changes` (`Changes.swift`), and `diff` (`Diff.swift`).
 //
 // **The capability is off by default**, and nothing here makes it otherwise.
 // eventplan.md § "The capability contract": "The modules are opt-in ... They
@@ -72,7 +72,7 @@ public struct GitCapability: Capability {
         context = GitContext(root: root)
         tools = [
             Blame(context: context), Show(context: context), Log(context: context), Status(context: context),
-            Branches(context: context), Changes(context: context),
+            Branches(context: context), Changes(context: context), Diff(context: context),
         ]
     }
 }
