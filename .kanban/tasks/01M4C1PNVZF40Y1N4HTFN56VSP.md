@@ -59,8 +59,24 @@ comments:
     - note: Package.resolved was not changed. FoundationModelsRanker pin d75a67c stays. No commit made.
     - next: review.
   timestamp: 2026-10-07T22:22:30.027156+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m4c7h3435bcsv7mc5p61jdnp
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (commit 80b527e) gave 0 findings (7 attempted, 1 refuted, 0 failed). All items in the prior Review Findings section are checked.
+    - next: The task is in done. No more work is necessary.
+  timestamp: 2026-10-07T22:25:15.907970+00:00
+- actor: claude-code
+  id: 01m4c7hj25htt1m36d4dnvvce6
+  text: |-
+    ### finish iteration 2 — clean
+    - implement: changed — 6 files (no try? on the branch read; assertionFailure + gitBranchReadFailed log; Guide and docs say null can mean HEAD could not be read)
+    - test: green — swift test, 2274 passed
+    - commit: 80b527e
+    - review: clean — 0 findings; task in done
+  timestamp: 2026-10-07T22:25:31.205436+00:00
+position_column: done
+position_ordinal: ffffc680
 title: 'git: give the current branch in the tools.git.status result'
 ---
 ## What
