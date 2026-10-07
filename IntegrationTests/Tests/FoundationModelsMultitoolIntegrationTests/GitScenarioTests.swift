@@ -99,7 +99,11 @@ struct GitScenarioTests {
             reading: { turn, elapsed in
                 GatedTurnReading(
                     checks: Self.checks(turn: turn),
-                    resultLine: Self.resultLine(turn: turn, elapsed: elapsed))
+                    resultLine: gatedResultLine(
+                        of: turn,
+                        elapsed: elapsed,
+                        readings: Self.readings(of: turn),
+                        replyPreviewCharacters: Self.replyPreviewCharacters))
             })
     }
 
@@ -130,21 +134,22 @@ struct GitScenarioTests {
         turn.calls.filter { $0.name == MultiTool.runCodePath }.compactMap(\.output)
     }
 
-    /// The `RESULT` line of the scenario.
+    /// The fields of the `RESULT` line that this scenario gives to
+    /// `gatedResultLine(of:elapsed:readings:replyPreviewCharacters:)`: the
+    /// token usage, the snippet verbs, the score, the priming, and the failed
+    /// calls.
     ///
-    /// Built in named parts because one chained interpolation of this length
-    /// times the type checker out.
-    ///
-    /// - Parameters:
-    ///   - turn: The streamed turn.
-    ///   - elapsed: How long the turn took, in seconds.
-    /// - Returns: The reading to print after the scenario label.
-    private static func resultLine(turn: StreamedTurn, elapsed: TimeInterval) -> String {
+    /// - Parameter turn: The streamed turn.
+    /// - Returns: The fields, in print order.
+    private static func readings(of turn: StreamedTurn) -> [String] {
         let namedFacts = answerFacts.filter { turn.answer.localizedCaseInsensitiveContains($0) }
-        let route = routeReading(of: turn, elapsed: elapsed) + "tokens=\(turn.tokenUsage ?? "n/a") "
-        let snippets = "typed=\(NativeTranscript.typedToolPaths(in: turn.calls).sorted()) "
-        let score = "answerFacts=\(namedFacts.count)/\(answerFacts.count) named=\(namedFacts) "
-        let failures = "priming=\(primingLabel(turn)) failedCalls=\(turn.failedCalls) "
-        return route + snippets + score + failures + "reply=\"\(turn.answer.prefix(replyPreviewCharacters))\""
+        let score = "answerFacts=\(namedFacts.count)/\(answerFacts.count) named=\(namedFacts)"
+        return [
+            "tokens=\(turn.tokenUsage ?? "n/a")",
+            typedPathsReading(of: turn),
+            score,
+            primingReading(of: turn),
+            failedCallsReading(of: turn),
+        ]
     }
 }

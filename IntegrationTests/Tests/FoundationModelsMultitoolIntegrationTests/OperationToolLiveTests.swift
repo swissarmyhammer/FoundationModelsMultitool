@@ -129,7 +129,11 @@ struct OperationToolLiveTests {
                 let stored = await store.list()
                 return GatedTurnReading(
                     checks: Self.searchThenCallChecks(turn: turn, stored: stored),
-                    resultLine: Self.resultLine(turn: turn, stored: stored, elapsed: elapsed))
+                    resultLine: gatedResultLine(
+                        of: turn,
+                        elapsed: elapsed,
+                        readings: ["stored=\(Self.descriptions(of: stored))", failedCallsReading(of: turn)],
+                        replyPreviewCharacters: operationToolReplyPreviewCharacters))
             })
     }
 
@@ -186,21 +190,5 @@ struct OperationToolLiveTests {
     /// - Returns: the notes, readable on one printed line.
     private static func descriptions(of stored: [IntegrationNote]) -> [String] {
         stored.map { "\($0.id) \"\($0.title)\" \($0.tags)" }
-    }
-
-    /// The `RESULT` line of the search-then-call run.
-    ///
-    /// Built in named pieces because one chained interpolation of this length
-    /// times the type checker out.
-    ///
-    /// - Parameters:
-    ///   - turn: the streamed turn.
-    ///   - stored: the notes the fixture store holds after the turn.
-    ///   - elapsed: how long the turn took, in seconds.
-    /// - Returns: the reading to print after the scenario label.
-    private static func resultLine(turn: StreamedTurn, stored: [IntegrationNote], elapsed: TimeInterval) -> String {
-        let route = routeReading(of: turn, elapsed: elapsed)
-        let outcome = "stored=\(Self.descriptions(of: stored)) failedCalls=\(turn.failedCalls) "
-        return route + outcome + "reply=\"\(turn.answer.prefix(operationToolReplyPreviewCharacters))\""
     }
 }

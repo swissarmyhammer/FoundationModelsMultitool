@@ -106,6 +106,54 @@ comments:
     - evidence: one local commit "test: use two live git scenarios to keep CI integration short". It holds the 3 test files and all .kanban changes. The sha is not in this comment, because the comment is part of the commit. Read it from git log. No push was done.
     - next: review
   timestamp: 2026-10-07T13:48:23.710840+00:00
+- actor: claude-code
+  id: 01m4ba951g2bwbgsat2gvjah52
+  text: |-
+    ### review — findings
+    - evidence: review sha HEAD~1..HEAD (commit 32bfd56); no renamed file. counts: 1 finding (1 confirmed, 1 refuted). IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/GitScenarioTests.swift:142 (reuse/reuse).
+    - next: implement the open item in the "Review Findings (2026-10-07 08:49)" section, then review again.
+  timestamp: 2026-10-07T13:54:07.024264+00:00
+- actor: claude-code
+  id: 01m4ba9j5hc11rqhp7mhyxdnaz
+  text: |-
+    ### finish iteration 3 — findings
+    - implement: changed — 3 files (one scenario; done in iteration 2)
+    - test: green — swift test, 2234 passed in 194 suites; IntegrationTests build complete
+    - commit: 32bfd56
+    - review: findings — IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/GitScenarioTests.swift:142 (reuse/reuse: resultLine is 0.96 similar to WebResearchScenarioTests.resultLine)
+  timestamp: 2026-10-07T13:54:20.465969+00:00
+- actor: claude-code
+  id: 01m4bavqzmsn90v5n8pavv99md
+  text: |-
+    Review finding done (reuse/reuse, GitScenarioTests resultLine 0.96 similar to WebResearchScenarioTests.resultLine).
+    - Research: 3 suites use runGatedTurnScenario (Git, WebResearch, OperationToolLive search-then-call). Each had a private resultLine with the same frame: routeReading + fields + reply prefix. No script reads the RESULT lines (grep for tokens=, typed=, answerFacts= finds only these test files).
+    - Shared helper in Support/GatedTurnScenario.swift: gatedResultLine(of:elapsed:readings:replyPreviewCharacters:) gives the route, each field with one space after it, then reply="...". Field helpers: typedPathsReading(of:), primingReading(of:), failedCallsReading(of:). routeReading is now private (its only caller is gatedResultLine).
+    - The 3 private resultLine functions are removed. Each suite gives only its own fields, in the old order: Git [tokens, typed, answerFacts/named, priming, failedCalls]; WebResearch [typed, priming, failedCalls]; OperationTool [stored, failedCalls]. The text of each line is the same as before.
+    - New offline suite GatedResultLineTests.swift (5 tests, no model) pins the line format and each field. RED: build failed (helpers did not exist). GREEN: 5/5 pass.
+    - Results: swift build --build-tests pass (known mlx-swift_Cmlx.bundle "missing creator" warning only). swift test: 2234 tests in 194 suites pass. IntegrationTests swift build --build-tests pass (same known warning only). Live: swift test --package-path IntegrationTests --no-parallel --filter 'GitScenarioTests|WebResearchScenarioTests|OperationToolLiveTests|GatedResultLineTests': 9 tests in 4 suites pass after 110.280 s. Each suite printed its RESULT line with the old fields (git 28.9 s, answerFacts=2/2; operation search-then-call 21.1 s; webResearch 55.3 s). Log in session scratchpad live-resultline.log.
+  timestamp: 2026-10-07T14:04:16.244889+00:00
+- actor: claude-code
+  id: 01m4bavth5xp5gzb58c9th9g9g
+  text: |-
+    ### implement — changed
+    - evidence: 5 files — IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/Support/GatedTurnScenario.swift, GitScenarioTests.swift, WebResearchScenarioTests.swift, OperationToolLiveTests.swift, GatedResultLineTests.swift (new). Finding flipped to [x]. swift build --build-tests pass; swift test 2234/2234 pass; IntegrationTests build pass; live filter run 9 tests in 4 suites pass after 110.280 s with RESULT lines printed.
+    - next: /review.
+  timestamp: 2026-10-07T14:04:18.853804+00:00
+- actor: claude-code
+  id: 01m4bazsqj4yq2pgdb4km9jems
+  text: |-
+    ### test — green
+    - evidence: swift build --build-tests clean. swift test: 2234 tests in 194 suites passed, 0 failed, 0 skipped. IntegrationTests swift build --build-tests: Build complete, 1 warning line read.
+    - warning read: "missing creator for mutated node" for mlx-swift_Cmlx.bundle (dependency warning, known, not counted). The same line shows in the unit build.
+    - next: review
+  timestamp: 2026-10-07T14:06:29.106848+00:00
+- actor: claude-code
+  id: 01m4bb0m451avywnyhsz6gfd7q
+  text: |-
+    ### commit — changed
+    - evidence: one local commit, subject "refactor: share one RESULT-line helper in the three live suites". It holds the helper in GatedTurnScenario.swift, the changes to the three live suites, the new GatedResultLineTests.swift (5 offline tests), and the .kanban files. No build product and no log file is staged. The sha is in git log, because a comment cannot hold the sha of its own commit.
+    - next: none. The commit is local. Nothing is pushed.
+  timestamp: 2026-10-07T14:06:56.133526+00:00
 position_column: doing
 position_ordinal: '80'
 title: 'git: fewer live model scenarios, to keep CI integration under 20 minutes'
@@ -134,4 +182,13 @@ Make the git live suite cost fewer real-model turns, so that the CI integration 
 
 - `swift build --build-tests` and `swift test` pass with no new warnings.
 - `swift test --package-path IntegrationTests --no-parallel` passes. Record the local time of the git suite and of the whole run in a comment.
-- The local time of the git suite is at most one third of the old local time (119–146 s), so that the CI time drops by about 6 minutes. #git
+- The local time of the git suite is at most one third of the old local time (119–146 s), so that the CI time drops by about 6 minutes.
+
+## Review Findings (2026-10-07 08:49)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 3 file(s) reviewed, 12 not reviewed.
+
+> 12 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 12 file(s)
+
+- [x] `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/GitScenarioTests.swift:142` `reuse/reuse` — The `resultLine` function is 0.96 similar to WebResearchScenarioTests.resultLine—near-identical duplication. This formatting logic should be extracted into a shared helper rather than copied across scenario tests. Extract `resultLine` as a shared helper function parameterized by scenario-specific values (answerFacts, replyPreviewCharacters, check names), eliminating the near-duplicate code across scenario test classes. #git

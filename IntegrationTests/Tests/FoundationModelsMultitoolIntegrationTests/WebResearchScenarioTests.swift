@@ -82,7 +82,11 @@ struct WebResearchScenarioTests {
             reading: { turn, elapsed in
                 GatedTurnReading(
                     checks: Self.webResearchChecks(turn: turn),
-                    resultLine: Self.resultLine(turn: turn, elapsed: elapsed))
+                    resultLine: gatedResultLine(
+                        of: turn,
+                        elapsed: elapsed,
+                        readings: [typedPathsReading(of: turn), primingReading(of: turn), failedCallsReading(of: turn)],
+                        replyPreviewCharacters: webResearchReplyPreviewCharacters))
             })
     }
 
@@ -95,22 +99,5 @@ struct WebResearchScenarioTests {
     private static func webResearchChecks(turn: StreamedTurn) -> [ScenarioCheck] {
         [calledTheVerbsCheck(named: searchedTheWebCheckName, verbPaths: [webSearchPath], in: turn)]
             + answerChecks(turn.answer, containsOneOf: [swiftHomePageHost], mustNotContain: [])
-    }
-
-    /// The `RESULT` line of the web research run.
-    ///
-    /// Built in named parts because one chained interpolation of this length
-    /// times the type checker out.
-    ///
-    /// - Parameters:
-    ///   - turn: the streamed turn.
-    ///   - elapsed: how long the turn took, in seconds.
-    /// - Returns: the reading to print after the scenario label.
-    private static func resultLine(turn: StreamedTurn, elapsed: TimeInterval) -> String {
-        let route = routeReading(of: turn, elapsed: elapsed)
-        let snippets = "typed=\(NativeTranscript.typedToolPaths(in: turn.calls).sorted()) "
-        let failures = "priming=\(primingLabel(turn)) failedCalls=\(turn.failedCalls) "
-        return route + snippets + failures
-            + "reply=\"\(turn.answer.prefix(webResearchReplyPreviewCharacters))\""
     }
 }

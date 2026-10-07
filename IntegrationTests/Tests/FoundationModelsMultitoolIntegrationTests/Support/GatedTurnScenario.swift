@@ -113,6 +113,60 @@ func calledTheVerbsCheck(named name: String, verbPaths: Set<String>, in turn: St
 ///   - turn: The streamed turn.
 ///   - elapsed: How long the turn took, in seconds.
 /// - Returns: The reading, with a space at the end.
-func routeReading(of turn: StreamedTurn, elapsed: TimeInterval) -> String {
+private func routeReading(of turn: StreamedTurn, elapsed: TimeInterval) -> String {
     "elapsed=\(elapsed)s toolCalls=\(turn.toolCallCount) calls=\(turn.calls.map(\.name)) "
+}
+
+/// The `RESULT` line of a gated turn: the route, the readings of the scenario,
+/// then the start of the reply.
+///
+/// Each suite that uses `runGatedTurnScenario(named:prompt:tools:reading:)`
+/// prints its line through this function. Thus the route and the reply have
+/// one format, and each suite gives only the fields that are special to it.
+///
+/// - Parameters:
+///   - turn: The streamed turn.
+///   - elapsed: How long the turn took, in seconds.
+///   - readings: The fields of the scenario, in print order, each as
+///     `name=value`. The line puts one space after each field.
+///   - replyPreviewCharacters: How many characters of the reply the line
+///     shows.
+/// - Returns: The reading to print after the scenario label.
+func gatedResultLine(
+    of turn: StreamedTurn,
+    elapsed: TimeInterval,
+    readings: [String],
+    replyPreviewCharacters: Int
+) -> String {
+    let fields = readings.map { $0 + " " }.joined()
+    let reply = "reply=\"\(turn.answer.prefix(replyPreviewCharacters))\""
+    return routeReading(of: turn, elapsed: elapsed) + fields + reply
+}
+
+/// The field of a `RESULT` line that names each verb that the `runCode`
+/// snippets of the turn called, without the `tools.` prefix.
+///
+/// - Parameter turn: The streamed turn.
+/// - Returns: The field, as `typed=[...]`, in sorted order.
+func typedPathsReading(of turn: StreamedTurn) -> String {
+    "typed=\(NativeTranscript.typedToolPaths(in: turn.calls).sorted())"
+}
+
+/// The field of a `RESULT` line that tells if the discovery priming of the
+/// turn ran.
+///
+/// - Parameter turn: The streamed turn.
+/// - Returns: The field, as `priming=<label>`, with the label of
+///   `primingLabel(_:)`.
+func primingReading(of turn: StreamedTurn) -> String {
+    "priming=\(primingLabel(turn))"
+}
+
+/// The field of a `RESULT` line that names each tool call of the turn that
+/// failed.
+///
+/// - Parameter turn: The streamed turn.
+/// - Returns: The field, as `failedCalls=[...]`.
+func failedCallsReading(of turn: StreamedTurn) -> String {
+    "failedCalls=\(turn.failedCalls)"
 }
