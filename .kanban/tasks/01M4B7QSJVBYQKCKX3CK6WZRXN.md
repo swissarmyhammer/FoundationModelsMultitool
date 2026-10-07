@@ -154,8 +154,24 @@ comments:
     - evidence: one local commit, subject "refactor: share one RESULT-line helper in the three live suites". It holds the helper in GatedTurnScenario.swift, the changes to the three live suites, the new GatedResultLineTests.swift (5 offline tests), and the .kanban files. No build product and no log file is staged. The sha is in git log, because a comment cannot hold the sha of its own commit.
     - next: none. The commit is local. Nothing is pushed.
   timestamp: 2026-10-07T14:06:56.133526+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m4bbb8ks8scrw0xmd9nvyx0z
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit 00cb101). 0 findings, 0 confirmed, 0 refuted. 5 files reviewed, 2 files not reviewed (.kanban/, from .reviewignore). The commit renames no file, thus no file-scoped review was necessary. The one prior item (GitScenarioTests.swift:142, reuse/reuse) is checked.
+    - next: none. The task is in done.
+  timestamp: 2026-10-07T14:12:44.793769+00:00
+- actor: claude-code
+  id: 01m4bbbpg0j7qwef1gbhh6s6h9
+  text: |-
+    ### finish iteration 4 — clean
+    - implement: changed — 5 files (GatedTurnScenario.swift shared gatedResultLine; GitScenarioTests, WebResearchScenarioTests, OperationToolLiveTests use it; GatedResultLineTests.swift new, 5 tests); finding GitScenarioTests.swift:142 checked
+    - test: green — swift test, 2234 passed in 194 suites; live filter 9 tests in 4 suites passed after 110.280 s
+    - commit: 00cb101
+    - review: clean — 0 findings, 5 files reviewed
+  timestamp: 2026-10-07T14:12:59.008364+00:00
+position_column: done
+position_ordinal: ffffbd80
 title: 'git: fewer live model scenarios, to keep CI integration under 20 minutes'
 ---
 ## Goal
