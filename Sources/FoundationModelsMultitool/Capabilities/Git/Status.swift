@@ -1,7 +1,9 @@
 // `Status` — the `tools.git.status` verb.
 //
 // git.md § "Verbs": `tools.git.status` takes no argument, and gives the
-// staged, unstaged, untracked, and renamed files. The source is `get_status`
+// staged, unstaged, untracked, and renamed files, and the current branch
+// (task `^fn56vsp`), thus the model does not also call
+// `tools.git.branches` to know the branch. The source is `get_status`
 // of `swissarmyhammer-git`. This verb reads through the shared status reader of
 // the capability (`GitStatusReader.swift`), which the later `changes` and
 // `diff` verbs read through too, and the reader calls only the `LibGit2`
@@ -29,12 +31,13 @@ import FoundationModels
 @Generable
 struct StatusArguments {}
 
-/// The result of `tools.git.status`: the uncommitted files below the root, or
-/// the correction that says why there is no list.
+/// The result of `tools.git.status`: the uncommitted files below the root and
+/// the current branch, or the correction that says why there is no list.
 ///
 /// `correction` and the lists are exclusive. A status that answers lists
-/// carries no correction, and a correction carries no file and is not clean.
-@Generable(description: "the uncommitted files below the session root, or the correction that says why there is no list.")
+/// carries no correction, and a correction carries no file, no branch, and is
+/// not clean.
+@Generable(description: "the uncommitted files below the session root and the current branch, or the correction that says why there is no list.")
 struct StatusResult {
 
     /// The files with a change in the index.
@@ -59,6 +62,13 @@ struct StatusResult {
     /// Whether no file below the root differs from HEAD.
     @Guide(description: "True when no file below the session root differs from HEAD: each list is empty.")
     var isClean: Bool
+
+    /// The branch that HEAD names, or `nil` for a detached HEAD.
+    @Guide(
+        description:
+            "The branch that HEAD names; null when HEAD is detached (it names a commit, not a branch) or the "
+            + "repository has no commit.")
+    var branch: String?
 
     /// Why the status answered no list, or `nil` when the lists stand.
     @Guide(description: "Why the status answered no list; null when the lists stand.")
@@ -88,21 +98,23 @@ extension Status {
     /// The result of a status.
     ///
     /// - Parameter status: The status that the reader gave.
-    /// - Returns: The result with its lists.
+    /// - Returns: The result with its lists and its branch.
     private static func result(of status: GitStatus) -> StatusResult {
         StatusResult(
             staged: status.staged, unstaged: status.unstaged, untracked: status.untracked, renamed: status.renamed,
-            isClean: status.isClean, correction: nil)
+            isClean: status.isClean, branch: status.branch, correction: nil)
     }
 
     // MARK: Corrective results
 
-    /// A result that carries only a correction: no file, and not clean.
+    /// A result that carries only a correction: no file, no branch, and not
+    /// clean.
     ///
     /// - Parameter message: The correction the model reads and acts on.
     /// - Returns: The corrective ``StatusResult``.
     private static func corrective(_ message: String) -> StatusResult {
-        StatusResult(staged: [], unstaged: [], untracked: [], renamed: [], isClean: false, correction: message)
+        StatusResult(
+            staged: [], unstaged: [], untracked: [], renamed: [], isClean: false, branch: nil, correction: message)
     }
 }
 
@@ -114,11 +126,13 @@ extension Status {
 /// ```
 ///
 /// The contract: four lists of paths relative to the root (staged, unstaged,
-/// untracked, and renamed), and `isClean`, which is true when each list is
-/// empty. A file outside the root is in no list. A staged rename is in
-/// `renamed` under its new path. A file with a merge conflict is in
-/// `unstaged`. A root in no repository comes back as a `correction`, not as
-/// an error.
+/// untracked, and renamed), `isClean`, which is true when each list is
+/// empty, and `branch`, the branch that HEAD names (`nil` for a detached
+/// HEAD and for a repository with no commit, the same as the `current` field
+/// of `tools.git.branches`). A file outside the root is in no list. A staged
+/// rename is in `renamed` under its new path. A file with a merge conflict is
+/// in `unstaged`. A root in no repository comes back as a `correction` and a
+/// `nil` branch, not as an error.
 struct Status: Tool {
 
     /// The verb this tool renders as, which the git noun stands in front of:
@@ -131,8 +145,9 @@ struct Status: Tool {
         paths relative to the session root: staged (a change in the index), unstaged (a change \
         in the work folder that is not staged, or a merge conflict), untracked (a file that git \
         does not track), and renamed (a staged rename, under its new path). isClean is true when \
-        each list is empty. A file outside the session root is in no list. A root in no git \
-        repository comes back as a correction rather than as an error — read it and act on it.
+        each list is empty. branch is the branch that HEAD names; null when HEAD is detached or \
+        the repository has no commit. A file outside the session root is in no list. A root in \
+        no git repository comes back as a correction rather than as an error — read it and act on it.
         """
 
     /// The session context this verb reads against, which the git capability

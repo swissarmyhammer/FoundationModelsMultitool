@@ -14,6 +14,10 @@
 // rename from below the root to a path outside the root keeps its old path,
 // as a staged removal (task `^pt6fyf0`); its new path is never given.
 //
+// The status also gives the branch that HEAD names (task `^fn56vsp`). The
+// reader reads it through `LibGit2Repository.currentBranchName()`, the same
+// call that `tools.git.branches` makes, thus the two verbs agree.
+//
 // git.md § "Decisions", item 10: the reader calls only the `LibGit2` layer
 // (`LibGit2Status.swift`), never the C API. A root in no repository and a
 // status that libgit2 cannot read each come back as a `CorrectiveRejection`,
@@ -21,7 +25,8 @@
 
 import Foundation
 
-/// The uncommitted files below the root, in four lists.
+/// The uncommitted files below the root, in four lists, and the branch that
+/// HEAD names.
 ///
 /// A file can be in two lists, for example a staged change with a second
 /// change that is not staged.
@@ -51,6 +56,14 @@ struct GitStatus: Equatable, Sendable {
     /// boundary of the capability (git.md § "Decisions", item 8), thus no
     /// verb reads that path, and the file is new below the root.
     internal let oldPathsOfRenamedFiles: [String: String]
+
+    /// The branch that HEAD names, or `nil`.
+    ///
+    /// `nil` for a detached HEAD and for a repository with no commit, the
+    /// same as the `current` field of `tools.git.branches`, because both read
+    /// `LibGit2Repository.currentBranchName()`. `nil` also when libgit2
+    /// cannot read HEAD: the lists stand without the branch.
+    let branch: String?
 
     /// Whether no file below the root differs from HEAD: each list is empty.
     var isClean: Bool {
@@ -88,12 +101,18 @@ extension GitContext {
     /// Reads the status of the repository through the `LibGit2` layer, and
     /// keeps the files below the root.
     ///
+    /// The branch comes from the same open repository, thus the reader
+    /// discovers the repository one time. A failure to read the branch gives
+    /// a `nil` branch and keeps the lists.
+    ///
     /// - Parameter location: The repository of the root.
     /// - Returns: The status, or the correction for a failed read.
     private static func readStatus(in location: GitRepositoryLocation) -> Result<GitStatus, CorrectiveRejection> {
+        let repository: LibGit2Repository
         let status: LibGit2Status
         do {
-            status = try LibGit2Repository(discoveringFrom: location.workDirectory).status()
+            repository = try LibGit2Repository(discoveringFrom: location.workDirectory)
+            status = try repository.status()
         } catch {
             return .failure(CorrectiveRejection(correctiveMessage: "\(failedStatusDescription): \(error)"))
         }
@@ -104,7 +123,8 @@ extension GitContext {
             GitStatus(
                 staged: paths(.staged) + removalsOfRenamesOutOfTheRoot(of: status, in: location),
                 unstaged: paths(.unstaged), untracked: paths(.untracked), renamed: paths(.renamed),
-                oldPathsOfRenamedFiles: rootRelativeRenames(of: status, in: location)))
+                oldPathsOfRenamedFiles: rootRelativeRenames(of: status, in: location),
+                branch: try? repository.currentBranchName()))
     }
 
     /// The old path of each staged rename from below the root to a path

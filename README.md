@@ -145,7 +145,7 @@ mount it. The capability adds eight verbs under `tools.git`:
 
 | Verb | Arguments | Result |
 |---|---|---|
-| `tools.git.status` | none | `staged`, `unstaged`, `untracked`, and `renamed` paths, and `isClean` |
+| `tools.git.status` | none | `staged`, `unstaged`, `untracked`, and `renamed` paths, `isClean`, and the current `branch` (null for a detached HEAD) |
 | `tools.git.branches` | none | the local `branches`, the `current` branch, and the `main` branch |
 | `tools.git.changes` | `branch?`, `range?` | `branch`, `parentBranch`, `range`, and the changed `files` |
 | `tools.git.show` | `path`, `ref?` | the `content` of the file at the ref (HEAD when you omit it) |

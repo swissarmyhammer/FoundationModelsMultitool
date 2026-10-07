@@ -39,10 +39,26 @@ comments:
     - note: Package.resolved keeps the local FoundationModelsRanker pin d75a67c. No package update was run.
     - next: review.
   timestamp: 2026-10-07T22:00:14.382725+00:00
+- actor: claude-code
+  id: 01m4c6artaj00qdb84wc4j54zs
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (commit b90b7c8). 0 findings, 0 confirmed, 2 refuted, 0 failed. 9 files reviewed. README.md and git.md had no matching validator. The .kanban files are excluded by .reviewignore.
+    - next: The task is in done. No work is open.
+  timestamp: 2026-10-07T22:04:20.170356+00:00
+- actor: claude-code
+  id: 01m4c6b481eah9rzw4wzbkfpj8
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 13 files (new Commit.swift, GitCommitTests.swift; periphery:ignore markers removed from LibGit2FileStat)
+    - test: green — swift test, 2268 passed
+    - commit: b90b7c8
+    - review: clean — 0 findings; task in done
+  timestamp: 2026-10-07T22:04:31.873364+00:00
 depends_on:
 - 01M4C1NFFXNZ7TBRE1SJKRTE93
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffffc580
 title: 'git: add the tools.git.commit verb that shows one commit'
 ---
 ## What

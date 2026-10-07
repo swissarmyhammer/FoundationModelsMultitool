@@ -104,6 +104,68 @@ struct GitStatusTests {
         #expect(result.renamed.isEmpty)
     }
 
+    // MARK: - The current branch (task `^fn56vsp`)
+
+    /// On a branch, `branch` is the name of that branch, the same as the
+    /// `current` field of `tools.git.branches`.
+    @Test("on a branch, branch is that branch")
+    func onABranchBranchIsThatBranch() async throws {
+        let (repository, _) = try GitTestHistory.makeThreeCommits()
+        let context = GitContext(root: repository.workDirectory)
+
+        let result = try await Self.status(in: context)
+
+        #expect(result.correction == nil)
+        #expect(result.branch == TemporaryGitRepository.defaultBranch)
+        #expect(result.branch == (try await Self.currentBranch(in: context)))
+    }
+
+    /// On a detached HEAD, `branch` is null, and the lists stand.
+    @Test("on a detached HEAD, branch is null and the lists stand")
+    func onADetachedHeadBranchIsNullAndTheListsStand() async throws {
+        let (repository, _) = try GitTestHistory.makeThreeCommits()
+        try repository.detachHead()
+        try repository.write("changed\n", to: "a.txt")
+        try repository.write("untracked\n", to: "u.txt")
+        let context = GitContext(root: repository.workDirectory)
+
+        let result = try await Self.status(in: context)
+
+        #expect(result.correction == nil)
+        #expect(result.branch == nil)
+        #expect(result.unstaged == ["a.txt"])
+        #expect(result.untracked == ["u.txt"])
+        #expect(result.branch == (try await Self.currentBranch(in: context)))
+    }
+
+    /// In a repository with no commit, `branch` is the value that
+    /// `tools.git.branches` gives as `current`, and the lists stand.
+    @Test("in a repository with no commit, branch is the current branch of branches")
+    func inARepositoryWithNoCommitBranchIsTheCurrentBranchOfBranches() async throws {
+        let repository = try TemporaryGitRepository()
+        try repository.write("untracked\n", to: "u.txt")
+        let context = GitContext(root: repository.workDirectory)
+
+        let result = try await Self.status(in: context)
+
+        #expect(result.correction == nil)
+        #expect(result.untracked == ["u.txt"])
+        #expect(result.branch == (try await Self.currentBranch(in: context)))
+    }
+
+    /// A root in no repository gives a correction and a null `branch`.
+    @Test("a root in no repository gives a null branch")
+    func aRootInNoRepositoryGivesANullBranch() async throws {
+        let outside = TestSupport.makeTemporaryDirectory(named: Self.testDirectoryName)
+        let context = GitContext(root: outside)
+
+        let result = try await Self.status(in: context)
+
+        #expect(result.correction != nil)
+        #expect(result.branch == nil)
+        #expect(result.branch == (try await Self.currentBranch(in: context)))
+    }
+
     // MARK: - Helpers
 
     /// Makes a repository with one uncommitted file of each kind, each in
@@ -141,5 +203,15 @@ struct GitStatusTests {
     /// - Returns: The result of the verb.
     private static func status(in context: GitContext) async throws -> StatusResult {
         try await Status(context: context).call(arguments: StatusArguments())
+    }
+
+    /// Calls the `tools.git.branches` verb over a context, and gives its
+    /// `current` field.
+    ///
+    /// - Parameter context: The context of the verb.
+    /// - Returns: The branch that HEAD names, as `tools.git.branches` gives
+    ///   it.
+    private static func currentBranch(in context: GitContext) async throws -> String? {
+        try await Branches(context: context).call(arguments: BranchesArguments()).current
     }
 }

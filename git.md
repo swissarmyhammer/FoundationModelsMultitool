@@ -120,7 +120,7 @@ and `web.md`.
 
 | Path | Arguments | Result | Source |
 |---|---|---|---|
-| `tools.git.status` | none | staged, unstaged, untracked, and renamed files | `get_status` |
+| `tools.git.status` | none | staged, unstaged, untracked, and renamed files, and `branch` (the current branch; null for a detached HEAD) | `get_status`, `get_current_branch` |
 | `tools.git.changes` | `branch?`, `range?` | `{ branch, parentBranch, range, files }` | `get changes` |
 | `tools.git.diff` | `left?`, `right?`, `leftText?`, `rightText?`, `language?` | `{ summary, changes[] }` | `get diff` |
 | `tools.git.log` | `ref?`, `path?`, `limit?` | commits: sha, author, date, subject | revwalk (new) |

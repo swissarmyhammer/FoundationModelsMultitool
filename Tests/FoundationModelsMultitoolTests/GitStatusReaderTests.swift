@@ -39,7 +39,8 @@ struct GitStatusReaderTests {
         #expect(
             status
                 == GitStatus(
-                    staged: ["lib/n.txt"], unstaged: ["a.txt"], untracked: [], renamed: [], oldPathsOfRenamedFiles: [:]))
+                    staged: ["lib/n.txt"], unstaged: ["a.txt"], untracked: [], renamed: [], oldPathsOfRenamedFiles: [:],
+                    branch: TemporaryGitRepository.defaultBranch))
         #expect(!status.isClean)
     }
 
@@ -53,7 +54,10 @@ struct GitStatusReaderTests {
         let status = try GitContext(root: repository.workDirectory).status().get()
 
         #expect(
-            status == GitStatus(staged: [], unstaged: [], untracked: [], renamed: [], oldPathsOfRenamedFiles: [:]))
+            status
+                == GitStatus(
+                    staged: [], unstaged: [], untracked: [], renamed: [], oldPathsOfRenamedFiles: [:],
+                    branch: TemporaryGitRepository.defaultBranch))
         #expect(status.isClean)
     }
 
@@ -184,7 +188,8 @@ struct GitStatusReaderTests {
         #expect(
             status
                 == GitStatus(
-                    staged: ["old.txt"], unstaged: [], untracked: [], renamed: [], oldPathsOfRenamedFiles: [:]))
+                    staged: ["old.txt"], unstaged: [], untracked: [], renamed: [], oldPathsOfRenamedFiles: [:],
+                    branch: TemporaryGitRepository.defaultBranch))
         #expect(!status.isClean)
     }
 
