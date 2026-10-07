@@ -49,20 +49,35 @@ struct LibGit2FileStat: Equatable, Sendable {
 
     /// The path of the file after the commit, relative to the work folder. For
     /// a deleted file, the path before the commit.
+    // The `tools.git.commit` verb reads it. Until then, only the synthesized
+    // `Equatable` conformance reads it, and periphery sees no caller.
+    // periphery:ignore
     let path: String
 
     /// The path of the file before the commit, only for a renamed file.
+    // The `tools.git.commit` verb reads it. Until then, only the synthesized
+    // `Equatable` conformance reads it, and periphery sees no caller.
+    // periphery:ignore
     let oldPath: String?
 
     /// The change: `added`, `modified`, `deleted`, or `renamed`.
+    // The `tools.git.commit` verb reads it. Until then, only the synthesized
+    // `Equatable` conformance reads it, and periphery sees no caller.
+    // periphery:ignore
     let status: String
 
     /// The number of lines that the commit adds to the file, or `nil` for a
     /// binary file.
+    // The `tools.git.commit` verb reads it. Until then, only the synthesized
+    // `Equatable` conformance reads it, and periphery sees no caller.
+    // periphery:ignore
     let additions: Int?
 
     /// The number of lines that the commit removes from the file, or `nil` for
     /// a binary file.
+    // The `tools.git.commit` verb reads it. Until then, only the synthesized
+    // `Equatable` conformance reads it, and periphery sees no caller.
+    // periphery:ignore
     let deletions: Int?
 }
 

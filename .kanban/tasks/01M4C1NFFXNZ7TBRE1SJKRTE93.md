@@ -26,6 +26,46 @@ comments:
     - note: one warning comes from a dependency (mlx-swift_Cmlx): "missing creator for mutated node". It is not ours.
     - next: review
   timestamp: 2026-10-07T21:04:21.710857+00:00
+- actor: claude-code
+  id: 01m4c36wmpp37z5b5wtqaf8ya7
+  text: |-
+    ### review — findings
+    - evidence: review sha HEAD~1..HEAD (5f922fc); 5 findings, 5 confirmed, 0 refuted — LibGit2CommitDetail.swift:52, :55, :58, :62, :66 (code-hygiene/dead-code-swift, assignOnlyProperty).
+    - next: Remove the cause of each finding. The task stays in review.
+  timestamp: 2026-10-07T21:09:47.286728+00:00
+- actor: claude-code
+  id: 01m4c37nvqtwmqa5mpb8amp94a
+  text: |-
+    ### finish iteration 1 — findings
+    - implement: changed — 4 files
+    - test: green — swift test, 2246 passed
+    - commit: 5f922fc
+    - review: findings — LibGit2CommitDetail.swift:52, :55, :58, :62, :66 (code-hygiene/dead-code-swift, assignOnlyProperty)
+  timestamp: 2026-10-07T21:10:13.111767+00:00
+- actor: claude-code
+  id: 01m4c3fygcm3n0des54p87mr03
+  text: |-
+    Fix for the 5 assignOnlyProperty findings:
+    - Cause: no production code reads the five `LibGit2FileStat` fields yet. The tests read them only through whole-value `==` (the synthesized `Equatable` conformance), and periphery does not see that read. The reader in production is the `tools.git.commit` verb of ^0rtkdbt.
+    - The rule `dead-code-swift` has a written contract for this case ("The staging contract", and "`assignOnlyProperty` and the reads periphery cannot see"). Do not delete the property. Write `// periphery:ignore` on the line above it, with the reason on its own comment line above the marker. The marker takes no text after it. I did this for all five properties. This is the same pattern as `SemanticFileChange.swift`.
+    - I examined the full file. The fields of `LibGit2CommitDetail` (`facts`, `message`, `parentShas`, `files`) have direct reads in the tests, so they are not assign-only and need no marker.
+    - I did not bring part of ^0rtkdbt forward, and I did not edit a validator.
+  timestamp: 2026-10-07T21:14:44.108281+00:00
+- actor: claude-code
+  id: 01m4c3g12xhaf9va2hdtzt2a8h
+  text: |-
+    ### implement — changed
+    - evidence: 1 file — Sources/FoundationModelsMultitool/Capabilities/Git/LibGit2/LibGit2CommitDetail.swift (a reason comment and `// periphery:ignore` above each of `path`, `oldPath`, `status`, `additions`, `deletions`). `swift test`: 2246 tests in 195 suites passed, 0 failed. The one build warning ("missing creator for mutated node ... mlx-swift_Cmlx.bundle") comes from the mlx dependency, not from this change. All 5 findings are checked.
+    - next: /review
+  timestamp: 2026-10-07T21:14:46.749366+00:00
+- actor: claude-code
+  id: 01m4c3jbdwtt2ad9rcgxbwh3ep
+  text: |-
+    ### test — green
+    - evidence: swift test — 2246 tests in 195 suites passed, 0 failed, 0 skipped. Project code gives 0 warnings.
+    - dependency warning (not ours): "missing creator for mutated node" for mlx-swift_Cmlx.bundle.
+    - next: review
+  timestamp: 2026-10-07T21:16:02.876644+00:00
 position_column: doing
 position_ordinal: '80'
 title: 'git: read the full message and the per-file line counts of one commit in the LibGit2 layer'
@@ -59,4 +99,17 @@ Make a new file `Sources/FoundationModelsMultitool/Capabilities/Git/LibGit2/LibG
 - [x] Run `swift test --filter LibGit2CommitDetailTests`. All tests must pass. Then run `swift test`. The full suite must pass with no new warnings.
 
 ## Workflow
-- Use `/tdd` — write failing tests first, then implement to make them pass. #git
+- Use `/tdd` — write failing tests first, then implement to make them pass.
+
+## Review Findings (2026-10-07 16:04)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 4 file(s) reviewed, 8 not reviewed.
+
+> 8 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 8 file(s)
+
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Git/LibGit2/LibGit2CommitDetail.swift:52` `code-hygiene/dead-code-swift` — var.instance `path` is assignOnlyProperty.
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Git/LibGit2/LibGit2CommitDetail.swift:55` `code-hygiene/dead-code-swift` — var.instance `oldPath` is assignOnlyProperty.
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Git/LibGit2/LibGit2CommitDetail.swift:58` `code-hygiene/dead-code-swift` — var.instance `status` is assignOnlyProperty.
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Git/LibGit2/LibGit2CommitDetail.swift:62` `code-hygiene/dead-code-swift` — var.instance `additions` is assignOnlyProperty.
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Git/LibGit2/LibGit2CommitDetail.swift:66` `code-hygiene/dead-code-swift` — var.instance `deletions` is assignOnlyProperty. #git
