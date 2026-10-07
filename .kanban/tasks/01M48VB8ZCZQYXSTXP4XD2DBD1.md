@@ -97,6 +97,22 @@ comments:
     - evidence: one local commit of all working tree changes. It adds GatedTurnScenario.swift and changes ScenarioRunner, GitScenarioTests, WebResearchScenarioTests, OperationToolLiveTests, GitScenarioHistory, and .kanban files. No build product is staged. The commit removes two tracked .kanban mcp log files from the index. The commit sha is in the git log, subject "test: add gated turn scenario for live model tests".
     - next: review. No push was done.
   timestamp: 2026-10-07T11:56:00.406955+00:00
+- actor: claude-code
+  id: 01m4b3pzzhctmwmc7mnjccvrdm
+  text: |-
+    ### review — clean
+    - evidence: `review sha HEAD~1..HEAD` (commit f450217). 0 findings, 0 confirmed, 0 refuted. 7 validator runs attempted, 0 failed. 6 files reviewed. 4 files in `.kanban/` were not reviewed because of `.reviewignore`. The commit has no renamed file, thus a file-scoped review was not necessary. All 7 items in `## Review Findings (2026-10-07 06:15)` are checked.
+    - next: none. The task moved to `done`.
+  timestamp: 2026-10-07T11:59:20.561816+00:00
+- actor: claude-code
+  id: 01m4b3qg0am9pjxxqgpg23e946
+  text: |-
+    ### finish iteration 3 — clean
+    - implement: changed — 6 files (GatedTurnScenario.swift new; ScenarioRunner, GitScenarioTests, WebResearchScenarioTests, OperationToolLiveTests, GitScenarioHistory); 7 findings of 2026-10-07 06:15 checked
+    - test: green — swift test, 2234 passed in 194 suites; integration 107 tests in 35 suites passed in 362.141 s (wall 386 s), git suite 145.9 s
+    - commit: f450217
+    - review: clean — 0 findings, 7 validators on 6 files; 7/7 prior items checked
+  timestamp: 2026-10-07T11:59:36.970456+00:00
 depends_on:
 - 01M48VAY56DD7FRP5ZN9F4RD5E
 - 01M48V8V37DM9YG6EQ1ZDB38Q4
@@ -104,8 +120,8 @@ depends_on:
 - 01M48VA2QSPSBZ18AAAFDVR81S
 - 01M48VA6MJK1WHXPJYJ4AC64T6
 - 01M48VAAXDRA9N07ACFBT90ANX
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffffbc80
 title: 'git: live model tests, README section, and git.md status'
 ---
 ## Goal
