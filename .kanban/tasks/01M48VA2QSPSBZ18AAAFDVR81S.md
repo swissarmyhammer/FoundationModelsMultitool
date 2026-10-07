@@ -66,6 +66,53 @@ comments:
     - evidence: one local commit "feat: add TypeScript, TSX, JavaScript, JSX, Python, and Vue to git semantic" (sha is in the git log; no amend after this comment)
     - next: review. The commit is local only. It is not pushed.
   timestamp: 2026-10-07T00:02:01.971778+00:00
+- actor: claude-code
+  id: 01m49v869f7bxy11p559rdymw8
+  text: |-
+    ### review — findings
+    - evidence: `review sha HEAD~1..HEAD` (commit 806b2cf). The commit renames no file, so no file-scoped review was necessary. Counts: 2 findings, 2 confirmed, 2 refuted. Open items: `Sources/FoundationModelsMultitool/Capabilities/Git/Semantic/VueParserPlugin.swift:217`, `Sources/FoundationModelsMultitool/Capabilities/Git/Semantic/VueParserPlugin.swift:287` (`completeness/case-sensitivity-coverage`).
+    - next: Correct the two items in the dated `## Review Findings` section. Then run the review again. The task stays in `review`.
+  timestamp: 2026-10-07T00:12:12.463813+00:00
+- actor: claude-code
+  id: 01m49v8qx1qbsz4drrtxzyaxp8
+  text: |-
+    ### finish iteration 1 — findings
+    - implement: changed — Package.swift, .reviewignore, git.md, EditMatch.swift, 3 Semantic files, 2 local grammar targets, 3 test files, 41 golden cases
+    - test: green — swift test, 2118 passed in 182 suites; fresh build of the local grammar targets has no warning; IntegrationTests build complete
+    - commit: 806b2cf
+    - review: findings — Sources/FoundationModelsMultitool/Capabilities/Git/Semantic/VueParserPlugin.swift:217, Sources/FoundationModelsMultitool/Capabilities/Git/Semantic/VueParserPlugin.swift:287 (completeness/case-sensitivity-coverage)
+  timestamp: 2026-10-07T00:12:30.497544+00:00
+- actor: claude-code
+  id: 01m49vfhqpvv21tvyjtt43trk4
+  text: |-
+    Review findings worked (both `completeness/case-sensitivity-coverage`).
+    - Rust `vue.rs` is case-sensitive at every match: `line.starts_with("<{tag}")`, `lines[j].trim().starts_with("</{tag}>")`, `tag_line.find("{attr}=\"")` and `"{attr}='"`, `line.contains("setup")`, and `block.lang == "ts" || "tsx"`. Thus the Swift port keeps the Rust behavior, and I used the "add a test" fix (git.md decision 6).
+    - The same cause is at 5 matches in `VueParserPlugin.swift`: the closing tag (finding 1), the attribute name (finding 2), the opening tag name, the `setup` marker, and the `lang` value. Each one now has a doc comment that says the match is case-sensitive, the same as `vue.rs`. The file header has a paragraph for all 5.
+    - New tests in `VueParserPluginTests` (section "Case-sensitive matches"): uppercase closing tag `</Template>`, uppercase opening tags `<Template>` / `<STYLE>`, uppercase attribute name `LANG="ts"`, uppercase value `lang="TS"`, uppercase `SETUP`. The expected values come from the Rust plugin: I added the 5 inputs to the throwaway bin `vuecheck` (scratchpad `semdiffgolden`) and ran it. Rust output: `</Template>` case gives one `template` block, lines 1-5, content of all 5 lines (the `<style>` block is in it); `LANG="ts"`, `lang="TS"`: only the `script` block (JavaScript grammar, the interface is not an entity); `<Template>`/`<STYLE>`: no entity; `SETUP`: the block name is `script`.
+    - TDD note: the tests pin the current behavior, which already matches Rust, thus they pass on the first run. No production code changed (doc comments only).
+  timestamp: 2026-10-07T00:16:13.558686+00:00
+- actor: claude-code
+  id: 01m49vfwgtmbj99hxqmm3p5zgv
+  text: |-
+    ### implement — changed
+    - evidence: 2 files — Sources/FoundationModelsMultitool/Capabilities/Git/Semantic/VueParserPlugin.swift (doc comments: 5 case-sensitive matches, same as vue.rs), Tests/FoundationModelsMultitoolTests/VueParserPluginTests.swift (5 new tests, expected values from the Rust plugin). `swift build --build-tests`: build complete, only the known mlx-swift_Cmlx.bundle "missing creator" line. `swift test`: 2123 tests in 182 suites passed, 0 failed. Both findings are `- [x]`. No commit, no push.
+    - next: /review
+  timestamp: 2026-10-07T00:16:24.602080+00:00
+- actor: claude-code
+  id: 01m49vmcx474mypn61ge6x7f29
+  text: |-
+    ### test - green
+    - evidence: swift build --build-tests - Build complete, exit 0. swift test - 2123 tests in 182 suites passed, 0 failed, 0 skipped. cd IntegrationTests && swift build --build-tests - Build complete, exit 0.
+    - warnings: only the known dependency warning "missing creator for mutated node" for mlx-swift_Cmlx.bundle (3 build runs). No warning comes from project code.
+    - next: review
+  timestamp: 2026-10-07T00:18:52.452435+00:00
+- actor: claude-code
+  id: 01m49vmy5qxj6xagrgs9g6ns1x
+  text: |-
+    ### commit — changed
+    - evidence: one local commit holds VueParserPlugin.swift (doc comments on the case-sensitive matches), VueParserPluginTests.swift (5 new case-sensitivity tests), and the .kanban/ changes. No build product is staged (.build is git-ignored). The sha is in the commit log; the commit is not amended and not pushed.
+    - next: none. The commit step is done.
+  timestamp: 2026-10-07T00:19:10.135510+00:00
 depends_on:
 - 01M48V9SN2MNFZGXZ9R6DGD0H1
 position_column: doing
@@ -94,4 +141,25 @@ Make fixtures with the sah tool `git` op `get diff` (inline mode), in the same f
 ## Acceptance
 
 - `swift build` and `swift test` pass with no new warnings.
-- Each golden of the group passes. #git
+- Each golden of the group passes.
+
+## Review Findings (2026-10-06 19:02)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 9 file(s) reviewed, 145 not reviewed.
+
+> 20 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 6 file(s)
+> - `Sources/TreeSitterJavaScript/LICENSE (from .reviewignore)` — 1 file(s)
+> - `Sources/TreeSitterJavaScript/include/ (from .reviewignore)` — 1 file(s)
+> - `Sources/TreeSitterJavaScript/src/ (from .reviewignore)` — 5 file(s)
+> - `Sources/TreeSitterPython/LICENSE (from .reviewignore)` — 1 file(s)
+> - `Sources/TreeSitterPython/include/ (from .reviewignore)` — 1 file(s)
+> - `Sources/TreeSitterPython/src/ (from .reviewignore)` — 5 file(s)
+
+> 125 file(s) not reviewed — no validator matched:
+> - `.reviewignore` — no validator matches this file
+> - `Tests/FoundationModelsMultitoolTests/GitSemanticGoldens/**` (javascript, jsx, python, tsx, typescript, vue fixtures: 123 `after.txt`, `before.txt`, `expected.json` files) — no validator matches this file
+> - `git.md` — no validator matches this file
+
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Git/Semantic/VueParserPlugin.swift:217` `completeness/case-sensitivity-coverage` — The closing tag search is case-sensitive (`RustText.trimmed(lines[index]).utf8.starts(with: closingTag)`), matching only lowercase closing tags like `</template>`. HTML tags are case-insensitive; uppercase closing tags like `</Template>` or `</TEMPLATE>` will not be recognized, causing the block to run to end-of-file instead of terminating. Normalize to lowercase for comparison: `RustText.trimmed(lines[index]).lowercased().utf8.starts(with: closingTag)` (where closingTag is also built lowercase); OR add one test with uppercase closing tag (e.g., `</Template>`) to document expected behavior.
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Git/Semantic/VueParserPlugin.swift:287` `completeness/case-sensitivity-coverage` — The attribute name search is case-sensitive (`bytes.firstRange(of: Array(name.utf8) + [attributeAssignment, quote])`), matching only lowercase attribute names like `lang=`. HTML attribute names are case-insensitive per spec; attributes written as `Lang=` or `LANG=` will not be found, causing non-lowercase lang values to be ignored. Normalize attribute name to lowercase before search: `bytes.lowercased().firstRange(of: Array(name.lowercased().utf8) + [attributeAssignment, quote])`; OR add one test with uppercase attribute name (e.g., `LANG="ts"`) to document expected behavior. #git

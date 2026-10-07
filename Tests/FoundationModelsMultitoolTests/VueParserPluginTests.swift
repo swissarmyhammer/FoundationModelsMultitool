@@ -231,4 +231,57 @@ struct VueParserPluginTests {
 
         #expect(Self.entities(source, at: "shape.vue").map(\.name) == ["script"])
     }
+
+    // MARK: Case-sensitive matches
+
+    // Each match of a tag, an attribute name, the `setup` marker, and a `lang`
+    // value is case-sensitive, the same as `vue.rs`. The expected values of
+    // these tests come from the Rust `VueParserPlugin`.
+
+    /// An uppercase closing tag does not stop a block: the block runs to the
+    /// last line, and the next opening tag is in the block.
+    @Test("an uppercase closing tag does not stop a block")
+    func anUppercaseClosingTagDoesNotStopABlock() throws {
+        let source = "<template>\n  <div/>\n</Template>\n<style>\n</style>\n"
+
+        let entities = Self.entities(source, at: "upclose.vue")
+
+        #expect(Self.blockNames(entities) == ["template"])
+        let template = try #require(entities.first)
+        #expect(template.content == "<template>\n  <div/>\n</Template>\n<style>\n</style>")
+        #expect(template.endLine == 5)
+    }
+
+    /// An uppercase opening tag does not start a block.
+    @Test("an uppercase opening tag does not start a block")
+    func anUppercaseOpeningTagDoesNotStartABlock() {
+        #expect(Self.entities("<Template>\n</Template>\n<STYLE>\n</STYLE>\n", at: "upopen.vue").isEmpty)
+    }
+
+    /// An uppercase `LANG` attribute name is not the `lang` attribute, thus the
+    /// block goes to the JavaScript grammar and the interface is not an entity.
+    @Test("an uppercase lang attribute name is not found")
+    func anUppercaseLangAttributeNameIsNotFound() {
+        let source = "<script LANG=\"ts\">\ninterface Shape {\n  area(): number;\n}\n</script>\n"
+
+        #expect(Self.entities(source, at: "upattr.vue").map(\.name) == ["script"])
+    }
+
+    /// An uppercase `lang` value `TS` is not `ts`, thus the block goes to the
+    /// JavaScript grammar and the interface is not an entity.
+    @Test("an uppercase lang value does not select the TypeScript grammar")
+    func anUppercaseLangValueDoesNotSelectTheTypeScriptGrammar() {
+        let source = "<script lang=\"TS\">\ninterface Shape {\n  area(): number;\n}\n</script>\n"
+
+        #expect(Self.entities(source, at: "upvalue.vue").map(\.name) == ["script"])
+    }
+
+    /// An uppercase `SETUP` is not the `setup` marker, thus the block has the
+    /// name `script`.
+    @Test("an uppercase setup marker does not make a script setup block")
+    func anUppercaseSetupMarkerDoesNotMakeAScriptSetupBlock() {
+        let source = "<script SETUP>\nconst a = 1\n</script>\n"
+
+        #expect(Self.blockNames(Self.entities(source, at: "upsetup.vue")) == ["script"])
+    }
 }

@@ -9,6 +9,10 @@
 // blocks line by line, and it sends the text in each `<script>` block to the
 // code plugin with the TypeScript or the JavaScript grammar.
 //
+// Each match of a tag name, an attribute name, the `setup` marker, and a
+// `lang` value is case-sensitive, the same as `vue.rs`. Thus `</Template>`,
+// `<STYLE>`, `LANG="ts"`, `SETUP`, and `lang="TS"` do not match.
+//
 // The Rust plugin uses the default `compute_similarity`, thus this plugin
 // uses the default ``SemanticParserPlugin/similarity(between:and:)``.
 
@@ -119,7 +123,8 @@ extension SingleFileComponentBlock {
 
     /// The name of the code file of a script block: `script.ts` for a
     /// TypeScript block, else `script.js`. The code plugin selects the
-    /// grammar from its extension.
+    /// grammar from its extension. The match of the `lang` value is
+    /// case-sensitive, the same as `vue.rs`: `TS` gives `script.js`.
     var scriptFileName: String {
         Self.typeScriptLanguages.contains(language) ? "script.ts" : "script.js"
     }
@@ -130,7 +135,9 @@ extension SingleFileComponentBlock {
     /// The lines are the lines of the Rust `str::lines`. An opening tag
     /// starts a block, and the first later line that starts with the closing
     /// tag stops it. A block with no closing tag runs to the last line. The
-    /// search for the next opening tag starts after the block.
+    /// search for the next opening tag starts after the block. The matches of
+    /// the opening tag and the closing tag are case-sensitive, the same as
+    /// `vue.rs`.
     ///
     /// - Parameter content: The text of the file.
     /// - Returns: The blocks.
@@ -204,6 +211,10 @@ private struct BlockSpan {
     /// The first block at `position` or after it, or `nil` when no later line
     /// has an opening tag.
     ///
+    /// The search for the closing tag is case-sensitive, the same as
+    /// `vue.rs`: a line that starts with `</Template>` does not stop a
+    /// `template` block.
+    ///
     /// - Parameters:
     ///   - lines: The lines of the file.
     ///   - position: The first line to read.
@@ -234,7 +245,8 @@ private struct OpeningTag {
     /// The name of the attribute that gives the language of a script block.
     private static let languageAttribute = "lang"
 
-    /// The text that marks a `<script setup>` block, anywhere in the line.
+    /// The text that marks a `<script setup>` block, anywhere in the line. The
+    /// match is case-sensitive, the same as `vue.rs`.
     private static let setupMarker = "setup"
 
     /// The characters that can follow the tag name in an opening tag. An
@@ -266,7 +278,9 @@ private struct OpeningTag {
     }
 
     /// Whether `line` opens a block of `tag`: the line starts with `<` and
-    /// the tag name, and then `>`, a space, or nothing.
+    /// the tag name, and then `>`, a space, or nothing. The match of the tag
+    /// name is case-sensitive, the same as `vue.rs`: `<Template>` does not
+    /// open a block.
     private static func isOpening(_ tag: SingleFileComponentTag, of line: String) -> Bool {
         let prefix = "<\(tag.rawValue)".utf8
         guard line.utf8.starts(with: prefix) else { return false }
@@ -275,6 +289,9 @@ private struct OpeningTag {
 
     /// The value of `name="…"` (or `name='…'`) in `line`: one pass of
     /// `extract_attr` in `vue.rs`.
+    ///
+    /// The search for the attribute name is case-sensitive, the same as
+    /// `vue.rs`: `LANG="ts"` is not the attribute `lang`.
     ///
     /// - Parameters:
     ///   - name: The name of the attribute.
