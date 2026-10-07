@@ -566,8 +566,11 @@ struct SandboxGlobalsTests {
         )
 
         #expect(try RunOutput.decoded(String.self, from: output) == "done")
-        #expect(await recordedOperationEvents(of: stub, ofKind: .progress).map(\.detail) == ["starting the sweep", "half way"])
-        #expect(await recordedOperationEvents(of: stub).allSatisfy { $0.correlationID == context.completionToken })
+        // Router writes the second progress event in a merged row that only
+        // `close()` writes, so the read settles the session first.
+        let events = await settledOperationEvents(of: stub)
+        #expect(events.filter { $0.kind == .progress }.map(\.detail) == ["starting the sweep", "half way"])
+        #expect(events.allSatisfy { $0.correlationID == context.completionToken })
     }
 
     @Test("a long snippet loop's notices reach the sink in the order the snippet enqueued them")
@@ -587,7 +590,7 @@ struct SandboxGlobalsTests {
         )
 
         #expect(
-            await recordedOperationEvents(of: stub, ofKind: .progress).map(\.detail) == ["step 1", "step 2", "step 3", "step 4", "finished"]
+            await settledOperationEvents(of: stub, ofKind: .progress).map(\.detail) == ["step 1", "step 2", "step 3", "step 4", "finished"]
         )
     }
 

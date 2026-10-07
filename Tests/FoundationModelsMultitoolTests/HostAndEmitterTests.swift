@@ -121,7 +121,7 @@ struct HostAndEmitterTests {
 
         #expect(output == renderedRecorderResult)
         #expect(
-            await recordedOperationEvents(of: run, ofKind: .progress).map(\.detail)
+            await settledOperationEvents(of: run, ofKind: .progress).map(\.detail)
                 == [recorderProgressDetail, recorderResult])
         #expect(recorder.observations.first?.sessionID == context.sessionID)
     }

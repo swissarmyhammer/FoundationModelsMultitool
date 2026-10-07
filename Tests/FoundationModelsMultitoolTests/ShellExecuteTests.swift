@@ -71,6 +71,37 @@ struct ShellExecuteTests {
     /// on exactly one — see `RunEventFunnel`, which drops a second.
     private static let terminalEventCount = 1
 
+    /// How many single-byte writes the command of the collection test makes.
+    /// The Django test runner wrote one byte for each of its tests, and that
+    /// run posted one event for each byte (card `^2ny3k6k`).
+    private static let singleByteWriteCount = 10_000
+
+    /// The byte each single-byte write puts on the standard error.
+    private static let singleByteWriteCharacter: Character = "."
+
+    /// The count of `progress` events that the single-byte writes must stay
+    /// under: a count that does not grow with the count of writes.
+    private static let collectedProgressEventCeiling = 100
+
+    /// How many lines the command of the byte-limit test writes.
+    private static let byteLimitLineCount = 200
+
+    /// The digits of one line of the byte-limit test, before its line feed.
+    /// With the line feed, one line is 1 KiB.
+    private static let byteLimitLineDigitCount = 1023
+
+    /// The digit each line of the byte-limit test is written out of.
+    private static let byteLimitLineDigit: Character = "0"
+
+    /// The bytes of one line of the byte-limit test: its digits and its line
+    /// feed.
+    private static let byteLimitLineByteCount = byteLimitLineDigitCount + 1
+
+    /// The minimum count of `progress` events of the byte-limit test. The
+    /// output is more than one collection holds, thus one collection closes on
+    /// the byte limit and at least one more closes when the command ends.
+    private static let byteLimitMinimumEventCount = 2
+
     /// The cap on the length of one command, in UTF-8 bytes, as the sibling
     /// shell tool's settings defaults state it: 256 KiB.
     ///
@@ -167,10 +198,19 @@ struct ShellExecuteTests {
     /// Never `ProcessRegistry.global`: an ordinary test must not touch the
     /// process-wide instance — see the doc comment of that property.
     ///
-    /// - Parameter state: The store the verb records into.
+    /// - Parameters:
+    ///   - state: The store the verb records into.
+    ///   - clock: The clock of the runner. The default is the real clock. A
+    ///     test of the progress collection gives a `GatedClock`, thus a
+    ///     collection closes on its interval only when the test opens the
+    ///     clock.
     /// - Returns: The verb.
-    private func makeVerb(over state: ShellState) -> Execute {
-        Execute(runner: ShellRunner(state: state, registry: ProcessRegistry()))
+    private func makeVerb(
+        over state: ShellState, pacedBy clock: any Clock<Duration> = ContinuousClock()
+    ) -> Execute {
+        var runner = ShellRunner(state: state, registry: ProcessRegistry())
+        runner.clock = clock
+        return Execute(runner: runner)
     }
 
     /// The `execute` verb of a whole capability that a host gave `stream` to,
@@ -447,12 +487,12 @@ struct ShellExecuteTests {
     }
 
     /// The `progress` events of a run stand as they are with no host stream:
-    /// one for each chunk the child wrote, naming the stream it came from.
+    /// one for each collection of output, naming the stream it came from.
     ///
-    /// The command writes one line with one `echo`, which is one write of one
-    /// chunk, thus the run posts exactly one `progress` event and the whole
-    /// list can be stated. `reportOutput` trims the line ending, which is why
-    /// no `\n` stands in the expected text.
+    /// The command writes one line with one `echo` and ends, thus the run
+    /// posts exactly one `progress` event and the whole list can be stated.
+    /// `OutputProgressCollector` trims the line ending, which is why no `\n`
+    /// stands in the expected text.
     @Test("the progress events of a run with a host stream are the ones it posts today")
     func theProgressEventsStandAsTheyDoWithNoHostStream() async throws {
         let stream = ShellOutputChunkStream()
@@ -471,6 +511,151 @@ struct ShellExecuteTests {
             "kinds were: \(kinds)")
 
         stream.finish()
+    }
+
+    // MARK: - The collection of progress events
+
+    /// How many times `character` stands in `texts`, all together.
+    ///
+    /// - Parameters:
+    ///   - character: The character to count.
+    ///   - texts: The texts to count it in.
+    /// - Returns: The count.
+    private static func count(of character: Character, in texts: [String]) -> Int {
+        texts.reduce(0) { total, text in total + text.count(where: { $0 == character }) }
+    }
+
+    /// The text of every line the store holds for the run under `commandID`,
+    /// as `tools.shell.getLines` reads it.
+    ///
+    /// - Parameters:
+    ///   - commandID: The completion token of the run.
+    ///   - state: The store the run recorded into.
+    /// - Returns: The stored lines.
+    /// - Throws: What `GetLines` throws.
+    private static func storedLines(of commandID: String, in state: ShellState) async throws -> [String] {
+        try await GetLines(state: state).call(arguments: GetLinesArguments(commandID: commandID)).lines
+    }
+
+    /// Card `^2ny3k6k`: the Django test runner wrote one byte to its standard
+    /// error for each test, and the run posted one `progress` event for each
+    /// byte. The verb now collects the output into one event for each
+    /// interval or byte limit, thus the count of events does not grow with
+    /// the count of writes.
+    ///
+    /// The clock of the runner is a `GatedClock` that the test never opens.
+    /// Thus no collection closes on its interval, and the test reads no
+    /// wall clock. The output is also a check that the collection loses no
+    /// byte: the events, the report and the line store each hold every byte.
+    @Test("10000 single-byte writes give fewer than 100 progress events and lose no byte")
+    func singleByteWritesGiveFewProgressEvents() async throws {
+        let state = try makeState()
+        let verb = makeVerb(over: state, pacedBy: GatedClock())
+        let run = try await makeStubRun()
+        let context = run.context
+        let command =
+            "i=0; while [ $i -lt \(Self.singleByteWriteCount) ]; do "
+            + "printf '\(Self.singleByteWriteCharacter)' >&2; i=$((i+1)); done"
+
+        _ = try await Self.call(verb, ExecuteArguments(command: command), under: context)
+
+        let progress = await recordedOperationEvents(of: run, ofKind: .progress).map(\.detail)
+        #expect(
+            progress.count < Self.collectedProgressEventCeiling,
+            "the run posted \(progress.count) progress events")
+        #expect(
+            Self.count(of: Self.singleByteWriteCharacter, in: progress) == Self.singleByteWriteCount)
+        let stored = try await Self.storedLines(of: context.completionToken, in: state)
+        #expect(Self.count(of: Self.singleByteWriteCharacter, in: stored) == Self.singleByteWriteCount)
+        // The fields of the report and not its rendered text: the one line of
+        // the output is longer than the cap of `ResultRenderer`, which cuts
+        // the rendered text before the JSON ends.
+        let report = await Execute.reportFields(of: context.completionToken, in: state)
+        #expect(report["output"] == .array(stored.map { .string($0) }))
+    }
+
+    /// A command that writes one line and ends posts that line as its one
+    /// `progress` event: the collection the end of the run closes is posted
+    /// before the terminal event.
+    @Test("a command that writes one line and ends still posts its progress event")
+    func aOneLineCommandStillPostsItsProgressEvent() async throws {
+        let state = try makeState()
+        let verb = makeVerb(over: state, pacedBy: GatedClock())
+        let run = try await makeStubRun()
+
+        _ = try await Self.call(
+            verb, ExecuteArguments(command: "echo \(Self.inlineMarker)"), under: run.context)
+
+        let progress = await recordedOperationEvents(of: run, ofKind: .progress).map(\.detail)
+        #expect(progress == ["stdout: \(Self.inlineMarker)"], "progress was: \(progress)")
+        let kinds = await recordedOperationEvents(of: run).map(\.kind)
+        let terminalIndex = try #require(kinds.firstIndex(of: .completed))
+        #expect(kinds[..<terminalIndex].contains(.progress), "kinds were: \(kinds)")
+    }
+
+    /// Output that holds still goes out when its collection interval ends,
+    /// and not only when the command ends.
+    ///
+    /// The command writes one line and then sleeps for a day. The clock of
+    /// the runner is a `GatedClock`, thus the test sees the collection wait on
+    /// its interval with no event posted, opens the sleeps of that interval
+    /// alone, and then reads the event while the command still runs. The
+    /// canceler of the run ends the command after the readings, on each path.
+    @Test(
+        "output that holds still goes out when its collection interval ends",
+        .timeLimit(TestHangGuard.timeLimit))
+    func outputGoesOutWhenItsCollectionIntervalEnds() async throws {
+        let state = try makeState()
+        let clock = GatedClock()
+        let verb = makeVerb(over: state, pacedBy: clock)
+        let run = try await makeStubRun()
+        let context = run.context
+        let stop = ShellRunner(state: state).canceler(completionToken: context.completionToken)
+        let interval = OutputProgressCollector.collectionInterval
+        let command = "echo \(Self.inlineMarker); sleep \(Self.backgroundRunSleepSeconds)"
+
+        async let answer = Self.call(verb, ExecuteArguments(command: command), under: context)
+        let isCollecting = await TestPoll.holds { clock.recordedSleeps.contains(interval) }
+        let progressBeforeInterval = await recordedOperationEvents(of: run, ofKind: .progress)
+        clock.open(sleepsOf: interval)
+        let progressAfterInterval = await TestPoll.lastReading(
+            of: { await recordedOperationEvents(of: run, ofKind: .progress).map(\.detail) },
+            until: { !$0.isEmpty })
+        _ = await stop()
+        _ = try await answer
+
+        #expect(isCollecting, "the collection never waited on its interval")
+        #expect(progressBeforeInterval.isEmpty, "progress before the interval: \(progressBeforeInterval)")
+        #expect(
+            progressAfterInterval == ["stdout: \(Self.inlineMarker)"],
+            "progress after the interval: \(progressAfterInterval)")
+    }
+
+    /// A collection closes when it holds the byte limit, and not only on its
+    /// interval. The clock never opens, thus each event but the last one is
+    /// a collection the byte limit closed, and each such collection holds at
+    /// least the byte limit. The count of events therefore stands between two
+    /// and one more than the output divided by the byte limit.
+    @Test("a collection that holds the byte limit goes out before its interval ends")
+    func aCollectionAtTheByteLimitGoesOut() async throws {
+        let state = try makeState()
+        let verb = makeVerb(over: state, pacedBy: GatedClock())
+        let run = try await makeStubRun()
+        let command =
+            "for i in $(seq \(Self.byteLimitLineCount)); do "
+            + "printf '%0\(Self.byteLimitLineDigitCount)d\\n' \(Self.byteLimitLineDigit); done"
+        let outputByteCount = Self.byteLimitLineCount * Self.byteLimitLineByteCount
+        let maximumEventCount = outputByteCount / OutputProgressCollector.collectionByteLimit + 1
+
+        _ = try await Self.call(verb, ExecuteArguments(command: command), under: run.context)
+
+        let progress = await recordedOperationEvents(of: run, ofKind: .progress).map(\.detail)
+        #expect(
+            (Self.byteLimitMinimumEventCount...maximumEventCount).contains(progress.count),
+            "the run posted \(progress.count) progress events")
+        #expect(
+            Self.count(of: Self.byteLimitLineDigit, in: progress)
+                == Self.byteLimitLineCount * Self.byteLimitLineDigitCount)
     }
 
     // MARK: - The background run

@@ -277,12 +277,11 @@ struct FileChangeEventAbsenceTests {
             \(Self.writeSnippet)
             """, under: ground)
         let bytesWritten = try RunOutput.decoded(Int.self, from: output)
-        let events = await recordedOperationEvents(
-            of: ground.run,
-            ofKind: .progress,
-            correlatedTo: [ground.run.context.completionToken],
-            awaiting: Self.noticesPerCall + Self.eventsPerWrite
-        )
+        // The notice and the change set are consecutive progress events of one
+        // run. Router writes the second one in a merged row that only
+        // `close()` writes, so the read settles the session first.
+        let events = await settledOperationEvents(of: ground.run, ofKind: .progress)
+            .filter { $0.correlationID == ground.run.context.completionToken }
         let notices = events.filter { $0.detail == Self.noticeDetail }
         let changeSets = events.compactMap { FileChangeSet(operationEventDetail: $0.detail) }
 

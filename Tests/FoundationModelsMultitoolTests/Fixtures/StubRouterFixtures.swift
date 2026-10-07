@@ -474,15 +474,44 @@ func recordedOperationEvents(
     return events.filter { $0.kind == kind }
 }
 
+/// Every `OperationEvent` of `run`, read after the session is closed, so the
+/// journal holds every event the run posted.
+///
+/// Router merges consecutive progress events of one run into one journal row
+/// (Router commit c30d1d41). The first progress event of a run is written at
+/// once. The next ones stay in an open row in memory, and that row is written
+/// only when a different entry comes or when `RoutedSession.close()` runs.
+/// Thus a read of the recorder while the session is open sees the first
+/// progress event and not the rest. Each event stays whole inside the row, and
+/// the recorder reads every segment of every row, so after `close()` this read
+/// returns every progress event, in post order, with none lost and none
+/// joined.
+///
+/// Close the session only when the test is done with it: `close()` settles
+/// every run the session holds.
+///
+/// - Parameters:
+///   - run: The stub run whose session to close and whose transcript to read.
+///   - kind: The one event kind to keep, or `nil` for every kind.
+/// - Returns: The recorded events, in transcript order.
+func settledOperationEvents(
+    of run: StubRun, ofKind kind: OperationEventKind? = nil
+) async -> [OperationEvent] {
+    await run.session.close()
+    return await recordedOperationEvents(of: run, ofKind: kind)
+}
+
 /// The recorded `OperationEvent`s of `run` of one kind, on the runs
 /// `correlationIDs` name, read one time with no wait.
 ///
 /// A `.progress` event a verb posts through `ToolContext.post(_:)` is
 /// journaled before `post` returns: `SessionOutbox.post(event:)` awaits its
-/// own journal write. Thus a test that reads right after the call that posted
-/// the event needs no poll, and a read here that comes back short is a fault
-/// in the route and not a race in the test. The polling variant below is for
-/// the sweep `RoutedSession.close()` runs on a task of its own.
+/// own journal write. But Router merges consecutive progress events of one
+/// run into one open row that it writes later, so a read while the session is
+/// open sees only the first progress event of a run. A test that reads more
+/// than one progress event of a run reads with ``settledOperationEvents(of:ofKind:)``.
+/// The polling variant below is for the sweep `RoutedSession.close()` runs on
+/// a task of its own.
 ///
 /// - Parameters:
 ///   - run: The stub run whose transcript to read.

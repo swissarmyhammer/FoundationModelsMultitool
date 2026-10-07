@@ -108,12 +108,15 @@ struct ShellRunner {
     /// `ProcessRegistry.global` for the reason.
     var registry: ProcessRegistry = .global
 
-    /// The clock the timer of a time limit sleeps on.
+    /// The clock the timer of a time limit sleeps on, and the clock the
+    /// interval of a progress collection of `Execute` sleeps on (see
+    /// `OutputProgressCollector`).
     ///
     /// It takes the real `ContinuousClock` by default, thus a production limit
     /// measures wall-clock time. A test gives a clock it controls, thus the
     /// limit fires when the test lets it, and machine load cannot move the
-    /// kill before or after the point the test checks.
+    /// kill before or after the point the test checks. The same holds for the
+    /// close of a progress collection.
     var clock: any Clock<Duration> = ContinuousClock()
 
     /// The live view of the output that each command of this runner tees its raw
@@ -140,8 +143,8 @@ struct ShellRunner {
     /// The lifetimes differ, which is the other half of the reason. A host
     /// keeps its view across every run of the capability, and a caller ends its
     /// own view with `finish()` when its run is over. `Execute` is that caller:
-    /// it drains this view to post one `progress` event for each chunk. See
-    /// `Execute.report(of:in:)`.
+    /// it drains this view to post one `progress` event for each collection
+    /// of chunks. See `Execute.report(of:in:)`.
     var callerOutputChunkStream: ShellOutputChunkStream?
 
     /// Each live view one run of this runner tees into: the one a host

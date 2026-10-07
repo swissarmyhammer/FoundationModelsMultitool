@@ -314,7 +314,8 @@ extension Execute {
     /// The live view of the output is the reason this verb has progress to
     /// post at all: `ShellRunner` tees each raw chunk into the streams it is
     /// given, before the line buffer sees it, and one task here drains the
-    /// stream this call made and posts what it reads. The stream is ended after
+    /// stream this call made and posts what it reads, in collections — see
+    /// `reportOutput(of:to:on:)`. The stream is ended after
     /// the run rather than by the drain, so the drain cannot outlive the run and
     /// a run with no output still ends its own pump.
     ///
@@ -339,7 +340,8 @@ extension Execute {
         let stream = ShellOutputChunkStream()
         var running = runner
         running.callerOutputChunkStream = stream
-        let pump = Task { await Self.reportOutput(of: stream, to: context) }
+        let clock = runner.clock
+        let pump = Task { await Self.reportOutput(of: stream, to: context, on: clock) }
 
         do {
             _ = try await running.run(request)
@@ -358,52 +360,31 @@ extension Execute {
         return rendered
     }
 
-    /// Drains the live view of one run and posts each chunk of output as a
-    /// `progress` event.
+    /// Drains the live view of one run, and posts its output as `progress`
+    /// events: one event for each collection of chunks, and not one event for
+    /// each chunk.
     ///
-    /// The bytes are decoded here and nowhere else. The stream carries them
-    /// exactly as the child wrote them, and an event carries text, so the
-    /// decode belongs at this boundary. A chunk that decodes to nothing but
-    /// whitespace is passed over: it says the child wrote a line ending, which
-    /// is not news.
-    ///
-    /// A gap says the consumer fell behind the budget of the stream, and it is
-    /// reported rather than passed over, because output that went away is
-    /// exactly what a reader must not mistake for output that never came.
+    /// Card `^2ny3k6k`: a child that writes one byte at a time posted one event
+    /// for each byte. `OutputProgressCollector` holds the rule of a collection
+    /// — its interval, its byte limit, and the decode of its bytes. The drain
+    /// ends when the caller finishes the stream after the run, and the last
+    /// collection then goes out, thus no output is lost from the events.
     ///
     /// - Parameters:
     ///   - stream: The live view of the output of the run.
     ///   - context: The session context captured at the start of the call, or
     ///     `nil` on a bare session, where the stream is drained and no event
     ///     is posted.
+    ///   - clock: The clock the interval of a collection sleeps on: the clock
+    ///     of the runner.
     private static func reportOutput(
-        of stream: ShellOutputChunkStream, to context: ToolContext?
+        of stream: ShellOutputChunkStream, to context: ToolContext?, on clock: any Clock<Duration>
     ) async {
+        let collector = OutputProgressCollector(context: context, clock: clock)
         for await event in stream {
-            switch event.kind {
-            case .output(let source, let bytes):
-                let text = String(decoding: bytes, as: UTF8.self)
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !text.isEmpty else { continue }
-                await context?.progress("\(name(of: source)): \(text)")
-            case .gap(let source, let droppedByteCount):
-                await context?.progress(
-                    "\(name(of: source)): \(droppedByteCount) bytes of output went away")
-            case .completed:
-                continue
-            }
+            await collector.collect(event)
         }
-    }
-
-    /// What one output stream of a child is called in a `progress` event.
-    ///
-    /// - Parameter source: The stream a chunk came from.
-    /// - Returns: The name the event carries.
-    private static func name(of source: ShellOutputStream) -> String {
-        switch source {
-        case .stdout: return "stdout"
-        case .stderr: return "stderr"
-        }
+        await collector.finish()
     }
 
     /// Posts the one terminal event of a run.

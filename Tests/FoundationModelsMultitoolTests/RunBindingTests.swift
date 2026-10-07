@@ -79,7 +79,7 @@ struct RunBindingTests {
         // each inner call also reaches the session as a progress event, with
         // the output of that call as its detail.
         #expect(
-            Set(await recordedOperationEvents(of: run, ofKind: .progress).map(\.detail))
+            Set(await settledOperationEvents(of: run, ofKind: .progress).map(\.detail))
                 == ["alpha ran", "beta ran", "alpha-result", "beta-result"])
     }
 
