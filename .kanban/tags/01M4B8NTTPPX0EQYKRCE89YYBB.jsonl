@@ -1,0 +1,1 @@
+{"id":"01M4B8NTTPY4YBCCY4RGN7EPZ7","timestamp":"2026-10-07T13:26:05.398954Z","op":"create","item_id":"01M4B8NTTPPX0EQYKRCE89YYBB","forward_patch":"--- original\n+++ modified\n@@ -0,0 +1,2 @@\n+color: e36209\n+tag_name: shell\n","reverse_patch":"--- original\n+++ modified\n@@ -1,2 +0,0 @@\n-color: e36209\n-tag_name: shell\n","transaction_id":null}

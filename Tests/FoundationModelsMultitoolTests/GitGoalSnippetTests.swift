@@ -15,8 +15,8 @@ import Testing
 /// snippet diffs it against HEAD.
 ///
 /// The test reads only a temporary repository and starts no other process,
-/// thus it is a unit test. The live model scenarios of `IntegrationTests/`
-/// read the same repository.
+/// thus it is a unit test. The live model scenario of `IntegrationTests/`
+/// reads the same repository.
 @Suite("GitGoalSnippetTests")
 struct GitGoalSnippetTests {
 
@@ -33,7 +33,7 @@ struct GitGoalSnippetTests {
     /// function.
     @Test("the goal snippet gives the branch and one diff that names the renamed function")
     func theGoalSnippetGivesTheBranchAndTheDiff() async throws {
-        let (repository, _) = try GitScenarioHistory.make()
+        let repository = try GitScenarioHistory.make()
         let registry = try MultiTool.Builder().withGit(root: repository.workDirectory).buildRegistry()
 
         let output = try await MultiTool(registry: registry).call(arguments: RunCodeArguments(code: Self.goalSnippet))
