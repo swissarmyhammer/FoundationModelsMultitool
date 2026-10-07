@@ -273,20 +273,20 @@ private struct YAMLEventReader {
         case .alias(let id):
             return try expand(alias: id, remainingDepth: remainingDepth)
         case .scalar(let scalar):
-            if !isTaggedAlready, let tag = Self.localTag(scalar.tag) {
-                return try tagged(tag, at: &position, remainingDepth: remainingDepth)
+            guard !isTaggedAlready, let localTag = Self.localTag(scalar.tag) else {
+                return try Self.value(of: scalar, isTaggedAlready: isTaggedAlready)
             }
-            return try Self.value(of: scalar, isTaggedAlready: isTaggedAlready)
+            return try tagged(localTag, at: &position, remainingDepth: remainingDepth)
         case .sequenceStart(let tag):
-            if !isTaggedAlready, let tag = Self.localTag(tag) {
-                return try tagged(tag, at: &position, remainingDepth: remainingDepth)
+            guard !isTaggedAlready, let localTag = Self.localTag(tag) else {
+                return .sequence(try sequence(at: &position, remainingDepth: remainingDepth))
             }
-            return .sequence(try sequence(at: &position, remainingDepth: remainingDepth))
+            return try tagged(localTag, at: &position, remainingDepth: remainingDepth)
         case .mappingStart(let tag):
-            if !isTaggedAlready, let tag = Self.localTag(tag) {
-                return try tagged(tag, at: &position, remainingDepth: remainingDepth)
+            guard !isTaggedAlready, let localTag = Self.localTag(tag) else {
+                return .mapping(try mapping(at: &position, remainingDepth: remainingDepth))
             }
-            return .mapping(try mapping(at: &position, remainingDepth: remainingDepth))
+            return try tagged(localTag, at: &position, remainingDepth: remainingDepth)
         case .void:
             return .null
         case .sequenceEnd, .mappingEnd:
@@ -371,10 +371,15 @@ private struct YAMLEventReader {
 
     /// The value of a scalar: `visit_scalar` in `de.rs`.
     private static func value(of scalar: YAMLScalarEvent, isTaggedAlready: Bool) throws(YAMLLoadError) -> YAMLValue {
+        guard let tag = scalar.tag, !isTaggedAlready else { return try untaggedValue(of: scalar) }
+        return try value(of: scalar.value, coreTag: tag)
+    }
+
+    /// The value of a scalar with no tag, or with a tag that a tagged value
+    /// above it already holds: a quoted scalar is a text, and a plain scalar
+    /// is read with ``YAMLScalarReading``.
+    private static func untaggedValue(of scalar: YAMLScalarEvent) throws(YAMLLoadError) -> YAMLValue {
         let text = scalar.value
-        if let tag = scalar.tag, !isTaggedAlready {
-            return try value(of: text, coreTag: tag)
-        }
         guard scalar.isPlain else { return .string(text) }
         return try value(ofUntagged: YAMLScalarReading(text), text: text)
     }

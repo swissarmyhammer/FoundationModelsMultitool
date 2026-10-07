@@ -89,10 +89,10 @@ enum EntityNameReader {
     /// reader for the kind of `node` answers, and else the first identifier
     /// among the named children.
     static func name<Node: CodeSyntaxNode>(of node: Node, source: [UInt8]) -> String? {
-        if let nameNode = node.child(byFieldName: nameField) {
-            return text(of: nameNode, source: source)
+        guard let nameNode = node.child(byFieldName: nameField) else {
+            return declaredName(of: node, source: source) ?? firstIdentifierName(of: node, source: source)
         }
-        return declaredName(of: node, source: source) ?? firstIdentifierName(of: node, source: source)
+        return text(of: nameNode, source: source)
     }
 
     /// The entity type of a Python decorated definition: the type of the
@@ -159,11 +159,11 @@ enum EntityNameReader {
         node.namedChildren.lazy
             .filter { $0.kind != templateParameterListKind }
             .compactMap { child -> String? in
-                if let nameNode = child.child(byFieldName: nameField) {
-                    return text(of: nameNode, source: source)
+                guard let nameNode = child.child(byFieldName: nameField) else {
+                    let declarator = child.child(byFieldName: declaratorField)
+                    return declarator.flatMap { declaratorName(of: $0, source: source) }
                 }
-                let declarator = child.child(byFieldName: declaratorField)
-                return declarator.flatMap { declaratorName(of: $0, source: source) }
+                return text(of: nameNode, source: source)
             }
             .first
     }
@@ -241,9 +241,17 @@ enum DeclaringCallReader {
     private static func name<Node: CodeSyntaxNode>(
         declaredBy keyword: String, arguments: Node, source: [UInt8]
     ) -> String? {
-        if let fixedName = fixedNameByKeyword[keyword] {
-            return fixedName
+        guard let fixedName = fixedNameByKeyword[keyword] else {
+            return argumentName(declaredBy: keyword, arguments: arguments, source: source)
         }
+        return fixedName
+    }
+
+    /// The name that the keyword `keyword`, which has no fixed name,
+    /// declares with the arguments `arguments`.
+    private static func argumentName<Node: CodeSyntaxNode>(
+        declaredBy keyword: String, arguments: Node, source: [UInt8]
+    ) -> String? {
         if aliasNamedKeywords.contains(keyword) {
             return firstAliasOrIdentifier(in: arguments, source: source)
         }

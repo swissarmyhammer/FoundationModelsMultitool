@@ -75,7 +75,7 @@ private struct YAMLWideScalarMask {
         var used: Set<Unicode.Scalar> = []
         Self.collectScalars(of: value, into: &used)
         let wide = used.filter { $0.value >= Self.firstWideScalar }.sorted { $0.value < $1.value }
-        let free = Self.privateUseScalars.lazy.compactMap(Unicode.Scalar.init).filter { !used.contains($0) }
+        let free = Self.privateUseScalars.lazy.compactMap(Unicode.Scalar.init(_:)).filter { !used.contains($0) }
         let pairs = Array(zip(wide, free))
         masks = Dictionary(uniqueKeysWithValues: pairs)
         originals = Dictionary(uniqueKeysWithValues: pairs.map { ($1, $0) })

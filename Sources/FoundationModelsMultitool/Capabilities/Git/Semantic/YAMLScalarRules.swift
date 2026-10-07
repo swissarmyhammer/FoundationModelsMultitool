@@ -107,13 +107,21 @@ enum YAMLScalarRules {
     /// The integer reading of `text`, or `nil`: `visit_int` in `de.rs`. It
     /// tries a `u64`, an `i64`, a `u128`, and an `i128`, in that order.
     static func integer(_ text: String) -> YAMLScalarReading? {
-        if let value: UInt64 = unsignedInteger(text) {
-            return .unsigned(value)
-        }
-        if let value: Int64 = negativeInteger(text) {
-            // `-0` and `-0x0` read as zero, which `From<i64>` makes positive.
-            return value < 0 ? .negative(value) : .unsigned(UInt64(value))
-        }
+        guard let value: UInt64 = unsignedInteger(text) else { return signedInteger(text) }
+        return .unsigned(value)
+    }
+
+    /// The integer reading of `text` when it is not a `u64`: an `i64`, else
+    /// a `u128` or an `i128`, else `nil`.
+    private static func signedInteger(_ text: String) -> YAMLScalarReading? {
+        guard let value: Int64 = negativeInteger(text) else { return wideInteger(text) }
+        // `-0` and `-0x0` read as zero, which `From<i64>` makes positive.
+        return value < 0 ? .negative(value) : .unsigned(UInt64(value))
+    }
+
+    /// ``YAMLScalarReading/wideInteger`` when `text` is a `u128` or an
+    /// `i128`, else `nil`.
+    private static func wideInteger(_ text: String) -> YAMLScalarReading? {
         let wideUnsigned: UInt128? = unsignedInteger(text)
         let wideNegative: Int128? = negativeInteger(text)
         return wideUnsigned != nil || wideNegative != nil ? .wideInteger : nil
@@ -125,9 +133,8 @@ enum YAMLScalarRules {
         for (prefix, radix) in radixPrefixes {
             guard let rest = utf8Suffix(of: unpositive, after: prefix) else { continue }
             guard !startsWithSign(rest) else { return nil }
-            if let value: T = rustInteger(rest, radix: radix) {
-                return value
-            }
+            guard let value: T = rustInteger(rest, radix: radix) else { continue }
+            return value
         }
         guard !startsWithSign(unpositive), !isDigitsButNotNumber(text) else { return nil }
         return rustInteger(unpositive, radix: NumberRadix.decimal)
@@ -137,9 +144,8 @@ enum YAMLScalarRules {
     private static func negativeInteger<T: FixedWidthInteger>(_ text: String) -> T? {
         for (prefix, radix) in radixPrefixes {
             guard let rest = utf8Suffix(of: text, after: "-" + prefix) else { continue }
-            if let value: T = rustInteger("-" + rest, radix: radix) {
-                return value
-            }
+            guard let value: T = rustInteger("-" + rest, radix: radix) else { continue }
+            return value
         }
         guard !isDigitsButNotNumber(text) else { return nil }
         return rustInteger(text, radix: NumberRadix.decimal)
@@ -240,12 +246,12 @@ enum RustDecimalSyntax {
         if let first = bytes.first, first == UInt8(ascii: "+") || first == UInt8(ascii: "-") {
             bytes = bytes.dropFirst()
         }
-        let integerDigits = bytes.prefix(while: isDigit).count
+        let integerDigits = bytes.prefix(while: isDigit(_:)).count
         bytes = bytes.dropFirst(integerDigits)
         var fractionDigits = 0
         if bytes.first == UInt8(ascii: ".") {
             bytes = bytes.dropFirst()
-            fractionDigits = bytes.prefix(while: isDigit).count
+            fractionDigits = bytes.prefix(while: isDigit(_:)).count
             bytes = bytes.dropFirst(fractionDigits)
         }
         guard integerDigits + fractionDigits > 0 else { return false }
@@ -254,7 +260,7 @@ enum RustDecimalSyntax {
             if let sign = bytes.first, sign == UInt8(ascii: "+") || sign == UInt8(ascii: "-") {
                 bytes = bytes.dropFirst()
             }
-            let exponentDigits = bytes.prefix(while: isDigit).count
+            let exponentDigits = bytes.prefix(while: isDigit(_:)).count
             guard exponentDigits > 0 else { return false }
             bytes = bytes.dropFirst(exponentDigits)
         }

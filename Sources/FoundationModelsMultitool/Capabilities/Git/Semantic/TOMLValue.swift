@@ -188,15 +188,19 @@ enum JSONText {
     /// - Parameter text: The text.
     /// - Returns: The quoted text.
     static func quoted(_ text: String) -> String {
-        "\"" + text.unicodeScalars.map(escapedText).joined() + "\""
+        RustText.quoted(text, escapingEach: Self.escapedText(of:))
     }
 
     /// The text of one scalar in a JSON string: its short escape, its
     /// `\u00XX` escape, or the scalar itself.
     private static func escapedText(of scalar: Unicode.Scalar) -> String {
-        if let escape = shortEscapes[scalar] {
-            return escape
-        }
+        guard let escape = shortEscapes[scalar] else { return controlEscapedText(of: scalar) }
+        return escape
+    }
+
+    /// The text of one scalar that has no short escape in a JSON string: its
+    /// `\u00XX` escape below a space, or the scalar itself.
+    private static func controlEscapedText(of scalar: Unicode.Scalar) -> String {
         guard scalar.value < firstPlainScalar else { return String(scalar) }
         let hex = String(scalar.value, radix: NumberRadix.hexadecimal)
         return "\\u00" + String(repeating: "0", count: controlEscapeDigits - hex.count) + hex
@@ -236,13 +240,13 @@ struct TOMLTimeSpellings {
     /// - Parameter source: The TOML text.
     init(source: String) {
         spellings = Dictionary(
-            TOMLSourceScanner.timeLiterals(in: Array(source.utf8)).map(Self.spelling),
+            TOMLSourceScanner.timeLiterals(in: Array(source.utf8)).map(Self.spelling(of:)),
             uniquingKeysWith: { first, _ in first })
     }
 
     /// The key and the spelling of one time of the source.
     private static func spelling(of literal: TOMLTimeLiteral) -> (TimeKey, String) {
-        let nanosecond = literal.fraction.map(nanoseconds)
+        let nanosecond = literal.fraction.map(Self.nanoseconds(_:))
         let key = TimeKey(
             hour: literal.hour, minute: literal.minute, second: literal.second ?? 0, nanosecond: nanosecond ?? 0)
         let text = timeText(hour: literal.hour, minute: literal.minute, second: literal.second, nanosecond: nanosecond)

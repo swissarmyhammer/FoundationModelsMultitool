@@ -151,7 +151,7 @@ private struct HeadingLine {
         let scalars = line.unicodeScalars
         let level = scalars.prefix { $0 == Self.mark }.count
         let rest = scalars.dropFirst(level)
-        let whitespaceCount = rest.prefix(while: RustText.isWhitespace).count
+        let whitespaceCount = rest.prefix(while: RustText.isWhitespace(_:)).count
         guard (1...Self.maximumLevel).contains(level), whitespaceCount > 0,
             rest.count > whitespaceCount || whitespaceCount > 1
         else { return nil }

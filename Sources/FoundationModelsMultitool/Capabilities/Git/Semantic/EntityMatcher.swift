@@ -102,9 +102,14 @@ enum EntityMatcher {
     static func defaultSimilarity(_ first: SemanticEntity, _ second: SemanticEntity) -> Double {
         let firstTokens = whitespaceTokens(of: first.content)
         let secondTokens = whitespaceTokens(of: second.content)
-        if let ratio = tokenCountRatio(firstTokens.count, secondTokens.count), ratio < similarityTokenRatioCutoff {
-            return 0
-        }
+        guard let ratio = tokenCountRatio(firstTokens.count, secondTokens.count), ratio < similarityTokenRatioCutoff
+        else { return jaccardIndex(firstTokens, secondTokens) }
+        return 0
+    }
+
+    /// The count of tokens in both lists divided by the count of tokens in
+    /// either list, each list read as a set. Two empty lists give 0.
+    private static func jaccardIndex(_ firstTokens: [String], _ secondTokens: [String]) -> Double {
         let firstSet = Set(firstTokens)
         let secondSet = Set(secondTokens)
         let unionCount = firstSet.union(secondSet).count

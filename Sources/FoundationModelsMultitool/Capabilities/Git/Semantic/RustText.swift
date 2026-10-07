@@ -44,7 +44,7 @@ enum RustText {
     /// - Parameter text: The text to trim.
     /// - Returns: The trimmed text.
     static func trimmedStart(_ text: some StringProtocol) -> String {
-        String(String.UnicodeScalarView(text.unicodeScalars.drop(while: isWhitespace)))
+        String(String.UnicodeScalarView(text.unicodeScalars.drop(while: isWhitespace(_:))))
     }
 
     /// `text` with no whitespace at its end: the Rust `str::trim_end`.
@@ -62,7 +62,7 @@ enum RustText {
     /// - Parameter text: The text to test.
     /// - Returns: `true` for an empty text and for a text of whitespace.
     static func isBlank(_ text: some StringProtocol) -> Bool {
-        text.unicodeScalars.allSatisfy(isWhitespace)
+        text.unicodeScalars.allSatisfy(isWhitespace(_:))
     }
 
     /// The short escapes of the Rust `Debug` of a `str`: `"`, `\`, newline,
@@ -88,16 +88,34 @@ enum RustText {
     /// - Parameter text: The text.
     /// - Returns: The quoted text.
     static func debugQuoted(_ text: String) -> String {
-        "\"" + text.unicodeScalars.map(debugText).joined() + "\""
+        quoted(text, escapingEach: Self.debugText(of:))
+    }
+
+    /// `text` in quote marks, with each scalar replaced by its escaped text.
+    ///
+    /// The Rust `Debug` of a `str` and the JSON string of serde_json both
+    /// use this function. Only the escape rule of one scalar is different.
+    ///
+    /// - Parameters:
+    ///   - text: The text.
+    ///   - escapedText: The escape rule: the text of one scalar in the
+    ///     quoted text.
+    /// - Returns: The quoted text.
+    static func quoted(_ text: String, escapingEach escapedText: (Unicode.Scalar) -> String) -> String {
+        "\"" + text.unicodeScalars.map(escapedText).joined() + "\""
     }
 
     /// The text of one scalar in the Rust `Debug` of a `str`: its short
     /// escape, its `\u{<hex>}` escape, or the scalar itself.
     private static func debugText(of scalar: Unicode.Scalar) -> String {
-        if let escape = debugShortEscapes[scalar] {
-            return escape
-        }
-        if !debugPrintableASCII.contains(scalar.value) && needsUnicodeEscape(scalar) {
+        guard let escape = debugShortEscapes[scalar] else { return unicodeDebugText(of: scalar) }
+        return escape
+    }
+
+    /// The text of one scalar that has no short escape in the Rust `Debug`
+    /// of a `str`: its `\u{<hex>}` escape, or the scalar itself.
+    private static func unicodeDebugText(of scalar: Unicode.Scalar) -> String {
+        guard debugPrintableASCII.contains(scalar.value) || !needsUnicodeEscape(scalar) else {
             return "\\u{" + String(scalar.value, radix: NumberRadix.hexadecimal) + "}"
         }
         return String(scalar)

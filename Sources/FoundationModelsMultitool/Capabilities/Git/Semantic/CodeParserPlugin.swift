@@ -67,7 +67,7 @@ struct CodeParserPlugin: SemanticParserPlugin {
         let tree = parser.parse(tree: nil as Tree?, encoding: TSInputEncodingUTF8) { offset, _ in
             offset < data.count ? data[offset...] : nil
         }
-        return tree?.rootNode.map(TreeSitterSyntaxNode.init)
+        return tree?.rootNode.map(TreeSitterSyntaxNode.init(node:))
     }
 }
 
@@ -92,14 +92,14 @@ struct TreeSitterSyntaxNode: CodeSyntaxNode {
     var endRow: Int { Int(node.pointRange.upperBound.row) }
 
     var children: [TreeSitterSyntaxNode] {
-        (0..<node.childCount).compactMap { node.child(at: $0) }.map(Self.init)
+        (0..<node.childCount).compactMap { node.child(at: $0) }.map(Self.init(node:))
     }
 
     var namedChildren: [TreeSitterSyntaxNode] {
-        (0..<node.namedChildCount).compactMap { node.namedChild(at: $0) }.map(Self.init)
+        (0..<node.namedChildCount).compactMap { node.namedChild(at: $0) }.map(Self.init(node:))
     }
 
     func child(byFieldName name: String) -> TreeSitterSyntaxNode? {
-        node.child(byFieldName: name).map(Self.init)
+        node.child(byFieldName: name).map(Self.init(node:))
     }
 }

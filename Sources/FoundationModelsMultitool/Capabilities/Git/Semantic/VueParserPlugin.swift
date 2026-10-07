@@ -284,7 +284,7 @@ private struct OpeningTag {
     private static func isOpening(_ tag: SingleFileComponentTag, of line: String) -> Bool {
         let prefix = "<\(tag.rawValue)".utf8
         guard line.utf8.starts(with: prefix) else { return false }
-        return line.utf8.dropFirst(prefix.count).first.map(tagNameTerminators.contains) ?? true
+        return line.utf8.dropFirst(prefix.count).first.map(tagNameTerminators.contains(_:)) ?? true
     }
 
     /// The value of `name="…"` (or `name='…'`) in `line`: one pass of

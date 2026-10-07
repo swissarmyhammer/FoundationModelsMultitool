@@ -64,10 +64,10 @@ struct ParserRegistry: Sendable {
     /// - Returns: The plugin of the extension of the path, else the
     ///   fallback plugin, else `nil`.
     func plugin(forFilePath filePath: String) -> (any SemanticParserPlugin)? {
-        if let index = pluginIndexByExtension[Self.fileExtension(of: filePath)] {
-            return plugins[index]
+        guard let index = pluginIndexByExtension[Self.fileExtension(of: filePath)] else {
+            return plugin(withID: Self.fallbackPluginID)
         }
-        return plugin(withID: Self.fallbackPluginID)
+        return plugins[index]
     }
 
     /// The first plugin with the id `id`: `get_plugin_by_id` in

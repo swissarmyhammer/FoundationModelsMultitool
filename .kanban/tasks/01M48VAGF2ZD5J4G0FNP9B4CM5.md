@@ -102,6 +102,54 @@ comments:
     - evidence: one local commit, subject "refactor: fix 12 review findings in git semantic parsers". It holds NumberRadix.swift, the changed files in Capabilities/Git/Semantic/, and the .kanban/ changes. No build product is staged. No push was done.
     - next: review. Read the sha with `git log -1`. The sha is not in this comment, because the comment is part of the commit.
   timestamp: 2026-10-07T02:09:54.532171+00:00
+- actor: claude-code
+  id: 01m4a2e3qphjz560fyn8fengee
+  text: |-
+    ### review — findings
+    - evidence: `review sha HEAD~1..HEAD` (commit bb2d8f7). The commit renames no file. Counts: 5 findings, 5 confirmed, 1 refuted. All 12 items of the 2026-10-06 20:29 section are checked. New open items: RustText.swift:91, RustText.swift:97, TOMLValue.swift:191 (duplication), TOMLValue.swift:191 (idioms), TOMLValue.swift:239.
+    - next: Fix the 5 items in the section "Review Findings (2026-10-06 21:10)". Then commit and review again. The task stays in `review`.
+  timestamp: 2026-10-07T02:17:46.486369+00:00
+- actor: claude-code
+  id: 01m4a2ekac7ydnw8cvh3z296ga
+  text: |-
+    ### finish iteration 2 — findings
+    - implement: changed — 9 source files (NumberRadix.swift new, 8 changed); 12 findings of 2026-10-06 20:29 checked
+    - test: green — swift test, 2186 passed in 189 suites; IntegrationTests build complete
+    - commit: bb2d8f7
+    - review: findings — RustText.swift:91, RustText.swift:97, TOMLValue.swift:191 (duplication), TOMLValue.swift:191 (idioms), TOMLValue.swift:239 (all in Sources/FoundationModelsMultitool/Capabilities/Git/Semantic/)
+  timestamp: 2026-10-07T02:18:02.444377+00:00
+- actor: claude-code
+  id: 01m4a2y2yre5jers3cnxk9rp7q
+  text: |-
+    The review findings of 2026-10-06 21:10 are corrected. Each cause is removed from every Swift file in Capabilities/Git/Semantic/.
+    - Shared quote function: `RustText.quoted(_:escapingEach:)`. `RustText.debugQuoted` calls it with `Self.debugText(of:)`. `JSONText.quoted` calls it with `Self.escapedText(of:)`. No other copy of the quote-and-escape logic stays. New test file Tests/FoundationModelsMultitoolTests/RustTextTests.swift (4 tests: the shared function, the empty text, the Rust Debug escapes, the serde_json escapes). RED: "type 'RustText' has no member 'quoted'". GREEN: 4 of 4 pass.
+    - Labeled function references: RustText (`isWhitespace(_:)` two times), TOMLValue (`Self.spelling(of:)`, `Self.nanoseconds(_:)`), VueParserPlugin (`tagNameTerminators.contains(_:)`), MarkdownParserPlugin (`RustText.isWhitespace(_:)`), YAMLEmitter (`Unicode.Scalar.init(_:)`), CodeParserPlugin (`TreeSitterSyntaxNode.init(node:)`, `Self.init(node:)` three times), YAMLScalarRules (`isDigit(_:)` three times).
+    - Early-return `if let` changed to `guard let`: RustText.debugText (new helper `unicodeDebugText(of:)`), JSONText.escapedText (new helper `controlEscapedText(of:)`), YAMLScalarRules.integer (new helpers `signedInteger`, `wideInteger`) and the two radix loops (`else { continue }`), YAMLLoader `value(at:...)` (three switch cases) and `value(of:isTaggedAlready:)` (new helper `untaggedValue(of:)`), ParserRegistry.plugin(forFilePath:), EntityMatcher.defaultSimilarity (new helper `jaccardIndex`), EntityNameReader.name(of:), templateDeclarationName, and DeclaringCallReader.name(declaredBy:) (new helper `argumentName(declaredBy:...)`).
+    - Not changed, on purpose: `first(where: isClosing)` in VueParserPlugin and `map(escapedText)` in the shared function. Each is a closure value (a local constant and a parameter), not a declared function, so it has no argument labels to write. `if let end = ... { index = end; continue }` in TOMLSourceScanner is a loop step, not an early return. The other `if let` in the folder do not return.
+  timestamp: 2026-10-07T02:26:29.976480+00:00
+- actor: claude-code
+  id: 01m4a2y7va8yp127734v29efe1
+  text: |-
+    ### implement — changed
+    - evidence: 13 files — Git/Semantic/RustText.swift, TOMLValue.swift, YAMLScalarRules.swift, YAMLLoader.swift, EntityNameReader.swift, EntityMatcher.swift, ParserRegistry.swift, CodeParserPlugin.swift, VueParserPlugin.swift, MarkdownParserPlugin.swift, YAMLEmitter.swift, Tests/FoundationModelsMultitoolTests/RustTextTests.swift (new), and this task (5 of 5 findings of 2026-10-06 21:10 checked, 17 of 17 in total). `swift build --build-tests`: Build complete, only the known mlx-swift "missing creator" note. `swift test`: 2190 tests in 190 suites passed, all goldens included.
+    - next: /review. Not committed and not pushed.
+  timestamp: 2026-10-07T02:26:34.986634+00:00
+- actor: claude-code
+  id: 01m4a32d3zcs88453ff7thpfts
+  text: |-
+    ### test — green
+    - evidence: swift build --build-tests: build complete. swift test: 2190 tests in 190 suites passed, 0 failed, 0 skipped. IntegrationTests swift build --build-tests: build complete.
+    - warnings: only the known mlx-swift_Cmlx.bundle "missing creator for mutated node" warning. It is a dependency warning from before this change.
+    - next: review
+  timestamp: 2026-10-07T02:28:51.455485+00:00
+- actor: claude-code
+  id: 01m4a32y76b2766epfjh0enz55
+  text: |-
+    ### commit — changed
+    - evidence: One commit holds the fixes for the 5 review findings of 2026-10-06 21:10. Subject: "refactor: fix 5 review findings in git semantic parsers". The sha is in git log. An amend would change it, so this comment does not name it.
+    - files: 11 Swift files in Capabilities/Git/Semantic, new RustTextTests.swift, and .kanban changes. No build product is staged (.build is ignored).
+    - next: review
+  timestamp: 2026-10-07T02:29:08.966465+00:00
 depends_on:
 - 01M48V9CB973V4MPTJV8GEXZCT
 position_column: doing
@@ -154,4 +202,17 @@ Make fixtures with the sah tool `git` op `get diff` (inline mode, `language` = `
 - [x] `Sources/FoundationModelsMultitool/Capabilities/Git/Semantic/YAMLParserPlugin.swift:98` `swift/immutability` — Building a collection through a mutable accumulator in a loop should be replaced with `map`/`compactMap`. This code uses `var texts: [[UInt8]: (text: String, isSection: Bool)] = [:]` followed by a for loop that assigns to it. Rewrite using `Dictionary(uniqueKeysWithValues:)` with a map over `mapping.entries` instead of mutating a local dictionary in a loop.
 - [x] `Sources/FoundationModelsMultitool/Capabilities/Git/Semantic/YAMLScalarRules.swift:79` `code-hygiene/magic-numbers-swift` — Magic numbers should be replaced by named constants.
 - [x] `Sources/FoundationModelsMultitool/Capabilities/Git/Semantic/YAMLValue.swift:157` `code-hygiene/dead-code-swift` — function.constructor `init(_:)` is unused.
-- [x] `Sources/FoundationModelsMultitool/Capabilities/Git/Semantic/YAMLValue.swift:186` `code-hygiene/magic-numbers-swift` — Magic numbers should be replaced by named constants. #git
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Git/Semantic/YAMLValue.swift:186` `code-hygiene/magic-numbers-swift` — Magic numbers should be replaced by named constants.
+
+## Review Findings (2026-10-06 21:10)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 9 file(s) reviewed, 2 not reviewed.
+
+> 2 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 2 file(s)
+
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Git/Semantic/RustText.swift:91` `swift/idioms` — Function reference passed to `map` does not match the labeled parameter syntax. The function `debugText(of:)` defined at line 96 has a labeled parameter `of`, but the call `map(debugText)` omits the label and partial application syntax required for labeled parameters. Use `map { Self.debugText(of: $0) }` or `map(Self.debugText(of:))` to correctly pass the labeled function to map.
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Git/Semantic/RustText.swift:97` `swift/optionals` — Early-return optional binding uses `if let` instead of `guard let`. The pattern at lines 97-99 binds an optional and returns early; this should use `guard let` to keep the happy path unindented and state the requirement at the head of the scope. Refactor to `guard let escape = debugShortEscapes[scalar] else { /* handle the rest of the logic */ }` followed by `return escape`.
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Git/Semantic/TOMLValue.swift:191` `duplication/duplication` — Changed-set duplicate of `RustText.debugQuoted`: identical function body except for the name of the escaping helper passed to map. This is one function with an argument waiting to be extracted. Extract a generic function (e.g. `quotedWith`) that takes the text and a callback for escaping each scalar, call it from both `RustText.debugQuoted` and `TOMLValue.quoted`, and delete the duplicate body. This eliminates the risk of the two diverging if one copy is updated and the other is not.
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Git/Semantic/TOMLValue.swift:191` `swift/idioms` — Function reference passed to `map` does not match the labeled parameter syntax. The function `escapedText(of:)` defined at line 196 has a labeled parameter `of`, but the call `map(escapedText)` omits the label and partial application syntax required for labeled parameters. Use `map { escapedText(of: $0) }` or `map(escapedText(of:))` to correctly pass the labeled function to map.
+- [x] `Sources/FoundationModelsMultitool/Capabilities/Git/Semantic/TOMLValue.swift:239` `swift/idioms` — Function reference passed to `map` does not match the labeled parameter syntax. The function `spelling(of:)` defined at line 244 has a labeled parameter `of`, but the call `map(Self.spelling)` omits the label and partial application syntax required for labeled parameters. Use `map { Self.spelling(of: $0) }` or `map(Self.spelling(of:))` to correctly pass the labeled function to map. #git
