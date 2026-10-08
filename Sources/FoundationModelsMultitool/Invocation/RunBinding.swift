@@ -41,9 +41,13 @@ import FoundationModelsExtras
 ///
 /// ``invoke(_:arguments:journalOp:)`` mounts each inner call on the shared
 /// engine as a `RunToCompletionRunner` — "two mounts, one engine, two
-/// policies." Only the outer `runCode` call goes to the background; an inner
-/// call runs to completion, bounded by the clock of the outer `runCode` call,
-/// unless the called tool declares a mount of its own. The engine still owns
+/// policies." An inner call runs to completion, bounded by the clock of the
+/// outer `runCode` call, unless the called tool declares a mount of its own.
+/// An inner call of a tool that declares the background, for example
+/// `tools.shell.execute`, waits for the settle period of this binding, and
+/// gives the snippet its own result when its run settles in that time. The
+/// engine ends that wait before the settle period of the outer `runCode` call
+/// ends, so the snippet can still use the result. The engine still owns
 /// correlation, events, and outcomes for inner calls: it mints each one a
 /// fresh `completionToken` and re-binds `ToolContext.$current` explicitly
 /// around it, which is what lets two parallel calls under a snippet's
@@ -54,7 +58,8 @@ struct RunBinding: Sendable {
     /// `tools.*` calls run to completion — the constraint boundary
     /// (eventplan.md "The constraint boundary, and the escape hatch"): a
     /// snippet never receives a pending envelope in place of a value it
-    /// awaited, unless the tool it called declares the background for itself.
+    /// awaited, unless the tool it called declares the background for itself
+    /// and its run takes longer than the settle period.
     ///
     /// The mount states no clock. Each call path has one outer, tool-level
     /// timeout, and for an inner call that is the clock of the enclosing
@@ -66,8 +71,9 @@ struct RunBinding: Sendable {
     static let innerCallMount = ToolMount(mode: .runToCompletion)
 
     /// The ambient context captured at the top of the enclosing `runCode`
-    /// invocation — its session identity, mailbox, upstream sink, and the
-    /// outer run's `completionToken`.
+    /// invocation — its session identity, mailbox, upstream sink, the outer
+    /// run's `completionToken`, and the settle period of each inner
+    /// background call.
     let context: ToolContext
 
     /// The mount policy every inner `tools.*` call is wrapped with. Always a
@@ -85,8 +91,14 @@ struct RunBinding: Sendable {
     /// Read this only while the ambient binding is still in scope: at the
     /// top of `MultiTool.call(arguments:)`, never from inside a `tools.*`
     /// call's own `Task`.
-    static var ambient: RunBinding? {
-        ToolContext.current.map { RunBinding(context: $0) }
+    ///
+    /// - Parameter grace: The settle period of each inner background call, in
+    ///   seconds: `MultiToolConfiguration.inlineSettleGrace` of the enclosing
+    ///   `runCode`. The host configures it, thus an inner call waits as long
+    ///   as the `runCode` call itself.
+    /// - Returns: The binding, or `nil` outside a session.
+    static func ambient(settlingWithin grace: TimeInterval) -> RunBinding? {
+        ToolContext.current.map { RunBinding(context: $0.settling(within: grace)) }
     }
 
     /// Creates a binding over a captured ambient context.

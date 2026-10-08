@@ -35,8 +35,8 @@ struct RouterSessionMountTests {
         #expect(!direct.isEmpty)
     }
 
-    @Test("the mount returns a token where a direct call returns the value")
-    func runCodeBackgroundsThroughTheMount() async throws {
+    @Test("a short snippet returns the same value through the mount as it does direct")
+    func runCodeIsTransparentThroughTheMountInsideTheSettlePeriod() async throws {
         let context = try await makeOuterRunContext()
         let registry = try Self.registry()
         let runCode = MultiTool(registry: registry)
@@ -48,20 +48,14 @@ struct RouterSessionMountTests {
         )
         let throughMount = try await mounted.call(arguments: RunCodeArguments(code: snippet))
 
-        // Transparency through the mount can never hold again, and this is the
-        // rule that replaced it: mounted, `runCode` always backgrounds and
-        // always hands back an envelope carrying a completion token, whatever
-        // the mount's own wait clock says (task ^cv98vff). It is the stronger
-        // claim — it defines the mount, where the old one only said the mount
-        // changed nothing.
-        //
-        // This snippet is over at once, so the envelope is the settled one:
-        // it carries the same value the direct call returned, in its `detail`
-        // field, and the model reads it with no mail (see
-        // `InlineSettleGraceTests`). The envelope is still the answer, and
-        // that is what this test holds.
-        #expect(PendingRunEnvelope.isRendered(text: throughMount))
-        #expect(throughMount != direct)
+        // Mounted, `runCode` is a background tool, but a background call goes
+        // to the background only when it takes longer than its settle period
+        // (the rule of the user). This snippet is over at once, so the mount
+        // gives its own result, the same as the direct call, and no envelope.
+        // A snippet that runs longer gets a pending envelope: see
+        // `runCodeEnvelopeTellsTheModelToEndItsAnswer` below.
+        #expect(!PendingRunEnvelope.isRendered(text: throughMount))
+        #expect(throughMount == direct)
         // Called directly, with no session and no background runs to post into,
         // the same snippet still returns its own value. Both halves of one rule.
         //

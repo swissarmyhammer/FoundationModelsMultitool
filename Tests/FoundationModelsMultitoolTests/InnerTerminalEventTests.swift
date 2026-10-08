@@ -84,8 +84,11 @@ struct InnerTerminalEventTests {
         let context = try await makeOuterRunContext()
         let sink = RecordingEventSink()
         let registry = try MultiTool.Builder().addTool(FailingTool()).buildRegistry()
+        // A settle period of 0 sends the run to the background at once, so that
+        // the run plane keeps a terminal event for the runCode completion token.
+        let runCode = MultiTool(registry: registry, configuration: MultiToolConfiguration(inlineSettleGrace: 0))
         let mounted = try #require(
-            context.mount(MultiTool(registry: registry), as: .synchronous, postingTo: sink)
+            context.mount(runCode, as: .synchronous, postingTo: sink)
                 as? any Tool<RunCodeArguments, String>
         )
 

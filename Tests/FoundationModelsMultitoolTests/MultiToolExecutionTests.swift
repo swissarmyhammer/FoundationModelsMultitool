@@ -517,7 +517,7 @@ struct MultiToolExecutionTests {
     func sandboxWaitIsRemovedAndTheRunComesBackAsOneMail() async throws {
         let gate = ReleaseGate()
         let prompts = MailProbePrompts()
-        let refused = OSAllocatedUnfairLock<PendingRunEnvelope?>(initialState: nil)
+        let refused = OSAllocatedUnfairLock<String?>(initialState: nil)
         let collectorMount = try #require(
             try await makeOuterRunContext().mount(
                 Self.gatedRunCode(gate: gate, inlineSettleGrace: Self.collectorGrace), as: .synchronous)
@@ -536,8 +536,7 @@ struct MultiToolExecutionTests {
                 try await runCode.call(arguments: RunCodeArguments(code: gatedCodeSnippet)))
             let collector = "return (await wait(\"\(pending.completionToken)\", "
                 + "\(Self.removedWaitSecondsArgument))).detail;"
-            let answer = try mailProbeEnvelope(
-                try await collectorMount.call(arguments: RunCodeArguments(code: collector)))
+            let answer = try await collectorMount.call(arguments: RunCodeArguments(code: collector))
             refused.withLock { $0 = answer }
             await gate.release()
             return "the result comes back later"
@@ -549,9 +548,9 @@ struct MultiToolExecutionTests {
         let all = await prompts.awaiting(3)
 
         let collector = try #require(refused.withLock { $0 })
-        #expect(!collector.pending)
-        #expect(collector.detail?.contains(SandboxGlobalError.waitRemoved.description) == true)
-        #expect(collector.detail?.contains(mailProbeResultCode) == false)
+        #expect(!PendingRunEnvelope.isRendered(text: collector))
+        #expect(collector.contains(SandboxGlobalError.waitRemoved.description))
+        #expect(!collector.contains(mailProbeResultCode))
         #expect(Self.laterPromptsCarryingTheResult(all).count == 1)
     }
 

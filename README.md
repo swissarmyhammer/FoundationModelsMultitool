@@ -225,14 +225,22 @@ says what each one guarantees.
 
 ## Background runs and mail delivery
 
-On a `RoutedSession`, each `runCode` call goes to the background. The call
-first waits for its snippet for `MultiToolConfiguration.inlineSettleGrace`
-(default `MultiToolConfiguration.defaultInlineSettleGrace`, 5 seconds):
+On a `RoutedSession`, a background call goes to the background only when it
+takes longer than its settle period. A `runCode` call first waits for its
+snippet for `MultiToolConfiguration.inlineSettleGrace` (default
+`ToolMount.defaultInlineSettleGrace` of FoundationModelsExtras, 6 seconds).
+Each other background tool of the session, for example
+`tools.shell.execute`, waits for the period of `SessionConfiguration`, and an
+inner `tools.*` call of a snippet waits for the period of its `runCode`:
 
-- A snippet that settles in that time gives its result in the tool output,
-  with `pending: false`. No mail comes for that run.
-- A snippet that is still running gives a pending envelope with a
-  `completionToken`. The model ends its answer. When the snippet settles,
+- A call that settles in that time gives its own result, the same as a
+  synchronous call. No envelope comes, and no mail comes for that run. In a
+  snippet, `tools.shell.execute` gives an object, so `r.exitCode`,
+  `r.output` and `r.commandID` are values.
+- A call that is still running gives a pending result. In a snippet it is the
+  object `{pending: true, completionToken, next}`, and `tools.shell.execute`
+  also gives `commandID`. A top-level call gives a pending envelope with a
+  `completionToken`. The model ends its answer. When the run settles,
   Router puts its result into the session outbox as mail, and that mail
   starts the next submission of the session. The model answers from that
   message.

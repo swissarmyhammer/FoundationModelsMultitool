@@ -592,7 +592,7 @@ public struct IntegrationDelayedEchoOutput {
 /// How long `IntegrationDelayedEchoTool` holds its value before it settles.
 ///
 /// **The delay must be longer than `runCode`'s inline settle grace**
-/// (`MultiToolConfiguration.defaultInlineSettleGrace`, five seconds). A run
+/// (`MultiToolConfiguration.defaultInlineSettleGrace`, which is `ToolMount.defaultInlineSettleGrace`). A run
 /// that settles inside the grace gives its result inline, and the deferred
 /// path goes untested (task `^nhxj8hx`). This delay keeps the run in the
 /// `running` state past the instant its `runCode` call answers, so the result

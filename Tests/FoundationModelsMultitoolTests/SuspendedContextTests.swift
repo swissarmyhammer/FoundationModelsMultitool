@@ -11,8 +11,8 @@ import Testing
 /// The suspended JSC contexts that mount governs are eventplan.md § "The
 /// constraint boundary, and the escape hatch".
 ///
-/// A mounted `runCode` call hands back a pending envelope at once and keeps
-/// running: the pending items are the promise the snippet is awaiting *and*
+/// A mounted `runCode` call whose snippet runs longer than its settle period
+/// hands back a pending envelope and keeps running: the pending items are the promise the snippet is awaiting *and*
 /// the suspended JSC context holding it. Everything here is about that state —
 /// that the interpreter's own watchdog does not kill the context at the instant
 /// the call returns, that the run settles into exactly one terminal event when
@@ -49,7 +49,7 @@ struct SuspendedContextTests {
             == MultiToolConfiguration.default.executionTimeLimit)
     }
 
-    @Test("every mounted runCode call answers the pending envelope at once, whatever mount the site applies")
+    @Test("a mounted runCode call with no settle period answers the pending envelope at once, whatever mount the site applies")
     func everyMountedCallAnswersThePendingEnvelope() async throws {
         // The harshest site there is: run to completion under no clock. The
         // tool's own declaration wins over it. No inline wait: the stock
@@ -147,7 +147,9 @@ struct SuspendedContextTests {
 
     @Test("cancel(completionToken) on a suspended snippet tears its context down within the time limit")
     func cancellingASuspendedRunTearsDownItsContext() async throws {
-        let harness = try await Self.makeHarness()
+        // A settle period of 0 sends each call to the background at once, so
+        // that the cancel snippet also gives a token and a terminal event.
+        let harness = try await Self.makeHarness(configuration: MultiToolConfiguration(inlineSettleGrace: 0))
         let rendered = try await harness.mounted.call(
             arguments: RunCodeArguments(code: Self.gatedSnippet)
         )
@@ -156,11 +158,10 @@ struct SuspendedContextTests {
         // A second snippet, in the same session and through the same mounted
         // tool, cancels the first through the sandbox's own `cancel()` global.
         //
-        // That second snippet goes to the background as well — every mounted
-        // `runCode` call does — so the call hands back its own token and its
-        // answer is collected from the background run rather than read off the
-        // call. The cancel still happens on its own run; only where its result
-        // is read from changed.
+        // The settle period is 0, thus that second snippet goes to the
+        // background as well. The call hands back its own token, and the test
+        // reads its answer from the background run, not from the call. The
+        // cancel still occurs on its own run.
         let cancelRendered = try await harness.mounted.call(
             arguments: RunCodeArguments(code: "return await cancel(\"\(token)\");")
         )
@@ -251,8 +252,11 @@ struct SuspendedContextTests {
     ///     `.default`, so what the tests prove holds at stock settings.
     ///   - mount: the site's own mount, which `runCode`'s declaration overrides.
     /// - Returns: the harness.
+    /// The default configuration has no settle period. Each test here is
+    /// about a snippet that is still running after its call answered, and a
+    /// gated snippet would otherwise hold each call for the whole period.
     private static func makeHarness(
-        configuration: MultiToolConfiguration = .default,
+        configuration: MultiToolConfiguration = MultiToolConfiguration(inlineSettleGrace: 0),
         mount: ToolMount = .synchronous
     ) async throws -> Harness {
         let latch = ToolReleaseLatch()

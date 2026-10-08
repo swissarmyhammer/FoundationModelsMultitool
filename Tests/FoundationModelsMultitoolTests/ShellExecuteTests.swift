@@ -660,15 +660,18 @@ struct ShellExecuteTests {
 
     // MARK: - The background run
 
-    /// The verb declares the background mount, thus every mounted call answers
-    /// at once with the pending envelope, and the command goes on behind it.
-    /// A short command is the sharpest case: the body could finish in
-    /// microseconds, and the call still answers the envelope, never the report.
-    @Test("a mounted execute call always answers with the pending envelope, and the report settles behind it")
-    func aMountedCallAlwaysAnswersWithThePendingEnvelope() async throws {
+    /// The verb declares the background mount. With no settle period, a
+    /// mounted call answers at once with the pending envelope, and the command
+    /// goes on behind it. A short command is the sharpest case: the body could
+    /// finish in microseconds, and the call still answers the envelope, never
+    /// the report.
+    @Test("a mounted execute call with no settle period answers with the pending envelope, and the report settles behind it")
+    func aMountedCallWithNoSettlePeriodAnswersWithThePendingEnvelope() async throws {
         let state = try makeState()
         let context = try await makeOuterRunContext()
-        let engine = ShellRunPlane.mounted(makeVerb(over: state), inheriting: context)
+        // A settle period of 0 sends the call to the background at once, so that
+        // the short command settles behind the pending envelope.
+        let engine = ShellRunPlane.mounted(makeVerb(over: state), inheriting: context.settling(within: 0))
 
         let output = try await engine.call(
             arguments: ExecuteArguments(command: "echo \(Self.inlineMarker)"))
@@ -688,7 +691,8 @@ struct ShellExecuteTests {
     }
 
     /// The `wait` argument selected a block window. There is no block window:
-    /// a mounted call answers at once, so the schema offers no such choice.
+    /// the host sets the settle period of a mounted call, so the schema offers
+    /// no such choice.
     @Test("the rendered execute schema has no wait argument")
     func theRenderedSchemaHasNoWaitArgument() throws {
         let state = try makeState()
@@ -698,8 +702,9 @@ struct ShellExecuteTests {
         #expect(!schema.contains("\"wait\""), "schema was: \(schema)")
     }
 
-    /// The verb never blocks on its command: the call hands back the run's
-    /// identifier, and the builtins read the run from there.
+    /// The verb never blocks on its command past its settle period: the call
+    /// hands back the run's identifier, and the builtins read the run from
+    /// there.
     ///
     /// The command cannot end while the test runs, thus a call that returned
     /// at all did not block on it, and the run still stands on the run plane.
@@ -792,7 +797,9 @@ struct ShellExecuteTests {
     func anOverlongBackgroundRunGivesADetailWithinTheCap() async throws {
         let state = try makeState()
         let context = try await makeOuterRunContext()
-        let engine = ShellRunPlane.mounted(makeVerb(over: state), inheriting: context)
+        // A settle period of 0 sends the call to the background at once, so that
+        // the report comes back as the detail of the terminal event.
+        let engine = ShellRunPlane.mounted(makeVerb(over: state), inheriting: context.settling(within: 0))
         let command =
             "for i in $(seq \(Self.overlongLineCount)); do printf '%0\(Self.overlongLineLength)d\\n' 0; done"
 

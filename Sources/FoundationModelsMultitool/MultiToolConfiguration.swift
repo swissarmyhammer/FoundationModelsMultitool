@@ -53,6 +53,10 @@ public struct MultiToolConfiguration: Sendable, Equatable {
     /// background, and its result comes back to the session as mail. So the
     /// cost of a long snippet is this delay, one time, and nothing else.
     ///
+    /// The same value is the wait of each inner `tools.*` call of a background
+    /// tool, for example `tools.shell.execute`. An inner call that settles in
+    /// it gives the snippet its own result, so the snippet uses it at once.
+    ///
     /// The wait is not a second work clock. It never cancels a snippet and it
     /// never shortens ``executionTimeLimit``.
     public let inlineSettleGrace: TimeInterval
@@ -77,17 +81,18 @@ public struct MultiToolConfiguration: Sendable, Equatable {
     /// The stock wait before a `runCode` call answers — see
     /// ``inlineSettleGrace``.
     ///
-    /// Five seconds. It is long enough for the short snippets that are the
-    /// common case, and for many longer ones, to give their result in the
-    /// call itself. The cost: while the wait runs, the call is in-band, so a
-    /// snippet that does not settle holds the model for up to this time. A
-    /// host that needs the model free sooner sets a smaller value.
+    /// It is `ToolMount.defaultInlineSettleGrace` of FoundationModelsExtras,
+    /// and this package states no number of its own. Thus `runCode`, every
+    /// other background tool of a session, and each inner `tools.*` call of a
+    /// snippet wait for the same time when no host changes it. The rule is
+    /// the decision of the user: a background call goes to the background
+    /// only when it takes longer than this wait.
     ///
-    /// Router's `generation-queue.md` §5.5 rule 5 says to keep this wait
-    /// small, because it holds the model for every session on it. Five
-    /// seconds is a decision of the user (task `^q4jrnd0`), and it is the
-    /// value this package states against that rule.
-    public static let defaultInlineSettleGrace: TimeInterval = 5
+    /// The cost: while the wait runs, the call is in-band, so a snippet that
+    /// does not settle holds the model for up to this time
+    /// (Router's `generation-queue.md` §5.5 rule 5). A host that needs the
+    /// model free sooner sets a smaller value.
+    public static let defaultInlineSettleGrace: TimeInterval = ToolMount.defaultInlineSettleGrace
 
     /// The stock limits. ``defaultExecutionTimeLimit`` and
     /// ``defaultInlineSettleGrace`` give the sizing for the work clock and the

@@ -123,14 +123,16 @@ once, on every call. The wrapper's `Output` is the rendered value. As a
 result, a typed wrapped `Output` does not need to represent the pending case.
 The model reads text on the wire in each case.
 
-A call waits a short time for its own run before it answers.
-`MultiToolConfiguration.inlineSettleGrace` sets how long, and the default is
-five seconds (`MultiToolConfiguration.defaultInlineSettleGrace`). A run that
-settles inside that time answers with the same envelope, but with
-`pending: false`, the run's `outcome`, and its `detail`. The model reads the
-result in the tool output it already has, and no mail comes for that run. A
-run that is still going answers with the pending envelope, as before. There is
-one envelope. Only the `pending` field changes what the model does.
+A call waits for its own run before it answers: a background call goes to the
+background only when it takes longer than its settle period (the rule of the
+user: "background should mean 'if it takes longer than grace, background'").
+`ToolMount.defaultInlineSettleGrace` of FoundationModelsExtras is the one
+default, 6 seconds. A host sets its own value through
+`SessionConfiguration.inlineSettleGrace` and
+`MultiToolConfiguration.inlineSettleGrace`. A run that settles inside that time
+answers with its own result, the same as a synchronous call, and no mail comes
+for that run. A run that is still going answers with the pending envelope, as
+before.
 
 A background run speaks to its calling model with five signals:
 
@@ -461,7 +463,7 @@ The snippet awaits it. The control flow gets the answer. No OS thread is held
 while the user thinks.
 
 The model's turn is also not held. The outer `runCode` run returns the
-pending envelope at once. The pending items are a
+pending envelope when its settle period ends. The pending items are a
 promise plus a suspended JSC context. `respond` resolves them, and the snippet
 continues from the next statement.
 

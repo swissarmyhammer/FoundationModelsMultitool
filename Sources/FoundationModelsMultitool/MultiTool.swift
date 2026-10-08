@@ -241,25 +241,22 @@ extension MultiTool {
 /// The arguments `MultiTool`'s `runCode` call accepts: the JavaScript snippet
 /// to run against `tools.*`, and nothing else.
 ///
-/// **Every mounted `runCode` call goes to the background, and it answers with
-/// one envelope.** The call first waits for its own snippet for
+/// **A mounted `runCode` call goes to the background only when its snippet
+/// takes longer than the wait.** The call first waits for its own snippet for
 /// `MultiToolConfiguration.inlineSettleGrace` (see
-/// `MultiTool.inlineSettleGrace`). The `pending` field of the envelope tells
-/// the model what to do:
+/// `MultiTool.inlineSettleGrace`):
 ///
-/// - A snippet that settles inside that wait answers with `pending: false`,
-///   the outcome of the run, and its result in `detail`. The model answers
-///   from that result, and no mail comes for that run.
-/// - A snippet that is still running answers with `pending: true` and a
-///   completion token. A model that needs the result ends its answer, and the
-///   settled run comes back to the session as mail; a model that does not need
-///   it lets the snippet run (task `^cv98vff`).
+/// - A snippet that settles inside that wait answers with its own result, the
+///   same as a synchronous call. No envelope comes, and no mail comes for that
+///   run.
+/// - A snippet that is still running answers with a pending envelope and a
+///   completion token. Its `next` sentence
+///   (`MultiTool.collectInstruction(forCompletionToken:)`) tells the model to
+///   end its answer: the settled run comes back to the session as mail. A
+///   model that does not need the result lets the snippet run (task
+///   `^cv98vff`).
 ///
-/// The envelope shape is the same in the two cases, and its `next` sentence
-/// states the action (`MultiTool.resultInstruction(forCompletionToken:)`
-/// and `MultiTool.collectInstruction(forCompletionToken:)`). So the model
-/// reads one field and one sentence, and not a race it cannot observe. The
-/// wait is set by the host, never by the model.
+/// The wait is set by the host, never by the model.
 ///
 /// This schema carries no clock, and must not grow one back. A `waitSeconds`
 /// would give the model the wait that the host sets, and a `timeout` would let
@@ -515,7 +512,7 @@ public struct MultiTool: Tool {
         // `tools.*` call below runs in a `Task` the interpreter's promise pump
         // starts from a JSC callback, outside every task tree, where
         // `ToolContext.current` is `nil` — see `RunBinding`.
-        let binding = RunBinding.ambient
+        let binding = RunBinding.ambient(settlingWithin: configuration.inlineSettleGrace)
         // One notice chain per invocation, for the same reason: `notify()`
         // and `progress()` post through the captured context, never an
         // inherited one. `nil` when this run has no session — both globals
@@ -1242,7 +1239,7 @@ public struct MultiTool: Tool {
         let content = try ArgumentMarshaler.marshalArguments(argumentObject)
         let output = try await ToolInvoker.invoke(
             tool, content: content, binding: binding, journalOp: journalOp)
-        return try ArgumentMarshaler.renderOutput(output)
+        return try await SnippetOutput.value(of: output, from: tool)
     }
 
     // MARK: - help()/docs() globals (plan.md M7)

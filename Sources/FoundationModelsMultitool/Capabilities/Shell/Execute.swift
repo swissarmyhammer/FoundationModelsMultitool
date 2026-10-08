@@ -34,9 +34,12 @@
 //
 // **The background is a declaration of the verb, and never a choice of the
 // call.** A command can run for hours, so the verb declares the background
-// mount through `BackgroundTool`, and every mounted call answers
-// the pending envelope at once. There is no argument that selects a block
-// window, because there is no block window. The verb never tracks a run
+// mount through `BackgroundTool`. A mounted call waits for the settle period
+// that the host configured (`ToolMount.defaultInlineSettleGrace` when the host
+// set none). A command that ends in that time answers with its report, the same
+// as a synchronous call. Only a command that runs longer answers with the
+// pending envelope, and its report comes back later as mail. There is no
+// argument that selects the wait, because the host owns it. The verb never tracks a run
 // itself — `RunPlane.start` is SPI of FoundationModelsExtras, and no code here
 // names it. It DECLARES what kind of run this is and how to stop one, and the engine
 // tracks it on those terms. See the extension below.
@@ -49,7 +52,11 @@
 // the run plane — to every tool with another output. A verb that must reach the
 // run plane therefore has one available output type. The answer is rendered
 // through `ResultRenderer`, exactly as `runCode` renders its own, thus the model
-// reads one format for both.
+// reads one format for both. A snippet does not read that text: the verb is a
+// `SnippetOutputShaping` tool, so an inner `tools.shell.execute` call gives the
+// snippet an object (`commandID`, `exitCode`, `durationMs`, `lines`, `output`),
+// or `{pending: true, commandID, next}` for a command that runs longer than the
+// settle period.
 //
 // A request the verb cannot make stays IN BAND, as a `correction`. It is never
 // thrown: a blank command, a command over the length cap, an environment that
@@ -122,9 +129,12 @@ extension Execute: BackgroundTool {
     /// mount's mode alone, and `RunBinding.innerCallMount` — the mount every
     /// inner `tools.*` call travels under — is `.runToCompletion`.
     /// `ToolMounting` states that a declared mount wins over the composition
-    /// site, and this
-    /// is that declaration: every mounted call answers the pending envelope at
-    /// once, and the command goes on behind it.
+    /// site, and this is that declaration. Each mounted call waits for the
+    /// settle period of the host: the verb states no `inlineSettleGrace` of
+    /// its own, so the default of `BackgroundTool` reads the configured value.
+    /// A command that ends in that time answers with its report. Only a
+    /// command that runs longer answers with the pending envelope, and goes on
+    /// behind it.
     ///
     /// The work clock is deliberately absent. A shell run already carries its
     /// own hard limit — the `timeout` argument, which `ShellRunner` arms as a
@@ -194,6 +204,57 @@ extension Execute: BackgroundTool {
     }
 }
 
+// MARK: - The value a snippet gets
+
+extension Execute: SnippetOutputShaping {
+
+    /// The value an inner `tools.shell.execute` call gives a snippet: the
+    /// report as an object, a correction as an object, or
+    /// `{pending: true, commandID, completionToken, next}` for a command that
+    /// runs longer than the settle period.
+    ///
+    /// The report text is capped by `ResultRenderer`, and a cut text is not
+    /// JSON. The sorted keys put `commandID` first, thus a cut keeps it, and
+    /// the fields are then read again from the store, where the whole run
+    /// lives. So a snippet gets an object for every run, however long its
+    /// output is.
+    ///
+    /// - Parameter output: The text the call gave.
+    /// - Returns: The value for the snippet.
+    func snippetValue(ofOutput output: String) async -> InterpreterValue {
+        if let envelope = PendingRunEnvelope.makeDecoded(fromRendered: output) {
+            var fields = envelope.snippetFields
+            fields[Self.commandIDField] = .string(envelope.completionToken)
+            return .object(fields)
+        }
+        if let decoded = try? JSONDecoder().decode(InterpreterValue.self, from: Data(output.utf8)),
+            case .object = decoded
+        {
+            return decoded
+        }
+        guard let commandID = Self.leadingCommandID(in: output) else {
+            return .string(output)
+        }
+        return .object(await Self.reportFields(of: commandID, in: runner.state))
+    }
+
+    /// The name of the field that holds the identifier of a run.
+    static let commandIDField = "commandID"
+
+    /// The `commandID` at the start of a rendered report, or `nil`.
+    ///
+    /// - Parameter output: The rendered report, maybe cut.
+    /// - Returns: The identifier of the run.
+    private static func leadingCommandID(in output: String) -> String? {
+        let prefix = "{\"\(commandIDField)\":\""
+        guard output.hasPrefix(prefix) else { return nil }
+        let rest = output.dropFirst(prefix.count)
+        guard let end = rest.firstIndex(of: "\"") else { return nil }
+        let commandID = String(rest[..<end])
+        return commandID.isEmpty ? nil : commandID
+    }
+}
+
 // MARK: - Running one command
 
 extension Execute {
@@ -207,8 +268,9 @@ extension Execute {
     private static let successExitCode = 0
 
     /// Runs one command and answers with the report of the run. Mounted, the
-    /// engine hands the model the pending envelope at once and delivers this
-    /// report as the terminal detail when the command ends.
+    /// engine gives this report to the caller when the command ends inside the
+    /// settle period. Otherwise it gives the pending envelope, and delivers
+    /// this report as the terminal detail when the command ends.
     ///
     /// **The ambient context is read one time, at the start.** eventplan.md
     /// § "The ambient context" makes that rule mandatory: work that inherits
@@ -218,9 +280,9 @@ extension Execute {
     /// later identifier comes from.
     ///
     /// **There are two paths, and the ambient context decides between them.**
-    /// Mounted under Router, the engine parks the run, the model gets the
-    /// pending envelope at once, and the `commandID` is the completion token
-    /// the context carries. On a bare `LanguageModelSession` there is no
+    /// Mounted under Router, the engine parks the run, the caller gets the
+    /// report or, after the settle period, the pending envelope, and the
+    /// `commandID` is the completion token the context carries. On a bare `LanguageModelSession` there is no
     /// context: the verb mints the `commandID` itself, runs the command to
     /// completion and returns the report — the same text the terminal detail
     /// carries when mounted. Every post through the absent context is a no-op.
@@ -488,7 +550,7 @@ extension Execute {
         let tail = stored.suffix(tailLineCount).map { "\($0.lineNumber): \($0.text)" }
 
         var fields: [String: InterpreterValue] = [
-            "commandID": .string(completionToken),
+            commandIDField: .string(completionToken),
             "status": .string((record?.status ?? .running).rawValue),
             "lines": .number(Double(stored.count)),
             "durationMs": .number(Double(record?.durationMs ?? 0)),
@@ -788,11 +850,12 @@ struct Execute: Tool {
         other program. It is also the whole of the reach this surface has to version control: \
         run git status through it to see which files you have changed, and git diff to see what \
         changed in them. Use it as well to delete a file or a whole directory, to move one, and \
-        to copy one. It starts \
-        the command in the background and answers at once with its completion token. When the \
-        command ends, its report carries the tail of its output, its status and its exit code, \
-        and it comes back to you as a new message after you end your answer. commandID in the \
-        report is the run's completion token: \
+        to copy one. A command that ends within a few seconds answers with its report at once: \
+        the tail of its output, its status and its exit code. A command that runs longer \
+        continues in the background: the answer is pending, and its report comes back to you as \
+        a new message after you end your answer. In a snippet the report is an object, so read \
+        r.exitCode, r.output and r.commandID; a pending result is {pending: true, commandID}. \
+        commandID is the run's completion token: \
         pass it to tools.shell.getLines to read everything the command printed so far, and to \
         tools.shell.grepHistory to search it. Give timeout to bound the command, \
         workingDirectory to run it somewhere else, and environment as a JSON object of string \

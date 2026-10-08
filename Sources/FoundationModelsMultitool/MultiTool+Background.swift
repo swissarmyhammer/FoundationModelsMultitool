@@ -11,10 +11,16 @@ import FoundationModelsExtras
 // No number limits how many runs are alive at once: a run that waits holds
 // no thread, only its JSC context in memory (see `JSCInterpreter`).
 //
-// There is exactly one background point per snippet: the outer `runCode` call.
-// Inner `tools.*` calls run on the same engine under `RunBinding.innerCallMount`,
-// which runs to completion, so no snippet ever branches on a pending envelope
-// mid-code.
+// Each background call waits for its settle period, and goes to the background
+// only when it takes longer (the rule of the user: "background should mean 'if
+// it takes longer than grace, background'"). The outer `runCode` call waits for
+// `configuration.inlineSettleGrace`. Inner `tools.*` calls run on the same
+// engine under `RunBinding.innerCallMount`, which runs to completion; an inner
+// call of a tool that declares the background, for example
+// `tools.shell.execute`, waits for the same period, and ends its wait before the
+// period of the outer call ends. So a short inner call gives the snippet its own
+// result, and only an inner call that runs long gives the snippet a pending
+// object.
 
 extension MultiTool: BackgroundTool {
     /// The `next` sentence of the pending envelope a background `runCode`
@@ -51,27 +57,6 @@ extension MultiTool: BackgroundTool {
             + "Do not call runCode to wait or to check; the result comes to you without a call."
     }
 
-    /// The `next` sentence of the envelope a `runCode` call hands the model
-    /// when the snippet settled inside ``inlineSettleGrace``: the result is
-    /// beside the sentence, so answer from it now.
-    ///
-    /// It is the counterpart of ``collectInstruction(forCompletionToken:)``,
-    /// and it says the opposite thing for the opposite condition. The pending
-    /// sentence tells the model to end its answer and read the result from a
-    /// later message. This one tells it that no later message comes: the run
-    /// plane of FoundationModelsExtras withdraws the staged mail of a run
-    /// whose result goes out inline (`BackgroundToolRunner.settledEnvelope`),
-    /// so the result is in this tool output and nowhere else.
-    ///
-    /// The last clause is there because a model that holds the result has
-    /// still answered "it will come back to me later" (task `wnfzwxg`).
-    public func resultInstruction(forCompletionToken completionToken: String) -> String {
-        "The snippet is complete and its result is the detail field above. "
-            + "Answer from that result now. "
-            + "No other message about completionToken \"\(completionToken)\" comes, "
-            + "so never reply that the result will arrive later."
-    }
-
     /// How long a `runCode` call waits for its own snippet before it answers
     /// with a completion token: `configuration.inlineSettleGrace`.
     ///
@@ -82,15 +67,18 @@ extension MultiTool: BackgroundTool {
     /// wait the common snippet answers with its own result, and the mail is
     /// left for the snippet that really is long.
     ///
-    /// A snippet still running when the wait elapses answers with the pending
-    /// envelope, exactly as every `runCode` call did before. Nothing is
+    /// A snippet that settles in the wait answers with its own result, the
+    /// same as a synchronous call, and no mail comes for it: the engine of
+    /// FoundationModelsExtras withdraws the staged mail of that run. A
+    /// snippet still running when the wait elapses answers with the pending
+    /// envelope. Nothing is
     /// cancelled and no work is lost. The cost is the delay itself, and it is
     /// an in-band wait: it holds the model for every session on it
     /// (`generation-queue.md` §5.5 rule 5).
     ///
     /// The host sets the value, or takes
     /// `MultiToolConfiguration.defaultInlineSettleGrace`.
-    public var inlineSettleGrace: TimeInterval? {
+    public var inlineSettleGrace: TimeInterval {
         configuration.inlineSettleGrace
     }
 

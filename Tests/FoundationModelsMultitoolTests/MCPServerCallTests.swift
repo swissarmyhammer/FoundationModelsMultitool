@@ -301,8 +301,11 @@ struct MCPServerCallTests {
             .addTool(Self.probe(server, tool: Self.droppingToolName))
             .buildRegistry()
         let context = try await makeOuterRunContext()
+        // A settle period of 0 sends the run to the background at once, so that
+        // the drop settles a background run and not the call itself.
+        let runCode = MultiTool(registry: registry, configuration: MultiToolConfiguration(inlineSettleGrace: 0))
         let mounted = try #require(
-            context.mount(MultiTool(registry: registry), as: .synchronous)
+            context.mount(runCode, as: .synchronous)
                 as? any FoundationModels.Tool<RunCodeArguments, String>
         )
 

@@ -7,14 +7,13 @@ import Testing
 @testable import MultitoolTestSupport
 
 /// Exercises the wait a `runCode` call makes before it answers: the knob that
-/// sets it, the settled envelope a quick snippet comes back in, and the
-/// pending envelope a host that turns the wait off still gets.
+/// sets it, the own result a quick snippet comes back with, and the pending
+/// envelope a host that turns the wait off still gets.
 ///
-/// The behaviour under test belongs to Router's `BackgroundToolRunner`, and
-/// this package owns the two things that drive it: the value in
-/// ``MultiToolConfiguration/inlineSettleGrace`` and the sentence in
-/// ``MultiTool/resultInstruction(forCompletionToken:)``. So each test here
-/// goes through the session mount, which is where the two meet.
+/// The behaviour under test belongs to the `BackgroundToolRunner` of
+/// FoundationModelsExtras, and this package owns the value that drives it:
+/// ``MultiToolConfiguration/inlineSettleGrace``. So each test here goes
+/// through the session mount, which is where the two meet.
 @Suite("runCode answers a short snippet with its own result")
 struct InlineSettleGraceTests {
     /// The snippet every test runs: one `tools.*` call, over at once.
@@ -64,13 +63,10 @@ struct InlineSettleGraceTests {
 
     // MARK: - The knob
 
-    @Test("the stock wait is five seconds, and a host's own value reaches the tool")
+    @Test("the stock wait is the one hosting default, and a host's own value reaches the tool")
     func configurationCarriesTheWait() throws {
-        #expect(MultiToolConfiguration.default.inlineSettleGrace == 5)
-        #expect(
-            MultiToolConfiguration.default.inlineSettleGrace
-                == MultiToolConfiguration.defaultInlineSettleGrace
-        )
+        #expect(MultiToolConfiguration.default.inlineSettleGrace == ToolMount.defaultInlineSettleGrace)
+        #expect(MultiToolConfiguration().inlineSettleGrace == ToolMount.defaultInlineSettleGrace)
 
         let registry = try Self.registry()
         let configured = MultiTool(
@@ -78,7 +74,7 @@ struct InlineSettleGraceTests {
         )
 
         #expect(configured.inlineSettleGrace == 12)
-        #expect(MultiTool(registry: registry).inlineSettleGrace == 5)
+        #expect(MultiTool(registry: registry).inlineSettleGrace == ToolMount.defaultInlineSettleGrace)
     }
 
     @Test("a negative wait is clamped to no wait at all")
@@ -86,9 +82,9 @@ struct InlineSettleGraceTests {
         #expect(MultiToolConfiguration(inlineSettleGrace: -1).inlineSettleGrace == 0)
     }
 
-    // MARK: - The two envelopes
+    // MARK: - The own result and the pending envelope
 
-    @Test("a snippet that finishes inside the wait answers with its own result, and the run plane still holds that result")
+    @Test("a snippet that finishes inside the wait answers with its own result, with no envelope")
     func quickSnippetAnswersWithItsResult() async throws {
         let context = try await makeOuterRunContext()
         let runCode = MultiTool(registry: try Self.registry())
@@ -96,24 +92,8 @@ struct InlineSettleGraceTests {
 
         let rendered = try await mounted.call(arguments: RunCodeArguments(code: Self.quickSnippet))
 
-        let envelope = try Self.envelope(rendered)
-        #expect(!envelope.pending)
-        #expect(envelope.detail == Self.quickSnippetResult)
-        #expect(envelope.outcome == "succeeded")
-        #expect(
-            envelope.next == runCode.resultInstruction(forCompletionToken: envelope.completionToken)
-        )
-
-        // The snippet settled by itself, and the run plane keeps its terminal
-        // event, so a read of the token gives the same result.
-        let collected = await context.wait(
-            completionToken: envelope.completionToken, seconds: scriptedRunSettlementSeconds
-        )
-        guard case .settled(let terminal) = collected else {
-            Issue.record("the snippet never settled: \(collected)")
-            return
-        }
-        #expect(terminal.detail == Self.quickSnippetResult)
+        #expect(rendered == Self.quickSnippetResult)
+        #expect(!PendingRunEnvelope.isRendered(text: rendered))
     }
 
     /// The slow snippet runs on a mount with no wait, thus its call answers
@@ -144,12 +124,9 @@ struct InlineSettleGraceTests {
         #expect(slow.pending)
         try await TestPoll.waitUntil("the slow tool keeps every CPU busy") { hog.hasStarted }
 
-        let quick = try Self.envelope(
-            try await quickMount.call(arguments: RunCodeArguments(code: "return \"x\";"))
-        )
+        let quick = try await quickMount.call(arguments: RunCodeArguments(code: "return \"x\";"))
 
-        #expect(!quick.pending)
-        #expect(quick.detail == "\"x\"")
+        #expect(quick == "\"x\"")
         #expect(hog.isSpinning, "the quick snippet answered only after the slow tool stopped")
         latch.release()
         // The spin stops with the latch, and the slow snippet settles.
@@ -157,21 +134,6 @@ struct InlineSettleGraceTests {
         if case .settled = settled {} else {
             Issue.record("the slow snippet never settled: \(settled)")
         }
-    }
-
-    @Test("the settled sentence sends the model to its own detail, says that no other message comes, and names no wait tool")
-    func settledSentenceSendsTheModelToItsDetail() throws {
-        let completionToken = ToolContext.makeCompletionToken()
-
-        let sentence = MultiTool(registry: try Self.registry())
-            .resultInstruction(forCompletionToken: completionToken)
-
-        #expect(sentence.contains("detail field"))
-        #expect(sentence.contains("Answer from that result now"))
-        #expect(sentence.contains("No other message about completionToken"))
-        #expect(sentence.contains(completionToken))
-        #expect(sentence.contains("never reply that the result will arrive later"))
-        #expect(!sentence.contains("wait tool"))
     }
 
     @Test("the pending sentence tells the model that no runCode call waits for the result or checks it")
@@ -202,7 +164,6 @@ struct InlineSettleGraceTests {
 
         let envelope = try Self.envelope(rendered)
         #expect(envelope.pending)
-        #expect(envelope.detail == nil)
         #expect(
             envelope.next == runCode.collectInstruction(forCompletionToken: envelope.completionToken)
         )

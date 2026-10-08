@@ -1,5 +1,6 @@
 import Foundation
 import FoundationModels
+import FoundationModelsExtras
 import FoundationModelsRouter
 import os
 
@@ -68,6 +69,27 @@ typealias MailProbeStep = @Sendable (
     _ index: Int, _ runCode: any Tool<RunCodeArguments, String>
 ) async throws -> String
 
+/// One scripted submission that can call any mounted tool.
+///
+/// - Parameters:
+///   - index: The index of the submission, from `0`.
+///   - tools: The mounted tools, as the model would call them.
+/// - Returns: The answer text of the submission.
+typealias MailProbeToolsStep = @Sendable (_ index: Int, _ tools: [any Tool]) async throws -> String
+
+/// The ``MailProbeToolsStep`` that gives `step` the mounted `runCode`.
+///
+/// - Parameter step: The step that calls `runCode`.
+/// - Returns: The step over every mounted tool.
+func runCodeStep(_ step: @escaping MailProbeStep) -> MailProbeToolsStep {
+    { index, tools in
+        guard let runCode = tools.lazy.compactMap({ $0 as? any Tool<RunCodeArguments, String> }).first else {
+            throw MailProbeFailure.noRunCode
+        }
+        return try await step(index, runCode)
+    }
+}
+
 /// The prompts a ``MailProbeBackend`` got, in order.
 ///
 /// A `final class` behind a lock, because the backend and the test read and
@@ -121,7 +143,7 @@ final class MailProbeBackend: LanguageModelSessionBackend, Sendable {
     private let prompts: MailProbePrompts
 
     /// What each submission does.
-    private let step: MailProbeStep
+    private let step: MailProbeToolsStep
 
     /// What the session records as its transcript.
     private let entries = OSAllocatedUnfairLock<[Transcript.Entry]>(initialState: [])
@@ -132,7 +154,7 @@ final class MailProbeBackend: LanguageModelSessionBackend, Sendable {
     ///   - tools: The mounted tools, already wrapped by the engine.
     ///   - prompts: Where each prompt goes.
     ///   - step: What each submission does.
-    init(tools: [any Tool], prompts: MailProbePrompts, step: @escaping MailProbeStep) {
+    init(tools: [any Tool], prompts: MailProbePrompts, step: @escaping MailProbeToolsStep) {
         self.tools = tools
         self.prompts = prompts
         self.step = step
@@ -143,14 +165,10 @@ final class MailProbeBackend: LanguageModelSessionBackend, Sendable {
     ///
     /// - Parameter prompt: The prompt of the submission.
     /// - Returns: The answer of the step.
-    /// - Throws: ``MailProbeFailure/noRunCode`` when no mounted tool takes
-    ///   `RunCodeArguments`, and what the step throws.
+    /// - Throws: What the step throws.
     private func answer(_ prompt: String) async throws -> String {
         let index = prompts.record(prompt)
-        guard let runCode = tools.lazy.compactMap({ $0 as? any Tool<RunCodeArguments, String> }).first else {
-            throw MailProbeFailure.noRunCode
-        }
-        let answer = try await step(index, runCode)
+        let answer = try await step(index, tools)
         entries.withLock { all in
             all.append(.prompt(Transcript.Prompt(segments: [.text(Transcript.TextSegment(content: prompt))])))
             all.append(.response(Transcript.Response(segments: [.text(Transcript.TextSegment(content: answer))])))
@@ -206,7 +224,7 @@ struct MailProbeContainer: LoadedLLMContainer {
     let prompts: MailProbePrompts
 
     /// What each submission does.
-    let step: MailProbeStep
+    let step: MailProbeToolsStep
 
     func makeSession(instructions: String?) -> any LanguageModelSessionBackend {
         MailProbeBackend(tools: [], prompts: prompts, step: step)
@@ -244,7 +262,7 @@ struct MailProbeContainer: LoadedLLMContainer {
 func makeMailProbeSession(
     mounting runCode: MultiTool, prompts: MailProbePrompts, step: @escaping MailProbeStep
 ) async throws -> RoutedSession {
-    let loader = StubModelLoader(container: MailProbeContainer(prompts: prompts, step: step))
+    let loader = StubModelLoader(container: MailProbeContainer(prompts: prompts, step: runCodeStep(step)))
     return try await makeStubSession(
         mounting: [runCode], loader: loader, standardModel: ModelRef(stringLiteral: "stub/mailprobe-\(ULID.generate())")
     ).session
@@ -279,4 +297,31 @@ func mailProbeEnvelope(_ rendered: String) throws -> PendingRunEnvelope {
         throw MailProbeFailure.notAnEnvelope(rendered)
     }
     return try JSONDecoder().decode(PendingRunEnvelope.self, from: Data(rendered.utf8))
+}
+
+/// Makes a Router session over a ``MailProbeBackend`` that mounts `tools`,
+/// with `inlineSettleGrace` as the settle period of the session.
+///
+/// The session is made through `SessionConfiguration`, which is where a host
+/// sets the settle period of every background tool of the session.
+///
+/// - Parameters:
+///   - tools: The tools the session mounts.
+///   - inlineSettleGrace: The settle period of the session, in seconds. The
+///     default is the hosting default.
+///   - prompts: Where the backend records each prompt.
+///   - step: What each submission does.
+/// - Returns: The session.
+/// - Throws: What resolving the stub profile throws.
+func makeMailProbeSession(
+    mounting tools: [any Tool],
+    inlineSettleGrace: TimeInterval = ToolMount.defaultInlineSettleGrace,
+    prompts: MailProbePrompts,
+    step: @escaping MailProbeToolsStep
+) async throws -> RoutedSession {
+    let loader = StubModelLoader(container: MailProbeContainer(prompts: prompts, step: step))
+    let profile = try await makeStubProfile(
+        loader: loader, standardModel: ModelRef(stringLiteral: "stub/mailprobe-\(ULID.generate())"))
+    return profile.standard.makeSession(
+        configuration: SessionConfiguration(tools: tools, inlineSettleGrace: inlineSettleGrace))
 }

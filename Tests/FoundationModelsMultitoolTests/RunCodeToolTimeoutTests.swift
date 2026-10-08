@@ -192,9 +192,11 @@ struct RunCodeToolTimeoutTests {
     private static func mountedRunCode(
         registry: MultiTool.Registry, window: TimeInterval, on context: ToolContext
     ) throws -> any Tool<RunCodeArguments, String> {
+        // A settle period of 0 sends each run to the background at once, so that
+        // the terminal event of the run plane holds the outcome of the clock.
         let runCode = MultiTool(
             registry: registry,
-            configuration: MultiToolConfiguration(executionTimeLimit: window),
+            configuration: MultiToolConfiguration(executionTimeLimit: window, inlineSettleGrace: 0),
             interpreter: JSCInterpreter()
         )
         return try #require(context.mount(runCode, as: .synchronous) as? any Tool<RunCodeArguments, String>)
@@ -222,7 +224,10 @@ struct RunCodeToolTimeoutTests {
             ),
             window: stallWindowSeconds
         )
-        return try #require(context.mount(runCode, as: .synchronous) as? any Tool<RunCodeArguments, String>)
+        // A settle period of 0 sends each run to the background at once, so that
+        // the terminal event of the run plane holds the outcome of the clock.
+        return try #require(
+            context.settling(within: 0).mount(runCode, as: .synchronous) as? any Tool<RunCodeArguments, String>)
     }
 
     /// Runs a snippet that awaits a `tools.gated` call that never completes,
@@ -253,8 +258,8 @@ struct RunCodeToolTimeoutTests {
 
     /// Waits for the terminal event of the run that a mounted call started.
     ///
-    /// The call answers with the settled envelope or with the pending
-    /// envelope. The run plane keeps the terminal event in both cases.
+    /// The settle period of the call is 0, thus the call answers with the
+    /// pending envelope. The run plane keeps the terminal event of the run.
     ///
     /// - Parameters:
     ///   - rendered: The output of the mounted call.
