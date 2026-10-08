@@ -51,12 +51,13 @@ link Router.
 
 ## Capabilities
 
-Five capabilities ship with the package, each a set of ordinary `Tool`s you
+Six capabilities ship with the package, each a set of ordinary `Tool`s you
 add to a catalog like any other: **files** (read, edit, patch, search),
 **shell** (a sandboxed `execute` plus its history verbs), **web** (search the
 web and fetch a page), **git** (read the status, the history, and a semantic
-diff of a repository), and **MCP** (attach a stdio or HTTP server and register
-its catalog under a noun).
+diff of a repository), **environment** (read the environment variables, the
+operating system, and the date and time), and **MCP** (attach a stdio or HTTP
+server and register its catalog under a noun).
 
 Every shell command runs under a seatbelt sandbox, and a snippet reaches
 nothing but the tools you gave it. The guarantees and the escape hatches are
@@ -194,6 +195,42 @@ C#, Ruby, PHP, Swift, Elixir, and Bash. It reads these data formats: JSON,
 YAML, TOML, CSV, and Markdown. A Vue file gives its `<script>` block to the
 TypeScript or JavaScript parser. A file of each other type goes to the
 fallback plugin, which compares chunks of lines.
+
+### Environment
+
+The environment capability is off by default. Call `withEnvironment()` on the
+builder to mount it. The capability adds three verbs under
+`tools.environment`:
+
+| Verb | Arguments | Result |
+|---|---|---|
+| `tools.environment.variables` | `name?` or `prefix?` | the environment `variables` of the process, each with `name` and `value`, in name order. With no argument, each variable. With `name`, only the variable with that exact name. With `prefix`, each variable whose name starts with that text. The match is sensitive to case |
+| `tools.environment.os` | none | the platform `name`, the `version` (`major.minor.patch`), the `build` text, the processor `architecture`, the `hostName`, the `userName`, the `homeDirectory`, the `processorCount`, the `physicalMemoryBytes`, and the `locale` |
+| `tools.environment.now` | `timeZone?` | the date and the time now: `iso8601` (the local time with its offset), `utc`, `date` (`yyyy-MM-dd`), `time` (`HH:mm:ss`), `weekday`, `timeZone`, `utcOffset`, and `epochSeconds`. With no argument, the time zone of the session. With `timeZone`, that IANA time zone (for example `Europe/Paris`) |
+
+A snippet reads the date, the operating system, and the language variables:
+
+```js
+const { date, weekday, timeZone } = await tools.environment.now({});
+const { name, version } = await tools.environment.os({});
+const { variables } = await tools.environment.variables({ prefix: "LANG" });
+return { date, weekday, timeZone, os: `${name} ${version}`, variables };
+```
+
+These are the rules of the capability:
+
+- The capability is read-only. No verb changes the environment of the process.
+- Each verb reads the live value at each call. Thus a value that changes
+  between two calls shows in the second result.
+- A mistake that the model can correct (a `name` that is not set, `name` and
+  `prefix` together, or an unknown time zone) does not throw. It comes back
+  in the result as a `correction` field.
+- The text of `now` uses the Gregorian calendar and the `en_US_POSIX` locale.
+  Thus the text does not change with the locale of the user.
+- A second `withEnvironment()` call is a second claim on the noun
+  `environment`, and `buildRegistry()` fails.
+
+`EnvironmentCapability()` gives the same capability.
 
 ### Injected globals
 

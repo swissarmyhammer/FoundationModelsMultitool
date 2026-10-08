@@ -14,11 +14,27 @@ comments:
     - notes: no builder surface golden lists the environment verbs, thus only `verbNames` changed. Each format uses a new `DateFormatter` for each call (Gregorian calendar, `en_US_POSIX`), because `DateFormatter` is not `Sendable`. `epochSeconds` rounds down, thus an instant before 1970 gives the second that holds it (-0.5 s gives -1). The build prints the SwiftPM message `missing creator for mutated node` for the `mlx-swift_Cmlx.bundle`; it comes from the mlx dependency bundle, not from the source of this change.
     - next: /review
   timestamp: 2026-10-08T20:22:50.022660+00:00
+- actor: claude-code
+  id: 01m4ek8ew3f2qg8yb6vj5bcafa
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (e5b386d). 0 findings, 0 confirmed, 0 refuted. 7 pairs attempted, 0 failed. 4 source files reviewed. 4 .kanban files not reviewed (.reviewignore).
+    - next: The task moved to done.
+  timestamp: 2026-10-08T20:28:44.803678+00:00
+- actor: claude-code
+  id: 01m4ek8yq6smdtx0pgasqf37bw
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — 4 files, 7 new tests
+    - test: green — swift test, 2321 passed
+    - commit: e5b386d
+    - review: clean — 0 findings; task in done
+  timestamp: 2026-10-08T20:29:01.030672+00:00
 depends_on:
 - 01M4E1X8XTSWVC55RYD9P3E1NH
 - 01M4E1XR9RGN1BNPYHWDKT9H63
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffffca80
 title: Add the tools.environment.now verb for the date and the time
 ---
 ## What
