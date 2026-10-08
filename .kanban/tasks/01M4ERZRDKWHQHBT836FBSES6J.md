@@ -20,8 +20,24 @@ comments:
     - evidence: RED `optionalResultFieldIsDeclaredNullable` failed (declared `alert?: string`); GREEN passed. `swift build --build-tests` OK; `swift test` 2327 tests in 205 suites passed, 0 failures. Files: Sources/FoundationModelsMultitool/Surface/ToolAPIRenderer.swift, Sources/FoundationModelsMultitool/Surface/ToolSignature.swift, Tests/FoundationModelsMultitoolTests/ToolAPIRendererTests.swift, Tests/FoundationModelsMultitoolTests/Fixtures/ToolAPIRendererFixtures.swift.
     - next: /review
   timestamp: 2026-10-08T22:24:25.845740+00:00
-position_column: doing
-position_ordinal: '80'
+- actor: claude-code
+  id: 01m4et6j5g7nz44jbbess2egfh
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (77ad02c). 0 findings, 0 confirmed, 0 refuted. 7 validator runs, 0 failed. 4 source files reviewed. 4 .kanban files not reviewed (.reviewignore).
+    - next: none. The task moved to done.
+  timestamp: 2026-10-08T22:30:02.672436+00:00
+- actor: claude-code
+  id: 01m4et6zy48b0g2eee00dr2yys
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — ToolAPIRenderer.swift, ToolSignature.swift, 2 test files
+    - test: green — swift test, 2327 passed
+    - commit: 77ad02c
+    - review: clean — 0 findings; task in done
+  timestamp: 2026-10-08T22:30:16.772923+00:00
+position_column: done
+position_ordinal: ffffd180
 title: Declare an optional result field as `T | null` in the rendered `@returns` type
 ---
 ## What
