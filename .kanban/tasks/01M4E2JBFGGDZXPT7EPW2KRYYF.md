@@ -24,6 +24,33 @@ comments:
     - Follow-up: ^nk64a5s moves `GitScenarioTests` onto the shared check.
     - next: /review
   timestamp: 2026-10-08T20:54:15.586167+00:00
+- actor: claude-code
+  id: 01m4en6yghyxg2fkx0hrv29ynp
+  text: |-
+    ### review — findings
+    - evidence: `review sha HEAD~1..HEAD` — 1 finding (1 confirmed, 1 refuted). IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/EnvironmentScenarioTests.swift:129 `code-hygiene/magic-numbers-swift`.
+    - next: /implement on ^w2kryyf. Replace each magic number in the file with a named constant. Do not correct only the line in the finding.
+  timestamp: 2026-10-08T21:02:52.433497+00:00
+- actor: claude-code
+  id: 01m4en7bprjabzzqfke7ez76wk
+  text: |-
+    ### finish iteration 1 — findings
+    - implement: changed — 4 files under IntegrationTests/; live scenario passed (43.6 s)
+    - test: green — root swift test 2321 passed; IntegrationTests NoCorrectionCheckTests 3 passed, EnvironmentScenarioTests 5 passed (live, 27 s)
+    - commit: fb690e1
+    - review: findings — IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/EnvironmentScenarioTests.swift:129
+  timestamp: 2026-10-08T21:03:05.944836+00:00
+- actor: claude-code
+  id: 01m4eng6wep20gq2m9br6e628v
+  text: |-
+    ### implement — changed
+    - evidence: 1 file — IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/EnvironmentScenarioTests.swift. The literal `1_907_506_800` moved into the named constant `InjectedDate.secondsSince1970: TimeInterval`, and `instant` uses it.
+    - RED: swiftlint `no_magic_numbers` (allowed_numbers [0, 1, -1, 100]) over the 4 files of the task reported 1 violation, at EnvironmentScenarioTests.swift:129:54. The other 3 files (NoCorrectionCheckTests.swift, Support/GatedTurnScenario.swift, Support/ScenarioRunner.swift) had no violation. GREEN: the same run reports 0.
+    - Root: `swift build --build-tests` complete (only the SwiftPM "missing creator for mutated node" note from the mlx bundle, from before this change). `swift test`: 2321 tests in 203 suites passed.
+    - IntegrationTests: `swift build --build-tests` complete. `swift test --filter 'EnvironmentScenarioTests|NoCorrectionCheckTests'`: 8 tests in 3 suites passed (live scenario 26.5 s, reply "Today is Wednesday, and this is macOS (version 27.0.1).").
+    - Finding flipped to `- [x]`. Task stays in `doing`. Not committed.
+    - next: /review
+  timestamp: 2026-10-08T21:07:55.918293+00:00
 depends_on:
 - 01M4E1XR9RGN1BNPYHWDKT9H63
 - 01M4E2HPENAVR0VT8MWC73RK0S
@@ -57,4 +84,13 @@ Write comments in ASD-STE100 Simplified Technical English.
 - [x] Run `swift test` in `IntegrationTests/` (after `swift package update`) — the new scenario passes.
 
 ## Workflow
-- Use `/tdd` — write failing tests first, then implement to make them pass. #environment
+- Use `/tdd` — write failing tests first, then implement to make them pass.
+
+## Review Findings (2026-10-08 15:58)
+
+> Scope: `review sha HEAD~1..HEAD` — reviewed the diffs only — lines this change added or modified. 4 file(s) reviewed, 6 not reviewed.
+
+> 6 file(s) not reviewed — excluded by an ignore rule:
+> - `.kanban/ (from .reviewignore)` — 6 file(s)
+
+- [x] `IntegrationTests/Tests/FoundationModelsMultitoolIntegrationTests/EnvironmentScenarioTests.swift:129` `code-hygiene/magic-numbers-swift` — Magic numbers should be replaced by named constants. #environment

@@ -125,8 +125,11 @@ struct EnvironmentScenarioTests {
 /// the condition that the answer holds the date that they give.
 enum InjectedDate {
 
+    /// The seconds from 1970-01-01T00:00:00Z to ``instant``.
+    static let secondsSince1970: TimeInterval = 1_907_506_800
+
     /// The instant that the clock gives at each call: 2030-06-12T15:00:00Z.
-    static let instant = Date(timeIntervalSince1970: 1_907_506_800)
+    static let instant = Date(timeIntervalSince1970: secondsSince1970)
 
     /// The time zone of the session. At ``instant`` the local time is
     /// 2030-06-12T17:00:00+02:00.
