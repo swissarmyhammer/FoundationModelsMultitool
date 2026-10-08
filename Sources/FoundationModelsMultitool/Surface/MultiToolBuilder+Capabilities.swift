@@ -128,6 +128,34 @@ extension MultiTool.Builder {
         withCapability(GitCapability(root: root))
     }
 
+    /// Queues the environment capability under the noun `environment`,
+    /// through `withCapability(_:)`. Each verb task adds its verb to the
+    /// capability, as `tools.environment.<verb>`.
+    ///
+    /// **Environment is OFF by default.** A builder that never calls this
+    /// renders no `tools.environment` namespace at all.
+    ///
+    /// Like `withGit(root:)`, this method does not throw. The capability
+    /// gets no resource at construction: each verb reads the process at the
+    /// time of each call.
+    ///
+    /// A second call is a second claim on the noun `environment`, and
+    /// `buildRegistry()` fails, the same as for a second `withGit(root:)`.
+    @discardableResult
+    public func withEnvironment() -> Self {
+        withCapability(EnvironmentCapability())
+    }
+
+    /// Queues the environment capability over a context that the caller
+    /// gives. The rules of `withEnvironment()` apply.
+    ///
+    /// - Parameter context: The inputs that each verb reads. A test gives
+    ///   its own inputs, thus no verb reads the real process.
+    @discardableResult
+    func withEnvironment(context: EnvironmentContext) -> Self {
+        withCapability(EnvironmentCapability(context: context))
+    }
+
     /// Queues the two verbs of the web capability — `tools.web.search`
     /// and `tools.web.fetch` — under the noun `web`, through
     /// `withCapability(_:)`.

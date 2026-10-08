@@ -1,0 +1,1 @@
+{"id":"01M4E1X8Y2W3F522WAQMX9NHYJ","timestamp":"2026-10-08T15:25:32.482099Z","op":"create","item_id":"01M4E1X8Y10QJVKA0F9H46K69N","forward_patch":"--- original\n+++ modified\n@@ -0,0 +1,2 @@\n+color: 7057ff\n+tag_name: environment\n","reverse_patch":"--- original\n+++ modified\n@@ -1,2 +0,0 @@\n-color: 7057ff\n-tag_name: environment\n","transaction_id":null}
