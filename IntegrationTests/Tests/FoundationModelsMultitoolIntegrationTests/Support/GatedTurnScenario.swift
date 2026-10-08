@@ -19,8 +19,8 @@ struct GatedTurnReading {
 /// Runs one gated scenario of one turn on the live Router path.
 ///
 /// The steps are the same for each suite that sends one prompt to a mounted
-/// session (`GitScenarioTests`, `WebResearchScenarioTests`, and
-/// `OperationToolLiveTests`):
+/// session (`GitScenarioTests`, `EnvironmentScenarioTests`,
+/// `WebResearchScenarioTests`, and `OperationToolLiveTests`):
 ///
 /// 1. Resolve a live fixture through `withLiveRouterFixture`. When the live
 ///    path is not wired, that function prints the skip note.
@@ -104,6 +104,39 @@ func calledTheVerbsCheck(named name: String, verbPaths: Set<String>, in turn: St
             "expected the \(MultiTool.runCodePath) snippets to call \(verbPaths.sorted()), "
             + "but they called \(typedPaths.sorted()) and the calls were \(turn.calls.map(\.name))"
     )
+}
+
+extension ScenarioCheck {
+
+    /// The text of a `correction` field with a value, in a JSON output. A
+    /// `null` correction does not agree with it.
+    ///
+    /// Computed, because `Regex` is not `Sendable` and a stored static value
+    /// must be.
+    private static var correctionField: Regex<Substring> { #/"correction"\s*:\s*"/# }
+
+    /// The condition that no `runCode` output of a turn holds a
+    /// `correction`.
+    ///
+    /// A correction is the in-band answer of a verb that could not answer.
+    /// Thus an output with one shows a verb that refused the call.
+    ///
+    /// - Parameters:
+    ///   - name: The label of the check on the `SCENARIO` line.
+    ///   - turn: The streamed turn, with each session tool call that it made.
+    /// - Returns: The condition, for `grade(scenario:checks:)`.
+    static func noCorrection(named name: String, in turn: StreamedTurn) -> ScenarioCheck {
+        let correctedOutputs = turn.calls
+            .filter { $0.name == MultiTool.runCodePath }
+            .compactMap(\.output)
+            .filter { $0.contains(correctionField) }
+        return ScenarioCheck(
+            name: name,
+            held: correctedOutputs.isEmpty,
+            failureMessage: "expected no correction in a \(MultiTool.runCodePath) output, but got: "
+                + correctedOutputs.joined(separator: " | ")
+        )
+    }
 }
 
 /// The start of a `RESULT` line: how long the turn took and which session

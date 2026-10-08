@@ -527,7 +527,7 @@ func streamTurn(of session: RoutedSession, prompt: String) async throws -> Strea
             // the chance to shrink its context is not read as a clean turn.
             turn.compactions.append("failed \(failure)")
         case .toolStatus, .reasoningDelta, .toolInvocation, .toolCallReport, .entryRecorded,
-            .elicitationRequested, .runMessage, .runSettled, .generationCall, .submissionQueued,
+            .elicitationRequested, .runMessage, .runProgress, .runSettled, .generationCall, .submissionQueued,
             .submissionStarted, .submissionEnded, .answered, .answerFailed, .mailDeliveryPaused:
             // `.toolStatus` here is the residue of the three status cases
             // handled above. `.toolInvocation` carries the open/close record
@@ -540,7 +540,9 @@ func streamTurn(of session: RoutedSession, prompt: String) async throws -> Strea
             // `.elicitationRequested` announces a question a run raised, and no
             // tool of these scenarios raises one. `.runMessage` carries a
             // message that an open background run sent to the session, and no
-            // tool of these scenarios sends one. `.runSettled` announces a
+            // tool of these scenarios sends one. `.runProgress` carries a
+            // progress event of an open background run, and no scenario here
+            // grades it. `.runSettled` announces a
             // background run's terminal event, which the journal readings below
             // already grade. `.generationCall` reports the usage of one
             // generation call; the `answered` event gives the sum of the

@@ -14,11 +14,27 @@ comments:
     - skipped: the `EnvironmentDocumentationTests.swift` item, by the decision of the user (no test that pins or bans README wording). docs/SECURITY.md and `### Web` are not changed.
     - next: /review
   timestamp: 2026-10-08T20:33:14.280737+00:00
+- actor: claude-code
+  id: 01m4ekvaj4vrb3mt33p1wx44ew
+  text: |-
+    ### review — clean
+    - evidence: review sha HEAD~1..HEAD (c240c90). Counts: findings 0, confirmed 0, refuted 0. The engine reviewed 0 files. No validator matches README.md. An ignore rule (.reviewignore) excludes the 4 .kanban/ files.
+    - next: none. The task is in done.
+  timestamp: 2026-10-08T20:39:02.980550+00:00
+- actor: claude-code
+  id: 01m4ekvr1nhkc9t3mhprcvy0zc
+  text: |-
+    ### finish iteration 1 — clean
+    - implement: changed — README.md; the wording-test item is removed by the user decision of 2026-10-08
+    - test: green — swift test, 2321 passed
+    - commit: c240c90
+    - review: clean — 0 findings (no validator applies to README.md); task in done
+  timestamp: 2026-10-08T20:39:16.789467+00:00
 depends_on:
 - 01M4E1XR9RGN1BNPYHWDKT9H63
 - 01M4E2HPENAVR0VT8MWC73RK0S
-position_column: doing
-position_ordinal: '80'
+position_column: done
+position_ordinal: ffffcb80
 title: Document the environment capability in README.md
 ---
 ## What
