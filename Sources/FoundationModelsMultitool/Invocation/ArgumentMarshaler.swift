@@ -238,6 +238,13 @@ public enum ArgumentMarshaler {
     /// why the non-`Generable` fallback below is a hard, documented gap
     /// rather than a text rendering.
     ///
+    /// A `String` `Output` whose whole text is one JSON object or array
+    /// renders as that parsed value, not as a string. A plain tool that
+    /// returns JSON text (for example a GraphQL response) thus gives the
+    /// snippet an object it can read, the same as an `OperationVerbTool`
+    /// does. A `String` that is not a JSON object or array renders as a
+    /// string, as before.
+    ///
     /// - Parameter output: the tool's `Output` value to render.
     /// - Returns: the JS-ready `InterpreterValue` a snippet's call
     ///   expression should evaluate to.
@@ -247,6 +254,9 @@ public enum ArgumentMarshaler {
     ///   unreachable-in-practice case that a `Generable` value's own
     ///   `jsonString` fails to decode.
     public static func renderOutput<Output: PromptRepresentable>(_ output: Output) throws -> InterpreterValue {
+        if let text = output as? String, let parsed = jsonContainer(in: text) {
+            return parsed
+        }
         guard let generatedContentOutput = output as? any ConvertibleToGeneratedContent else {
             throw ArgumentMarshalerError(
                 kind: .outputNotGenerable,
@@ -266,6 +276,22 @@ public enum ArgumentMarshaler {
                 message: "Output type \(type(of: output))'s GeneratedContent.jsonString was not "
                     + "valid JSON: \(error)."
             )
+        }
+    }
+
+    /// The parsed value of `text` when the whole text is one JSON object or
+    /// array.
+    ///
+    /// - Parameter text: the text a `String` `Output` holds.
+    /// - Returns: the `.object` or `.array` value, or `nil` when `text` is
+    ///   not JSON, or is a JSON scalar such as `"42"` or `"\"hi\""`.
+    private static func jsonContainer(in text: String) -> InterpreterValue? {
+        guard let value = try? JSONDecoder().decode(InterpreterValue.self, from: Data(text.utf8)) else {
+            return nil
+        }
+        switch value {
+        case .object, .array: return value
+        case .null, .bool, .number, .string: return nil
         }
     }
 
